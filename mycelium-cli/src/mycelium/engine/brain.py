@@ -1,13 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""A Pi-backed cognitive brain for mycelium's *internal* agents (Rung 2).
+"""A Pi-backed cognitive brain for mycelium's *internal* agents.
 
-`docs/START_HERE_MEDIATOR_RUNG2.md` (Part B) scopes Rung 2 to exactly one seam:
-replace the SAO mediator's stateless ``litellm.completion`` brain
-(:func:`app.services.mediator.llm_sync`) with a **persistent, optionally
-OpenShell-sandboxed Pi session**, without touching the NEGMAS loop, the SLIM
-drive, or any *user* agent's runtime. Pi is the runtime for our own cognition
+A **persistent, optionally OpenShell-sandboxed Pi session** that replaces the SAO
+mediator's stateless ``litellm.completion`` brain
+(:func:`app.services.mediator.llm_sync`), without touching the NEGMAS loop, the
+SLIM drive, or any *user* agent's runtime. Pi is the runtime for our own cognition
 agents only; participant agents keep whatever framework they already run.
 
 The mediator injects its brain as a callable
@@ -17,8 +16,7 @@ The mediator injects its brain as a callable
 long-lived ``pi -p --session <path> --mode json`` subprocess. Because one
 :class:`PiBrain` instance reuses a single ``--session`` file across every call,
 the brain accumulates **real durable memory across SAO rounds** — the natural
-home for the running state ``MediatedNegotiation`` threads by hand today (the
-v1→v2 "the camp counselor needs memory" lesson, now native).
+home for the running state ``MediatedNegotiation`` threads by hand today.
 
 **Synchronous on purpose.** The mediator's LLM turns run inside NEGMAS's
 ``mech.run()`` worker thread; ``llm_sync`` is blocking and so is this. We shell
@@ -30,9 +28,8 @@ hung turn can never stall the negotiation.
 not share one :class:`PiBrain` across parallel negotiations — build one per run.
 
 **OpenShell sandboxing** is wired as a command-prefix seam (``openshell=True``),
-default **off**: ``openshell`` is not guaranteed installed and the sandbox path
-is a live-validation step (see the doc's honest caveats). The seam exists from
-the start so enabling it live is config, not a code change.
+default **off**: ``openshell`` is not guaranteed installed. Enabling it live is
+config, not a code change.
 """
 
 from __future__ import annotations

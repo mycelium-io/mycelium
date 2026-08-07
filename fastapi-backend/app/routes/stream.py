@@ -2,12 +2,11 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-SSE stream endpoints (DEPRECATED — retired in Step 10).
+SSE stream endpoints (DEPRECATED).
 
-Formerly backed by Postgres LISTEN/NOTIFY; now fed by the in-process bus
-(SLIM-native rebuild, Step 1). The UI still uses SSE until the coordination bus
-moves to SLIM (Steps 3-4) and the UI is reworked (Step 10). Kept minimal on
-purpose — do not invest here.
+Formerly backed by Postgres LISTEN/NOTIFY; now fed by the in-process bus.
+Minimal SSE stream endpoints the UI still uses. Kept minimal on purpose — do not
+invest here.
 
 GET /rooms/{room}/messages/stream — room event stream
 GET /agents/{handle}/stream       — per-agent event stream

@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Unit tests for human-in-the-room: @-parse + consent-gated invites (Step 6).
+"""Unit tests for human-in-the-room: @-parse + consent-gated invites.
 
 Node-free. The ``@``-parse is pure; the invite/consent flow is exercised against
 a :class:`RoomChannelManager` with a faked managed channel injected directly into
@@ -171,7 +171,7 @@ def test_request_invite_returns_none_for_present_member():
 
 @pytest.mark.asyncio
 async def test_accept_invites_remote_agent_by_identity_only(monkeypatch):
-    """Cross-host consent (Step 9): accepting resolves the invitee purely by its
+    """Cross-host consent: accepting resolves the invitee purely by its
     ``workspace/room/agent`` SLIM identity — never a host or endpoint — so the
     moderator invites the same member whether its connector runs on this machine
     or another one on the shared node. This is why the consent → invite → join

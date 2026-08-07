@@ -58,7 +58,7 @@ def test_build_envelope_full():
     assert env.payload.data["assignments"] == {"budget": "high"}
 
 
-# The SLIM-native table (bible §13). A failed negotiation is commit:rejected;
+# The SLIM-native table. A failed negotiation is commit:rejected;
 # the Go CFN's "abort" is retired with the CFN, and "ready" was never valid.
 @pytest.mark.parametrize(
     ("kind", "subkind", "ok"),

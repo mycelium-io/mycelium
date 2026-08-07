@@ -157,8 +157,7 @@ export async function fetchSessions(roomName: string) {
 
 export async function fetchChildRooms(parentName: string) {
   // Sessions live in coordination_sessions. Return the per-session display
-  // name + state so callers that previously walked rooms by name pattern
-  // keep working with minimal changes.
+  // name + state.
   const res = await fetch(
     `/api/coordination-sessions?parent_room=${encodeURIComponent(parentName)}&limit=200`,
     { cache: "no-store" },
@@ -195,7 +194,7 @@ export async function sendRoomMessage(
 }
 
 /**
- * A consent-gated invite (Step 6). Raised when a human `@`-mentions an agent
+ * A consent-gated invite. Raised when a human `@`-mentions an agent
  * that is not yet on the room's channel: the backend surfaces an accept/decline
  * prompt ("someone's agent wants to reach yours") instead of joining directly.
  */

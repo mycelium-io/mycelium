@@ -20,8 +20,7 @@ One :class:`EpisodeState` accompanies each ``_CfnRoundState`` in
    at consensus: MPC (mean final confidence), GAR (genuine agreement
    ratio: whose confidence moved toward the outcome relative to their
    first stated confidence), SCR (social compliance ratio: accepts made
-   by deference), and provenance_weight = (1 - SCR) * GAR. Interim: these
-   move to the Cognition Engine when it computes them natively.
+   by deference), and provenance_weight = (1 - SCR) * GAR.
 
 3. Writes the full episode record to the parent room's memory under
    ``log/episodes/{short_id}.md`` at close: git-shareable and indexed by

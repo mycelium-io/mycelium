@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Connector memory-sync — the L9 ``knowledge`` write path (Step 8, bible §11).
+"""Connector memory-sync — the L9 ``knowledge`` write path.
 
-The merge gate for the CLI half of Step 8 (no SLIM node): a ``knowledge`` message
+The CLI half (no SLIM node): a ``knowledge`` message
 carries markdown content, and the connector writes it into the local store
 (push-with-content) without waking a turn; the last-write-wins conflict policy
 keeps a stale-base write out with details.
@@ -118,7 +118,7 @@ async def test_handle_inbound_routes_knowledge_without_waking(monkeypatch):
     assert filesystem.read_memory(filesystem.get_room_dir("demo"), "plan/tasks") is not None
 
 
-# ── reindex-on-arrival (Step 9: close the daemon-only reindex gap) ─────────────
+# ── reindex-on-arrival ────────────────────────────────────────────────────────
 
 
 @pytest.mark.asyncio

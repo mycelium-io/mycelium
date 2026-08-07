@@ -2,7 +2,7 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-Conflict-policy tests (§11): last-write-wins by version; a write on a stale
+Conflict-policy tests: last-write-wins by version; a write on a stale
 base is rejected with details. No merge handler.
 """
 

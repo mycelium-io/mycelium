@@ -2,7 +2,7 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-Tests for the local JSONL search index (replaces pgvector, Step 1).
+Tests for the local JSONL search index.
 
 Covers brute-force cosine top-k over a seeded index, the /memory/search
 endpoint, and rebuild-from-files (reindex).

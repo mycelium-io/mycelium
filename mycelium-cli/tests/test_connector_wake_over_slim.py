@@ -1,14 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Connector wake — live-node integration slice (Step 5 DoD).
+"""Connector wake — live-node integration slice.
 
 Needs a running ``slim`` node. Guarded so the default unit suite stays green
 without one (mirrors the backend's ``test_l9_over_slim_roundtrip.py``): point at
 a node with ``MYCELIUM_SLIM_ENDPOINT`` (default ``http://127.0.0.1:46357``); run
-one via ``mycelium hub host`` or the docker recipe in ``START_HERE_STEP_5.md``.
+one via ``mycelium hub host``.
 
-Proves the Step 5 DoD end-to-end over a real MLS group channel: a mock
+Proves the connector wake end-to-end over a real MLS group channel: a mock
 "backend" moderator invites the connector's handle, publishes an L9 ``exchange``
 addressed to it, and the connector — spawning a **mocked** ``claude`` at the
 integration boundary — wakes and publishes its reply, which the moderator

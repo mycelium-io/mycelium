@@ -3,7 +3,7 @@
 
 """Daemon SLIM connector — wake path, reply shape, gates, and control verbs.
 
-The merge gate for Step 5 (no SLIM node, ``claude`` mocked at the integration
+The merge gate (no SLIM node, ``claude`` mocked at the integration
 boundary). Pins that an inbound L9 message addressed to an owned handle wakes a
 cold spawn and its reply is published as a valid ``exchange`` parented on the
 message that woke it; that a message addressed elsewhere / the agent's own reply
@@ -356,14 +356,14 @@ async def test_per_handle_lock_serializes_spawns(monkeypatch: pytest.MonkeyPatch
     assert len(published) == 2
 
 
-# ── remote endpoint plumbing (Step 9: cross-machine) ──────────────────────────
+# ── remote endpoint plumbing ──────────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
 async def test_run_connector_uses_configured_remote_node_endpoint(monkeypatch):
     """The connector dials ``config.slim.node_endpoint`` — a remote LAN node, not
     the localhost default — so ``mycelium connect <A-LAN-IP>`` actually points a
-    member host at host A's shared node (Step 9 remote endpoint plumbing)."""
+    member host at host A's shared node."""
     from mycelium.config import SlimConfig
     from mycelium.slim.client import SlimUnavailableError
 

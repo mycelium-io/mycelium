@@ -4,7 +4,7 @@
 """Unit tests for the Pi mediator brain (app/services/pi_brain.py) + selection.
 
 Node-free and Pi-free: no real ``pi`` process is ever spawned. We exercise the
-three things that must be right for the Rung-2 seam to be trustworthy without a
+three things that must be right for the Pi-brain seam to be trustworthy without a
 live binary — the ``pi --mode json`` output parser, the command construction
 (flags + OpenShell wrap), and the ``ALIGNER_BRAIN`` selection in the aligner —
 by monkeypatching :func:`subprocess.run` / :func:`shutil.which`. A live Pi turn

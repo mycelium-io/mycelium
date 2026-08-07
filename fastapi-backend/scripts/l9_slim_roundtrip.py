@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Step 3 DoD harness: an L9 envelope round-trips over a SLIM group channel.
+"""An L9 envelope round-trips over a SLIM group channel.
 
 Runs a moderator and a participant in one process against a running ``slim``
 node. The moderator creates a room channel and invites the participant; the
@@ -17,7 +17,7 @@ Usage (with a node on :46357, e.g. via ``mycelium hub host``)::
     # or point at another node:
     uv run python scripts/l9_slim_roundtrip.py http://127.0.0.1:46357
 
-This is a manual DoD aid; the guarded pytest equivalent lives in
+This is a manual aid; the guarded pytest equivalent lives in
 ``tests/test_l9_over_slim_roundtrip.py``.
 """
 
@@ -178,12 +178,12 @@ async def _wait_for(pred, *, timeout: float = 10.0) -> None:
 
 
 async def run_durable_inbox(endpoint: str = DEFAULT_NODE_ENDPOINT) -> list[L9]:
-    """Prove the durable inbox end-to-end (Step 4 DoD).
+    """Verify the durable inbox end-to-end.
 
     The backend provisions a channel (starting its persister). ``agent-a`` joins
     and speaks once — so the persister has a reply route to it — then goes offline
     (dropped from membership). ``agent-b`` broadcasts a message while ``agent-a``
-    is gone; SLIM does *not* retain it (bible §7d). ``agent-a`` reconnects
+    is gone; SLIM does *not* retain it. ``agent-a`` reconnects
     (re-invited): the persister recognizes the reconnect and **re-serves** the
     missed message point-to-point. Returns what ``agent-a`` received on rejoin —
     the message it missed while offline.
@@ -265,7 +265,7 @@ def _align_summon() -> L9:
 
 
 async def run_aligner_observe(endpoint: str = DEFAULT_NODE_ENDPOINT) -> L9:
-    """Prove the Step 7 observer DoD over a live node.
+    """Verify the observer mode over a live node.
 
     The backend provisions a channel with the SIEP aligner wired to its summon
     seam. Two agents each publish a high-confidence position; a human then
@@ -321,7 +321,7 @@ async def run_aligner_observe(endpoint: str = DEFAULT_NODE_ENDPOINT) -> L9:
 async def run_aligner_converge_and_sync(
     endpoint: str = DEFAULT_NODE_ENDPOINT,
 ) -> tuple[L9, L9]:
-    """Prove the Step 8 same-machine DoD over a live node.
+    """Verify converge-and-sync on the same machine over a live node.
 
     Extends :func:`run_aligner_observe`: after the aligner emits
     ``commit:converged``, the backend's plan-sync consumer (wired on
@@ -384,7 +384,7 @@ async def run_aligner_converge_and_sync(
 async def run_consent_and_knowledge_to_bus(
     endpoint: str = DEFAULT_NODE_ENDPOINT,
 ) -> set[str]:
-    """Prove the Step 10 DoD's headless proxy for the browser demo.
+    """Verify the headless proxy for the browser demo.
 
     The UI never speaks SLIM: it reads the backend's in-process bus
     (``app.bus``), which the moderator's persister feeds every ingested channel

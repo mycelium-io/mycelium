@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Connector wiring for host-run engines (Stage B, approach A).
+"""Connector wiring for host-run engines.
 
 Pins that (1) ``connector_targets`` gives a first-party engine a connector only
 when ``engine_runtime == "host"``, and (2) an ``@``-summon of an engine handle

@@ -18,11 +18,7 @@ Mycelium uses L9 two ways:
    ``POST /api/l9/messages`` endpoint that routes envelopes to Cognition
    Engines by kind/subkind. ``l9_cfn.py`` posts envelopes built here.
 
-The subkind vocabulary below is the **SLIM-native** table (bible §13): a failed
-negotiation commits as ``rejected``. The Go CFN's older table (which used
-``abort`` for a failed commit) was authoritative only while the CFN was the
-coordination backend; that authority is gone with the CFN's removal (Step 3),
-so the table now follows the SLIM-native design.
+In the subkind vocabulary below, a failed negotiation commits as ``rejected``.
 """
 
 from __future__ import annotations
@@ -51,9 +47,8 @@ SUBPROTOCOL_MYCELIUM = "mycelium"
 SYSTEM_ACTOR_ID = "CognitiveEngine"
 SYSTEM_ACTOR_ROLE = "coordinator"
 
-# Kind -> allowed subkinds (SLIM-native table, bible §13). An empty/None subkind
-# is always valid. A failed negotiation commits as ``rejected`` (was ``abort``
-# under the now-removed Go CFN).
+# Kind -> allowed subkinds. An empty/None subkind is always valid. A failed
+# negotiation commits as ``rejected`` (was ``abort`` under the now-removed Go CFN).
 VALID_SUBKINDS: dict[Kind, frozenset[str]] = {
     Kind.knowledge: frozenset({"query", "distillation", "extraction", "feedback"}),
     Kind.commit: frozenset({"converged", "resolved", "rejected"}),
@@ -78,7 +73,7 @@ def topic_urn(parent_room: str) -> str:
 
 
 def validate_subkind(kind: Kind, subkind: str | None) -> None:
-    """Reject subkinds outside the SLIM-native table for this kind."""
+    """Reject subkinds outside the allowed table for this kind."""
     if not subkind:
         return
     allowed = VALID_SUBKINDS.get(kind, frozenset())

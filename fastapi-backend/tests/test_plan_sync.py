@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Tests for the converged→plan→memory-sync consumer (Step 8, bible §13).
+"""Tests for the converged→plan→memory-sync consumer.
 
 Fast unit tests (the merge gate — no node): a ``commit:converged`` fired through
 the consumer compiles ``plan/tasks.md`` (LLM mocked, as the plan-compiler tests
@@ -132,7 +132,7 @@ class TestConvergedToPlan:
 
     async def test_converged_adapter_binds_room_like_summon_seam(self):
         """The manager's ``on_converged`` adapter injects the room the persister
-        can't (mirrors Step 7's summon adapter)."""
+        can't (mirrors the summon adapter)."""
         from app.services.room_channels import RoomChannelManager
 
         mgr = RoomChannelManager(endpoint="http://x", default_workspace="ws")

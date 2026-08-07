@@ -1,22 +1,22 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Cross-machine memory sync — live-node integration slice (Step 9 DoD).
+"""Cross-machine memory sync — live-node integration slice.
 
 Needs a running ``slim`` node. Guarded so the default unit suite stays green
 without one (mirrors ``test_connector_wake_over_slim.py``): point at a node with
 ``MYCELIUM_SLIM_ENDPOINT`` (default ``http://127.0.0.1:46357``); run one via
-``mycelium hub host`` or the docker recipe in ``START_HERE_STEP_5.md``. For a
+``mycelium hub host``. For a
 genuine two-host proof, run the node on host A and export
 ``MYCELIUM_SLIM_ENDPOINT=http://<A-LAN-IP>:46357`` on host B (or put two
 containers on a shared docker **bridge network** and route by service name).
 
-Proves the Step 9 memory-sync half over a real MLS group channel: a moderator
+Proves the memory-sync half over a real MLS group channel: a moderator
 (host A's backend, faked here) broadcasts an L9 ``knowledge`` message that
 **carries** a compiled plan; the connector (host B) — pulling from its own member
 session — applies the carried markdown to a **genuinely separate data dir** and
 triggers a reindex on that store, with no file watcher in sight. This is the
-cross-machine realization of the same-machine Step 8 path
+cross-machine realization of the same-machine path
 (``test_l9_over_slim_roundtrip.py::test_converged_compiles_plan_and_syncs_memory_over_slim``):
 the "second store" is a distinct dir reached only through the real connector
 receiver, not a swapped ``MYCELIUM_DATA_DIR``.
@@ -117,7 +117,7 @@ async def test_knowledge_push_syncs_to_remote_store_over_slim(
     # No backend is co-located in this slice, so record that the connector fired
     # the explicit reindex (its markdown-lands-but-search-is-stale gap closer)
     # rather than standing one up. The reindex → JSONL wiring itself is proven in
-    # the backend suite (Step 8 roundtrip) and by unit tests.
+    # the backend suite roundtrip and by unit tests.
     reindexed: list[str] = []
 
     async def _record_reindex(_config: MyceliumConfig, room: str) -> None:
@@ -155,7 +155,7 @@ async def test_knowledge_push_syncs_to_remote_store_over_slim(
     try:
         # The member must be in the group before the moderator broadcasts, or the
         # push lands before it is subscribed (SLIM keeps nothing for an absent
-        # member, §7d). Invite, then broadcast the knowledge push.
+        # member). Invite, then broadcast the knowledge push.
         await moderator.invite(session, to_slim_name(_WORKSPACE, _ROOM, _HANDLE))
         await SlimClient.publish(session, l9.serialize(_knowledge_push()))
         await asyncio.wait_for(applied.wait(), timeout=20.0)

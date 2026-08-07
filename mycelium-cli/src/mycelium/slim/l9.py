@@ -45,7 +45,7 @@ CONTENT_TEXT_KEY = "content"
 # (``commit``/``knowledge``) are observed but never trigger a spawn.
 EXCHANGE_KIND = "exchange"
 
-# ``knowledge`` is the memory-sync kind (bible §11): a ``knowledge`` message
+# ``knowledge`` is the memory-sync kind: a ``knowledge`` message
 # carries markdown content the connector writes into its local store + reindexes
 # (push-with-content). It never wakes a turn — it updates the working set.
 KNOWLEDGE_KIND = "knowledge"

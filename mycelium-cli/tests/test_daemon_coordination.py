@@ -12,8 +12,7 @@ itself — no operator-driven accept loop required.
 Mirrors the openclaw ``routeTick`` / ``routeConsensus`` invariants so
 cold-spawn agents (cursor + claude_code) see the same prompt the openclaw
 agent runtime sees today. Without these tests a regression in the daemon
-would silently fall back to the operator-driven path, which is exactly the
-gap the cursor-e2e Phase 5 walkthrough surfaced before this branch landed.
+would silently fall back to the operator-driven path.
 """
 
 from __future__ import annotations

@@ -5,7 +5,7 @@
 L9-over-SLIM binding — the seam between :mod:`app.services.l9` (envelope
 construction) and :mod:`app.services.slim_client` (transport).
 
-The room bus is **L9 straight over SLIM group sessions — no A2A** (bible §6).
+The room bus is **L9 straight over SLIM group sessions — no A2A**.
 This module owns three things the *app* must, not SLIM:
 
 1. **Serialize / deserialize.** An L9 envelope is embedded under the additive
@@ -176,7 +176,7 @@ class EpisodeLifecycle:
 
     An episode freezes the membership it opened with. A membership change while
     the episode is active violates L9's stable-membership rule and **aborts** the
-    episode — the channel itself is untouched (bible §9, §12). A new episode can
+    episode — the channel itself is untouched. A new episode can
     be opened afterward with the changed membership.
     """
 

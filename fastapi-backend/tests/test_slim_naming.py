@@ -6,8 +6,7 @@
 import pytest
 
 # The helpers need the native binding to build a Name; skip cleanly where no
-# wheel exists so the default suite stays green (Step 2 trap: missing wheel
-# degrades gracefully).
+# wheel exists so the default suite stays green when the binding is absent.
 pytest.importorskip("slim_bindings")
 
 from app.services.slim_client import (

@@ -2,8 +2,7 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-Consent-gated invite endpoints — the human-in-the-room accept/decline surface
-(Step 6, bible §12).
+Consent-gated invite endpoints — the human-in-the-room accept/decline surface.
 
 When a human ``@``-mentions an agent that is **not** on a room's channel, the
 backend raises a :class:`~app.services.invites.PendingInvite` instead of inviting

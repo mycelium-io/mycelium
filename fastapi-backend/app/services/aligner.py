@@ -2,9 +2,9 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-The SIEP aligner — the first cognition engine (Step 7, bible §10).
+The SIEP aligner — the first cognition engine.
 
-Bible §10 splits three things that used to be bundled as "the CE":
+Three things are split apart here that would otherwise be bundled as "the CE":
 
 1. **Room infrastructure** — membership + durable transcript. That is the
    always-on backend (``room_channels`` + ``persister``); cheap, always
@@ -31,22 +31,21 @@ called.
   channel — then sleep.
 - **Driver (takes the wheel):** open an episode (freezing membership), then run
   up to *N* rounds — prompt each participant for a position on the channel (which
-  wakes their Step 5 connector), collect the replies the persister records,
+  wakes their connector), collect the replies the persister records,
   fold + score — stopping on convergence or the round cap, then emit the verdict
-  and close the episode (which drains any invites Step 6 queued mid-episode).
+  and close the episode (which drains any invites queued mid-episode).
 
-**Runtime note (the Step 7 open question).** The default the bible names is "a
-cold-spawned agent turn, reusing ``spawn.py``". The verdict itself — the metrics
+**Runtime note.** The verdict itself — the metrics
 and the ``commit`` envelope — is inherently backend-side (it is deterministic
 math over the transcript the backend already holds, emitted onto the channel the
 backend moderates), and the CLI's ``integration.spawn`` is not reachable from the
 backend process. So this engine runs **in-process in the backend** and reuses the
-cold-spawn runtime the way the bible means it: the **driver** prompts participants
-by publishing on the channel, and their existing Step 5 connectors cold-spawn the
+cold-spawn runtime: the **driver** prompts participants
+by publishing on the channel, and their existing connectors cold-spawn the
 turn and reply. The engine drives the participants' spawns rather than spawning a
 judge of its own. The base-level verdict needs no LLM of its own — it is the
 threshold decision over the deterministic library — which also keeps the spawn
-cold. (Flagged in the Step 8 handoff; an LLM judgment/summary layer is post-MVP.)
+cold. An LLM judgment/summary layer is post-MVP.
 """
 
 from __future__ import annotations
@@ -80,11 +79,11 @@ _NON_PARTICIPANTS = frozenset({BACKEND_AGENT, l9.SYSTEM_ACTOR_ID})
 # The mediator addresses exactly ONE agent per turn via the L9 ``recipients``
 # field. Its prompt *text*, though, embeds the broker's summary which names the
 # other participants — and the connector's ``should_wake`` also wakes on a raw
-# ``@handle`` token in the human-facing text (bible §12 human path). Left as-is,
-# every turn would spuriously wake *every* named agent, doubling cold-spawns and
-# serialising the connectors until the addressed agent's real reply misses the
-# round window (the Rung-1-live timeout/degenerate-fallback bug). Neutralising
-# the ``@`` means only the L9-addressed agent wakes; the names stay readable.
+# ``@handle`` token in the human-facing text. Left as-is, every turn would
+# spuriously wake *every* named agent, doubling cold-spawns and serialising the
+# connectors until the addressed agent's real reply misses the round window (the
+# turn then falls back to a reject). Neutralising the ``@`` means only the
+# L9-addressed agent wakes; the names stay readable.
 _AT_MENTION = re.compile(r"@(?=\w)")
 
 
@@ -215,7 +214,7 @@ class AlignerEngine:
         self._max_steps = (
             max_steps if max_steps is not None else settings.ALIGNER_MEDIATOR_MAX_STEPS
         )
-        # Rung 2 — which cognitive runtime backs the mediator (an *internal*
+        # Which cognitive runtime backs the mediator (an *internal*
         # agent). "litellm" (default) or "pi". Only the engine's own brain; user
         # participant agents are unaffected. See ``_make_brain``.
         self._brain = brain if brain is not None else settings.ALIGNER_BRAIN
@@ -235,22 +234,20 @@ class AlignerEngine:
         the legacy reserved handle — is summoned; else ignore.
 
         The persister fires this for every ``@``-mention, so the identity gate is
-        what keeps an ``@teammate`` from spawning an engine (bible §10 / Step 7).
-        The engine reframe (``docs/START_HERE_ENGINES.md``) makes the aligner a
-        first-class registered agent: a summon of a handle whose manifest is
-        ``adapter=engine, kind=aligner`` runs *as that handle*. The reserved
-        ``ALIGNER_HANDLE`` stays a back-compat fallback during the transition.
+        what keeps an ``@teammate`` from spawning an engine.
+        The aligner is a first-class registered agent: a summon of a handle whose
+        manifest is ``adapter=engine, kind=aligner`` runs *as that handle*. The
+        reserved ``ALIGNER_HANDLE`` stays a back-compat fallback.
         A self-authored envelope never re-summons; a room already active is left
         alone.
         """
         is_reserved = _norm(handle) == _norm(self._handle)
         if not is_reserved and _registered_engine_kind(room, handle) != "aligner":
             return
-        # Stage-B transition switch: when ENGINE_RUNTIME=host the host daemon owns
-        # a *registered* engine's run (it drives NEGMAS where `pi` lives), so the
-        # backend must not also mediate or the negotiation double-runs. The
-        # reserved ALIGNER_HANDLE fallback has no host manifest, so it always runs
-        # backend-side regardless. See docs/START_HERE_ENGINES.md.
+        # When ENGINE_RUNTIME=host the host daemon owns a *registered* engine's
+        # run (it drives NEGMAS where `pi` lives), so the backend must not also
+        # mediate or the negotiation double-runs. The reserved ALIGNER_HANDLE
+        # fallback has no host manifest, so it always runs backend-side regardless.
         if not is_reserved and settings.ENGINE_RUNTIME == "host":
             logger.info(
                 "engine @%s summoned in %s but ENGINE_RUNTIME=host — host daemon owns the run",
@@ -273,10 +270,10 @@ class AlignerEngine:
 
     async def _run_and_release(self, room: str, engine_handle: str) -> None:
         # The mediator is the aligner — there is no mode to choose. A summon
-        # always drives a live NEGMAS SAO (Rung 1/2), running *as* the summoned
+        # always drives a live NEGMAS SAO, running *as* the summoned
         # engine handle. The observer/driver methods below survive only for the
         # live roundtrip scripts (scripts/l9_slim_roundtrip.py) pending their
-        # Rung-3 removal; production never reaches them.
+        # removal; production never reaches them.
         try:
             await self.mediate(room, engine_handle=engine_handle)
         except Exception:
@@ -309,8 +306,8 @@ class AlignerEngine:
         """Run up to N rounds of prompt→collect→score, then emit a verdict.
 
         Opens an episode so a mid-run membership change aborts it (frozen
-        membership, bible §9/§12); always closes it in ``finally`` so Step 6's
-        queued invites drain even when a round times out.
+        membership); always closes it in ``finally`` so queued invites drain even
+        when a round times out.
         """
         managed = self._manager.get(room)
         if managed is None or managed.persister is None:
@@ -406,7 +403,7 @@ class AlignerEngine:
             await asyncio.sleep(self._poll_interval_s)
         return latest
 
-    # -- mediator mode (Rung 1: drive a real NEGMAS SAO over SLIM) --
+    # -- mediator mode (drive a real NEGMAS SAO over SLIM) --
 
     async def mediate(self, room: str, engine_handle: str | None = None) -> dict[str, Any] | None:
         """Run a NEGMAS SAO negotiation live over SLIM, terminating at agreement.
@@ -416,8 +413,8 @@ class AlignerEngine:
         it addresses (an engine must never ``@``-address itself). Falls back to the
         legacy reserved handle when summoned that way.
 
-        The Rung-1 replacement for the passive observer: on summon, discover the
-        issues from the agents' opening prose, then let NEGMAS drive the rounds —
+        The replacement for the passive observer: on summon, discover the issues
+        from the agents' opening prose, then let NEGMAS drive the rounds —
         ``@``-addressing one agent at a time over the channel, interpreting the
         real reply, and stopping the *instant* the mechanism reaches unanimity
         (the anti-theatre property). Hands the agreed ``issue = value`` map to the
@@ -426,7 +423,7 @@ class AlignerEngine:
         NEGMAS is synchronous, so ``mech.run()`` executes on a worker thread; each
         negotiator bridges back to this loop for its SLIM turn (see
         :mod:`app.services.mediator`). Always closes the episode in ``finally`` so
-        Step 6's queued invites drain even on a mid-run failure.
+        queued invites drain even on a mid-run failure.
         """
         from app.services import mediator
 
@@ -508,7 +505,7 @@ class AlignerEngine:
             await self._manager.close_episode(room)
 
     def _make_brain(self, episode: str) -> Callable[..., str]:
-        """Pick the mediator's cognitive runtime for this negotiation (Rung 2).
+        """Pick the mediator's cognitive runtime for this negotiation.
 
         Default ``"litellm"`` returns the stateless
         :func:`app.services.mediator.llm_sync` — nothing changes where Pi isn't
@@ -723,8 +720,7 @@ class AlignerEngine:
         """Broadcast the ``commit`` envelope and record it once locally.
 
         Emitting a ``commit:converged`` here is exactly the plan-compile trigger
-        the persister watches — Step 8 wires ``on_converged`` to ``plan_compiler``.
-        Step 7 stops at emitting a correct, well-formed verdict.
+        the persister watches — ``on_converged`` is wired to ``plan_compiler``.
         """
         env_dict = l9_episode.build_consensus_envelope(
             ep, broken=not converged, assignments=assignments, metrics=metrics

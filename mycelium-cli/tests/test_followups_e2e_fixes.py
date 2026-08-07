@@ -1,54 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Follow-up fixes surfaced by the cursor manual e2e on oclw3/oclw4/oclw5.
+"""Regression guards for connector-adjacent plumbing.
 
-Each test pins ONE of six bugs that the cold-spawn / cross-host walkthrough
-exposed (the cursor integration itself was healthy — these are surrounding
-plumbing issues). Failing one of these tests means the fix has regressed,
-not that the cursor surface is broken.
-
-1. ``test_install_claude_code_no_hooks_does_not_crash``
-   The privacy-cleanup that emptied ``_CLAUDE_CODE_HOOKS`` left
-   ``install_claude_code`` calling ``_resolve_asset("hooks", ...)`` on a
-   missing assets dir, which raised ``FileNotFoundError`` in the temp-dir
-   fallback branch. The fix gates the whole hooks block behind a non-empty
-   ``_CLAUDE_CODE_HOOKS`` check.
-
-2. ``test_agent_create_accepts_kebab_case_adapter``
-   ``mycelium adapter add claude-code`` accepts the hyphenated spelling but
-   ``mycelium agent create --adapter claude-code`` previously rejected it
-   because ``AGENT_ADAPTERS`` is the snake-case set. The fix normalises the
-   ``--adapter`` value before the membership check.
-
-3. ``test_cursor_register_does_not_leak_handle_when_cwd_missing``
-   The cursor ``register()`` previously claimed the handle in
-   ``daemon.toml`` BEFORE calling ``install_workspace_assets``. If the
-   cwd didn't exist, the asset drop raised but the handle was already
-   persisted — a leak. The fix swaps the order so cwd validation runs
-   first.
-
-4. ``test_persist_and_describe_kicks_daemon_for_cold_spawn`` /
-   ``test_persist_and_describe_skips_kick_for_long_lived``
-   ``mycelium agent create`` writes the handle to ``daemon.toml`` but
-   the running daemon must re-read that file. The fix calls
-   ``reload_daemon_service`` (SIGHUP) from the create/destroy tail for cold-spawn
-   adapters only (no-op when no daemon is installed, openclaw doesn't need
-   it).
-
-5. ``test_cursor_doctor_checks_skip_when_adapter_not_registered`` /
-   ``test_cursor_agent_binary_check_errors_when_missing`` /
-   ``test_cursor_login_check_warns_when_no_config``
-   ``mycelium doctor`` previously had no cursor-specific checks. The fix
-   adds three: PATH, login state, and workspace-asset drift. All three
-   must cleanly skip when the cursor adapter isn't registered.
-
-6. ``test_terminate_in_flight_spawns_sigterms_then_sigkills``
-   On graceful shutdown the daemon previously cancelled SSE tasks but left
-   any running ``cursor-agent`` / ``claude`` processes orphaned. The fix
-   walks ``DaemonState.running`` on shutdown, sends SIGTERM, waits up to
-   3s, then escalates to SIGKILL — covering the case where systemd's
-   cgroup kill isn't in play (direct ``kill`` of the daemon PID).
+Covers the claude_code hooks-asset guard when ``_CLAUDE_CODE_HOOKS`` is empty,
+kebab-case ``--adapter`` normalisation on ``agent create``, cursor ``register()``
+handle-leak ordering when the cwd is missing, daemon reload (SIGHUP) on
+cold-spawn agent create/destroy, cursor-specific ``doctor`` checks (PATH, login,
+workspace-asset drift) skipping when the adapter isn't registered, and
+graceful-shutdown termination of in-flight spawns (SIGTERM then SIGKILL).
 """
 
 from __future__ import annotations
@@ -622,8 +582,7 @@ def test_load_manifest_remote_returns_parsed_manifest() -> None:
         sort_keys=False,
     ).strip()
 
-    # Shape 1: content_text populated (the realistic backend response we
-    # observed during the cursor-e2e Phase 4 rerun).
+    # Shape 1: content_text populated (the realistic backend response).
     fake_memory_a = SimpleNamespace(
         content_text=manifest_body,
         value=SimpleNamespace(),  # MemoryReadValueType0 placeholder, ignored

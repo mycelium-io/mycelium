@@ -97,7 +97,7 @@ def test_transcript_persists_in_order_and_survives_reload():
 
 
 def test_transcript_does_not_clobber_episode_records():
-    """The transcript is a distinct file from log/episodes/* (bible §11 trap)."""
+    """The transcript is a distinct file from log/episodes/*."""
     room = "coexist-room"
     base = get_room_dir(room)
     # Seed an episode record where l9_episode would write one.
@@ -326,7 +326,7 @@ def test_handle_from_disconnect_parses_the_leaving_handle():
 @pytest.mark.asyncio
 async def test_participant_disconnect_is_membership_not_fatal():
     """A member dropping is presence: on_member_left fires and the loop keeps
-    serving (it must NOT spend the failure budget and zombie the room) — H3/§B+§C.
+    serving (it must NOT spend the failure budget and zombie the room).
     """
 
     class _FlappyChannel:

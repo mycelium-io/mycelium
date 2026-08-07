@@ -2,7 +2,7 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-Backend-as-moderator SLIM channel provisioning for rooms (Step 3, bible §9).
+Backend-as-moderator SLIM channel provisioning for rooms.
 
 Creating/opening a room **provisions a SLIM group channel**, and the always-on
 backend is its **moderator** — it creates the group session and invites members
@@ -16,7 +16,7 @@ installed), the calls degrade to no-ops so room CRUD and the unit suite stay
 green without a live fabric — the sole failure mode is "no SLIM channel," never
 "room create failed." A node-reachability pre-flight keeps the no-node path fast.
 
-Step 4 adds the durable inbox/persister: on provision the moderator starts a
+On provision the moderator starts a
 long-lived :class:`~app.services.persister.RoomPersister` that consumes the
 channel — recording the transcript, re-serving missed messages to reconnecting
 members, and watching for ``@``-summon / ``commit:converged`` triggers. This
@@ -58,14 +58,14 @@ if TYPE_CHECKING:
 
 # The room-aware summon hook the manager holds: unlike the persister's
 # per-message ``SummonHook`` (which knows only the handle + envelope), this
-# carries the ``room`` so the engine wired to it (Step 7's aligner) knows which
+# carries the ``room`` so the engine wired to it (the aligner) knows which
 # channel to judge. ``_start_persister`` adapts it down to the persister's
 # signature by binding the room.
 RoomSummonHook = Callable[[str, str, "L9"], None]
 
 # The room-aware converged hook, same shape reasoning as ``RoomSummonHook``: the
 # persister's ``ConvergedHook`` is ``(envelope)`` only, but the consumer wired to
-# it (Step 8's plan-sync) needs the room to compile that room's plan + sync its
+# it (the plan-sync consumer) needs the room to compile that room's plan + sync its
 # memory. ``_converged_adapter`` binds the room down to the persister signature.
 RoomConvergedHook = Callable[[str, "L9"], None]
 
@@ -77,16 +77,16 @@ logger = logging.getLogger(__name__)
 BACKEND_AGENT = "backend"
 
 # Delay before a supervised persister/channel is re-provisioned after an
-# unexpected exit (H3/§D) — long enough to avoid a hot restart loop against a
-# flapping node, short enough that a room recovers quickly.
+# unexpected exit — long enough to avoid a hot restart loop against a flapping
+# node, short enough that a room recovers quickly.
 _PERSISTER_RESTART_BACKOFF_S = 5.0
 
 
 def _is_own_registered_agent(room: str, handle: str) -> bool:
     """True if ``handle`` is an agent registered in ``room`` (manifest on disk).
 
-    Its manifest lives at ``agents/{handle}.md`` in the room dir. Used by §G to
-    decide auto-invite (own agent) vs a consent prompt (foreign/cross-host).
+    Its manifest lives at ``agents/{handle}.md`` in the room dir. Used to decide
+    auto-invite (own agent) vs a consent prompt (foreign/cross-host).
     """
     from app.services.filesystem import get_room_dir
 
@@ -123,10 +123,10 @@ class HumanPublishResult:
 
 @dataclass
 class ChannelMetrics:
-    """Process-wide coordination counters, surfaced by the health endpoint (H1).
+    """Process-wide coordination counters, surfaced by the health endpoint.
 
-    The first smoke test spent hours on failures that were silent; these make the
-    fabric's health inspectable at a glance instead of by log spelunking.
+    These make the fabric's health inspectable at a glance instead of by log
+    spelunking.
     """
 
     provisions_ok: int = 0
@@ -145,26 +145,26 @@ class RoomChannelManager:
         # Strong refs to in-flight background invites (see invite_in_background).
         self._tasks: set[asyncio.Task[bool]] = set()
         # Consent-gated invites raised by an @-mention of a not-present agent
-        # (bible §12). The moderator only invites on accept.
+        # The moderator only invites on accept.
         self._invites = PendingInviteRegistry()
         # Trigger hooks handed to every persister, both room-aware and wired at
         # startup (``main.py``): ``on_summon`` → the SIEP aligner's
-        # ``handle_summon`` (Step 7); ``on_converged`` → the plan-sync consumer's
-        # ``handle_converged`` (Step 8). Unset → the persister's log-only defaults.
+        # ``handle_summon``; ``on_converged`` → the plan-sync consumer's
+        # ``handle_converged``. Unset → the persister's log-only defaults.
         self.on_summon: RoomSummonHook | None = None
         self.on_converged: RoomConvergedHook | None = None
         self._metrics = ChannelMetrics()
         # Set during teardown so a persister task ending is recognized as
-        # intentional (no restart) rather than a crash to recover from (§D).
+        # intentional (no restart) rather than a crash to recover from.
         self._closing = False
-        # Strong refs to in-flight channel-restart tasks (§D) so they aren't GC'd.
+        # Strong refs to in-flight channel-restart tasks so they aren't GC'd.
         self._restart_tasks: set[asyncio.Task[None]] = set()
 
     def get(self, room: str) -> ManagedRoomChannel | None:
         return self._channels.get(room)
 
     def status(self) -> dict:
-        """A snapshot of coordination health for the ``/health`` surface (H1).
+        """A snapshot of coordination health for the ``/health`` surface.
 
         Per-room: is the channel provisioned, is its persister task alive, who is
         present, how many consent invites are open, is an episode active. Plus
@@ -267,7 +267,7 @@ class RoomChannelManager:
         )
 
     def _drop_member(self, room: str, handle: str) -> None:
-        """A member dropped off the channel — update presence (H3/§B).
+        """A member dropped off the channel — update presence.
 
         Removing on disconnect keeps ``members`` in sync with real SLIM presence,
         so a later ``@``-mention re-raises a consent invite (instead of assuming
@@ -281,7 +281,7 @@ class RoomChannelManager:
         logger.info("dropped absent member %s from room %s membership", handle, room)
 
     def _on_persister_done(self, room: str, task: asyncio.Task) -> None:
-        """Supervise the persister: restart it if it died unexpectedly (H3/§D).
+        """Supervise the persister: restart it if it died unexpectedly.
 
         A bare ``create_task(run())`` that ended left the channel a silent zombie
         (nothing served/recorded) until re-provisioned. Now an unexpected exit
@@ -304,7 +304,7 @@ class RoomChannelManager:
         restart.add_done_callback(self._restart_tasks.discard)
 
     async def _restart_channel(self, room: str) -> None:
-        """Tear down a dead channel and re-provision it fresh (H3/§D).
+        """Tear down a dead channel and re-provision it fresh.
 
         Retries with backoff until it succeeds: if the persister died because the
         node went away, re-provision keeps failing until the node returns — a
@@ -367,10 +367,9 @@ class RoomChannelManager:
             member = to_slim_name(managed.workspace, room, agent)
             await managed.client.invite(managed.channel.session, member)
         except Exception as exc:
-            # Post-Step-5 a registered agent's connector holds a live SLIM
+            # A registered agent's connector holds a live SLIM
             # subscription, so a failed invite means it will NOT be woken — a real
-            # failure, not the old Step-3 no-op. Surface it loudly (H1): a silent
-            # invite drop was one of the smoke test's worst multi-hour hunts.
+            # failure. Surface it loudly.
             logger.warning("SLIM invite failed (room=%s agent=%s): %s", room, agent, exc)
             self._metrics.invite_failures += 1
             return False
@@ -390,8 +389,8 @@ class RoomChannelManager:
 
         The SLIM invite handshake retries against an absent member before
         failing, so awaiting it in an HTTP join would stall the request for the
-        whole retry budget. Until agents hold their own SLIM connection (Step 5),
-        that failure is the norm — so fire-and-forget: the join returns at once
+        whole retry budget. Until agents hold their own SLIM connection, that
+        failure is the norm — so fire-and-forget: the join returns at once
         and ``members`` updates if/when the invite lands. ``invite`` swallows its
         own errors, so the task never raises.
         """
@@ -401,18 +400,18 @@ class RoomChannelManager:
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
 
-    # -- human-in-the-room (Step 6) --
+    # -- human-in-the-room --
 
     async def publish_human(
         self, room: str, *, sender: str, text: str
     ) -> HumanPublishResult | None:
         """Publish a human's message onto the room channel as their proxy.
 
-        The human runs no connector (bible §12): the backend builds an L9
-        ``exchange`` on their behalf, maps ``@agent-x`` tokens to L9 recipients,
-        and broadcasts it. In-room mentions wake through the connector's
-        recipient match (Step 5); mentions of agents **not** on the channel raise
-        a consent-gated invite instead. Returns ``None`` when no channel is live.
+        The human runs no connector: the backend builds an L9 ``exchange`` on
+        their behalf, maps ``@agent-x`` tokens to L9 recipients, and broadcasts
+        it. In-room mentions wake through the connector's recipient match;
+        mentions of agents **not** on the channel raise a consent-gated invite
+        instead. Returns ``None`` when no channel is live.
 
         The published message is ingested locally via the persister so the
         transcript and UI bus see it exactly once, independent of whether SLIM
@@ -443,7 +442,7 @@ class RoomChannelManager:
         if managed.persister is not None:
             managed.persister.ingest_local(envelope, content)
 
-        # Consent gate (§G): an @-mention of an agent not on the channel invites
+        # Consent gate: an @-mention of an agent not on the channel invites
         # it — but the user's OWN registered agents in this room are pre-authorized
         # and joined directly (no prompt). Consent-to-be-woken is for FOREIGN /
         # cross-host agents (not registered here), so a CLI-only user can still
@@ -463,7 +462,7 @@ class RoomChannelManager:
         recipients = [h for h in mentioned if h != BACKEND_AGENT]
         return HumanPublishResult(mentioned=mentioned, recipients=recipients, invites=invites)
 
-    # -- consent-gated invites (Step 6) --
+    # -- consent-gated invites --
 
     def request_invite(
         self, room: str, agent: str, *, requested_by: str, trigger_text: str = ""
@@ -489,7 +488,7 @@ class RoomChannelManager:
 
         Inviting a new member mid-episode violates L9's stable-membership rule
         (it would abort the episode), so an accept while an episode is active is
-        **queued** and applied when the episode closes (bible §12 default).
+        **queued** and applied when the episode closes.
         Returns the updated invite, or ``None`` if the id is unknown.
         """
         invite = self._invites.get(invite_id)
@@ -559,7 +558,7 @@ class RoomChannelManager:
     def open_episode(self, room: str, episode: str) -> bool:
         """Open a negotiation episode over the room's current membership.
 
-        Freezes membership: a subsequent join/leave aborts it (bible §9, §12).
+        Freezes membership: a subsequent join/leave aborts it.
         """
         managed = self._channels.get(room)
         if managed is None:
@@ -571,9 +570,7 @@ class RoomChannelManager:
         """Close the room's active episode normally and flush queued invites.
 
         The membership-freeze that an episode holds is released here, so invites
-        an ``@``-mention deferred mid-episode (bible §12) are now safe to apply.
-        The converged/rejected wiring that calls this lands in Steps 7-8; the
-        method exists now so the mid-episode queue has a drain.
+        an ``@``-mention deferred mid-episode are now safe to apply.
         """
         managed = self._channels.get(room)
         if managed is None:

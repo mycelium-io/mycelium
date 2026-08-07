@@ -4,7 +4,7 @@
 """
 Shared test fixtures.
 
-No database (SLIM-native rebuild, Step 1): the store is markdown files + a local
+No database: the store is markdown files + a local
 JSONL index under a temp ``MYCELIUM_DATA_DIR``, and messages/presence live in the
 in-process ``local_state`` shim which we reset per test.
 """

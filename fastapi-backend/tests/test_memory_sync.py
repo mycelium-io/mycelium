@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Tests for the L9 ``knowledge`` memory-sync write path (Step 8, bible §11).
+"""Tests for the L9 ``knowledge`` memory-sync write path.
 
 Fast unit tests (the merge gate — no node): the ``knowledge`` envelope shape, the
 apply-to-local-store write + reindex, and the last-write-wins conflict policy

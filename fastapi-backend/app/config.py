@@ -52,7 +52,7 @@ class Settings(BaseSettings):
     EMBEDDING_MODEL: str = "BAAI/bge-small-en-v1.5"
     EMBEDDING_DIMENSIONS: int = 384
 
-    # SLIM fabric — the coordination bus (Step 3). Room provisioning is
+    # SLIM fabric — the coordination bus. Room provisioning is
     # best-effort: when no node is reachable at this endpoint the backend simply
     # skips channel provisioning, so memory/CRUD keep working without a fabric.
     SLIM_NODE_ENDPOINT: str = "http://127.0.0.1:46357"
@@ -62,10 +62,10 @@ class Settings(BaseSettings):
     # Master toggle: set false to disable SLIM room provisioning outright.
     SLIM_ENABLED: bool = True
 
-    # SIEP aligner — the first cognition engine (Step 7). Dormant by default:
+    # SIEP aligner — the first cognition engine. Dormant by default:
     # nothing runs until the reserved handle is @-summoned on a room channel.
     # A reserved handle is how a summon of the engine is told apart from an
-    # @-mention of a normal teammate (bible §10 / Step 7 trap).
+    # @-mention of a normal teammate.
     ALIGNER_HANDLE: str = "aligner"
     # MPC at/above this converges; below rejects (mirrors the old CFN
     # validation-intervention default of 0.6).
@@ -76,12 +76,12 @@ class Settings(BaseSettings):
     ALIGNER_ROUND_TIMEOUT_S: float = 30.0
     # How often the driver polls the transcript for round replies.
     ALIGNER_POLL_INTERVAL_S: float = 0.2
-    # Mediator (Rung 1) — hard cap on NEGMAS SAO steps (one agent turn each) so
+    # Mediator — hard cap on NEGMAS SAO steps (one agent turn each) so
     # the negotiation always terminates even if agreement is never reached. Set
     # well above the participant count so several proposer rotations can happen
     # (spike used 20).
     ALIGNER_MEDIATOR_MAX_STEPS: int = 20
-    # Mediator brain runtime (Rung 2) — the cognitive engine behind the SAO
+    # Mediator brain runtime — the cognitive engine behind the SAO
     # mediator, an *internal* agent. "litellm" (default): a stateless
     # litellm.completion per turn (mediator.llm_sync). "pi": a persistent,
     # optionally OpenShell-sandboxed `pi -p --session <id> --mode json` session
@@ -97,8 +97,8 @@ class Settings(BaseSettings):
     ALIGNER_PI_OPENSHELL: bool = False
     # Per-turn wall-clock bound (seconds) on one pi brain call before it is killed.
     ALIGNER_PI_TIMEOUT_S: float = 120.0
-    # Where a registered `engine` (kind aligner) runs its NEGMAS drive — the
-    # Stage-B transition switch (docs/START_HERE_ENGINES.md). "backend" (default):
+    # Where a registered `engine` (kind aligner) runs its NEGMAS drive — selects
+    # the engine runtime. "backend" (default):
     # this backend owns the run via its summon seam. "host": the host daemon owns
     # it (the engine runs where `pi` lives), so `handle_summon` must NOT also fire
     # for a registered engine or the negotiation double-runs. The reserved

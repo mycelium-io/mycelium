@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Host-side engine dispatch (Stage B, approach A — connector reuses its session).
+"""Host-side engine dispatch — connector reuses its session to run NEGMAS on the host.
 
 When ``ENGINE_RUNTIME=host``, a registered ``engine`` gets a daemon connector
 like any cold-spawn agent. On an ``@``-summon the connector does *not* cold-spawn
@@ -123,8 +123,8 @@ def build_host_brain(config: MyceliumConfig, episode: str) -> Callable[..., str]
 
     Default ``litellm`` (stateless, over the mycelium-configured model). Set
     ``ALIGNER_BRAIN=pi`` to drive a persistent Pi session instead — now possible
-    because the runtime lives on the host, where ``pi`` is installed (the gap
-    Stage B closes). Session/binary/timeout/sandbox mirror the backend knobs so a
+    because the runtime lives on the host, where ``pi`` is installed.
+    Session/binary/timeout/sandbox mirror the backend knobs so a
     host run is configured identically to the backend run it replaces.
     """
     model = config.llm.model
@@ -153,7 +153,7 @@ def build_host_brain(config: MyceliumConfig, episode: str) -> Callable[..., str]
     )
 
 
-# ── Connector-backed channel (approach A) ────────────────────────────────────
+# ── Connector-backed channel ─────────────────────────────────────────────────
 
 
 class _QueueEngineChannel:

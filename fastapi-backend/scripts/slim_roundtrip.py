@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Throwaway Step 2 harness: prove a two-client group broadcast over a SLIM node.
+"""Harness: prove a two-client group broadcast over a SLIM node.
 
 Runs a moderator and a participant in one process against a running ``slim``
 node. The moderator creates a group channel and invites the participant; the
@@ -15,7 +15,7 @@ Usage (with a node on :46357, e.g. via ``mycelium hub host``)::
     # or point at another node:
     uv run python scripts/slim_roundtrip.py http://127.0.0.1:46357
 
-This is a manual DoD aid; the guarded pytest equivalent lives in
+This is a manual aid; the guarded pytest equivalent lives in
 ``tests/test_slim_roundtrip.py``.
 """
 

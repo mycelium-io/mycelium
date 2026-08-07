@@ -4,14 +4,13 @@
 """
 In-process pub/sub bus.
 
-Replaces the former Postgres LISTEN/NOTIFY bus now that the database is gone
-(SLIM-native rebuild, Step 1). Producers (memory/messages/sessions/plan routes)
-publish dict payloads to a channel; the SSE ``stream`` route subscribes.
+In-process pub/sub for the backend's single always-on process. Producers
+(memory/messages/sessions/plan routes) publish dict payloads to a channel; the
+SSE ``stream`` route subscribes.
 
 This works because the backend is a single always-on process — producer and
-consumer share the same event loop, so an in-memory fan-out is sufficient. The
-coordination bus moves onto SLIM in Steps 3-4; this bus only has to keep the
-UI's SSE stream fed until then.
+consumer share the same event loop, so an in-memory fan-out is sufficient. It
+only has to keep the UI's SSE stream fed.
 
 Channel naming convention is unchanged: ``room:{room_name}`` / ``agent:{handle}``.
 """

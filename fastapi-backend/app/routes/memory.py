@@ -5,7 +5,7 @@
 Memory API — persistent namespaced key-value store with semantic search.
 
 Backed by markdown files (canonical) plus a local JSONL embedding index — no
-database (SLIM-native rebuild, Step 1).
+database.
 
 POST   /rooms/{room}/memory              — create/upsert memories (batch support)
 GET    /rooms/{room}/memory              — list memories (prefix filter, pagination)
@@ -124,7 +124,7 @@ async def create_memories(room_name: str, payload: MemoryBatchCreate):
     Writes markdown files to ``.mycelium/rooms/{room_name}/`` and updates the
     JSONL search index. Conflict policy: last-write-wins ordered by the memory's
     incrementing ``version``; a write against a stale ``base_version`` is
-    rejected with the current content + who/when last wrote it (§11).
+    rejected with the current content + who/when last wrote it.
     """
     _require_room(room_name)
     room_dir = get_room_dir(room_name)
@@ -282,7 +282,7 @@ async def list_memories(
 async def search_memories(room_name: str, payload: MemorySearchRequest):
     """Semantic vector search over memories in a room.
 
-    Brute-force cosine over the room's local JSONL index (§11).
+    Brute-force cosine over the room's local JSONL index.
     """
     from app.services.metrics import record_memory_search
 

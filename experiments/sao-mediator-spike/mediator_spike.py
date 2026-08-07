@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
-"""Rung 0 spike — can an LLM mediator drive a real NEGMAS SAO to a *terminating* agreement?
+"""Spike: can an LLM mediator drive a real NEGMAS SAO to a *terminating* agreement?
 
-The unproven core of docs/START_HERE_MEDIATOR.md. No harness, no SLIM, no backend.
+No harness, no SLIM, no backend.
 
 The bet: NEGMAS owns the Stacked-Alternating-Offers protocol *and* termination; the LLM only
 does what LLMs are good at — turn each agent's natural-language move into a structured
@@ -61,7 +61,9 @@ def llm(prompt: str, *, system: str = "", temperature: float = 0.0) -> str:
     msgs = ([{"role": "system", "content": system}] if system else []) + [
         {"role": "user", "content": prompt}
     ]
-    resp = litellm.completion(model=MODEL, messages=msgs, temperature=temperature, max_tokens=600)
+    resp = litellm.completion(
+        model=MODEL, messages=msgs, temperature=temperature, max_tokens=600
+    )
     return resp.choices[0].message.content or ""
 
 
@@ -95,7 +97,9 @@ def discover_issues() -> list[dict]:
 # ── Stage 2: agents speak prose; the mediator interprets it into a NEGMAS action ──────────────
 
 
-def agent_move(handle: str, issues: list[dict], offer: tuple | None, proposing: bool) -> str:
+def agent_move(
+    handle: str, issues: list[dict], offer: tuple | None, proposing: bool
+) -> str:
     """One agent's natural-language move (its real Pi turn would produce this)."""
     space = "; ".join(f"{i['name']} ∈ {{{', '.join(i['options'])}}}" for i in issues)
     order = ", ".join(i["name"] for i in issues)
@@ -130,7 +134,7 @@ def interpret(handle: str, prose: str, issues: list[dict], proposing: bool) -> d
             f"You are the mediator interpreting @{handle}'s move into a structured action.\n"
             f"Issues (order: {order}): "
             + "; ".join(f"{i['name']}={i['options']}" for i in issues)
-            + f"\n\n@{handle} said:\n\"\"\"{prose}\"\"\"\n\n"
+            + f'\n\n@{handle} said:\n"""{prose}"""\n\n'
             f"Return ONLY JSON: {schema}. Every offer value MUST be one of that issue's options.",
             system="You output strict JSON mapping a negotiator's words to an SAO action.",
         )
@@ -156,21 +160,37 @@ class MediatedAgent(SAONegotiator):
         except (KeyError, TypeError):
             return None
         if any(vals[k] not in self._opts[n] for k, n in enumerate(self._names)):
-            return None  # invalid option -> not a legal outcome (offer_validation analog)
+            return (
+                None  # invalid option -> not a legal outcome (offer_validation analog)
+            )
         return vals
 
     def propose(self, state, dest=None):
-        prose = agent_move(self.handle, self.issues, state.current_offer, proposing=True)
+        prose = agent_move(
+            self.handle, self.issues, state.current_offer, proposing=True
+        )
         act = interpret(self.handle, prose, self.issues, proposing=True)
-        outcome = self._to_outcome(act.get("offer", {})) or state.current_offer or self._fallback()
+        outcome = (
+            self._to_outcome(act.get("offer", {}))
+            or state.current_offer
+            or self._fallback()
+        )
         self.trace.append((state.step, self.handle, "PROPOSE", outcome, prose.strip()))
         return outcome
 
     def respond(self, state, source=None):
-        prose = agent_move(self.handle, self.issues, state.current_offer, proposing=False)
+        prose = agent_move(
+            self.handle, self.issues, state.current_offer, proposing=False
+        )
         act = interpret(self.handle, prose, self.issues, proposing=False)
-        resp = ResponseType.ACCEPT_OFFER if act.get("action") == "accept" else ResponseType.REJECT_OFFER
-        self.trace.append((state.step, self.handle, resp.name, state.current_offer, prose.strip()))
+        resp = (
+            ResponseType.ACCEPT_OFFER
+            if act.get("action") == "accept"
+            else ResponseType.REJECT_OFFER
+        )
+        self.trace.append(
+            (state.step, self.handle, resp.name, state.current_offer, prose.strip())
+        )
         return resp
 
     def _fallback(self) -> tuple:
@@ -183,13 +203,18 @@ def main() -> None:
     for i in issues:
         print(f"  • {i['name']}: {i['options']}")
 
-    negmas_issues = [make_issue(values=[str(v) for v in i["options"]], name=i["name"]) for i in issues]
+    negmas_issues = [
+        make_issue(values=[str(v) for v in i["options"]], name=i["name"])
+        for i in issues
+    ]
     trace: list = []
     mech = SAOMechanism(issues=negmas_issues, n_steps=15)
     for handle in PERSONAS:
         mech.add(MediatedAgent(handle, issues, trace))
 
-    print("\n=== Stage 2-3: NEGMAS drives the SAO; agents speak, mediator interprets ===")
+    print(
+        "\n=== Stage 2-3: NEGMAS drives the SAO; agents speak, mediator interprets ==="
+    )
     mech.run()
 
     order = [i["name"] for i in issues]
@@ -200,10 +225,16 @@ def main() -> None:
     print("\n=== Verdict ===")
     if mech.agreement is not None:
         agreed = dict(zip(order, mech.agreement, strict=True))
-        print(f"  AGREEMENT reached in {mech.current_step} steps (n_steps cap = 15): {agreed}")
-        print(f"  Terminated at agreement — {len(trace)} agent moves total, no restating loop.")
+        print(
+            f"  AGREEMENT reached in {mech.current_step} steps (n_steps cap = 15): {agreed}"
+        )
+        print(
+            f"  Terminated at agreement — {len(trace)} agent moves total, no restating loop."
+        )
     else:
-        print(f"  NO AGREEMENT after {mech.current_step} steps — mediator/interpret needs work.")
+        print(
+            f"  NO AGREEMENT after {mech.current_step} steps — mediator/interpret needs work."
+        )
 
 
 if __name__ == "__main__":

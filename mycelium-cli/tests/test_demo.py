@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Tests for the live ``mycelium demo`` orchestration (issues #374 / #315).
+"""Tests for the live ``mycelium demo`` orchestration.
 
 The demo is glue over the real CLI: it discovers scenarios/personas from the
 public agent-personas dataset, creates a room and agents, and seeds a

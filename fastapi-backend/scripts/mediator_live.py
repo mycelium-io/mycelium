@@ -12,8 +12,8 @@ real prose → terminate at agreement → ``commit:converged``) with **zero toke
 cost for workers** — only the mediator's own brain spends tokens.
 
 Two gates, one script:
-- **Gate A** — ``--brain litellm`` (default): the Rung-1 loop live over SLIM.
-- **Gate B** — ``--brain pi``: the Rung-2 Pi brain (``pi`` must be on PATH).
+- **Gate A** — ``--brain litellm`` (default): the litellm loop live over SLIM.
+- **Gate B** — ``--brain pi``: the Pi brain (``pi`` must be on PATH).
 
 Usage (backend deps on PATH; a slim node on :46357, e.g. `mycelium hub host`
 or the dev compose stack)::
@@ -222,7 +222,9 @@ async def main() -> int:
         print("\n— seeding opening positions —")
         for h in handles:
             print(f"  @{h}: {SCENARIO.get(h, '(none)')}")
-            await channels[h].send(_position_env(h, args.room), extra={"content": SCENARIO.get(h, "")})
+            await channels[h].send(
+                _position_env(h, args.room), extra={"content": SCENARIO.get(h, "")}
+            )
         await _wait(
             lambda: {_norm(r.sender) for r in persister.log.records} >= {_norm(h) for h in handles},
             timeout=15.0,
@@ -288,7 +290,9 @@ async def _watch_for_commit(channels: dict[str, L9SlimChannel], *, timeout: floa
             task.cancel()
 
 
-def _report(commit: L9, persister) -> None:  # noqa: ANN001 — RoomPersister, avoid import cycle
+def _report(
+    commit: L9, persister
+) -> None:  # persister is a RoomPersister, left untyped to avoid an import cycle
     data = commit.payload.data if commit.payload is not None else {}
     print(f"\n{'=' * 70}\n🏁  RESULT")
     print(f"  subkind    : {commit.header.subkind}")
@@ -300,7 +304,9 @@ def _report(commit: L9, persister) -> None:  # noqa: ANN001 — RoomPersister, a
         text = (record.content.get("content") or "").replace("\n", " ")
         print(f"  {i:2d}. @{sender:<9} {text[:96]}")
     n_exchanges = sum(1 for r in persister.log.records if r.kind == "exchange")
-    print(f"{'-' * 70}\n  {n_exchanges} exchange messages total — watch that it STOPPED at agreement.")
+    print(
+        f"{'-' * 70}\n  {n_exchanges} exchange messages total — watch that it STOPPED at agreement."
+    )
 
 
 if __name__ == "__main__":

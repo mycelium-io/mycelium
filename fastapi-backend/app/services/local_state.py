@@ -4,19 +4,18 @@
 """
 In-process room state: messages, presence, and memory subscriptions.
 
-A deliberately thin, in-memory shim (SLIM-native rebuild, Step 1). These three
+A deliberately thin, in-memory shim. These three
 concerns lived in Postgres tables (``messages``, ``participants``,
 ``memory_subscriptions``); with the database gone they move to process memory to
 keep the endpoints answering. They are NOT durable and NOT rich.
 
-Presence liveness now rides SLIM channel membership (Step 3): ``room_channels``
+Presence liveness rides SLIM channel membership: ``room_channels``
 is authoritative for *who is present*, while the participant rows here remain the
 metadata store (intent, context files) and the fallback when no fabric is up.
 
-Messages: the durable transcript for the SLIM channel is now the persister's
-markdown (``services/persister.py``, Step 4). The in-memory message list here
-still backs the HTTP post/list endpoints and the SSE feed the UI reads until
-SSE/``stream.py`` is retired (Step 10).
+Messages: the durable transcript for the SLIM channel is the persister's
+markdown (``services/persister.py``). The in-memory message list here
+still backs the HTTP post/list endpoints and the SSE feed the UI reads.
 """
 
 from __future__ import annotations

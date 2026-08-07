@@ -7,19 +7,16 @@ Unlike ``claude_code`` / ``cursor`` / ``openclaw`` / ``hermes`` (which bridge to
 *third-party* runtime we don't own), an engine is **ours**: our NEGMAS loop, our
 brain. One ``engine`` family hosts a variety of Cognition Engines, selected by
 the manifest's ``kind`` (``aligner`` today; ``bargainer``, ``team_former``, a
-drift evaluator later) — the extensibility axis, no new adapter per CE. See
-``docs/START_HERE_ENGINES.md``.
+drift evaluator later) — the extensibility axis, no new adapter per CE.
 
-**Stage A (this file):** an engine is a first-class registered *room citizen* —
-a manifest at ``agents/<handle>`` (``adapter="engine"``, ``kind=<ce>``), listed
-by ``engine ls`` / ``agent ls``, invokable, posting as itself. Its run is owned
+An engine is a first-class registered *room citizen* — a manifest at
+``agents/<handle>`` (``adapter="engine"``, ``kind=<ce>``), listed by
+``engine ls`` / ``agent ls``, invokable, posting as itself. Its run is owned
 by the **backend's summon seam** (which recognises registered engines instead of
 the old reserved ``ALIGNER_HANDLE``), so ``lifecycle="backend_engine"`` and the
 daemon skips it. There are no host-side assets — hence the no-op install facet.
-
-**Stage B (later):** flip ``lifecycle`` to ``cold_spawn`` and implement
-:meth:`spawn` to launch a host-side engine runtime (NEGMAS + Pi brain where
-``pi`` lives), retiring the backend-owned run.
+The host-side runtime path (``engine.runtime = host``) drives NEGMAS + Pi brain
+under the local daemon instead; see ``mycelium.integrations.engine.host``.
 """
 
 from __future__ import annotations
@@ -68,13 +65,13 @@ class EngineIntegration(Integration):
     def register(
         self, *, manifest: AgentManifest, config: MyceliumConfig, opts: AddOptions
     ) -> None:
-        # Claim the handle in daemon.toml (same as a cold_spawn agent). In Stage A
-        # / ``engine.runtime = backend`` this is inert — ``connector_targets``
+        # Claim the handle in daemon.toml (same as a cold_spawn agent). Under
+        # ``engine.runtime = backend`` this is inert — ``connector_targets``
         # skips ``backend_engine`` manifests — but with ``engine.runtime = host``
-        # (Stage B) it's what makes the local daemon hold the engine's connector
-        # and drive NEGMAS on the host. Claiming it always keeps the flip to host
-        # a pure config change, and prevents a second machine syncing the room
-        # from also owning the engine.
+        # it's what makes the local daemon hold the engine's connector and drive
+        # NEGMAS on the host. Claiming it always keeps the flip to host a pure
+        # config change, and prevents a second machine syncing the room from also
+        # owning the engine.
         from mycelium.daemon.config import DaemonConfig
 
         daemon_cfg = DaemonConfig.load()
@@ -107,7 +104,7 @@ class EngineIntegration(Integration):
         )
         return lines
 
-    # ── install facet (no host assets — engines are backend-run in Stage A) ──
+    # ── install facet (no host assets — engines are backend-run) ─────────────
 
     def install(
         self,

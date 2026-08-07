@@ -2,7 +2,7 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-Memory sync over SLIM — the L9 ``knowledge`` write path (Step 8, bible §11).
+Memory sync over SLIM — the L9 ``knowledge`` write path.
 
 Memory content is canonical markdown; the JSONL index is derived. Cross-machine
 sync is **not** git: an L9 ``knowledge`` message **carries the content** so a
@@ -19,7 +19,7 @@ This module owns both halves of that seam:
    (:mod:`mycelium.daemon.connector` mirrors it CLI-side) and the backend runs
    for knowledge authored elsewhere.
 
-**Conflict policy (bible §11, decided): last-write-wins, no merge handler.**
+**Conflict policy: last-write-wins, no merge handler.**
 Order by ``version``. An arriving write is *idempotent* when the local file is
 already at its version (the same-machine loopback of a write the backend just
 made). A write built on a **stale base** — its version is behind the local
@@ -171,7 +171,7 @@ def apply_knowledge_to_dir(base_dir: Any, write: KnowledgeWrite) -> ApplyResult:
     Split out from :func:`apply_knowledge` so the conflict logic is unit-testable
     against an arbitrary directory without touching the configured data dir or
     the (heavier) index. Returns an :class:`ApplyResult`; never raises on a
-    conflict — a stale-base write is a *result*, not an error (bible §11).
+    conflict — a stale-base write is a *result*, not an error.
     """
     from app.services.filesystem import read_memory_file, write_memory_file
 

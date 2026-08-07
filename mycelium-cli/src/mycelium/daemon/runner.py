@@ -20,10 +20,8 @@ from mycelium.daemon.state import DaemonState
 
 log = logging.getLogger("mycelium.daemon")
 
-# A connector task is keyed by the (room, handle) it serves — one SLIM member
-# subscription per owned handle per room (Step 5). This supersedes the per-room
-# httpx SSE stream the daemon held through Step 4; the backend SSE endpoint
-# itself is retired in Step 10.
+# A connector task is keyed by (room, handle) — one SLIM member subscription per
+# owned handle per room.
 ConnectorKey = tuple[str, str]
 
 

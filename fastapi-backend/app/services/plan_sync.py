@@ -2,11 +2,11 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-Converged → plan → memory sync (Step 8, bible §13 ``[plan]``).
+Converged → plan → memory sync.
 
-Step 7 lit up the aligner: an ``@``-summon makes it score the transcript and
-emit an L9 ``commit:converged`` onto the channel. This module is the *consumer*
-across that seam — the backend, seeing the converged verdict, turns it into work:
+An ``@``-summon makes the aligner score the transcript and emit an L9
+``commit:converged`` onto the channel. This module is the *consumer* across that
+seam — the backend, seeing the converged verdict, turns it into work:
 
 1. **Compile the plan.** The converged envelope carries ``assignments`` (built by
    the aligner in ``aligner._fold``). :mod:`app.services.plan_compiler` — one LLM
@@ -15,7 +15,7 @@ across that seam — the backend, seeing the converged verdict, turns it into wo
    verdict is never sunk (the old ``_finish_cfn`` behaviour).
 
 2. **Sync it as memory.** The compiled plan becomes a ``knowledge`` message that
-   **carries the content** (bible §11, push-with-content) so every participant's
+   **carries the content** (push-with-content) so every participant's
    local store converges — and, because the verdict was already on the wire when
    this fires, the ``knowledge`` broadcast doubles as the **"plan ready" signal**
    a consumer waits for (the SLIM-path replacement for the old CFN plan-first
@@ -24,8 +24,8 @@ across that seam — the backend, seeing the converged verdict, turns it into wo
 Deliberately **not** a cognition-engine step (the CLAUDE.md plan-compiler
 decision): the compiler is a distinct consumer stage reached across the
 ``on_converged`` seam, wired in :mod:`app.main`, never called from inside the
-aligner. Room-awareness mirrors Step 7's summon seam — the persister's hook is
-``(envelope)`` only, so :class:`~app.services.room_channels.RoomChannelManager`
+aligner. The persister's hook is ``(envelope)`` only, so
+:class:`~app.services.room_channels.RoomChannelManager`
 binds the room via ``_converged_adapter`` before handing it here.
 """
 

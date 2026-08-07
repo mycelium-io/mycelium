@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Tests for the L9 episode read API that backs the protocol inspector (Step 10)."""
+"""Tests for the L9 episode read API that backs the protocol inspector."""
 
 import pytest
 

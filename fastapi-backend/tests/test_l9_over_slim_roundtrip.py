@@ -1,14 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""L9-over-SLIM round-trip integration test (Step 3 DoD).
+"""L9-over-SLIM round-trip integration test.
 
 Needs a running ``slim`` node. Guarded so the default unit suite stays green
 without one (mirrors ``test_slim_roundtrip.py``): point at a node with
 ``MYCELIUM_SLIM_ENDPOINT`` (default ``http://127.0.0.1:46357``); run one via
 ``mycelium hub host``.
 
-Proves the Step 3 DoD: an L9 ``exchange`` envelope published by one participant
+Verifies that an L9 ``exchange`` envelope published by one participant
 is received and correctly parsed by another over a room channel, and the
 envelope (kind/parents/episode) survives the serialize→publish→receive→parse
 round trip in causal order.
@@ -75,10 +75,10 @@ async def test_mid_episode_membership_change_aborts_over_slim():
 
 @pytest.mark.asyncio
 async def test_durable_inbox_reserves_missed_message_on_reconnect(tmp_path, monkeypatch):
-    """Step 4 DoD: an agent offline during a broadcast is re-served it on rejoin.
+    """An agent offline during a broadcast is re-served it on rejoin.
 
     agent-a joins, goes offline, misses agent-b's broadcast (SLIM keeps nothing
-    for the absent member, §7d), reconnects, and the backend persister re-serves
+    for the absent member), reconnects, and the backend persister re-serves
     exactly the missed message — targeted, in order.
     """
     # Persister writes the transcript to the data dir; isolate it to a temp path.
@@ -94,7 +94,7 @@ async def test_durable_inbox_reserves_missed_message_on_reconnect(tmp_path, monk
 
 @pytest.mark.asyncio
 async def test_aligner_observes_and_emits_converged_over_slim(tmp_path, monkeypatch):
-    """Step 7 DoD: @-summoning the aligner over a live node makes it observe a
+    """@-summoning the aligner over a live node makes it observe a
     seeded high-confidence exchange and broadcast commit:converged with metrics."""
     # The engine writes an episode record to the data dir; isolate it.
     monkeypatch.setattr("app.config.settings.MYCELIUM_DATA_DIR", str(tmp_path / ".mycelium"))
@@ -110,7 +110,7 @@ async def test_aligner_observes_and_emits_converged_over_slim(tmp_path, monkeypa
 
 @pytest.mark.asyncio
 async def test_converged_compiles_plan_and_syncs_memory_over_slim(tmp_path, monkeypatch):
-    """Step 8 DoD (same-machine): @-summon the aligner over a seeded exchange →
+    """(same-machine): @-summon the aligner over a seeded exchange →
     it emits commit:converged → the backend compiles plan/tasks.md → a knowledge
     message carries the compiled plan, and applying it to a *second* local store
     writes the markdown and updates that store's JSONL index."""
@@ -149,7 +149,7 @@ async def test_converged_compiles_plan_and_syncs_memory_over_slim(tmp_path, monk
 
 @pytest.mark.asyncio
 async def test_consent_and_knowledge_reach_ui_bus_over_slim(tmp_path, monkeypatch):
-    """Step 10 DoD (headless proxy for the browser): during a live converge, both
+    """(headless proxy for the browser): during a live converge, both
     the compiled-plan ``knowledge`` push and a ``consent_request`` reach the
     in-process UI bus (``app/bus.py``) — the surface the room view, the L9
     inspector, and the consent prompt all read. The full browser demo is manual

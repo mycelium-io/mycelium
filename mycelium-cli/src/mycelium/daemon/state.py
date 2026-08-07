@@ -45,7 +45,7 @@ class DaemonState:
     last_error: dict[str, Any] | None = None
     errors_last_hour: deque[float] = field(default_factory=lambda: deque(maxlen=1024))
     running: dict[str, RunningProc] = field(default_factory=dict)
-    # Host-run cognition engines (Stage B): while an engine ``@handle`` is driving
+    # Host-run cognition engines: while an engine ``@handle`` is driving
     # a live NEGMAS negotiation, its connector switches to "drive-active" mode —
     # inbound agent replies (addressed to the engine) are routed into this queue
     # for the drive to consume instead of being re-dispatched. Keyed by engine

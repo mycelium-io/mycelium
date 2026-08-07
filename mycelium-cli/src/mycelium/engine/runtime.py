@@ -1,20 +1,17 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""The host-side SAO mediation drive loop (Stage B).
+"""The host-side SAO mediation drive loop.
 
-This is the backend's ``aligner.py:mediate`` + ``_slim_turn``, relocated to run
-*on the host* where the daemon (and ``pi``) live. It drives NEGMAS over SLIM as
-the summoned engine handle: discover issues from the opening prose, ``@``-address
-one agent per turn, read the real reply, interpret it, step NEGMAS, and emit a
-``commit:converged`` when the mechanism reaches agreement — the same seam the
-backend's ``plan_sync`` consumes off the channel.
+Drives NEGMAS over SLIM as the summoned engine handle: discover issues from the
+opening prose, ``@``-address one agent per turn, read the real reply, interpret
+it, step NEGMAS, and emit a ``commit:converged`` when the mechanism reaches
+agreement — the same seam the backend's ``plan_sync`` consumes off the channel.
 
 **The channel is an injected seam** (:class:`EngineChannel`) so the drive *logic*
-is unit-testable with a fake, exactly like the backend ``mediate``. The real SLIM
-transport (:class:`SlimEngineChannel`) is the one part that needs a live node to
-validate — it's the class of code whose bugs only surface live (Rung-1 taught us
-that). Keep the two apart.
+is unit-testable with a fake. The real SLIM transport
+(:class:`SlimEngineChannel`) is the one part that needs a live node to validate.
+Keep the two apart.
 """
 
 from __future__ import annotations
@@ -263,7 +260,7 @@ async def drive_over_channel(
 
     The single drive entry point, transport-agnostic: the caller owns the channel
     (a :class:`SlimEngineChannel` on the engine's own session, or a connector-
-    backed queue channel — approach A of the daemon dispatch seam). ``kind`` is
+    backed queue channel). ``kind`` is
     accepted for forward-compat (future CEs route here); only ``aligner`` runs a
     NEGMAS SAO today.
     """
@@ -297,7 +294,7 @@ async def run_engine(
 
     The approach-(B) launcher: the engine has no persistent connector, so it
     opens its *own* SLIM session, drives, then closes. The connector-reuse path
-    (approach A) skips this and calls :func:`drive_over_channel` directly over the
+    skips this and calls :func:`drive_over_channel` directly over the
     connector's session (see ``integrations/engine/host.py``).
 
     The caller supplies the room roster + opening prose and the constructed

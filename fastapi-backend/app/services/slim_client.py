@@ -11,11 +11,11 @@ This module provides two things:
 2. **A small client** (:class:`SlimClient`) that stands up a SLIM app, connects
    to a node, creates/joins a **group** channel, and exchanges broadcasts. It
    carries membership (invite/remove) and a close/teardown path for the
-   long-lived room connections Step 3 opens.
+   long-lived room connections.
 
 The L9↔SLIM binding that rides envelopes over these group sessions lives in
 ``l9_slim.py``; the backend-as-moderator room provisioning that drives it lives
-in ``room_channels.py``. The durable inbox/persister is Step 4.
+in ``room_channels.py``. The durable inbox/persister lives in ``persister.py``.
 
 The ``slim_bindings`` import is **lazy** (native Rust wheel, availability is
 per-platform): modules that never touch SLIM import cleanly even where no wheel
@@ -54,16 +54,15 @@ DEFAULT_NODE_PORT = 46357
 MIN_SECRET_LEN = 32
 
 # Default third segment for a room's group-channel Name when no explicit topic
-# is given. A channel is a Name whose app segment is the topic (bible §7b); the
-# members' own apps are their agent ids.
+# is given. A channel is a Name whose app segment is the topic; the members'
+# own apps are their agent ids.
 DEFAULT_CHANNEL_TOPIC = "room"
 
 # Master secret from which per-channel shared secrets are *deterministically*
 # derived, so every agent on a room's channel and the always-on backend
 # independently reconstruct the same credential (which seeds the group key)
-# without a key-exchange round-trip. This is the MVP identity tier per the bible
-# (Step 2 resolve-first: shared secret); JWT/SPIRE is the production path (debt
-# D1) and is out of scope here.
+# without a key-exchange round-trip. The shared secret is the MVP identity tier;
+# JWT/SPIRE is the production path (debt D1) and is out of scope here.
 #
 # The built-in literal below is a **public dev default** — anyone with the repo
 # can derive it, so it protects nothing on its own (debt D1). A real deployment
@@ -294,8 +293,8 @@ async def _shared_connection(service: slim_bindings.Service, sb: ModuleType, end
 async def close_connection(endpoint: str) -> None:
     """Drop and disconnect the cached dataplane connection for ``endpoint``.
 
-    Step 3 opens long-lived room connections, so the process needs a teardown
-    path: without one the ``_connections`` cache would hand back a stale conn_id
+    Long-lived room connections need a teardown path: without one the
+    ``_connections`` cache would hand back a stale conn_id
     after a node bounce. Best-effort — a missing binding or already-closed conn
     is not an error. ``Service.disconnect`` is blocking, so it runs off-loop.
     """
@@ -326,7 +325,7 @@ class SlimClient:
         payload = await SlimClient.receive(session)
 
     Reusable by both the backend (moderator) and the daemon (per-agent
-    connectors) in later steps.
+    connectors).
     """
 
     def __init__(self, identity: SlimIdentity, *, secret: str | None = None) -> None:
@@ -337,7 +336,7 @@ class SlimClient:
         self._conn_id: int | None = None
         self._local_name: slim_bindings.Name | None = None
         # Sessions this app created (moderator) or joined (member), so close()
-        # can leave them — Step 3 rooms are long-lived, not one-shot.
+        # can leave them — rooms are long-lived, not one-shot.
         self._sessions: list[slim_bindings.Session] = []
 
     async def connect(self, endpoint: str = DEFAULT_NODE_ENDPOINT) -> SlimClient:
@@ -362,9 +361,9 @@ class SlimClient:
     def _group_session_config(self) -> slim_bindings.SessionConfig:
         sb = self._sb
         assert sb is not None
-        # MLS ON for real room channels (Step 3): intermediate nodes see only
-        # ciphertext, which is what the hosted-rendezvous story (bible §16) rests
-        # on. The shared secret (create_app_with_secret) is the identity PSK that
+        # MLS ON for real room channels: intermediate nodes see only ciphertext,
+        # which is what the hosted-rendezvous story rests on. The shared secret
+        # (create_app_with_secret) is the identity PSK that
         # authenticates each member; MLS itself performs the group key agreement
         # (Welcome/Commit/epoch, RFC 9420) — the node never holds the group key.
         return sb.SessionConfig(
@@ -440,7 +439,7 @@ class SlimClient:
         Point-to-point over the group session (``publish_to_async``): the reply
         is routed to ``context``'s source only, not fanned out to the whole
         group. This is the transport the durable-inbox persister uses to
-        **re-serve** missed messages to one reconnecting agent (Step 4) without
+        **re-serve** missed messages to one reconnecting agent without
         re-delivering to everyone. ``context`` is a ``MessageContext`` captured
         from an earlier inbound message from that member (see
         :meth:`receive_message`). Best-effort, like :meth:`publish`.
@@ -451,7 +450,7 @@ class SlimClient:
     async def receive(session: slim_bindings.Session, *, timeout_s: float = 30.0) -> bytes:
         """Block for the next inbound broadcast on ``session`` and return its bytes.
 
-        This blocking pull is the wake monitor in later steps.
+        This blocking pull is the wake monitor.
         """
         message = await session.get_message_async(timeout=datetime.timedelta(seconds=timeout_s))
         return message.payload

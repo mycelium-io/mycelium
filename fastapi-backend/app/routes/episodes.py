@@ -2,7 +2,7 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-L9 episode read API — backs the protocol inspector (Step 10, bible §10).
+L9 episode read API — backs the protocol inspector.
 
 Each coordination session closes with an episode record written to the parent
 room's memory under ``log/episodes/{short_id}.md`` (see

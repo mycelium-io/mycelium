@@ -6,8 +6,7 @@
 An engine is *not* an external-runtime agent (claude_code/cursor/…). It's a
 first-party mycelium Cognition Engine — our NEGMAS loop, our brain — registered
 as a real room participant so it's visible, routable, and invokable like anyone
-else. ``--kind`` selects the CE (``aligner`` today; more later). See
-``docs/START_HERE_ENGINES.md``.
+else. ``--kind`` selects the CE (``aligner`` today; more later).
 
 This is thin sugar over the shared agent-manifest plumbing: an engine writes the
 same ``agents/<handle>`` manifest as any agent, with ``adapter="engine"`` and a

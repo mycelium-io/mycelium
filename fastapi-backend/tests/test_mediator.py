@@ -5,7 +5,7 @@
 
 Node-free and LLM-free: the LLM seam (``mediator.llm_sync``) is monkeypatched to
 a deterministic prompt-keyed stub and the agents are simulated by the same fake
-channel the aligner tests use. This exercises the Rung-1 property that matters —
+channel the aligner tests use. This exercises the anti-theatre property that matters —
 **NEGMAS owns termination**: once the agents accept a standing offer the
 mechanism *stops*, and the aligner emits a ``commit:converged`` carrying the
 agreed ``issue = value`` map (the anti-theatre guarantee), never looping to the

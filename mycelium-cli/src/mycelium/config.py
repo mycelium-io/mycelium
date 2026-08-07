@@ -118,11 +118,11 @@ class EngineConfig(BaseModel):
     ``runtime`` selects *where* a registered ``engine`` runs its NEGMAS drive:
 
     - ``backend`` (default): the always-on backend owns the run via its summon
-      seam (Stage A). The daemon skips engine manifests.
+      seam. The daemon skips engine manifests.
     - ``host``: the local daemon holds the engine's connector and drives NEGMAS
-      **on the host**, where ``pi`` lives (Stage B). The backend must be set to
+      **on the host**, where ``pi`` lives. The backend must be set to
       ``ENGINE_RUNTIME=host`` in tandem so it does not also run the engine — the
-      two are a transition pair; flip both. See ``docs/START_HERE_ENGINES.md``.
+      two are a transition pair; flip both.
     """
 
     runtime: str = Field(

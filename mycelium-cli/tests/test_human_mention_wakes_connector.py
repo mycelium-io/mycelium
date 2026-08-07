@@ -1,19 +1,17 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Human ``@``-mention wakes the connector — live-node integration slice (Step 6 DoD).
+"""Human ``@``-mention wakes the connector — live-node integration slice.
 
-Step 5 proved an agent's connector wakes on an inbound L9 ``exchange`` addressed to
-it. Step 6 puts the human in the room: the backend, as the human's spoken-for proxy,
-publishes the human's message onto the channel with the mentioned agent as an L9
-recipient. This slice proves that a message authored by a *human* handle (not another
-agent's connector) wakes the connector and its reply lands back in the room.
+The backend, as the human's spoken-for proxy, publishes the human's message onto
+the channel with the mentioned agent as an L9 recipient. This slice proves that a
+message authored by a *human* handle (not another agent's connector) wakes the
+connector and its reply lands back in the room.
 
 Needs a running ``slim`` node (guarded, like ``test_connector_wake_over_slim.py``):
 point at one with ``MYCELIUM_SLIM_ENDPOINT`` (default ``http://127.0.0.1:46357``);
-run via ``mycelium hub host`` or the docker recipe in ``START_HERE_STEP_5.md``. The
-consent (not-in-room invite) half of Step 6 is backend-side and unit-covered in
-``fastapi-backend/tests/test_mentions_and_invites.py``.
+run via ``mycelium hub host``. The consent (not-in-room invite) half is backend-side
+and unit-covered in ``fastapi-backend/tests/test_mentions_and_invites.py``.
 """
 
 from __future__ import annotations

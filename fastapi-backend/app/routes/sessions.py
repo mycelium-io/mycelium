@@ -4,7 +4,7 @@
 """
 Sessions API — tracks agent presence in rooms.
 
-Presence rides SLIM now (Step 3): joining a room invites the agent into the
+Presence is handled by SLIM: joining a room invites the agent into the
 room's SLIM group channel (backend = moderator), and — when a channel is live —
 membership on that channel is authoritative for who is present. ``local_state``
 remains the metadata store (intent, context files) that SLIM membership doesn't
@@ -87,7 +87,7 @@ async def join_room(room_name: str, payload: ParticipantCreate):
         logger.info("Re-join for handle=%s room=%s (re-inviting)", payload.agent_handle, room_name)
         participant = existing
 
-    # Room = SLIM channel (Step 3): make sure the channel exists, then invite the
+    # Room = SLIM channel: make sure the channel exists, then invite the
     # agent onto it. Runs on EVERY join, not just the first: a connector announces
     # itself on each (re)connect, so a member dropped while its host slept (or on
     # any session close) is re-invited here and the durable inbox re-serves its
@@ -156,7 +156,7 @@ async def list_sessions(room_name: str):
     # When a SLIM channel is live *and has members*, its membership is
     # authoritative for presence: surface only participants still on the channel.
     # local_state supplies the metadata (intent, context files) SLIM membership
-    # doesn't carry. Until agent-side SLIM connectors land (Step 5), the moderator
+    # doesn't carry. Without agent-side SLIM connectors, the moderator
     # can't invite HTTP joiners onto the channel, so SLIM membership is empty —
     # then (and when no channel is live at all) local_state is the source of truth.
     present = set(room_channels.manager.members(room_name))

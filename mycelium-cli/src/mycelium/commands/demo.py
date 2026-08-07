@@ -3,7 +3,7 @@
 
 """``mycelium demo`` — run a real sample coordination end-to-end.
 
-A guided onboarding command (issues #374 / #315). It is pure glue over the real
+A guided onboarding command. It is pure glue over the real
 system, with no mirrored data: it discovers scenarios and agent personas from
 the public ``agent-personas`` dataset at run time, creates a room, runs
 ``mycelium agent create`` for each persona on your chosen adapter, seeds the

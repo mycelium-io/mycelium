@@ -3,7 +3,7 @@
 
 """Golden drift guard for the shared SLIM+L9 wire primitives (backend side).
 
-D2 (bible Part IV, Known debt register): the CLI daemon
+The CLI daemon
 (``mycelium-cli/src/mycelium/slim/*``) carries a copy of these primitives so the
 thin ``uv tool`` CLI need not import the FastAPI/ML backend. A copy drifts
 silently — a diverging ``mint_shared_secret`` / master secret / ``workspace/room``
@@ -95,7 +95,7 @@ def test_exchange_envelope_serializes_to_golden():
 def test_knowledge_envelope_serializes_to_golden():
     """The backend's serialized ``knowledge:distillation`` envelope is the golden.
 
-    Step 8 (bible §11) added the memory-sync wire shape: ``build_knowledge_envelope``
+    The memory-sync wire shape: ``build_knowledge_envelope``
     wraps a :class:`KnowledgeWrite` as a ``knowledge:distillation`` envelope the CLI
     daemon parses and applies. ``build_knowledge_envelope`` mints a fresh random
     ``message.id`` per call (it is not part of the shared contract), so the produced

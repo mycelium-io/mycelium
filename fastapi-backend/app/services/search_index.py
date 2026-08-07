@@ -4,8 +4,7 @@
 """
 Local JSON-Lines search index.
 
-Replaces the pgvector search table (SLIM-native rebuild, Step 1). One JSONL
-file per room lives beside the room's markdown at
+One JSONL file per room lives beside the room's markdown at
 ``.mycelium/rooms/{room}/.search-index.jsonl``; each line is one record::
 
     {"key", "room_name", "content_text", "embedding": [384 floats],
@@ -13,7 +12,7 @@ file per room lives beside the room's markdown at
      "created_at", "updated_at", "file_path"}
 
 Search is brute-force cosine in-process — fine at personal scale (hundreds to
-low-thousands of memories per room). A real ANN index is a later problem (§11).
+low-thousands of memories per room). A real ANN index is a later problem.
 
 The markdown files are canonical; this index is derived and can always be
 rebuilt from them via ``services.reindex`` / ``services.indexer``.

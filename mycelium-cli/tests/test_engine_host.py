@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Unit tests for host-side engine dispatch (Stage B, approach A).
+"""Unit tests for host-side engine dispatch.
 
 Node-free / LLM-free: the drive-active connector channel, roster sourcing, and
 opening fetch are exercised with fakes. The end-to-end drive test simulates the

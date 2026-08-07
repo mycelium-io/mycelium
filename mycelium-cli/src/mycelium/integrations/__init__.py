@@ -4,16 +4,10 @@
 """
 Integration registry — the single resolution point for a runtime family.
 
-This package subsumes what used to be three colliding "adapter" things:
-
-- ``mycelium.agent_adapters`` (the dispatch OOP layer) — folded into the
-  per-family ``dispatch`` facet here; that package is deleted.
-- the install pile in ``mycelium.commands.adapter`` — relocated into
-  ``integrations/<family>/install.py``; the command layer is now a thin
-  registry dispatcher.
-- ``mycelium.adapters`` (the static asset bundle) — relocated to
-  ``mycelium.integrations.<family>.assets/`` so the data lives with the one
-  package that owns it.
+Each family implements an :class:`Integration` subclass exposing the facets that
+build/register agent manifests and spawn turns: the per-family ``dispatch`` facet,
+``install.py``, and the ``assets/`` bundle live together under
+``integrations/<family>/``.
 
 One canonical family id is used everywhere internally — the **underscore**
 spelling (``claude_code``), since that is the value persisted in

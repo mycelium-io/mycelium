@@ -65,7 +65,7 @@ async def lifespan(app: FastAPI):
     await startup_scan()
     start_watcher()
 
-    # TTL sweep for transient event messages (#392)
+    # TTL sweep for transient event messages
     from app.services.event_sweep import start_event_sweep, stop_event_sweep
 
     start_event_sweep()
@@ -78,9 +78,9 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning("Embedding warmup failed (non-fatal): %s", exc)
 
-    # Wire the SIEP aligner (Step 7) into every room's summon seam before any
+    # Wire the SIEP aligner into every room's summon seam before any
     # channel is provisioned, so all persisters pick it up. Dormant until an
-    # @-summon of its reserved handle arrives — zero idle cost (bible §10).
+    # @-summon of its reserved handle arrives — zero idle cost.
     from app.services.aligner import AlignerEngine
     from app.services.plan_sync import PlanSyncEngine
     from app.services.room_channels import manager as room_channel_manager
@@ -93,14 +93,14 @@ async def lifespan(app: FastAPI):
         settings.ALIGNER_BRAIN,
     )
 
-    # Wire the converged→plan→memory-sync consumer (Step 8) onto the same seam:
+    # Wire the converged→plan→memory-sync consumer onto the same seam:
     # a ``commit:converged`` the aligner emits fires plan_compiler → plan/tasks.md
-    # and a ``knowledge`` push that syncs the compiled plan to every store (§11/§13).
+    # and a ``knowledge`` push that syncs the compiled plan to every store.
     app.state.plan_sync = PlanSyncEngine(room_channel_manager)
     room_channel_manager.on_converged = app.state.plan_sync.handle_converged
     logger.info("plan-sync consumer wired (commit:converged → plan_compiler + knowledge)")
 
-    # Re-provision every room's SLIM channel on startup (H3/§F). Provision is
+    # Re-provision every room's SLIM channel on startup. Provision is
     # idempotent and best-effort; without this, a backend restart left every
     # existing room channel-less (a zombie) with no recovery path until it was
     # deleted + recreated. Runs after the aligner/plan-sync hooks are wired so
@@ -122,7 +122,7 @@ async def lifespan(app: FastAPI):
     stop_event_sweep()
 
     # Tear down long-lived SLIM room channels + the shared node connection so a
-    # restart doesn't leak or reuse a stale dataplane connection (Step 3).
+    # restart doesn't leak or reuse a stale dataplane connection.
     from app.services.room_channels import manager as room_channel_manager
 
     try:
@@ -200,7 +200,7 @@ async def root(
 
     result: dict = {"status": "ok", "service": "mycelium-backend", "version": app.version}
 
-    # Storage — markdown + local JSONL, no database (SLIM-native rebuild).
+    # Storage — markdown + local JSONL, no database.
     result["storage"] = _check_storage()
 
     # Embedding model

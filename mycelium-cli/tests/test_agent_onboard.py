@@ -76,7 +76,7 @@ def test_register_adopted_batch_restarts_gateway_once(
     monkeypatch.setattr(impl, "restart_gateway", lambda: restarts.append(1))
     # These two shell out to the `openclaw` binary (absent in CI). The test is
     # about the batch->single-restart shape, not their side effects — stub them so
-    # it runs without the binary (openclaw is a deferred adapter, bible D11/H6).
+    # it runs without the binary (openclaw is a deferred adapter, installed on-demand).
     monkeypatch.setattr(impl, "_allowlist_mycelium", lambda *a, **k: None)
     monkeypatch.setattr(impl, "_configure_exec_host_gateway", lambda *a, **k: None)
 

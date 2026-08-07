@@ -1,13 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Verify the ported NEGMAS mediation core (mycelium.engine.mediator) runs.
+"""Verify the NEGMAS mediation core (mycelium.engine.mediator) runs.
 
 Node-free / LLM-free: a deterministic prompt-keyed fake brain and a fake
 ``fetch_prose`` drive the whole NEGMAS SAO loop. Asserts the anti-theatre
-property survived the port from the backend — the mechanism terminates at
-agreement below the step cap (it does not spin to the cap), and the agreed
-``issue = value`` map is recoverable.
+property — the mechanism terminates at agreement below the step cap (it does
+not spin to the cap), and the agreed ``issue = value`` map is recoverable.
 """
 
 from __future__ import annotations

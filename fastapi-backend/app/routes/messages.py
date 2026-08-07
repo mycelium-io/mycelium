@@ -4,11 +4,10 @@
 """
 Messages API — POST + list + event-status PATCH.
 
-Backed by an in-memory store (SLIM-native rebuild, Step 1); publishes to the
+Backed by an in-memory store; publishes to the
 in-process bus so the SSE stream sees writes live. The SLIM channel's durable
-transcript is owned by the persister (``services/persister.py``, Step 4); this
-HTTP path stays the UI's post/list surface until SSE/``stream.py`` retires
-(Step 10).
+transcript is owned by the persister (``services/persister.py``); this
+HTTP path stays the UI's post/list surface until SSE/``stream.py`` retires.
 """
 
 import logging
@@ -74,7 +73,7 @@ async def send_message(room_name: str, payload: MessageCreate):
             )
     # The human's message is stored here with its own id so event semantics
     # (status transitions, PATCH-by-id, ttl) work. Agent replies arrive over SLIM
-    # and are written into this same store by the persister (H2) — one list store,
+    # and are written into this same store by the persister — one list store,
     # two producers, no duplication (the persister skips locally-ingested ids).
     local_state.add_message(channel, msg)
 
@@ -92,11 +91,11 @@ async def send_message(room_name: str, payload: MessageCreate):
         notify_payload["coordination_session_id"] = str(coord.id)
     notify_payload["room_name"] = channel
 
-    # Human-in-the-room (Step 6 / H2): for a real room with a live SLIM channel,
+    # Human-in-the-room: for a real room with a live SLIM channel,
     # the backend publishes the human's message onto the channel as their proxy —
     # ``@``-parsing recipients so in-room agents wake, and raising consent for
-    # absent mentions. The persister is then the SINGLE writer of the room's record
-    # (§A option b): it records this message (via ``ingest_local``) into both the
+    # absent mentions. The persister is then the SINGLE writer of the room's record:
+    # it records this message (via ``ingest_local``) into both the
     # list store and the bus, so we must NOT also write local_state / bus.publish
     # here (that would double it). Coordination sub-rooms and the no-channel path
     # have no persister, so they keep the direct local_state write + legacy bus.

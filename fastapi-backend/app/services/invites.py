@@ -2,7 +2,7 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-Consent-gated invites — the human-in-the-room membership flow (Step 6, bible §12).
+Consent-gated invites — the human-in-the-room membership flow.
 
 An ``@``-mention of an agent **already on the room channel** is a *wake* (handled
 on the fabric: the human's ``exchange`` names it as an L9 recipient and its
@@ -20,8 +20,8 @@ States:
 
 - ``pending``   — consent prompt raised, awaiting a human decision.
 - ``queued``    — accepted, but an episode was live, so the membership change is
-                  deferred until the episode closes (L9's stable-membership rule,
-                  bible §12: a mid-episode join would abort the episode).
+                  deferred until the episode closes (L9's stable-membership rule:
+                  a mid-episode join aborts the episode).
 - ``accepted``  — accepted and applied (the moderator invited the agent).
 - ``declined``  — declined (or dropped); never joins.
 """

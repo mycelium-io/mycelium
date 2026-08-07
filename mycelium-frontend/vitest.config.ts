@@ -4,7 +4,7 @@
 import path from "node:path";
 import { defineConfig } from "vitest/config";
 
-// Component tests for the room UI (Step 10). jsdom + testing-library; the `@/`
+// Component tests for the room UI. jsdom + testing-library; the `@/`
 // alias mirrors tsconfig so component imports resolve the same as in Next.
 // JSX is transformed by vitest's built-in esbuild (React 19 automatic runtime),
 // so no vite React plugin is needed for the test build.

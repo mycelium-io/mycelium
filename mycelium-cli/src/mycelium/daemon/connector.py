@@ -1,21 +1,17 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""SLIM connector + wake bridge — the daemon's member half (Step 5, bible §12).
+"""SLIM connector + wake bridge — the daemon's member half.
 
-Step 4 made the backend the room's always-on **moderator** (persister + durable
-inbox). This module is the **member** the backend invites: per ``(room, handle)``
-it holds a SLIM group subscription and, on an inbound L9 message addressed to the
-handle, **wakes** the agent — cold-spawning a ``claude -p`` turn and publishing
-its reply back onto the channel as an L9 ``exchange`` (the backend persister
-records it, so other members see it).
+Per ``(room, handle)`` this module holds a SLIM group subscription and, on an
+inbound L9 message addressed to the handle, **wakes** the agent — cold-spawning a
+``claude -p`` turn and publishing its reply back onto the channel as an L9
+``exchange`` (the backend persister records it, so other members see it).
 
-This replaces the daemon's old httpx SSE stream (``dispatch.py``). The dispatch
-**decision** machinery — ownership, ``allow_from``/budget/depth gates, the
-per-handle serial lock, control verbs, cold-spawn — is reused wholesale from
-``dispatch.py``; only the transport (SLIM instead of SSE) and the reply sink
-(channel publish instead of an HTTP POST) change. The agent's contract is
-unchanged: it never speaks SLIM or L9.
+The dispatch **decision** machinery — ownership, ``allow_from``/budget/depth
+gates, the per-handle serial lock, control verbs, cold-spawn — comes from
+``dispatch.py``; the transport is SLIM and the reply sink is a channel publish.
+The agent's contract is unchanged: it never speaks SLIM or L9.
 """
 
 from __future__ import annotations
@@ -68,7 +64,7 @@ log = logging.getLogger("mycelium.daemon")
 PublishFn = Callable[[dict], Awaitable[None]]
 
 # Reconnect backoff after a dropped/failed subscription. The backend re-invites
-# a returning member and re-serves its missed tail (durable inbox, Step 4), so a
+# a returning member and re-serves its missed tail (durable inbox), so a
 # reconnect is cheap and safe to retry.
 _RECONNECT_BACKOFF_S = 5.0
 
@@ -76,7 +72,7 @@ _RECONNECT_BACKOFF_S = 5.0
 # the backend persister's reply route for this handle (it caches a reply context
 # per *sender*), so a connector that then drops and rejoins is re-served the tail
 # it missed. Without a first message the persister has no point-to-point route to
-# a never-spoke member — this closes that gap (Step 5 trap, option (a)).
+# a never-spoke member — this closes that gap.
 _HELLO_TEXT = "joined the room"
 
 # SLIM marks a group member offline after 3 missed heartbeats at a 10s interval
@@ -121,8 +117,8 @@ def connector_targets(
     A handle qualifies when it is (a) registered in the room's local mirror,
     (b) owned by this daemon (``daemon.toml`` handles), and (c) a **cold_spawn**
     family (claude_code / cursor) — or a first-party **engine** when
-    ``engine_runtime == "host"`` (Stage B: the daemon holds the engine's
-    connector and drives NEGMAS on the host instead of the backend running it).
+    ``engine_runtime == "host"`` (the daemon holds the engine's connector and
+    drives NEGMAS on the host instead of the backend running it).
     ``long_lived_gateway`` families (openclaw, hermes) own their own delivery and
     are skipped, exactly as the old SSE dispatch skipped them.
     """
@@ -255,22 +251,22 @@ def build_reply(
     )
 
 
-# ── Memory sync (bible §11) ──────────────────────────────────────────────────
+# ── Memory sync ──────────────────────────────────────────────────────────────
 
 
 def apply_knowledge_message(room: str, content: dict) -> KnowledgeApplyResult | None:
     """Write a ``knowledge`` message's carried memory into the local store.
 
-    Push-with-content (bible §11): the message *carries* the markdown, so this is
-    a pure local file write — never a fetch back over HTTP. Returns the
+    The message *carries* the markdown, so this is a pure local file write —
+    never a fetch back over HTTP. Returns the
     :class:`~mycelium.filesystem.KnowledgeApplyResult` (or ``None`` when the
     message carried no write) so the caller can trigger a reindex on a real apply.
 
     Reindexing the JSONL is **not** done here: on the moderator host the always-on
     backend's file watcher re-embeds a write, but a member host that runs a
     daemon-only knows no watcher — so the connector reindexes explicitly after a
-    successful apply (see :func:`reindex_after_knowledge`). This closes the
-    "markdown lands but search never sees it" gap (Step 9, bible §11).
+    successful apply (see :func:`reindex_after_knowledge`), so search sees the new
+    content.
 
     Conflict policy is enforced in :func:`mycelium.filesystem.apply_knowledge`
     (last-write-wins; a stale-base write is kept out, logged, and dropped).
@@ -316,7 +312,7 @@ async def reindex_after_knowledge(config: MyceliumConfig, room: str) -> None:
 
     The receiver half of memory sync writes canonical markdown; the JSONL search
     index is derived and must be refreshed or the member host's ``memory search``
-    never sees the new content (bible §11, Step 9). On the moderator host a file
+    never sees the new content. On the moderator host a file
     watcher would do this; a member host that runs no watcher relies on the
     connector calling its backend's reindex endpoint here.
 
@@ -357,12 +353,12 @@ async def handle_inbound(
     and gates are unchanged, and the reply is published to the channel rather
     than POSTed over HTTP.
     """
-    # Memory sync (bible §11): a ``knowledge`` message carries markdown content —
+    # Memory sync: a ``knowledge`` message carries markdown content —
     # write it into the local store so the agent's working set updates mid-task.
     # It never wakes a turn. Co-located connectors each apply it, but the apply is
     # idempotent by version, so only the first actually writes; the rest skip.
     # On a real write, reindex so a member host with no file watcher still surfaces
-    # the new content in search (Step 9 — close the daemon-only reindex gap).
+    # the new content in search (closes the daemon-only reindex gap).
     if l9.kind_of(content) == l9.KNOWLEDGE_KIND:
         result = apply_knowledge_message(room, content)
         if result is not None and result.applied and config is not None:
@@ -377,9 +373,9 @@ async def handle_inbound(
         log.warning("woke @%s in %s but no manifest in local mirror — skipping", handle, room)
         return
 
-    # Host-run engine (Stage B, approach A): an ``@``-summon of a first-party
-    # engine runs the NEGMAS drive over *this* connector's session rather than
-    # cold-spawning a subprocess. The drive registers a queue on the daemon state;
+    # Host-run engine: an ``@``-summon of a first-party engine runs the NEGMAS
+    # drive over *this* connector's session rather than cold-spawning a
+    # subprocess. The drive registers a queue on the daemon state;
     # the receive loop then routes agent replies into it. Skips the cold-spawn
     # gates/verbs below — an engine drive is one long-lived turn, not a spawn.
     if manifest.adapter == "engine":
@@ -680,7 +676,7 @@ async def run_connector(
                     continue
                 if l9.payload_type_of(content) == _KEEPALIVE_TYPE:
                     continue  # another member's liveness ping — never wakes or drives
-                # Drive-active routing (Stage B, approach A): while this handle is
+                # Drive-active routing: while this handle is
                 # a host engine driving a negotiation, inbound agent replies
                 # (addressed to the engine) belong to the drive, not a re-dispatch.
                 # Hand them to the drive's queue and skip the normal wake path.

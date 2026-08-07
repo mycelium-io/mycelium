@@ -1,10 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""A Pi-backed cognitive brain for mycelium's *internal* agents (Rung 2).
+"""A Pi-backed cognitive brain for mycelium's *internal* agents.
 
-`docs/START_HERE_MEDIATOR_RUNG2.md` (Part B) scopes Rung 2 to exactly one seam:
-replace the SAO mediator's stateless ``litellm.completion`` brain
+The seam: replace the SAO mediator's stateless ``litellm.completion`` brain
 (:func:`app.services.mediator.llm_sync`) with a **persistent, optionally
 OpenShell-sandboxed Pi session**, without touching the NEGMAS loop, the SLIM
 drive, or any *user* agent's runtime. Pi is the runtime for our own cognition

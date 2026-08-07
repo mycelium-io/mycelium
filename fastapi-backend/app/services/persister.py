@@ -2,30 +2,28 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-Backend-as-room-infrastructure: the persister / durable inbox (Step 4, bible §9).
+Backend-as-room-infrastructure: the persister / durable inbox.
 
-Step 3 put the backend in every room's SLIM group channel as moderator but never
-*read* the channel. Step 4 has the moderator consume it. This module is that
-consumer, and it does four things as each message flows past:
+The backend runs as moderator on the room's SLIM group channel and consumes it.
+This module is that consumer, and it does four things as each message flows past:
 
 1. **Persister.** Records the full transcript to the room's markdown (``log/``)
    so it survives, is git-shareable, and is picked up by the reindex watcher —
-   memory the normal way (bible §11), a *distinct* artifact from the
+   memory the normal way, a *distinct* artifact from the
    episode-scoped ``log/episodes/*`` records ``l9_episode`` writes.
 
-2. **Durable inbox.** SLIM keeps **no** messages for an offline member (bible
-   §7d): a broadcast that happened while a member was gone is never replayed on
-   rejoin. So mycelium tracks each agent's delivery position (:class:`DeliveryLog`)
+2. **Durable inbox.** SLIM keeps **no** messages for an offline member: a
+   broadcast that happened while a member was gone is never replayed on rejoin.
+   So mycelium tracks each agent's delivery position (:class:`DeliveryLog`)
    and, when an agent **reconnects**, **re-serves** the tail it missed — targeted
    point-to-point (not a broadcast), so the rest of the room is untouched.
 
-3. **Trigger-watcher (skeleton).** Recognizes ``@``-summon tokens in a message
-   and calls a summon hook; the real cognition-engine wiring is Step 7. Here the
-   hook defaults to a log.
+3. **Trigger-watcher.** Recognizes ``@``-summon tokens in a message and calls a
+   summon hook (defaulting to a log when no engine is wired).
 
 4. **plan-compile hook.** On a ``commit:converged`` envelope it fires the
-   ``on_converged`` seam the plan-sync consumer runs ``plan_compiler`` off of
-   (Step 8); the persister itself does **not** compile — it just fires the seam.
+   ``on_converged`` seam the plan-sync consumer runs ``plan_compiler`` off of;
+   the persister itself does **not** compile — it just fires the seam.
 
 The pure pieces (:class:`DeliveryLog`, the transcript read/write, the trigger
 detection) carry no SLIM dependency and are unit-tested without a node;
@@ -107,7 +105,7 @@ def _iter_text(value: Any) -> Iterable[str]:
 def parse_mentions(text: str) -> list[str]:
     """Handles ``@``-mentioned in one plain-text string.
 
-    The backend's ``@``-parse (bible §12): map ``@agent-x`` tokens in a human's
+    The backend's ``@``-parse: map ``@agent-x`` tokens in a human's
     message to L9 recipients. De-duplicated preserving first-seen order. A bare
     ``word@host`` is **not** a mention (the ``@`` must start the string or follow
     whitespace / ``(`` / ``<``), so an email address never wakes an agent.
@@ -214,9 +212,9 @@ class DeliveryLog:
 
         An addressed ``recipient`` that is absent AND not yet tracked (e.g. an
         ``@``-mentioned agent this very message is inviting) has its cursor started
-        *at* this message, so its first wake replays the mention that summoned it
-        (§E). Without this a first-join tracks at the transcript end and the
-        triggering mention is silently skipped.
+        *at* this message, so its first wake replays the mention that summoned it.
+        Without this a first-join tracks at the transcript end and the triggering
+        mention is silently skipped.
         """
         start = len(self._records)
         self._records.append(record)
@@ -328,7 +326,7 @@ def write_transcript(room: str, records: list[TranscriptRecord]) -> None:
 SummonHook = Callable[[str, "L9"], None]
 ConvergedHook = Callable[["L9"], None]
 # Called with the handle of a member that dropped off the channel, so the
-# moderator can update its membership (H3/§B) — presence, not a fatal error.
+# moderator can update its membership — presence, not a fatal error.
 MemberLeftHook = Callable[[str], None]
 
 # Consecutive immediate transport failures before the loop gives up — keeps a
@@ -337,7 +335,7 @@ _MAX_CONSECUTIVE_FAILURES = 3
 
 # Substring SLIM puts in the SessionError when a group member drops. This is a
 # membership change, not a transport fault: the session is still alive and the
-# loop must keep serving the remaining members (H3/§C).
+# loop must keep serving the remaining members.
 _PARTICIPANT_LEFT_MARKER = "participant disconnected"
 
 
@@ -351,13 +349,13 @@ def _handle_from_disconnect(message: str) -> str | None:
 
 
 def _default_summon_hook(handle: str, envelope: L9) -> None:
-    logger.info("summon hook (skeleton): @%s summoned; engine wiring is Step 7", handle)
+    logger.info("summon hook (skeleton): @%s summoned", handle)
 
 
 def _default_converged_hook(envelope: L9) -> None:
     # Log-only default for a persister with no plan-sync consumer wired (unit
     # tests / a bare backend). In the running backend ``main.py`` binds this to
-    # the plan-sync consumer via the manager's ``_converged_adapter`` (Step 8).
+    # the plan-sync consumer via the manager's ``_converged_adapter``.
     logger.info(
         "converged hook (unwired): commit:converged on episode %s; no plan-sync consumer",
         envelope.header.message.episode if envelope.header.message else "?",
@@ -398,10 +396,10 @@ class RoomPersister:
         # handle -> most recent inbound MessageContext, for targeted re-serve.
         self._contexts: dict[str, slim_bindings.MessageContext] = {}
         # Message ids ingested this process lifetime, so a message the backend
-        # publishes itself (the human proxy, Step 6) is recorded/fed to the bus
-        # exactly once even if SLIM loops the broadcast back to the moderator.
+        # publishes itself (the human proxy) is recorded/fed to the bus exactly
+        # once even if SLIM loops the broadcast back to the moderator.
         self._ingested_ids: set[str] = set()
-        # Health counters surfaced via RoomChannelManager.status() (H1).
+        # Health counters surfaced via RoomChannelManager.status().
         self.reserves = 0
         self.receive_errors = 0
 
@@ -426,20 +424,20 @@ class RoomPersister:
         Targeted (point-to-point) so the rest of the room is untouched. Requires
         a cached reply context for ``handle`` (from an earlier message it sent);
         without one there is no route to re-serve to, so it is a no-op until the
-        connector holds its own identity (Step 5). Returns the count re-served.
+        connector holds its own identity. Returns the count re-served.
         """
         missed = self.log.undelivered(handle)
         if not missed:
             return 0
         context = self._contexts.get(handle)
         if context is None:
-            # §E first-wake race: on a handle's FIRST join the moderator has never
+            # First-wake race: on a handle's FIRST join the moderator has never
             # received a message from it, so there's no point-to-point route to
             # re-serve the tail that triggered the invite — the first wake is
-            # silently dropped. WARN so it's visible until H4 fixes the ordering.
+            # silently dropped. WARN so it's visible.
             logger.warning(
                 "cannot re-serve %d missed message(s) to %s in room %s: no reply context yet "
-                "(first-wake race, §E)",
+                "(first-wake race)",
                 len(missed),
                 handle,
                 self.room,
@@ -472,7 +470,7 @@ class RoomPersister:
             except ChannelReceiveTimeout:
                 # A benign idle tick — the receive machinery is alive, no message
                 # arrived within the window. Not a fault: reset the failure run so
-                # a quiet room's channel is never torn down (bible §9 durability).
+                # a quiet room's channel is never torn down.
                 failures = 0
                 continue
             except Exception as exc:
@@ -481,8 +479,8 @@ class RoomPersister:
                 if isinstance(exc, CancelledError):
                     raise
                 # A member dropping off is a membership change, not a fault: the
-                # session is alive and still serving everyone else (H3/§C+§B).
-                # Update presence and keep going without spending the failure
+                # session is alive and still serving everyone else. Update
+                # presence and keep going without spending the failure
                 # budget — a member leaving must never zombie the room.
                 if _PARTICIPANT_LEFT_MARKER in str(exc).lower():
                     left = _handle_from_disconnect(str(exc))
@@ -516,7 +514,7 @@ class RoomPersister:
             if sender is not None:
                 first_context = sender not in self._contexts
                 self._contexts[sender] = context
-                # §E first-wake race: the @-mention that triggered a member's
+                # First-wake race: the @-mention that triggered a member's
                 # invite is recorded undelivered for it, but reserve() at invite
                 # time was a no-op — the member hadn't spoken yet, so there was no
                 # point-to-point route. Its first message (the join hello) gives us
@@ -531,7 +529,7 @@ class RoomPersister:
     def ingest_local(self, envelope: L9, content: dict[str, Any]) -> None:
         """Ingest a message the moderator published itself (the human proxy).
 
-        The backend speaks for the human on the fabric (bible §12): it publishes
+        The backend speaks for the human on the fabric: it publishes
         the human's ``exchange`` on the channel *and* records it here directly, so
         the transcript and UI bus see it regardless of whether SLIM delivers a
         broadcast back to its own sender. :meth:`_ingest` de-dupes by message id,
@@ -583,9 +581,9 @@ class RoomPersister:
     def _publish_to_bus(self, record: TranscriptRecord) -> None:
         """Feed the recorded message to the in-process bus so the SSE UI sees it.
 
-        The bus (``routes/stream.py``) is the frontend's live feed until Step 10;
-        agent messages arrive over SLIM, not HTTP, so the persister is what keeps
-        that feed fed. Best-effort — never fail a record over a UI push.
+        The bus (``routes/stream.py``) is the frontend's live feed; agent messages
+        arrive over SLIM, not HTTP, so the persister is what keeps that feed fed.
+        Best-effort — never fail a record over a UI push.
         """
         try:
             from app.bus import bus, room_channel
@@ -603,7 +601,7 @@ class RoomPersister:
             logger.debug("bus publish from persister failed for room %s", self.room, exc_info=True)
 
     def _record_to_list_store(self, record: TranscriptRecord, content: dict[str, Any]) -> None:
-        """Record the message into the store the HTTP list/UI reads (H2, §A).
+        """Record the message into the store the HTTP list/UI reads.
 
         The persister is the **single writer** of a channel-backed room's message
         record: ``POST /messages`` only publishes to SLIM, and everything (the

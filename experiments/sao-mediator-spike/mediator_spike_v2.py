@@ -1,11 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
-"""Rung 0 spike v2 — put back the two things v1 stripped: memory + a brokering mediator.
+"""Spike: a NEGMAS SAO negotiation with agent memory and a brokering mediator.
 
-v1 finding: NEGMAS-drives-and-terminates ✓ and LLM-interprets-prose ✓, but the agents were
-amnesiac (fresh isolated call each round, bare offer, no cost-of-no-deal) so the hardliner
-never conceded. That's a harness bug, not the model. v2 restores what a real persistent Pi
-session + an active mediator would provide:
+Models what a real persistent Pi session + an active mediator provides, so a hardliner
+agent isn't amnesiac (fresh isolated call each round, bare offer, no cost-of-no-deal):
 
   1. MEMORY — each agent carries the full running negotiation history (its persistent session).
   2. BROKER — the mediator frames each round: where everyone stands, who hit a hard limit,
@@ -69,7 +67,9 @@ def llm(prompt: str, *, system: str = "", temperature: float = 0.3) -> str:
     msgs = ([{"role": "system", "content": system}] if system else []) + [
         {"role": "user", "content": prompt}
     ]
-    resp = litellm.completion(model=MODEL, messages=msgs, temperature=temperature, max_tokens=500)
+    resp = litellm.completion(
+        model=MODEL, messages=msgs, temperature=temperature, max_tokens=500
+    )
     return resp.choices[0].message.content or ""
 
 
@@ -116,7 +116,11 @@ def broker(issues: list[dict], offer: tuple | None, round_n: int, cap: int) -> s
 
 
 def agent_move(
-    handle: str, issues: list[dict], offer: tuple | None, proposing: bool, broker_note: str
+    handle: str,
+    issues: list[dict],
+    offer: tuple | None,
+    proposing: bool,
+    broker_note: str,
 ) -> str:
     space = "; ".join(f"{i['name']} ∈ {{{', '.join(i['options'])}}}" for i in issues)
     order = ", ".join(i["name"] for i in issues)
@@ -165,13 +169,23 @@ class MediatedAgent(SAONegotiator):
             vals = tuple(str(offer[n]) for n in self._names)
         except (KeyError, TypeError):
             return None
-        return vals if all(vals[k] in self._opts[n] for k, n in enumerate(self._names)) else None
+        return (
+            vals
+            if all(vals[k] in self._opts[n] for k, n in enumerate(self._names))
+            else None
+        )
 
     def propose(self, state, dest=None):
         note = broker(self.issues, state.current_offer, state.step, self.cap)
         prose = agent_move(self.handle, self.issues, state.current_offer, True, note)
-        outcome = self._to_outcome(interpret(self.handle, prose, self.issues, True).get("offer", {}))
-        outcome = outcome or state.current_offer or tuple(self._opts[n][0] for n in self._names)
+        outcome = self._to_outcome(
+            interpret(self.handle, prose, self.issues, True).get("offer", {})
+        )
+        outcome = (
+            outcome
+            or state.current_offer
+            or tuple(self._opts[n][0] for n in self._names)
+        )
         HISTORY.append(f"r{state.step}: @{self.handle} proposed {outcome}")
         print(f"  r{state.step:<2} @{self.handle:<10} PROPOSE      {outcome}")
         return outcome
@@ -180,9 +194,15 @@ class MediatedAgent(SAONegotiator):
         note = broker(self.issues, state.current_offer, state.step, self.cap)
         prose = agent_move(self.handle, self.issues, state.current_offer, False, note)
         act = interpret(self.handle, prose, self.issues, False).get("action")
-        resp = ResponseType.ACCEPT_OFFER if act == "accept" else ResponseType.REJECT_OFFER
-        HISTORY.append(f"r{state.step}: @{self.handle} {resp.name} on {state.current_offer}")
-        print(f"  r{state.step:<2} @{self.handle:<10} {resp.name:<12} on {state.current_offer}")
+        resp = (
+            ResponseType.ACCEPT_OFFER if act == "accept" else ResponseType.REJECT_OFFER
+        )
+        HISTORY.append(
+            f"r{state.step}: @{self.handle} {resp.name} on {state.current_offer}"
+        )
+        print(
+            f"  r{state.step:<2} @{self.handle:<10} {resp.name:<12} on {state.current_offer}"
+        )
         return resp
 
 
@@ -192,7 +212,10 @@ def main() -> None:
     issues = discover_issues()
     for i in issues:
         print(f"  • {i['name']}: {i['options']}")
-    negmas_issues = [make_issue(values=[str(v) for v in i["options"]], name=i["name"]) for i in issues]
+    negmas_issues = [
+        make_issue(values=[str(v) for v in i["options"]], name=i["name"])
+        for i in issues
+    ]
     mech = SAOMechanism(issues=negmas_issues, n_steps=cap)
     for h in PERSONAS:
         mech.add(MediatedAgent(h, issues, cap))
@@ -203,7 +226,9 @@ def main() -> None:
     order = [i["name"] for i in issues]
     print("\n=== Verdict ===")
     if mech.agreement is not None:
-        print(f"  AGREEMENT in {mech.current_step} steps: {dict(zip(order, mech.agreement, strict=True))}")
+        print(
+            f"  AGREEMENT in {mech.current_step} steps: {dict(zip(order, mech.agreement, strict=True))}"
+        )
         print("  Terminated at agreement — NEGMAS stopped the moment it was unanimous.")
     else:
         print(f"  NO AGREEMENT after {mech.current_step} steps.")

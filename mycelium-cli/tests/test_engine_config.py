@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Tests for the engine runtime config field (the Stage-B transition switch)."""
+"""Tests for the engine runtime config field."""
 
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ def test_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_save_roundtrips_engine_even_with_project_config(tmp_path) -> None:
     """Regression: ``save()`` filters to an allowlist of sections when a project
     config exists — ``engine`` must be in it, or ``config set engine.runtime`` is
-    silently dropped (the Stage-B switch would never take effect)."""
+    silently dropped (the host-runtime switch would never take effect)."""
     global_path = tmp_path / "global.toml"
     project_path = tmp_path / "project.toml"
     project_path.write_text("[identity]\n", encoding="utf-8")

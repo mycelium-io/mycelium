@@ -3,20 +3,17 @@
 
 """Golden drift guard for the shared SLIM+L9 wire primitives (CLI side).
 
-D2 (bible Part IV, Known debt register): this CLI daemon carries a copy of the
-backend's SLIM+L9 primitives (``mycelium.slim.{naming,client,l9}`` +
-``daemon.connector`` URN helpers) so the thin ``uv tool`` CLI need not import the
-FastAPI/ML backend. A copy drifts silently — a diverging ``mint_shared_secret`` /
-master secret / ``workspace/room`` scope / envelope shape / URN form means MLS
-group keys mismatch and this connector **silently can't join** the backend
-moderator's group, or its replies get dropped/misrouted (no app-level error).
+The CLI daemon carries its own copy of the SLIM+L9 primitives
+(``mycelium.slim.{naming,client,l9}`` + ``daemon.connector`` URN helpers) so the
+thin ``uv tool`` CLI need not import the FastAPI/ML backend. A diverging
+``mint_shared_secret`` / master secret / ``workspace/room`` scope / envelope
+shape / URN form means MLS group keys mismatch and this connector **silently
+can't join** the backend moderator's group, or its replies get dropped/misrouted
+(no app-level error).
 
 This test freezes the shared wire constants in ``slim-l9-golden.json`` at the
-repo root and asserts the **CLI** primitives reproduce them exactly. The backend
-suite asserts its own copy against the *same* file
-(``fastapi-backend/tests/test_slim_l9_golden.py``). One frozen source, two
-asserters — so neither copy can move without turning this fast unit gate red
-(no live SLIM node required).
+repo root and asserts the **CLI** primitives reproduce them exactly, preventing
+silent wire-contract drift (no live SLIM node required).
 """
 
 import json
@@ -93,7 +90,7 @@ def test_exchange_reply_serializes_to_golden():
 def test_knowledge_envelope_parses_to_golden_write():
     """The connector parses the backend's ``knowledge:distillation`` envelope.
 
-    Guards the *parse* half of the memory-sync contract (Step 8, bible §11): given
+    Guards the *parse* half of the memory-sync contract: given
     the exact envelope the backend produces (frozen in the golden), the CLI's
     ``l9.kind_of`` / ``l9.payload_data_of`` — the two the connector's
     ``apply_knowledge_message`` reads through — must recover every carried write

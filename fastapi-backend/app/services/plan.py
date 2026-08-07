@@ -265,7 +265,7 @@ def write_plan_file(
     Frontmatter is managed by ``write_memory_file``; ``load_plan`` strips it on
     read. Used by the plan compiler to materialize a negotiation consensus.
     ``version`` bumps on a re-compile so the memory-sync ``knowledge`` stream
-    (bible §11) can order writes and detect a stale base.
+    can order writes and detect a stale base.
     """
     from app.services.filesystem import write_memory_file
 

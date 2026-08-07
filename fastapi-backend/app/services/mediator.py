@@ -1,20 +1,19 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""The SAO mediator — the aligner as a *driver* of a real negotiation (Rung 1).
+"""The SAO mediator — the aligner as a *driver* of a real negotiation.
 
-`docs/START_HERE_MEDIATOR.md` diagnosed the H5 demo's "AI theatre": the aligner
-was a passive **observer** that only woke to grade a finished transcript, so
-agents that had already agreed by message 5 kept re-agreeing for seven more
-turns because nothing *ran* the negotiation and said "you agreed — stop."
+The aligner as a passive **observer** only wakes to grade a finished transcript,
+so agents that had already agreed by message 5 kept re-agreeing for seven more
+turns because nothing *ran* the negotiation and said "you agreed — stop." This
+module fixes that by actively driving the negotiation.
 
-Rung 0 (`experiments/sao-mediator-spike/mediator_spike_v2.py`) proved the fix in
-a harness with simulated personas: an LLM mediator reads natural-language agent
+An LLM mediator reads natural-language agent
 chatter, maps it onto a NEGMAS **Stacked Alternating Offers** mechanism, and
 **NEGMAS owns termination** — the mechanism stops the instant everyone accepts
-the standing offer. The v1→v2 lesson: bare-offer relaying to stateless agents
-deadlocks; convergence needs **memory + a brokering mediator + BATNA** (the
-"camp counselor"). This module ports that proven v2 loop to run *live over SLIM*
+the standing offer. Convergence needs **memory + a brokering mediator + BATNA**
+(the "camp counselor"); bare-offer relaying to stateless agents deadlocks. This
+module runs that loop *live over SLIM*
 against real worker agents, still driven by the reserved ``@aligner`` handle.
 
 **The Node/Python-free seam.** NEGMAS is a synchronous Python mechanism; SLIM I/O
@@ -30,7 +29,7 @@ synchronously in-thread via ``litellm.completion`` — which also sidesteps the
 Bedrock ``acompletion`` issue (see ``plan_compiler``).
 
 The mediator is deliberately *interpretation over the agents' prose*: agents are
-never required to emit structured markers (a Rung-3 clean-up will retire the H5
+never required to emit structured markers (a future cleanup will retire the
 ``parse_position_marker`` hack entirely). The mediator restates its reading into
 the transcript ("recording @growth as counter → 35% tech") so a misread is
 visible and correctable in-band.
@@ -208,8 +207,8 @@ class MediatedNegotiation:
         **Fail closed on silence.** An empty ``prose`` means the agent never
         replied within the round window (``_slim_turn`` timeout). Feeding ``""``
         to the interpreter LLM makes it *hallucinate* a full offer — so a
-        negotiation could "converge" with no real agent input (a Rung-1-live
-        finding). Instead, empty prose is a deterministic no-op: an empty reading
+        negotiation could "converge" with no real agent input. Instead, empty
+        prose is a deterministic no-op: an empty reading
         that ``respond`` reads as a reject and ``propose`` folds into the standing
         offer. Never invent a position for a silent agent.
         """
