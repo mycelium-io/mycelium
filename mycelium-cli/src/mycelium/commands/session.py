@@ -327,9 +327,9 @@ def await_tick(
                                 active_session_rooms.append(c["display_name"])
 
                     # If an active session exists, scan only its room for missed ticks.
-                    # The parent-room scan is skipped so that a terminal-session's
-                    # consensus (posted there on completion) is never replayed into a
-                    # new session — that would make agents immediately see impasse.
+                    # Scanning the parent room (or broken sessions) is skipped so that
+                    # a terminal-session's consensus is never replayed into a new session
+                    # — that would make agents immediately see impasse.
                     # When NO active session exists, scan the parent room instead: the
                     # agent likely missed the consensus from the session that just ended.
                     if active_session_rooms:
@@ -393,7 +393,9 @@ def await_tick(
         # from prior sessions (same handle, different room) are filtered server-side.
         sse_room_scope = active_session_rooms if active_session_rooms else [resolved_room]
         url = f"{config.server.api_url}/api/agents/{handle}/stream"
-        sse_params = [("room", r) for r in sse_room_scope]
+        sse_params: list[tuple[str, str | int | float | None]] = [
+            ("room", r) for r in sse_room_scope
+        ]
         start = time.time()
 
         with (
