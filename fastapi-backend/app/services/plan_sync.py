@@ -120,6 +120,10 @@ class PlanSyncEngine:
         self, room: str, assignments: dict[str, str], existing_plan: str | None
     ) -> str:
         """Compile the plan body, falling back to the raw agreement on failure."""
+        # The real participant handles, so the compiler tags tasks with the agents
+        # that actually negotiated instead of inventing generic ones
+        # (@ProductManager, @EngineeringLead, …) — a non-actionable plan.
+        participants = self._manager.members(room)
         try:
             return await plan_compiler.compile_plan(
                 room_name=room,
@@ -127,6 +131,7 @@ class PlanSyncEngine:
                 joined_intents="",
                 issue_options=None,
                 existing_plan=existing_plan,
+                participants=participants,
             )
         except Exception:
             logger.warning(

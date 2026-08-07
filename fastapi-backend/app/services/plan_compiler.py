@@ -65,6 +65,7 @@ def _build_prompt(
     joined_intents: str,
     issue_options: dict[str, list[str]] | None,
     existing_plan: str | None,
+    participants: list[str] | None = None,
 ) -> str:
     """Assemble the compiler prompt. Pure — no I/O, directly unit-testable."""
     parts: list[str] = [
@@ -100,6 +101,20 @@ def _build_prompt(
             existing_plan.strip(),
             "```",
         ]
+    handles = [f"@{h.lstrip('@')}" for h in (participants or []) if h and h.strip()]
+    if handles:
+        parts += [
+            "",
+            "## The agents (the ONLY @handles you may use)",
+            ", ".join(handles),
+        ]
+    tag_rule = (
+        f"Where a task belongs to a specific agent, tag it with that agent's `@handle` — "
+        f"but use ONLY these exact handles: {', '.join(handles)}. Never invent any other "
+        f"`@handle`; leave a shared/general task untagged rather than assigning a made-up agent."
+        if handles
+        else "Do not tag tasks with `@handle`s — the participating agents aren't known here."
+    )
     parts += [
         "",
         "## Output",
@@ -107,8 +122,7 @@ def _build_prompt(
         "Start with a single `# ` heading naming the plan.",
         "Then list concrete next steps as GitHub-style checklist lines: `- [ ] task`.",
         "Each task must be a specific, doable action — not a restatement of an "
-        "`issue=value` pair. Where the agreement assigns an issue to an agent, "
-        "tag that task line with the agent's `@handle`.",
+        "`issue=value` pair. " + tag_rule,
         "Keep it tight: 3-10 tasks. No sub-headings unless genuinely needed.",
     ]
     return "\n".join(parts)
@@ -197,6 +211,7 @@ async def compile_plan(
     joined_intents: str,
     issue_options: dict[str, list[str]] | None,
     existing_plan: str | None,
+    participants: list[str] | None = None,
 ) -> str:
     """Compile a consensus into a full markdown body for ``plan/tasks.md``.
 
@@ -212,6 +227,7 @@ async def compile_plan(
         joined_intents=joined_intents,
         issue_options=issue_options,
         existing_plan=existing_plan,
+        participants=participants,
     )
     body = _strip_fences(await _compile_plan_body(prompt, room_name))
     if not body:

@@ -59,12 +59,15 @@ _MAX_TOKENS = 500
 _DISCOVER_TEMPERATURE = 0.0
 _BROKER_TEMPERATURE = 0.3
 
-# No-deal framing — the BATNA that turns a hardliner into a negotiator (the one
-# thing the v1 spike lacked). Appended to every agent-facing prompt.
+# Negotiation stance appended to every agent-facing prompt. Deliberately neutral:
+# the earlier "no agreement is the worst outcome … concede everything secondary"
+# framing coerced agents into capitulating below their stated floor in a single
+# step (an instant cave, not a negotiation). Encourage a genuine position instead
+# — concede only where there's real give, and hold the lines that actually matter.
 _BATNA = (
-    "If the team reaches NO agreement there is NO change at all — the worst outcome for "
-    "everyone, you included. A compromise you can live with beats no deal. Protect your one "
-    "genuine hard line; concede everything secondary."
+    "Negotiate in good faith toward a workable agreement: concede where you genuinely can, "
+    "and hold the limits that actually matter to you. Do not abandon a real hard line just to "
+    "close — a durable agreement reflects your true position, not capitulation."
 )
 
 
@@ -193,8 +196,8 @@ class MediatedNegotiation:
                 f"{round_n} of {self._cap}. Issue order: {order}. Offer on the table: {offer}.\n\n"
                 f"History so far:\n{self._history_block()}\n\nWrite 2 sentences to the group: "
                 "summarize where each agent stands, name who has hit a genuine hard limit, and "
-                "nudge the holdout toward closing — remind them a near-deal beats no change. Be "
-                "concrete and fair, not preachy.",
+                "surface the space that's still open between them. Be concrete and fair, not "
+                "preachy — do not pressure anyone to abandon a real limit.",
                 system="You are a fair mediator who wants a durable agreement, not to favor anyone.",
             )
         except Exception:
