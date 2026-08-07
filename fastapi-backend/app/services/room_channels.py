@@ -453,7 +453,16 @@ class RoomChannelManager:
             if handle in managed.members or handle == BACKEND_AGENT:
                 continue
             if _is_own_registered_agent(room, handle):
-                self.invite_in_background(room, handle)
+                if managed.lifecycle.active:
+                    # Inviting a new member mid-episode would abort it (L9's
+                    # stable-membership rule), so queue like a consent accept —
+                    # flush_queued_invites applies it once the episode closes.
+                    queued = self._invites.request(
+                        room, handle, requested_by=sender, trigger_text=text
+                    )
+                    self._invites.mark(queued.id, QUEUED)
+                else:
+                    self.invite_in_background(room, handle)
                 continue
             invite = self.request_invite(room, handle, requested_by=sender, trigger_text=text)
             if invite is not None:
@@ -593,8 +602,15 @@ class RoomChannelManager:
                 episode, recipients=sorted(managed.members), topic=l9.topic_urn(managed.room)
             )
             await managed.channel.send(envelope)
+            # Record the abort locally so the transcript/UI see it — SLIM may not
+            # loop a broadcast back to its own sender.
+            if managed.persister is not None:
+                managed.persister.ingest_local(envelope, serialize_content(envelope))
         except Exception as exc:  # pragma: no cover - best-effort notify
             logger.warning("Failed to publish episode abort for %s: %s", episode, exc)
+        # The episode is closed now, so invites deferred while it was active can be
+        # applied — the normal close_episode path flushes for the same reason.
+        await self.flush_queued_invites(managed.room)
 
     async def close(self, room: str) -> None:
         """Tear down the room's channel (persister stopped; moderator leaves)."""

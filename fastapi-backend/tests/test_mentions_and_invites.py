@@ -203,3 +203,86 @@ async def test_accept_invites_remote_agent_by_identity_only(monkeypatch):
     assert resolved == [("mycelium", _ROOM, "remote-bob")]
     cast(AsyncMock, managed.client.invite).assert_awaited_once()
     assert "remote-bob" in managed.members
+
+
+# ── own agent: mid-episode invite must queue, not abort the episode ────────────
+
+
+@pytest.mark.asyncio
+async def test_own_agent_mention_outside_episode_invites_immediately(monkeypatch):
+    """No active episode: a user's own registered agent joins directly (no prompt,
+    no queue) — the pre-authorized fast path."""
+    manager, _managed = _manager_with_channel(members=set())
+    monkeypatch.setattr(room_channels, "_is_own_registered_agent", lambda *_: True)
+    bg = MagicMock()
+    manager.invite_in_background = bg  # type: ignore[method-assign]
+
+    result = await manager.publish_human(_ROOM, sender="julia", text="@mine hi")
+
+    assert result is not None
+    assert result.invites == []  # own agent → no consent prompt
+    bg.assert_called_once_with(_ROOM, "mine")
+    assert manager.pending_invites(_ROOM) == []  # nothing deferred
+
+
+@pytest.mark.asyncio
+async def test_own_agent_mention_mid_episode_is_queued_not_invited(monkeypatch):
+    """A user's own agent, @-mentioned while an episode is active, must NOT be
+    invited directly (that membership change would abort the episode). It is queued
+    like a consent accept and applied once the episode closes."""
+    manager, _managed = _manager_with_channel(members={"agent-a"})
+    monkeypatch.setattr(room_channels, "_is_own_registered_agent", lambda *_: True)
+    invite_mock = AsyncMock(return_value=True)
+    manager.invite = invite_mock  # type: ignore[method-assign]
+    bg = MagicMock()
+    manager.invite_in_background = bg  # type: ignore[method-assign]
+    manager.open_episode(_ROOM, "urn:ioc:mycelium:episode:step6-room:e1")
+
+    result = await manager.publish_human(_ROOM, sender="julia", text="@mine come help")
+
+    assert result is not None
+    assert result.invites == []  # own agent → no consent prompt surfaced
+    bg.assert_not_called()  # not invited directly mid-episode ...
+    invite_mock.assert_not_awaited()
+    assert [inv.agent for inv in manager.pending_invites(_ROOM)] == ["mine"]  # ... queued
+
+    # Closing the episode drains the queue → the deferred own-agent invite lands.
+    await manager.close_episode(_ROOM)
+    invite_mock.assert_awaited_once_with(_ROOM, "mine")
+
+
+# ── episode abort: recorded locally + queued invites flushed ───────────────────
+
+
+@pytest.mark.asyncio
+async def test_episode_abort_ingests_locally_and_flushes_queue():
+    """A mid-episode membership change aborts the episode: the abort is broadcast
+    AND ingested locally (so the transcript/UI see it, independent of SLIM
+    loopback), and invites queued during the episode are applied once it closes."""
+    manager, managed = _manager_with_channel(members={"agent-a", "agent-b"})
+    invite_mock = AsyncMock(return_value=True)
+    manager.invite = invite_mock  # type: ignore[method-assign]
+    manager.open_episode(_ROOM, "urn:ioc:mycelium:episode:step6-room:e1")
+
+    # A consent invite accepted mid-episode is deferred (queued).
+    result = await manager.publish_human(_ROOM, sender="julia", text="@dave join")
+    assert result is not None
+    invite = result.invites[0]
+    await manager.accept_invite(invite.id)
+    assert invite.status == invites.QUEUED
+
+    # A member drops → membership changed under the episode → abort.
+    managed.members.discard("agent-b")
+    await manager._enforce_membership_change(managed)
+
+    # The abort is the last thing broadcast on the wire ...
+    abort = cast(MagicMock, managed.channel.send).await_args.args[0]
+    assert abort.header.kind.value == "commit"
+    assert abort.header.subkind == "rejected"
+    # ... and it was ingested locally (the fix — else it's missing from the UI).
+    last_ingested = cast(MagicMock, managed.persister).ingest_local.call_args.args[0]
+    assert last_ingested.header.kind.value == "commit"
+    assert last_ingested.header.subkind == "rejected"
+    # The queued invite is applied now the episode is closed.
+    invite_mock.assert_awaited_once_with(_ROOM, "dave")
+    assert not managed.lifecycle.active
