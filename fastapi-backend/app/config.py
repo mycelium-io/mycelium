@@ -2,9 +2,14 @@
 # Copyright 2026 Mycelium Contributors
 
 from pathlib import Path
+from typing import Literal
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Where a registered engine runs its NEGMAS drive. Paired with the CLI's
+# ``engine.runtime`` — flip both together.
+EngineRuntime = Literal["backend", "host"]
 
 # Config file search order: local .env first, then global ~/.mycelium/.env
 _env_files = [".env"]
@@ -104,7 +109,12 @@ class Settings(BaseSettings):
     # for a registered engine or the negotiation double-runs. The reserved
     # ALIGNER_HANDLE fallback always runs backend-side (it has no host manifest).
     # Flip this in tandem with the CLI's `engine.runtime` — they're a pair.
-    ENGINE_RUNTIME: str = "backend"
+    ENGINE_RUNTIME: EngineRuntime = "backend"
+
+    @field_validator("ENGINE_RUNTIME", mode="before")
+    @classmethod
+    def _normalize_engine_runtime(cls, v: object) -> object:
+        return v.strip().lower() if isinstance(v, str) else v
 
     model_config = SettingsConfigDict(
         env_file=tuple(_env_files),

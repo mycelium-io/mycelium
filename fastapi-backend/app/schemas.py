@@ -6,6 +6,7 @@ Minimal schemas for Mycelium's core models.
 """
 
 from datetime import datetime
+from enum import StrEnum
 from typing import Literal
 from uuid import UUID
 
@@ -38,19 +39,32 @@ class RoomRead(BaseModel):
 # ── Message ───────────────────────────────────────────────────────────────────
 
 
-class MessageType:
+class MessageType(StrEnum):
     ANNOUNCE = "announce"
     DIRECT = "direct"
     BROADCAST = "broadcast"
     DELEGATE = "delegate"
-    # Typed structured event (#392): source_event / action / concern / ...
+    # Typed structured event: source_event / action / concern / ...
     EVENT = "event"
-    # Coordination system messages (posted directly by coordination service, not via HTTP API)
+    # System messages, written server-side by the coordination and plan
+    # services — never accepted over the HTTP API (see ApiMessageType).
     COORDINATION_JOIN = "coordination_join"
     COORDINATION_START = "coordination_start"
     COORDINATION_TICK = "coordination_tick"
     COORDINATION_CONSENSUS = "coordination_consensus"
     COORDINATION_RETRY = "coordination_retry"
+    PLAN_UPDATED = "plan_updated"
+
+
+# The message types a client may create over the HTTP API. The system-posted
+# kinds above are written server-side and are not accepted on inbound requests.
+ApiMessageType = Literal[
+    MessageType.ANNOUNCE,
+    MessageType.DIRECT,
+    MessageType.BROADCAST,
+    MessageType.DELEGATE,
+    MessageType.EVENT,
+]
 
 
 # ── event primitive (#392) ────────────────────────────────────────────────────
@@ -115,10 +129,9 @@ class MessageCreate(BaseModel):
     recipient_handle: str | None = Field(
         None, description="Recipient handle for direct messages; omit for broadcast"
     )
-    message_type: str = Field(
+    message_type: ApiMessageType = Field(
         ...,
         description="Type: announce, direct, broadcast, delegate, or event",
-        pattern="^(announce|direct|broadcast|delegate|event)$",
     )
     content: str = Field(..., min_length=1)
     metadata: EventMetadata | None = Field(

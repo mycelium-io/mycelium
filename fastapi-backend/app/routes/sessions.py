@@ -27,6 +27,7 @@ from fastapi import APIRouter, HTTPException
 from app.bus import bus, room_channel
 from app.schemas import (
     CoordinationSessionRead,
+    MessageType,
     ParticipantCreate,
     ParticipantListResponse,
     ParticipantRead,
@@ -114,7 +115,7 @@ async def join_room(room_name: str, payload: ParticipantCreate):
             local_state.StoredMessage(
                 room_name=room_name,
                 sender_handle="CognitiveEngine",
-                message_type="coordination_join",
+                message_type=MessageType.COORDINATION_JOIN,
                 content=join_content,
             ),
         )
@@ -123,7 +124,7 @@ async def join_room(room_name: str, payload: ParticipantCreate):
             {
                 "room_name": room_name,
                 "sender_handle": "CognitiveEngine",
-                "message_type": "coordination_join",
+                "message_type": MessageType.COORDINATION_JOIN,
                 "content": json.dumps({"handle": payload.agent_handle, "intent": payload.intent}),
                 "created_at": datetime.now(UTC).isoformat(),
             },

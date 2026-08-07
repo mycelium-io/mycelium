@@ -42,6 +42,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+from app.schemas import MessageType
 from app.services import l9
 from app.services.l9_slim import ChannelReceiveTimeout
 
@@ -627,7 +628,7 @@ class RoomPersister:
             msg = local_state.StoredMessage(
                 room_name=self.room,
                 sender_handle=record.sender,
-                message_type="broadcast",
+                message_type=MessageType.BROADCAST,
                 content=text,
             )
             if created_at is not None:

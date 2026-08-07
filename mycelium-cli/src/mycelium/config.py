@@ -23,6 +23,8 @@ from typing import Any
 import toml
 from pydantic import BaseModel, Field, field_validator
 
+from mycelium.protocol import EngineRuntime
+
 # Header key prepended to every ~/.mycelium/config.json write. Strict JSON
 # has no comment syntax; ``"//"`` is the long-standing npm/package.json
 # convention for documentation keys and is ignored by every consumer of this
@@ -125,19 +127,16 @@ class EngineConfig(BaseModel):
       two are a transition pair; flip both.
     """
 
-    runtime: str = Field(
+    runtime: EngineRuntime = Field(
         default="backend",
         description="Where registered engines run their drive: 'backend' or 'host'.",
     )
 
-    @field_validator("runtime")
+    @field_validator("runtime", mode="before")
     @classmethod
-    def validate_runtime(cls, v: str) -> str:
-        v = (v or "").strip().lower()
-        if v not in ("backend", "host"):
-            msg = f"engine.runtime must be 'backend' or 'host', got {v!r}"
-            raise ValueError(msg)
-        return v
+    def _normalize_runtime(cls, v: object) -> object:
+        # Normalize casing/whitespace; the EngineRuntime Literal enforces membership.
+        return v.strip().lower() if isinstance(v, str) else v
 
 
 class RuntimeConfig(BaseModel):

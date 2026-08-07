@@ -16,12 +16,13 @@ def test_default_runtime_is_backend() -> None:
 
 @pytest.mark.parametrize(("given", "expected"), [("host", "host"), ("BACKEND", "backend")])
 def test_runtime_normalized(given: str, expected: str) -> None:
-    assert EngineConfig(runtime=given).runtime == expected
+    # given is a dynamic str exercising the normalizer; the field is the EngineRuntime Literal.
+    assert EngineConfig(runtime=given).runtime == expected  # ty: ignore[invalid-argument-type]
 
 
 def test_invalid_runtime_rejected() -> None:
-    with pytest.raises(ValueError, match="engine.runtime"):
-        EngineConfig(runtime="cloud")
+    with pytest.raises(ValueError, match="Input should be 'backend' or 'host'"):
+        EngineConfig(runtime="cloud")  # ty: ignore[invalid-argument-type]
 
 
 def test_env_override(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -63,6 +63,10 @@ RevisionCause = Literal[
     "repair_resolution",
 ]
 
+# Where a registered engine runs its NEGMAS drive. Paired with the backend's
+# ``ENGINE_RUNTIME`` — flip both together.
+EngineRuntime = Literal["backend", "host"]
+
 
 def _validate_evidence(evidence: list[str] | None) -> list[str] | None:
     """Reject empty/whitespace-only evidence strings (shared by both replies)."""

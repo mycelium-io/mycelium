@@ -22,6 +22,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from app.bus import bus, room_channel
+from app.schemas import MessageType
 from app.services import local_state
 from app.services import plan as plan_service
 
@@ -119,7 +120,7 @@ def _emit_plan_updated(room_name: str, payload: dict) -> None:
         local_state.StoredMessage(
             room_name=room_name,
             sender_handle="CognitiveEngine",
-            message_type="plan_updated",
+            message_type=MessageType.PLAN_UPDATED,
             content=content,
         ),
     )
@@ -128,7 +129,7 @@ def _emit_plan_updated(room_name: str, payload: dict) -> None:
         {
             "room_name": room_name,
             "sender_handle": "CognitiveEngine",
-            "message_type": "plan_updated",
+            "message_type": MessageType.PLAN_UPDATED,
             "content": content,
             "created_at": datetime.now(UTC).isoformat(),
         },
