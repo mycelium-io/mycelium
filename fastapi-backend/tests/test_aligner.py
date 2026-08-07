@@ -143,7 +143,7 @@ async def test_observer_emits_converged_with_correct_metrics():
     managed = _FakeManaged(_ROOM, "mycelium", channel, persister)
     manager = _FakeManager(managed, ["agent-a", "agent-b", "aligner"])
 
-    verdict = await _engine(manager, mode="observer").observe(_ROOM)
+    verdict = await _engine(manager).observe(_ROOM)
 
     assert verdict is not None
     assert verdict["header"]["kind"] == "commit"
@@ -182,7 +182,7 @@ async def test_observer_below_threshold_emits_rejected():
     managed = _FakeManaged(_ROOM, "mycelium", channel, _FakePersister(records))
     manager = _FakeManager(managed, ["agent-a", "agent-b"])
 
-    verdict = await _engine(manager, mode="observer").observe(_ROOM)
+    verdict = await _engine(manager).observe(_ROOM)
 
     assert verdict is not None
     assert verdict["header"]["subkind"] == "rejected"
@@ -202,7 +202,7 @@ async def test_observer_ignores_human_and_engine_messages_when_scoring():
     managed = _FakeManaged(_ROOM, "mycelium", channel, _FakePersister(records))
     manager = _FakeManager(managed, ["agent-a", "agent-b"])
 
-    verdict = await _engine(manager, mode="observer").observe(_ROOM)
+    verdict = await _engine(manager).observe(_ROOM)
 
     assert verdict is not None
     assert verdict["header"]["subkind"] == "converged"
@@ -220,9 +220,7 @@ async def test_driver_converges_and_closes_episode():
     managed = _FakeManaged(_ROOM, "mycelium", channel, persister)
     manager = _FakeManager(managed, ["agent-a", "agent-b", "aligner"])
 
-    engine = _engine(
-        manager, mode="driver", max_rounds=3, round_timeout_s=0.2, poll_interval_s=0.01
-    )
+    engine = _engine(manager, max_rounds=3, round_timeout_s=0.2, poll_interval_s=0.01)
     verdict = await engine.drive(_ROOM)
 
     assert verdict is not None
@@ -244,9 +242,7 @@ async def test_driver_terminates_at_round_cap_without_replies():
     managed = _FakeManaged(_ROOM, "mycelium", channel, persister)
     manager = _FakeManager(managed, ["agent-a", "agent-b"])
 
-    engine = _engine(
-        manager, mode="driver", max_rounds=2, round_timeout_s=0.05, poll_interval_s=0.01
-    )
+    engine = _engine(manager, max_rounds=2, round_timeout_s=0.05, poll_interval_s=0.01)
     verdict = await asyncio.wait_for(engine.drive(_ROOM), timeout=5.0)
 
     assert verdict is not None
@@ -263,14 +259,14 @@ async def test_driver_terminates_at_round_cap_without_replies():
 @pytest.mark.asyncio
 async def test_summon_fires_only_for_the_reserved_handle():
     managed = _FakeManaged(_ROOM, "mycelium", _FakeChannel(), _FakePersister())
-    engine = _engine(_FakeManager(managed, []), mode="observer")
+    engine = _engine(_FakeManager(managed, []))
 
     called: list[str] = []
 
-    async def fake_observe(room: str) -> None:
+    async def fake_mediate(room: str, engine_handle: str | None = None) -> None:
         called.append(room)
 
-    engine.observe = fake_observe  # type: ignore[method-assign]
+    engine.mediate = fake_mediate  # type: ignore[method-assign]
 
     def _env(sender: str) -> Any:
         return l9.build_envelope(
@@ -295,3 +291,86 @@ async def test_summon_fires_only_for_the_reserved_handle():
     engine.handle_summon("other-room", "aligner", _env("aligner"))
     await asyncio.sleep(0.02)
     assert called == [_ROOM]
+
+
+@pytest.mark.asyncio
+async def test_engine_runtime_host_skips_registered_engine(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With ENGINE_RUNTIME=host the backend must NOT mediate a *registered* engine
+    (the host daemon owns the run) — but the reserved handle still runs backend-side."""
+    import yaml
+
+    from app.config import settings
+    from app.services.filesystem import get_room_dir, write_memory_file
+
+    room = "host-runtime-room"
+    write_memory_file(
+        get_room_dir(room),
+        "agents/mediator-1",
+        yaml.safe_dump({"adapter": "engine", "kind": "aligner"}),
+        created_by="cli-user",
+    )
+
+    managed = _FakeManaged(room, "mycelium", _FakeChannel(), _FakePersister())
+    engine = _engine(_FakeManager(managed, []))
+    called: list[str] = []
+
+    async def fake_mediate(r: str, engine_handle: str | None = None) -> None:
+        called.append(r)
+
+    engine.mediate = fake_mediate  # type: ignore[method-assign]
+    monkeypatch.setattr(settings, "ENGINE_RUNTIME", "host")
+
+    def _env(sender: str) -> Any:
+        return l9.build_envelope(
+            kind=Kind.exchange,
+            episode=_EPISODE,
+            sender=sender,
+            topic=_TOPIC,
+            payload_type="message",
+        )
+
+    # The registered engine is skipped — the host daemon drives it.
+    engine.handle_summon(room, "mediator-1", _env("human"))
+    await asyncio.sleep(0.02)
+    assert called == []
+
+    # The reserved handle has no host manifest, so it always runs backend-side.
+    engine.handle_summon(room, "aligner", _env("human"))
+    await asyncio.sleep(0.02)
+    assert called == [room]
+
+
+def test_registered_engine_kind_reads_manifest() -> None:
+    """A summon fires the aligner for a registered ``engine`` (kind aligner), not
+    for a normal agent or a handle with no manifest — the engine-reframe gate."""
+    import yaml
+
+    from app.services.aligner import _registered_engine_kind
+    from app.services.filesystem import get_room_dir, write_memory_file
+
+    room = "engine-room"
+    room_dir = get_room_dir(room)
+
+    def _seed(handle: str, body: dict) -> None:
+        write_memory_file(room_dir, f"agents/{handle}", yaml.safe_dump(body), created_by="cli-user")
+
+    _seed("mediator-1", {"adapter": "engine", "kind": "aligner"})
+    _seed("worker-1", {"adapter": "claude_code", "cwd": "/tmp"})
+
+    assert _registered_engine_kind(room, "mediator-1") == "aligner"
+    assert _registered_engine_kind(room, "worker-1") is None  # a normal agent
+    assert _registered_engine_kind(room, "ghost") is None  # no manifest
+
+
+def test_at_mention_neutralized_in_mediator_prompt() -> None:
+    """The mediator strips ``@`` before a word so its broker summary (which names
+    the other agents) can't spuriously wake them — only the L9 recipient wakes."""
+    from app.services.aligner import _AT_MENTION
+
+    text = "@growth holds tech at 40%; @risk wants a hard cap. Email @ home is fine."
+    out = _AT_MENTION.sub("", text)
+    assert "@growth" not in out and "@risk" not in out
+    assert "growth holds tech" in out and "risk wants" in out
+    assert "@ home" in out  # a lone @ (not before a word char) is untouched

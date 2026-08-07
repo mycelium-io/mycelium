@@ -19,11 +19,13 @@ from mycelium.commands import (
     demo,
     docs,
     doctor,
+    engine,
     hub,
     install,
     instance,
     memory,
     metrics,
+    openshell,
     plan,
     room,
     ui,
@@ -142,6 +144,8 @@ app.add_typer(docs.app, name="docs")
 app.add_typer(metrics.app, name="metrics")
 app.add_typer(ui.app, name="ui")
 app.add_typer(agent.app, name="agent")
+app.add_typer(engine.app, name="engine")
+app.add_typer(openshell.app, name="openshell")
 app.add_typer(daemon.app, name="daemon")
 app.add_typer(demo.app, name="demo")
 app.add_typer(hub.app, name="hub")

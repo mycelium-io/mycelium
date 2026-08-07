@@ -88,7 +88,9 @@ async def lifespan(app: FastAPI):
     app.state.aligner = AlignerEngine(room_channel_manager)
     room_channel_manager.on_summon = app.state.aligner.handle_summon
     logger.info(
-        "SIEP aligner wired (@%s, mode=%s)", app.state.aligner.handle, settings.ALIGNER_MODE
+        "SIEP aligner wired (@%s, mediator brain=%s)",
+        app.state.aligner.handle,
+        settings.ALIGNER_BRAIN,
     )
 
     # Wire the converged→plan→memory-sync consumer (Step 8) onto the same seam:

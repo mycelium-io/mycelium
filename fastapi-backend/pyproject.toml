@@ -15,7 +15,7 @@ dependencies = [
     "watchdog>=6.0.0",
     "tiktoken>=0.12.0",
     "rapidfuzz>=3.14.5",
-    "slim-bindings>=1.4,<2",
+    "slim-bindings>=2,<3",
     "negmas>=0.15.7",
 ]
 

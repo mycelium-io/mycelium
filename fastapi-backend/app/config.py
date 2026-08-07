@@ -67,11 +67,6 @@ class Settings(BaseSettings):
     # A reserved handle is how a summon of the engine is told apart from an
     # @-mention of a normal teammate (bible §10 / Step 7 trap).
     ALIGNER_HANDLE: str = "aligner"
-    # "observer" (one-shot: read transcript, emit verdict), "driver" (run
-    # rounds, prompting participants, then emit), or "mediator" (Rung 1: run a
-    # NEGMAS SAO negotiation — @-address agents in turn, interpret their prose,
-    # and terminate the instant the mechanism reaches agreement).
-    ALIGNER_MODE: str = "observer"
     # MPC at/above this converges; below rejects (mirrors the old CFN
     # validation-intervention default of 0.6).
     ALIGNER_THRESHOLD: float = 0.6
@@ -86,6 +81,30 @@ class Settings(BaseSettings):
     # well above the participant count so several proposer rotations can happen
     # (spike used 20).
     ALIGNER_MEDIATOR_MAX_STEPS: int = 20
+    # Mediator brain runtime (Rung 2) — the cognitive engine behind the SAO
+    # mediator, an *internal* agent. "litellm" (default): a stateless
+    # litellm.completion per turn (mediator.llm_sync). "pi": a persistent,
+    # optionally OpenShell-sandboxed `pi -p --session <id> --mode json` session
+    # that gives the internal agent real memory across SAO rounds. This ONLY
+    # swaps mycelium's own cognition runtime — user/participant agent runtimes
+    # (claude_code, cursor, …) are untouched; Pi is never imposed on them.
+    ALIGNER_BRAIN: str = "litellm"
+    # Path/name of the `pi` binary when ALIGNER_BRAIN="pi".
+    ALIGNER_PI_BINARY: str = "pi"
+    # Wrap each pi session in an OpenShell sandbox when true. Off by default:
+    # `openshell` may not be installed and the sandbox path is a live-validation
+    # step — the wrap is a config flip, not a code change (pi_brain._sandbox_wrap).
+    ALIGNER_PI_OPENSHELL: bool = False
+    # Per-turn wall-clock bound (seconds) on one pi brain call before it is killed.
+    ALIGNER_PI_TIMEOUT_S: float = 120.0
+    # Where a registered `engine` (kind aligner) runs its NEGMAS drive — the
+    # Stage-B transition switch (docs/START_HERE_ENGINES.md). "backend" (default):
+    # this backend owns the run via its summon seam. "host": the host daemon owns
+    # it (the engine runs where `pi` lives), so `handle_summon` must NOT also fire
+    # for a registered engine or the negotiation double-runs. The reserved
+    # ALIGNER_HANDLE fallback always runs backend-side (it has no host manifest).
+    # Flip this in tandem with the CLI's `engine.runtime` — they're a pair.
+    ENGINE_RUNTIME: str = "backend"
 
     model_config = SettingsConfigDict(
         env_file=tuple(_env_files),

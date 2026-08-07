@@ -369,7 +369,13 @@ class SlimClient:
         # (Welcome/Commit/epoch, RFC 9420) — the node never holds the group key.
         return sb.SessionConfig(
             session_type=sb.SessionType.GROUP,
-            enable_mls=True,
+            # SLIM 2.0 replaced the ``enable_mls`` bool with ``mls_settings`` —
+            # MLS is on iff settings are present. 100% header-integrity validation
+            # keeps the old always-on posture. Matched pair with the CLI member.
+            mls_settings=sb.MlsSettings(
+                header_integrity_validation_percent=100,
+                max_seen_control_message_ids_size=None,  # None → SLIM core default
+            ),
             max_retries=5,
             interval=datetime.timedelta(seconds=5),
             metadata={},

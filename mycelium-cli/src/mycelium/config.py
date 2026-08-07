@@ -112,6 +112,34 @@ class LLMConfig(BaseModel):
     )
 
 
+class EngineConfig(BaseModel):
+    """First-party Cognition Engine runtime configuration.
+
+    ``runtime`` selects *where* a registered ``engine`` runs its NEGMAS drive:
+
+    - ``backend`` (default): the always-on backend owns the run via its summon
+      seam (Stage A). The daemon skips engine manifests.
+    - ``host``: the local daemon holds the engine's connector and drives NEGMAS
+      **on the host**, where ``pi`` lives (Stage B). The backend must be set to
+      ``ENGINE_RUNTIME=host`` in tandem so it does not also run the engine — the
+      two are a transition pair; flip both. See ``docs/START_HERE_ENGINES.md``.
+    """
+
+    runtime: str = Field(
+        default="backend",
+        description="Where registered engines run their drive: 'backend' or 'host'.",
+    )
+
+    @field_validator("runtime")
+    @classmethod
+    def validate_runtime(cls, v: str) -> str:
+        v = (v or "").strip().lower()
+        if v not in ("backend", "host"):
+            msg = f"engine.runtime must be 'backend' or 'host', got {v!r}"
+            raise ValueError(msg)
+        return v
+
+
 class RuntimeConfig(BaseModel):
     """Docker runtime / environment configuration."""
 
@@ -171,7 +199,11 @@ class ScrapeTarget(BaseModel):
     )
     kind: str = Field(
         default="http_red",
-        description="Roll-up strategy. Currently only 'http_red' is supported (HTTP rate/error/duration).",
+        description=(
+            "Roll-up strategy: 'http_red' (HTTP rate/error/duration, e.g. "
+            "prometheus-fastapi-instrumentator) or 'grpc_red' (gRPC RED, e.g. the "
+            "OpenShell gateway's *_grpc_requests_total + *_grpc_request_duration_seconds)."
+        ),
     )
 
 
@@ -209,6 +241,7 @@ class MyceliumConfig(BaseModel):
     server: ServerConfig = Field(default_factory=ServerConfig)
     slim: SlimConfig = Field(default_factory=SlimConfig)
     llm: LLMConfig = Field(default_factory=LLMConfig)
+    engine: EngineConfig = Field(default_factory=EngineConfig)
     runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
     rooms: RoomConfig = Field(default_factory=RoomConfig)
     metrics: MetricsConfig = Field(default_factory=MetricsConfig)
@@ -318,9 +351,13 @@ class MyceliumConfig(BaseModel):
             "slim": {},
             "rooms": {},
             "llm": {},
+            "engine": {},
             "runtime": {},
             "metrics": {},
         }
+
+        if engine_runtime := os.getenv("ENGINE_RUNTIME"):
+            env_config["engine"]["runtime"] = engine_runtime
 
         if api_url := os.getenv("MYCELIUM_API_URL"):
             env_config["server"]["api_url"] = api_url
@@ -380,12 +417,13 @@ class MyceliumConfig(BaseModel):
         global_path = self._global_config_path or self.get_global_config_path()
         global_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Global sections: identity, server, llm, runtime, metrics, adapters
+        # Global sections: identity, server, llm, engine, runtime, metrics, adapters
         _global_sections = (
             "identity",
             "server",
             "slim",
             "llm",
+            "engine",
             "runtime",
             "metrics",
             "adapters",

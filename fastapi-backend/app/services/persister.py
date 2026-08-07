@@ -546,6 +546,12 @@ class RoomPersister:
         self._ingest(envelope, content, local=True)
 
     def _ingest(self, envelope: L9, content: dict[str, Any], *, local: bool = False) -> None:
+        # Keepalive pings exist only to reset a member's SLIM liveness (which the
+        # datapath already did before this message reached us), so they carry no
+        # transcript value. Drop them here — otherwise a member's ~20s keepalive
+        # would append to the durable transcript forever (log spam + cursor churn).
+        if content.get("l9", {}).get("payload", {}).get("type") == "keepalive":
+            return
         mid = envelope_message_id(envelope)
         if mid is not None:
             if mid in self._ingested_ids:

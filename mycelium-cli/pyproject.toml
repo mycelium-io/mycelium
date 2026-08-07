@@ -39,10 +39,19 @@ dependencies = [
     "protobuf>=4.21.0",
     "rapidfuzz>=3.10.0",
     "questionary>=2.1.1",
-    "slim-bindings>=1.4,<2",
+    "slim-bindings>=2,<3",
 ]
 
 [project.optional-dependencies]
+# The `engine` extra pulls the cognition-engine runtime's heavy deps onto the
+# host so a first-party engine (the SAO mediator) can run where the daemon runs
+# — NEGMAS for the SAO mechanism, litellm for the brain. Opt-in (`pip install
+# mycelium[engine]`) so the base CLI stays light; only hosts that run engines
+# pay the cost. See docs/START_HERE_ENGINES.md (Stage B).
+engine = [
+    "negmas>=0.11",
+    "litellm>=1.55",
+]
 dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=1.3.0",

@@ -1102,6 +1102,8 @@ def _fetch_scrape_targets(
             continue
         if kind == "http_red":
             rolled = prom_scrape.aggregate_http_red(samples)
+        elif kind == "grpc_red":
+            rolled = prom_scrape.aggregate_grpc_red(samples)
         else:
             log.warning("Unknown scrape kind %r for target %r, storing raw count only", kind, name)
             rolled = {"raw_sample_count": len(samples)}

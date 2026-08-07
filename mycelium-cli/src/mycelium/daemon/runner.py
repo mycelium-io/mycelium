@@ -98,7 +98,11 @@ async def _reconcile_connectors(
         state.daemon_cfg.handles = daemon_cfg.handles
         state.daemon_cfg.rooms = daemon_cfg.rooms
 
-    desired = set(connector_targets(state.daemon_cfg or daemon_cfg))
+    desired = set(
+        connector_targets(
+            state.daemon_cfg or daemon_cfg, engine_runtime=mycelium_cfg.engine.runtime
+        )
+    )
     current = set(connectors.keys())
 
     for room, handle in desired - current:
@@ -179,7 +183,7 @@ async def _amain(foreground: bool) -> int:
 
     server = await start_health_server(state)
 
-    targets = connector_targets(daemon_cfg)
+    targets = connector_targets(daemon_cfg, engine_runtime=mycelium_cfg.engine.runtime)
     log.info(
         "mycelium-daemon started (rooms=%d, connectors=%d)", len(daemon_cfg.rooms), len(targets)
     )

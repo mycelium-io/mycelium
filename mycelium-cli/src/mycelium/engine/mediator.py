@@ -47,8 +47,7 @@ from typing import TYPE_CHECKING, Any
 from negmas import SAOMechanism, make_issue
 from negmas.sao import ResponseType, SAONegotiator
 
-from app.config import settings
-from app.services.offer_snap import snap_offer
+from mycelium.engine.offer_snap import snap_offer
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine
@@ -81,43 +80,51 @@ def _extract_json(text: str) -> dict[str, Any]:
     return parsed if isinstance(parsed, dict) else {}
 
 
-def llm_sync(prompt: str, *, system: str = "", temperature: float = _BROKER_TEMPERATURE) -> str:
-    """One blocking chat completion using the configured model.
+def build_litellm_brain(
+    model: str, *, api_key: str | None = None, base_url: str | None = None
+) -> Callable[..., str]:
+    """A synchronous ``llm(prompt, *, system, temperature) -> str`` over litellm.
 
-    Synchronous on purpose: the mediator's LLM turns run inside NEGMAS's
-    ``mech.run()`` worker thread, and ``litellm.completion`` also avoids the
-    Bedrock ``acompletion`` breakage the plan compiler documents.
+    The mediator's LLM turns run inside NEGMAS's ``mech.run()`` worker thread, so
+    the brain is blocking on purpose; ``litellm.completion`` also avoids the
+    Bedrock ``acompletion`` breakage the backend plan compiler documents. On the
+    host (Stage B) the LLM config comes from the mycelium CLI config, not the
+    backend settings — hence a factory bound to explicit params.
     """
-    import litellm
 
-    kwargs: dict[str, Any] = {
-        "model": settings.LLM_MODEL,
-        "max_tokens": _MAX_TOKENS,
-        "temperature": temperature,
-        "messages": (
-            ([{"role": "system", "content": system}] if system else [])
-            + [{"role": "user", "content": prompt}]
-        ),
-    }
-    if settings.LLM_API_KEY:
-        kwargs["api_key"] = settings.LLM_API_KEY
-    if settings.LLM_BASE_URL:
-        kwargs["base_url"] = settings.LLM_BASE_URL
-    response = litellm.completion(**kwargs)
-    return response.choices[0].message.content or ""
+    def llm_sync(prompt: str, *, system: str = "", temperature: float = _BROKER_TEMPERATURE) -> str:
+        import litellm
+
+        kwargs: dict[str, Any] = {
+            "model": model,
+            "max_tokens": _MAX_TOKENS,
+            "temperature": temperature,
+            "messages": (
+                ([{"role": "system", "content": system}] if system else [])
+                + [{"role": "user", "content": prompt}]
+            ),
+        }
+        if api_key:
+            kwargs["api_key"] = api_key
+        if base_url:
+            kwargs["base_url"] = base_url
+        response = litellm.completion(**kwargs)
+        return response.choices[0].message.content or ""
+
+    return llm_sync
 
 
 def discover_issues(
-    task: str, positions: dict[str, str], *, llm: Callable[..., str] | None = None
+    task: str, positions: dict[str, str], *, llm: Callable[..., str]
 ) -> list[dict[str, Any]]:
     """Mediator stage 1 — read opening prose into negotiable issues + options.
 
     Ported from the spike's ``discover_issues``. Returns a list of
     ``{"name": snake_case, "options": [token, ...]}``. An empty/degenerate result
     (fewer than one issue) is a signal to the caller to bail to a rejected
-    verdict rather than build an empty mechanism.
+    verdict rather than build an empty mechanism. ``llm`` is required — the host
+    runtime always injects a brain (litellm or Pi); there is no global fallback.
     """
-    llm = llm or llm_sync
     opening = "\n".join(f"@{handle}: {prose}" for handle, prose in positions.items())
     out = _extract_json(
         llm(
@@ -166,7 +173,7 @@ class MediatedNegotiation:
         loop: asyncio.AbstractEventLoop,
         fetch_prose: Callable[[str, str, int], Coroutine[Any, Any, str]],
         turn_timeout_s: float,
-        llm: Callable[..., str] | None = None,
+        llm: Callable[..., str],
         on_reading: Callable[[str, dict[str, Any], bool], None] | None = None,
     ) -> None:
         self._issues = issues
@@ -176,7 +183,7 @@ class MediatedNegotiation:
         self._loop = loop
         self._fetch_prose = fetch_prose
         self._turn_timeout_s = turn_timeout_s
-        self._llm = llm or llm_sync
+        self._llm = llm
         self._on_reading = on_reading
         self.history: list[str] = []
 
@@ -326,7 +333,7 @@ class LiveNegotiator(SAONegotiator):
         self.handle = handle
         self._neg = negotiation
 
-    def propose(self, state: Any, dest: Any = None) -> tuple[str, ...] | None:
+    def propose(self, state: Any, dest: Any = None) -> tuple[str, ...] | None:  # noqa: ARG002
         prose = self._neg.agent_move(
             self.handle, state.current_offer, proposing=True, round_n=state.step
         )
@@ -339,7 +346,7 @@ class LiveNegotiator(SAONegotiator):
         logger.info("mediator step %d: @%s PROPOSE %s", state.step, self.handle, outcome)
         return outcome
 
-    def respond(self, state: Any, source: Any = None) -> ResponseType:
+    def respond(self, state: Any, source: Any = None) -> ResponseType:  # noqa: ARG002
         prose = self._neg.agent_move(
             self.handle, state.current_offer, proposing=False, round_n=state.step
         )

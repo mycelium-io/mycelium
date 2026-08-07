@@ -282,3 +282,36 @@ def test_resolve_scrape_targets_returns_explicit_entries() -> None:
     assert len(targets) == 1
     assert targets[0]["name"] == "my-service"
     assert targets[0]["url"] == "http://localhost:7777/metrics"
+
+
+# ── grpc_red roll-up (OpenShell gateway + any gRPC-instrumented service) ──────
+
+
+def test_aggregate_grpc_red_rolls_up_openshell_series():
+    """OpenShell exposes ``*_grpc_requests_total`` (counter) + a
+    ``*_grpc_request_duration_seconds`` summary. grpc_red must roll these into
+    the same RED shape as http_red: calls by ``method``, errors on non-OK
+    ``code`` (0 == OK), and count/sum latency (seconds → ms)."""
+    from mycelium.prom_scrape import aggregate_grpc_red, parse_text
+
+    body = """
+# TYPE openshell_server_grpc_requests_total counter
+openshell_server_grpc_requests_total{method="GetSandboxConfig",code="0"} 25
+openshell_server_grpc_requests_total{method="ConnectSupervisor",code="0"} 1
+openshell_server_grpc_requests_total{method="CreateSandbox",code="13"} 2
+# TYPE openshell_server_grpc_request_duration_seconds summary
+openshell_server_grpc_request_duration_seconds{method="GetSandboxConfig",quantile="0.5"} 0.004
+openshell_server_grpc_request_duration_seconds_sum{method="GetSandboxConfig"} 0.117
+openshell_server_grpc_request_duration_seconds_count{method="GetSandboxConfig"} 25
+"""
+    rolled = aggregate_grpc_red(parse_text(body))
+
+    assert rolled["calls"] == 28  # 25 + 1 + 2
+    assert rolled["errors"] == 2  # only code=13 (non-OK)
+    routes = rolled["by_route"]
+    assert routes["GetSandboxConfig"]["calls"] == 25
+    assert routes["GetSandboxConfig"]["errors"] == 0
+    assert routes["CreateSandbox"]["errors"] == 2  # grpc status 13 == error
+    lat = routes["GetSandboxConfig"]["latency_ms"]
+    assert lat["count"] == 25
+    assert lat["sum"] == 117.0  # 0.117s → 117ms

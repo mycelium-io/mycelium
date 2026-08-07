@@ -70,53 +70,64 @@ async def join_room(room_name: str, payload: ParticipantCreate):
     coord = local_state.get_or_create_session(room_name)
 
     existing = local_state.find_participant(coord.id, payload.agent_handle)
-    if existing is not None:
-        logger.info("Duplicate join for handle=%s room=%s", payload.agent_handle, room_name)
-        return ParticipantRead.model_validate(existing)
-
-    context_files = (
-        [cf.model_dump() for cf in payload.context_files] if payload.context_files else None
-    )
-    participant = local_state.StoredParticipant(
-        id=local_state.participant_id(coord.id, payload.agent_handle),
-        coordination_session_id=coord.id,
-        agent_handle=payload.agent_handle,
-        intent=payload.intent,
-        context_files=context_files,
-    )
-    local_state.add_participant(coord.id, participant)
+    is_new = existing is None
+    if is_new:
+        context_files = (
+            [cf.model_dump() for cf in payload.context_files] if payload.context_files else None
+        )
+        participant = local_state.StoredParticipant(
+            id=local_state.participant_id(coord.id, payload.agent_handle),
+            coordination_session_id=coord.id,
+            agent_handle=payload.agent_handle,
+            intent=payload.intent,
+            context_files=context_files,
+        )
+        local_state.add_participant(coord.id, participant)
+    else:
+        logger.info("Re-join for handle=%s room=%s (re-inviting)", payload.agent_handle, room_name)
+        participant = existing
 
     # Room = SLIM channel (Step 3): make sure the channel exists, then invite the
-    # joining agent onto it. Best-effort — no fabric just means no live channel.
-    # The invite is fire-and-forget: its SLIM handshake must not block the join.
+    # agent onto it. Runs on EVERY join, not just the first: a connector announces
+    # itself on each (re)connect, so a member dropped while its host slept (or on
+    # any session close) is re-invited here and the durable inbox re-serves its
+    # missed tail — no fresh @mention needed. The invite is idempotent (set-add +
+    # an empty re-serve when already caught up) and fire-and-forget so its SLIM
+    # handshake never blocks the join. Best-effort — no fabric = no live channel.
     meta = read_room_meta(room_name)
     workspace = meta.get("workspace_id") if meta else None
     await room_channels.manager.provision(room_name, workspace=workspace)
     room_channels.manager.invite_in_background(room_name, payload.agent_handle)
 
-    # Persist a join message and fan it out so watchers see the presence change.
-    join_content = json.dumps(
-        {"handle": payload.agent_handle, "intent": payload.intent, "session": coord.display_name}
-    )
-    local_state.add_message(
-        room_name,
-        local_state.StoredMessage(
-            room_name=room_name,
-            sender_handle="CognitiveEngine",
-            message_type="coordination_join",
-            content=join_content,
-        ),
-    )
-    bus.publish(
-        room_channel(room_name),
-        {
-            "room_name": room_name,
-            "sender_handle": "CognitiveEngine",
-            "message_type": "coordination_join",
-            "content": json.dumps({"handle": payload.agent_handle, "intent": payload.intent}),
-            "created_at": datetime.now(UTC).isoformat(),
-        },
-    )
+    # Persist a join message + fan it out on the FIRST join only, so a reconnecting
+    # member re-inviting itself every wake doesn't spam the room's presence feed.
+    if is_new:
+        join_content = json.dumps(
+            {
+                "handle": payload.agent_handle,
+                "intent": payload.intent,
+                "session": coord.display_name,
+            }
+        )
+        local_state.add_message(
+            room_name,
+            local_state.StoredMessage(
+                room_name=room_name,
+                sender_handle="CognitiveEngine",
+                message_type="coordination_join",
+                content=join_content,
+            ),
+        )
+        bus.publish(
+            room_channel(room_name),
+            {
+                "room_name": room_name,
+                "sender_handle": "CognitiveEngine",
+                "message_type": "coordination_join",
+                "content": json.dumps({"handle": payload.agent_handle, "intent": payload.intent}),
+                "created_at": datetime.now(UTC).isoformat(),
+            },
+        )
 
     return ParticipantRead.model_validate(participant)
 

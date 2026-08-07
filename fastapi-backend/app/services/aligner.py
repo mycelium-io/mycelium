@@ -54,6 +54,7 @@ from __future__ import annotations
 import asyncio
 import copy
 import logging
+import re
 from typing import TYPE_CHECKING, Any
 
 from app.config import settings
@@ -62,6 +63,8 @@ from app.services.l9_slim import serialize_content
 from app.services.room_channels import BACKEND_AGENT
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from app.services.l9_episode import EpisodeState
     from app.services.l9_models import L9
     from app.services.persister import RoomPersister, TranscriptRecord
@@ -69,13 +72,48 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-MODE_OBSERVER = "observer"
-MODE_DRIVER = "driver"
-MODE_MEDIATOR = "mediator"
 
 # Handles that are never a participant position: the engine itself, the backend
 # moderator, and the system actor the backend signs its own envelopes with.
 _NON_PARTICIPANTS = frozenset({BACKEND_AGENT, l9.SYSTEM_ACTOR_ID})
+
+# The mediator addresses exactly ONE agent per turn via the L9 ``recipients``
+# field. Its prompt *text*, though, embeds the broker's summary which names the
+# other participants — and the connector's ``should_wake`` also wakes on a raw
+# ``@handle`` token in the human-facing text (bible §12 human path). Left as-is,
+# every turn would spuriously wake *every* named agent, doubling cold-spawns and
+# serialising the connectors until the addressed agent's real reply misses the
+# round window (the Rung-1-live timeout/degenerate-fallback bug). Neutralising
+# the ``@`` means only the L9-addressed agent wakes; the names stay readable.
+_AT_MENTION = re.compile(r"@(?=\w)")
+
+
+def _registered_engine_kind(room: str, handle: str) -> str | None:
+    """The CE kind if ``handle`` is a registered ``engine`` agent in ``room``.
+
+    The agent manifest is stored as YAML in the body of ``agents/<handle>`` (the
+    CLI's ``mycelium engine create`` writes ``adapter: engine`` + ``kind:``).
+    Returns the ``kind`` for an engine manifest, else ``None`` — so summoning a
+    normal teammate, or a handle with a missing/broken manifest, never fires the
+    aligner. Cheap: summons are rare and this is one small file read.
+    """
+    import yaml
+
+    from app.services.filesystem import get_room_dir, read_memory_file
+
+    result = read_memory_file(get_room_dir(room), f"agents/{handle}")
+    if result is None:
+        return None
+    _meta, body = result
+    try:
+        data = yaml.safe_load(body) or {}
+    except yaml.YAMLError:
+        return None
+    if isinstance(data, dict) and data.get("adapter") == "engine":
+        kind = data.get("kind")
+        return kind if isinstance(kind, str) else None
+    return None
+
 
 # Epistemic fields the aligner reads off an exchange's L9 payload and hands to
 # ``l9_episode.record_reply`` verbatim (it validates/clamps each one).
@@ -157,16 +195,15 @@ class AlignerEngine:
         manager: RoomChannelManager,
         *,
         handle: str | None = None,
-        mode: str | None = None,
         threshold: float | None = None,
         max_rounds: int | None = None,
         round_timeout_s: float | None = None,
         poll_interval_s: float | None = None,
         max_steps: int | None = None,
+        brain: str | None = None,
     ) -> None:
         self._manager = manager
         self._handle = handle if handle is not None else settings.ALIGNER_HANDLE
-        self._mode = mode if mode is not None else settings.ALIGNER_MODE
         self._threshold = threshold if threshold is not None else settings.ALIGNER_THRESHOLD
         self._max_rounds = max_rounds if max_rounds is not None else settings.ALIGNER_MAX_ROUNDS
         self._round_timeout_s = (
@@ -178,6 +215,10 @@ class AlignerEngine:
         self._max_steps = (
             max_steps if max_steps is not None else settings.ALIGNER_MEDIATOR_MAX_STEPS
         )
+        # Rung 2 — which cognitive runtime backs the mediator (an *internal*
+        # agent). "litellm" (default) or "pi". Only the engine's own brain; user
+        # participant agents are unaffected. See ``_make_brain``.
+        self._brain = brain if brain is not None else settings.ALIGNER_BRAIN
         # Rooms with a run in flight — a re-summon while active is ignored.
         self._active: set[str] = set()
         # Strong refs to scheduled runs so they aren't GC'd mid-flight.
@@ -190,36 +231,54 @@ class AlignerEngine:
     # -- the summon seam (sync; called from the persister's on_summon) --
 
     def handle_summon(self, room: str, handle: str, envelope: L9) -> None:
-        """Fire the engine when *its* reserved handle is summoned; else ignore.
+        """Fire the aligner when a registered ``engine`` (kind ``aligner``) — or
+        the legacy reserved handle — is summoned; else ignore.
 
-        The persister fires this for every ``@``-mention in a message, so the
-        identity gate here is what keeps an ``@teammate`` from spawning an engine
-        (bible §10 / Step 7 trap). A self-authored envelope never re-summons, and
-        a room already being judged is left alone.
+        The persister fires this for every ``@``-mention, so the identity gate is
+        what keeps an ``@teammate`` from spawning an engine (bible §10 / Step 7).
+        The engine reframe (``docs/START_HERE_ENGINES.md``) makes the aligner a
+        first-class registered agent: a summon of a handle whose manifest is
+        ``adapter=engine, kind=aligner`` runs *as that handle*. The reserved
+        ``ALIGNER_HANDLE`` stays a back-compat fallback during the transition.
+        A self-authored envelope never re-summons; a room already active is left
+        alone.
         """
-        if _norm(handle) != _norm(self._handle):
+        is_reserved = _norm(handle) == _norm(self._handle)
+        if not is_reserved and _registered_engine_kind(room, handle) != "aligner":
+            return
+        # Stage-B transition switch: when ENGINE_RUNTIME=host the host daemon owns
+        # a *registered* engine's run (it drives NEGMAS where `pi` lives), so the
+        # backend must not also mediate or the negotiation double-runs. The
+        # reserved ALIGNER_HANDLE fallback has no host manifest, so it always runs
+        # backend-side regardless. See docs/START_HERE_ENGINES.md.
+        if not is_reserved and settings.ENGINE_RUNTIME == "host":
+            logger.info(
+                "engine @%s summoned in %s but ENGINE_RUNTIME=host — host daemon owns the run",
+                handle,
+                room,
+            )
             return
         from app.services.persister import envelope_sender
 
         sender = envelope_sender(envelope)
-        if sender is not None and _norm(sender) == _norm(self._handle):
+        if sender is not None and _norm(sender) in {_norm(self._handle), _norm(handle)}:
             return  # never summon off our own message
         if room in self._active:
             logger.debug("aligner already active on room %s; ignoring re-summon", room)
             return
         self._active.add(room)
-        task = asyncio.create_task(self._run_and_release(room))
+        task = asyncio.create_task(self._run_and_release(room, handle))
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
 
-    async def _run_and_release(self, room: str) -> None:
+    async def _run_and_release(self, room: str, engine_handle: str) -> None:
+        # The mediator is the aligner — there is no mode to choose. A summon
+        # always drives a live NEGMAS SAO (Rung 1/2), running *as* the summoned
+        # engine handle. The observer/driver methods below survive only for the
+        # live roundtrip scripts (scripts/l9_slim_roundtrip.py) pending their
+        # Rung-3 removal; production never reaches them.
         try:
-            if self._mode == MODE_MEDIATOR:
-                await self.mediate(room)
-            elif self._mode == MODE_DRIVER:
-                await self.drive(room)
-            else:
-                await self.observe(room)
+            await self.mediate(room, engine_handle=engine_handle)
         except Exception:
             logger.exception("aligner run failed on room %s", room)
         finally:
@@ -349,8 +408,13 @@ class AlignerEngine:
 
     # -- mediator mode (Rung 1: drive a real NEGMAS SAO over SLIM) --
 
-    async def mediate(self, room: str) -> dict[str, Any] | None:
+    async def mediate(self, room: str, engine_handle: str | None = None) -> dict[str, Any] | None:
         """Run a NEGMAS SAO negotiation live over SLIM, terminating at agreement.
+
+        Runs *as* ``engine_handle`` — the registered ``engine`` (kind ``aligner``)
+        that was summoned — so that handle is excluded from the participant roster
+        it addresses (an engine must never ``@``-address itself). Falls back to the
+        legacy reserved handle when summoned that way.
 
         The Rung-1 replacement for the passive observer: on summon, discover the
         issues from the agents' opening prose, then let NEGMAS drive the rounds —
@@ -371,7 +435,8 @@ class AlignerEngine:
             logger.info("aligner (mediator) summoned for %s but no live channel/persister", room)
             return None
         persister = managed.persister
-        participants = [m for m in self._manager.members(room) if _norm(m) != _norm(self._handle)]
+        me = engine_handle or self._handle
+        participants = [m for m in self._manager.members(room) if _norm(m) != _norm(me)]
         episode = l9.episode_urn(room, "align")
         topic = l9.topic_urn(room)
 
@@ -385,11 +450,13 @@ class AlignerEngine:
             joined_intents="aligner mediate: converge on the open question via SAO",
         )
         try:
+            brain = self._make_brain(episode)
             positions = self._opening_positions(persister, participants)
             issues = await asyncio.to_thread(
                 mediator.discover_issues,
                 "Converge on the room's open question — agree one value per issue.",
                 positions,
+                llm=brain,
             )
             if not issues:
                 logger.info("aligner (mediator) room %s: no issues discovered; rejecting", room)
@@ -411,6 +478,7 @@ class AlignerEngine:
                     managed, persister, handle, episode, topic, prompt, round_n
                 ),
                 turn_timeout_s=self._round_timeout_s,
+                llm=brain,
                 on_reading=lambda handle, reading, proposing: self._fold_reading(
                     ep, handle, reading, proposing
                 ),
@@ -438,6 +506,39 @@ class AlignerEngine:
             )
         finally:
             await self._manager.close_episode(room)
+
+    def _make_brain(self, episode: str) -> Callable[..., str]:
+        """Pick the mediator's cognitive runtime for this negotiation (Rung 2).
+
+        Default ``"litellm"`` returns the stateless
+        :func:`app.services.mediator.llm_sync` — nothing changes where Pi isn't
+        configured. ``"pi"`` returns a fresh :class:`~app.services.pi_brain.PiBrain`
+        bound to a per-episode ``--session`` file so the *internal* agent keeps
+        real memory across SAO rounds. Only the engine's own brain is swapped;
+        user participant agents are untouched (they answer over SLIM as before).
+        """
+        from app.services import mediator
+
+        if self._brain != "pi":
+            return mediator.llm_sync
+
+        import tempfile
+        from pathlib import Path
+
+        from app.services.pi_brain import PiBrain
+
+        slug = re.sub(r"[^A-Za-z0-9._-]+", "-", episode).strip("-") or "align"
+        session_dir = Path(tempfile.gettempdir()) / "mycelium-pi-sessions"
+        session_dir.mkdir(parents=True, exist_ok=True)
+        return PiBrain(
+            session_path=session_dir / f"{slug}.jsonl",
+            model=settings.LLM_MODEL,
+            api_key=settings.LLM_API_KEY,
+            base_url=settings.LLM_BASE_URL,
+            binary=settings.ALIGNER_PI_BINARY,
+            timeout_s=settings.ALIGNER_PI_TIMEOUT_S,
+            openshell=settings.ALIGNER_PI_OPENSHELL,
+        )
 
     def _opening_positions(
         self, persister: RoomPersister, participants: list[str]
@@ -487,11 +588,22 @@ class AlignerEngine:
             payload_type="tick",
             payload_data={"round": round_n, "action": "position"},
         )
+        # Neutralise ``@`` tokens so the broker's summary (which names the other
+        # agents) doesn't spuriously wake them — only the L9 ``recipients=[handle]``
+        # above should wake, one agent per turn.
+        safe_prompt = _AT_MENTION.sub("", prompt)
+        content = serialize_content(env, extra={"content": safe_prompt})
         try:
-            await managed.channel.send(env, extra={"content": prompt})
+            await managed.channel.send(env, extra={"content": safe_prompt})
         except Exception:
             logger.warning("mediator failed to prompt @%s (step %d)", handle, round_n)
             return ""
+        # Record the mediator's turn-prompt into the room transcript + UI bus, the
+        # same way ``publish_human`` records a human's message. Without this the
+        # negotiation is invisible in the room (the prompt only rides SLIM), so
+        # humans can't follow along and debugging falls back to backend logs. The
+        # persister de-dupes by id, so a SLIM loop-back to the sender is harmless.
+        persister.ingest_local(env, content)
 
         pending = _norm(handle)
         loop = asyncio.get_running_loop()

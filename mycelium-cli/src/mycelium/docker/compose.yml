@@ -30,11 +30,13 @@ services:
   # nothing is wired to it. `mycelium hub host` brings up this service alone.
 
   slim:
-    # Pinned to 1.4.x: the node's link-negotiation handshake must match the
-    # `slim-bindings` wheel the backend/daemon use (pinned to 1.4 in the backend
-    # pyproject). `:latest` tracks the 2.0 line, whose handshake rejects a 1.4
-    # client with "public key length is invalid". Bump both together.
-    image: ghcr.io/agntcy/slim:${SLIM_IMAGE_TAG:-1.4.0}
+    # Pinned to 2.0.x: the node's link-negotiation handshake must match the
+    # `slim-bindings` wheel the backend/daemon use (`>=2,<3` in both pyprojects).
+    # Mixing majors fails the handshake with "public key length is invalid", so
+    # node + bindings move in lockstep. 2.0 is also where idle group members
+    # survive on app traffic (liveness resets on any message) and evicted members
+    # cleanly rejoin — the behavior the connector keepalive + self-rejoin rely on.
+    image: ghcr.io/agntcy/slim:${SLIM_IMAGE_TAG:-2.0.0}
     pull_policy: always
     container_name: mycelium-slim
     restart: unless-stopped

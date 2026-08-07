@@ -336,7 +336,14 @@ class MemoryLogEntry(BaseModel):
 #                 runs inside OpenClaw; we just register it into the channel's
 #                 rooms[] fan-out — no daemon involvement, see the daemon
 #                 dispatch loop which skips non-cold_spawn families).
-AGENT_ADAPTERS: frozenset[str] = frozenset({"claude_code", "cursor", "openclaw", "hermes"})
+AGENT_ADAPTERS: frozenset[str] = frozenset(
+    {"claude_code", "cursor", "openclaw", "hermes", "engine"}
+)
+
+#: Cognition-engine kinds hosted by the first-party ``engine`` runtime family.
+#: The extensibility axis: ``aligner`` (SIEP converge) today; ``bargainer`` (SAB),
+#: ``team_former`` (TFP), a drift evaluator, etc. later — no new adapter per CE.
+ENGINE_KINDS: frozenset[str] = frozenset({"aligner"})
 
 
 class AgentManifest(BaseModel):
@@ -372,7 +379,15 @@ class AgentManifest(BaseModel):
     """
 
     handle: str = Field(..., min_length=1, pattern=r"^[a-z0-9][a-z0-9._-]*$")
-    adapter: Literal["claude_code", "cursor", "openclaw", "hermes"] = "claude_code"
+    adapter: Literal["claude_code", "cursor", "openclaw", "hermes", "engine"] = "claude_code"
+    kind: str | None = Field(
+        default=None,
+        description=(
+            "engine: which cognition engine this handle runs (e.g. 'aligner'). "
+            "Required for the ``engine`` adapter; unused by other families. The "
+            "extensibility axis for the first-party CE family."
+        ),
+    )
     cwd: str | None = Field(
         default=None,
         description=(
@@ -421,6 +436,15 @@ class AgentManifest(BaseModel):
             raise ValueError(f"{self.adapter} agents require a non-empty cwd")
         if self.adapter == "openclaw" and not (self.openclaw_agent and self.openclaw_agent.strip()):
             raise ValueError("openclaw agents require an openclaw_agent id")
+        # A cognition engine must name which CE it runs; unknown kinds are a typo
+        # guard (the daemon/backend route on this).
+        if self.adapter == "engine":
+            if not (self.kind and self.kind.strip()):
+                raise ValueError("engine agents require a 'kind' (e.g. 'aligner')")
+            if self.kind not in ENGINE_KINDS:
+                raise ValueError(
+                    f"unknown engine kind {self.kind!r}; known: {sorted(ENGINE_KINDS)}"
+                )
         return self
 
     @property

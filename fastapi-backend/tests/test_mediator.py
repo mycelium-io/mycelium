@@ -49,7 +49,6 @@ def _patch_llm(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def _engine(manager: _FakeManager, **kw: Any) -> aligner.AlignerEngine:
     kw.setdefault("handle", "aligner")
-    kw.setdefault("mode", "mediator")
     kw.setdefault("round_timeout_s", 0.2)
     kw.setdefault("poll_interval_s", 0.01)
     kw.setdefault("max_steps", 12)
@@ -78,6 +77,53 @@ def test_discover_issues_empty_on_garbage() -> None:
     assert issues == []
 
 
+def test_interpret_fails_closed_on_empty_prose() -> None:
+    """A silent agent (empty reply) must NEVER reach the interpreter LLM — else it
+    hallucinates an offer and the negotiation 'converges' with no real input."""
+    import asyncio
+
+    calls: list[str] = []
+
+    def spy_llm(prompt: str, *, system: str = "", temperature: float = 0.3) -> str:
+        calls.append(prompt)
+        return json.dumps({"action": "accept"})
+
+    neg = mediator.MediatedNegotiation(
+        issues=[{"name": "cap", "options": ["25", "30"]}],
+        cap=8,
+        loop=asyncio.new_event_loop(),
+        fetch_prose=lambda h, p, r: _never(),  # unused here
+        turn_timeout_s=1.0,
+        llm=spy_llm,
+    )
+    # Empty prose → empty reading, no LLM call (respond reads it as reject).
+    assert neg.interpret("risk", "", proposing=False) == {}
+    assert neg.interpret("risk", "   \n ", proposing=True) == {}
+    assert calls == []  # the interpreter LLM was never invoked on silence
+
+
+async def _never() -> str:  # pragma: no cover - placeholder coroutine
+    return ""
+
+
+def test_to_outcome_snaps_near_miss_but_refuses_out_of_grid() -> None:
+    """to_outcome rescues a formatting near-miss ('30%'→'30') so a real move
+    isn't dropped, but returns None for a value with no near-match (kept a reject,
+    never fabricated into a wrong number)."""
+    import asyncio
+
+    neg = mediator.MediatedNegotiation(
+        issues=[{"name": "tech", "options": ["25", "30", "35"]}],
+        cap=8,
+        loop=asyncio.new_event_loop(),
+        fetch_prose=lambda h, p, r: _never(),
+        turn_timeout_s=1.0,
+    )
+    assert neg.to_outcome({"tech": "30%"}) == ("30",)  # snapped
+    assert neg.to_outcome({"Tech": "30"}) == ("30",)  # key snapped too
+    assert neg.to_outcome({"tech": "27"}) is None  # no near-match → real reject
+
+
 @pytest.mark.asyncio
 async def test_mediate_terminates_at_agreement() -> None:
     """Agents that accept the standing offer → NEGMAS stops, verdict is converged
@@ -97,14 +143,16 @@ async def test_mediate_terminates_at_agreement() -> None:
     # Episode lifecycle: frozen membership opened, drained on close.
     assert manager.opened == [l9.episode_urn(_ROOM, "align")]
     assert manager.closed == [_ROOM]
-    # The verdict was recorded locally (drives the on_converged → plan seam).
-    assert len(persister.ingested) == 1
     # Anti-theatre: it stopped the moment agreement was reached — the number of
     # agent turns (exchange prompts) is far below the step cap, not a full run.
     from app.services.l9_models import Kind
 
     prompts = [s for s, _ in channel.sent if s.header.kind == Kind.exchange]
     assert 0 < len(prompts) < 12
+    # Every mediator turn-prompt AND the final verdict are recorded into the room
+    # transcript/UI (via ingest_local), not just the SLIM log — so humans can
+    # follow the negotiation live. One ingest per prompt, plus the verdict.
+    assert len(persister.ingested) == len(prompts) + 1
 
 
 @pytest.mark.asyncio

@@ -29,6 +29,7 @@ from __future__ import annotations
 from mycelium.integrations.base import AddOptions, AgentAdapter, Integration
 from mycelium.integrations.claude_code import ClaudeCodeIntegration
 from mycelium.integrations.cursor import CursorIntegration
+from mycelium.integrations.engine import EngineIntegration
 from mycelium.integrations.hermes import HermesIntegration
 from mycelium.integrations.openclaw import OpenClawIntegration
 
@@ -68,6 +69,7 @@ def get_integration(
     model: str | None = None,
     openclaw_profile: str | None = None,
     copy_auth_from: str | None = None,
+    engine_kind: str | None = None,
 ) -> Integration:
     """Return an integration instance for *name* (any accepted spelling).
 
@@ -99,6 +101,10 @@ def get_integration(
         # multiple agents) lands — at which point handle-level routing
         # replaces per-profile gateways entirely.
         return HermesIntegration()
+    if canonical == "engine":
+        # First-party cognition-engine family; ``engine_kind`` selects the CE
+        # (aligner today). The other kwargs are irrelevant here.
+        return EngineIntegration(kind=engine_kind)
     raise ValueError(f"unknown integration: {name!r}")
 
 
