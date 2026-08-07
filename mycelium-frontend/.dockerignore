@@ -1,0 +1,25 @@
+# Dependencies (installed fresh in deps stage)
+node_modules
+# Next.js build artifacts
+.next
+out
+# Dev/local artifacts
+.env
+.env.*
+!.env.example
+# Test and tooling
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+coverage
+# TypeScript incremental build info
+tsconfig.tsbuildinfo
+# Editor/OS
+.DS_Store
+*.log
+.vscode
+.idea
+# Git
+.git
+.gitignore
+
