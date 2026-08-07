@@ -157,6 +157,9 @@ class MessageRead(BaseModel):
     message_type: str
     content: str
     metadata: dict | None = Field(None, validation_alias="event_metadata")
+    episode: str | None = Field(
+        None, description="L9 episode URN this message belongs to, if any (for grouping/folding)"
+    )
     created_at: datetime
 
     model_config = {"from_attributes": True, "populate_by_name": True}

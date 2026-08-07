@@ -62,6 +62,32 @@ async def test_list_episodes_returns_summary(client):
 
 
 @pytest.mark.asyncio
+async def test_list_episodes_surfaces_an_in_progress_episode(client):
+    """An episode that is open (mid-negotiation, no record yet) shows in the list
+    with outcome 'open' — so the UI sees a session while it runs, not only after."""
+    from app.services.room_channels import ManagedRoomChannel, manager
+
+    room = "live-room"
+    await client.post("/api/rooms", json={"name": room})
+    urn = "urn:ioc:mycelium:episode:live-room:aa11bb22"
+    managed = ManagedRoomChannel(room=room, workspace="ws-1", client=None, channel=None)  # type: ignore[arg-type]
+    managed.lifecycle.open(urn, {"alice", "bob", "backend"})
+    manager._channels[room] = managed
+    try:
+        resp = await client.get("/api/rooms/live-room/episodes")
+        assert resp.status_code == 200
+        episodes = resp.json()["episodes"]
+        assert len(episodes) == 1
+        live = episodes[0]
+        assert live["short_id"] == "aa11bb22"
+        assert live["episode"] == urn
+        assert live["outcome"] == "open"
+        assert live["participants"] == ["alice", "bob"]  # backend moderator dropped
+    finally:
+        manager._channels.pop(room, None)
+
+
+@pytest.mark.asyncio
 async def test_get_episode_returns_causal_chain(client):
     await _seed_episode(client, "sprint")
 

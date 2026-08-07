@@ -82,6 +82,11 @@ class StoredMessage:
     event_kind: str | None = None
     event_status: str | None = None
     event_expires_at: datetime | None = None
+    # The L9 episode URN this message belongs to, when it rode an envelope that
+    # carried one (an agent's negotiation turn carries the mediator's episode; a
+    # casual reply carries the room's default). Lets the UI group/fold a
+    # negotiation's turns under their episode instead of interleaving them inline.
+    episode: str | None = None
     id: uuid.UUID = field(default_factory=uuid.uuid4)
     created_at: datetime = field(default_factory=_now)
 

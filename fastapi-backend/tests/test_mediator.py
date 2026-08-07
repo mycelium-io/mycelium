@@ -140,8 +140,11 @@ async def test_mediate_terminates_at_agreement() -> None:
     assert verdict["header"]["subkind"] == "converged"
     # The agreed issue=value map rides the envelope for plan_sync to compile.
     assert verdict["payload"]["data"]["assignments"] == {"cap": "30"}
-    # Episode lifecycle: frozen membership opened, drained on close.
-    assert manager.opened == [l9.episode_urn(_ROOM, "align")]
+    # Episode lifecycle: frozen membership opened, drained on close. Each convening
+    # gets a unique episode id (no longer the hardcoded "align"), so assert the
+    # shape — one room-scoped episode opened — not a fixed suffix.
+    assert len(manager.opened) == 1
+    assert manager.opened[0].startswith(l9.episode_urn(_ROOM, ""))
     assert manager.closed == [_ROOM]
     # Anti-theatre: it stopped the moment agreement was reached — the number of
     # agent turns (exchange prompts) is far below the step cap, not a full run.
@@ -153,6 +156,64 @@ async def test_mediate_terminates_at_agreement() -> None:
     # transcript/UI (via ingest_local), not just the SLIM log — so humans can
     # follow the negotiation live. One ingest per prompt, plus the verdict.
     assert len(persister.ingested) == len(prompts) + 1
+
+
+@pytest.mark.asyncio
+async def test_two_convenings_write_distinct_episode_records() -> None:
+    """Episodes are distinct sessions: two ``@aligner`` convenings in the SAME room
+    must produce TWO distinct ``log/episodes/{id}.md`` records, not clobber one.
+
+    Guards the fix that replaced the hardcoded ``short_id="align"`` (every
+    negotiation overwrote the single ``align.md``) with a unique id per convening.
+    Exercises the real ``write_episode_record`` path against the temp data dir.
+    """
+    from app.services.filesystem import ensure_room_structure, get_room_dir
+
+    room_dir = get_room_dir(_ROOM)
+    ensure_room_structure(room_dir)
+
+    async def _convene() -> str:
+        persister = _FakePersister()
+        channel = _FakeChannel(persister, reply_conf=0.9)
+        managed = _FakeManaged(_ROOM, "mycelium", channel, persister)
+        manager = _FakeManager(managed, ["growth", "risk", "aligner"])
+        verdict = await _engine(manager).mediate(_ROOM)
+        assert verdict is not None
+        return manager.opened[0]
+
+    ep1 = await _convene()
+    ep2 = await _convene()
+
+    # Distinct episode URNs on the wire ...
+    assert ep1 != ep2
+    assert ep1.startswith(l9.episode_urn(_ROOM, ""))
+    # ... and two distinct records on disk (no clobber of a single record).
+    records = sorted(p.name for p in (room_dir / "log" / "episodes").glob("*.md"))
+    assert len(records) == 2, records
+
+
+@pytest.mark.asyncio
+async def test_mediate_scopes_to_named_participants() -> None:
+    """A scoped summon (``@aligner @growth``) negotiates only the named subset —
+    the other room members are never addressed by the mediator."""
+    from app.services.l9_models import Kind as _Kind
+    from app.services.persister import envelope_recipients
+
+    persister = _FakePersister()
+    channel = _FakeChannel(persister, reply_conf=0.9)
+    managed = _FakeManaged(_ROOM, "mycelium", channel, persister)
+    manager = _FakeManager(managed, ["growth", "risk", "legal", "aligner"])
+
+    await _engine(manager).mediate(_ROOM, scoped_participants=["growth", "risk"])
+
+    prompted: set[str] = set()
+    for s, _ in channel.sent:
+        if s.header.kind == _Kind.exchange:
+            prompted.update(envelope_recipients(s))
+    # Only the named subset is addressed; @legal (a room member) is left out.
+    assert prompted <= {"growth", "risk"}
+    assert "legal" not in prompted
+    assert prompted  # the scoped negotiation actually ran
 
 
 @pytest.mark.asyncio

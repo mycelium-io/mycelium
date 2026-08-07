@@ -54,6 +54,7 @@ import asyncio
 import copy
 import logging
 import re
+import uuid
 from typing import TYPE_CHECKING, Any
 
 from app.config import settings
@@ -132,6 +133,18 @@ _EPISTEMIC_KEYS = (
 def _norm(handle: str) -> str:
     """Case/space-fold a handle for identity comparison (matches the connector)."""
     return handle.strip().lower()
+
+
+def _new_episode_id() -> str:
+    """A short, unique, filesystem-safe id for one convening (one episode).
+
+    Each ``@``-summon convenes a *distinct* episode. The id flows into the episode
+    URN (``l9.episode_urn``), every envelope on the wire, and the
+    ``log/episodes/{id}.md`` record filename — so two convenings in the same room
+    never share a URN or clobber each other's record. Was a hardcoded constant
+    (``"align"``); every negotiation then overwrote the one ``align.md``.
+    """
+    return uuid.uuid4().hex[:8]
 
 
 def _payload(content: dict[str, Any]) -> dict[str, Any]:
@@ -229,7 +242,9 @@ class AlignerEngine:
 
     # -- the summon seam (sync; called from the persister's on_summon) --
 
-    def handle_summon(self, room: str, handle: str, envelope: L9) -> None:
+    def handle_summon(
+        self, room: str, handle: str, envelope: L9, co_summons: list[str] | None = None
+    ) -> None:
         """Fire the aligner when a registered ``engine`` (kind ``aligner``) — or
         the legacy reserved handle — is summoned; else ignore.
 
@@ -264,18 +279,39 @@ class AlignerEngine:
             logger.debug("aligner already active on room %s; ignoring re-summon", room)
             return
         self._active.add(room)
-        task = asyncio.create_task(self._run_and_release(room, handle))
+        scoped = self._scoped_participants(handle, co_summons)
+        task = asyncio.create_task(self._run_and_release(room, handle, scoped))
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
 
-    async def _run_and_release(self, room: str, engine_handle: str) -> None:
+    def _scoped_participants(
+        self, engine_handle: str, co_summons: list[str] | None
+    ) -> list[str] | None:
+        """The participant subset a scoped summon named, or ``None`` for everyone.
+
+        A bare ``@aligner`` (or a summon naming only the engine) negotiates every
+        room member. ``@aligner @a @b`` scopes the run to @a/@b — the engine handle
+        and non-participants are dropped. An empty result falls back to ``None``
+        (all members) so a mis-parse never yields a zero-participant negotiation.
+        """
+        if not co_summons:
+            return None
+        drop = {_norm(engine_handle), _norm(self._handle), *(_norm(h) for h in _NON_PARTICIPANTS)}
+        scoped = [h for h in co_summons if _norm(h) not in drop]
+        return scoped or None
+
+    async def _run_and_release(
+        self, room: str, engine_handle: str, scoped_participants: list[str] | None = None
+    ) -> None:
         # The mediator is the aligner — there is no mode to choose. A summon
         # always drives a live NEGMAS SAO, running *as* the summoned
         # engine handle. The observer/driver methods below survive only for the
         # live roundtrip scripts (scripts/l9_slim_roundtrip.py) pending their
         # removal; production never reaches them.
         try:
-            await self.mediate(room, engine_handle=engine_handle)
+            await self.mediate(
+                room, engine_handle=engine_handle, scoped_participants=scoped_participants
+            )
         except Exception:
             logger.exception("aligner run failed on room %s", room)
         finally:
@@ -315,13 +351,14 @@ class AlignerEngine:
             return None
         persister = managed.persister
         participants = [m for m in self._manager.members(room) if _norm(m) != _norm(self._handle)]
-        episode = l9.episode_urn(room, "align")
+        episode_id = _new_episode_id()
+        episode = l9.episode_urn(room, episode_id)
         topic = l9.topic_urn(room)
 
         self._manager.open_episode(room, episode)
         ep = l9_episode.open_episode(
             parent_room=room,
-            short_id="align",
+            short_id=episode_id,
             workspace_id=managed.workspace,
             mas_id="",
             agents=participants,
@@ -405,7 +442,12 @@ class AlignerEngine:
 
     # -- mediator mode (drive a real NEGMAS SAO over SLIM) --
 
-    async def mediate(self, room: str, engine_handle: str | None = None) -> dict[str, Any] | None:
+    async def mediate(
+        self,
+        room: str,
+        engine_handle: str | None = None,
+        scoped_participants: list[str] | None = None,
+    ) -> dict[str, Any] | None:
         """Run a NEGMAS SAO negotiation live over SLIM, terminating at agreement.
 
         Runs *as* ``engine_handle`` — the registered ``engine`` (kind ``aligner``)
@@ -434,13 +476,18 @@ class AlignerEngine:
         persister = managed.persister
         me = engine_handle or self._handle
         participants = [m for m in self._manager.members(room) if _norm(m) != _norm(me)]
-        episode = l9.episode_urn(room, "align")
+        if scoped_participants:
+            scoped = {_norm(h) for h in scoped_participants}
+            participants = [m for m in participants if _norm(m) in scoped]
+            logger.info("aligner (mediator) room %s scoped to %s", room, participants)
+        episode_id = _new_episode_id()
+        episode = l9.episode_urn(room, episode_id)
         topic = l9.topic_urn(room)
 
         self._manager.open_episode(room, episode)
         ep = l9_episode.open_episode(
             parent_room=room,
-            short_id="align",
+            short_id=episode_id,
             workspace_id=managed.workspace,
             mas_id="",
             agents=participants,
@@ -676,7 +723,7 @@ class AlignerEngine:
                 agents.append(record.sender)
         ep = l9_episode.open_episode(
             parent_room=managed.room,
-            short_id="live",
+            short_id=_new_episode_id(),
             workspace_id=managed.workspace,
             mas_id="",
             agents=agents,

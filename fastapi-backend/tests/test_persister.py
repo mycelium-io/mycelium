@@ -165,7 +165,7 @@ def _persister_for(room: str, *, summoned: list, converged: list) -> persister.R
         room,
         channel=None,  # ty: ignore[invalid-argument-type]  # not exercised: we call _ingest directly
         members_provider=lambda: set(),
-        on_summon=lambda handle, env: summoned.append(handle),
+        on_summon=lambda handle, env, co: summoned.append(handle),
         on_converged=lambda env: converged.append(env),
         feed_bus=False,
     )
@@ -295,6 +295,23 @@ def test_list_store_human_and_agent_each_appear_once_in_order():
         ("julia", "hello"),
         ("smoke-agent", "hi back"),
     ]
+
+
+def test_list_store_message_carries_its_episode():
+    """Rung 2: a message lands in the list store tagged with the L9 episode it rode,
+    so the UI can group/fold a negotiation's turns by episode (and the messages
+    route can filter by it)."""
+    from app.services import local_state
+
+    room = "episode-tag-room"
+    p = _persister_for(room, summoned=[], converged=[])
+
+    env, content = _msg_content("a-1", sender="growth", text="my position", payload_type="reply")
+    p._ingest(env, content, local=False)
+
+    stored = local_state.list_messages(room)
+    assert len(stored) == 1
+    assert stored[0].episode == "urn:ioc:mycelium:episode:r:s"
 
 
 def test_addressed_absent_recipient_holds_the_triggering_message():

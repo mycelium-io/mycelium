@@ -125,12 +125,54 @@ def _episode_summary(key: str, meta: dict[str, Any], content: str) -> dict[str, 
     }
 
 
+def _live_episode_summary(room_name: str) -> dict[str, Any] | None:
+    """Synthesize a summary for the episode currently *in progress*, if any.
+
+    A closed episode lands as a ``log/episodes/*`` record; an open one exists only
+    in the moderator's in-memory lifecycle until it converges/rejects. Surfacing it
+    here lets the UI show "in progress" (``outcome: "open"``) before the record is
+    written, so a negotiation is visible while it runs, not only after it ends.
+    """
+    from app.services import l9
+    from app.services.room_channels import BACKEND_AGENT, manager
+
+    managed = manager.get(room_name)
+    if managed is None or not managed.lifecycle.active or not managed.lifecycle.episode:
+        return None
+    urn = managed.lifecycle.episode
+    drop = {BACKEND_AGENT, SYSTEM_ACTOR_ID}
+    participants = sorted(m for m in managed.lifecycle.members if m not in drop)
+    message_count = 0
+    if managed.persister is not None:
+        for record in managed.persister.log.records:
+            message = record.content.get("l9", {}).get("header", {}).get("message", {})
+            if message.get("episode") == urn:
+                message_count += 1
+    return {
+        "short_id": urn.rsplit(":", 1)[-1],
+        "episode": urn,
+        "topic": l9.topic_urn(room_name),
+        "outcome": "open",
+        "subkind": None,
+        "participants": participants,
+        "metrics": None,
+        "assignments": None,
+        "plan_file": None,
+        "message_count": message_count,
+        "updated_at": "",
+        "updated_by": "",
+    }
+
+
 @router.get("")
 async def list_episodes(room_name: str, limit: int = 50):
-    """List episode summaries for a room, newest first."""
+    """List episode summaries for a room, newest first (an in-progress one first)."""
     _require_room(room_name)
     records = list_memory_files(get_room_dir(room_name), prefix=_EPISODES_PREFIX, limit=limit)
     episodes = [_episode_summary(key, meta, content) for key, meta, content in records]
+    live = _live_episode_summary(room_name)
+    if live is not None and all(e["short_id"] != live["short_id"] for e in episodes):
+        episodes.insert(0, live)
     return {"episodes": episodes}
 
 

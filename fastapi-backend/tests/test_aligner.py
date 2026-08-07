@@ -226,7 +226,9 @@ async def test_driver_converges_and_closes_episode():
     assert verdict is not None
     assert verdict["header"]["subkind"] == "converged"
     # Opened an episode (frozen membership) and closed it (drains queued invites).
-    assert manager.opened == [l9.episode_urn(_ROOM, "align")]
+    # Each convening gets a unique episode id, so assert the shape, not a suffix.
+    assert len(manager.opened) == 1
+    assert manager.opened[0].startswith(l9.episode_urn(_ROOM, ""))
     assert manager.closed == [_ROOM]
     # Converged on round 1 → prompted the two participants exactly once each.
     prompts = [s for s, _ in channel.sent if s.header.kind == Kind.exchange]
@@ -263,7 +265,11 @@ async def test_summon_fires_only_for_the_reserved_handle():
 
     called: list[str] = []
 
-    async def fake_mediate(room: str, engine_handle: str | None = None) -> None:
+    async def fake_mediate(
+        room: str,
+        engine_handle: str | None = None,
+        scoped_participants: list[str] | None = None,
+    ) -> None:
         called.append(room)
 
     engine.mediate = fake_mediate  # type: ignore[method-assign]
@@ -316,7 +322,11 @@ async def test_engine_runtime_host_skips_registered_engine(
     engine = _engine(_FakeManager(managed, []))
     called: list[str] = []
 
-    async def fake_mediate(r: str, engine_handle: str | None = None) -> None:
+    async def fake_mediate(
+        r: str,
+        engine_handle: str | None = None,
+        scoped_participants: list[str] | None = None,
+    ) -> None:
         called.append(r)
 
     engine.mediate = fake_mediate  # type: ignore[method-assign]

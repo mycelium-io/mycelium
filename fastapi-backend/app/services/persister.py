@@ -324,7 +324,7 @@ def write_transcript(room: str, records: list[TranscriptRecord]) -> None:
 
 # ── The receive loop ─────────────────────────────────────────────────────────
 
-SummonHook = Callable[[str, "L9"], None]
+SummonHook = Callable[[str, "L9", list[str]], None]
 ConvergedHook = Callable[["L9"], None]
 # Called with the handle of a member that dropped off the channel, so the
 # moderator can update its membership — presence, not a fatal error.
@@ -349,7 +349,7 @@ def _handle_from_disconnect(message: str) -> str | None:
     return parts[2] if len(parts) >= 3 else None
 
 
-def _default_summon_hook(handle: str, envelope: L9) -> None:
+def _default_summon_hook(handle: str, envelope: L9, co_summons: list[str]) -> None:
     logger.info("summon hook (skeleton): @%s summoned", handle)
 
 
@@ -567,10 +567,13 @@ class RoomPersister:
             self._record_to_list_store(record, content)
         if self._feed_bus:
             self._publish_to_bus(record)
-        # Triggers: @-summon and commit:converged (skeleton hooks).
-        for handle in find_summons(content):
+        # Triggers: @-summon and commit:converged (skeleton hooks). The full
+        # summon list is passed to every hook call so an engine summoned alongside
+        # other handles (``@aligner @a @b``) can scope the run to those co-mentions.
+        summons = find_summons(content)
+        for handle in summons:
             try:
-                self.on_summon(handle, envelope)
+                self.on_summon(handle, envelope, summons)
             except Exception:
                 logger.exception("summon hook failed for @%s", handle)
         if is_converged(envelope):
@@ -589,6 +592,9 @@ class RoomPersister:
         try:
             from app.bus import bus, room_channel
 
+            episode = (
+                record.content.get("l9", {}).get("header", {}).get("message", {}).get("episode")
+            )
             payload = {
                 "id": record.message_id,
                 "sender_handle": record.sender or l9.SYSTEM_ACTOR_ID,
@@ -596,6 +602,7 @@ class RoomPersister:
                 "content": json.dumps(record.content),
                 "created_at": record.recorded_at,
                 "room_name": self.room,
+                "episode": episode if isinstance(episode, str) else None,
             }
             bus.publish(room_channel(self.room), payload)
         except Exception:
@@ -625,11 +632,15 @@ class RoomPersister:
             created_at = None
             with contextlib.suppress(ValueError, TypeError):
                 created_at = datetime.fromisoformat(record.recorded_at)
+            episode = (
+                content.get("l9", {}).get("header", {}).get("message", {}).get("episode") or None
+            )
             msg = local_state.StoredMessage(
                 room_name=self.room,
                 sender_handle=record.sender,
                 message_type=MessageType.BROADCAST,
                 content=text,
+                episode=episode if isinstance(episode, str) else None,
             )
             if created_at is not None:
                 msg.created_at = created_at

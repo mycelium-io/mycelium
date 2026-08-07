@@ -26,6 +26,10 @@ interface Event {
   sender: string;
   recipient: string | null;
   time: string;
+  // The L9 episode URN this event belongs to, when it rode one. Negotiation
+  // turns share their mediator's episode; casual chat carries the room default
+  // or none. Lets the feed group/fold one negotiation's turns together.
+  episode: string | null;
   raw: Record<string, unknown>;
 }
 
@@ -123,6 +127,13 @@ function parseEvent(msg: Record<string, unknown>): Event {
       content = (msg.content as string) || JSON.stringify(msg).slice(0, 100);
   }
 
+  const episode =
+    (msg.episode as string) ||
+    ((raw.header as Record<string, unknown> | undefined)?.message as
+      | Record<string, unknown>
+      | undefined)?.episode as string ||
+    null;
+
   return {
     id: `${Date.now()}-${Math.random()}`,
     type: mtype,
@@ -130,6 +141,7 @@ function parseEvent(msg: Record<string, unknown>): Event {
     sender,
     recipient,
     time,
+    episode,
     raw,
   };
 }

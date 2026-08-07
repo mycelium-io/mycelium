@@ -125,6 +125,9 @@ async def list_messages(
     kind: str | None = Query(None, description="Filter events by metadata.kind"),
     status: str | None = Query(None, description="Filter events by ledger status"),
     since: datetime | None = Query(None, description="Only messages created at/after this time"),
+    episode: str | None = Query(
+        None, description="Only messages belonging to this L9 episode URN (one negotiation/session)"
+    ),
 ):
     """List messages in a room (or coordination session), newest first."""
     channel, _coord = _resolve_channel(room_name)
@@ -144,6 +147,8 @@ async def list_messages(
         if status and m.event_status != status:
             continue
         if since and m.created_at < since:
+            continue
+        if episode and m.episode != episode:
             continue
         filtered.append(m)
 

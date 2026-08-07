@@ -61,7 +61,7 @@ if TYPE_CHECKING:
 # carries the ``room`` so the engine wired to it (the aligner) knows which
 # channel to judge. ``_start_persister`` adapts it down to the persister's
 # signature by binding the room.
-RoomSummonHook = Callable[[str, str, "L9"], None]
+RoomSummonHook = Callable[[str, str, "L9", list[str]], None]
 
 # The room-aware converged hook, same shape reasoning as ``RoomSummonHook``: the
 # persister's ``ConvergedHook`` is ``(envelope)`` only, but the consumer wired to
@@ -336,8 +336,8 @@ class RoomChannelManager:
         if hook is None:
             return None
 
-        def adapter(handle: str, envelope: L9, _room: str = room) -> None:
-            hook(_room, handle, envelope)
+        def adapter(handle: str, envelope: L9, co_summons: list[str], _room: str = room) -> None:
+            hook(_room, handle, envelope, co_summons)
 
         return adapter
 
