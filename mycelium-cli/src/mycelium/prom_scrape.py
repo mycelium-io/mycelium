@@ -189,6 +189,47 @@ def aggregate_http_red(samples: list[Sample]) -> dict:
     }
 
 
+def aggregate_grpc_red(samples: list[Sample]) -> dict:
+    """Roll up gRPC RED series into the same shape as :func:`aggregate_http_red`.
+
+    Matches by *suffix* so it works for any gRPC-instrumented service (e.g.
+    OpenShell's ``openshell_server_grpc_requests_total`` +
+    ``openshell_server_grpc_request_duration_seconds``), not just one prefix.
+    Route = the ``method`` label; an error is any non-OK gRPC status ``code``
+    (``0`` == OK). Duration is exposed as a Prometheus *summary* (quantiles, no
+    buckets), so we capture ``count`` + ``sum`` (→ a mean); ``buckets`` stays
+    empty, which ``histogram_quantile`` treats as "no estimate".
+    """
+    by_route: dict[str, dict] = {}
+    total_calls = 0
+    total_errors = 0
+
+    for s in samples:
+        if s.name.endswith("grpc_requests_total"):
+            method = s.labels.get("method", "<unlabeled>")
+            code = s.labels.get("code", "")
+            route = by_route.setdefault(method, _empty_route())
+            n = int(s.value)
+            route["calls"] += n
+            total_calls += n
+            if code not in ("", "0"):  # gRPC status 0 == OK; anything else is an error
+                route["errors"] += n
+                total_errors += n
+        elif s.name.endswith("grpc_request_duration_seconds_count"):
+            method = s.labels.get("method", "<unlabeled>")
+            by_route.setdefault(method, _empty_route())["latency_ms"]["count"] = int(s.value)
+        elif s.name.endswith("grpc_request_duration_seconds_sum"):
+            method = s.labels.get("method", "<unlabeled>")
+            # seconds → ms, matching every other latency panel in `mycelium metrics`.
+            by_route.setdefault(method, _empty_route())["latency_ms"]["sum"] = s.value * 1000.0
+
+    return {
+        "calls": total_calls,
+        "errors": total_errors,
+        "by_route": by_route,
+    }
+
+
 def histogram_quantile(
     q: float, buckets: Sequence[tuple[float | int, float | int]]
 ) -> float | None:

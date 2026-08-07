@@ -199,7 +199,11 @@ class ScrapeTarget(BaseModel):
     )
     kind: str = Field(
         default="http_red",
-        description="Roll-up strategy. Currently only 'http_red' is supported (HTTP rate/error/duration).",
+        description=(
+            "Roll-up strategy: 'http_red' (HTTP rate/error/duration, e.g. "
+            "prometheus-fastapi-instrumentator) or 'grpc_red' (gRPC RED, e.g. the "
+            "OpenShell gateway's *_grpc_requests_total + *_grpc_request_duration_seconds)."
+        ),
     )
 
 
