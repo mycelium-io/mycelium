@@ -1,0 +1,29 @@
+node_modules
+
+# Next.js build artifacts
+.next
+out
+
+# Dev/local env files (URLs injected at runtime, not build time)
+.env
+.env.*
+!.env.example
+
+# TypeScript incremental build info
+tsconfig.tsbuildinfo
+
+# Test and coverage
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+coverage
+
+# Editor/OS
+.DS_Store
+*.log
+.vscode
+.idea
+
+# Git
+.git
+.gitignore
