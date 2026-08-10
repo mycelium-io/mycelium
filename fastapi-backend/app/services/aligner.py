@@ -23,29 +23,21 @@ aligner handle arrives through the persister's summon seam — no polling, no he
 LLM connection. The cheap backend does the listening; the engine only wakes when
 called.
 
-**Two modes, once summoned:**
+**One path, once summoned: mediate.** The engine opens an episode (freezing
+membership), discovers the negotiable issues from the participants' opening prose,
+and drives a live **NEGMAS SAO** to termination — ``@``-addressing one participant
+per turn over the room channel, interpreting the real reply, and stopping the
+*instant* the mechanism reaches unanimity (the anti-theatre property). It hands
+the agreed ``issue = value`` map to the ``commit:converged`` seam ``plan_sync``
+consumes (a failed run commits ``rejected``). Deterministic scoring (MPC/GAR/SCR)
+still rides along via :mod:`l9_episode`, computed over the mediator's readings.
 
-- **Observer (one-shot):** read the room transcript, replay each participant's
-  exchange through :mod:`l9_episode`'s metric folding, score, and emit an L9
-  ``commit:converged`` (MPC ≥ threshold) or ``commit:rejected`` (below) onto the
-  channel — then sleep.
-- **Driver (takes the wheel):** open an episode (freezing membership), then run
-  up to *N* rounds — prompt each participant for a position on the channel (which
-  wakes their connector), collect the replies the persister records,
-  fold + score — stopping on convergence or the round cap, then emit the verdict
-  and close the episode (which drains any invites queued mid-episode).
-
-**Runtime note.** The verdict itself — the metrics
-and the ``commit`` envelope — is inherently backend-side (it is deterministic
-math over the transcript the backend already holds, emitted onto the channel the
-backend moderates), and the CLI's ``integration.spawn`` is not reachable from the
-backend process. So this engine runs **in-process in the backend** and reuses the
-cold-spawn runtime: the **driver** prompts participants
-by publishing on the channel, and their existing connectors cold-spawn the
-turn and reply. The engine drives the participants' spawns rather than spawning a
-judge of its own. The base-level verdict needs no LLM of its own — it is the
-threshold decision over the deterministic library — which also keeps the spawn
-cold. An LLM judgment/summary layer is post-MVP.
+**Runtime note.** This runs **in-process in the backend** — the ``commit``
+envelope is emitted onto the channel the backend moderates, and the mediator's own
+brain is a Pi agent (:mod:`app.services.pi_brain`, always Pi). Participants answer
+over the channel however they run (a daemon cold-spawn, or a server-held CLI
+``await``/``respond`` caller) — the engine only ``@``-addresses them; it never
+spawns a judge of its own.
 """
 
 from __future__ import annotations
@@ -115,21 +107,6 @@ def _registered_engine_kind(room: str, handle: str) -> str | None:
     return None
 
 
-# Epistemic fields the aligner reads off an exchange's L9 payload and hands to
-# ``l9_episode.record_reply`` verbatim (it validates/clamps each one).
-_EPISTEMIC_KEYS = (
-    "confidence",
-    "offer",
-    "evidence",
-    "supporting_evidence",
-    "against_evidence",
-    "addresses",
-    "revision_cause",
-    "deferred_to",
-    "reasoning",
-)
-
-
 def _norm(handle: str) -> str:
     """Case/space-fold a handle for identity comparison (matches the connector)."""
     return handle.strip().lower()
@@ -156,11 +133,6 @@ def _payload(content: dict[str, Any]) -> dict[str, Any]:
     return payload if isinstance(payload, dict) else {}
 
 
-def _payload_data(content: dict[str, Any]) -> dict[str, Any]:
-    data = _payload(content).get("data")
-    return data if isinstance(data, dict) else {}
-
-
 def _sender_role(content: dict[str, Any]) -> str | None:
     """Role of the first actor (the sender) on a recorded message, if any."""
     env = content.get("l9")
@@ -171,26 +143,6 @@ def _sender_role(content: dict[str, Any]) -> str | None:
         role = actors[0].get("role")
         return role if isinstance(role, str) else None
     return None
-
-
-def reply_from_content(content: dict[str, Any]) -> dict[str, Any]:
-    """Extract a ``record_reply``-shaped position from a recorded exchange.
-
-    The epistemic signals ride the exchange's L9 payload ``data`` (where the
-    connector and ``record_tick``/``record_reply`` put them). Only the fields
-    ``l9_episode`` understands are copied; it re-validates each, so garbage is
-    dropped there, not here. A missing ``action`` defaults to ``reject`` inside
-    ``record_reply``.
-    """
-    data = _payload_data(content)
-    reply: dict[str, Any] = {}
-    action = data.get("action")
-    if isinstance(action, str) and action:
-        reply["action"] = action
-    for key in _EPISTEMIC_KEYS:
-        if key in data:
-            reply[key] = data[key]
-    return reply
 
 
 class AlignerEngine:
@@ -304,11 +256,8 @@ class AlignerEngine:
     async def _run_and_release(
         self, room: str, engine_handle: str, scoped_participants: list[str] | None = None
     ) -> None:
-        # The mediator is the aligner — there is no mode to choose. A summon
-        # always drives a live NEGMAS SAO, running *as* the summoned
-        # engine handle. The observer/driver methods below survive only for the
-        # live roundtrip scripts (scripts/l9_slim_roundtrip.py) pending their
-        # removal; production never reaches them.
+        # A summon always drives a live NEGMAS SAO, running *as* the summoned
+        # engine handle. There is one path — mediate — no mode to choose.
         try:
             await self.mediate(
                 room, engine_handle=engine_handle, scoped_participants=scoped_participants
@@ -317,129 +266,6 @@ class AlignerEngine:
             logger.exception("aligner run failed on room %s", room)
         finally:
             self._active.discard(room)
-
-    # -- observer mode --
-
-    async def observe(self, room: str) -> dict[str, Any] | None:
-        """Read the transcript, score it once, and emit a verdict. One-shot."""
-        managed = self._manager.get(room)
-        if managed is None or managed.persister is None:
-            logger.info("aligner summoned for %s but no live channel/persister", room)
-            return None
-        records = managed.persister.log.records
-        ep, assignments = self._episode_from_records(managed, records)
-        converged, metrics = self._verdict(ep)
-        logger.info(
-            "aligner observed room %s → %s (%s)",
-            room,
-            "converged" if converged else "rejected",
-            metrics,
-        )
-        return await self._emit_verdict(managed, ep, assignments, converged, metrics)
-
-    # -- driver mode --
-
-    async def drive(self, room: str) -> dict[str, Any] | None:
-        """Run up to N rounds of prompt→collect→score, then emit a verdict.
-
-        Opens an episode so a mid-run membership change aborts it (frozen
-        membership); always closes it in ``finally`` so queued invites drain even
-        when a round times out.
-        """
-        managed = self._manager.get(room)
-        if managed is None or managed.persister is None:
-            logger.info("aligner (driver) summoned for %s but no live channel/persister", room)
-            return None
-        persister = managed.persister
-        participants = [m for m in self._manager.members(room) if _norm(m) != _norm(self._handle)]
-        episode_id = _new_episode_id()
-        episode = l9.episode_urn(room, episode_id)
-        topic = l9.topic_urn(room)
-
-        self._manager.open_episode(room, episode)
-        ep = l9_episode.open_episode(
-            parent_room=room,
-            short_id=episode_id,
-            workspace_id=managed.workspace,
-            mas_id="",
-            agents=participants,
-            joined_intents="aligner drive: converge on the open question",
-        )
-        assignments: dict[str, Any] = {}
-        converged = False
-        metrics: dict[str, Any] | None = None
-        try:
-            for round_n in range(1, self._max_rounds + 1):
-                before = len(persister.log.records)
-                await self._prompt_round(managed, participants, episode, topic, round_n)
-                replies = await self._collect_round(persister, participants, before)
-                for handle, record in replies.items():
-                    self._fold(ep, assignments, handle, record, round_n)
-                converged, metrics = self._verdict(ep)
-                logger.info(
-                    "aligner driver room %s round %d → %s (%s)",
-                    room,
-                    round_n,
-                    "converged" if converged else "continuing",
-                    metrics,
-                )
-                if converged:
-                    break
-            return await self._emit_verdict(managed, ep, assignments, converged, metrics)
-        finally:
-            await self._manager.close_episode(room)
-
-    async def _prompt_round(
-        self,
-        managed: ManagedRoomChannel,
-        participants: list[str],
-        episode: str,
-        topic: str,
-        round_n: int,
-    ) -> None:
-        """Publish a per-participant position prompt (wakes their connector)."""
-        for handle in participants:
-            env = l9.build_envelope(
-                kind=l9.Kind.exchange,
-                episode=episode,
-                recipients=[handle],
-                topic=topic,
-                payload_type="tick",
-                payload_data={"round": round_n, "action": "position"},
-            )
-            text = (
-                f"@{handle} — round {round_n}: state your position and confidence "
-                f"(0.0-1.0) on the open question."
-            )
-            try:
-                await managed.channel.send(env, extra={"content": text})
-            except Exception:
-                logger.warning("aligner failed to prompt @%s (round %d)", handle, round_n)
-
-    async def _collect_round(
-        self, persister: RoomPersister, participants: list[str], before: int
-    ) -> dict[str, TranscriptRecord]:
-        """Poll the transcript for each participant's latest post-prompt position.
-
-        Bounded by ``round_timeout_s`` so a silent participant can never hang the
-        loop; returns whatever arrived (possibly empty). Cheap: an async poll of
-        the in-memory transcript, no LLM held open.
-        """
-        pending = {_norm(p) for p in participants}
-        latest: dict[str, TranscriptRecord] = {}
-        loop = asyncio.get_running_loop()
-        deadline = loop.time() + self._round_timeout_s
-        while pending:
-            for record in persister.log.records[before:]:
-                if not self._is_position(record):
-                    continue
-                if _norm(record.sender) in pending:
-                    latest[record.sender] = record
-            pending -= {_norm(s) for s in latest}
-            if not pending or loop.time() >= deadline:
-                break
-            await asyncio.sleep(self._poll_interval_s)
-        return latest
 
     # -- mediator mode (drive a real NEGMAS SAO over SLIM) --
 
@@ -618,9 +444,7 @@ class AlignerEngine:
         """Publish one ``@handle`` prompt, wait for the reply, return its prose.
 
         Bounded by ``round_timeout_s`` (a silent agent yields ``""``, read as a
-        reject) so the mechanism can never hang on one participant. Reuses the
-        publish shape of ``_prompt_round`` and the poll of ``_collect_round`` for
-        a single addressee.
+        reject) so the mechanism can never hang on one participant.
         """
         before = len(persister.log.records)
         env = l9.build_envelope(
@@ -710,41 +534,6 @@ class AlignerEngine:
             _norm(self._handle),
             *(_norm(h) for h in _NON_PARTICIPANTS),
         }
-
-    def _episode_from_records(
-        self, managed: ManagedRoomChannel, records: list[TranscriptRecord]
-    ) -> tuple[EpisodeState, dict[str, Any]]:
-        """Replay the transcript's positions into a fresh episode + assignments."""
-        positions = [r for r in records if self._is_position(r)]
-        agents: list[str] = []
-        for record in positions:
-            if record.sender not in agents:
-                agents.append(record.sender)
-        ep = l9_episode.open_episode(
-            parent_room=managed.room,
-            short_id=_new_episode_id(),
-            workspace_id=managed.workspace,
-            mas_id="",
-            agents=agents,
-            joined_intents="aligner observed exchange",
-        )
-        assignments: dict[str, Any] = {}
-        for record in positions:
-            self._fold(ep, assignments, record.sender, record, None)
-        return ep, assignments
-
-    def _fold(
-        self,
-        ep: EpisodeState,
-        assignments: dict[str, Any],
-        handle: str,
-        record: TranscriptRecord,
-        round_n: int | None,
-    ) -> None:
-        """Fold one position into the episode's metrics and the assignments map."""
-        reply = reply_from_content(record.content)
-        l9_episode.record_reply(ep, handle=handle, reply=reply, round_n=round_n)
-        assignments[handle] = reply.get("offer") or reply.get("action") or "accept"
 
     def _verdict(self, ep: EpisodeState) -> tuple[bool, dict[str, Any] | None]:
         """(converged, metrics). Converged ⇔ metrics exist and MPC ≥ threshold."""

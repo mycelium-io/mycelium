@@ -17,7 +17,7 @@ from typing import Any
 
 import pytest
 
-from app.services import aligner, l9, l9_episode
+from app.services import aligner, l9
 from app.services.l9_models import Kind
 from app.services.l9_slim import serialize_content
 from app.services.persister import DeliveryLog, TranscriptRecord, record_from
@@ -125,134 +125,6 @@ def _engine(manager: _FakeManager, **kw: Any) -> aligner.AlignerEngine:
     kw.setdefault("handle", "aligner")
     kw.setdefault("threshold", 0.6)
     return aligner.AlignerEngine(manager, **kw)  # type: ignore[arg-type]
-
-
-# ── observer mode ─────────────────────────────────────────────────────────────
-
-
-@pytest.mark.asyncio
-async def test_observer_emits_converged_with_correct_metrics():
-    """A high-confidence seeded transcript → commit:converged with the metrics
-    l9_episode.compute_metrics returns over the same positions."""
-    records = [
-        _position_record("agent-a", confidence=0.8, message_id="a1"),
-        _position_record("agent-b", confidence=0.9, message_id="b1"),
-    ]
-    channel = _FakeChannel()
-    persister = _FakePersister(records)
-    managed = _FakeManaged(_ROOM, "mycelium", channel, persister)
-    manager = _FakeManager(managed, ["agent-a", "agent-b", "aligner"])
-
-    verdict = await _engine(manager).observe(_ROOM)
-
-    assert verdict is not None
-    assert verdict["header"]["kind"] == "commit"
-    assert verdict["header"]["subkind"] == "converged"
-
-    # Metrics match a fresh, independent replay of the same two positions.
-    ep = l9_episode.open_episode(
-        parent_room=_ROOM,
-        short_id="live",
-        workspace_id="mycelium",
-        mas_id="",
-        agents=["agent-a", "agent-b"],
-        joined_intents="x",
-    )
-    l9_episode.record_reply(
-        ep, handle="agent-a", reply={"action": "accept", "confidence": 0.8}, round_n=None
-    )
-    l9_episode.record_reply(
-        ep, handle="agent-b", reply={"action": "accept", "confidence": 0.9}, round_n=None
-    )
-    expected = l9_episode.compute_metrics(ep)
-    assert verdict["payload"]["data"]["metrics"] == expected
-
-    # Broadcast once, and recorded once locally (drives the on_converged seam).
-    assert len(channel.sent) == 1
-    assert len(persister.ingested) == 1
-
-
-@pytest.mark.asyncio
-async def test_observer_below_threshold_emits_rejected():
-    records = [
-        _position_record("agent-a", confidence=0.2, message_id="a1"),
-        _position_record("agent-b", confidence=0.3, message_id="b1"),
-    ]
-    channel = _FakeChannel()
-    managed = _FakeManaged(_ROOM, "mycelium", channel, _FakePersister(records))
-    manager = _FakeManager(managed, ["agent-a", "agent-b"])
-
-    verdict = await _engine(manager).observe(_ROOM)
-
-    assert verdict is not None
-    assert verdict["header"]["subkind"] == "rejected"
-
-
-@pytest.mark.asyncio
-async def test_observer_ignores_human_and_engine_messages_when_scoring():
-    """A human proxy message and the engine's own handle never count as a
-    participant position (so they can't skew or stall the metrics)."""
-    records = [
-        _position_record("human", confidence=0.1, role="human", message_id="h1"),
-        _position_record("aligner", confidence=0.1, message_id="al1"),
-        _position_record("agent-a", confidence=0.9, message_id="a1"),
-        _position_record("agent-b", confidence=0.85, message_id="b1"),
-    ]
-    channel = _FakeChannel()
-    managed = _FakeManaged(_ROOM, "mycelium", channel, _FakePersister(records))
-    manager = _FakeManager(managed, ["agent-a", "agent-b"])
-
-    verdict = await _engine(manager).observe(_ROOM)
-
-    assert verdict is not None
-    assert verdict["header"]["subkind"] == "converged"
-    # Only the two agents were scored.
-    assert verdict["payload"]["data"]["metrics"]["participants"] == 2
-
-
-# ── driver mode ───────────────────────────────────────────────────────────────
-
-
-@pytest.mark.asyncio
-async def test_driver_converges_and_closes_episode():
-    persister = _FakePersister()
-    channel = _FakeChannel(persister, reply_conf=0.9)
-    managed = _FakeManaged(_ROOM, "mycelium", channel, persister)
-    manager = _FakeManager(managed, ["agent-a", "agent-b", "aligner"])
-
-    engine = _engine(manager, max_rounds=3, round_timeout_s=0.2, poll_interval_s=0.01)
-    verdict = await engine.drive(_ROOM)
-
-    assert verdict is not None
-    assert verdict["header"]["subkind"] == "converged"
-    # Opened an episode (frozen membership) and closed it (drains queued invites).
-    # Each convening gets a unique episode id, so assert the shape, not a suffix.
-    assert len(manager.opened) == 1
-    assert manager.opened[0].startswith(l9.episode_urn(_ROOM, ""))
-    assert manager.closed == [_ROOM]
-    # Converged on round 1 → prompted the two participants exactly once each.
-    prompts = [s for s, _ in channel.sent if s.header.kind == Kind.exchange]
-    assert len(prompts) == 2
-
-
-@pytest.mark.asyncio
-async def test_driver_terminates_at_round_cap_without_replies():
-    """No participant ever answers → the loop stops at the cap and rejects, never
-    hanging (bounded by round_timeout_s)."""
-    persister = _FakePersister()
-    channel = _FakeChannel(persister, reply_conf=None)  # nobody replies
-    managed = _FakeManaged(_ROOM, "mycelium", channel, persister)
-    manager = _FakeManager(managed, ["agent-a", "agent-b"])
-
-    engine = _engine(manager, max_rounds=2, round_timeout_s=0.05, poll_interval_s=0.01)
-    verdict = await asyncio.wait_for(engine.drive(_ROOM), timeout=5.0)
-
-    assert verdict is not None
-    assert verdict["header"]["subkind"] == "rejected"
-    assert manager.closed == [_ROOM]
-    # 2 rounds x 2 participants = 4 prompts before giving up.
-    prompts = [s for s, _ in channel.sent if s.header.kind == Kind.exchange]
-    assert len(prompts) == 4
 
 
 # ── summon routing ────────────────────────────────────────────────────────────
