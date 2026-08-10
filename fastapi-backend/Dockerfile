@@ -12,6 +12,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc python3-dev curl \
     && rm -rf /var/lib/apt/lists/*
 
+# Node.js + the Pi coding agent — the aligner's SAO mediator runs on a persistent
+# `pi` session (its brain), so `pi` must be on PATH in the backend runtime.
+# OpenShell sandboxing (ALIGNER_PI_OPENSHELL) is optional and layered on top.
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && npm install -g @mariozechner/pi-coding-agent \
+    && npm cache clean --force \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN pip install uv
 
 # Copy project metadata first for layer caching
