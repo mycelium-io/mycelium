@@ -29,10 +29,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.routes.episodes import router as episodes_router
-from app.routes.participate import router as participate_router
 from app.routes.invites import router as invites_router
 from app.routes.memory import router as memory_router
 from app.routes.messages import router as messages_router
+from app.routes.participate import router as participate_router
 from app.routes.plan import agent_router as agent_context_router
 from app.routes.plan import router as plan_router
 from app.routes.rooms import router as rooms_router
@@ -89,9 +89,9 @@ async def lifespan(app: FastAPI):
     app.state.aligner = AlignerEngine(room_channel_manager)
     room_channel_manager.on_summon = app.state.aligner.handle_summon
     logger.info(
-        "SIEP aligner wired (@%s, mediator brain=%s)",
+        "SIEP aligner wired (@%s, mediator brain=pi via %s)",
         app.state.aligner.handle,
-        settings.ALIGNER_BRAIN,
+        settings.ALIGNER_PI_BINARY,
     )
 
     # Wire the converged→plan→memory-sync consumer onto the same seam:

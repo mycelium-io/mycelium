@@ -3,10 +3,10 @@
 
 """A Pi-backed cognitive brain for mycelium's *internal* agents.
 
-The seam: replace the SAO mediator's stateless ``litellm.completion`` brain
-(:func:`app.services.mediator.llm_sync`) with a **persistent, optionally
-OpenShell-sandboxed Pi session**, without touching the NEGMAS loop, the SLIM
-drive, or any *user* agent's runtime. Pi is the runtime for our own cognition
+The seam: the SAO mediator's brain is a **persistent, optionally
+OpenShell-sandboxed Pi session** — the mediator has no stateless per-call
+fallback; Pi is its runtime. This touches neither the NEGMAS loop, the SLIM/HTTP
+drive, nor any *user* agent's runtime — Pi is the runtime for our own cognition
 agents only; participant agents keep whatever framework they already run.
 
 The mediator injects its brain as a callable
@@ -19,10 +19,10 @@ the brain accumulates **real durable memory across SAO rounds** — the natural
 home for the running state ``MediatedNegotiation`` threads by hand today (the
 v1→v2 "the camp counselor needs memory" lesson, now native).
 
-**Synchronous on purpose.** The mediator's LLM turns run inside NEGMAS's
-``mech.run()`` worker thread; ``llm_sync`` is blocking and so is this. We shell
-out with a blocking :func:`subprocess.run` bounded by a wall-clock timeout so one
-hung turn can never stall the negotiation.
+**Synchronous on purpose.** The mediator's brain turns run inside NEGMAS's
+``mech.run()`` worker thread, so this is blocking too. We shell out with a
+blocking :func:`subprocess.run` bounded by a wall-clock timeout so one hung turn
+can never stall the negotiation.
 
 **Serial by construction.** The mediator's turn model is strictly serial (one
 ``@handle`` at a time), so a single Pi session is never driven concurrently. Do
@@ -120,7 +120,7 @@ def parse_pi_json_output(stdout: str) -> str:
 
 
 class PiBrain:
-    """A persistent ``pi`` session presented as an ``llm_sync``-compatible callable.
+    """A persistent ``pi`` session presented as the mediator's brain callable.
 
     One instance == one ``--session`` file == one negotiation's memory. Construct
     it per :meth:`app.services.aligner.AlignerEngine.mediate` run and pass it as
@@ -191,16 +191,16 @@ class PiBrain:
     def __call__(self, prompt: str, *, system: str = "", temperature: float = 0.3) -> str:
         """Run one blocking ``pi`` turn against the persistent session.
 
-        ``temperature`` is accepted for signature-compatibility with
-        :func:`app.services.mediator.llm_sync` but Pi exposes no temperature flag,
-        so it is intentionally ignored (best-effort determinism only).
+        ``temperature`` is accepted for signature parity with the mediator's brain
+        seam but Pi exposes no temperature flag, so it is intentionally ignored
+        (best-effort determinism only).
         """
-        del temperature  # no pi CLI knob; kept for llm_sync signature parity
+        del temperature  # no pi CLI knob; kept for brain-callable signature parity
         binary = self._binary
         if shutil.which(binary) is None:
             raise PiBrainError(
-                f"`{binary}` not found on PATH — install Pi (earendil-works/pi) "
-                "or set ALIGNER_BRAIN=litellm."
+                f"`{binary}` not found on PATH — the aligner's mediator runs on Pi; "
+                "install Pi (earendil-works/pi) or set ALIGNER_PI_BINARY to its path."
             )
         cmd = self._build_command(prompt, system)
         try:

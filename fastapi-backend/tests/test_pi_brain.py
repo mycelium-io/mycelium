@@ -6,8 +6,9 @@
 Node-free and Pi-free: no real ``pi`` process is ever spawned. We exercise the
 three things that must be right for the Pi-brain seam to be trustworthy without a
 live binary — the ``pi --mode json`` output parser, the command construction
-(flags + OpenShell wrap), and the ``ALIGNER_BRAIN`` selection in the aligner —
-by monkeypatching :func:`subprocess.run` / :func:`shutil.which`. A live Pi turn
+(flags + OpenShell wrap), and the aligner's brain construction (Pi-only, or an
+injected fake) — by monkeypatching :func:`subprocess.run` / :func:`shutil.which`.
+A live Pi turn
 is a separate, guarded integration step (see the doc's honest caveats).
 """
 
@@ -20,7 +21,7 @@ from typing import Any
 
 import pytest
 
-from app.services import mediator, pi_brain
+from app.services import pi_brain
 from app.services.pi_brain import PiBrain, PiBrainError, parse_pi_json_output
 
 
@@ -192,7 +193,7 @@ def test_call_raises_on_timeout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
 
 
 def test_call_ignores_temperature(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """temperature is accepted for llm_sync parity but never reaches the CLI."""
+    """temperature is accepted for brain-callable parity but never reaches the CLI."""
     calls = _patch_run(
         monkeypatch,
         stdout=_stream({"type": "message_end", "message": {"role": "assistant", "content": "x"}}),
@@ -205,24 +206,27 @@ def test_call_ignores_temperature(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
 # ── brain selection in the aligner ──────────────────────────────────────────
 
 
-def _engine(brain: str) -> Any:
-    from app.services import aligner
-
-    # _make_brain never touches the manager, so a bare sentinel is enough.
-    return aligner.AlignerEngine(object(), brain=brain)  # type: ignore[arg-type]
-
-
-def test_make_brain_default_is_llm_sync() -> None:
-    assert _engine("litellm")._make_brain("urn:x:align") is mediator.llm_sync
-
-
-def test_make_brain_pi_builds_pi_brain(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_make_brain_default_builds_pi_brain(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The mediator brain is Pi-only: the default factory builds a PiBrain."""
     from app.config import settings
+    from app.services import aligner
 
     monkeypatch.setattr(settings, "LLM_MODEL", "anthropic/claude-sonnet-4-6")
     monkeypatch.setattr(settings, "ALIGNER_PI_BINARY", "pi")
-    brain = _engine("pi")._make_brain("urn:mycelium:episode:room:align")
+    engine = aligner.AlignerEngine(object())  # type: ignore[arg-type]
+    brain = engine._make_brain("urn:mycelium:episode:room:align")
     assert isinstance(brain, PiBrain)
     # The episode URN is slugged into a filesystem-safe per-negotiation session.
     assert brain._session_path.name == "urn-mycelium-episode-room-align.jsonl"
     assert brain._model == "anthropic/claude-sonnet-4-6"
+
+
+def test_make_brain_uses_injected_factory() -> None:
+    """A ``brain_factory`` overrides the default (how tests run node-free)."""
+    from app.services import aligner
+
+    def sentinel(*_a: object, **_k: object) -> str:
+        return "x"
+
+    engine = aligner.AlignerEngine(object(), brain_factory=lambda _ep: sentinel)  # type: ignore[arg-type]
+    assert engine._make_brain("urn:x:align") is sentinel

@@ -46,7 +46,6 @@ from typing import TYPE_CHECKING, Any
 from negmas import SAOMechanism, make_issue
 from negmas.sao import ResponseType, SAONegotiator
 
-from app.config import settings
 from app.services.offer_snap import snap_offer
 
 if TYPE_CHECKING:
@@ -54,10 +53,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Bounded LLM turns keep interpretation cheap and predictable.
-_MAX_TOKENS = 500
+# The mediator's issue-discovery runs at temperature 0 for stable JSON parsing.
 _DISCOVER_TEMPERATURE = 0.0
-_BROKER_TEMPERATURE = 0.3
 
 # Negotiation stance appended to every agent-facing prompt. Deliberately neutral:
 # the earlier "no agreement is the worst outcome … concede everything secondary"
@@ -83,43 +80,16 @@ def _extract_json(text: str) -> dict[str, Any]:
     return parsed if isinstance(parsed, dict) else {}
 
 
-def llm_sync(prompt: str, *, system: str = "", temperature: float = _BROKER_TEMPERATURE) -> str:
-    """One blocking chat completion using the configured model.
-
-    Synchronous on purpose: the mediator's LLM turns run inside NEGMAS's
-    ``mech.run()`` worker thread, and ``litellm.completion`` also avoids the
-    Bedrock ``acompletion`` breakage the plan compiler documents.
-    """
-    import litellm
-
-    kwargs: dict[str, Any] = {
-        "model": settings.LLM_MODEL,
-        "max_tokens": _MAX_TOKENS,
-        "temperature": temperature,
-        "messages": (
-            ([{"role": "system", "content": system}] if system else [])
-            + [{"role": "user", "content": prompt}]
-        ),
-    }
-    if settings.LLM_API_KEY:
-        kwargs["api_key"] = settings.LLM_API_KEY
-    if settings.LLM_BASE_URL:
-        kwargs["base_url"] = settings.LLM_BASE_URL
-    response = litellm.completion(**kwargs)
-    return response.choices[0].message.content or ""
-
-
 def discover_issues(
-    task: str, positions: dict[str, str], *, llm: Callable[..., str] | None = None
+    task: str, positions: dict[str, str], *, llm: Callable[..., str]
 ) -> list[dict[str, Any]]:
     """Mediator stage 1 — read opening prose into negotiable issues + options.
 
-    Ported from the spike's ``discover_issues``. Returns a list of
-    ``{"name": snake_case, "options": [token, ...]}``. An empty/degenerate result
-    (fewer than one issue) is a signal to the caller to bail to a rejected
-    verdict rather than build an empty mechanism.
+    ``llm`` is the mediator's brain (the Pi agent), supplied by the caller — there
+    is no built-in default. Returns a list of ``{"name": snake_case, "options":
+    [token, ...]}``. An empty/degenerate result (fewer than one issue) is a signal
+    to the caller to bail to a rejected verdict rather than build an empty mechanism.
     """
-    llm = llm or llm_sync
     opening = "\n".join(f"@{handle}: {prose}" for handle, prose in positions.items())
     out = _extract_json(
         llm(
@@ -168,7 +138,7 @@ class MediatedNegotiation:
         loop: asyncio.AbstractEventLoop,
         fetch_prose: Callable[[str, str, int], Coroutine[Any, Any, str]],
         turn_timeout_s: float,
-        llm: Callable[..., str] | None = None,
+        llm: Callable[..., str],
         on_reading: Callable[[str, dict[str, Any], bool], None] | None = None,
     ) -> None:
         self._issues = issues
@@ -178,7 +148,7 @@ class MediatedNegotiation:
         self._loop = loop
         self._fetch_prose = fetch_prose
         self._turn_timeout_s = turn_timeout_s
-        self._llm = llm or llm_sync
+        self._llm = llm
         self._on_reading = on_reading
         self.history: list[str] = []
 

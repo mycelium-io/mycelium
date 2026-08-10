@@ -212,7 +212,7 @@ class AlignerEngine:
         round_timeout_s: float | None = None,
         poll_interval_s: float | None = None,
         max_steps: int | None = None,
-        brain: str | None = None,
+        brain_factory: Callable[[str], Callable[..., str]] | None = None,
     ) -> None:
         self._manager = manager
         self._handle = handle if handle is not None else settings.ALIGNER_HANDLE
@@ -227,10 +227,11 @@ class AlignerEngine:
         self._max_steps = (
             max_steps if max_steps is not None else settings.ALIGNER_MEDIATOR_MAX_STEPS
         )
-        # Which cognitive runtime backs the mediator (an *internal*
-        # agent). "litellm" (default) or "pi". Only the engine's own brain; user
-        # participant agents are unaffected. See ``_make_brain``.
-        self._brain = brain if brain is not None else settings.ALIGNER_BRAIN
+        # Builds the mediator's brain (an *internal* Pi agent) per episode. Default
+        # (None) → a fresh per-episode :class:`~app.services.pi_brain.PiBrain`; tests
+        # inject a fake. Only the engine's own brain — user participant agents are
+        # unaffected. See ``_make_brain``.
+        self._brain_factory = brain_factory
         # Rooms with a run in flight — a re-summon while active is ignored.
         self._active: set[str] = set()
         # Strong refs to scheduled runs so they aren't GC'd mid-flight.
@@ -552,19 +553,17 @@ class AlignerEngine:
             await self._manager.close_episode(room)
 
     def _make_brain(self, episode: str) -> Callable[..., str]:
-        """Pick the mediator's cognitive runtime for this negotiation.
+        """Build the mediator's brain for this negotiation — always a Pi agent.
 
-        Default ``"litellm"`` returns the stateless
-        :func:`app.services.mediator.llm_sync` — nothing changes where Pi isn't
-        configured. ``"pi"`` returns a fresh :class:`~app.services.pi_brain.PiBrain`
-        bound to a per-episode ``--session`` file so the *internal* agent keeps
-        real memory across SAO rounds. Only the engine's own brain is swapped;
-        user participant agents are untouched (they answer over SLIM as before).
+        Default: a fresh :class:`~app.services.pi_brain.PiBrain` bound to a
+        per-episode ``--session`` file so the *internal* agent keeps real memory
+        across SAO rounds (the anti-theatre property — the mediator remembers the
+        whole haggle, not a stateless call per turn). A test injects a fake via
+        ``brain_factory``. Only the engine's own brain; user participant agents are
+        untouched (they answer over SLIM/HTTP as before).
         """
-        from app.services import mediator
-
-        if self._brain != "pi":
-            return mediator.llm_sync
+        if self._brain_factory is not None:
+            return self._brain_factory(episode)
 
         import tempfile
         from pathlib import Path

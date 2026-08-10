@@ -3,9 +3,10 @@
 
 """Unit tests for the SAO mediator (app/services/mediator.py + aligner mediate).
 
-Node-free and LLM-free: the LLM seam (``mediator.llm_sync``) is monkeypatched to
-a deterministic prompt-keyed stub and the agents are simulated by the same fake
-channel the aligner tests use. This exercises the anti-theatre property that matters —
+Node-free and LLM-free: the mediator's brain is injected as a deterministic
+prompt-keyed stub (via the aligner's ``brain_factory``) and the agents are
+simulated by the same fake channel the aligner tests use. This exercises the
+anti-theatre property that matters —
 **NEGMAS owns termination**: once the agents accept a standing offer the
 mechanism *stops*, and the aligner emits a ``commit:converged`` carrying the
 agreed ``issue = value`` map (the anti-theatre guarantee), never looping to the
@@ -42,16 +43,14 @@ def _fake_llm(prompt: str, *, system: str = "", temperature: float = 0.3) -> str
     return "Everyone is close on the cap; let's lock 30 and move."
 
 
-@pytest.fixture(autouse=True)
-def _patch_llm(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(mediator, "llm_sync", _fake_llm)
-
-
 def _engine(manager: _FakeManager, **kw: Any) -> aligner.AlignerEngine:
     kw.setdefault("handle", "aligner")
     kw.setdefault("round_timeout_s", 0.2)
     kw.setdefault("poll_interval_s", 0.01)
     kw.setdefault("max_steps", 12)
+    # The mediator brain is Pi in production; inject the deterministic fake here so
+    # the SAO runs node-free and LLM-free.
+    kw.setdefault("brain_factory", lambda _episode: _fake_llm)
     return aligner.AlignerEngine(manager, **kw)  # type: ignore[arg-type]
 
 
@@ -118,6 +117,7 @@ def test_to_outcome_snaps_near_miss_but_refuses_out_of_grid() -> None:
         loop=asyncio.new_event_loop(),
         fetch_prose=lambda h, p, r: _never(),
         turn_timeout_s=1.0,
+        llm=lambda *a, **k: "",  # unused by to_outcome, but the brain is now required
     )
     assert neg.to_outcome({"tech": "30%"}) == ("30",)  # snapped
     assert neg.to_outcome({"Tech": "30"}) == ("30",)  # key snapped too
