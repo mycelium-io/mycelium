@@ -585,7 +585,7 @@ def _render_coordination_event(msg: dict, current_identity: str) -> tuple[str | 
                 }
                 lines.append("")
                 kv = " ".join(f"{k}={v}" for k, v in example.items())
-                lines.append(f"        Reply: mycelium negotiate propose {kv}")
+                lines.append(f'        Reply: mycelium respond "propose {kv}"')
                 return "\n".join(lines), True
 
             if action == "respond":
@@ -600,7 +600,7 @@ def _render_coordination_event(msg: dict, current_identity: str) -> tuple[str | 
                 for k, v in current_offer.items():
                     lines.append(f"        {k}: {v}")
                 lines.append("")
-                lines.append("        Accept/reject/end: mycelium negotiate respond accept")
+                lines.append('        Accept/reject/end: mycelium respond "accept"')
                 return "\n".join(lines), True
 
             return f"  ⟫  CognitiveEngine [round {round_num}] — {action} ({participant_id})", True
@@ -956,9 +956,10 @@ def send(
       - Seeding a scenario for a group of agents (facilitator posts, agents respond)
       - One-way notifications without expecting a reply loop
 
-    For structured negotiation (propose/accept/reject), use `mycelium negotiate
-    propose|respond` instead. For agent-to-agent requests with a built-in
-    reply loop, use OpenClaw's `sessions_send` tool.
+    To participate in a room's coordination as a member — receive an addressed
+    turn and reply as a position — use `mycelium await` / `mycelium respond`
+    instead. For agent-to-agent requests with a built-in reply loop, use
+    OpenClaw's `sessions_send` tool.
 
     Examples:
         mycelium room send "@julia-agent please review the cache config"

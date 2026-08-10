@@ -1,32 +1,37 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""SLIM connector + wake bridge — the daemon's member half.
+"""The daemon's waker — a background consumer of the member-session core.
 
-Per ``(room, handle)`` this module holds a SLIM group subscription and, on an
-inbound L9 message addressed to the handle, **wakes** the agent — cold-spawning a
-``claude -p`` turn and publishing its reply back onto the channel as an L9
-``exchange`` (the backend persister records it, so other members see it).
+Membership (holding the SLIM subscription, keepalive, receiving addressed
+messages, publishing replies, memory sync) lives in
+:mod:`mycelium.slim.member`; this module is the one thing that is genuinely about
+*waking*: on an inbound L9 message addressed to an owned handle, it cold-spawns a
+``claude -p`` turn and publishes the turn's reply back onto the channel as an L9
+``exchange``.
 
-The dispatch **decision** machinery — ownership, ``allow_from``/budget/depth
-gates, the per-handle serial lock, control verbs, cold-spawn — comes from
-``dispatch.py``; the transport is SLIM and the reply sink is a channel publish.
-The agent's contract is unchanged: it never speaks SLIM or L9.
+:func:`run_connector` runs a :class:`~mycelium.slim.member.MemberSession` in the
+background and, for each addressed message it yields, applies the daemon-only
+concerns — ownership, ``allow_from``/budget/depth gates, the per-handle serial
+lock, control verbs, cold-spawn (from :mod:`mycelium.daemon.dispatch`). An
+already-awake caller skips all of this and participates through the foreground
+``await`` / ``respond`` commands, which sit on the same core. The agent's contract
+is unchanged: it never speaks SLIM or L9.
+
+The pure membership helpers are re-exported here under their historical names so
+callers (and tests) that reach for ``connector.should_wake`` etc. keep working —
+the single implementation lives in the core.
 """
 
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import logging
-import os
-import re
 import time
-from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-import httpx
+import httpx  # re-exported for tests that monkeypatch ``connector.httpx``  # noqa: F401
 
 from mycelium.daemon.dispatch import (
     _CONTROL_ABORT,
@@ -34,7 +39,6 @@ from mycelium.daemon.dispatch import (
     _extract_body,
     _fetch_agent_context,
     _leading_verb,
-    _normalize_sender,
     _post_log,
     _render_plan_block,
     gate_allow_from,
@@ -44,12 +48,36 @@ from mycelium.daemon.dispatch import (
     load_manifest,
     load_notes,
 )
-from mycelium.filesystem import KnowledgeApplyResult, apply_knowledge, get_room_dir
 from mycelium.integrations import get_integration
 from mycelium.integrations._spawn_common import SpawnRequest
 from mycelium.slim import l9
-from mycelium.slim.client import SlimClient, SlimReceiveTimeout, SlimUnavailableError
-from mycelium.slim.naming import DEFAULT_WORKSPACE, SlimIdentity
+
+# Historical aliases — re-exported so callers/tests that import these membership
+# helpers from ``connector`` keep working; the single implementation is the core.
+from mycelium.slim.member import (  # noqa: F401
+    KEEPALIVE_TYPE as _KEEPALIVE_TYPE,
+)
+from mycelium.slim.member import (
+    MemberSession,
+    PublishFn,
+    announce_presence,
+    apply_knowledge_message,
+    build_reply,
+    normalize_handle,
+    parse_position_marker,
+    reindex_after_knowledge,
+    should_wake,
+)
+from mycelium.slim.member import (  # noqa: F401
+    keepalive_loop as _keepalive_loop,
+)
+from mycelium.slim.member import (  # noqa: F401
+    room_episode as _room_episode,
+)
+from mycelium.slim.member import (  # noqa: F401
+    room_topic as _room_topic,
+)
+from mycelium.slim.naming import DEFAULT_WORKSPACE
 
 if TYPE_CHECKING:
     from mycelium.config import MyceliumConfig
@@ -59,51 +87,22 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("mycelium.daemon")
 
-# A content dict sink — the loop binds this to a channel broadcast; tests bind a
-# recorder. The connector always hands it a full ``{content, l9: <envelope>}``.
-PublishFn = Callable[[dict], Awaitable[None]]
+# Kept as a module alias so ``connector.should_wake``-style call sites (and the
+# gate below) fold handles the same way the core does.
+_normalize_sender = normalize_handle
 
-# Reconnect backoff after a dropped/failed subscription. The backend re-invites
-# a returning member and re-serves its missed tail (durable inbox), so a
-# reconnect is cheap and safe to retry.
-_RECONNECT_BACKOFF_S = 5.0
-
-# The presence "hello" a connector broadcasts once it is in the group. It seeds
-# the backend persister's reply route for this handle (it caches a reply context
-# per *sender*), so a connector that then drops and rejoins is re-served the tail
-# it missed. Without a first message the persister has no point-to-point route to
-# a never-spoke member — this closes that gap.
-_HELLO_TEXT = "joined the room"
-
-# SLIM marks a group member offline after 3 missed heartbeats at a 10s interval
-# (~30s) — a compile-time constant in the node, not configurable, and the bindings
-# expose no heartbeat sender for a joining participant. But *any* received message
-# resets a member's liveness (SLIM's ``notify_received_activity``). So a member
-# that only ever waits on ``receive`` (the normal idle state of a cold-spawn agent)
-# gets reaped after 30s of quiet — which silently breaks any coordination with a
-# gap longer than that (e.g. a multi-round mediated negotiation). We keep the
-# member alive by publishing a tiny keepalive well inside that window. It carries
-# ``payload_type="keepalive"`` so the backend persister skips recording it (no
-# transcript spam) and ``should_wake`` ignores it (not an addressed exchange).
-#
-# The interval must sit *comfortably* under the 3×10s window: the node increments
-# a miss every 10s, so a 20s ping races the tick and can still accrue 3 misses.
-# Default 8s (miss count never exceeds 1). Env-tunable for load/latency trade-offs.
-_KEEPALIVE_INTERVAL_S = float(os.getenv("MYCELIUM_KEEPALIVE_INTERVAL_S", "8"))
-_KEEPALIVE_TYPE = "keepalive"
-
-
-# ── Episode / topic derivation ───────────────────────────────────────────────
-# Match the backend's ``l9.episode_urn`` / ``l9.topic_urn`` forms so a reply
-# stays inside the same episode/concept the room is coordinating under.
-
-
-def _room_episode(room: str) -> str:
-    return f"urn:ioc:mycelium:episode:{room}:live"
-
-
-def _room_topic(room: str) -> str:
-    return f"urn:concept:mycelium:{room}"
+__all__ = [
+    "MemberSession",
+    "announce_presence",
+    "apply_knowledge_message",
+    "build_reply",
+    "connector_targets",
+    "handle_inbound",
+    "parse_position_marker",
+    "reindex_after_knowledge",
+    "run_connector",
+    "should_wake",
+]
 
 
 # ── Connector target discovery ───────────────────────────────────────────────
@@ -143,197 +142,7 @@ def connector_targets(
     return targets
 
 
-# ── Wake decision (pure) ─────────────────────────────────────────────────────
-
-
-def should_wake(content: dict, handle: str) -> bool:
-    """True if an inbound message should wake ``handle``.
-
-    Wakes only on an ``exchange`` (a room turn) that is **not the agent's own**
-    reply (loop guard: sender != handle) and is **addressed to the handle** —
-    either via the L9 ``participants`` recipients or a raw ``@handle`` token in
-    the human-facing text. System envelopes (``commit``/``knowledge``) are
-    observed but never spawn a turn.
-    """
-    if l9.kind_of(content) != l9.EXCHANGE_KIND:
-        return False
-    sender = l9.sender_of(content)
-    if sender is not None and _normalize_sender(sender) == _normalize_sender(handle):
-        return False
-    norm = _normalize_sender(handle)
-    if any(_normalize_sender(r) == norm for r in l9.recipients_of(content)):
-        return True
-    text = l9.human_text_of(content)
-    return _mentions(text, handle)
-
-
-def _mentions(text: str, handle: str) -> bool:
-    """True if ``text`` contains an ``@handle`` token (not mid-word)."""
-    lower = text.lower()
-    needle = f"@{handle.lower()}"
-    idx = lower.find(needle)
-    if idx == -1:
-        return False
-    end = idx + len(needle)
-    nxt = lower[end] if end < len(lower) else ""
-    return not (nxt and (nxt.isalnum() or nxt in "_-"))
-
-
-# ── Reply building ───────────────────────────────────────────────────────────
-
-
-# An agent volunteers a negotiation position by ending its reply with a marker
-# like ``[[mycelium: confidence=0.85 stance=accept]]``. The connector lifts those
-# fields onto the exchange's L9 payload so the aligner can score convergence
-# (without them every position folds to a reject — MPC is undefined). The marker
-# is stripped before the reply is posted, so the room shows clean prose.
-_POSITION_MARKER_RE = re.compile(r"\[\[\s*mycelium\s*:(.*?)\]\]", re.IGNORECASE | re.DOTALL)
-_STANCE_TO_ACTION = {
-    "accept": "accept",
-    "agree": "accept",
-    "yes": "accept",
-    "reject": "reject",
-    "block": "reject",
-    "no": "reject",
-}
-
-
-def parse_position_marker(text: str) -> tuple[dict[str, Any], str]:
-    """Split an agent reply into (epistemic payload, human-facing text).
-
-    Lifts ``confidence`` (a 0–1 float) and ``stance`` (→ L9 ``action``) out of any
-    ``[[mycelium: …]]`` markers and strips every marker from the text. Forgiving
-    by design — a malformed value is dropped, not raised, mirroring the backend's
-    ``l9_episode.sanitize_epistemic_fields``. No marker → ``({}, text)`` (a plain
-    reply, unchanged behaviour).
-    """
-    payload: dict[str, Any] = {}
-    for match in _POSITION_MARKER_RE.finditer(text):
-        for key, raw in re.findall(r"(\w+)\s*=\s*(\S+)", match.group(1)):
-            k = key.lower()
-            if k == "confidence":
-                try:
-                    val = float(raw)
-                except ValueError:
-                    continue
-                if 0.0 <= val <= 1.0:
-                    payload["confidence"] = val
-            elif k in ("stance", "action"):
-                action = _STANCE_TO_ACTION.get(raw.lower())
-                if action:
-                    payload["action"] = action
-    clean = _POSITION_MARKER_RE.sub("", text).strip() or text.strip()
-    return payload, clean
-
-
-def build_reply(
-    *, handle: str, room: str, woke: dict, text: str, message_id: str | None = None
-) -> dict:
-    """Build the L9 ``exchange`` reply content for ``handle``, parented on ``woke``.
-
-    Threads causality (``parents = [woke message id]``) and stays in the woke
-    message's episode/topic so the backend's causal buffer + transcript remain
-    correct. Any volunteered position marker in ``text`` is lifted into the L9
-    payload (so the aligner can score it) and stripped from the posted prose.
-    """
-    payload_data, clean_text = parse_position_marker(text)
-    woke_id = l9.message_id_of(woke)
-    sender = l9.sender_of(woke)
-    return l9.build_reply_content(
-        sender=handle,
-        recipients=[sender] if sender else [],
-        episode=l9.episode_of(woke) or _room_episode(room),
-        parents=[woke_id] if woke_id else [],
-        topic=l9.topic_of(woke) or _room_topic(room),
-        text=clean_text,
-        payload_data=payload_data or None,
-        message_id=message_id,
-    )
-
-
-# ── Memory sync ──────────────────────────────────────────────────────────────
-
-
-def apply_knowledge_message(room: str, content: dict) -> KnowledgeApplyResult | None:
-    """Write a ``knowledge`` message's carried memory into the local store.
-
-    The message *carries* the markdown, so this is a pure local file write —
-    never a fetch back over HTTP. Returns the
-    :class:`~mycelium.filesystem.KnowledgeApplyResult` (or ``None`` when the
-    message carried no write) so the caller can trigger a reindex on a real apply.
-
-    Reindexing the JSONL is **not** done here: on the moderator host the always-on
-    backend's file watcher re-embeds a write, but a member host that runs a
-    daemon-only knows no watcher — so the connector reindexes explicitly after a
-    successful apply (see :func:`reindex_after_knowledge`), so search sees the new
-    content.
-
-    Conflict policy is enforced in :func:`mycelium.filesystem.apply_knowledge`
-    (last-write-wins; a stale-base write is kept out, logged, and dropped).
-    """
-    data = l9.payload_data_of(content)
-    key = data.get("key")
-    body = data.get("content")
-    if not isinstance(key, str) or not key or not isinstance(body, str):
-        log.debug("knowledge message in %s carried no memory write — ignoring", room)
-        return None
-    try:
-        version = int(data.get("version", 1))
-    except (TypeError, ValueError):
-        version = 1
-    created_by = str(data.get("created_by") or "CognitiveEngine")
-    updated_by = str(data.get("updated_by") or created_by)
-    result = apply_knowledge(
-        get_room_dir(room),
-        key=key,
-        content=body,
-        version=version,
-        created_by=created_by,
-        updated_by=updated_by,
-    )
-    if result.conflict:
-        cur = result.current or {}
-        log.warning(
-            "knowledge write to %s/%s rejected (stale base): local v%s by %s at %s (incoming v%s)",
-            room,
-            key,
-            cur.get("version"),
-            cur.get("updated_by"),
-            cur.get("updated_at"),
-            version,
-        )
-    elif result.applied:
-        log.info("knowledge write applied: %s/%s (v%d)", room, key, version)
-    return result
-
-
-async def reindex_after_knowledge(config: MyceliumConfig, room: str) -> None:
-    """Re-embed a room's markdown into its JSONL index after a knowledge apply.
-
-    The receiver half of memory sync writes canonical markdown; the JSONL search
-    index is derived and must be refreshed or the member host's ``memory search``
-    never sees the new content. On the moderator host a file
-    watcher would do this; a member host that runs no watcher relies on the
-    connector calling its backend's reindex endpoint here.
-
-    The CLI has no local embedder (embeddings live in the backend), so — like
-    ``mycelium memory reindex`` — this is an HTTP call to the co-located backend,
-    scoped to the one room. **Best-effort:** a reindex failure must never sink the
-    write (the markdown is already durable and rebuildable), so it is logged and
-    swallowed. Reindex is idempotent, so a retry-on-reconnect re-serve is safe.
-    """
-    api_url = config.server.api_url
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.post(f"{api_url}/api/rooms/{room}/reindex")
-            resp.raise_for_status()
-    except Exception as exc:  # noqa: BLE001 - reindex is best-effort; markdown is canonical
-        log.warning("reindex after knowledge write failed for room %s: %s", room, exc)
-        return
-    log.debug("reindexed room %s after knowledge write", room)
-
-
-# ── Per-message dispatch (transport-agnostic) ────────────────────────────────
+# ── Per-message dispatch (the waking half) ───────────────────────────────────
 
 
 async def handle_inbound(
@@ -348,17 +157,11 @@ async def handle_inbound(
 ) -> None:
     """Wake ``handle`` for an inbound message and publish its reply.
 
-    Mirrors ``dispatch.on_message`` + ``_dispatch_one`` but SLIM-native: the
-    ownership check is implicit (this connector owns ``handle``), control verbs
-    and gates are unchanged, and the reply is published to the channel rather
-    than POSTed over HTTP.
+    The live daemon path never hands a ``knowledge`` message here (the core
+    applies + swallows it as memory sync). The branch below stays so a direct
+    caller can route one, and so the two behave identically: both delegate to the
+    same :func:`apply_knowledge_message` / :func:`reindex_after_knowledge`.
     """
-    # Memory sync: a ``knowledge`` message carries markdown content —
-    # write it into the local store so the agent's working set updates mid-task.
-    # It never wakes a turn. Co-located connectors each apply it, but the apply is
-    # idempotent by version, so only the first actually writes; the rest skip.
-    # On a real write, reindex so a member host with no file watcher still surfaces
-    # the new content in search (closes the daemon-only reindex gap).
     if l9.kind_of(content) == l9.KNOWLEDGE_KIND:
         result = apply_knowledge_message(room, content)
         if result is not None and result.applied and config is not None:
@@ -375,9 +178,9 @@ async def handle_inbound(
 
     # Host-run engine: an ``@``-summon of a first-party engine runs the NEGMAS
     # drive over *this* connector's session rather than cold-spawning a
-    # subprocess. The drive registers a queue on the daemon state;
-    # the receive loop then routes agent replies into it. Skips the cold-spawn
-    # gates/verbs below — an engine drive is one long-lived turn, not a spawn.
+    # subprocess. The drive registers a queue on the daemon state; the receive
+    # loop then routes agent replies into it. Skips the cold-spawn gates/verbs
+    # below — an engine drive is one long-lived turn, not a spawn.
     if manifest.adapter == "engine":
         from mycelium.integrations.engine.host import dispatch_engine
 
@@ -556,57 +359,7 @@ async def _reply(publish: PublishFn, handle: str, room: str, woke: dict, text: s
     await publish(build_reply(handle=handle, room=room, woke=woke, text=text))
 
 
-# ── Presence: self-rejoin + idle keepalive ───────────────────────────────────
-
-
-async def announce_presence(config: MyceliumConfig, room: str, handle: str) -> None:
-    """Announce ``handle`` to the backend so it (re)invites the connector.
-
-    Called on every (re)connect *before* ``listen_for_session``. The backend's
-    join endpoint (re)invites the handle onto the room's SLIM group — so a member
-    that was dropped while the laptop slept (or on any session close) rejoins on
-    its own, and the durable inbox re-serves the tail it missed, without waiting
-    for a human ``@mention``. Best-effort: no backend / no-node dev just means the
-    connector falls back to waiting to be invited, exactly as before.
-    """
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.post(
-                f"{config.server.api_url}/api/rooms/{room}/sessions",
-                json={"agent_handle": handle},
-            )
-            resp.raise_for_status()
-    except Exception as exc:  # noqa: BLE001 - presence announce is best-effort
-        log.debug("announce presence for %s/%s failed (best-effort): %s", room, handle, exc)
-
-
-async def _keepalive_loop(publish: PublishFn, room: str, handle: str, state: DaemonState) -> None:
-    """Publish a keepalive on the session every ``_KEEPALIVE_INTERVAL_S`` while alive.
-
-    Keeps SLIM from reaping an idle-but-connected member (see ``_KEEPALIVE_TYPE``).
-    Runs until cancelled (session drop / shutdown) or a publish fails — the receive
-    loop owns reconnect, so a failed keepalive just ends this task quietly.
-    """
-    while not state.stopping.is_set():
-        await asyncio.sleep(_KEEPALIVE_INTERVAL_S)
-        try:
-            log.debug("keepalive → %s/%s", room, handle)
-            await publish(
-                l9.build_reply_content(
-                    sender=handle,
-                    recipients=[],
-                    episode=_room_episode(room),
-                    parents=[],
-                    topic=_room_topic(room),
-                    text="",
-                    payload_type=_KEEPALIVE_TYPE,
-                )
-            )
-        except Exception:  # noqa: BLE001 - session dropping; receive loop handles reconnect
-            return
-
-
-# ── The long-lived member loop ───────────────────────────────────────────────
+# ── The long-lived waker loop ────────────────────────────────────────────────
 
 
 async def run_connector(
@@ -619,111 +372,47 @@ async def run_connector(
     endpoint: str | None = None,
     workspace: str = DEFAULT_WORKSPACE,
 ) -> None:
-    """Hold ``handle``'s SLIM subscription in ``room`` and wake it on inbound L9.
+    """Hold ``handle``'s SLIM membership in ``room`` and wake it on inbound L9.
 
-    Connects the member app, waits to be invited by the backend moderator, sends
-    a presence hello (seeding the durable-inbox route), then pumps ``get_message``
-    forever — spawning owned turns off the loop so control verbs (abort/status)
-    stay responsive while a turn runs. Reconnects on drop; the backend re-serves
-    the missed tail.
+    Runs a :class:`~mycelium.slim.member.MemberSession` — which owns connect,
+    keepalive, reconnect + re-serve, and memory sync — and for each addressed
+    message it yields, spawns the owned turn off the loop so control verbs
+    (abort/status) stay responsive while a turn runs.
     """
-    node = endpoint or config.slim.node_endpoint
-    identity = SlimIdentity(workspace, room, handle)
-
-    while not state.stopping.is_set():
-        client: SlimClient | None = None
-        keepalive_task: asyncio.Task[None] | None = None
-        try:
-            client = await SlimClient(identity).connect(node)
-            # Self-rejoin: tell the backend we're (re)connecting so it invites us —
-            # a slept/dropped member rejoins without needing a fresh @mention.
-            await announce_presence(config, room, handle)
-            session = await client.listen_for_session()
-            log.info("connector joined: %s/%s", room, handle)
-            state.rooms_connected.add(room)
-
-            async def publish(content: dict, _session=session, _client=client) -> None:
-                await SlimClient.publish(_session, l9.serialize(content))
-
-            # Keep the member alive through idle gaps (SLIM reaps quiet members
-            # after ~30s — see _KEEPALIVE_TYPE). Cancelled in ``finally`` on drop.
-            keepalive_task = asyncio.create_task(_keepalive_loop(publish, room, handle, state))
-
-            # Seed the re-serve route so a later reconnect is re-served its tail.
-            await publish(
-                l9.build_reply_content(
-                    sender=handle,
-                    recipients=[],
-                    episode=_room_episode(room),
-                    parents=[],
-                    topic=_room_topic(room),
-                    text=_HELLO_TEXT,
-                    payload_type="presence",
-                )
+    session = MemberSession(
+        config,
+        room,
+        handle,
+        endpoint=endpoint,
+        workspace=workspace,
+        stopping=state.stopping,
+        on_error=state.record_error,
+        on_connected=lambda: state.rooms_connected.add(room),
+        on_disconnected=lambda: state.rooms_connected.discard(room),
+    )
+    async for content in session.messages():
+        # Drive-active routing: while this handle is a host engine driving a
+        # negotiation, inbound agent replies (addressed to the engine) belong to
+        # the drive, not a re-dispatch. Hand them to the drive's queue and skip
+        # the normal wake path.
+        drive_queue = state.active_drives.get(handle)
+        if drive_queue is not None:
+            drive_queue.put_nowait(content)
+            continue
+        asyncio.create_task(  # noqa: RUF006 - fire-and-forget; loop stays responsive
+            _guarded_inbound(
+                config=config,
+                daemon_cfg=daemon_cfg,
+                state=state,
+                room=room,
+                handle=handle,
+                content=content,
+                publish=session.publish,
             )
-
-            while not state.stopping.is_set():
-                try:
-                    message = await SlimClient.receive_message(session)
-                except SlimReceiveTimeout:
-                    # Idle window elapsed with no message — the session is alive,
-                    # just quiet. Keep waiting on it; do NOT fall through to the
-                    # reconnect path, which would drop and rejoin the group every
-                    # timeout window and churn membership (participant flapping).
-                    continue
-                content = l9.parse(message.payload)
-                if content is None:
-                    continue
-                if l9.payload_type_of(content) == _KEEPALIVE_TYPE:
-                    continue  # another member's liveness ping — never wakes or drives
-                # Drive-active routing: while this handle is
-                # a host engine driving a negotiation, inbound agent replies
-                # (addressed to the engine) belong to the drive, not a re-dispatch.
-                # Hand them to the drive's queue and skip the normal wake path.
-                drive_queue = state.active_drives.get(handle)
-                if drive_queue is not None:
-                    drive_queue.put_nowait(content)
-                    continue
-                asyncio.create_task(  # noqa: RUF006 - fire-and-forget; loop stays responsive
-                    _guarded_inbound(
-                        config=config,
-                        daemon_cfg=daemon_cfg,
-                        state=state,
-                        room=room,
-                        handle=handle,
-                        content=content,
-                        publish=publish,
-                    )
-                )
-        except asyncio.CancelledError:
-            raise
-        except SlimUnavailableError:  # pragma: no cover - platform dependent
-            log.warning("slim-bindings unavailable; connector for %s/%s disabled", room, handle)
-            return
-        except Exception as exc:  # noqa: BLE001 - resilient reconnect loop
-            state.record_error(f"connector[{room}/{handle}]", exc)
-            log.warning(
-                "connector %s/%s error: %s — reconnecting in %.0fs",
-                room,
-                handle,
-                exc,
-                _RECONNECT_BACKOFF_S,
-            )
-        finally:
-            if keepalive_task is not None:
-                keepalive_task.cancel()
-                with contextlib.suppress(asyncio.CancelledError, Exception):
-                    await keepalive_task
-            state.rooms_connected.discard(room)
-            if client is not None:
-                await client.close()
-
-        if state.stopping.is_set():
-            return
-        await asyncio.sleep(_RECONNECT_BACKOFF_S)
+        )
 
 
-async def _guarded_inbound(**kwargs) -> None:
+async def _guarded_inbound(**kwargs: Any) -> None:
     """Run :func:`handle_inbound`, logging (never raising) on failure."""
     state: DaemonState = kwargs["state"]
     room, handle = kwargs["room"], kwargs["handle"]

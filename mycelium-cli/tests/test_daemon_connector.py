@@ -29,7 +29,7 @@ from mycelium.daemon.config import DaemonConfig
 from mycelium.daemon.state import DaemonState, RunningProc
 from mycelium.integrations._spawn_common import SpawnResult
 from mycelium.protocol import AgentManifest
-from mycelium.slim import l9
+from mycelium.slim import l9, member
 
 
 @pytest.fixture(autouse=True)
@@ -378,7 +378,7 @@ async def test_run_connector_uses_configured_remote_node_endpoint(monkeypatch):
             # Break out of run_connector's reconnect loop cleanly.
             raise SlimUnavailableError("no wheel in test")
 
-    monkeypatch.setattr(connector, "SlimClient", _FakeClient)
+    monkeypatch.setattr(member, "SlimClient", _FakeClient)
 
     config = MyceliumConfig(
         server=ServerConfig(api_url="http://localhost:8000"),

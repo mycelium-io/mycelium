@@ -26,6 +26,7 @@ from mycelium.commands import (
     memory,
     metrics,
     openshell,
+    participate,
     plan,
     room,
     ui,
@@ -133,6 +134,10 @@ app.command(name="logs")(instance.logs)
 app.command(name="watch")(room.watch)
 app.command(name="sync")(memory.memory_sync)
 app.command(name="connect")(hub.connect)
+
+# Participation primitives — join a room's SLIM channel and reply, no daemon.
+app.command(name="await")(participate.await_room)
+app.command(name="respond")(participate.respond)
 
 # Command groups
 app.add_typer(room.app, name="room")

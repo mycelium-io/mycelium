@@ -19,9 +19,8 @@ from typing import Any
 import pytest
 
 from mycelium.daemon import connector
-from mycelium.daemon.state import DaemonState
 from mycelium.engine.runtime import EngineDrive
-from mycelium.slim import l9
+from mycelium.slim import l9, member
 
 
 def _keepalive(sender: str = "growth") -> dict:
@@ -41,37 +40,36 @@ def _keepalive(sender: str = "growth") -> dict:
 
 @pytest.mark.asyncio
 async def test_keepalive_loop_publishes_ping(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(connector, "_KEEPALIVE_INTERVAL_S", 0.01)
+    monkeypatch.setattr(member, "KEEPALIVE_INTERVAL_S", 0.01)
     published: list[dict] = []
 
     async def publish(c: dict) -> None:
         published.append(c)
 
-    state = DaemonState()
-    task = asyncio.create_task(connector._keepalive_loop(publish, "r", "agent-a", state))
+    stopping = asyncio.Event()
+    task = asyncio.create_task(member.keepalive_loop(publish, "r", "agent-a", stopping))
     await asyncio.sleep(0.05)
-    state.stopping.set()
+    stopping.set()
     task.cancel()
     with contextlib.suppress(asyncio.CancelledError):
         await task
 
     assert published, "keepalive loop should have published at least one ping"
     ping = published[0]
-    assert l9.payload_type_of(ping) == connector._KEEPALIVE_TYPE
+    assert l9.payload_type_of(ping) == member.KEEPALIVE_TYPE
     assert l9.sender_of(ping) == "agent-a"
 
 
 @pytest.mark.asyncio
 async def test_keepalive_loop_stops_on_publish_failure(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(connector, "_KEEPALIVE_INTERVAL_S", 0.01)
+    monkeypatch.setattr(member, "KEEPALIVE_INTERVAL_S", 0.01)
 
     async def publish(_c: dict) -> None:
         raise RuntimeError("session dropping")
 
-    state = DaemonState()
-    # A failed keepalive ends the loop cleanly (the receive loop owns reconnect) —
-    # it must return, not raise or hang.
-    await asyncio.wait_for(connector._keepalive_loop(publish, "r", "a", state), timeout=1.0)
+    # A failed keepalive ends the loop cleanly (the message stream owns reconnect)
+    # — it must return, not raise or hang.
+    await asyncio.wait_for(member.keepalive_loop(publish, "r", "a", asyncio.Event()), timeout=1.0)
 
 
 # ── keepalive never wakes or drives ──────────────────────────────────────────
