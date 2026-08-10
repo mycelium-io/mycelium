@@ -30,6 +30,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
@@ -154,6 +155,14 @@ class RoomChannelManager:
         self.on_summon: RoomSummonHook | None = None
         self.on_converged: RoomConvergedHook | None = None
         self._metrics = ChannelMetrics()
+        # Server-held presence: a handle that participates over HTTP (the CLI
+        # ``await``/``respond`` long-poll) never holds a client SLIM connection,
+        # so it isn't in ``managed.members``. The backend keeps it "present" via a
+        # lease (room → handle → monotonic expiry), refreshed on every await/reply,
+        # and unions it into ``members`` so the mediator's roster includes it. This
+        # is how a turn-based agent (a Claude session) is a first-class member
+        # without holding a socket between turns.
+        self._leases: dict[str, dict[str, float]] = {}
         # Set during teardown so a persister task ending is recognized as
         # intentional (no restart) rather than a crash to recover from.
         self._closing = False
@@ -200,9 +209,42 @@ class RoomChannelManager:
         return room in self._channels
 
     def members(self, room: str) -> list[str]:
-        """Agent handles currently on the room channel (moderator excluded)."""
+        """Agent handles present in ``room`` — SLIM members plus server-held leases.
+
+        A client-connected agent shows up in ``managed.members`` (SLIM presence); a
+        server-held agent (HTTP ``await`` long-poll) shows up via a live lease. The
+        mediator's roster is this union, so both kinds are first-class participants.
+        """
         managed = self._channels.get(room)
-        return sorted(managed.members) if managed is not None else []
+        slim_members = set(managed.members) if managed is not None else set()
+        return sorted(slim_members | self._live_leases(room))
+
+    def _live_leases(self, room: str) -> set[str]:
+        """Handles with an unexpired presence lease in ``room``."""
+        now = time.monotonic()
+        leases = self._leases.get(room)
+        if not leases:
+            return set()
+        live = {h for h, exp in leases.items() if exp > now}
+        # Opportunistically drop expired leases so the map doesn't grow forever.
+        if len(live) != len(leases):
+            self._leases[room] = {h: leases[h] for h in live}
+        return live
+
+    def refresh_lease(self, room: str, handle: str, ttl_s: float = 180.0) -> None:
+        """Mark ``handle`` server-held-present in ``room`` for ``ttl_s`` seconds.
+
+        Called on every ``await``/``reply`` so an actively-participating agent stays
+        in the roster; a generous TTL keeps it present through its own think time
+        (and avoids a mid-episode membership flap) while a truly-gone agent lapses.
+        """
+        self._leases.setdefault(room, {})[handle] = time.monotonic() + ttl_s
+
+    def drop_lease(self, room: str, handle: str) -> None:
+        """Release a server-held presence lease (agent explicitly left)."""
+        leases = self._leases.get(room)
+        if leases is not None:
+            leases.pop(handle, None)
 
     async def provision(
         self, room: str, *, workspace: str | None = None
