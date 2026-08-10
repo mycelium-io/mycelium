@@ -7,6 +7,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Group as PanelGroup, Panel, Separator as PanelResizeHandle } from "react-resizable-panels";
 import { fetchMessages, getSSEUrl, logFetchError } from "@/lib/api";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { TopicSummary, type JoinIntent } from "@/components/topic-summary";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1015,6 +1016,15 @@ export function SessionView({ sessionRoom }: SessionViewProps) {
   const messages = useSessionMessages(sessionRoom);
   const derived = useMemo(() => deriveState(messages), [messages]);
 
+  // Extract join intents from derived events so TopicSummary can render them.
+  const joinIntents: JoinIntent[] = useMemo(
+    () =>
+      derived.events
+        .filter(e => e.action === "join" && e.note)
+        .map(e => ({ agent: e.agent, intent: e.note as string })),
+    [derived.events],
+  );
+
   return (
     <PanelGroup
       orientation="horizontal"
@@ -1024,6 +1034,13 @@ export function SessionView({ sessionRoom }: SessionViewProps) {
       <Panel id="main" defaultSize={60} minSize={25} className="overflow-hidden" style={{ minWidth: 0 }}>
         <ScrollArea className="h-full w-full" style={{ minWidth: 0 }}>
           <HeaderRow sessionRoom={sessionRoom} derived={derived} />
+          {joinIntents.length > 0 && (
+            <TopicSummary
+              intents={joinIntents}
+              issueOptions={derived.issueOptions}
+              variant="session"
+            />
+          )}
           <SwimLanes derived={derived} />
           <NegotiationSpace derived={derived} />
           {derived.consensus && (

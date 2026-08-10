@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { getSSEUrl, fetchMessages, fetchRoomAgents, logFetchError } from "@/lib/api";
 import { MarkdownContent } from "@/components/markdown-content";
 import { RoomPlanHeader } from "@/components/room-plan-header";
+import { TopicSummary, type JoinIntent, type SessionOutcome } from "@/components/topic-summary";
 
 interface Event {
   id: string;
@@ -261,6 +262,53 @@ export function EventStream({ roomName, onMemoryChanged, planRefreshTrigger = 0 
     [events],
   );
 
+  // Derive topic summary data from room-level messages.
+  // coordination_join events are mirrored to the parent room so agents' initial
+  // positions are available here without fetching the child session separately.
+  const roomJoinIntents: JoinIntent[] = useMemo(() => {
+    const seen = new Set<string>();
+    const out: JoinIntent[] = [];
+    for (const ev of events) {
+      if (ev.type !== "coordination_join") continue;
+      const handle = (ev.raw.handle as string | undefined) ?? ev.sender;
+      const intent = (ev.raw.intent as string | undefined) ?? "";
+      if (!intent || seen.has(handle)) continue;
+      seen.add(handle);
+      out.push({ agent: handle, intent });
+    }
+    return out;
+  }, [events]);
+
+  const roomOutcomes: SessionOutcome[] = useMemo(() => {
+    return events
+      .filter(ev => ev.type === "coordination_consensus")
+      .map(ev => {
+        const session = (ev.raw.session as string | undefined) ?? "";
+        const sessionId = session.split(":").pop() ?? session;
+        return {
+          sessionId,
+          broken: ev.raw.broken === true,
+          plan: (ev.raw.plan as string | undefined) ?? "",
+        };
+      });
+  }, [events]);
+
+  // Extract issue options from coordination_tick events — these are the CognitiveEngine's
+  // structured framing of what's being decided ("Friday ship", "kill switch", etc.)
+  // and make a much better topic headline than any single agent's position.
+  // Ticks aren't shown in the channel view but are present in the events array.
+  const roomIssueOptions = useMemo<Record<string, string[]> | null>(() => {
+    for (const ev of events) {
+      if (ev.type !== "coordination_tick") continue;
+      const tick = (ev.raw.payload as Record<string, unknown> | undefined) ?? ev.raw;
+      const opts = tick?.issue_options;
+      if (opts && typeof opts === "object" && Object.keys(opts as object).length > 0) {
+        return opts as Record<string, string[]>;
+      }
+    }
+    return null;
+  }, [events]);
+
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-stretch border-b border-border shrink-0 h-[44px] bg-paper">
@@ -308,6 +356,14 @@ export function EventStream({ roomName, onMemoryChanged, planRefreshTrigger = 0 
           <RoomPlanHeader roomName={roomName} refreshTrigger={planRefreshTrigger} />
         ) : (
           <>
+        {roomJoinIntents.length > 0 && (
+          <TopicSummary
+            intents={roomJoinIntents}
+            issueOptions={roomIssueOptions}
+            outcomes={roomOutcomes}
+            variant="room"
+          />
+        )}
         {visible.length === 0 && (
           <div className="text-center caps-mono-sm text-muted py-16 italic">
             no channel messages yet
