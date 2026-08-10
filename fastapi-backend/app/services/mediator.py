@@ -151,6 +151,9 @@ class MediatedNegotiation:
         self._llm = llm
         self._on_reading = on_reading
         self.history: list[str] = []
+        # Last outcome we actually *read* from each proposer, so an unreadable
+        # later turn holds that agent's own line instead of fabricating one.
+        self._last_offer: dict[str, tuple[str, ...]] = {}
 
     # -- mediator LLM stages (run in the negotiator thread) --
 
@@ -259,6 +262,13 @@ class MediatedNegotiation:
             logger.warning("mediator got no reply from @%s (step %d)", handle, round_n)
             return ""
 
+    def last_offer(self, handle: str) -> tuple[str, ...] | None:
+        """The last outcome we actually read from *handle*, if any."""
+        return self._last_offer.get(handle)
+
+    def set_last_offer(self, handle: str, outcome: tuple[str, ...]) -> None:
+        self._last_offer[handle] = outcome
+
     def to_outcome(self, offer: dict[str, Any]) -> tuple[str, ...] | None:
         """Coerce an interpreted offer dict into a valid NEGMAS outcome tuple.
 
@@ -303,10 +313,23 @@ class LiveNegotiator(SAONegotiator):
             self.handle, state.current_offer, proposing=True, round_n=state.step
         )
         reading = self._neg.interpret(self.handle, prose, proposing=True)
-        outcome = self._neg.to_outcome(
-            reading.get("offer", {}) if isinstance(reading, dict) else {}
-        )
-        outcome = outcome or state.current_offer or self._neg.default_outcome()
+        read = self._neg.to_outcome(reading.get("offer", {}) if isinstance(reading, dict) else {})
+        if read is not None:
+            # Faithful read of this agent's move — record and remember it.
+            self._neg.set_last_offer(self.handle, read)
+            outcome = read
+        else:
+            # Unreadable move (silence, off-grid, garbage). Hold THIS agent's own
+            # last line, never ``state.current_offer`` — adopting the number on the
+            # table would fabricate a concession the agent never made (the phantom
+            # convergence bug). With no prior line, fall to its opening stance.
+            outcome = self._neg.last_offer(self.handle) or self._neg.default_outcome()
+            logger.info(
+                "mediator step %d: @%s unreadable → holding own line %s (not the table)",
+                state.step,
+                self.handle,
+                outcome,
+            )
         self._neg.record(f"step {state.step}: @{self.handle} proposed {outcome}")
         logger.info("mediator step %d: @%s PROPOSE %s", state.step, self.handle, outcome)
         return outcome

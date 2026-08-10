@@ -38,6 +38,29 @@ def test_snap_refuses_distinct_numbers() -> None:
     assert snap("blue", ["red", "green"]) is None
 
 
+def test_snap_numeric_between_grid_points_to_nearest() -> None:
+    """THE phantom-convergence fix: a real counter that lands between grid points
+    ('28' against {20,25,30,35,40}) snaps to the nearest option ('30'), not dropped.
+    difflib scores '28' vs '30' at 0, so string-tier snapping would have refused it
+    → the proposer would be recorded as holding the standing offer (fabricated)."""
+    grid = ["20", "25", "30", "35", "40"]
+    assert snap("28", grid) == "30"  # 0.4 steps from 30 — clear nearest
+    assert snap("32", grid) == "30"  # nearest is 30, not 35
+    assert snap("33", grid) == "35"
+    assert snap("27", grid) == "25"
+
+
+def test_snap_numeric_refuses_off_grid_and_ties() -> None:
+    """Numeric snapping still refuses to fabricate: a value far off the grid, and a
+    genuine midpoint tie (equidistant from two options → a discovery gap, not a
+    snap), both yield None rather than an arbitrary wrong number."""
+    grid = ["20", "25", "30", "35", "40"]
+    assert snap("100", grid) is None  # >1 step past the top → off-grid
+    assert snap("5", grid) is None  # >1 step below the bottom → off-grid
+    assert snap("30", ["25", "35"]) is None  # exact midpoint, ambiguous → refuse
+    assert snap("22.5", ["20", "25"]) is None  # tie between 20 and 25
+
+
 def test_snap_offer_resolves_key_and_value() -> None:
     got = snap_offer(
         {"tech-allocation": "30%"},

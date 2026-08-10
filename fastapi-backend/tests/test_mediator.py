@@ -106,9 +106,10 @@ async def _never() -> str:  # pragma: no cover - placeholder coroutine
 
 
 def test_to_outcome_snaps_near_miss_but_refuses_out_of_grid() -> None:
-    """to_outcome rescues a formatting near-miss ('30%'→'30') so a real move
-    isn't dropped, but returns None for a value with no near-match (kept a reject,
-    never fabricated into a wrong number)."""
+    """to_outcome rescues a formatting near-miss ('30%'→'30') and snaps a real
+    numeric counter that lands between grid points to the nearest option ('27'→'25',
+    '28'→'30'), so a genuine move isn't dropped — but still returns None for a value
+    genuinely off the grid, never fabricated into a wrong number."""
     import asyncio
 
     neg = mediator.MediatedNegotiation(
@@ -119,9 +120,53 @@ def test_to_outcome_snaps_near_miss_but_refuses_out_of_grid() -> None:
         turn_timeout_s=1.0,
         llm=lambda *a, **k: "",  # unused by to_outcome, but the brain is now required
     )
-    assert neg.to_outcome({"tech": "30%"}) == ("30",)  # snapped
+    assert neg.to_outcome({"tech": "30%"}) == ("30",)  # formatting near-miss snapped
     assert neg.to_outcome({"Tech": "30"}) == ("30",)  # key snapped too
-    assert neg.to_outcome({"tech": "27"}) is None  # no near-match → real reject
+    assert neg.to_outcome({"tech": "27"}) == ("25",)  # between grid points → nearest
+    assert neg.to_outcome({"tech": "28"}) == ("30",)  # nearest is 30, not dropped
+    assert neg.to_outcome({"tech": "100"}) is None  # genuinely off-grid → real reject
+
+
+def test_propose_holds_own_line_not_the_table_when_unreadable() -> None:
+    """THE phantom-convergence guard at the proposer seam.
+
+    When an agent's proposing move can't be read onto the grid (here an off-grid
+    '999'), it must be recorded as holding ITS OWN last line — never the standing
+    offer on the table. Adopting the table's number silently converts a rejection
+    into a fabricated concession, which is exactly how the negotiation used to
+    'converge' on a value nobody actually offered.
+    """
+    import asyncio
+
+    def llm(prompt: str, *, system: str = "", temperature: float = 0.3) -> str:
+        return json.dumps({"action": "counter", "offer": {"cap": "999"}})  # off-grid
+
+    neg = mediator.MediatedNegotiation(
+        issues=[{"name": "cap", "options": ["20", "25", "30", "35", "40"]}],
+        cap=8,
+        loop=asyncio.new_event_loop(),
+        fetch_prose=lambda h, p, r: _never(),
+        turn_timeout_s=1.0,
+        llm=llm,
+    )
+    # @risk already established a real line at 25 on an earlier turn.
+    neg.set_last_offer("risk", ("25",))
+    # Bypass the SLIM/loop bridge — feed canned prose directly.
+    neg.agent_move = lambda *a, **k: "I counter with 999"  # type: ignore[method-assign]
+
+    class _State:
+        current_offer = ("40",)  # the number sitting on the table
+        step = 2
+
+    outcome = mediator.LiveNegotiator("risk", neg).propose(_State())
+    assert outcome == ("25",)  # held its OWN prior line
+    assert outcome != _State.current_offer  # NOT the table's 40 — no phantom
+
+    # And with no prior line at all, it falls to its opening stance (grid min),
+    # still never the counterpart's standing offer.
+    fresh = mediator.LiveNegotiator("newbie", neg).propose(_State())
+    assert fresh == ("20",)
+    assert fresh != _State.current_offer
 
 
 @pytest.mark.asyncio
