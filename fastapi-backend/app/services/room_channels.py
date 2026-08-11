@@ -191,7 +191,16 @@ class RoomChannelManager:
                     "pending_invites": len(self.pending_invites(room)),
                     "episode_active": managed.lifecycle.active,
                     "reserves": managed.persister.reserves if managed.persister else 0,
+                    "reserve_failures": (
+                        managed.persister.reserve_failures if managed.persister else 0
+                    ),
+                    "reserve_skipped": (
+                        managed.persister.reserve_skipped if managed.persister else 0
+                    ),
                     "receive_errors": managed.persister.receive_errors if managed.persister else 0,
+                    "transient_errors": (
+                        managed.persister.transient_errors if managed.persister else 0
+                    ),
                 }
             )
         return {

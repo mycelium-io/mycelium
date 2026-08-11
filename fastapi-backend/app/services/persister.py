@@ -488,9 +488,17 @@ class RoomPersister:
         # publishes itself (the human proxy) is recorded/fed to the bus exactly
         # once even if SLIM loops the broadcast back to the moderator.
         self._ingested_ids: set[str] = set()
-        # Health counters surfaced via RoomChannelManager.status().
+        # Health counters surfaced via RoomChannelManager.status(). ``receive_errors``
+        # is genuine (fatal) transport faults; ``transient_errors`` is recoverable
+        # membership-churn receive errors (retried, not lost) — split so the health
+        # surface distinguishes "the channel is faulting" from "the channel is
+        # churning". ``reserve_failures``/``reserve_skipped`` make the two ways a
+        # missed-message re-serve fails to land visible instead of log-only.
         self.reserves = 0
         self.receive_errors = 0
+        self.transient_errors = 0
+        self.reserve_failures = 0
+        self.reserve_skipped = 0
 
     def _persist_cursors(self) -> None:
         """Snapshot the delivery cursors to disk (best-effort, per mutation)."""
@@ -536,6 +544,7 @@ class RoomPersister:
                 handle,
                 self.room,
             )
+            self.reserve_skipped += 1
             return 0
         served = 0
         for record in missed:
@@ -544,6 +553,7 @@ class RoomPersister:
                 served += 1
             except Exception:
                 logger.exception("re-serve to %s failed at message %s", handle, record.message_id)
+                self.reserve_failures += 1
                 break
         if served:
             self.reserves += served
@@ -593,6 +603,7 @@ class RoomPersister:
                     # session still eventually gives up instead of looping forever.
                     failures = 0
                     churn += 1
+                    self.transient_errors += 1
                     if churn >= _MAX_CONSECUTIVE_TRANSIENT:
                         logger.error(
                             "persister for room %s STOPPING after %d consecutive transient "

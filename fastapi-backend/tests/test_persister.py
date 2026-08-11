@@ -302,6 +302,62 @@ async def test_reserve_without_context_is_a_noop():
     p.log.record(persister.record_from(env, serialize_content(env)), delivered_to=set())
     # agent-a missed m1 but we have no context for it → 0 re-served, no raise.
     assert await p.reserve("agent-a") == 0
+    # The skipped first-wake re-serve is now visible on the health surface.
+    assert p.reserve_skipped == 1
+    assert p.reserves == 0
+
+
+@pytest.mark.asyncio
+async def test_reserve_failure_is_counted_for_the_health_surface():
+    """A re-serve that has a route but fails to send is a lost delivery — counted
+    as reserve_failures, not silently swallowed."""
+
+    class _DeadChannel:
+        async def send_content_to(self, _context, _content):
+            raise RuntimeError("point-to-point send failed")
+
+    p = persister.RoomPersister(
+        "reserve-fail-room",
+        _DeadChannel(),  # ty: ignore[invalid-argument-type]
+        members_provider=lambda: set(),
+        feed_bus=False,
+    )
+    from app.services.l9_slim import serialize_content
+
+    p.log.track("agent-a", caught_up=True)
+    env = _exchange("m1")
+    p.log.record(persister.record_from(env, serialize_content(env)), delivered_to=set())
+    p._contexts["agent-a"] = object()  # a route exists, but the send will fail
+    assert await p.reserve("agent-a") == 0
+    assert p.reserve_failures == 1
+    assert p.reserves == 0
+
+
+@pytest.mark.asyncio
+async def test_transient_churn_is_counted_apart_from_fatal_faults():
+    """Recoverable session churn increments transient_errors (retried, not lost)
+    and never spends the fatal receive_errors budget."""
+
+    class _ChurningChannel:
+        def __init__(self):
+            self.calls = 0
+
+        async def receive_with_context(self):
+            self.calls += 1
+            if self.calls > 3:
+                raise __import__("asyncio").CancelledError
+            raise RuntimeError("SessionError: session closed")
+
+    p = persister.RoomPersister(
+        "churn-room",
+        _ChurningChannel(),  # ty: ignore[invalid-argument-type]
+        members_provider=lambda: set(),
+        feed_bus=False,
+    )
+    with pytest.raises(__import__("asyncio").CancelledError):
+        await p.run()
+    assert p.transient_errors == 3
+    assert p.receive_errors == 0  # churn never counts as a fatal fault
 
 
 # ── H2 list-store invariant: one store, source-partitioned producers ──────────
