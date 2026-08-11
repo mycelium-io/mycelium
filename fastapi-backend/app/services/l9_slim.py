@@ -166,10 +166,6 @@ class CausalOrderBuffer:
         return len(self._pending)
 
 
-class EpisodeAbortedError(L9SlimError):
-    """Raised/flagged when a membership change aborts an active episode."""
-
-
 @dataclass
 class EpisodeLifecycle:
     """Tracks one negotiation (episode) within a durable room channel.

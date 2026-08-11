@@ -137,14 +137,6 @@ def _split_frontmatter(text: str) -> tuple[str, str]:
     return m.group(1), m.group(2)
 
 
-def _rewrite_body(path: Path, new_body: str) -> None:
-    text = path.read_text(encoding="utf-8")
-    fm, _ = _split_frontmatter(text)
-    if not new_body.endswith("\n"):
-        new_body += "\n"
-    path.write_text(fm + new_body, encoding="utf-8")
-
-
 def toggle_task(room_name: str, task_id: str, *, done: bool | None = None) -> PlanTask:
     """Toggle (or set) the checkbox on a task line.  Returns the updated task.
 

@@ -240,12 +240,6 @@ class RoomChannelManager:
         """
         self._leases.setdefault(room, {})[handle] = time.monotonic() + ttl_s
 
-    def drop_lease(self, room: str, handle: str) -> None:
-        """Release a server-held presence lease (agent explicitly left)."""
-        leases = self._leases.get(room)
-        if leases is not None:
-            leases.pop(handle, None)
-
     async def provision(
         self, room: str, *, workspace: str | None = None
     ) -> ManagedRoomChannel | None:
