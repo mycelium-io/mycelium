@@ -1940,17 +1940,17 @@ def _check_daemon_running() -> CheckResult:
 
 
 def _check_orphaned_rooms() -> CheckResult:
-    """Detect local room directories that no longer exist on the hub.
+    """Detect local room directories that are not registered in the backend.
 
-    A spoke node that was offline when a room was deleted on the hub will have
-    missed the ``room_deleted`` SSE event and the daemon's startup reconcile
-    (if the daemon wasn't running).  This check surfaces those orphans so the
+    A node that was offline when a room was deleted will have missed the
+    ``room_deleted`` SSE event and the daemon's startup reconcile (if the
+    daemon wasn't running).  This check surfaces those orphans so the
     operator can review and clean up.
 
-    This check is intentionally read-only — it queries the hub's ``/api/rooms``
-    endpoint and compares the response against the local ``~/.mycelium/rooms/``
-    directory.  It never modifies the filesystem; use ``mycelium room gc
-    --prune-orphans`` for that.
+    This check is intentionally read-only — it queries ``/api/rooms`` on the
+    configured backend and compares the response against the local
+    ``~/.mycelium/rooms/`` directory.  It never modifies the filesystem;
+    use ``mycelium room gc --prune-orphans`` for that.
     """
     from mycelium.config import MyceliumConfig
 
@@ -2019,13 +2019,13 @@ def _check_orphaned_rooms() -> CheckResult:
         return CheckResult(
             name="Orphaned rooms",
             status="ok",
-            message=f"All {len(local_rooms)} local room(s) exist on hub",
+            message=f"All {len(local_rooms)} local room(s) registered in the backend",
         )
 
     return CheckResult(
         name="Orphaned rooms",
         status="warning",
-        message=f"{len(orphans)} local room director{'y' if len(orphans) == 1 else 'ies'} not found on hub",
+        message=f"{len(orphans)} local room director{'y' if len(orphans) == 1 else 'ies'} not registered in the backend",
         details=[
             *[f"  ~/.mycelium/rooms/{r}/" for r in orphans],
             "Fix: mycelium room gc --prune-orphans",

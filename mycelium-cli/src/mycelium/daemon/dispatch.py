@@ -1281,7 +1281,7 @@ async def _handle_room_deleted(
     else:
         if room_dir.exists():
             log.warning(
-                "Room '%s' deleted on hub — local directory left at %s "
+                "Room '%s' deleted from the backend — local directory left at %s "
                 "(set daemon.auto_gc_orphaned_rooms=true or run 'mycelium room gc')",
                 room_name,
                 room_dir,
@@ -1289,17 +1289,27 @@ async def _handle_room_deleted(
 
     # Remove from the daemon subscription list so the room is not re-subscribed
     # after a daemon restart, and trigger a hot-reload to cancel the SSE task.
+    _room_was_subscribed = False
     try:
         from mycelium.daemon.config import DaemonConfig
 
         daemon_cfg = DaemonConfig.load()
         if room_name in daemon_cfg.rooms:
+            _room_was_subscribed = True
             daemon_cfg.rooms.remove(room_name)
-            daemon_cfg.save()
-            log.info("Removed '%s' from daemon subscription list", room_name)
-            state.reload_requested.set()
+            try:
+                daemon_cfg.save()
+                log.info("Removed '%s' from daemon subscription list", room_name)
+            except Exception as save_exc:
+                log.warning(
+                    "Could not save daemon config after removing '%s': %s", room_name, save_exc
+                )
     except Exception as exc:
-        log.warning("Could not update daemon config for deleted room '%s': %s", room_name, exc)
+        log.warning("Could not load daemon config for deleted room '%s': %s", room_name, exc)
+    # Set reload_requested outside the save() try so a disk-full error does not
+    # leave the completed subscribe_room task as a zombie in sse_tasks.
+    if _room_was_subscribed:
+        state.reload_requested.set()
 
     try:
         from mycelium.integrations.openclaw.dispatch import unregister_room_from_openclaw
@@ -1399,13 +1409,13 @@ async def reconcile_local_rooms(config: MyceliumConfig) -> None:
                     except Exception:
                         pass
                 else:
-                    log.warning(
-                        "Startup reconcile: room '%s' not found on hub — "
-                        "orphaned directory at %s "
-                        "(run 'mycelium room gc' or set daemon.auto_gc_orphaned_rooms=true)",
-                        room_name,
-                        room_dir,
-                    )
+                        log.warning(
+                            "Startup reconcile: room '%s' not registered in the backend — "
+                            "orphaned local directory at %s "
+                            "(run 'mycelium room gc' or set daemon.auto_gc_orphaned_rooms=true)",
+                            room_name,
+                            room_dir,
+                        )
     except Exception as exc:
         log.warning("Startup room reconcile failed: %s", exc)
 
@@ -1421,6 +1431,10 @@ async def subscribe_room(
     room_name: str,
 ) -> None:
     """Stay connected to *room_name*'s SSE stream until the daemon stops."""
+    # A re-created room that was previously deleted will still appear in
+    # rooms_deleted.  Clear the tombstone so the subscription loop doesn't
+    # exit immediately on the first message.
+    state.rooms_deleted.discard(room_name)
     url = f"{config.server.api_url}/api/rooms/{room_name}/messages/stream"
 
     # No total timeout (the stream is long-lived) but a bounded read timeout

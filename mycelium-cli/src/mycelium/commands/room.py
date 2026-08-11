@@ -1148,7 +1148,7 @@ def delegate(
 
 @doc_ref(
     usage="mycelium room gc [--prune-orphans] [--dry-run]",
-    desc="Find and optionally remove local room directories that no longer exist on the hub.",
+    desc="Find and optionally remove local room directories that are not registered in the backend.",
     group="room",
 )
 @app.command("gc")
@@ -1168,7 +1168,7 @@ def gc(
     """Reconcile local room directories against the hub.
 
     Compares every directory under ``~/.mycelium/rooms/`` with the hub's
-    room list.  A directory whose room no longer exists on the hub is
+    room list.  A directory whose room is no longer registered in the backend is
     **orphaned** — typically left behind after ``mycelium room delete`` ran
     on a remote spoke or while this node was offline.
 
@@ -1236,7 +1236,7 @@ def gc(
 
         if not orphans:
             typer.secho(
-                f"All {len(local_rooms)} local room(s) exist on hub — nothing to clean up.",
+                f"All {len(local_rooms)} local room(s) are registered in the backend — nothing to clean up.",
                 fg=typer.colors.GREEN,
             )
             return
