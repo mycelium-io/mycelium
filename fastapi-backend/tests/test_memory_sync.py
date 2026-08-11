@@ -35,8 +35,8 @@ def _write(
         key=key,
         content=content,
         version=version,
-        created_by="CognitiveEngine",
-        updated_by="CognitiveEngine",
+        created_by="system",
+        updated_by="system",
         updated_at="2026-08-04T00:00:00+00:00",
         base_version=base,
     )

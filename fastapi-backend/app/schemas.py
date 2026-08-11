@@ -365,3 +365,94 @@ class SubscriptionRead(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+# ── L9 episodes (protocol inspector) ─────────────────────────────────────────
+#
+# The episode read API projects persisted L9 episode records into JSON the UI
+# inspector renders. These models are the typed seam: the backend routes declare
+# them as `response_model`, so FastAPI validates + filters the raw parsed dicts
+# into exactly this shape. They mirror the frontend `L9Envelope` / `EpisodeDetail`
+# TypeScript interfaces 1:1, so neither side can silently read a field the other
+# doesn't send. Fields are permissive (most optional) because these records are
+# historical markdown files, not freshly minted objects — a single odd envelope
+# must not 500 the whole inspector. The one invariant: every envelope has a kind.
+
+
+class L9ActorRead(BaseModel):
+    id: str
+    role: str
+
+
+class L9ParticipantsRead(BaseModel):
+    actors: list[L9ActorRead] = Field(default_factory=list)
+    groups: dict | None = None
+
+
+class L9MessageRef(BaseModel):
+    id: str = ""
+    parents: list[str] = Field(default_factory=list)
+    episode: str | None = None
+
+
+class L9ContextRead(BaseModel):
+    topic: str | None = None
+
+
+class L9HeaderRead(BaseModel):
+    protocol: str | None = None
+    subprotocol: str | None = None
+    version: str | None = None
+    kind: str
+    subkind: str | None = None
+    participants: L9ParticipantsRead | None = None
+    message: L9MessageRef | None = None
+    context: L9ContextRead | None = None
+
+
+class L9PayloadRead(BaseModel):
+    type: str | None = None
+    data: dict | None = None
+
+
+class L9EnvelopeRead(BaseModel):
+    """One faithful L9 envelope in an episode's causal chain.
+
+    The sender is the first actor (`header.participants.actors[0].id`) by the
+    bus convention in `app.services.l9`; there is deliberately no flattened
+    `sender_handle` on the wire envelope — the frontend derives it from actors.
+    """
+
+    header: L9HeaderRead
+    payload: L9PayloadRead | None = None
+
+
+class EpisodeMetricsRead(BaseModel):
+    mpc: float = 0.0
+    gar: float = 0.0
+    scr: float = 0.0
+    provenance_weight: float = 0.0
+    participants: int | None = None
+
+
+class EpisodeSummaryRead(BaseModel):
+    short_id: str
+    episode: str
+    topic: str
+    outcome: str
+    subkind: str | None = None
+    participants: list[str] = Field(default_factory=list)
+    metrics: EpisodeMetricsRead | None = None
+    assignments: dict[str, str] | None = None
+    plan_file: str | None = None
+    message_count: int = 0
+    updated_at: str = ""
+    updated_by: str = ""
+
+
+class EpisodeListResponse(BaseModel):
+    episodes: list[EpisodeSummaryRead]
+
+
+class EpisodeDetailRead(EpisodeSummaryRead):
+    messages: list[L9EnvelopeRead] = Field(default_factory=list)

@@ -231,7 +231,7 @@ def apply_knowledge_message(room: str, content: dict) -> KnowledgeApplyResult | 
         version = int(data.get("version", 1))
     except (TypeError, ValueError):
         version = 1
-    created_by = str(data.get("created_by") or "CognitiveEngine")
+    created_by = str(data.get("created_by") or "system")
     updated_by = str(data.get("updated_by") or created_by)
     result = apply_knowledge(
         get_room_dir(room),

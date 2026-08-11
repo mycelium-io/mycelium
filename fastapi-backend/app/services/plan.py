@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.services.filesystem import get_room_dir, parse_memory
+from app.services.l9 import SYSTEM_ACTOR_ID
 
 PLAN_DIR = "plan"
 DEFAULT_TASK_FILE = "tasks"  # plan/tasks.md
@@ -249,7 +250,7 @@ def write_plan_file(
     body: str,
     *,
     slug: str = DEFAULT_TASK_FILE,
-    updated_by: str = "CognitiveEngine",
+    updated_by: str = SYSTEM_ACTOR_ID,
     version: int = 1,
 ) -> Path:
     """Overwrite ``plan/{slug}.md`` with a full markdown body.
@@ -290,7 +291,7 @@ def set_title_from_body_if_absent(
     room_name: str,
     body: str,
     *,
-    updated_by: str = "CognitiveEngine",
+    updated_by: str = SYSTEM_ACTOR_ID,
 ) -> str | None:
     """Set ``plan/title.md`` from the body's first heading IFF title is absent.
 

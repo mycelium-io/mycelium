@@ -23,7 +23,7 @@ from pydantic import BaseModel, Field
 
 from app.bus import bus, room_channel
 from app.schemas import MessageType
-from app.services import local_state
+from app.services import l9, local_state
 from app.services import plan as plan_service
 
 logger = logging.getLogger(__name__)
@@ -119,7 +119,7 @@ def _emit_plan_updated(room_name: str, payload: dict) -> None:
         room_name,
         local_state.StoredMessage(
             room_name=room_name,
-            sender_handle="CognitiveEngine",
+            sender_handle=l9.SYSTEM_ACTOR_ID,
             message_type=MessageType.PLAN_UPDATED,
             content=content,
         ),
@@ -128,7 +128,7 @@ def _emit_plan_updated(room_name: str, payload: dict) -> None:
         room_channel(room_name),
         {
             "room_name": room_name,
-            "sender_handle": "CognitiveEngine",
+            "sender_handle": l9.SYSTEM_ACTOR_ID,
             "message_type": MessageType.PLAN_UPDATED,
             "content": content,
             "created_at": datetime.now(UTC).isoformat(),

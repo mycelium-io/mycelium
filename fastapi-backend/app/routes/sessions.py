@@ -32,7 +32,7 @@ from app.schemas import (
     ParticipantListResponse,
     ParticipantRead,
 )
-from app.services import local_state, room_channels
+from app.services import l9, local_state, room_channels
 from app.services.filesystem import (
     ensure_room_structure,
     get_room_dir,
@@ -114,7 +114,7 @@ async def join_room(room_name: str, payload: ParticipantCreate):
             room_name,
             local_state.StoredMessage(
                 room_name=room_name,
-                sender_handle="CognitiveEngine",
+                sender_handle=l9.SYSTEM_ACTOR_ID,
                 message_type=MessageType.COORDINATION_JOIN,
                 content=join_content,
             ),
@@ -123,7 +123,7 @@ async def join_room(room_name: str, payload: ParticipantCreate):
             room_channel(room_name),
             {
                 "room_name": room_name,
-                "sender_handle": "CognitiveEngine",
+                "sender_handle": l9.SYSTEM_ACTOR_ID,
                 "message_type": MessageType.COORDINATION_JOIN,
                 "content": json.dumps({"handle": payload.agent_handle, "intent": payload.intent}),
                 "created_at": datetime.now(UTC).isoformat(),

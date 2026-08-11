@@ -319,6 +319,7 @@ class AlignerEngine:
             mas_id="",
             agents=participants,
             joined_intents="aligner mediate: converge on the open question via SAO",
+            engine_handle=me,
         )
         try:
             brain = self._make_brain(episode)
@@ -346,7 +347,7 @@ class AlignerEngine:
                 cap=self._max_steps,
                 loop=loop,
                 fetch_prose=lambda handle, prompt, round_n: self._slim_turn(
-                    managed, persister, handle, episode, topic, prompt, round_n
+                    managed, persister, me, handle, episode, topic, prompt, round_n
                 ),
                 turn_timeout_s=self._round_timeout_s,
                 llm=brain,
@@ -435,6 +436,7 @@ class AlignerEngine:
         self,
         managed: ManagedRoomChannel,
         persister: RoomPersister,
+        sender: str,
         handle: str,
         episode: str,
         topic: str,
@@ -450,6 +452,7 @@ class AlignerEngine:
         env = l9.build_envelope(
             kind=l9.Kind.exchange,
             episode=episode,
+            sender=sender,
             recipients=[handle],
             topic=topic,
             payload_type="tick",

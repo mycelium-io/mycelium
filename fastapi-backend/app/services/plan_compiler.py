@@ -3,13 +3,13 @@
 
 """Plan compiler — turns a negotiation consensus into a room plan.
 
-When structured negotiation reaches consensus, the CFN engine produces a flat
+When structured negotiation reaches consensus, the aligner produces a flat
 ``issue=value`` agreement dict. That records *what was agreed* but is not an
 actionable plan. This module is a separate stage that *consumes* that consensus
 and compiles it — via one LLM call — into a markdown checklist materialized at
 ``plan/tasks.md``.
 
-It is deliberately NOT a CognitiveEngine step: the CE owns negotiation and ends
+It is deliberately NOT an aligner step: the aligner owns negotiation and ends
 at "consensus produced". The compiler picks up that artifact across an explicit
 seam, so the negotiation engine stays a pure producer of agreements.
 """

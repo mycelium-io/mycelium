@@ -23,7 +23,7 @@ const CREATED = "2026-08-04T10:00:00.000000+00:00";
 function consentRequest() {
   return {
     message_type: "consent_request",
-    sender_handle: "CognitiveEngine",
+    sender_handle: "system",
     created_at: CREATED,
     content: JSON.stringify({
       id: "i1",

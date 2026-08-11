@@ -23,7 +23,7 @@ def test_build_minimal_envelope_defaults():
     assert env.header.subprotocol == "mycelium"
     assert env.header.kind is Kind.exchange
     assert env.header.subkind is None
-    assert env.header.participants.actors[0].id == "CognitiveEngine"
+    assert env.header.participants.actors[0].id == "system"
     assert env.header.participants.groups is None
     assert env.header.message is not None
     uuid.UUID(env.header.message.id)  # valid UUID
@@ -47,7 +47,7 @@ def test_build_envelope_full():
     )
     assert env.header.subkind == "converged"
     assert [a.id for a in env.header.participants.actors] == [
-        "CognitiveEngine",
+        "system",
         "agent-a",
         "agent-b",
     ]

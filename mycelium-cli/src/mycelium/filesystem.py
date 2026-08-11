@@ -156,8 +156,8 @@ def apply_knowledge(
     key: str,
     content: str,
     version: int,
-    created_by: str = "CognitiveEngine",
-    updated_by: str = "CognitiveEngine",
+    created_by: str = "system",
+    updated_by: str = "system",
 ) -> KnowledgeApplyResult:
     """Write a carried ``knowledge`` memory locally (last-write-wins).
 

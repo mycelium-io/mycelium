@@ -104,7 +104,7 @@
         "subkind": "distillation",
         "participants": {
           "actors": [
-            { "id": "CognitiveEngine", "role": "coordinator" },
+            { "id": "system", "role": "coordinator" },
             { "id": "bob", "role": "agent" }
           ],
           "groups": null

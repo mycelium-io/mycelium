@@ -4,7 +4,7 @@
 """Daemon-side ``coordination_tick`` / ``coordination_consensus`` handling.
 
 Pins the autonomous-negotiation invariant for cold-spawn families: when the
-CognitiveEngine emits a tick or consensus message, the mycelium-daemon spawns the
+aligner emits a tick or consensus message, the mycelium-daemon spawns the
 addressed agent with a self-contained instruction so it can run
 ``mycelium negotiate respond accept`` (or the propose/reject equivalents)
 itself — no operator-driven accept loop required.
@@ -345,7 +345,7 @@ async def test_on_message_dispatches_tick_to_owned_handle(
     dispatch_one.assert_called_once()
     kwargs = dispatch_one.call_args.kwargs
     assert kwargs["manifest"].handle == "designer"
-    assert kwargs["sender_handle"] == "CognitiveEngine"
+    assert kwargs["sender_handle"] == "aligner"
     # The prompt must be a self-contained instruction, not the raw JSON.
     assert "mycelium negotiate respond accept" in kwargs["prompt"]
     assert "--handle designer" in kwargs["prompt"]
@@ -537,7 +537,7 @@ async def test_on_message_ignores_coordination_join(
         "id": "join-1",
         "message_type": "coordination_join",
         "room_name": "r",
-        "sender_handle": "CognitiveEngine",
+        "sender_handle": "system",
         "content": json.dumps(
             {"handle": "designer", "intent": "polish", "session": "r:session:abc"}
         ),
@@ -564,7 +564,7 @@ async def test_handle_tick_looks_up_manifest_under_parent_room_not_subroom(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Ticks always arrive in a session sub-room (``parent:session:<id>``)
-    because that's the only channel CognitiveEngine NOTIFY's on. Manifests
+    because that's the only channel the aligner NOTIFY's on. Manifests
     are mirrored under the *parent* room, so the lookup must derive the
     parent — otherwise every tick stalls with "no manifest in local mirror"
     even though the agent is registered correctly. This was the live failure

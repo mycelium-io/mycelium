@@ -80,6 +80,11 @@ class EpisodeState:
     workspace_id: str
     mas_id: str
     agents: list[str]
+    # The registered engine mediating this episode (e.g. "aligner"). Signs the
+    # engine-authored envelopes — intent, ticks, consensus — so the wire carries
+    # the engine's real identity, not the generic system actor. Empty → falls
+    # back to the system actor (an episode opened outside an engine context).
+    engine_handle: str = ""
     intent_id: str = ""
     # Ordered record of every envelope in the episode (dicts, wire shape).
     messages: list[dict[str, Any]] = field(default_factory=list)
@@ -108,8 +113,14 @@ def open_episode(
     mas_id: str,
     agents: list[str],
     joined_intents: str,
+    engine_handle: str = "",
 ) -> EpisodeState:
-    """Open the episode: mint URNs and record the ``intent`` envelope."""
+    """Open the episode: mint URNs and record the ``intent`` envelope.
+
+    ``engine_handle`` is the registered engine mediating the episode; it signs
+    the intent/tick/consensus envelopes so the wire carries the engine's real
+    identity. Empty falls back to the system actor.
+    """
     ep = EpisodeState(
         episode=l9.episode_urn(parent_room, short_id),
         topic=l9.topic_urn(parent_room),
@@ -118,11 +129,13 @@ def open_episode(
         workspace_id=workspace_id,
         mas_id=mas_id,
         agents=agents[:],
+        engine_handle=engine_handle,
     )
     intent = l9.build_envelope(
         kind=Kind.intent,
         subkind="mission",
         episode=ep.episode,
+        sender=engine_handle or l9.SYSTEM_ACTOR_ID,
         recipients=agents,
         topic=ep.topic,
         workspace_id=workspace_id or None,
@@ -149,6 +162,7 @@ def record_tick(
         kind=Kind.exchange,
         episode=ep.episode,
         parents=[parent] if parent else [],
+        sender=ep.engine_handle or l9.SYSTEM_ACTOR_ID,
         recipients=[handle],
         topic=ep.topic,
         payload_type="tick",
@@ -204,7 +218,7 @@ def record_reply(
         parents=[parent] if parent else [],
         sender=handle,
         sender_role="agent",
-        recipients=[l9.SYSTEM_ACTOR_ID],
+        recipients=[ep.engine_handle or l9.SYSTEM_ACTOR_ID],
         topic=ep.topic,
         payload_type="reply",
         payload_data=payload_data,
@@ -324,6 +338,7 @@ def build_consensus_envelope(
         subkind="rejected" if broken else "converged",
         episode=ep.episode,
         parents=parents,
+        sender=ep.engine_handle or l9.SYSTEM_ACTOR_ID,
         recipients=ep.agents,
         topic=ep.topic,
         workspace_id=ep.workspace_id or None,

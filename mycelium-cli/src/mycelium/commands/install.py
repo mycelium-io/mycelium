@@ -125,7 +125,7 @@ def _prompt_llm() -> dict[str, str]:
                 return result
 
     print()
-    print("  \x1b[1;36m? LLM for CognitiveEngine\x1b[0m")
+    print("  \x1b[1;36m? LLM for the aligner\x1b[0m")
     print()
 
     providers = [

@@ -42,9 +42,12 @@ PROTOCOL = "SSTP"
 VERSION = "0.0.6"  # tracks the ioc-protocols-models binding the Go CFN pins
 SUBPROTOCOL_MYCELIUM = "mycelium"
 
-# The handle mycelium's backend speaks as inside envelopes. Matches the
-# sender_handle used for coordination system messages.
-SYSTEM_ACTOR_ID = "CognitiveEngine"
+# The handle mycelium's *backend itself* speaks as inside envelopes — genuine
+# system messages (plan-updated events, joins, knowledge distillation, aborts),
+# not a coordination engine. A registered engine (e.g. the aligner) signs its own
+# envelopes with its engine handle; only messages with no engine author fall back
+# to this. Matches the sender_handle used for coordination system messages.
+SYSTEM_ACTOR_ID = "system"
 SYSTEM_ACTOR_ROLE = "coordinator"
 
 # Kind -> allowed subkinds. An empty/None subkind is always valid. A failed

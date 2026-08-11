@@ -82,7 +82,6 @@ function frameSummary(
  */
 export function toL9Frame(msg: Record<string, unknown>): L9Frame | null {
   const mtype = String(msg.message_type ?? msg.type ?? "");
-  const sender = String(msg.sender_handle ?? "?");
   const created = String(msg.created_at ?? "");
   const time = created.length >= 19 ? created.slice(11, 19) : "";
 
@@ -104,6 +103,10 @@ export function toL9Frame(msg: Record<string, unknown>): L9Frame | null {
   const bare = content.header && typeof content.header === "object" ? (content as unknown as L9Envelope) : null;
   const env = embedded ?? bare;
   const header = env?.header;
+  // Sender: prefer the flat `sender_handle` the persister stamps on bus frames;
+  // fall back to the envelope's first actor (the bus sender convention) so a
+  // bare `{header, payload}` envelope still shows its handle instead of "?".
+  const sender = String(msg.sender_handle ?? header?.participants?.actors?.[0]?.id ?? "?");
   // Payload data lives on the envelope; route-level events (coordination_tick)
   // nest their fields under `content.payload` instead.
   const data = env ? asRecord(env.payload?.data) : asRecord(content.payload);

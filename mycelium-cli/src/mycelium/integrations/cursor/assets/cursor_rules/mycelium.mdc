@@ -8,7 +8,7 @@ alwaysApply: true
 You are running inside a workspace that's part of a **Mycelium** deployment.
 Mycelium is a multi-agent coordination layer: persistent shared memory and
 real-time coordination between AI agents, all flowing through **rooms**
-(shared namespaces) and a mediator called **CognitiveEngine**. Agents never
+(shared namespaces) and a mediator called **the aligner**. Agents never
 talk to each other directly; they post to rooms, write memories, and
 @-mention other agents.
 
@@ -24,7 +24,7 @@ Your core loop is the **negotiation protocol** below (join, await, respond, cons
 - **Rooms** are persistent namespaces. They hold memory that accumulates
   across sessions. Spawn sessions within rooms for real-time negotiation
   when needed.
-- **CognitiveEngine** mediates all coordination. It drives negotiation
+- **The aligner** mediates all coordination. It drives negotiation
   rounds and compiles consensus into the room's shared plan.
 - **Memory** is filesystem-native. Each memory is a markdown file at
   `~/.mycelium/rooms/{room}/{key}.md` with YAML frontmatter. The database
@@ -34,14 +34,14 @@ Your core loop is the **negotiation protocol** below (join, await, respond, cons
 
 When two or more agents need to agree on a multi-issue trade-off (REST vs
 GraphQL, who owns what task, what budget/timeline/scope to ship), Mycelium
-runs a structured negotiation mediated by CognitiveEngine.
+runs a structured negotiation mediated by the aligner.
 
 ```bash
 # 1. Join with your one-sentence opening position.
 mycelium session join --handle cursor-agent --room <room-name> \
   -m "I want GraphQL with a 6-month timeline; REST is fine for public uploads only."
 
-# 2. Block until it's your turn. await returns when CognitiveEngine
+# 2. Block until it's your turn. await returns when the aligner
 #    addresses you; prints a structured JSON payload; exits.
 mycelium session await --handle cursor-agent
 
@@ -179,7 +179,7 @@ not a diff. Keep updates conservative; notes are load-bearing.
 
 ### Negotiation ticks (daemon-dispatched)
 
-When the daemon spawns you for a **negotiation tick** (CognitiveEngine
+When the daemon spawns you for a **negotiation tick** (the aligner
 round), your prompt already contains the full tick payload: round number,
 current offer, valid issue keys, and the exact `mycelium negotiate`
 commands to run. In this case do **NOT** call `session await`; just

@@ -22,7 +22,7 @@ const CREATED = "2026-08-04T10:00:00.000000+00:00";
 function commitMessage() {
   return {
     message_type: "l9_commit",
-    sender_handle: "CognitiveEngine",
+    sender_handle: "aligner",
     created_at: CREATED,
     content: JSON.stringify({
       header: {
@@ -71,7 +71,7 @@ describe("toL9Frame", () => {
   it("also reads an envelope embedded under an `l9` key", () => {
     const frame = toL9Frame({
       message_type: "coordination_consensus",
-      sender_handle: "CognitiveEngine",
+      sender_handle: "aligner",
       created_at: CREATED,
       content: JSON.stringify({
         l9: { header: { kind: "commit", subkind: "converged", message: { id: "x", episode: "urn:e" } } },
@@ -91,6 +91,40 @@ describe("toL9Frame", () => {
     });
     expect(frame?.kind).toBe("exchange");
     expect(frame?.summary).toContain("round 2");
+  });
+
+  it("derives the sender from the envelope actors when no flat sender_handle is present", () => {
+    // A bare `{header, payload}` envelope (e.g. an episode-detail frame) carries
+    // its sender as the first participant actor, not a flattened field.
+    const frame = toL9Frame({
+      message_type: "l9_exchange",
+      created_at: CREATED,
+      content: JSON.stringify({
+        header: {
+          kind: "exchange",
+          participants: { actors: [{ id: "growth", role: "agent" }, { id: "risk", role: "agent" }] },
+          message: { id: "ex01" },
+        },
+        payload: { type: "reply", data: { action: "accept" } },
+      }),
+    });
+    expect(frame?.sender).toBe("growth");
+  });
+
+  it("prefers the flat sender_handle over the envelope actors when both are present", () => {
+    const frame = toL9Frame({
+      message_type: "l9_exchange",
+      sender_handle: "alice",
+      created_at: CREATED,
+      content: JSON.stringify({
+        header: {
+          kind: "exchange",
+          participants: { actors: [{ id: "growth", role: "agent" }] },
+          message: { id: "ex02" },
+        },
+      }),
+    });
+    expect(frame?.sender).toBe("alice");
   });
 
   it("returns null for plain chat (non-protocol traffic)", () => {

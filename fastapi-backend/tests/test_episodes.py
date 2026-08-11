@@ -109,6 +109,32 @@ async def test_get_episode_returns_causal_chain(client):
 
 
 @pytest.mark.asyncio
+async def test_episode_envelopes_carry_actor_identity(client):
+    """The typed seam: every envelope validates against the response model and
+    carries its sender as the first participant actor (the id the frontend reads
+    to render a handle). There is no flattened `sender_handle` on the wire."""
+    await _seed_episode(client, "sprint")
+
+    resp = await client.get("/api/rooms/sprint/episodes/abc123")
+    assert resp.status_code == 200
+    messages = resp.json()["messages"]
+
+    # An exchange tick/reply names a concrete agent as its first actor.
+    exchanges = [m for m in messages if m["header"]["kind"] == "exchange"]
+    assert exchanges, "expected exchange envelopes in the chain"
+    for env in exchanges:
+        actors = env["header"]["participants"]["actors"]
+        assert actors, "every exchange must name its participant actors"
+        assert actors[0]["id"], "the first actor is the sender handle the UI renders"
+        # The seam is a pure envelope: no flattened sender_handle leaks onto it.
+        assert "sender_handle" not in env
+
+    # An agent reply resolves to a real handle (not the system actor).
+    senders = {m["header"]["participants"]["actors"][0]["id"] for m in exchanges}
+    assert senders & {"alice", "bob"}, "agent replies surface the agent's handle"
+
+
+@pytest.mark.asyncio
 async def test_rejected_episode_reports_rejected_outcome(client):
     await _seed_episode(client, "sprint", short_id="deadxx", broken=True)
 

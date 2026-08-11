@@ -43,11 +43,11 @@ _DEPTH_WINDOW_S = 60.0
 _CONTROL_ABORT = {"abort", "cancel", "stop"}
 _CONTROL_STATUS = {"status"}
 
-# CognitiveEngine is the trusted system sender for coordination_tick /
-# coordination_consensus messages. We attribute autonomous spawns to it so
-# logs and depth-buckets distinguish CFN-driven dispatches from agent-driven
-# @-mentions.
-_CFN_SENDER = "CognitiveEngine"
+# The aligner (the mediator engine) is the trusted sender for the tick /
+# consensus messages that drive a negotiation. We attribute autonomous spawns to
+# it so logs and depth-buckets distinguish mediator-driven dispatches from
+# agent-driven @-mentions.
+_ALIGNER_SENDER = "aligner"
 
 
 def _extract_body(content: str, handle: str) -> str:
@@ -308,7 +308,7 @@ async def _post_reply(
 # ── Per-message dispatch ─────────────────────────────────────────────────────
 
 
-# CognitiveEngine emits ``coordination_tick`` and ``coordination_consensus``
+# The aligner emits ``coordination_tick`` and ``coordination_consensus``
 # messages addressed to specific participants in a session sub-room. The
 # openclaw plugin handles these via ``routeTick`` / ``routeConsensus`` in
 # ``integrations/openclaw/.../channel/route.ts``; cold-spawn families need the
@@ -356,9 +356,9 @@ def _format_tick_instruction(
     offer_summary = "\n".join(f"  {k}: {v}" for k, v in current_offer.items())
 
     if isinstance(n_steps_total, int) and n_steps_total > 0:
-        round_header = f"[CognitiveEngine — Round {round_no} of {n_steps_total}]"
+        round_header = f"[aligner: Round {round_no} of {n_steps_total}]"
     else:
-        round_header = f"[CognitiveEngine — Round {round_no}]"
+        round_header = f"[aligner: Round {round_no}]"
 
     context_lines: list[str] = []
     if prior_outcome and prior_outcome != "first_round":
@@ -494,7 +494,7 @@ def _format_error_tick(
     bad_keys: list[Any] = bad_keys_raw if isinstance(bad_keys_raw, list) else []
 
     lines: list[str] = [
-        f"[CognitiveEngine — error: {error_kind}]",
+        f"[aligner: error: {error_kind}]",
         f"Room: {room_name}",
     ]
     if instruction:
@@ -542,11 +542,11 @@ def _format_consensus_summary(consensus_data: dict[str, Any]) -> str:
     plan_file = plan_file_raw if isinstance(plan_file_raw, str) else ""
 
     if broken:
-        return f"[CognitiveEngine — Negotiation FAILED]\n{plan}"
+        return f"[aligner: Negotiation FAILED]\n{plan}"
 
     plan_text = plan if isinstance(plan, str) else json.dumps(plan, indent=2)
     lines: list[str] = [
-        "[CognitiveEngine — Consensus Reached!]",
+        "[aligner: Consensus Reached!]",
         "",
         plan_text,
         "",
@@ -725,7 +725,7 @@ async def _handle_tick(
 ) -> None:
     """Cold-spawn the addressed participant in response to a CFN tick.
 
-    The CognitiveEngine targets one agent per tick via
+    The aligner targets one agent per tick via
     ``payload.participant_id``. We mirror the openclaw plugin's ``routeTick``:
     parse the tick JSON, format a complete instruction (round / current
     offer / valid keys / accept-or-reject CLI commands), and dispatch the
@@ -764,7 +764,7 @@ async def _handle_tick(
         return
 
     # Ticks always arrive in a session sub-room (``parent:session:<id>``)
-    # because that's the only channel CognitiveEngine NOTIFY's on. Manifests
+    # because that's the only channel the aligner NOTIFY's on. Manifests
     # are mirrored under the *parent* room, so derive that for the lookup —
     # otherwise every tick lands as "no manifest in local mirror" even
     # though the agent is registered correctly.
@@ -804,7 +804,7 @@ async def _handle_tick(
         return
     # Ticks are server-driven, not chained by another agent's reply, so the
     # depth cap doesn't apply here. ``allow_from`` is also bypassed: the
-    # CognitiveEngine is the trusted protocol partner, not a peer agent.
+    # The aligner is the trusted protocol partner, not a peer agent.
 
     instruction = _format_tick_instruction(tick_data, room_name, target_handle)
     log.info(
@@ -825,7 +825,7 @@ async def _handle_tick(
             state=state,
             room_name=room_name,
             manifest=manifest,
-            sender_handle=_CFN_SENDER,
+            sender_handle=_ALIGNER_SENDER,
             prompt=instruction,
         )
     )
@@ -887,7 +887,7 @@ async def _handle_consensus(
                 state=state,
                 room_name=room_name,
                 manifest=manifest,
-                sender_handle=_CFN_SENDER,
+                sender_handle=_ALIGNER_SENDER,
                 prompt=summary,
             )
         )

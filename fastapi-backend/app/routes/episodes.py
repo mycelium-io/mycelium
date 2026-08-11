@@ -28,6 +28,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
+from app.schemas import EpisodeDetailRead, EpisodeListResponse
 from app.services.filesystem import get_room_dir, list_memory_files, read_memory_file, room_exists
 from app.services.l9 import SYSTEM_ACTOR_ID
 
@@ -164,7 +165,7 @@ def _live_episode_summary(room_name: str) -> dict[str, Any] | None:
     }
 
 
-@router.get("")
+@router.get("", response_model=EpisodeListResponse)
 async def list_episodes(room_name: str, limit: int = 50):
     """List episode summaries for a room, newest first (an in-progress one first)."""
     _require_room(room_name)
@@ -176,7 +177,7 @@ async def list_episodes(room_name: str, limit: int = 50):
     return {"episodes": episodes}
 
 
-@router.get("/{short_id}")
+@router.get("/{short_id}", response_model=EpisodeDetailRead)
 async def get_episode(room_name: str, short_id: str):
     """Return one episode: its summary plus the full L9 envelope chain."""
     _require_room(room_name)

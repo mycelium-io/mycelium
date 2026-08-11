@@ -152,7 +152,7 @@ def test_spawn_claude_appends_identity_preamble_when_handle_provided(
             handle="planner",
             room="cursor-ioc-e2e",
             description="negotiation counterparty",
-            sender="CognitiveEngine",
+            sender="aligner",
         )
     )
 
