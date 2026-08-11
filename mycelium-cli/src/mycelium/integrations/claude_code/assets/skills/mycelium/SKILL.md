@@ -1,6 +1,6 @@
 ---
 name: mycelium
-description: Multi-agent coordination layer with persistent memory. Use when coordinating with other agents, sharing context across sessions, joining coordination rooms, or searching shared knowledge. Triggers on "coordinate", "negotiate", "share memory", "session join", "mycelium", "what do other agents think".
+description: Multi-agent coordination layer with persistent memory. Use when coordinating with other agents, sharing context across sessions, joining coordination rooms, or searching shared knowledge. Triggers on "coordinate", "negotiate", "share memory", "mycelium", "what do other agents think".
 ---
 
 # Mycelium Coordination
@@ -14,25 +14,25 @@ Your core loop is the **negotiation protocol** below (argue, converge, plan, wor
 ## Core Concepts
 
 - **Rooms** are persistent namespaces. They hold memory that accumulates across sessions, and they're the channel where agents negotiate in real time.
-- **The aligner** is a dormant judge, summoned with `@aligner`, that scores whether a negotiation has converged and — on convergence — compiles the agreement into the room's shared plan.
-- **Memory** is filesystem-native. Each memory is a markdown file at `~/.mycelium/rooms/{room}/{key}.md` with YAML frontmatter. The database is a search index that auto-syncs via file watcher.
+- **The aligner** is a dormant judge, summoned with `@aligner`, that scores whether a negotiation has converged and, on convergence, compiles the agreement into the room's shared plan.
+- **Memory** is filesystem-native. Each memory is a markdown file at `~/.mycelium/rooms/{room}/{key}.md` with YAML frontmatter. Search runs over a local embedding index that auto-syncs from the files.
 
 ## Semantic negotiation
 
-When two or more agents need to agree on a multi-issue trade-off — REST vs GraphQL, who owns what task, what budget/timeline/scope to ship — Mycelium runs a **structured negotiation**. Agents argue their positions in the room; a dormant judge called the **aligner** scores whether the team has genuinely converged. It's a chat-native bargaining loop with a clear outcome: either consensus (a compiled plan) or a clean "no agreement". Both are valid endings.
+When two or more agents need to agree on a multi-issue trade-off (REST vs GraphQL, who owns what task, what budget/timeline/scope to ship), Mycelium runs a **structured negotiation**. Agents argue their positions in the room; a dormant judge called the **aligner** scores whether the team has genuinely converged. It's a chat-native bargaining loop with a clear outcome: either consensus (a compiled plan) or a clean "no agreement". Both are valid endings.
 
-On consensus, Mycelium compiles the agreement into the room's **shared plan** — a `- [ ]` checklist at `plan/tasks.md` the whole team executes against. The full arc is: argue → converge → plan → work. The negotiation decides *what*; the plan is *how the team carries it out*. See **After consensus — work the plan** below.
+On consensus, Mycelium compiles the agreement into the room's **shared plan**: a `- [ ]` checklist at `plan/tasks.md` the whole team executes against. The full arc is: argue → converge → plan → work. The negotiation decides *what*; the plan is *how the team carries it out*. See **After consensus: work the plan** below.
 
-Use it when "let's just chat about it" would spiral. Skip it for one-issue questions or quick coordination — `mycelium room send` (next section) is the right tool there.
+Use it when "let's just chat about it" would spiral. Skip it for one-issue questions or quick coordination, where `mycelium room send` (next section) is the right tool.
 
 ### The lifecycle
 
-Negotiation is chat, not a separate command set. You're woken by the daemon when a teammate `@`-mentions you (see **Agent Mode** below); you reply in the room, arguing your position. There is no `session join` / `session await` / `negotiate propose` loop — those were retired. The whole flow is ordinary room messages plus one convention and one summon.
+Negotiation is chat, not a separate command set. You're woken by the daemon when a teammate `@`-mentions you (see **Agent Mode** below); you reply in the room, arguing your position. The whole flow is ordinary room messages plus one convention (a confidence marker) and one summon (the aligner).
 
-**1 — State your position, and mark your confidence.** Reply normally, making your case. When you're taking a *negotiation position*, end your reply with a one-line marker so the aligner can score convergence:
+**1. State your position, and mark your confidence.** Reply normally, making your case. When you're taking a *negotiation position*, end your reply with a one-line marker so the aligner can score convergence:
 
 ```
-I can accept a 30% tech cap if we keep portfolio beta under 1.1 — that's my
+I can accept a 30% tech cap if we keep portfolio beta under 1.1. That's my
 hard line, everything else is negotiable.
 
 [[mycelium: confidence=0.85 stance=accept]]
@@ -41,32 +41,32 @@ hard line, everything else is negotiable.
 - `confidence` (0.0–1.0): how sure you are of the position you just argued.
 - `stance`: `accept` if you can live with the offer on the table, `reject` if you can't. Omit `stance` when you're only making an opening offer.
 
-The marker is **stripped from your posted message** — the room sees clean prose; only the epistemic signal is kept. State it honestly: it's how the team distinguishes a real agreement from polite yielding. A reply with no marker is just a plain reply (an observation, not a scored position).
+The marker is **stripped from your posted message**: the room sees clean prose; only the epistemic signal is kept. State it honestly: it's how the team distinguishes a real agreement from polite yielding. A reply with no marker is just a plain reply (an observation, not a scored position).
 
-**2 — Converge.** Argue across as many turns as it takes. When the team believes it has agreement (or has clearly stalled), summon the judge:
+**2. Converge.** Argue across as many turns as it takes. When the team believes it has agreement (or has clearly stalled), summon the judge. The aligner is a registered engine (`mycelium engine create aligner --kind aligner --room <room-name>`, done once per room); summon it with:
 
 ```bash
-mycelium room send "@aligner assess whether we've converged" --room <room-name> --handle <your-handle>
+mycelium engine invoke aligner "assess whether we've converged" --room <room-name>
 ```
 
 The aligner reads the transcript, folds each agent's *latest* position, and emits a verdict onto the channel:
 
-- **Converged** — mean confidence cleared the bar. The backend compiles the agreement into `plan/tasks.md` and syncs it as a shared `knowledge` memory. See **After consensus** below.
-- **Rejected** — confidence too low or too few agents took a scored position. That's a clean "no agreement", not a failure.
+- **Converged**: mean confidence cleared the bar. The backend compiles the agreement into `plan/tasks.md` and syncs it as a shared `knowledge` memory. See **After consensus** below.
+- **Rejected**: confidence too low or too few agents took a scored position. That's a clean "no agreement", not a failure.
 
 The aligner is dormant until summoned (zero idle cost), so nothing scores until an `@aligner` mention arrives.
 
 ### Behavior
 
-- **Narrate your reasoning in the reply itself.** The room is the record — say *why* you accept or reject ("beta guardrail holds, so I can concede the sector cap"). This makes the negotiation legible to the user watching, and it's what the aligner and future agents read back.
-- **Walking away is legitimate.** If you and another agent keep flip-flopping the same issue, you're not converging — hold your `reject` and low confidence. A rejected verdict is a clean "couldn't agree" signal, not a failure.
+- **Narrate your reasoning in the reply itself.** The room is the record, so say *why* you accept or reject ("beta guardrail holds, so I can concede the sector cap"). This makes the negotiation legible to the user watching, and it's what the aligner and future agents read back.
+- **Walking away is legitimate.** If you and another agent keep flip-flopping the same issue, you're not converging, so hold your `reject` and low confidence. A rejected verdict is a clean "couldn't agree" signal, not a failure.
 - **Strong opening positions matter.** Be specific: stake, top concession, hard limit. "I want GraphQL" is weak. "GraphQL primary for authenticated APIs; REST fine for uploads/webhooks; hard limit: no public GraphQL without persisted queries" is strong.
 - **Mark confidence honestly.** `confidence` is how the team distinguishes an informed position from a guess, and it drives the convergence metrics (mean confidence must clear the threshold to converge). Don't inflate it to force a plan; don't deflate it to stall.
-- **Yield honestly.** If you `stance=accept` an offer you weren't actually persuaded by (just to move things along), keep your `confidence` low to reflect that. Genuine agreement (high confidence that moved toward the outcome) reads differently from social compliance (accepting while unconvinced) in the quality metrics — and dishonest agreement corrupts the team's shared memory.
+- **Yield honestly.** If you `stance=accept` an offer you weren't actually persuaded by (just to move things along), keep your `confidence` low to reflect that. Genuine agreement (high confidence that moved toward the outcome) reads differently from social compliance (accepting while unconvinced) in the quality metrics, and dishonest agreement corrupts the team's shared memory.
 
 ### Checking status
 
-If the user asks "did it converge?", don't infer from the room's free-form narration — read the outcome the aligner recorded:
+If the user asks "did it converge?", don't infer from the room's free-form narration. Read the outcome the aligner recorded:
 
 ```bash
 # The episode record with the verdict + quality metrics (MPC/GAR/SCR):
@@ -76,16 +76,16 @@ mycelium memory get log/episodes/live --room <room-name>
 mycelium plan tasks --room <room-name>
 ```
 
-The verdict carries quality **metrics**: **MPC** (mean final confidence across agents), **GAR** (genuine agreement ratio: fraction of agents whose confidence moved toward the outcome), and **SCR** (social compliance ratio: fraction of belief revisions that were yielding rather than genuine argument). High MPC + high GAR is a strong consensus; high SCR means agents caved rather than agreed. `provenance_weight = (1 − SCR) × GAR` is the single trust number: below ~0.60 the agreement is contested — report that nuance to the user.
+The verdict carries quality **metrics**: **MPC** (mean final confidence across agents), **GAR** (genuine agreement ratio: fraction of agents whose confidence moved toward the outcome), and **SCR** (social compliance ratio: fraction of belief revisions that were yielding rather than genuine argument). High MPC + high GAR is a strong consensus; high SCR means agents caved rather than agreed. `provenance_weight = (1 − SCR) × GAR` is the single trust number: below ~0.60 the agreement is contested, so report that nuance to the user.
 
-### After consensus — work the plan
+### After consensus: work the plan
 
-A consensus is not the end of the job — it's the start of the work. On
+A consensus is not the end of the job; it's the start of the work. On
 agreement, Mycelium compiles the agreement into the room's **shared plan**:
 `plan/tasks.md` in the parent room, a single `- [ ]` checklist every agent
 sees (`plan_file` in the consensus payload points at it).
 
-So when `await` returns an agreed consensus, don't stop — pick up the plan:
+So when `await` returns an agreed consensus, don't stop. Pick up the plan:
 
 ```bash
 mycelium plan tasks --room <room-name>     # the shared checklist
@@ -98,7 +98,7 @@ The negotiation decided *what*; the plan is *how the team executes it*.
 
 ## Talking to other agents (outside negotiation)
 
-Structured negotiation is for "we have a multi-issue trade-off and need consensus." For everything else — quick question, heads-up, durable note — use the patterns below.
+Structured negotiation is for "we have a multi-issue trade-off and need consensus." For everything else (a quick question, a heads-up, a durable note) use the patterns below.
 
 ### Sending a one-shot message to a room
 
@@ -107,7 +107,7 @@ mycelium room send --room <room-name> --handle claude-agent \
   "@julia-agent heads up: redis eviction bug in staging"
 ```
 
-Agents in that room receive your message addressed to them. One-way: no built-in reply loop — if the addressed agent replies in the room, you'll see it via `mycelium watch --room <room-name>` or by polling the room's messages, but they won't auto-deliver back into your terminal.
+Agents in that room receive your message addressed to them. One-way: no built-in reply loop. If the addressed agent replies in the room, you'll see it via `mycelium watch --room <room-name>` or by polling the room's messages, but they won't auto-deliver back into your terminal.
 
 Messages without an `@mention` are ignored by default (rooms set `requireMention: true`). Always tag who you're talking to.
 
@@ -129,10 +129,10 @@ Memories are markdown files under `~/.mycelium/rooms/<room>/`. Any agent who joi
 
 ### A few things to remember
 
-- **Auto-wake for mentions.** The `mycelium-daemon` listens to rooms you're registered in and cold-spawns you when a teammate `@`-mentions you — including an `@aligner` summon you should observe. You don't need to poll or watch; the daemon wakes you. For one-shot questions like "did anyone reply?", check with `mycelium watch --room X` or `mycelium room messages`.
+- **Auto-wake for mentions.** The `mycelium-daemon` listens to rooms you're registered in and cold-spawns you when a teammate `@`-mentions you, including an `@aligner` summon you should observe. You don't need to poll or watch; the daemon wakes you. For one-shot questions like "did anyone reply?", check with `mycelium watch --room X` or `mycelium room messages`.
 - **Write self-contained messages.** "What about the thing we discussed?" is useless to a recipient who doesn't share your history. Spell out the context.
-- **One turn per wake.** When the daemon spawns you for a mention, your prompt already contains the message that woke you. Do your work, post your reply (with a position marker if you're negotiating), and exit — the daemon wakes you again for the next turn. Don't try to block waiting for other agents.
-- **Run `mycelium` as single commands.** The adapter install pre-allowlists the mycelium CLI (`Bash(mycelium:*)` in `~/.claude/settings.json`) so you can run it without approval prompts — which is essential if you're a background subagent that can't answer one. But that allowlist only matches *simple* commands: **don't wrap a mycelium call in compound shell** (`mycelium await … && …`, pipes, redirects, `$(…)`, backticks). Claude Code rejects the whole compound command even when `mycelium` itself is allowed. Issue one `mycelium await` / `mycelium respond` per command.
+- **One turn per wake.** When the daemon spawns you for a mention, your prompt already contains the message that woke you. Do your work, post your reply (with a position marker if you're negotiating), and exit; the daemon wakes you again for the next turn. Don't try to block waiting for other agents.
+- **Run `mycelium` as single commands.** The adapter install pre-allowlists the mycelium CLI (`Bash(mycelium:*)` in `~/.claude/settings.json`) so you can run it without approval prompts, which is essential if you're a background subagent that can't answer one. But that allowlist only matches *simple* commands: **don't wrap a mycelium call in compound shell** (`mycelium await … && …`, pipes, redirects, `$(…)`, backticks). Claude Code rejects the whole compound command even when `mycelium` itself is allowed. Issue one `mycelium await` / `mycelium respond` per command.
 
 ## Memory as Files
 
@@ -144,15 +144,15 @@ Every memory is a readable, editable markdown file:
 ~/.mycelium/rooms/my-project/context/team.md
 ```
 
-You can read them with `cat`, edit with any tool, or `git` the directory. Changes are auto-indexed — no manual reindex needed.
+You can read them with `cat`, edit with any tool, or `git` the directory. Changes are auto-indexed, so no manual reindex is needed.
 
 ## The three memory layers: where to write what
 
 1. **Your private context**: your own agent-native memory (local notes, never indexed, never shared). Keep what is only relevant to you here.
 2. **Room memory**: the shared source of truth, markdown files under `~/.mycelium/rooms/{room}/`. Everything the team should see goes here, via `mycelium memory set` or a direct file write.
-3. **The CFN knowledge graph**: a derived index over room-public artifacts (memory files plus channel messages) for semantic and graph recall. You never write to it directly; it rebuilds from the files, so the files always win.
+3. **The search index**: a local embedding index over room-public memory files for semantic recall. You never write to it directly; it rebuilds from the files, so the files always win.
 
-Rule of thumb: if a teammate should find it, write it to room memory. The graph is how they find it; the filesystem is where it lives; your private notes stay yours.
+Rule of thumb: if a teammate should find it, write it to room memory. The index is how they find it; the filesystem is where it lives; your private notes stay yours.
 
 ## Memory Operations
 
@@ -200,7 +200,7 @@ mycelium room ls
 When a message in a room is addressed to you with `@<your-handle>`, the
 `mycelium-daemon` spawned this session to handle it. Your **manifest**
 lives at `agents/<your-handle>` and your persistent **notes** live at
-`agents/<your-handle>/notes` — read those before responding to understand
+`agents/<your-handle>/notes`. Read those before responding to understand
 your scope and accumulated knowledge.
 
 ```bash
@@ -219,41 +219,39 @@ EOF
 )"
 ```
 
-**When to update notes** — keep this conservative; they're load-bearing:
+**When to update notes** (keep this conservative; they're load-bearing):
 
 - You discovered a non-obvious procedural step (e.g. a flag, a CI quirk,
   an env var that has to be exported first).
 - You hit a recoverable failure and figured out the fix.
 - Scope expanded or contracted in a way the user explicitly confirmed.
 
-**When NOT to update notes** — these belong in `decisions/` or `work/`,
-not in your own brain:
+**When NOT to update notes** (these belong in `decisions/` or `work/`,
+not in your own brain):
 
 - One-off facts about the current task (those belong in the conversation).
 - Anything that's already in `CLAUDE.md` or the project README.
 - Speculation about future features.
 
-`mycelium memory set` overwrites — it always upserts a fresh version. So
+`mycelium memory set` overwrites: it always upserts a fresh version. So
 when you update, write the full revised notes, not a diff or addendum.
 
-## Knowledge Ingest (CFN Graph) — only on deliberate room writes
+## Shared knowledge: only on deliberate room writes
 
-Mycelium ships content to CFN's `shared-memories` knowledge graph on **two paths only**:
+Everything you put into a room is visible to the team on **two paths only**:
 
-1. **Channel messages** — when an agent posts to a room via `POST /api/rooms/{room}/messages` (or `mycelium room send` / equivalents).
-2. **Memory writes** — when an agent calls `mycelium memory set` (or the underlying `POST /api/rooms/{room}/memory`).
+1. **Channel messages**: when you post to a room (`mycelium room send`, or a reply/position over `mycelium respond`).
+2. **Memory writes**: when you call `mycelium memory set` (or write a markdown file directly under the room folder).
 
-Both are deliberate. Both happen because the agent chose to put something into the room. Tool outputs, reasoning traces, and unsent thoughts never reach CFN.
+Both are deliberate. Both happen because you chose to put something into the room. Tool outputs, reasoning traces, and unsent thoughts stay yours and never reach the team.
 
-CFN has no delete API — anything ingested is permanent in the graph. Constraining ingest to deliberate room writes is the only correct privacy posture. Treat every room write as permanent and public to the team.
-
-Forwarding is **off by default** and is turned on by the operator, not by you. How to enable it, the cost-control knobs, and the observability commands (`mycelium cfn log` / `cfn stats` / `cfn query`) live in the Configuration docs: `mycelium docs troubleshooting`.
+Room writes are the shared record; treat every one as durable and public to the team. On consensus, the compiled plan syncs to the team as a `knowledge` memory the same way.
 
 ## Operator setup (not an agent task)
 
-Install details, environment variables, multi-machine sync, and CFN ingest
-configuration are operator concerns and live in the docs, not in this skill.
-Run `mycelium docs troubleshooting` for configuration and environment variables,
-and `mycelium docs architecture` for deployment modes and sync. As an agent you
-act through the commands above; you do not configure the stack.
+Install details, environment variables, and multi-machine sync are operator
+concerns and live in the docs, not in this skill. Run `mycelium docs troubleshooting`
+for configuration and environment variables, and `mycelium docs architecture` for
+deployment modes and sync. As an agent you act through the commands above; you do
+not configure the stack.
 

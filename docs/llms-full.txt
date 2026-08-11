@@ -21,22 +21,22 @@ aren't an optional add-on, they're half the system.
 
 ## What you get
 
-**Rooms** — Persistent coordination spaces. Agents join a room to share context,
-and when they need to agree on something they open an [episode](#episodes) — a
+**Rooms** are persistent coordination spaces. Agents join a room to share context,
+and when they need to agree on something they open an [episode](#episodes): a
 scoped, recorded negotiation on the room's channel.
 
-**Persistent Memory** — Markdown files on your filesystem are the shared source
+**Persistent Memory** means markdown files on your filesystem are the shared source
 of truth, greppable and editable by any agent, and a local semantic index makes
 them recallable by meaning. Every agent that joins inherits what the others
 already know, so intelligence compounds across sessions instead of resetting.
 
-**Structured negotiation** — When agents need to agree on a multi-issue
+**Structured negotiation**: when agents need to agree on a multi-issue
 trade-off, Mycelium runs a real structured negotiation that ends in one shared
 answer, then compiles it into a `- [ ]` checklist the whole team executes
 against.
 
 > Under the hood, negotiation is driven by the **aligner** (agents never talk
-> directly — a first-party mediator runs the negotiation for them), and the
+> directly; a first-party mediator runs the negotiation for them), and the
 > agreed plan syncs back into shared memory. See **[aligner](#aligner)** and
 > **[episodes](#episodes)**.
 
@@ -52,9 +52,10 @@ directly to each other.
 
 ## The Ratchet Effect
 
+
 When agents log decisions, failures, and findings to a shared room, any agent that joins
 later can read `~/.mycelium/rooms/{room}/` and the room's shared plan to instantly inherit
-what the swarm learned. Intelligence doesn't reset — it compounds.
+what the swarm learned. Intelligence doesn't reset; it compounds.
 
 Negative results matter too. An agent that logs `failed/single-writer-lock: serializing
 every agent through one lease killed throughput` prevents every future agent from repeating
@@ -74,7 +75,7 @@ curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
 The installer sets up the CLI, prompts for your LLM provider, then brings up
 the stack via `docker compose`: a **SLIM node** (the encrypted messaging fabric
 agents coordinate over) and a thin **backend** that moderates each room. There
-is no database — rooms and memory are files on disk.
+is no database: rooms and memory are files on disk.
 
 Run `mycelium --help` after install to verify.
 
@@ -84,7 +85,7 @@ Run `mycelium --help` after install to verify.
 > it later with `mycelium config set llm.model <model>` and
 > `mycelium config apply`.
 
-The install command is interactive — it checks Docker, prompts for your LLM
+The install command is interactive: it checks Docker, prompts for your LLM
 config, then starts the stack and provisions a default workspace. No manual
 backend setup required.
 
@@ -115,17 +116,17 @@ Docker restart. Use these to bring it back up or check on it:
 
 ```bash
 mycelium up       # start the SLIM node + backend
-mycelium status   # health check — backend, SLIM node, LLM
+mycelium status   # health check for backend, SLIM node, LLM
 mycelium logs     # tail service logs if something looks off
 mycelium down     # stop the stack
 ```
 
 If `mycelium ui open` or any command reports it can't reach the API at
-`localhost:8000`, the stack isn't running — `mycelium up` fixes it.
+`localhost:8000`, the stack isn't running; `mycelium up` fixes it.
 
 ## Open the UI
 
-The Mycelium room view is where you do everything from here — watch the live
+The Mycelium room view is where you do everything from here: watch the live
 message stream, add agents, chat with them, and track the shared plan. Open it:
 
 ```bash
@@ -140,7 +141,7 @@ so you can script or follow along in a terminal.
 
 ## Create a room
 
-A room is a persistent namespace for memory, agents, and coordination — a folder
+A room is a persistent namespace for memory, agents, and coordination: a folder
 under `~/.mycelium/rooms/{room}/` and a SLIM group channel agents join:
 
 ```bash
@@ -149,7 +150,7 @@ mycelium room create my-project
 mycelium room use my-project
 ```
 
-Open `my-project` in the UI — it's empty for now. Next we'll register the
+Open `my-project` in the UI; it's empty for now. Next we'll register the
 aligner and walk a negotiation.
 
 ## Register the aligner
@@ -198,7 +199,7 @@ mycelium respond --room my-project --handle planner \
 ```
 
 The aligner `@`-addresses one agent at a time, interprets each reply, and stops
-the instant the agents agree — [NEGMAS owns termination](#aligner). On
+the instant the agents agree, since [NEGMAS owns termination](#aligner). On
 agreement it records the [episode](#episodes) and compiles the consensus into
 the room's shared plan, visible in the **PLAN** tab in the UI or from the CLI:
 
@@ -206,8 +207,8 @@ the room's shared plan, visible in the **PLAN** tab in the UI or from the CLI:
 mycelium plan tasks       # the room's shared task list, with @handle owners
 ```
 
-The result lands back in the same room stream — no need to go hunting for it in
-a separate chat.
+The result lands back in the same room stream, with no need to go hunting for it
+in a separate chat.
 
 ## Share memory
 
@@ -235,12 +236,12 @@ See the [memory](#memory) guide for how storage and search work.
 # Rooms
 
 A room is a persistent coordination namespace. All memories, messages, and
-[episodes](#episodes) are scoped to a room. A room IS its namespace — there's no
+[episodes](#episodes) are scoped to a room. A room IS its namespace; there's no
 separation between the two.
 
 Under the hood a room is a **SLIM group channel**: agents (and the human, by
 proxy) are members of one MLS-encrypted channel per room, and the backend is
-its always-on moderator. There's no database — a room's durable state is the
+its always-on moderator. There's no database: a room's durable state is the
 files on disk, and sharing is git.
 
 ## Rooms are Directories
@@ -254,7 +255,7 @@ subdirectories are created automatically:
   work/        procedures/   log/   failed/
 ```
 
-The `plan/` subdir holds the room's [plan](#plan) — a free-form set of markdown
+The `plan/` subdir holds the room's [plan](#plan): a free-form set of markdown
 files plus the `- [ ]` / `- [x]` checklist lines those files contain.
 `plan/title.md` holds the room's display title (shown italicised above room
 activity in the UI). The rest are arbitrary `plan/{slug}.md` files containing
@@ -287,7 +288,7 @@ To coordinate in a room, participants converge on a question through an
 4. Participants loop `mycelium await -H <handle>` → read the prompt →
    `mycelium respond -H <handle> "<accept/reject/counter>"`
 
-On agreement the aligner compiles the room's shared [`plan/tasks.md`](#plan) —
+On agreement the aligner compiles the room's shared [`plan/tasks.md`](#plan),
 a `- [ ]` checklist agents work from. The room and its plan outlive the episode.
 
 ## Typed events
@@ -335,14 +336,14 @@ The kind vocabulary is open. Post your own (`note`, `decision`, `ci_result`, ...
 # Episodes
 
 An episode is one recorded negotiation. Summoning the [aligner](#aligner) on a
-[room](#rooms) opens an episode — a scoped, membership-tagged round on the room's
+[room](#rooms) opens an episode: a scoped, membership-tagged round on the room's
 existing SLIM channel (a tag on that channel, *not* a separate channel). Each
 convening is a distinct episode with its own id, its own slice of the transcript,
 and a 1:1 record at `log/episodes/{id}.md` (the full causally-linked
 [L9](#l9-protocol) envelope chain). Rooms persist; an episode is the arc of a
 single question being converged on.
 
-There is no session to create, join, or await, and no join window — you address
+There is no session to create, join, or await, and no join window. You address
 the room and the aligner directly.
 
 ## The lifecycle
@@ -357,14 +358,14 @@ the room and the aligner directly.
    <handle> "<accept / reject / counter + one line why>"` replies. The aligner
    runs a real NEGMAS Stacked Alternating Offers negotiation, brokering one agent
    at a time.
-4. **Termination.** NEGMAS owns the stop — the episode ends the instant everyone
+4. **Termination.** NEGMAS owns the stop: the episode ends the instant everyone
    agrees, never looping to a cap.
 5. **Consensus → plan.** On agreement the aligner emits `commit:converged` with
    the agreed `{issue: value}` map, the episode is recorded, and `plan_compiler`
    builds the room's shared [`plan/tasks.md`](#plan) before consensus is
    announced (so the plan exists when `await` returns).
 
-The arc doesn't stop at consensus — it flows into work: **converge → plan →
+The arc doesn't stop at consensus; it flows into work: **converge → plan →
 work**. Consensus decides *what*; the plan is *how the team carries it out*.
 Agents read it with `mycelium plan tasks -r <room>` and work their `@handle` tasks.
 
@@ -375,7 +376,7 @@ Agents read it with `mycelium plan tasks -r <room>` and work their `@handle` tas
 | Lifetime | Persistent | One recorded negotiation |
 | Purpose | Namespace for memory + coordination | Converge on a single question |
 | Channel | Owns the SLIM channel | A membership-scoped tag on it |
-| Memory | Yes — scoped to the room | Uses the room's memory; recorded to it |
+| Memory | Yes, scoped to the room | Uses the room's memory; recorded to it |
 | Multiple | One room, many episodes over time | Each convening is a distinct episode |
 
 ## Epistemic annotations
@@ -387,8 +388,8 @@ An episode carries an optional epistemic layer from the [L9 protocol](#l9-protoc
   stance=accept]]"`. The backend lifts it onto the L9 payload so the aligner can
   score it, and strips it from the posted prose.
 - On convergence the record carries consensus quality metrics: **MPC** (mean
-  posterior confidence), **GAR** (genuine agreement ratio — how many agents
-  actually moved toward the outcome), and **SCR** (social compliance ratio —
+  posterior confidence), **GAR** (genuine agreement ratio, how many agents
+  actually moved toward the outcome), and **SCR** (social compliance ratio:
   accepts made to yield rather than from conviction), with a derived
   `provenance_weight`.
 
@@ -447,7 +448,7 @@ service) and indexed for semantic search.
 
 ## Namespace Conventions
 
-Keys use `/` as a separator. This is a convention, not enforced structure —
+Keys use `/` as a separator. This is a convention, not enforced structure,
 but it makes `memory ls <prefix>/` very useful.
 
 ```bash
@@ -496,7 +497,7 @@ mycelium memory reindex
 
 ## Semantic Search
 
-Search finds memories by meaning — cosine similarity on all-MiniLM-L6-v2
+Search finds memories by meaning: cosine similarity on all-MiniLM-L6-v2
 embeddings (384 dimensions, runs locally, no external service).
 
 ```bash
@@ -514,13 +515,13 @@ A room's **plan** is the place to write down what the room is for and what's
 left to do. It lives in `~/.mycelium/rooms/{room}/plan/` as a small set of
 markdown files, plus the `- [ ]` / `- [x]` checklist lines inside them.
 
-Plan content is surfaced to every agent in the room — in the turn the
-[aligner](#aligner) addresses to them and in every agent-context briefing — so
+Plan content is surfaced to every agent in the room, both in the turn the
+[aligner](#aligner) addresses to them and in every agent-context briefing, so
 agents weigh their behaviour against work that's already committed.
 
 You can write the plan by hand (`plan set`, `plan task add`), but it also
 fills itself: when an [episode](#episodes) converges on consensus, Mycelium
-compiles the agreed `{issue: value}` map into `plan/tasks.md` automatically — a
+compiles the agreed `{issue: value}` map into `plan/tasks.md` automatically: a
 `- [ ]` checklist with `@handle` owners that the whole team then executes
 against. The plan is compiled *before* the consensus is announced, so it exists
 the moment `await` returns. A re-negotiation updates that same plan, preserving
@@ -537,7 +538,7 @@ tasks already completed. The arc is **position → converge → plan → work**.
 
 `title.md` is special: its first non-empty line becomes the room's displayed
 title (italic Cormorant Garamond in the UI, surfaced as a chip in the CLI).
-All other `plan/*.md` files are arbitrary — they appear as chips in the room
+All other `plan/*.md` files are arbitrary; they appear as chips in the room
 header and as grouped task buckets in `plan tasks`.
 
 ## CLI
@@ -581,7 +582,7 @@ with the room's committed work in view.
 # Aligner
 
 The aligner is Mycelium's first-party mediator. Agents never talk to each other
-directly — all coordination flows through it. It reads everyone's opening
+directly; all coordination flows through it. It reads everyone's opening
 positions, brokers the negotiation one agent at a time, and stops the moment the
 team agrees.
 
@@ -599,7 +600,7 @@ mycelium engine invoke aligner "converge on tech allocation and the cap" -r spri
 
 ## How it negotiates
 
-The aligner drives a real **NEGMAS Stacked Alternating Offers** negotiation — not
+The aligner drives a real **NEGMAS Stacked Alternating Offers** negotiation, not
 an LLM improvising a consensus. The mechanism owns proposer rotation and the
 unanimity stop; the aligner only supplies each agent's move when NEGMAS asks for
 one.
@@ -610,25 +611,25 @@ one.
    standing offer, waits for that agent's `mycelium respond` reply, and interprets
    the natural-language reply into an SAO move (accept / reject / counter). Agents
    answer in prose; they never speak the protocol.
-3. **Terminate.** NEGMAS stops the instant everyone accepts the same offer — it
+3. **Terminate.** NEGMAS stops the instant everyone accepts the same offer; it
    never loops to the step cap. A negotiation that can't reach agreement commits
    as `rejected`.
 4. **Compile.** On agreement the aligner emits `commit:converged` carrying the
-   agreed `{issue: value}` map, and `plan_compiler` — a separate LLM stage that
-   *consumes* the outcome, not part of the negotiation engine — turns it into the
+   agreed `{issue: value}` map, and `plan_compiler` (a separate LLM stage that
+   *consumes* the outcome, not part of the negotiation engine) turns it into the
    room's [shared plan](#plan), `plan/tasks.md`: a `- [ ]` checklist with
    `@handle` owners. This runs before the consensus is announced, so the plan
    exists by the time `await` returns.
 
 Walking away with no agreement is a legitimate outcome. There's no "concede
-gradually" mechanism — if your hard constraints can't be met, keep rejecting.
+gradually" mechanism: if your hard constraints can't be met, keep rejecting.
 
 ## Memory across rounds
 
 The aligner's brain is a persistent **Pi** coding-agent session (`pi -p --session
 <id>`), spawned fresh per episode and kept alive across every round of that
 episode. That persistence is what gives it real memory of the negotiation as it
-unfolds — it remembers who moved and why, rather than re-reading a flat
+unfolds: it remembers who moved and why, rather than re-reading a flat
 transcript each turn. Pi ships in the backend image; it is Mycelium's own
 cognition runtime and is never imposed on participant agent runtimes.
 
@@ -643,7 +644,7 @@ The aligner is dormant by default and configured through `~/.mycelium/.env`
 | `ALIGNER_THRESHOLD` | `0.6` | Consensus confidence at/above which a round converges; below rejects |
 | `ALIGNER_MAX_ROUNDS` | `3` | Hard cap on the driver's rounds so the loop always terminates |
 | `ALIGNER_ROUND_TIMEOUT_S` | `30.0` | Per-round wait for participant replies before scoring what arrived |
-| `ALIGNER_MEDIATOR_MAX_STEPS` | `20` | Hard cap on NEGMAS SAO steps — a safety bound; NEGMAS normally stops at agreement well before it |
+| `ALIGNER_MEDIATOR_MAX_STEPS` | `20` | Hard cap on NEGMAS SAO steps, a safety bound; NEGMAS normally stops at agreement well before it |
 | `ALIGNER_PI_TIMEOUT_S` | `120.0` | Per-turn wall-clock bound on one Pi brain call |
 
 See [L9 Protocol](#l9-protocol) for the envelope format, epistemic reply fields,
@@ -666,7 +667,7 @@ say how sure they are and why; every consensus gets a quality score; every
 negotiation leaves a causal paper trail.
 
 L9 rides the room's SLIM channel as additive JSON envelopes on the coordination
-messages — ticks are `exchange`, agreement commits as `commit:converged`,
+messages: ticks are `exchange`, agreement commits as `commit:converged`,
 failure as `commit:rejected`, and shared knowledge as `knowledge`. The backend
 synthesizes reply envelopes from what agents say, so agents never need to speak
 L9 themselves.
@@ -691,15 +692,15 @@ mycelium respond --room design --handle me \
 
 The `[[mycelium: …]]` marker is lifted onto the L9 envelope and stripped from
 the prose. The aligner reads your reply and folds in the richer epistemic
-signals it can infer — the evidence you engaged, whether your position moved,
+signals it can infer: the evidence you engaged, whether your position moved,
 and why:
 
 - `confidence` (0–1): how sure you are of your position
 - `stance`: `accept` / `reject` (also `agree`/`yes`, `block`/`no`)
 - **supporting / against evidence**: what argues for and against your position
-- **what you addressed**: the prior evidence your turn engages — grounding is
-  scored on this
-- **revision cause**: why your position moved — `grounded_argument`,
+- **what you addressed**: the prior evidence your turn engages (grounding is
+  scored on this)
+- **revision cause**: why your position moved, one of `grounded_argument`,
   `new_evidence`, `semantic_memory`, `repair_resolution`, or
   `social_compliance`
 - **deferral**: yielding without being persuaded (a `social_compliance`
@@ -709,7 +710,7 @@ Defer honestly. It doesn't change the outcome; it changes how much the
 outcome can be trusted, which is the point. A dishonest "accept" corrupts the
 team's shared memory; an honest deferral just marks the consensus as thinner.
 If you move but cite no prior evidence, you get the benefit of the doubt
-(counted as genuine) — compliance is only marked on a real signal.
+(counted as genuine); compliance is only marked on a real signal.
 
 ## Read the quality of a consensus
 
@@ -738,7 +739,7 @@ written to the room's own memory after each converged consensus
 over time. Agents are instructed to form their own view first, then weigh the
 prior: a starting point, not an answer.
 
-> Local by default — the prior lives in room memory, no external service
+> Local by default: the prior lives in room memory, no external service
 > needed. Fail-soft: no prior, negotiation proceeds normally.
 
 ## The paper trail
@@ -767,12 +768,12 @@ as a `knowledge` memory. The quality metrics are computed by Mycelium.
 
 ## Deployment Modes
 
-Mycelium supports two deployment modes. The stack is identical in both —
+Mycelium supports two deployment modes. The stack is identical in both;
 what differs is *where the agents run* and *how they reach the room*.
 
 ### 1. Single-device (default)
 
-Everything — the backend, the SLIM node, agents, and CLI — runs on one
+Everything (the backend, the SLIM node, agents, and CLI) runs on one
 machine, typically a developer's laptop. This is what `mycelium install`
 sets up out of the box. No network configuration, no remote services to
 point at, no shared infrastructure required.
@@ -795,10 +796,10 @@ and connect to the hub's channel.
 Stand a hub up and point spokes at it:
 
 ```bash
-# On the hub — starts the SLIM node + backend, prints the connect address
+# On the hub: starts the SLIM node + backend, prints the connect address
 mycelium hub host
 
-# On each spoke — point this machine at the hub's channel
+# On each spoke: point this machine at the hub's channel
 mycelium hub connect http://<hub-ip>:46357
 ```
 
@@ -813,7 +814,7 @@ auto-detection with:
 ```bash
 mycelium doctor --mode hub     # force hub checks
 mycelium doctor --mode spoke   # force spoke checks (skip local-only)
-mycelium doctor --mode auto    # default — detect from api_url
+mycelium doctor --mode auto    # default; detect from api_url
 ```
 
 ### Syncing room files (remote backend)
@@ -832,12 +833,12 @@ mycelium sync
 
 ## Stack
 
-Mycelium runs on **one SLIM node** and a thin backend — no database, no
+Mycelium runs on **one SLIM node** and a thin backend: no database, no
 message broker, no vector store.
 
 Agents coordinate over an [AGNTCY SLIM](https://github.com/agntcy) group
 channel, one per room: an MLS-encrypted group with shared-secret PSK auth.
-The backend is each room's **moderator** — agents (and the human, by proxy)
+The backend is each room's **moderator**; agents (and the human, by proxy)
 are members. Room state lives on disk as markdown files; search runs against a
 local embedding index. Coordination messages ride SLIM as additive
 [L9 envelopes](#l9-protocol).
@@ -845,10 +846,10 @@ local embedding index. Coordination messages ride SLIM as additive
 | Layer | Technology | Used for |
 |-------|-----------|----------|
 | Messaging | one SLIM node (MLS group channels) | per-room encrypted coordination fabric |
-| State | markdown files under `~/.mycelium/rooms/{room}/` | rooms, memories, plan — the source of truth |
+| State | markdown files under `~/.mycelium/rooms/{room}/` | rooms, memories, plan: the source of truth |
 | Search | local ONNX embedding index (JSONL) | ~384-dim semantic recall, no external service |
 | Protocol | L9 envelopes over SLIM | `exchange` ticks/replies, `commit:*`, `knowledge` |
-| Cognition | the aligner — Pi + NEGMAS | drives the negotiation (see [aligner](#aligner)) |
+| Cognition | the aligner (Pi + NEGMAS) | drives the negotiation (see [aligner](#aligner)) |
 | Embeddings | local ONNX model | 384-dim embeddings, no API key |
 | LLM | litellm | plan compilation (100+ providers) |
 | Backend | FastAPI (room moderator) | membership, transcript, moderation API |
@@ -857,7 +858,7 @@ local embedding index. Coordination messages ride SLIM as additive
 | Frontend | Next.js + Tailwind | frontend UI |
 
 **Participation is a CLI primitive.** Any already-awake caller joins a room and
-coordinates with two stateless HTTP calls — the backend holds membership via a
+coordinates with two stateless HTTP calls. The backend holds membership via a
 presence lease and a durable transcript cursor, so ticks are never missed
 between turns:
 
@@ -875,7 +876,7 @@ mycelium respond --room my-project --handle me "moving toward 30% …"
 speak SLIM or L9 directly.
 
 **The aligner is the cognition engine.** Negotiation is driven by a first-party
-mediator — the aligner — registered in a room and summoned by `@`-mention. Its
+mediator, the aligner, registered in a room and summoned by `@`-mention. Its
 brain is a persistent Pi coding-agent session running a NEGMAS Stacked
 Alternating Offers negotiation; NEGMAS owns termination, stopping the instant
 the agents agree. See [aligner](#aligner) and [episodes](#episodes).
@@ -883,11 +884,11 @@ the agents agree. See [aligner](#aligner) and [episodes](#episodes).
 ## Adapters
 
 Mycelium integrates with AI coding agents via adapters. The coordination model is
-the same regardless of adapter — join, await, respond.
+the same regardless of adapter: join, await, respond.
 
 | Adapter | Status |
 |---------|--------|
-| **claude_code** | proven — the supported path today |
+| **claude_code** | proven; the supported path today |
 | **cursor** | untested / unverified |
 | **openclaw, hermes** | deprecated |
 
@@ -954,14 +955,14 @@ happened. The next agent starts from scratch.
 Instead of writing memories with arbitrary keys, use structured prefixes:
 
 ```
-work/        — What was built or changed
-decisions/   — Why choices were made
-context/     — User preferences and background
-status/      — Current state of ongoing work
-procedures/  — Reusable how-to steps (do this again later)
+work/        What was built or changed
+decisions/   Why choices were made
+context/     User preferences and background
+status/      Current state of ongoing work
+procedures/  Reusable how-to steps (do this again later)
 ```
 
-`memory set` validates these automatically — when the key starts with a known
+`memory set` validates these automatically: when the key starts with a known
 category prefix, it checks the slug format and auto-timestamps the content.
 
 ## Workflow
@@ -989,8 +990,8 @@ mycelium memory set context/goal "Build MVP for investor demo by Friday"
 mycelium memory set context/constraints "Must run on single $20/mo VPS"
 
 # Track current state
-mycelium memory set status/api "PASSING — all 12 endpoints tested"
-mycelium memory set status/deploy "BLOCKED — waiting on DNS propagation"
+mycelium memory set status/api "PASSING: all 12 endpoints tested"
+mycelium memory set status/deploy "BLOCKED: waiting on DNS propagation"
 
 # Save reusable procedures
 mycelium memory set procedures/deploy-vps "1. ssh vps  2. cd /app && git pull  3. systemctl restart app  4. curl healthcheck"
@@ -1009,25 +1010,25 @@ mycelium memory procedures # How to do things again
 ### 4. Update status as things change
 
 ```bash
-# memory set always upserts — just set the new value
-mycelium memory set status/deploy "ACTIVE — deployed to vps.example.com"
+# memory set always upserts, so just set the new value
+mycelium memory set status/deploy "ACTIVE: deployed to vps.example.com"
 ```
 
 ## Type Safety
 
 `memory set` validates category keys against the `MemoryLogEntry` type
 (defined in `mycelium.protocol`). This is the same pattern used for the
-negotiation reply payload (`RespondReply`) — Pydantic validation before the
+negotiation reply payload (`RespondReply`): Pydantic validation before the
 API call, so malformed slugs fail fast on the client side.
 
 Valid slugs: lowercase alphanumeric, hyphens, dots, underscores.
-- `work/api-server` — valid
-- `status/v2.deploy` — valid
-- `decisions/Why We Chose X` — invalid (uppercase, spaces)
+- `work/api-server` (valid)
+- `status/v2.deploy` (valid)
+- `decisions/Why We Chose X` (invalid: uppercase, spaces)
 
 Keys without a known category prefix skip validation entirely:
-- `custom/anything` — passes through, no slug check
-- `research/index-perf` — passes through
+- `custom/anything` (passes through, no slug check)
+- `research/index-perf` (passes through)
 
 
 ---
@@ -1037,18 +1038,18 @@ Keys without a known category prefix skip validation entirely:
 Run Mycelium across two or more machines so a small team shares rooms,
 memory, and coordination over one SLIM node.
 
-Coordination rides an [AGNTCY SLIM](#architecture) group channel — an
+Coordination rides an [AGNTCY SLIM](#architecture) group channel, an
 MLS-encrypted messaging fabric. One machine is the **hub**: it runs the
 SLIM node plus the always-on backend that moderates each room. Every
 other machine is a **spoke** that points at the hub's node. There is no
-database and no separate channel server — the node is a blind ciphertext
+database and no separate channel server; the node is a blind ciphertext
 forwarder, so the hub never sees room contents in the clear.
 
 ## When to use this
 
 Use hub-and-spoke when people on different machines need to join the same
 rooms, see the same memories, and run negotiations together. If everything
-runs on one machine, the default single-device install already does this —
+runs on one machine, the default single-device install already does this;
 see the [Quick Start](#quickstart).
 
 ## Topology
@@ -1091,14 +1092,14 @@ address peers connect to:
 
 ```
 SLIM node running.
-  local     → http://127.0.0.1:46357  (this machine — saved to config)
+  local     → http://127.0.0.1:46357  (this machine, saved to config)
   for peers → http://192.168.1.20:46357
 
   Peers connect with:  mycelium connect http://192.168.1.20:46357
 ```
 
 It also wires this machine to its own node, so the hub is ready to host
-rooms immediately. Note the `for peers` LAN address — that's what spokes
+rooms immediately. Note the `for peers` LAN address; that's what spokes
 connect to.
 
 Verify with:
@@ -1120,7 +1121,7 @@ Spokes need to reach the hub's SLIM node:
 | 46357 | SLIM node | Yes      |
 
 The node forwards only MLS ciphertext, but restrict access anyway with a
-VPN, Tailscale, or firewall rules — access to a channel is gated by its
+VPN, Tailscale, or firewall rules; access to a channel is gated by its
 shared-secret PSK.
 
 ## Step 2: Connect each spoke
@@ -1139,7 +1140,7 @@ mycelium connect http://192.168.1.20:46357
 
 This stores the node endpoint in `~/.mycelium/config.toml`. The command
 is identical whether the hub is self-hosted on your LAN or a shared
-mycelium-hosted rendezvous — only the address changes.
+mycelium-hosted rendezvous; only the address changes.
 
 Verify:
 
@@ -1169,7 +1170,7 @@ mycelium room clone portfolio --from http://192.168.1.20:8000
 
 `room clone` fetches the room's memories over HTTP and writes them
 locally, then sets the room active. From here, memory is shared the
-normal way — git push/pull for durable state, and the live SLIM channel
+normal way: git push/pull for durable state, and the live SLIM channel
 for coordination.
 
 ## Step 4: Run a negotiation across machines
@@ -1180,7 +1181,7 @@ channel. The aligner runs a NEGMAS negotiation and stops the instant the
 agents agree.
 
 ```bash
-# Once, on any machine — register the aligner in the room
+# Once, on any machine: register the aligner in the room
 mycelium engine create aligner --kind aligner --room portfolio
 ```
 
@@ -1200,12 +1201,12 @@ A human summons the aligner to converge:
 mycelium engine invoke aligner "converge on the equities allocation"
 ```
 
-Each participant then loops — wait for a prompt addressed to their
+Each participant then loops: wait for a prompt addressed to their
 handle, read it, and reply:
 
 ```bash
 mycelium await --room portfolio --handle alice --json
-mycelium respond --room portfolio --handle alice "accept 50% — meets my floor"
+mycelium respond --room portfolio --handle alice "accept 50%, meets my floor"
 ```
 
 On agreement the aligner records the [episode](#episodes) and compiles
@@ -1220,7 +1221,7 @@ memories sync across machines the same way the room did.
 
 ## Agent identity
 
-Each agent needs a unique handle across the whole deployment — it's the
+Each agent needs a unique handle across the whole deployment; it's the
 agent's identity in every room. The handle is resolved from, in order:
 
 1. `identity.name` in `~/.mycelium/config.toml`
@@ -1258,7 +1259,7 @@ See [Troubleshooting](#troubleshooting) for the full runbook.
 ## Quick Diagnostics
 
 ```bash
-mycelium doctor          # full diagnostic — config, backend, LLM, SLIM, adapters
+mycelium doctor          # full diagnostic: config, backend, LLM, SLIM, adapters
 mycelium doctor --fix    # auto-fix everything it can
 mycelium status          # quick service health (backend, LLM, disk)
 mycelium logs --tail 50  # recent service logs
@@ -1292,7 +1293,7 @@ export PATH="$HOME/.local/bin:$PATH"
 
 **Symptom**: `Cannot connect to Mycelium API at http://localhost:8000`
 
-The backend is the room moderator — nothing coordinates without it.
+The backend is the room moderator; nothing coordinates without it.
 
 ```bash
 mycelium status                     # quick check
@@ -1365,7 +1366,7 @@ mycelium down && mycelium up                      # restart to pick up new ports
 
 ### 6. LLM Not Configured
 
-**Symptom**: `LLM unavailable — no API key configured`, or `mycelium doctor`
+**Symptom**: `LLM unavailable, no API key configured`, or `mycelium doctor`
 reports the LLM connectivity check as *not configured* / *auth failed*.
 
 The LLM powers the [aligner](#aligner) mediator and memory embedding-adjacent
@@ -1399,7 +1400,7 @@ with `PiBrainError: pi not found`.
 
 The aligner's mediator runs a NEGMAS negotiation whose brain is a **Pi**
 coding-agent session. The released backend image already ships Pi, so the
-normal `mycelium up` path needs nothing extra — `mycelium doctor` reports this
+normal `mycelium up` path needs nothing extra, and `mycelium doctor` reports this
 check as satisfied when the backend is dockerized.
 
 This only bites when you run the backend **outside Docker** (a contributor
@@ -1492,35 +1493,35 @@ mycelium init --api-url http://<correct-hub-ip>:8000
 ```
 
 Note the spoke must also reach the hub's **SLIM node** on 46357 (see *SLIM Node
-Unreachable* above) — the backend and the node are separate ports.
+Unreachable* above); the backend and the node are separate ports.
 
 ---
 
 ## Configuration Reference
 
-### CLI settings — `~/.mycelium/config.toml`
+### CLI settings: `~/.mycelium/config.toml`
 
 | Setting | Key | Env var override |
 |---------|-----|------------------|
 | Backend URL | `server.api_url` | `MYCELIUM_API_URL` |
-| SLIM node endpoint | `slim.node_endpoint` | — |
+| SLIM node endpoint | `slim.node_endpoint` | (none) |
 | Active room | `rooms.active` | `MYCELIUM_ACTIVE_ROOM` |
 | Agent handle | `identity.name` | `MYCELIUM_AGENT_HANDLE` |
 
-### Backend settings — `~/.mycelium/.env`
+### Backend settings: `~/.mycelium/.env`
 
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `LLM_MODEL` | LiteLLM model string | `anthropic/claude-sonnet-4-6` |
-| `LLM_API_KEY` | Provider API key | — |
-| `LLM_BASE_URL` | Custom LLM endpoint (Ollama, vLLM) | — |
+| `LLM_API_KEY` | Provider API key | (none) |
+| `LLM_BASE_URL` | Custom LLM endpoint (Ollama, vLLM) | (none) |
 | `MYCELIUM_DATA_DIR` | Data directory | `~/.mycelium` |
 | `MYCELIUM_BACKEND_PORT` | Backend API host port | `8000` |
 | `MYCELIUM_UI_PORT` | Frontend host port (`--ui`) | `3000` |
 | `MYCELIUM_METRICS_PORT` | OTLP collector host port (`--metrics`) | `4318` |
 
 All of these are written by `mycelium config apply` from the matching
-`runtime.*` config keys — don't edit `.env` by hand.
+`runtime.*` config keys, so don't edit `.env` by hand.
 
 ### Agent environment variables
 

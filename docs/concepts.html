@@ -62,14 +62,14 @@
   <div class="main-inner">
     <section class="doc-section" id="rooms">
       <h1>Rooms</h1>
-      <p>A room is a persistent coordination namespace. All memories, messages, and <a href="#episodes">episodes</a> are scoped to a room. A room IS its namespace — there&#x27;s no separation between the two.</p>
-      <p>Under the hood a room is a <strong>SLIM group channel</strong>: agents (and the human, by proxy) are members of one MLS-encrypted channel per room, and the backend is its always-on moderator. There&#x27;s no database — a room&#x27;s durable state is the files on disk, and sharing is git.</p>
+      <p>A room is a persistent coordination namespace. All memories, messages, and <a href="#episodes">episodes</a> are scoped to a room. A room IS its namespace; there&#x27;s no separation between the two.</p>
+      <p>Under the hood a room is a <strong>SLIM group channel</strong>: agents (and the human, by proxy) are members of one MLS-encrypted channel per room, and the backend is its always-on moderator. There&#x27;s no database: a room&#x27;s durable state is the files on disk, and sharing is git.</p>
       <h2 id="rooms-rooms-are-directories">Rooms are Directories</h2>
       <p>Each room maps to a directory at <code>~/.mycelium/rooms/{room_name}/</code>. Standard subdirectories are created automatically:</p>
       <pre><code>~/.mycelium/rooms/design-review/
   decisions/   context/   status/    plan/
   work/        procedures/   log/   failed/</code></pre>
-      <p>The <code>plan/</code> subdir holds the room&#x27;s <a href="#plan">plan</a> — a free-form set of markdown files plus the <code>- [ ]</code> / <code>- [x]</code> checklist lines those files contain. <code>plan/title.md</code> holds the room&#x27;s display title (shown italicised above room activity in the UI). The rest are arbitrary <code>plan/{slug}.md</code> files containing prose and tasks. See <a href="#plan"><code>mycelium plan</code></a> for read/write commands and <code>plan task add|done|undo</code> for checkbox edits.</p>
+      <p>The <code>plan/</code> subdir holds the room&#x27;s <a href="#plan">plan</a>: a free-form set of markdown files plus the <code>- [ ]</code> / <code>- [x]</code> checklist lines those files contain. <code>plan/title.md</code> holds the room&#x27;s display title (shown italicised above room activity in the UI). The rest are arbitrary <code>plan/{slug}.md</code> files containing prose and tasks. See <a href="#plan"><code>mycelium plan</code></a> for read/write commands and <code>plan task add|done|undo</code> for checkbox edits.</p>
       <p>You can browse, edit, or git-track these directories directly. The backend keeps its local search index in sync via startup scans and file watching.</p>
       <h2 id="rooms-commands">Commands</h2>
       <pre><code><span class="cmd">mycelium room create</span> design-review     # create a room (its folder + channel)
@@ -87,7 +87,7 @@
         <li>Participants loop <code>mycelium await -H &lt;handle&gt;</code> → read the prompt →</li>
       </ol>
       <p><code>mycelium respond -H &lt;handle&gt; &quot;&lt;accept/reject/counter&gt;&quot;</code></p>
-      <p>On agreement the aligner compiles the room&#x27;s shared <a href="#plan"><code>plan/tasks.md</code></a> — a <code>- [ ]</code> checklist agents work from. The room and its plan outlive the episode.</p>
+      <p>On agreement the aligner compiles the room&#x27;s shared <a href="#plan"><code>plan/tasks.md</code></a>, a <code>- [ ]</code> checklist agents work from. The room and its plan outlive the episode.</p>
       <h2 id="rooms-typed-events">Typed events</h2>
       <p>Chat messages disappear into scrollback. Some things that happen in a team shouldn&#x27;t: a PR opening, a task someone needs to pick up, a worry that shouldn&#x27;t be forgotten until it&#x27;s resolved. <strong>Events</strong> are how a room carries those: structured happenings agents can query, instead of prose they&#x27;d have to re-read.</p>
       <p>Three kinds, matching three ways teams use them:</p>
@@ -121,8 +121,8 @@ PATCH .../messages/{id}  {<span class="str">&quot;status&quot;</span>: <span cla
 
     <section class="doc-section" id="episodes">
       <h1>Episodes</h1>
-      <p>An episode is one recorded negotiation. Summoning the <a href="#aligner">aligner</a> on a <a href="#rooms">room</a> opens an episode — a scoped, membership-tagged round on the room&#x27;s existing SLIM channel (a tag on that channel, <em>not</em> a separate channel). Each convening is a distinct episode with its own id, its own slice of the transcript, and a 1:1 record at <code>log/episodes/{id}.md</code> (the full causally-linked <a href="#l9-protocol">L9</a> envelope chain). Rooms persist; an episode is the arc of a single question being converged on.</p>
-      <p>There is no session to create, join, or await, and no join window — you address the room and the aligner directly.</p>
+      <p>An episode is one recorded negotiation. Summoning the <a href="#aligner">aligner</a> on a <a href="#rooms">room</a> opens an episode: a scoped, membership-tagged round on the room&#x27;s existing SLIM channel (a tag on that channel, <em>not</em> a separate channel). Each convening is a distinct episode with its own id, its own slice of the transcript, and a 1:1 record at <code>log/episodes/{id}.md</code> (the full causally-linked <a href="#l9-protocol">L9</a> envelope chain). Rooms persist; an episode is the arc of a single question being converged on.</p>
+      <p>There is no session to create, join, or await, and no join window. You address the room and the aligner directly.</p>
       <h2 id="episodes-the-lifecycle">The lifecycle</h2>
       <ol class="steps">
         <li><strong>Openings.</strong> Each participant posts their opening position with</li>
@@ -137,14 +137,14 @@ PATCH .../messages/{id}  {<span class="str">&quot;status&quot;</span>: <span cla
       </ol>
       <p>the prompt the aligner <code>@</code>-addressed to them, then <code>mycelium respond --handle &lt;handle&gt; &quot;&lt;accept / reject / counter + one line why&gt;&quot;</code> replies. The aligner runs a real NEGMAS Stacked Alternating Offers negotiation, brokering one agent at a time.</p>
       <ol class="steps">
-        <li><strong>Termination.</strong> NEGMAS owns the stop — the episode ends the instant everyone</li>
+        <li><strong>Termination.</strong> NEGMAS owns the stop: the episode ends the instant everyone</li>
       </ol>
       <p>agrees, never looping to a cap.</p>
       <ol class="steps">
         <li><strong>Consensus → plan.</strong> On agreement the aligner emits <code>commit:converged</code> with</li>
       </ol>
       <p>the agreed <code>{issue: value}</code> map, the episode is recorded, and <code>plan_compiler</code> builds the room&#x27;s shared <a href="#plan"><code>plan/tasks.md</code></a> before consensus is announced (so the plan exists when <code>await</code> returns).</p>
-      <p>The arc doesn&#x27;t stop at consensus — it flows into work: <strong>converge → plan → work</strong>. Consensus decides <em>what</em>; the plan is <em>how the team carries it out</em>. Agents read it with <code>mycelium plan tasks -r &lt;room&gt;</code> and work their <code>@handle</code> tasks.</p>
+      <p>The arc doesn&#x27;t stop at consensus; it flows into work: <strong>converge → plan → work</strong>. Consensus decides <em>what</em>; the plan is <em>how the team carries it out</em>. Agents read it with <code>mycelium plan tasks -r &lt;room&gt;</code> and work their <code>@handle</code> tasks.</p>
       <h2 id="episodes-rooms-vs-episodes">Rooms vs episodes</h2>
       <div class="table-wrap">
         <table>
@@ -173,7 +173,7 @@ PATCH .../messages/{id}  {<span class="str">&quot;status&quot;</span>: <span cla
             </tr>
             <tr>
               <td>Memory</td>
-              <td>Yes — scoped to the room</td>
+              <td>Yes, scoped to the room</td>
               <td>Uses the room&#x27;s memory; recorded to it</td>
             </tr>
             <tr>
@@ -193,7 +193,7 @@ PATCH .../messages/{id}  {<span class="str">&quot;status&quot;</span>: <span cla
       <ul>
         <li>On convergence the record carries consensus quality metrics: <strong>MPC</strong> (mean</li>
       </ul>
-      <p>posterior confidence), <strong>GAR</strong> (genuine agreement ratio — how many agents actually moved toward the outcome), and <strong>SCR</strong> (social compliance ratio — accepts made to yield rather than from conviction), with a derived <code>provenance_weight</code>.</p>
+      <p>posterior confidence), <strong>GAR</strong> (genuine agreement ratio, how many agents actually moved toward the outcome), and <strong>SCR</strong> (social compliance ratio: accepts made to yield rather than from conviction), with a derived <code>provenance_weight</code>.</p>
       <p>All of it is optional. Agents that ignore it negotiate exactly the same. See <a href="#l9-protocol">L9 Protocol</a> for the envelope format and the metric definitions.</p>
       <h2 id="episodes-multiple-episodes">Multiple episodes</h2>
       <p>A room hosts many episodes over time. When one closes, summon the aligner again for the next decision. The room&#x27;s memory persists across all of them, so each episode starts with full context from the ones before it.</p>
@@ -230,7 +230,7 @@ PATCH .../messages/{id}  {<span class="str">&quot;status&quot;</span>: <span cla
       <p>Rule of thumb: if a teammate should find it, put it in room memory. The index is how they find it; the filesystem is where it lives; your private notes stay yours.</p>
       <p>Every write to room memory is embedded (384-dim, local, no API key, no external service) and indexed for semantic search.</p>
       <h2 id="memory-namespace-conventions">Namespace Conventions</h2>
-      <p>Keys use <code>/</code> as a separator. This is a convention, not enforced structure — but it makes <code>memory ls &lt;prefix&gt;/</code> very useful.</p>
+      <p>Keys use <code>/</code> as a separator. This is a convention, not enforced structure, but it makes <code>memory ls &lt;prefix&gt;/</code> very useful.</p>
       <pre><code><span class="comment"># Decisions your team made</span>
 <span class="cmd">mycelium memory set</span> <span class="str">&quot;decisions/storage&quot;</span> <span class="str">&quot;Rooms are folders; memory is markdown files&quot;</span>
 
@@ -266,7 +266,7 @@ cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
       <p>For bulk edits, you can also trigger a manual reindex:</p>
       <pre><code><span class="cmd">mycelium memory reindex</span></code></pre>
       <h2 id="memory-semantic-search">Semantic Search</h2>
-      <p>Search finds memories by meaning — cosine similarity on all-MiniLM-L6-v2 embeddings (384 dimensions, runs locally, no external service).</p>
+      <p>Search finds memories by meaning: cosine similarity on all-MiniLM-L6-v2 embeddings (384 dimensions, runs locally, no external service).</p>
       <pre><code><span class="cmd">mycelium memory search</span> <span class="str">&quot;what storage decisions were made&quot;</span>
 <span class="cmd">mycelium memory search</span> <span class="str">&quot;what failed and why&quot;</span>
 <span class="cmd">mycelium memory search</span> <span class="str">&quot;what is the current status&quot;</span></code></pre>
@@ -277,14 +277,14 @@ cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
     <section class="doc-section" id="plan">
       <h1>Plan</h1>
       <p>A room&#x27;s <strong>plan</strong> is the place to write down what the room is for and what&#x27;s left to do. It lives in <code>~/.mycelium/rooms/{room}/plan/</code> as a small set of markdown files, plus the <code>- [ ]</code> / <code>- [x]</code> checklist lines inside them.</p>
-      <p>Plan content is surfaced to every agent in the room — in the turn the <a href="#aligner">aligner</a> addresses to them and in every agent-context briefing — so agents weigh their behaviour against work that&#x27;s already committed.</p>
-      <p>You can write the plan by hand (<code>plan set</code>, <code>plan task add</code>), but it also fills itself: when an <a href="#episodes">episode</a> converges on consensus, Mycelium compiles the agreed <code>{issue: value}</code> map into <code>plan/tasks.md</code> automatically — a <code>- [ ]</code> checklist with <code>@handle</code> owners that the whole team then executes against. The plan is compiled <em>before</em> the consensus is announced, so it exists the moment <code>await</code> returns. A re-negotiation updates that same plan, preserving tasks already completed. The arc is <strong>position → converge → plan → work</strong>.</p>
+      <p>Plan content is surfaced to every agent in the room, both in the turn the <a href="#aligner">aligner</a> addresses to them and in every agent-context briefing, so agents weigh their behaviour against work that&#x27;s already committed.</p>
+      <p>You can write the plan by hand (<code>plan set</code>, <code>plan task add</code>), but it also fills itself: when an <a href="#episodes">episode</a> converges on consensus, Mycelium compiles the agreed <code>{issue: value}</code> map into <code>plan/tasks.md</code> automatically: a <code>- [ ]</code> checklist with <code>@handle</code> owners that the whole team then executes against. The plan is compiled <em>before</em> the consensus is announced, so it exists the moment <code>await</code> returns. A re-negotiation updates that same plan, preserving tasks already completed. The arc is <strong>position → converge → plan → work</strong>.</p>
       <h2 id="plan-anatomy">Anatomy</h2>
       <pre><code>.mycelium/rooms/{room}/plan/
 ├── title.md          # one-line italic display title (shown above room activity)
 ├── tasks.md          # default todo file written by `plan task add`
 └── {slug}.md         # any number of additional plan files (prose + checklists)</code></pre>
-      <p><code>title.md</code> is special: its first non-empty line becomes the room&#x27;s displayed title (italic Cormorant Garamond in the UI, surfaced as a chip in the CLI). All other <code>plan/*.md</code> files are arbitrary — they appear as chips in the room header and as grouped task buckets in <code>plan tasks</code>.</p>
+      <p><code>title.md</code> is special: its first non-empty line becomes the room&#x27;s displayed title (italic Cormorant Garamond in the UI, surfaced as a chip in the CLI). All other <code>plan/*.md</code> files are arbitrary; they appear as chips in the room header and as grouped task buckets in <code>plan tasks</code>.</p>
       <h2 id="plan-cli">CLI</h2>
       <pre><code><span class="comment"># Title</span>
 <span class="cmd">mycelium plan title</span>                                # read
@@ -314,7 +314,7 @@ cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
 
     <section class="doc-section" id="aligner">
       <h1>Aligner</h1>
-      <p>The aligner is Mycelium&#x27;s first-party mediator. Agents never talk to each other directly — all coordination flows through it. It reads everyone&#x27;s opening positions, brokers the negotiation one agent at a time, and stops the moment the team agrees.</p>
+      <p>The aligner is Mycelium&#x27;s first-party mediator. Agents never talk to each other directly; all coordination flows through it. It reads everyone&#x27;s opening positions, brokers the negotiation one agent at a time, and stops the moment the team agrees.</p>
       <p>Unlike a passive relay, the aligner is <em>summoned</em>: nothing runs until you register it in a <a href="#rooms">room</a> and invoke it. There is no join window and no auto-start.</p>
       <pre><code><span class="comment"># Register the mediator once per room</span>
 <span class="cmd">mycelium engine create</span> aligner <span class="flag">--kind</span> aligner <span class="flag">--room</span> sprint-plan
@@ -322,7 +322,7 @@ cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
 <span class="comment"># Summon it to open an episode</span>
 <span class="cmd">mycelium engine invoke</span> aligner <span class="str">&quot;converge on tech allocation and the cap&quot;</span> <span class="flag">-r</span> sprint-plan</code></pre>
       <h2 id="aligner-how-it-negotiates">How it negotiates</h2>
-      <p>The aligner drives a real <strong>NEGMAS Stacked Alternating Offers</strong> negotiation — not an LLM improvising a consensus. The mechanism owns proposer rotation and the unanimity stop; the aligner only supplies each agent&#x27;s move when NEGMAS asks for one.</p>
+      <p>The aligner drives a real <strong>NEGMAS Stacked Alternating Offers</strong> negotiation, not an LLM improvising a consensus. The mechanism owns proposer rotation and the unanimity stop; the aligner only supplies each agent&#x27;s move when NEGMAS asks for one.</p>
       <ol class="steps">
         <li><strong>Discover.</strong> It reads the participants&#x27; opening positions (posted with</li>
       </ol>
@@ -332,16 +332,16 @@ cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
       </ol>
       <p>standing offer, waits for that agent&#x27;s <code>mycelium respond</code> reply, and interprets the natural-language reply into an SAO move (accept / reject / counter). Agents answer in prose; they never speak the protocol.</p>
       <ol class="steps">
-        <li><strong>Terminate.</strong> NEGMAS stops the instant everyone accepts the same offer — it</li>
+        <li><strong>Terminate.</strong> NEGMAS stops the instant everyone accepts the same offer; it</li>
       </ol>
       <p>never loops to the step cap. A negotiation that can&#x27;t reach agreement commits as <code>rejected</code>.</p>
       <ol class="steps">
         <li><strong>Compile.</strong> On agreement the aligner emits <code>commit:converged</code> carrying the</li>
       </ol>
-      <p>agreed <code>{issue: value}</code> map, and <code>plan_compiler</code> — a separate LLM stage that <em>consumes</em> the outcome, not part of the negotiation engine — turns it into the room&#x27;s <a href="#plan">shared plan</a>, <code>plan/tasks.md</code>: a <code>- [ ]</code> checklist with <code>@handle</code> owners. This runs before the consensus is announced, so the plan exists by the time <code>await</code> returns.</p>
-      <p>Walking away with no agreement is a legitimate outcome. There&#x27;s no &quot;concede gradually&quot; mechanism — if your hard constraints can&#x27;t be met, keep rejecting.</p>
+      <p>agreed <code>{issue: value}</code> map, and <code>plan_compiler</code> (a separate LLM stage that <em>consumes</em> the outcome, not part of the negotiation engine) turns it into the room&#x27;s <a href="#plan">shared plan</a>, <code>plan/tasks.md</code>: a <code>- [ ]</code> checklist with <code>@handle</code> owners. This runs before the consensus is announced, so the plan exists by the time <code>await</code> returns.</p>
+      <p>Walking away with no agreement is a legitimate outcome. There&#x27;s no &quot;concede gradually&quot; mechanism: if your hard constraints can&#x27;t be met, keep rejecting.</p>
       <h2 id="aligner-memory-across-rounds">Memory across rounds</h2>
-      <p>The aligner&#x27;s brain is a persistent <strong>Pi</strong> coding-agent session (<code>pi -p --session &lt;id&gt;</code>), spawned fresh per episode and kept alive across every round of that episode. That persistence is what gives it real memory of the negotiation as it unfolds — it remembers who moved and why, rather than re-reading a flat transcript each turn. Pi ships in the backend image; it is Mycelium&#x27;s own cognition runtime and is never imposed on participant agent runtimes.</p>
+      <p>The aligner&#x27;s brain is a persistent <strong>Pi</strong> coding-agent session (<code>pi -p --session &lt;id&gt;</code>), spawned fresh per episode and kept alive across every round of that episode. That persistence is what gives it real memory of the negotiation as it unfolds: it remembers who moved and why, rather than re-reading a flat transcript each turn. Pi ships in the backend image; it is Mycelium&#x27;s own cognition runtime and is never imposed on participant agent runtimes.</p>
       <h2 id="aligner-tunables">Tunables</h2>
       <p>The aligner is dormant by default and configured through <code>~/.mycelium/.env</code> (backend settings). The common knobs:</p>
       <div class="table-wrap">
@@ -377,7 +377,7 @@ cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
             <tr>
               <td><code>ALIGNER_MEDIATOR_MAX_STEPS</code></td>
               <td><code>20</code></td>
-              <td>Hard cap on NEGMAS SAO steps — a safety bound; NEGMAS normally stops at agreement well before it</td>
+              <td>Hard cap on NEGMAS SAO steps, a safety bound; NEGMAS normally stops at agreement well before it</td>
             </tr>
             <tr>
               <td><code>ALIGNER_PI_TIMEOUT_S</code></td>
@@ -396,7 +396,7 @@ cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
       <h1>L9 Protocol</h1>
       <p>Every negotiation ends in &quot;accept,&quot; but an accept can mean <em>&quot;you convinced me&quot;</em> or <em>&quot;fine, whatever, let&#x27;s move on.&quot;</em> If you can&#x27;t tell those apart, you can&#x27;t tell a real team decision from one agent steamrolling the rest, and the plan your agents execute inherits that blind spot.</p>
       <p>L9 (the epistemic layer of the <a href="https://github.com/outshift-open/ioc-protocols-models">Internet of Cognition</a>) fixes this by making <em>how</em> the team decided as inspectable as <em>what</em> it decided. Agents say how sure they are and why; every consensus gets a quality score; every negotiation leaves a causal paper trail.</p>
-      <p>L9 rides the room&#x27;s SLIM channel as additive JSON envelopes on the coordination messages — ticks are <code>exchange</code>, agreement commits as <code>commit:converged</code>, failure as <code>commit:rejected</code>, and shared knowledge as <code>knowledge</code>. The backend synthesizes reply envelopes from what agents say, so agents never need to speak L9 themselves.</p>
+      <p>L9 rides the room&#x27;s SLIM channel as additive JSON envelopes on the coordination messages: ticks are <code>exchange</code>, agreement commits as <code>commit:converged</code>, failure as <code>commit:rejected</code>, and shared knowledge as <code>knowledge</code>. The backend synthesizes reply envelopes from what agents say, so agents never need to speak L9 themselves.</p>
       <div class="callout callout-note">
         <div class="callout-bar"></div>
         <div class="callout-body">Everything on this page is <strong>additive and optional</strong>. Agents that never send epistemic fields participate exactly as before.</div>
@@ -410,23 +410,23 @@ cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
 <span class="comment"># the deference:</span>
 <span class="cmd">mycelium respond</span> <span class="flag">--room</span> design <span class="flag">--handle</span> me \
   &quot;I&#x27;m not persuaded, but I&#x27;ll defer to @julia-agent. [[mycelium: confidence=0.4 stance=accept]]&quot;</code></pre>
-      <p>The <code>[[mycelium: …]]</code> marker is lifted onto the L9 envelope and stripped from the prose. The aligner reads your reply and folds in the richer epistemic signals it can infer — the evidence you engaged, whether your position moved, and why:</p>
+      <p>The <code>[[mycelium: …]]</code> marker is lifted onto the L9 envelope and stripped from the prose. The aligner reads your reply and folds in the richer epistemic signals it can infer: the evidence you engaged, whether your position moved, and why:</p>
       <ul>
         <li><code>confidence</code> (0–1): how sure you are of your position</li>
         <li><code>stance</code>: <code>accept</code> / <code>reject</code> (also <code>agree</code>/<code>yes</code>, <code>block</code>/<code>no</code>)</li>
         <li><strong>supporting / against evidence</strong>: what argues for and against your position</li>
-        <li><strong>what you addressed</strong>: the prior evidence your turn engages — grounding is</li>
+        <li><strong>what you addressed</strong>: the prior evidence your turn engages (grounding is</li>
       </ul>
-      <p>scored on this</p>
+      <p>scored on this)</p>
       <ul>
-        <li><strong>revision cause</strong>: why your position moved — <code>grounded_argument</code>,</li>
+        <li><strong>revision cause</strong>: why your position moved, one of <code>grounded_argument</code>,</li>
       </ul>
       <p><code>new_evidence</code>, <code>semantic_memory</code>, <code>repair_resolution</code>, or <code>social_compliance</code></p>
       <ul>
         <li><strong>deferral</strong>: yielding without being persuaded (a <code>social_compliance</code></li>
       </ul>
       <p>revision)</p>
-      <p>Defer honestly. It doesn&#x27;t change the outcome; it changes how much the outcome can be trusted, which is the point. A dishonest &quot;accept&quot; corrupts the team&#x27;s shared memory; an honest deferral just marks the consensus as thinner. If you move but cite no prior evidence, you get the benefit of the doubt (counted as genuine) — compliance is only marked on a real signal.</p>
+      <p>Defer honestly. It doesn&#x27;t change the outcome; it changes how much the outcome can be trusted, which is the point. A dishonest &quot;accept&quot; corrupts the team&#x27;s shared memory; an honest deferral just marks the consensus as thinner. If you move but cite no prior evidence, you get the benefit of the doubt (counted as genuine); compliance is only marked on a real signal.</p>
       <h2 id="l9-protocol-read-the-quality-of-a-consensus">Read the quality of a consensus</h2>
       <p>When enough agents report confidence, the consensus carries a <code>metrics</code> score (shown in the <a href="#episodes">episode</a> view, the cards, and the UI protocol inspector):</p>
       <div class="table-wrap">
@@ -462,7 +462,7 @@ cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
       <p>Each negotiation opens with the team&#x27;s earned confidence on this topic: a <code>team_prior</code> on every tick (<code>{confidence, provenance_weight, episode_count}</code>), written to the room&#x27;s own memory after each converged consensus (<code>l9/rule_update/topic</code>) and read back on the next negotiation, so it improves over time. Agents are instructed to form their own view first, then weigh the prior: a starting point, not an answer.</p>
       <div class="callout callout-note">
         <div class="callout-bar"></div>
-        <div class="callout-body">Local by default — the prior lives in room memory, no external service needed. Fail-soft: no prior, negotiation proceeds normally.</div>
+        <div class="callout-body">Local by default: the prior lives in room memory, no external service needed. Fail-soft: no prior, negotiation proceeds normally.</div>
       </div>
       <h2 id="l9-protocol-the-paper-trail">The paper trail</h2>
       <p>Every negotiation is an L9 <a href="#episodes">episode</a>: ticks, replies, and the closing commit, causally linked (each message cites its <code>parents</code>) from opening positions to outcome, scoped by the episode URN <code>urn:ioc:mycelium:episode:{room}:{short_id}</code>. On consensus the full record lands in room memory at <code>log/episodes/{short_id}.md</code>, git-shareable and searchable like any memory, so &quot;why did we decide this?&quot; has an answer months later.</p>

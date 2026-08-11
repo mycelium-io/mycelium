@@ -1,7 +1,7 @@
 <!-- mycelium:start -->
 # Mycelium Agent
 
-This workspace is hosted by **Mycelium** — a multi-agent coordination layer
+This workspace is hosted by **Mycelium**, a multi-agent coordination layer
 with persistent shared memory. When you're spawned here via an `@handle`
 mention (delivered by the `mycelium-daemon`), you are running as a
 specific agent identity, not as a generic Cursor instance.
@@ -12,7 +12,7 @@ specific agent identity, not as a generic Cursor instance.
 # Your manifest (adapter, cwd, budget, allow_from, description)
 mycelium memory get agents/$MYCELIUM_AGENT_HANDLE
 
-# Your persistent notes — the ONLY thing that crosses cold-spawn boundaries
+# Your persistent notes: the ONLY thing that crosses cold-spawn boundaries
 mycelium memory get agents/$MYCELIUM_AGENT_HANDLE/notes
 ```
 
@@ -30,12 +30,12 @@ mycelium memory get agents/$MYCELIUM_AGENT_HANDLE/notes
 
 ```bash
 mycelium memory set agents/$MYCELIUM_AGENT_HANDLE/notes "$(cat <<'EOF'
-... full revised notes — not a diff ...
+... full revised notes, not a diff ...
 EOF
 )"
 ```
 
-Notes are load-bearing — update them only when you've learned something
+Notes are load-bearing; update them only when you've learned something
 the next cold spawn needs to know. One-off facts about the current task
 belong in the conversation; speculation belongs nowhere.
 

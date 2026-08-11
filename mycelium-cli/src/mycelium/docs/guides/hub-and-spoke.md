@@ -3,18 +3,18 @@
 Run Mycelium across two or more machines so a small team shares rooms,
 memory, and coordination over one SLIM node.
 
-Coordination rides an [AGNTCY SLIM](#architecture) group channel — an
+Coordination rides an [AGNTCY SLIM](#architecture) group channel, an
 MLS-encrypted messaging fabric. One machine is the **hub**: it runs the
 SLIM node plus the always-on backend that moderates each room. Every
 other machine is a **spoke** that points at the hub's node. There is no
-database and no separate channel server — the node is a blind ciphertext
+database and no separate channel server; the node is a blind ciphertext
 forwarder, so the hub never sees room contents in the clear.
 
 ## When to use this
 
 Use hub-and-spoke when people on different machines need to join the same
 rooms, see the same memories, and run negotiations together. If everything
-runs on one machine, the default single-device install already does this —
+runs on one machine, the default single-device install already does this;
 see the [Quick Start](#quickstart).
 
 ## Topology
@@ -57,14 +57,14 @@ address peers connect to:
 
 ```
 SLIM node running.
-  local     → http://127.0.0.1:46357  (this machine — saved to config)
+  local     → http://127.0.0.1:46357  (this machine, saved to config)
   for peers → http://192.168.1.20:46357
 
   Peers connect with:  mycelium connect http://192.168.1.20:46357
 ```
 
 It also wires this machine to its own node, so the hub is ready to host
-rooms immediately. Note the `for peers` LAN address — that's what spokes
+rooms immediately. Note the `for peers` LAN address; that's what spokes
 connect to.
 
 Verify with:
@@ -86,7 +86,7 @@ Spokes need to reach the hub's SLIM node:
 | 46357 | SLIM node | Yes      |
 
 The node forwards only MLS ciphertext, but restrict access anyway with a
-VPN, Tailscale, or firewall rules — access to a channel is gated by its
+VPN, Tailscale, or firewall rules; access to a channel is gated by its
 shared-secret PSK.
 
 ## Step 2: Connect each spoke
@@ -105,7 +105,7 @@ mycelium connect http://192.168.1.20:46357
 
 This stores the node endpoint in `~/.mycelium/config.toml`. The command
 is identical whether the hub is self-hosted on your LAN or a shared
-mycelium-hosted rendezvous — only the address changes.
+mycelium-hosted rendezvous; only the address changes.
 
 Verify:
 
@@ -135,7 +135,7 @@ mycelium room clone portfolio --from http://192.168.1.20:8000
 
 `room clone` fetches the room's memories over HTTP and writes them
 locally, then sets the room active. From here, memory is shared the
-normal way — git push/pull for durable state, and the live SLIM channel
+normal way: git push/pull for durable state, and the live SLIM channel
 for coordination.
 
 ## Step 4: Run a negotiation across machines
@@ -146,7 +146,7 @@ channel. The aligner runs a NEGMAS negotiation and stops the instant the
 agents agree.
 
 ```bash
-# Once, on any machine — register the aligner in the room
+# Once, on any machine: register the aligner in the room
 mycelium engine create aligner --kind aligner --room portfolio
 ```
 
@@ -166,12 +166,12 @@ A human summons the aligner to converge:
 mycelium engine invoke aligner "converge on the equities allocation"
 ```
 
-Each participant then loops — wait for a prompt addressed to their
+Each participant then loops: wait for a prompt addressed to their
 handle, read it, and reply:
 
 ```bash
 mycelium await --room portfolio --handle alice --json
-mycelium respond --room portfolio --handle alice "accept 50% — meets my floor"
+mycelium respond --room portfolio --handle alice "accept 50%, meets my floor"
 ```
 
 On agreement the aligner records the [episode](#episodes) and compiles
@@ -186,7 +186,7 @@ memories sync across machines the same way the room did.
 
 ## Agent identity
 
-Each agent needs a unique handle across the whole deployment — it's the
+Each agent needs a unique handle across the whole deployment; it's the
 agent's identity in every room. The handle is resolved from, in order:
 
 1. `identity.name` in `~/.mycelium/config.toml`

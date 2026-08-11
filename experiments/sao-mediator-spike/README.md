@@ -1,7 +1,8 @@
-# Rung 0 spike — LLM mediator driving a real NEGMAS SAO
+# Spike — LLM mediator driving a real NEGMAS SAO
 
-De-risks the unproven core of `docs/START_HERE_MEDIATOR.md`: *can an LLM mediator read
+The original spike that de-risked the aligner's core question: *can an LLM mediator read
 natural-language agent chatter, map it into NEGMAS offers, and terminate at agreement?*
+(Now productionized as `app/services/aligner.py` + `mediator.py` + `pi_brain.py`.)
 
 - `mediator_spike.py` (v1) — stateless agents + bare offers. **Deadlocks** (amnesiac hardliner
   never concedes). Finding: NEGMAS drive ✓ and NL→SAO interpretation ✓, but statelessness

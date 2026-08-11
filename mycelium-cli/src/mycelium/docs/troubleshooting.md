@@ -3,7 +3,7 @@
 ## Quick Diagnostics
 
 ```bash
-mycelium doctor          # full diagnostic — config, backend, LLM, SLIM, adapters
+mycelium doctor          # full diagnostic: config, backend, LLM, SLIM, adapters
 mycelium doctor --fix    # auto-fix everything it can
 mycelium status          # quick service health (backend, LLM, disk)
 mycelium logs --tail 50  # recent service logs
@@ -37,7 +37,7 @@ export PATH="$HOME/.local/bin:$PATH"
 
 **Symptom**: `Cannot connect to Mycelium API at http://localhost:8000`
 
-The backend is the room moderator — nothing coordinates without it.
+The backend is the room moderator; nothing coordinates without it.
 
 ```bash
 mycelium status                     # quick check
@@ -110,7 +110,7 @@ mycelium down && mycelium up                      # restart to pick up new ports
 
 ### 6. LLM Not Configured
 
-**Symptom**: `LLM unavailable — no API key configured`, or `mycelium doctor`
+**Symptom**: `LLM unavailable, no API key configured`, or `mycelium doctor`
 reports the LLM connectivity check as *not configured* / *auth failed*.
 
 The LLM powers the [aligner](#aligner) mediator and memory embedding-adjacent
@@ -144,7 +144,7 @@ with `PiBrainError: pi not found`.
 
 The aligner's mediator runs a NEGMAS negotiation whose brain is a **Pi**
 coding-agent session. The released backend image already ships Pi, so the
-normal `mycelium up` path needs nothing extra — `mycelium doctor` reports this
+normal `mycelium up` path needs nothing extra, and `mycelium doctor` reports this
 check as satisfied when the backend is dockerized.
 
 This only bites when you run the backend **outside Docker** (a contributor
@@ -237,35 +237,35 @@ mycelium init --api-url http://<correct-hub-ip>:8000
 ```
 
 Note the spoke must also reach the hub's **SLIM node** on 46357 (see *SLIM Node
-Unreachable* above) — the backend and the node are separate ports.
+Unreachable* above); the backend and the node are separate ports.
 
 ---
 
 ## Configuration Reference
 
-### CLI settings — `~/.mycelium/config.toml`
+### CLI settings: `~/.mycelium/config.toml`
 
 | Setting | Key | Env var override |
 |---------|-----|------------------|
 | Backend URL | `server.api_url` | `MYCELIUM_API_URL` |
-| SLIM node endpoint | `slim.node_endpoint` | — |
+| SLIM node endpoint | `slim.node_endpoint` | (none) |
 | Active room | `rooms.active` | `MYCELIUM_ACTIVE_ROOM` |
 | Agent handle | `identity.name` | `MYCELIUM_AGENT_HANDLE` |
 
-### Backend settings — `~/.mycelium/.env`
+### Backend settings: `~/.mycelium/.env`
 
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `LLM_MODEL` | LiteLLM model string | `anthropic/claude-sonnet-4-6` |
-| `LLM_API_KEY` | Provider API key | — |
-| `LLM_BASE_URL` | Custom LLM endpoint (Ollama, vLLM) | — |
+| `LLM_API_KEY` | Provider API key | (none) |
+| `LLM_BASE_URL` | Custom LLM endpoint (Ollama, vLLM) | (none) |
 | `MYCELIUM_DATA_DIR` | Data directory | `~/.mycelium` |
 | `MYCELIUM_BACKEND_PORT` | Backend API host port | `8000` |
 | `MYCELIUM_UI_PORT` | Frontend host port (`--ui`) | `3000` |
 | `MYCELIUM_METRICS_PORT` | OTLP collector host port (`--metrics`) | `4318` |
 
 All of these are written by `mycelium config apply` from the matching
-`runtime.*` config keys — don't edit `.env` by hand.
+`runtime.*` config keys, so don't edit `.env` by hand.
 
 ### Agent environment variables
 

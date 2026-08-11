@@ -1,6 +1,6 @@
 ---
 name: mycelium
-description: Use the mycelium CLI to join coordination rooms, negotiate with other agents via CognitiveEngine, and share persistent memory across sessions.
+description: DEPRECATED (openclaw adapter unsupported). Historical reference for the removed SSE/CFN coordination flow; use the claude_code skill for current guidance.
 user-invocable: true
 metadata:
   openclaw:
@@ -20,6 +20,18 @@ metadata:
 
 # Mycelium Coordination
 
+> **DEPRECATED: the openclaw adapter is not currently supported.** The
+> negotiation flow described below (`session join` / `session await` /
+> `negotiate propose`, `coordination_tick` / `coordination_consensus` payloads
+> delivered over SSE, the `CognitiveEngine` mediator, and the CFN knowledge
+> graph) rode a transport that has been removed. Mycelium now coordinates over a
+> SLIM group channel per room, negotiation is chat-native (post positions with
+> `mycelium respond`, summon the aligner with `mycelium engine invoke aligner`,
+> loop `mycelium await` / `mycelium respond`), and there is no database or CFN.
+> The proven adapter is `claude_code`; use its skill for current guidance. The
+> content below is retained for reference only and does not reflect the current
+> system.
+
 Mycelium provides persistent shared memory and real-time coordination between AI agents.
 
 Your core loop is the **negotiation protocol** below (join, respond, consensus, plan, work). Memory is the shared substrate underneath it.
@@ -32,11 +44,11 @@ Your core loop is the **negotiation protocol** below (join, respond, consensus, 
 
 ## Semantic negotiation
 
-When two or more agents need to agree on a multi-issue trade-off — REST vs GraphQL, who owns what task, what budget/timeline/scope to ship — Mycelium runs a **structured negotiation** mediated by CognitiveEngine. It's a multi-round bargaining loop with a clear outcome: either consensus on every issue, or a clean "no agreement" timeout. Both are valid endings.
+When two or more agents need to agree on a multi-issue trade-off (REST vs GraphQL, who owns what task, what budget/timeline/scope to ship), Mycelium runs a **structured negotiation** mediated by CognitiveEngine. It's a multi-round bargaining loop with a clear outcome: either consensus on every issue, or a clean "no agreement" timeout. Both are valid endings.
 
-On consensus, Mycelium compiles the agreement into the room's **shared plan** — a `- [ ]` checklist at `plan/tasks.md` the whole team executes against. The full arc is: join → negotiate → plan → work. See **After consensus** below.
+On consensus, Mycelium compiles the agreement into the room's **shared plan**: a `- [ ]` checklist at `plan/tasks.md` the whole team executes against. The full arc is: join → negotiate → plan → work. See **After consensus** below.
 
-Use it when "let's just chat about it" would spiral. Skip it for one-issue questions or quick coordination — those belong in plain channel messaging (next section).
+Use it when "let's just chat about it" would spiral. Skip it for one-issue questions or quick coordination, which belong in plain channel messaging (next section).
 
 ### The lifecycle
 
@@ -100,22 +112,22 @@ Mycelium validates counter-offers before they reach CognitiveEngine:
 1. **Use the exact issue keys from `issue_options`.** Case-sensitive. Made-up keys are rejected immediately and you'll get a corrective tick with the valid set.
 2. **Partial offers are fine.** You only need to include the issues you want to change. Omitted issues stay at the current standing offer's value.
 3. **Pick each value from that issue's option list.** Free-text outside the list isn't blocked locally but CFN may reject it.
-4. **Only counter when `can_counter_offer: true`.** A counter from the wrong agent gets silently downgraded to a reject — wasted turn.
+4. **Only counter when `can_counter_offer: true`.** A counter from the wrong agent gets silently downgraded to a reject, a wasted turn.
 
 ### Reading `prior_round_outcome`
 
 It tells you what just happened so you don't have to infer:
 
-- `rejected_by_<id>` — that agent rejected last round; the standing offer carries forward unchanged.
-- `proposer_countered` — last round's designated proposer overrode the standing offer with a new one. Look at `current_offer` for the change.
-- `first_round` — round 1, no prior context.
-- `agreed` / `no_consensus` — terminal states; you'll see a consensus message right after.
+- `rejected_by_<id>`: that agent rejected last round; the standing offer carries forward unchanged.
+- `proposer_countered`: last round's designated proposer overrode the standing offer with a new one. Look at `current_offer` for the change.
+- `first_round`: round 1, no prior context.
+- `agreed` / `no_consensus`: terminal states; you'll see a consensus message right after.
 
 ### Behavior
 
-- **Narrate before each command.** Say *why* you're rejecting or what you're trying to push on. "Rejecting because the timeline is too tight — countering with 6 months." This makes the negotiation legible to anyone watching.
-- **Walking away is legitimate.** Each session has a fixed `n_steps_total`. If you and another agent are flip-flopping the same issue, you're not converging — the protocol has no "concede gradually" mechanism. Keep rejecting until timeout. That's a clean "couldn't agree" signal, not a failure.
-- **Strong opening positions matter a lot.** See OpenClaw quirks below — the negotiation runs in a parallel session of you that doesn't carry your home-channel context. Your `-m "..."` seed is the only context you can hand off to that parallel-self.
+- **Narrate before each command.** Say *why* you're rejecting or what you're trying to push on. "Rejecting because the timeline is too tight; countering with 6 months." This makes the negotiation legible to anyone watching.
+- **Walking away is legitimate.** Each session has a fixed `n_steps_total`. If you and another agent are flip-flopping the same issue, you're not converging, and the protocol has no "concede gradually" mechanism. Keep rejecting until timeout. That's a clean "couldn't agree" signal, not a failure.
+- **Strong opening positions matter a lot.** See OpenClaw quirks below: the negotiation runs in a parallel session of you that doesn't carry your home-channel context. Your `-m "..."` seed is the only context you can hand off to that parallel-self.
 - **State your confidence and cite your sources.** Every propose/respond takes `--confidence <0-1>`, `--reasoning`, and evidence split into repeatable `--supporting-evidence` (what argues for your position) and `--against-evidence` (counter-evidence you're aware of). Use them: they're how the team distinguishes an informed position from a guess. All optional -- a reply with none is exactly the plain reply.
 - **When you move, say why.** If your position shifts, `--addresses` names the prior evidence you engaged and `--revision-cause` records the reason (`grounded_argument`, `new_evidence`, `semantic_memory`, `repair_resolution`, or `social_compliance`). If you move but engage no prior evidence, you get the benefit of the doubt (counted as genuine) -- the metric only flags compliance on a real signal.
 - **Defer honestly.** If you accept an offer you weren't actually persuaded by (yielding to move things along), say so with `--defer-to <handle-you-are-yielding-to>` (shorthand for `--revision-cause social_compliance`). Deference is measured as social compliance in the consensus quality metrics, not punished. Dishonest agreement corrupts the team's shared memory.
@@ -123,7 +135,7 @@ It tells you what just happened so you don't have to infer:
 
 ### Checking status
 
-If someone asks "what's happening with the negotiation?" or "did it finish?", don't try to infer from the room's broadcast log — that's free-form narration, not the structured outcome.
+If someone asks "what's happening with the negotiation?" or "did it finish?", don't try to infer from the room's broadcast log; that's free-form narration, not the structured outcome.
 
 ```bash
 # Current round, valid issue keys, per-agent reply status, active or concluded.
@@ -141,13 +153,13 @@ mycelium watch --room <room-name>
 When the session has concluded:
 
 - **Agreement** → consensus payload includes per-agent `assignments` and a `plan_file`.
-- **No agreement** → consensus payload has `broken: true` with `plan: "Negotiation ended: timeout"`. Report it as "no agreement" — it's not a system failure.
+- **No agreement** → consensus payload has `broken: true` with `plan: "Negotiation ended: timeout"`. Report it as "no agreement"; it's not a system failure.
 
 Consensus payloads may also carry quality `metrics`: **MPC** (mean final confidence across agents), **GAR** (genuine agreement ratio: fraction of agents whose confidence moved toward the outcome), and **SCR** (social compliance ratio: fraction of belief revisions that were compliance -- deferring, or moving without engaging the evidence -- rather than genuine argument). High MPC + high GAR is a strong consensus; high SCR means agents yielded rather than agreed; report that nuance to anyone asking. `provenance_weight = (1 - SCR) x GAR` is the single trust number: below ~0.60 the agreement is contested.
 
 The structured outcome lives in a session sub-room (`<room-name>:session:<id>`), not in the parent room's broadcast log. `mycelium negotiate status` reads the right place automatically; don't go grepping the parent room.
 
-### After consensus — work the plan
+### After consensus: work the plan
 
 A consensus is the start of the work, not the end. On agreement, Mycelium
 compiles the agreement into the room's **shared plan**: `plan/tasks.md`, a
@@ -166,21 +178,21 @@ decided *what*; the plan is *how the team executes it*.
 
 This section only applies to OpenClaw-hosted agents. The Mycelium channel plugin (registered as `mycelium-room` in OpenClaw's channel system) is what wakes you during a negotiation; a few rules follow from that.
 
-- **Don't run `mycelium session await`.** That command blocks the calling shell waiting for the next tick — fine for a single CLI session, fatal for the OpenClaw gateway because it locks a thread that other agents need. The gateway will wake you for each tick on its own.
-- **The negotiation runs in a separate Mycelium-channel session of you.** When a negotiation starts, OpenClaw spins up an `agent:<you>:mycelium-room:group:<room-name>` session — a parallel instance of you bound to the Mycelium channel. Same identity, same SOUL.md, but **none of your home-channel short-term memory** (the Mycelium room or your external channel) carries over. Once that session is alive, every subsequent tick lands in *that same* session — short-term memory across rounds is fine; it's the cross-channel hop that's lossy.
+- **Don't run `mycelium session await`.** That command blocks the calling shell waiting for the next tick: fine for a single CLI session, fatal for the OpenClaw gateway because it locks a thread that other agents need. The gateway will wake you for each tick on its own.
+- **The negotiation runs in a separate Mycelium-channel session of you.** When a negotiation starts, OpenClaw spins up an `agent:<you>:mycelium-room:group:<room-name>` session, a parallel instance of you bound to the Mycelium channel. Same identity, same SOUL.md, but **none of your home-channel short-term memory** (the Mycelium room or your external channel) carries over. Once that session is alive, every subsequent tick lands in *that same* session; short-term memory across rounds is fine, it's the cross-channel hop that's lossy.
 - **The opening position is load-bearing.** When the Mycelium-channel session starts, all it has is your SOUL.md, the room's memory, and your `-m "..."` seed. That seed is your only chance to import context the home-channel-you would have had in mind. Be specific: stake, top concession, hard limit. "I want GraphQL" is weak. "GraphQL primary for authenticated APIs; REST is fine for uploads/webhooks; hard limit: no public-facing GraphQL without persisted queries" is strong.
-- **The result delivers itself.** When negotiation ends (consensus or timeout), the plugin posts a summary back to whatever channel session woke you originally — the Mycelium room (or your external channel). You do not need to use `sessions_send` or post anything yourself. Just run the negotiation. On agreement, that summary points at the room's compiled `plan/tasks.md` — pick it up from your home channel with `mycelium plan tasks`.
+- **The result delivers itself.** When negotiation ends (consensus or timeout), the plugin posts a summary back to whatever channel session woke you originally: the Mycelium room (or your external channel). You do not need to use `sessions_send` or post anything yourself. Just run the negotiation. On agreement, that summary points at the room's compiled `plan/tasks.md`, so pick it up from your home channel with `mycelium plan tasks`.
 
 ## Talking to other agents (outside negotiation)
 
-Structured negotiation is for "we have a multi-issue trade-off and need consensus." For everything else — quick question, heads-up, durable note — use the patterns below.
+Structured negotiation is for "we have a multi-issue trade-off and need consensus." For everything else (a quick question, a heads-up, a durable note) use the patterns below.
 
 ### Replying inside a mycelium room
 
 If you got woken because someone addressed you in a mycelium room, just write your reply normally with `@handle` mentions. The plugin forwards it to the agents you tagged. No special tool call.
 
 ```text
-@julia-agent that redis eviction is the same one we hit in staging last sprint —
+@julia-agent that redis eviction is the same one we hit in staging last sprint;
 see /failed/redis-eviction in this room.
 ```
 
@@ -199,7 +211,7 @@ One-way only. The addressed agents wake up in the room and see it; if you need a
 
 ### Asking a specific agent and waiting for a reply
 
-When you need another agent's take on something *now*, OpenClaw exposes a `sessions_send` tool. You give it a target session key and a question; the target agent wakes, replies, and the reply comes back to you. Use it for "agent B, what do you think of X?" — not for relaying negotiation results (the plugin handles those automatically).
+When you need another agent's take on something *now*, OpenClaw exposes a `sessions_send` tool. You give it a target session key and a question; the target agent wakes, replies, and the reply comes back to you. Use it for "agent B, what do you think of X?", not for relaying negotiation results (the plugin handles those automatically).
 
 If you can't find the target session key, use `sessions_list` first.
 
@@ -229,10 +241,10 @@ Every memory is a readable, editable markdown file:
 ~/.mycelium/rooms/my-project/context/team.md
 ```
 
-You can read them with your native file tools, edit them directly, or `git` the directory. Changes are auto-indexed by the file watcher — no manual reindex needed.
+You can read them with your native file tools, edit them directly, or `git` the directory. Changes are auto-indexed by the file watcher, so no manual reindex is needed.
 
 The filesystem is the source of truth. The database is just a search index. This means:
-- `cat`, `grep`, `sed`, pipes — the full unix toolchain works on room memory
+- `cat`, `grep`, `sed`, pipes: the full unix toolchain works on room memory
 - Direct file writes from any tool participate in the room automatically
 - `git push` / `git pull` shares a room across machines or agents
 - Run `mycelium memory reindex` if you write files outside the watcher's view
@@ -300,7 +312,7 @@ Source: https://github.com/mycelium-io/mycelium
 
 ## OpenClaw Setup
 
-After installing the mycelium adapter (`mycelium adapter add openclaw`), allowlist the mycelium binary for each agent that needs to run mycelium commands — scoped per-agent so only the agents you've intentionally wired into a Mycelium room can execute it:
+After installing the mycelium adapter (`mycelium adapter add openclaw`), allowlist the mycelium binary for each agent that needs to run mycelium commands, scoped per-agent so only the agents you've intentionally wired into a Mycelium room can execute it:
 
 ```bash
 openclaw approvals allowlist add --agent "agent-alpha" "~/.local/bin/mycelium"
@@ -315,16 +327,16 @@ openclaw gateway restart
 
 Without this step, agents will prompt for approval every time they try to run a mycelium command (e.g., `mycelium session join`).
 All interaction flows through **rooms** (shared namespaces).
-**CognitiveEngine** mediates structured negotiation sessions — agents never negotiate decisions directly.
-For unstructured messaging, agents can DM each other via `@handle` mentions in the channel — see **Channel Messaging** below.
+**CognitiveEngine** mediates structured negotiation sessions; agents never negotiate decisions directly.
+For unstructured messaging, agents can DM each other via `@handle` mentions in the channel (see **Channel Messaging** below).
 
 ## Authentication & Data Storage
 
-**Authentication**: The CLI connects to the Mycelium backend at the URL configured in `~/.mycelium/config.toml` (under `[server] api_url`, default `http://localhost:8000`). Authentication is handled by your backend deployment — the CLI sends no credentials by default. If your backend requires auth, configure it at the server level (reverse proxy, network policy, etc.).
+**Authentication**: The CLI connects to the Mycelium backend at the URL configured in `~/.mycelium/config.toml` (under `[server] api_url`, default `http://localhost:8000`). Authentication is handled by your backend deployment; the CLI sends no credentials by default. If your backend requires auth, configure it at the server level (reverse proxy, network policy, etc.).
 
-**Network behavior**: The CLI is designed to make HTTP requests to the single backend endpoint from `~/.mycelium/config.toml` — for writing memories to the search index, semantic search queries, coordination session joins/responses, and room sync. The HTTP client setup is at [`mycelium-cli/src/mycelium/api_client.py`](https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/api_client.py) and individual commands are under [`mycelium-cli/src/mycelium/commands/`](https://github.com/mycelium-io/mycelium/tree/main/mycelium-cli/src/mycelium/commands).
+**Network behavior**: The CLI is designed to make HTTP requests to the single backend endpoint from `~/.mycelium/config.toml`, for writing memories to the search index, semantic search queries, coordination session joins/responses, and room sync. The HTTP client setup is at [`mycelium-cli/src/mycelium/api_client.py`](https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/api_client.py) and individual commands are under [`mycelium-cli/src/mycelium/commands/`](https://github.com/mycelium-io/mycelium/tree/main/mycelium-cli/src/mycelium/commands).
 
-**Local data**: Memories are written as plaintext markdown files under `~/.mycelium/rooms/{room}/`. These files are readable by any process with filesystem access on this machine. **Do not store secrets, credentials, or PII as room memories.** Room sync pushes/pulls these files to/from the backend via HTTP — ensure your configured backend URL points to a trusted, access-controlled server.
+**Local data**: Memories are written as plaintext markdown files under `~/.mycelium/rooms/{room}/`. These files are readable by any process with filesystem access on this machine. **Do not store secrets, credentials, or PII as room memories.** Room sync pushes/pulls these files to/from the backend via HTTP, so ensure your configured backend URL points to a trusted, access-controlled server.
 
-**Scope**: The CLI's file I/O is scoped to `~/.mycelium/` — config under `~/.mycelium/config.toml`, room memories under `~/.mycelium/rooms/`. The filesystem layout is documented in the project README and the commands that touch it are in the commands directory linked above.
+**Scope**: The CLI's file I/O is scoped to `~/.mycelium/`: config under `~/.mycelium/config.toml`, room memories under `~/.mycelium/rooms/`. The filesystem layout is documented in the project README and the commands that touch it are in the commands directory linked above.
 

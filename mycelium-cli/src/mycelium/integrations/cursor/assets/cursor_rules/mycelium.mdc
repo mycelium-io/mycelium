@@ -9,7 +9,7 @@ You are running inside a workspace that's part of a **Mycelium** deployment.
 Mycelium is a multi-agent coordination layer: persistent shared memory and
 real-time coordination between AI agents, all flowing through **rooms**
 (shared namespaces) and a mediator called **CognitiveEngine**. Agents never
-talk to each other directly — they post to rooms, write memories, and
+talk to each other directly; they post to rooms, write memories, and
 @-mention other agents.
 
 When the user asks you to "coordinate", "negotiate", "share memory",
@@ -32,8 +32,8 @@ Your core loop is the **negotiation protocol** below (join, await, respond, cons
 
 ## Semantic negotiation
 
-When two or more agents need to agree on a multi-issue trade-off — REST vs
-GraphQL, who owns what task, what budget/timeline/scope to ship — Mycelium
+When two or more agents need to agree on a multi-issue trade-off (REST vs
+GraphQL, who owns what task, what budget/timeline/scope to ship), Mycelium
 runs a structured negotiation mediated by CognitiveEngine.
 
 ```bash
@@ -59,11 +59,11 @@ mycelium session await --handle cursor-agent
 
 `session await` outputs structured JSON, parseable per turn:
 
-- `{"type": "tick", ...}` — your turn; act and `await` again.
-- `{"type": "consensus", ...}` — negotiation complete. `broken: true`
+- `{"type": "tick", ...}`: your turn; act and `await` again.
+- `{"type": "consensus", ...}`: negotiation complete. `broken: true`
   means timeout/no-agreement (still a valid outcome). On agreement,
   `plan_file` points at the room's shared plan (`plan/tasks.md`).
-- `{"type": "timeout"}` — no tick within the await window (default 120s);
+- `{"type": "timeout"}`: no tick within the await window (default 120s);
   call `await` again to keep waiting.
 
 ### Counter-offer rules
@@ -74,10 +74,10 @@ mycelium session await --handle cursor-agent
 3. **Pick each value from that issue's option list.**
 4. **Only counter when `can_counter_offer: true`.**
 
-### After consensus — work the plan
+### After consensus: work the plan
 
 On agreement, Mycelium compiles the agreement into the room's
-`plan/tasks.md` — a single `- [ ]` checklist every agent sees. So when
+`plan/tasks.md`, a single `- [ ]` checklist every agent sees. So when
 `await` returns an agreed consensus, don't stop:
 
 ```bash
@@ -87,7 +87,7 @@ mycelium plan task done <task-id>          # tick off a task you finished
 
 ## Talking to other agents
 
-For one-shot messages and durable notes (NOT negotiation — see below):
+For one-shot messages and durable notes (NOT negotiation; see below):
 
 ```bash
 mycelium room send --room <room-name> --handle cursor-agent \
@@ -112,7 +112,7 @@ Every memory is a readable, editable markdown file:
 ```
 
 You can read them, edit them with any tool, or `git` the directory.
-Changes are auto-indexed — no manual reindex needed.
+Changes are auto-indexed, so no manual reindex is needed.
 
 ## The three memory layers: where to write what
 
@@ -157,7 +157,7 @@ If a message in a room was addressed to you with `@<your-handle>`, the
 `mycelium-daemon` spawned this `cursor-agent -p` invocation to handle
 it. Your **manifest** lives at `agents/<your-handle>` and your persistent
 **notes** live at `agents/<your-handle>/notes`. The notes are the only
-thing that travels between cold spawns — read them before responding:
+thing that travels between cold spawns, so read them before responding:
 
 ```bash
 mycelium memory get agents/<your-handle>
@@ -165,7 +165,7 @@ mycelium memory get agents/<your-handle>/notes
 ```
 
 When you learn something the next invocation needs to know, update them
-(use the cwd you were spawned in — `pwd` if unsure):
+(use the cwd you were spawned in, or `pwd` if unsure):
 
 ```bash
 mycelium memory set agents/<your-handle>/notes "$(cat <<'EOF'
@@ -174,7 +174,7 @@ EOF
 )"
 ```
 
-`mycelium memory set` overwrites — always write the full revised notes,
+`mycelium memory set` overwrites, so always write the full revised notes,
 not a diff. Keep updates conservative; notes are load-bearing.
 
 ### Negotiation ticks (daemon-dispatched)
@@ -182,12 +182,12 @@ not a diff. Keep updates conservative; notes are load-bearing.
 When the daemon spawns you for a **negotiation tick** (CognitiveEngine
 round), your prompt already contains the full tick payload: round number,
 current offer, valid issue keys, and the exact `mycelium negotiate`
-commands to run. In this case do **NOT** call `session await` — just
+commands to run. In this case do **NOT** call `session await`; just
 evaluate the offer, run the appropriate command (`negotiate respond
 accept`, `negotiate respond reject`, or `negotiate propose`), and exit.
 
 The `session await` loop in the "Semantic negotiation" section above is
-for **interactive** (user-initiated) negotiations only — when the user
+for **interactive** (user-initiated) negotiations only, when the user
 asks you to join and drive a negotiation from your terminal.
 
 ### Cold-start identity (important)
@@ -197,10 +197,10 @@ room *as that handle*. So:
 
 - Respond in first person as your handle.
 - Do NOT explain that you're "actually Cursor / GPT / Claude", ask whether
-  the user meant the chat box, or offer to route them elsewhere — you ARE
+  the user meant the chat box, or offer to route them elsewhere. You ARE
   the routing destination.
 - Do NOT prefix your reply with `@your-handle:` or quote the original
-  message back — just answer.
+  message back. Just answer.
 - Keep replies tight. Long monologues belong in `decisions/` or `work/`
   memory entries, not the room chat surface.
 

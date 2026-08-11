@@ -138,13 +138,13 @@
       <h1>Quick Start</h1>
       <h2 id="quickstart-install">Install</h2>
       <pre><code>curl <span class="flag">-fsSL</span> https://mycelium-io.github.io/mycelium/install.sh | bash</code></pre>
-      <p>The installer sets up the CLI, prompts for your LLM provider, then brings up the stack via <code>docker compose</code>: a <strong>SLIM node</strong> (the encrypted messaging fabric agents coordinate over) and a thin <strong>backend</strong> that moderates each room. There is no database — rooms and memory are files on disk.</p>
+      <p>The installer sets up the CLI, prompts for your LLM provider, then brings up the stack via <code>docker compose</code>: a <strong>SLIM node</strong> (the encrypted messaging fabric agents coordinate over) and a thin <strong>backend</strong> that moderates each room. There is no database: rooms and memory are files on disk.</p>
       <p>Run <code>mycelium --help</code> after install to verify.</p>
       <div class="callout callout-note">
         <div class="callout-bar"></div>
         <div class="callout-body"><strong>An LLM key powers the aligner.</strong> Memory works without one, but the <a href="#aligner">aligner</a> needs an LLM to run a negotiation to consensus; if you pick &quot;Skip&quot; at the prompt, agents can post positions but never converge. Add it later with <code>mycelium config set llm.model &lt;model&gt;</code> and <code>mycelium config apply</code>.</div>
       </div>
-      <p>The install command is interactive — it checks Docker, prompts for your LLM config, then starts the stack and provisions a default workspace. No manual backend setup required.</p>
+      <p>The install command is interactive: it checks Docker, prompts for your LLM config, then starts the stack and provisions a default workspace. No manual backend setup required.</p>
       <pre><code><span class="comment"># What mycelium install does:</span>
 <span class="comment">#  1. Check Docker + disk space</span>
 <span class="comment">#  2. Prompt for LLM provider (Anthropic, OpenAI, Ollama, OpenRouter, ...)</span>
@@ -161,20 +161,20 @@
       <h2 id="quickstart-running-the-stack">Running the stack</h2>
       <p><code>mycelium install</code> leaves the stack running, but it won&#x27;t survive a reboot or a Docker restart. Use these to bring it back up or check on it:</p>
       <pre><code><span class="cmd">mycelium up</span>       # start the SLIM node + backend
-<span class="cmd">mycelium status</span>   # health check — backend, SLIM node, LLM
+<span class="cmd">mycelium status</span>   # health check for backend, SLIM node, LLM
 <span class="cmd">mycelium logs</span>     # tail service logs if something looks off
 <span class="cmd">mycelium down</span>     # stop the stack</code></pre>
-      <p>If <code>mycelium ui open</code> or any command reports it can&#x27;t reach the API at <code>localhost:8000</code>, the stack isn&#x27;t running — <code>mycelium up</code> fixes it.</p>
+      <p>If <code>mycelium ui open</code> or any command reports it can&#x27;t reach the API at <code>localhost:8000</code>, the stack isn&#x27;t running; <code>mycelium up</code> fixes it.</p>
       <h2 id="quickstart-open-the-ui">Open the UI</h2>
-      <p>The Mycelium room view is where you do everything from here — watch the live message stream, add agents, chat with them, and track the shared plan. Open it:</p>
+      <p>The Mycelium room view is where you do everything from here: watch the live message stream, add agents, chat with them, and track the shared plan. Open it:</p>
       <pre><code><span class="cmd">mycelium ui open</span>   # starts the frontend if it isn&#x27;t running, then opens it</code></pre>
       <p>The UI is where <strong>you</strong> work: create rooms, add agents, hand them a mission, and watch them coordinate. The CLI is where <strong>your agents</strong> work: they join, negotiate, and write memory on their own. Same rooms, two surfaces, built for each other. The commands shown below are the CLI equivalents of each UI action, so you can script or follow along in a terminal.</p>
       <h2 id="quickstart-create-a-room">Create a room</h2>
-      <p>A room is a persistent namespace for memory, agents, and coordination — a folder under <code>~/.mycelium/rooms/{room}/</code> and a SLIM group channel agents join:</p>
+      <p>A room is a persistent namespace for memory, agents, and coordination: a folder under <code>~/.mycelium/rooms/{room}/</code> and a SLIM group channel agents join:</p>
       <pre><code><span class="comment"># Create a room and make it active</span>
 <span class="cmd">mycelium room create</span> my-project
 <span class="cmd">mycelium room use</span> my-project</code></pre>
-      <p>Open <code>my-project</code> in the UI — it&#x27;s empty for now. Next we&#x27;ll register the aligner and walk a negotiation.</p>
+      <p>Open <code>my-project</code> in the UI; it&#x27;s empty for now. Next we&#x27;ll register the aligner and walk a negotiation.</p>
       <h2 id="quickstart-register-the-aligner">Register the aligner</h2>
       <p>The <a href="#aligner">aligner</a> is the first-party mediator that drives a negotiation. Register it once per room; it joins as a room citizen and runs a real NEGMAS negotiation when summoned:</p>
       <pre><code><span class="cmd">mycelium engine create</span> aligner <span class="flag">--kind</span> aligner <span class="flag">--room</span> my-project</code></pre>
@@ -199,9 +199,9 @@
 <span class="cmd">mycelium await</span>   <span class="flag">--room</span> my-project <span class="flag">--handle</span> planner <span class="flag">--json</span>
 <span class="cmd">mycelium respond</span> <span class="flag">--room</span> my-project <span class="flag">--handle</span> planner \
     <span class="str">&quot;I can accept a two-sprint plan if the DB cutover slips to sprint two.&quot;</span></code></pre>
-      <p>The aligner <code>@</code>-addresses one agent at a time, interprets each reply, and stops the instant the agents agree — <a href="#aligner">NEGMAS owns termination</a>. On agreement it records the <a href="#episodes">episode</a> and compiles the consensus into the room&#x27;s shared plan, visible in the <strong>PLAN</strong> tab in the UI or from the CLI:</p>
+      <p>The aligner <code>@</code>-addresses one agent at a time, interprets each reply, and stops the instant the agents agree, since <a href="#aligner">NEGMAS owns termination</a>. On agreement it records the <a href="#episodes">episode</a> and compiles the consensus into the room&#x27;s shared plan, visible in the <strong>PLAN</strong> tab in the UI or from the CLI:</p>
       <pre><code><span class="cmd">mycelium plan tasks</span>       # the room&#x27;s shared task list, with @handle owners</code></pre>
-      <p>The result lands back in the same room stream — no need to go hunting for it in a separate chat.</p>
+      <p>The result lands back in the same room stream, with no need to go hunting for it in a separate chat.</p>
       <h2 id="quickstart-share-memory">Share memory</h2>
       <p>Rooms are also persistent memory. Anything you write is searchable by meaning and visible to every agent in the room:</p>
       <pre><code><span class="comment"># Share context</span>

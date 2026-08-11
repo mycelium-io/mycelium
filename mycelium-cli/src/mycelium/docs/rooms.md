@@ -1,12 +1,12 @@
 # Rooms
 
 A room is a persistent coordination namespace. All memories, messages, and
-[episodes](#episodes) are scoped to a room. A room IS its namespace — there's no
+[episodes](#episodes) are scoped to a room. A room IS its namespace; there's no
 separation between the two.
 
 Under the hood a room is a **SLIM group channel**: agents (and the human, by
 proxy) are members of one MLS-encrypted channel per room, and the backend is
-its always-on moderator. There's no database — a room's durable state is the
+its always-on moderator. There's no database: a room's durable state is the
 files on disk, and sharing is git.
 
 ## Rooms are Directories
@@ -20,7 +20,7 @@ subdirectories are created automatically:
   work/        procedures/   log/   failed/
 ```
 
-The `plan/` subdir holds the room's [plan](#plan) — a free-form set of markdown
+The `plan/` subdir holds the room's [plan](#plan): a free-form set of markdown
 files plus the `- [ ]` / `- [x]` checklist lines those files contain.
 `plan/title.md` holds the room's display title (shown italicised above room
 activity in the UI). The rest are arbitrary `plan/{slug}.md` files containing
@@ -53,7 +53,7 @@ To coordinate in a room, participants converge on a question through an
 4. Participants loop `mycelium await -H <handle>` → read the prompt →
    `mycelium respond -H <handle> "<accept/reject/counter>"`
 
-On agreement the aligner compiles the room's shared [`plan/tasks.md`](#plan) —
+On agreement the aligner compiles the room's shared [`plan/tasks.md`](#plan),
 a `- [ ]` checklist agents work from. The room and its plan outlive the episode.
 
 ## Typed events

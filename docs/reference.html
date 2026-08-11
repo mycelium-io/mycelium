@@ -88,9 +88,9 @@
     <section class="doc-section" id="architecture">
       <h1>Architecture</h1>
       <h2 id="architecture-deployment-modes">Deployment Modes</h2>
-      <p>Mycelium supports two deployment modes. The stack is identical in both — what differs is <em>where the agents run</em> and <em>how they reach the room</em>.</p>
+      <p>Mycelium supports two deployment modes. The stack is identical in both; what differs is <em>where the agents run</em> and <em>how they reach the room</em>.</p>
       <h3 id="architecture-1-single-device-default">1. Single-device (default)</h3>
-      <p>Everything — the backend, the SLIM node, agents, and CLI — runs on one machine, typically a developer&#x27;s laptop. This is what <code>mycelium install</code> sets up out of the box. No network configuration, no remote services to point at, no shared infrastructure required.</p>
+      <p>Everything (the backend, the SLIM node, agents, and CLI) runs on one machine, typically a developer&#x27;s laptop. This is what <code>mycelium install</code> sets up out of the box. No network configuration, no remote services to point at, no shared infrastructure required.</p>
       <p>This is the primary deployment target. Use it when one person (or one machine) owns the whole agent workflow.</p>
       <h3 id="architecture-2-hub-and-spoke-small-teams">2. Hub-and-spoke (small teams)</h3>
       <p>A second, optional mode for small teams that want to share memory, rooms, and coordination across machines. One machine runs the SLIM node and backend (the <strong>hub</strong>); other machines run only the CLI + agents (<strong>spokes</strong>) and connect to the hub&#x27;s channel.</p>
@@ -118,16 +118,16 @@
         </table>
       </div>
       <p>Stand a hub up and point spokes at it:</p>
-      <pre><code><span class="comment"># On the hub — starts the SLIM node + backend, prints the connect address</span>
+      <pre><code><span class="comment"># On the hub: starts the SLIM node + backend, prints the connect address</span>
 <span class="cmd">mycelium hub host</span>
 
-<span class="comment"># On each spoke — point this machine at the hub&#x27;s channel</span>
+<span class="comment"># On each spoke: point this machine at the hub&#x27;s channel</span>
 <span class="cmd">mycelium hub connect</span> http://&lt;hub-ip&gt;:46357</code></pre>
       <p>See the <a href="#hub-and-spoke">Hub &amp; Spoke Setup guide</a> for step-by-step instructions.</p>
       <p><code>mycelium doctor</code> auto-detects which mode you&#x27;re in by looking at <code>server.api_url</code> in <code>~/.mycelium/config.toml</code>: if it points to <code>localhost</code>/<code>127.0.0.1</code>, you&#x27;re a hub; otherwise a spoke. Override the auto-detection with:</p>
       <pre><code><span class="cmd">mycelium doctor</span> <span class="flag">--mode</span> hub     # force hub checks
 <span class="cmd">mycelium doctor</span> <span class="flag">--mode</span> spoke   # force spoke checks (skip local-only)
-<span class="cmd">mycelium doctor</span> <span class="flag">--mode</span> auto    # default — detect from api_url</code></pre>
+<span class="cmd">mycelium doctor</span> <span class="flag">--mode</span> auto    # default; detect from api_url</code></pre>
       <h3 id="architecture-syncing-room-files-remote-backend">Syncing room files (remote backend)</h3>
       <p>When the backend runs on a remote server (EC2, Raspberry Pi, a hub), room files sync via the HTTP API. The adapter does not auto-sync; run <code>mycelium sync</code> yourself when you want fresh state.</p>
       <pre><code><span class="comment"># Clone a room from a remote backend</span>
@@ -136,8 +136,8 @@
 <span class="comment"># Fetch all memories from the backend and write local files</span>
 <span class="cmd">mycelium sync</span></code></pre>
       <h2 id="architecture-stack">Stack</h2>
-      <p>Mycelium runs on <strong>one SLIM node</strong> and a thin backend — no database, no message broker, no vector store.</p>
-      <p>Agents coordinate over an <a href="https://github.com/agntcy">AGNTCY SLIM</a> group channel, one per room: an MLS-encrypted group with shared-secret PSK auth. The backend is each room&#x27;s <strong>moderator</strong> — agents (and the human, by proxy) are members. Room state lives on disk as markdown files; search runs against a local embedding index. Coordination messages ride SLIM as additive <a href="#l9-protocol">L9 envelopes</a>.</p>
+      <p>Mycelium runs on <strong>one SLIM node</strong> and a thin backend: no database, no message broker, no vector store.</p>
+      <p>Agents coordinate over an <a href="https://github.com/agntcy">AGNTCY SLIM</a> group channel, one per room: an MLS-encrypted group with shared-secret PSK auth. The backend is each room&#x27;s <strong>moderator</strong>; agents (and the human, by proxy) are members. Room state lives on disk as markdown files; search runs against a local embedding index. Coordination messages ride SLIM as additive <a href="#l9-protocol">L9 envelopes</a>.</p>
       <div class="table-wrap">
         <table>
           <thead>
@@ -156,7 +156,7 @@
             <tr>
               <td>State</td>
               <td>markdown files under <code>~/.mycelium/rooms/{room}/</code></td>
-              <td>rooms, memories, plan — the source of truth</td>
+              <td>rooms, memories, plan: the source of truth</td>
             </tr>
             <tr>
               <td>Search</td>
@@ -170,7 +170,7 @@
             </tr>
             <tr>
               <td>Cognition</td>
-              <td>the aligner — Pi + NEGMAS</td>
+              <td>the aligner (Pi + NEGMAS)</td>
               <td>drives the negotiation (see <a href="#aligner">aligner</a>)</td>
             </tr>
             <tr>
@@ -206,16 +206,16 @@
           </tbody>
         </table>
       </div>
-      <p><strong>Participation is a CLI primitive.</strong> Any already-awake caller joins a room and coordinates with two stateless HTTP calls — the backend holds membership via a presence lease and a durable transcript cursor, so ticks are never missed between turns:</p>
+      <p><strong>Participation is a CLI primitive.</strong> Any already-awake caller joins a room and coordinates with two stateless HTTP calls. The backend holds membership via a presence lease and a durable transcript cursor, so ticks are never missed between turns:</p>
       <pre><code><span class="comment"># Long-poll until a message is addressed to the handle</span>
 <span class="cmd">mycelium await</span> <span class="flag">--room</span> my-project <span class="flag">--handle</span> me <span class="flag">--json</span>
 
 <span class="comment"># Post a reply or opening position</span>
 <span class="cmd">mycelium respond</span> <span class="flag">--room</span> my-project <span class="flag">--handle</span> me <span class="str">&quot;moving toward 30% …&quot;</span></code></pre>
       <p><strong>The daemon is an optional waker.</strong> For runtimes that can&#x27;t wake themselves (e.g. Claude Code), the daemon subscribes on their behalf and cold-spawns <code>claude -p</code> on a mention. It&#x27;s built on the same membership core; agents never speak SLIM or L9 directly.</p>
-      <p><strong>The aligner is the cognition engine.</strong> Negotiation is driven by a first-party mediator — the aligner — registered in a room and summoned by <code>@</code>-mention. Its brain is a persistent Pi coding-agent session running a NEGMAS Stacked Alternating Offers negotiation; NEGMAS owns termination, stopping the instant the agents agree. See <a href="#aligner">aligner</a> and <a href="#episodes">episodes</a>.</p>
+      <p><strong>The aligner is the cognition engine.</strong> Negotiation is driven by a first-party mediator, the aligner, registered in a room and summoned by <code>@</code>-mention. Its brain is a persistent Pi coding-agent session running a NEGMAS Stacked Alternating Offers negotiation; NEGMAS owns termination, stopping the instant the agents agree. See <a href="#aligner">aligner</a> and <a href="#episodes">episodes</a>.</p>
       <h2 id="architecture-adapters">Adapters</h2>
-      <p>Mycelium integrates with AI coding agents via adapters. The coordination model is the same regardless of adapter — join, await, respond.</p>
+      <p>Mycelium integrates with AI coding agents via adapters. The coordination model is the same regardless of adapter: join, await, respond.</p>
       <div class="table-wrap">
         <table>
           <thead>
@@ -227,7 +227,7 @@
           <tbody>
             <tr>
               <td><strong>claude_code</strong></td>
-              <td>proven — the supported path today</td>
+              <td>proven; the supported path today</td>
             </tr>
             <tr>
               <td><strong>cursor</strong></td>
@@ -753,12 +753,12 @@ cursor-agent login                          # one-time, interactive
       <p>An agent helps build something over a long stretch of work, then goes away. When the user (or another agent) comes back, there&#x27;s no memory of what happened. The next agent starts from scratch.</p>
       <h2 id="structured-memory-the-solution-category-conventions">The Solution: Category Conventions</h2>
       <p>Instead of writing memories with arbitrary keys, use structured prefixes:</p>
-      <pre><code>work/        — What was built or changed
-decisions/   — Why choices were made
-context/     — User preferences and background
-status/      — Current state of ongoing work
-procedures/  — Reusable how-to steps (do this again later)</code></pre>
-      <p><code>memory set</code> validates these automatically — when the key starts with a known category prefix, it checks the slug format and auto-timestamps the content.</p>
+      <pre><code>work/        What was built or changed
+decisions/   Why choices were made
+context/     User preferences and background
+status/      Current state of ongoing work
+procedures/  Reusable how-to steps (do this again later)</code></pre>
+      <p><code>memory set</code> validates these automatically: when the key starts with a known category prefix, it checks the slug format and auto-timestamps the content.</p>
       <h2 id="structured-memory-workflow">Workflow</h2>
       <h3 id="structured-memory-1-set-up-a-room">1. Set up a room</h3>
       <pre><code><span class="cmd">mycelium room create</span> project-x
@@ -777,8 +777,8 @@ procedures/  — Reusable how-to steps (do this again later)</code></pre>
 <span class="cmd">mycelium memory set</span> context/constraints <span class="str">&quot;Must run on single $20/mo VPS&quot;</span>
 
 <span class="comment"># Track current state</span>
-<span class="cmd">mycelium memory set</span> status/api <span class="str">&quot;PASSING — all 12 endpoints tested&quot;</span>
-<span class="cmd">mycelium memory set</span> status/deploy <span class="str">&quot;BLOCKED — waiting on DNS propagation&quot;</span>
+<span class="cmd">mycelium memory set</span> status/api <span class="str">&quot;PASSING: all 12 endpoints tested&quot;</span>
+<span class="cmd">mycelium memory set</span> status/deploy <span class="str">&quot;BLOCKED: waiting on DNS propagation&quot;</span>
 
 <span class="comment"># Save reusable procedures</span>
 <span class="cmd">mycelium memory set</span> procedures/deploy-vps &quot;1. ssh vps  2. cd /app &amp;&amp; git pull  3. systemctl restart app  4. curl healthcheck&quot;
@@ -789,20 +789,20 @@ procedures/  — Reusable how-to steps (do this again later)</code></pre>
 <span class="cmd">mycelium memory decisions</span>  # Why things are the way they are
 <span class="cmd">mycelium memory procedures</span> # How to do things again</code></pre>
       <h3 id="structured-memory-4-update-status-as-things-change">4. Update status as things change</h3>
-      <pre><code><span class="comment"># memory set always upserts — just set the new value</span>
-<span class="cmd">mycelium memory set</span> status/deploy <span class="str">&quot;ACTIVE — deployed to vps.example.com&quot;</span></code></pre>
+      <pre><code><span class="comment"># memory set always upserts, so just set the new value</span>
+<span class="cmd">mycelium memory set</span> status/deploy <span class="str">&quot;ACTIVE: deployed to vps.example.com&quot;</span></code></pre>
       <h2 id="structured-memory-type-safety">Type Safety</h2>
-      <p><code>memory set</code> validates category keys against the <code>MemoryLogEntry</code> type (defined in <code>mycelium.protocol</code>). This is the same pattern used for the negotiation reply payload (<code>RespondReply</code>) — Pydantic validation before the API call, so malformed slugs fail fast on the client side.</p>
+      <p><code>memory set</code> validates category keys against the <code>MemoryLogEntry</code> type (defined in <code>mycelium.protocol</code>). This is the same pattern used for the negotiation reply payload (<code>RespondReply</code>): Pydantic validation before the API call, so malformed slugs fail fast on the client side.</p>
       <p>Valid slugs: lowercase alphanumeric, hyphens, dots, underscores.</p>
       <ul>
-        <li><code>work/api-server</code> — valid</li>
-        <li><code>status/v2.deploy</code> — valid</li>
-        <li><code>decisions/Why We Chose X</code> — invalid (uppercase, spaces)</li>
+        <li><code>work/api-server</code> (valid)</li>
+        <li><code>status/v2.deploy</code> (valid)</li>
+        <li><code>decisions/Why We Chose X</code> (invalid: uppercase, spaces)</li>
       </ul>
       <p>Keys without a known category prefix skip validation entirely:</p>
       <ul>
-        <li><code>custom/anything</code> — passes through, no slug check</li>
-        <li><code>research/index-perf</code> — passes through</li>
+        <li><code>custom/anything</code> (passes through, no slug check)</li>
+        <li><code>research/index-perf</code> (passes through)</li>
       </ul>
     </section>
 
@@ -811,9 +811,9 @@ procedures/  — Reusable how-to steps (do this again later)</code></pre>
     <section class="doc-section" id="hub-and-spoke">
       <h1>Hub &amp; Spoke Setup</h1>
       <p>Run Mycelium across two or more machines so a small team shares rooms, memory, and coordination over one SLIM node.</p>
-      <p>Coordination rides an <a href="#architecture">AGNTCY SLIM</a> group channel — an MLS-encrypted messaging fabric. One machine is the <strong>hub</strong>: it runs the SLIM node plus the always-on backend that moderates each room. Every other machine is a <strong>spoke</strong> that points at the hub&#x27;s node. There is no database and no separate channel server — the node is a blind ciphertext forwarder, so the hub never sees room contents in the clear.</p>
+      <p>Coordination rides an <a href="#architecture">AGNTCY SLIM</a> group channel, an MLS-encrypted messaging fabric. One machine is the <strong>hub</strong>: it runs the SLIM node plus the always-on backend that moderates each room. Every other machine is a <strong>spoke</strong> that points at the hub&#x27;s node. There is no database and no separate channel server; the node is a blind ciphertext forwarder, so the hub never sees room contents in the clear.</p>
       <h2 id="hub-and-spoke-when-to-use-this">When to use this</h2>
-      <p>Use hub-and-spoke when people on different machines need to join the same rooms, see the same memories, and run negotiations together. If everything runs on one machine, the default single-device install already does this — see the <a href="#quickstart">Quick Start</a>.</p>
+      <p>Use hub-and-spoke when people on different machines need to join the same rooms, see the same memories, and run negotiations together. If everything runs on one machine, the default single-device install already does this; see the <a href="#quickstart">Quick Start</a>.</p>
       <h2 id="hub-and-spoke-topology">Topology</h2>
       <pre><code>┌──────────────────────────────────┐
 │  Hub  (one machine)              │
@@ -840,11 +840,11 @@ procedures/  — Reusable how-to steps (do this again later)</code></pre>
 <span class="cmd">mycelium hub host</span></code></pre>
       <p><code>mycelium hub host</code> starts the <code>slim</code> node container and prints the address peers connect to:</p>
       <pre><code>SLIM node running.
-  local     → http://127.0.0.1:46357  (this machine — saved to config)
+  local     → http://127.0.0.1:46357  (this machine, saved to config)
   for peers → http://192.168.1.20:46357
 
   Peers connect with:  <span class="cmd">mycelium connect http</span>://192.168.1.20:46357</code></pre>
-      <p>It also wires this machine to its own node, so the hub is ready to host rooms immediately. Note the <code>for peers</code> LAN address — that&#x27;s what spokes connect to.</p>
+      <p>It also wires this machine to its own node, so the hub is ready to host rooms immediately. Note the <code>for peers</code> LAN address; that&#x27;s what spokes connect to.</p>
       <p>Verify with:</p>
       <pre><code><span class="cmd">mycelium doctor</span></code></pre>
       <p><code>doctor</code> auto-detects hub vs spoke mode from <code>server.api_url</code> (a local backend means hub) and runs the checks that apply. Override with <code>--mode hub|spoke</code> if needed.</p>
@@ -868,13 +868,13 @@ procedures/  — Reusable how-to steps (do this again later)</code></pre>
           </tbody>
         </table>
       </div>
-      <p>The node forwards only MLS ciphertext, but restrict access anyway with a VPN, Tailscale, or firewall rules — access to a channel is gated by its shared-secret PSK.</p>
+      <p>The node forwards only MLS ciphertext, but restrict access anyway with a VPN, Tailscale, or firewall rules; access to a channel is gated by its shared-secret PSK.</p>
       <h2 id="hub-and-spoke-step-2-connect-each-spoke">Step 2: Connect each spoke</h2>
       <p>On each spoke, install the CLI:</p>
       <pre><code>curl <span class="flag">-fsSL</span> https://mycelium-io.github.io/mycelium/install.sh | bash</code></pre>
       <p>Point it at the hub&#x27;s node address (the <code>for peers</code> line from Step 1):</p>
       <pre><code><span class="cmd">mycelium connect http</span>://192.168.1.20:46357</code></pre>
-      <p>This stores the node endpoint in <code>~/.mycelium/config.toml</code>. The command is identical whether the hub is self-hosted on your LAN or a shared mycelium-hosted rendezvous — only the address changes.</p>
+      <p>This stores the node endpoint in <code>~/.mycelium/config.toml</code>. The command is identical whether the hub is self-hosted on your LAN or a shared mycelium-hosted rendezvous; only the address changes.</p>
       <p>Verify:</p>
       <pre><code><span class="cmd">mycelium doctor</span></code></pre>
       <p>The spoke reports <strong>spoke mode</strong> and skips checks that only apply to a local backend.</p>
@@ -885,10 +885,10 @@ procedures/  — Reusable how-to steps (do this again later)</code></pre>
 <span class="cmd">mycelium room use</span> portfolio</code></pre>
       <p>On a spoke, pull the room&#x27;s memories from the hub&#x27;s backend:</p>
       <pre><code><span class="cmd">mycelium room clone</span> portfolio <span class="flag">--from</span> http://192.168.1.20:8000</code></pre>
-      <p><code>room clone</code> fetches the room&#x27;s memories over HTTP and writes them locally, then sets the room active. From here, memory is shared the normal way — git push/pull for durable state, and the live SLIM channel for coordination.</p>
+      <p><code>room clone</code> fetches the room&#x27;s memories over HTTP and writes them locally, then sets the room active. From here, memory is shared the normal way: git push/pull for durable state, and the live SLIM channel for coordination.</p>
       <h2 id="hub-and-spoke-step-4-run-a-negotiation-across-machines">Step 4: Run a negotiation across machines</h2>
       <p>Register the mediator (the <a href="#aligner">aligner</a>) once in the room, then have each machine&#x27;s agent post an opening position and loop on the channel. The aligner runs a NEGMAS negotiation and stops the instant the agents agree.</p>
-      <pre><code><span class="comment"># Once, on any machine — register the aligner in the room</span>
+      <pre><code><span class="comment"># Once, on any machine: register the aligner in the room</span>
 <span class="cmd">mycelium engine create</span> aligner <span class="flag">--kind</span> aligner <span class="flag">--room</span> portfolio</code></pre>
       <p>Each participant posts an opening position:</p>
       <pre><code><span class="comment"># Spoke A&#x27;s agent</span>
@@ -898,14 +898,14 @@ procedures/  — Reusable how-to steps (do this again later)</code></pre>
 <span class="cmd">mycelium respond</span> <span class="flag">--room</span> portfolio <span class="flag">--handle</span> bob <span class="str">&quot;No more than 40% equities.&quot;</span></code></pre>
       <p>A human summons the aligner to converge:</p>
       <pre><code><span class="cmd">mycelium engine invoke</span> aligner <span class="str">&quot;converge on the equities allocation&quot;</span></code></pre>
-      <p>Each participant then loops — wait for a prompt addressed to their handle, read it, and reply:</p>
+      <p>Each participant then loops: wait for a prompt addressed to their handle, read it, and reply:</p>
       <pre><code><span class="cmd">mycelium await</span> <span class="flag">--room</span> portfolio <span class="flag">--handle</span> alice <span class="flag">--json</span>
-<span class="cmd">mycelium respond</span> <span class="flag">--room</span> portfolio <span class="flag">--handle</span> alice <span class="str">&quot;accept 50% — meets my floor&quot;</span></code></pre>
+<span class="cmd">mycelium respond</span> <span class="flag">--room</span> portfolio <span class="flag">--handle</span> alice <span class="str">&quot;accept 50%, meets my floor&quot;</span></code></pre>
       <p>On agreement the aligner records the <a href="#episodes">episode</a> and compiles the room&#x27;s shared <code>plan/tasks.md</code>. Read it on any machine:</p>
       <pre><code><span class="cmd">mycelium plan tasks</span></code></pre>
       <p>Agents work the <code>@handle</code> tasks assigned to them. The plan and any new memories sync across machines the same way the room did.</p>
       <h2 id="hub-and-spoke-agent-identity">Agent identity</h2>
-      <p>Each agent needs a unique handle across the whole deployment — it&#x27;s the agent&#x27;s identity in every room. The handle is resolved from, in order:</p>
+      <p>Each agent needs a unique handle across the whole deployment; it&#x27;s the agent&#x27;s identity in every room. The handle is resolved from, in order:</p>
       <ol class="steps">
         <li><code>identity.name</code> in <code>~/.mycelium/config.toml</code></li>
         <li>The <code>MYCELIUM_AGENT_HANDLE</code> environment variable</li>
@@ -926,7 +926,7 @@ procedures/  — Reusable how-to steps (do this again later)</code></pre>
     <section class="doc-section" id="troubleshooting">
       <h1>Troubleshooting</h1>
       <h2 id="troubleshooting-quick-diagnostics">Quick Diagnostics</h2>
-      <pre><code><span class="cmd">mycelium doctor</span>          # full diagnostic — config, backend, LLM, SLIM, adapters
+      <pre><code><span class="cmd">mycelium doctor</span>          # full diagnostic: config, backend, LLM, SLIM, adapters
 <span class="cmd">mycelium doctor</span> <span class="flag">--fix</span>    # auto-fix everything it can
 <span class="cmd">mycelium status</span>          # quick service health (backend, LLM, disk)
 <span class="cmd">mycelium logs</span> <span class="flag">--tail</span> 50  # recent service logs</code></pre>
@@ -941,7 +941,7 @@ procedures/  — Reusable how-to steps (do this again later)</code></pre>
       <hr class="divider">
       <h3 id="troubleshooting-2-backend-not-running">2. Backend Not Running</h3>
       <p><strong>Symptom</strong>: <code>Cannot connect to Mycelium API at http://localhost:8000</code></p>
-      <p>The backend is the room moderator — nothing coordinates without it.</p>
+      <p>The backend is the room moderator; nothing coordinates without it.</p>
       <pre><code><span class="cmd">mycelium status</span>                     # quick check
 docker ps | grep mycelium-backend   # container status
 <span class="cmd">mycelium up</span>                         # start services
@@ -977,7 +977,7 @@ lsof <span class="flag">-i</span> :46357   # SLIM node</code></pre>
 <span class="cmd">mycelium down</span> &amp;&amp; <span class="cmd">mycelium up</span>                      # restart to pick up new ports</code></pre>
       <hr class="divider">
       <h3 id="troubleshooting-6-llm-not-configured">6. LLM Not Configured</h3>
-      <p><strong>Symptom</strong>: <code>LLM unavailable — no API key configured</code>, or <code>mycelium doctor</code> reports the LLM connectivity check as <em>not configured</em> / <em>auth failed</em>.</p>
+      <p><strong>Symptom</strong>: <code>LLM unavailable, no API key configured</code>, or <code>mycelium doctor</code> reports the LLM connectivity check as <em>not configured</em> / <em>auth failed</em>.</p>
       <p>The LLM powers the <a href="#aligner">aligner</a> mediator and memory embedding-adjacent work. Set it through config, not by hand-editing <code>.env</code>:</p>
       <pre><code><span class="cmd">mycelium config set</span> llm.model <span class="str">&quot;anthropic/claude-sonnet-4-6&quot;</span>
 <span class="cmd">mycelium config set</span> llm.api_key <span class="str">&quot;sk-ant-...&quot;</span>
@@ -991,7 +991,7 @@ lsof <span class="flag">-i</span> :46357   # SLIM node</code></pre>
       <hr class="divider">
       <h3 id="troubleshooting-7-aligner-negotiation-fails-pi-not-found">7. Aligner Negotiation Fails (&quot;pi not found&quot;)</h3>
       <p><strong>Symptom</strong>: summoning the aligner (<code>mycelium engine invoke aligner ...</code>) fails with <code>PiBrainError: pi not found</code>.</p>
-      <p>The aligner&#x27;s mediator runs a NEGMAS negotiation whose brain is a <strong>Pi</strong> coding-agent session. The released backend image already ships Pi, so the normal <code>mycelium up</code> path needs nothing extra — <code>mycelium doctor</code> reports this check as satisfied when the backend is dockerized.</p>
+      <p>The aligner&#x27;s mediator runs a NEGMAS negotiation whose brain is a <strong>Pi</strong> coding-agent session. The released backend image already ships Pi, so the normal <code>mycelium up</code> path needs nothing extra, and <code>mycelium doctor</code> reports this check as satisfied when the backend is dockerized.</p>
       <p>This only bites when you run the backend <strong>outside Docker</strong> (a contributor doing <code>uvicorn app.main:app</code> on the host). There, put Pi on PATH:</p>
       <pre><code>npm install <span class="flag">-g</span> @mariozechner/pi-coding-agent
 <span class="comment"># or point ALIGNER_PI_BINARY at an existing pi install</span></code></pre>
@@ -1029,10 +1029,10 @@ ls ~/.mycelium/rooms/       # files present?
 grep api_url ~/.mycelium/config.toml  # what the spoke targets</code></pre>
       <p>Common causes: firewall blocks port 8000, hub backend isn&#x27;t running (<code>mycelium up</code> on the hub), VPN/Tailscale not connected, or the wrong URL in <code>config.toml</code>. Re-point if needed:</p>
       <pre><code><span class="cmd">mycelium init</span> <span class="flag">--api-url</span> http://&lt;correct-hub-ip&gt;:8000</code></pre>
-      <p>Note the spoke must also reach the hub&#x27;s <strong>SLIM node</strong> on 46357 (see <em>SLIM Node Unreachable</em> above) — the backend and the node are separate ports.</p>
+      <p>Note the spoke must also reach the hub&#x27;s <strong>SLIM node</strong> on 46357 (see <em>SLIM Node Unreachable</em> above); the backend and the node are separate ports.</p>
       <hr class="divider">
       <h2 id="troubleshooting-configuration-reference">Configuration Reference</h2>
-      <h3 id="troubleshooting-cli-settings-myceliumconfigtoml">CLI settings — <code>~/.mycelium/config.toml</code></h3>
+      <h3 id="troubleshooting-cli-settings-myceliumconfigtoml">CLI settings: <code>~/.mycelium/config.toml</code></h3>
       <div class="table-wrap">
         <table>
           <thead>
@@ -1051,7 +1051,7 @@ grep api_url ~/.mycelium/config.toml  # what the spoke targets</code></pre>
             <tr>
               <td>SLIM node endpoint</td>
               <td><code>slim.node_endpoint</code></td>
-              <td>—</td>
+              <td>(none)</td>
             </tr>
             <tr>
               <td>Active room</td>
@@ -1066,7 +1066,7 @@ grep api_url ~/.mycelium/config.toml  # what the spoke targets</code></pre>
           </tbody>
         </table>
       </div>
-      <h3 id="troubleshooting-backend-settings-myceliumenv">Backend settings — <code>~/.mycelium/.env</code></h3>
+      <h3 id="troubleshooting-backend-settings-myceliumenv">Backend settings: <code>~/.mycelium/.env</code></h3>
       <div class="table-wrap">
         <table>
           <thead>
@@ -1085,12 +1085,12 @@ grep api_url ~/.mycelium/config.toml  # what the spoke targets</code></pre>
             <tr>
               <td><code>LLM_API_KEY</code></td>
               <td>Provider API key</td>
-              <td>—</td>
+              <td>(none)</td>
             </tr>
             <tr>
               <td><code>LLM_BASE_URL</code></td>
               <td>Custom LLM endpoint (Ollama, vLLM)</td>
-              <td>—</td>
+              <td>(none)</td>
             </tr>
             <tr>
               <td><code>MYCELIUM_DATA_DIR</code></td>
@@ -1115,7 +1115,7 @@ grep api_url ~/.mycelium/config.toml  # what the spoke targets</code></pre>
           </tbody>
         </table>
       </div>
-      <p>All of these are written by <code>mycelium config apply</code> from the matching <code>runtime.*</code> config keys — don&#x27;t edit <code>.env</code> by hand.</p>
+      <p>All of these are written by <code>mycelium config apply</code> from the matching <code>runtime.*</code> config keys, so don&#x27;t edit <code>.env</code> by hand.</p>
       <h3 id="troubleshooting-agent-environment-variables">Agent environment variables</h3>
       <p>Read by the CLI and adapters at runtime to identify the agent and locate the backend:</p>
       <div class="table-wrap">

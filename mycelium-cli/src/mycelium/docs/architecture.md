@@ -2,12 +2,12 @@
 
 ## Deployment Modes
 
-Mycelium supports two deployment modes. The stack is identical in both —
+Mycelium supports two deployment modes. The stack is identical in both;
 what differs is *where the agents run* and *how they reach the room*.
 
 ### 1. Single-device (default)
 
-Everything — the backend, the SLIM node, agents, and CLI — runs on one
+Everything (the backend, the SLIM node, agents, and CLI) runs on one
 machine, typically a developer's laptop. This is what `mycelium install`
 sets up out of the box. No network configuration, no remote services to
 point at, no shared infrastructure required.
@@ -30,10 +30,10 @@ and connect to the hub's channel.
 Stand a hub up and point spokes at it:
 
 ```bash
-# On the hub — starts the SLIM node + backend, prints the connect address
+# On the hub: starts the SLIM node + backend, prints the connect address
 mycelium hub host
 
-# On each spoke — point this machine at the hub's channel
+# On each spoke: point this machine at the hub's channel
 mycelium hub connect http://<hub-ip>:46357
 ```
 
@@ -48,7 +48,7 @@ auto-detection with:
 ```bash
 mycelium doctor --mode hub     # force hub checks
 mycelium doctor --mode spoke   # force spoke checks (skip local-only)
-mycelium doctor --mode auto    # default — detect from api_url
+mycelium doctor --mode auto    # default; detect from api_url
 ```
 
 ### Syncing room files (remote backend)
@@ -67,12 +67,12 @@ mycelium sync
 
 ## Stack
 
-Mycelium runs on **one SLIM node** and a thin backend — no database, no
+Mycelium runs on **one SLIM node** and a thin backend: no database, no
 message broker, no vector store.
 
 Agents coordinate over an [AGNTCY SLIM](https://github.com/agntcy) group
 channel, one per room: an MLS-encrypted group with shared-secret PSK auth.
-The backend is each room's **moderator** — agents (and the human, by proxy)
+The backend is each room's **moderator**; agents (and the human, by proxy)
 are members. Room state lives on disk as markdown files; search runs against a
 local embedding index. Coordination messages ride SLIM as additive
 [L9 envelopes](#l9-protocol).
@@ -80,10 +80,10 @@ local embedding index. Coordination messages ride SLIM as additive
 | Layer | Technology | Used for |
 |-------|-----------|----------|
 | Messaging | one SLIM node (MLS group channels) | per-room encrypted coordination fabric |
-| State | markdown files under `~/.mycelium/rooms/{room}/` | rooms, memories, plan — the source of truth |
+| State | markdown files under `~/.mycelium/rooms/{room}/` | rooms, memories, plan: the source of truth |
 | Search | local ONNX embedding index (JSONL) | ~384-dim semantic recall, no external service |
 | Protocol | L9 envelopes over SLIM | `exchange` ticks/replies, `commit:*`, `knowledge` |
-| Cognition | the aligner — Pi + NEGMAS | drives the negotiation (see [aligner](#aligner)) |
+| Cognition | the aligner (Pi + NEGMAS) | drives the negotiation (see [aligner](#aligner)) |
 | Embeddings | local ONNX model | 384-dim embeddings, no API key |
 | LLM | litellm | plan compilation (100+ providers) |
 | Backend | FastAPI (room moderator) | membership, transcript, moderation API |
@@ -92,7 +92,7 @@ local embedding index. Coordination messages ride SLIM as additive
 | Frontend | Next.js + Tailwind | frontend UI |
 
 **Participation is a CLI primitive.** Any already-awake caller joins a room and
-coordinates with two stateless HTTP calls — the backend holds membership via a
+coordinates with two stateless HTTP calls. The backend holds membership via a
 presence lease and a durable transcript cursor, so ticks are never missed
 between turns:
 
@@ -110,7 +110,7 @@ mycelium respond --room my-project --handle me "moving toward 30% …"
 speak SLIM or L9 directly.
 
 **The aligner is the cognition engine.** Negotiation is driven by a first-party
-mediator — the aligner — registered in a room and summoned by `@`-mention. Its
+mediator, the aligner, registered in a room and summoned by `@`-mention. Its
 brain is a persistent Pi coding-agent session running a NEGMAS Stacked
 Alternating Offers negotiation; NEGMAS owns termination, stopping the instant
 the agents agree. See [aligner](#aligner) and [episodes](#episodes).
@@ -118,11 +118,11 @@ the agents agree. See [aligner](#aligner) and [episodes](#episodes).
 ## Adapters
 
 Mycelium integrates with AI coding agents via adapters. The coordination model is
-the same regardless of adapter — join, await, respond.
+the same regardless of adapter: join, await, respond.
 
 | Adapter | Status |
 |---------|--------|
-| **claude_code** | proven — the supported path today |
+| **claude_code** | proven; the supported path today |
 | **cursor** | untested / unverified |
 | **openclaw, hermes** | deprecated |
 

@@ -29,7 +29,7 @@ service) and indexed for semantic search.
 
 ## Namespace Conventions
 
-Keys use `/` as a separator. This is a convention, not enforced structure —
+Keys use `/` as a separator. This is a convention, not enforced structure,
 but it makes `memory ls <prefix>/` very useful.
 
 ```bash
@@ -78,7 +78,7 @@ mycelium memory reindex
 
 ## Semantic Search
 
-Search finds memories by meaning — cosine similarity on all-MiniLM-L6-v2
+Search finds memories by meaning: cosine similarity on all-MiniLM-L6-v2
 embeddings (384 dimensions, runs locally, no external service).
 
 ```bash

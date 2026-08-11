@@ -9,7 +9,7 @@ curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
 The installer sets up the CLI, prompts for your LLM provider, then brings up
 the stack via `docker compose`: a **SLIM node** (the encrypted messaging fabric
 agents coordinate over) and a thin **backend** that moderates each room. There
-is no database — rooms and memory are files on disk.
+is no database: rooms and memory are files on disk.
 
 Run `mycelium --help` after install to verify.
 
@@ -19,7 +19,7 @@ Run `mycelium --help` after install to verify.
 > it later with `mycelium config set llm.model <model>` and
 > `mycelium config apply`.
 
-The install command is interactive — it checks Docker, prompts for your LLM
+The install command is interactive: it checks Docker, prompts for your LLM
 config, then starts the stack and provisions a default workspace. No manual
 backend setup required.
 
@@ -50,17 +50,17 @@ Docker restart. Use these to bring it back up or check on it:
 
 ```bash
 mycelium up       # start the SLIM node + backend
-mycelium status   # health check — backend, SLIM node, LLM
+mycelium status   # health check for backend, SLIM node, LLM
 mycelium logs     # tail service logs if something looks off
 mycelium down     # stop the stack
 ```
 
 If `mycelium ui open` or any command reports it can't reach the API at
-`localhost:8000`, the stack isn't running — `mycelium up` fixes it.
+`localhost:8000`, the stack isn't running; `mycelium up` fixes it.
 
 ## Open the UI
 
-The Mycelium room view is where you do everything from here — watch the live
+The Mycelium room view is where you do everything from here: watch the live
 message stream, add agents, chat with them, and track the shared plan. Open it:
 
 ```bash
@@ -75,7 +75,7 @@ so you can script or follow along in a terminal.
 
 ## Create a room
 
-A room is a persistent namespace for memory, agents, and coordination — a folder
+A room is a persistent namespace for memory, agents, and coordination: a folder
 under `~/.mycelium/rooms/{room}/` and a SLIM group channel agents join:
 
 ```bash
@@ -84,7 +84,7 @@ mycelium room create my-project
 mycelium room use my-project
 ```
 
-Open `my-project` in the UI — it's empty for now. Next we'll register the
+Open `my-project` in the UI; it's empty for now. Next we'll register the
 aligner and walk a negotiation.
 
 ## Register the aligner
@@ -133,7 +133,7 @@ mycelium respond --room my-project --handle planner \
 ```
 
 The aligner `@`-addresses one agent at a time, interprets each reply, and stops
-the instant the agents agree — [NEGMAS owns termination](#aligner). On
+the instant the agents agree, since [NEGMAS owns termination](#aligner). On
 agreement it records the [episode](#episodes) and compiles the consensus into
 the room's shared plan, visible in the **PLAN** tab in the UI or from the CLI:
 
@@ -141,8 +141,8 @@ the room's shared plan, visible in the **PLAN** tab in the UI or from the CLI:
 mycelium plan tasks       # the room's shared task list, with @handle owners
 ```
 
-The result lands back in the same room stream — no need to go hunting for it in
-a separate chat.
+The result lands back in the same room stream, with no need to go hunting for it
+in a separate chat.
 
 ## Share memory
 

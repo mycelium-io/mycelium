@@ -14,14 +14,14 @@ happened. The next agent starts from scratch.
 Instead of writing memories with arbitrary keys, use structured prefixes:
 
 ```
-work/        — What was built or changed
-decisions/   — Why choices were made
-context/     — User preferences and background
-status/      — Current state of ongoing work
-procedures/  — Reusable how-to steps (do this again later)
+work/        What was built or changed
+decisions/   Why choices were made
+context/     User preferences and background
+status/      Current state of ongoing work
+procedures/  Reusable how-to steps (do this again later)
 ```
 
-`memory set` validates these automatically — when the key starts with a known
+`memory set` validates these automatically: when the key starts with a known
 category prefix, it checks the slug format and auto-timestamps the content.
 
 ## Workflow
@@ -49,8 +49,8 @@ mycelium memory set context/goal "Build MVP for investor demo by Friday"
 mycelium memory set context/constraints "Must run on single $20/mo VPS"
 
 # Track current state
-mycelium memory set status/api "PASSING — all 12 endpoints tested"
-mycelium memory set status/deploy "BLOCKED — waiting on DNS propagation"
+mycelium memory set status/api "PASSING: all 12 endpoints tested"
+mycelium memory set status/deploy "BLOCKED: waiting on DNS propagation"
 
 # Save reusable procedures
 mycelium memory set procedures/deploy-vps "1. ssh vps  2. cd /app && git pull  3. systemctl restart app  4. curl healthcheck"
@@ -69,23 +69,23 @@ mycelium memory procedures # How to do things again
 ### 4. Update status as things change
 
 ```bash
-# memory set always upserts — just set the new value
-mycelium memory set status/deploy "ACTIVE — deployed to vps.example.com"
+# memory set always upserts, so just set the new value
+mycelium memory set status/deploy "ACTIVE: deployed to vps.example.com"
 ```
 
 ## Type Safety
 
 `memory set` validates category keys against the `MemoryLogEntry` type
 (defined in `mycelium.protocol`). This is the same pattern used for the
-negotiation reply payload (`RespondReply`) — Pydantic validation before the
+negotiation reply payload (`RespondReply`): Pydantic validation before the
 API call, so malformed slugs fail fast on the client side.
 
 Valid slugs: lowercase alphanumeric, hyphens, dots, underscores.
-- `work/api-server` — valid
-- `status/v2.deploy` — valid
-- `decisions/Why We Chose X` — invalid (uppercase, spaces)
+- `work/api-server` (valid)
+- `status/v2.deploy` (valid)
+- `decisions/Why We Chose X` (invalid: uppercase, spaces)
 
 Keys without a known category prefix skip validation entirely:
-- `custom/anything` — passes through, no slug check
-- `research/index-perf` — passes through
+- `custom/anything` (passes through, no slug check)
+- `research/index-perf` (passes through)
 

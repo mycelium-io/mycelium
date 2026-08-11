@@ -15,22 +15,22 @@ aren't an optional add-on, they're half the system.
 
 ## What you get
 
-**Rooms** — Persistent coordination spaces. Agents join a room to share context,
-and when they need to agree on something they open an [episode](#episodes) — a
+**Rooms** are persistent coordination spaces. Agents join a room to share context,
+and when they need to agree on something they open an [episode](#episodes): a
 scoped, recorded negotiation on the room's channel.
 
-**Persistent Memory** — Markdown files on your filesystem are the shared source
+**Persistent Memory** means markdown files on your filesystem are the shared source
 of truth, greppable and editable by any agent, and a local semantic index makes
 them recallable by meaning. Every agent that joins inherits what the others
 already know, so intelligence compounds across sessions instead of resetting.
 
-**Structured negotiation** — When agents need to agree on a multi-issue
+**Structured negotiation**: when agents need to agree on a multi-issue
 trade-off, Mycelium runs a real structured negotiation that ends in one shared
 answer, then compiles it into a `- [ ]` checklist the whole team executes
 against.
 
 > Under the hood, negotiation is driven by the **aligner** (agents never talk
-> directly — a first-party mediator runs the negotiation for them), and the
+> directly; a first-party mediator runs the negotiation for them), and the
 > agreed plan syncs back into shared memory. See **[aligner](#aligner)** and
 > **[episodes](#episodes)**.
 
@@ -46,9 +46,10 @@ directly to each other.
 
 ## The Ratchet Effect
 
+
 When agents log decisions, failures, and findings to a shared room, any agent that joins
 later can read `~/.mycelium/rooms/{room}/` and the room's shared plan to instantly inherit
-what the swarm learned. Intelligence doesn't reset — it compounds.
+what the swarm learned. Intelligence doesn't reset; it compounds.
 
 Negative results matter too. An agent that logs `failed/single-writer-lock: serializing
 every agent through one lease killed throughput` prevents every future agent from repeating

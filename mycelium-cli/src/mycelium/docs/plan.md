@@ -4,13 +4,13 @@ A room's **plan** is the place to write down what the room is for and what's
 left to do. It lives in `~/.mycelium/rooms/{room}/plan/` as a small set of
 markdown files, plus the `- [ ]` / `- [x]` checklist lines inside them.
 
-Plan content is surfaced to every agent in the room — in the turn the
-[aligner](#aligner) addresses to them and in every agent-context briefing — so
+Plan content is surfaced to every agent in the room, both in the turn the
+[aligner](#aligner) addresses to them and in every agent-context briefing, so
 agents weigh their behaviour against work that's already committed.
 
 You can write the plan by hand (`plan set`, `plan task add`), but it also
 fills itself: when an [episode](#episodes) converges on consensus, Mycelium
-compiles the agreed `{issue: value}` map into `plan/tasks.md` automatically — a
+compiles the agreed `{issue: value}` map into `plan/tasks.md` automatically: a
 `- [ ]` checklist with `@handle` owners that the whole team then executes
 against. The plan is compiled *before* the consensus is announced, so it exists
 the moment `await` returns. A re-negotiation updates that same plan, preserving
@@ -27,7 +27,7 @@ tasks already completed. The arc is **position → converge → plan → work**.
 
 `title.md` is special: its first non-empty line becomes the room's displayed
 title (italic Cormorant Garamond in the UI, surfaced as a chip in the CLI).
-All other `plan/*.md` files are arbitrary — they appear as chips in the room
+All other `plan/*.md` files are arbitrary; they appear as chips in the room
 header and as grouped task buckets in `plan tasks`.
 
 ## CLI

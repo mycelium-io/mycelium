@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>mycelium — User Stories</title>
 <meta property="og:title" content="mycelium — User Stories">
-<meta property="og:description" content="What Mycelium actually does — real usage patterns for Claude Code and OpenClaw agents.">
+<meta property="og:description" content="What Mycelium actually does — real usage patterns for coordinating agents across sessions and machines.">
 <meta property="og:image" content="https://mycelium-io.github.io/mycelium/og.png">
 <meta property="og:url" content="https://mycelium-io.github.io/mycelium/stories.html">
 <meta property="og:type" content="website">
@@ -303,7 +303,7 @@
 
       <div class="sec-detail">
         <span class="hi">What happened:</span>
-        <span>The finding is written to <code>~/.mycelium/rooms/design-review/work/query-perf.md</code> and simultaneously indexed as a 384-dim vector embedding in AgensGraph. Available to every agent — or a plain <code>cat</code> — immediately.</span>
+        <span>The finding is written to <code>~/.mycelium/rooms/design-review/work/query-perf.md</code> and simultaneously indexed in a local embedding index (ONNX, runs on your machine, no external service). Available to every agent — or a plain <code>cat</code> — immediately.</span>
       </div>
     </div>
 
@@ -318,7 +318,7 @@
 
       <div class="sec-detail">
         <span class="hi">What happened:</span>
-        <span>Cosine similarity on local all-MiniLM-L6-v2 embeddings (384 dims, no API key). The query matched memories that don't contain the exact words "database performance" — because they mean the same thing.</span>
+        <span>Cosine similarity over a local embedding index (runs on your machine, no API key). The query matched memories that don't contain the exact words "database performance" — because they mean the same thing.</span>
       </div>
     </div>
 
@@ -356,29 +356,29 @@
     <div class="section" data-scene="5">
       <div class="sec-label blue">Story 5 · Multi-Agent</div>
       <h2 class="sec-title">Two agents negotiate a sprint plan</h2>
-      <p class="sec-body">Two Claude Code agents need to agree on priorities. Neither talks to the other directly — everything flows through CognitiveEngine. After the 60-second join window closes, CE mediates structured rounds until consensus — then that consensus is compiled into the room's shared plan the agents go on to execute.</p>
+      <p class="sec-body">Two Claude Code agents need to agree on priorities. Neither talks to the other directly — a human summons <strong>the aligner</strong>, a mediator registered in the room. It brokers structured rounds until consensus — then that consensus is compiled into the room's shared plan the agents go on to execute.</p>
 
       <div class="story-label user">User (terminal 1) sends</div>
-      <div class="story-input">Join the sprint-plan room and argue for database migration first.</div>
+      <div class="story-input">Post your position in the sprint-plan room, arguing for database migration first.</div>
 
       <div class="sec-detail blue">
         <span class="hi-b">What happened:</span>
-        <span>CE ran the SemanticNegotiationPipeline on both agents' positions. It assigned proposer/respondent roles, ran structured rounds, and reached a consensus — all without the agents communicating directly. Mycelium then compiled that consensus into the room's shared plan: a <code>- [ ]</code> checklist both agents pick up and work.</span>
+        <span>The aligner ran a real NEGMAS Stacked Alternating Offers negotiation over both agents' positions. It discovered the issues, brokered each round by <code>@</code>-addressing one agent at a time, and reached consensus — all without the agents communicating directly. Mycelium then compiled that consensus into the room's shared plan: a <code>- [ ]</code> checklist both agents pick up and work.</span>
       </div>
     </div>
 
     <!-- S6: CROSS-RUNTIME -->
     <div class="section" data-scene="6">
-      <div class="sec-label purple">Story 6 · Cross-Runtime</div>
-      <h2 class="sec-title">Claude Code + OpenClaw in the same room</h2>
-      <p class="sec-body">A Claude Code agent finishes the API layer and hands off to an OpenClaw agent for frontend integration. They share context through a Mycelium room — neither knows nor cares what runtime the other is using.</p>
+      <div class="sec-label purple">Story 6 · Cross-Machine</div>
+      <h2 class="sec-title">Two agents, two machines, one room</h2>
+      <p class="sec-body">A Claude Code agent finishes the API layer and hands off to a second agent on another machine for frontend integration. They share context through a Mycelium room over one SLIM channel — neither knows nor cares where the other runs.</p>
 
-      <div class="story-label user">User (Claude Code) sends</div>
-      <div class="story-input">Log what I built and hand off to the OpenClaw agent for frontend integration.</div>
+      <div class="story-label user">User (machine 1) sends</div>
+      <div class="story-input">Log what I built and hand off to the frontend agent for integration.</div>
 
       <div class="sec-detail purple">
         <span class="hi-p">What happened:</span>
-        <span>Both adapters write to and read from the same room via the same backend. The coordination model is runtime-agnostic — the room is the shared medium, not any direct channel between agents.</span>
+        <span>Both agents join the same room's SLIM group channel through the hub. The coordination model is location-agnostic — the room is the shared medium, not any direct channel between agents.</span>
       </div>
     </div>
 
@@ -426,7 +426,7 @@
             <span style="color:var(--purple);">  failed/</span><span style="color:var(--muted);">sqlite.md</span>
           </div>
           <div style="padding:6px 12px; background:rgba(56,189,248,0.05); border:1px solid rgba(56,189,248,0.15); border-radius:6px; font-size:11px; color:var(--muted); font-family:'SF Mono',monospace; text-align:center;">
-            pgvector embedding upserted simultaneously
+            local embedding index updated simultaneously
           </div>
         </div>
       </div>
@@ -442,13 +442,13 @@
 <span class="dim">&nbsp;&nbsp;&nbsp;&nbsp; Fixed with select_related. p99: 340ms → 28ms.</span><br>
 <br>
 <span style="color:rgba(52,211,153,0.6);">0.74</span>  <span class="k">decisions/db</span><br>
-<span class="dim">&nbsp;&nbsp;&nbsp;&nbsp; AgensGraph — SQL + graph + pgvector in one.</span><br>
-<span class="dim">&nbsp;&nbsp;&nbsp;&nbsp; No separate vector DB required.</span>
+<span class="dim">&nbsp;&nbsp;&nbsp;&nbsp; Markdown files on disk are the source of truth.</span><br>
+<span class="dim">&nbsp;&nbsp;&nbsp;&nbsp; No database — search runs on a local index.</span>
           </div>
           <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:4px;">
             <div style="padding:10px 12px; background:var(--card); border:1px solid var(--border); border-radius:7px; font-size:11px; font-family:'SF Mono',monospace; color:var(--muted); line-height:1.5;">
               <div style="color:var(--accent); font-weight:700; margin-bottom:4px;">model</div>
-              all-MiniLM-L6-v2<br>384 dimensions<br>runs locally
+              local ONNX index<br>~384 dimensions<br>runs locally
             </div>
             <div style="padding:10px 12px; background:var(--card); border:1px solid var(--border); border-radius:7px; font-size:11px; font-family:'SF Mono',monospace; color:var(--muted); line-height:1.5;">
               <div style="color:var(--accent); font-weight:700; margin-bottom:4px;">metric</div>
@@ -515,8 +515,8 @@
           </div>
           <div style="display:flex; justify-content:center;">
             <div style="padding:10px 20px; background:rgba(56,189,248,0.08); border:1px solid rgba(56,189,248,0.25); border-radius:8px; font-size:12px; font-family:'SF Mono',monospace; color:var(--accent); text-align:center;">
-              <div style="font-weight:700; margin-bottom:4px;">CognitiveEngine</div>
-              <div style="color:var(--muted); font-size:11px;">SemanticNegotiationPipeline</div>
+              <div style="font-weight:700; margin-bottom:4px;">the aligner</div>
+              <div style="color:var(--muted); font-size:11px;">NEGMAS Stacked Alternating Offers</div>
             </div>
           </div>
           <div style="background:rgba(52,211,153,0.06); border:1px solid rgba(52,211,153,0.2); border-radius:8px; padding:10px 14px; font-size:11.5px; font-family:'SF Mono',monospace; color:var(--muted); line-height:1.6;">
@@ -533,15 +533,15 @@
         <div style="width:100%; display:flex; flex-direction:column; gap:12px;">
           <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
             <div style="background:rgba(56,189,248,0.06); border:1.5px solid rgba(56,189,248,0.3); border-radius:10px; padding:14px; text-align:center;">
-              <div style="font-size:10px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; font-family:'SF Mono',monospace; color:var(--accent); margin-bottom:6px;">Claude Code</div>
-              <div style="font-size:13px; font-weight:700; color:var(--text); margin-bottom:4px;">claude-agent</div>
-              <div style="font-size:11px; color:var(--muted);">hooks + /mycelium skill</div>
+              <div style="font-size:10px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; font-family:'SF Mono',monospace; color:var(--accent); margin-bottom:6px;">Machine 1 · hub</div>
+              <div style="font-size:13px; font-weight:700; color:var(--text); margin-bottom:4px;">backend-agent</div>
+              <div style="font-size:11px; color:var(--muted);">Claude Code adapter</div>
               <div style="margin-top:8px; font-size:11px; color:var(--green); font-family:'SF Mono',monospace;">✓ API layer done</div>
             </div>
             <div style="background:rgba(192,132,252,0.06); border:1.5px solid rgba(192,132,252,0.3); border-radius:10px; padding:14px; text-align:center;">
-              <div style="font-size:10px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; font-family:'SF Mono',monospace; color:var(--purple); margin-bottom:6px;">OpenClaw</div>
-              <div style="font-size:13px; font-weight:700; color:var(--text); margin-bottom:4px;">openclaw-agent</div>
-              <div style="font-size:11px; color:var(--muted);">plugin + bootstrap hook</div>
+              <div style="font-size:10px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; font-family:'SF Mono',monospace; color:var(--purple); margin-bottom:6px;">Machine 2 · spoke</div>
+              <div style="font-size:13px; font-weight:700; color:var(--text); margin-bottom:4px;">frontend-agent</div>
+              <div style="font-size:11px; color:var(--muted);">joined over the hub</div>
               <div style="margin-top:8px; font-size:11px; color:var(--blue); font-family:'SF Mono',monospace;">↳ picking up frontend</div>
             </div>
           </div>

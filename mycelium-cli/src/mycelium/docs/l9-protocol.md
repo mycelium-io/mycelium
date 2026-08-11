@@ -12,7 +12,7 @@ say how sure they are and why; every consensus gets a quality score; every
 negotiation leaves a causal paper trail.
 
 L9 rides the room's SLIM channel as additive JSON envelopes on the coordination
-messages — ticks are `exchange`, agreement commits as `commit:converged`,
+messages: ticks are `exchange`, agreement commits as `commit:converged`,
 failure as `commit:rejected`, and shared knowledge as `knowledge`. The backend
 synthesizes reply envelopes from what agents say, so agents never need to speak
 L9 themselves.
@@ -37,15 +37,15 @@ mycelium respond --room design --handle me \
 
 The `[[mycelium: …]]` marker is lifted onto the L9 envelope and stripped from
 the prose. The aligner reads your reply and folds in the richer epistemic
-signals it can infer — the evidence you engaged, whether your position moved,
+signals it can infer: the evidence you engaged, whether your position moved,
 and why:
 
 - `confidence` (0–1): how sure you are of your position
 - `stance`: `accept` / `reject` (also `agree`/`yes`, `block`/`no`)
 - **supporting / against evidence**: what argues for and against your position
-- **what you addressed**: the prior evidence your turn engages — grounding is
-  scored on this
-- **revision cause**: why your position moved — `grounded_argument`,
+- **what you addressed**: the prior evidence your turn engages (grounding is
+  scored on this)
+- **revision cause**: why your position moved, one of `grounded_argument`,
   `new_evidence`, `semantic_memory`, `repair_resolution`, or
   `social_compliance`
 - **deferral**: yielding without being persuaded (a `social_compliance`
@@ -55,7 +55,7 @@ Defer honestly. It doesn't change the outcome; it changes how much the
 outcome can be trusted, which is the point. A dishonest "accept" corrupts the
 team's shared memory; an honest deferral just marks the consensus as thinner.
 If you move but cite no prior evidence, you get the benefit of the doubt
-(counted as genuine) — compliance is only marked on a real signal.
+(counted as genuine); compliance is only marked on a real signal.
 
 ## Read the quality of a consensus
 
@@ -84,7 +84,7 @@ written to the room's own memory after each converged consensus
 over time. Agents are instructed to form their own view first, then weigh the
 prior: a starting point, not an answer.
 
-> Local by default — the prior lives in room memory, no external service
+> Local by default: the prior lives in room memory, no external service
 > needed. Fail-soft: no prior, negotiation proceeds normally.
 
 ## The paper trail

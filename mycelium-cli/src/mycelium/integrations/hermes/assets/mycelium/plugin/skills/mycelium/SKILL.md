@@ -1,6 +1,6 @@
 ---
 name: mycelium
-description: Use the mycelium CLI to join coordination rooms, negotiate with other agents via CognitiveEngine, and share persistent memory across sessions.
+description: DEPRECATED (hermes adapter unsupported). Historical reference for the removed SSE/CFN coordination flow; use the claude_code skill for current guidance.
 user-invocable: true
 metadata:
   hermes:
@@ -20,6 +20,18 @@ metadata:
 
 # Mycelium Coordination
 
+> **DEPRECATED: the hermes adapter is not currently supported.** The
+> negotiation flow described below (`session join` / `session await` /
+> `negotiate propose`, `coordination_tick` / `coordination_consensus` payloads
+> delivered over SSE, the `CognitiveEngine` mediator, and the CFN knowledge
+> graph) rode a transport that has been removed. Mycelium now coordinates over a
+> SLIM group channel per room, negotiation is chat-native (post positions with
+> `mycelium respond`, summon the aligner with `mycelium engine invoke aligner`,
+> loop `mycelium await` / `mycelium respond`), and there is no database or CFN.
+> The proven adapter is `claude_code`; use its skill for current guidance. The
+> content below is retained for reference only and does not reflect the current
+> system.
+
 Mycelium provides persistent shared memory and real-time coordination between AI agents.
 
 ## Install
@@ -34,7 +46,7 @@ Source: https://github.com/mycelium-io/mycelium
 
 ## Hermes Setup
 
-Once the mycelium adapter is installed (`mycelium adapter add hermes`), the hermes gateway picks up the bundled `mycelium-room` platform plugin automatically — there's no per-agent approval step like other gateways require. The plugin exposes Mycelium rooms as regular hermes chats, so every agent the gateway hosts can address them through the normal chat surface.
+Once the mycelium adapter is installed (`mycelium adapter add hermes`), the hermes gateway picks up the bundled `mycelium-room` platform plugin automatically, with no per-agent approval step like other gateways require. The plugin exposes Mycelium rooms as regular hermes chats, so every agent the gateway hosts can address them through the normal chat surface.
 
 After adding the adapter, restart the gateway once so the platform registry picks up the plugin:
 
@@ -43,18 +55,18 @@ hermes gateway restart
 ```
 
 All interaction flows through **rooms** (shared namespaces).
-**CognitiveEngine** mediates structured negotiation sessions — agents never negotiate decisions directly.
-For unstructured messaging, agents can DM each other via `@handle` mentions in the channel — see **Talking to other agents** below.
+**CognitiveEngine** mediates structured negotiation sessions; agents never negotiate decisions directly.
+For unstructured messaging, agents can DM each other via `@handle` mentions in the channel (see **Talking to other agents** below).
 
 ## Authentication & Data Storage
 
-**Authentication**: The CLI connects to the Mycelium backend at the URL configured in `~/.mycelium/config.toml` (under `[server] api_url`, default `http://localhost:8000`). Authentication is handled by your backend deployment — the CLI sends no credentials by default. If your backend requires auth, configure it at the server level (reverse proxy, network policy, etc.) and set `platforms.mycelium-room.extra.api_token` in `~/.hermes/config.yaml` so the platform plugin includes a Bearer token on every backend call.
+**Authentication**: The CLI connects to the Mycelium backend at the URL configured in `~/.mycelium/config.toml` (under `[server] api_url`, default `http://localhost:8000`). Authentication is handled by your backend deployment; the CLI sends no credentials by default. If your backend requires auth, configure it at the server level (reverse proxy, network policy, etc.) and set `platforms.mycelium-room.extra.api_token` in `~/.hermes/config.yaml` so the platform plugin includes a Bearer token on every backend call.
 
-**Network behavior**: The CLI is designed to make HTTP requests to the single backend endpoint from `~/.mycelium/config.toml` — for writing memories to the search index, semantic search queries, coordination session joins/responses, and room sync. The HTTP client setup is at [`mycelium-cli/src/mycelium/api_client.py`](https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/api_client.py) and individual commands are under [`mycelium-cli/src/mycelium/commands/`](https://github.com/mycelium-io/mycelium/tree/main/mycelium-cli/src/mycelium/commands).
+**Network behavior**: The CLI is designed to make HTTP requests to the single backend endpoint from `~/.mycelium/config.toml`, for writing memories to the search index, semantic search queries, coordination session joins/responses, and room sync. The HTTP client setup is at [`mycelium-cli/src/mycelium/api_client.py`](https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/api_client.py) and individual commands are under [`mycelium-cli/src/mycelium/commands/`](https://github.com/mycelium-io/mycelium/tree/main/mycelium-cli/src/mycelium/commands).
 
-**Local data**: Memories are written as plaintext markdown files under `~/.mycelium/rooms/{room}/`. These files are readable by any process with filesystem access on this machine. **Do not store secrets, credentials, or PII as room memories.** Room sync pushes/pulls these files to/from the backend via HTTP — ensure your configured backend URL points to a trusted, access-controlled server.
+**Local data**: Memories are written as plaintext markdown files under `~/.mycelium/rooms/{room}/`. These files are readable by any process with filesystem access on this machine. **Do not store secrets, credentials, or PII as room memories.** Room sync pushes/pulls these files to/from the backend via HTTP, so ensure your configured backend URL points to a trusted, access-controlled server.
 
-**Scope**: The CLI's file I/O is scoped to `~/.mycelium/` — config under `~/.mycelium/config.toml`, room memories under `~/.mycelium/rooms/`. The filesystem layout is documented in the project README and the commands that touch it are in the commands directory linked above.
+**Scope**: The CLI's file I/O is scoped to `~/.mycelium/`: config under `~/.mycelium/config.toml`, room memories under `~/.mycelium/rooms/`. The filesystem layout is documented in the project README and the commands that touch it are in the commands directory linked above.
 
 ## Core Concepts
 
@@ -72,7 +84,7 @@ Every memory is a readable, editable markdown file:
 ~/.mycelium/rooms/my-project/context/team.md
 ```
 
-You can read them with your native file tools, edit them directly, or `git` the directory. Changes are auto-indexed by the file watcher — no manual reindex needed.
+You can read them with your native file tools, edit them directly, or `git` the directory. Changes are auto-indexed by the file watcher, so no manual reindex is needed.
 
 The filesystem is the source of truth. The database is just a search index. This means:
 - `cat`, `grep`, `sed`, pipes — the full unix toolchain works on room memory

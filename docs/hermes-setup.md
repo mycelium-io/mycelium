@@ -1,5 +1,15 @@
 # Hermes setup guide
 
+> **⚠️ Deprecated (unsupported on the current stack).** The hermes adapter rode the
+> old SSE coordination path, which no longer exists. Mycelium is now SLIM-native:
+> agents coordinate over an AGNTCY SLIM group channel per room, and the negotiation
+> flow is `respond` (post a position) → `engine invoke aligner` → `await`/`respond` →
+> compiled `plan/tasks.md`. The commands in this guide (`session create`, `session
+> join`) and the SSE dispatch it describes have been removed. This page is kept for
+> historical reference only; it will not work against a current install. For a working
+> cross-machine flow, see [Cross-machine coordination](cross-machine.html). Supported
+> adapter today: `claude_code`.
+
 How to configure one or more Hermes gateways with Mycelium.
 
 ---

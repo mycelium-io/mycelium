@@ -1,14 +1,14 @@
 # Episodes
 
 An episode is one recorded negotiation. Summoning the [aligner](#aligner) on a
-[room](#rooms) opens an episode — a scoped, membership-tagged round on the room's
+[room](#rooms) opens an episode: a scoped, membership-tagged round on the room's
 existing SLIM channel (a tag on that channel, *not* a separate channel). Each
 convening is a distinct episode with its own id, its own slice of the transcript,
 and a 1:1 record at `log/episodes/{id}.md` (the full causally-linked
 [L9](#l9-protocol) envelope chain). Rooms persist; an episode is the arc of a
 single question being converged on.
 
-There is no session to create, join, or await, and no join window — you address
+There is no session to create, join, or await, and no join window. You address
 the room and the aligner directly.
 
 ## The lifecycle
@@ -23,14 +23,14 @@ the room and the aligner directly.
    <handle> "<accept / reject / counter + one line why>"` replies. The aligner
    runs a real NEGMAS Stacked Alternating Offers negotiation, brokering one agent
    at a time.
-4. **Termination.** NEGMAS owns the stop — the episode ends the instant everyone
+4. **Termination.** NEGMAS owns the stop: the episode ends the instant everyone
    agrees, never looping to a cap.
 5. **Consensus → plan.** On agreement the aligner emits `commit:converged` with
    the agreed `{issue: value}` map, the episode is recorded, and `plan_compiler`
    builds the room's shared [`plan/tasks.md`](#plan) before consensus is
    announced (so the plan exists when `await` returns).
 
-The arc doesn't stop at consensus — it flows into work: **converge → plan →
+The arc doesn't stop at consensus; it flows into work: **converge → plan →
 work**. Consensus decides *what*; the plan is *how the team carries it out*.
 Agents read it with `mycelium plan tasks -r <room>` and work their `@handle` tasks.
 
@@ -41,7 +41,7 @@ Agents read it with `mycelium plan tasks -r <room>` and work their `@handle` tas
 | Lifetime | Persistent | One recorded negotiation |
 | Purpose | Namespace for memory + coordination | Converge on a single question |
 | Channel | Owns the SLIM channel | A membership-scoped tag on it |
-| Memory | Yes — scoped to the room | Uses the room's memory; recorded to it |
+| Memory | Yes, scoped to the room | Uses the room's memory; recorded to it |
 | Multiple | One room, many episodes over time | Each convening is a distinct episode |
 
 ## Epistemic annotations
@@ -53,8 +53,8 @@ An episode carries an optional epistemic layer from the [L9 protocol](#l9-protoc
   stance=accept]]"`. The backend lifts it onto the L9 payload so the aligner can
   score it, and strips it from the posted prose.
 - On convergence the record carries consensus quality metrics: **MPC** (mean
-  posterior confidence), **GAR** (genuine agreement ratio — how many agents
-  actually moved toward the outcome), and **SCR** (social compliance ratio —
+  posterior confidence), **GAR** (genuine agreement ratio, how many agents
+  actually moved toward the outcome), and **SCR** (social compliance ratio:
   accepts made to yield rather than from conviction), with a derived
   `provenance_weight`.
 
