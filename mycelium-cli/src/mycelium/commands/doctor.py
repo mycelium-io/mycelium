@@ -1973,6 +1973,7 @@ def _check_orphaned_rooms() -> CheckResult:
         return CheckResult(name="Orphaned rooms", status="ok", message="No local room directories")
 
     orphans: list[str] = []
+    failed: list[str] = []
     try:
         import httpx
 
@@ -1988,7 +1989,14 @@ def _check_orphaned_rooms() -> CheckResult:
                         status="ok",
                         message="Skipped (hub unreachable)",
                     )
-                except Exception:
+                except Exception as exc:
+                    failed.append(room_name)
+                    # Log but keep going so a single flaky room doesn't hide others.
+                    import logging as _logging
+
+                    _logging.getLogger(__name__).debug(
+                        "Orphaned-rooms check: could not verify '%s': %s", room_name, exc
+                    )
                     continue
     except Exception as exc:
         return CheckResult(
@@ -1998,6 +2006,16 @@ def _check_orphaned_rooms() -> CheckResult:
         )
 
     if not orphans:
+        if failed:
+            return CheckResult(
+                name="Orphaned rooms",
+                status="warning",
+                message=(
+                    f"Verified {len(local_rooms) - len(failed)}/{len(local_rooms)} room(s) — "
+                    f"{len(failed)} check(s) could not be confirmed"
+                ),
+                details=[f"  could not verify: {r}" for r in failed],
+            )
         return CheckResult(
             name="Orphaned rooms",
             status="ok",

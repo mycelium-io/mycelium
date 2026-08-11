@@ -1254,25 +1254,33 @@ def gc(
             return
 
         verb = "Would remove" if dry_run else "Removing"
+        removed_count = 0
+        failed_count = 0
         for room_name in orphans:
             room_dir = rooms_root / room_name
             typer.echo(f"  {verb}: {room_dir}")
             if not dry_run:
+                dir_removed = False
                 try:
                     shutil.rmtree(room_dir)
+                    dir_removed = True
+                    removed_count += 1
                 except Exception as exc:
-                    typer.secho(f"    Error: {exc}", fg=typer.colors.RED)
-                    continue
+                    typer.secho(f"    Error removing directory: {exc}", fg=typer.colors.RED)
+                    failed_count += 1
 
+                # Always unregister adapter configs regardless of whether the directory
+                # removal succeeded — the hub has already deleted the room, so plugins
+                # must stop opening SSE connections to it even if rmtree failed.
                 try:
                     from mycelium.integrations.openclaw.dispatch import (
                         unregister_room_from_openclaw,
                     )
 
-                    removed = unregister_room_from_openclaw(room_name)
-                    if removed:
+                    oc_removed = unregister_room_from_openclaw(room_name)
+                    if oc_removed:
                         typer.secho(
-                            f"    Unregistered {len(removed)} openclaw agent(s)",
+                            f"    Unregistered {len(oc_removed)} openclaw agent(s)",
                             fg=typer.colors.CYAN,
                         )
                 except Exception:
@@ -1281,23 +1289,32 @@ def gc(
                 try:
                     from mycelium.integrations.hermes.dispatch import unregister_room_from_hermes
 
-                    removed = unregister_room_from_hermes(room_name)
-                    if removed:
+                    hm_removed = unregister_room_from_hermes(room_name)
+                    if hm_removed:
                         typer.secho(
-                            f"    Unregistered {len(removed)} hermes agent(s)",
+                            f"    Unregistered {len(hm_removed)} hermes agent(s)",
                             fg=typer.colors.CYAN,
                         )
                 except Exception:
                     pass
 
+                if not dir_removed:
+                    typer.secho(
+                        "    Adapter configs unregistered; directory must be removed manually.",
+                        fg=typer.colors.YELLOW,
+                    )
+
         if dry_run:
             typer.echo("")
             typer.secho("Dry run — nothing was deleted.", fg=typer.colors.YELLOW)
         else:
-            typer.secho(
-                f"\nRemoved {len(orphans)} orphaned room director{'y' if len(orphans) == 1 else 'ies'}.",
-                fg=typer.colors.GREEN,
-            )
+            noun = "directory" if removed_count == 1 else "directories"
+            typer.secho(f"\nRemoved {removed_count} orphaned room {noun}.", fg=typer.colors.GREEN)
+            if failed_count:
+                typer.secho(
+                    f"{failed_count} director{'y' if failed_count == 1 else 'ies'} could not be removed — check permissions.",
+                    fg=typer.colors.YELLOW,
+                )
 
     except (typer.Exit, typer.Abort):
         raise

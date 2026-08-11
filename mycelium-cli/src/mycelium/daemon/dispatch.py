@@ -1265,10 +1265,13 @@ async def _handle_room_deleted(
     log.info("room_deleted received for '%s' — cleaning up local state", room_name)
     state.rooms_deleted.add(room_name)
 
-    if config.daemon.auto_gc_orphaned_rooms:
-        from mycelium.filesystem import get_room_dir
+    # Build the room path directly to avoid get_room_dir()'s implicit mkdir,
+    # which would recreate the directory we're trying to report as orphaned.
+    from mycelium.filesystem import get_mycelium_dir
 
-        room_dir = get_room_dir(room_name)
+    room_dir = get_mycelium_dir() / "rooms" / room_name
+
+    if config.daemon.auto_gc_orphaned_rooms:
         if room_dir.exists():
             try:
                 shutil.rmtree(room_dir)
@@ -1276,9 +1279,6 @@ async def _handle_room_deleted(
             except Exception as exc:
                 log.warning("Failed to remove local room directory %s: %s", room_dir, exc)
     else:
-        from mycelium.filesystem import get_room_dir
-
-        room_dir = get_room_dir(room_name)
         if room_dir.exists():
             log.warning(
                 "Room '%s' deleted on hub — local directory left at %s "
@@ -1286,6 +1286,20 @@ async def _handle_room_deleted(
                 room_name,
                 room_dir,
             )
+
+    # Remove from the daemon subscription list so the room is not re-subscribed
+    # after a daemon restart, and trigger a hot-reload to cancel the SSE task.
+    try:
+        from mycelium.daemon.config import DaemonConfig
+
+        daemon_cfg = DaemonConfig.load()
+        if room_name in daemon_cfg.rooms:
+            daemon_cfg.rooms.remove(room_name)
+            daemon_cfg.save()
+            log.info("Removed '%s' from daemon subscription list", room_name)
+            state.reload_requested.set()
+    except Exception as exc:
+        log.warning("Could not update daemon config for deleted room '%s': %s", room_name, exc)
 
     try:
         from mycelium.integrations.openclaw.dispatch import unregister_room_from_openclaw

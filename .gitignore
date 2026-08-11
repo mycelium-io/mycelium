@@ -29,3 +29,4 @@ pnpm-lock.yaml
 
 # Claude Code harness state (per-session worktrees, transcripts)
 .claude/worktrees/
+*.swp
