@@ -144,29 +144,6 @@ export async function fetchMessages(roomName: string, limit?: number) {
   return res.json();
 }
 
-export async function fetchSessions(roomName: string) {
-  const res = await fetch(`/api/rooms/${roomName}/sessions`, { cache: "no-store" });
-  if (!res.ok) return { sessions: [], total: 0 };
-  return res.json();
-}
-
-export async function fetchChildRooms(parentName: string) {
-  // Sessions live in coordination_sessions. Return the per-session display
-  // name + state.
-  const res = await fetch(
-    `/api/coordination-sessions?parent_room=${encodeURIComponent(parentName)}&limit=200`,
-    { cache: "no-store" },
-  );
-  if (!res.ok) return [];
-  const sessions = await res.json();
-  return sessions.map((s: any) => ({
-    name: s.display_name,
-    coordination_session_id: s.id,
-    coordination_state: s.state,
-    parent_namespace: s.parent_room_name,
-    created_at: s.created_at,
-  }));
-}
 
 export function getSSEUrl(roomName: string) {
   return `/api/rooms/${roomName}/messages/stream`;

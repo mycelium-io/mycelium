@@ -11,7 +11,7 @@ import { EventStream } from "@/components/event-stream";
 import { CollapsibleRail } from "@/components/collapsible-rail";
 import { MemoryPanel } from "@/components/memory-panel";
 import { RoomChatBox } from "@/components/room-chat-box";
-import { SessionsRail } from "@/components/sessions-rail";
+import { EpisodesRail } from "@/components/episodes-rail";
 import { MainTopBar } from "@/components/main-top-bar";
 import { SubNav, type Crumb } from "@/components/sub-nav";
 import { Group as PanelGroup, Panel, Separator as PanelResizeHandle } from "react-resizable-panels";
@@ -65,8 +65,8 @@ export default function RoomPage() {
             >
               <span aria-hidden className="absolute inset-x-0 -top-1.5 -bottom-1.5" />
             </PanelResizeHandle>
-            <Panel id="sessions" defaultSize={68} minSize={20} className="overflow-hidden">
-              <SessionsRail roomName={roomName} activeSessionName={null} />
+            <Panel id="episodes" defaultSize={68} minSize={20} className="overflow-hidden">
+              <EpisodesRail roomName={roomName} />
             </Panel>
           </PanelGroup>
         </aside>

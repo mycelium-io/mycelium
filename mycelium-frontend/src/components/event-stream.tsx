@@ -3,7 +3,6 @@
 
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   getSSEUrl,
@@ -88,7 +87,7 @@ function parseEvent(msg: Record<string, unknown>): Event {
       break;
     }
     case "coordination_start":
-      content = `Session started with ${raw.agent_count || "?"} agents`;
+      content = `Episode started with ${raw.agent_count || "?"} agents`;
       break;
     case "coordination_tick": {
       // Ticks wrap their fields under .payload
@@ -437,11 +436,8 @@ export function EventStream({ roomName, onMemoryChanged, planRefreshTrigger = 0 
               }
               if (ev.type === "coordination_consensus") {
                 const broken = ev.raw.broken === true;
-                const session = ev.raw.session as string | undefined;
-                const shortId = session ? session.split(":").pop() : undefined;
-                const sessionHref = shortId
-                  ? `/room/${encodeURIComponent(roomName)}/session/${encodeURIComponent(shortId)}`
-                  : null;
+                const episodeUrn = (ev.raw.episode as string | undefined) ?? (ev.raw.session as string | undefined);
+                const shortId = episodeUrn ? episodeUrn.split(":").pop() : undefined;
                 const planFile = ev.raw.plan_file as string | undefined;
                 const assignments = ev.raw.assignments as Record<string, string> | undefined;
                 const issueCount = assignments ? Object.keys(assignments).length : 0;
@@ -461,15 +457,12 @@ export function EventStream({ roomName, onMemoryChanged, planRefreshTrigger = 0 
                       {label}
                     </span>
                     <span className="text-muted">in</span>
-                    {sessionHref ? (
-                      <Link
-                        href={sessionHref}
-                        className="font-mono text-accent hover:underline"
-                      >
+                    {shortId ? (
+                      <span className="font-mono text-accent" title={episodeUrn}>
                         {shortId}
-                      </Link>
+                      </span>
                     ) : (
-                      <span className="font-mono text-text2">session</span>
+                      <span className="font-mono text-text2">episode</span>
                     )}
                     {broken ? (
                       <span className="text-text2">· no agreement</span>
@@ -507,11 +500,8 @@ export function EventStream({ roomName, onMemoryChanged, planRefreshTrigger = 0 
               if (ev.type === "coordination_join") {
                 const handle = (ev.raw.handle as string | undefined) ?? ev.sender;
                 const intent = (ev.raw.intent as string | undefined) ?? "";
-                const session = ev.raw.session as string | undefined;
-                const shortId = session ? session.split(":").pop() : undefined;
-                const sessionHref = shortId
-                  ? `/room/${encodeURIComponent(roomName)}/session/${encodeURIComponent(shortId)}`
-                  : null;
+                const episodeUrn = (ev.raw.episode as string | undefined) ?? (ev.raw.session as string | undefined);
+                const shortId = episodeUrn ? episodeUrn.split(":").pop() : undefined;
                 return (
                   <div
                     key={ev.id}
@@ -524,13 +514,10 @@ export function EventStream({ roomName, onMemoryChanged, planRefreshTrigger = 0 
                       @{handle}
                     </span>
                     <span className="text-muted">joined</span>
-                    {sessionHref ? (
-                      <Link
-                        href={sessionHref}
-                        className="font-mono text-accent hover:underline"
-                      >
+                    {shortId ? (
+                      <span className="font-mono text-accent" title={episodeUrn}>
                         {shortId}
-                      </Link>
+                      </span>
                     ) : null}
                     {intent ? (
                       <span className="text-text2 truncate">· &ldquo;{intent}&rdquo;</span>
