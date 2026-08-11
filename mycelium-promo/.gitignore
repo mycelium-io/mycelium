@@ -10,3 +10,6 @@ skills/
 
 # HyperFrames preview cache
 .hyperframes/
+
+# Rendered MP4s are uploaded to GitHub (user-attachments), not committed
+renders/
