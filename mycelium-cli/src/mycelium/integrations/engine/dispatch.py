@@ -158,7 +158,3 @@ class EngineIntegration(Integration):
     def status_check(self, *, name: str, info: dict) -> dict:
         # Engines have no host binary/asset to probe; the backend owns their run.
         return {"ok": True, "details": [f"api_url: {info.get('api_url', '')}"]}
-
-
-#: Back-compat alias for the historical class-name convention.
-EngineAdapter = EngineIntegration

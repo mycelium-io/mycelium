@@ -121,8 +121,3 @@ class MyceliumHTTPClient:
 
     def __exit__(self, *args: Any) -> None:
         self.close()
-
-
-def get_client(config: MyceliumConfig | None = None) -> MyceliumHTTPClient:
-    """Get a configured HTTP client."""
-    return MyceliumHTTPClient(config=config)

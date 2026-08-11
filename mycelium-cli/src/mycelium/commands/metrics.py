@@ -2306,14 +2306,6 @@ def _render_workspace_tables(agents_meta: list[dict]) -> None:
         console.print()
 
 
-def _detect_model(otel: dict | None) -> str:
-    """Return the primary model name from OTLP token data (most tokens wins)."""
-    by_model = (otel or {}).get("counters", {}).get("tokens", {}).get("by_model", {})
-    if not by_model:
-        return ""
-    return max(by_model, key=lambda m: by_model[m].get("total", 0))
-
-
 # OpenClaw "channels" that represent background/idle traffic rather than agent work.
 # These tend to dominate token counts on long-running gateways because the prompt
 # prefix gets re-cached on every tick. Excluded from headline numbers by default;
@@ -2802,120 +2794,6 @@ def _render_mycelium_llm_table(backend: dict | None) -> None:
                 table.add_row(
                     "  search latency", _fmt_histogram_s(search_lat, _max_n_width(search_lat))
                 )
-
-    console.print(table)
-    console.print()
-
-
-def _render_data_reuse_table(backend: dict | None) -> None:
-    """Render a panel showing data reuse metrics from Mycelium databases."""
-    if not backend:
-        return
-
-    be_counters = backend.get("counters", {})
-    be_histograms = backend.get("histograms", {})
-    memory = be_counters.get("memory", {})
-    synthesis = be_counters.get("synthesis", {})
-    knowledge = be_counters.get("knowledge", {})
-
-    # Check if we have any data reuse metrics
-    has_memory_reuse = memory.get("search_hits", 0) > 0 or memory.get("search_misses", 0) > 0
-    has_synthesis_reuse = synthesis.get("briefings", 0) > 0
-    has_knowledge_reuse = knowledge.get("queries", 0) > 0
-
-    if not (has_memory_reuse or has_synthesis_reuse or has_knowledge_reuse):
-        return
-
-    table = Table(
-        title=f"Mycelium Data Reuse{_hub_suffix()}",
-        title_style="bold magenta",
-        title_justify="left",
-        show_header=False,
-        border_style="dim",
-    )
-    table.add_column("Metric", style="bold")
-    table.add_column("Value", justify="right")
-
-    # Memory search reuse
-    if has_memory_reuse:
-        searches = memory.get("searches", 0)
-        hits = memory.get("search_hits", 0)
-        misses = memory.get("search_misses", 0)
-        results = memory.get("results_returned", 0)
-
-        table.add_row("Memory searches", _fmt_num(searches))
-        if searches > 0:
-            hit_rate = hits / searches * 100
-            table.add_row(
-                "  returned results", f"[green]{_fmt_num(hits)}[/green] ({hit_rate:.0f}%)"
-            )
-            table.add_row("  no results", _fmt_num(misses))
-            table.add_row("  total results returned", _fmt_num(results))
-
-    # Synthesis reuse
-    if has_synthesis_reuse:
-        if has_memory_reuse:
-            table.add_section()
-        briefings = synthesis.get("briefings", 0)
-        cache_hits = synthesis.get("cache_hits", 0)
-        cache_misses = synthesis.get("cache_misses", 0)
-
-        table.add_row("Briefing requests", _fmt_num(briefings))
-        if briefings > 0:
-            hit_rate = cache_hits / briefings * 100
-            table.add_row(
-                "  used cached synthesis",
-                f"[green]{_fmt_num(cache_hits)}[/green] ({hit_rate:.0f}%)",
-            )
-            table.add_row("  no cached synthesis", _fmt_num(cache_misses))
-
-        mem_since = be_histograms.get("synthesis.memories_since_last", {})
-        if mem_since.get("count", 0) > 0:
-            avg = mem_since["sum"] / mem_since["count"]
-            table.add_row("  avg memories since synthesis", f"{avg:.1f}")
-
-    # Knowledge graph reuse
-    if has_knowledge_reuse:
-        if has_memory_reuse or has_synthesis_reuse:
-            table.add_section()
-        queries = knowledge.get("queries", 0)
-        query_hits = knowledge.get("query_hits", 0)
-        query_misses = knowledge.get("query_misses", 0)
-        query_errors = knowledge.get("query_errors", 0)
-        results = knowledge.get("results_returned", 0)
-
-        table.add_row("Knowledge graph queries", _fmt_num(queries))
-        if queries > 0:
-            hit_rate = query_hits / queries * 100
-            table.add_row(
-                "  returned results",
-                f"[green]{_fmt_num(query_hits)}[/green] ({hit_rate:.0f}%)",
-            )
-            table.add_row("  no results", _fmt_num(query_misses))
-            if query_errors:
-                table.add_row("  errors", f"[red]{_fmt_num(query_errors)}[/red]")
-            table.add_row("  total results returned", _fmt_num(results))
-
-        # Query type breakdown
-        neighbor = knowledge.get("queries.neighbour", 0)
-        path = knowledge.get("queries.path", 0)
-        concept = knowledge.get("queries.concept", 0)
-        semantic = knowledge.get("queries.semantic", 0)
-        if neighbor + path + concept + semantic > 0:
-            table.add_section()
-            table.add_row("[dim]By query type:[/dim]", "")
-            if neighbor:
-                table.add_row("  neighbour", _fmt_num(neighbor))
-            if path:
-                table.add_row("  path", _fmt_num(path))
-            if concept:
-                table.add_row("  concept", _fmt_num(concept))
-            if semantic:
-                table.add_row("  semantic", _fmt_num(semantic))
-
-        query_lat = be_histograms.get("knowledge.query_latency_ms", {})
-        if query_lat.get("count", 0) > 0:
-            table.add_row("Query latency", _fmt_histogram_s(query_lat, _max_n_width(query_lat)))
 
     console.print(table)
     console.print()

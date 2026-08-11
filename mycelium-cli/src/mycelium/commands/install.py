@@ -241,30 +241,6 @@ def _write_env_file(env_path: Path, llm_config: dict[str, str]) -> None:
     env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def _restart_backend(
-    compose_path: Path,
-    env_path: Path,
-    profiles: list[str] | None = None,
-    api_url: str = "http://localhost:8000",
-) -> None:
-    """Restart only the backend container and wait for it to become healthy."""
-    args = [
-        "docker",
-        "compose",
-        "-p",
-        "mycelium",
-        "-f",
-        str(compose_path),
-        "--env-file",
-        str(env_path),
-    ]
-    for p in profiles or []:
-        args += ["--profile", p]
-    args += ["up", "--no-build", "--force-recreate", "-d", "mycelium-backend"]
-    subprocess.run(args, capture_output=True)
-    _wait_for_health([f"{api_url}/health"], timeout=60)
-
-
 def _patch_env_vars(env_path: Path, updates: dict[str, str]) -> None:
     """Update or append specific key=value entries in an existing .env file."""
     if not env_path.exists():
@@ -445,32 +421,6 @@ def _compose_up(
 
     result = subprocess.run(args, text=True)
     return result.returncode == 0, needs_build
-
-
-def _compose_up_services(
-    compose_path: Path,
-    env_path: Path,
-    profiles: list[str] | None = None,
-    services: list[str] | None = None,
-) -> bool:
-    """Bring specific services (or all) up in detached mode. Returns success bool."""
-    args = [
-        "docker",
-        "compose",
-        "-p",
-        "mycelium",
-        "-f",
-        str(compose_path),
-        "--env-file",
-        str(env_path),
-    ]
-    for profile in profiles or []:
-        args += ["--profile", profile]
-    args += ["up", "-d"]
-    if services:
-        args += services
-    result = subprocess.run(args, text=True)
-    return result.returncode == 0
 
 
 def _wait_for_health(urls: list[str], timeout: int = 120) -> bool:

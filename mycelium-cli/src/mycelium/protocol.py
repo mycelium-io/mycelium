@@ -78,51 +78,6 @@ def _validate_evidence(evidence: list[str] | None) -> list[str] | None:
     return evidence
 
 
-class ProposeReply(BaseModel):
-    """Agent → Server reply to a 'propose' coordination tick.
-
-    The CLI builds this from KEY=VALUE pairs and sends it as the room message
-    content.  Pydantic validation ensures the shape is correct before posting.
-
-    Epistemic fields (confidence/evidence/reasoning) are optional; when unset
-    they must be absent from the wire JSON: serialize with
-    ``model_dump(exclude_none=True)``.
-    """
-
-    offer: dict[str, str] = Field(..., min_length=1)
-    confidence: float | None = Field(
-        default=None,
-        ge=0.0,
-        le=1.0,
-        description="Self-reported confidence in this offer, 0-1.",
-    )
-    evidence: list[str] | None = Field(
-        default=None,
-        description="Legacy flat evidence list; prefer supporting/against_evidence.",
-    )
-    supporting_evidence: list[str] | None = Field(
-        default=None,
-        description="Evidence keys arguing FOR this offer (non-empty strings).",
-    )
-    against_evidence: list[str] | None = Field(
-        default=None,
-        description="Known counter-evidence keys arguing against this offer.",
-    )
-    addresses: list[str] | None = Field(
-        default=None,
-        description="Prior evidence keys this offer engages (feeds grounding).",
-    )
-    reasoning: str | None = Field(
-        default=None,
-        description="Free-text rationale for the offer.",
-    )
-
-    @field_validator("evidence", "supporting_evidence", "against_evidence", "addresses")
-    @classmethod
-    def check_evidence(cls, v: list[str] | None) -> list[str] | None:
-        return _validate_evidence(v)
-
-
 class RespondReply(BaseModel):
     """Agent → Server reply to a 'respond' coordination tick.
 
@@ -297,8 +252,8 @@ STRUCTURED_CATEGORY_LABELS: dict[str, str] = {
 class MemoryLogEntry(BaseModel):
     """Typed payload for structured memory writes.
 
-    Like ProposeReply validates negotiation offers, this validates that a memory
-    write follows the category/slug convention before hitting the API.
+    Validates that a memory write follows the category/slug convention before
+    hitting the API.
 
     Slugs are auto-lowercased so agents can write naturally (e.g. "API-latency"
     becomes "api-latency").

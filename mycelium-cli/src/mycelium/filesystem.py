@@ -129,16 +129,6 @@ def read_memory(base_dir: Path, key: str) -> tuple[dict[str, Any], str] | None:
     return parse_memory(text)
 
 
-def delete_memory(base_dir: Path, key: str) -> bool:
-    """Delete a memory file. Returns True if existed."""
-    filename = key + ".md" if not key.endswith(".md") else key
-    file_path = base_dir / filename
-    if file_path.exists():
-        file_path.unlink()
-        return True
-    return False
-
-
 # ── Knowledge sync ───────────────────────────────────────────────────────────
 # The receiver half of the L9 ``knowledge`` write path: a connector applies a
 # carried memory write into its local store. Mirrors the backend's

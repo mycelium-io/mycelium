@@ -169,7 +169,6 @@ class MediatedNegotiation:
         llm: Callable[..., str],
         on_reading: Callable[[str, dict[str, Any], bool], None] | None = None,
     ) -> None:
-        self._issues = issues
         self._names = [i["name"] for i in issues]
         self._options = {i["name"]: i["options"] for i in issues}
         self._cap = cap

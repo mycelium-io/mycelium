@@ -52,8 +52,3 @@ def doc_ref(
         return fn
 
     return decorator
-
-
-def get_registry() -> list[DocEntry]:
-    """Return all registered doc entries, in definition order."""
-    return list(_registry)
