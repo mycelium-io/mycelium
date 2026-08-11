@@ -939,8 +939,8 @@ def _check_openclaw_agent_sandbox() -> CheckResult:
             message=f"{len(sandboxed)} channel agent(s) block mycelium CLI exec",
             details=[
                 *sandboxed,
-                "sandboxed agents cannot execute `mycelium session join`, `message propose`,",
-                "or `message respond` — the exec approvals allowlist is bypassed in sandbox mode.",
+                "sandboxed agents cannot execute `mycelium await`, `mycelium respond`,",
+                "or other room commands — the exec approvals allowlist is bypassed in sandbox mode.",
                 "fix (option A — simpler): set sandbox.mode = 'off' in openclaw.json per agent",
                 "fix (option B — preserves sandbox): set tools.exec.host = 'gateway' per agent",
                 "  option B keeps container isolation for read/write/edit while routing exec",

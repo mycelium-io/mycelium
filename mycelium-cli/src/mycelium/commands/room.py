@@ -259,7 +259,8 @@ def use(
         else:
             typer.secho(f"Room set: {room_name}", fg=typer.colors.GREEN)
             typer.echo(
-                "Next: Run 'mycelium session join -H <handle> -m <position>' to start negotiating"
+                "Next: post a position with 'mycelium respond -H <handle> \"<position>\"', "
+                "then summon the mediator with 'mycelium engine invoke aligner'"
             )
 
     except Exception as e:
