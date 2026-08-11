@@ -214,7 +214,7 @@ def _announce_image_tag() -> None:
         )
     else:
         typer.secho(
-            "  → image tag: latest (unpinned — run 'mycelium pull --version X' to pin)",
+            "  → image tag: latest (unpinned; run 'mycelium pull --version X' to pin)",
             fg=typer.colors.YELLOW,
         )
 
@@ -713,7 +713,7 @@ def status(ctx: typer.Context) -> None:
                     msg = f"{model}" + (f" ({key_hint})" if key_hint else "")
                 else:
                     label = llm_status.replace("_", " ").title()
-                    msg = f"{label} — {model}" + (f" ({key_hint})" if key_hint else "")
+                    msg = f"{label}: {model}" + (f" ({key_hint})" if key_hint else "")
                 llm_details = []
                 if llm_info.get("message") and llm_status != "ok":
                     llm_details.append(llm_info["message"])
@@ -800,7 +800,7 @@ def status(ctx: typer.Context) -> None:
                 fail_msg = (
                     f"Backend unreachable: {backend_error}"
                     if backend_error
-                    else "Backend is down — run: mycelium up"
+                    else "Backend is down. Run: mycelium up"
                 )
                 print_verdict("error", fail_msg)
                 if backend_error and ("HTTP 401" in backend_error or "HTTP 403" in backend_error):
@@ -1002,7 +1002,7 @@ def pull(
 
     By default, pulls the :latest tag of each Mycelium image. Pass
     --version <tag> to pin to a specific build (typically used with preview
-    releases) — the tag is persisted to ~/.mycelium/.env as
+    releases). The tag is persisted to ~/.mycelium/.env as
     MYCELIUM_IMAGE_TAG so the stack stays pinned across restarts.
 
     \b

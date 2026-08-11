@@ -2,7 +2,7 @@
 // Copyright 2026 Mycelium Contributors
 
 export function fmtNum(n: number | null | undefined): string {
-  if (n == null) return "—";
+  if (n == null) return "-";
   if (n === 0) return "0";
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
   if (n >= 10_000) return (n / 1_000).toFixed(1) + "k";
@@ -11,23 +11,23 @@ export function fmtNum(n: number | null | undefined): string {
 }
 
 export function fmtUsd(n: number | null | undefined): string {
-  if (n == null) return "—";
+  if (n == null) return "-";
   if (n === 0) return "$0.00";
   if (n < 0.01) return "$" + n.toFixed(4);
   return "$" + n.toFixed(2);
 }
 
 export function fmtMs(n: number | null | undefined): string {
-  if (n == null || n === 0) return "—";
+  if (n == null || n === 0) return "-";
   if (n < 10) return n.toFixed(1) + "ms";
   if (n < 1000) return Math.round(n) + "ms";
   return (n / 1000).toFixed(1) + "s";
 }
 
 export function fmtAgo(iso: string | null | undefined): string {
-  if (!iso) return "—";
+  if (!iso) return "-";
   const t = new Date(iso).getTime();
-  if (Number.isNaN(t)) return "—";
+  if (Number.isNaN(t)) return "-";
   const sec = Math.max(0, Math.floor((Date.now() - t) / 1000));
   if (sec < 5) return "just now";
   if (sec < 60) return sec + "s ago";
@@ -38,9 +38,9 @@ export function fmtAgo(iso: string | null | undefined): string {
 }
 
 export function fmtDur(iso: string | null | undefined): string {
-  if (!iso) return "—";
+  if (!iso) return "-";
   const t = new Date(iso).getTime();
-  if (Number.isNaN(t)) return "—";
+  if (Number.isNaN(t)) return "-";
   const sec = Math.max(0, Math.floor((Date.now() - t) / 1000));
   if (sec < 60) return sec + "s";
   const m = Math.floor(sec / 60);

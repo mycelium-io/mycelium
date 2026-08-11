@@ -132,7 +132,7 @@ def _check_mycelium_dir_ownership() -> CheckResult:
     return CheckResult(
         name="~/.mycelium ownership",
         status="error",
-        message=f"{len(foreign)}+ file(s) owned by another user — agent/memory writes will fail",
+        message=f"{len(foreign)}+ file(s) owned by another user; agent/memory writes will fail",
         details=details,
     )
 
@@ -225,7 +225,7 @@ def _check_llm_connectivity() -> CheckResult:
         return CheckResult(
             name="LLM connectivity",
             status="ok",
-            message=f"{model} — completion probe succeeded",
+            message=f"{model}: completion probe succeeded",
         )
     if status == "not_configured":
         return CheckResult(
@@ -238,42 +238,42 @@ def _check_llm_connectivity() -> CheckResult:
         return CheckResult(
             name="LLM connectivity",
             status="error",
-            message=f"{model} — missing provider SDK in backend",
+            message=f"{model}: missing provider SDK in backend",
             details=details,
         )
     if status == "bad_model":
         return CheckResult(
             name="LLM connectivity",
             status="error",
-            message=f"{model} — invalid model string",
+            message=f"{model}: invalid model string",
             details=details,
         )
     if status == "auth_error":
         return CheckResult(
             name="LLM connectivity",
             status="warning",
-            message=f"{model} — authentication failed",
+            message=f"{model}: authentication failed",
             details=details,
         )
     if status == "unreachable":
         return CheckResult(
             name="LLM connectivity",
             status="warning",
-            message=f"{model} — provider unreachable",
+            message=f"{model}: provider unreachable",
             details=details,
         )
     if status == "unchecked":
         return CheckResult(
             name="LLM connectivity",
             status="ok",
-            message=f"{model} — probe unsupported for this provider",
+            message=f"{model}: probe unsupported for this provider",
             details=details,
         )
     # error | unknown
     return CheckResult(
         name="LLM connectivity",
         status="error",
-        message=f"{model} — {status}",
+        message=f"{model}: {status}",
         details=details,
     )
 
@@ -369,7 +369,7 @@ def _check_mediator_pi_binary() -> CheckResult:
         return CheckResult(
             name="mediator Pi brain",
             status="ok",
-            message="backend is dockerized — Pi ships in the image",
+            message="backend is dockerized (Pi ships in the image)",
         )
 
     binary = os.environ.get("ALIGNER_PI_BINARY") or "pi"
@@ -383,7 +383,7 @@ def _check_mediator_pi_binary() -> CheckResult:
     return CheckResult(
         name="mediator Pi brain",
         status="warning",
-        message=f"`{binary}` not on PATH — @aligner negotiations will fail on a host-run backend",
+        message=f"`{binary}` not on PATH; @aligner negotiations will fail on a host-run backend",
         details=[
             "the released backend image already ships Pi, so `mycelium up` needs nothing here;",
             "this only bites when you run the backend outside Docker (host uvicorn).",
@@ -671,7 +671,7 @@ def _check_openclaw_mycelium_plugin() -> CheckResult:
         return CheckResult(
             name="openclaw plugin",
             status="ok",
-            message="openclaw adapter not registered — skipped",
+            message="openclaw adapter not registered (skipped)",
         )
 
     plugin_dir = Path.home() / ".openclaw" / "extensions" / "mycelium"
@@ -695,7 +695,7 @@ def _check_openclaw_mycelium_plugin() -> CheckResult:
         return CheckResult(
             name="openclaw plugin",
             status="error",
-            message="manifest present but index.ts missing — corrupt install",
+            message="manifest present but index.ts missing (corrupt install)",
             details=["fix: run `mycelium adapter add openclaw --reinstall`"],
         )
 
@@ -729,7 +729,7 @@ def _check_openclaw_mycelium_plugin() -> CheckResult:
         return CheckResult(
             name="openclaw plugin",
             status="warning",
-            message="pre-refactor plugin layout — missing src/channel/route.ts",
+            message="pre-refactor plugin layout (missing src/channel/route.ts)",
             details=[
                 "the channel routing logic was extracted into a dedicated module",
                 "fix: run `mycelium adapter add openclaw --reinstall`",
@@ -769,7 +769,7 @@ def _check_openclaw_channel_config() -> CheckResult:
         return CheckResult(
             name="channel config",
             status="ok",
-            message="openclaw adapter not registered — skipped",
+            message="openclaw adapter not registered (skipped)",
         )
 
     openclaw_json = Path.home() / ".openclaw" / "openclaw.json"
@@ -777,7 +777,7 @@ def _check_openclaw_channel_config() -> CheckResult:
         return CheckResult(
             name="channel config",
             status="ok",
-            message="openclaw.json not found — skipped",
+            message="openclaw.json not found (skipped)",
         )
 
     try:
@@ -879,7 +879,7 @@ def _check_openclaw_agent_sandbox() -> CheckResult:
         return CheckResult(
             name="agent sandbox",
             status="ok",
-            message="openclaw adapter not registered — skipped",
+            message="openclaw adapter not registered (skipped)",
         )
 
     openclaw_json = Path.home() / ".openclaw" / "openclaw.json"
@@ -887,7 +887,7 @@ def _check_openclaw_agent_sandbox() -> CheckResult:
         return CheckResult(
             name="agent sandbox",
             status="ok",
-            message="openclaw.json not found — skipped",
+            message="openclaw.json not found (skipped)",
         )
 
     try:
@@ -910,7 +910,7 @@ def _check_openclaw_agent_sandbox() -> CheckResult:
         return CheckResult(
             name="agent sandbox",
             status="ok",
-            message="no channel agents configured — skipped",
+            message="no channel agents configured (skipped)",
         )
 
     default_sandbox = (((oc.get("agents") or {}).get("defaults") or {}).get("sandbox") or {}).get(
@@ -940,9 +940,9 @@ def _check_openclaw_agent_sandbox() -> CheckResult:
             details=[
                 *sandboxed,
                 "sandboxed agents cannot execute `mycelium await`, `mycelium respond`,",
-                "or other room commands — the exec approvals allowlist is bypassed in sandbox mode.",
-                "fix (option A — simpler): set sandbox.mode = 'off' in openclaw.json per agent",
-                "fix (option B — preserves sandbox): set tools.exec.host = 'gateway' per agent",
+                "or other room commands: the exec approvals allowlist is bypassed in sandbox mode.",
+                "fix (option A, simpler): set sandbox.mode = 'off' in openclaw.json per agent",
+                "fix (option B, preserves sandbox): set tools.exec.host = 'gateway' per agent",
                 "  option B keeps container isolation for read/write/edit while routing exec",
                 "  calls to the gateway host where mycelium is installed and allowlisted.",
                 "restart the openclaw gateway after either change.",
@@ -1023,7 +1023,7 @@ def _check_hermes_plugin() -> CheckResult:
         return CheckResult(
             name="hermes plugin",
             status="ok",
-            message="hermes adapter not registered — skipped",
+            message="hermes adapter not registered (skipped)",
         )
 
     _, plugin_dir, _ = _hermes_paths()
@@ -1044,7 +1044,7 @@ def _check_hermes_plugin() -> CheckResult:
         return CheckResult(
             name="hermes plugin",
             status="error",
-            message="plugin.yaml manifest missing — corrupt install",
+            message="plugin.yaml manifest missing (corrupt install)",
             details=[
                 f"expected: {plugin_yaml}",
                 "fix: run `mycelium adapter add hermes --reinstall`",
@@ -1054,7 +1054,7 @@ def _check_hermes_plugin() -> CheckResult:
         return CheckResult(
             name="hermes plugin",
             status="error",
-            message="adapter.py missing — corrupt install",
+            message="adapter.py missing (corrupt install)",
             details=[
                 f"expected: {adapter_py}",
                 "fix: run `mycelium adapter add hermes --reinstall`",
@@ -1095,7 +1095,7 @@ def _check_hermes_config_yaml() -> CheckResult:
         return CheckResult(
             name="hermes config",
             status="ok",
-            message="hermes adapter not registered — skipped",
+            message="hermes adapter not registered (skipped)",
         )
 
     _, _, config_yaml = _hermes_paths()
@@ -1209,7 +1209,7 @@ def _check_hermes_gateway_running() -> CheckResult:
         return CheckResult(
             name="hermes gateway",
             status="ok",
-            message="hermes adapter not registered — skipped",
+            message="hermes adapter not registered (skipped)",
         )
 
     import os
@@ -1268,7 +1268,7 @@ def _check_cursor_agent_binary() -> CheckResult:
         return CheckResult(
             name="cursor-agent binary",
             status="ok",
-            message="cursor adapter not registered — skipped",
+            message="cursor adapter not registered (skipped)",
         )
 
     import shutil
@@ -1278,7 +1278,7 @@ def _check_cursor_agent_binary() -> CheckResult:
         return CheckResult(
             name="cursor-agent binary",
             status="error",
-            message="cursor-agent not on PATH — mentions will fail",
+            message="cursor-agent not on PATH; mentions will fail",
             details=[
                 "install Cursor + the cursor CLI from https://cursor.com,",
                 "then run `cursor-agent login` to authenticate this host.",
@@ -1314,7 +1314,7 @@ def _check_cursor_login() -> CheckResult:
         return CheckResult(
             name="cursor-agent login",
             status="ok",
-            message="cursor adapter not registered — skipped",
+            message="cursor adapter not registered (skipped)",
         )
 
     import json
@@ -1377,7 +1377,7 @@ def _check_cursor_workspace_assets() -> CheckResult:
         return CheckResult(
             name="cursor workspace",
             status="ok",
-            message="cursor adapter not registered — skipped",
+            message="cursor adapter not registered (skipped)",
         )
 
     # Walk every room's agent manifests; collect (handle, cwd) tuples for
@@ -1391,7 +1391,7 @@ def _check_cursor_workspace_assets() -> CheckResult:
         return CheckResult(
             name="cursor workspace",
             status="ok",
-            message="no rooms on disk — skipped",
+            message="no rooms on disk (skipped)",
         )
 
     cursor_agents: list[tuple[str, str, Path]] = []
@@ -1414,7 +1414,7 @@ def _check_cursor_workspace_assets() -> CheckResult:
         return CheckResult(
             name="cursor workspace",
             status="ok",
-            message="no cursor agents registered — skipped",
+            message="no cursor agents registered (skipped)",
         )
 
     missing: list[str] = []
@@ -1468,7 +1468,7 @@ def _check_daemon_service_registered() -> CheckResult:
             name="daemon service",
             status="ok",
             message=(
-                "agent daemon not installed — skipped "
+                "agent daemon not installed (skipped) "
                 "(install with: mycelium adapter add claude-code --step=daemon)"
             ),
         )
@@ -1486,7 +1486,7 @@ def _check_daemon_running() -> CheckResult:
         return CheckResult(
             name="daemon health",
             status="ok",
-            message="not installed — skipped",
+            message="not installed (skipped)",
         )
 
     from mycelium.daemon.health import read_health_blocking
@@ -1514,7 +1514,7 @@ def _check_daemon_running() -> CheckResult:
         f"  rooms:  {len(rooms_sub)}/{len(rooms_cfg)} connected",
     ]
     if not rooms_cfg:
-        details.append("  (no rooms subscribed — `mycelium daemon subscribe <room>`)")
+        details.append("  (no rooms subscribed; `mycelium daemon subscribe <room>`)")
     last = health.get("last_dispatch")
     if last:
         details.append(
@@ -1524,8 +1524,7 @@ def _check_daemon_running() -> CheckResult:
     if errors:
         last_err = health.get("last_error") or {}
         details.append(
-            f"  errors: {errors} in last hour — last: "
-            f"{last_err.get('where')}: {last_err.get('msg')}"
+            f"  errors: {errors} in last hour, last: {last_err.get('where')}: {last_err.get('msg')}"
         )
 
     return CheckResult(
@@ -1562,12 +1561,12 @@ def doctor(
     exercise all checks. In the optional hub-and-spoke deployment mode
     spoke nodes talk to a remote backend and don't run Docker containers
     locally. When --mode is 'auto' (the default), doctor detects spoke
-    mode from server.api_url — if it points to a non-local host the
+    mode from server.api_url: if it points to a non-local host the
     Docker, runtime-drift, and port-drift checks are skipped automatically.
 
     \b
     Examples:
-        mycelium doctor              # interactive — auto-detects hub vs spoke
+        mycelium doctor              # interactive; auto-detects hub vs spoke
         mycelium doctor --fix        # auto-fix all fixable issues
         mycelium doctor --mode spoke # force spoke mode (skip local-only checks)
         mycelium doctor --mode hub   # force hub mode (run all checks)
@@ -1663,7 +1662,7 @@ def doctor(
         parsed_host = urlparse(api_url).hostname or api_url
         parsed_port = urlparse(api_url).port
         backend_label = f"{parsed_host}:{parsed_port}" if parsed_port else parsed_host
-        subtitle = f"{detected_mode} — backend at {backend_label}" if not local else None
+        subtitle = f"{detected_mode}, backend at {backend_label}" if not local else None
         print_title("Mycelium Doctor", subtitle=subtitle)
         for title, checks in sections:
             print_section(title)

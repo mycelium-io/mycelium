@@ -142,7 +142,7 @@ def engine_ls(
             )
             return
 
-        table = Table(title=f"{room_name} — engines", show_lines=False)
+        table = Table(title=f"{room_name} engines", show_lines=False)
         table.add_column("handle", style="cyan")
         table.add_column("kind")
         table.add_column("description")
@@ -174,7 +174,7 @@ def engine_invoke(
 ) -> None:
     """Summon a registered cognition engine by posting an ``@handle`` message.
 
-    Fills gap #4 — the built-in aligner previously had no CLI surface (you had to
+    Fills gap #4: the built-in aligner previously had no CLI surface (you had to
     hit the REST API directly). The backend recognises a registered ``engine``
     and runs it as that handle.
 

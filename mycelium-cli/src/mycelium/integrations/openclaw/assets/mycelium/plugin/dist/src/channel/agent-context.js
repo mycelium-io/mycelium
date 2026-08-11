@@ -60,7 +60,7 @@ export function renderPlanBlock(context, generatedAtIso) {
     if (!context)
         return "";
     return (`## Room plan${humanizeAge(generatedAtIso)}\n\n${context}\n\n` +
-        "This snapshot may be stale — run `mycelium plan tasks` for live state.\n\n");
+        "This snapshot may be stale; run `mycelium plan tasks` for live state.\n\n");
 }
 /** Test-only: clear the per-room cache between vitest cases. */
 export function _resetAgentContextCacheForTest() {

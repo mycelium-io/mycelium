@@ -1,8 +1,8 @@
 # Metrics System
 
 The Mycelium metrics pipeline collects, aggregates, and displays telemetry from
-two sources — **OpenClaw** (via OTLP) and the **Mycelium FastAPI backend** (via
-HTTP polling) — and writes it to a single JSON file for the CLI to render.
+two sources, **OpenClaw** (via OTLP) and the **Mycelium FastAPI backend** (via
+HTTP polling), then writes it to a single JSON file for the CLI to render.
 
 ## Architecture
 
@@ -119,7 +119,7 @@ threads. Logs are written to `$DATA_DIR/metrics/collector.log`.
 - **OTLP forwarding**: the spoke collector transparently forwards raw OTLP
   payloads to the hub, enabling the hub's `by_host` aggregation (Spoke Sites
   table, `--host` filter) and unified trace database. Forwarding failures
-  are logged at debug level but never block local ingest — the spoke always
+  are logged at debug level but never block local ingest; the spoke always
   stores data locally first.
 
 ## CLI Commands
@@ -165,7 +165,7 @@ Spans older than 7 days are automatically purged hourly and at shutdown.
 
 The collector listens on `localhost:4318` and accepts standard OTLP/HTTP
 protobuf payloads on `/v1/metrics`, `/v1/traces`, and `/v1/logs`. The
-`/v1/logs` endpoint is acknowledged (200) but not stored — it exists so
+`/v1/logs` endpoint is acknowledged (200) but not stored; it exists so
 the deep observability plugin doesn't get rejected for log payloads.
 
 #### Counters (from OTLP `sum` metrics)
@@ -215,7 +215,7 @@ Up to 200 sessions are retained (oldest evicted).
 
 Raw OTLP trace spans are persisted to `$DATA_DIR/metrics/traces.db` (SQLite,
 WAL mode) by the `TraceStore` class in `collector.py`. This runs in
-parallel with the `MetricsStore` — on every `/v1/traces` POST, the
+parallel with the `MetricsStore`: on every `/v1/traces` POST, the
 collector feeds bytes to both stores.
 
 **Schema:**
@@ -246,7 +246,7 @@ trees for waterfall rendering. Each trace includes `root_span`, `agent`,
 
 The backend also exposes `GET /api/observability/collector` which returns the
 collector-written `metrics.json` contents (counters, histograms, sessions,
-scrape) — excluding the `backend` key that duplicates `GET /api/observability`.
+scrape), excluding the `backend` key that duplicates `GET /api/observability`.
 
 ### Source 2: Mycelium Backend Metrics
 
@@ -281,7 +281,7 @@ OpenClaw → Mycelium backend → opt-in.
 
 ### OpenClaw (OTLP)
 
-1. **OpenClaw Agent Activity** — token totals (excluding the `heartbeat`
+1. **OpenClaw Agent Activity**: token totals (excluding the `heartbeat`
    background channel by default), cost, message count, histograms
    (run/msg duration, queue depth/wait, context window), webhook and
    stuck-session stats, by-model breakdowns. The heartbeat share of total
@@ -289,36 +289,36 @@ OpenClaw → Mycelium backend → opt-in.
    without dominating the headline number. Pass `--include-heartbeat` to
    fold it back into all OpenClaw totals.
 
-2. **OpenClaw Cache Efficiency** — diagnostic-only panel showing the LLM
+2. **OpenClaw Cache Efficiency**: diagnostic-only panel showing the LLM
    provider's prompt cache behaviour: hit rate, read/write/uncached input
    token volumes, and a "reads per write" ratio (higher = more reuse before
    the cache entry is rewritten). Intentionally has no dollar figure: prompt
    caching is a feature of the LLM provider (e.g. Anthropic), not Mycelium,
    so attributing the saving to us would be misleading.
 
-3. **OpenClaw Agents** — per-agent token breakdown, session/turn counts, cost,
+3. **OpenClaw Agents**: per-agent token breakdown, session/turn counts, cost,
    average run duration, and workspace size. Plus a "Tokens by Channel"
    sub-table that breaks tokens out by `openclaw.channel` (heartbeat,
-   mycelium-room, webhook, etc.) — so heartbeat traffic is always visible here
+   mycelium-room, webhook, etc.), so heartbeat traffic is always visible here
    even when excluded from headline panels.
 
-4. **OpenClaw Recent Sessions** — last 20 OTLP session spans with agent, model,
+4. **OpenClaw Recent Sessions**: last 20 OTLP session spans with agent, model,
    turns, tokens, and timestamp.
 
 ### Mycelium backend (polled)
 
-5. **Local Embeddings & Indexer** — operational metrics for local embedding
+5. **Local Embeddings & Indexer**: operational metrics for local embedding
    computation (counts, latency, by-source breakdown) and the indexer's
    skip-unchanged file stats (skip rate, files indexed/pruned, run duration).
 
-6. **Mycelium Backend LLM Usage** — backend LLM calls, tokens, cost, and
+6. **Mycelium Backend LLM Usage**: backend LLM calls, tokens, cost, and
    latency by operation, model, and room.
 
-7. **Mycelium Data Reuse** — memory search hit/miss rates and results returned.
+7. **Mycelium Data Reuse**: memory search hit/miss rates and results returned.
 
 ### Opt-in
 
-8. **Workspace Files** (via `--workspace`) — per-file size breakdown of
+8. **Workspace Files** (via `--workspace`): per-file size breakdown of
    each agent's `~/.openclaw` workspace directory.
 
 ## Viewing Traces
@@ -334,7 +334,7 @@ and behavior info, so you can pivot on:
 |---|---|---|
 | **Host** | `host` column | Which OpenClaw machine emitted the span |
 | **Agent** | `openclaw.agent`, `gen_ai.agent.id`, `ioa_observe.entity.name` | Which agent did the work |
-| **Room** | parsed from `gen_ai.conversation.id` / `openclaw.session.key` (`agent:<a>:<chan-kind>:<chan-type>:<room-id>`) | The room id / Mycelium room name — first-class |
+| **Room** | parsed from `gen_ai.conversation.id` / `openclaw.session.key` (`agent:<a>:<chan-kind>:<chan-type>:<room-id>`) | The room id / Mycelium room name (first-class) |
 | **Channel kind** | parsed from same key, plus `openclaw.channel` | `mycelium-room` (the default) vs external channel kinds (lets you tell coordination spans from chat spans) |
 | **Session** | `session.id`, `openclaw.session.key` | One conversation/turn lifecycle |
 | **Model** | `gen_ai.request.model`, `gen_ai.response.model` | Which LLM was called |
@@ -411,7 +411,7 @@ mycelium metrics traces show-attrs <span_id>
 
 ### Span events ("log lines")
 
-OpenTelemetry spans can carry zero or more **events** — timestamped,
+OpenTelemetry spans can carry zero or more **events**: timestamped,
 log-like records the instrumentation attached mid-span (exceptions with
 stack traces, prompt build steps, tool I/O snapshots, etc.). The
 collector persists them into the `events` column of the `spans` table
@@ -430,7 +430,7 @@ I/O snapshots) require an OpenClaw extension that publishes them; with
 just the built-in `diagnostics-otel` plugin you'll see exception events
 on errors and not much else.
 
-The OTLP `/v1/logs` endpoint is currently *acked but discarded* — if
+The OTLP `/v1/logs` endpoint is currently *acked but discarded*. If
 you want general OpenClaw log lines (not just span events) forwarded
 to the hub, that's tracked in the [Trace ingestion follow-ups](#trace-ingestion-follow-ups)
 section of the roadmap below.
@@ -440,9 +440,9 @@ section of the roadmap below.
 The same physical host can show up in `spans.host` under multiple
 labels:
 
-- `oclw3` — the canonical short hostname OpenClaw normally reports
-- `oclw-3` — legacy `service.instance.id` from older deployments
-- `10.0.50.171` / `ip-10-0-50-171` — spans where `host.name` wasn't set
+- `oclw3`: the canonical short hostname OpenClaw normally reports
+- `oclw-3`: legacy `service.instance.id` from older deployments
+- `10.0.50.171` / `ip-10-0-50-171`: spans where `host.name` wasn't set
   in `OTEL_RESOURCE_ATTRIBUTES`, so the OTLP receiver fell back to the
   source IP
 
@@ -482,8 +482,8 @@ against a live hub.
 
 Pricing data is resolved in this order:
 
-1. **User-local cache** — `$DATA_DIR/metrics/pricing.json` (written by `mycelium metrics update-pricing`)
-2. **Bundled default** — `mycelium-cli/src/mycelium/data/pricing.json` (shipped with the CLI package)
+1. **User-local cache**: `$DATA_DIR/metrics/pricing.json` (written by `mycelium metrics update-pricing`)
+2. **Bundled default**: `mycelium-cli/src/mycelium/data/pricing.json` (shipped with the CLI package)
 
 The first file found with a non-empty `models` list wins. The `generated_at`
 timestamp and source are shown in the footer of the cost table.
@@ -495,18 +495,18 @@ mycelium metrics update-pricing
 ```
 
 This fetches current pricing from the **LiteLLM Model Catalog API**
-(`api.litellm.ai/model_catalog/{model_id}`) — a free public API that refreshes
+(`api.litellm.ai/model_catalog/{model_id}`), a free public API that refreshes
 from LiteLLM's GitHub every 60 seconds. No new dependencies are needed (uses
 the CLI's existing `httpx` client).
 
 Models are sourced from three places:
 
-1. **Built-in tracked models** (14 common Anthropic/OpenAI models) — always fetched
-2. **Auto-discovered models** — the command reads `metrics/metrics.json` and
+1. **Built-in tracked models** (14 common Anthropic/OpenAI models), always fetched
+2. **Auto-discovered models**: the command reads `metrics/metrics.json` and
    finds model names (from OTLP `by_model` and backend `llm.by_model.*`) that
    aren't covered by the built-in list. Provider prefixes like `bedrock/global.`
    and `anthropic.` are stripped to derive a LiteLLM catalog key.
-3. **Manually added models** via `--add` — for models not yet in collected metrics:
+3. **Manually added models** via `--add`, for models not yet in collected metrics:
 
 ```bash
 mycelium metrics update-pricing --add "deepseek-v3:deepseek-chat"
@@ -532,7 +532,7 @@ haven't run `update-pricing`.
 
 OpenClaw calculates `openclaw.cost.usd` from the `cost` block on each model
 entry in `~/.openclaw/openclaw.json`. If these are all zero (the default from
-`openclaw configure`), the OTLP cost metric will always be $0 — even when
+`openclaw configure`), the OTLP cost metric will always be $0, even when
 token counts are correct.
 
 Two model-level settings are required for full metrics accuracy:
@@ -553,7 +553,7 @@ Mycelium's pricing data) and adds the `compat` flag for any model that's
 missing it.  It also configures the diagnostics-otel plugin if not already
 enabled.
 
-**Manual fix** — add to each model entry in `~/.openclaw/openclaw.json`:
+**Manual fix:** add to each model entry in `~/.openclaw/openclaw.json`:
 
 ```json5
 {
@@ -606,7 +606,7 @@ re-run.
 
 The Cache Efficiency panel shows the LLM provider's prompt cache behaviour:
 hit rate, read/write/uncached input token volumes, and reads-per-write ratio.
-It intentionally has no dollar figure — prompt caching is a feature of the LLM
+It intentionally has no dollar figure: prompt caching is a feature of the LLM
 provider (e.g. Anthropic), not Mycelium.
 
 ## Containerized Collector (Docker)
@@ -698,7 +698,7 @@ Prioritised by effort and value.
 Tracked work for the trace pipeline (the `traces.db` + `mycelium metrics
 traces …` viewer):
 
-- **General OpenClaw log-line ingestion** — the OTLP receiver currently
+- **General OpenClaw log-line ingestion.** The OTLP receiver currently
   *acks but discards* `/v1/logs` payloads. To forward arbitrary log
   lines (not just OTel span events) from gateway / agents to the hub
   we'd need:
@@ -712,53 +712,53 @@ traces …` viewer):
     same axes (host/agent/room/severity) and correlatable to a trace.
   - A privacy decision on what severity / which categories ship to the
     hub by default.
-- **Richer trace events** — only exception events flow today via the
+- **Richer trace events.** Only exception events flow today via the
   built-in `diagnostics-otel` plugin. Prompt / completion content,
   per-tool I/O snapshots, and per-conversation correlation would
   require an opt-in OpenClaw extension that emits those as span
   events. Tracked upstream in OpenClaw issue #250 (deep observability
   integration); when it lands the viewer here will surface the new
   events automatically.
-- **Span filtering / sampling** — `traces.db` currently stores every
+- **Span filtering / sampling.** `traces.db` currently stores every
   span the OTLP receiver accepts. Two known noise sources dominate
   (~45 % of writes on a typical hub): `openclaw.diagnostic.phase`
   (gateway phase transitions) and `openclaw.liveness.warning`
   (event-loop health pings). The viewer hides them from
   `traces errors` / `traces slow` by default, but they still consume
   rows. Open question: drop at the source (OpenClaw `diagnostics.otel`
-  knobs are coarse — only `enabled`, `sampleRate`, or signal toggle),
+  knobs are coarse, offering only `enabled`, `sampleRate`, or signal toggle),
   add a sidecar `otelcol` per spoke with a `filter` processor, or
   reintroduce a hub-side write-time drop list. A previous attempt at
-  the latter was reverted; the trade-off was opacity — silent drops
+  the latter was reverted; the trade-off was opacity, since silent drops
   are hard to debug after the fact. Revisit when storage or query
   latency becomes a real pain.
 
 ## Periodic Maintenance Checklist
 
-- [ ] **OpenClaw model config** — run `mycelium metrics status` and check for
+- [ ] **OpenClaw model config**: run `mycelium metrics status` and check for
       zero-cost or missing-compat warnings. Fix with
       `mycelium adapter add openclaw --step=otel` or manually in
       `~/.openclaw/openclaw.json`. Required after adding new models or
       re-running `openclaw configure`.
-- [ ] **Pricing update** — run `mycelium metrics update-pricing` to fetch the
+- [ ] **Pricing update**: run `mycelium metrics update-pricing` to fetch the
       latest pricing from the LiteLLM API and write `metrics/pricing.json`.
       Any models found in collected metrics that aren't in the built-in list are
       auto-discovered and priced. The `generated_at` date appears in the
       `mycelium metrics show cost` footer.
-- [ ] **Bundled pricing refresh** — run `cd fastapi-backend && uv run python ../scripts/update-pricing.py`
+- [ ] **Bundled pricing refresh**: run `cd fastapi-backend && uv run python ../scripts/update-pricing.py`
       to update the bundled `data/pricing.json` shipped with the CLI package.
       This is the fallback when users haven't run `update-pricing`.
-- [ ] **New models** — if a new model isn't matched (the `"pricing basis"` row
+- [ ] **New models**: if a new model isn't matched (the `"pricing basis"` row
       says "unknown model"), either:
       - Run `mycelium metrics update-pricing` (auto-discovers from metrics), or
       - Use `--add pattern:litellm_key` for models not yet in collected metrics, or
       - Add the substring pattern to `_TRACKED_MODELS` in `metrics.py` for
         permanent built-in tracking.
-- [ ] **New OpenClaw metrics** — if OpenClaw adds new OTLP metrics, add
+- [ ] **New OpenClaw metrics**: if OpenClaw adds new OTLP metrics, add
       handling in `collector.py` `_process_metric` and display in
       `commands/metrics.py`.
-- [ ] **New backend operations** — if new LLM-calling or embedding code is
+- [ ] **New backend operations**: if new LLM-calling or embedding code is
       added to the backend, instrument it with calls to `record_llm_call`,
       `record_embedding`, etc.
-- [ ] **Session cap** — the collector retains up to 200 sessions
+- [ ] **Session cap**: the collector retains up to 200 sessions
       (`_MAX_SESSIONS`). Increase if usage grows significantly.

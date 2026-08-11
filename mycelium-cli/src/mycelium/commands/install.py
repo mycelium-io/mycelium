@@ -45,7 +45,7 @@ def _check_docker() -> tuple[bool, str]:
             return True, r.stdout.strip()
         return False, "docker daemon not running"
     except FileNotFoundError:
-        return False, "docker not found — install Docker Desktop"
+        return False, "docker not found. Install Docker Desktop"
     except Exception as e:
         return False, str(e)
 
@@ -111,7 +111,7 @@ def _prompt_llm() -> dict[str, str]:
         if model:
             print()
             keep = _ask(
-                f"  LLM is currently \x1b[1m{model}\x1b[0m — keep existing config? [Y/n] ",
+                f"  LLM is currently \x1b[1m{model}\x1b[0m. Keep existing config? [Y/n] ",
                 default="y",
             )
             if keep.lower() in ("y", "yes", ""):
@@ -129,12 +129,12 @@ def _prompt_llm() -> dict[str, str]:
     print()
 
     providers = [
-        "Anthropic  — claude-sonnet-4-6, claude-opus-4-6",
-        "OpenAI     — gpt-4o, gpt-4.1",
-        "OpenRouter  — multi-provider gateway",
-        "Ollama     — local models (llama3.3, mistral, etc.)",
-        "Custom     — any OpenAI-compatible endpoint",
-        "Skip       — no LLM (stub mode)",
+        "Anthropic  : claude-sonnet-4-6, claude-opus-4-6",
+        "OpenAI     : gpt-4o, gpt-4.1",
+        "OpenRouter : multi-provider gateway",
+        "Ollama     : local models (llama3.3, mistral, etc.)",
+        "Custom     : any OpenAI-compatible endpoint",
+        "Skip       : no LLM (stub mode)",
     ]
 
     choice = select(providers, cursor="  ▸ ", cursor_style="cyan")
@@ -202,7 +202,7 @@ def _prompt_llm() -> dict[str, str]:
         return result
 
     # Skip
-    print("  \x1b[33m~\x1b[0m Skipped — synthesis will use stub responses")
+    print("  \x1b[33m~\x1b[0m Skipped. Synthesis will use stub responses")
     return {}
 
 
@@ -416,7 +416,7 @@ def _compose_up(
     print()
     typer.secho("  Running: " + " ".join(args[2:]), dim=True)
     if needs_build:
-        typer.secho("  (first run — building backend image, this may take a few minutes)", dim=True)
+        typer.secho("  (first run: building backend image, this may take a few minutes)", dim=True)
     print()
 
     result = subprocess.run(args, text=True)
@@ -427,7 +427,7 @@ def _wait_for_health(urls: list[str], timeout: int = 120) -> bool:
     try:
         import httpx
     except ImportError:
-        typer.echo("  ⚠ httpx not installed — skipping health check")
+        typer.echo("  ⚠ httpx not installed, skipping health check")
         return False
 
     deadline = time.time() + timeout
@@ -531,7 +531,7 @@ def _report_llm_probe_result(
 
     if status == "not_configured":
         typer.secho(
-            "  ~ LLM not configured — synthesis will use stub responses",
+            "  ~ LLM not configured. Synthesis will use stub responses",
             fg=typer.colors.YELLOW,
         )
         return True
@@ -544,7 +544,7 @@ def _report_llm_probe_result(
         "auth_error": ("⚠", "LLM authentication failed", typer.colors.YELLOW),
         "unreachable": ("⚠", "LLM provider unreachable from backend", typer.colors.YELLOW),
         "error": ("✗", "LLM probe failed", typer.colors.RED),
-        "backend_down": ("~", "LLM probe skipped — backend not reachable", typer.colors.YELLOW),
+        "backend_down": ("~", "LLM probe skipped: backend not reachable", typer.colors.YELLOW),
     }
     icon, header, color = headers.get(status, ("✗", f"LLM probe: {status}", typer.colors.RED))
 
@@ -623,7 +623,7 @@ def _write_mycelium_config(
 
 @doc_ref(
     usage="mycelium install [--yes] [--non-interactive] [--force]",
-    desc="Interactive installer — Docker check, LLM config, <code>docker compose up</code>, provision workspace.",
+    desc="Interactive installer: Docker check, LLM config, <code>docker compose up</code>, provision workspace.",
     group="setup",
 )
 def install(
@@ -663,7 +663,7 @@ def install(
     """
     Install a Mycelium instance.
 
-    By default this runs interactively — it plays an intro animation, prompts
+    By default this runs interactively: it plays an intro animation, prompts
     for LLM configuration, and walks you through bringing up all services via
     Docker Compose.
 
@@ -699,9 +699,9 @@ def install(
             typer.secho("\n  Mycelium is already installed.", fg=typer.colors.CYAN, bold=True)
             typer.echo("")
             typer.echo("  To update:")
-            typer.echo("    mycelium upgrade    — fetch latest CLI")
-            typer.echo("    mycelium pull       — pull latest containers and restart")
-            typer.echo("    mycelium doctor     — diagnose and fix issues")
+            typer.echo("    mycelium upgrade    : fetch latest CLI")
+            typer.echo("    mycelium pull       : pull latest containers and restart")
+            typer.echo("    mycelium doctor     : diagnose and fix issues")
             typer.echo("")
             typer.echo("  Pass --force to reinstall from scratch.")
             raise typer.Exit(0)
@@ -746,7 +746,7 @@ def install(
                         while new_port in busy or new_port in default_ports.values():
                             new_port += 1
                         typer.secho(
-                            f"  ⚠  Port {port} ({label}) in use — using {new_port}",
+                            f"  ⚠  Port {port} ({label}) in use, using {new_port}",
                             fg=typer.colors.YELLOW,
                         )
                         default_ports[label] = new_port
@@ -757,7 +757,7 @@ def install(
             llm_config["MYCELIUM_DATA_DIR"] = str(Path.home() / ".mycelium")
 
             typer.secho(
-                "  ⚠  Experimental software — please report issues at github.com/mycelium-io/mycelium/issues",
+                "  ⚠  Experimental software. Please report issues at github.com/mycelium-io/mycelium/issues",
                 fg=typer.colors.YELLOW,
             )
             typer.secho("  ── Starting services ──────────────────────────────────", bold=True)
@@ -804,7 +804,7 @@ def install(
 
         if not sys.stdin.isatty():
             typer.secho(
-                "\n  ✗ Non-interactive terminal detected — interactive install requires a TTY.\n",
+                "\n  ✗ Non-interactive terminal detected. Interactive install requires a TTY.\n",
                 fg=typer.colors.RED,
             )
             import click
@@ -839,7 +839,7 @@ def install(
             "",
             "  \x1b[1mInstalling Mycelium...\x1b[0m",
             "",
-            "  \x1b[33m⚠  Experimental software — please report issues at github.com/mycelium-io/mycelium/issues\x1b[0m",
+            "  \x1b[33m⚠  Experimental software. Please report issues at github.com/mycelium-io/mycelium/issues\x1b[0m",
             "",
             f"    {ok if docker_ok else err} docker {docker_ver}",
             f"    {ok if compose_ok else err} docker compose {compose_ver}",
@@ -914,7 +914,7 @@ def install(
                             )
                     except Exception:
                         image_lines[i] = (
-                            f"    {err} {label}  \x1b[2m(skipped — docker not available)\x1b[0m"
+                            f"    {err} {label}  \x1b[2m(skipped, docker not available)\x1b[0m"
                         )
                     log_window = []
             finally:
@@ -1252,7 +1252,7 @@ def upgrade(
                 typer.secho("  ✓ Compose templates refreshed", fg=typer.colors.GREEN)
             else:
                 typer.secho(
-                    "  ⚠  Template refresh failed — run 'mycelium _refresh-templates' manually.",
+                    "  ⚠  Template refresh failed. Run 'mycelium _refresh-templates' manually.",
                     fg=typer.colors.YELLOW,
                 )
                 if refresh.stderr:

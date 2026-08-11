@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>L9 Integration (internal) — mycelium</title>
-<meta name="description" content="Internal reference: how mycelium rides the IOC L9 protocol over SLIM — the backend synthesizes reply envelopes, computes the epistemic quality layer, and records episodes.">
+<title>L9 Integration (internal) · mycelium</title>
+<meta name="description" content="Internal reference: how mycelium rides the IOC L9 protocol over SLIM. The backend synthesizes reply envelopes, computes the epistemic quality layer, and records episodes.">
 <meta name="robots" content="noindex, nofollow">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="mycelium.css">
@@ -81,7 +81,7 @@
   <div class="main-inner">
     <section class="doc-section" id="model">
       <div class="ghost-banner">
-        <strong>INTERNAL / UNLINKED.</strong> This page is not in the docs nav — it exists to be
+        <strong>INTERNAL / UNLINKED.</strong> This page is not in the docs nav; it exists to be
         shared by URL. It documents how mycelium rides the IOC L9 protocol over SLIM and where the
         epistemic numbers come from.
       </div>
@@ -95,10 +95,10 @@
       </p>
       <p>The pieces, one local integration:</p>
       <ul>
-        <li><strong>ioc-protocols-models</strong> — the L9 spec + the generated language bindings. The <em>grammar</em>. Mycelium vendors the python binding as <code>l9_models.py</code>.</li>
-        <li><strong>AGNTCY SLIM</strong> — the transport: one MLS-encrypted group channel per room. L9 envelopes ride SLIM as additive JSON. The <em>wire</em>.</li>
-        <li><strong>the aligner</strong> — the first-party mediator (NEGMAS Stacked Alternating Offers, with a persistent Pi coding-agent brain) registered in each room. It drives negotiation and emits the <code>exchange</code> and <code>commit</code> envelopes. The <em>compute</em>.</li>
-        <li><strong>mycelium backend</strong> — the room's moderator. It <em>synthesizes</em> every L9 envelope from the parsed agent replies and computes the epistemic quality layer. Agents never speak L9 themselves.</li>
+        <li><strong>ioc-protocols-models</strong>: the L9 spec plus the generated language bindings. The <em>grammar</em>. Mycelium vendors the python binding as <code>l9_models.py</code>.</li>
+        <li><strong>AGNTCY SLIM</strong>: the transport, one MLS-encrypted group channel per room. L9 envelopes ride SLIM as additive JSON. The <em>wire</em>.</li>
+        <li><strong>the aligner</strong>: the first-party mediator (NEGMAS Stacked Alternating Offers, with a persistent Pi coding-agent brain) registered in each room. It drives negotiation and emits the <code>exchange</code> and <code>commit</code> envelopes. The <em>compute</em>.</li>
+        <li><strong>mycelium backend</strong>: the room's moderator. It <em>synthesizes</em> every L9 envelope from the parsed agent replies and computes the epistemic quality layer. Agents never speak L9 themselves.</li>
       </ul>
       <p>
         The load-bearing fact: <strong>mycelium&#x27;s L9 envelopes are additive and never required of agents.</strong>
@@ -120,7 +120,7 @@
           </tr>
           <tr>
             <td><strong>SLIM</strong> (AGNTCY)</td>
-            <td>Transport. One MLS-encrypted group channel per room carries the L9 envelopes as additive JSON. No routing fabric between mycelium and a remote engine — the aligner is in-process.</td>
+            <td>Transport. One MLS-encrypted group channel per room carries the L9 envelopes as additive JSON. No routing fabric between mycelium and a remote engine, because the aligner is in-process.</td>
             <td>The SLIM node stood up by the backend / hub. Coordination messages ride it; agents reach it via <code>mycelium await</code> / <code>respond</code>.</td>
           </tr>
           <tr>
@@ -156,11 +156,11 @@
           <tr>
             <td><span class="pill ours">mycelium</span></td>
             <td><strong>All of the L9 epistemic quality layer:</strong> MPC, genuine GAR, genuine SCR, provenance_weight; contingency/grounding; <code>revision_cause</code> derivation; episode records (<code>log/episodes/*.md</code>); the local <code>team_prior</code> writeback loop.</td>
-            <td>&mdash;</td>
+            <td></td>
           </tr>
           <tr>
             <td><span class="pill gap">deferred</span></td>
-            <td colspan="2">Theory-of-Mind / drift detection from a <em>real</em> belief model — inferring compliance from behavior across the trace rather than trusting a declared <code>revision_cause</code>. Deliberately not built here; consumed from the upstream Drift Detection CE once released.</td>
+            <td colspan="2">Theory-of-Mind / drift detection from a <em>real</em> belief model, inferring compliance from behavior across the trace rather than trusting a declared <code>revision_cause</code>. Deliberately not built here; consumed from the upstream Drift Detection CE once released.</td>
           </tr>
         </tbody>
       </table>
@@ -177,8 +177,8 @@ sequenceDiagram
     participant MY as mycelium backend
     participant AL as the aligner (NEGMAS + Pi)
 
-    AG->>MY: mycelium respond — opening position
-    Note over MY: @-mention summons the aligner<br/>open L9 episode — intent:mission
+    AG->>MY: mycelium respond (opening position)
+    Note over MY: @-mention summons the aligner<br/>open L9 episode (intent:mission)
     MY->>AL: positions
     Note over AL: discover issues · start SAO
 
@@ -205,7 +205,7 @@ sequenceDiagram
       <p>
         Each envelope cites its <code>parents</code>: a tick parents the agent&#x27;s prior reply,
         a reply parents the tick it answers, the commit parents every final reply. Reply envelopes
-        are <strong>synthesized backend-side</strong> from the parsed reply — agents never write L9.
+        are <strong>synthesized backend-side</strong> from the parsed reply; agents never write L9.
       </p>
       <p>
         The subkind vocabulary is SLIM-native: <code>commit: converged | resolved | rejected</code>.
@@ -245,7 +245,7 @@ sequenceDiagram
       <h2>Respond &rarr; a reply envelope (exchange)</h2>
       <p>On a tick, the agent answers with a prose reply and optional epistemic flags; mycelium parses it and folds it into a synthesized <code>exchange</code> envelope parented on the tick it answers.</p>
       <pre><code>mycelium respond --handle julia-agent --room api-design \
-  "counter: transport=rest — meets the latency target" \
+  "counter: transport=rest, meets the latency target" \
   --confidence 0.8 \
   --supporting-evidence "staging p99 data" \
   --against-evidence "vendor lock-in risk"</code></pre>
@@ -320,12 +320,12 @@ sequenceDiagram
         <code>revision_cause</code>, <code>deferred_to</code>). All in <code>app/services/l9_episode.py</code>:
       </p>
       <ul>
-        <li><strong>MPC</strong> — mean final confidence at convergence.</li>
-        <li><strong>GAR</strong> — genuine agreement ratio: whose posterior moved toward the outcome (guarded at the MPC=0.5 degeneracy).</li>
-        <li><strong>SCR</strong> — social compliance ratio: fraction of belief <em>revisions</em> caused by compliance (a deferral, or a move that engages evidence too weakly) rather than grounded argument. Movement with no grounding flags is given the benefit of the doubt (genuine), so non-adopters are never penalized.</li>
-        <li><strong>provenance_weight</strong> = <code>(1 − SCR) × GAR</code> — the single trust score. Surfaced live via <code>negotiate status</code>; <code>--contested</code> exits 2 below 0.60.</li>
-        <li><strong>Grounding</strong> — <code>contingency_score = |addresses ∩ prior evidence| / |addresses|</code>; ≥ 0.40 counts as grounded.</li>
-        <li><strong>team_prior loop</strong> — a converged episode writes its rule to the room&#x27;s own memory at <code>l9/rule_update/topic</code>; the next episode reads it back as the tick <code>team_prior</code>. Fully local (markdown + frontmatter), like every other memory.</li>
+        <li><strong>MPC</strong>: mean final confidence at convergence.</li>
+        <li><strong>GAR</strong>, genuine agreement ratio: whose posterior moved toward the outcome (guarded at the MPC=0.5 degeneracy).</li>
+        <li><strong>SCR</strong>, social compliance ratio: fraction of belief <em>revisions</em> caused by compliance (a deferral, or a move that engages evidence too weakly) rather than grounded argument. Movement with no grounding flags is given the benefit of the doubt (genuine), so non-adopters are never penalized.</li>
+        <li><strong>provenance_weight</strong> = <code>(1 − SCR) × GAR</code>, the single trust score. Surfaced live via <code>negotiate status</code>; <code>--contested</code> exits 2 below 0.60.</li>
+        <li><strong>Grounding</strong>: <code>contingency_score = |addresses ∩ prior evidence| / |addresses|</code>; ≥ 0.40 counts as grounded.</li>
+        <li><strong>team_prior loop</strong>: a converged episode writes its rule to the room&#x27;s own memory at <code>l9/rule_update/topic</code>; the next episode reads it back as the tick <code>team_prior</code>. Fully local (markdown + frontmatter), like every other memory.</li>
       </ul>
       <p>These are mycelium-side telemetry, computed from the parsed replies. The aligner only ever needs the action + offer to advance the negotiation.</p>
     </section>
@@ -335,7 +335,7 @@ sequenceDiagram
 
       <div class="caveat-banner">
         <strong>These are self-reported epistemics, not measurements.</strong> The metrics are exact,
-        deterministic arithmetic — over inputs the agents make up. mycelium enforces the
+        deterministic arithmetic, computed over inputs the agents make up. mycelium enforces the
         <em>shape</em> of those inputs, never their truth or calibration.
       </div>
 
@@ -344,20 +344,20 @@ sequenceDiagram
         <li><strong>The inputs are agent-generated.</strong> <code>--confidence 0.8</code> is whatever float the LLM chose. There is no calibration, no logprob extraction, no ground truth behind it. Same for which strings it cites as <code>supporting_evidence</code>/<code>addresses</code> and whether it sets <code>revision_cause</code> or <code>--defer-to</code>.</li>
         <li><strong>Validation is structural only.</strong> mycelium checks the <code>0–1</code> range, non-empty evidence strings, and that <code>revision_cause</code> is one of the five enum values. A high confidence with garbage reasoning passes every check.</li>
         <li><strong>No fallback source.</strong> Omit <code>--confidence</code> and that agent simply doesn&#x27;t count toward MPC/GAR. Nothing derives it from token probabilities, the aligner&#x27;s scoring, or anything else.</li>
-        <li><strong>The one cross-agent check is shallow.</strong> Grounding (<code>contingency_score</code>) compares the strings one agent put in <code>addresses</code> against the strings another put in <code>supporting_evidence</code> — set overlap of tokens both agents chose. It is semantically blind and gameable: echo an evidence key verbatim without engaging the point and you &quot;ground&quot; for free.</li>
+        <li><strong>The one cross-agent check is shallow.</strong> Grounding (<code>contingency_score</code>) compares the strings one agent put in <code>addresses</code> against the strings another put in <code>supporting_evidence</code>, a set overlap of tokens both agents chose. It is semantically blind and gameable: echo an evidence key verbatim without engaging the point and you &quot;ground&quot; for free.</li>
       </ul>
 
       <p>
         So the metrics are only as meaningful as the agents are honest and calibrated. The SKILL.md
         <em>instructs</em> agents to state confidence honestly and defer honestly, but that is a
         prompt-level nudge, not an enforced guarantee. Well-prompted frontier models are decently
-        calibrated, so in practice this is signal rather than noise — but read <code>provenance_weight</code>
+        calibrated, so in practice this is signal rather than noise; even so, read <code>provenance_weight</code>
         as <em>&quot;how the team described its own reasoning,&quot;</em> not a verified trust score.
       </p>
 
       <p>
         The thing that would make this <em>observed</em> rather than <em>reported</em> is exactly the
-        piece mycelium deliberately doesn&#x27;t build: <strong>Theory-of-Mind / drift detection</strong> —
+        piece mycelium deliberately doesn&#x27;t build: <strong>Theory-of-Mind / drift detection</strong>,
         inferring that an agent complied from its behavior across the trace (its belief moved while its
         evidence stayed thin), instead of trusting the <code>revision_cause</code> it declared. That&#x27;s
         the upstream home of the ToM / social-compliance layer, which mycelium would <em>consume</em>
@@ -372,9 +372,9 @@ sequenceDiagram
       <table class="l9">
         <thead><tr><th>Component</th><th>Pinned</th><th>Notes</th></tr></thead>
         <tbody>
-          <tr><td>mycelium L9 layer</td><td><code>VERSION="0.0.6"</code>, subprotocol <code>mycelium</code></td><td><code>app/services/l9.py</code> — envelope construction + the <code>VALID_SUBKINDS</code> table.</td></tr>
+          <tr><td>mycelium L9 layer</td><td><code>VERSION="0.0.6"</code>, subprotocol <code>mycelium</code></td><td><code>app/services/l9.py</code>: envelope construction plus the <code>VALID_SUBKINDS</code> table.</td></tr>
           <tr><td>mycelium vendored python binding</td><td>spec commit <code>93773a5</code></td><td><code>l9_models.py</code>, vendored from <code>ioc-protocols-models</code> (the PyPI package pulls a conflicting litellm). Regenerate from the upstream <code>src/l9.py</code>.</td></tr>
-          <tr><td>episode records</td><td>&mdash;</td><td><code>l9_episode.py</code> — episode tracking + the MPC/GAR/SCR quality metrics; records at <code>log/episodes/{short_id}.md</code>.</td></tr>
+          <tr><td>episode records</td><td></td><td><code>l9_episode.py</code>: episode tracking plus the MPC/GAR/SCR quality metrics; records at <code>log/episodes/{short_id}.md</code>.</td></tr>
         </tbody>
       </table>
       <p>

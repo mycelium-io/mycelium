@@ -107,67 +107,67 @@ aligner's Pi brain and the plan compiler are the LLM consumers.
 
 ## Key design decisions
 
-- **The aligner mediates** — agents never talk to each other directly; all
+- **The aligner mediates.** Agents never talk to each other directly; all
   coordination flows through the aligner. It's a first-party engine registered as a
   room citizen (`mycelium engine create aligner --kind aligner`) and summoned
   (`mycelium engine invoke aligner "…"`), not auto-run on a join window.
-- **The aligner's brain is Pi (only)** — the SAO mediator runs on a persistent Pi
+- **The aligner's brain is Pi (only).** The SAO mediator runs on a persistent Pi
   session; there is no litellm fallback brain. Pi ships in the backend image;
   OpenShell sandboxing (`ALIGNER_PI_OPENSHELL`) is an optional command-prefix seam,
   off by default. See `pi_brain.py`.
-- **NEGMAS owns termination** — the mechanism stops at unanimity; the mediator never
+- **NEGMAS owns termination.** The mechanism stops at unanimity; the mediator never
   loops to the step cap (the anti-theatre property). A failed negotiation commits as
   `rejected`.
-- **Faithful interpretation, never fabricated** — an unreadable proposer holds its
+- **Faithful interpretation, never fabricated.** An unreadable proposer holds its
   own last line, never the standing offer (no phantom convergence); numeric offers
   snap to the nearest real grid point or refuse, never to a fabricated value
   (`offer_snap.py`).
-- **Rooms are folders** — `.mycelium/rooms/{name}/` with standard subdirs:
+- **Rooms are folders.** `.mycelium/rooms/{name}/` with standard subdirs:
   `decisions/`, `failed/`, `status/`, `context/`, `work/`, `procedures/`, `log/`,
   `plan/`. The `plan/` namespace holds the room's plan: `plan/title.md` is the
   room's display title (italic hero in the UI); other `plan/{slug}.md` files carry
   prose + `- [ ]` checklist tasks surfaced to every agent.
-- **Rooms are always persistent** — rooms are persistent namespaces for memory and
+- **Rooms are always persistent.** Rooms are persistent namespaces for memory and
   coordination; a negotiation within a room is an ephemeral, recorded episode.
-- **The CLI skill is a protocol** — post a position → await → respond → consensus →
+- **The CLI skill is a protocol.** Post a position → await → respond → consensus →
   plan → work. This is the value add; don't change it to an augmentation layer.
-- **memory set always upserts** — `memory set` overwrites existing keys automatically
+- **memory set always upserts.** `memory set` overwrites existing keys automatically
   (version increments).
-- **Consensus compiles into the plan** — on convergence the aligner hands the agreed
+- **Consensus compiles into the plan.** On convergence the aligner hands the agreed
   `{issue: value}` map to `plan_compiler.py`, an LLM stage that materializes
   `plan/tasks.md` (one shared `- [ ]` checklist with `@handle` owners) *before* the
-  consensus is announced (plan-first ordering — `await` returns once the plan
+  consensus is announced (plan-first ordering, so `await` returns once the plan
   exists). Fail-soft: a compiler outage falls back to the raw `issue=value`
   agreement. The compiler is deliberately a distinct consumer stage across an
   explicit seam, not part of the negotiation engine. `litellm.acompletion` doesn't
   work for Bedrock, so the compiler routes Bedrock models through threaded sync
   `completion`. `plan_sync.py` then syncs the compiled plan as a `knowledge` memory.
-- **Server-held membership** — a turn-based agent (Claude, a subagent, a shell) can't
+- **Server-held membership.** A turn-based agent (Claude, a subagent, a shell) can't
   hold a SLIM socket between turns, so the backend holds membership: `await`
   long-polls off a durable transcript cursor and refreshes a presence lease;
   `members()` is the union of live SLIM members and lease holders. This is why
   turn-based agents never miss a tick. The **durable inbox** (`persister.py`)
   re-serves missed point-to-point messages on rejoin (SLIM has no offline replay).
-- **Git for sharing** — rooms can be shared via git push/pull; cross-machine is the
+- **Git for sharing.** Rooms can be shared via git push/pull; cross-machine is the
   same channel over a shared SLIM node (`mycelium hub host` / `mycelium connect`).
-- **No Ensue references in code** — we took inspiration from their API design but the
+- **No Ensue references in code.** We took inspiration from their API design but the
   implementation is independent.
-- **L9 envelopes are additive, never required of agents** — ticks are `exchange`,
+- **L9 envelopes are additive, never required of agents.** Ticks are `exchange`,
   consensus is `commit:converged|rejected`, with episode URNs and causal
   `message.parents`. The subkind table lives in `app/services/l9.py:VALID_SUBKINDS`
   and is SLIM-native (`converged|resolved|rejected`).
-- **CLI/backend SLIM+L9 duplication is guarded by a golden test** — the thin `uv
+- **CLI/backend SLIM+L9 duplication is guarded by a golden test.** The thin `uv
   tool` CLI can't import the backend, so `mycelium/slim/` copies the SLIM+L9
   primitives. `slim-l9-golden.json` (repo root) freezes the shared wire constants;
   both `fastapi-backend/tests/test_slim_l9_golden.py` and
   `mycelium-cli/tests/test_slim_l9_golden.py` assert against it, so neither copy can
   drift without a red unit gate.
-- **SLIM security is a shared-secret PSK today (D1)** — the group key derives from
+- **SLIM security is a shared-secret PSK today (D1).** The group key derives from
   `MYCELIUM_SLIM_MASTER_SECRET` (set the same on every host that shares rooms);
   `MYCELIUM_SLIM_REQUIRE_SECRET=1` makes a host fail closed rather than fall back to
-  the public dev literal. There is no per-agent identity/revocation yet — **real
+  the public dev literal. There is no per-agent identity/revocation yet: **real
   identity (JWT/SPIRE) is a hard prerequisite before anything hosted / multi-user**.
-- **Adapter capability (be honest)** — `claude_code` is proven; `cursor` is untested;
+- **Adapter capability (be honest).** `claude_code` is proven; `cursor` is untested;
   `openclaw` and `hermes` are deprecated (they rode the removed SSE/coordination-tick
   model and have not been migrated to SLIM).
 
@@ -181,10 +181,10 @@ aligner's Pi brain and the plan compiler are the LLM consumers.
 ### Starting the stack
 
 The normal `mycelium up` / `mycelium install` flow uses `compose.yml` with
-`pull_policy: always` (released images) — the correct path for end users. For dev,
+`pull_policy: always` (released images), the correct path for end users. For dev,
 add `compose-dev.yml`, which builds `mycelium-backend` from local source and wires
 `~/.mycelium/.env` into the containers. The stack is a SLIM node + the backend (+
-optional frontend/collector) — **no database**. Always run from the repo root.
+optional frontend/collector), with **no database**. Always run from the repo root.
 
 ```bash
 docker compose \

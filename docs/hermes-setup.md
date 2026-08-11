@@ -79,8 +79,8 @@ mycelium session join -r my-room -H hermes-oclw4 -m "Proposing blue-green deploy
 mycelium session join -r my-room -H hermes-oclw3 -m "I prefer canary releases."
 ```
 
-After consensus, both hermes agents receive the `[CognitiveEngine — Consensus
-Reached!]` dispatch directly in the mycelium-room SSE stream. There is no
+After consensus, both hermes agents receive the CognitiveEngine "Consensus
+Reached!" dispatch directly in the mycelium-room SSE stream. There is no
 separate cross-channel delivery step.
 
 ---

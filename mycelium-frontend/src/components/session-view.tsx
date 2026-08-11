@@ -131,7 +131,7 @@ function parseEvents(messages: RawMessage[]): Event[] {
         action: "tick",
         offer: payload.current_offer as Record<string, string> | undefined,
         issueOptions: payload.issue_options as Record<string, string[]> | undefined,
-        note: `${payload.action ?? "respond"} · proposer=${payload.proposer_id ?? "—"}`,
+        note: `${payload.action ?? "respond"} · proposer=${payload.proposer_id ?? "-"}`,
         raw: m,
       });
       continue;
@@ -364,7 +364,7 @@ function ActionGlyph({ action, deferred = false }: { action: Action; deferred?: 
     );
   }
   if (action === "tick") {
-    // "waiting on this agent" — pulse to read as in-progress
+    // "waiting on this agent": pulse to read as in-progress
     return (
       <span
         aria-hidden
@@ -378,7 +378,7 @@ function ActionGlyph({ action, deferred = false }: { action: Action; deferred?: 
     );
   }
   if (action === "counter") {
-    // Hollow diamond — distinct from PROPOSE (square) but same geometric family
+    // Hollow diamond: distinct from PROPOSE (square) but same geometric family
     return (
       <span
         aria-hidden
@@ -464,7 +464,7 @@ function NegotiationSpace({ derived }: { derived: DerivedState }) {
     return (
       <div className="px-6 py-4 border-b border-border">
         <div className="caps-mono-sm text-muted mb-2">CURRENT OFFER</div>
-        <div className="text-body text-muted italic">no offer yet — waiting for first tick</div>
+        <div className="text-body text-muted italic">no offer yet, waiting for first tick</div>
       </div>
     );
   }
@@ -498,7 +498,7 @@ function NegotiationSpace({ derived }: { derived: DerivedState }) {
               </span>
               <span className="text-dim caps-mono-sm text-center py-2.5">=</span>
               <span className="font-mono text-body text-accent break-words py-2.5" style={{ fontWeight: 600 }}>
-                {current ?? "—"}
+                {current ?? "-"}
               </span>
               {expanded && opts.length > 0 && (
                 <div className="pb-2.5 space-y-0.5" style={{ gridColumn: "3 / -1" }}>
@@ -701,7 +701,7 @@ function EventLog({ derived }: { derived: DerivedState }) {
         <button
           onClick={() => setOrder(o => o === "desc" ? "asc" : "desc")}
           className="ml-auto flex items-center gap-1.5 caps-mono-sm text-text2 hover:text-accent transition-colors"
-          title={order === "desc" ? "Showing newest first — click for oldest first" : "Showing oldest first — click for newest first"}
+          title={order === "desc" ? "Showing newest first; click for oldest first" : "Showing oldest first; click for newest first"}
         >
           <span aria-hidden style={{ fontSize: 11 }}>{order === "desc" ? "↓" : "↑"}</span>
           {order === "desc" ? "NEWEST" : "OLDEST"}

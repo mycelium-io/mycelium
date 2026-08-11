@@ -17,9 +17,9 @@ interface Room {
 }
 
 function relativeTime(iso: string): string {
-  if (!iso) return "—";
+  if (!iso) return "-";
   const t = new Date(iso).getTime();
-  if (Number.isNaN(t)) return "—";
+  if (Number.isNaN(t)) return "-";
   const diff = Date.now() - t;
   const min = Math.floor(diff / 60_000);
   if (min < 1) return "now";
@@ -66,7 +66,7 @@ export default function Dashboard() {
         <div className="flex-1 overflow-y-auto">
           {rooms.length === 0 ? (
             <div className="px-6 py-16 text-center italic text-muted">
-              no rooms yet — create one to get started
+              no rooms yet. create one to get started
             </div>
           ) : (
             rooms.map((room, i) => <RoomRow key={room.name} room={room} index={i} />)

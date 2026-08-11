@@ -18,7 +18,7 @@ import {
 // The L9 protocol inspector renders the AOP layer legibly: the live L9 payloads
 // crossing a room's channel (exchange ticks/replies, commit verdicts with
 // MPC/GAR/SCR, knowledge pushes) as a wire feed, plus the persisted episode
-// records — the causal chain the broadcast envelopes deliberately omit.
+// records, the causal chain the broadcast envelopes deliberately omit.
 
 // ── frame model ────────────────────────────────────────────────────────────────
 
@@ -34,7 +34,7 @@ export interface L9Frame {
   time: string;
 }
 
-/** Short, human episode id — the trailing `:session` segment of the URN. */
+/** Short, human episode id: the trailing `:session` segment of the URN. */
 export function shortEpisode(urn: string | null | undefined): string {
   if (!urn) return "";
   const parts = urn.split(":");
@@ -126,7 +126,7 @@ export function toL9Frame(msg: Record<string, unknown>): L9Frame | null {
     } else if (mtype === "knowledge" || mtype === "memory_changed" || mtype === "plan_updated") {
       kind = "knowledge";
     } else {
-      return null; // plain chat — not inspector traffic
+      return null; // plain chat, not inspector traffic
     }
   }
 
@@ -319,7 +319,7 @@ export function L9Inspector({ roomName }: Props) {
     loadEpisodes();
   }, [loadEpisodes]);
 
-  // Live L9 wire — same EventSource pattern as the room feed.
+  // Live L9 wire: same EventSource pattern as the room feed.
   useEffect(() => {
     const url = getSSEUrl(roomName);
     let es: EventSource;
@@ -334,7 +334,7 @@ export function L9Inspector({ roomName }: Props) {
           const frame = toL9Frame(msg);
           if (!frame) return;
           setFrames((prev) => [...prev, frame].slice(-MAX_FRAMES));
-          // A commit means an episode record just closed — refresh the list so
+          // A commit means an episode record just closed. Refresh the list so
           // its causal chain becomes browsable.
           if (frame.kind === "commit") loadEpisodes();
         } catch {

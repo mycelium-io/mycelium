@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>mycelium — User Stories</title>
-<meta property="og:title" content="mycelium — User Stories">
-<meta property="og:description" content="What Mycelium actually does — real usage patterns for coordinating agents across sessions and machines.">
+<title>mycelium · User Stories</title>
+<meta property="og:title" content="mycelium · User Stories">
+<meta property="og:description" content="What Mycelium actually does: real usage patterns for coordinating agents across sessions and machines.">
 <meta property="og:image" content="https://mycelium-io.github.io/mycelium/og.png">
 <meta property="og:url" content="https://mycelium-io.github.io/mycelium/stories.html">
 <meta property="og:type" content="website">
@@ -296,14 +296,14 @@
     <div class="section" data-scene="1">
       <div class="sec-label">Story 1 · Single Agent</div>
       <h2 class="sec-title">Storing findings during a session</h2>
-      <p class="sec-body">An agent investigating a performance issue writes its findings as it works. The memory persists as a markdown file — readable by <code>cat</code>, editable by any tool, and immediately searchable by meaning.</p>
+      <p class="sec-body">An agent investigating a performance issue writes its findings as it works. The memory persists as a markdown file: readable by <code>cat</code>, editable by any tool, and immediately searchable by meaning.</p>
 
       <div class="story-label user">User sends</div>
       <div class="story-input">Store what we found about the query performance issue so we don't lose it.</div>
 
       <div class="sec-detail">
         <span class="hi">What happened:</span>
-        <span>The finding is written to <code>~/.mycelium/rooms/design-review/work/query-perf.md</code> and simultaneously indexed in a local embedding index (ONNX, runs on your machine, no external service). Available to every agent — or a plain <code>cat</code> — immediately.</span>
+        <span>The finding is written to <code>~/.mycelium/rooms/design-review/work/query-perf.md</code> and simultaneously indexed in a local embedding index (ONNX, runs on your machine, no external service). Available to every agent (or a plain <code>cat</code>) immediately.</span>
       </div>
     </div>
 
@@ -311,14 +311,14 @@
     <div class="section" data-scene="2">
       <div class="sec-label">Story 2 · Single Agent</div>
       <h2 class="sec-title">Search by meaning, not keywords</h2>
-      <p class="sec-body">Later in the session, the agent needs to surface what it already knows. It asks a natural-language question — not a keyword lookup.</p>
+      <p class="sec-body">Later in the session, the agent needs to surface what it already knows. It asks a natural-language question, not a keyword lookup.</p>
 
       <div class="story-label user">User sends</div>
       <div class="story-input">What do we know about database performance?</div>
 
       <div class="sec-detail">
         <span class="hi">What happened:</span>
-        <span>Cosine similarity over a local embedding index (runs on your machine, no API key). The query matched memories that don't contain the exact words "database performance" — because they mean the same thing.</span>
+        <span>Cosine similarity over a local embedding index (runs on your machine, no API key). The query matched memories that don't contain the exact words "database performance," because they mean the same thing.</span>
       </div>
     </div>
 
@@ -329,7 +329,7 @@
       <p class="sec-body">An approach didn't work. The agent writes it under <code>failed/</code> so no other agent wastes time going down the same path. Negative results are first-class citizens.</p>
 
       <div class="story-label user">User sends</div>
-      <div class="story-input">We tried PgBouncer for connection pooling but it made things worse — log it so nobody tries it again.</div>
+      <div class="story-input">We tried PgBouncer for connection pooling but it made things worse; log it so nobody tries it again.</div>
 
       <div class="sec-detail">
         <span class="hi">What happened:</span>
@@ -341,7 +341,7 @@
     <div class="section" data-scene="4">
       <div class="sec-label green">Story 4 · Cross-Session</div>
       <h2 class="sec-title">Picking up where you left off</h2>
-      <p class="sec-body">Three days later, a new Claude Code session starts. The agent has no memory of the previous work. The room directory is the briefing — markdown files on disk, organised by category, plus the room's shared plan.</p>
+      <p class="sec-body">Three days later, a new Claude Code session starts. The agent has no memory of the previous work. The room directory is the briefing: markdown files on disk, organised by category, plus the room's shared plan.</p>
 
       <div class="story-label user">User sends</div>
       <div class="story-input">Continue working on the design-review room. What's the current state?</div>
@@ -356,14 +356,14 @@
     <div class="section" data-scene="5">
       <div class="sec-label blue">Story 5 · Multi-Agent</div>
       <h2 class="sec-title">Two agents negotiate a sprint plan</h2>
-      <p class="sec-body">Two Claude Code agents need to agree on priorities. Neither talks to the other directly — a human summons <strong>the aligner</strong>, a mediator registered in the room. It brokers structured rounds until consensus — then that consensus is compiled into the room's shared plan the agents go on to execute.</p>
+      <p class="sec-body">Two Claude Code agents need to agree on priorities. Neither talks to the other directly; a human summons <strong>the aligner</strong>, a mediator registered in the room. It brokers structured rounds until consensus, and that consensus is then compiled into the room's shared plan the agents go on to execute.</p>
 
       <div class="story-label user">User (terminal 1) sends</div>
       <div class="story-input">Post your position in the sprint-plan room, arguing for database migration first.</div>
 
       <div class="sec-detail blue">
         <span class="hi-b">What happened:</span>
-        <span>The aligner ran a real NEGMAS Stacked Alternating Offers negotiation over both agents' positions. It discovered the issues, brokered each round by <code>@</code>-addressing one agent at a time, and reached consensus — all without the agents communicating directly. Mycelium then compiled that consensus into the room's shared plan: a <code>- [ ]</code> checklist both agents pick up and work.</span>
+        <span>The aligner ran a real NEGMAS Stacked Alternating Offers negotiation over both agents' positions. It discovered the issues, brokered each round by <code>@</code>-addressing one agent at a time, and reached consensus, all without the agents communicating directly. Mycelium then compiled that consensus into the room's shared plan: a <code>- [ ]</code> checklist both agents pick up and work.</span>
       </div>
     </div>
 
@@ -371,14 +371,14 @@
     <div class="section" data-scene="6">
       <div class="sec-label purple">Story 6 · Cross-Machine</div>
       <h2 class="sec-title">Two agents, two machines, one room</h2>
-      <p class="sec-body">A Claude Code agent finishes the API layer and hands off to a second agent on another machine for frontend integration. They share context through a Mycelium room over one SLIM channel — neither knows nor cares where the other runs.</p>
+      <p class="sec-body">A Claude Code agent finishes the API layer and hands off to a second agent on another machine for frontend integration. They share context through a Mycelium room over one SLIM channel, and neither knows nor cares where the other runs.</p>
 
       <div class="story-label user">User (machine 1) sends</div>
       <div class="story-input">Log what I built and hand off to the frontend agent for integration.</div>
 
       <div class="sec-detail purple">
         <span class="hi-p">What happened:</span>
-        <span>Both agents join the same room's SLIM group channel through the hub. The coordination model is location-agnostic — the room is the shared medium, not any direct channel between agents.</span>
+        <span>Both agents join the same room's SLIM group channel through the hub. The coordination model is location-agnostic: the room is the shared medium, not any direct channel between agents.</span>
       </div>
     </div>
 
@@ -386,14 +386,14 @@
     <div class="section" data-scene="7">
       <div class="sec-label">Story 7 · Ratchet</div>
       <h2 class="sec-title">The ratchet effect</h2>
-      <p class="sec-body">Decisions, failures, the open plan, the prior negotiation outcomes — none of it disappears between sessions. Every future agent that joins reads the same room and inherits everything the swarm has learned.</p>
+      <p class="sec-body">Decisions, failures, the open plan, the prior negotiation outcomes: none of it disappears between sessions. Every future agent that joins reads the same room and inherits everything the swarm has learned.</p>
 
       <div class="story-label user">User sends</div>
       <div class="story-input">A new agent is joining. Bring them up to speed.</div>
 
       <div class="sec-detail">
         <span class="hi">What happened:</span>
-        <span>The room directory and its compiled plan <em>are</em> the briefing — no separate summary step, no stale snapshot. Intelligence doesn't reset between sessions — it <strong style="color:var(--accent);">compounds</strong>.</span>
+        <span>The room directory and its compiled plan <em>are</em> the briefing: no separate summary step, no stale snapshot. Intelligence doesn't reset between sessions; it <strong style="color:var(--accent);">compounds</strong>.</span>
       </div>
     </div>
 
@@ -408,7 +408,7 @@
         <div style="width:100%; display:flex; flex-direction:column; gap:10px;">
           <div class="term">
 <span class="p">$</span> <span class="c">mycelium memory set</span> <span class="k">"work/query-perf"</span> \<br>
-&nbsp;&nbsp;"N+1 on user.posts — 47 queries per page load.<br>
+&nbsp;&nbsp;"N+1 on user.posts, 47 queries per page load.<br>
 &nbsp;&nbsp; Fixed with select_related. p99: 340ms → 28ms." \<br>
 &nbsp;&nbsp;<span class="f">--handle</span> claude-agent<br>
 <br>
@@ -438,12 +438,12 @@
 <span class="p">$</span> <span class="c">mycelium memory search</span> <span class="v">"database performance"</span><br>
 <br>
 <span class="ok">0.91</span>  <span class="k">work/query-perf</span><br>
-<span class="dim">&nbsp;&nbsp;&nbsp;&nbsp; N+1 on user.posts — 47 queries per page load.</span><br>
+<span class="dim">&nbsp;&nbsp;&nbsp;&nbsp; N+1 on user.posts, 47 queries per page load.</span><br>
 <span class="dim">&nbsp;&nbsp;&nbsp;&nbsp; Fixed with select_related. p99: 340ms → 28ms.</span><br>
 <br>
 <span style="color:rgba(52,211,153,0.6);">0.74</span>  <span class="k">decisions/db</span><br>
 <span class="dim">&nbsp;&nbsp;&nbsp;&nbsp; Markdown files on disk are the source of truth.</span><br>
-<span class="dim">&nbsp;&nbsp;&nbsp;&nbsp; No database — search runs on a local index.</span>
+<span class="dim">&nbsp;&nbsp;&nbsp;&nbsp; No database; search runs on a local index.</span>
           </div>
           <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:4px;">
             <div style="padding:10px 12px; background:var(--card); border:1px solid var(--border); border-radius:7px; font-size:11px; font-family:'SF Mono',monospace; color:var(--muted); line-height:1.5;">
@@ -505,12 +505,12 @@
           <div style="display:grid; grid-template-columns:1fr auto 1fr; gap:8px; align-items:start;">
             <div style="background:rgba(129,140,248,0.07); border:1px solid rgba(129,140,248,0.3); border-radius:8px; padding:10px 12px; font-family:'SF Mono',monospace; font-size:11.5px;">
               <div style="color:var(--blue); font-weight:700; margin-bottom:6px;">julia-agent</div>
-              <div style="color:var(--muted); line-height:1.5;">"DB migration first — auth + frontend both depend on new schema."</div>
+              <div style="color:var(--muted); line-height:1.5;">"DB migration first: auth + frontend both depend on new schema."</div>
             </div>
             <div style="display:flex; flex-direction:column; align-items:center; gap:6px; padding-top:10px; color:var(--muted); font-size:18px;">↓<br>↑</div>
             <div style="background:rgba(192,132,252,0.07); border:1px solid rgba(192,132,252,0.3); border-radius:8px; padding:10px 12px; font-family:'SF Mono',monospace; font-size:11.5px;">
               <div style="color:var(--purple); font-weight:700; margin-bottom:6px;">selina-agent</div>
-              <div style="color:var(--muted); line-height:1.5;">"Frontend polish first — users churning on UX. Backend solid enough."</div>
+              <div style="color:var(--muted); line-height:1.5;">"Frontend polish first: users churning on UX. Backend solid enough."</div>
             </div>
           </div>
           <div style="display:flex; justify-content:center;">
@@ -576,7 +576,7 @@
           <div class="term" style="font-size:11px;">
 <span class="em">Built so far</span>   <span class="dim">API + frontend complete. Auth in progress.</span><br>
 <span class="em">Blocked on</span>     <span class="dim">JWT refresh token strategy not decided.</span><br>
-<span class="em">What failed</span>    <span class="dim">PgBouncer — do not retry.</span><br>
+<span class="em">What failed</span>    <span class="dim">PgBouncer: do not retry.</span><br>
 <span class="em">Open tasks</span>     <span class="dim">3 open across plan/tasks.md, plan/sprint.md.</span>
           </div>
           <div style="padding:6px 12px; background:rgba(56,189,248,0.05); border:1px solid rgba(56,189,248,0.12); border-radius:6px; font-size:11px; font-family:'SF Mono',monospace; color:var(--muted); text-align:center;">

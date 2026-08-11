@@ -37,14 +37,14 @@ app = typer.Typer(
 )
 
 ADAPTER_TYPES = {
-    "openclaw": "plugin-based — installs mycelium via `openclaw plugins install`",
-    "claude-code": "skill + hooks — copies SKILL.md and lifecycle hooks into ~/.claude/",
+    "openclaw": "plugin-based: installs mycelium via `openclaw plugins install`",
+    "claude-code": "skill + hooks: copies SKILL.md and lifecycle hooks into ~/.claude/",
     "cursor": (
-        "daemon-dispatched — drops .cursor/rules/mycelium.mdc + AGENTS.md "
+        "daemon-dispatched: drops .cursor/rules/mycelium.mdc + AGENTS.md "
         "into each cursor agent's workspace at `mycelium agent create` time"
     ),
     "hermes": (
-        "platform plugin — stages a hermes-side Python plugin into "
+        "platform plugin: stages a hermes-side Python plugin into "
         "~/.hermes/plugins/mycelium/ and enables platforms.mycelium-room "
         "in ~/.hermes/config.yaml"
     ),
@@ -89,7 +89,7 @@ def add(
         help=(
             "Follow-up step (repeatable). openclaw: otel, docker-env. "
             "claude-code / cursor: daemon (the daemon is shared across "
-            "both cold-spawn families — one service per host)."
+            "both cold-spawn families, one service per host)."
         ),
     ),
     remove_step: bool = typer.Option(

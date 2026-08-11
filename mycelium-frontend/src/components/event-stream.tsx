@@ -36,8 +36,8 @@ interface Event {
 const CHAT_TYPES = new Set(["broadcast", "direct", "announce", "delegate"]);
 // Event types that appear in the chat-channel view alongside real chat.
 // Joins + consensus belong here so the room's chat surface narrates the
-// negotiation lifecycle — "alice joined session X", "CONSENSUS in session X
-// → plan/tasks.md", "TIMEOUT in session X — no agreement" — instead of
+// negotiation lifecycle ("alice joined session X", "CONSENSUS in session X
+// → plan/tasks.md", "TIMEOUT in session X, no agreement") instead of
 // burying it all under the EVENTS tab.
 const CHANNEL_VIEW_TYPES = new Set([
   ...CHAT_TYPES,
@@ -84,11 +84,11 @@ function parseEvent(msg: Record<string, unknown>): Event {
     case "coordination_join": {
       const handle = (raw.handle as string) || sender;
       const intent = raw.intent as string;
-      content = `${handle} joined${intent ? ` — ${intent}` : ""}`;
+      content = `${handle} joined${intent ? `: ${intent}` : ""}`;
       break;
     }
     case "coordination_start":
-      content = `Session started — ${raw.agent_count || "?"} agents`;
+      content = `Session started with ${raw.agent_count || "?"} agents`;
       break;
     case "coordination_tick": {
       // Ticks wrap their fields under .payload
@@ -107,7 +107,7 @@ function parseEvent(msg: Record<string, unknown>): Event {
       const assignments = raw.assignments as Record<string, string>;
       content = plan || "";
       if (assignments) content += " " + Object.entries(assignments).map(([k, v]) => `${k}=${v}`).join(", ");
-      // Consensus isn't the end — it compiles into the room's shared plan.
+      // Consensus isn't the end; it compiles into the room's shared plan.
       if (!broken && planFile) content += ` · compiled → ${planFile}`;
       {
         const metrics = raw.metrics as Record<string, unknown> | undefined;
@@ -273,7 +273,7 @@ export function EventStream({ roomName, onMemoryChanged, planRefreshTrigger = 0 
           const event = parseEvent(msg);
           setEvents(prev => [...prev, event]);
           if (event.type === "memory_changed") onMemoryChanged?.();
-          // A consensus compiles the negotiation into plan/tasks.md — nudge
+          // A consensus compiles the negotiation into plan/tasks.md, so nudge
           // the plan header to refetch so the checklist surfaces immediately.
           if (event.type === "coordination_consensus" && event.raw.broken !== true) {
             onMemoryChanged?.();
@@ -472,7 +472,7 @@ export function EventStream({ roomName, onMemoryChanged, planRefreshTrigger = 0 
                       <span className="font-mono text-text2">session</span>
                     )}
                     {broken ? (
-                      <span className="text-text2">— no agreement</span>
+                      <span className="text-text2">· no agreement</span>
                     ) : (
                       <>
                         <span className="text-muted">·</span>
@@ -533,7 +533,7 @@ export function EventStream({ roomName, onMemoryChanged, planRefreshTrigger = 0 
                       </Link>
                     ) : null}
                     {intent ? (
-                      <span className="text-text2 truncate">— &ldquo;{intent}&rdquo;</span>
+                      <span className="text-text2 truncate">· &ldquo;{intent}&rdquo;</span>
                     ) : null}
                     <span className="ml-auto text-micro text-muted font-mono tabular flex-shrink-0">
                       {ev.time}

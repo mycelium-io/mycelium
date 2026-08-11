@@ -78,7 +78,7 @@ export function renderPlanBlock(
   if (!context) return "";
   return (
     `## Room plan${humanizeAge(generatedAtIso)}\n\n${context}\n\n` +
-    "This snapshot may be stale — run `mycelium plan tasks` for live state.\n\n"
+    "This snapshot may be stale; run `mycelium plan tasks` for live state.\n\n"
   );
 }
 

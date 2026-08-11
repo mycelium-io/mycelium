@@ -336,7 +336,7 @@ def delete(
 
 @doc_ref(
     usage="mycelium room clone <room-name> [--from <api-url>]",
-    desc="Clone a room from a remote backend — fetches all memories via HTTP and writes them locally.",
+    desc="Clone a room from a remote backend: fetches all memories via HTTP and writes them locally.",
     group="room",
 )
 @app.command("clone")
@@ -432,7 +432,7 @@ def clone_room(
             typer.echo(f"  Indexed {data.get('indexed', 0)} memories")
         except Exception:
             typer.echo(
-                "[dim]  Reindex skipped — run 'mycelium memory reindex' when backend is available[/dim]"
+                "[dim]  Reindex skipped. Run 'mycelium memory reindex' when backend is available[/dim]"
             )
 
         typer.echo(f"\nRoom '{room_name}' is now active.")
@@ -545,12 +545,12 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
         if mtype == "coordination_join":
             intent = data.get("intent")
             handle = data.get("handle", sender)
-            suffix = f" — [dim]{intent}[/]" if intent else ""
+            suffix = f": [dim]{intent}[/]" if intent else ""
             return f"  {ts()}  [cyan]{handle}[/] joined{suffix}"
 
         if mtype == "coordination_start":
             n = data.get("agent_count", "?")
-            return f"\n  {ts()}  [bold cyan]session started[/] — {n} agents joined\n"
+            return f"\n  {ts()}  [bold cyan]session started[/] ({n} agents joined)\n"
 
         if mtype == "coordination_tick":
             # SSTP envelope: action fields live under data["payload"]
@@ -563,7 +563,7 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
                 participant = data.get("participant_id", "?")
                 if action == "propose":
                     issue_options = data.get("issue_options") or _ISSUE_OPTIONS
-                    header = f"\n  {ts()}  [bold magenta]CognitiveEngine[/] [dim]→[/] [cyan]{participant}[/]  [bold cyan]round {round_num}[/] — propose your offer:"
+                    header = f"\n  {ts()}  [bold magenta]CognitiveEngine[/] [dim]→[/] [cyan]{participant}[/]  [bold cyan]round {round_num}[/]: propose your offer:"
                     if round_num == 1:
                         header = f"\n  {ts()}  [bold magenta]CognitiveEngine[/] analyzed agent intents and generated negotiation issues and options.\n{header}"
                     lines = [header]
@@ -580,7 +580,7 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
                     offer = data.get("current_offer") or {}
                     proposer = data.get("proposer_id", "?")
                     lines = [
-                        f"\n  {ts()}  [bold magenta]CognitiveEngine[/] [dim]→[/] [cyan]{participant}[/]  [bold cyan]round {round_num}[/] — respond to offer from {proposer}:"
+                        f"\n  {ts()}  [bold magenta]CognitiveEngine[/] [dim]→[/] [cyan]{participant}[/]  [bold cyan]round {round_num}[/]: respond to offer from {proposer}:"
                     ]
                     prior_line = _team_prior_line(data, "              ")
                     if prior_line:
@@ -588,7 +588,7 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
                     for k, v in offer.items():
                         lines.append(f"              [dim]{k}:[/] {v}")
                     return "\n".join(lines)
-                return f"\n  {ts()}  [bold magenta]CognitiveEngine[/] [dim]→[/] [cyan]{participant}[/]  [bold cyan]round {round_num}[/] — {action}"
+                return f"\n  {ts()}  [bold magenta]CognitiveEngine[/] [dim]→[/] [cyan]{participant}[/]  [bold cyan]round {round_num}[/]: {action}"
             return f"\n  {ts()}  [bold cyan]tick {round_num}[/]"
 
         if mtype == "coordination_consensus":
@@ -726,7 +726,7 @@ def watch(
     """
     Stream live messages from a room.
 
-    Auto-resolves the active room — no argument needed.
+    Auto-resolves the active room (no argument needed).
     Renders coordination events, agent joins, ticks, and consensus.
 
     Examples:
@@ -825,8 +825,8 @@ def send(
       - Seeding a scenario for a group of agents (facilitator posts, agents respond)
       - One-way notifications without expecting a reply loop
 
-    To participate in a room's coordination as a member — receive an addressed
-    turn and reply as a position — use `mycelium await` / `mycelium respond`
+    To participate in a room's coordination as a member (receive an addressed
+    turn and reply as a position), use `mycelium await` / `mycelium respond`
     instead. For agent-to-agent requests with a built-in reply loop, use
     OpenClaw's `sessions_send` tool.
 
@@ -889,7 +889,7 @@ def messages(
     ),
 ) -> None:
     """
-    Read recent messages in a room — a point-in-time snapshot, newest first.
+    Read recent messages in a room: a point-in-time snapshot, newest first.
 
     Unlike `mycelium room watch` (which streams live), this returns immediately
     with the most recent messages and exits. Handy for scripts and for checking

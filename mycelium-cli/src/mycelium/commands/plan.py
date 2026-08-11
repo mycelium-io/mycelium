@@ -25,7 +25,7 @@ from mycelium.doc_ref import doc_ref
 
 app = typer.Typer(
     help=(
-        "Manage a room's plan — markdown files + checkbox tasks in "
+        "Manage a room's plan: markdown files + checkbox tasks in "
         ".mycelium/rooms/{room}/plan/. Visible to all agents in the room."
     ),
     no_args_is_help=True,
@@ -118,7 +118,7 @@ def plan_ls(
         )
         return
 
-    table = Table(title=f"{data['room']} — plan", show_lines=False)
+    table = Table(title=f"{data['room']} plan", show_lines=False)
     table.add_column("Slug", style="cyan", no_wrap=True)
     table.add_column("Title")
     table.add_column("Tasks", justify="right")
@@ -193,7 +193,7 @@ def plan_rm(
 @doc_ref(
     usage="mycelium plan title [<text>]",
     desc=(
-        "Read or set the room's plan title — the italic display line shown above "
+        "Read or set the room's plan title: the italic display line shown above "
         "room activity. Pass no text to print the current title."
     ),
     group="plan",

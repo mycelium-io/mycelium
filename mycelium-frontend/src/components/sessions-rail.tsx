@@ -28,9 +28,9 @@ const STATE_TONE: Record<string, "accent" | "muted" | "warn" | "ok"> = {
 };
 
 function relativeTime(iso: string): string {
-  if (!iso) return "—";
+  if (!iso) return "-";
   const t = new Date(iso).getTime();
-  if (Number.isNaN(t)) return "—";
+  if (Number.isNaN(t)) return "-";
   const diff = Date.now() - t;
   const min = Math.floor(diff / 60_000);
   if (min < 1) return "now";
@@ -42,7 +42,7 @@ function relativeTime(iso: string): string {
 }
 
 function shortSessionName(name: string): string {
-  // session names look like "<room>:session:<uuid>" — show the trailing chunk
+  // session names look like "<room>:session:<uuid>"; show the trailing chunk
   const colon = name.lastIndexOf(":");
   const tail = colon >= 0 ? name.slice(colon + 1) : name;
   return tail.length > 12 ? `${tail.slice(0, 8)}…${tail.slice(-3)}` : tail;

@@ -56,7 +56,7 @@ export async function executeNotifyHome(runtime, cfg, sessionRoom, agentIds, sum
         // the session sub-room name (`<parent>:session:<id>` → `<parent>`).
         // Falls back to cfg.room only if the session-room name is malformed.
         const parentRoom = sessionRoom.split(":session:")[0] || cfg.room;
-        const text = `[Mycelium return trip — ${parentRoom}]\n\n${summary}`;
+        const text = `[Mycelium return trip: ${parentRoom}]\n\n${summary}`;
         try {
             await adapter.sendText({
                 cfg: openclawConfig,

@@ -84,7 +84,7 @@ export function AgentsPanel({ roomName }: Props) {
                 Add an agent
               </DialogTitle>
               <DialogDescription className="text-label text-muted leading-relaxed">
-                Agents are registered from the CLI — registration has
+                Agents are registered from the CLI, because registration has
                 machine-local side effects (manifest mirror, OpenClaw gateway
                 config) the web UI can&apos;t perform. This panel is read-only.
               </DialogDescription>
@@ -98,7 +98,7 @@ export function AgentsPanel({ roomName }: Props) {
                   {"mycelium agent add"}
                 </pre>
                 <p className="text-micro text-muted mt-1 leading-snug">
-                  Interactive picker — discovers your OpenClaw agents and wires
+                  Interactive picker: discovers your OpenClaw agents and wires
                   the chosen ones into a room.
                 </p>
               </section>

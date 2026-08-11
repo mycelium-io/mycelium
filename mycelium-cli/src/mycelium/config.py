@@ -188,7 +188,7 @@ class ScrapeTarget(BaseModel):
 
     name: str = Field(
         ...,
-        description="Stable, short identifier — used as the dict key in metrics.json and as the panel label.",
+        description="Stable, short identifier used as the dict key in metrics.json and as the panel label.",
         min_length=1,
         max_length=64,
     )

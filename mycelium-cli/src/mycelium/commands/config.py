@@ -349,4 +349,4 @@ def _migrate_env_to_config(config: "MyceliumConfig") -> None:
         config.save()
         typer.secho("  ✓ Migrated .env settings into config.toml", fg=typer.colors.GREEN)
     else:
-        typer.echo("  ℹ config.toml already has all settings — nothing to migrate")
+        typer.echo("  ℹ config.toml already has all settings, nothing to migrate")

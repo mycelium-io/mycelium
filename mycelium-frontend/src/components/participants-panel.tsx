@@ -28,7 +28,7 @@ function initials(handle: string): string {
 }
 
 /**
- * Read-only roster of agents participating in a coordination session — the
+ * Read-only roster of agents participating in a coordination session, the
  * session-view counterpart to the room's AgentsPanel. Shows each
  * participant's handle plus their opening position (``intent``) so a
  * reviewer can see WHO came in with WHAT before the negotiation started.

@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Reference — mycelium</title>
+<title>Reference · mycelium</title>
 <meta name="description" content="Architecture, CLI reference, configuration, guides, and troubleshooting for Mycelium.">
-<meta property="og:title" content="Reference — mycelium">
+<meta property="og:title" content="Reference · mycelium">
 <meta property="og:description" content="Architecture, CLI reference, configuration, guides, and troubleshooting for Mycelium.">
 <meta property="og:image" content="https://mycelium-io.github.io/mycelium/og.png">
 <meta property="og:url" content="https://mycelium-io.github.io/mycelium/reference.html">
@@ -335,7 +335,7 @@ cursor-agent login                          # one-time, interactive
         <div class="cmd-ref-header">
           <code><span class="cmd">mycelium install</span> [<span class="flag">--yes</span>] [<span class="flag">--non-interactive</span>] [<span class="flag">--force</span>]</code>
         </div>
-        <div class="cmd-ref-body">Interactive installer — Docker check, LLM config, <code>docker compose up</code>, provision workspace.</div>
+        <div class="cmd-ref-body">Interactive installer: Docker check, LLM config, <code>docker compose up</code>, provision workspace.</div>
       </div>
 
       <div class="cmd-ref">
@@ -393,7 +393,7 @@ cursor-agent login                          # one-time, interactive
         <div class="cmd-ref-header">
           <code><span class="cmd">mycelium room clone</span> &lt;room-name&gt; [<span class="flag">--from</span> &lt;api-url&gt;]</code>
         </div>
-        <div class="cmd-ref-body">Clone a room from a remote backend — fetches all memories via HTTP and writes them locally.</div>
+        <div class="cmd-ref-body">Clone a room from a remote backend: fetches all memories via HTTP and writes them locally.</div>
       </div>
 
       <div class="cmd-ref">
@@ -430,7 +430,7 @@ cursor-agent login                          # one-time, interactive
         <div class="cmd-ref-header">
           <code><span class="cmd">mycelium memory set</span> <span class="arg">&lt;key&gt;</span> <span class="arg">&lt;value&gt;</span> [<span class="flag">--handle</span> <span class="arg">&lt;handle&gt;</span>]</code>
         </div>
-        <div class="cmd-ref-body">Write a memory (upsert). Structured category keys (<code>work/</code>, <code>decisions/</code>, <code>status/</code>, <code>context/</code>) are auto-validated. Always upserts — the backend handles versioning.</div>
+        <div class="cmd-ref-body">Write a memory (upsert). Structured category keys (<code>work/</code>, <code>decisions/</code>, <code>status/</code>, <code>context/</code>) are auto-validated. Always upserts; the backend handles versioning.</div>
       </div>
 
       <div class="cmd-ref">
@@ -451,14 +451,14 @@ cursor-agent login                          # one-time, interactive
         <div class="cmd-ref-header">
           <code><span class="cmd">mycelium memory search</span> <span class="arg">&lt;query&gt;</span></code>
         </div>
-        <div class="cmd-ref-body">Semantic search — finds memories by meaning using cosine similarity on local embeddings. Requires the backend API.</div>
+        <div class="cmd-ref-body">Semantic search: finds memories by meaning using cosine similarity on local embeddings. Requires the backend API.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
           <code><span class="cmd">mycelium memory rm</span> <span class="arg">&lt;key&gt;</span> [<span class="flag">--force</span>]</code>
         </div>
-        <div class="cmd-ref-body">Delete a memory — removes the markdown file and search index entry.</div>
+        <div class="cmd-ref-body">Delete a memory: removes the markdown file and search index entry.</div>
       </div>
 
       <div class="cmd-ref">
@@ -479,35 +479,35 @@ cursor-agent login                          # one-time, interactive
         <div class="cmd-ref-header">
           <code><span class="cmd">mycelium memory status</span></code>
         </div>
-        <div class="cmd-ref-body">Show current status — filters to <code>status/*</code> memories as a table.</div>
+        <div class="cmd-ref-body">Show current status: filters to <code>status/*</code> memories as a table.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
           <code><span class="cmd">mycelium memory work</span></code>
         </div>
-        <div class="cmd-ref-body">Show what's been built — filters to <code>work/*</code> memories as a table.</div>
+        <div class="cmd-ref-body">Show what's been built: filters to <code>work/*</code> memories as a table.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
           <code><span class="cmd">mycelium memory decisions</span></code>
         </div>
-        <div class="cmd-ref-body">Show why choices were made — filters to <code>decisions/*</code> memories as a table.</div>
+        <div class="cmd-ref-body">Show why choices were made: filters to <code>decisions/*</code> memories as a table.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
           <code><span class="cmd">mycelium memory context</span></code>
         </div>
-        <div class="cmd-ref-body">Show background and preferences — filters to <code>context/*</code> memories as a table.</div>
+        <div class="cmd-ref-body">Show background and preferences: filters to <code>context/*</code> memories as a table.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
           <code><span class="cmd">mycelium memory procedures</span></code>
         </div>
-        <div class="cmd-ref-body">Show reusable how-to steps — filters to <code>procedures/*</code> memories as a table.</div>
+        <div class="cmd-ref-body">Show reusable how-to steps: filters to <code>procedures/*</code> memories as a table.</div>
       </div>
 
       <h2 id="cli-plan">plan</h2>
@@ -544,7 +544,7 @@ cursor-agent login                          # one-time, interactive
         <div class="cmd-ref-header">
           <code><span class="cmd">mycelium plan title</span> [<span class="arg">&lt;text&gt;</span>]</code>
         </div>
-        <div class="cmd-ref-body">Read or set the room's plan title — the italic display line shown above room activity. Pass no text to print the current title.</div>
+        <div class="cmd-ref-body">Read or set the room's plan title: the italic display line shown above room activity. Pass no text to print the current title.</div>
       </div>
 
       <div class="cmd-ref">
@@ -641,7 +641,7 @@ cursor-agent login                          # one-time, interactive
         <div class="cmd-ref-header">
           <code><span class="cmd">mycelium sync</span> [<span class="flag">--no-reindex</span>]</code>
         </div>
-        <div class="cmd-ref-body">Sync the active room with the backend — fetch all memories from the API and write them locally.</div>
+        <div class="cmd-ref-body">Sync the active room with the backend: fetch all memories from the API and write them locally.</div>
       </div>
 
       <div class="cmd-ref">

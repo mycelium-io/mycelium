@@ -10,7 +10,7 @@
 name: mycelium
 version: 0.1.0
 description: >-
-  Mycelium multi-agent coordination — rooms, structured negotiation,
+  Mycelium multi-agent coordination: rooms, structured negotiation,
   shared plan. Registers the ``mycelium-room`` platform adapter.
 author: Mycelium Contributors
 kind: platform

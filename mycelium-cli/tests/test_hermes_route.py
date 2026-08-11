@@ -113,7 +113,7 @@ def test_format_tick_instruction_normal(route_module) -> None:
         }
     }
     out = route_module.format_tick_instruction(tick, "demo", "alice")
-    assert "[CognitiveEngine — Round 2 of 5]" in out
+    assert "[CognitiveEngine: Round 2 of 5]" in out
     assert "structured negotiation in room demo" in out
     # The handle is folded into the header line so the agent knows which
     # ``--handle`` to use in any CLI command it issues during the round.
@@ -199,7 +199,7 @@ def test_format_tick_instruction_error_invalid_keys(route_module) -> None:
         "payload": {"participant_id": "alice"},
     }
     out = route_module.format_tick_instruction(tick, "demo", "alice")
-    assert "[CognitiveEngine — error: counter_offer_invalid_keys]" in out
+    assert "[CognitiveEngine error: counter_offer_invalid_keys]" in out
     # Error ticks also surface the agent's handle so the recovery commands
     # below are unambiguous.
     assert "You are @alice in room demo." in out
@@ -234,7 +234,7 @@ def test_format_consensus_summary_agreement(route_module) -> None:
             "plan_file": "plan/tasks.md",
         }
     )
-    assert "[CognitiveEngine — Consensus Reached!]" in summary
+    assert "[CognitiveEngine: Consensus Reached!]" in summary
     assert "ship REST in Q1" in summary
     assert "  alice: build endpoints" in summary
     assert "  bob: write tests" in summary
@@ -247,7 +247,7 @@ def test_format_consensus_summary_broken(route_module) -> None:
     summary = route_module.format_consensus_summary(
         {"broken": True, "plan": "Negotiation ended: timeout"}
     )
-    assert "[CognitiveEngine — Negotiation FAILED]" in summary
+    assert "[CognitiveEngine: Negotiation FAILED]" in summary
     assert "Negotiation ended: timeout" in summary
     # Broken summaries don't include assignments or plan-file pointer.
     assert "Assignments:" not in summary

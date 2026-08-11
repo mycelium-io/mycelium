@@ -26,7 +26,7 @@ export function RoomChatBox({ roomName, defaultSender, onSent }: Props) {
   const [highlight, setHighlight] = useState(0);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
-  // Persist sender across reloads — agents see the same handle every time.
+  // Persist sender across reloads so agents see the same handle every time.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const saved = window.localStorage.getItem(SENDER_STORAGE_KEY);
@@ -188,7 +188,7 @@ export function RoomChatBox({ roomName, defaultSender, onSent }: Props) {
                 </span>
                 {a.description && (
                   <span className="text-micro text-muted truncate min-w-0">
-                    — {a.description}
+                    · {a.description}
                   </span>
                 )}
               </button>
@@ -201,7 +201,7 @@ export function RoomChatBox({ roomName, defaultSender, onSent }: Props) {
           value={content}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
-          placeholder="message the room — @ to mention an agent · ⇧⏎ for newline"
+          placeholder="message the room · @ to mention an agent · ⇧⏎ for newline"
           rows={2}
           className="w-full resize-none bg-bg border border-border rounded px-3 py-2 font-mono text-label focus:outline-none focus:border-accent placeholder:text-muted"
           disabled={sending}

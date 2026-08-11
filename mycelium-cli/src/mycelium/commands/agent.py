@@ -47,7 +47,7 @@ from mycelium.protocol import AGENT_ADAPTERS, AgentManifest
 app = typer.Typer(
     help=(
         "Name an addressable agent inside a room. "
-        "An agent is a memory entry plus an adapter route — `agent create` (new) "
+        "An agent is a memory entry plus an adapter route: `agent create` (new) "
         "or `agent add` (adopt existing) writes the manifest, `agent invoke` "
         "sends an @handle message into its home room."
     ),
@@ -495,7 +495,7 @@ def agent_create(
         help=(
             "openclaw: copy auth-profiles.json from this existing OpenClaw "
             "agent so the new one can authenticate (it's created with no "
-            "creds otherwise). Duplicates a secret — choose deliberately."
+            "creds otherwise). Duplicates a secret, so choose deliberately."
         ),
     ),
     room: str | None = typer.Option(
@@ -509,7 +509,7 @@ def agent_create(
         "--budget",
         help=(
             "claude_code: monthly USD spend cap enforced by the daemon. "
-            "cursor: stored but not enforced — cursor-agent doesn't report "
+            "cursor: stored but not enforced. cursor-agent doesn't report "
             "per-call $ cost (token counts only), so the daemon can't sum "
             "spend reliably; cap your Cursor account separately."
         ),

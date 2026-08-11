@@ -92,7 +92,7 @@ def _get_active_room(room: str | None) -> str:
 
 @doc_ref(
     usage="mycelium memory set <key> <value> [--handle <handle>]",
-    desc="Write a memory (upsert). Structured category keys (<code>work/</code>, <code>decisions/</code>, <code>status/</code>, <code>context/</code>) are auto-validated. Always upserts — the backend handles versioning.",
+    desc="Write a memory (upsert). Structured category keys (<code>work/</code>, <code>decisions/</code>, <code>status/</code>, <code>context/</code>) are auto-validated. Always upserts; the backend handles versioning.",
     group="memory",
 )
 @app.command(name="set")
@@ -111,7 +111,7 @@ def memory_set(
     Keys with a known category prefix (work/, decisions/, context/, status/) are
     validated for slug format. Other keys pass through freely.
 
-    Always upserts — the backend handles versioning.
+    Always upserts; the backend handles versioning.
 
     Examples:
         mycelium memory set status/deploy ACTIVE
@@ -218,7 +218,7 @@ def memory_get(
     room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
     raw: bool = typer.Option(False, "--raw", help="Show raw markdown file content"),
 ) -> None:
-    """Read a memory by key — reads directly from the filesystem."""
+    """Read a memory by key (reads directly from the filesystem)."""
     room_name = _get_active_room(room)
     room_dir = get_room_dir(room_name)
 
@@ -258,7 +258,7 @@ def memory_ls(
     ),
     limit: int = typer.Option(20, "--limit", "-n", help="Max results"),
 ) -> None:
-    """List memories in a room — reads directly from the filesystem."""
+    """List memories in a room (reads directly from the filesystem)."""
     prefix = namespace or prefix
     room_name = _get_active_room(room)
     room_dir = get_room_dir(room_name)
@@ -283,7 +283,7 @@ def memory_ls(
 
 @doc_ref(
     usage="mycelium memory search <query>",
-    desc="Semantic search — finds memories by meaning using cosine similarity on local embeddings. Requires the backend API.",
+    desc="Semantic search: finds memories by meaning using cosine similarity on local embeddings. Requires the backend API.",
     group="memory",
 )
 @app.command(name="search")
@@ -323,7 +323,7 @@ def memory_search(
 
 @doc_ref(
     usage="mycelium memory rm <key> [--force]",
-    desc="Delete a memory — removes the markdown file and search index entry.",
+    desc="Delete a memory: removes the markdown file and search index entry.",
     group="memory",
 )
 @app.command(name="rm")
@@ -332,7 +332,7 @@ def memory_rm(
     room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
     force: bool = typer.Option(False, "--force", "-f", help="Skip confirmation"),
 ) -> None:
-    """Delete a memory — removes both the file and search index."""
+    """Delete a memory (removes both the file and search index)."""
     from mycelium_backend_client.api.memory import (
         delete_memory_api_rooms_room_name_memory_key_delete as delete_api,
     )
@@ -422,7 +422,7 @@ def _list_by_category(category: str, room: str | None, limit: int) -> None:
         console.print(f"[dim]No {category} memories found[/dim]")
         return
 
-    table = Table(title=f"{room_name} — {category}", show_lines=False)
+    table = Table(title=f"{room_name}: {category}", show_lines=False)
     table.add_column("Key", style="cyan", no_wrap=True)
     table.add_column("Value", max_width=80)
     table.add_column("By", style="dim")
@@ -440,7 +440,7 @@ def _list_by_category(category: str, room: str | None, limit: int) -> None:
 
 @doc_ref(
     usage="mycelium memory status",
-    desc="Show current status — filters to <code>status/*</code> memories as a table.",
+    desc="Show current status: filters to <code>status/*</code> memories as a table.",
     group="memory",
 )
 @app.command(name="status")
@@ -448,13 +448,13 @@ def memory_status(
     room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
     limit: int = typer.Option(20, "--limit", "-n", help="Max results"),
 ) -> None:
-    """Show current status of everything — filters to status/* memories."""
+    """Show current status of everything (filters to status/* memories)."""
     _list_by_category("status", room, limit)
 
 
 @doc_ref(
     usage="mycelium memory work",
-    desc="Show what's been built — filters to <code>work/*</code> memories as a table.",
+    desc="Show what's been built: filters to <code>work/*</code> memories as a table.",
     group="memory",
 )
 @app.command(name="work")
@@ -462,13 +462,13 @@ def memory_work(
     room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
     limit: int = typer.Option(20, "--limit", "-n", help="Max results"),
 ) -> None:
-    """Show what's been built — filters to work/* memories."""
+    """Show what's been built (filters to work/* memories)."""
     _list_by_category("work", room, limit)
 
 
 @doc_ref(
     usage="mycelium memory decisions",
-    desc="Show why choices were made — filters to <code>decisions/*</code> memories as a table.",
+    desc="Show why choices were made: filters to <code>decisions/*</code> memories as a table.",
     group="memory",
 )
 @app.command(name="decisions")
@@ -476,13 +476,13 @@ def memory_decisions(
     room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
     limit: int = typer.Option(20, "--limit", "-n", help="Max results"),
 ) -> None:
-    """Show why choices were made — filters to decisions/* memories."""
+    """Show why choices were made (filters to decisions/* memories)."""
     _list_by_category("decisions", room, limit)
 
 
 @doc_ref(
     usage="mycelium memory context",
-    desc="Show background and preferences — filters to <code>context/*</code> memories as a table.",
+    desc="Show background and preferences: filters to <code>context/*</code> memories as a table.",
     group="memory",
 )
 @app.command(name="context")
@@ -490,13 +490,13 @@ def memory_context(
     room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
     limit: int = typer.Option(20, "--limit", "-n", help="Max results"),
 ) -> None:
-    """Show background and preferences — filters to context/* memories."""
+    """Show background and preferences (filters to context/* memories)."""
     _list_by_category("context", room, limit)
 
 
 @doc_ref(
     usage="mycelium memory procedures",
-    desc="Show reusable how-to steps — filters to <code>procedures/*</code> memories as a table.",
+    desc="Show reusable how-to steps: filters to <code>procedures/*</code> memories as a table.",
     group="memory",
 )
 @app.command(name="procedures")
@@ -504,7 +504,7 @@ def memory_procedures(
     room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
     limit: int = typer.Option(20, "--limit", "-n", help="Max results"),
 ) -> None:
-    """Show reusable how-to procedures — filters to procedures/* memories."""
+    """Show reusable how-to procedures (filters to procedures/* memories)."""
     _list_by_category("procedures", room, limit)
 
 
@@ -513,7 +513,7 @@ def memory_procedures(
 
 @doc_ref(
     usage="mycelium sync [--no-reindex]",
-    desc="Sync the active room with the backend — fetch all memories from the API and write them locally.",
+    desc="Sync the active room with the backend: fetch all memories from the API and write them locally.",
     group="other",
 )
 @app.command(name="sync")
@@ -521,7 +521,7 @@ def memory_sync(
     room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
     no_reindex: bool = typer.Option(False, "--no-reindex", help="Skip re-indexing after sync"),
 ) -> None:
-    """Sync room files from the backend API — fetches all memories and writes local copies.
+    """Sync room files from the backend API, fetching all memories and writing local copies.
 
     Use this to pull the latest room state from a remote backend instance.
     Hooks call this on session start/end to keep local files current.

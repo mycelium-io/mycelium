@@ -172,9 +172,9 @@ def format_tick_instruction(tick_data: dict[str, Any], room_name: str, target_ag
     # Round header — surface budget so the agent can decide whether to keep
     # pushing or walk away (no-agreement is a legitimate outcome).
     if isinstance(n_steps_total, int) and n_steps_total > 0:
-        round_header = f"[CognitiveEngine — Round {round_} of {n_steps_total}]"
+        round_header = f"[CognitiveEngine: Round {round_} of {n_steps_total}]"
     else:
-        round_header = f"[CognitiveEngine — Round {round_}]"
+        round_header = f"[CognitiveEngine: Round {round_}]"
 
     context_lines: list[str] = []
     if isinstance(prior_outcome, str) and prior_outcome and prior_outcome != "first_round":
@@ -259,7 +259,7 @@ def format_tick_instruction(tick_data: dict[str, Any], room_name: str, target_ag
             f"To reject: mycelium negotiate respond reject --room {room_name} --handle {target_agent}",
             "",
             "Explain your reasoning before running the command. Walking away with no "
-            "agreement is a legitimate outcome — keep rejecting until the session ends "
+            "agreement is a legitimate outcome; keep rejecting until the session ends "
             "if your hard constraints can't be met.",
         ]
     )
@@ -279,7 +279,7 @@ def _format_error_tick(tick_data: dict[str, Any], room_name: str, target_agent: 
     bad_keys: list[str] = list(bad_keys_raw) if isinstance(bad_keys_raw, list) else []
 
     lines: list[str] = [
-        f"[CognitiveEngine — error: {error_kind}]",
+        f"[CognitiveEngine error: {error_kind}]",
         f"You are @{target_agent} in room {room_name}.",
     ]
     if instruction:
@@ -366,11 +366,11 @@ def format_consensus_summary(data: dict[str, Any]) -> str:
     plan_file = plan_file_raw if isinstance(plan_file_raw, str) else ""
 
     if broken:
-        return f"[CognitiveEngine — Negotiation FAILED]\n{plan}"
+        return f"[CognitiveEngine: Negotiation FAILED]\n{plan}"
 
     plan_text = plan if isinstance(plan, str) else json.dumps(plan, indent=2, default=str)
     lines: list[str] = [
-        "[CognitiveEngine — Consensus Reached!]",
+        "[CognitiveEngine: Consensus Reached!]",
         "",
         plan_text,
         "",

@@ -29,16 +29,16 @@ from pathlib import Path
 # 3 pages, each a long doc with a grouped sidebar.
 # (page_id, file_name, page_title, top_nav_label, sheet_no, plate_title, meta_description)
 PAGES: list[tuple[str, str, str, str, str, str, str]] = [
-    ("start", "index.html", "mycelium — Docs", "Get Started",
+    ("start", "index.html", "mycelium Docs", "Get Started",
      "GET-001", "OVERVIEW · INSTALL · FIRST ROOM · COORDINATE",
      "Coordination layer for multi-agent systems. Install and run your first multi-agent coordination flow: room, agents, negotiation, plan."),
-    ("concepts", "concepts.html", "Concepts — mycelium", "Concepts",
+    ("concepts", "concepts.html", "Concepts · mycelium", "Concepts",
      "CON-001", "CONCEPTS · ROOMS · EPISODES · MEMORY · PLAN",
      "The core concepts behind Mycelium: rooms, episodes, memory, plan, the aligner, and the L9 protocol."),
-    ("adapters", "adapters.html", "Adapters — mycelium", "Adapters",
+    ("adapters", "adapters.html", "Adapters · mycelium", "Adapters",
      "ADP-001", "ADAPTERS · CLAUDE CODE · OPENCLAW · HERMES · REST API",
      "Connect Claude Code, OpenClaw, Hermes, or any HTTP client to the Mycelium coordination layer."),
-    ("reference", "reference.html", "Reference — mycelium", "Reference",
+    ("reference", "reference.html", "Reference · mycelium", "Reference",
      "REF-001", "REFERENCE · ARCHITECTURE · CLI · CONFIG · GUIDES · HELP",
      "Architecture, CLI reference, configuration, guides, and troubleshooting for Mycelium."),
 ]

@@ -871,7 +871,7 @@ def show_trace(
         "--events",
         help=(
             "Interleave OTel span events (timestamped log-like records the"
-            " gateway attached mid-span — exceptions, prompt build steps,"
+            " gateway attached mid-span: exceptions, prompt build steps,"
             " tool I/O snapshots, etc.) under their parent spans."
         ),
     ),

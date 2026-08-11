@@ -160,8 +160,8 @@ export function formatTickInstruction(
   // away with no agreement (a legitimate outcome — see SKILL.md).
   const roundHeader =
     typeof nStepsTotal === "number" && nStepsTotal > 0
-      ? `[CognitiveEngine — Round ${round} of ${nStepsTotal}]`
-      : `[CognitiveEngine — Round ${round}]`;
+      ? `[CognitiveEngine: Round ${round} of ${nStepsTotal}]`
+      : `[CognitiveEngine: Round ${round}]`;
 
   // Prior-round context — eliminates the "this is my offer reflected back"
   // confusion by stating what just happened explicitly.
@@ -265,7 +265,7 @@ export function formatTickInstruction(
     "",
     "Include `--confidence <0-1>` in your reply, and optionally `--evidence <path-or-claim>` (repeatable) and `--reasoning <why>` to cite what your position rests on. If you accept only by deference (yielding without being persuaded), add `--defer-to <handle>`; that honesty is measured, not punished.",
     "",
-    "Explain your reasoning before running the command. Walking away with no agreement is a legitimate outcome — keep rejecting until the session ends if your hard constraints can't be met.",
+    "Explain your reasoning before running the command. Walking away with no agreement is a legitimate outcome; keep rejecting until the session ends if your hard constraints can't be met.",
   ]
     .filter(Boolean)
     .join("\n");
@@ -291,7 +291,7 @@ export function formatErrorTick(
   const badKeys = Array.isArray(tickData?.bad_keys) ? tickData.bad_keys : [];
 
   const lines: string[] = [
-    `[CognitiveEngine — error: ${errorKind}]`,
+    `[CognitiveEngine error: ${errorKind}]`,
     `Room: ${roomName}`,
   ];
   if (instruction) lines.push("", instruction);
@@ -372,7 +372,7 @@ export function formatConsensusSummary(consensusData: any): string {
     typeof consensusData?.plan_file === "string" ? consensusData.plan_file : "";
 
   if (broken) {
-    return `[CognitiveEngine — Negotiation FAILED]\n${plan}`;
+    return `[CognitiveEngine: Negotiation FAILED]\n${plan}`;
   }
 
   // Consensus quality metrics (when the backend computed them):
@@ -390,7 +390,7 @@ export function formatConsensusSummary(consensusData: any): string {
   const cfnPersisted = consensusData?.cfn_persisted === true;
 
   return [
-    "[CognitiveEngine — Consensus Reached!]",
+    "[CognitiveEngine: Consensus Reached!]",
     "",
     typeof plan === "string" ? plan : JSON.stringify(plan, null, 2),
     "",

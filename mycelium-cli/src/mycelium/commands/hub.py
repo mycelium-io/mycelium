@@ -99,7 +99,7 @@ def host(ctx: typer.Context) -> None:
         config.save()
 
         typer.secho("SLIM node running.", fg=typer.colors.GREEN)
-        typer.echo(f"  local     → {local_endpoint}  (this machine — saved to config)")
+        typer.echo(f"  local     → {local_endpoint}  (this machine, saved to config)")
         lan_ip = _lan_ip()
         if lan_ip:
             typer.echo(f"  for peers → http://{lan_ip}:{port}")
@@ -133,7 +133,7 @@ def connect(
     """Store a SLIM node endpoint in config.
 
     Same command whether the node is self-hosted or a shared mycelium-hosted
-    rendezvous — just point at a different address.
+    rendezvous: just point at a different address.
     """
     try:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False  # noqa: F841

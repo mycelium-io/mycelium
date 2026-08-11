@@ -3,7 +3,7 @@
 
 // All fetches use relative `/api/*` paths. The Next.js server proxies them
 // to the backend (see next.config.ts `rewrites()`), so the browser only ever
-// talks to its own origin — no CORS, no second public port, no build-time
+// talks to its own origin: no CORS, no second public port, no build-time
 // URL baking. The internal backend URL is a server-side concern.
 
 /**
@@ -45,7 +45,7 @@ export async function createRoom(data: { name: string; is_persistent?: boolean }
         detail = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail);
       }
     } catch {
-      /* non-JSON error body — keep the status-based message */
+      /* non-JSON error body: keep the status-based message */
     }
     throw new Error(detail);
   }
@@ -232,7 +232,7 @@ export interface AgentSummary {
 
 /**
  * List addressable agents in a room. Each agent is a memory entry under
- * `agents/<handle>` (without further path segments — `agents/<handle>/notes`
+ * `agents/<handle>` (without further path segments; `agents/<handle>/notes`
  * and `agents/<handle>/log/...` are filtered out). Used to drive the
  * `@`-mention autocomplete in the room chat box.
  */
@@ -250,7 +250,7 @@ export async function fetchRoomAgents(roomName: string): Promise<AgentSummary[]>
     const rest = key.replace(/^agents\//, "");
     if (!rest || rest.includes("/")) continue;
     // The manifest is YAML. The memory API may hand it back as a raw string,
-    // a structured dict, OR — what the backend actually does — wrapped as
+    // a structured dict, OR (what the backend actually does) wrapped as
     // `{text: "<yaml>"}`. Normalize to one YAML string and parse that; the
     // old code missed the {text} shape and defaulted every agent to
     // claude_code.

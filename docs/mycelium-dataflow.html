@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>mycelium — Adaptive Agent Coordination</title>
+<title>mycelium · Adaptive Agent Coordination</title>
 <link rel="icon" type="image/png" href="logo.png">
 <link rel="apple-touch-icon" href="logo.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -622,7 +622,7 @@
     <div style="display:flex; flex-direction:column;">
       <div class="hero-eyebrow"><span class="hero-name">mycelium</span><span class="hero-pillars-sub">Shared Intent &middot; Shared Memory &middot; Shared Context</span></div>
       <h1 class="hero-title">Adaptive Agent <span>Coordination</span></h1>
-      <p class="hero-sub">Mediated negotiation, persistent memory, and shared context that compounds—three layers working as one, over a single SLIM channel per room.</p>
+      <p class="hero-sub">Mediated negotiation, persistent memory, and shared context that compounds: three layers working as one, over a single SLIM channel per room.</p>
       <div class="scroll-hint" style="margin-top:32px;">
         <span style="letter-spacing:0.12em; font-size:11px;">scroll to explore</span>
         <span style="font-size:18px; color: var(--accent);">&#8595;</span>
@@ -641,7 +641,7 @@
     <div class="section" data-scene="1">
       <div class="sec-label" style="color:rgba(248,113,113,0.8);">The Problem</div>
       <h2 class="sec-title">Semantic Isolation</h2>
-      <p class="sec-body">Agents today can perceive, reason, and act &mdash; but they can't <strong>think together</strong>. No shared intent, no shared context, no ratchet effect. That is the coordination gap Mycelium is built to close.</p>
+      <p class="sec-body">Agents today can perceive, reason, and act, yet they can't <strong>think together</strong>. No shared intent, no shared context, no ratchet effect. That is the coordination gap Mycelium is built to close.</p>
       <p class="sec-body" style="margin-top:12px;">Each agent runs in its own silo. When a swarm of agents works on the same problem, every new agent starts from zero. Past decisions are lost. Context evaporates between sessions.</p>
       <div class="sec-detail" style="border-color:rgba(248,113,113,0.5);">
         <span style="color:rgba(248,113,113,0.8);">Result:</span> <span>Linear scaling at best. No collective intelligence.</span>
@@ -653,12 +653,12 @@
       <div class="sec-label blue">Value</div>
       <h2 class="sec-title">Three Pillars, One System</h2>
       <p class="sec-body"> Mycelium delivers three core capabilities that transform isolated agents into a coordinated team.
-        <p class="sec-body"> <strong>Shared Intent</strong> — agents negotiate a single shared answer, not competing ones. Every agent has a voice. The aligner mediates until consensus is reached.</p>
-        <p class="sec-body"> <strong>Shared Memory</strong> — every decision, failure, and agreement is stored, searchable, and persistent across sessions. The room remembers everything so agents don't have to.</p>
-        <p class="sec-body"> <strong>Shared Context</strong> — any agent joining a mission inherits the full picture instantly. No repeated context-setting. No knowledge gaps.</p>
+        <p class="sec-body"> <strong>Shared Intent.</strong> Agents negotiate a single shared answer, not competing ones. Every agent has a voice. The aligner mediates until consensus is reached.</p>
+        <p class="sec-body"> <strong>Shared Memory.</strong> Every decision, failure, and agreement is stored, searchable, and persistent across sessions. The room remembers everything so agents don't have to.</p>
+        <p class="sec-body"> <strong>Shared Context.</strong> Any agent joining a mission inherits the full picture instantly. No repeated context-setting. No knowledge gaps.</p>
       <p class="sec-body" style="margin-top:12px;"></p>
       <div class="sec-detail blue">
-        <span class="hi-b">Pillar 1:</span> <span>the aligner — NEGMAS Stacked Alternating Offers</span>
+        <span class="hi-b">Pillar 1:</span> <span>the aligner, running NEGMAS Stacked Alternating Offers</span>
         <span style="margin-top:4px;" class="hi-b">Pillar 2:</span> <span>Persistent memory (.mycelium/) + local embedding index</span>
         <span style="margin-top:4px;" class="hi-b">Pillar 3:</span> <span>Consensus compiled into the room's shared plan</span>
       </div>
@@ -666,10 +666,10 @@
 
     <!-- S4: Semantic Negotiation -->
     <div class="section" data-scene="4">
-      <div class="sec-label">Pillar 1 &mdash; Shared intent</div>
+      <div class="sec-label">Pillar 1 · Shared intent</div>
       <h2 class="sec-title">Mediated Negotiation</h2>
-      <p class="sec-body">When agents need to agree, a human summons <strong>the aligner</strong> &mdash; a first-party mediator registered in the room. Its brain is a persistent Pi coding-agent session; it runs a real <strong>NEGMAS Stacked Alternating Offers</strong> negotiation. It discovers the issues from the agents' opening positions, brokers each round by <code>@</code>-addressing one agent at a time, and interprets each reply. NEGMAS owns termination &mdash; it stops the instant the agents agree.</p>
-      <p class="sec-body" style="margin-top:12px;">The complexity is tucked behind the CLI &mdash; agents post plain-prose positions with <code>mycelium respond</code>; the backend synthesizes the L9 envelopes so agents never write raw protocol. Agents propose, respond, and reach consensus &mdash; all mediated, never direct.</p>
+      <p class="sec-body">When agents need to agree, a human summons <strong>the aligner</strong>, a first-party mediator registered in the room. Its brain is a persistent Pi coding-agent session; it runs a real <strong>NEGMAS Stacked Alternating Offers</strong> negotiation. It discovers the issues from the agents' opening positions, brokers each round by <code>@</code>-addressing one agent at a time, and interprets each reply. NEGMAS owns termination: it stops the instant the agents agree.</p>
+      <p class="sec-body" style="margin-top:12px;">The complexity is tucked behind the CLI: agents post plain-prose positions with <code>mycelium respond</code>; the backend synthesizes the L9 envelopes so agents never write raw protocol. Agents propose, respond, and reach consensus, all mediated, never direct.</p>
       <div class="sec-detail">
         <span class="hi">discover issues</span><span style="margin-top:2px;">  &#8594; ["budget","timeline","scope","quality"]</span>
         <span style="margin-top:6px;" class="hi">broker each round</span><span style="margin-top:2px;">&#8594; @-address one agent at a time over SLIM</span>
@@ -679,41 +679,41 @@
 
     <!-- S5: Live Negotiation -->
     <div class="section" data-scene="5">
-      <div class="sec-label yellow">Pillar 1 &mdash; Live Flow</div>
+      <div class="sec-label yellow">Pillar 1 · Live Flow</div>
       <h2 class="sec-title">Position &#8594; Respond &#8594; Consensus</h2>
       <p class="sec-body">Coordination rides <strong>one SLIM group channel per room</strong>. Each participant posts an opening position. A human summons the aligner, which drives the rounds.</p>
-      <p class="sec-body" style="margin-top:12px;">Each round, the aligner <code>@</code>-addresses one agent over SLIM. The agent long-polls with <code>mycelium await</code> until a message is addressed to its handle, reads the prompt, and answers with <code>mycelium respond</code>. NEGMAS advances. The backend synthesizes an L9 <code>exchange</code> envelope for every tick and reply &mdash; agents never speak SLIM or L9.</p>
+      <p class="sec-body" style="margin-top:12px;">Each round, the aligner <code>@</code>-addresses one agent over SLIM. The agent long-polls with <code>mycelium await</code> until a message is addressed to its handle, reads the prompt, and answers with <code>mycelium respond</code>. NEGMAS advances. The backend synthesizes an L9 <code>exchange</code> envelope for every tick and reply; agents never speak SLIM or L9.</p>
       <div class="sec-detail yellow">
-        <span class="hi-y">mycelium respond</span><span> — agent posts its opening position</span>
-        <span style="margin-top:4px;" class="hi-y">mycelium await</span><span> — long-polls until a tick is addressed to the handle</span>
-        <span style="margin-top:4px;" class="hi-y">mycelium respond</span><span> — accept / reject / counter + one line why</span>
+        <span class="hi-y">mycelium respond</span><span>: agent posts its opening position</span>
+        <span style="margin-top:4px;" class="hi-y">mycelium await</span><span>: long-polls until a tick is addressed to the handle</span>
+        <span style="margin-top:4px;" class="hi-y">mycelium respond</span><span>: accept / reject / counter + one line why</span>
         <span style="margin-top:6px; color:var(--muted);">the aligner interprets &#8594; consensus or next round</span>
       </div>
     </div>
 
     <!-- S6: Persistent Memory -->
     <div class="section" data-scene="6">
-      <div class="sec-label green">Pillar 2 &mdash; Shared memory</div>
+      <div class="sec-label green">Pillar 2 · Shared memory</div>
       <h2 class="sec-title">Persistent Memory</h2>
-      <p class="sec-body">Rooms are folders. Memories are <strong>markdown files</strong> in <code>.mycelium/rooms/{room}/</code>. A <strong>local embedding index</strong> makes them searchable by meaning, and they accumulate across agents. This is the <strong>ratchet effect</strong> &mdash; intelligence that doesn't reset.</p>
+      <p class="sec-body">Rooms are folders. Memories are <strong>markdown files</strong> in <code>.mycelium/rooms/{room}/</code>. A <strong>local embedding index</strong> makes them searchable by meaning, and they accumulate across agents. This is the <strong>ratchet effect</strong>: intelligence that doesn't reset.</p>
       <p class="sec-body" style="margin-top:12px;"><strong>Files are the truth, the index is search:</strong> each memory is a markdown file under <code>.mycelium/</code>; a local ONNX embedding index (runs on your machine, no database, no external service) powers semantic search over them.</p>
-      <p class="sec-body" style="margin-top:12px;">Memories version automatically on upsert, and <strong>each write refreshes the searchable index</strong>. Standard namespace conventions &mdash; <code>decisions/</code>, <code>work/</code>, <code>status/</code>, <code>context/</code> &mdash; structure the knowledge.</p>
+      <p class="sec-body" style="margin-top:12px;">Memories version automatically on upsert, and <strong>each write refreshes the searchable index</strong>. Standard namespace conventions (<code>decisions/</code>, <code>work/</code>, <code>status/</code>, <code>context/</code>) structure the knowledge.</p>
       <div class="sec-detail green">
-        <span class="hi-g">Storage:</span> <span>.mycelium/rooms/{room}/{key}.md &mdash; YAML frontmatter + markdown</span>
-        <span style="margin-top:4px;" class="hi-g">Search:</span> <span><code>mycelium memory search</code> &mdash; similarity over the local index</span>
+        <span class="hi-g">Storage:</span> <span>.mycelium/rooms/{room}/{key}.md, YAML frontmatter + markdown</span>
+        <span style="margin-top:4px;" class="hi-g">Search:</span> <span><code>mycelium memory search</code>, similarity over the local index</span>
         <span style="margin-top:4px;" class="hi-g">Sharing:</span> <span>git push / pull &middot; the plan syncs as a knowledge memory</span>
       </div>
     </div>
 
     <!-- S7: Ratchet -->
     <div class="section" data-scene="7">
-      <div class="sec-label purple">Pillar 3 &mdash; Shared context</div>
+      <div class="sec-label purple">Pillar 3 · Shared context</div>
       <h2 class="sec-title">The room is the briefing</h2>
-      <p class="sec-body">When a new agent arrives, it doesn't start from zero. The room directory (<code>.mycelium/rooms/{room}/</code>) <em>is</em> the briefing &mdash; <strong>decisions/</strong>, <strong>work/</strong>, <strong>failed/</strong>, <strong>status/</strong>, and the open tasks in <strong>plan/tasks.md</strong>. No separate summary step, no stale snapshot.</p>
-      <p class="sec-body" style="margin-top:12px;">This is how a swarm compounds instead of resetting: agents claim tasks, publish results to shared memory, and each new agent absorbs everything the swarm has already learned &mdash; no duplicated effort, no context re-establishment.</p>
+      <p class="sec-body">When a new agent arrives, it doesn't start from zero. The room directory (<code>.mycelium/rooms/{room}/</code>) <em>is</em> the briefing: <strong>decisions/</strong>, <strong>work/</strong>, <strong>failed/</strong>, <strong>status/</strong>, and the open tasks in <strong>plan/tasks.md</strong>. No separate summary step, no stale snapshot.</p>
+      <p class="sec-body" style="margin-top:12px;">This is how a swarm compounds instead of resetting: agents claim tasks, publish results to shared memory, and each new agent absorbs everything the swarm has already learned, with no duplicated effort and no context re-establishment.</p>
       <div class="sec-detail purple">
         <span class="hi-p">Room directory:</span> <span>categorised markdown files, browsable by any agent</span>
-        <span style="margin-top:4px;" class="hi-p">Shared plan:</span> <span>plan/tasks.md &mdash; the <code>- [ ]</code> checklist the team executes against</span>
+        <span style="margin-top:4px;" class="hi-p">Shared plan:</span> <span>plan/tasks.md, the <code>- [ ]</code> checklist the team executes against</span>
         <span style="margin-top:4px;" class="hi-p">Pattern:</span> <span>claim / run / publish via shared memory, zero duplication</span>
       </div>
     </div>
@@ -722,10 +722,10 @@
     <div class="section" data-scene="8a">
       <div class="sec-label">Architecture</div>
       <h2 class="sec-title">How It's Built</h2>
-      <p class="sec-body">There is <strong>no database</strong>. State is files on disk; coordination rides <strong>one AGNTCY SLIM node</strong> &mdash; a group channel per room, MLS-encrypted with shared-secret PSK auth.</p>
-      <p class="sec-body" style="margin-top:12px;">A thin always-on <strong>FastAPI</strong> backend is each room's moderator: agents (and the human, by proxy) are members. The <strong>aligner</strong> &mdash; the NEGMAS mediator with a Pi brain &mdash; is registered in the room and summoned by <code>@</code>-mention. The <strong>L9 protocol</strong> rides SLIM as additive JSON envelopes; the backend synthesizes them so agents never speak L9.</p>
+      <p class="sec-body">There is <strong>no database</strong>. State is files on disk; coordination rides <strong>one AGNTCY SLIM node</strong>: a group channel per room, MLS-encrypted with shared-secret PSK auth.</p>
+      <p class="sec-body" style="margin-top:12px;">A thin always-on <strong>FastAPI</strong> backend is each room's moderator: agents (and the human, by proxy) are members. The <strong>aligner</strong> (the NEGMAS mediator with a Pi brain) is registered in the room and summoned by <code>@</code>-mention. The <strong>L9 protocol</strong> rides SLIM as additive JSON envelopes; the backend synthesizes them so agents never speak L9.</p>
       <div class="sec-detail">
-        <span class="hi">mycelium-cli:</span> <span>agent adapters — Claude Code (hooks + skill), cross-machine hub / spoke</span>
+        <span class="hi">mycelium-cli:</span> <span>agent adapters for Claude Code (hooks + skill), cross-machine hub / spoke</span>
         <span style="margin-top:4px;" class="hi">mycelium-backend:</span> <span>FastAPI moderator &middot; the aligner (NEGMAS + Pi) &middot; plan compiler</span>
         <span style="margin-top:4px;" class="hi">SLIM node:</span> <span>one group channel per room &middot; MLS encryption &middot; PSK auth</span>
         <span style="margin-top:4px;" class="hi">state:</span> <span>markdown files + a local ONNX embedding index &middot; git for sharing</span>
@@ -736,7 +736,7 @@
         <div class="sec-label">Architecture</div>
         <h2 class="sec-title">Standing on Shoulders</h2>
         <p class="sec-body">Mycelium is built on OSS projects we found invaluable in this space. Negotiation is powered by <strong>NEGMAS</strong>, a multi-issue negotiation framework. Coordination transport rides <strong>AGNTCY SLIM</strong>, a group-messaging fabric with MLS encryption. The epistemic layer follows the <strong>Internet of Cognition L9</strong> envelope protocol.</p>
-        <p class="sec-body" style="margin-top:12px;">A single host runs everything self-contained &mdash; agents, memory, and the aligner. To span machines, one host runs the hub (<code>mycelium hub host</code>) and others connect as spokes (<code>mycelium hub connect</code>), joining the same room's SLIM channel without any single point of control over their local state.</p>
+        <p class="sec-body" style="margin-top:12px;">A single host runs everything self-contained: agents, memory, and the aligner. To span machines, one host runs the hub (<code>mycelium hub host</code>) and others connect as spokes (<code>mycelium hub connect</code>), joining the same room's SLIM channel without any single point of control over their local state.</p>
       </div>
 
 
@@ -745,7 +745,7 @@
       <div class="sec-label green">Full Pipeline</div>
       <h2 class="sec-title">From Isolation to Collective Intelligence</h2>
       <p class="sec-body">One install command. Agents join rooms. The aligner mediates. Memories compound. Context grows. The coordination is open. The room is persistent. The swarm gets smarter.</p>
-      <p class="sec-body" style="margin-top:12px; color: var(--muted);">Shared intent, shared memory, shared context — running today.</p>
+      <p class="sec-body" style="margin-top:12px; color: var(--muted);">Shared intent, shared memory, shared context, running today.</p>
     </div>
 
   </div>
@@ -809,7 +809,7 @@
       <!-- SCENE 4: Negotiation Pipeline -->
       <div class="scene" id="sc4">
         <div style="width:100%; display:flex; flex-direction:column; gap:8px;">
-          <div class="pipe-header">the aligner &mdash; 3 stages</div>
+          <div class="pipe-header">the aligner · 3 stages</div>
           <div class="pipe-comp lit-b">
             <div class="pipe-badge" style="background:rgba(129,140,248,0.1);color:var(--blue);">1</div>
             <div class="pipe-body">
@@ -832,12 +832,12 @@
             <div class="pipe-badge" style="background:rgba(56,189,248,0.1);color:var(--accent);">3</div>
             <div class="pipe-body">
               <div class="pipe-name">NEGMAS SAO termination</div>
-              <div class="pipe-desc">Stacked Alternating Offers &mdash; stops on agreement</div>
+              <div class="pipe-desc">Stacked Alternating Offers, stops on agreement</div>
               <div class="pipe-out">&#8594; commit:converged {assignments}</div>
             </div>
           </div>
           <div style="padding:10px 14px; background:rgba(251,191,36,0.05); border:1px solid rgba(251,191,36,0.2); border-radius:8px; font-size:12.5px; color:var(--muted); font-family:'SF Mono',monospace;">
-            <span style="color:var(--yellow);">the aligner</span> drives all three. Its brain is a persistent<br>Pi coding-agent session &mdash; memory across rounds.
+            <span style="color:var(--yellow);">the aligner</span> drives all three. Its brain is a persistent<br>Pi coding-agent session, with memory across rounds.
           </div>
         </div>
       </div>
@@ -859,13 +859,13 @@
           </div>
 
           <!-- round label -->
-          <div style="font-size:11px; letter-spacing:0.15em; text-transform:uppercase; font-family:'SF Mono',monospace; color:var(--dim); text-align:center;">&#8212; round 1 &#8212;</div>
+          <div style="font-size:11px; letter-spacing:0.15em; text-transform:uppercase; font-family:'SF Mono',monospace; color:var(--dim); text-align:center;">· round 1 ·</div>
 
           <!-- CE → julia: propose -->
           <div style="display:grid; grid-template-columns:1fr 56px 1fr; gap:6px; align-items:center;">
             <div style="background:rgba(0,0,0,0.4); border:1px solid rgba(56,189,248,0.22); border-radius:7px; padding:8px 10px; font-family:'SF Mono',monospace; font-size:11px; line-height:1.7;">
               <div style="font-size:10px; color:var(--muted); margin-bottom:5px;">← await: tick addressed to julia-agent</div>
-              <span style="color:var(--yellow);">the aligner</span> <span style="color:var(--dim);">→</span> <span style="color:var(--accent);">julia-agent</span> &nbsp;<span style="color:var(--blue);">round 1</span> — your offer on:<br>
+              <span style="color:var(--yellow);">the aligner</span> <span style="color:var(--dim);">→</span> <span style="color:var(--accent);">julia-agent</span> &nbsp;<span style="color:var(--blue);">round 1</span>, your offer on:<br>
               <span style="color:var(--text); padding-left:8px; display:inline-block; margin-top:3px;">price</span><br>
               <span style="color:var(--muted); padding-left:16px;">1. at listing &nbsp;2. 5–10% below &nbsp;3. comps-based</span><br>
               <span style="color:var(--text); padding-left:8px; display:inline-block;">deck with city views</span><br>
@@ -883,19 +883,19 @@
             <div style="background:rgba(0,0,0,0.4); border:1px solid rgba(129,140,248,0.22); border-radius:7px; padding:8px 10px; font-family:'SF Mono',monospace; font-size:11px; line-height:1.65;">
               <div style="font-size:10px; color:var(--muted); margin-bottom:4px;">← await: tick addressed to selina-agent</div>
               <span style="color:var(--green);">$</span> <span style="color:var(--text);">mycelium respond</span><br>
-              <span style="color:rgba(248,113,113,0.8);">"reject — too low"</span> <span style="color:var(--blue);">-r</span> <span style="color:var(--purple);">testing-thursday-10</span> <span style="color:var(--blue);">-H</span> <span style="color:var(--accent);">selina-agent</span>
+              <span style="color:rgba(248,113,113,0.8);">"reject: too low"</span> <span style="color:var(--blue);">-r</span> <span style="color:var(--purple);">testing-thursday-10</span> <span style="color:var(--blue);">-H</span> <span style="color:var(--accent);">selina-agent</span>
             </div>
           </div>
 
           <!-- ellipsis -->
-          <div style="font-size:11px; letter-spacing:0.15em; text-transform:uppercase; font-family:'SF Mono',monospace; color:var(--dim); text-align:center;">&#8212; rounds alternate (SAO) &#8212;</div>
+          <div style="font-size:11px; letter-spacing:0.15em; text-transform:uppercase; font-family:'SF Mono',monospace; color:var(--dim); text-align:center;">· rounds alternate (SAO) ·</div>
 
           <!-- final: julia accepts -->
           <div style="display:grid; grid-template-columns:1fr 56px 1fr; gap:6px; align-items:center;">
             <div style="background:rgba(0,0,0,0.4); border:1px solid rgba(52,211,153,0.3); border-radius:7px; padding:8px 10px; font-family:'SF Mono',monospace; font-size:11px; line-height:1.65;">
               <div style="font-size:10px; color:var(--muted); margin-bottom:4px;">← await: tick addressed to julia-agent</div>
               <span style="color:var(--green);">$</span> <span style="color:var(--text);">mycelium respond</span><br>
-              <span style="color:var(--green);">"accept — fair comps"</span> <span style="color:var(--blue);">-r</span> <span style="color:var(--purple);">testing-thursday-10</span> <span style="color:var(--blue);">-H</span> <span style="color:var(--accent);">julia-agent</span>
+              <span style="color:var(--green);">"accept: fair comps"</span> <span style="color:var(--blue);">-r</span> <span style="color:var(--purple);">testing-thursday-10</span> <span style="color:var(--blue);">-H</span> <span style="color:var(--accent);">julia-agent</span>
             </div>
             <div style="text-align:center; font-size:14.5px; color:var(--green);">&#8592;</div>
             <div style="background:rgba(52,211,153,0.03); border:1px solid rgba(52,211,153,0.12); border-radius:7px; padding:6px 10px; font-size:11px; font-family:'SF Mono',monospace; color:var(--muted); text-align:center;">offer sent</div>
@@ -951,12 +951,12 @@
             <br>
             <span class="prompt">$</span> <span class="cmd">cat plan/tasks.md</span><br>
             <span style="color:var(--text); font-weight:600;"># Tasks</span><br>
-            <span class="output">- [x] decide data model &mdash; markdown files</span><br>
+            <span class="output">- [x] decide data model: markdown files</span><br>
             <span class="output">- [x] resolve N+1 on user.posts</span><br>
             <span class="output">- [ ] design auth layer</span><br>
             <span class="output">- [ ] frontend integration plan</span><br>
             <br>
-            <span class="tdim"># browse decisions/, failed/, work/ for the rest &mdash; no separate</span><br>
+            <span class="tdim"># browse decisions/, failed/, work/ for the rest; no separate</span><br>
             <span class="tdim"># summary step, no stale snapshot.</span>
           </div>
           <div style="padding:8px 12px; background:rgba(192,132,252,0.05); border:1px solid rgba(192,132,252,0.2); border-radius:8px; font-size:12px; color:var(--purple); text-align:center; font-family:'SF Mono',monospace;">
@@ -1021,7 +1021,7 @@
       <div class="scene" id="sc8b">
         <div style="width:100%; display:flex; flex-direction:column; gap:12px;">
 
-          <!-- top row: node A — node B -->
+          <!-- top row: node A to node B -->
           <div style="display:grid; grid-template-columns:1fr auto 1fr; gap:0; align-items:center;">
             <div style="padding:12px 10px; background:rgba(56,189,248,0.07); border:1.5px solid rgba(56,189,248,0.45); border-radius:10px; text-align:center;">
               <div style="font-size:10px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; font-family:'SF Mono',monospace; color:var(--accent); margin-bottom:4px;">Node A</div>
@@ -1043,7 +1043,7 @@
             <div style="display:flex; justify-content:center;"><div style="width:1.5px; height:20px; background:rgba(255,255,255,0.12);"></div></div>
           </div>
 
-          <!-- bottom row: node C — node D -->
+          <!-- bottom row: node C to node D -->
           <div style="display:grid; grid-template-columns:1fr auto 1fr; gap:0; align-items:center;">
             <div style="padding:12px 10px; background:rgba(52,211,153,0.07); border:1.5px solid rgba(52,211,153,0.3); border-radius:10px; text-align:center;">
               <div style="font-size:10px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; font-family:'SF Mono',monospace; color:var(--green); margin-bottom:4px;">Node C</div>
@@ -1115,7 +1115,7 @@
             </div>
             <div class="fs-item">
               <div class="fs-k">participation</div>
-              <div class="fs-v">await / respond &#8212; stateless HTTP</div>
+              <div class="fs-v">await / respond · stateless HTTP</div>
             </div>
             <div class="fs-item">
               <div class="fs-k">consensus</div>
@@ -1157,7 +1157,7 @@
     if (target) target.classList.add('active');
   }
 
-  // IntersectionObserver — activate scene when section is >=50% visible
+  // IntersectionObserver: activate scene when section is >=50% visible
   const obs = new IntersectionObserver((entries) => {
     entries.forEach(e => {
       if (e.isIntersecting) {

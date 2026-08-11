@@ -24,7 +24,7 @@ interface Props {
  * Consent-to-be-woken prompt. When a
  * human `@`-mentions an agent that isn't in the room yet, the backend raises a
  * pending invite and pushes a `consent_request` event; this surfaces it as an
- * accept/decline call. It should feel like accepting a phone call — nothing
+ * accept/decline call. It should feel like accepting a phone call: nothing
  * joins until Accept, and dismissing the prompt declines.
  */
 export function ConsentDialog({ invite, onAccept, onDecline }: Props) {
