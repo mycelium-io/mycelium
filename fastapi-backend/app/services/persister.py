@@ -40,6 +40,7 @@ import re
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from app.schemas import MessageType
@@ -180,13 +181,30 @@ class DeliveryLog:
     re-serves on reconnect.
     """
 
-    def __init__(self, records: list[TranscriptRecord] | None = None) -> None:
+    def __init__(
+        self,
+        records: list[TranscriptRecord] | None = None,
+        cursors: dict[str, int] | None = None,
+    ) -> None:
         self._records: list[TranscriptRecord] = list(records or [])
-        self._cursors: dict[str, int] = {}
+        # Cursors are loaded alongside records on resume. Clamp each to the valid
+        # range [0, len(records)] so a cursor file that drifted from the transcript
+        # (e.g. one write landed and the other didn't across a crash) can never
+        # index out of bounds — a stale-high cursor just re-serves nothing, a
+        # stale-low one re-serves a bounded, in-range tail.
+        n = len(self._records)
+        self._cursors: dict[str, int] = {
+            str(h): max(0, min(int(pos), n)) for h, pos in (cursors or {}).items()
+        }
 
     @property
     def records(self) -> list[TranscriptRecord]:
         return list(self._records)
+
+    @property
+    def cursors(self) -> dict[str, int]:
+        """A snapshot of each known handle's delivery position, for persistence."""
+        return dict(self._cursors)
 
     def knows(self, handle: str) -> bool:
         """True once ``handle`` has ever been tracked (join or delivery)."""
@@ -322,6 +340,38 @@ def write_transcript(room: str, records: list[TranscriptRecord]) -> None:
         logger.exception("transcript write failed for room %s", room)
 
 
+# Delivery cursors persist next to the transcript so a reconnecting agent's
+# missed tail survives a backend restart. A dot-prefixed .json — not a markdown
+# memory — so it stays out of the memory/search surface (which globs ``*.md``).
+def _cursors_path(room: str) -> Path:
+    from app.services.filesystem import get_room_dir
+
+    return get_room_dir(room) / "log" / ".delivery-cursors.json"
+
+
+def load_cursors(room: str) -> dict[str, int]:
+    """Read a room's persisted delivery cursors (empty when none exists)."""
+    path = _cursors_path(room)
+    try:
+        if path.exists():
+            data = json.loads(path.read_text())
+            if isinstance(data, dict):
+                return {str(h): int(pos) for h, pos in data.items()}
+    except (OSError, ValueError, TypeError):
+        logger.warning("could not load delivery cursors for room %s; starting empty", room)
+    return {}
+
+
+def write_cursors(room: str, cursors: dict[str, int]) -> None:
+    """Persist a room's delivery cursors alongside the transcript (best-effort)."""
+    try:
+        path = _cursors_path(room)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(cursors))
+    except Exception:
+        logger.exception("delivery-cursor write failed for room %s", room)
+
+
 # ── The receive loop ─────────────────────────────────────────────────────────
 
 SummonHook = Callable[[str, "L9", list[str]], None]
@@ -391,9 +441,11 @@ class RoomPersister:
         self.on_converged = on_converged or _default_converged_hook
         self.on_member_left = on_member_left
         self._feed_bus = feed_bus
-        # Resume from the persisted transcript so cursors/re-serve survive a
-        # backend restart (records already on disk count as history).
-        self.log = DeliveryLog(load_transcript(room))
+        # Resume from disk so re-serve survives a backend restart: the transcript
+        # supplies the records, and the persisted cursors supply each agent's
+        # delivery position — so a member that was offline at shutdown is still
+        # recognised as a reconnect and re-served exactly its missed tail.
+        self.log = DeliveryLog(load_transcript(room), cursors=load_cursors(room))
         # handle -> most recent inbound MessageContext, for targeted re-serve.
         self._contexts: dict[str, slim_bindings.MessageContext] = {}
         # Message ids ingested this process lifetime, so a message the backend
@@ -403,6 +455,10 @@ class RoomPersister:
         # Health counters surfaced via RoomChannelManager.status().
         self.reserves = 0
         self.receive_errors = 0
+
+    def _persist_cursors(self) -> None:
+        """Snapshot the delivery cursors to disk (best-effort, per mutation)."""
+        write_cursors(self.room, self.log.cursors)
 
     # -- membership signals (driven by RoomChannelManager) --
 
@@ -417,6 +473,7 @@ class RoomPersister:
         if self.log.knows(handle):
             return True
         self.log.track(handle, caught_up=True)
+        self._persist_cursors()
         return False
 
     async def reserve(self, handle: str) -> int:
@@ -455,6 +512,7 @@ class RoomPersister:
         if served:
             self.reserves += served
             self.log.mark_caught_up(handle)
+            self._persist_cursors()
             logger.info(
                 "re-served %d missed message(s) to %s in room %s", served, handle, self.room
             )
@@ -560,6 +618,7 @@ class RoomPersister:
         present = set(self._members_provider())
         self.log.record(record, delivered_to=present, recipients=envelope_recipients(envelope))
         write_transcript(self.room, self.log.records)
+        self._persist_cursors()
         # A locally-ingested message (the human proxy) is already in the list store
         # via POST /messages with its own id (for event/PATCH semantics); only
         # messages that ARRIVE over SLIM (agent replies) have no other producer.

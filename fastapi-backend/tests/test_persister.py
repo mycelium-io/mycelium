@@ -96,6 +96,54 @@ def test_transcript_persists_in_order_and_survives_reload():
     assert reloaded[1].sender == "agent-a"
 
 
+# ── delivery-cursor persistence (D5) ─────────────────────────────────────────
+
+
+def test_cursors_round_trip_and_missing_file_is_empty():
+    room = "cursor-rt-room"
+    get_room_dir(room)
+    persister.write_cursors(room, {"agent-a": 2, "agent-b": 0})
+    assert persister.load_cursors(room) == {"agent-a": 2, "agent-b": 0}
+    # A room that never persisted cursors reads back empty, not an error.
+    assert persister.load_cursors("no-such-cursor-room") == {}
+
+
+def test_cursors_survive_a_restart_so_an_offline_tail_is_still_reserved():
+    """The D5 fix: an agent offline at shutdown must still be recognised as a
+    reconnect and re-served exactly its missed tail after a backend restart.
+
+    Before cursors were persisted, only the transcript reloaded; the restarted
+    log knew no cursors, so undelivered() defaulted to the transcript end and the
+    reconnecting agent silently got nothing.
+    """
+    room = "cursor-restart-room"
+    get_room_dir(room)
+
+    log = persister.DeliveryLog()
+    log.track("agent-a", caught_up=True)
+    log.record(_record("m1"), delivered_to={"agent-a"})  # present
+    log.record(_record("m2"), delivered_to={"agent-b"})  # agent-a offline
+    log.record(_record("m3"), delivered_to={"agent-b"})
+    # What the persister writes on each record: transcript + cursors together.
+    persister.write_transcript(room, log.records)
+    persister.write_cursors(room, log.cursors)
+
+    # Rebuild purely from disk — the restart.
+    resumed = persister.DeliveryLog(
+        persister.load_transcript(room), cursors=persister.load_cursors(room)
+    )
+    assert resumed.knows("agent-a")  # a reconnect, not a fresh join
+    assert [r.message_id for r in resumed.undelivered("agent-a")] == ["m2", "m3"]
+
+
+def test_loaded_cursors_are_clamped_to_the_transcript_length():
+    """A cursor file that drifted from the transcript (one write landed across a
+    crash, the other didn't) must never index out of bounds."""
+    log = persister.DeliveryLog([_record("m1")], cursors={"ahead": 5, "behind": -2})
+    assert log.undelivered("ahead") == []  # clamped to end → re-serves nothing
+    assert [r.message_id for r in log.undelivered("behind")] == ["m1"]  # clamped to 0
+
+
 def test_transcript_does_not_clobber_episode_records():
     """The transcript is a distinct file from log/episodes/*."""
     room = "coexist-room"
