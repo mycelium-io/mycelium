@@ -136,11 +136,6 @@ export async function addPlanTask(roomName: string, text: string, slug = "tasks"
   return res.json();
 }
 
-export async function reindexRoom(roomName: string) {
-  const res = await fetch(`/api/rooms/${roomName}/reindex`, { method: "POST" });
-  return res.json();
-}
-
 export async function fetchMessages(roomName: string, limit?: number) {
   const url = limit
     ? `/api/rooms/${roomName}/messages?limit=${limit}`
@@ -304,43 +299,6 @@ export async function fetchCollectorMetrics() {
 
 // ── Traces & Logs ────────────────────────────────────────────────────────────
 
-export interface TraceSpan {
-  trace_id: string;
-  span_id: string;
-  parent_span_id: string;
-  name: string;
-  kind: string;
-  service: string;
-  host: string;
-  start_time: string;
-  duration_ms: number;
-  status: string;
-  status_message: string;
-  attributes: Record<string, string | number | boolean>;
-}
-
-export interface TraceSummary {
-  trace_id: string;
-  root_span: string;
-  service: string;
-  agent: string;
-  host: string;
-  hosts: string[];
-  start_time: string;
-  duration_ms: number;
-  span_count: number;
-  has_error: boolean;
-  spans: TraceSpan[];
-}
-
-export async function fetchRecentTraces(limit = 100, host?: string): Promise<{ traces: TraceSummary[]; count: number } | null> {
-  const params = new URLSearchParams({ limit: String(limit) });
-  if (host) params.set("host", host);
-  const res = await fetch(`/api/observability/traces/recent?${params}`, { cache: "no-store" });
-  if (!res.ok) return null;
-  return res.json();
-}
-
 export interface HostInfo {
   host: string;
   span_count: number;
@@ -352,19 +310,6 @@ export interface HostInfo {
 
 export async function fetchHosts(): Promise<{ hosts: HostInfo[] } | null> {
   const res = await fetch(`/api/observability/hosts`, { cache: "no-store" });
-  if (!res.ok) return null;
-  return res.json();
-}
-
-export async function fetchRoundTraces(limit?: number): Promise<{ traces: unknown[]; count: number } | null> {
-  const params = limit != null ? `?limit=${limit}` : "";
-  const res = await fetch(`/api/internal/coordination/round-traces${params}`, { cache: "no-store" });
-  if (!res.ok) return null;
-  return res.json();
-}
-
-export async function fetchIngestLog(limit = 50) {
-  const res = await fetch(`/api/knowledge/ingest/log?limit=${limit}`, { cache: "no-store" });
   if (!res.ok) return null;
   return res.json();
 }
