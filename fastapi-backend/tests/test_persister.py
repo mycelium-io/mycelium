@@ -136,6 +136,23 @@ def test_cursors_survive_a_restart_so_an_offline_tail_is_still_reserved():
     assert [r.message_id for r in resumed.undelivered("agent-a")] == ["m2", "m3"]
 
 
+def test_classify_receive_error_separates_churn_from_genuine_faults():
+    """Membership churn (a member leaving, a session re-keyed on a join) must be
+    classified apart from a real transport fault, so it doesn't spend the fatal
+    give-up budget and zombie the room under rapid invite/remove churn."""
+    classify = persister._classify_receive_error
+    assert (
+        classify(Exception("participant disconnected: acme/room/agent-a/inst"))
+        == "participant_left"
+    )
+    assert classify(Exception("SessionError: session closed")) == "transient"
+    assert classify(Exception("Session not found for 42")) == "transient"
+    assert classify(Exception("no active session")) == "transient"
+    # A genuine fault must remain fatal so a truly dead channel still gives up fast.
+    assert classify(Exception("connection reset by peer")) == "fatal"
+    assert classify(Exception("some unrecognized transport error")) == "fatal"
+
+
 def test_loaded_cursors_are_clamped_to_the_transcript_length():
     """A cursor file that drifted from the transcript (one write landed across a
     crash, the other didn't) must never index out of bounds."""

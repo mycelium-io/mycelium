@@ -33,6 +33,7 @@ detection) carry no SLIM dependency and are unit-tested without a node;
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import json
 import logging
@@ -380,7 +381,7 @@ ConvergedHook = Callable[["L9"], None]
 # moderator can update its membership — presence, not a fatal error.
 MemberLeftHook = Callable[[str], None]
 
-# Consecutive immediate transport failures before the loop gives up — keeps a
+# Consecutive genuine transport failures before the loop gives up — keeps a
 # torn-down channel from spinning a hot loop while tolerating transient hiccups.
 _MAX_CONSECUTIVE_FAILURES = 3
 
@@ -388,6 +389,41 @@ _MAX_CONSECUTIVE_FAILURES = 3
 # membership change, not a transport fault: the session is still alive and the
 # loop must keep serving the remaining members.
 _PARTICIPANT_LEFT_MARKER = "participant disconnected"
+
+# Substrings SLIM puts in a SessionError when the group session is momentarily
+# torn down and recreated — the normal churn of rapid invite/remove cycles (a new
+# member re-keys the MLS group). These are transient, NOT a transport fault: the
+# channel recovers on the next receive, so they must not spend the fatal
+# give-up budget the way a real fault does. Bounded separately (below) so a
+# session that is *permanently* closed still eventually gives up.
+_TRANSIENT_SESSION_MARKERS = (
+    "session closed",
+    "session is closed",
+    "session not found",
+    "no active session",
+    "session deleted",
+    "connection closed",
+)
+# A generous budget for back-to-back transient churn errors (with a short backoff
+# between them) before concluding the session is permanently gone. Normal churn is
+# a handful; this absorbs a storm while still bounding a dead session.
+_MAX_CONSECUTIVE_TRANSIENT = 40
+_CHURN_BACKOFF_S = 0.25
+
+
+def _classify_receive_error(exc: Exception) -> str:
+    """Classify a receive-loop error: ``participant_left`` | ``transient`` | ``fatal``.
+
+    SLIM raises a generic ``SessionError`` for everything, distinguished only by
+    message text, so membership churn (a member leaving, a session re-keyed on a
+    join) reads the same as a real transport fault until we look at the string.
+    """
+    text = str(exc).lower()
+    if _PARTICIPANT_LEFT_MARKER in text:
+        return "participant_left"
+    if any(marker in text for marker in _TRANSIENT_SESSION_MARKERS):
+        return "transient"
+    return "fatal"
 
 
 def _handle_from_disconnect(message: str) -> str | None:
@@ -522,33 +558,60 @@ class RoomPersister:
 
     async def run(self) -> None:
         """Pull from the channel forever, recording and dispatching each message."""
-        failures = 0
+        failures = 0  # consecutive genuine transport faults
+        churn = 0  # consecutive transient membership-churn errors
         while True:
             try:
                 released, arrived, context = await self._channel.receive_with_context()
             except ChannelReceiveTimeout:
                 # A benign idle tick — the receive machinery is alive, no message
-                # arrived within the window. Not a fault: reset the failure run so
-                # a quiet room's channel is never torn down.
-                failures = 0
+                # arrived within the window. Not a fault: reset the runs so a quiet
+                # room's channel is never torn down.
+                failures = churn = 0
                 continue
             except Exception as exc:
-                from asyncio import CancelledError
-
-                if isinstance(exc, CancelledError):
+                if isinstance(exc, asyncio.CancelledError):
                     raise
-                # A member dropping off is a membership change, not a fault: the
-                # session is alive and still serving everyone else. Update
-                # presence and keep going without spending the failure
-                # budget — a member leaving must never zombie the room.
-                if _PARTICIPANT_LEFT_MARKER in str(exc).lower():
+                kind = _classify_receive_error(exc)
+                if kind == "participant_left":
+                    # A member dropping off is a membership change, not a fault: the
+                    # session is alive and still serving everyone else. Update
+                    # presence and keep going without spending any budget — a member
+                    # leaving must never zombie the room.
                     left = _handle_from_disconnect(str(exc))
                     logger.info("participant left room %s: %s", self.room, left or "?")
                     if left and self.on_member_left is not None:
                         with contextlib.suppress(Exception):
                             self.on_member_left(left)
-                    failures = 0
+                    failures = churn = 0
                     continue
+                if kind == "transient":
+                    # The group session was momentarily torn down and recreated —
+                    # normal rapid invite/remove churn. It recovers on the next
+                    # receive, so back off briefly and keep going rather than
+                    # spending the fatal budget. Bounded so a permanently-closed
+                    # session still eventually gives up instead of looping forever.
+                    failures = 0
+                    churn += 1
+                    if churn >= _MAX_CONSECUTIVE_TRANSIENT:
+                        logger.error(
+                            "persister for room %s STOPPING after %d consecutive transient "
+                            "session errors — the channel appears permanently closed",
+                            self.room,
+                            churn,
+                        )
+                        return
+                    logger.info(
+                        "transient session churn on room %s (%d/%d): %s",
+                        self.room,
+                        churn,
+                        _MAX_CONSECUTIVE_TRANSIENT,
+                        exc,
+                    )
+                    await asyncio.sleep(_CHURN_BACKOFF_S)
+                    continue
+                # A genuine transport fault: spend the give-up budget quickly.
+                churn = 0
                 failures += 1
                 self.receive_errors += 1
                 logger.warning(
@@ -567,7 +630,7 @@ class RoomPersister:
                     )
                     return
                 continue
-            failures = 0
+            failures = churn = 0
             # Cache the arrived sender's reply context for future re-serve.
             sender = envelope_sender(arrived)
             if sender is not None:
