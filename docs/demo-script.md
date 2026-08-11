@@ -6,7 +6,7 @@
 # Install the CLI
 curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
 
-# Bring up the stack: one SLIM node + a thin backend (no database)
+# Bring up the stack: one SLIM node + a thin backend
 mycelium install
 
 # Verify
@@ -89,7 +89,7 @@ mycelium memory context       # Background & constraints
 cat .mycelium/rooms/design-review/decisions/scope.md
 mycelium memory get decisions/scope
 
-# Semantic search (local embedding index, no external service, no DB):
+# Semantic search over the local embedding index:
 mycelium memory search "what scope decisions were made"
 mycelium memory search "what failed"
 
@@ -238,7 +238,7 @@ Give this to the second Claude Code instance:
    - **Transport** → one SLIM node; agents coordinate over an MLS-encrypted group
      channel per room.
    - **Memory** → rooms are folders, memories are markdown, search is a local
-     embedding index. No database. Sharing is git.
+     embedding index. Sharing is git.
    - **Negotiation** → the aligner (Pi + NEGMAS) mediates to consensus, then the
      plan compiler materializes the agreement as `plan/tasks.md`.
 
