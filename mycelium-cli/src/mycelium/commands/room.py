@@ -1147,6 +1147,166 @@ def delegate(
 
 
 @doc_ref(
+    usage="mycelium room gc [--prune-orphans] [--dry-run]",
+    desc="Find and optionally remove local room directories that no longer exist on the hub.",
+    group="room",
+)
+@app.command("gc")
+def gc(
+    ctx: typer.Context,
+    prune_orphans: bool = typer.Option(
+        False,
+        "--prune-orphans",
+        help="Delete orphaned local room directories (default: report only)",
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Show what would be removed without actually deleting anything",
+    ),
+) -> None:
+    """Reconcile local room directories against the hub.
+
+    Compares every directory under ``~/.mycelium/rooms/`` with the hub's
+    room list.  A directory whose room no longer exists on the hub is
+    **orphaned** — typically left behind after ``mycelium room delete`` ran
+    on a remote spoke or while this node was offline.
+
+    By default the command reports orphans without touching them.
+    Pass ``--prune-orphans`` to delete them (and unregister their adapter
+    configs from openclaw/hermes).  Add ``--dry-run`` to preview the
+    deletion without writing anything.
+
+    Examples:
+        mycelium room gc                          # audit only
+        mycelium room gc --prune-orphans          # delete orphans
+        mycelium room gc --prune-orphans --dry-run  # preview deletions
+    """
+    import shutil
+
+    import httpx
+
+    from mycelium.filesystem import get_mycelium_dir
+
+    try:
+        verbose = ctx.obj.get("verbose", False) if ctx.obj else False  # noqa: F841
+        json_output = ctx.obj.get("json", False) if ctx.obj else False
+
+        config = MyceliumConfig.load()
+        rooms_root = get_mycelium_dir() / "rooms"
+
+        if not rooms_root.exists():
+            if json_output:
+                typer.echo('{"orphans": []}')
+            else:
+                typer.echo("No local rooms directory found.")
+            return
+
+        local_rooms = sorted(d.name for d in rooms_root.iterdir() if d.is_dir())
+        if not local_rooms:
+            if json_output:
+                typer.echo('{"orphans": []}')
+            else:
+                typer.echo("No local room directories found.")
+            return
+
+        orphans: list[str] = []
+        with httpx.Client(base_url=config.server.api_url, timeout=10) as client:
+            for room_name in local_rooms:
+                try:
+                    resp = client.get(f"/api/rooms/{room_name}")
+                    if resp.status_code == 404:
+                        orphans.append(room_name)
+                except httpx.ConnectError:
+                    typer.secho(
+                        f"Cannot reach hub at {config.server.api_url} — aborting scan.",
+                        fg=typer.colors.RED,
+                    )
+                    raise typer.Exit(1)
+                except Exception as exc:
+                    typer.secho(
+                        f"  Warning: check failed for '{room_name}': {exc}", fg=typer.colors.YELLOW
+                    )
+
+        if json_output:
+            import json as json_module
+
+            typer.echo(json_module.dumps({"orphans": orphans}))
+            return
+
+        if not orphans:
+            typer.secho(
+                f"All {len(local_rooms)} local room(s) exist on hub — nothing to clean up.",
+                fg=typer.colors.GREEN,
+            )
+            return
+
+        typer.secho(
+            f"Found {len(orphans)} orphaned room director{'y' if len(orphans) == 1 else 'ies'}:",
+            fg=typer.colors.YELLOW,
+        )
+        for name in orphans:
+            typer.echo(f"  {rooms_root / name}")
+
+        if not prune_orphans:
+            typer.echo("")
+            typer.echo("Run with --prune-orphans to delete them.")
+            return
+
+        verb = "Would remove" if dry_run else "Removing"
+        for room_name in orphans:
+            room_dir = rooms_root / room_name
+            typer.echo(f"  {verb}: {room_dir}")
+            if not dry_run:
+                try:
+                    shutil.rmtree(room_dir)
+                except Exception as exc:
+                    typer.secho(f"    Error: {exc}", fg=typer.colors.RED)
+                    continue
+
+                try:
+                    from mycelium.integrations.openclaw.dispatch import (
+                        unregister_room_from_openclaw,
+                    )
+
+                    removed = unregister_room_from_openclaw(room_name)
+                    if removed:
+                        typer.secho(
+                            f"    Unregistered {len(removed)} openclaw agent(s)",
+                            fg=typer.colors.CYAN,
+                        )
+                except Exception:
+                    pass
+
+                try:
+                    from mycelium.integrations.hermes.dispatch import unregister_room_from_hermes
+
+                    removed = unregister_room_from_hermes(room_name)
+                    if removed:
+                        typer.secho(
+                            f"    Unregistered {len(removed)} hermes agent(s)",
+                            fg=typer.colors.CYAN,
+                        )
+                except Exception:
+                    pass
+
+        if dry_run:
+            typer.echo("")
+            typer.secho("Dry run — nothing was deleted.", fg=typer.colors.YELLOW)
+        else:
+            typer.secho(
+                f"\nRemoved {len(orphans)} orphaned room director{'y' if len(orphans) == 1 else 'ies'}.",
+                fg=typer.colors.GREEN,
+            )
+
+    except (typer.Exit, typer.Abort):
+        raise
+    except Exception as e:
+        verbose = ctx.obj.get("verbose", False) if ctx.obj else False
+        print_error(e, verbose=verbose)
+
+
+@doc_ref(
     usage="mycelium room sync-mas <name>",
     desc="Register (or re-register) a room with the CFN mgmt plane.",
     group="room",

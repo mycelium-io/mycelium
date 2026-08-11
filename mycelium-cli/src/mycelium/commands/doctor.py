@@ -1939,6 +1939,83 @@ def _check_daemon_running() -> CheckResult:
     )
 
 
+def _check_orphaned_rooms() -> CheckResult:
+    """Detect local room directories that no longer exist on the hub.
+
+    A spoke node that was offline when a room was deleted on the hub will have
+    missed the ``room_deleted`` SSE event and the daemon's startup reconcile
+    (if the daemon wasn't running).  This check surfaces those orphans so the
+    operator can review and clean up.
+
+    This check is intentionally read-only — it queries the hub's ``/api/rooms``
+    endpoint and compares the response against the local ``~/.mycelium/rooms/``
+    directory.  It never modifies the filesystem; use ``mycelium room gc
+    --prune-orphans`` for that.
+    """
+    from mycelium.config import MyceliumConfig
+
+    try:
+        cfg = MyceliumConfig.load()
+        api_url = cfg.server.api_url
+    except Exception:
+        return CheckResult(
+            name="Orphaned rooms",
+            status="ok",
+            message="Skipped (cannot load config)",
+        )
+
+    rooms_root = Path.home() / ".mycelium" / "rooms"
+    if not rooms_root.exists():
+        return CheckResult(name="Orphaned rooms", status="ok", message="No local rooms directory")
+
+    local_rooms = sorted(d.name for d in rooms_root.iterdir() if d.is_dir())
+    if not local_rooms:
+        return CheckResult(name="Orphaned rooms", status="ok", message="No local room directories")
+
+    orphans: list[str] = []
+    try:
+        import httpx
+
+        with httpx.Client(base_url=api_url, timeout=5) as client:
+            for room_name in local_rooms:
+                try:
+                    resp = client.get(f"/api/rooms/{room_name}")
+                    if resp.status_code == 404:
+                        orphans.append(room_name)
+                except httpx.ConnectError:
+                    return CheckResult(
+                        name="Orphaned rooms",
+                        status="ok",
+                        message="Skipped (hub unreachable)",
+                    )
+                except Exception:
+                    continue
+    except Exception as exc:
+        return CheckResult(
+            name="Orphaned rooms",
+            status="ok",
+            message=f"Skipped (scan failed: {exc})",
+        )
+
+    if not orphans:
+        return CheckResult(
+            name="Orphaned rooms",
+            status="ok",
+            message=f"All {len(local_rooms)} local room(s) exist on hub",
+        )
+
+    return CheckResult(
+        name="Orphaned rooms",
+        status="warning",
+        message=f"{len(orphans)} local room director{'y' if len(orphans) == 1 else 'ies'} not found on hub",
+        details=[
+            *[f"  ~/.mycelium/rooms/{r}/" for r in orphans],
+            "Fix: mycelium room gc --prune-orphans",
+            "  or: set daemon.auto_gc_orphaned_rooms = true in config.toml",
+        ],
+    )
+
+
 def _check_cfn_pgvector() -> CheckResult:
     """Check the pgvector extension is installed in the ioc-graph-db database.
 
@@ -2069,6 +2146,7 @@ def doctor(
             _check_config_files(),
             _check_mycelium_dir_ownership(),
             _check_config_file_drift(local_backend=local),
+            _check_orphaned_rooms(),
         ]
         if local:
             config_checks.append(_check_runtime_config_drift())

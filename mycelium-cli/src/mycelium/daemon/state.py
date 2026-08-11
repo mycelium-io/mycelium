@@ -51,6 +51,11 @@ class DaemonState:
     # tasks) so shutdown can cancel them and the health endpoint can surface
     # how many sub-rooms we're following.
     session_room_tasks: dict[str, Any] = field(default_factory=dict)
+    # Rooms that have been deleted on the hub (signalled via ``room_deleted``
+    # SSE events). ``subscribe_room`` checks this set after each ``on_message``
+    # call and exits the SSE loop cleanly when a room appears here, avoiding
+    # repeated 404 reconnect attempts after a hub-side deletion.
+    rooms_deleted: set[str] = field(default_factory=set)
     stopping: asyncio.Event = field(default_factory=asyncio.Event)
     reload_requested: asyncio.Event = field(default_factory=asyncio.Event)
     daemon_cfg: Any = field(default=None)  # DaemonConfig — set by runner after load

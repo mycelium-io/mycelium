@@ -76,6 +76,16 @@ async def _notify_room(channel: str, payload: dict) -> None:
                     logger.warning("NOTIFY failed for %s: %s", channel, e)
 
 
+async def fire_room_notify(room_name: str, payload: dict) -> None:
+    """Fire a Postgres NOTIFY on ``room:{room_name}`` without persisting a DB row.
+
+    Used by routes that need to push a synthetic event (e.g. ``room_deleted``)
+    before the room row is torn down.  Non-fatal: the SSE delivery is
+    best-effort and must never block the delete path.
+    """
+    await _notify_room(room_channel(room_name), payload)
+
+
 async def close_notify_connection() -> None:
     """Close the shared NOTIFY connection. Called from app lifespan shutdown."""
     global _notify_conn

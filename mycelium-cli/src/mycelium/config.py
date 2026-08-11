@@ -170,6 +170,20 @@ class NegotiationConfig(BaseModel):
     )
 
 
+class DaemonSettings(BaseModel):
+    """Daemon behaviour tunables (hub-and-spoke cleanup, GC policy)."""
+
+    auto_gc_orphaned_rooms: bool = Field(
+        default=False,
+        description=(
+            "When True, the daemon automatically removes local room directories "
+            "that no longer exist on the hub (detected at startup and on "
+            "room_deleted SSE events).  Defaults to False so operators can review "
+            "orphans via `mycelium doctor` or `mycelium room gc` before deletion."
+        ),
+    )
+
+
 class RoomConfig(BaseModel):
     """Room management configuration."""
 
@@ -296,6 +310,7 @@ class MyceliumConfig(BaseModel):
     llm: LLMConfig = Field(default_factory=LLMConfig)
     runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
     rooms: RoomConfig = Field(default_factory=RoomConfig)
+    daemon: DaemonSettings = Field(default_factory=DaemonSettings)
     knowledge_ingest: KnowledgeIngestConfig = Field(default_factory=KnowledgeIngestConfig)
     metrics: MetricsConfig = Field(default_factory=MetricsConfig)
     negotiation: NegotiationConfig = Field(default_factory=NegotiationConfig)

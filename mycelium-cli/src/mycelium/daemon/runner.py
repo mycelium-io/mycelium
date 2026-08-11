@@ -11,7 +11,11 @@ import signal
 
 from mycelium.config import MyceliumConfig
 from mycelium.daemon.config import DaemonConfig, daemon_log_path
-from mycelium.daemon.dispatch import poll_coordination_sessions, subscribe_room
+from mycelium.daemon.dispatch import (
+    poll_coordination_sessions,
+    reconcile_local_rooms,
+    subscribe_room,
+)
 from mycelium.daemon.health import start_health_server
 from mycelium.daemon.state import DaemonState
 
@@ -140,6 +144,14 @@ async def _amain(foreground: bool) -> int:
 
     server = await start_health_server(state)
     log.info("mycelium-daemon started (rooms=%d)", len(daemon_cfg.rooms))
+
+    # Pull-based reconciliation: verify local room dirs against the hub so
+    # rooms deleted while this spoke was offline are surfaced (or auto-cleaned
+    # when daemon.auto_gc_orphaned_rooms is True).
+    try:
+        await reconcile_local_rooms(mycelium_cfg)
+    except Exception as exc:
+        log.warning("Startup room reconcile raised unexpectedly: %s", exc)
 
     sse_tasks: dict[str, asyncio.Task[None]] = {
         room: asyncio.create_task(

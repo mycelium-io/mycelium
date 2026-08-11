@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.database import get_async_session
 from app.models import Room
+from app.routes.messages import fire_room_notify
 from app.schemas import RoomCreate, RoomRead
 from app.services import coordination
 from app.services.filesystem import ensure_room_structure, get_room_dir, remove_room_dir
@@ -303,6 +304,21 @@ async def sync_room_mas(
     return room
 
 
+async def _notify_room_deleted(room_name: str) -> None:
+    """Fire a ``room_deleted`` tombstone NOTIFY before the room row is removed.
+
+    Must be called while the room row still exists in the DB so SSE consumers
+    (daemons on spoke nodes) can receive the event and clean up their local
+    state before the stream closes.  Non-fatal — a NOTIFY failure must never
+    block the delete path.
+    """
+    try:
+        await fire_room_notify(room_name, {"message_type": "room_deleted", "room": room_name})
+        logger.info("Fired room_deleted NOTIFY for %s", room_name)
+    except Exception as exc:
+        logger.warning("room_deleted NOTIFY failed for %s (non-fatal): %s", room_name, exc)
+
+
 @router.delete("/{room_name}", status_code=204)
 async def delete_room(
     room_name: str,
@@ -313,13 +329,15 @@ async def delete_room(
     Cleanup order:
 
       1. Resolve all coordination sessions for this room (display names + IDs).
-      2. Tear down in-memory CFN coordination state. Doing this before DB
+      2. Fire a ``room_deleted`` tombstone NOTIFY while the room still exists
+         so online spoke daemons can clean up their local state immediately.
+      3. Tear down in-memory CFN coordination state. Doing this before DB
          deletes prevents in-flight ticks from firing against half-deleted
          state.
-      3. Delete the room row — coordination_sessions, participants, and
+      4. Delete the room row — coordination_sessions, participants, and
          messages cascade automatically via FK ON DELETE CASCADE.
-      4. Remove the filesystem directory.
-      5. Delete the MAS in the CFN mgmt plane (non-fatal, last).
+      5. Remove the filesystem directory.
+      6. Delete the MAS in the CFN mgmt plane (non-fatal, last).
     """
     if room_name in RESERVED_ROOMS:
         raise HTTPException(status_code=400, detail=f"'{room_name}' is a reserved system room")
@@ -336,6 +354,9 @@ async def delete_room(
     )
     coord_sessions = list(coord_result.scalars().all())
     child_display_names = [c.display_name for c in coord_sessions]
+
+    # Tombstone NOTIFY first — room row still alive so SSE can route it.
+    await _notify_room_deleted(room_name)
 
     try:
         await coordination.teardown_for_namespace(room_name, child_display_names)

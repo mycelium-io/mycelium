@@ -620,6 +620,13 @@ async def on_message(
             msg=msg,
         )
         return
+    if message_type == "room_deleted":
+        await _handle_room_deleted(
+            room_name=room_name,
+            config=config,
+            state=state,
+        )
+        return
     if message_type in {"coordination_join", "coordination_start"}:
         # Discover session sub-rooms — ticks live there, not in the parent
         # room. Mirrors the openclaw plugin's ``subscribe-session`` action.
@@ -1231,6 +1238,164 @@ async def poll_coordination_sessions(
         return
 
 
+# ── Room-deleted handling and startup reconciliation ─────────────────────────
+
+
+async def _handle_room_deleted(
+    *,
+    room_name: str,
+    config: MyceliumConfig,
+    state: DaemonState,
+) -> None:
+    """React to a ``room_deleted`` SSE tombstone from the hub.
+
+    Called while the SSE connection is still live (the tombstone fires before
+    the DB row is removed).  Cleans up all local spoke state immediately so
+    agents don't receive stale ticks from a room that no longer exists.
+
+    Actions (all non-fatal individually):
+      1. Mark the room as deleted so ``subscribe_room`` exits its loop.
+      2. Remove the local ``~/.mycelium/rooms/<room>/`` directory if
+         ``daemon.auto_gc_orphaned_rooms`` is enabled; otherwise just warn.
+      3. Unregister the room from openclaw and hermes adapter configs so
+         their plugins stop opening SSE connections to a dead room.
+    """
+    import shutil
+
+    log.info("room_deleted received for '%s' — cleaning up local state", room_name)
+    state.rooms_deleted.add(room_name)
+
+    if config.daemon.auto_gc_orphaned_rooms:
+        from mycelium.filesystem import get_room_dir
+
+        room_dir = get_room_dir(room_name)
+        if room_dir.exists():
+            try:
+                shutil.rmtree(room_dir)
+                log.info("Removed local room directory: %s", room_dir)
+            except Exception as exc:
+                log.warning("Failed to remove local room directory %s: %s", room_dir, exc)
+    else:
+        from mycelium.filesystem import get_room_dir
+
+        room_dir = get_room_dir(room_name)
+        if room_dir.exists():
+            log.warning(
+                "Room '%s' deleted on hub — local directory left at %s "
+                "(set daemon.auto_gc_orphaned_rooms=true or run 'mycelium room gc')",
+                room_name,
+                room_dir,
+            )
+
+    try:
+        from mycelium.integrations.openclaw.dispatch import unregister_room_from_openclaw
+
+        removed = unregister_room_from_openclaw(room_name)
+        if removed:
+            log.info(
+                "Unregistered %d openclaw agent(s) from deleted room '%s'",
+                len(removed),
+                room_name,
+            )
+    except Exception as exc:
+        log.debug("openclaw unregister skipped for '%s': %s", room_name, exc)
+
+    try:
+        from mycelium.integrations.hermes.dispatch import unregister_room_from_hermes
+
+        removed = unregister_room_from_hermes(room_name)
+        if removed:
+            log.info(
+                "Unregistered %d hermes agent(s) from deleted room '%s'",
+                len(removed),
+                room_name,
+            )
+    except Exception as exc:
+        log.debug("hermes unregister skipped for '%s': %s", room_name, exc)
+
+
+async def reconcile_local_rooms(config: MyceliumConfig) -> None:
+    """On daemon startup, verify each local room directory against the hub API.
+
+    A spoke that was offline when a room was deleted on the hub will have
+    missed the ``room_deleted`` SSE tombstone.  This pull-based reconciliation
+    catches those orphans at next startup.
+
+    Behaviour is gated on ``daemon.auto_gc_orphaned_rooms`` in config.toml:
+      - False (default): log a warning and leave cleanup to the operator
+        (use ``mycelium doctor`` or ``mycelium room gc``).
+      - True: remove the orphaned directory and unregister adapter configs
+        automatically.
+
+    A ``ConnectError`` (hub unreachable) aborts the scan immediately — we'd
+    rather leave local state intact than delete rooms because the network was
+    down during startup.
+    """
+    import shutil
+
+    from mycelium.filesystem import get_mycelium_dir
+
+    rooms_root = get_mycelium_dir() / "rooms"
+    if not rooms_root.exists():
+        return
+
+    api_url = config.server.api_url
+
+    try:
+        async with httpx.AsyncClient(base_url=api_url, timeout=10) as client:
+            for room_dir in sorted(rooms_root.iterdir()):
+                if not room_dir.is_dir():
+                    continue
+                room_name = room_dir.name
+                try:
+                    resp = await client.get(f"/api/rooms/{room_name}")
+                except httpx.ConnectError:
+                    log.debug("Hub unreachable during startup reconcile — skipping remaining rooms")
+                    return
+                except Exception as exc:
+                    log.debug("Reconcile check failed for '%s': %s", room_name, exc)
+                    continue
+
+                if resp.status_code != 404:
+                    continue
+
+                # Room is gone on the hub.
+                if config.daemon.auto_gc_orphaned_rooms:
+                    try:
+                        shutil.rmtree(room_dir)
+                        log.info(
+                            "Startup reconcile: removed orphaned room directory '%s'", room_name
+                        )
+                    except Exception as exc:
+                        log.warning("Startup reconcile: failed to remove '%s': %s", room_dir, exc)
+                    try:
+                        from mycelium.integrations.openclaw.dispatch import (
+                            unregister_room_from_openclaw,
+                        )
+
+                        unregister_room_from_openclaw(room_name)
+                    except Exception:
+                        pass
+                    try:
+                        from mycelium.integrations.hermes.dispatch import (
+                            unregister_room_from_hermes,
+                        )
+
+                        unregister_room_from_hermes(room_name)
+                    except Exception:
+                        pass
+                else:
+                    log.warning(
+                        "Startup reconcile: room '%s' not found on hub — "
+                        "orphaned directory at %s "
+                        "(run 'mycelium room gc' or set daemon.auto_gc_orphaned_rooms=true)",
+                        room_name,
+                        room_dir,
+                    )
+    except Exception as exc:
+        log.warning("Startup room reconcile failed: %s", exc)
+
+
 # ── SSE subscription per room ────────────────────────────────────────────────
 
 
@@ -1305,6 +1470,13 @@ async def subscribe_room(
                             except Exception as exc:
                                 state.record_error(f"on_message[{room_name}]", exc)
                                 log.exception("dispatch error in %s: %s", room_name, exc)
+                            # Exit cleanly if the hub sent a room_deleted tombstone.
+                            if room_name in state.rooms_deleted:
+                                log.info(
+                                    "SSE: room '%s' deleted — closing subscription",
+                                    room_name,
+                                )
+                                return
         except asyncio.CancelledError:
             raise
         except (httpx.ReadTimeout, httpx.ConnectTimeout) as exc:
