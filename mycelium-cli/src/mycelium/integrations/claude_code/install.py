@@ -24,6 +24,18 @@ from mycelium.integrations._resources import _resolve_asset
 _CLAUDE_CODE_SKILL_NAME = "mycelium"
 _CLAUDE_CODE_HOOKS: list[str] = []
 
+# The permission rule that lets a Claude Code agent run the mycelium CLI without a
+# per-command approval prompt. This is what makes *unattended* participation work:
+# a background subagent (which can't answer a permission prompt) must be able to
+# issue `mycelium await` / `mycelium respond` on its own. Written to the user-global
+# `~/.claude/settings.json` — which lives in $HOME, never inside a repo, so the
+# grant stays personal and is never accidentally committed. The rule is a prefix
+# match: `Bash(mycelium:*)` covers `mycelium await …`, `mycelium respond …`, etc.,
+# but only simple single commands — Claude Code still rejects compound shell
+# (`mycelium … && …`, pipes, redirects), which is why await/respond are single
+# commands by design.
+_MYCELIUM_ALLOW_RULE = "Bash(mycelium:*)"
+
 # Hook filenames + settings.json events that earlier versions of this adapter
 # wired up but no longer does. On reinstall we remove the file + settings.json
 # entry so upgraders aren't left with broken wiring pointing at files that no
@@ -120,6 +132,10 @@ def _install_claude_code(verbose: bool = False) -> None:
     # Register lifecycle hooks in settings.json so Claude Code actually fires them.
     _register_claude_code_hooks(claude_dir, verbose=verbose)
 
+    # Allowlist the mycelium CLI so agents (incl. prompt-less background subagents)
+    # can run await/respond unattended.
+    _register_claude_code_mycelium_permission(claude_dir, verbose=verbose)
+
 
 # Maps hook script name → Claude Code hook event name. Must stay aligned
 # with ``_CLAUDE_CODE_HOOKS`` above: registering a hook in settings.json
@@ -188,6 +204,44 @@ def _register_claude_code_hooks(claude_dir: Path, verbose: bool = False) -> None
     except Exception as e:
         if verbose:
             typer.echo(f"  warning: could not register hooks: {e}")
+
+
+def _register_claude_code_mycelium_permission(claude_dir: Path, verbose: bool = False) -> None:
+    """Add the ``Bash(mycelium:*)`` allow-rule to ``~/.claude/settings.json``.
+
+    Without this, every ``mycelium`` command an agent runs raises a permission
+    prompt — fatal for a *background* subagent, which has no way to answer one and
+    so simply can't participate (``await``/``respond``). Adding the grant on
+    install is what makes unattended, prompt-less participation work out of the box.
+
+    Idempotent and minimally invasive: only appends the one rule if it's absent,
+    preserves any existing ``permissions`` config, and never touches ``deny``.
+    Settings were already snapshotted by :func:`_backup_claude_settings`, so a
+    user who dislikes the grant can restore the backup or delete the single line.
+    """
+    settings_path = claude_dir / "settings.json"
+    try:
+        settings = json_module.loads(settings_path.read_text()) if settings_path.exists() else {}
+        if not isinstance(settings, dict):
+            return
+        permissions = settings.setdefault("permissions", {})
+        allow = permissions.setdefault("allow", [])
+        if not isinstance(allow, list):
+            return
+        if _MYCELIUM_ALLOW_RULE in allow:
+            if verbose:
+                typer.echo(f"  mycelium CLI already allowlisted ({_MYCELIUM_ALLOW_RULE})")
+            return
+        allow.append(_MYCELIUM_ALLOW_RULE)
+        settings_path.write_text(json_module.dumps(settings, indent=2) + "\n")
+        typer.secho(
+            f"  allowlisted the mycelium CLI ({_MYCELIUM_ALLOW_RULE}) so agents can "
+            "run await/respond unattended",
+            fg=typer.colors.GREEN,
+        )
+    except Exception as e:  # noqa: BLE001 - best-effort; never fail the install over this
+        if verbose:
+            typer.echo(f"  warning: could not allowlist the mycelium CLI: {e}")
 
 
 def _backup_claude_settings(claude_dir: Path) -> Path | None:

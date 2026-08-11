@@ -68,14 +68,14 @@ def await_room(
         # The server blocks up to `timeout`; give the client a little more headroom
         # (or no cap when waiting indefinitely).
         client_timeout = float(timeout) + 15.0 if timeout > 0 else None
-        resp = httpx.get(
-            url, params={"handle": handle, "timeout": timeout}, timeout=client_timeout
-        )
+        resp = httpx.get(url, params={"handle": handle, "timeout": timeout}, timeout=client_timeout)
         resp.raise_for_status()
         data = resp.json()
         if "prompt" not in data:  # timed out — backend returned {"message": null}
             if json_output:
-                typer.echo(json_module.dumps({"room": room_name, "handle": handle, "message": None}))
+                typer.echo(
+                    json_module.dumps({"room": room_name, "handle": handle, "message": None})
+                )
             else:
                 typer.secho(f"  ⟫  no message for @{handle} within timeout", fg=typer.colors.YELLOW)
             raise typer.Exit(1)

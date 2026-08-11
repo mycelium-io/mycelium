@@ -41,9 +41,9 @@ class _FakeResp:
 
 
 def test_await_prints_addressed_message(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_get(url, params=None, timeout=None):
+    def fake_get(url: str, params: dict | None = None, timeout: float | None = None) -> _FakeResp:
         assert url.endswith("/api/rooms/demo/await")
-        assert params["handle"] == "me"
+        assert params is not None and params["handle"] == "me"
         return _FakeResp(
             {
                 "room": "demo",

@@ -27,6 +27,9 @@ make the choice consciously.
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 from mycelium.integrations.claude_code import install as claude_install
 
 
@@ -79,6 +82,45 @@ def test_stale_hooks_covers_every_known_retired_event() -> None:
         "stuck with that hook in their settings.json forever — append "
         "to the list, never delete entries."
     )
+
+
+def test_mycelium_permission_is_added_idempotently(tmp_path: Path) -> None:
+    """The install allowlists ``Bash(mycelium:*)`` in settings.json, preserving any
+    existing permissions, and is a no-op on reinstall (no duplicate rules).
+
+    This is what lets a background subagent — which can't answer a permission
+    prompt — run ``mycelium await``/``respond`` unattended.
+    """
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir()
+    settings = claude_dir / "settings.json"
+    # A user who already has an unrelated allow-rule must keep it.
+    settings.write_text(json.dumps({"permissions": {"allow": ["Bash(ls:*)"], "deny": []}}))
+
+    claude_install._register_claude_code_mycelium_permission(claude_dir)
+    allow = json.loads(settings.read_text())["permissions"]["allow"]
+    assert claude_install._MYCELIUM_ALLOW_RULE in allow
+    assert "Bash(ls:*)" in allow  # existing rule preserved
+
+    # Reinstall must not duplicate the rule.
+    claude_install._register_claude_code_mycelium_permission(claude_dir)
+    allow2 = json.loads(settings.read_text())["permissions"]["allow"]
+    assert allow2.count(claude_install._MYCELIUM_ALLOW_RULE) == 1
+
+
+def test_mycelium_permission_bootstraps_absent_settings(tmp_path: Path) -> None:
+    """With no settings.json at all, the install creates one carrying just the
+    mycelium allow-rule — a fresh Claude Code user gets unattended participation
+    with no manual step."""
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir()
+
+    claude_install._register_claude_code_mycelium_permission(claude_dir)
+
+    settings = claude_dir / "settings.json"
+    assert settings.exists()
+    data = json.loads(settings.read_text())
+    assert data["permissions"]["allow"] == [claude_install._MYCELIUM_ALLOW_RULE]
 
 
 def test_stale_and_live_hook_lists_are_disjoint() -> None:
