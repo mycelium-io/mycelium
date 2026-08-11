@@ -334,6 +334,65 @@ def _check_docker_containers() -> CheckResult:
     )
 
 
+def _backend_container_running() -> bool:
+    """True if the ``mycelium-backend`` container is up (backend is dockerized)."""
+    try:
+        r = subprocess.run(
+            ["docker", "ps", "--format", "{{.Names}}"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return False
+    if r.returncode != 0:
+        return False
+    return "mycelium-backend" in r.stdout.split()
+
+
+def _check_mediator_pi_binary() -> CheckResult:
+    """The aligner's SAO mediator runs on Pi — warn if it's unreachable on a
+    host-run backend.
+
+    Pi is the mediator's *brain*; without it on PATH, an ``@aligner`` summon fails
+    (``PiBrainError: pi not found``). The released **backend image already installs
+    Pi**, so the normal ``mycelium up`` path is fine and needs no host binary. The
+    only gap is running the backend *outside Docker* (a contributor doing
+    ``uvicorn app.main:app`` on the host) — there Pi must be on the host PATH. So:
+    if the backend container is up, this is satisfied by the image; otherwise check
+    the host.
+    """
+    import os
+    import shutil
+
+    if _backend_container_running():
+        return CheckResult(
+            name="mediator Pi brain",
+            status="ok",
+            message="backend is dockerized — Pi ships in the image",
+        )
+
+    binary = os.environ.get("ALIGNER_PI_BINARY") or "pi"
+    resolved = shutil.which(binary)
+    if resolved is not None:
+        return CheckResult(
+            name="mediator Pi brain",
+            status="ok",
+            message=f"pi on PATH ({resolved})",
+        )
+    return CheckResult(
+        name="mediator Pi brain",
+        status="warning",
+        message=f"`{binary}` not on PATH — @aligner negotiations will fail on a host-run backend",
+        details=[
+            "the released backend image already ships Pi, so `mycelium up` needs nothing here;",
+            "this only bites when you run the backend outside Docker (host uvicorn).",
+            "fix: npm install -g @mariozechner/pi-coding-agent",
+            "or point ALIGNER_PI_BINARY at an existing pi install.",
+        ],
+    )
+
+
 def _check_backend_reachable(*, local_backend: bool = True) -> CheckResult:
     """Check that the backend API responds to /health."""
     from mycelium.config import MyceliumConfig
@@ -1556,6 +1615,8 @@ def doctor(
             service_checks.append(_check_docker_containers())
         service_checks.append(_check_backend_reachable(local_backend=local))
         service_checks.append(_check_llm_connectivity())
+        if local:
+            service_checks.append(_check_mediator_pi_binary())
 
         sections: list[tuple[str, list[CheckResult]]] = [
             ("Configuration", config_checks),
