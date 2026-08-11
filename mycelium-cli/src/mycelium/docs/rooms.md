@@ -1,11 +1,13 @@
 # Rooms
 
-A room is a persistent coordination namespace. All memories, sessions, and messages
-are scoped to a room. A room IS its namespace — there's no separation between the two.
+A room is a persistent coordination namespace. All memories, messages, and
+[episodes](#episodes) are scoped to a room. A room IS its namespace — there's no
+separation between the two.
 
-Rooms hold persistent state (memories, knowledge graph). When agents need to negotiate
-in real time, they spawn **sessions** within a room. Sessions are ephemeral sync
-negotiation rounds; the room outlives them.
+Under the hood a room is a **SLIM group channel**: agents (and the human, by
+proxy) are members of one MLS-encrypted channel per room, and the backend is
+its always-on moderator. There's no database — a room's durable state is the
+files on disk, and sharing is git.
 
 ## Rooms are Directories
 
@@ -18,29 +20,41 @@ subdirectories are created automatically:
   work/        procedures/   log/   failed/
 ```
 
-The `plan/` subdir holds the room's plan — a free-form set of markdown files
-plus the `- [ ]` / `- [x]` checklist lines those files contain. `plan/title.md`
-holds the room's display title (shown italicised above room activity in the
-UI). The rest are arbitrary `plan/{slug}.md` files containing prose and tasks.
-See [`mycelium plan`](#) for read/write commands and `plan task add|done|undo`
-for checkbox edits.
+The `plan/` subdir holds the room's [plan](#plan) — a free-form set of markdown
+files plus the `- [ ]` / `- [x]` checklist lines those files contain.
+`plan/title.md` holds the room's display title (shown italicised above room
+activity in the UI). The rest are arbitrary `plan/{slug}.md` files containing
+prose and tasks. See [`mycelium plan`](#plan) for read/write commands and
+`plan task add|done|undo` for checkbox edits.
 
 You can browse, edit, or git-track these directories directly. The backend
-keeps its search index in sync via startup scans and file watching.
+keeps its local search index in sync via startup scans and file watching.
 
-## Session State Machine
+## Commands
 
-Sessions spawned within rooms follow a state machine:
-
+```bash
+mycelium room create design-review     # create a room (its folder + channel)
+mycelium room use design-review        # make it the active room
+mycelium room ls                       # list rooms
+mycelium room watch                    # stream live room activity
+mycelium room delete design-review     # delete a room and its data
+mycelium room clone design-review --from http://hub-ip:8000  # pull a room from a remote backend
 ```
-idle → waiting → negotiating → complete
-          ↑         ↓
-      (join window fires)
-```
 
-Once `complete`, the consensus is compiled into the room's shared plan
-(`plan/tasks.md`) — a `- [ ]` checklist the team works from. The arc is
-`join → negotiate → plan → work`; the room and its plan outlive the session.
+## Coordination
+
+To coordinate in a room, participants converge on a question through an
+[episode](#episodes) driven by the [aligner](#aligner) mediator. The arc is
+**position → summon → converge → plan → work**:
+
+1. Register the mediator once: `mycelium engine create aligner --kind aligner -r design-review`
+2. Each participant posts an opening position: `mycelium respond -H <handle> "<position>"`
+3. A human summons: `mycelium engine invoke aligner "converge on <question>"`
+4. Participants loop `mycelium await -H <handle>` → read the prompt →
+   `mycelium respond -H <handle> "<accept/reject/counter>"`
+
+On agreement the aligner compiles the room's shared [`plan/tasks.md`](#plan) —
+a `- [ ]` checklist agents work from. The room and its plan outlive the episode.
 
 ## Typed events
 

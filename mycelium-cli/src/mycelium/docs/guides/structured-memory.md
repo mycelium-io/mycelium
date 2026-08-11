@@ -1,13 +1,13 @@
 # Structured Memory Guide
 
 This guide shows how to use Mycelium's structured memory conventions to give
-agents continuity across sessions.
+agents continuity across separate runs.
 
 ## The Problem
 
-An agent helps build something over a long session. The session ends. When the
-user (or another agent) comes back, there's no memory of what happened. The
-new session starts from scratch.
+An agent helps build something over a long stretch of work, then goes away.
+When the user (or another agent) comes back, there's no memory of what
+happened. The next agent starts from scratch.
 
 ## The Solution: Category Conventions
 
@@ -76,8 +76,8 @@ mycelium memory set status/deploy "ACTIVE — deployed to vps.example.com"
 ## Type Safety
 
 `memory set` validates category keys against the `MemoryLogEntry` type
-(defined in `mycelium.protocol`). This is the same pattern used for negotiation
-payloads (`ProposeReply`, `RespondReply`) — Pydantic validation before the
+(defined in `mycelium.protocol`). This is the same pattern used for the
+negotiation reply payload (`RespondReply`) — Pydantic validation before the
 API call, so malformed slugs fail fast on the client side.
 
 Valid slugs: lowercase alphanumeric, hyphens, dots, underscores.
@@ -87,5 +87,5 @@ Valid slugs: lowercase alphanumeric, hyphens, dots, underscores.
 
 Keys without a known category prefix skip validation entirely:
 - `custom/anything` — passes through, no slug check
-- `research/pgvector-perf` — passes through
+- `research/index-perf` — passes through
 

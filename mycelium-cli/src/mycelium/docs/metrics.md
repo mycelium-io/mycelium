@@ -42,8 +42,8 @@ variable.
 ## Hub-and-Spoke Setup
 
 In a multi-device deployment, spoke nodes run a **lightweight local collector**
-for their own OpenClaw OTLP data and fetch Mycelium backend + CFN metrics from
-the hub. `mycelium metrics show` merges both sources automatically.
+for their own OpenClaw OTLP data and fetch Mycelium backend metrics from the
+hub. `mycelium metrics show` merges both sources automatically.
 
 The spoke collector also **forwards** every OTLP payload to the hub collector
 (agent-to-gateway pattern), so the hub maintains a unified cross-host view
@@ -56,15 +56,15 @@ with per-host breakdowns (the "Spoke Sites" table and `--host` filter).
 │  OpenClaw ─── OTLP ──▶ Local    │        │  Collector (:4318)               │
 │  Gateway        Collector       │        │    ├─▶ MetricsStore              │
 │                  (:4318,     ────┼─ OTLP ─┼──▶├─▶ TraceStore (by_host)     │
-│                   no-backend)    │ forward │    └─▶ poll Backend + CFN scrape │
+│                   no-backend)    │ forward │    └─▶ poll Backend             │
 │                   │              │        │                                  │
 │                   ▼              │        │  Backend (:8000)                 │
-│            local metrics.json    │        │  CFN services                    │
+│            local metrics.json    │        │                                  │
 │            (OpenClaw only)       │        └──────────────┬───────────────────┘
 │                                  │                       │
 │  mycelium metrics show ──────────┼── HTTP GET ──────────▶│
 │   merges local OpenClaw          │  /collector/metrics    │
-│   + hub backend/CFN data         │  (backend + CFN)       │
+│   + hub backend data             │  (backend)             │
 └──────────────────────────────────┘                       │
 ```
 
@@ -109,8 +109,8 @@ threads. Logs are written to `$DATA_DIR/metrics/collector.log`.
 
 - `mycelium metrics show` on the spoke reads local OpenClaw data (counters,
   histograms, sessions) from the local `metrics.json`, then fetches backend
-  and CFN data from the hub's `/collector/metrics` endpoint. The two are
-  merged into a single view.
+  data from the hub's `/collector/metrics` endpoint. The two are merged into
+  a single view.
 - `mycelium metrics status` probes both the hub collector (reachability)
   and the local collector (port check).
 - The `collect` command is only available in spoke mode (when `collector_url`
@@ -260,14 +260,9 @@ The collector polls `GET /api/observability` on the FastAPI backend every 30 sec
 | Namespace    | Keys                                                             |
 | ------------ | ---------------------------------------------------------------- |
 | `embeddings` | `computed`, `by_source.*`, `estimated_tokens`                    |
-| `llm`        | `calls`, `by_operation.*`, `by_model.*`, `input_tokens`, `output_tokens`, `cost_usd`, `errors` |
+| `llm`        | `calls`, `by_operation.*`, `by_model.*`, `input_tokens`, `output_tokens`, `cost_usd`, `errors`, `by_room.*` |
 | `indexer`    | `runs`, `files_indexed`, `files_skipped`, `files_pruned`, `errors`, `by_target.*` |
 | `memory`     | `writes`, `writes.*`, `writes_embedded`, `searches`, `search_hits`, `search_misses`, `results_returned` |
-| `synthesis`  | `runs`, `errors`, `briefings`, `cache_hits`, `cache_misses`      |
-| `knowledge`  | `ingestions`, `concepts_extracted`, `relations_extracted`, `estimated_input_tokens`, `errors`, `queries`, `queries.*` (by type: neighbour, path, concept, semantic), `query_hits`, `query_misses`, `query_errors`, `results_returned`, `cache_hits` |
-| `coordination` | `sessions_started`, `sessions_completed`, `rounds`, `by_room.*`, `consensus_reached`, `outcome.*` (success, failure) |
-| `cfn`        | `calls`, `calls.<service>`, `calls.<service>.<operation>`, `errors`, `errors.<service>`, `status.<code>` |
-| `cfn_llm`    | `calls`, `input_tokens`, `output_tokens`, `cached_tokens`, `total_tokens`, `by_pipeline.*`, `by_llm_operation.*`, `by_room.*` |
 
 #### Backend Histograms
 
@@ -278,26 +273,11 @@ The collector polls `GET /api/observability` on the FastAPI backend every 30 sec
 | `llm.latency_ms.<operation>`        | ms   |
 | `indexer.duration_ms`               | ms   |
 | `memory.search_latency_ms`          | ms   |
-| `synthesis.duration_ms`             | ms   |
-| `synthesis.memories_since_last`     | count |
-| `knowledge.ingestion_duration_ms`   | ms   |
-| `knowledge.estimated_input_tokens`  | count |
-| `knowledge.query_latency_ms`        | ms   |
-| `coordination.round_duration_ms`    | ms   |
-| `coordination.session_participants` | count |
-| `coordination.participants`         | count |
-| `coordination.rounds_to_completion` | count |
-| `coordination.time_to_completion_ms`| ms   |
-| `coordination.rounds_to_consensus`  | count |
-| `coordination.time_to_consensus_ms` | ms   |
-| `cfn.latency_ms`                    | ms   |
-| `cfn.latency_ms.<service>`          | ms   |
-| `cfn_llm.latency_ms`               | ms   |
 
 ## Display Panels
 
 `mycelium metrics show` renders panels grouped by data source, in this order:
-OpenClaw → Mycelium backend → CFN → opt-in.
+OpenClaw → Mycelium backend → opt-in.
 
 ### OpenClaw (OTLP)
 
@@ -331,68 +311,15 @@ OpenClaw → Mycelium backend → CFN → opt-in.
    computation (counts, latency, by-source breakdown) and the indexer's
    skip-unchanged file stats (skip rate, files indexed/pruned, run duration).
 
-6. **Mycelium Backend LLM Usage** — backend LLM calls, tokens, cost, latency
-   by operation and model; knowledge graph, synthesis, and memory stats.
+6. **Mycelium Backend LLM Usage** — backend LLM calls, tokens, cost, and
+   latency by operation, model, and room.
 
-7. **Mycelium Data Reuse** — memory search hit/miss rates and results returned,
-   synthesis briefing cache stats, knowledge graph query stats by type.
-
-### CFN (via backend)
-
-8. **CFN Coordination** — negotiation session counts, rounds, consensus
-   success/failure rates, timeouts, and timing histograms.
-
-9. **CFN LLM Token Usage** — actual LLM token usage reported by the cognition
-   engines via the `_usage` response field. Shows total calls, prompt/completion
-   tokens, latency, and breakdowns by pipeline, operation, and room.
-
-10. **CFN Transport Health** — outbound HTTP call counts to CFN node and mgmt
-    plane, error rates, latency histograms, per-operation and per-status-code
-    breakdowns.
-
-11. **CFN /metrics Scrape** — opt-in. Direct HTTP-RED rollup
-    (requests, errors, latency) of any CFN service that exposes a Prometheus
-    metrics endpoint via `prometheus-fastapi-instrumentator`. Today that's
-    `ioc-cfn-mgmt-backend-svc` (port 9000), `ioc-knowledge-memory`, and
-    `ioc-cfn-svc` (port 9002, at `/api/internal/metrics`).
-
-    Configured under `[[metrics.scrape]]` in `~/.mycelium/config.toml`:
-
-    ```toml
-    [[metrics.scrape]]
-    name = "cfn-mgmt"
-    url  = "http://localhost:9000/metrics"
-    kind = "http_red"
-
-    [[metrics.scrape]]
-    name = "knowledge-memory"
-    url  = "http://localhost:9001/metrics"
-    kind = "http_red"
-
-    [[metrics.scrape]]
-    name = "cfn-node"
-    url  = "http://localhost:9002/api/internal/metrics"
-    kind = "http_red"
-    ```
-
-    Targets are polled on the same 30-second cadence as the backend `/api/observability`
-    poll, results are stored under the top-level `scrape` key in
-    `metrics/metrics.json`, and unreachable targets are surfaced as
-    `[degraded]` rather than dropped silently. Restart the collector
-    (`mycelium down && mycelium up --metrics`) after editing config so
-    the new targets are picked up.
-
-    The complementary panel is #10 (CFN Transport Health), which measures
-    *outbound* CFN calls *as observed by the Mycelium backend*. Panel #11
-    measures the *inbound* HTTP surface of the CFN service itself. The two
-    will not generally agree (different vantage points; #10 sees calls from
-    every client, not just Mycelium) but large divergence is itself a useful
-    signal.
+7. **Mycelium Data Reuse** — memory search hit/miss rates and results returned.
 
 ### Opt-in
 
-12. **Workspace Files** (via `--workspace`) — per-file size breakdown of
-    each agent's `~/.openclaw` workspace directory.
+8. **Workspace Files** (via `--workspace`) — per-file size breakdown of
+   each agent's `~/.openclaw` workspace directory.
 
 ## Viewing Traces
 
@@ -649,12 +576,11 @@ compat flags.
 
 ### Cost Estimation
 
-`mycelium metrics show cost` compiles costs from three sources:
+`mycelium metrics show cost` compiles costs from two sources:
 
 | Source | Method | Notes |
 | ------ | ------ | ----- |
 | **OpenClaw Agents** | Provider-reported via `openclaw.cost.usd` OTLP metric | Displayed as-is; $0.00 if model cost config is missing or gateway was restarted (counter resets) |
-| **CFN Engines** | Estimated from actual engine-reported token counts × `pricing.json` rates | Token counts come from the CFN `_usage` response, not estimated |
 | **Mycelium LLM** | Provider-reported `cost_usd` from litellm's `response_cost` | Falls back to estimation if provider cost unavailable |
 
 ### Per-Model Pricing Fields
@@ -766,75 +692,6 @@ users can run `mycelium metrics reset` to start fresh.
 
 The following areas have working code paths but are **not yet instrumented**.
 Prioritised by effort and value.
-
-### Recently Implemented
-
-- **Coordination / Negotiation** (`services/coordination.py`) ✓
-  Sessions started/completed, rounds, consensus outcome (success/failure),
-  per-room breakdowns, round duration, time-to-completion and
-  time-to-consensus histograms. Instrumented in `_run_cfn_negotiation`,
-  `_cfn_decide_round`, and `_finish_cfn`.
-
-- **Knowledge graph queries** (`services/cfn_knowledge.py`) ✓
-  Query counts by type (neighbour, path, concept, semantic), hit/miss/error
-  rates, results returned, and latency. Instrumented in
-  `query_shared_memories`, `get_concepts_by_ids`, `get_concept_neighbors`,
-  and `get_graph_paths`.
-
-- **Knowledge ingestion** (`routes/knowledge.py`) ✓
-  Ingestion counts, duration, and error tracking for the CFN-proxied
-  knowledge extraction pipeline.
-
-- **Synthesis data reuse** (`routes/rooms.py`) ✓
-  Briefing requests, cache hits/misses, and memories-since-last-synthesis
-  histogram. Instrumented in the briefing endpoint.
-
-- **Memory search reuse** (`routes/memory.py`) ✓
-  Search hit/miss rates and total results returned. Instrumented in
-  `search_memories`.
-
-- **CFN outbound call health** (`services/cfn_knowledge.py`, `services/cfn_negotiation.py`, `routes/rooms.py`, `routes/sessions.py`, `main.py`) ✓
-  Transport-level metrics for all outbound HTTP calls to CFN node (:9002)
-  and mgmt plane (:9000). Tracks call counts, error rates, status codes,
-  and latency histograms per service and operation. Estimated input tokens
-  (cl100k_base) recorded for knowledge ingestion payloads.
-
-### Tier 1 — Straightforward (Mycelium-only)
-
-- **Session join / leave** (`routes/sessions.py`)
-  Simple activity counters: joins, leaves, active sessions.
-
-### Tier 2 — Moderate effort (Mycelium-only)
-
-- **Cognition engine endpoints** (`routes/cognition_engine.py`)
-  Endpoint-level request count and duration for extraction and evidence
-  endpoints. The LLM calls inside are already tracked; this adds the
-  outer request envelope.
-
-- **CFN proxy** (`routes/cfn_proxy.py`)
-  Outbound memory-provider call latency, errors, and status codes.
-  Shows IoC integration health from Mycelium's perspective.
-
-- **Evidence gathering LLM calls** (`agents/evidence_gathering/llm_clients.py`)
-  Currently uses Azure OpenAI directly with its own counter but does
-  not feed into the metrics system. Bridge into `record_llm_call`.
-
-### Tier 3 — Requires IoC owner coordination
-
-- **CFN provider-reported cost** — CFN engines now report actual LLM token
-  counts via the `_usage` response field (see panel 9), but not dollar cost.
-  The cost table estimates CFN cost from tokens × `pricing.json` rates. To
-  get provider-reported cost, the `UsageAccumulator` in
-  `common/metrics/usage_callback.py` would need to extract
-  `response._hidden_params["response_cost"]` from litellm and propagate it
-  through the `_usage` snapshot.
-
-### Not yet implementable (stubbed / planned)
-
-These exist in ARCHITECTURE.md or as stubs — metrics will follow once
-the features are wired up:
-
-- `get_llm_provider()` in `agents/llm_provider.py` (defined but unused)
 
 ### Trace ingestion follow-ups
 

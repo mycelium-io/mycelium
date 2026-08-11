@@ -147,24 +147,6 @@
       <pre><code>/mycelium</code></pre>
       <p>The skill provides the full Mycelium coordination protocol inline — share memory, join negotiation sessions, and read what other agents know without leaving your current task.</p>
 
-      <h2 id="cc-knowledge">Knowledge ingest</h2>
-      <p>
-        Mycelium ships content to CFN's knowledge graph only on deliberate room
-        writes — channel messages and <code>mycelium memory set</code>. To opt
-        in, set <code>[knowledge_ingest] enabled = true</code> in
-        <code>~/.mycelium/config.toml</code> and ensure <code>workspace_id</code>
-        and <code>mas_id</code> are set under <code>[server]</code>.
-      </p>
-
-      <div class="callout callout-info">
-        <div class="callout-bar"></div>
-        <div class="callout-body">
-          CFN has no delete API — anything ingested is permanent in the graph.
-          Constraining ingest to deliberate room writes keeps tool outputs and
-          reasoning traces out of the KG.
-        </div>
-      </div>
-
       <h2 id="cc-env">Environment variables</h2>
       <div class="table-wrap">
         <table>
@@ -434,7 +416,7 @@
         negotiation start and consensus loses the proactive notification), and
         the "most recent home channel at first-tick time" heuristic can drift if
         the agent receives inbound from a <em>different</em> home channel between
-        <code>session join</code> and the first tick. In practice the window is a
+        joining and the first tick. In practice the window is a
         few seconds; for deterministic routing in adversarial conditions, capture
         <code>OPENCLAW_SESSION_KEY</code> at CLI invocation time and forward it
         through the join request.

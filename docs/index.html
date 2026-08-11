@@ -82,22 +82,22 @@
         <div class="card">
           <div class="card-icon"><i data-lucide="door-open"></i></div>
           <div class="card-title">Rooms</div>
-          <div class="card-desc">Namespaced coordination spaces. Agents join rooms to share memory, negotiate in sessions, and message each other via addressed DMs.</div>
+          <div class="card-desc">Namespaced coordination spaces — one secure SLIM channel each. Agents join a room to share memory, negotiate in episodes, and message each other via addressed DMs.</div>
         </div>
         <div class="card">
           <div class="card-icon"><i data-lucide="database"></i></div>
           <div class="card-title">Persistent Memory</div>
-          <div class="card-desc">Namespaced key-value store with semantic vector search. Intelligence compounds across sessions.</div>
+          <div class="card-desc">Markdown files on your disk, with a local semantic index for recall by meaning. Intelligence compounds across episodes — no database.</div>
         </div>
         <div class="card">
           <div class="card-icon"><i data-lucide="cpu"></i></div>
-          <div class="card-title">CognitiveEngine</div>
-          <div class="card-desc">Mediates structured negotiation sessions. Agents never free-chat decisions — they propose, respond, and converge through a protocol.</div>
+          <div class="card-title">The Aligner</div>
+          <div class="card-desc">Mediates structured negotiation. Agents never free-chat decisions — they propose, respond, and converge through a real NEGMAS negotiation the aligner drives.</div>
         </div>
         <div class="card">
-          <div class="card-icon"><i data-lucide="network"></i></div>
-          <div class="card-title">Knowledge Graph</div>
-          <div class="card-desc">LLM extraction turns conversations into concepts and relationships in an openCypher graph.</div>
+          <div class="card-icon"><i data-lucide="list-checks"></i></div>
+          <div class="card-title">Shared Plan</div>
+          <div class="card-desc">A consensus compiles into the room's <code>plan/tasks.md</code> — one checklist with per-agent owners that the whole team executes against.</div>
         </div>
       </div>
 
@@ -115,7 +115,7 @@
       </p>
       <p>
         Mycelium gives agents rooms to coordinate in, persistent memory that accumulates across
-        sessions, structured negotiation sessions mediated by a CognitiveEngine, and an addressed
+        episodes, structured negotiation mediated by an aligner, and an addressed
         messaging channel so agents can DM each other inside the room without a third-party chat
         platform in the middle.
       </p>
@@ -126,8 +126,9 @@
         inherit what the swarm learned. Intelligence doesn't reset — it compounds.
       </p>
       <p>
-        Negative results matter too. An agent that logs <code>failed/sqlite-testing: can't handle
-        pgvector</code> prevents every future agent from repeating the same dead end.
+        Negative results matter too. An agent that logs <code>failed/single-writer-lock:
+        serializing every agent through one lease killed throughput</code> prevents every future
+        agent from repeating the same dead end.
       </p>
     </section>
 
@@ -137,20 +138,20 @@
       <h1>Quick Start</h1>
       <h2 id="quickstart-install">Install</h2>
       <pre><code>curl <span class="flag">-fsSL</span> https://mycelium-io.github.io/mycelium/install.sh | bash</code></pre>
-      <p>The installer sets up the CLI, prompts for your LLM provider, then brings up the full stack (backend + AgensGraph) via <code>docker compose</code>. Run <code>mycelium --help</code> after install to verify.</p>
+      <p>The installer sets up the CLI, prompts for your LLM provider, then brings up the stack via <code>docker compose</code>: a <strong>SLIM node</strong> (the encrypted messaging fabric agents coordinate over) and a thin <strong>backend</strong> that moderates each room. There is no database — rooms and memory are files on disk.</p>
+      <p>Run <code>mycelium --help</code> after install to verify.</p>
       <div class="callout callout-note">
         <div class="callout-bar"></div>
-        <div class="callout-body"><strong>An LLM key is required for coordination.</strong> Memory works without one, but the CognitiveEngine needs an LLM to negotiate; if you pick &quot;Skip&quot; at the prompt, agents will join sessions but never reach consensus. You can add it later with <code>mycelium config set llm.model &lt;model&gt;</code> and <code>mycelium config apply</code>.</div>
+        <div class="callout-body"><strong>An LLM key powers the aligner.</strong> Memory works without one, but the <a href="#aligner">aligner</a> needs an LLM to run a negotiation to consensus; if you pick &quot;Skip&quot; at the prompt, agents can post positions but never converge. Add it later with <code>mycelium config set llm.model &lt;model&gt;</code> and <code>mycelium config apply</code>.</div>
       </div>
-      <p>The install command is interactive — it checks Docker, pulls base images, asks for your LLM config, then calls <code>docker compose up</code> and provisions a default workspace automatically. No manual backend setup required.</p>
+      <p>The install command is interactive — it checks Docker, prompts for your LLM config, then starts the stack and provisions a default workspace. No manual backend setup required.</p>
       <pre><code><span class="comment"># What mycelium install does:</span>
 <span class="comment">#  1. Check Docker + disk space</span>
-<span class="comment">#  2. Pull base images (postgres, AgensGraph) in the background</span>
-<span class="comment">#  3. Prompt for LLM provider (Anthropic, OpenAI, Ollama, OpenRouter, ...)</span>
-<span class="comment">#  4. docker compose up --build -d</span>
-<span class="comment">#  5. Health-poll until services are ready</span>
-<span class="comment">#  6. Provision default workspace + MAS</span>
-<span class="comment">#  7. Write ~/.mycelium/config.toml</span>
+<span class="comment">#  2. Prompt for LLM provider (Anthropic, OpenAI, Ollama, OpenRouter, ...)</span>
+<span class="comment">#  3. docker compose up -d  (SLIM node + backend)</span>
+<span class="comment">#  4. Health-poll until services are ready</span>
+<span class="comment">#  5. Provision a default workspace</span>
+<span class="comment">#  6. Write ~/.mycelium/config.toml</span>
 
 <span class="cmd">mycelium install</span></code></pre>
       <p>Already installed? Use these commands instead:</p>
@@ -159,8 +160,8 @@
 <span class="cmd">mycelium doctor</span>    # diagnose and fix configuration issues</code></pre>
       <h2 id="quickstart-running-the-stack">Running the stack</h2>
       <p><code>mycelium install</code> leaves the stack running, but it won&#x27;t survive a reboot or a Docker restart. Use these to bring it back up or check on it:</p>
-      <pre><code><span class="cmd">mycelium up</span>       # start the backend + AgensGraph stack
-<span class="cmd">mycelium status</span>   # health check — backend, database, LLM
+      <pre><code><span class="cmd">mycelium up</span>       # start the SLIM node + backend
+<span class="cmd">mycelium status</span>   # health check — backend, SLIM node, LLM
 <span class="cmd">mycelium logs</span>     # tail service logs if something looks off
 <span class="cmd">mycelium down</span>     # stop the stack</code></pre>
       <p>If <code>mycelium ui open</code> or any command reports it can&#x27;t reach the API at <code>localhost:8000</code>, the stack isn&#x27;t running — <code>mycelium up</code> fixes it.</p>
@@ -169,45 +170,51 @@
       <pre><code><span class="cmd">mycelium ui open</span>   # starts the frontend if it isn&#x27;t running, then opens it</code></pre>
       <p>The UI is where <strong>you</strong> work: create rooms, add agents, hand them a mission, and watch them coordinate. The CLI is where <strong>your agents</strong> work: they join, negotiate, and write memory on their own. Same rooms, two surfaces, built for each other. The commands shown below are the CLI equivalents of each UI action, so you can script or follow along in a terminal.</p>
       <h2 id="quickstart-create-a-room">Create a room</h2>
-      <p>A room is a persistent namespace for memory, agents, and coordination:</p>
+      <p>A room is a persistent namespace for memory, agents, and coordination — a folder under <code>~/.mycelium/rooms/{room}/</code> and a SLIM group channel agents join:</p>
       <pre><code><span class="comment"># Create a room and make it active</span>
 <span class="cmd">mycelium room create</span> my-project
 <span class="cmd">mycelium room use</span> my-project</code></pre>
-      <p>Open <code>my-project</code> in the UI — it&#x27;s empty for now. Next we&#x27;ll add agents and start talking to them.</p>
+      <p>Open <code>my-project</code> in the UI — it&#x27;s empty for now. Next we&#x27;ll register the aligner and walk a negotiation.</p>
+      <h2 id="quickstart-register-the-aligner">Register the aligner</h2>
+      <p>The <a href="#aligner">aligner</a> is the first-party mediator that drives a negotiation. Register it once per room; it joins as a room citizen and runs a real NEGMAS negotiation when summoned:</p>
+      <pre><code><span class="cmd">mycelium engine create</span> aligner <span class="flag">--kind</span> aligner <span class="flag">--room</span> my-project</code></pre>
       <h2 id="quickstart-add-agents">Add agents</h2>
-      <p>The <strong>agent primitive</strong> registers an addressable agent in the room. Mycelium wires up the underlying adapter for you; agents coordinate through the room&#x27;s own message stream, so there&#x27;s nothing else to set up per agent.</p>
-      <pre><code><span class="comment"># Greenfield — provision a brand-new agent</span>
-<span class="cmd">mycelium agent create</span> planner <span class="flag">--adapter</span> openclaw \
+      <p>The <strong>agent primitive</strong> registers an addressable participant in the room. Mycelium wires up the underlying adapter for you; agents coordinate through the room&#x27;s own message stream, so there&#x27;s nothing else to set up per agent.</p>
+      <pre><code><span class="cmd">mycelium agent create</span> planner \
     <span class="flag">--description</span> <span class="str">&quot;Sprint planner, optimizes for shipping speed&quot;</span>
 
-<span class="comment"># Brownfield — adopt agents that already exist in your OpenClaw gateway</span>
-<span class="cmd">mycelium agent add</span></code></pre>
-      <p><code>claude_code</code> and <code>cursor</code> agents are cold-spawned by the Mycelium daemon; see the <strong>Adapters</strong> guide for the full list.</p>
-      <pre><code><span class="comment"># See who&#x27;s in the room</span>
+<span class="comment"># See who&#x27;s in the room</span>
 <span class="cmd">mycelium agent ls</span></code></pre>
+      <p><code>claude_code</code> agents are cold-spawned by the Mycelium daemon; see the <strong>Adapters</strong> guide for the full list and their support status.</p>
       <h2 id="quickstart-coordinate">Coordinate</h2>
-      <p>In the UI room view, type in the chat box and <strong><code>@</code>-mention</strong> an agent — it replies in the live message stream. The same message can be sent from the CLI:</p>
-      <pre><code><span class="comment"># Send an @-addressed message to a registered agent</span>
-<span class="cmd">mycelium agent invoke</span> planner <span class="str">&quot;draft a plan for the Q3 migration&quot;</span></code></pre>
-      <p>When you ask multiple agents to reach a decision, Mycelium&#x27;s CognitiveEngine runs a structured negotiation. On consensus, the agreement compiles into the room&#x27;s shared plan — visible in the <strong>PLAN</strong> tab in the UI, or from the CLI:</p>
-      <pre><code><span class="cmd">mycelium plan tasks</span>       # the room&#x27;s shared task list</code></pre>
+      <p>The negotiation flow is the same from the UI or the CLI:</p>
+      <pre><code><span class="comment"># 1. Each participant posts an opening position</span>
+<span class="cmd">mycelium respond</span> <span class="flag">--room</span> my-project <span class="flag">--handle</span> planner \
+    <span class="str">&quot;Ship the migration in one sprint; cut scope before we cut quality.&quot;</span>
+
+<span class="comment"># 2. Summon the aligner to converge on the question</span>
+<span class="cmd">mycelium engine invoke</span> aligner <span class="str">&quot;converge on the Q3 migration scope&quot;</span>
+
+<span class="comment"># 3. Participants loop: wait to be addressed, then reply</span>
+<span class="cmd">mycelium await</span>   <span class="flag">--room</span> my-project <span class="flag">--handle</span> planner <span class="flag">--json</span>
+<span class="cmd">mycelium respond</span> <span class="flag">--room</span> my-project <span class="flag">--handle</span> planner \
+    <span class="str">&quot;I can accept a two-sprint plan if the DB cutover slips to sprint two.&quot;</span></code></pre>
+      <p>The aligner <code>@</code>-addresses one agent at a time, interprets each reply, and stops the instant the agents agree — <a href="#aligner">NEGMAS owns termination</a>. On agreement it records the <a href="#episodes">episode</a> and compiles the consensus into the room&#x27;s shared plan, visible in the <strong>PLAN</strong> tab in the UI or from the CLI:</p>
+      <pre><code><span class="cmd">mycelium plan tasks</span>       # the room&#x27;s shared task list, with @handle owners</code></pre>
       <p>The result lands back in the same room stream — no need to go hunting for it in a separate chat.</p>
       <h2 id="quickstart-share-memory">Share memory</h2>
       <p>Rooms are also persistent memory. Anything you write is searchable by meaning and visible to every agent in the room:</p>
       <pre><code><span class="comment"># Share context</span>
-<span class="cmd">mycelium memory set</span> <span class="str">&quot;decisions/db&quot;</span> <span class="str">&quot;PostgreSQL with pgvector&quot;</span>
+<span class="cmd">mycelium memory set</span> <span class="str">&quot;decisions/scope&quot;</span> <span class="str">&quot;One sprint, DB cutover deferred to sprint two&quot;</span>
 <span class="cmd">mycelium memory set</span> <span class="str">&quot;decisions/api&quot;</span> <span class="str">&quot;REST with generated OpenAPI client&quot;</span>
 
 <span class="comment"># Search by meaning, not keywords</span>
-<span class="cmd">mycelium memory search</span> <span class="str">&quot;what database decisions were made&quot;</span>
+<span class="cmd">mycelium memory search</span> <span class="str">&quot;what scope decisions were made&quot;</span>
 
 <span class="comment"># Browse the namespace</span>
 <span class="cmd">mycelium memory ls</span>
 <span class="cmd">mycelium memory ls</span> decisions/</code></pre>
-      <div class="callout callout-note">
-        <div class="callout-bar"></div>
-        <div class="callout-body">Prefer to script the low-level negotiation directly? The <code>mycelium session join</code> / <code>session await</code> commands drive the CognitiveEngine from the terminal — see the <strong>Sessions</strong> reference.</div>
-      </div>
+      <p>See the <a href="#memory">memory</a> guide for how storage and search work.</p>
     </section>
     <!-- FOOTER -->
     <div class="docs-footer">

@@ -7,10 +7,11 @@ Built-in reference for the Mycelium multi-agent coordination system.
 - **overview** — What Mycelium is and why it exists
 - **quickstart** — Install and create your first room
 - **rooms** — Persistent coordination namespaces
-- **memory** — Persistent key-value store with semantic search
+- **episodes** — A negotiation as a scoped, recorded round on a room's channel
+- **memory** — Persistent markdown store with local semantic search
 - **plan** — Title + markdown files + checklist tasks surfaced to every agent
-- **cognitive-engine** — Multi-issue negotiation mediator
-- **knowledge-graph** — LLM-extracted concept graph
+- **aligner** — The mediator that drives a negotiation to consensus
+- **l9-protocol** — The epistemic envelope layer negotiation rides on
 - **cli-reference** — All CLI commands (generated from source)
 - **architecture** — Stack, adapters, and integrations
 - **troubleshooting** — Common issues, config reference, reset guide

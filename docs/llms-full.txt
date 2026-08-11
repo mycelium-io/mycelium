@@ -16,18 +16,29 @@ coordinate *together*: **you** work in the **UI** (create a room, add agents,
 hand them a mission, watch them decide and plan, live), and **your agents** work
 through the **CLI** (they join, negotiate, and write to shared memory on their
 own; that's what the `mycelium` skill teaches them). That's why you need at
-least one **agent runtime** (Claude Code, Cursor, or OpenClaw): the agents
+least one **agent runtime** (Claude Code is the proven one today): the agents
 aren't an optional add-on, they're half the system.
 
 ## What you get
 
-**Rooms** — Persistent coordination spaces. Agents join a room to share context, then spawn a session inside it to negotiate in real time.
+**Rooms** — Persistent coordination spaces. Agents join a room to share context,
+and when they need to agree on something they open an [episode](#episodes) — a
+scoped, recorded negotiation on the room's channel.
 
-**Persistent Memory** — Markdown files on your filesystem are the shared source of truth, greppable and editable by any agent, and a CFN knowledge graph indexes them for recall by meaning and relationship. Every agent that joins inherits what the others already know, so intelligence compounds across sessions instead of resetting.
+**Persistent Memory** — Markdown files on your filesystem are the shared source
+of truth, greppable and editable by any agent, and a local semantic index makes
+them recallable by meaning. Every agent that joins inherits what the others
+already know, so intelligence compounds across sessions instead of resetting.
 
-**Structured negotiation** — When agents need to agree on a multi-issue trade-off, Mycelium runs a structured negotiation that ends in one shared answer, then compiles it into a `- [ ]` checklist the whole team executes against.
+**Structured negotiation** — When agents need to agree on a multi-issue
+trade-off, Mycelium runs a real structured negotiation that ends in one shared
+answer, then compiles it into a `- [ ]` checklist the whole team executes
+against.
 
-> Under the hood, negotiation is mediated by the **CognitiveEngine** (agents never talk directly), and deliberate room writes can be extracted into a **knowledge graph**. See **cognitive-engine** and **knowledge-graph**.
+> Under the hood, negotiation is driven by the **aligner** (agents never talk
+> directly — a first-party mediator runs the negotiation for them), and the
+> agreed plan syncs back into shared memory. See **[aligner](#aligner)** and
+> **[episodes](#episodes)**.
 
 ## The Problem
 
@@ -36,7 +47,7 @@ on the same problem there's no shared memory, no way to negotiate trade-offs, an
 that persists across sessions. Every conversation starts from zero.
 
 Mycelium gives agents rooms to coordinate in, persistent memory that accumulates across
-sessions, and a CognitiveEngine that mediates negotiation so agents never have to talk
+sessions, and an [aligner](#aligner) that mediates negotiation so agents never have to talk
 directly to each other.
 
 ## The Ratchet Effect
@@ -45,8 +56,9 @@ When agents log decisions, failures, and findings to a shared room, any agent th
 later can read `~/.mycelium/rooms/{room}/` and the room's shared plan to instantly inherit
 what the swarm learned. Intelligence doesn't reset — it compounds.
 
-Negative results matter too. An agent that logs `failed/sqlite-testing: can't handle
-pgvector` prevents every future agent from repeating the same dead end.
+Negative results matter too. An agent that logs `failed/single-writer-lock: serializing
+every agent through one lease killed throughput` prevents every future agent from repeating
+the same dead end.
 
 
 ---
@@ -60,27 +72,30 @@ curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
 ```
 
 The installer sets up the CLI, prompts for your LLM provider, then brings up
-the full stack (backend + AgensGraph) via `docker compose`.
+the stack via `docker compose`: a **SLIM node** (the encrypted messaging fabric
+agents coordinate over) and a thin **backend** that moderates each room. There
+is no database — rooms and memory are files on disk.
+
 Run `mycelium --help` after install to verify.
 
-> **An LLM key is required for coordination.** Memory works without one, but
-> the CognitiveEngine needs an LLM to negotiate; if you pick "Skip" at the
-> prompt, agents will join sessions but never reach consensus. You can add it
-> later with `mycelium config set llm.model <model>` and `mycelium config apply`.
+> **An LLM key powers the aligner.** Memory works without one, but the
+> [aligner](#aligner) needs an LLM to run a negotiation to consensus; if you
+> pick "Skip" at the prompt, agents can post positions but never converge. Add
+> it later with `mycelium config set llm.model <model>` and
+> `mycelium config apply`.
 
-The install command is interactive — it checks Docker, pulls base images, asks for
-your LLM config, then calls `docker compose up` and provisions a default
-workspace automatically. No manual backend setup required.
+The install command is interactive — it checks Docker, prompts for your LLM
+config, then starts the stack and provisions a default workspace. No manual
+backend setup required.
 
 ```bash
 # What mycelium install does:
 #  1. Check Docker + disk space
-#  2. Pull base images (postgres, AgensGraph) in the background
-#  3. Prompt for LLM provider (Anthropic, OpenAI, Ollama, OpenRouter, ...)
-#  4. docker compose up --build -d
-#  5. Health-poll until services are ready
-#  6. Provision default workspace + MAS
-#  7. Write ~/.mycelium/config.toml
+#  2. Prompt for LLM provider (Anthropic, OpenAI, Ollama, OpenRouter, ...)
+#  3. docker compose up -d  (SLIM node + backend)
+#  4. Health-poll until services are ready
+#  5. Provision a default workspace
+#  6. Write ~/.mycelium/config.toml
 
 mycelium install
 ```
@@ -99,8 +114,8 @@ mycelium doctor    # diagnose and fix configuration issues
 Docker restart. Use these to bring it back up or check on it:
 
 ```bash
-mycelium up       # start the backend + AgensGraph stack
-mycelium status   # health check — backend, database, LLM
+mycelium up       # start the SLIM node + backend
+mycelium status   # health check — backend, SLIM node, LLM
 mycelium logs     # tail service logs if something looks off
 mycelium down     # stop the stack
 ```
@@ -125,7 +140,8 @@ so you can script or follow along in a terminal.
 
 ## Create a room
 
-A room is a persistent namespace for memory, agents, and coordination:
+A room is a persistent namespace for memory, agents, and coordination — a folder
+under `~/.mycelium/rooms/{room}/` and a SLIM group channel agents join:
 
 ```bash
 # Create a room and make it active
@@ -133,48 +149,61 @@ mycelium room create my-project
 mycelium room use my-project
 ```
 
-Open `my-project` in the UI — it's empty for now. Next we'll add agents and
-start talking to them.
+Open `my-project` in the UI — it's empty for now. Next we'll register the
+aligner and walk a negotiation.
+
+## Register the aligner
+
+The [aligner](#aligner) is the first-party mediator that drives a negotiation.
+Register it once per room; it joins as a room citizen and runs a real NEGMAS
+negotiation when summoned:
+
+```bash
+mycelium engine create aligner --kind aligner --room my-project
+```
 
 ## Add agents
 
-The **agent primitive** registers an addressable agent in the room. Mycelium
-wires up the underlying adapter for you; agents coordinate through the room's
-own message stream, so there's nothing else to set up per agent.
+The **agent primitive** registers an addressable participant in the room.
+Mycelium wires up the underlying adapter for you; agents coordinate through the
+room's own message stream, so there's nothing else to set up per agent.
 
 ```bash
-# Greenfield — provision a brand-new agent
-mycelium agent create planner --adapter openclaw \
+mycelium agent create planner \
     --description "Sprint planner, optimizes for shipping speed"
 
-# Brownfield — adopt agents that already exist in your OpenClaw gateway
-mycelium agent add
-```
-
-`claude_code` and `cursor` agents are cold-spawned by the Mycelium daemon;
-see the **Adapters** guide for the full list.
-
-```bash
 # See who's in the room
 mycelium agent ls
 ```
 
+`claude_code` agents are cold-spawned by the Mycelium daemon; see the
+**Adapters** guide for the full list and their support status.
+
 ## Coordinate
 
-In the UI room view, type in the chat box and **`@`-mention** an agent — it
-replies in the live message stream. The same message can be sent from the CLI:
+The negotiation flow is the same from the UI or the CLI:
 
 ```bash
-# Send an @-addressed message to a registered agent
-mycelium agent invoke planner "draft a plan for the Q3 migration"
+# 1. Each participant posts an opening position
+mycelium respond --room my-project --handle planner \
+    "Ship the migration in one sprint; cut scope before we cut quality."
+
+# 2. Summon the aligner to converge on the question
+mycelium engine invoke aligner "converge on the Q3 migration scope"
+
+# 3. Participants loop: wait to be addressed, then reply
+mycelium await   --room my-project --handle planner --json
+mycelium respond --room my-project --handle planner \
+    "I can accept a two-sprint plan if the DB cutover slips to sprint two."
 ```
 
-When you ask multiple agents to reach a decision, Mycelium's CognitiveEngine
-runs a structured negotiation. On consensus, the agreement compiles into the
-room's shared plan — visible in the **PLAN** tab in the UI, or from the CLI:
+The aligner `@`-addresses one agent at a time, interprets each reply, and stops
+the instant the agents agree — [NEGMAS owns termination](#aligner). On
+agreement it records the [episode](#episodes) and compiles the consensus into
+the room's shared plan, visible in the **PLAN** tab in the UI or from the CLI:
 
 ```bash
-mycelium plan tasks       # the room's shared task list
+mycelium plan tasks       # the room's shared task list, with @handle owners
 ```
 
 The result lands back in the same room stream — no need to go hunting for it in
@@ -187,32 +216,32 @@ and visible to every agent in the room:
 
 ```bash
 # Share context
-mycelium memory set "decisions/db" "PostgreSQL with pgvector"
+mycelium memory set "decisions/scope" "One sprint, DB cutover deferred to sprint two"
 mycelium memory set "decisions/api" "REST with generated OpenAPI client"
 
 # Search by meaning, not keywords
-mycelium memory search "what database decisions were made"
+mycelium memory search "what scope decisions were made"
 
 # Browse the namespace
 mycelium memory ls
 mycelium memory ls decisions/
 ```
 
-> Prefer to script the low-level negotiation directly? The
-> `mycelium session join` / `session await` commands drive the CognitiveEngine
-> from the terminal — see the **Sessions** reference.
+See the [memory](#memory) guide for how storage and search work.
 
 
 ---
 
 # Rooms
 
-A room is a persistent coordination namespace. All memories, sessions, and messages
-are scoped to a room. A room IS its namespace — there's no separation between the two.
+A room is a persistent coordination namespace. All memories, messages, and
+[episodes](#episodes) are scoped to a room. A room IS its namespace — there's no
+separation between the two.
 
-Rooms hold persistent state (memories, knowledge graph). When agents need to negotiate
-in real time, they spawn **sessions** within a room. Sessions are ephemeral sync
-negotiation rounds; the room outlives them.
+Under the hood a room is a **SLIM group channel**: agents (and the human, by
+proxy) are members of one MLS-encrypted channel per room, and the backend is
+its always-on moderator. There's no database — a room's durable state is the
+files on disk, and sharing is git.
 
 ## Rooms are Directories
 
@@ -225,29 +254,41 @@ subdirectories are created automatically:
   work/        procedures/   log/   failed/
 ```
 
-The `plan/` subdir holds the room's plan — a free-form set of markdown files
-plus the `- [ ]` / `- [x]` checklist lines those files contain. `plan/title.md`
-holds the room's display title (shown italicised above room activity in the
-UI). The rest are arbitrary `plan/{slug}.md` files containing prose and tasks.
-See [`mycelium plan`](#) for read/write commands and `plan task add|done|undo`
-for checkbox edits.
+The `plan/` subdir holds the room's [plan](#plan) — a free-form set of markdown
+files plus the `- [ ]` / `- [x]` checklist lines those files contain.
+`plan/title.md` holds the room's display title (shown italicised above room
+activity in the UI). The rest are arbitrary `plan/{slug}.md` files containing
+prose and tasks. See [`mycelium plan`](#plan) for read/write commands and
+`plan task add|done|undo` for checkbox edits.
 
 You can browse, edit, or git-track these directories directly. The backend
-keeps its search index in sync via startup scans and file watching.
+keeps its local search index in sync via startup scans and file watching.
 
-## Session State Machine
+## Commands
 
-Sessions spawned within rooms follow a state machine:
-
+```bash
+mycelium room create design-review     # create a room (its folder + channel)
+mycelium room use design-review        # make it the active room
+mycelium room ls                       # list rooms
+mycelium room watch                    # stream live room activity
+mycelium room delete design-review     # delete a room and its data
+mycelium room clone design-review --from http://hub-ip:8000  # pull a room from a remote backend
 ```
-idle → waiting → negotiating → complete
-          ↑         ↓
-      (join window fires)
-```
 
-Once `complete`, the consensus is compiled into the room's shared plan
-(`plan/tasks.md`) — a `- [ ]` checklist the team works from. The arc is
-`join → negotiate → plan → work`; the room and its plan outlive the session.
+## Coordination
+
+To coordinate in a room, participants converge on a question through an
+[episode](#episodes) driven by the [aligner](#aligner) mediator. The arc is
+**position → summon → converge → plan → work**:
+
+1. Register the mediator once: `mycelium engine create aligner --kind aligner -r design-review`
+2. Each participant posts an opening position: `mycelium respond -H <handle> "<position>"`
+3. A human summons: `mycelium engine invoke aligner "converge on <question>"`
+4. Participants loop `mycelium await -H <handle>` → read the prompt →
+   `mycelium respond -H <handle> "<accept/reject/counter>"`
+
+On agreement the aligner compiles the room's shared [`plan/tasks.md`](#plan) —
+a `- [ ]` checklist agents work from. The room and its plan outlive the episode.
 
 ## Typed events
 
@@ -291,79 +332,85 @@ The kind vocabulary is open. Post your own (`note`, `decision`, `ci_result`, ...
 
 ---
 
-# Sessions
+# Episodes
 
-A session is an ephemeral sync negotiation round spawned within a room. Rooms hold
-persistent state (memories, knowledge graph). Sessions handle real-time coordination.
+An episode is one recorded negotiation. Summoning the [aligner](#aligner) on a
+[room](#rooms) opens an episode — a scoped, membership-tagged round on the room's
+existing SLIM channel (a tag on that channel, *not* a separate channel). Each
+convening is a distinct episode with its own id, its own slice of the transcript,
+and a 1:1 record at `log/episodes/{id}.md` (the full causally-linked
+[L9](#l9-protocol) envelope chain). Rooms persist; an episode is the arc of a
+single question being converged on.
 
-> **Prerequisites for negotiation.** Sessions need two things that `mycelium
-> install` sets up by default: the **IoC/CFN** coordination backend (without it,
-> `session join` returns "CFN: not configured"), and an **LLM key** (the
-> CognitiveEngine uses it to generate proposals; in "stub mode" agents join but
-> never reach consensus). Memory and rooms work without either; negotiation does
-> not.
+There is no session to create, join, or await, and no join window — you address
+the room and the aligner directly.
 
-## Lifecycle
+## The lifecycle
 
-1. **Create** — `mycelium session create` spawns a session within your active room.
-2. **Join** — Agents join with `mycelium session join -m "your position"`. The first join starts a 60-second window for others to join.
-3. **Await** — `mycelium session await` blocks until the CognitiveEngine has an action for your agent (propose, respond, or done).
-4. **Negotiate** — Agents propose and respond in structured rounds mediated by the CognitiveEngine.
-5. **Complete** — The session reaches consensus. The agreement is compiled into the room's [shared plan](#plan) (`plan/tasks.md`); the session is done, the room and its plan persist.
+1. **Openings.** Each participant posts their opening position with
+   `mycelium respond --handle <handle> "<position>"`. The backend records it for
+   the aligner to read.
+2. **Summon.** A human summons the mediator: `mycelium engine invoke aligner
+   "converge on <the question>"`. This opens the episode.
+3. **Rounds.** Participants loop: `mycelium await --handle <handle> --json` reads
+   the prompt the aligner `@`-addressed to them, then `mycelium respond --handle
+   <handle> "<accept / reject / counter + one line why>"` replies. The aligner
+   runs a real NEGMAS Stacked Alternating Offers negotiation, brokering one agent
+   at a time.
+4. **Termination.** NEGMAS owns the stop — the episode ends the instant everyone
+   agrees, never looping to a cap.
+5. **Consensus → plan.** On agreement the aligner emits `commit:converged` with
+   the agreed `{issue: value}` map, the episode is recorded, and `plan_compiler`
+   builds the room's shared [`plan/tasks.md`](#plan) before consensus is
+   announced (so the plan exists when `await` returns).
 
-The arc doesn't stop at consensus — it flows into work: **join → negotiate → plan → work**. A consensus decides *what*; the plan is *how the team carries it out*.
+The arc doesn't stop at consensus — it flows into work: **converge → plan →
+work**. Consensus decides *what*; the plan is *how the team carries it out*.
+Agents read it with `mycelium plan tasks -r <room>` and work their `@handle` tasks.
 
-## State Machine
+## Rooms vs episodes
 
-```
-idle → waiting → negotiating → complete
-          ↑         ↓
-      (first join)  (CE tick-0)
-```
-
-- **idle** — Session created, no agents yet.
-- **waiting** — At least one agent joined. 60-second window for others.
-- **negotiating** — CognitiveEngine is running the NegMAS pipeline.
-- **complete** — Consensus reached and compiled into the room's `plan/tasks.md`. Agents pick up the shared checklist and work it.
-
-## Rooms vs Sessions
-
-| | Room | Session |
+| | Room | Episode |
 |---|------|---------|
-| Lifetime | Persistent | Ephemeral |
-| Purpose | Namespace for memory + coordination | Single negotiation round |
-| State | Always idle | idle → waiting → negotiating → complete |
-| Memory | Yes — scoped to room | No — uses parent room's memory |
-| Multiple | One room, many sessions over time | Each session is independent |
+| Lifetime | Persistent | One recorded negotiation |
+| Purpose | Namespace for memory + coordination | Converge on a single question |
+| Channel | Owns the SLIM channel | A membership-scoped tag on it |
+| Memory | Yes — scoped to the room | Uses the room's memory; recorded to it |
+| Multiple | One room, many episodes over time | Each convening is a distinct episode |
 
 ## Epistemic annotations
 
-Sessions carry an optional epistemic layer from the [L9 protocol](#l9-protocol):
+An episode carries an optional epistemic layer from the [L9 protocol](#l9-protocol):
 
-- Replies may include `--confidence`, `--evidence`, `--reasoning`, and (on an accept that yields without persuasion) `--defer-to <handle>`.
-- Ticks may include a `team_prior`: how this team has agreed on this topic in past episodes (requires the L9 CFN knowledge fabric).
-- The consensus payload carries quality `metrics` (mean confidence, genuine agreement, social compliance, provenance weight) when enough agents report confidence.
-- On consensus, the full envelope record of the session is written to room memory at `log/episodes/{session_short_id}.md`.
+- A reply can append an inline position marker with its confidence and stance,
+  e.g. `mycelium respond --handle me "I can move to 30% [[mycelium: confidence=0.85
+  stance=accept]]"`. The backend lifts it onto the L9 payload so the aligner can
+  score it, and strips it from the posted prose.
+- On convergence the record carries consensus quality metrics: **MPC** (mean
+  posterior confidence), **GAR** (genuine agreement ratio — how many agents
+  actually moved toward the outcome), and **SCR** (social compliance ratio —
+  accepts made to yield rather than from conviction), with a derived
+  `provenance_weight`.
 
-All of it is optional. Agents that ignore it negotiate exactly as before. See
-[L9 Protocol](#l9-protocol) for details.
+All of it is optional. Agents that ignore it negotiate exactly the same. See
+[L9 Protocol](#l9-protocol) for the envelope format and the metric definitions.
 
-## Multiple Rounds
+## Multiple episodes
 
-A room can host many sessions over time. When one session completes, agents can
-spawn a new one for the next decision. The room's memory persists across all sessions,
-so each round starts with full context from previous rounds.
+A room hosts many episodes over time. When one closes, summon the aligner again
+for the next decision. The room's memory persists across all of them, so each
+episode starts with full context from the ones before it.
 
 ```bash
-# First negotiation
-mycelium session create -r sprint-plan
-mycelium session join -m "Prioritize database migration" -r sprint-plan
+# First episode
+mycelium respond --handle planner "Prioritize the database migration" -r sprint-plan
+mycelium engine invoke aligner "converge on the sprint's first priority" -r sprint-plan
 
-# ... negotiation completes ...
+# ... it converges, plan/tasks.md is written ...
 
-# Second negotiation (room memory carries over)
-mycelium session create -r sprint-plan
-mycelium session join -m "Now let's plan the API layer" -r sprint-plan
+# Second episode (room memory carries over)
+mycelium respond --handle planner "Now let's plan the API layer" -r sprint-plan
+mycelium engine invoke aligner "converge on the API layer scope" -r sprint-plan
 ```
 
 
@@ -372,10 +419,10 @@ mycelium session join -m "Now let's plan the API layer" -r sprint-plan
 # Memory
 
 Room memory is markdown files on your filesystem: the shared source of truth,
-greppable and editable by any agent. The CFN knowledge graph is a derived index
-over those files, for recall by meaning and relationship, never an independent
-source of writes. Whatever stays private to one agent stays in that agent's own
-local memory, never indexed.
+greppable and editable by any agent. A local embedding index over those files
+lets agents recall by meaning, but it is never an independent source of writes.
+Whatever stays private to one agent stays in that agent's own local files, never
+indexed.
 
 ## Three layers, one source of truth
 
@@ -387,17 +434,16 @@ Mycelium memory has three layers, and only the middle one is "the memory":
 2. **Room memory** is the shared source of truth: markdown files under
    `~/.mycelium/rooms/{room}/` that every agent in the room can read, `grep`,
    edit, and `git`-track. If the team should know it, write it here.
-3. **The CFN knowledge graph** is a derived view, not a place you write to.
-   Mycelium indexes the room's public artifacts (memory files plus channel
-   messages) into it so agents can recall by meaning and by relationship. It
-   rebuilds from the files, so the files always win.
+3. **The search index** is a derived view, not a place you write to. Mycelium
+   embeds each room memory into a local index so agents can recall by meaning.
+   It rebuilds from the files, so the files always win.
 
-Rule of thumb: if a teammate should find it, put it in room memory. The graph
+Rule of thumb: if a teammate should find it, put it in room memory. The index
 is how they find it; the filesystem is where it lives; your private notes stay
 yours.
 
-Every write to room memory is embedded (384-dim, local, no API key) and indexed
-for semantic search.
+Every write to room memory is embedded (384-dim, local, no API key, no external
+service) and indexed for semantic search.
 
 ## Namespace Conventions
 
@@ -406,13 +452,13 @@ but it makes `memory ls <prefix>/` very useful.
 
 ```bash
 # Decisions your team made
-mycelium memory set "decisions/db" "AgensGraph — SQL + graph + vector in one"
+mycelium memory set "decisions/storage" "Rooms are folders; memory is markdown files"
 
 # Things that failed (so nobody repeats them)
-mycelium memory set "failed/sqlite" "Can't handle pgvector or JSONB"
+mycelium memory set "failed/single-writer" "Serializing all writes stalled under load"
 
 # Per-agent status (handle is just attribution)
-mycelium memory set "status/prometheus" "Working on CFN integration" --handle prometheus-agent
+mycelium memory set "status/prometheus" "Wiring up the aligner" --handle prometheus-agent
 
 # Browse a namespace
 mycelium memory ls decisions/
@@ -429,16 +475,16 @@ frontmatter. You can read, edit, or version-control these files directly.
 
 ```bash
 # View the raw file
-cat ~/.mycelium/rooms/design-review/decisions/database.md
+cat ~/.mycelium/rooms/design-review/decisions/storage.md
 
 # Edit with any tool
-vim ~/.mycelium/rooms/design-review/decisions/database.md
+vim ~/.mycelium/rooms/design-review/decisions/storage.md
 
 # Git-track a room's memory
 cd ~/.mycelium/rooms/design-review && git init
 ```
 
-The pgvector search index auto-syncs when:
+The local search index auto-syncs when:
 - You use `mycelium memory set` (immediate dual-write)
 - The backend starts up (incremental scan of changed files)
 - Files change on disk while the backend is running (file watcher)
@@ -450,11 +496,11 @@ mycelium memory reindex
 
 ## Semantic Search
 
-Search finds memories by meaning — cosine similarity on all-MiniLM-L6-v2 embeddings
-(384 dimensions, runs locally).
+Search finds memories by meaning — cosine similarity on all-MiniLM-L6-v2
+embeddings (384 dimensions, runs locally, no external service).
 
 ```bash
-mycelium memory search "what database decisions were made"
+mycelium memory search "what storage decisions were made"
 mycelium memory search "what failed and why"
 mycelium memory search "what is the current status"
 ```
@@ -468,16 +514,17 @@ A room's **plan** is the place to write down what the room is for and what's
 left to do. It lives in `~/.mycelium/rooms/{room}/plan/` as a small set of
 markdown files, plus the `- [ ]` / `- [x]` checklist lines inside them.
 
-Plan content is surfaced to every agent in the room — on every coordination
-tick (sync path) and in every agent-context briefing (async path) — so
+Plan content is surfaced to every agent in the room — in the turn the
+[aligner](#aligner) addresses to them and in every agent-context briefing — so
 agents weigh their behaviour against work that's already committed.
 
 You can write the plan by hand (`plan set`, `plan task add`), but it also
-fills itself: when a [negotiation session](#sessions) reaches consensus,
-Mycelium compiles the agreement into `plan/tasks.md` automatically — a
-`- [ ]` checklist the whole team then executes against. A re-negotiation
-updates that same plan, preserving tasks already completed. The arc is
-**join → negotiate → plan → work**.
+fills itself: when an [episode](#episodes) converges on consensus, Mycelium
+compiles the agreed `{issue: value}` map into `plan/tasks.md` automatically — a
+`- [ ]` checklist with `@handle` owners that the whole team then executes
+against. The plan is compiled *before* the consensus is announced, so it exists
+the moment `await` returns. A re-negotiation updates that same plan, preserving
+tasks already completed. The arc is **position → converge → plan → work**.
 
 ## Anatomy
 
@@ -524,115 +571,83 @@ Plan files share the same memory-style markdown-with-frontmatter convention,
 so they live alongside `work/`, `decisions/`, etc. and are readable to anyone
 opening the room directory.
 
-During a live coordination tick, the open task list is also rendered into
-every agent's prompt under a dedicated **Open tasks** header — both CLI
-agents (raw payload field `plan_open_tasks`) and OpenClaw agents
-(rendered into the dispatched instruction string).
+During an episode, the open task list is also rendered into every agent's
+turn under a dedicated **Open tasks** header, so an agent always negotiates
+with the room's committed work in view.
 
 
 ---
 
-# CognitiveEngine
+# Aligner
 
-CognitiveEngine is the mediator. It sits between all agents and drives negotiation.
-Agents never talk to each other directly — all coordination flows through CE.
+The aligner is Mycelium's first-party mediator. Agents never talk to each other
+directly — all coordination flows through it. It reads everyone's opening
+positions, brokers the negotiation one agent at a time, and stops the moment the
+team agrees.
 
-> **CE requires an LLM key and the IoC/CFN backend.** Both are provisioned by
-> `mycelium install` (interactive) by default. Without an LLM key the engine
-> can't synthesize proposals; without IoC/CFN, `session join` rejects the
-> negotiation outright. See **sessions** for the full prerequisite list.
-
-## Negotiation flow
-
-In sessions:
-
-1. Agents call `session join` with their initial position and handle.
-2. The join window stays open until no new agents have joined for the configured
-   extension period (default 30s after each join, capped at 180s from first join).
-   When the window closes, CE starts the **SemanticNegotiationPipeline** on the
-   joined positions.
-3. CE sends each agent a `coordination_tick` with `action: respond`. The tick
-   payload tells the agent everything it needs to decide:
-
-   | Field | What it tells you |
-   |---|---|
-   | `current_offer` | The proposal on the table this round |
-   | `can_counter_offer` | Whether *you* are the designated proposer this round |
-   | `round` / `n_steps_total` | Where you are in the round budget |
-   | `your_last_action` | What you (the recipient) did last round |
-   | `prior_round_outcome` | What happened previously: `first_round`, `proposer_countered`, `rejected_by_<id>`, `agreed`, `no_consensus` |
-   | `issues` / `issue_options` | The full negotiation space |
-
-4. Agents reply with `propose` (counter-offer, only when `can_counter_offer: true`)
-   or `respond accept|reject`.
-5. Rounds continue until consensus or the round budget (`n_steps_total`) is
-   exhausted. Consensus requires **all agents** to accept the same offer in the
-   same round. The final tick is `coordination_consensus` with `broken: false`
-   and the agreed plan; if no agreement is reached, `broken: true` is posted
-   and the room moves to `failed` state.
-6. On consensus, the agreement is handed to the **plan compiler** — an LLM
-   stage that turns the raw `issue=value` agreement into the room's
-   [shared plan](#plan), `plan/tasks.md`, a `- [ ]` checklist the team
-   executes against. This runs before the `coordination_consensus` message
-   is posted, so the plan exists by the time `session await` returns. The
-   compiler is a separate stage that *consumes* the negotiation outcome — not
-   part of the negotiation engine itself.
-
-Walking away with no agreement is a legitimate outcome. The protocol does not
-have a "concede gradually" mechanism for LLM agents — if your hard constraints
-can't be met, keep rejecting until the round budget is exhausted.
+Unlike a passive relay, the aligner is *summoned*: nothing runs until you
+register it in a [room](#rooms) and invoke it. There is no join window and no
+auto-start.
 
 ```bash
-# Propose / counter-offer (when can_counter_offer is true)
-mycelium negotiate propose \
-  budget=high timeline=standard \
-  scope=extended quality=standard \
-  -r sprint-plan -H julia-agent
+# Register the mediator once per room
+mycelium engine create aligner --kind aligner --room sprint-plan
 
-# Respond (when can_counter_offer is false, or to accept the standing offer)
-mycelium negotiate respond accept \
-  -r sprint-plan -H selina-agent
-
-# Keep awaiting between each action
-mycelium session await \
-  -H selina-agent -r sprint-plan
+# Summon it to open an episode
+mycelium engine invoke aligner "converge on tech allocation and the cap" -r sprint-plan
 ```
 
-## The CFN backend
+## How it negotiates
 
-The CE runs on the CFN service
-([ioc-cfn-svc](https://github.com/outshift-open/ioc-cfn-svc)), which exposes
-the **semantic-alignment** API that drives negotiation rounds and a native
-[L9](#l9-protocol) endpoint (`POST /api/l9/messages`) that routes protocol
-envelopes to Cognition Engines by kind/subkind. Agreements are auto-persisted
-to CFN shared memory (surfaced as `cfn_persisted` on the consensus message).
+The aligner drives a real **NEGMAS Stacked Alternating Offers** negotiation — not
+an LLM improvising a consensus. The mechanism owns proposer rotation and the
+unanimity stop; the aligner only supplies each agent's move when NEGMAS asks for
+one.
 
-See [L9 Protocol](#l9-protocol) for the envelope format, epistemic reply
-fields, and consensus quality metrics.
+1. **Discover.** It reads the participants' opening positions (posted with
+   `mycelium respond`) and derives the negotiable issues and their options.
+2. **Broker.** Each round it `@`-addresses one agent at a time over SLIM with the
+   standing offer, waits for that agent's `mycelium respond` reply, and interprets
+   the natural-language reply into an SAO move (accept / reject / counter). Agents
+   answer in prose; they never speak the protocol.
+3. **Terminate.** NEGMAS stops the instant everyone accepts the same offer — it
+   never loops to the step cap. A negotiation that can't reach agreement commits
+   as `rejected`.
+4. **Compile.** On agreement the aligner emits `commit:converged` carrying the
+   agreed `{issue: value}` map, and `plan_compiler` — a separate LLM stage that
+   *consumes* the outcome, not part of the negotiation engine — turns it into the
+   room's [shared plan](#plan), `plan/tasks.md`: a `- [ ]` checklist with
+   `@handle` owners. This runs before the consensus is announced, so the plan
+   exists by the time `await` returns.
+
+Walking away with no agreement is a legitimate outcome. There's no "concede
+gradually" mechanism — if your hard constraints can't be met, keep rejecting.
+
+## Memory across rounds
+
+The aligner's brain is a persistent **Pi** coding-agent session (`pi -p --session
+<id>`), spawned fresh per episode and kept alive across every round of that
+episode. That persistence is what gives it real memory of the negotiation as it
+unfolds — it remembers who moved and why, rather than re-reading a flat
+transcript each turn. Pi ships in the backend image; it is Mycelium's own
+cognition runtime and is never imposed on participant agent runtimes.
 
 ## Tunables
 
-| Config key | Default | Purpose |
-|---|---|---|
-| `negotiation.n_steps` | `20` | Maximum SAO rounds per session. Set to `0` to fall through to CFN's auto-computed budget (which scales with agent and issue count, but assumes Boulware-style time-based concession that LLM callback agents do not exhibit — a low fixed cap is preferred). |
-
-```bash
-mycelium config set negotiation.n_steps 30
-mycelium config apply  # regenerates ~/.mycelium/.env
-```
-
-CFN-side tunables (set via `~/.mycelium/.env` directly):
+The aligner is dormant by default and configured through `~/.mycelium/.env`
+(backend settings). The common knobs:
 
 | Env var | Default | Purpose |
 |---|---|---|
-| `COORDINATION_JOIN_WINDOW_SECONDS` | `30` | Initial join window starting from the first agent's join |
-| `COORDINATION_JOIN_WINDOW_EXTENSION_SECONDS` | `30` | How much each subsequent join pushes the deadline forward |
-| `COORDINATION_JOIN_WINDOW_MAX_SECONDS` | `180` | Hard cap on total join window from first join |
-| `COORDINATION_TICK_TIMEOUT_SECONDS` | `30` | Fallback per-tick timeout |
+| `ALIGNER_HANDLE` | `aligner` | Reserved handle that a summon is recognised by |
+| `ALIGNER_THRESHOLD` | `0.6` | Consensus confidence at/above which a round converges; below rejects |
+| `ALIGNER_MAX_ROUNDS` | `3` | Hard cap on the driver's rounds so the loop always terminates |
+| `ALIGNER_ROUND_TIMEOUT_S` | `30.0` | Per-round wait for participant replies before scoring what arrived |
+| `ALIGNER_MEDIATOR_MAX_STEPS` | `20` | Hard cap on NEGMAS SAO steps — a safety bound; NEGMAS normally stops at agreement well before it |
+| `ALIGNER_PI_TIMEOUT_S` | `120.0` | Per-turn wall-clock bound on one Pi brain call |
 
-The round watchdog also extends on each agent's first reply per round, so a slow
-agent doesn't stall the round for everyone — only sustained silence (no replies
-for the full timeout window) ends the round prematurely.
+See [L9 Protocol](#l9-protocol) for the envelope format, epistemic reply fields,
+and the consensus quality metrics the aligner records at close.
 
 
 ---
@@ -650,34 +665,45 @@ by making *how* the team decided as inspectable as *what* it decided. Agents
 say how sure they are and why; every consensus gets a quality score; every
 negotiation leaves a causal paper trail.
 
+L9 rides the room's SLIM channel as additive JSON envelopes on the coordination
+messages — ticks are `exchange`, agreement commits as `commit:converged`,
+failure as `commit:rejected`, and shared knowledge as `knowledge`. The backend
+synthesizes reply envelopes from what agents say, so agents never need to speak
+L9 themselves.
+
 > Everything on this page is **additive and optional**. Agents that never send
 > epistemic fields participate exactly as before.
 
 ## Say how sure you are
 
-Any `propose` or `respond` can carry your epistemic state:
+When you post a position or reply with [`mycelium respond`](#quickstart), end it
+with a position marker to declare your epistemic state:
 
 ```bash
-mycelium negotiate propose budget=high \
-  --confidence 0.8 \
-  --supporting-evidence "staging p99 data" \
-  --against-evidence "vendor lock-in risk" \
-  --reasoning "only option that meets the latency target"
+mycelium respond --room design --handle me \
+  "Only option that meets the latency target. [[mycelium: confidence=0.8 stance=accept]]"
 
-# Changed your mind? Name what you engaged and why it moved:
-mycelium negotiate respond accept \
-  --addresses "staging p99 data" --revision-cause grounded_argument
-
-# Accepting just to move on? Say so:
-mycelium negotiate respond accept --confidence 0.4 --defer-to julia-agent
+# Accepting just to move on? Say so plainly in prose, and the aligner records
+# the deference:
+mycelium respond --room design --handle me \
+  "I'm not persuaded, but I'll defer to @julia-agent. [[mycelium: confidence=0.4 stance=accept]]"
 ```
 
-- `--confidence` (0–1): how sure you are of your position
-- `--supporting-evidence` / `--against-evidence` (repeatable): what argues for and against it (file paths, memory keys, claims)
-- `--addresses` (repeatable): the prior evidence your turn engages — what grounding is scored on
-- `--revision-cause`: why your position moved — `grounded_argument`, `new_evidence`, `semantic_memory`, `repair_resolution`, or `social_compliance`
-- `--reasoning`: the one-liner rationale
-- `--defer-to <handle>`: on an accept, *you yielded without being persuaded* (shorthand for `--revision-cause social_compliance`)
+The `[[mycelium: …]]` marker is lifted onto the L9 envelope and stripped from
+the prose. The aligner reads your reply and folds in the richer epistemic
+signals it can infer — the evidence you engaged, whether your position moved,
+and why:
+
+- `confidence` (0–1): how sure you are of your position
+- `stance`: `accept` / `reject` (also `agree`/`yes`, `block`/`no`)
+- **supporting / against evidence**: what argues for and against your position
+- **what you addressed**: the prior evidence your turn engages — grounding is
+  scored on this
+- **revision cause**: why your position moved — `grounded_argument`,
+  `new_evidence`, `semantic_memory`, `repair_resolution`, or
+  `social_compliance`
+- **deferral**: yielding without being persuaded (a `social_compliance`
+  revision)
 
 Defer honestly. It doesn't change the outcome; it changes how much the
 outcome can be trusted, which is the point. A dishonest "accept" corrupts the
@@ -688,7 +714,8 @@ If you move but cite no prior evidence, you get the benefit of the doubt
 ## Read the quality of a consensus
 
 When enough agents report confidence, the consensus carries a `metrics` score
-(shown in the session view, the cards, and `mycelium watch`):
+(shown in the [episode](#episodes) view, the cards, and the UI protocol
+inspector):
 
 | Metric | Read it as |
 |---|---|
@@ -702,64 +729,36 @@ with SCR 0 is a genuine team decision; MPC 0.5 with SCR 0.67 is one agent
 dragging two others. Now you can see the difference, and so can the agents
 reading the room's history.
 
-Check it live, too: `mycelium negotiate status` shows the interim score
-mid-negotiation, and `mycelium negotiate status --contested` exits non-zero
-when `provenance_weight` is below `0.60` — a gate you can put in front of a
-script that acts on the outcome.
-
 ## Team priors: start from what the team already learned
 
-Each session opens with the team's earned confidence on this topic: a
-`team_prior` in every tick (`{confidence, provenance_weight, episode_count}`),
+Each negotiation opens with the team's earned confidence on this topic: a
+`team_prior` on every tick (`{confidence, provenance_weight, episode_count}`),
 written to the room's own memory after each converged consensus
 (`l9/rule_update/topic`) and read back on the next negotiation, so it improves
 over time. Agents are instructed to form their own view first, then weigh the
 prior: a starting point, not an answer.
 
 > Local by default — the prior lives in room memory, no external service
-> needed. With `L9_CFN_ENABLED=true` and a knowledge CE registered, the CFN
-> knowledge fabric acts as an additional source. Fail-soft either way: no
-> prior, negotiation proceeds normally.
+> needed. Fail-soft: no prior, negotiation proceeds normally.
 
 ## The paper trail
 
-Every negotiation is an L9 **episode**: ticks, replies, and the closing
-commit, causally linked (each message cites its `parents`) from opening
-positions to outcome. On consensus the full record lands in room memory at
-`log/episodes/{session_short_id}.md`, git-shareable and searchable like any
-memory, so "why did we decide this?" has an answer months later.
+Every negotiation is an L9 [episode](#episodes): ticks, replies, and the
+closing commit, causally linked (each message cites its `parents`) from opening
+positions to outcome, scoped by the episode URN
+`urn:ioc:mycelium:episode:{room}:{short_id}`. On consensus the full record
+lands in room memory at `log/episodes/{short_id}.md`, git-shareable and
+searchable like any memory, so "why did we decide this?" has an answer months
+later.
 
 ## Under the hood
 
 Coordination messages carry an `l9` envelope inside their content JSON: ticks
-are `exchange`, agreement commits as `converged`, failure as `abort`, on the
-episode URN `urn:ioc:mycelium:episode:{room}:{session_short_id}`. Reply
-envelopes are synthesized by the backend; agents never need to speak L9
-themselves. Negotiation and L9 routing are served by the CFN
-([ioc-cfn-svc](https://github.com/outshift-open/ioc-cfn-svc)) via its
-semantic-alignment API; agreements are auto-persisted to CFN shared memory
-(`cfn_persisted` on the consensus payload). The quality metrics are computed
-by Mycelium for now and move to the Cognition Engine when it computes them
-natively.
-
-
----
-
-# Knowledge Graph
-
-Every message written to a room passes through a two-stage LLM extraction pipeline
-that turns free-form agent output into structured graph data.
-
-| Stage | What it extracts | Stored as |
-|-------|------------------|-----------|
-| Stage 1 | Concepts, entities, decisions | Nodes in openCypher graph |
-| Stage 2 | Relationships between concepts | Edges in openCypher graph |
-
-CE queries the graph when running negotiation — historical decisions and known trade-offs
-inform proposals. The graph accumulates across all sessions in a room.
-
-> The knowledge graph lives in **AgensGraph** alongside the SQL tables —
-> no separate graph database required.
+are `exchange`, agreement commits as `commit:converged`, a failed negotiation as
+`commit:rejected`. Reply envelopes are synthesized by the backend from parsed
+agent replies; agents never speak L9 directly. On convergence the agreed
+`{issue: value}` map compiles into the room's shared `plan/tasks.md` and syncs
+as a `knowledge` memory. The quality metrics are computed by Mycelium.
 
 
 ---
@@ -768,16 +767,15 @@ inform proposals. The graph accumulates across all sessions in a room.
 
 ## Deployment Modes
 
-Mycelium supports two deployment modes. The backend and database are
-identical in both — what differs is *where the agents run* and *how they
-reach the backend*.
+Mycelium supports two deployment modes. The stack is identical in both —
+what differs is *where the agents run* and *how they reach the room*.
 
 ### 1. Single-device (default)
 
-Everything — backend, database, agents, and CLI — runs on one machine,
-typically a developer's laptop. This is what `mycelium install` sets up
-out of the box. No network configuration, no remote services to point
-at, no shared infrastructure required. Agents talk to `localhost:8000`.
+Everything — the backend, the SLIM node, agents, and CLI — runs on one
+machine, typically a developer's laptop. This is what `mycelium install`
+sets up out of the box. No network configuration, no remote services to
+point at, no shared infrastructure required.
 
 This is the primary deployment target. Use it when one person (or one
 machine) owns the whole agent workflow.
@@ -785,37 +783,38 @@ machine) owns the whole agent workflow.
 ### 2. Hub-and-spoke (small teams)
 
 A second, optional mode for small teams that want to share memory, rooms,
-and coordination state across machines. One machine runs the full backend
-stack (the **hub**); other machines run only the CLI + agents (**spokes**)
-and connect to the hub over HTTPS/SSE.
+and coordination across machines. One machine runs the SLIM node and
+backend (the **hub**); other machines run only the CLI + agents (**spokes**)
+and connect to the hub's channel.
 
 | Role  | What runs locally | When to use |
 |-------|-------------------|-------------|
-| **Hub**   | Full backend stack — FastAPI + AgensGraph (Postgres 16) + (optionally) the CFN management plane and cognition fabric node services. | The team's shared coordination server. One per team. |
-| **Spoke** | CLI + agents only. Talks to a remote hub via HTTPS / SSE. No Docker containers, no local database. | Each teammate's laptop. Agents on the spoke participate in shared rooms hosted by the hub. |
+| **Hub**   | The SLIM node + the thin FastAPI backend (room moderator). | The team's shared coordination server. One per team. |
+| **Spoke** | CLI + agents only. Points at the hub's SLIM address. | Each teammate's laptop. Agents on the spoke participate in shared rooms hosted by the hub. |
 
-Use this when a small team wants one place to look at shared memory,
-results, and ongoing coordinations — without each member running their
-own isolated stack. See the [Hub & Spoke Setup guide](#hub-and-spoke)
-for step-by-step instructions.
+Stand a hub up and point spokes at it:
+
+```bash
+# On the hub — starts the SLIM node + backend, prints the connect address
+mycelium hub host
+
+# On each spoke — point this machine at the hub's channel
+mycelium hub connect http://<hub-ip>:46357
+```
+
+See the [Hub & Spoke Setup guide](#hub-and-spoke) for step-by-step
+instructions.
 
 `mycelium doctor` auto-detects which mode you're in by looking at
 `server.api_url` in `~/.mycelium/config.toml`: if it points to
-`localhost`/`127.0.0.1`, you're a hub; otherwise a spoke. The detection
-just tells the doctor which checks are relevant — Docker containers,
-runtime config drift, and the local CFN mgmt plane only matter on a hub.
-Override the auto-detection with:
+`localhost`/`127.0.0.1`, you're a hub; otherwise a spoke. Override the
+auto-detection with:
 
 ```bash
 mycelium doctor --mode hub     # force hub checks
 mycelium doctor --mode spoke   # force spoke checks (skip local-only)
 mycelium doctor --mode auto    # default — detect from api_url
 ```
-
-> **Terminology note.** Earlier releases used "leaf" instead of "spoke".
-> The CLI flag `--mode leaf` was renamed to `--mode spoke` in a hard
-> cutover (no alias) to align with the standard hub-and-spoke vocabulary.
-> If you have scripts that pass `--mode leaf`, update them to `--mode spoke`.
 
 ### Syncing room files (remote backend)
 
@@ -833,31 +832,70 @@ mycelium sync
 
 ## Stack
 
-Everything runs on a single **AgensGraph** instance — a PostgreSQL 16 fork
-with multi-model support. No external message broker, no separate vector database.
+Mycelium runs on **one SLIM node** and a thin backend — no database, no
+message broker, no vector store.
+
+Agents coordinate over an [AGNTCY SLIM](https://github.com/agntcy) group
+channel, one per room: an MLS-encrypted group with shared-secret PSK auth.
+The backend is each room's **moderator** — agents (and the human, by proxy)
+are members. Room state lives on disk as markdown files; search runs against a
+local embedding index. Coordination messages ride SLIM as additive
+[L9 envelopes](#l9-protocol).
 
 | Layer | Technology | Used for |
 |-------|-----------|----------|
-| SQL | AgensGraph (PG 16) | rooms, sessions, messages, memories |
-| Graph | openCypher (AgensGraph) | knowledge graph — concepts, relationships |
-| Vector | pgvector | semantic search on memory embeddings |
-| Real-time | LISTEN/NOTIFY → asyncpg → SSE | live watch stream |
-| Embeddings | sentence-transformers (all-MiniLM-L6-v2) | 384-dim local embeddings, no API key |
-| LLM | litellm | extraction, negotiation, plan compilation (100+ providers) |
-| Backend | FastAPI + asyncpg + SQLAlchemy | coordination engine API |
+| Messaging | one SLIM node (MLS group channels) | per-room encrypted coordination fabric |
+| State | markdown files under `~/.mycelium/rooms/{room}/` | rooms, memories, plan — the source of truth |
+| Search | local ONNX embedding index (JSONL) | ~384-dim semantic recall, no external service |
+| Protocol | L9 envelopes over SLIM | `exchange` ticks/replies, `commit:*`, `knowledge` |
+| Cognition | the aligner — Pi + NEGMAS | drives the negotiation (see [aligner](#aligner)) |
+| Embeddings | local ONNX model | 384-dim embeddings, no API key |
+| LLM | litellm | plan compilation (100+ providers) |
+| Backend | FastAPI (room moderator) | membership, transcript, moderation API |
+| Waker | optional daemon | cold-spawns runtimes that can't wake themselves |
 | CLI | Typer + Rich | agent interface |
 | Frontend | Next.js + Tailwind | frontend UI |
+
+**Participation is a CLI primitive.** Any already-awake caller joins a room and
+coordinates with two stateless HTTP calls — the backend holds membership via a
+presence lease and a durable transcript cursor, so ticks are never missed
+between turns:
+
+```bash
+# Long-poll until a message is addressed to the handle
+mycelium await --room my-project --handle me --json
+
+# Post a reply or opening position
+mycelium respond --room my-project --handle me "moving toward 30% …"
+```
+
+**The daemon is an optional waker.** For runtimes that can't wake themselves
+(e.g. Claude Code), the daemon subscribes on their behalf and cold-spawns
+`claude -p` on a mention. It's built on the same membership core; agents never
+speak SLIM or L9 directly.
+
+**The aligner is the cognition engine.** Negotiation is driven by a first-party
+mediator — the aligner — registered in a room and summoned by `@`-mention. Its
+brain is a persistent Pi coding-agent session running a NEGMAS Stacked
+Alternating Offers negotiation; NEGMAS owns termination, stopping the instant
+the agents agree. See [aligner](#aligner) and [episodes](#episodes).
 
 ## Adapters
 
 Mycelium integrates with AI coding agents via adapters. The coordination model is
 the same regardless of adapter — join, await, respond.
 
+| Adapter | Status |
+|---------|--------|
+| **claude_code** | proven — the supported path today |
+| **cursor** | untested / unverified |
+| **openclaw, hermes** | deprecated |
+
 ### Claude Code
 
 The Mycelium skill installs as a Claude Code skill (`~/.claude/skills/mycelium/SKILL.md`),
 invoked via the `/mycelium` slash command for memory and coordination commands.
-The adapter is skill-only; earlier hook-based versions were removed.
+The adapter is skill-only.
 
 ```bash
 # The skill is invoked automatically in Claude Code sessions
@@ -865,11 +903,16 @@ The adapter is skill-only; earlier hook-based versions were removed.
 /mycelium
 ```
 
-### Cursor
+The shared `mycelium-daemon` cold-spawns `claude -p` in the agent's workspace on
+each `@handle` mention, so a Claude Code agent participates without holding a
+connection open.
+
+### Cursor (untested)
 
 Same dispatch shape as Claude Code: each `@handle` mention is cold-spawned by
 the shared `mycelium-daemon` as a `cursor-agent -p` process in the agent's
-workspace. One daemon serves both cold-spawn families.
+workspace. One daemon serves both cold-spawn families. This path is present but
+not yet verified end-to-end.
 
 ```bash
 mycelium adapter add cursor
@@ -881,40 +924,10 @@ mycelium agent create design-agent --adapter cursor \
     --cwd ~/repos/my-frontend --room my-project
 ```
 
-### OpenClaw
+### OpenClaw / Hermes (deprecated)
 
-Plugin + hooks for the OpenClaw agent runtime. Same coordination model,
-same memory API.
-
-```bash
-mycelium adapter add openclaw
-
-# Allow agents to run mycelium commands without manual approval
-# For specific agents (recommended):
-openclaw approvals allowlist add --agent "<agent-id>" "~/.local/bin/mycelium"
-# Or for all agents (convenient but less restrictive):
-openclaw approvals allowlist add --agent "*" "~/.local/bin/mycelium"
-
-# Restart the gateway to pick up the plugin
-openclaw gateway restart
-```
-
-### Containerized gateway
-
-If OpenClaw runs inside Docker (VPS, self-hosted, Docker Compose), pass the
-container name so Mycelium stages assets and runs install commands inside the
-container via `docker exec`:
-
-```bash
-mycelium adapter add openclaw --openclaw-container openclaw-gateway-1
-
-# Or set via env var
-export OPENCLAW_CONTAINER=openclaw-gateway-1
-mycelium adapter add openclaw
-```
-
-This handles path resolution, file ownership (root UID), and `openclaw.json`
-load-path configuration automatically.
+The OpenClaw and Hermes adapters are deprecated and no longer supported. Use
+the Claude Code adapter.
 
 ### Backend API
 
@@ -928,13 +941,13 @@ when the backend is running.
 # Structured Memory Guide
 
 This guide shows how to use Mycelium's structured memory conventions to give
-agents continuity across sessions.
+agents continuity across separate runs.
 
 ## The Problem
 
-An agent helps build something over a long session. The session ends. When the
-user (or another agent) comes back, there's no memory of what happened. The
-new session starts from scratch.
+An agent helps build something over a long stretch of work, then goes away.
+When the user (or another agent) comes back, there's no memory of what
+happened. The next agent starts from scratch.
 
 ## The Solution: Category Conventions
 
@@ -1003,8 +1016,8 @@ mycelium memory set status/deploy "ACTIVE — deployed to vps.example.com"
 ## Type Safety
 
 `memory set` validates category keys against the `MemoryLogEntry` type
-(defined in `mycelium.protocol`). This is the same pattern used for negotiation
-payloads (`ProposeReply`, `RespondReply`) — Pydantic validation before the
+(defined in `mycelium.protocol`). This is the same pattern used for the
+negotiation reply payload (`RespondReply`) — Pydantic validation before the
 API call, so malformed slugs fail fast on the client side.
 
 Valid slugs: lowercase alphanumeric, hyphens, dots, underscores.
@@ -1014,31 +1027,29 @@ Valid slugs: lowercase alphanumeric, hyphens, dots, underscores.
 
 Keys without a known category prefix skip validation entirely:
 - `custom/anything` — passes through, no slug check
-- `research/pgvector-perf` — passes through
+- `research/index-perf` — passes through
 
 
 ---
 
 # Hub & Spoke Setup
 
-How to run Mycelium across multiple machines so a small team shares
-memory, rooms, and coordination state from a single backend.
+Run Mycelium across two or more machines so a small team shares rooms,
+memory, and coordination over one SLIM node.
 
-> **Note:** The examples below use the **mycelium-room** channel (the
-> Mycelium room UI) as the agent surface and **OpenClaw** as the agent
-> adapter. The same pattern applies to external channels and other
-> adapters — substitute the relevant names and config paths.
-
-> For a Hermes-specific walkthrough — one operator per spoke,
-> per-spoke `hermes-gateway`, no central channel server — see
-> [Hub & Spoke (Hermes)](#hub-and-spoke-hermes).
+Coordination rides an [AGNTCY SLIM](#architecture) group channel — an
+MLS-encrypted messaging fabric. One machine is the **hub**: it runs the
+SLIM node plus the always-on backend that moderates each room. Every
+other machine is a **spoke** that points at the hub's node. There is no
+database and no separate channel server — the node is a blind ciphertext
+forwarder, so the hub never sees room contents in the clear.
 
 ## When to use this
 
-Use hub-and-spoke when multiple people (or multiple machines) need to
-participate in the same rooms, see the same memories, and coordinate
-agents together. If everything runs on one machine, the default
-single-device install is simpler — see the Quick Start.
+Use hub-and-spoke when people on different machines need to join the same
+rooms, see the same memories, and run negotiations together. If everything
+runs on one machine, the default single-device install already does this —
+see the [Quick Start](#quickstart).
 
 ## Topology
 
@@ -1047,47 +1058,48 @@ single-device install is simpler — see the Quick Start.
 │  Hub  (one machine)              │
 │                                  │
 │  mycelium install                │
-│  ├─ FastAPI backend  :8000       │
-│  ├─ AgensGraph (PG)  :5432       │
-│  ├─ CFN mgmt plane   :9000       │
-│  └─ CFN runtime      :9002       │
-│                                  │
-│  OpenClaw gateway                │
-│  All agents added here           │
+│  mycelium hub host               │
+│  ├─ SLIM node   :46357           │
+│  └─ FastAPI backend (moderator)  │
 └────────────┬─────────────────────┘
-             │  HTTPS / SSE
+             │  SLIM (MLS-encrypted)
      ┌───────┴───────┐
      │               │
 ┌────┴─────┐   ┌─────┴────┐
 │ Spoke A  │   │ Spoke B  │
 │          │   │          │
-│ CLI only │   │ CLI only │
+│ mycelium │   │ mycelium │
+│ connect  │   │ connect  │
 │ + agents │   │ + agents │
-│ No Docker│   │ No Docker│
 └──────────┘   └──────────┘
 ```
 
-The hub runs the full stack. Spokes run only the CLI, agents, and the
-adapter plugin — no Docker, no database, no separate channel server.
+Spokes run only the CLI and their agents. They connect to the hub's node
+address and coordinate over the shared channel.
 
-## Step 1: Set up the hub
+## Step 1: Stand up the hub
 
-On the hub machine, run the standard install:
+On the hub machine, install the stack and start the SLIM node:
 
 ```bash
 mycelium install
-mycelium up --metrics            # include --metrics if you want spoke telemetry
+mycelium hub host
 ```
 
-This brings up the backend, database, and provisions a default workspace.
-The `--metrics` flag also starts the dockerized OTLP collector listening
-on `:4318`. It serves two purposes on the hub: it collects telemetry
-from the hub's own OpenClaw gateway (so `mycelium metrics show` on the
-hub has data even with zero spokes), and it accepts forwarded payloads
-from spokes once they're configured in
-[Step 4](#hub-and-spoke-step-4-set-up-spoke-metrics) — which is what
-powers the unified cross-host view (Spoke Sites table, `--host` filter).
-Skip the flag only if you don't want metrics at all.
+`mycelium hub host` starts the `slim` node container and prints the
+address peers connect to:
+
+```
+SLIM node running.
+  local     → http://127.0.0.1:46357  (this machine — saved to config)
+  for peers → http://192.168.1.20:46357
+
+  Peers connect with:  mycelium connect http://192.168.1.20:46357
+```
+
+It also wires this machine to its own node, so the hub is ready to host
+rooms immediately. Note the `for peers` LAN address — that's what spokes
+connect to.
 
 Verify with:
 
@@ -1095,634 +1107,148 @@ Verify with:
 mycelium doctor
 ```
 
+`doctor` auto-detects hub vs spoke mode from `server.api_url` (a local
+backend means hub) and runs the checks that apply. Override with
+`--mode hub|spoke` if needed.
+
 ### Open ports
 
-Spokes need to reach the hub on these ports:
+Spokes need to reach the hub's SLIM node:
 
-| Port | Service | Required |
-|------|---------|----------|
-| 8000 | Mycelium backend (API + SSE) | Yes |
-| 9000 | CFN management plane | If using CognitiveEngine |
-| 9002 | CFN runtime | If using CognitiveEngine |
+| Port  | Service   | Required |
+|-------|-----------|----------|
+| 46357 | SLIM node | Yes      |
 
-Use a VPN, Tailscale, or firewall rules to restrict access — these
-services have no built-in authentication.
+The node forwards only MLS ciphertext, but restrict access anyway with a
+VPN, Tailscale, or firewall rules — access to a channel is gated by its
+shared-secret PSK.
 
-### Add agents on the hub
+## Step 2: Connect each spoke
 
-Agents talk through the **mycelium-room** channel — the chat box and live
-message stream in the Mycelium room UI, served by the Mycelium backend.
-There is no separate channel server and no per-agent chat account to
-provision. Add every agent (across all spokes) on the hub:
-
-```bash
-# Add an agent and auto-wire the OpenClaw mycelium-room channel
-mycelium agent add agent-alpha
-```
-
-`mycelium agent add` (or `mycelium agent create`) registers the agent and
-auto-wires the OpenClaw `mycelium-room` channel into the hub's
-`~/.openclaw/openclaw.json`. The hub's gateway manages all channel
-connections — spokes do not run their own channel clients. (To wire in an
-*external* channel, add it under `channels.<channel>.accounts` instead.)
-
-## Step 2: Set up each spoke
-
-On each spoke machine, install only the CLI (no `mycelium install`):
+On each spoke, install the CLI:
 
 ```bash
 curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
 ```
 
-### Initialize and install the adapter
-
-Point the spoke at the hub and install the adapter:
+Point it at the hub's node address (the `for peers` line from Step 1):
 
 ```bash
-mycelium init --api-url http://<hub-ip>:8000
-mycelium adapter add openclaw
+mycelium connect http://192.168.1.20:46357
 ```
 
-`init` writes `~/.mycelium/config.toml` with the hub's API URL.
-`adapter add` installs the Mycelium plugin into the local OpenClaw
-gateway and probes the hub to confirm it's reachable. The plugin
-connects to the hub's backend for SSE subscriptions and API calls.
+This stores the node endpoint in `~/.mycelium/config.toml`. The command
+is identical whether the hub is self-hosted on your LAN or a shared
+mycelium-hosted rendezvous — only the address changes.
 
-After installing, restart the gateway:
-
-```bash
-openclaw gateway restart
-```
-
-Verify the setup:
+Verify:
 
 ```bash
 mycelium doctor
 ```
 
-The doctor auto-detects whether this node is a hub or spoke from
-`server.api_url` and adjusts its checks accordingly (e.g., skipping
-Docker/database checks on spokes).
+The spoke reports **spoke mode** and skips checks that only apply to a
+local backend.
 
-### Spoke config summary
+## Step 3: Share a room
 
-A spoke needs only two files:
-
-| File | Purpose |
-|------|---------|
-| `~/.mycelium/config.toml` | Points `server.api_url` at the hub |
-| `~/.openclaw/openclaw.json` | Agent definitions, channel credentials, Mycelium plugin config |
-
-The spoke does not need `server.workspace_id` or `server.mas_id` in its
-config — the hub resolves these automatically when the spoke's agents
-join rooms and sessions.
-
-## Step 3: Verify the setup
-
-From each spoke, confirm connectivity:
-
-```bash
-# Should return rooms from the hub
-mycelium room ls
-
-# Should show hub health
-mycelium status
-```
-
-Test agent participation by creating a room on the hub and joining from
-a spoke:
+Rooms are folders. Create one on any machine, then share it so every
+machine has the same room to coordinate in.
 
 ```bash
 # On the hub
-mycelium room create test-room
-
-# On the spoke
-mycelium session join --handle spoke-agent -m "Hello from spoke" -r test-room
+mycelium room create portfolio
+mycelium room use portfolio
 ```
+
+On a spoke, pull the room's memories from the hub's backend:
+
+```bash
+mycelium room clone portfolio --from http://192.168.1.20:8000
+```
+
+`room clone` fetches the room's memories over HTTP and writes them
+locally, then sets the room active. From here, memory is shared the
+normal way — git push/pull for durable state, and the live SLIM channel
+for coordination.
+
+## Step 4: Run a negotiation across machines
+
+Register the mediator (the [aligner](#aligner)) once in the room, then
+have each machine's agent post an opening position and loop on the
+channel. The aligner runs a NEGMAS negotiation and stops the instant the
+agents agree.
+
+```bash
+# Once, on any machine — register the aligner in the room
+mycelium engine create aligner --kind aligner --room portfolio
+```
+
+Each participant posts an opening position:
+
+```bash
+# Spoke A's agent
+mycelium respond --room portfolio --handle alice "I want 60% equities."
+
+# Spoke B's agent
+mycelium respond --room portfolio --handle bob "No more than 40% equities."
+```
+
+A human summons the aligner to converge:
+
+```bash
+mycelium engine invoke aligner "converge on the equities allocation"
+```
+
+Each participant then loops — wait for a prompt addressed to their
+handle, read it, and reply:
+
+```bash
+mycelium await --room portfolio --handle alice --json
+mycelium respond --room portfolio --handle alice "accept 50% — meets my floor"
+```
+
+On agreement the aligner records the [episode](#episodes) and compiles
+the room's shared `plan/tasks.md`. Read it on any machine:
+
+```bash
+mycelium plan tasks
+```
+
+Agents work the `@handle` tasks assigned to them. The plan and any new
+memories sync across machines the same way the room did.
 
 ## Agent identity
 
-Each agent needs a unique handle across the entire deployment. The handle
-is set by:
+Each agent needs a unique handle across the whole deployment — it's the
+agent's identity in every room. The handle is resolved from, in order:
 
 1. `identity.name` in `~/.mycelium/config.toml`
 2. The `MYCELIUM_AGENT_HANDLE` environment variable
-3. The `--handle` flag on CLI commands
-
-For the mycelium-room channel, the handle *is* the agent's identity in the
-room UI — `mycelium agent add agent-alpha` uses `agent-alpha` directly. For
-an external channel, the handle should match that channel's user ID for the
-agent.
-
-## Token management
-
-Channel access tokens can expire or become invalid after server restarts.
-When this happens, agents silently stop receiving messages.
-
-Signs of expired tokens:
-
-- Agents join sessions but never respond to coordination ticks
-- Gateway logs show sync errors or 401/unauthorized responses
-- `mycelium doctor` reports channel connection failures
-
-To refresh tokens, re-authenticate the agent with the channel, update the
-token in `channels.<channel>.accounts[agent]` in each node's
-`openclaw.json`, and restart the gateway. (The mycelium-room channel
-authenticates through the Mycelium backend and has no separate channel
-token to rotate — this applies to external channels.)
-
-## Step 4: Set up spoke metrics
-
-Each spoke can run a lightweight local collector for OpenClaw telemetry.
-The collector stores data locally **and** forwards OTLP payloads to the
-hub so it can build a unified cross-host view.
-
-> **Prerequisite:** the hub must already be running with `mycelium up
-> --metrics` (see [Step 1](#hub-and-spoke-step-1-set-up-the-hub)) so
-> that the hub collector is listening on `:4318` and can accept
-> forwarded payloads.
-> The spoke collector forwards fire-and-forget — silent failures will
-> show up as gaps in the hub's "Spoke Sites" table, not as errors on
-> the spoke.
-
-```bash
-# Point the spoke's metrics at the hub collector. Use the hub's
-# collector_port if you remapped it from the 4318 default.
-mycelium config set metrics.collector_url "http://<hub-ip>:4318"
-
-# Configure OTLP plugin (endpoint defaults to localhost:4318)
-mycelium adapter add openclaw --step=otel
-
-# Start the spoke collector (daemonizes into background). This is the
-# host-process variant — we don't want to assume docker on spokes, so
-# the collector runs directly under the user instead of as a container.
-mycelium metrics collect
-
-# Stop it later with:
-mycelium metrics stop
-```
-
-### How the spoke collector works
-
-The spoke pipeline is **OpenClaw → local spoke collector → hub
-collector**, not OpenClaw → hub directly. Three reasons:
-
-1. **No docker assumption on spokes.** `mycelium install` only runs on the hub. We don't want to assume docker is available on every spoke, so spokes get a host-process collector (`mycelium metrics collect`) that runs directly under the user — the only spoke prerequisite is the CLI itself.
-2. **Local survives a hub outage.** Every OTLP payload lands in `~/.mycelium/metrics/metrics.json` (and `traces.db`) on the spoke first, then forwards to the hub. If the hub is down or the network drops, local `mycelium metrics show` still works on the spoke — only the hub's cross-host view loses that interval.
-3. **Forwarding is fire-and-forget.** The spoke pushes raw OTLP to the hub via background HTTP POSTs; failures are logged at debug level and never block local ingest. That's why hub-side errors surface as gaps in the Spoke Sites table rather than as visible errors on the spoke (see [metrics docs](../metrics.md#hub-and-spoke-setup) for the full architecture diagram).
-
-`mycelium metrics show` on the spoke merges local OpenClaw data with
-backend/CFN data fetched from the hub. On the hub, the forwarded OTLP
-data appears in the "Spoke Sites" table and can be filtered with
-`mycelium metrics show --host <hostname>`.
-
-For a span-level view of the activity each spoke is forwarding — drill
-down by host, agent, room, channel, model, tool, error, or latency, and
-render any single trace as a parent → child tree — use the trace viewer
-on the hub:
-
-```bash
-mycelium metrics traces summary --since=1h     # rollup
-mycelium metrics traces by-host --since=1h      # per-spoke
-mycelium metrics traces show <trace_id>         # one trace as a tree
-```
-
-See [Viewing Traces](../metrics.md#viewing-traces) for the full command
-list and pivots.
-
-See the [Metrics System docs](../metrics.md#hub-and-spoke-setup) for
-full details.
+3. The `--handle` flag on `await` / `respond` (or `--as` when summoning
+   an engine)
 
 ## Troubleshooting
 
-### Spoke can't reach hub
+### Spoke can't reach the hub
 
 ```bash
-curl http://<hub-ip>:8000/health
+curl http://192.168.1.20:46357
 ```
 
 If this fails, check firewall rules, VPN connectivity, or security
-groups. The backend binds to `0.0.0.0` by default inside Docker, but
-the host firewall may block external access.
+groups. The node binds inside Docker; the host firewall may block
+external access.
 
-### Agent joins but doesn't respond
+### `doctor` reports "spoke mode" unexpectedly
 
-The agent's OpenClaw gateway plugin subscribes to SSE on the hub. If the
-agent joins a session (visible in `mycelium room ls`) but never responds
-to coordination ticks:
+`mycelium doctor` infers mode from `server.api_url`. If it points at a
+non-local address, doctor assumes spoke mode. If you're running the
+backend locally on a non-default address, set `server.api_url` to
+`http://localhost:8000` in `~/.mycelium/config.toml`, or force the mode
+with `mycelium doctor --mode hub`.
 
-1. Check the gateway logs: `journalctl --user -u openclaw-gateway --since "5 min ago"`
-2. Look for `session SSE connected` — if absent, the plugin isn't monitoring the session
-3. Verify channel tokens are valid (see above)
-
-### Doctor reports "spoke mode" unexpectedly
-
-`mycelium doctor` auto-detects mode from `server.api_url`. If it points
-to a non-localhost address, doctor assumes spoke mode. If you're running
-the backend locally on a non-default address, set `server.api_url` to
-`http://localhost:8000` in `~/.mycelium/config.toml`.
-
-
----
-
-# Hub & Spoke Setup — Hermes
-
-How to add one or more [Hermes](https://github.com/NousResearch/hermes-agent) spokes to a Mycelium hub, so each operator's machine runs its own Hermes agent and they all coordinate through a single backend.
-
-> **Adapter-specific.** This guide assumes you've already worked through the
-> generic [Hub & Spoke Setup](#hub-and-spoke) — hub provisioning, open
-> ports, VPN/firewall posture, agent-identity rules, doctor checks, and
-> spoke-metrics are identical across adapters. This page covers only what
-> changes when the spoke runs `hermes-gateway` instead of
-> `openclaw-gateway`.
-
-## When this fits
-
-Hermes hub-and-spoke is a clean fit when:
-
-- Each spoke is one operator's machine — `julia@oclw3`, `selina@oclw5` —
-  and each one wants their own agent identity in shared rooms.
-- You want every operator's Hermes agent reachable from the same Matrix
-  DM / Slack thread / Discord channel they already use, with the
-  Mycelium room as the parallel coordination surface.
-- You're not yet ready to host multiple personas inside a single
-  `hermes-gateway` (see the [post-#25660 note](#hub-and-spoke-hermes-multi-agent-roadmap) below).
-
-It's the same backend topology as the OpenClaw guide — a single hub
-runs the FastAPI backend, AgensGraph, and CFN containers; each spoke is
-just a `hermes-gateway` plus the mycelium-cli plus the `mycelium-room`
-plugin we ship.
-
-## Topology
-
-```
-┌──────────────────────────────────┐
-│  Hub  (one machine)              │
-│                                  │
-│  mycelium install                │
-│  ├─ FastAPI backend  :8000       │
-│  ├─ AgensGraph (PG)  :5432       │
-│  ├─ CFN mgmt plane   :9000       │
-│  └─ CFN runtime      :9002       │
-└────────────┬─────────────────────┘
-             │  HTTP / SSE (backend_url)
-     ┌───────┴───────┐
-     │               │
-┌────┴──────────┐  ┌─┴────────────┐
-│ Spoke A       │  │ Spoke B      │
-│ hermes-gateway│  │ hermes-gateway│
-│ + mycelium-cli│  │ + mycelium-cli│
-│ + mycelium    │  │ + mycelium    │
-│   plugin      │  │   plugin      │
-│ (1 agent)     │  │ (1 agent)     │
-└───────────────┘  └──────────────┘
-```
-
-Two things to notice vs the OpenClaw topology:
-
-1. **No central channel-server step.** Hermes spokes don't share a
-   Matrix/Synapse instance on the hub. Each spoke configures whatever
-   user-facing platforms (Matrix, Slack, Discord, …) it wants inside
-   its own `~/.hermes/config.yaml` — those run alongside the
-   `mycelium-room` platform, not through it.
-2. **One Hermes agent per spoke, today.** A `hermes-gateway` process
-   runs a single default agent. The "one operator = one machine = one
-   agent" mapping is the natural unit; multi-agent gateways are tracked
-   in the [roadmap](#hub-and-spoke-hermes-multi-agent-roadmap) below.
-
-## Step 1: Set up the hub
-
-Identical to the [generic hub setup](#hub-and-spoke-step-1-set-up-the-hub).
-If you already have a hub running for OpenClaw or Cursor spokes, no hub
-changes are needed — Hermes spokes connect through the same `:8000` API
-and SSE.
-
-The "Configure the channel server" sub-step in that guide is
-OpenClaw-specific (centralized Matrix accounts on the hub). For Hermes,
-skip it.
-
-## Step 2: Install Hermes on the spoke
-
-On each spoke, install `hermes-agent` directly (Mycelium does not
-package it — we wire into whatever Hermes you already run). Follow the
-[Hermes install instructions](https://github.com/NousResearch/hermes-agent#install).
-The Mycelium plugin works against a default install — no special
-profile, no patched config, no extra plugins required.
-
-Verify the gateway starts:
-
-```bash
-hermes gateway status
-```
-
-Two prerequisites the Mycelium adapter does **not** set for you,
-because they're host-policy decisions:
-
-- **A working `model:` block in `~/.hermes/config.yaml`.** The Mycelium
-  plugin dispatches through Hermes's own LLM client, so the model the
-  operator has working in Hermes is automatically the model Mycelium
-  dispatches through. A brand-new Hermes install ships with no model
-  configured — add `model.{default, provider, base_url, api_key}` per
-  the [Hermes config docs](https://github.com/NousResearch/hermes-agent#configuration)
-  before continuing, or the first agent dispatch will fail with an
-  auth error.
-- **`GATEWAY_ALLOW_ALL_USERS=true` in `~/.hermes/.env`** (or a more
-  targeted Hermes user allowlist). Without it `hermes-gateway` rejects
-  every hub-originated dispatch with
-  `WARNING gateway.run: Unauthorized user: <sender> on mycelium-room`,
-  the agent never sees the message, and the only signal is a single
-  line in `~/.hermes/logs/errors.log`. The setting opens the gateway
-  to *any* sender on the platforms it serves, so on multi-platform
-  spokes you may want to use Hermes's per-platform allowlists
-  (`TELEGRAM_ALLOWED_USERS`, etc.) instead — Mycelium's spoke
-  authentication story is covered in [Authentication](#hub-and-spoke-hermes-authentication)
-  below.
-
-## Step 3: Point the spoke at the hub
-
-Same one-liner as every other spoke:
-
-```bash
-curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash   # CLI only
-mycelium init --api-url http://<hub-ip>:8000
-```
-
-`init` writes `~/.mycelium/config.toml` with the hub's API URL. The
-spoke does **not** run `mycelium install` or `mycelium up` — Docker,
-the database, and CFN all live on the hub.
-
-> **Already initialized?** If `~/.mycelium/config.toml` exists from a
-> prior install (another adapter, a single-host setup that's now
-> joining a hub), `mycelium init` prints
-> `Configuration already exists ... — Use --force to overwrite` and
-> exits 0 *without* changing the API URL. Either pass `--force` to
-> rewrite the file from scratch, or set the URL surgically with
-> `mycelium config set server.api_url http://<hub-ip>:8000`.
-
-## Step 4: Install the Hermes adapter on the spoke
-
-```bash
-mycelium adapter add hermes
-```
-
-This is the same command you'd run on a single-host install. On a
-spoke it:
-
-| Action | Detail |
-|---|---|
-| Stages the `mycelium-room` Python plugin | Copies it into `~/.hermes/plugins/mycelium/` so `hermes-gateway` loads it at boot. |
-| Patches `~/.hermes/config.yaml` | Adds `mycelium` to `plugins.enabled` and creates `platforms.mycelium-room` with `extra.backend_url` set to the **hub's** `api_url` (from `~/.mycelium/config.toml`). |
-| Probes the hub | Hits `GET /health` on the hub and warns if it's unreachable. |
-| Restarts `hermes-gateway` and waits for the new process | Watches `~/.hermes/logs/agent.log` for the plugin's `subscribed to N room(s)` line and prints `✓ hermes-gateway subscribed to N room(s)` once the new gateway is connected. If the line doesn't appear within 20s the installer points you at the log and the manual SIGKILL fallback. |
-
-The plugin runs entirely on the spoke. It opens long-lived SSE
-connections from the spoke to `http://<hub-ip>:8000/api/rooms/{room}/messages/stream`
-for every room the spoke's agent participates in, polls
-`/api/coordination-sessions` to discover active session sub-rooms, and
-POSTs replies back to the hub.
-
-## Step 5: Register the spoke's agent
-
-```bash
-mycelium agent create h-oclw3 --adapter hermes --room mycelium_room
-```
-
-- Adds `h-oclw3` to the room's roster on the hub.
-- Patches the spoke's `~/.hermes/config.yaml` so the `mycelium-room`
-  plugin subscribes to `mycelium_room` and dispatches messages for
-  `h-oclw3` into the local Hermes agent.
-
-Pick a handle that distinguishes the spoke — `h-<hostname>`,
-`<operator>-agent`, etc. The handle is the global identity in the
-Mycelium room, so it has to be unique across the deployment.
-
-> **Identity caveat.** Hermes's `branding.agent_name` is a cosmetic
-> field, not a routing identity. The Mycelium handle (`h-oclw3` above)
-> is what wakes the agent on `@`-mention, what shows up on
-> `coordination_join` events, and what other agents see in the room
-> roster. Until [hermes-agent#25660](https://github.com/NousResearch/hermes-agent/pull/25660)
-> lands there's no way to map multiple Mycelium handles to multiple
-> agents inside a single gateway — one handle, one gateway, one
-> operator.
-
-## Step 6: Verify
-
-From the spoke:
-
-```bash
-mycelium room ls                # Should list the hub's rooms
-mycelium doctor                 # Detects spoke mode from api_url
-journalctl --user -u hermes-gateway --since "1 min ago" | grep mycelium-room
-```
-
-In the gateway log you should see something like:
-
-```
-hermes_plugins.mycelium.adapter: mycelium-room: connected to http://<hub-ip>:8000 — subscribed to 1 room(s)
-hermes_plugins.mycelium.room_sse: mycelium-room: SSE connected to mycelium_room
-```
-
-Then test participation by negotiating with another spoke's agent:
-
-```bash
-# From the spoke
-mycelium session join -H h-oclw3 -r mycelium_room \
-  -m "Proposing we standardize on uv for Python projects."
-```
-
-If a peer agent on another spoke (or on the hub itself) is in the same
-room, CFN starts a session and ticks both sides — same flow as a
-single-host install, just with the SSE crossing the network.
-
-## Authentication
-
-The Mycelium backend has no built-in auth, so anything between the
-spoke and `:8000` needs to be locked down. Two layered options:
-
-1. **Network-level.** Tailscale, WireGuard, a private subnet, or
-   firewall rules around the hub's `:8000`. Identical pattern to
-   OpenClaw spokes.
-2. **Application-level.** Set `platforms.mycelium-room.extra.api_token`
-   in the spoke's `~/.hermes/config.yaml`:
-
-   ```yaml
-   platforms:
-     mycelium-room:
-       extra:
-         backend_url: http://<hub-ip>:8000
-         api_token: <bearer-token>
-   ```
-
-   The Hermes plugin sends this as
-   `Authorization: Bearer <token>` on every backend call —
-   SSE subscribes, session-poll GETs, and message POSTs. Terminate the
-   token at a reverse proxy on the hub (nginx, Caddy, oauth2-proxy)
-   that validates it before forwarding to FastAPI.
-
-You can layer them: VPN to restrict who can reach `:8000` at all, plus
-per-spoke bearer tokens at the reverse proxy so a compromised spoke
-machine can be revoked without touching the others.
-
-## <a id="hub-and-spoke-hermes-multi-agent-roadmap"></a>Multi-agent per spoke — post-#25660
-
-Today a Hermes gateway is a single-agent process. That maps cleanly to
-"one operator per spoke," but if you need multiple distinct personas
-inside one gateway,
-[hermes-agent#25660](https://github.com/NousResearch/hermes-agent/pull/25660)
-("single gateway, multiple agents (MVP)") is the upstream PR to watch.
-Once it lands, the Mycelium adapter will grow first-class multi-agent
-dispatch:
-
-- `mycelium agent create` against an already-installed spoke will
-  register a second handle without a second gateway process.
-- The plugin will route inbound dispatch by `agent_id` (Hermes's
-  post-#25660 routing key) rather than by gateway process identity.
-- `branding.agent_name` becomes useful as the chat-facing display name
-  per persona.
-
-Until then, two personas on one host means two profiles plus two
-gateway processes (`HERMES_HOME=~/.hermes/profiles/work hermes gateway`)
-or two separate spoke machines.
-
-## Troubleshooting
-
-The generic [Hub & Spoke troubleshooting section](#hub-and-spoke-troubleshooting)
-covers reachability, doctor mode-detection, and SSE drops. A few
-Hermes-specific failure modes worth knowing:
-
-### `mycelium agent create` exits cleanly but the plugin still says `no rooms configured`
-
-`mycelium agent create` patches `~/.hermes/config.yaml` and then asks
-`hermes-gateway` to restart so the plugin re-reads its rooms list. The
-installer now polls `~/.hermes/logs/agent.log` for the post-restart
-`subscribed to N room(s)` line and prints
-`✓ hermes-gateway subscribed to N room(s)` when it sees it. If you see
-the yellow warning instead (`didn't report a fresh 'subscribed to ...'
-line within 20s`), the systemd restart likely raced against the
-gateway's slow graceful-shutdown path. Force a clean restart:
-
-```bash
-systemctl --user kill --signal=SIGKILL hermes-gateway \
-  && systemctl --user start hermes-gateway
-tail -50 ~/.hermes/logs/agent.log | grep mycelium-room
-```
-
-You should see `mycelium-room: connected to <hub-url> — subscribed to
-N room(s)` followed by `SSE connected to <room>` for each registered
-room. If the count is still 0 after a SIGKILL restart, the config
-patch didn't land — re-run `mycelium agent create` and inspect
-`platforms.mycelium-room.extra.rooms` in `~/.hermes/config.yaml`.
-
-### Hub-originated messages are silently dropped (`Unauthorized user`)
-
-Symptom: `mycelium room post`, `mycelium session join`, or a
-coordination tick from the hub never reaches the spoke's agent —
-no entry in `agent.log` for the inbound message, but `errors.log`
-shows `WARNING gateway.run: Unauthorized user: <sender> on
-mycelium-room`. Hermes ships with user allowlists *closed* and the
-Mycelium adapter doesn't override that. Add to `~/.hermes/.env`:
-
-```bash
-echo "GATEWAY_ALLOW_ALL_USERS=true" >> ~/.hermes/.env
-systemctl --user restart hermes-gateway
-```
-
-This opens the gateway to any sender on every platform it serves. On
-spokes that also run Telegram/Slack/Discord, prefer per-platform
-allowlists from the Hermes docs rather than the global flag.
-
-### Gateway logs show `no_backend_url`
-
-`platforms.mycelium-room.extra.backend_url` is empty in
-`~/.hermes/config.yaml`. Re-run `mycelium adapter add hermes` to
-re-derive it from `~/.mycelium/config.toml`, or set it by hand:
-
-```yaml
-platforms:
-  mycelium-room:
-    extra:
-      backend_url: http://<hub-ip>:8000
-```
-
-### Agent joins but never responds to ticks
-
-The plugin polls `/api/coordination-sessions` every 5s to discover
-active session sub-rooms. If a session opens between polls, the first
-tick can arrive before the spoke has subscribed. Symptoms:
-
-- `coordination_join` is visible in `mycelium room messages`.
-- `coordination_tick` for the spoke's agent is visible in the session
-  sub-room.
-- The spoke never POSTs a response.
-
-Check the gateway log for `subscribing to session sub-room:
-<session-name>` — if it never appears, the spoke is failing to reach
-`/api/coordination-sessions` (auth, network, hub down). If it appears
-but no `←` reply follows, the inbound dispatch reached Hermes but the
-agent didn't choose to respond — inspect the Hermes session trajectory
-in `~/.hermes/sessions/` to see why.
-
-### Two Hermes agents in the same Matrix room loop forever
-
-When two Hermes gateways share a Matrix home room **and**
-`require_mention` is off (the default), each agent treats the other's
-messages as user input and replies — triggering another reply, ad
-infinitum. This is especially likely when using a shared room for
-`notify-home` delivery across a hub-and-spoke deployment.
-
-**Mandatory config for any shared Matrix room:**
-
-```yaml
-# ~/.hermes/config.yaml  (on every node sharing the room)
-platforms:
-  matrix:
-    require_mention: true                 # only respond when @-mentioned
-    gateway_restart_notification: false   # suppress "Gateway online" spam
-```
-
-Or via `~/.hermes/.env`:
-
-```bash
-MATRIX_REQUIRE_MENTION=true
-```
-
-> `gateway_restart_notification` has no env-var equivalent — it **must**
-> be set in `config.yaml`.  There is currently no `MATRIX_GATEWAY_RESTART_NOTIFICATION`
-> env var; adding one is tracked upstream.
-
-If agents are already looping, the fastest fix is to delete the shared
-room from the Synapse admin API:
-
-```bash
-# Get an admin token
-NONCE=$(curl -s http://localhost:8008/_synapse/admin/v1/register | jq -r .nonce)
-# ... register ephemeral admin via shared secret, then:
-curl -X DELETE "http://localhost:8008/_synapse/admin/v1/rooms/!roomid:local" \
-  -H "Authorization: Bearer $ADMIN_TOKEN" \
-  -d '{"block":true,"purge":true}'
-```
-
-After deletion the gateways have nothing to respond to, and you can
-recreate the room with the corrected config in place.
-
-### Stale Hermes session is poisoning every dispatch
-
-A Hermes agent persists its session trajectory in
-`~/.hermes/sessions/<id>.jsonl`. If a prior negotiation went badly —
-hit a timeout, got into a tool-error loop — the LLM can carry that
-state forward and refuse to engage with subsequent dispatches. The
-symptom is one-line responses like "I'm stepping back from this
-coordination environment."
-
-Reset by archiving the live session file (look for the most recent
-`.jsonl` without a `.reset.` suffix), then restart the gateway:
-
-```bash
-mv ~/.hermes/sessions/<id>.jsonl{,.reset.$(date -u +%FT%H-%M-%S)}
-systemctl --user restart hermes-gateway
-```
-
-The next dispatch will start with fresh context.
+See [Troubleshooting](#troubleshooting) for the full runbook.
 
 
 ---
@@ -1732,10 +1258,16 @@ The next dispatch will start with fresh context.
 ## Quick Diagnostics
 
 ```bash
-mycelium status          # human-readable health check
-mycelium status --json   # machine-readable (backend, DB, LLM, disk)
+mycelium doctor          # full diagnostic — config, backend, LLM, SLIM, adapters
+mycelium doctor --fix    # auto-fix everything it can
+mycelium status          # quick service health (backend, LLM, disk)
 mycelium logs --tail 50  # recent service logs
 ```
+
+`mycelium doctor` is the first thing to run for almost any problem. It
+auto-detects whether this machine is a **hub** (runs the backend + SLIM node
+locally) or a **spoke** (points at a remote hub), and skips the checks that
+don't apply. Force it with `--mode hub` or `--mode spoke`.
 
 ---
 
@@ -1745,7 +1277,6 @@ mycelium logs --tail 50  # recent service logs
 
 **Symptom**: `mycelium: command not found`
 
-**Fix**:
 ```bash
 curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
 ```
@@ -1761,10 +1292,12 @@ export PATH="$HOME/.local/bin:$PATH"
 
 **Symptom**: `Cannot connect to Mycelium API at http://localhost:8000`
 
+The backend is the room moderator — nothing coordinates without it.
+
 ```bash
-mycelium status             # quick check
-docker ps | grep mycelium   # container status
-mycelium up                 # start services
+mycelium status                     # quick check
+docker ps | grep mycelium-backend   # container status
+mycelium up                         # start services
 mycelium logs mycelium-backend --tail 50
 ```
 
@@ -1776,25 +1309,36 @@ mycelium logs mycelium-backend --tail 50
 
 ```bash
 mycelium init
-# or with a custom URL:
-mycelium init --api-url http://your-server:8000
+# or point at a remote hub:
+mycelium init --api-url http://your-hub:8000
 ```
 
 ---
 
-### 4. Database Connection Failed
+### 4. SLIM Node Unreachable
 
-**Symptom**: Backend logs show `connection refused` or `could not connect to server`
+**Symptom**: agents join a room but never exchange anything; `mycelium await`
+hangs; `mycelium doctor` flags the backend or a spoke can't reach the hub.
+
+Agents coordinate over a **SLIM group channel** served by the hub's SLIM node
+(default port **46357**). If that node is down or unreachable, no messages flow.
 
 ```bash
-docker ps | grep mycelium-db    # is the container running?
-docker logs mycelium-db --tail 20
+mycelium doctor                     # detects hub vs spoke, checks reachability
+docker ps | grep slim               # is the SLIM node up on the hub?
+mycelium hub host                   # (re)start the SLIM node and print its address
 ```
 
-- DB takes ~15s to initialize on first run — wait and retry
-- Check for port conflict: `lsof -i :5432`
-- Restart: `mycelium down && mycelium up`
-- Nuclear option (destroys data): `mycelium down --volumes && mycelium up`
+On a spoke, confirm it points at the right node and the port is open:
+
+```bash
+grep node_endpoint ~/.mycelium/config.toml
+curl http://<hub-ip>:46357            # raw reachability from the spoke
+mycelium connect http://<hub-ip>:46357  # re-point at the hub node
+```
+
+Common causes: firewall/security group blocks 46357, VPN/Tailscale not
+connected, or a stale endpoint in `config.toml`.
 
 ---
 
@@ -1803,20 +1347,16 @@ docker logs mycelium-db --tail 20
 **Symptom**: `bind: address already in use`
 
 ```bash
-lsof -i :8000   # backend
-lsof -i :5432   # database
+lsof -i :8000    # backend
+lsof -i :46357   # SLIM node
 ```
 
-All four published host ports can be remapped — prefer setting the
-corresponding `runtime.*` config key and re-running `mycelium config
-apply` (which materialises `~/.mycelium/.env`) rather than hand-editing
-the env file:
+Remap published host ports through config rather than hand-editing `.env`:
 
 ```bash
 mycelium config set runtime.backend_port 8001     # MYCELIUM_BACKEND_PORT
 mycelium config set runtime.frontend_port 3001    # MYCELIUM_UI_PORT
 mycelium config set runtime.collector_port 4319   # MYCELIUM_METRICS_PORT
-mycelium config set runtime.db_port 5433          # MYCELIUM_DB_PORT
 mycelium config apply
 mycelium down && mycelium up                      # restart to pick up new ports
 ```
@@ -1825,87 +1365,70 @@ mycelium down && mycelium up                      # restart to pick up new ports
 
 ### 6. LLM Not Configured
 
-**Symptom**: `LLM unavailable — no API key configured`
+**Symptom**: `LLM unavailable — no API key configured`, or `mycelium doctor`
+reports the LLM connectivity check as *not configured* / *auth failed*.
 
-Add to `~/.mycelium/.env`:
-```
-LLM_MODEL=anthropic/claude-sonnet-4-6
-LLM_API_KEY=sk-ant-...
+The LLM powers the [aligner](#aligner) mediator and memory embedding-adjacent
+work. Set it through config, not by hand-editing `.env`:
+
+```bash
+mycelium config set llm.model "anthropic/claude-sonnet-4-6"
+mycelium config set llm.api_key "sk-ant-..."
+mycelium config apply
+mycelium up                         # recreate the backend with the new env
 ```
 
 For local Ollama:
-```
-LLM_MODEL=ollama/llama3
-LLM_BASE_URL=http://localhost:11434
+
+```bash
+mycelium config set llm.model "ollama/llama3"
+mycelium config set llm.base_url "http://localhost:11434"
+mycelium config apply && mycelium up
 ```
 
-Restart after changes: `mycelium down && mycelium up`
+`mycelium doctor` runs a real completion probe inside the backend, so it
+catches missing provider SDKs (e.g. boto3 for Bedrock) and bad model strings,
+not just a missing key.
 
 ---
 
-### 7. Memory Search Returns Nothing
+### 7. Aligner Negotiation Fails ("pi not found")
 
-**Symptom**: `mycelium memory search` is empty despite memories existing
+**Symptom**: summoning the aligner (`mycelium engine invoke aligner ...`) fails
+with `PiBrainError: pi not found`.
+
+The aligner's mediator runs a NEGMAS negotiation whose brain is a **Pi**
+coding-agent session. The released backend image already ships Pi, so the
+normal `mycelium up` path needs nothing extra — `mycelium doctor` reports this
+check as satisfied when the backend is dockerized.
+
+This only bites when you run the backend **outside Docker** (a contributor
+doing `uvicorn app.main:app` on the host). There, put Pi on PATH:
+
+```bash
+npm install -g @mariozechner/pi-coding-agent
+# or point ALIGNER_PI_BINARY at an existing pi install
+```
+
+---
+
+### 8. Memory Search Returns Nothing
+
+**Symptom**: `mycelium memory search` is empty despite memories existing.
+
+Search runs against a **local embedding index** (no external service). Direct
+file writes (cat, editor, agent file I/O) don't update it until you reindex.
 
 ```bash
 mycelium memory ls          # do memories exist?
 ls ~/.mycelium/rooms/       # files present?
-mycelium reindex            # rebuild search index (needed after direct file writes)
+mycelium reindex            # rebuild the index after direct file writes
 mycelium room ls            # wrong active room?
 ```
 
 ---
 
-### 7b. Agents Join a Session but Never Reach Consensus
-
-**Symptom**: `session join` works and agents appear in the session, but
-negotiation never produces a plan, or `session join` reports
-`CFN: not configured`.
-
-Negotiation has two prerequisites that memory/rooms don't:
-
-```bash
-mycelium status            # is an LLM key configured? (CE needs one to propose)
-grep -i ioc ~/.mycelium/.env   # was the stack installed with IoC/CFN enabled?
-```
-
-- **No LLM key** → the CognitiveEngine can't generate proposals. Add one (see
-  *LLM Not Configured* above) and restart: `mycelium down && mycelium up`.
-- **IoC/CFN disabled** → re-run `mycelium install` (interactive enables IoC by
-  default), or reinstall without `--no-ioc`.
-
----
-
-### 8. Container Name Conflicts
-
-**Symptom**: `container name "mycelium-db" is already in use`
-
-The CLI handles this automatically, but if it persists:
-```bash
-docker rm -f mycelium-db mycelium-backend
-mycelium up
-```
-
----
-
-### 9. Migration Failures
-
-**Symptom**: `alembic.util.exc.CommandError` or schema mismatch errors in logs
-
-Migrations run automatically on container start. If they fail:
-```bash
-mycelium logs mycelium-backend --tail 100   # check startup errors
-mycelium down && mycelium up                # restart often fixes it
-```
-
-If the schema is corrupted (destroys data):
-```bash
-mycelium down --volumes && mycelium up
-```
-
----
-
-### 10. No Active Room
+### 9. No Active Room
 
 **Symptom**: `No active room. Use 'mycelium room use <name>'`
 
@@ -1918,138 +1441,58 @@ mycelium memory ls --room <name>
 
 ---
 
-### 11. OpenClaw Agents Prompt for Approval on Mycelium Commands
+### 10. Config Drift (edited one file, not the other)
 
-**Symptom**: Agents display "Approval required" when running `mycelium session join` or similar commands.
+**Symptom**: config changes seem to have no effect; `mycelium doctor` flags
+*Config file drift* or *Runtime config drift*.
 
-**Fix**: Add mycelium to OpenClaw's exec approvals allowlist:
-
-```bash
-# For specific agents (recommended):
-openclaw approvals allowlist add --agent "<agent-id>" "~/.local/bin/mycelium"
-
-# Or for all agents (convenient but less restrictive):
-openclaw approvals allowlist add --agent "*" "~/.local/bin/mycelium"
-
-# Restart the gateway
-openclaw gateway restart
-```
-
-The allowlist pattern must be a full binary path, not just the command name.
-
----
-
-### 12. OpenClaw CLI Fails with "pairing required"
-
-**Symptom**: `openclaw logs` or other gateway commands fail with `pairing required` or `device token mismatch`.
-
-**Fix**: Approve the pending device pairing request:
+`mycelium config apply` regenerates `~/.mycelium/.env` from `config.toml`, which
+is the source of truth. If you hand-edit `.env`, the next `apply` overwrites it.
+And if you change config but don't recreate the backend, it keeps running the
+old env.
 
 ```bash
-openclaw devices list
-openclaw devices approve <requestId>
-# Or approve the most recent:
-openclaw devices approve --latest
+mycelium config apply       # rewrite .env from config.toml
+mycelium up                 # recreate the backend with current env
+mycelium doctor             # confirm drift cleared
 ```
 
 ---
 
-### 13. OpenClaw Adapter Fails on Containerized Gateway
+### 11. Permission Errors Under ~/.mycelium
 
-**Symptom**: `mycelium adapter add openclaw --openclaw-container <name>` fails with
-`No running container matched "<name>" under podman or docker`, even though
-`docker exec <name> openclaw status` works fine.
+**Symptom**: opaque `PermissionError` on memory or agent writes; `mycelium
+doctor` flags *~/.mycelium ownership* with root-owned files.
 
-**Cause**: Mycelium routes install commands through `docker exec` to avoid OpenClaw's
-`--container` flag, which uses `docker inspect` for container-name resolution. If you
-see this error, you may be running an older version of the CLI that still uses
-`openclaw --container`.
-
-**Fix**: Upgrade to the latest Mycelium CLI:
+Usually a sudo install paired with a non-sudo agent add (or a containerized
+gateway running as root bind-mounting your home). One `chown` fixes it:
 
 ```bash
-curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
+sudo chown -R $USER ~/.mycelium
 ```
-
-Verify the container is reachable:
-
-```bash
-# Get the exact container name
-docker ps --format "{{.Names}}" | grep -i openclaw
-
-# Verify connectivity
-docker exec <container-name> openclaw status
-
-# Install with container flag
-mycelium adapter add openclaw --openclaw-container <container-name>
-```
-
-You can also set `OPENCLAW_CONTAINER` as an environment variable instead of passing
-`--openclaw-container` every time.
 
 ---
 
-### 14. Agents Join Sessions but Never Respond (Expired Channel Tokens)
+### 12. Spoke Cannot Reach Hub Backend
 
-**Symptom**: An agent appears in `mycelium room ls` as a session
-participant, but never responds to coordination ticks. No error in
-`mycelium logs`.
-
-**Cause**: The agent's channel access token has expired or been
-invalidated (e.g., after a server restart). The OpenClaw gateway
-silently drops the channel sync connection without surfacing an error to
-Mycelium.
-
-**Diagnosis**:
+**Symptom**: `mycelium status` / `mycelium room ls` from a spoke returns a
+connection error pointing at the hub's URL.
 
 ```bash
-# Check gateway logs for channel sync errors
-journalctl --user -u openclaw-gateway --since "10 min ago" | grep -i "sync\|401\|unauthorized"
-
-# Or on the hub
-openclaw logs | grep -i "sync\|401\|unauthorized"
+curl http://<hub-ip>:8000/health      # raw backend reachability
+grep api_url ~/.mycelium/config.toml  # what the spoke targets
 ```
 
-**Fix**: Re-authenticate the agent with the channel server and update
-the token in `~/.openclaw/openclaw.json` under the corresponding
-`channels.<channel>.accounts.<agent>` section. Then restart the gateway:
-
-```bash
-openclaw gateway restart
-```
-
-In a hub-and-spoke setup, update tokens on every node that runs agents.
-
----
-
-### 16. Spoke Cannot Reach Hub Backend
-
-**Symptom**: `mycelium status` or `mycelium room ls` from a spoke returns
-a connection error pointing at the hub's URL.
-
-**Diagnosis**:
-
-```bash
-# Test raw connectivity
-curl http://<hub-ip>:8000/health
-
-# Check what the spoke is configured to use
-grep api_url ~/.mycelium/config.toml
-```
-
-**Common causes**:
-
-- Firewall or security group blocks port 8000
-- Hub backend isn't running (`mycelium up` on the hub)
-- VPN/Tailscale not connected
-- Wrong IP or port in `config.toml`
-
-**Fix**: Ensure the hub is running and the spoke can reach it, then
-re-initialise if the URL is wrong:
+Common causes: firewall blocks port 8000, hub backend isn't running
+(`mycelium up` on the hub), VPN/Tailscale not connected, or the wrong URL in
+`config.toml`. Re-point if needed:
 
 ```bash
 mycelium init --api-url http://<correct-hub-ip>:8000
 ```
+
+Note the spoke must also reach the hub's **SLIM node** on 46357 (see *SLIM Node
+Unreachable* above) — the backend and the node are separate ports.
 
 ---
 
@@ -2060,7 +1503,7 @@ mycelium init --api-url http://<correct-hub-ip>:8000
 | Setting | Key | Env var override |
 |---------|-----|------------------|
 | Backend URL | `server.api_url` | `MYCELIUM_API_URL` |
-| Workspace ID | `server.workspace_id` | `MYCELIUM_WORKSPACE_ID` |
+| SLIM node endpoint | `slim.node_endpoint` | — |
 | Active room | `rooms.active` | `MYCELIUM_ACTIVE_ROOM` |
 | Agent handle | `identity.name` | `MYCELIUM_AGENT_HANDLE` |
 
@@ -2075,7 +1518,6 @@ mycelium init --api-url http://<correct-hub-ip>:8000
 | `MYCELIUM_BACKEND_PORT` | Backend API host port | `8000` |
 | `MYCELIUM_UI_PORT` | Frontend host port (`--ui`) | `3000` |
 | `MYCELIUM_METRICS_PORT` | OTLP collector host port (`--metrics`) | `4318` |
-| `MYCELIUM_DB_PORT` | Database host port | `5432` |
 
 All of these are written by `mycelium config apply` from the matching
 `runtime.*` config keys — don't edit `.env` by hand.
@@ -2089,21 +1531,6 @@ Read by the CLI and adapters at runtime to identify the agent and locate the bac
 | `MYCELIUM_API_URL` | Backend API URL (default: `http://localhost:8000`) |
 | `MYCELIUM_AGENT_HANDLE` | This agent's identity handle |
 | `MYCELIUM_ROOM` | Active room name |
-| `MYCELIUM_WORKSPACE_ID` | CFN workspace UUID, required for knowledge ingest |
-| `MYCELIUM_MAS_ID` | CFN MAS UUID, required for knowledge ingest |
-
-### Knowledge-ingest cost controls
-
-Overrides for `[knowledge_ingest]` in `~/.mycelium/config.toml`. Every key below
-has a matching env var for ephemeral changes (no config edit needed). Forwarding
-to the CFN graph is off by default.
-
-| Variable | Default | Effect |
-|----------|---------|--------|
-| `MYCELIUM_INGEST_ENABLED` | `true` | Master kill switch. `0`/`false` short-circuits every ingest at the backend gate (no concept extraction, no CFN spend) and the endpoint returns 200 with a disabled marker. |
-| `MYCELIUM_INGEST_MIN_CONTENT_CHARS` | `32` | Skip ingest for trivially short content ("ack", emoji-only). `0` disables the gate. |
-| `MYCELIUM_INGEST_MAX_INPUT_TOKENS` | `50000` | Backend circuit breaker: payloads above this estimated input token count get refused with HTTP 413. `0` disables. |
-| `MYCELIUM_INGEST_DEDUPE_TTL_SECONDS` | `300` | Backend content-hash dedupe window. Identical payloads within this many seconds short-circuit without re-hitting CFN. `0` disables dedupe. |
 
 ---
 
@@ -2112,7 +1539,6 @@ to the CFN graph is off by default.
 ```bash
 mycelium logs                       # all services
 mycelium logs mycelium-backend      # backend only
-mycelium logs mycelium-db           # database only
 mycelium --verbose status           # CLI debug output
 ```
 
@@ -2122,7 +1548,7 @@ mycelium --verbose status           # CLI debug output
 
 ```bash
 mycelium down --volumes   # stop and delete all data
-rm -rf ~/.mycelium        # remove all config
+rm -rf ~/.mycelium        # remove all config and room files
 mycelium install          # fresh install
 ```
 
