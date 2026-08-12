@@ -270,17 +270,17 @@ def use(
 
 
 @doc_ref(
-    usage="mycelium room delete <name> [--force]",
-    desc="Delete a room and all its data (memories, sessions, messages).",
+    usage="mycelium room delete <name> [<name> ...] [--force]",
+    desc="Delete one or more rooms and all their data (memories, sessions, messages).",
     group="room",
 )
 @app.command()
 def delete(
     ctx: typer.Context,
-    room_name: str = typer.Argument(..., help="Room name to delete"),
+    room_names: list[str] = typer.Argument(..., help="Room name(s) to delete"),
     force: bool = typer.Option(False, "--force", "-f"),
 ) -> None:
-    """Delete a room."""
+    """Delete one or more rooms."""
     try:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False  # noqa: F841
         config_path = MyceliumConfig.get_config_path()
@@ -290,8 +290,12 @@ def delete(
         config = MyceliumConfig.load()
 
         if not force:
-            confirm = typer.confirm(f"Delete room '{room_name}'? This cannot be undone.")
-            if not confirm:
+            if len(room_names) == 1:
+                prompt = f"Delete room '{room_names[0]}'? This cannot be undone."
+            else:
+                names_list = ", ".join(f"'{n}'" for n in room_names)
+                prompt = f"Delete {len(room_names)} rooms ({names_list})? This cannot be undone."
+            if not typer.confirm(prompt):
                 typer.echo("Cancelled.")
                 raise typer.Exit(0)
 
@@ -299,10 +303,11 @@ def delete(
             delete_room_api_rooms_room_name_delete as delete_api,
         )
 
-        with _typed_client(config) as client:
-            delete_api.sync_detailed(room_name=room_name, client=client)
+        for room_name in room_names:
+            with _typed_client(config) as client:
+                delete_api.sync_detailed(room_name=room_name, client=client)
 
-        typer.secho(f"Room '{room_name}' deleted.", fg=typer.colors.GREEN)
+            typer.secho(f"Room '{room_name}' deleted.", fg=typer.colors.GREEN)
 
     except Exception as e:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
