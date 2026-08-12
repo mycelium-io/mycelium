@@ -156,11 +156,11 @@ aligner's Pi brain and the plan compiler are the LLM consumers.
   consensus is `commit:converged|rejected`, with episode URNs and causal
   `message.parents`. The subkind table lives in `app/services/l9.py:VALID_SUBKINDS`
   and is SLIM-native (`converged|resolved|rejected`).
-- **CLI/backend SLIM+L9 duplication is guarded by a golden test.** The thin `uv
+- **CLI/backend SLIM+L9 duplication is guarded by a contract test.** The thin `uv
   tool` CLI can't import the backend, so `mycelium/slim/` copies the SLIM+L9
-  primitives. `slim-l9-golden.json` (repo root) freezes the shared wire constants;
-  both `fastapi-backend/tests/test_slim_l9_golden.py` and
-  `mycelium-cli/tests/test_slim_l9_golden.py` assert against it, so neither copy can
+  primitives. `contracts/slim-l9-wire.json` freezes the shared wire constants;
+  both `fastapi-backend/tests/test_slim_l9_wire.py` and
+  `mycelium-cli/tests/test_slim_l9_wire.py` assert against it, so neither copy can
   drift without a red unit gate.
 - **SLIM security is a shared-secret PSK today (D1).** The group key derives from
   `MYCELIUM_SLIM_MASTER_SECRET` (set the same on every host that shares rooms);
