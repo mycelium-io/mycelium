@@ -237,7 +237,7 @@ def status() -> None:
     elif oc_config_path.exists():
         console.print("[red]✗[/red] OTEL plugin        not enabled in openclaw.json")
         console.print(
-            "  [dim]Run [bold]mycelium adapter add openclaw --step=otel[/bold] to configure[/dim]"
+            "  [dim]Point an OTLP source (e.g. InsightClaw) at http://localhost:4318[/dim]"
         )
         all_ok = False
     else:
@@ -266,7 +266,7 @@ def status() -> None:
                 )
                 console.print(
                     "  [dim]OpenClaw will report $0 cost via OTLP. "
-                    "Run [bold]mycelium adapter add openclaw --step=otel[/bold] to patch.[/dim]"
+                    "Set it in openclaw.json.[/dim]"
                 )
                 all_ok = False
             elif otel_enabled:
@@ -275,7 +275,7 @@ def status() -> None:
                 console.print(f"[yellow]⚠[/yellow] Missing compat      {', '.join(missing_compat)}")
                 console.print(
                     "  [dim]supportsUsageInStreaming not set; streaming token counts may be lost. "
-                    "Run [bold]mycelium adapter add openclaw --step=otel[/bold] to patch.[/dim]"
+                    "Set it in openclaw.json.[/dim]"
                 )
                 all_ok = False
             elif otel_enabled:
@@ -1139,7 +1139,7 @@ def show(
                 "  The collector is running but hasn't received data.\n"
                 "  Make sure agents are active and OpenClaw's diagnostics-otel\n"
                 "  plugin is configured:\n"
-                "    [bold]mycelium adapter add openclaw --step=otel[/bold]"
+                "    Point your OTLP exporter (e.g. InsightClaw) at http://localhost:4318."
             )
         else:
             hint = (
@@ -1151,7 +1151,7 @@ def show(
                 f"[yellow]No metrics data available.[/yellow]\n\n"
                 f"{hint}\n\n"
                 "  Make sure OpenClaw's diagnostics-otel plugin is configured:\n"
-                "    [bold]mycelium adapter add openclaw --step=otel[/bold]"
+                "    Point your OTLP exporter (e.g. InsightClaw) at http://localhost:4318."
             )
         raise typer.Exit(0)
 
