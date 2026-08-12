@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Golden drift guard for the shared SLIM+L9 wire primitives (CLI side).
+"""Contract drift guard for the shared SLIM+L9 wire primitives (CLI side).
 
 The CLI daemon carries its own copy of the SLIM+L9 primitives
 (``mycelium.slim.{naming,client,l9}`` + ``daemon.connector`` URN helpers) so the
@@ -11,7 +11,7 @@ shape / URN form means MLS group keys mismatch and this connector **silently
 can't join** the backend moderator's group, or its replies get dropped/misrouted
 (no app-level error).
 
-This test freezes the shared wire constants in ``slim-l9-golden.json`` at the
+This test freezes the shared wire constants in ``contracts/slim-l9-wire.json`` at the
 repo root and asserts the **CLI** primitives reproduce them exactly, preventing
 silent wire-contract drift (no live SLIM node required).
 """
@@ -34,20 +34,20 @@ from mycelium.slim.naming import (
     mint_shared_secret,
 )
 
-_GOLDEN_PATH = Path(__file__).resolve().parent.parent.parent / "slim-l9-golden.json"
+_CONTRACT_PATH = Path(__file__).resolve().parent.parent.parent / "contracts" / "slim-l9-wire.json"
 
 
-def _golden() -> dict:
-    return json.loads(_GOLDEN_PATH.read_text(encoding="utf-8"))
+def _contract() -> dict:
+    return json.loads(_CONTRACT_PATH.read_text(encoding="utf-8"))
 
 
-def test_golden_file_present():
-    assert _GOLDEN_PATH.is_file(), f"missing shared golden file at {_GOLDEN_PATH}"
+def test_contract_file_present():
+    assert _CONTRACT_PATH.is_file(), f"missing shared contract file at {_CONTRACT_PATH}"
 
 
-def test_shared_constants_match_golden():
+def test_shared_constants_match_contract():
     """The literals the shared secret + naming derive from are frozen."""
-    g = _golden()
+    g = _contract()
     assert g["master_secret"] == _DEV_MASTER_SECRET
     assert g["workspace"] == DEFAULT_WORKSPACE
     assert g["channel_topic"] == DEFAULT_CHANNEL_TOPIC
@@ -56,23 +56,23 @@ def test_shared_constants_match_golden():
     assert g["node_port"] == DEFAULT_NODE_PORT
 
 
-def test_mint_shared_secret_matches_golden_digest():
+def test_mint_shared_secret_matches_contract_digest():
     """The exact HMAC digest a connector derives for a known room."""
-    g = _golden()["shared_secret"]
+    g = _contract()["shared_secret"]
     identity = SlimIdentity(g["workspace"], g["room"], g["agent"])
     assert mint_shared_secret(identity) == g["expected_digest"]
 
 
-def test_episode_and_topic_urns_match_golden():
+def test_episode_and_topic_urns_match_contract():
     """The connector's episode/topic URN forms match the backend's."""
-    g = _golden()["urn"]
+    g = _contract()["urn"]
     assert _room_episode(g["room"]) == g["expected_episode"]
     assert _room_topic(g["room"]) == g["expected_topic"]
 
 
-def test_exchange_reply_serializes_to_golden():
-    """The connector's serialized exchange reply is byte-for-byte the golden."""
-    g = _golden()["envelope"]
+def test_exchange_reply_serializes_to_contract():
+    """The connector's serialized exchange reply is byte-for-byte the contract."""
+    g = _contract()["envelope"]
     i = g["inputs"]
     content = l9.build_reply_content(
         sender=i["sender"],
@@ -87,18 +87,18 @@ def test_exchange_reply_serializes_to_golden():
     assert content == g["expected_content"]
 
 
-def test_knowledge_envelope_parses_to_golden_write():
+def test_knowledge_envelope_parses_to_contract_write():
     """The connector parses the backend's ``knowledge:distillation`` envelope.
 
     Guards the *parse* half of the memory-sync contract: given
-    the exact envelope the backend produces (frozen in the golden), the CLI's
+    the exact envelope the backend produces (frozen in the contract), the CLI's
     ``l9.kind_of`` / ``l9.payload_data_of`` — the two the connector's
     ``apply_knowledge_message`` reads through — must recover every carried write
     field byte-for-byte. If the backend's produced shape and this parse ever drift,
     this gate goes red instead of silently breaking cross-machine memory sync.
     """
-    g = _golden()["knowledge"]
-    # The content dict a connector receives on the wire: the golden envelope under
+    g = _contract()["knowledge"]
+    # The content dict a connector receives on the wire: the contract envelope under
     # the additive ``l9`` key. (``content`` is empty — a knowledge push carries its
     # payload in ``l9.payload.data``, not the human-text field.)
     content = {"content": "", "l9": g["expected_envelope"]}
@@ -116,11 +116,11 @@ def test_knowledge_envelope_parses_to_golden_write():
     assert data["updated_at"] == w["updated_at"]
 
 
-def test_channel_name_topic_matches_golden():
+def test_channel_name_topic_matches_contract():
     """A room channel's app segment is the frozen default topic."""
     pytest.importorskip("slim_bindings")
     from mycelium.slim.naming import to_channel_name
 
-    g = _golden()
+    g = _contract()
     name = to_channel_name("acme", "planning")
     assert name.components() == ["acme", "planning", g["channel_topic"]]

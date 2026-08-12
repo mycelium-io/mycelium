@@ -1,6 +1,6 @@
 {
   "_comment": [
-    "Frozen SLIM+L9 wire-compat golden constants — the single source of truth both",
+    "Frozen SLIM+L9 wire-compat contract constants — the single source of truth both",
     "the FastAPI backend (fastapi-backend/app/services/{slim_client,l9,l9_slim}.py)",
     "and the CLI daemon (mycelium-cli/src/mycelium/slim/{naming,client,l9}.py +",
     "daemon/connector.py) MUST reproduce byte-for-byte. See D2 in",
@@ -12,8 +12,8 @@
     "to the shared wire shape is genuinely intended, update this file deliberately in",
     "the same PR and both suites will re-lock to the new value.",
     "",
-    "Tests: fastapi-backend/tests/test_slim_l9_golden.py,",
-    "mycelium-cli/tests/test_slim_l9_golden.py"
+    "Tests: fastapi-backend/tests/test_slim_l9_wire.py,",
+    "mycelium-cli/tests/test_slim_l9_wire.py"
   ],
 
   "master_secret": "mycelium-dev-shared-secret-v1-do-not-use-in-prod",
@@ -40,7 +40,7 @@
   },
 
   "envelope": {
-    "_comment": "A golden serialized L9 'exchange' reply content dict. The backend produces this via l9.envelope_to_dict(l9.build_envelope(kind=exchange, ...)); the CLI produces the same dict via l9.build_reply_content(...). The two serializers must agree byte-for-byte or a connector's reply fails the backend persister's parse_envelope.",
+    "_comment": "A frozen serialized L9 'exchange' reply content dict. The backend produces this via l9.envelope_to_dict(l9.build_envelope(kind=exchange, ...)); the CLI produces the same dict via l9.build_reply_content(...). The two serializers must agree byte-for-byte or a connector's reply fails the backend persister's parse_envelope.",
     "inputs": {
       "sender": "alice",
       "recipients": ["bob"],
@@ -82,7 +82,7 @@
   },
 
   "knowledge": {
-    "_comment": "A golden serialized L9 'knowledge:distillation' envelope — the memory-sync wire shape (Step 8, bible §11). The backend PRODUCES it via memory_sync.build_knowledge_envelope(room, write, recipients) + KnowledgeWrite.to_payload() (serialized with l9.envelope_to_dict); the CLI daemon PARSES it via slim/l9.payload_data_of and applies it in daemon/connector.apply_knowledge_message. The two must agree byte-for-byte on the payload.data write fields or cross-machine memory sync (Step 9) silently drifts. build_knowledge_envelope mints a fresh random message.id per call, so 'expected_envelope.header.message.id' is the sentinel 'MESSAGE_ID_PLACEHOLDER' — the backend test normalizes the produced id to it before comparing (the id is not part of the shared contract; every other field is).",
+    "_comment": "A frozen serialized L9 'knowledge:distillation' envelope — the memory-sync wire shape (Step 8, bible §11). The backend PRODUCES it via memory_sync.build_knowledge_envelope(room, write, recipients) + KnowledgeWrite.to_payload() (serialized with l9.envelope_to_dict); the CLI daemon PARSES it via slim/l9.payload_data_of and applies it in daemon/connector.apply_knowledge_message. The two must agree byte-for-byte on the payload.data write fields or cross-machine memory sync (Step 9) silently drifts. build_knowledge_envelope mints a fresh random message.id per call, so 'expected_envelope.header.message.id' is the sentinel 'MESSAGE_ID_PLACEHOLDER' — the backend test normalizes the produced id to it before comparing (the id is not part of the shared contract; every other field is).",
     "room": "acme",
     "recipients": ["bob"],
     "message_id_placeholder": "MESSAGE_ID_PLACEHOLDER",

@@ -54,6 +54,6 @@ def test_require_secret_satisfied_by_real_secret(monkeypatch):
 
 
 def test_explicit_master_secret_still_honoured(monkeypatch):
-    """An explicit argument bypasses env resolution (used by the golden test)."""
+    """An explicit argument bypasses env resolution (used by the contract test)."""
     monkeypatch.setenv("MYCELIUM_SLIM_MASTER_SECRET", "ignored")
     assert mint_shared_secret(_ID, master_secret="explicit") == _expected("explicit")
