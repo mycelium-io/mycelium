@@ -25,6 +25,11 @@ export function startRoomSSE(
   const signal = abort.signal;
   const sseUrl = `${cfg.backendUrl}/api/rooms/${encodeURIComponent(cfg.room)}/messages/stream`;
 
+  // Tombstone only after this many consecutive 404s — mirrors the Python daemon's
+  // _404_MAX_RETRIES logic so both delivery paths behave identically on deletion.
+  const NOT_FOUND_MAX_RETRIES = 3;
+  let notFoundRetries = 0;
+
   (async () => {
     while (!signal.aborted) {
       try {
@@ -33,9 +38,18 @@ export function startRoomSSE(
           signal,
         });
         if (res.status === 404) {
-          log.warn(`[${CHANNEL_ID}] room SSE 404 for ${cfg.room} — room may not exist yet, retry 15s`);
-          await new Promise((r) => setTimeout(r, 15_000));
-          continue;
+          notFoundRetries++;
+          if (notFoundRetries < NOT_FOUND_MAX_RETRIES) {
+            log.warn(
+              `[${CHANNEL_ID}] room SSE 404 for ${cfg.room} (attempt ${notFoundRetries}/${NOT_FOUND_MAX_RETRIES}) — retry 15s`,
+            );
+            await new Promise((r) => setTimeout(r, 15_000));
+            continue;
+          }
+          log.warn(
+            `[${CHANNEL_ID}] room SSE 404 for ${cfg.room} after ${notFoundRetries} attempts — room deleted, stopping`,
+          );
+          return;
         }
         if (!res.ok || !res.body) {
           log.warn(`[${CHANNEL_ID}] SSE ${res.status} — retry 5s`);
@@ -43,6 +57,7 @@ export function startRoomSSE(
           continue;
         }
 
+        notFoundRetries = 0;
         log.info(
           `[${CHANNEL_ID}] SSE connected: ${cfg.room} (agents: ${cfg.agents.join(", ")})`,
         );

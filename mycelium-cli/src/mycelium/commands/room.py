@@ -1242,8 +1242,8 @@ def gc(
             return
 
         if json_output:
-            typer.echo(json_module.dumps({"orphans": orphans}))
             if not prune_orphans:
+                typer.echo(json_module.dumps({"orphans": orphans}))
                 return
         else:
             typer.secho(
@@ -1288,8 +1288,11 @@ def gc(
                             f"    Unregistered {len(oc_removed)} openclaw agent(s)",
                             fg=typer.colors.CYAN,
                         )
-                except Exception:
-                    pass
+                except Exception as exc:
+                    typer.secho(
+                        f"    Warning: could not unregister openclaw agents for '{room_name}': {exc}",
+                        fg=typer.colors.YELLOW,
+                    )
 
                 try:
                     from mycelium.integrations.hermes.dispatch import unregister_room_from_hermes
@@ -1300,8 +1303,11 @@ def gc(
                             f"    Unregistered {len(hm_removed)} hermes agent(s)",
                             fg=typer.colors.CYAN,
                         )
-                except Exception:
-                    pass
+                except Exception as exc:
+                    typer.secho(
+                        f"    Warning: could not unregister hermes agents for '{room_name}': {exc}",
+                        fg=typer.colors.YELLOW,
+                    )
 
                 if not dir_removed:
                     typer.secho(
@@ -1329,6 +1335,14 @@ def gc(
                         _changed = True
                 if _changed:
                     _dcfg.save()
+                    # Signal the running daemon to hot-reload so it drops SSE tasks
+                    # for the pruned rooms immediately rather than waiting for restart.
+                    try:
+                        from mycelium.daemon.install import reload_daemon_service
+
+                        reload_daemon_service()
+                    except Exception:
+                        pass
             except Exception as exc:
                 typer.secho(
                     f"Warning: could not update daemon config: {exc}", fg=typer.colors.YELLOW

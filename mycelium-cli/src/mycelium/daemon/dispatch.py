@@ -1474,6 +1474,13 @@ async def subscribe_room(
         pool=_SSE_CONNECT_TIMEOUT_S,
     )
 
+    # Tombstone only after this many consecutive 404s.  A single 404 can be a
+    # transient proxy blip or a subscribe-before-create race; three consecutive
+    # 404s with 15 s between them (45 s total) is a reliable signal that the
+    # room is genuinely gone.
+    _404_MAX_RETRIES = 3
+    _404_retries = 0
+
     while not state.stopping.is_set():
         try:
             async with (
@@ -1481,18 +1488,32 @@ async def subscribe_room(
                 client.stream("GET", url, headers={"Accept": "text/event-stream"}) as resp,
             ):
                 if resp.status_code == 404:
+                    _404_retries += 1
+                    if _404_retries < _404_MAX_RETRIES:
+                        log.warning(
+                            "SSE 404 for %s (attempt %d/%d) — retrying in 15s",
+                            room_name,
+                            _404_retries,
+                            _404_MAX_RETRIES,
+                        )
+                        await asyncio.sleep(15)
+                        continue
                     log.warning(
-                        "SSE 404 for %s — room does not exist on hub; closing subscription",
+                        "SSE 404 for %s after %d consecutive attempts — "
+                        "room does not exist on hub; closing subscription",
                         room_name,
+                        _404_retries,
                     )
                     state.rooms_deleted.add(room_name)
                     state.reload_requested.set()
+                    _unregister_room_from_adapters(room_name)
                     return
                 if resp.status_code >= 400:
                     log.warning("SSE %s for %s — retry in 5s", resp.status_code, room_name)
                     await asyncio.sleep(5)
                     continue
 
+                _404_retries = 0
                 log.info("SSE connected: %s", room_name)
                 state.rooms_connected.add(room_name)
 

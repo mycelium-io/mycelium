@@ -1975,16 +1975,25 @@ def _check_orphaned_rooms() -> CheckResult:
         return CheckResult(name="Orphaned rooms", status="ok", message="No local room directories")
 
     orphans: list[str] = []
-    failed: list[str] = []
     hub_unreachable = False
     try:
         import httpx
 
         with httpx.Client(base_url=api_url, timeout=5) as client:
             try:
-                resp = client.get("/api/rooms")
-                resp.raise_for_status()
-                hub_rooms = {r["name"] for r in resp.json()}
+                # Paginate in batches of 1000 so a deployment with >1000 rooms
+                # doesn't silently miss orphans beyond the default limit.
+                hub_rooms: set[str] = set()
+                skip = 0
+                limit = 1000
+                while True:
+                    resp = client.get("/api/rooms", params={"skip": skip, "limit": limit})
+                    resp.raise_for_status()
+                    page = resp.json()
+                    hub_rooms.update(r["name"] for r in page)
+                    if len(page) < limit:
+                        break
+                    skip += limit
                 orphans = [r for r in local_rooms if r not in hub_rooms]
             except (httpx.ConnectError, httpx.ConnectTimeout):
                 hub_unreachable = True
@@ -2002,22 +2011,6 @@ def _check_orphaned_rooms() -> CheckResult:
         )
 
     if hub_unreachable:
-        if orphans:
-            noun = "directory" if len(orphans) == 1 else "directories"
-            return CheckResult(
-                name="Orphaned rooms",
-                status="warning",
-                message=(
-                    f"{len(orphans)} local room {noun} not registered in the backend "
-                    f"(scan incomplete — backend unreachable)"
-                ),
-                details=[
-                    *[f"  ~/.mycelium/rooms/{r}/" for r in orphans],
-                    *([f"  could not verify: {r}" for r in failed] if failed else []),
-                    "Note: scan was interrupted; there may be additional orphans.",
-                    "Fix: mycelium room gc --prune-orphans",
-                ],
-            )
         return CheckResult(
             name="Orphaned rooms",
             status="ok",
@@ -2025,16 +2018,6 @@ def _check_orphaned_rooms() -> CheckResult:
         )
 
     if not orphans:
-        if failed:
-            return CheckResult(
-                name="Orphaned rooms",
-                status="warning",
-                message=(
-                    f"Verified {len(local_rooms) - len(failed)}/{len(local_rooms)} room(s) — "
-                    f"{len(failed)} check(s) could not be confirmed"
-                ),
-                details=[f"  could not verify: {r}" for r in failed],
-            )
         return CheckResult(
             name="Orphaned rooms",
             status="ok",
@@ -2042,16 +2025,12 @@ def _check_orphaned_rooms() -> CheckResult:
         )
 
     noun = "directory" if len(orphans) == 1 else "directories"
-    msg = f"{len(orphans)} local room {noun} not registered in the backend"
-    if failed:
-        msg += f"; {len(failed)} check(s) could not be confirmed"
     return CheckResult(
         name="Orphaned rooms",
         status="warning",
-        message=msg,
+        message=f"{len(orphans)} local room {noun} not registered in the backend",
         details=[
             *[f"  ~/.mycelium/rooms/{r}/" for r in orphans],
-            *([f"  could not verify: {r}" for r in failed] if failed else []),
             "Fix: mycelium room gc --prune-orphans",
             "  or: set daemon.auto_gc_orphaned_rooms = true in config.toml",
         ],
