@@ -8,9 +8,9 @@
 # Vendored from outshift-open/ioc-protocols-models
 # (SSTP/language_bindings/python/ai/outshift/data_model.py, commit 93773a5).
 # Vendored rather than depending on the ioc-l9-all-models PyPI package because
-# that package requires litellm>=1.89.3, which conflicts with this project's
-# security-pinned litellm[proxy]==1.83.14. Regenerate by copying the file from
-# an updated checkout of the upstream repo and re-adding this header.
+# that package pulls litellm back in — a dependency this project deliberately
+# removed (issue #445). Regenerate by copying the file from an updated checkout
+# of the upstream repo and re-adding this header.
 
 from __future__ import annotations
 

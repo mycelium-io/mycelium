@@ -5,7 +5,7 @@
 
 A first-party engine (the SAO mediator) runs *where the daemon runs* — the host —
 so its brain executes where ``pi`` lives, not inside the backend container. This
-package holds the NEGMAS core (``mediator``), the brains (``brain``: litellm + Pi),
-the fuzzy offer snap (``offer_snap``), and the SLIM drive loop (``runtime``). Heavy
-deps (negmas, litellm) come from the ``mycelium[engine]`` extra.
+package holds the NEGMAS core (``mediator``), the Pi brain (``brain``), the fuzzy
+offer snap (``offer_snap``), and the SLIM drive loop (``runtime``). The heavy dep
+(negmas) comes from the ``mycelium[engine]`` extra.
 """

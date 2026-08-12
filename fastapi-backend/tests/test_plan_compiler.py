@@ -8,38 +8,11 @@ Pure-function tests run always; the live-LLM test is gated on
 """
 
 import os
-from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 
 from app.services import plan_compiler
-
-
-def _fake_response(content: str) -> SimpleNamespace:
-    return SimpleNamespace(
-        choices=[SimpleNamespace(message=SimpleNamespace(content=content))],
-        usage=None,
-        _hidden_params={},
-    )
-
-
-class TestBedrockDetection:
-    @pytest.mark.parametrize(
-        ("model", "expected"),
-        [
-            ("bedrock/anthropic.claude-3", True),
-            ("anthropic/bedrock/global.anthropic.claude-sonnet-4-6", True),
-            ("BEDROCK/Anthropic.Claude", True),
-            ("something.bedrock-runtime.us-east-1", True),
-            ("anthropic/claude-sonnet-4-6", False),
-            ("openai/gpt-4o", False),
-            ("", False),
-            (None, False),
-        ],
-    )
-    def test_detection(self, model, expected):
-        assert plan_compiler._model_uses_bedrock_sync_path(model) is expected
 
 
 class TestBuildPrompt:
@@ -93,8 +66,8 @@ class TestCompilePlan:
     async def test_strips_fences_from_llm_output(self):
         with patch.object(
             plan_compiler,
-            "_acompletion_compat",
-            AsyncMock(return_value=_fake_response("```markdown\n# Plan\n\n- [ ] ship\n```")),
+            "_pi_complete",
+            return_value="```markdown\n# Plan\n\n- [ ] ship\n```",
         ):
             body = await plan_compiler.compile_plan(
                 room_name="r",
@@ -107,11 +80,7 @@ class TestCompilePlan:
 
     async def test_empty_content_raises(self):
         with (
-            patch.object(
-                plan_compiler,
-                "_acompletion_compat",
-                AsyncMock(return_value=_fake_response("   ")),
-            ),
+            patch.object(plan_compiler, "_pi_complete", return_value="   "),
             pytest.raises(RuntimeError),
         ):
             await plan_compiler.compile_plan(
@@ -129,7 +98,7 @@ class TestCompilePlan:
 )
 @pytest.mark.asyncio
 async def test_compile_plan_live():
-    """Real compile against the configured model (exercises the Bedrock sync path)."""
+    """Real compile against the configured model (exercises the live Pi path)."""
     body = await plan_compiler.compile_plan(
         room_name="live-test",
         assignments={"scope": "reduced", "timeline": "6mo"},

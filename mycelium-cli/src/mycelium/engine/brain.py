@@ -3,15 +3,15 @@
 
 """A Pi-backed cognitive brain for mycelium's *internal* agents.
 
-A **persistent, optionally OpenShell-sandboxed Pi session** that replaces the SAO
-mediator's stateless ``litellm.completion`` brain
-(:func:`app.services.mediator.llm_sync`), without touching the NEGMAS loop, the
-SLIM drive, or any *user* agent's runtime. Pi is the runtime for our own cognition
-agents only; participant agents keep whatever framework they already run.
+A **persistent, optionally OpenShell-sandboxed Pi session** — the SAO mediator's
+only brain — without touching the NEGMAS loop, the SLIM drive, or any *user*
+agent's runtime. Pi is the runtime for our own cognition agents only; participant
+agents keep whatever framework they already run.
 
 The mediator injects its brain as a callable
 ``llm(prompt, *, system="", temperature=…) -> str`` (see ``mediator.py``:
-``discover_issues(…, llm=…)`` and ``MediatedNegotiation(…, llm=…)``).
+``discover_issues(…, llm=…)`` and ``MediatedNegotiation(…, llm=…)``); ``PiBrain``
+is that callable.
 :class:`PiBrain` is a drop-in for that seam whose ``__call__`` drives one
 long-lived ``pi -p --session <path> --mode json`` subprocess. Because one
 :class:`PiBrain` instance reuses a single ``--session`` file across every call,
@@ -19,9 +19,9 @@ the brain accumulates **real durable memory across SAO rounds** — the natural
 home for the running state ``MediatedNegotiation`` threads by hand today.
 
 **Synchronous on purpose.** The mediator's LLM turns run inside NEGMAS's
-``mech.run()`` worker thread; ``llm_sync`` is blocking and so is this. We shell
-out with a blocking :func:`subprocess.run` bounded by a wall-clock timeout so one
-hung turn can never stall the negotiation.
+``mech.run()`` worker thread, so this is blocking too. We shell out with a
+blocking :func:`subprocess.run` bounded by a wall-clock timeout so one hung turn
+can never stall the negotiation.
 
 **Serial by construction.** The mediator's turn model is strictly serial (one
 ``@handle`` at a time), so a single Pi session is never driven concurrently. Do
@@ -192,16 +192,16 @@ class PiBrain:
     def __call__(self, prompt: str, *, system: str = "", temperature: float = 0.3) -> str:
         """Run one blocking ``pi`` turn against the persistent session.
 
-        ``temperature`` is accepted for signature-compatibility with
-        :func:`app.services.mediator.llm_sync` but Pi exposes no temperature flag,
-        so it is intentionally ignored (best-effort determinism only).
+        ``temperature`` is accepted for parity with the mediator's brain-callable
+        seam but Pi exposes no temperature flag, so it is intentionally ignored
+        (best-effort determinism only).
         """
-        del temperature  # no pi CLI knob; kept for llm_sync signature parity
+        del temperature  # no pi CLI knob; kept for brain-callable signature parity
         binary = self._binary
         if shutil.which(binary) is None:
             raise PiBrainError(
-                f"`{binary}` not found on PATH — install Pi (earendil-works/pi) "
-                "or set ALIGNER_BRAIN=litellm."
+                f"`{binary}` not found on PATH — the engine's mediator runs on Pi; "
+                "install Pi (earendil-works/pi) or set ALIGNER_PI_BINARY to its path."
             )
         cmd = self._build_command(prompt, system)
         try:

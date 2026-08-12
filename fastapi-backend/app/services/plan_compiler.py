@@ -18,8 +18,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import tempfile
 import time
-from typing import Any
+import uuid
+from pathlib import Path
 
 from app.config import settings
 from app.services.metrics import record_llm_call
@@ -29,28 +31,6 @@ logger = logging.getLogger(__name__)
 # Hard ceiling on the LLM call so a hung provider can never make a negotiation's
 # `session await` hang forever — _finish_cfn falls back to the raw agreement.
 COMPILER_TIMEOUT_SECS = 30.0
-_MAX_TOKENS = 2048
-
-
-def _model_uses_bedrock_sync_path(model: str | None) -> bool:
-    """True when the model must use threaded sync ``completion`` (Bedrock).
-
-    ``litellm.acompletion`` does not work for Bedrock models — Bedrock is sync
-    boto3 underneath — so those calls are offloaded to a thread instead. See
-    outshift-open/ioc-cfn-cognition-engines PR #19 / commit 85c440c8f.
-    """
-    m = (model or "").strip().lower()
-    return m.startswith("bedrock/") or "bedrock-runtime" in m or "/bedrock/" in m
-
-
-async def _acompletion_compat(**kwargs: Any) -> Any:
-    """``litellm.acompletion`` for most providers; threaded ``completion`` for Bedrock."""
-    import litellm
-
-    model = kwargs.get("model")
-    if _model_uses_bedrock_sync_path(model if isinstance(model, str) else None):
-        return await asyncio.to_thread(litellm.completion, **kwargs)
-    return await litellm.acompletion(**kwargs)
 
 
 def _format_agreement(assignments: dict[str, str]) -> str:
@@ -153,25 +133,39 @@ def _strip_fences(text: str) -> str:
     return "\n".join(lines).strip()
 
 
-async def _compile_plan_body(prompt: str, room_name: str) -> str:
-    """Run the timeout-bounded LLM call and return the raw plan markdown.
+def _pi_complete(prompt: str) -> str:
+    """One blocking Pi turn producing the raw plan markdown.
 
-    Isolated so tests can patch it without a live LLM.
+    The compiler's single LLM consumer, now Pi like every other mycelium
+    cognition call (the backend image ships ``pi``). A throwaway ``--session``
+    file keeps it a true one-shot with no memory to carry. Isolated so tests can
+    patch it without a live Pi.
     """
-    kwargs: dict = {
-        "model": settings.LLM_MODEL,
-        "max_tokens": _MAX_TOKENS,
-        "messages": [{"role": "user", "content": prompt}],
-    }
-    if settings.LLM_API_KEY:
-        kwargs["api_key"] = settings.LLM_API_KEY
-    if settings.LLM_BASE_URL:
-        kwargs["base_url"] = settings.LLM_BASE_URL
+    from app.services.pi_brain import PiBrain
 
+    session_dir = Path(tempfile.gettempdir()) / "mycelium-pi-sessions"
+    session_dir.mkdir(parents=True, exist_ok=True)
+    brain = PiBrain(
+        session_path=session_dir / f"plan-compile-{uuid.uuid4().hex}.jsonl",
+        model=settings.LLM_MODEL,
+        api_key=settings.LLM_API_KEY,
+        base_url=settings.LLM_BASE_URL,
+        binary=settings.ALIGNER_PI_BINARY,
+        timeout_s=COMPILER_TIMEOUT_SECS,
+        openshell=settings.ALIGNER_PI_OPENSHELL,
+    )
+    return brain(prompt)
+
+
+async def _compile_plan_body(prompt: str, room_name: str) -> str:
+    """Run the timeout-bounded Pi call and return the raw plan markdown.
+
+    Isolated so tests can patch it without a live Pi.
+    """
     t0 = time.monotonic()
     try:
-        response = await asyncio.wait_for(
-            _acompletion_compat(**kwargs), timeout=COMPILER_TIMEOUT_SECS
+        content = await asyncio.wait_for(
+            asyncio.to_thread(_pi_complete, prompt), timeout=COMPILER_TIMEOUT_SECS + 5.0
         )
     except Exception:
         record_llm_call(
@@ -183,24 +177,17 @@ async def _compile_plan_body(prompt: str, room_name: str) -> str:
         raise
     elapsed_ms = (time.monotonic() - t0) * 1000
 
-    usage = getattr(response, "usage", None)
-    input_tok = (getattr(usage, "prompt_tokens", 0) or 0) if usage else 0
-    output_tok = (getattr(usage, "completion_tokens", 0) or 0) if usage else 0
-    hidden = getattr(response, "_hidden_params", {}) or {}
-    cost = hidden.get("response_cost", 0.0) or 0.0
+    # Pi does not report per-turn token usage or cost on its JSON stream, so only
+    # the call count + latency are recorded (tokens/cost stay zero).
     record_llm_call(
         operation="plan_compile",
         model=settings.LLM_MODEL,
         room=room_name,
-        input_tokens=input_tok,
-        output_tokens=output_tok,
-        cost_usd=cost,
         duration_ms=elapsed_ms,
     )
 
-    content = response.choices[0].message.content
     if not content or not content.strip():
-        raise RuntimeError("plan compiler: LLM returned empty content")
+        raise RuntimeError("plan compiler: Pi returned empty content")
     return content
 
 

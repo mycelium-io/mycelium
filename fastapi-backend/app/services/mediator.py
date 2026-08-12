@@ -25,8 +25,7 @@ negotiator's ``propose``/``respond`` bridge back to the loop with
 reply the persister records, then interpret the prose in-thread. NEGMAS keeps
 full ownership of proposer rotation and the unanimity stop; we only supply each
 agent's move when NEGMAS asks for it. LLM calls (discover/broker/interpret) run
-synchronously in-thread via ``litellm.completion`` — which also sidesteps the
-Bedrock ``acompletion`` issue (see ``plan_compiler``).
+synchronously in-thread against the injected Pi brain (see ``pi_brain``).
 
 The mediator is deliberately *interpretation over the agents' prose*: agents are
 never required to emit structured markers (a future cleanup will retire the

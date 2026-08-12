@@ -102,8 +102,10 @@ on the room's channel (a tag over the existing channel, not a separate one), 1:1
 an L9 episode record. Each convening is a distinct episode (unique id, its own
 transcript slice), recorded at `log/episodes/{id}.md`.
 
-LLM: litellm (provider/model format, e.g. `anthropic/claude-sonnet-4-6`). The
-aligner's Pi brain and the plan compiler are the LLM consumers.
+LLM: **Pi everywhere** (provider/model format, e.g. `anthropic/claude-sonnet-4-6`).
+The aligner's brain, the plan compiler, and the `mycelium doctor` / `/health`
+completion probe all shell out to the `pi` binary the backend image ships; there
+is no litellm dependency.
 
 ## Key design decisions
 
@@ -139,9 +141,10 @@ aligner's Pi brain and the plan compiler are the LLM consumers.
   consensus is announced (plan-first ordering, so `await` returns once the plan
   exists). Fail-soft: a compiler outage falls back to the raw `issue=value`
   agreement. The compiler is deliberately a distinct consumer stage across an
-  explicit seam, not part of the negotiation engine. `litellm.acompletion` doesn't
-  work for Bedrock, so the compiler routes Bedrock models through threaded sync
-  `completion`. `plan_sync.py` then syncs the compiled plan as a `knowledge` memory.
+  explicit seam, not part of the negotiation engine. It runs a one-shot `pi` turn
+  (a throwaway session, off the event loop via `asyncio.to_thread`), like every
+  other mycelium cognition call. `plan_sync.py` then syncs the compiled plan as a
+  `knowledge` memory.
 - **Server-held membership.** A turn-based agent (Claude, a subagent, a shell) can't
   hold a SLIM socket between turns, so the backend holds membership: `await`
   long-polls off a durable transcript cursor and refreshes a presence lease;

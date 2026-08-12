@@ -107,9 +107,9 @@ def generate_env_file(
         "# ── LLM ──────────────────────────────────────────────────────────────────",
         f"LLM_MODEL={config.llm.model or ''}",
         f"LLM_API_KEY={config.llm.api_key or ''}",
-        # Only emit LLM_BASE_URL when actually set — an empty value causes
-        # litellm/OpenAI SDK to reject it as UnsupportedProtocol in downstream
-        # services (e.g. CFN node) that don't have the backend's validator.
+        # Only emit LLM_BASE_URL when actually set — an empty value causes the
+        # OpenAI SDK to reject it as UnsupportedProtocol in downstream
+        # services that don't have the backend's validator.
         f"LLM_BASE_URL={config.llm.base_url}"
         if config.llm.base_url
         else "# LLM_BASE_URL not set — using provider default",

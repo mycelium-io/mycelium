@@ -85,7 +85,7 @@ local embedding index. Coordination messages ride SLIM as additive
 | Protocol | L9 envelopes over SLIM | `exchange` ticks/replies, `commit:*`, `knowledge` |
 | Cognition | the aligner (Pi + NEGMAS) | drives the negotiation (see [aligner](#aligner)) |
 | Embeddings | local ONNX model | 384-dim embeddings, no API key |
-| LLM | litellm | plan compilation (100+ providers) |
+| LLM | Pi | plan compilation + health probe |
 | Backend | FastAPI (room moderator) | membership, transcript, moderation API |
 | Waker | optional daemon | cold-spawns runtimes that can't wake themselves |
 | CLI | Typer + Rich | agent interface |

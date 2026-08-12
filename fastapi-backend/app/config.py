@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     # CORS — default for local dev; override in production via .env
     CORS_ORIGINS: set[str] = {"http://localhost:3000"}
 
-    # LLM — uses litellm format: "provider/model" (e.g. anthropic/claude-sonnet-4-6, openai/gpt-4o, ollama/llama3)
+    # LLM — "provider/model" format (e.g. anthropic/claude-sonnet-4-6, openai/gpt-4o, ollama/llama3)
     LLM_MODEL: str = "anthropic/claude-sonnet-4-6"
     LLM_API_KEY: str | None = None
     LLM_BASE_URL: str | None = None  # optional, for custom endpoints (ollama, vllm, etc.)
@@ -39,8 +39,8 @@ class Settings(BaseSettings):
     @field_validator("LLM_BASE_URL", mode="before")
     @classmethod
     def _coerce_base_url(cls, v: object) -> object:
-        """Treat empty string as unset — litellm and the OpenAI SDK both pass
-        "" through to httpx which rejects it as UnsupportedProtocol."""
+        """Treat empty string as unset — the OpenAI SDK passes "" through to
+        httpx which rejects it as UnsupportedProtocol."""
         if isinstance(v, str) and v.strip() == "":
             return None
         return v

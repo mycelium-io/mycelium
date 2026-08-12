@@ -282,77 +282,48 @@ async def test_probe_completion_not_configured():
 
 
 async def test_probe_completion_ok():
-    """A clean litellm.acompletion call surfaces as ok."""
+    """A clean one-shot pi turn surfaces as ok."""
     with patch("app.services.llm_health.settings") as mock_settings:
         mock_settings.LLM_API_KEY = "sk-ant-test1234abcdef"
         mock_settings.LLM_BASE_URL = None
         mock_settings.LLM_MODEL = "anthropic/claude-sonnet-4-6"
 
-        async def _fake_acompletion(**kwargs):
-            return {"choices": [{"message": {"content": "p"}}]}
-
-        with patch("litellm.acompletion", side_effect=_fake_acompletion):
+        with patch("app.services.llm_health._pi_ping", return_value="pong"):
             result = await probe_completion()
 
         assert result.status == "ok"
         assert "succeeded" in result.message.lower()
 
 
-async def test_probe_completion_missing_provider_sdk():
-    """A ModuleNotFoundError raised by litellm becomes `missing_extras` with a hint."""
+async def test_probe_completion_missing_binary():
+    """A missing pi binary (PiBrainError) surfaces as error with an install hint."""
     with patch("app.services.llm_health.settings") as mock_settings:
-        mock_settings.LLM_API_KEY = ""
+        mock_settings.LLM_API_KEY = "sk-ant-test1234abcdef"
         mock_settings.LLM_BASE_URL = None
-        mock_settings.LLM_MODEL = "bedrock/anthropic.claude-3-sonnet"
+        mock_settings.LLM_MODEL = "anthropic/claude-sonnet-4-6"
 
-        async def _raise(**kwargs):
-            raise ModuleNotFoundError("No module named 'boto3'")
+        def _raise(_model):
+            raise RuntimeError("`pi` not found on PATH — install Pi")
 
-        with patch("litellm.acompletion", side_effect=_raise):
-            # Override config not_configured by pretending a key is set.
-            mock_settings.LLM_API_KEY = "aws-access-key-id"
+        with patch("app.services.llm_health._pi_ping", side_effect=_raise):
             result = await probe_completion()
 
-        assert result.status == "missing_extras"
-        assert "bedrock" in result.message.lower() or "boto3" in result.message.lower()
+        assert result.status == "error"
         assert result.remediation is not None
-        assert "boto3" in result.remediation
-
-
-async def test_probe_completion_wrapped_import_error_in_message():
-    """litellm sometimes wraps missing-SDK errors in a generic Exception whose
-    message embeds 'No module named X' — we should still classify as
-    missing_extras."""
-    with patch("app.services.llm_health.settings") as mock_settings:
-        mock_settings.LLM_API_KEY = "aws-key"
-        mock_settings.LLM_BASE_URL = None
-        mock_settings.LLM_MODEL = "bedrock/anthropic.claude-3-sonnet"
-
-        async def _raise(**kwargs):
-            raise Exception("No module named 'boto3' — pip install boto3")
-
-        with patch("litellm.acompletion", side_effect=_raise):
-            result = await probe_completion()
-
-        assert result.status == "missing_extras"
-        assert result.remediation is not None
+        assert "pi" in result.remediation.lower()
 
 
 async def test_probe_completion_auth_error():
-    """litellm.AuthenticationError maps to auth_error with a remediation."""
-    import litellm
-
+    """A pi failure mentioning an API-key problem maps to auth_error."""
     with patch("app.services.llm_health.settings") as mock_settings:
         mock_settings.LLM_API_KEY = "sk-ant-bad"
         mock_settings.LLM_BASE_URL = None
         mock_settings.LLM_MODEL = "anthropic/claude-sonnet-4-6"
 
-        async def _raise(**kwargs):
-            raise litellm.AuthenticationError(
-                message="invalid key", llm_provider="anthropic", model="claude-sonnet-4-6"
-            )
+        def _raise(_model):
+            raise RuntimeError("pi exited 1: invalid api key (401)")
 
-        with patch("litellm.acompletion", side_effect=_raise):
+        with patch("app.services.llm_health._pi_ping", side_effect=_raise):
             result = await probe_completion()
 
         assert result.status == "auth_error"
@@ -361,23 +332,35 @@ async def test_probe_completion_auth_error():
 
 
 async def test_probe_completion_bad_model():
-    """litellm.BadRequestError on an unknown model surfaces as bad_model."""
-    import litellm
-
+    """A pi failure mentioning an unknown model surfaces as bad_model."""
     with patch("app.services.llm_health.settings") as mock_settings:
         mock_settings.LLM_API_KEY = "sk-test"
         mock_settings.LLM_BASE_URL = None
         mock_settings.LLM_MODEL = "anthropic/claude-imaginary-model"
 
-        async def _raise(**kwargs):
-            raise litellm.BadRequestError(
-                message="unknown model", llm_provider="anthropic", model="claude-imaginary"
-            )
+        def _raise(_model):
+            raise RuntimeError("pi exited 1: unknown model 'claude-imaginary'")
 
-        with patch("litellm.acompletion", side_effect=_raise):
+        with patch("app.services.llm_health._pi_ping", side_effect=_raise):
             result = await probe_completion()
 
         assert result.status == "bad_model"
+
+
+async def test_probe_completion_timeout():
+    """A pi timeout surfaces as unreachable."""
+    with patch("app.services.llm_health.settings") as mock_settings:
+        mock_settings.LLM_API_KEY = "sk-test"
+        mock_settings.LLM_BASE_URL = None
+        mock_settings.LLM_MODEL = "anthropic/claude-sonnet-4-6"
+
+        def _raise(_model):
+            raise RuntimeError("pi turn exceeded 10s and was killed")
+
+        with patch("app.services.llm_health._pi_ping", side_effect=_raise):
+            result = await probe_completion()
+
+        assert result.status == "unreachable"
 
 
 # ── /health endpoint ─────────────────────────────────────────────────────────

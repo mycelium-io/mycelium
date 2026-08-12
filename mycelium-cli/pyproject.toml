@@ -43,14 +43,14 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# The `engine` extra pulls the cognition-engine runtime's heavy deps onto the
+# The `engine` extra pulls the cognition-engine runtime's heavy dep onto the
 # host so a first-party engine (the SAO mediator) can run where the daemon runs
-# — NEGMAS for the SAO mechanism, litellm for the brain. Opt-in (`pip install
-# mycelium[engine]`) so the base CLI stays light; only hosts that run engines
-# pay the cost. See docs/START_HERE_ENGINES.md (Stage B).
+# — NEGMAS for the SAO mechanism. The mediator's brain is Pi, an external binary
+# (not a Python dep). Opt-in (`pip install mycelium[engine]`) so the base CLI
+# stays light; only hosts that run engines pay the cost. See
+# docs/START_HERE_ENGINES.md (Stage B).
 engine = [
     "negmas>=0.11",
-    "litellm>=1.55",
 ]
 dev = [
     "pytest>=8.0.0",

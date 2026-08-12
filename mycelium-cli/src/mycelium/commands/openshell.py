@@ -79,7 +79,7 @@ def install(
 
         console.print(
             f"\n[green]OpenShell ready.[/green] Pi sandbox: [cyan]{openshell.PI_SANDBOX_NAME}[/cyan]\n"
-            "  Run an engine sandboxed: [dim]ALIGNER_BRAIN=pi ALIGNER_PI_OPENSHELL=true[/dim]"
+            "  Run an engine sandboxed: [dim]ALIGNER_PI_OPENSHELL=true[/dim]"
         )
     except typer.Exit:
         raise

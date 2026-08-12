@@ -71,9 +71,3 @@ async def test_core_terminates_at_agreement() -> None:
     assert assignments == {"cap": "30"}  # agreed value recovered
     # Anti-theatre: it stopped at agreement — far fewer turns than the step cap.
     assert 0 < len(prompts_sent) < cap
-
-
-def test_build_litellm_brain_shape() -> None:
-    """The brain factory returns an llm_sync-compatible callable (no live call)."""
-    brain = mediator.build_litellm_brain("anthropic/claude-haiku-4-5", api_key="k")
-    assert callable(brain)
