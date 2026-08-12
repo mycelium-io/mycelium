@@ -9,7 +9,7 @@ dependencies = [
     "httpx>=0.28.1",
     "python-multipart>=0.0.9",
     "anthropic>=0.40.0",
-    "litellm[proxy]==1.83.14",
+    "litellm[proxy]==1.96.0",
     "fastembed>=0.8.0",
     "pip-system-certs>=5.3",
     "watchdog>=6.0.0",
