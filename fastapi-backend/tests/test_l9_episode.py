@@ -75,9 +75,7 @@ def test_episode_without_engine_falls_back_to_system_actor():
     ep = _open()
     assert ep.engine_handle == ""
     assert ep.messages[0]["header"]["participants"]["actors"][0]["id"] == "system"
-    consensus = l9_episode.build_consensus_envelope(
-        ep, broken=True, assignments={}, metrics=None
-    )
+    consensus = l9_episode.build_consensus_envelope(ep, broken=True, assignments={}, metrics=None)
     assert consensus["header"]["participants"]["actors"][0]["id"] == "system"
 
 

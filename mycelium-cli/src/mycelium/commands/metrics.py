@@ -265,8 +265,7 @@ def status() -> None:
                     f"[yellow]⚠[/yellow] Model cost = $0     {', '.join(zero_cost_models)}"
                 )
                 console.print(
-                    "  [dim]OpenClaw will report $0 cost via OTLP. "
-                    "Set it in openclaw.json.[/dim]"
+                    "  [dim]OpenClaw will report $0 cost via OTLP. Set it in openclaw.json.[/dim]"
                 )
                 all_ok = False
             elif otel_enabled:
