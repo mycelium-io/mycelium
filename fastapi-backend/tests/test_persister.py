@@ -327,7 +327,8 @@ async def test_reserve_failure_is_counted_for_the_health_surface():
     p.log.track("agent-a", caught_up=True)
     env = _exchange("m1")
     p.log.record(persister.record_from(env, serialize_content(env)), delivered_to=set())
-    p._contexts["agent-a"] = object()  # a route exists, but the send will fail
+    # a route exists, but the send will fail (a stand-in context, not a real one)
+    p._contexts["agent-a"] = object()  # ty: ignore[invalid-assignment]
     assert await p.reserve("agent-a") == 0
     assert p.reserve_failures == 1
     assert p.reserves == 0
