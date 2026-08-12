@@ -124,12 +124,6 @@ addopts = [
 [tool.ty.src]
 exclude = [
     "src/mycelium_backend_client",
-    # The engine (SAO mediator + Pi brain) needs the opt-in ``engine`` extra
-    # (negmas, litellm), which the base CLI install (``uv sync --group dev``)
-    # does not pull in, so its imports are unresolvable in the base dependency
-    # closure. Exclude it so the base ty gate stays green; it is type-checked in
-    # an environment that installs the ``engine`` extra.
-    "src/mycelium/engine",
 ]
 
 [tool.ty.environment]

@@ -59,7 +59,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: mycelium-cli
-        run: uv sync --group dev
+        run: uv sync --group dev --extra engine
 
       - name: Lint
         working-directory: mycelium-cli
@@ -228,7 +228,7 @@ jobs:
 
       - name: CLI deps
         working-directory: mycelium-cli
-        run: uv sync --group dev
+        run: uv sync --group dev --extra engine
 
       - name: CLI live-node slices
         working-directory: mycelium-cli
