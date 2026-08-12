@@ -1241,6 +1241,37 @@ async def poll_coordination_sessions(
 # ── Room-deleted handling and startup reconciliation ─────────────────────────
 
 
+def _unregister_room_from_adapters(room_name: str) -> None:
+    """Unregister *room_name* from all configured adapters (openclaw, hermes).
+
+    Non-fatal: each adapter is attempted independently.
+    """
+    try:
+        from mycelium.integrations.openclaw.dispatch import unregister_room_from_openclaw
+
+        removed = unregister_room_from_openclaw(room_name)
+        if removed:
+            log.info(
+                "Unregistered %d openclaw agent(s) from deleted room '%s'",
+                len(removed),
+                room_name,
+            )
+    except Exception as exc:
+        log.debug("openclaw unregister skipped for '%s': %s", room_name, exc)
+    try:
+        from mycelium.integrations.hermes.dispatch import unregister_room_from_hermes
+
+        removed = unregister_room_from_hermes(room_name)
+        if removed:
+            log.info(
+                "Unregistered %d hermes agent(s) from deleted room '%s'",
+                len(removed),
+                room_name,
+            )
+    except Exception as exc:
+        log.debug("hermes unregister skipped for '%s': %s", room_name, exc)
+
+
 async def _handle_room_deleted(
     *,
     room_name: str,
@@ -1249,9 +1280,9 @@ async def _handle_room_deleted(
 ) -> None:
     """React to a ``room_deleted`` SSE tombstone from the hub.
 
-    Called while the SSE connection is still live (the tombstone fires before
-    the DB row is removed).  Cleans up all local spoke state immediately so
-    agents don't receive stale ticks from a room that no longer exists.
+    Called when the hub fires a ``room_deleted`` tombstone after the DB
+    commit.  Cleans up all local spoke state immediately so agents don't
+    receive stale ticks from a room that no longer exists.
 
     Actions (all non-fatal individually):
       1. Mark the room as deleted so ``subscribe_room`` exits its loop.
@@ -1310,39 +1341,18 @@ async def _handle_room_deleted(
     except Exception as exc:
         log.warning("Could not load daemon config for deleted room '%s': %s", room_name, exc)
 
-    try:
-        from mycelium.integrations.openclaw.dispatch import unregister_room_from_openclaw
-
-        removed = unregister_room_from_openclaw(room_name)
-        if removed:
-            log.info(
-                "Unregistered %d openclaw agent(s) from deleted room '%s'",
-                len(removed),
-                room_name,
-            )
-    except Exception as exc:
-        log.debug("openclaw unregister skipped for '%s': %s", room_name, exc)
-
-    try:
-        from mycelium.integrations.hermes.dispatch import unregister_room_from_hermes
-
-        removed = unregister_room_from_hermes(room_name)
-        if removed:
-            log.info(
-                "Unregistered %d hermes agent(s) from deleted room '%s'",
-                len(removed),
-                room_name,
-            )
-    except Exception as exc:
-        log.debug("hermes unregister skipped for '%s': %s", room_name, exc)
+    _unregister_room_from_adapters(room_name)
 
 
-async def reconcile_local_rooms(config: MyceliumConfig) -> None:
+async def reconcile_local_rooms(config: MyceliumConfig) -> set[str]:
     """On daemon startup, verify each local room directory against the hub API.
 
     A spoke that was offline when a room was deleted on the hub will have
     missed the ``room_deleted`` SSE tombstone.  This pull-based reconciliation
     catches those orphans at next startup.
+
+    Returns the set of room names that are orphaned (deleted on hub), so the
+    caller can seed ``state.rooms_deleted`` to prevent 404-retry SSE tasks.
 
     Behaviour is gated on ``daemon.auto_gc_orphaned_rooms`` in config.toml:
       - False (default): log a warning and leave cleanup to the operator
@@ -1360,7 +1370,7 @@ async def reconcile_local_rooms(config: MyceliumConfig) -> None:
 
     rooms_root = get_mycelium_dir() / "rooms"
     if not rooms_root.exists():
-        return
+        return set()
 
     api_url = config.server.api_url
 
@@ -1374,11 +1384,12 @@ async def reconcile_local_rooms(config: MyceliumConfig) -> None:
         log.warning("Startup reconcile: could not load daemon config: %s", exc)
         _dcfg = None
     _dcfg_changed = False
+    orphaned_rooms: set[str] = set()
 
     try:
         async with httpx.AsyncClient(base_url=api_url, timeout=10) as client:
             for room_dir in sorted(rooms_root.iterdir()):
-                if not room_dir.is_dir():
+                if not room_dir.is_dir() or room_dir.name.startswith("."):
                     continue
                 room_name = room_dir.name
                 try:
@@ -1397,6 +1408,8 @@ async def reconcile_local_rooms(config: MyceliumConfig) -> None:
 
                 if resp.status_code != 404:
                     continue
+
+                orphaned_rooms.add(room_name)
 
                 # Room is gone on the hub.  Queue removal from daemon_cfg.rooms so
                 # the runner does not spawn a 404-retry SSE task on startup.
@@ -1424,22 +1437,7 @@ async def reconcile_local_rooms(config: MyceliumConfig) -> None:
 
                 # Always unregister adapter configs — the hub has deleted the room
                 # regardless of whether we removed the local directory.
-                try:
-                    from mycelium.integrations.openclaw.dispatch import (
-                        unregister_room_from_openclaw,
-                    )
-
-                    unregister_room_from_openclaw(room_name)
-                except Exception:
-                    pass
-                try:
-                    from mycelium.integrations.hermes.dispatch import (
-                        unregister_room_from_hermes,
-                    )
-
-                    unregister_room_from_hermes(room_name)
-                except Exception:
-                    pass
+                _unregister_room_from_adapters(room_name)
     except Exception as exc:
         log.warning("Startup room reconcile failed: %s", exc)
 
@@ -1448,6 +1446,8 @@ async def reconcile_local_rooms(config: MyceliumConfig) -> None:
             _dcfg.save()
         except Exception as exc:
             log.warning("Startup reconcile: could not save daemon config: %s", exc)
+
+    return orphaned_rooms
 
 
 # ── SSE subscription per room ────────────────────────────────────────────────
@@ -1461,10 +1461,6 @@ async def subscribe_room(
     room_name: str,
 ) -> None:
     """Stay connected to *room_name*'s SSE stream until the daemon stops."""
-    # A re-created room that was previously deleted will still appear in
-    # rooms_deleted.  Clear the tombstone so the subscription loop doesn't
-    # exit immediately on the first message.
-    state.rooms_deleted.discard(room_name)
     url = f"{config.server.api_url}/api/rooms/{room_name}/messages/stream"
 
     # No total timeout (the stream is long-lived) but a bounded read timeout
@@ -1486,11 +1482,12 @@ async def subscribe_room(
             ):
                 if resp.status_code == 404:
                     log.warning(
-                        "SSE 404 for %s — room may not exist; retry in 15s",
+                        "SSE 404 for %s — room does not exist on hub; closing subscription",
                         room_name,
                     )
-                    await asyncio.sleep(15)
-                    continue
+                    state.rooms_deleted.add(room_name)
+                    state.reload_requested.set()
+                    return
                 if resp.status_code >= 400:
                     log.warning("SSE %s for %s — retry in 5s", resp.status_code, room_name)
                     await asyncio.sleep(5)

@@ -1968,7 +1968,9 @@ def _check_orphaned_rooms() -> CheckResult:
     if not rooms_root.exists():
         return CheckResult(name="Orphaned rooms", status="ok", message="No local rooms directory")
 
-    local_rooms = sorted(d.name for d in rooms_root.iterdir() if d.is_dir())
+    local_rooms = sorted(
+        d.name for d in rooms_root.iterdir() if d.is_dir() and not d.name.startswith(".")
+    )
     if not local_rooms:
         return CheckResult(name="Orphaned rooms", status="ok", message="No local room directories")
 
@@ -1979,25 +1981,19 @@ def _check_orphaned_rooms() -> CheckResult:
         import httpx
 
         with httpx.Client(base_url=api_url, timeout=5) as client:
-            for room_name in local_rooms:
-                try:
-                    resp = client.get(f"/api/rooms/{room_name}")
-                    if resp.status_code == 404:
-                        orphans.append(room_name)
-                except (httpx.ConnectError, httpx.ConnectTimeout):
-                    # Break rather than return: orphans already detected in
-                    # earlier iterations must not be silently discarded.
-                    hub_unreachable = True
-                    break
-                except Exception as exc:
-                    failed.append(room_name)
-                    # Log but keep going so a single flaky room doesn't hide others.
-                    import logging as _logging
-
-                    _logging.getLogger(__name__).debug(
-                        "Orphaned-rooms check: could not verify '%s': %s", room_name, exc
-                    )
-                    continue
+            try:
+                resp = client.get("/api/rooms")
+                resp.raise_for_status()
+                hub_rooms = {r["name"] for r in resp.json()}
+                orphans = [r for r in local_rooms if r not in hub_rooms]
+            except (httpx.ConnectError, httpx.ConnectTimeout):
+                hub_unreachable = True
+            except Exception as exc:
+                return CheckResult(
+                    name="Orphaned rooms",
+                    status="ok",
+                    message=f"Skipped (scan failed: {exc})",
+                )
     except Exception as exc:
         return CheckResult(
             name="Orphaned rooms",

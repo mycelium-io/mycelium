@@ -62,20 +62,11 @@ async def _reconcile_rooms(
     desired = set(daemon_cfg.rooms)
     current = set(sse_tasks.keys())
 
-    # Clear tombstones only for rooms that are in config but do NOT have a
-    # live or done SSE task.  A room that is in both desired AND current means
-    # the config update failed (room still in daemon.toml) and the SSE task
-    # is still present (running or done) — that is not a re-add, so the
-    # tombstone must be kept to prevent a spurious re-subscription.
-    # A room in desired but NOT in current means it was removed from sse_tasks
-    # in a prior reconcile (task cleaned up) and then explicitly re-added to
-    # daemon.toml — clear the tombstone so the subscription proceeds.
-    re_added = (desired - current) & state.rooms_deleted
-    for room in re_added:
-        log.info("hot-reload: room '%s' re-added — clearing deleted tombstone", room)
-        state.rooms_deleted.discard(room)
     # Exclude tombstoned rooms from desired so their completed SSE tasks are
     # cleaned up even when _handle_room_deleted could not update the config file.
+    # Tombstones are never cleared at hot-reload time — they are set by 404,
+    # room_deleted events, or startup reconcile, and cleared only on restart
+    # (when fresh reconcile can confirm hub status with a live request).
     effective_desired = desired - state.rooms_deleted
 
     # Refresh handles on the live daemon_cfg so dispatch sees new agents
@@ -166,10 +157,15 @@ async def _amain(foreground: bool) -> int:
     # Pull-based reconciliation: verify local room dirs against the hub so
     # rooms deleted while this spoke was offline are surfaced (or auto-cleaned
     # when daemon.auto_gc_orphaned_rooms is True).
+    # The returned set of orphaned room names seeds state.rooms_deleted so
+    # _reconcile_rooms never spawns 404-retry SSE tasks for rooms that are gone.
     try:
-        await reconcile_local_rooms(mycelium_cfg)
+        orphaned_rooms = await reconcile_local_rooms(mycelium_cfg)
     except Exception as exc:
         log.warning("Startup room reconcile raised unexpectedly: %s", exc)
+        orphaned_rooms: set[str] = set()
+
+    state.rooms_deleted.update(orphaned_rooms)
 
     # Reload so the in-memory daemon_cfg reflects whatever reconcile_local_rooms
     # wrote to disk (it may have removed orphaned rooms from the subscription list).
@@ -191,6 +187,7 @@ async def _amain(foreground: bool) -> int:
             name=f"sse[{room}]",
         )
         for room in daemon_cfg.rooms
+        if room not in state.rooms_deleted
     }
 
     session_poller = asyncio.create_task(

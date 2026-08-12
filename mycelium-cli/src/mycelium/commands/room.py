@@ -1189,7 +1189,6 @@ def gc(
     from mycelium.filesystem import get_mycelium_dir
 
     try:
-        verbose = ctx.obj.get("verbose", False) if ctx.obj else False  # noqa: F841
         json_output = ctx.obj.get("json", False) if ctx.obj else False
 
         config = MyceliumConfig.load()
@@ -1202,7 +1201,9 @@ def gc(
                 typer.echo("No local rooms directory found.")
             return
 
-        local_rooms = sorted(d.name for d in rooms_root.iterdir() if d.is_dir())
+        local_rooms = sorted(
+            d.name for d in rooms_root.iterdir() if d.is_dir() and not d.name.startswith(".")
+        )
         if not local_rooms:
             if json_output:
                 typer.echo('{"orphans": []}')
@@ -1240,27 +1241,21 @@ def gc(
                 )
             return
 
-        if not prune_orphans:
-            if json_output:
-                typer.echo(json_module.dumps({"orphans": orphans}))
-            else:
-                typer.secho(
-                    f"Found {len(orphans)} orphaned room director{'y' if len(orphans) == 1 else 'ies'}:",
-                    fg=typer.colors.YELLOW,
-                )
-                for name in orphans:
-                    typer.echo(f"  {rooms_root / name}")
-                typer.echo("")
-                typer.echo("Run with --prune-orphans to delete them.")
-            return
-
-        if not json_output:
+        if json_output:
+            typer.echo(json_module.dumps({"orphans": orphans}))
+            if not prune_orphans:
+                return
+        else:
             typer.secho(
                 f"Found {len(orphans)} orphaned room director{'y' if len(orphans) == 1 else 'ies'}:",
                 fg=typer.colors.YELLOW,
             )
             for name in orphans:
                 typer.echo(f"  {rooms_root / name}")
+            if not prune_orphans:
+                typer.echo("")
+                typer.echo("Run with --prune-orphans to delete them.")
+                return
 
         verb = "Would remove" if dry_run else "Removing"
         removed_count = 0
