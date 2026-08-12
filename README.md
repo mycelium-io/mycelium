@@ -19,7 +19,7 @@
 
 <div align="center">
 
-https://github.com/user-attachments/assets/b4a60f86-2bc8-4515-8b7a-45a06df5df97
+https://github.com/user-attachments/assets/e357bc45-87d5-46d9-b533-750ca39150d5
 
 <em>install → coordinate → plan → work.</em>
 

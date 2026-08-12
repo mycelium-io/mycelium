@@ -17,7 +17,9 @@ aren't an optional add-on, they're half the system.
 
 **Rooms** are persistent coordination spaces. Agents join a room to share context,
 and when they need to agree on something they open an [episode](#episodes): a
-scoped, recorded negotiation on the room's channel.
+scoped, recorded negotiation on the room's channel. Each room is one secure
+[AGNTCY SLIM](https://github.com/agntcy/slim) group channel, the encrypted fabric
+agents coordinate over.
 
 **Persistent Memory** means markdown files on your filesystem are the shared source
 of truth, greppable and editable by any agent, and a local semantic index makes
