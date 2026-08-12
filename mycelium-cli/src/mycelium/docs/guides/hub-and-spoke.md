@@ -1,23 +1,21 @@
 # Hub & Spoke Setup
 
-How to run Mycelium across multiple machines so a small team shares
-memory, rooms, and coordination state from a single backend.
+Run Mycelium across two or more machines so a small team shares rooms,
+memory, and coordination over one SLIM node.
 
-> **Note:** The examples below use the **mycelium-room** channel (the
-> Mycelium room UI) as the agent surface and **OpenClaw** as the agent
-> adapter. The same pattern applies to external channels and other
-> adapters — substitute the relevant names and config paths.
-
-> For a Hermes-specific walkthrough — one operator per spoke,
-> per-spoke `hermes-gateway`, no central channel server — see
-> [Hub & Spoke (Hermes)](#hub-and-spoke-hermes).
+Coordination rides an [AGNTCY SLIM](#architecture) group channel, an
+MLS-encrypted messaging fabric. One machine is the **hub**: it runs the
+SLIM node plus the always-on backend that moderates each room. Every
+other machine is a **spoke** that points at the hub's node. There is no
+database and no separate channel server; the node is a blind ciphertext
+forwarder, so the hub never sees room contents in the clear.
 
 ## When to use this
 
-Use hub-and-spoke when multiple people (or multiple machines) need to
-participate in the same rooms, see the same memories, and coordinate
-agents together. If everything runs on one machine, the default
-single-device install is simpler — see the Quick Start.
+Use hub-and-spoke when people on different machines need to join the same
+rooms, see the same memories, and run negotiations together. If everything
+runs on one machine, the default single-device install already does this;
+see the [Quick Start](#quickstart).
 
 ## Topology
 
@@ -26,47 +24,48 @@ single-device install is simpler — see the Quick Start.
 │  Hub  (one machine)              │
 │                                  │
 │  mycelium install                │
-│  ├─ FastAPI backend  :8000       │
-│  ├─ AgensGraph (PG)  :5432       │
-│  ├─ CFN mgmt plane   :9000       │
-│  └─ CFN runtime      :9002       │
-│                                  │
-│  OpenClaw gateway                │
-│  All agents added here           │
+│  mycelium hub host               │
+│  ├─ SLIM node   :46357           │
+│  └─ FastAPI backend (moderator)  │
 └────────────┬─────────────────────┘
-             │  HTTPS / SSE
+             │  SLIM (MLS-encrypted)
      ┌───────┴───────┐
      │               │
 ┌────┴─────┐   ┌─────┴────┐
 │ Spoke A  │   │ Spoke B  │
 │          │   │          │
-│ CLI only │   │ CLI only │
+│ mycelium │   │ mycelium │
+│ connect  │   │ connect  │
 │ + agents │   │ + agents │
-│ No Docker│   │ No Docker│
 └──────────┘   └──────────┘
 ```
 
-The hub runs the full stack. Spokes run only the CLI, agents, and the
-adapter plugin — no Docker, no database, no separate channel server.
+Spokes run only the CLI and their agents. They connect to the hub's node
+address and coordinate over the shared channel.
 
-## Step 1: Set up the hub
+## Step 1: Stand up the hub
 
-On the hub machine, run the standard install:
+On the hub machine, install the stack and start the SLIM node:
 
 ```bash
 mycelium install
-mycelium up --metrics            # include --metrics if you want spoke telemetry
+mycelium hub host
 ```
 
-This brings up the backend, database, and provisions a default workspace.
-The `--metrics` flag also starts the dockerized OTLP collector listening
-on `:4318`. It serves two purposes on the hub: it collects telemetry
-from the hub's own OpenClaw gateway (so `mycelium metrics show` on the
-hub has data even with zero spokes), and it accepts forwarded payloads
-from spokes once they're configured in
-[Step 4](#hub-and-spoke-step-4-set-up-spoke-metrics) — which is what
-powers the unified cross-host view (Spoke Sites table, `--host` filter).
-Skip the flag only if you don't want metrics at all.
+`mycelium hub host` starts the `slim` node container and prints the
+address peers connect to:
+
+```
+SLIM node running.
+  local     → http://127.0.0.1:46357  (this machine, saved to config)
+  for peers → http://192.168.1.20:46357
+
+  Peers connect with:  mycelium connect http://192.168.1.20:46357
+```
+
+It also wires this machine to its own node, so the hub is ready to host
+rooms immediately. Note the `for peers` LAN address; that's what spokes
+connect to.
 
 Verify with:
 
@@ -74,229 +73,145 @@ Verify with:
 mycelium doctor
 ```
 
+`doctor` auto-detects hub vs spoke mode from `server.api_url` (a local
+backend means hub) and runs the checks that apply. Override with
+`--mode hub|spoke` if needed.
+
 ### Open ports
 
-Spokes need to reach the hub on these ports:
+Spokes need to reach the hub's SLIM node:
 
-| Port | Service | Required |
-|------|---------|----------|
-| 8000 | Mycelium backend (API + SSE) | Yes |
-| 9000 | CFN management plane | If using CognitiveEngine |
-| 9002 | CFN runtime | If using CognitiveEngine |
+| Port  | Service   | Required |
+|-------|-----------|----------|
+| 46357 | SLIM node | Yes      |
 
-Use a VPN, Tailscale, or firewall rules to restrict access — these
-services have no built-in authentication.
+The node forwards only MLS ciphertext, but restrict access anyway with a
+VPN, Tailscale, or firewall rules; access to a channel is gated by its
+shared-secret PSK.
 
-### Add agents on the hub
+## Step 2: Connect each spoke
 
-Agents talk through the **mycelium-room** channel — the chat box and live
-message stream in the Mycelium room UI, served by the Mycelium backend.
-There is no separate channel server and no per-agent chat account to
-provision. Add every agent (across all spokes) on the hub:
-
-```bash
-# Add an agent and auto-wire the OpenClaw mycelium-room channel
-mycelium agent add agent-alpha
-```
-
-`mycelium agent add` (or `mycelium agent create`) registers the agent and
-auto-wires the OpenClaw `mycelium-room` channel into the hub's
-`~/.openclaw/openclaw.json`. The hub's gateway manages all channel
-connections — spokes do not run their own channel clients. (To wire in an
-*external* channel, add it under `channels.<channel>.accounts` instead.)
-
-## Step 2: Set up each spoke
-
-On each spoke machine, install only the CLI (no `mycelium install`):
+On each spoke, install the CLI:
 
 ```bash
 curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
 ```
 
-### Initialize and install the adapter
-
-Point the spoke at the hub and install the adapter:
+Point it at the hub's node address (the `for peers` line from Step 1):
 
 ```bash
-mycelium init --api-url http://<hub-ip>:8000
-mycelium adapter add openclaw
+mycelium connect http://192.168.1.20:46357
 ```
 
-`init` writes `~/.mycelium/config.toml` with the hub's API URL.
-`adapter add` installs the Mycelium plugin into the local OpenClaw
-gateway and probes the hub to confirm it's reachable. The plugin
-connects to the hub's backend for SSE subscriptions and API calls.
+This stores the node endpoint in `~/.mycelium/config.toml`. The command
+is identical whether the hub is self-hosted on your LAN or a shared
+mycelium-hosted rendezvous; only the address changes.
 
-After installing, restart the gateway:
-
-```bash
-openclaw gateway restart
-```
-
-Verify the setup:
+Verify:
 
 ```bash
 mycelium doctor
 ```
 
-The doctor auto-detects whether this node is a hub or spoke from
-`server.api_url` and adjusts its checks accordingly (e.g., skipping
-Docker/database checks on spokes).
+The spoke reports **spoke mode** and skips checks that only apply to a
+local backend.
 
-### Spoke config summary
+## Step 3: Share a room
 
-A spoke needs only two files:
-
-| File | Purpose |
-|------|---------|
-| `~/.mycelium/config.toml` | Points `server.api_url` at the hub |
-| `~/.openclaw/openclaw.json` | Agent definitions, channel credentials, Mycelium plugin config |
-
-The spoke does not need `server.workspace_id` or `server.mas_id` in its
-config — the hub resolves these automatically when the spoke's agents
-join rooms and sessions.
-
-## Step 3: Verify the setup
-
-From each spoke, confirm connectivity:
-
-```bash
-# Should return rooms from the hub
-mycelium room ls
-
-# Should show hub health
-mycelium status
-```
-
-Test agent participation by creating a room on the hub and joining from
-a spoke:
+Rooms are folders. Create one on any machine, then share it so every
+machine has the same room to coordinate in.
 
 ```bash
 # On the hub
-mycelium room create test-room
-
-# On the spoke
-mycelium session join --handle spoke-agent -m "Hello from spoke" -r test-room
+mycelium room create portfolio
+mycelium room use portfolio
 ```
+
+On a spoke, pull the room's memories from the hub's backend:
+
+```bash
+mycelium room clone portfolio --from http://192.168.1.20:8000
+```
+
+`room clone` fetches the room's memories over HTTP and writes them
+locally, then sets the room active. From here, memory is shared the
+normal way: git push/pull for durable state, and the live SLIM channel
+for coordination.
+
+## Step 4: Run a negotiation across machines
+
+Register the mediator (the [aligner](#aligner)) once in the room, then
+have each machine's agent post an opening position and loop on the
+channel. The aligner runs a NEGMAS negotiation and stops the instant the
+agents agree.
+
+```bash
+# Once, on any machine: register the aligner in the room
+mycelium engine create aligner --kind aligner --room portfolio
+```
+
+Each participant posts an opening position:
+
+```bash
+# Spoke A's agent
+mycelium respond --room portfolio --handle alice "I want 60% equities."
+
+# Spoke B's agent
+mycelium respond --room portfolio --handle bob "No more than 40% equities."
+```
+
+A human summons the aligner to converge:
+
+```bash
+mycelium engine invoke aligner "converge on the equities allocation"
+```
+
+Each participant then loops: wait for a prompt addressed to their
+handle, read it, and reply:
+
+```bash
+mycelium await --room portfolio --handle alice --json
+mycelium respond --room portfolio --handle alice "accept 50%, meets my floor"
+```
+
+On agreement the aligner records the [episode](#episodes) and compiles
+the room's shared `plan/tasks.md`. Read it on any machine:
+
+```bash
+mycelium plan tasks
+```
+
+Agents work the `@handle` tasks assigned to them. The plan and any new
+memories sync across machines the same way the room did.
 
 ## Agent identity
 
-Each agent needs a unique handle across the entire deployment. The handle
-is set by:
+Each agent needs a unique handle across the whole deployment; it's the
+agent's identity in every room. The handle is resolved from, in order:
 
 1. `identity.name` in `~/.mycelium/config.toml`
 2. The `MYCELIUM_AGENT_HANDLE` environment variable
-3. The `--handle` flag on CLI commands
-
-For the mycelium-room channel, the handle *is* the agent's identity in the
-room UI — `mycelium agent add agent-alpha` uses `agent-alpha` directly. For
-an external channel, the handle should match that channel's user ID for the
-agent.
-
-## Token management
-
-Channel access tokens can expire or become invalid after server restarts.
-When this happens, agents silently stop receiving messages.
-
-Signs of expired tokens:
-
-- Agents join sessions but never respond to coordination ticks
-- Gateway logs show sync errors or 401/unauthorized responses
-- `mycelium doctor` reports channel connection failures
-
-To refresh tokens, re-authenticate the agent with the channel, update the
-token in `channels.<channel>.accounts[agent]` in each node's
-`openclaw.json`, and restart the gateway. (The mycelium-room channel
-authenticates through the Mycelium backend and has no separate channel
-token to rotate — this applies to external channels.)
-
-## Step 4: Set up spoke metrics
-
-Each spoke can run a lightweight local collector for OpenClaw telemetry.
-The collector stores data locally **and** forwards OTLP payloads to the
-hub so it can build a unified cross-host view.
-
-> **Prerequisite:** the hub must already be running with `mycelium up
-> --metrics` (see [Step 1](#hub-and-spoke-step-1-set-up-the-hub)) so
-> that the hub collector is listening on `:4318` and can accept
-> forwarded payloads.
-> The spoke collector forwards fire-and-forget — silent failures will
-> show up as gaps in the hub's "Spoke Sites" table, not as errors on
-> the spoke.
-
-```bash
-# Point the spoke's metrics at the hub collector. Use the hub's
-# collector_port if you remapped it from the 4318 default.
-mycelium config set metrics.collector_url "http://<hub-ip>:4318"
-
-# Configure OTLP plugin (endpoint defaults to localhost:4318)
-mycelium adapter add openclaw --step=otel
-
-# Start the spoke collector (daemonizes into background). This is the
-# host-process variant — we don't want to assume docker on spokes, so
-# the collector runs directly under the user instead of as a container.
-mycelium metrics collect
-
-# Stop it later with:
-mycelium metrics stop
-```
-
-### How the spoke collector works
-
-The spoke pipeline is **OpenClaw → local spoke collector → hub
-collector**, not OpenClaw → hub directly. Three reasons:
-
-1. **No docker assumption on spokes.** `mycelium install` only runs on the hub. We don't want to assume docker is available on every spoke, so spokes get a host-process collector (`mycelium metrics collect`) that runs directly under the user — the only spoke prerequisite is the CLI itself.
-2. **Local survives a hub outage.** Every OTLP payload lands in `~/.mycelium/metrics/metrics.json` (and `traces.db`) on the spoke first, then forwards to the hub. If the hub is down or the network drops, local `mycelium metrics show` still works on the spoke — only the hub's cross-host view loses that interval.
-3. **Forwarding is fire-and-forget.** The spoke pushes raw OTLP to the hub via background HTTP POSTs; failures are logged at debug level and never block local ingest. That's why hub-side errors surface as gaps in the Spoke Sites table rather than as visible errors on the spoke (see [metrics docs](../metrics.md#hub-and-spoke-setup) for the full architecture diagram).
-
-`mycelium metrics show` on the spoke merges local OpenClaw data with
-backend/CFN data fetched from the hub. On the hub, the forwarded OTLP
-data appears in the "Spoke Sites" table and can be filtered with
-`mycelium metrics show --host <hostname>`.
-
-For a span-level view of the activity each spoke is forwarding — drill
-down by host, agent, room, channel, model, tool, error, or latency, and
-render any single trace as a parent → child tree — use the trace viewer
-on the hub:
-
-```bash
-mycelium metrics traces summary --since=1h     # rollup
-mycelium metrics traces by-host --since=1h      # per-spoke
-mycelium metrics traces show <trace_id>         # one trace as a tree
-```
-
-See [Viewing Traces](../metrics.md#viewing-traces) for the full command
-list and pivots.
-
-See the [Metrics System docs](../metrics.md#hub-and-spoke-setup) for
-full details.
+3. The `--handle` flag on `await` / `respond` (or `--as` when summoning
+   an engine)
 
 ## Troubleshooting
 
-### Spoke can't reach hub
+### Spoke can't reach the hub
 
 ```bash
-curl http://<hub-ip>:8000/health
+curl http://192.168.1.20:46357
 ```
 
 If this fails, check firewall rules, VPN connectivity, or security
-groups. The backend binds to `0.0.0.0` by default inside Docker, but
-the host firewall may block external access.
+groups. The node binds inside Docker; the host firewall may block
+external access.
 
-### Agent joins but doesn't respond
+### `doctor` reports "spoke mode" unexpectedly
 
-The agent's OpenClaw gateway plugin subscribes to SSE on the hub. If the
-agent joins a session (visible in `mycelium room ls`) but never responds
-to coordination ticks:
+`mycelium doctor` infers mode from `server.api_url`. If it points at a
+non-local address, doctor assumes spoke mode. If you're running the
+backend locally on a non-default address, set `server.api_url` to
+`http://localhost:8000` in `~/.mycelium/config.toml`, or force the mode
+with `mycelium doctor --mode hub`.
 
-1. Check the gateway logs: `journalctl --user -u openclaw-gateway --since "5 min ago"`
-2. Look for `session SSE connected` — if absent, the plugin isn't monitoring the session
-3. Verify channel tokens are valid (see above)
-
-### Doctor reports "spoke mode" unexpectedly
-
-`mycelium doctor` auto-detects mode from `server.api_url`. If it points
-to a non-localhost address, doctor assumes spoke mode. If you're running
-the backend locally on a non-default address, set `server.api_url` to
-`http://localhost:8000` in `~/.mycelium/config.toml`.
+See [Troubleshooting](#troubleshooting) for the full runbook.

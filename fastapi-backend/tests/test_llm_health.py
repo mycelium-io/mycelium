@@ -433,25 +433,25 @@ async def test_health_check_llm_completion_probe(client: AsyncClient):
     assert "remediation" in llm
 
 
-# ── /health: database ────────────────────────────────────────────────────────
+# ── /health: storage ─────────────────────────────────────────────────────────
 
 
-async def test_health_includes_database(client: AsyncClient):
-    """/health includes database connectivity status."""
+async def test_health_includes_storage(client: AsyncClient):
+    """/health includes local-store status (markdown + JSONL, no database)."""
     resp = await client.get("/health")
     assert resp.status_code == 200
     data = resp.json()
-    assert "database" in data
-    db = data["database"]
-    assert db["status"] in ("ok", "unreachable")
-    assert "message" in db
+    assert "storage" in data
+    store = data["storage"]
+    assert store["status"] in ("ok", "unreachable")
+    assert "message" in store
 
 
-async def test_health_database_connected(client: AsyncClient):
-    """With the test DB session injected via DI, database should be reachable."""
+async def test_health_storage_ok(client: AsyncClient):
+    """The local data directory should be accessible in tests."""
     resp = await client.get("/health")
     data = resp.json()
-    assert data["database"]["status"] == "ok"
+    assert data["storage"]["status"] == "ok"
 
 
 # ── /health: embedding ───────────────────────────────────────────────────────
@@ -497,5 +497,5 @@ async def test_health_response_structure(client: AsyncClient):
     assert resp.status_code == 200
     data = resp.json()
 
-    expected_keys = {"status", "service", "version", "database", "embedding", "llm"}
+    expected_keys = {"status", "service", "version", "storage", "embedding", "llm"}
     assert expected_keys.issubset(data.keys())

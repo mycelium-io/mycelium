@@ -1,34 +1,22 @@
-# Dev override: build mycelium-backend + db from local source instead of pulling.
+# Dev override: build mycelium-backend from local source instead of pulling.
 #
 # Run from the repo root:
 #   docker compose -f mycelium-cli/src/mycelium/docker/compose.yml \
 #                  -f mycelium-cli/src/mycelium/docker/compose-dev.yml \
-#                  --profile cfn up -d --build
+#                  up -d --build
 #
 # Build context paths are relative to this file's location (docker/).
 # env_file paths are also relative to this file's location.
 services:
-  mycelium-db:
-    # Build locally so the image carries TimescaleDB + pgvector (the released
-    # ghcr image must be rebuilt+republished with TimescaleDB for the cfn
-    # profile, see Dockerfile.agensgraph). The base compose.yml's build
-    # context (../fastapi-backend) only resolves inside the packaged install
-    # layout; from the repo root it must climb to the real fastapi-backend,
-    # same as mycelium-backend below. `--build` compiles the extension.
-    build:
-      context: ../../../../fastapi-backend
-      dockerfile: docker/Dockerfile.agensgraph
-      # Build native to the host arch (Apple Silicon → arm64). The amd64 base
-      # under Rosetta/QEMU deadlocks the TimescaleDB compile; native avoids it.
-      # Override with DB_BASE_PLATFORM if building for amd64 hosts.
-      args:
-        DB_BASE_PLATFORM: ${DB_BASE_PLATFORM:-linux/arm64}
-    platform: ${DB_PLATFORM:-linux/arm64}
-    pull_policy: never
+  # The `slim` node service is defined in compose.yml with a pulled upstream
+  # image (ghcr.io/agntcy/slim) and inline node config. compose-dev.yml is an
+  # override layer always applied on top of compose.yml, so the node runs in the
+  # dev stack automatically — there is nothing dev-specific to build or override
+  # for it, so no `slim:` block is needed here.
 
   # Override env_file for all services to point at ~/.mycelium/.env so that
-  # LLM_MODEL, WORKSPACE_ID etc. are available when running compose manually
-  # from the repo root (compose.yml's ../.env path resolves incorrectly then).
+  # LLM_MODEL etc. are available when running compose manually from the repo
+  # root (compose.yml's ../.env path resolves incorrectly then).
   mycelium-backend:
     build:
       context: ../../../../fastapi-backend
@@ -39,10 +27,8 @@ services:
       - path: ~/.mycelium/.env
         required: false
     environment:
-      CFN_MGMT_URL: http://ioc-cfn-mgmt-plane-svc:9000
-      CFN_SVC_URL: http://ioc-cfn-svc:9002
-      L9_CFN_ENABLED: ${L9_CFN_ENABLED:-false}
       MYCELIUM_STUB_EMBEDDINGS: "1"
+      LOG_LEVEL: DEBUG
 
   mycelium-collector:
     build:
@@ -50,26 +36,6 @@ services:
       dockerfile: Dockerfile.collector
     pull_policy: never
     image: mycelium-collector:dev
-    env_file:
-      - path: ~/.mycelium/.env
-        required: false
-
-  ioc-cfn-mgmt-plane-svc:
-    env_file:
-      - path: ~/.mycelium/.env
-        required: false
-
-  ioc-knowledge-memory-svc:
-    env_file:
-      - path: ~/.mycelium/.env
-        required: false
-
-  ioc-cfn-svc:
-    env_file:
-      - path: ~/.mycelium/.env
-        required: false
-
-  ioc-cfn-cognition-engine:
     env_file:
       - path: ~/.mycelium/.env
         required: false

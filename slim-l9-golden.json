@@ -1,0 +1,133 @@
+{
+  "_comment": [
+    "Frozen SLIM+L9 wire-compat golden constants — the single source of truth both",
+    "the FastAPI backend (fastapi-backend/app/services/{slim_client,l9,l9_slim}.py)",
+    "and the CLI daemon (mycelium-cli/src/mycelium/slim/{naming,client,l9}.py +",
+    "daemon/connector.py) MUST reproduce byte-for-byte. See D2 in",
+    "docs/slim-native-rebuild-bible.md (Part IV, Known debt register).",
+    "",
+    "Both test suites read THIS file and assert their own primitives against it, so",
+    "the two copies cannot silently drift apart (a drift -> MLS group-key mismatch ->",
+    "connectors silently can't join, or messages get dropped/misrouted). If a change",
+    "to the shared wire shape is genuinely intended, update this file deliberately in",
+    "the same PR and both suites will re-lock to the new value.",
+    "",
+    "Tests: fastapi-backend/tests/test_slim_l9_golden.py,",
+    "mycelium-cli/tests/test_slim_l9_golden.py"
+  ],
+
+  "master_secret": "mycelium-dev-shared-secret-v1-do-not-use-in-prod",
+  "workspace": "mycelium",
+  "channel_topic": "room",
+  "min_secret_len": 32,
+  "node_endpoint": "http://127.0.0.1:46357",
+  "node_port": 46357,
+
+  "shared_secret": {
+    "_comment": "mint_shared_secret is keyed on workspace/room only (agent ignored). HMAC-SHA256(master_secret, 'workspace/room').hexdigest().",
+    "workspace": "acme",
+    "room": "planning",
+    "agent": "agent-7",
+    "expected_digest": "cd344d4fddb429d04ec0a8ec0934e077d0bd23e72ea9ecf482528953b5a11a6c"
+  },
+
+  "urn": {
+    "_comment": "Room-scoped episode/topic URN forms. Backend: l9.episode_urn(room, session) / l9.topic_urn(room). CLI connector: _room_episode(room) / _room_topic(room) with the 'live' session literal.",
+    "room": "acme",
+    "session": "live",
+    "expected_episode": "urn:ioc:mycelium:episode:acme:live",
+    "expected_topic": "urn:concept:mycelium:acme"
+  },
+
+  "envelope": {
+    "_comment": "A golden serialized L9 'exchange' reply content dict. The backend produces this via l9.envelope_to_dict(l9.build_envelope(kind=exchange, ...)); the CLI produces the same dict via l9.build_reply_content(...). The two serializers must agree byte-for-byte or a connector's reply fails the backend persister's parse_envelope.",
+    "inputs": {
+      "sender": "alice",
+      "recipients": ["bob"],
+      "episode": "ep1",
+      "parents": ["p1"],
+      "topic": "t1",
+      "message_id": "m1",
+      "payload_type": "reply",
+      "text": "hi"
+    },
+    "expected_content": {
+      "content": "hi",
+      "l9": {
+        "header": {
+          "protocol": "SSTP",
+          "subprotocol": "mycelium",
+          "version": "0.0.6",
+          "kind": "exchange",
+          "participants": {
+            "actors": [
+              { "id": "alice", "role": "agent" },
+              { "id": "bob", "role": "agent" }
+            ],
+            "groups": null
+          },
+          "message": {
+            "id": "m1",
+            "parents": ["p1"],
+            "episode": "ep1"
+          },
+          "context": { "topic": "t1" }
+        },
+        "payload": {
+          "type": "reply",
+          "data": {}
+        }
+      }
+    }
+  },
+
+  "knowledge": {
+    "_comment": "A golden serialized L9 'knowledge:distillation' envelope — the memory-sync wire shape (Step 8, bible §11). The backend PRODUCES it via memory_sync.build_knowledge_envelope(room, write, recipients) + KnowledgeWrite.to_payload() (serialized with l9.envelope_to_dict); the CLI daemon PARSES it via slim/l9.payload_data_of and applies it in daemon/connector.apply_knowledge_message. The two must agree byte-for-byte on the payload.data write fields or cross-machine memory sync (Step 9) silently drifts. build_knowledge_envelope mints a fresh random message.id per call, so 'expected_envelope.header.message.id' is the sentinel 'MESSAGE_ID_PLACEHOLDER' — the backend test normalizes the produced id to it before comparing (the id is not part of the shared contract; every other field is).",
+    "room": "acme",
+    "recipients": ["bob"],
+    "message_id_placeholder": "MESSAGE_ID_PLACEHOLDER",
+    "write": {
+      "key": "plan/tasks.md",
+      "content": "# Plan\n\n- [ ] first task\n",
+      "version": 2,
+      "base_version": 1,
+      "created_by": "alice",
+      "updated_by": "bob",
+      "updated_at": "2026-08-04T12:00:00+00:00"
+    },
+    "expected_envelope": {
+      "header": {
+        "protocol": "SSTP",
+        "subprotocol": "mycelium",
+        "version": "0.0.6",
+        "kind": "knowledge",
+        "subkind": "distillation",
+        "participants": {
+          "actors": [
+            { "id": "system", "role": "coordinator" },
+            { "id": "bob", "role": "agent" }
+          ],
+          "groups": null
+        },
+        "message": {
+          "id": "MESSAGE_ID_PLACEHOLDER",
+          "parents": [],
+          "episode": "urn:ioc:mycelium:episode:acme:knowledge"
+        },
+        "context": { "topic": "urn:concept:mycelium:acme" }
+      },
+      "payload": {
+        "type": "distillation",
+        "data": {
+          "key": "plan/tasks.md",
+          "content": "# Plan\n\n- [ ] first task\n",
+          "version": 2,
+          "base_version": 1,
+          "created_by": "alice",
+          "updated_by": "bob",
+          "updated_at": "2026-08-04T12:00:00+00:00"
+        }
+      }
+    }
+  }
+}

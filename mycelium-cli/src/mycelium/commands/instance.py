@@ -35,17 +35,15 @@ from mycelium.ui_status import (
 )
 
 app = typer.Typer(
-    help="Docker lifecycle for the Mycelium stack (database, backend, graph viewer).",
+    help="Docker lifecycle for the Mycelium stack (backend, collector).",
     no_args_is_help=True,
 )
 
 _COMPOSE_PROJECT = "mycelium"
 
 _MANAGED_CONTAINERS = [
-    "mycelium-db",
     "mycelium-backend",
     "mycelium-collector",
-    "mycelium-graph-viewer",
     "ioc-cfn-mgmt-plane-svc",
     "ioc-cfn-svc",
 ]
@@ -216,7 +214,7 @@ def _announce_image_tag() -> None:
         )
     else:
         typer.secho(
-            "  → image tag: latest (unpinned — run 'mycelium pull --version X' to pin)",
+            "  → image tag: latest (unpinned; run 'mycelium pull --version X' to pin)",
             fg=typer.colors.YELLOW,
         )
 
@@ -268,44 +266,6 @@ def _frontend_container_running() -> bool:
         return result.returncode == 0 and result.stdout.strip().lower() == "true"
     except Exception:
         return False
-
-
-def _ensure_cfn_databases(db_container: str = "mycelium-db") -> None:
-    """Create cfn_mgmt and cfn_cp databases if they don't exist.
-
-    Mirrors install._ensure_cfn_databases — called here so that ``mycelium up``
-    also provisions them, not just ``mycelium install``.
-    """
-    for db in ("cfn_mgmt", "cfn_cp"):
-        sql = (
-            f"SELECT 'CREATE DATABASE {db}' "
-            f"WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '{db}')\\gexec"
-        )
-        subprocess.run(
-            ["docker", "exec", db_container, "psql", "-U", "postgres", "-c", sql],
-            capture_output=True,
-        )
-
-
-def _wait_for_db_container(
-    compose_path: Path, db_service: str = "mycelium-db", timeout: int = 60
-) -> bool:
-    """Poll until the DB container shows 'healthy' in docker compose ps output."""
-    import time
-
-    env_path = _get_env_path()
-    args = ["docker", "compose", "-p", _COMPOSE_PROJECT, "-f", str(compose_path)]
-    if env_path:
-        args += ["--env-file", str(env_path)]
-    args += ["ps", "--format", "json", db_service]
-
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        result = subprocess.run(args, capture_output=True, text=True)
-        if result.returncode == 0 and "healthy" in result.stdout:
-            return True
-        time.sleep(2)
-    return False
 
 
 def _find_managed_containers(include_stopped: bool = False) -> list[str]:
@@ -428,7 +388,6 @@ def init(
         typer.echo("")
         if metrics_config.collector_url:
             typer.echo("Next steps:")
-            typer.echo("  - Run 'mycelium adapter add openclaw --step=otel' to configure OTLP")
             typer.echo("  - Run 'mycelium metrics status' to verify collector connectivity")
         else:
             typer.echo("Next steps:")
@@ -497,22 +456,6 @@ def start(
 
         typer.echo("Starting Mycelium...")
 
-        if _cfn_enabled():
-            # Phase 1: start DB first, then provision CFN databases before the
-            # CFN services come up and try to connect.
-            db_only_cmd = base[:2] + ["--progress=plain"] + base[2:] + ["up", "-d", "mycelium-db"]
-            r = subprocess.run(db_only_cmd, capture_output=True, text=True)
-            if r.returncode != 0:
-                if r.stdout:
-                    typer.echo(r.stdout)
-                if r.stderr:
-                    typer.echo(r.stderr, err=True)
-                raise typer.Exit(r.returncode)
-            _wait_for_db_container(compose_path)
-            _ensure_cfn_databases()
-            typer.secho("  ✓ CFN databases provisioned", fg=typer.colors.GREEN)
-
-        # Phase 2 (or only phase): bring everything up
         quiet_cmd = base[:2] + ["--progress=plain"] + base[2:] + up_args
         result = subprocess.run(quiet_cmd, capture_output=True, text=True)
 
@@ -769,7 +712,7 @@ def status(ctx: typer.Context) -> None:
                     msg = f"{model}" + (f" ({key_hint})" if key_hint else "")
                 else:
                     label = llm_status.replace("_", " ").title()
-                    msg = f"{label} — {model}" + (f" ({key_hint})" if key_hint else "")
+                    msg = f"{label}: {model}" + (f" ({key_hint})" if key_hint else "")
                 llm_details = []
                 if llm_info.get("message") and llm_status != "ok":
                     llm_details.append(llm_info["message"])
@@ -856,7 +799,7 @@ def status(ctx: typer.Context) -> None:
                 fail_msg = (
                     f"Backend unreachable: {backend_error}"
                     if backend_error
-                    else "Backend is down — run: mycelium up"
+                    else "Backend is down. Run: mycelium up"
                 )
                 print_verdict("error", fail_msg)
                 if backend_error and ("HTTP 401" in backend_error or "HTTP 403" in backend_error):
@@ -1030,72 +973,6 @@ def logs(
         print_error(e, verbose=verbose)
 
 
-def _get_backend_dir() -> Path:
-    """Find the fastapi-backend directory (for running alembic)."""
-    from mycelium.migrations import find_local_backend_dir
-
-    return find_local_backend_dir() or Path.cwd()
-
-
-@doc_ref(
-    usage="mycelium migrate [--revision <target>]",
-    desc="Run database migrations (alembic upgrade). Defaults to latest.",
-    group="setup",
-)
-def migrate(
-    ctx: typer.Context,
-    revision: str = typer.Option(
-        "head", "--revision", "-r", help="Target revision (default: head)"
-    ),
-) -> None:
-    """
-    Run database migrations.
-
-    Applies pending alembic migrations against the configured database.
-    Defaults to upgrading to the latest revision.
-
-    Examples:
-        mycelium migrate              # upgrade to latest
-        mycelium migrate -r head      # same as above
-        mycelium migrate -r 0008      # upgrade to specific revision
-    """
-    try:
-        from mycelium.migrations import (
-            BACKEND_CONTAINER,
-            echo_alembic_output,
-            run_alembic_upgrade,
-        )
-
-        result = run_alembic_upgrade(revision)
-        if result.mode == "unavailable":
-            typer.secho("Cannot run migrations.", fg=typer.colors.RED)
-            typer.echo(result.stderr)
-            typer.echo("Start the stack with: mycelium up")
-            typer.echo("Or run from a mycelium repo checkout for host-side alembic.")
-            raise typer.Exit(1)
-
-        if result.mode == "container":
-            typer.echo(f"Running migrations in {BACKEND_CONTAINER} (target: {revision})...")
-        else:
-            typer.echo(f"Running migrations (target: {revision})...")
-
-        echo_alembic_output(result)
-
-        if result.returncode == 0:
-            typer.secho("Migrations complete.", fg=typer.colors.GREEN)
-        else:
-            typer.secho("Migration failed.", fg=typer.colors.RED)
-            if result.stderr and "ERROR" not in result.stderr:
-                typer.echo(result.stderr)
-            raise typer.Exit(result.returncode)
-
-    except typer.Exit:
-        raise
-    except Exception as e:
-        verbose = ctx.obj.get("verbose", False) if ctx.obj else False
-        print_error(e, verbose=verbose)
-
-
 # ── Pull command ─────────────────────────────────────────────────────────────
 
 
@@ -1109,7 +986,7 @@ def pull(
     target_version: str | None = typer.Option(
         None,
         "--version",
-        help="Pin mycelium-backend and mycelium-db image tags to a specific version "
+        help="Pin the mycelium-backend image tag to a specific version "
         "(e.g. 0.1.84rc1). Without --version, pulls :latest. Persisted to ~/.mycelium/.env "
         "as MYCELIUM_IMAGE_TAG so subsequent restarts stay pinned. Pass --version=latest to "
         "unpin and return to tracking the latest stable.",
@@ -1124,7 +1001,7 @@ def pull(
 
     By default, pulls the :latest tag of each Mycelium image. Pass
     --version <tag> to pin to a specific build (typically used with preview
-    releases) — the tag is persisted to ~/.mycelium/.env as
+    releases). The tag is persisted to ~/.mycelium/.env as
     MYCELIUM_IMAGE_TAG so the stack stays pinned across restarts.
 
     \b
@@ -1175,13 +1052,6 @@ def pull(
         typer.echo("")
         typer.secho("Restarting services...", bold=True)
 
-        if _cfn_enabled():
-            # Start DB first, provision CFN databases, then bring up everything
-            db_cmd = base[:2] + ["--progress=plain"] + base[2:] + ["up", "-d", "mycelium-db"]
-            subprocess.run(db_cmd, capture_output=True, text=True)
-            _wait_for_db_container(compose_path)
-            _ensure_cfn_databases()
-
         up_args = ["up", "-d", "--force-recreate", "--remove-orphans"]
         up_cmd = base[:2] + ["--progress=plain"] + base[2:] + up_args
         result = subprocess.run(up_cmd, capture_output=True, text=True)
@@ -1230,11 +1100,6 @@ def pull(
             typer.secho("✓ Backend healthy", fg=typer.colors.GREEN)
         else:
             typer.secho("⚠  Backend health check timed out", fg=typer.colors.YELLOW)
-
-        # Migrations
-        from mycelium.commands.install import _run_migrations
-
-        _run_migrations()
 
         typer.echo("")
         typer.secho("Done.", fg=typer.colors.GREEN, bold=True)

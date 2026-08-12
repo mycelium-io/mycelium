@@ -4,12 +4,10 @@
 """
 Unit tests for the in-process metrics store.
 
-Guards the key invariants introduced by feat/simple_metrics:
+Guards the key invariants:
   * @_safe logs warnings instead of silently swallowing errors
-  * Token keys are normalised to input_tokens/output_tokens across
-    both the ``llm`` and ``cfn_llm`` namespaces
-  * record_consensus tracks per-room completion
-  * record_coordination_round tracks round_num histogram
+  * Token keys are normalised to input_tokens/output_tokens in the
+    ``llm`` namespace
 """
 
 from __future__ import annotations
@@ -22,21 +20,16 @@ from app.services.metrics import (
     _counters,
     _histograms,
     _lock,
-    _room_identities,
-    record_cfn_llm_usage,
-    record_consensus,
-    record_coordination_round,
-    record_room_identity,
+    record_llm_call,
     snapshot,
 )
 
 
 def _reset_metrics() -> None:
-    """Clear all counters, histograms, and the room identity registry."""
+    """Clear all counters and histograms."""
     with _lock:
         _counters.clear()
         _histograms.clear()
-        _room_identities.clear()
 
 
 # ── @_safe logging ────────────────────────────────────────────────────
@@ -46,152 +39,50 @@ def test_safe_decorator_logs_warning_on_bad_input(caplog: pytest.LogCaptureFixtu
     """@_safe must log at WARNING, not DEBUG, so bad data is visible."""
     _reset_metrics()
     with caplog.at_level(logging.WARNING, logger="app.services.metrics"):
-        record_cfn_llm_usage(
+        record_llm_call(
             operation="test",
-            prompt_tokens="not_an_int",
+            input_tokens="not_an_int",
         )
-    assert any("metrics.record_cfn_llm_usage failed" in r.message for r in caplog.records)
+    assert any("metrics.record_llm_call failed" in r.message for r in caplog.records)
 
 
-# ── cfn_llm normalised keys ──────────────────────────────────────────
+# ── llm normalised keys ──────────────────────────────────────────────
 
 
-def test_cfn_llm_uses_input_output_keys() -> None:
-    """cfn_llm namespace must store input_tokens/output_tokens, not prompt/completion."""
+def test_llm_uses_input_output_keys() -> None:
+    """llm namespace must store input_tokens/output_tokens, not prompt/completion."""
     _reset_metrics()
-    record_cfn_llm_usage(
+    record_llm_call(
         operation="start_negotiation",
         room="room-1",
-        prompt_tokens=100,
-        completion_tokens=50,
-        cached_tokens=10,
-        total_tokens=160,
-        llm_calls=2,
-        latency_ms=500.0,
+        input_tokens=100,
+        output_tokens=50,
+        cost_usd=0.01,
+        duration_ms=500.0,
     )
 
     snap = snapshot()
-    cfn_llm = snap["counters"]["cfn_llm"]
+    llm = snap["counters"]["llm"]
 
-    assert cfn_llm["input_tokens"] == 100
-    assert cfn_llm["output_tokens"] == 50
-    assert cfn_llm["cached_tokens"] == 10
-    assert cfn_llm["calls"] == 2
-    assert "prompt_tokens" not in cfn_llm
-    assert "completion_tokens" not in cfn_llm
+    assert llm["input_tokens"] == 100
+    assert llm["output_tokens"] == 50
+    assert llm["calls"] == 1
+    assert "prompt_tokens" not in llm
+    assert "completion_tokens" not in llm
 
-    assert cfn_llm["by_room.room-1.input_tokens"] == 100
-    assert cfn_llm["by_room.room-1.output_tokens"] == 50
-    assert "by_room.room-1.prompt_tokens" not in cfn_llm
+    assert llm["by_room.room-1.input_tokens"] == 100
+    assert llm["by_room.room-1.output_tokens"] == 50
+    assert "by_room.room-1.prompt_tokens" not in llm
 
 
-def test_cfn_llm_by_operation_uses_normalised_keys() -> None:
-    """by_operation and by_pipeline sub-keys must also be normalised."""
+def test_llm_latency_histogram() -> None:
+    """duration_ms must be recorded as a histogram."""
     _reset_metrics()
-    record_cfn_llm_usage(
-        operation="start_negotiation",
-        prompt_tokens=0,
-        completion_tokens=0,
-        llm_calls=0,
-        by_operation={
-            "semantic_negotiation.classify": {
-                "prompt_tokens": 200,
-                "completion_tokens": 80,
-                "calls": 3,
-            },
-        },
-    )
+    record_llm_call(operation="probe", input_tokens=1, output_tokens=1, duration_ms=100)
 
     snap = snapshot()
-    cfn_llm = snap["counters"]["cfn_llm"]
-
-    assert cfn_llm["by_llm_operation.semantic_negotiation.classify.input_tokens"] == 200
-    assert cfn_llm["by_llm_operation.semantic_negotiation.classify.output_tokens"] == 80
-    assert cfn_llm["by_pipeline.semantic_negotiation.input_tokens"] == 200
-    assert cfn_llm["by_pipeline.semantic_negotiation.output_tokens"] == 80
-
-
-# ── record_consensus room tracking ───────────────────────────────────
-
-
-def test_record_consensus_tracks_room() -> None:
-    """record_consensus must record per-room completion and outcome."""
-    _reset_metrics()
-    record_consensus(room="room-alpha", total_rounds=5, outcome="success")
-    record_consensus(room="room-alpha", total_rounds=3, outcome="failure")
-
-    snap = snapshot()
-    coord = snap["counters"]["coordination"]
-
-    assert coord["sessions_completed"] == 2
-    assert coord["completed_by_room.room-alpha"] == 2
-    assert coord["completed_by_room.room-alpha.success"] == 1
-    assert coord["completed_by_room.room-alpha.failure"] == 1
-
-
-# ── record_coordination_round round_num ──────────────────────────────
-
-
-def test_record_coordination_round_tracks_round_num() -> None:
-    """round_num must be recorded as a histogram."""
-    _reset_metrics()
-    record_coordination_round(room="room-1", round_num=3, participants=2, duration_ms=100)
-
-    snap = snapshot()
-    assert "coordination.round_num" in snap["histograms"]
-    h = snap["histograms"]["coordination.round_num"]
+    assert "llm.latency_ms" in snap["histograms"]
+    h = snap["histograms"]["llm.latency_ms"]
     assert h["count"] == 1
-    assert h["min"] == 3.0
-    assert h["max"] == 3.0
-
-
-# ── record_room_identity ─────────────────────────────────────────────
-
-
-def test_record_room_identity_populates_snapshot() -> None:
-    """``record_room_identity`` must surface mas_id↔name in the snapshot.
-
-    Critical for the ``mycelium metrics show`` per-room tables: this is
-    the only path that preserves the link after a room is hard-deleted
-    from the ``rooms`` table.
-    """
-    _reset_metrics()
-    record_room_identity(mas_id="abc-123", room_name="mycelium_room")
-    record_room_identity(mas_id="def-456", room_name="e2e-room-xyz")
-
-    snap = snapshot()
-    assert snap["room_identities"] == {
-        "abc-123": "mycelium_room",
-        "def-456": "e2e-room-xyz",
-    }
-
-
-def test_record_room_identity_is_write_once() -> None:
-    """First name wins — rooms aren't renamable, so this is a stability guarantee."""
-    _reset_metrics()
-    record_room_identity(mas_id="abc-123", room_name="original_name")
-    record_room_identity(mas_id="abc-123", room_name="renamed")
-
-    assert snapshot()["room_identities"] == {"abc-123": "original_name"}
-
-
-def test_record_room_identity_skips_empty_inputs() -> None:
-    """Empty mas_id or name should silently no-op (keeps call sites uncluttered)."""
-    _reset_metrics()
-    record_room_identity(mas_id="", room_name="x")
-    record_room_identity(mas_id="x", room_name="")
-    record_room_identity(mas_id="", room_name="")
-
-    assert snapshot()["room_identities"] == {}
-
-
-def test_snapshot_always_includes_room_identities_key() -> None:
-    """The snapshot schema must include ``room_identities`` even when empty.
-
-    The CLI reads this key unconditionally — guarantees no KeyError on
-    a fresh backend with no recorded activity yet.
-    """
-    _reset_metrics()
-    snap = snapshot()
-    assert "room_identities" in snap
-    assert snap["room_identities"] == {}
+    assert h["min"] == 100.0
+    assert h["max"] == 100.0

@@ -202,16 +202,6 @@ class ClaudeCodeIntegration(Integration):
         typer.echo("")
         typer.echo("  Invoke the skill from within a session:")
         typer.secho("    /mycelium", fg=typer.colors.CYAN)
-        typer.echo("")
-        typer.echo("  Knowledge graph ingest now fires on deliberate room writes only —")
-        typer.echo("  channel messages and `mycelium memory set`. The silent per-turn")
-        typer.echo("  hook has been removed. Flip the master switch in ~/.mycelium/config.toml")
-        typer.echo("  to enable CFN forwarding (costs tokens):")
-        typer.secho(
-            "    [knowledge_ingest]\n    enabled = true",
-            fg=typer.colors.CYAN,
-        )
-        typer.echo("  and confirm [server].mas_id is set.")
 
     def run_step(
         self,

@@ -47,10 +47,6 @@ def show(ctx: typer.Context) -> None:
         else:
             typer.secho("Current configuration:", bold=True)
             typer.echo(f"  API URL:      {config.server.api_url}")
-            if config.server.workspace_id:
-                typer.echo(f"  Workspace ID: {config.server.workspace_id}")
-            if config.server.mas_id:
-                typer.echo(f"  MAS ID:       {config.server.mas_id}")
             if config.identity.name:
                 typer.echo(f"  Identity:     {config.identity.name}")
             if config.rooms.active:
@@ -62,7 +58,6 @@ def show(ctx: typer.Context) -> None:
             if config.llm.api_key:
                 masked = config.llm.api_key[:8] + "..." if len(config.llm.api_key) > 8 else "***"
                 typer.echo(f"  LLM API Key:  {masked}")
-            typer.echo(f"  DB Port:      {config.runtime.db_port}")
             typer.echo(f"  Backend Port: {config.runtime.backend_port}")
 
     except Exception as e:
@@ -330,13 +325,6 @@ def _migrate_env_to_config(config: "MyceliumConfig") -> None:
         changed = True
 
     # Runtime — ports
-    env_db_port = env.get("MYCELIUM_DB_PORT")
-    if env_db_port and config.runtime.db_port == 5432:  # still default
-        try:
-            config.runtime.db_port = int(env_db_port)
-            changed = True
-        except ValueError:
-            pass
     env_backend_port = env.get("MYCELIUM_BACKEND_PORT")
     if env_backend_port and config.runtime.backend_port == 8000:  # still default
         try:
@@ -352,30 +340,13 @@ def _migrate_env_to_config(config: "MyceliumConfig") -> None:
         except ValueError:
             pass
 
-    # Runtime — passwords
-    env_db_pw = env.get("MYCELIUM_DB_PASSWORD")
-    if env_db_pw and config.runtime.db_password == "password":  # still default
-        config.runtime.db_password = env_db_pw
-        changed = True
-
     # Runtime — data dir
     if not config.runtime.data_dir and env.get("MYCELIUM_DATA_DIR"):
         config.runtime.data_dir = env["MYCELIUM_DATA_DIR"]
-        changed = True
-
-    # Runtime — CFN
-    if not config.runtime.cfn_mgmt_url and env.get("CFN_MGMT_URL"):
-        config.runtime.cfn_mgmt_url = env["CFN_MGMT_URL"]
-        changed = True
-    if not config.runtime.cfn_svc_url and env.get("CFN_SVC_URL"):
-        config.runtime.cfn_svc_url = env["CFN_SVC_URL"]
-        changed = True
-    if not config.runtime.workspace_id and env.get("WORKSPACE_ID"):
-        config.runtime.workspace_id = env["WORKSPACE_ID"]
         changed = True
 
     if changed:
         config.save()
         typer.secho("  ✓ Migrated .env settings into config.toml", fg=typer.colors.GREEN)
     else:
-        typer.echo("  ℹ config.toml already has all settings — nothing to migrate")
+        typer.echo("  ℹ config.toml already has all settings, nothing to migrate")

@@ -29,16 +29,16 @@ from pathlib import Path
 # 3 pages, each a long doc with a grouped sidebar.
 # (page_id, file_name, page_title, top_nav_label, sheet_no, plate_title, meta_description)
 PAGES: list[tuple[str, str, str, str, str, str, str]] = [
-    ("start", "index.html", "mycelium — Docs", "Get Started",
+    ("start", "index.html", "mycelium Docs", "Get Started",
      "GET-001", "OVERVIEW · INSTALL · FIRST ROOM · COORDINATE",
      "Coordination layer for multi-agent systems. Install and run your first multi-agent coordination flow: room, agents, negotiation, plan."),
-    ("concepts", "concepts.html", "Concepts — mycelium", "Concepts",
-     "CON-001", "CONCEPTS · ROOMS · SESSIONS · MEMORY · PLAN",
-     "The core concepts behind Mycelium: rooms, sessions, memory, plan, CognitiveEngine, and the knowledge graph."),
-    ("adapters", "adapters.html", "Adapters — mycelium", "Adapters",
-     "ADP-001", "ADAPTERS · CLAUDE CODE · OPENCLAW · HERMES · REST API",
-     "Connect Claude Code, OpenClaw, Hermes, or any HTTP client to the Mycelium coordination layer."),
-    ("reference", "reference.html", "Reference — mycelium", "Reference",
+    ("concepts", "concepts.html", "Concepts · mycelium", "Concepts",
+     "CON-001", "CONCEPTS · ROOMS · EPISODES · MEMORY · PLAN",
+     "The core concepts behind Mycelium: rooms, episodes, memory, plan, the aligner, and the L9 protocol."),
+    ("adapters", "adapters.html", "Adapters · mycelium", "Adapters",
+     "ADP-001", "ADAPTERS · CLAUDE CODE · CURSOR · REST API",
+     "Connect Claude Code, Cursor, or any HTTP client to the Mycelium coordination layer."),
+    ("reference", "reference.html", "Reference · mycelium", "Reference",
      "REF-001", "REFERENCE · ARCHITECTURE · CLI · CONFIG · GUIDES · HELP",
      "Architecture, CLI reference, configuration, guides, and troubleshooting for Mycelium."),
 ]
@@ -53,32 +53,28 @@ SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
     ("quickstart.md",               "quickstart",         "start",       "Get Started",  "Quick Start"),
     # ── concepts (concepts.html) ──
     ("rooms.md",                    "rooms",              "concepts",    "Concepts",     "Rooms"),
-    ("sessions.md",                 "sessions",           "concepts",    "Concepts",     "Sessions"),
+    ("episodes.md",                 "episodes",           "concepts",    "Concepts",     "Episodes"),
     ("memory.md",                   "memory",             "concepts",    "Concepts",     "Memory"),
     ("plan.md",                     "plan",               "concepts",    "Concepts",     "Plan"),
-    ("cognitive-engine.md",         "cognitive-engine",   "concepts",    "Concepts",     "CognitiveEngine"),
+    ("aligner.md",                  "aligner",            "concepts",    "Concepts",     "Aligner"),
     ("l9-protocol.md",              "l9-protocol",        "concepts",    "Concepts",     "L9 Protocol"),
-    ("knowledge-graph.md",          "knowledge-graph",    "concepts",    "Concepts",     "Knowledge Graph"),
     # ── adapters (adapters.html) — all hand-coded ──
     (None,                          "adapters",           "adapters",  "Adapters",     "Overview"),
     (None,                          "adapter-claude-code","adapters",  "Adapters",     "Claude Code"),
     (None,                          "adapter-cursor",     "adapters",  "Adapters",     "Cursor"),
-    (None,                          "adapter-openclaw",   "adapters",  "Adapters",     "OpenClaw"),
-    (None,                          "adapter-hermes",     "adapters",  "Adapters",     "Hermes"),
     (None,                          "adapter-api",        "adapters",  "Adapters",     "REST API"),
     # ── reference (reference.html) ──
     ("architecture.md",             "architecture",       "reference", "Architecture", "Architecture"),
     # CLI + Config blocks injected after architecture, before guides/troubleshooting.
     ("guides/structured-memory.md", "structured-memory",  "reference", "Guides",       "Structured Memory"),
     ("guides/hub-and-spoke.md",     "hub-and-spoke",      "reference", "Guides",       "Hub & Spoke"),
-    ("guides/hub-and-spoke-hermes.md", "hub-and-spoke-hermes", "reference", "Guides", "Hub & Spoke (Hermes)"),
     ("troubleshooting.md",          "troubleshooting",    "reference", "Help",         "Troubleshooting"),
 ]
 
 # IDs that should be looked up in kept HTML (have <!-- keep --> markers, or rescued by id).
 _KEPT_IDS: set[str] = {
     "overview",
-    "adapters", "adapter-claude-code", "adapter-cursor", "adapter-openclaw", "adapter-hermes", "adapter-api",
+    "adapters", "adapter-claude-code", "adapter-cursor", "adapter-api",
 }
 
 # CLI groups for the cli-reference page.
@@ -436,16 +432,18 @@ def _all_kept_sections() -> dict[str, str]:
 def _generate_cli_reference() -> tuple[str, list[tuple[str, str]]]:
     """Return (content_html, sidebar_entries) for the cli-reference page."""
     import mycelium.commands.adapter  # noqa: F401
-    import mycelium.commands.cfn  # noqa: F401
+    import mycelium.commands.agent  # noqa: F401
     import mycelium.commands.config  # noqa: F401
+    import mycelium.commands.daemon  # noqa: F401
     import mycelium.commands.doctor  # noqa: F401
+    import mycelium.commands.hub  # noqa: F401
     import mycelium.commands.install  # noqa: F401
     import mycelium.commands.instance  # noqa: F401
     import mycelium.commands.memory  # noqa: F401
-    import mycelium.commands.negotiate  # noqa: F401
+    import mycelium.commands.participate  # noqa: F401
     import mycelium.commands.plan  # noqa: F401
     import mycelium.commands.room  # noqa: F401
-    import mycelium.commands.session  # noqa: F401
+    import mycelium.commands.ui  # noqa: F401
     from mycelium.doc_ref import get_registry
 
     entries = get_registry()
@@ -619,7 +617,7 @@ GITHUB_SVG = (
 
 SKILL_MD_URL = (
     "https://raw.githubusercontent.com/mycelium-io/mycelium/main/"
-    "mycelium-cli/src/mycelium/integrations/openclaw/assets/mycelium/plugin/skills/"
+    "mycelium-cli/src/mycelium/integrations/claude_code/assets/skills/"
     "mycelium/SKILL.md"
 )
 

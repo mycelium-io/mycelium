@@ -458,28 +458,6 @@ class TraceStore:
             finally:
                 conn.close()
 
-    def get_stats(self) -> dict:
-        """Return storage statistics for diagnostics.
-
-        No lock required: SQLite WAL mode supports concurrent readers.
-        """
-        conn = self._connect()
-        try:
-            span_count = conn.execute("SELECT COUNT(*) FROM spans").fetchone()[0]
-            trace_count = conn.execute("SELECT COUNT(DISTINCT trace_id) FROM spans").fetchone()[0]
-            oldest = conn.execute("SELECT MIN(created_at) FROM spans").fetchone()[0]
-            newest = conn.execute("SELECT MAX(created_at) FROM spans").fetchone()[0]
-            return {
-                "span_count": span_count,
-                "trace_count": trace_count,
-                "oldest": oldest,
-                "newest": newest,
-                "retention_days": self._retention_days,
-                "db_path": str(self._db_path),
-            }
-        finally:
-            conn.close()
-
 
 class MetricsStore:
     """In-memory aggregation of OTLP counters, histograms, and session records."""
@@ -1102,6 +1080,8 @@ def _fetch_scrape_targets(
             continue
         if kind == "http_red":
             rolled = prom_scrape.aggregate_http_red(samples)
+        elif kind == "grpc_red":
+            rolled = prom_scrape.aggregate_grpc_red(samples)
         else:
             log.warning("Unknown scrape kind %r for target %r, storing raw count only", kind, name)
             rolled = {"raw_sample_count": len(samples)}

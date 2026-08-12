@@ -92,7 +92,6 @@
     'adapters': 'mycelium docs adapters',
     'adapter-claude-code': 'mycelium docs adapters claude-code',
     'adapter-cursor': 'mycelium docs adapters cursor',
-    'adapter-openclaw': 'mycelium docs adapters openclaw',
     'adapter-api': 'mycelium docs adapters api',
   };
 

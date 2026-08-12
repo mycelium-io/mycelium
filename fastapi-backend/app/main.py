@@ -8,8 +8,6 @@ Mycelium FastAPI backend.
   - Messages (POST + Postgres NOTIFY)
   - Sessions (presence)
   - SSE stream (LISTEN)
-  - Audit events
-  - CFN proxy (shared-memories, memory-operations)
 
 No auth, no heartbeat, no Neo4j, no Yjs, no scheduler.
 """
@@ -27,19 +25,14 @@ from pathlib import Path
 os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
 os.environ.setdefault("HF_HUB_OFFLINE", "1")
 
-from fastapi import Depends, FastAPI
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import get_async_session
-from app.routes.audit import router as audit_router
-from app.routes.cfn_proxy import cfn_read_router
-from app.routes.cfn_proxy import router as cfn_proxy_router
-from app.routes.coordination import router as coordination_router
-from app.routes.coordination_sessions import router as coordination_sessions_router
-from app.routes.knowledge import router as knowledge_router
+from app.routes.episodes import router as episodes_router
+from app.routes.invites import router as invites_router
 from app.routes.memory import router as memory_router
 from app.routes.messages import router as messages_router
+from app.routes.participate import router as participate_router
 from app.routes.plan import agent_router as agent_context_router
 from app.routes.plan import router as plan_router
 from app.routes.rooms import router as rooms_router
@@ -52,7 +45,7 @@ from .config import settings
 Path("logs").mkdir(exist_ok=True)
 
 logging.basicConfig(
-    level=logging.INFO,
+    level=getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO),
     format="[%(asctime)s] [%(name)s] [%(levelname)s] %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
     handlers=[
@@ -64,82 +57,16 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def _register_memory_provider() -> None:
-    """Register Mycelium as a memory provider with ioc-cfn-mgmt-plane-svc.
-
-    Non-fatal — if CFN_MGMT_URL is unset or the call fails, startup continues.
-    Mirrors the registration contract used by ioc-knowledge-memory-svc.
-    """
-    import time
-
-    import requests
-
-    from app.services.metrics import record_cfn_call
-
-    url = settings.CFN_MGMT_URL
-    if not url:
-        return
-
-    api_url = settings.API_BASE_URL
-    payload = {
-        "name": "mycelium",
-        "description": (
-            "Mycelium persistent memory — namespaced KVP, semantic vector search, "
-            f"and knowledge graph. API: {api_url}/docs"
-        ),
-        "config": {
-            "url": api_url,
-            "shared": True,
-        },
-    }
-    t0 = time.monotonic()
-    try:
-        resp = requests.post(
-            f"{url.rstrip('/')}/api/memory-providers",
-            json=payload,
-            timeout=10,
-        )
-        record_cfn_call(
-            service="mgmt",
-            operation="register_memory_provider",
-            duration_ms=(time.monotonic() - t0) * 1000,
-            status_code=resp.status_code,
-            error=resp.status_code not in (201, 409),
-        )
-        if resp.status_code == 201:
-            logger.info("Registered as memory provider with CFN mgmt plane")
-        elif resp.status_code == 409:
-            logger.info("Already registered as memory provider with CFN mgmt plane")
-        else:
-            logger.warning(
-                "CFN memory provider registration returned %s: %s", resp.status_code, resp.text
-            )
-    except Exception as exc:
-        record_cfn_call(
-            service="mgmt",
-            operation="register_memory_provider",
-            duration_ms=(time.monotonic() - t0) * 1000,
-            error=True,
-        )
-        logger.warning("CFN memory provider registration failed (non-fatal): %s", exc)
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Mycelium backend starting up")
-    from app.database import create_db_and_tables
-
-    await create_db_and_tables()
-    logger.info("Database tables ensured")
-    # Register with IoC CFN mgmt plane if configured
-    _register_memory_provider()
-    # Incremental scan of filesystem → search index
+    # Incremental scan of filesystem → JSONL search index
     from app.services.reindex import start_watcher, startup_scan, stop_watcher
 
     await startup_scan()
     start_watcher()
 
-    # TTL sweep for transient event messages (#392)
+    # TTL sweep for transient event messages
     from app.services.event_sweep import start_event_sweep, stop_event_sweep
 
     start_event_sweep()
@@ -152,14 +79,58 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning("Embedding warmup failed (non-fatal): %s", exc)
 
+    # Wire the SIEP aligner into every room's summon seam before any
+    # channel is provisioned, so all persisters pick it up. Dormant until an
+    # @-summon of its reserved handle arrives — zero idle cost.
+    from app.services.aligner import AlignerEngine
+    from app.services.plan_sync import PlanSyncEngine
+    from app.services.room_channels import manager as room_channel_manager
+
+    app.state.aligner = AlignerEngine(room_channel_manager)
+    room_channel_manager.on_summon = app.state.aligner.handle_summon
+    logger.info(
+        "SIEP aligner wired (@%s, mediator brain=pi via %s)",
+        app.state.aligner.handle,
+        settings.ALIGNER_PI_BINARY,
+    )
+
+    # Wire the converged→plan→memory-sync consumer onto the same seam:
+    # a ``commit:converged`` the aligner emits fires plan_compiler → plan/tasks.md
+    # and a ``knowledge`` push that syncs the compiled plan to every store.
+    app.state.plan_sync = PlanSyncEngine(room_channel_manager)
+    room_channel_manager.on_converged = app.state.plan_sync.handle_converged
+    logger.info("plan-sync consumer wired (commit:converged → plan_compiler + knowledge)")
+
+    # Re-provision every room's SLIM channel on startup. Provision is
+    # idempotent and best-effort; without this, a backend restart left every
+    # existing room channel-less (a zombie) with no recovery path until it was
+    # deleted + recreated. Runs after the aligner/plan-sync hooks are wired so
+    # each restarted persister picks them up.
+    from app.services.filesystem import list_room_names
+
+    reprovisioned = 0
+    for _room in list_room_names():
+        try:
+            if await room_channel_manager.provision(_room) is not None:
+                reprovisioned += 1
+        except Exception:
+            logger.exception("startup re-provision failed for room %s", _room)
+    if reprovisioned:
+        logger.info("re-provisioned %d room channel(s) on startup", reprovisioned)
+
     yield
     stop_watcher()
     stop_event_sweep()
-    from app.routes.messages import close_notify_connection
-    from app.services.cfn_http import aclose_all
 
-    await close_notify_connection()
-    await aclose_all()
+    # Tear down long-lived SLIM room channels + the shared node connection so a
+    # restart doesn't leak or reuse a stale dataplane connection.
+    from app.services.room_channels import manager as room_channel_manager
+
+    try:
+        await room_channel_manager.close_all()
+    except Exception as exc:  # pragma: no cover - best-effort teardown
+        logger.warning("SLIM channel teardown failed (non-fatal): %s", exc)
+
     logger.info("Mycelium backend shutting down")
 
 
@@ -197,27 +168,14 @@ app.add_middleware(
 # Core routes. Health endpoints stay top-level for orchestrator probes.
 app.include_router(rooms_router, prefix="/api")
 app.include_router(messages_router, prefix="/api")
+app.include_router(invites_router, prefix="/api")
+app.include_router(episodes_router, prefix="/api")
+app.include_router(participate_router, prefix="/api")
 app.include_router(sessions_router, prefix="/api")
 app.include_router(stream_router, prefix="/api")
 app.include_router(memory_router, prefix="/api")
 app.include_router(plan_router, prefix="/api")
 app.include_router(agent_context_router, prefix="/api")
-
-# CFN routes
-app.include_router(audit_router)
-app.include_router(cfn_proxy_router)
-app.include_router(cfn_read_router)
-
-# Knowledge graph — forwards openclaw turns to CFN shared-memories + observability
-app.include_router(knowledge_router)
-
-# Coordination observability (round-trace ring buffer; see issue #162)
-app.include_router(coordination_router)
-
-# Coordination sessions as a top-level resource — used by OpenClaw plugin,
-# frontend, and CLI in place of addressing sessions by their parent room's
-# display name.
-app.include_router(coordination_sessions_router)
 
 
 @app.get("/", tags=["health"])
@@ -225,7 +183,6 @@ app.include_router(coordination_sessions_router)
 async def root(
     check_llm: bool = False,
     llm_probe: str = "provider",
-    session: AsyncSession = Depends(get_async_session),
 ):
     """Health check.
 
@@ -245,8 +202,8 @@ async def root(
 
     result: dict = {"status": "ok", "service": "mycelium-backend", "version": app.version}
 
-    # Database
-    result["database"] = await _check_database(session)
+    # Storage — markdown + local JSONL, no database.
+    result["storage"] = _check_storage()
 
     # Embedding model
     result["embedding"] = _check_embedding()
@@ -261,13 +218,24 @@ async def root(
         llm = get_config_status()
     result["llm"] = llm.to_dict()
 
+    # Coordination fabric — channels/persisters/members (H1). Every smoke bug was
+    # silent; this makes "is the fabric actually working" answerable in one GET.
+    from app.services.room_channels import manager as room_channel_manager
+
+    coordination = room_channel_manager.status()
+    result["coordination"] = coordination
+
     overall_issues = []
-    if result["database"]["status"] != "ok":
-        overall_issues.append("database")
+    if result["storage"]["status"] != "ok":
+        overall_issues.append("storage")
     if result["llm"]["status"] not in ("ok", "unchecked"):
         overall_issues.append("llm")
+    # A live channel whose persister has died is a zombie room — surface it.
+    if any(r["provisioned"] and not r["persister_alive"] for r in coordination["rooms"]):
+        overall_issues.append("coordination")
     if overall_issues:
         result["status"] = "degraded"
+        result["issues"] = overall_issues
 
     return result
 
@@ -388,16 +356,16 @@ async def _proxy_collector(path: str):
         )
 
 
-async def _check_database(session: AsyncSession) -> dict:
-    """Probe database connectivity with SELECT 1."""
-    from sqlalchemy import text
+def _check_storage() -> dict:
+    """Probe the local markdown/JSONL data directory is writable."""
+    from app.services.filesystem import get_data_dir
 
     try:
-        await session.execute(text("SELECT 1"))
-        return {"status": "ok", "message": "Connected"}
+        data_dir = get_data_dir()
+        return {"status": "ok", "message": "Local store", "path": str(data_dir)}
     except Exception as exc:
-        logger.warning("Database health check failed: %s", exc)
-        return {"status": "unreachable", "message": f"Cannot connect: {type(exc).__name__}"}
+        logger.warning("Storage health check failed: %s", exc)
+        return {"status": "unreachable", "message": f"Cannot access data dir: {type(exc).__name__}"}
 
 
 def _check_embedding() -> dict:

@@ -3,10 +3,16 @@
 ## Quick Diagnostics
 
 ```bash
-mycelium status          # human-readable health check
-mycelium status --json   # machine-readable (backend, DB, LLM, disk)
+mycelium doctor          # full diagnostic: config, backend, LLM, SLIM, adapters
+mycelium doctor --fix    # auto-fix everything it can
+mycelium status          # quick service health (backend, LLM, disk)
 mycelium logs --tail 50  # recent service logs
 ```
+
+`mycelium doctor` is the first thing to run for almost any problem. It
+auto-detects whether this machine is a **hub** (runs the backend + SLIM node
+locally) or a **spoke** (points at a remote hub), and skips the checks that
+don't apply. Force it with `--mode hub` or `--mode spoke`.
 
 ---
 
@@ -16,7 +22,6 @@ mycelium logs --tail 50  # recent service logs
 
 **Symptom**: `mycelium: command not found`
 
-**Fix**:
 ```bash
 curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
 ```
@@ -32,10 +37,12 @@ export PATH="$HOME/.local/bin:$PATH"
 
 **Symptom**: `Cannot connect to Mycelium API at http://localhost:8000`
 
+The backend is the room moderator; nothing coordinates without it.
+
 ```bash
-mycelium status             # quick check
-docker ps | grep mycelium   # container status
-mycelium up                 # start services
+mycelium status                     # quick check
+docker ps | grep mycelium-backend   # container status
+mycelium up                         # start services
 mycelium logs mycelium-backend --tail 50
 ```
 
@@ -47,25 +54,36 @@ mycelium logs mycelium-backend --tail 50
 
 ```bash
 mycelium init
-# or with a custom URL:
-mycelium init --api-url http://your-server:8000
+# or point at a remote hub:
+mycelium init --api-url http://your-hub:8000
 ```
 
 ---
 
-### 4. Database Connection Failed
+### 4. SLIM Node Unreachable
 
-**Symptom**: Backend logs show `connection refused` or `could not connect to server`
+**Symptom**: agents join a room but never exchange anything; `mycelium await`
+hangs; `mycelium doctor` flags the backend or a spoke can't reach the hub.
+
+Agents coordinate over a **SLIM group channel** served by the hub's SLIM node
+(default port **46357**). If that node is down or unreachable, no messages flow.
 
 ```bash
-docker ps | grep mycelium-db    # is the container running?
-docker logs mycelium-db --tail 20
+mycelium doctor                     # detects hub vs spoke, checks reachability
+docker ps | grep slim               # is the SLIM node up on the hub?
+mycelium hub host                   # (re)start the SLIM node and print its address
 ```
 
-- DB takes ~15s to initialize on first run — wait and retry
-- Check for port conflict: `lsof -i :5432`
-- Restart: `mycelium down && mycelium up`
-- Nuclear option (destroys data): `mycelium down --volumes && mycelium up`
+On a spoke, confirm it points at the right node and the port is open:
+
+```bash
+grep node_endpoint ~/.mycelium/config.toml
+curl http://<hub-ip>:46357            # raw reachability from the spoke
+mycelium connect http://<hub-ip>:46357  # re-point at the hub node
+```
+
+Common causes: firewall/security group blocks 46357, VPN/Tailscale not
+connected, or a stale endpoint in `config.toml`.
 
 ---
 
@@ -74,20 +92,16 @@ docker logs mycelium-db --tail 20
 **Symptom**: `bind: address already in use`
 
 ```bash
-lsof -i :8000   # backend
-lsof -i :5432   # database
+lsof -i :8000    # backend
+lsof -i :46357   # SLIM node
 ```
 
-All four published host ports can be remapped — prefer setting the
-corresponding `runtime.*` config key and re-running `mycelium config
-apply` (which materialises `~/.mycelium/.env`) rather than hand-editing
-the env file:
+Remap published host ports through config rather than hand-editing `.env`:
 
 ```bash
 mycelium config set runtime.backend_port 8001     # MYCELIUM_BACKEND_PORT
 mycelium config set runtime.frontend_port 3001    # MYCELIUM_UI_PORT
 mycelium config set runtime.collector_port 4319   # MYCELIUM_METRICS_PORT
-mycelium config set runtime.db_port 5433          # MYCELIUM_DB_PORT
 mycelium config apply
 mycelium down && mycelium up                      # restart to pick up new ports
 ```
@@ -96,87 +110,70 @@ mycelium down && mycelium up                      # restart to pick up new ports
 
 ### 6. LLM Not Configured
 
-**Symptom**: `LLM unavailable — no API key configured`
+**Symptom**: `LLM unavailable, no API key configured`, or `mycelium doctor`
+reports the LLM connectivity check as *not configured* / *auth failed*.
 
-Add to `~/.mycelium/.env`:
-```
-LLM_MODEL=anthropic/claude-sonnet-4-6
-LLM_API_KEY=sk-ant-...
+The LLM powers the [aligner](#aligner) mediator and memory embedding-adjacent
+work. Set it through config, not by hand-editing `.env`:
+
+```bash
+mycelium config set llm.model "anthropic/claude-sonnet-4-6"
+mycelium config set llm.api_key "sk-ant-..."
+mycelium config apply
+mycelium up                         # recreate the backend with the new env
 ```
 
 For local Ollama:
-```
-LLM_MODEL=ollama/llama3
-LLM_BASE_URL=http://localhost:11434
+
+```bash
+mycelium config set llm.model "ollama/llama3"
+mycelium config set llm.base_url "http://localhost:11434"
+mycelium config apply && mycelium up
 ```
 
-Restart after changes: `mycelium down && mycelium up`
+`mycelium doctor` runs a real completion probe inside the backend, so it
+catches missing provider SDKs (e.g. boto3 for Bedrock) and bad model strings,
+not just a missing key.
 
 ---
 
-### 7. Memory Search Returns Nothing
+### 7. Aligner Negotiation Fails ("pi not found")
 
-**Symptom**: `mycelium memory search` is empty despite memories existing
+**Symptom**: summoning the aligner (`mycelium engine invoke aligner ...`) fails
+with `PiBrainError: pi not found`.
+
+The aligner's mediator runs a NEGMAS negotiation whose brain is a **Pi**
+coding-agent session. The released backend image already ships Pi, so the
+normal `mycelium up` path needs nothing extra, and `mycelium doctor` reports this
+check as satisfied when the backend is dockerized.
+
+This only bites when you run the backend **outside Docker** (a contributor
+doing `uvicorn app.main:app` on the host). There, put Pi on PATH:
+
+```bash
+npm install -g @mariozechner/pi-coding-agent
+# or point ALIGNER_PI_BINARY at an existing pi install
+```
+
+---
+
+### 8. Memory Search Returns Nothing
+
+**Symptom**: `mycelium memory search` is empty despite memories existing.
+
+Search runs against a **local embedding index** (no external service). Direct
+file writes (cat, editor, agent file I/O) don't update it until you reindex.
 
 ```bash
 mycelium memory ls          # do memories exist?
 ls ~/.mycelium/rooms/       # files present?
-mycelium reindex            # rebuild search index (needed after direct file writes)
+mycelium reindex            # rebuild the index after direct file writes
 mycelium room ls            # wrong active room?
 ```
 
 ---
 
-### 7b. Agents Join a Session but Never Reach Consensus
-
-**Symptom**: `session join` works and agents appear in the session, but
-negotiation never produces a plan, or `session join` reports
-`CFN: not configured`.
-
-Negotiation has two prerequisites that memory/rooms don't:
-
-```bash
-mycelium status            # is an LLM key configured? (CE needs one to propose)
-grep -i ioc ~/.mycelium/.env   # was the stack installed with IoC/CFN enabled?
-```
-
-- **No LLM key** → the CognitiveEngine can't generate proposals. Add one (see
-  *LLM Not Configured* above) and restart: `mycelium down && mycelium up`.
-- **IoC/CFN disabled** → re-run `mycelium install` (interactive enables IoC by
-  default), or reinstall without `--no-ioc`.
-
----
-
-### 8. Container Name Conflicts
-
-**Symptom**: `container name "mycelium-db" is already in use`
-
-The CLI handles this automatically, but if it persists:
-```bash
-docker rm -f mycelium-db mycelium-backend
-mycelium up
-```
-
----
-
-### 9. Migration Failures
-
-**Symptom**: `alembic.util.exc.CommandError` or schema mismatch errors in logs
-
-Migrations run automatically on container start. If they fail:
-```bash
-mycelium logs mycelium-backend --tail 100   # check startup errors
-mycelium down && mycelium up                # restart often fixes it
-```
-
-If the schema is corrupted (destroys data):
-```bash
-mycelium down --volumes && mycelium up
-```
-
----
-
-### 10. No Active Room
+### 9. No Active Room
 
 **Symptom**: `No active room. Use 'mycelium room use <name>'`
 
@@ -189,167 +186,86 @@ mycelium memory ls --room <name>
 
 ---
 
-### 11. OpenClaw Agents Prompt for Approval on Mycelium Commands
+### 10. Config Drift (edited one file, not the other)
 
-**Symptom**: Agents display "Approval required" when running `mycelium session join` or similar commands.
+**Symptom**: config changes seem to have no effect; `mycelium doctor` flags
+*Config file drift* or *Runtime config drift*.
 
-**Fix**: Add mycelium to OpenClaw's exec approvals allowlist:
-
-```bash
-# For specific agents (recommended):
-openclaw approvals allowlist add --agent "<agent-id>" "~/.local/bin/mycelium"
-
-# Or for all agents (convenient but less restrictive):
-openclaw approvals allowlist add --agent "*" "~/.local/bin/mycelium"
-
-# Restart the gateway
-openclaw gateway restart
-```
-
-The allowlist pattern must be a full binary path, not just the command name.
-
----
-
-### 12. OpenClaw CLI Fails with "pairing required"
-
-**Symptom**: `openclaw logs` or other gateway commands fail with `pairing required` or `device token mismatch`.
-
-**Fix**: Approve the pending device pairing request:
+`mycelium config apply` regenerates `~/.mycelium/.env` from `config.toml`, which
+is the source of truth. If you hand-edit `.env`, the next `apply` overwrites it.
+And if you change config but don't recreate the backend, it keeps running the
+old env.
 
 ```bash
-openclaw devices list
-openclaw devices approve <requestId>
-# Or approve the most recent:
-openclaw devices approve --latest
+mycelium config apply       # rewrite .env from config.toml
+mycelium up                 # recreate the backend with current env
+mycelium doctor             # confirm drift cleared
 ```
 
 ---
 
-### 13. OpenClaw Adapter Fails on Containerized Gateway
+### 11. Permission Errors Under ~/.mycelium
 
-**Symptom**: `mycelium adapter add openclaw --openclaw-container <name>` fails with
-`No running container matched "<name>" under podman or docker`, even though
-`docker exec <name> openclaw status` works fine.
+**Symptom**: opaque `PermissionError` on memory or agent writes; `mycelium
+doctor` flags *~/.mycelium ownership* with root-owned files.
 
-**Cause**: Mycelium routes install commands through `docker exec` to avoid OpenClaw's
-`--container` flag, which uses `docker inspect` for container-name resolution. If you
-see this error, you may be running an older version of the CLI that still uses
-`openclaw --container`.
-
-**Fix**: Upgrade to the latest Mycelium CLI:
+Usually a sudo install paired with a non-sudo agent add (or a containerized
+gateway running as root bind-mounting your home). One `chown` fixes it:
 
 ```bash
-curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
+sudo chown -R $USER ~/.mycelium
 ```
-
-Verify the container is reachable:
-
-```bash
-# Get the exact container name
-docker ps --format "{{.Names}}" | grep -i openclaw
-
-# Verify connectivity
-docker exec <container-name> openclaw status
-
-# Install with container flag
-mycelium adapter add openclaw --openclaw-container <container-name>
-```
-
-You can also set `OPENCLAW_CONTAINER` as an environment variable instead of passing
-`--openclaw-container` every time.
 
 ---
 
-### 14. Agents Join Sessions but Never Respond (Expired Channel Tokens)
+### 12. Spoke Cannot Reach Hub Backend
 
-**Symptom**: An agent appears in `mycelium room ls` as a session
-participant, but never responds to coordination ticks. No error in
-`mycelium logs`.
-
-**Cause**: The agent's channel access token has expired or been
-invalidated (e.g., after a server restart). The OpenClaw gateway
-silently drops the channel sync connection without surfacing an error to
-Mycelium.
-
-**Diagnosis**:
+**Symptom**: `mycelium status` / `mycelium room ls` from a spoke returns a
+connection error pointing at the hub's URL.
 
 ```bash
-# Check gateway logs for channel sync errors
-journalctl --user -u openclaw-gateway --since "10 min ago" | grep -i "sync\|401\|unauthorized"
-
-# Or on the hub
-openclaw logs | grep -i "sync\|401\|unauthorized"
+curl http://<hub-ip>:8000/health      # raw backend reachability
+grep api_url ~/.mycelium/config.toml  # what the spoke targets
 ```
 
-**Fix**: Re-authenticate the agent with the channel server and update
-the token in `~/.openclaw/openclaw.json` under the corresponding
-`channels.<channel>.accounts.<agent>` section. Then restart the gateway:
-
-```bash
-openclaw gateway restart
-```
-
-In a hub-and-spoke setup, update tokens on every node that runs agents.
-
----
-
-### 16. Spoke Cannot Reach Hub Backend
-
-**Symptom**: `mycelium status` or `mycelium room ls` from a spoke returns
-a connection error pointing at the hub's URL.
-
-**Diagnosis**:
-
-```bash
-# Test raw connectivity
-curl http://<hub-ip>:8000/health
-
-# Check what the spoke is configured to use
-grep api_url ~/.mycelium/config.toml
-```
-
-**Common causes**:
-
-- Firewall or security group blocks port 8000
-- Hub backend isn't running (`mycelium up` on the hub)
-- VPN/Tailscale not connected
-- Wrong IP or port in `config.toml`
-
-**Fix**: Ensure the hub is running and the spoke can reach it, then
-re-initialise if the URL is wrong:
+Common causes: firewall blocks port 8000, hub backend isn't running
+(`mycelium up` on the hub), VPN/Tailscale not connected, or the wrong URL in
+`config.toml`. Re-point if needed:
 
 ```bash
 mycelium init --api-url http://<correct-hub-ip>:8000
 ```
 
+Note the spoke must also reach the hub's **SLIM node** on 46357 (see *SLIM Node
+Unreachable* above); the backend and the node are separate ports.
+
 ---
 
 ## Configuration Reference
 
-### CLI settings — `~/.mycelium/config.toml`
+### CLI settings: `~/.mycelium/config.toml`
 
 | Setting | Key | Env var override |
 |---------|-----|------------------|
 | Backend URL | `server.api_url` | `MYCELIUM_API_URL` |
-| Workspace ID | `server.workspace_id` | `MYCELIUM_WORKSPACE_ID` |
+| SLIM node endpoint | `slim.node_endpoint` | (none) |
 | Active room | `rooms.active` | `MYCELIUM_ACTIVE_ROOM` |
 | Agent handle | `identity.name` | `MYCELIUM_AGENT_HANDLE` |
 
-### Backend settings — `~/.mycelium/.env`
+### Backend settings: `~/.mycelium/.env`
 
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `LLM_MODEL` | LiteLLM model string | `anthropic/claude-sonnet-4-6` |
-| `LLM_API_KEY` | Provider API key | — |
-| `LLM_BASE_URL` | Custom LLM endpoint (Ollama, vLLM) | — |
+| `LLM_API_KEY` | Provider API key | (none) |
+| `LLM_BASE_URL` | Custom LLM endpoint (Ollama, vLLM) | (none) |
 | `MYCELIUM_DATA_DIR` | Data directory | `~/.mycelium` |
 | `MYCELIUM_BACKEND_PORT` | Backend API host port | `8000` |
 | `MYCELIUM_UI_PORT` | Frontend host port (`--ui`) | `3000` |
 | `MYCELIUM_METRICS_PORT` | OTLP collector host port (`--metrics`) | `4318` |
-| `MYCELIUM_DB_PORT` | Database host port | `5432` |
 
 All of these are written by `mycelium config apply` from the matching
-`runtime.*` config keys — don't edit `.env` by hand.
+`runtime.*` config keys, so don't edit `.env` by hand.
 
 ### Agent environment variables
 
@@ -360,21 +276,6 @@ Read by the CLI and adapters at runtime to identify the agent and locate the bac
 | `MYCELIUM_API_URL` | Backend API URL (default: `http://localhost:8000`) |
 | `MYCELIUM_AGENT_HANDLE` | This agent's identity handle |
 | `MYCELIUM_ROOM` | Active room name |
-| `MYCELIUM_WORKSPACE_ID` | CFN workspace UUID, required for knowledge ingest |
-| `MYCELIUM_MAS_ID` | CFN MAS UUID, required for knowledge ingest |
-
-### Knowledge-ingest cost controls
-
-Overrides for `[knowledge_ingest]` in `~/.mycelium/config.toml`. Every key below
-has a matching env var for ephemeral changes (no config edit needed). Forwarding
-to the CFN graph is off by default.
-
-| Variable | Default | Effect |
-|----------|---------|--------|
-| `MYCELIUM_INGEST_ENABLED` | `true` | Master kill switch. `0`/`false` short-circuits every ingest at the backend gate (no concept extraction, no CFN spend) and the endpoint returns 200 with a disabled marker. |
-| `MYCELIUM_INGEST_MIN_CONTENT_CHARS` | `32` | Skip ingest for trivially short content ("ack", emoji-only). `0` disables the gate. |
-| `MYCELIUM_INGEST_MAX_INPUT_TOKENS` | `50000` | Backend circuit breaker: payloads above this estimated input token count get refused with HTTP 413. `0` disables. |
-| `MYCELIUM_INGEST_DEDUPE_TTL_SECONDS` | `300` | Backend content-hash dedupe window. Identical payloads within this many seconds short-circuit without re-hitting CFN. `0` disables dedupe. |
 
 ---
 
@@ -383,7 +284,6 @@ to the CFN graph is off by default.
 ```bash
 mycelium logs                       # all services
 mycelium logs mycelium-backend      # backend only
-mycelium logs mycelium-db           # database only
 mycelium --verbose status           # CLI debug output
 ```
 
@@ -393,7 +293,7 @@ mycelium --verbose status           # CLI debug output
 
 ```bash
 mycelium down --volumes   # stop and delete all data
-rm -rf ~/.mycelium        # remove all config
+rm -rf ~/.mycelium        # remove all config and room files
 mycelium install          # fresh install
 ```
 

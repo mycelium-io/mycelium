@@ -6,6 +6,7 @@ Minimal schemas for Mycelium's core models.
 """
 
 from datetime import datetime
+from enum import StrEnum
 from typing import Literal
 from uuid import UUID
 
@@ -38,19 +39,32 @@ class RoomRead(BaseModel):
 # ── Message ───────────────────────────────────────────────────────────────────
 
 
-class MessageType:
+class MessageType(StrEnum):
     ANNOUNCE = "announce"
     DIRECT = "direct"
     BROADCAST = "broadcast"
     DELEGATE = "delegate"
-    # Typed structured event (#392): source_event / action / concern / ...
+    # Typed structured event: source_event / action / concern / ...
     EVENT = "event"
-    # Coordination system messages (posted directly by coordination service, not via HTTP API)
+    # System messages, written server-side by the coordination and plan
+    # services — never accepted over the HTTP API (see ApiMessageType).
     COORDINATION_JOIN = "coordination_join"
     COORDINATION_START = "coordination_start"
     COORDINATION_TICK = "coordination_tick"
     COORDINATION_CONSENSUS = "coordination_consensus"
     COORDINATION_RETRY = "coordination_retry"
+    PLAN_UPDATED = "plan_updated"
+
+
+# The message types a client may create over the HTTP API. The system-posted
+# kinds above are written server-side and are not accepted on inbound requests.
+ApiMessageType = Literal[
+    MessageType.ANNOUNCE,
+    MessageType.DIRECT,
+    MessageType.BROADCAST,
+    MessageType.DELEGATE,
+    MessageType.EVENT,
+]
 
 
 # ── event primitive (#392) ────────────────────────────────────────────────────
@@ -115,10 +129,9 @@ class MessageCreate(BaseModel):
     recipient_handle: str | None = Field(
         None, description="Recipient handle for direct messages; omit for broadcast"
     )
-    message_type: str = Field(
+    message_type: ApiMessageType = Field(
         ...,
         description="Type: announce, direct, broadcast, delegate, or event",
-        pattern="^(announce|direct|broadcast|delegate|event)$",
     )
     content: str = Field(..., min_length=1)
     metadata: EventMetadata | None = Field(
@@ -144,6 +157,9 @@ class MessageRead(BaseModel):
     message_type: str
     content: str
     metadata: dict | None = Field(None, validation_alias="event_metadata")
+    episode: str | None = Field(
+        None, description="L9 episode URN this message belongs to, if any (for grouping/folding)"
+    )
     created_at: datetime
 
     model_config = {"from_attributes": True, "populate_by_name": True}
@@ -288,6 +304,14 @@ class MemoryCreate(BaseModel):
     )
     embed: bool = Field(True, description="Generate vector embedding for semantic search")
     created_by: str = Field(..., description="Agent handle creating this memory")
+    base_version: int | None = Field(
+        None,
+        description=(
+            "Optimistic-concurrency guard: the version this write is based on. "
+            "When set and it doesn't match the current on-disk version, the write "
+            "is rejected (409) with the current content. Omit for last-write-wins."
+        ),
+    )
 
 
 class MemoryBatchCreate(BaseModel):
@@ -341,3 +365,94 @@ class SubscriptionRead(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+# ── L9 episodes (protocol inspector) ─────────────────────────────────────────
+#
+# The episode read API projects persisted L9 episode records into JSON the UI
+# inspector renders. These models are the typed seam: the backend routes declare
+# them as `response_model`, so FastAPI validates + filters the raw parsed dicts
+# into exactly this shape. They mirror the frontend `L9Envelope` / `EpisodeDetail`
+# TypeScript interfaces 1:1, so neither side can silently read a field the other
+# doesn't send. Fields are permissive (most optional) because these records are
+# historical markdown files, not freshly minted objects — a single odd envelope
+# must not 500 the whole inspector. The one invariant: every envelope has a kind.
+
+
+class L9ActorRead(BaseModel):
+    id: str
+    role: str
+
+
+class L9ParticipantsRead(BaseModel):
+    actors: list[L9ActorRead] = Field(default_factory=list)
+    groups: dict | None = None
+
+
+class L9MessageRef(BaseModel):
+    id: str = ""
+    parents: list[str] = Field(default_factory=list)
+    episode: str | None = None
+
+
+class L9ContextRead(BaseModel):
+    topic: str | None = None
+
+
+class L9HeaderRead(BaseModel):
+    protocol: str | None = None
+    subprotocol: str | None = None
+    version: str | None = None
+    kind: str
+    subkind: str | None = None
+    participants: L9ParticipantsRead | None = None
+    message: L9MessageRef | None = None
+    context: L9ContextRead | None = None
+
+
+class L9PayloadRead(BaseModel):
+    type: str | None = None
+    data: dict | None = None
+
+
+class L9EnvelopeRead(BaseModel):
+    """One faithful L9 envelope in an episode's causal chain.
+
+    The sender is the first actor (`header.participants.actors[0].id`) by the
+    bus convention in `app.services.l9`; there is deliberately no flattened
+    `sender_handle` on the wire envelope — the frontend derives it from actors.
+    """
+
+    header: L9HeaderRead
+    payload: L9PayloadRead | None = None
+
+
+class EpisodeMetricsRead(BaseModel):
+    mpc: float = 0.0
+    gar: float = 0.0
+    scr: float = 0.0
+    provenance_weight: float = 0.0
+    participants: int | None = None
+
+
+class EpisodeSummaryRead(BaseModel):
+    short_id: str
+    episode: str
+    topic: str
+    outcome: str
+    subkind: str | None = None
+    participants: list[str] = Field(default_factory=list)
+    metrics: EpisodeMetricsRead | None = None
+    assignments: dict[str, str] | None = None
+    plan_file: str | None = None
+    message_count: int = 0
+    updated_at: str = ""
+    updated_by: str = ""
+
+
+class EpisodeListResponse(BaseModel):
+    episodes: list[EpisodeSummaryRead]
+
+
+class EpisodeDetailRead(EpisodeSummaryRead):
+    messages: list[L9EnvelopeRead] = Field(default_factory=list)

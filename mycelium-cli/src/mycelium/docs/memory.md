@@ -1,10 +1,10 @@
 # Memory
 
 Room memory is markdown files on your filesystem: the shared source of truth,
-greppable and editable by any agent. The CFN knowledge graph is a derived index
-over those files, for recall by meaning and relationship, never an independent
-source of writes. Whatever stays private to one agent stays in that agent's own
-local memory, never indexed.
+greppable and editable by any agent. A local embedding index over those files
+lets agents recall by meaning, but it is never an independent source of writes.
+Whatever stays private to one agent stays in that agent's own local files, never
+indexed.
 
 ## Three layers, one source of truth
 
@@ -16,32 +16,31 @@ Mycelium memory has three layers, and only the middle one is "the memory":
 2. **Room memory** is the shared source of truth: markdown files under
    `~/.mycelium/rooms/{room}/` that every agent in the room can read, `grep`,
    edit, and `git`-track. If the team should know it, write it here.
-3. **The CFN knowledge graph** is a derived view, not a place you write to.
-   Mycelium indexes the room's public artifacts (memory files plus channel
-   messages) into it so agents can recall by meaning and by relationship. It
-   rebuilds from the files, so the files always win.
+3. **The search index** is a derived view, not a place you write to. Mycelium
+   embeds each room memory into a local index so agents can recall by meaning.
+   It rebuilds from the files, so the files always win.
 
-Rule of thumb: if a teammate should find it, put it in room memory. The graph
+Rule of thumb: if a teammate should find it, put it in room memory. The index
 is how they find it; the filesystem is where it lives; your private notes stay
 yours.
 
-Every write to room memory is embedded (384-dim, local, no API key) and indexed
-for semantic search.
+Every write to room memory is embedded (384-dim, local, no API key, no external
+service) and indexed for semantic search.
 
 ## Namespace Conventions
 
-Keys use `/` as a separator. This is a convention, not enforced structure —
+Keys use `/` as a separator. This is a convention, not enforced structure,
 but it makes `memory ls <prefix>/` very useful.
 
 ```bash
 # Decisions your team made
-mycelium memory set "decisions/db" "AgensGraph — SQL + graph + vector in one"
+mycelium memory set "decisions/storage" "Rooms are folders; memory is markdown files"
 
 # Things that failed (so nobody repeats them)
-mycelium memory set "failed/sqlite" "Can't handle pgvector or JSONB"
+mycelium memory set "failed/single-writer" "Serializing all writes stalled under load"
 
 # Per-agent status (handle is just attribution)
-mycelium memory set "status/prometheus" "Working on CFN integration" --handle prometheus-agent
+mycelium memory set "status/prometheus" "Wiring up the aligner" --handle prometheus-agent
 
 # Browse a namespace
 mycelium memory ls decisions/
@@ -58,16 +57,16 @@ frontmatter. You can read, edit, or version-control these files directly.
 
 ```bash
 # View the raw file
-cat ~/.mycelium/rooms/design-review/decisions/database.md
+cat ~/.mycelium/rooms/design-review/decisions/storage.md
 
 # Edit with any tool
-vim ~/.mycelium/rooms/design-review/decisions/database.md
+vim ~/.mycelium/rooms/design-review/decisions/storage.md
 
 # Git-track a room's memory
 cd ~/.mycelium/rooms/design-review && git init
 ```
 
-The pgvector search index auto-syncs when:
+The local search index auto-syncs when:
 - You use `mycelium memory set` (immediate dual-write)
 - The backend starts up (incremental scan of changed files)
 - Files change on disk while the backend is running (file watcher)
@@ -79,11 +78,11 @@ mycelium memory reindex
 
 ## Semantic Search
 
-Search finds memories by meaning — cosine similarity on all-MiniLM-L6-v2 embeddings
-(384 dimensions, runs locally).
+Search finds memories by meaning: cosine similarity on all-MiniLM-L6-v2
+embeddings (384 dimensions, runs locally, no external service).
 
 ```bash
-mycelium memory search "what database decisions were made"
+mycelium memory search "what storage decisions were made"
 mycelium memory search "what failed and why"
 mycelium memory search "what is the current status"
 ```

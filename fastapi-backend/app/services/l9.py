@@ -18,10 +18,7 @@ Mycelium uses L9 two ways:
    ``POST /api/l9/messages`` endpoint that routes envelopes to Cognition
    Engines by kind/subkind. ``l9_cfn.py`` posts envelopes built here.
 
-The subkind vocabulary below mirrors the Go CFN's validation table
-(ioc-cfn-svc ``pkg/app/handlers_l9.go``), which the team has confirmed as
-authoritative over the older grammar in the spec repo's docs. Notably a
-failed negotiation commits as ``abort`` (not the spec docs' ``rejected``).
+In the subkind vocabulary below, a failed negotiation commits as ``rejected``.
 """
 
 from __future__ import annotations
@@ -45,16 +42,19 @@ PROTOCOL = "SSTP"
 VERSION = "0.0.6"  # tracks the ioc-protocols-models binding the Go CFN pins
 SUBPROTOCOL_MYCELIUM = "mycelium"
 
-# The handle mycelium's backend speaks as inside envelopes. Matches the
-# sender_handle used for coordination system messages.
-SYSTEM_ACTOR_ID = "CognitiveEngine"
+# The handle mycelium's *backend itself* speaks as inside envelopes — genuine
+# system messages (plan-updated events, joins, knowledge distillation, aborts),
+# not a coordination engine. A registered engine (e.g. the aligner) signs its own
+# envelopes with its engine handle; only messages with no engine author fall back
+# to this. Matches the sender_handle used for coordination system messages.
+SYSTEM_ACTOR_ID = "system"
 SYSTEM_ACTOR_ROLE = "coordinator"
 
-# Kind -> allowed subkinds, per the Go CFN's routing validation
-# (ioc-cfn-svc pkg/app/handlers_l9.go). An empty/None subkind is always valid.
+# Kind -> allowed subkinds. An empty/None subkind is always valid. A failed
+# negotiation commits as ``rejected`` (was ``abort`` under the now-removed Go CFN).
 VALID_SUBKINDS: dict[Kind, frozenset[str]] = {
     Kind.knowledge: frozenset({"query", "distillation", "extraction", "feedback"}),
-    Kind.commit: frozenset({"converged", "resolved", "abort"}),
+    Kind.commit: frozenset({"converged", "resolved", "rejected"}),
     Kind.intent: frozenset({"coordinator-assignment", "mission"}),
     Kind.exchange: frozenset({"team-formation"}),
     Kind.contingency: frozenset({"negotiation"}),
@@ -76,7 +76,7 @@ def topic_urn(parent_room: str) -> str:
 
 
 def validate_subkind(kind: Kind, subkind: str | None) -> None:
-    """Reject subkinds the Go CFN would 400 on."""
+    """Reject subkinds outside the allowed table for this kind."""
     if not subkind:
         return
     allowed = VALID_SUBKINDS.get(kind, frozenset())

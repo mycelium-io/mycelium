@@ -7,7 +7,7 @@ Unit tests for the metrics display math.
 These guard a class of bug that was present before the
 feat/simple_metrics restructure: the cache hit-rate and savings
 calculations were mathematically inconsistent with how LLM providers
-actually bill cached prefixes, and the OpenClaw ``heartbeat`` channel
+actually bill cached prefixes, and the ``heartbeat`` channel
 (idle-loop keep-alive traffic) was silently aggregated into headline
 token totals, drowning real agent work.
 

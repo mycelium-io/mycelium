@@ -3,11 +3,20 @@
 
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { getSSEUrl, fetchMessages, fetchRoomAgents, logFetchError } from "@/lib/api";
+import {
+  getSSEUrl,
+  fetchMessages,
+  fetchRoomAgents,
+  fetchPendingInvites,
+  respondToInvite,
+  logFetchError,
+  type PendingInvite,
+} from "@/lib/api";
 import { MarkdownContent } from "@/components/markdown-content";
 import { RoomPlanHeader } from "@/components/room-plan-header";
+import { ConsentDialog } from "@/components/consent-dialog";
+import { L9Inspector } from "@/components/l9-inspector";
 
 interface Event {
   id: string;
@@ -16,14 +25,18 @@ interface Event {
   sender: string;
   recipient: string | null;
   time: string;
+  // The L9 episode URN this event belongs to, when it rode one. Negotiation
+  // turns share their mediator's episode; casual chat carries the room default
+  // or none. Lets the feed group/fold one negotiation's turns together.
+  episode: string | null;
   raw: Record<string, unknown>;
 }
 
 const CHAT_TYPES = new Set(["broadcast", "direct", "announce", "delegate"]);
 // Event types that appear in the chat-channel view alongside real chat.
 // Joins + consensus belong here so the room's chat surface narrates the
-// negotiation lifecycle — "alice joined session X", "CONSENSUS in session X
-// → plan/tasks.md", "TIMEOUT in session X — no agreement" — instead of
+// negotiation lifecycle ("alice joined session X", "CONSENSUS in session X
+// → plan/tasks.md", "TIMEOUT in session X, no agreement") instead of
 // burying it all under the EVENTS tab.
 const CHANNEL_VIEW_TYPES = new Set([
   ...CHAT_TYPES,
@@ -70,11 +83,11 @@ function parseEvent(msg: Record<string, unknown>): Event {
     case "coordination_join": {
       const handle = (raw.handle as string) || sender;
       const intent = raw.intent as string;
-      content = `${handle} joined${intent ? ` — ${intent}` : ""}`;
+      content = `${handle} joined${intent ? `: ${intent}` : ""}`;
       break;
     }
     case "coordination_start":
-      content = `Session started — ${raw.agent_count || "?"} agents`;
+      content = `Episode started with ${raw.agent_count || "?"} agents`;
       break;
     case "coordination_tick": {
       // Ticks wrap their fields under .payload
@@ -93,7 +106,7 @@ function parseEvent(msg: Record<string, unknown>): Event {
       const assignments = raw.assignments as Record<string, string>;
       content = plan || "";
       if (assignments) content += " " + Object.entries(assignments).map(([k, v]) => `${k}=${v}`).join(", ");
-      // Consensus isn't the end — it compiles into the room's shared plan.
+      // Consensus isn't the end; it compiles into the room's shared plan.
       if (!broken && planFile) content += ` · compiled → ${planFile}`;
       {
         const metrics = raw.metrics as Record<string, unknown> | undefined;
@@ -113,6 +126,13 @@ function parseEvent(msg: Record<string, unknown>): Event {
       content = (msg.content as string) || JSON.stringify(msg).slice(0, 100);
   }
 
+  const episode =
+    (msg.episode as string) ||
+    ((raw.header as Record<string, unknown> | undefined)?.message as
+      | Record<string, unknown>
+      | undefined)?.episode as string ||
+    null;
+
   return {
     id: `${Date.now()}-${Math.random()}`,
     type: mtype,
@@ -120,6 +140,7 @@ function parseEvent(msg: Record<string, unknown>): Event {
     sender,
     recipient,
     time,
+    episode,
     raw,
   };
 }
@@ -171,7 +192,7 @@ function renderWithMentions(text: string): React.ReactNode {
   );
 }
 
-type View = "channel" | "plan";
+type View = "channel" | "plan" | "l9";
 
 interface Props {
   roomName: string;
@@ -184,6 +205,7 @@ export function EventStream({ roomName, onMemoryChanged, planRefreshTrigger = 0 
   const [connected, setConnected] = useState(false);
   const [view, setView] = useState<View>("channel");
   const [agentHandles, setAgentHandles] = useState<Set<string>>(new Set());
+  const [invites, setInvites] = useState<PendingInvite[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Know which senders are registered agents so their replies can be badged.
@@ -212,6 +234,19 @@ export function EventStream({ roomName, onMemoryChanged, planRefreshTrigger = 0 
     }).catch(logFetchError("fetchMessages"));
   }, [roomName]);
 
+  // Load any consent prompts already open (an @-invite raised before this
+  // client connected). Live ones arrive over SSE below.
+  useEffect(() => {
+    fetchPendingInvites(roomName)
+      .then((open) => setInvites(open.filter((i) => i.status === "pending")))
+      .catch(logFetchError("fetchPendingInvites"));
+  }, [roomName]);
+
+  const respond = (invite: PendingInvite, decision: "accept" | "decline") => {
+    setInvites((prev) => prev.filter((i) => i.id !== invite.id));
+    respondToInvite(roomName, invite.id, decision).catch(logFetchError("respondToInvite"));
+  };
+
   // SSE connection
   useEffect(() => {
     const url = getSSEUrl(roomName);
@@ -224,10 +259,20 @@ export function EventStream({ roomName, onMemoryChanged, planRefreshTrigger = 0 
       es.onmessage = (e) => {
         try {
           const msg = JSON.parse(e.data);
+          // Consent prompts drive the accept/decline dialog, not the feed.
+          if (msg.message_type === "consent_request") {
+            try {
+              const invite = JSON.parse(msg.content as string) as PendingInvite;
+              setInvites((prev) =>
+                prev.some((i) => i.id === invite.id) ? prev : [...prev, invite],
+              );
+            } catch {}
+            return;
+          }
           const event = parseEvent(msg);
           setEvents(prev => [...prev, event]);
           if (event.type === "memory_changed") onMemoryChanged?.();
-          // A consensus compiles the negotiation into plan/tasks.md — nudge
+          // A consensus compiles the negotiation into plan/tasks.md, so nudge
           // the plan header to refetch so the checklist surfaces immediately.
           if (event.type === "coordination_consensus" && event.raw.broken !== true) {
             onMemoryChanged?.();
@@ -262,6 +307,11 @@ export function EventStream({ roomName, onMemoryChanged, planRefreshTrigger = 0 
 
   return (
     <div className="flex flex-col h-full">
+      <ConsentDialog
+        invite={invites[0] ?? null}
+        onAccept={(invite) => respond(invite, "accept")}
+        onDecline={(invite) => respond(invite, "decline")}
+      />
       <div className="flex items-stretch border-b border-border shrink-0 h-[44px] bg-paper">
         <div className="flex items-center gap-2 px-4">
           <span
@@ -279,6 +329,7 @@ export function EventStream({ roomName, onMemoryChanged, planRefreshTrigger = 0 
         <div className="ml-auto flex items-stretch">
           {([
             { id: "channel" as const, label: "CHANNEL", count: channelCount as number | null },
+            { id: "l9" as const,      label: "L9",      count: null },
             { id: "plan" as const,    label: "PLAN",    count: null },
           ]).map(t => {
             const active = view === t.id;
@@ -302,6 +353,11 @@ export function EventStream({ roomName, onMemoryChanged, planRefreshTrigger = 0 
           })}
         </div>
       </div>
+      {view === "l9" ? (
+        <div className="flex-1 min-h-0">
+          <L9Inspector roomName={roomName} />
+        </div>
+      ) : (
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
         {view === "plan" ? (
           <RoomPlanHeader roomName={roomName} refreshTrigger={planRefreshTrigger} />
@@ -380,11 +436,8 @@ export function EventStream({ roomName, onMemoryChanged, planRefreshTrigger = 0 
               }
               if (ev.type === "coordination_consensus") {
                 const broken = ev.raw.broken === true;
-                const session = ev.raw.session as string | undefined;
-                const shortId = session ? session.split(":").pop() : undefined;
-                const sessionHref = shortId
-                  ? `/room/${encodeURIComponent(roomName)}/session/${encodeURIComponent(shortId)}`
-                  : null;
+                const episodeUrn = (ev.raw.episode as string | undefined) ?? (ev.raw.session as string | undefined);
+                const shortId = episodeUrn ? episodeUrn.split(":").pop() : undefined;
                 const planFile = ev.raw.plan_file as string | undefined;
                 const assignments = ev.raw.assignments as Record<string, string> | undefined;
                 const issueCount = assignments ? Object.keys(assignments).length : 0;
@@ -404,18 +457,15 @@ export function EventStream({ roomName, onMemoryChanged, planRefreshTrigger = 0 
                       {label}
                     </span>
                     <span className="text-muted">in</span>
-                    {sessionHref ? (
-                      <Link
-                        href={sessionHref}
-                        className="font-mono text-accent hover:underline"
-                      >
+                    {shortId ? (
+                      <span className="font-mono text-accent" title={episodeUrn}>
                         {shortId}
-                      </Link>
+                      </span>
                     ) : (
-                      <span className="font-mono text-text2">session</span>
+                      <span className="font-mono text-text2">episode</span>
                     )}
                     {broken ? (
-                      <span className="text-text2">— no agreement</span>
+                      <span className="text-text2">· no agreement</span>
                     ) : (
                       <>
                         <span className="text-muted">·</span>
@@ -450,11 +500,8 @@ export function EventStream({ roomName, onMemoryChanged, planRefreshTrigger = 0 
               if (ev.type === "coordination_join") {
                 const handle = (ev.raw.handle as string | undefined) ?? ev.sender;
                 const intent = (ev.raw.intent as string | undefined) ?? "";
-                const session = ev.raw.session as string | undefined;
-                const shortId = session ? session.split(":").pop() : undefined;
-                const sessionHref = shortId
-                  ? `/room/${encodeURIComponent(roomName)}/session/${encodeURIComponent(shortId)}`
-                  : null;
+                const episodeUrn = (ev.raw.episode as string | undefined) ?? (ev.raw.session as string | undefined);
+                const shortId = episodeUrn ? episodeUrn.split(":").pop() : undefined;
                 return (
                   <div
                     key={ev.id}
@@ -467,16 +514,13 @@ export function EventStream({ roomName, onMemoryChanged, planRefreshTrigger = 0 
                       @{handle}
                     </span>
                     <span className="text-muted">joined</span>
-                    {sessionHref ? (
-                      <Link
-                        href={sessionHref}
-                        className="font-mono text-accent hover:underline"
-                      >
+                    {shortId ? (
+                      <span className="font-mono text-accent" title={episodeUrn}>
                         {shortId}
-                      </Link>
+                      </span>
                     ) : null}
                     {intent ? (
-                      <span className="text-text2 truncate">— &ldquo;{intent}&rdquo;</span>
+                      <span className="text-text2 truncate">· &ldquo;{intent}&rdquo;</span>
                     ) : null}
                     <span className="ml-auto text-micro text-muted font-mono tabular flex-shrink-0">
                       {ev.time}
@@ -533,6 +577,7 @@ export function EventStream({ roomName, onMemoryChanged, planRefreshTrigger = 0 
           </>
         )}
       </div>
+      )}
     </div>
   );
 }

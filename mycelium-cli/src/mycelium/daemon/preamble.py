@@ -14,9 +14,8 @@ Shared by all cold-spawn integrations (currently ``claude_code`` and
 
 Without this, a cold-started agent has no idea it's been routed to as
 ``@handle`` — it tries to explain it's "actually <model name>," asks if
-the user meant to route somewhere else, etc. (Mirrors how OpenClaw injects
-identity via ``MYCELIUM_AGENT_HANDLE`` + ``before_agent_start``; cold-start
-agents have no env channel for that, so we bake it into the prompt.)
+the user meant to route somewhere else, etc. Cold-start agents have no env
+channel for identity, so we bake it into the prompt.
 """
 
 from __future__ import annotations
@@ -62,6 +61,23 @@ prompt below. Your reply will be posted to that room *as @{handle}*, so:
   persist between runs goes in your notes (`mycelium memory set
   agents/{handle}/notes "..."` from your cwd).
 {desc_block}{notes_block}{plan_block}
+## Stating a position (negotiation)
+
+If this room is a negotiation — several agents converging on a shared decision —
+end your reply with a one-line position marker so the aligner can score whether
+the team has converged:
+
+    [[mycelium: confidence=0.85 stance=accept]]
+
+- `confidence` (0.0–1.0): how sure you are of the position you just argued.
+- `stance`: `accept` if you can live with the offer on the table, `reject` if
+  you cannot. Drop `stance` if you're only making an opening offer.
+
+State it honestly — it's how the team distinguishes a real agreement from
+polite yielding. The marker is stripped from your posted message; only the
+epistemic signal is kept. Omit it entirely for ordinary chat that isn't a
+negotiation position.
+
 ## Control verbs
 
 If the prompt is exactly one of `abort`, `cancel`, `stop`, or `status`,

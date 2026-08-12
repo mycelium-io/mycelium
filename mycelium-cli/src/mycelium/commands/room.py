@@ -10,12 +10,12 @@ Commands:
 - create: Create a new room
 - use: Switch active room context
 - delete: Delete a room
-- join: Join coordination backchannel (blocks until first coordination tick)
-- watch: Stream messages from a room via SSE
-- post: Post a message to a room
+- watch: Stream a room's messages live
+- send: Broadcast a chat message into a room (an @handle mention summons a
+  registered engine, e.g. @aligner)
+- messages: Show a room's recent messages
 - delegate: Delegate a task to an agent in a room
 - clone: Clone a room from a remote backend instance
-- sync-mas: Register (or re-register) a room with the CFN mgmt plane
 """
 
 import json as json_module
@@ -210,8 +210,6 @@ def create(
             typer.echo(f"  ID:      {room_data.get('id')}")
             typer.echo(f"  Created: {str(room_data.get('created_at', ''))[:10]}")
             typer.echo(f"  Path:    {room_dir}")
-            if room_data.get("mas_id"):
-                typer.echo(f"  MAS ID:  {room_data.get('mas_id')}")
             typer.echo("")
             typer.echo(f"  Run 'mycelium room use {name}' to make it your active room")
 
@@ -262,7 +260,8 @@ def use(
         else:
             typer.secho(f"Room set: {room_name}", fg=typer.colors.GREEN)
             typer.echo(
-                "Next: Run 'mycelium session join -H <handle> -m <position>' to start negotiating"
+                "Next: post a position with 'mycelium respond -H <handle> \"<position>\"', "
+                "then summon the mediator with 'mycelium engine invoke aligner'"
             )
 
     except Exception as e:
@@ -310,32 +309,6 @@ def delete(
 
             typer.secho(f"Room '{room_name}' deleted.", fg=typer.colors.GREEN)
 
-            # Unregister all agents from the room in local adapter configs so the
-            # plugins stop reopening SSE connections to a room that no longer exists.
-            try:
-                from mycelium.integrations.openclaw.dispatch import unregister_room_from_openclaw
-
-                removed = unregister_room_from_openclaw(room_name)
-                if removed:
-                    typer.secho(
-                        f"  Unregistered {len(removed)} agent(s) from '{room_name}' in local openclaw.json.",
-                        fg=typer.colors.CYAN,
-                    )
-            except Exception:
-                pass  # openclaw not installed locally — skip silently
-
-            try:
-                from mycelium.integrations.hermes.dispatch import unregister_room_from_hermes
-
-                removed = unregister_room_from_hermes(room_name)
-                if removed:
-                    typer.secho(
-                        f"  Unregistered {len(removed)} agent(s) from '{room_name}' in local hermes config.yaml.",
-                        fg=typer.colors.CYAN,
-                    )
-            except Exception:
-                pass  # hermes not installed locally — skip silently
-
     except Exception as e:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
         print_error(e, verbose=verbose)
@@ -343,7 +316,7 @@ def delete(
 
 @doc_ref(
     usage="mycelium room clone <room-name> [--from <api-url>]",
-    desc="Clone a room from a remote backend — fetches all memories via HTTP and writes them locally.",
+    desc="Clone a room from a remote backend: fetches all memories via HTTP and writes them locally.",
     group="room",
 )
 @app.command("clone")
@@ -439,7 +412,7 @@ def clone_room(
             typer.echo(f"  Indexed {data.get('indexed', 0)} memories")
         except Exception:
             typer.echo(
-                "[dim]  Reindex skipped — run 'mycelium memory reindex' when backend is available[/dim]"
+                "[dim]  Reindex skipped. Run 'mycelium memory reindex' when backend is available[/dim]"
             )
 
         typer.echo(f"\nRoom '{room_name}' is now active.")
@@ -521,138 +494,6 @@ def _consensus_quality_line(data: dict, indent: str) -> str | None:
     )
 
 
-def _render_coordination_event(msg: dict, current_identity: str) -> tuple[str | None, bool]:
-    """
-    Render a coordination SSE event for display.
-
-    Returns (rendered_string | None, should_exit).
-    should_exit=True means the CLI should print the message and exit.
-    """
-    mtype = msg.get("message_type", "")
-    if not mtype:
-        return None, False
-
-    if mtype == "coordination_join":
-        try:
-            data = json_module.loads(msg.get("content", "{}"))
-        except json_module.JSONDecodeError:
-            data = {}
-        handle = data.get("handle", "?")
-        intent = data.get("intent")
-        suffix = f" — {intent}" if intent else ""
-        return f"  ⟫  {handle} joined{suffix}", False
-
-    if mtype == "coordination_start":
-        try:
-            data = json_module.loads(msg.get("content", "{}"))
-        except json_module.JSONDecodeError:
-            data = {}
-        n = data.get("agent_count", "?")
-        return f"  ⟫  Session started — {n} agents joined. Beginning coordination…", False
-
-    if mtype == "coordination_tick":
-        try:
-            data = json_module.loads(msg.get("content", "{}"))
-        except json_module.JSONDecodeError:
-            data = {}
-        # SSTP envelope: action fields live under data["payload"]
-        if "payload" in data and isinstance(data["payload"], dict):
-            data = data["payload"]
-        round_num = data.get("round", "?")
-        kind = data.get("kind")
-
-        if kind == "negotiate":
-            action = data.get("action", "propose")
-            participant_id = data.get("participant_id")
-
-            # Tick not addressed to us — show informational, keep waiting
-            if participant_id and participant_id != current_identity:
-                return f"  ⟫  CognitiveEngine — waiting for {participant_id} ({action})…", False
-
-            if action == "propose":
-                history = data.get("history", [])
-                issues: list[str] = []
-                if history:
-                    issues = list(history[-1].get("offer", {}).keys())
-                if not issues:
-                    issues = list(_ISSUE_OPTIONS.keys())
-                lines = [f"  ⟫  CognitiveEngine [round {round_num}] — propose your offer:"]
-                prior_line = _team_prior_line(data, "        ")
-                if prior_line:
-                    lines.append(prior_line)
-                for issue in issues:
-                    opts = _ISSUE_OPTIONS.get(issue, ["?"])
-                    lines.append(f"        {issue}: {' | '.join(opts)}")
-                example = {
-                    issue: (
-                        _ISSUE_OPTIONS.get(issue, ["option"])[2]
-                        if len(_ISSUE_OPTIONS.get(issue, [])) > 2
-                        else "option"
-                    )
-                    for issue in issues
-                }
-                lines.append("")
-                kv = " ".join(f"{k}={v}" for k, v in example.items())
-                lines.append(f"        Reply: mycelium negotiate propose {kv}")
-                return "\n".join(lines), True
-
-            if action == "respond":
-                current_offer = data.get("current_offer") or {}
-                proposer = data.get("proposer_id", "?")
-                lines = [
-                    f"  ⟫  CognitiveEngine [round {round_num}] — respond to offer from {proposer}:"
-                ]
-                prior_line = _team_prior_line(data, "        ")
-                if prior_line:
-                    lines.append(prior_line)
-                for k, v in current_offer.items():
-                    lines.append(f"        {k}: {v}")
-                lines.append("")
-                lines.append("        Accept/reject/end: mycelium negotiate respond accept")
-                return "\n".join(lines), True
-
-            return f"  ⟫  CognitiveEngine [round {round_num}] — {action} ({participant_id})", True
-
-        # Legacy ambiguities format
-        ambiguities = data.get("ambiguities", [])
-        lines = [f"  ⟫  CognitiveEngine [tick {round_num}]:"]
-        for i, q in enumerate(ambiguities, 1):
-            lines.append(f"        {i}. {q}")
-        return "\n".join(lines), True  # exit after printing
-
-    if mtype == "coordination_consensus":
-        try:
-            data = json_module.loads(msg.get("content", "{}"))
-        except json_module.JSONDecodeError:
-            data = {}
-        lines = ["  ⟫  CognitiveEngine [consensus]:"]
-        if data.get("broken"):
-            lines.append("        Negotiation ended without agreement.")
-        else:
-            assignments = data.get("assignments", {})
-            assignment = assignments.get(current_identity)
-            if assignment:
-                lines.append(f"        Your assignment: {assignment}")
-            elif assignments:
-                for h, task in assignments.items():
-                    lines.append(f"        {h}: {task}")
-            plan = data.get("plan", "")
-            if plan and not assignments:
-                lines.append(f"        Plan: {plan}")
-        quality_line = _consensus_quality_line(data, "        ")
-        if quality_line:
-            lines.append(quality_line)
-        return "\n".join(lines), True  # exit after printing
-
-    # Regular message
-    if mtype not in ("coordination_join", "coordination_start"):
-        sender = msg.get("sender_handle", "?")
-        content = msg.get("content", "")
-        return f"  {sender}: {content}", False
-
-    return None, False
-
-
 def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
     """Core SSE watch loop — pretty-renders coordination and memory events."""
     import time
@@ -684,12 +525,12 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
         if mtype == "coordination_join":
             intent = data.get("intent")
             handle = data.get("handle", sender)
-            suffix = f" — [dim]{intent}[/]" if intent else ""
+            suffix = f": [dim]{intent}[/]" if intent else ""
             return f"  {ts()}  [cyan]{handle}[/] joined{suffix}"
 
         if mtype == "coordination_start":
             n = data.get("agent_count", "?")
-            return f"\n  {ts()}  [bold cyan]session started[/] — {n} agents joined\n"
+            return f"\n  {ts()}  [bold cyan]session started[/] ({n} agents joined)\n"
 
         if mtype == "coordination_tick":
             # SSTP envelope: action fields live under data["payload"]
@@ -702,9 +543,9 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
                 participant = data.get("participant_id", "?")
                 if action == "propose":
                     issue_options = data.get("issue_options") or _ISSUE_OPTIONS
-                    header = f"\n  {ts()}  [bold magenta]CognitiveEngine[/] [dim]→[/] [cyan]{participant}[/]  [bold cyan]round {round_num}[/] — propose your offer:"
+                    header = f"\n  {ts()}  [bold magenta]aligner[/] [dim]→[/] [cyan]{participant}[/]  [bold cyan]round {round_num}[/]: propose your offer:"
                     if round_num == 1:
-                        header = f"\n  {ts()}  [bold magenta]CognitiveEngine[/] analyzed agent intents and generated negotiation issues and options.\n{header}"
+                        header = f"\n  {ts()}  [bold magenta]aligner[/] analyzed agent intents and generated negotiation issues and options.\n{header}"
                     lines = [header]
                     prior_line = _team_prior_line(data, "              ")
                     if prior_line:
@@ -719,7 +560,7 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
                     offer = data.get("current_offer") or {}
                     proposer = data.get("proposer_id", "?")
                     lines = [
-                        f"\n  {ts()}  [bold magenta]CognitiveEngine[/] [dim]→[/] [cyan]{participant}[/]  [bold cyan]round {round_num}[/] — respond to offer from {proposer}:"
+                        f"\n  {ts()}  [bold magenta]aligner[/] [dim]→[/] [cyan]{participant}[/]  [bold cyan]round {round_num}[/]: respond to offer from {proposer}:"
                     ]
                     prior_line = _team_prior_line(data, "              ")
                     if prior_line:
@@ -727,7 +568,7 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
                     for k, v in offer.items():
                         lines.append(f"              [dim]{k}:[/] {v}")
                     return "\n".join(lines)
-                return f"\n  {ts()}  [bold magenta]CognitiveEngine[/] [dim]→[/] [cyan]{participant}[/]  [bold cyan]round {round_num}[/] — {action}"
+                return f"\n  {ts()}  [bold magenta]aligner[/] [dim]→[/] [cyan]{participant}[/]  [bold cyan]round {round_num}[/]: {action}"
             return f"\n  {ts()}  [bold cyan]tick {round_num}[/]"
 
         if mtype == "coordination_consensus":
@@ -865,7 +706,7 @@ def watch(
     """
     Stream live messages from a room.
 
-    Auto-resolves the active room — no argument needed.
+    Auto-resolves the active room (no argument needed).
     Renders coordination events, agent joins, ticks, and consensus.
 
     Examples:
@@ -886,53 +727,8 @@ def watch(
 
 
 @doc_ref(
-    usage="mycelium room post <room> --agent <handle> --response <text>",
-    desc="Post a raw message to a room (triggers NOTIFY). Advanced use.",
-    group="room",
-)
-@app.command("post")
-def post(
-    ctx: typer.Context,
-    session_id: str = typer.Argument(..., help="Room session/name"),
-    agent: str = typer.Option(..., "--agent", "-a", help="Agent handle sending the response"),
-    response_text: str = typer.Option(..., "--response", "-r", help="Response message text"),
-) -> None:
-    """
-    Post a message to a room (triggers NOTIFY).
-
-    Examples:
-        mycelium room post my-room --agent alpha#a1b2 --response "Task complete"
-    """
-    try:
-        verbose = ctx.obj.get("verbose", False) if ctx.obj else False  # noqa: F841
-        json_output = ctx.obj.get("json", False) if ctx.obj else False
-
-        config = MyceliumConfig.load()
-
-        from mycelium_backend_client.api.messages import (
-            send_message_api_rooms_room_name_messages_post as send_api,
-        )
-        from mycelium_backend_client.models import MessageCreate
-
-        with _typed_client(config) as client:
-            body = MessageCreate(sender_handle=agent, message_type="direct", content=response_text)
-            result = send_api.sync(room_name=session_id, client=client, body=body)
-            data = result.to_dict() if result and hasattr(result, "to_dict") else {}
-
-        if json_output:
-            typer.echo(json_module.dumps(data, indent=2, default=str))
-        else:
-            typer.secho("Message sent", fg=typer.colors.GREEN)
-            typer.echo(f"  {agent}: {response_text[:80]}")
-
-    except Exception as e:
-        verbose = ctx.obj.get("verbose", False) if ctx.obj else False
-        print_error(e, verbose=verbose)
-
-
-@doc_ref(
     usage='mycelium room send "<content>" [--room <room>] [--handle <handle>]',
-    desc="Send an addressed chat message into a room. Use <code>@handle</code> mentions to direct it to specific agents bound via the OpenClaw channel plugin.",
+    desc="Send an addressed chat message into a room. Use <code>@handle</code> mentions to direct it to specific agents.",
     group="room",
 )
 @app.command("send")
@@ -955,18 +751,17 @@ def send(
     """
     Send an addressed chat message into a room (cross-agent DM).
 
-    Drops a broadcast message into the room's message stream. Agents bound
-    to the room via the OpenClaw channel plugin will receive it if the
-    content @-mentions them (when `requireMention` is enabled, default true).
+    Drops a broadcast message into the room's message stream. Agents in the
+    room will receive it if the content @-mentions them.
 
     Use this for:
       - Addressed DMs between agents in the same room
       - Seeding a scenario for a group of agents (facilitator posts, agents respond)
       - One-way notifications without expecting a reply loop
 
-    For structured negotiation (propose/accept/reject), use `mycelium negotiate
-    propose|respond` instead. For agent-to-agent requests with a built-in
-    reply loop, use OpenClaw's `sessions_send` tool.
+    To participate in a room's coordination as a member (receive an addressed
+    turn and reply as a position), use `mycelium await` / `mycelium respond`
+    instead.
 
     Examples:
         mycelium room send "@julia-agent please review the cache config"
@@ -1027,7 +822,7 @@ def messages(
     ),
 ) -> None:
     """
-    Read recent messages in a room — a point-in-time snapshot, newest first.
+    Read recent messages in a room: a point-in-time snapshot, newest first.
 
     Unlike `mycelium room watch` (which streams live), this returns immediately
     with the most recent messages and exits. Handy for scripts and for checking
@@ -1114,7 +909,7 @@ def delegate(
     Posts a 'delegate' type message to the room.
 
     Examples:
-        mycelium room delegate my-room --to cfn-agent --task "Scan CVE-2024-1234"
+        mycelium room delegate my-room --to security-agent --task "Scan CVE-2024-1234"
     """
     try:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False  # noqa: F841
@@ -1141,62 +936,6 @@ def delegate(
             typer.secho("Task delegated", fg=typer.colors.GREEN)
             typer.echo(f"  {sender} -> {to}: {task[:80]}")
 
-    except Exception as e:
-        verbose = ctx.obj.get("verbose", False) if ctx.obj else False
-        print_error(e, verbose=verbose)
-
-
-@doc_ref(
-    usage="mycelium room sync-mas <name>",
-    desc="Register (or re-register) a room with the CFN mgmt plane.",
-    group="room",
-)
-@app.command("sync-mas")
-def sync_mas(
-    ctx: typer.Context,
-    name: str = typer.Argument(..., help="Room name to register with CFN"),
-) -> None:
-    """Register a room with the CFN mgmt plane and store its MAS ID.
-
-    Idempotent: if the room is already registered in CFN, the existing MAS ID
-    is fetched and linked. Use this to fix rooms created before CFN was configured
-    or when 'mycelium doctor' reports missing MAS IDs.
-
-    Examples:
-        mycelium room sync-mas mycelium_room
-        mycelium room sync-mas matrix-agents
-    """
-    try:
-        verbose = ctx.obj.get("verbose", False) if ctx.obj else False  # noqa: F841
-        json_output = ctx.obj.get("json", False) if ctx.obj else False
-
-        config = MyceliumConfig.load()
-
-        import httpx
-
-        api_url = (config.server.api_url or "http://localhost:8000").rstrip("/")
-        with httpx.Client(base_url=api_url, timeout=15) as client:
-            resp = client.post(f"/api/rooms/{name}/sync-mas")
-            if resp.status_code == 404:
-                raise MyceliumError(
-                    f"Room '{name}' not found — create it first with: mycelium room create {name}"
-                )
-            if resp.status_code == 409:
-                raise MyceliumError(
-                    "CFN not configured — set CFN_MGMT_URL and WORKSPACE_ID in ~/.mycelium/.env"
-                )
-            resp.raise_for_status()
-            room_data = resp.json()
-
-        if json_output:
-            typer.echo(json_module.dumps(room_data, indent=2, default=str))
-        else:
-            typer.secho(f"Registered room with CFN: {name}", fg=typer.colors.GREEN)
-            typer.echo(f"  MAS ID:  {room_data.get('mas_id')}")
-            typer.echo(f"  Workspace: {room_data.get('workspace_id')}")
-
-    except MyceliumError:
-        raise
     except Exception as e:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
         print_error(e, verbose=verbose)

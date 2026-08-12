@@ -54,7 +54,9 @@ def test_family_declares_lifecycle(family: str) -> None:
     """
     cls = type(get_integration(family))
     assert hasattr(cls, "lifecycle"), f"{family} missing `lifecycle` ClassVar"
-    assert cls.lifecycle in {"cold_spawn", "long_lived_gateway"}, (
+    # backend_engine: a first-party cognition engine the backend runs (daemon
+    # skips it, same as a gateway).
+    assert cls.lifecycle in {"cold_spawn", "long_lived_gateway", "backend_engine"}, (
         f"{family} has invalid lifecycle: {cls.lifecycle!r}"
     )
 
@@ -121,7 +123,7 @@ def test_no_if_family_branching_left_in_command_layer() -> None:
 
     repo = pathlib.Path(__file__).resolve().parents[1]
     src = (repo / "src/mycelium/commands/adapter.py").read_text()
-    assert 'adapter_type == "openclaw"' not in src
+    assert 'adapter_type == "cursor"' not in src
     assert 'adapter_type == "claude-code"' not in src
 
 

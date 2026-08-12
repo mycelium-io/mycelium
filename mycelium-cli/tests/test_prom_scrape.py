@@ -252,87 +252,66 @@ def test_histogram_quantile_rejects_out_of_range_q() -> None:
 
 
 # ---------------------------------------------------------------------------
-# MyceliumConfig.resolve_scrape_targets — the "no config needed" path
+# MyceliumConfig.resolve_scrape_targets — explicit [[metrics.scrape]] entries
 # ---------------------------------------------------------------------------
-#
-# The collector mirrors the OTLP-rx convention-over-configuration pattern
-# by auto-deriving CFN scrape targets from the runtime URLs that install
-# already sets. These tests pin that behaviour so a future refactor can't
-# silently resurrect the "user must paste a [[metrics.scrape]] block into
-# config.toml" requirement.
 
 
-def _make_config(
-    *,
-    cfn_mgmt_url: str | None = None,
-    cfn_svc_url: str | None = None,
-    explicit_scrape: list[dict] | None = None,
-):
+def _make_config(*, explicit_scrape: list[dict] | None = None):
     """Build a MyceliumConfig for resolution tests without touching disk."""
-    from mycelium.config import MetricsConfig, MyceliumConfig, RuntimeConfig, ScrapeTarget
+    from mycelium.config import MetricsConfig, MyceliumConfig, ScrapeTarget
 
     return MyceliumConfig(
-        runtime=RuntimeConfig(
-            cfn_mgmt_url=cfn_mgmt_url,
-            cfn_svc_url=cfn_svc_url,
-        ),
         metrics=MetricsConfig(scrape=[ScrapeTarget(**s) for s in (explicit_scrape or [])]),
     )
 
 
-def test_resolve_scrape_targets_auto_derives_cfn_mgmt() -> None:
-    """The common case: install sets cfn_mgmt_url, user touches nothing, we scrape."""
-    cfg = _make_config(cfn_mgmt_url="http://localhost:9000")
-    targets = cfg.resolve_scrape_targets()
-    assert len(targets) == 1
-    assert targets[0]["name"] == "cfn-mgmt"
-    assert targets[0]["url"] == "http://localhost:9000/metrics"
-    assert targets[0]["kind"] == "http_red"
-
-
-def test_resolve_scrape_targets_strips_trailing_slash() -> None:
-    """Don't emit double slashes — some users paste URLs with trailing /."""
-    cfg = _make_config(cfn_mgmt_url="http://localhost:9000/")
-    assert cfg.resolve_scrape_targets()[0]["url"] == "http://localhost:9000/metrics"
-
-
-def test_resolve_scrape_targets_empty_when_no_urls_configured() -> None:
-    """No runtime URLs + no explicit entries = no targets (not an error)."""
+def test_resolve_scrape_targets_empty_when_none_configured() -> None:
+    """No explicit entries = no targets (not an error)."""
     cfg = _make_config()
     assert cfg.resolve_scrape_targets() == []
 
 
-def test_resolve_scrape_targets_explicit_entry_appended() -> None:
-    """A user-defined scrape target (non-CFN) is merged alongside auto-derived ones."""
+def test_resolve_scrape_targets_returns_explicit_entries() -> None:
+    """User-defined [[metrics.scrape]] targets are returned for the collector."""
     cfg = _make_config(
-        cfn_mgmt_url="http://localhost:9000",
         explicit_scrape=[
             {"name": "my-service", "url": "http://localhost:7777/metrics", "kind": "http_red"}
         ],
     )
     targets = cfg.resolve_scrape_targets()
-    names = {t["name"] for t in targets}
-    assert names == {"cfn-mgmt", "my-service"}
-
-
-def test_resolve_scrape_targets_explicit_overrides_auto_by_name() -> None:
-    """Explicit entry with the auto-derived name wins (escape hatch for custom URL)."""
-    cfg = _make_config(
-        cfn_mgmt_url="http://localhost:9000",
-        explicit_scrape=[
-            # Site runs mgmt plane behind an nginx path prefix.
-            {"name": "cfn-mgmt", "url": "http://internal.example/mgmt/metrics", "kind": "http_red"}
-        ],
-    )
-    targets = cfg.resolve_scrape_targets()
     assert len(targets) == 1
-    assert targets[0]["url"] == "http://internal.example/mgmt/metrics"
+    assert targets[0]["name"] == "my-service"
+    assert targets[0]["url"] == "http://localhost:7777/metrics"
 
 
-def test_resolve_scrape_targets_skips_cfn_node_until_it_exposes_metrics() -> None:
-    """cognition-fabric-node-svc has no /metrics yet — don't emit a target that
-    would always show as degraded. See the _NODE_HAS_METRICS flag in
-    config.MyceliumConfig.resolve_scrape_targets; flip when the CFN change
-    lands."""
-    cfg = _make_config(cfn_svc_url="http://localhost:9002")
-    assert cfg.resolve_scrape_targets() == []
+# ── grpc_red roll-up (OpenShell gateway + any gRPC-instrumented service) ──────
+
+
+def test_aggregate_grpc_red_rolls_up_openshell_series():
+    """OpenShell exposes ``*_grpc_requests_total`` (counter) + a
+    ``*_grpc_request_duration_seconds`` summary. grpc_red must roll these into
+    the same RED shape as http_red: calls by ``method``, errors on non-OK
+    ``code`` (0 == OK), and count/sum latency (seconds → ms)."""
+    from mycelium.prom_scrape import aggregate_grpc_red, parse_text
+
+    body = """
+# TYPE openshell_server_grpc_requests_total counter
+openshell_server_grpc_requests_total{method="GetSandboxConfig",code="0"} 25
+openshell_server_grpc_requests_total{method="ConnectSupervisor",code="0"} 1
+openshell_server_grpc_requests_total{method="CreateSandbox",code="13"} 2
+# TYPE openshell_server_grpc_request_duration_seconds summary
+openshell_server_grpc_request_duration_seconds{method="GetSandboxConfig",quantile="0.5"} 0.004
+openshell_server_grpc_request_duration_seconds_sum{method="GetSandboxConfig"} 0.117
+openshell_server_grpc_request_duration_seconds_count{method="GetSandboxConfig"} 25
+"""
+    rolled = aggregate_grpc_red(parse_text(body))
+
+    assert rolled["calls"] == 28  # 25 + 1 + 2
+    assert rolled["errors"] == 2  # only code=13 (non-OK)
+    routes = rolled["by_route"]
+    assert routes["GetSandboxConfig"]["calls"] == 25
+    assert routes["GetSandboxConfig"]["errors"] == 0
+    assert routes["CreateSandbox"]["errors"] == 2  # grpc status 13 == error
+    lat = routes["GetSandboxConfig"]["latency_ms"]
+    assert lat["count"] == 25
+    assert lat["sum"] == 117.0  # 0.117s → 117ms

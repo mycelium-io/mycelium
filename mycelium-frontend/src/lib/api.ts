@@ -3,7 +3,7 @@
 
 // All fetches use relative `/api/*` paths. The Next.js server proxies them
 // to the backend (see next.config.ts `rewrites()`), so the browser only ever
-// talks to its own origin — no CORS, no second public port, no build-time
+// talks to its own origin: no CORS, no second public port, no build-time
 // URL baking. The internal backend URL is a server-side concern.
 
 /**
@@ -45,7 +45,7 @@ export async function createRoom(data: { name: string; is_persistent?: boolean }
         detail = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail);
       }
     } catch {
-      /* non-JSON error body — keep the status-based message */
+      /* non-JSON error body: keep the status-based message */
     }
     throw new Error(detail);
   }
@@ -136,11 +136,6 @@ export async function addPlanTask(roomName: string, text: string, slug = "tasks"
   return res.json();
 }
 
-export async function reindexRoom(roomName: string) {
-  const res = await fetch(`/api/rooms/${roomName}/reindex`, { method: "POST" });
-  return res.json();
-}
-
 export async function fetchMessages(roomName: string, limit?: number) {
   const url = limit
     ? `/api/rooms/${roomName}/messages?limit=${limit}`
@@ -149,30 +144,6 @@ export async function fetchMessages(roomName: string, limit?: number) {
   return res.json();
 }
 
-export async function fetchSessions(roomName: string) {
-  const res = await fetch(`/api/rooms/${roomName}/sessions`, { cache: "no-store" });
-  if (!res.ok) return { sessions: [], total: 0 };
-  return res.json();
-}
-
-export async function fetchChildRooms(parentName: string) {
-  // Sessions live in coordination_sessions. Return the per-session display
-  // name + state so callers that previously walked rooms by name pattern
-  // keep working with minimal changes.
-  const res = await fetch(
-    `/api/coordination-sessions?parent_room=${encodeURIComponent(parentName)}&limit=200`,
-    { cache: "no-store" },
-  );
-  if (!res.ok) return [];
-  const sessions = await res.json();
-  return sessions.map((s: any) => ({
-    name: s.display_name,
-    coordination_session_id: s.id,
-    coordination_state: s.state,
-    parent_namespace: s.parent_room_name,
-    created_at: s.created_at,
-  }));
-}
 
 export function getSSEUrl(roomName: string) {
   return `/api/rooms/${roomName}/messages/stream`;
@@ -194,6 +165,42 @@ export async function sendRoomMessage(
   return res.json();
 }
 
+/**
+ * A consent-gated invite. Raised when a human `@`-mentions an agent
+ * that is not yet on the room's channel: the backend surfaces an accept/decline
+ * prompt ("someone's agent wants to reach yours") instead of joining directly.
+ */
+export interface PendingInvite {
+  id: string;
+  room: string;
+  agent: string;
+  requested_by: string;
+  trigger_text: string;
+  status: string;
+  created_at: string;
+}
+
+/** Open (pending or queued) consent requests for a room. */
+export async function fetchPendingInvites(roomName: string): Promise<PendingInvite[]> {
+  const res = await fetch(`/api/rooms/${roomName}/invites`, { cache: "no-store" });
+  if (!res.ok) return [];
+  const data = await res.json();
+  return (data.invites || []) as PendingInvite[];
+}
+
+/** Accept or decline a consent prompt. Only `accept` invites (or queues) the agent. */
+export async function respondToInvite(
+  roomName: string,
+  inviteId: string,
+  decision: "accept" | "decline",
+): Promise<PendingInvite | null> {
+  const res = await fetch(`/api/rooms/${roomName}/invites/${inviteId}/${decision}`, {
+    method: "POST",
+  });
+  if (!res.ok) return null;
+  return res.json();
+}
+
 export interface AgentSummary {
   handle: string;
   description: string;
@@ -202,7 +209,7 @@ export interface AgentSummary {
 
 /**
  * List addressable agents in a room. Each agent is a memory entry under
- * `agents/<handle>` (without further path segments — `agents/<handle>/notes`
+ * `agents/<handle>` (without further path segments; `agents/<handle>/notes`
  * and `agents/<handle>/log/...` are filtered out). Used to drive the
  * `@`-mention autocomplete in the room chat box.
  */
@@ -220,7 +227,7 @@ export async function fetchRoomAgents(roomName: string): Promise<AgentSummary[]>
     const rest = key.replace(/^agents\//, "");
     if (!rest || rest.includes("/")) continue;
     // The manifest is YAML. The memory API may hand it back as a raw string,
-    // a structured dict, OR — what the backend actually does — wrapped as
+    // a structured dict, OR (what the backend actually does) wrapped as
     // `{text: "<yaml>"}`. Normalize to one YAML string and parse that; the
     // old code missed the {text} shape and defaulted every agent to
     // claude_code.
@@ -269,43 +276,6 @@ export async function fetchCollectorMetrics() {
 
 // ── Traces & Logs ────────────────────────────────────────────────────────────
 
-export interface TraceSpan {
-  trace_id: string;
-  span_id: string;
-  parent_span_id: string;
-  name: string;
-  kind: string;
-  service: string;
-  host: string;
-  start_time: string;
-  duration_ms: number;
-  status: string;
-  status_message: string;
-  attributes: Record<string, string | number | boolean>;
-}
-
-export interface TraceSummary {
-  trace_id: string;
-  root_span: string;
-  service: string;
-  agent: string;
-  host: string;
-  hosts: string[];
-  start_time: string;
-  duration_ms: number;
-  span_count: number;
-  has_error: boolean;
-  spans: TraceSpan[];
-}
-
-export async function fetchRecentTraces(limit = 100, host?: string): Promise<{ traces: TraceSummary[]; count: number } | null> {
-  const params = new URLSearchParams({ limit: String(limit) });
-  if (host) params.set("host", host);
-  const res = await fetch(`/api/observability/traces/recent?${params}`, { cache: "no-store" });
-  if (!res.ok) return null;
-  return res.json();
-}
-
 export interface HostInfo {
   host: string;
   span_count: number;
@@ -321,15 +291,75 @@ export async function fetchHosts(): Promise<{ hosts: HostInfo[] } | null> {
   return res.json();
 }
 
-export async function fetchRoundTraces(limit?: number): Promise<{ traces: unknown[]; count: number } | null> {
-  const params = limit != null ? `?limit=${limit}` : "";
-  const res = await fetch(`/api/internal/coordination/round-traces${params}`, { cache: "no-store" });
-  if (!res.ok) return null;
-  return res.json();
+// ── L9 protocol / episodes ─────────────────────────────────────────────────────
+// Episodes are the persisted, causally-linked L9 record of a coordination
+// session (one markdown file per session under `log/episodes/`). The protocol
+// inspector reads them for the rich causal chain + consensus metrics; the wire
+// envelopes deliberately carry empty `message.parents`, so the chain lives here.
+
+export interface L9Actor {
+  id: string;
+  role: string;
 }
 
-export async function fetchIngestLog(limit = 50) {
-  const res = await fetch(`/api/knowledge/ingest/log?limit=${limit}`, { cache: "no-store" });
+export interface L9Envelope {
+  header: {
+    protocol?: string;
+    subprotocol?: string;
+    version?: string;
+    kind: string;
+    subkind?: string | null;
+    participants?: { actors?: L9Actor[]; groups?: Record<string, unknown> | null };
+    message?: { id: string; parents?: string[]; episode?: string };
+    context?: { topic?: string } | null;
+  };
+  payload?: { type?: string; data?: Record<string, unknown> };
+}
+
+export interface EpisodeMetrics {
+  mpc: number;
+  gar: number;
+  scr: number;
+  provenance_weight: number;
+  participants?: number;
+}
+
+export interface EpisodeSummary {
+  short_id: string;
+  episode: string;
+  topic: string;
+  outcome: string;
+  subkind: string | null;
+  participants: string[];
+  metrics: EpisodeMetrics | null;
+  assignments: Record<string, string> | null;
+  plan_file: string | null;
+  message_count: number;
+  updated_at: string;
+  updated_by: string;
+}
+
+export interface EpisodeDetail extends EpisodeSummary {
+  messages: L9Envelope[];
+}
+
+/** Episode summaries for a room, newest first. */
+export async function fetchEpisodes(roomName: string): Promise<EpisodeSummary[]> {
+  const res = await fetch(`/api/rooms/${roomName}/episodes`, { cache: "no-store" });
+  if (!res.ok) return [];
+  const data = await res.json();
+  return (data.episodes || []) as EpisodeSummary[];
+}
+
+/** One episode plus its full L9 envelope chain, or null if unknown. */
+export async function fetchEpisode(
+  roomName: string,
+  shortId: string,
+): Promise<EpisodeDetail | null> {
+  const res = await fetch(
+    `/api/rooms/${roomName}/episodes/${encodeURIComponent(shortId)}`,
+    { cache: "no-store" },
+  );
   if (!res.ok) return null;
   return res.json();
 }

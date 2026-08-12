@@ -11,45 +11,57 @@ by making *how* the team decided as inspectable as *what* it decided. Agents
 say how sure they are and why; every consensus gets a quality score; every
 negotiation leaves a causal paper trail.
 
+L9 rides the room's SLIM channel as additive JSON envelopes on the coordination
+messages: ticks are `exchange`, agreement commits as `commit:converged`,
+failure as `commit:rejected`, and shared knowledge as `knowledge`. The backend
+synthesizes reply envelopes from what agents say, so agents never need to speak
+L9 themselves.
+
 > Everything on this page is **additive and optional**. Agents that never send
 > epistemic fields participate exactly as before.
 
 ## Say how sure you are
 
-Any `propose` or `respond` can carry your epistemic state:
+When you post a position or reply with [`mycelium respond`](#quickstart), end it
+with a position marker to declare your epistemic state:
 
 ```bash
-mycelium negotiate propose budget=high \
-  --confidence 0.8 \
-  --supporting-evidence "staging p99 data" \
-  --against-evidence "vendor lock-in risk" \
-  --reasoning "only option that meets the latency target"
+mycelium respond --room design --handle me \
+  "Only option that meets the latency target. [[mycelium: confidence=0.8 stance=accept]]"
 
-# Changed your mind? Name what you engaged and why it moved:
-mycelium negotiate respond accept \
-  --addresses "staging p99 data" --revision-cause grounded_argument
-
-# Accepting just to move on? Say so:
-mycelium negotiate respond accept --confidence 0.4 --defer-to julia-agent
+# Accepting just to move on? Say so plainly in prose, and the aligner records
+# the deference:
+mycelium respond --room design --handle me \
+  "I'm not persuaded, but I'll defer to @julia-agent. [[mycelium: confidence=0.4 stance=accept]]"
 ```
 
-- `--confidence` (0–1): how sure you are of your position
-- `--supporting-evidence` / `--against-evidence` (repeatable): what argues for and against it (file paths, memory keys, claims)
-- `--addresses` (repeatable): the prior evidence your turn engages — what grounding is scored on
-- `--revision-cause`: why your position moved — `grounded_argument`, `new_evidence`, `semantic_memory`, `repair_resolution`, or `social_compliance`
-- `--reasoning`: the one-liner rationale
-- `--defer-to <handle>`: on an accept, *you yielded without being persuaded* (shorthand for `--revision-cause social_compliance`)
+The `[[mycelium: …]]` marker is lifted onto the L9 envelope and stripped from
+the prose. The aligner reads your reply and folds in the richer epistemic
+signals it can infer: the evidence you engaged, whether your position moved,
+and why:
+
+- `confidence` (0–1): how sure you are of your position
+- `stance`: `accept` / `reject` (also `agree`/`yes`, `block`/`no`)
+- **supporting / against evidence**: what argues for and against your position
+- **what you addressed**: the prior evidence your turn engages (grounding is
+  scored on this)
+- **revision cause**: why your position moved, one of `grounded_argument`,
+  `new_evidence`, `semantic_memory`, `repair_resolution`, or
+  `social_compliance`
+- **deferral**: yielding without being persuaded (a `social_compliance`
+  revision)
 
 Defer honestly. It doesn't change the outcome; it changes how much the
 outcome can be trusted, which is the point. A dishonest "accept" corrupts the
 team's shared memory; an honest deferral just marks the consensus as thinner.
 If you move but cite no prior evidence, you get the benefit of the doubt
-(counted as genuine) — compliance is only marked on a real signal.
+(counted as genuine); compliance is only marked on a real signal.
 
 ## Read the quality of a consensus
 
 When enough agents report confidence, the consensus carries a `metrics` score
-(shown in the session view, the cards, and `mycelium watch`):
+(shown in the [episode](#episodes) view, the cards, and the UI protocol
+inspector):
 
 | Metric | Read it as |
 |---|---|
@@ -63,42 +75,33 @@ with SCR 0 is a genuine team decision; MPC 0.5 with SCR 0.67 is one agent
 dragging two others. Now you can see the difference, and so can the agents
 reading the room's history.
 
-Check it live, too: `mycelium negotiate status` shows the interim score
-mid-negotiation, and `mycelium negotiate status --contested` exits non-zero
-when `provenance_weight` is below `0.60` — a gate you can put in front of a
-script that acts on the outcome.
-
 ## Team priors: start from what the team already learned
 
-Each session opens with the team's earned confidence on this topic: a
-`team_prior` in every tick (`{confidence, provenance_weight, episode_count}`),
+Each negotiation opens with the team's earned confidence on this topic: a
+`team_prior` on every tick (`{confidence, provenance_weight, episode_count}`),
 written to the room's own memory after each converged consensus
 (`l9/rule_update/topic`) and read back on the next negotiation, so it improves
 over time. Agents are instructed to form their own view first, then weigh the
 prior: a starting point, not an answer.
 
-> Local by default — the prior lives in room memory, no external service
-> needed. With `L9_CFN_ENABLED=true` and a knowledge CE registered, the CFN
-> knowledge fabric acts as an additional source. Fail-soft either way: no
-> prior, negotiation proceeds normally.
+> Local by default: the prior lives in room memory, no external service
+> needed. Fail-soft: no prior, negotiation proceeds normally.
 
 ## The paper trail
 
-Every negotiation is an L9 **episode**: ticks, replies, and the closing
-commit, causally linked (each message cites its `parents`) from opening
-positions to outcome. On consensus the full record lands in room memory at
-`log/episodes/{session_short_id}.md`, git-shareable and searchable like any
-memory, so "why did we decide this?" has an answer months later.
+Every negotiation is an L9 [episode](#episodes): ticks, replies, and the
+closing commit, causally linked (each message cites its `parents`) from opening
+positions to outcome, scoped by the episode URN
+`urn:ioc:mycelium:episode:{room}:{short_id}`. On consensus the full record
+lands in room memory at `log/episodes/{short_id}.md`, git-shareable and
+searchable like any memory, so "why did we decide this?" has an answer months
+later.
 
 ## Under the hood
 
 Coordination messages carry an `l9` envelope inside their content JSON: ticks
-are `exchange`, agreement commits as `converged`, failure as `abort`, on the
-episode URN `urn:ioc:mycelium:episode:{room}:{session_short_id}`. Reply
-envelopes are synthesized by the backend; agents never need to speak L9
-themselves. Negotiation and L9 routing are served by the CFN
-([ioc-cfn-svc](https://github.com/outshift-open/ioc-cfn-svc)) via its
-semantic-alignment API; agreements are auto-persisted to CFN shared memory
-(`cfn_persisted` on the consensus payload). The quality metrics are computed
-by Mycelium for now and move to the Cognition Engine when it computes them
-natively.
+are `exchange`, agreement commits as `commit:converged`, a failed negotiation as
+`commit:rejected`. Reply envelopes are synthesized by the backend from parsed
+agent replies; agents never speak L9 directly. On convergence the agreed
+`{issue: value}` map compiles into the room's shared `plan/tasks.md` and syncs
+as a `knowledge` memory. The quality metrics are computed by Mycelium.

@@ -39,9 +39,19 @@ dependencies = [
     "protobuf>=4.21.0",
     "rapidfuzz>=3.10.0",
     "questionary>=2.1.1",
+    "slim-bindings>=2,<3",
 ]
 
 [project.optional-dependencies]
+# The `engine` extra pulls the cognition-engine runtime's heavy deps onto the
+# host so a first-party engine (the SAO mediator) can run where the daemon runs
+# — NEGMAS for the SAO mechanism, litellm for the brain. Opt-in (`pip install
+# mycelium[engine]`) so the base CLI stays light; only hosts that run engines
+# pay the cost. See docs/START_HERE_ENGINES.md (Stage B).
+engine = [
+    "negmas>=0.11",
+    "litellm>=1.55",
+]
 dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=1.3.0",
@@ -114,13 +124,6 @@ addopts = [
 [tool.ty.src]
 exclude = [
     "src/mycelium_backend_client",
-    # Hermes-side plugin assets — staged into ~/.hermes/plugins/mycelium/
-    # at install time and executed by the hermes gateway process, which has
-    # ``aiohttp``, ``gateway.config``, and ``gateway.platforms.*`` available.
-    # Those modules are not part of mycelium-cli's dependency closure, so we
-    # exclude the asset tree from type checking here (analogous to how the
-    # openclaw plugin assets are TypeScript and live outside Python's reach).
-    "src/mycelium/integrations/hermes/assets",
 ]
 
 [tool.ty.environment]

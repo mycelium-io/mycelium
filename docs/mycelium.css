@@ -517,6 +517,11 @@ pre code {
   background: rgba(192,132,252,0.06);
   color: #d8b4fe;
 }
+.callout-warn .callout-bar { background: #d98a4a; }
+.callout-warn .callout-body {
+  background: rgba(217,138,74,0.07);
+  color: #e6b483;
+}
 .callout strong { color: inherit; }
 
 /* ── SCOPE BOX — "applies to / not for" audience note ── */

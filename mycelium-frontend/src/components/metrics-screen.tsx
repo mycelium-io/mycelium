@@ -104,7 +104,7 @@ function deriveAgents(c: CollectorMetrics): ByAgent[] {
     tokens: tokensByAgent[agent]?.total ?? 0,
     cost: costByAgent[agent] ?? 0,
     sessions: histByAgent[agent]?.calls ?? 0,
-    last: histByAgent[agent]?.last ?? "—",
+    last: histByAgent[agent]?.last ?? "-",
   })).sort((a, b) => b.tokens - a.tokens);
 }
 
@@ -459,7 +459,7 @@ function AgentActivityTable({ collector }: { collector: CollectorMetrics }) {
           <p className="mt-1.5 max-w-[640px] text-micro leading-relaxed text-text2">
             The collector is online but no OpenClaw agents are exporting traces. Wire it up with{" "}
             <span className="font-mono text-accent">mycelium adapter add openclaw --step=otel</span>{" "}
-            and send a message through one of your configured channels — per-agent rows appear here as soon as the first trace arrives.
+            and send a message through one of your configured channels. Per-agent rows appear here as soon as the first trace arrives.
           </p>
         </div>
       ) : (
@@ -660,7 +660,7 @@ function SpokeSitesTable({
                   }`}
                 >
                   <td className="py-1.5 pr-4 font-semibold text-text">{h.host}</td>
-                  <td className="py-1.5 pr-4 text-text2">{h.agents.join(", ") || "—"}</td>
+                  <td className="py-1.5 pr-4 text-text2">{h.agents.join(", ") || "-"}</td>
                   <td className="py-1.5 pr-4 text-right tabular text-text2">{h.span_count.toLocaleString()}</td>
                   <td className="py-1.5 pr-4 text-right tabular text-text2">{h.trace_count.toLocaleString()}</td>
                   <td className={`py-1.5 pr-4 text-right tabular ${h.error_count > 0 ? "text-red-400 font-semibold" : "text-dim"}`}>
@@ -729,12 +729,12 @@ export function MetricsScreen() {
 
   // KPIs
   const tokensTotal = cc.tokens?.total?.total;
-  const spendValue = collectorOn ? fmtUsd(cc.cost_usd?.total) : "—";
+  const spendValue = collectorOn ? fmtUsd(cc.cost_usd?.total) : "-";
 
   const errStats = errorRate(bc.cfn);
   const errIsZero = errStats.total === 0;
   const errPct = errStats.total > 0 ? errStats.rate * 100 : 0;
-  const errValue = errIsZero ? "—" : (errPct < 1 ? errPct.toFixed(2) + "%" : errPct.toFixed(1) + "%");
+  const errValue = errIsZero ? "-" : (errPct < 1 ? errPct.toFixed(2) + "%" : errPct.toFixed(1) + "%");
   const errAlert = errPct > 1;
 
   const llmCalls = (bc.llm?.calls || 0) + (bc.cfn?.calls || 0);
@@ -860,7 +860,7 @@ export function MetricsScreen() {
                 ["hit rate",
                   (bc.memory?.searches || 0) > 0
                     ? Math.round(100 * (bc.memory?.search_hits || 0) / (bc.memory!.searches!)) + "%"
-                    : "—",
+                    : "-",
                   { dim: !(bc.memory?.searches) }],
                 ["embeddings", fmtNum(bc.embeddings?.computed)],
               ]}
@@ -906,7 +906,7 @@ export function MetricsScreen() {
             <CfnStatusTile cfn={bc.cfn} />
           </div>
 
-          {/* Token / LLM strip — quiet, secondary */}
+          {/* Token / LLM strip: quiet, secondary */}
           <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
             <DiagTile
               title="MYCELIUM LLM (BACKEND)"
@@ -918,7 +918,7 @@ export function MetricsScreen() {
                 ["cache rate",
                   (bc.llm?.input_tokens || 0) > 0
                     ? Math.round(100 * (bc.llm?.cached_tokens || 0) / ((bc.llm?.input_tokens || 0) + (bc.llm?.cached_tokens || 0))) + "%"
-                    : "—",
+                    : "-",
                   { dim: !(bc.llm?.cached_tokens) }],
               ]}
             />

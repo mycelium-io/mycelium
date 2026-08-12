@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.services.filesystem import get_room_dir, parse_memory
+from app.services.l9 import SYSTEM_ACTOR_ID
 
 PLAN_DIR = "plan"
 DEFAULT_TASK_FILE = "tasks"  # plan/tasks.md
@@ -137,14 +138,6 @@ def _split_frontmatter(text: str) -> tuple[str, str]:
     return m.group(1), m.group(2)
 
 
-def _rewrite_body(path: Path, new_body: str) -> None:
-    text = path.read_text(encoding="utf-8")
-    fm, _ = _split_frontmatter(text)
-    if not new_body.endswith("\n"):
-        new_body += "\n"
-    path.write_text(fm + new_body, encoding="utf-8")
-
-
 def toggle_task(room_name: str, task_id: str, *, done: bool | None = None) -> PlanTask:
     """Toggle (or set) the checkbox on a task line.  Returns the updated task.
 
@@ -257,12 +250,15 @@ def write_plan_file(
     body: str,
     *,
     slug: str = DEFAULT_TASK_FILE,
-    updated_by: str = "CognitiveEngine",
+    updated_by: str = SYSTEM_ACTOR_ID,
+    version: int = 1,
 ) -> Path:
     """Overwrite ``plan/{slug}.md`` with a full markdown body.
 
     Frontmatter is managed by ``write_memory_file``; ``load_plan`` strips it on
     read. Used by the plan compiler to materialize a negotiation consensus.
+    ``version`` bumps on a re-compile so the memory-sync ``knowledge`` stream
+    can order writes and detect a stale base.
     """
     from app.services.filesystem import write_memory_file
 
@@ -274,6 +270,7 @@ def write_plan_file(
         body.rstrip("\n") + "\n",
         created_by=updated_by,
         updated_by=updated_by,
+        version=version,
     )
 
 
@@ -294,7 +291,7 @@ def set_title_from_body_if_absent(
     room_name: str,
     body: str,
     *,
-    updated_by: str = "CognitiveEngine",
+    updated_by: str = SYSTEM_ACTOR_ID,
 ) -> str | None:
     """Set ``plan/title.md`` from the body's first heading IFF title is absent.
 

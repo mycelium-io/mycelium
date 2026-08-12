@@ -55,8 +55,7 @@ _CURSOR_AGENTS_ASSET = "AGENTS.md"
 
 #: Section markers used to embed the mycelium block inside the workspace's
 #: AGENTS.md without clobbering any other content the user / another tool
-#: has placed there. Mirrors how OpenClaw's channel config protects per-
-#: vendor regions of ``~/.openclaw/openclaw.json``.
+#: has placed there.
 _AGENTS_SECTION_START = "<!-- mycelium:start -->"
 _AGENTS_SECTION_END = "<!-- mycelium:end -->"
 

@@ -1,7 +1,0 @@
-node_modules/
-package-lock.json
-
-# The compiled plugin is committed (and shipped in the wheel) so installs don't
-# require a Node build at install time — overrides the repo-root `dist/` ignore.
-!dist/
-!dist/**

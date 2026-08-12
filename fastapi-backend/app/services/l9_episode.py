@@ -9,7 +9,7 @@ One :class:`EpisodeState` accompanies each ``_CfnRoundState`` in
 
 1. Builds the L9 envelopes that ride inside coordination message content
    (ticks are ``exchange``, the consensus is ``commit:converged`` /
-   ``commit:abort``) and threads causality: a tick's envelope parents the
+   ``commit:rejected``) and threads causality: a tick's envelope parents the
    agent's prior reply, a reply parents the tick it answers, the consensus
    parents the final round's replies. Agents don't speak L9 themselves:
    the backend synthesizes reply envelopes from the parsed reply dicts, so
@@ -20,8 +20,7 @@ One :class:`EpisodeState` accompanies each ``_CfnRoundState`` in
    at consensus: MPC (mean final confidence), GAR (genuine agreement
    ratio: whose confidence moved toward the outcome relative to their
    first stated confidence), SCR (social compliance ratio: accepts made
-   by deference), and provenance_weight = (1 - SCR) * GAR. Interim: these
-   move to the Cognition Engine when it computes them natively.
+   by deference), and provenance_weight = (1 - SCR) * GAR.
 
 3. Writes the full episode record to the parent room's memory under
    ``log/episodes/{short_id}.md`` at close: git-shareable and indexed by
@@ -81,6 +80,11 @@ class EpisodeState:
     workspace_id: str
     mas_id: str
     agents: list[str]
+    # The registered engine mediating this episode (e.g. "aligner"). Signs the
+    # engine-authored envelopes — intent, ticks, consensus — so the wire carries
+    # the engine's real identity, not the generic system actor. Empty → falls
+    # back to the system actor (an episode opened outside an engine context).
+    engine_handle: str = ""
     intent_id: str = ""
     # Ordered record of every envelope in the episode (dicts, wire shape).
     messages: list[dict[str, Any]] = field(default_factory=list)
@@ -109,8 +113,14 @@ def open_episode(
     mas_id: str,
     agents: list[str],
     joined_intents: str,
+    engine_handle: str = "",
 ) -> EpisodeState:
-    """Open the episode: mint URNs and record the ``intent`` envelope."""
+    """Open the episode: mint URNs and record the ``intent`` envelope.
+
+    ``engine_handle`` is the registered engine mediating the episode; it signs
+    the intent/tick/consensus envelopes so the wire carries the engine's real
+    identity. Empty falls back to the system actor.
+    """
     ep = EpisodeState(
         episode=l9.episode_urn(parent_room, short_id),
         topic=l9.topic_urn(parent_room),
@@ -119,11 +129,13 @@ def open_episode(
         workspace_id=workspace_id,
         mas_id=mas_id,
         agents=agents[:],
+        engine_handle=engine_handle,
     )
     intent = l9.build_envelope(
         kind=Kind.intent,
         subkind="mission",
         episode=ep.episode,
+        sender=engine_handle or l9.SYSTEM_ACTOR_ID,
         recipients=agents,
         topic=ep.topic,
         workspace_id=workspace_id or None,
@@ -150,6 +162,7 @@ def record_tick(
         kind=Kind.exchange,
         episode=ep.episode,
         parents=[parent] if parent else [],
+        sender=ep.engine_handle or l9.SYSTEM_ACTOR_ID,
         recipients=[handle],
         topic=ep.topic,
         payload_type="tick",
@@ -205,7 +218,7 @@ def record_reply(
         parents=[parent] if parent else [],
         sender=handle,
         sender_role="agent",
-        recipients=[l9.SYSTEM_ACTOR_ID],
+        recipients=[ep.engine_handle or l9.SYSTEM_ACTOR_ID],
         topic=ep.topic,
         payload_type="reply",
         payload_data=payload_data,
@@ -315,16 +328,17 @@ def build_consensus_envelope(
     assignments: dict[str, Any],
     metrics: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    """The ``commit`` envelope closing the episode (converged or abort)."""
+    """The ``commit`` envelope closing the episode (converged or rejected)."""
     parents = sorted(ep.last_reply_ids.values()) or ([ep.intent_id] if ep.intent_id else [])
     payload: dict[str, Any] = {"assignments": assignments}
     if metrics:
         payload["metrics"] = metrics
     env = l9.build_envelope(
         kind=Kind.commit,
-        subkind="abort" if broken else "converged",
+        subkind="rejected" if broken else "converged",
         episode=ep.episode,
         parents=parents,
+        sender=ep.engine_handle or l9.SYSTEM_ACTOR_ID,
         recipients=ep.agents,
         topic=ep.topic,
         workspace_id=ep.workspace_id or None,

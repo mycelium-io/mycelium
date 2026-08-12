@@ -14,7 +14,7 @@ interface Props {
 /**
  * Visual treatment for room and session identifiers.
  *
- * Just the name in mono — context (page, crumb position, sidebar header)
+ * Just the name in mono; context (page, crumb position, sidebar header)
  * already tells the reader whether it's a room or a session. The `kind`
  * prop drives the title attribute for accessibility but no visual marker.
  */

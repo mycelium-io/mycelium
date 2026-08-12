@@ -2,9 +2,14 @@
 # Copyright 2026 Mycelium Contributors
 
 from pathlib import Path
+from typing import Literal
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Where a registered engine runs its NEGMAS drive. Paired with the CLI's
+# ``engine.runtime`` — flip both together.
+EngineRuntime = Literal["backend", "host"]
 
 # Config file search order: local .env first, then global ~/.mycelium/.env
 _env_files = [".env"]
@@ -16,13 +21,6 @@ if _global_env.exists():
 class Settings(BaseSettings):
     # OpenAPI docs
     OPENAPI_URL: str = "/openapi.json"
-
-    # Database — single AgensGraph instance for SQL + graph + vector
-    DATABASE_URL: str = "postgresql+asyncpg://postgres@localhost:5432/mycelium"
-    EXPIRE_ON_COMMIT: bool = False
-
-    # Graph DB — sync connection for openCypher queries (same DB, sync driver)
-    GRAPH_DB_URL: str = "postgresql://postgres@localhost:5432/mycelium"
 
     # Frontend
     FRONTEND_URL: str = "http://localhost:3000"
@@ -38,55 +36,6 @@ class Settings(BaseSettings):
     LLM_API_KEY: str | None = None
     LLM_BASE_URL: str | None = None  # optional, for custom endpoints (ollama, vllm, etc.)
 
-    # Coordination
-    # How long to wait for additional agents to join after the first agent joins
-    # a session before CognitiveEngine fires tick-0 (starts negotiation).
-    COORDINATION_JOIN_WINDOW_SECONDS: int = 30
-    # Each subsequent agent join pushes the deadline forward by this many
-    # seconds (up to COORDINATION_JOIN_WINDOW_MAX_SECONDS total). Mirrors the
-    # round-watchdog extension pattern: as long as new joins keep arriving the
-    # window stays open, but a hard cap bounds total wait time. Set to 0 to
-    # disable extension (fall back to fixed window).
-    COORDINATION_JOIN_WINDOW_EXTENSION_SECONDS: int = 30
-    COORDINATION_JOIN_WINDOW_MAX_SECONDS: int = 180
-    # Per-round timeout: how long CognitiveEngine waits for an agent to reply
-    # during a negotiation round before falling back to the safe default.
-    COORDINATION_TICK_TIMEOUT_SECONDS: int = 30
-
-    # Maximum SAO rounds per session. Passed to CFN /start as n_steps.
-    # CFN's auto-compute formula assumes Boulware concession that LLM callback
-    # agents don't exhibit; a low fixed cap keeps unconverged sessions from
-    # burning rounds indefinitely. 0 = fall through to CFN auto-compute.
-    NEGOTIATION_N_STEPS: int = 20
-
-    # CFN MAS config (set on the MAS at creation via the mgmt plane). These
-    # tame the retry/timeout behaviour that otherwise makes a single session
-    # run several times the rounds you'd expect:
-    #   retry_max_attempts: how many times the cognition engine may reject an
-    #     agreement (alignment score below the intervention threshold) and
-    #     restart negotiation from round 1. CFN default is 3; we default to 1
-    #     (take the first agreement; mycelium's own round loop + plan compiler
-    #     handle quality) for predictable timing.
-    #   validation_score_intervention: the alignment score below which the
-    #     engine intervenes/retries. Lower it if LLM-callback agents can't
-    #     reach the CFN default (0.6).
-    CFN_RETRY_MAX_ATTEMPTS: int = 1
-    CFN_VALIDATION_SCORE_INTERVENTION: float = 0.6
-
-    # Per-call HTTP timeout (seconds) for CFN start/decide: a DEAD-CONNECTION
-    # BACKSTOP, not a negotiation control. The boundary:
-    #   * Agent responsiveness is mycelium's round watchdog
-    #     (_CFN_ROUND_TIMEOUT_SECS), which restarts per agent reply so
-    #     single-threaded/serialized agent runtimes get a fresh budget each
-    #     time. That timer runs *before* /decide; by the time we call the CFN,
-    #     all replies are collected, so agent slowness never reaches this one.
-    #   * The CFN owns the negotiation-compute timeout and returns a structured
-    #     ``status: "timeout"`` we handle cleanly. This HTTP timeout must sit
-    #     comfortably ABOVE the CFN's internal timeout so that status wins over
-    #     an opaque transport error; it should essentially never fire.
-    # (Confirm the CFN's internal negotiation timeout is < this at smoke-test.)
-    CFN_DECIDE_TIMEOUT_SECONDS: int = 600
-
     @field_validator("LLM_BASE_URL", mode="before")
     @classmethod
     def _coerce_base_url(cls, v: object) -> object:
@@ -94,13 +43,6 @@ class Settings(BaseSettings):
         "" through to httpx which rejects it as UnsupportedProtocol."""
         if isinstance(v, str) and v.strip() == "":
             return None
-        return v
-
-    @field_validator("COORDINATION_TICK_TIMEOUT_SECONDS", mode="before")
-    @classmethod
-    def _coerce_tick_timeout(cls, v: object) -> object:
-        if v == "" or v is None:
-            return 30
         return v
 
     # Filesystem-native memory storage
@@ -115,31 +57,62 @@ class Settings(BaseSettings):
     EMBEDDING_MODEL: str = "BAAI/bge-small-en-v1.5"
     EMBEDDING_DIMENSIONS: int = 384
 
-    # IoC CFN management plane (optional — registration skipped if unset)
-    CFN_MGMT_URL: str | None = None
+    # SLIM fabric — the coordination bus. Room provisioning is
+    # best-effort: when no node is reachable at this endpoint the backend simply
+    # skips channel provisioning, so memory/CRUD keep working without a fabric.
+    SLIM_NODE_ENDPOINT: str = "http://127.0.0.1:46357"
+    # Default SLIM org/workspace segment for a room whose meta carries no
+    # workspace_id (org=workspace, namespace=room, app=agent).
+    SLIM_WORKSPACE: str = "mycelium"
+    # Master toggle: set false to disable SLIM room provisioning outright.
+    SLIM_ENABLED: bool = True
 
-    # IoC CFN service (ioc-cfn-svc, required for session negotiation):
-    # the semantic-alignment API and native L9 routing.
-    CFN_SVC_URL: str = ""
+    # SIEP aligner — the first cognition engine. Dormant by default:
+    # nothing runs until the reserved handle is @-summoned on a room channel.
+    # A reserved handle is how a summon of the engine is told apart from an
+    # @-mention of a normal teammate.
+    ALIGNER_HANDLE: str = "aligner"
+    # MPC at/above this converges; below rejects (mirrors the old CFN
+    # validation-intervention default of 0.6).
+    ALIGNER_THRESHOLD: float = 0.6
+    # Driver round cap — a hard bound so the loop always terminates.
+    ALIGNER_MAX_ROUNDS: int = 3
+    # Per-round wait for participant replies before scoring what arrived.
+    ALIGNER_ROUND_TIMEOUT_S: float = 30.0
+    # How often the driver polls the transcript for round replies.
+    ALIGNER_POLL_INTERVAL_S: float = 0.2
+    # Mediator — hard cap on NEGMAS SAO steps (one agent turn each) so
+    # the negotiation always terminates even if agreement is never reached. Set
+    # well above the participant count so several proposer rotations can happen
+    # (spike used 20).
+    ALIGNER_MEDIATOR_MAX_STEPS: int = 20
+    # Mediator brain runtime — the cognitive engine behind the SAO
+    # mediator, an *internal* agent — always a persistent, optionally
+    # OpenShell-sandboxed `pi -p --session <id> --mode json` session that gives the
+    # internal agent real memory across SAO rounds (the anti-theatre property).
+    # This is ONLY mycelium's own cognition runtime — user/participant agent
+    # runtimes (claude_code, cursor, …) are untouched; Pi is never imposed on them.
+    # Path/name of the `pi` binary the mediator brain runs.
+    ALIGNER_PI_BINARY: str = "pi"
+    # Wrap each pi session in an OpenShell sandbox when true. Off by default:
+    # `openshell` may not be installed and the sandbox path is a live-validation
+    # step — the wrap is a config flip, not a code change (pi_brain._sandbox_wrap).
+    ALIGNER_PI_OPENSHELL: bool = False
+    # Per-turn wall-clock bound (seconds) on one pi brain call before it is killed.
+    ALIGNER_PI_TIMEOUT_S: float = 120.0
+    # Where a registered `engine` (kind aligner) runs its NEGMAS drive — selects
+    # the engine runtime. "backend" (default):
+    # this backend owns the run via its summon seam. "host": the host daemon owns
+    # it (the engine runs where `pi` lives), so `handle_summon` must NOT also fire
+    # for a registered engine or the negotiation double-runs. The reserved
+    # ALIGNER_HANDLE fallback always runs backend-side (it has no host manifest).
+    # Flip this in tandem with the CLI's `engine.runtime` — they're a pair.
+    ENGINE_RUNTIME: EngineRuntime = "backend"
 
-    # Post L9 knowledge envelopes to the CFN's /api/l9/messages endpoint
-    # (knowledge query at session start, knowledge write after consensus).
-    # Requires a knowledge CE registered with the CFN; off until then.
-    L9_CFN_ENABLED: bool = False
-
-    # Workspace ID in the CFN mgmt plane (set by mycelium install)
-    WORKSPACE_ID: str = ""
-
-    # Default MAS ID — fallback when ingest requests omit mas_id and room_name
-    MAS_ID: str = ""
-
-    # Knowledge ingest control surface. Master switch + per-payload caps.
-    MYCELIUM_INGEST_ENABLED: bool = True
-    MYCELIUM_INGEST_MAX_INPUT_TOKENS: int = 50_000
-    MYCELIUM_INGEST_DEDUPE_TTL_SECONDS: int = 300
-    # Skip ingest for trivially short content. Channel posts like "ack" or
-    # a single emoji produce KG noise without value. Set 0 to ingest all.
-    MYCELIUM_INGEST_MIN_CONTENT_CHARS: int = 32
+    @field_validator("ENGINE_RUNTIME", mode="before")
+    @classmethod
+    def _normalize_engine_runtime(cls, v: object) -> object:
+        return v.strip().lower() if isinstance(v, str) else v
 
     model_config = SettingsConfigDict(
         env_file=tuple(_env_files),
@@ -152,24 +125,3 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
-
-
-class LLMUnavailableError(RuntimeError):
-    """Raised when LLM is required but not configured."""
-
-    def __init__(self) -> None:
-        model = settings.LLM_MODEL
-        super().__init__(
-            f"LLM unavailable — no API key configured for {model}. "
-            f"Set LLM_API_KEY (and optionally LLM_BASE_URL) in your .env."
-        )
-
-
-def require_llm() -> None:
-    """Raise LLMUnavailableError if LLM is not configured.
-
-    Ollama and other local providers (via LLM_BASE_URL) don't need an API key,
-    so we only error when there's no key AND no custom base URL.
-    """
-    if not settings.LLM_API_KEY and not settings.LLM_BASE_URL:
-        raise LLMUnavailableError

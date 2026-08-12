@@ -29,7 +29,7 @@ from mycelium.error_handler import print_error
 
 app = typer.Typer(
     help=(
-        "Manage the mycelium-daemon — the userlevel service that dispatches "
+        "Manage the mycelium-daemon: the userlevel service that dispatches "
         "@handle mentions to Claude Code agents."
     ),
     no_args_is_help=True,
@@ -39,7 +39,7 @@ console = Console()
 
 def _format_age(ts: float | None) -> str:
     if not ts:
-        return "—"
+        return "-"
     delta = time.time() - float(ts)
     if delta < 60:
         return f"{int(delta)}s ago"
@@ -98,13 +98,13 @@ def status(ctx: typer.Context) -> None:
                 f"result={last.get('result')})"
             )
         else:
-            console.print("  last run: —")
+            console.print("  last run: never")
 
         console.print(f"  errors:   {errs_hr} in last hour")
         if last_err:
             console.print(
                 f"            [red]{last_err.get('where')}[/red]: "
-                f"{last_err.get('type')} — {last_err.get('msg')}"
+                f"{last_err.get('type')}: {last_err.get('msg')}"
             )
     except typer.Exit:
         raise
@@ -128,7 +128,7 @@ def subscribe(
 
     Writes the room into ``~/.mycelium/daemon.toml`` and sends SIGHUP
     so the daemon hot-reloads its subscriptions without restarting.
-    Idempotent — adding the same room twice is a no-op.
+    Idempotent: adding the same room twice is a no-op.
     """
     try:
         cfg = DaemonConfig.load()
@@ -291,7 +291,7 @@ def run(
 ) -> None:
     """Run the daemon directly without going through the service manager.
 
-    Useful for development and debugging — logs stream to stdout, signals
+    Useful for development and debugging: logs stream to stdout, signals
     (Ctrl-C) shut the daemon down cleanly.
     """
     try:

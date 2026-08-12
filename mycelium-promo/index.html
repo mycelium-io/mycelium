@@ -523,7 +523,7 @@
         color: var(--accent);
         padding: 2px 6px; border-radius: 3px;
       }
-      /* Typewriter — words start invisible, GSAP fades them in one by one */
+      /* Typewriter: words start invisible, GSAP fades them in one by one */
       .word { opacity: 0; }
       .chat-msg .text .mention.julia { background: rgba(93,212,224,0.16); color: var(--accent); }
       .chat-msg .text .mention.selina { background: rgba(192,132,252,0.18); color: var(--purple); }
@@ -661,7 +661,7 @@
         <div class="terminal" style="max-width: 1500px; align-self: center; width: 100%;">
           <div class="term-bar">
             <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
-            <span class="title">~ — install</span>
+            <span class="title">~ · install</span>
           </div>
           <div class="term-body">
             <div id="s2-l1" class="term-line cmd"><span class="prompt">$ </span>curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash</div>
@@ -682,18 +682,18 @@
         <div class="terminal" style="max-width: 1500px; align-self: center; width: 100%;">
           <div class="term-bar">
             <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
-            <span class="title">~ — mycelium install</span>
+            <span class="title">~ · mycelium install</span>
           </div>
           <div class="term-body">
             <div id="s3-l1" class="term-line cmd"><span class="prompt">$ </span>mycelium install</div>
             <div id="s3-l2" class="term-line"><b>Installing Mycelium...</b></div>
-            <div id="s3-l3" class="term-line cyan">  ? LLM for CognitiveEngine</div>
-            <div id="s3-l4" class="term-line dim">    ▸ Anthropic — claude-sonnet-4-6</div>
+            <div id="s3-l3" class="term-line cyan">  ? LLM for the aligner</div>
+            <div id="s3-l4" class="term-line dim">    ▸ Anthropic · claude-sonnet-4-6</div>
             <div id="s3-l5" class="term-line ok">  ✓ anthropic/claude-sonnet-4-6</div>
             <div id="s3-l6" class="term-line dim">  ── Starting services ──</div>
-            <div id="s3-l7" class="term-line ok">  ✓ mycelium-db        healthy</div>
+            <div id="s3-l7" class="term-line ok">  ✓ mycelium-slim      healthy</div>
             <div id="s3-l8" class="term-line ok">  ✓ mycelium-backend   healthy</div>
-            <div id="s3-l9" class="term-line ok">  ✓ ioc-cfn-mgmt-plane healthy</div>
+            <div id="s3-l9" class="term-line dim">  ▸ SLIM node on 127.0.0.1:46357</div>
             <div id="s3-l10" class="term-line ok">  ✓ mycelium-frontend  → http://localhost:3000</div>
             <div id="s3-l11" class="term-line cyan">  Mycelium is ready.</div>
           </div>
@@ -706,22 +706,22 @@
         <div id="s4-term" class="terminal" style="max-width: 1500px; align-self: center; width: 100%;">
           <div class="term-bar">
             <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
-            <span class="title">~ — mycelium</span>
+            <span class="title">~ · mycelium</span>
           </div>
           <div class="term-body">
             <div id="s4-l1" class="term-line cmd"><span class="prompt">$ </span>mycelium room create design-review</div>
             <div id="s4-l2" class="term-line ok">  ✓ Room 'design-review' created</div>
             <div id="s4-l3" class="term-line cmd"><span class="prompt">$ </span>mycelium room use design-review</div>
             <div id="s4-l4" class="term-line ok">  ✓ Active room: design-review</div>
-            <div id="s4-l5" class="term-line cmd"><span class="prompt">$ </span>mycelium memory set decisions/db "PostgreSQL with pgvector"</div>
-            <div id="s4-l6" class="term-line ok">  ✓ wrote decisions/db (v1)</div>
+            <div id="s4-l5" class="term-line cmd"><span class="prompt">$ </span>mycelium memory set decisions/scope "Ship the reduced-scope Q3 spec first"</div>
+            <div id="s4-l6" class="term-line ok">  ✓ wrote decisions/scope (v1)</div>
           </div>
         </div>
         <div id="s4-ui" class="ui-window" style="position: absolute; left: 60px; right: 60px; top: 200px;">
           <div class="ui-topbar">
             <span class="brand">mycelium</span>
             <span class="tab active">rooms</span>
-            <span class="tab">graph</span>
+            <span class="tab">episodes</span>
             <span class="tab">settings</span>
           </div>
           <div class="ui-subnav">
@@ -729,19 +729,19 @@
           </div>
           <div class="ui-body">
             <div class="ui-rail">
-              <div class="label">Sessions</div>
-              <div class="item active">— no sessions yet —</div>
+              <div class="label">Episodes</div>
+              <div class="item active">none yet</div>
             </div>
             <div class="ui-pane">
               <div class="pane-header">Room activity</div>
               <div class="event-stream">
-                <div class="event-row"><span class="ts">12:04:17</span><span class="who">julia</span><span class="body"><span class="pill">memory.set</span>decisions/db → "PostgreSQL with pgvector"</span></div>
+                <div class="event-row"><span class="ts">12:04:17</span><span class="who">julia</span><span class="body"><span class="pill">memory.set</span>decisions/scope → "Ship the reduced-scope Q3 spec first"</span></div>
               </div>
             </div>
             <div class="ui-memory">
               <div class="mem-header">Memory</div>
               <div class="mem-list">
-                <div class="mem-item"><span class="key">decisions/db</span><div>PostgreSQL with pgvector</div></div>
+                <div class="mem-item"><span class="key">decisions/scope</span><div>Ship the reduced-scope Q3 spec first</div></div>
               </div>
             </div>
           </div>
@@ -754,28 +754,28 @@
         <div class="terminal" style="max-width: 1500px; align-self: center; width: 100%;">
           <div class="term-bar">
             <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
-            <span class="title">~ — mycelium agent</span>
+            <span class="title">~ · mycelium agent</span>
           </div>
           <div class="term-body">
-            <div id="s5-l1" class="term-line cmd"><span class="prompt">$ </span>mycelium agent add</div>
-            <div id="s5-l2" class="term-line ok">  ✓ discovered 2 OpenClaw agents</div>
-            <div id="s5-l3" class="term-line dim">  ▸ select to wire into 'design-review':</div>
-            <div id="s5-l4" class="term-line dim">    [✓] julia-agent     [✓] selina-agent</div>
-            <div id="s5-l5" class="term-line ok">  ✓ openclaw adapter ready</div>
-            <div id="s5-l6" class="term-line cyan">  Registered @julia-agent, @selina-agent.</div>
+            <div id="s5-l1" class="term-line cmd"><span class="prompt">$ </span>mycelium agent create julia-agent --adapter claude_code</div>
+            <div id="s5-l2" class="term-line ok">  ✓ Registered @julia-agent (claude_code)</div>
+            <div id="s5-l3" class="term-line cmd"><span class="prompt">$ </span>mycelium agent create selina-agent --adapter claude_code</div>
+            <div id="s5-l4" class="term-line ok">  ✓ Registered @selina-agent (claude_code)</div>
+            <div id="s5-l5" class="term-line cmd"><span class="prompt">$ </span>mycelium engine create aligner --kind aligner</div>
+            <div id="s5-l6" class="term-line ok">  ✓ Registered @aligner: Pi + NEGMAS mediator</div>
             <div id="s5-l7" class="term-line dim">  → address them by @handle from the mycelium room</div>
           </div>
         </div>
       </div>
 
-      <!-- ── Scene 5b: Mycelium room — @-mention to invoke ──── -->
+      <!-- ── Scene 5b: Mycelium room, @-mention to invoke ──── -->
       <div id="s5b" class="clip scene" data-start="52.2" data-duration="9.8" data-track-index="6">
         <div class="scene-title"><span class="num">05</span><span class="label">@-mention from the room</span></div>
         <div id="s5b-win" class="ui-window" style="position: absolute; left: 60px; right: 60px; top: 200px; bottom: 60px; height: auto;">
           <div class="ui-topbar">
             <span class="brand">mycelium</span>
             <span class="tab active">rooms</span>
-            <span class="tab">graph</span>
+            <span class="tab">episodes</span>
             <span class="tab">settings</span>
           </div>
           <div class="ui-subnav">
@@ -785,11 +785,12 @@
           </div>
           <div class="ui-body">
             <div class="ui-rail">
-              <div class="label">Agents · 2</div>
+              <div class="label">Agents · 3</div>
               <div class="item"><span class="sigil">@</span>julia-agent</div>
               <div class="item"><span class="sigil">@</span>selina-agent</div>
-              <div class="label" style="margin-top: 32px;">Sessions</div>
-              <div class="item dim">— no sessions yet —</div>
+              <div class="item"><span class="sigil">@</span>aligner</div>
+              <div class="label" style="margin-top: 32px;">Episodes</div>
+              <div class="item dim">none yet</div>
             </div>
           <div class="ui-pane">
             <div class="pane-header">Room activity</div>
@@ -798,7 +799,7 @@
                 <div class="chat-avatar user">AL</div>
                 <div class="body">
                   <div class="meta"><span class="name">alex</span><span class="time">today at 12:08</span></div>
-                  <div class="text">hey <span class="mention julia">@julia-agent</span> — let's lock the Q3 launch plan with <span class="mention selina">@selina-agent</span></div>
+                  <div class="text">hey <span class="mention julia">@julia-agent</span>, let's lock the Q3 launch plan with <span class="mention selina">@selina-agent</span></div>
                 </div>
               </div>
               <div id="s5b-typing" class="chat-msg">
@@ -832,7 +833,7 @@
                 </div>
                 <div class="body">
                   <div class="meta"><span class="name">julia-agent</span><span class="agent-badge">AGENT</span><span class="time">12:08</span></div>
-                  <div class="text">On it. Spinning up a coordination session with <span class="mention selina">@selina-agent</span> here. I'll report back with the plan.</div>
+                  <div class="text">On it. Posting my position and summoning <span class="mention selina">@aligner</span> to converge with <span class="mention selina">@selina-agent</span>. I'll report back with the plan.</div>
                 </div>
               </div>
             </div>
@@ -844,7 +845,7 @@
         </div>
       </div>
 
-      <!-- ── Scene 6: Session UI (swim lanes) ──────────── -->
+      <!-- ── Scene 6: Episode UI, aligner drives NEGMAS rounds ─── -->
       <div id="s6" class="clip scene" data-start="61.6" data-duration="24" data-track-index="7">
         <div class="scene-title"><span class="num">06</span><span class="label">Agents coordinate</span></div>
         <div id="s6-ui" class="ui-window" style="position: absolute; left: 80px; right: 80px; top: 160px; bottom: 80px; height: auto;">
@@ -855,13 +856,13 @@
           <div class="ui-subnav">
             <span><span class="sigil">rm:</span>design-review</span>
             <span class="crumb-sep">/</span>
-            <span><span class="sigil">ss:</span>sprint-plan-3a8</span>
+            <span><span class="sigil">ep:</span>q3-launch-3a8</span>
           </div>
           <div class="ui-body">
             <div class="ui-rail">
-              <div class="label">Sessions</div>
+              <div class="label">Episodes</div>
               <div class="item">archive</div>
-              <div class="item active"><span class="square-dot filled" style="color: var(--accent);"></span>sprint-plan-3a8</div>
+              <div class="item active"><span class="square-dot filled" style="color: var(--accent);"></span>q3-launch-3a8</div>
             </div>
 
             <!-- Main session pane -->
@@ -869,9 +870,9 @@
               <!-- Header row -->
               <div id="s6-header" class="sess-header">
                 <div class="col-l">
-                  <div class="sess-label">Session ID</div>
-                  <div class="sess-id">sprint-plan-3a8</div>
-                  <div class="sess-meta">2 agents · 11 events</div>
+                  <div class="sess-label">Episode</div>
+                  <div class="sess-id">q3-launch-3a8</div>
+                  <div class="sess-meta">aligner · 2 agents · 11 events</div>
                 </div>
                 <div style="text-align: center;">
                   <div class="sess-label">Round</div>
@@ -888,7 +889,7 @@
 
               <!-- Swim lanes -->
               <div class="sess-section">
-                <div class="title">Swim Lanes · Agent × Round</div>
+                <div class="title">NEGMAS rounds · aligner brokers · Agent × Round</div>
                 <div class="sess-table">
                   <!-- Round axis -->
                   <div class="row head">
@@ -1019,7 +1020,7 @@
                   <span class="glyph glyph-accept"></span>
                   <span id="s6-consensus-label" class="label">CONSENSUS · ROUND 05</span>
                 </div>
-                <div id="s6-consensus-plan" class="plan">Agreement reached — handing off to the plan compiler.</div>
+                <div id="s6-consensus-plan" class="plan">NEGMAS converged. The aligner hands the agreement to the plan compiler.</div>
               </div>
             </div>
 
@@ -1075,7 +1076,7 @@
                 </div>
                 <div id="s6-ev-11" class="eventlog-row consensus">
                   <span class="t">12:09:39</span><span class="r">R05</span>
-                  <span class="a">CognitiveEngine</span><span class="glyph glyph-accept"></span><span class="lab">consensus</span>
+                  <span class="a">aligner</span><span class="glyph glyph-accept"></span><span class="lab">consensus</span>
                 </div>
               </div>
             </div>
@@ -1097,7 +1098,7 @@
             <span><span class="sigil">pl:</span>plan/tasks.md</span>
           </div>
           <div class="ui-body" style="display: flex; flex-direction: column;">
-            <div class="pane-header">Shared Plan · compiled from sprint-plan-3a8</div>
+            <div class="pane-header">Shared Plan · compiled from episode q3-launch-3a8</div>
             <div style="flex: 1; display: flex; align-items: center; justify-content: center; padding: 40px 80px;">
               <div id="s6b-plan" class="plan-file" style="width: 100%; max-width: 1180px;">
                 <div class="file-bar">
@@ -1133,7 +1134,7 @@
       <!-- ── Scene 7: Outro ────────────────────────────── -->
       <div id="outro" class="clip scene outro" data-start="94" data-duration="6" data-track-index="9">
         <div class="wordmark">mycelium</div>
-        <div class="ready">negotiate · plan · work — together</div>
+        <div class="ready">negotiate · plan · work · together</div>
         <div class="url">mycelium-io.github.io/mycelium</div>
       </div>
     </div>
@@ -1247,7 +1248,7 @@
       tl.from('#s5b-m1 .body',        { x: 20, opacity: 0, duration: 0.5, ease: 'power2.out' }, 53.7);
       // ~2.4s reading time on m1 (the user's prompt) before zooming in
       tl.to('#s5b-win .event-stream', { scale: 1.3, duration: 0.8, ease: 'power2.inOut' }, 56.6);
-      // Chrome fades — leaves the message floating on the canvas bg
+      // Chrome fades, leaving the message floating on the canvas bg
       tl.to('#s5b-win', {
         backgroundColor: 'rgba(0,0,0,0)',
         borderColor: 'rgba(0,0,0,0)',
@@ -1265,7 +1266,7 @@
         borderRadius: '14px',
         duration: 0.7,
       }, 57.4);
-      // Agent typing indicator — appears on the now-bare bg
+      // Agent typing indicator: appears on the now-bare bg
       tl.set('#s5b-typing', { display: 'flex' }, 58.2);
       tl.from('#s5b-typing .chat-avatar', { scale: 0, opacity: 0, duration: 0.3, ease: 'back.out(2)' }, 58.2);
       tl.from('#s5b-typing .body',        { opacity: 0, duration: 0.3 }, 58.3);
@@ -1275,11 +1276,11 @@
       tl.set('#s5b-m2',      { display: 'flex' }, 59.1);
       tl.from('#s5b-m2 .chat-avatar', { scale: 0, opacity: 0, duration: 0.3, ease: 'back.out(2)' }, 59.1);
       tl.from('#s5b-m2 .meta',        { opacity: 0, duration: 0.3 }, 59.2);
-      // Typewriter — ~17 words at 0.075s stagger ≈ 1.3s
+      // Typewriter: ~17 words at 0.075s stagger ≈ 1.3s
       tl.to('#s5b-m2 .text .word', { opacity: 1, duration: 0.05, stagger: 0.075 }, 59.4);
       // ~1.5s hold so viewer can finish reading the agent reply
 
-      // ── Scene 6: Session UI swim lanes (61.6–85.6s) ──
+      // ── Scene 6: Episode UI, aligner drives NEGMAS rounds (61.6–85.6s) ──
       tl.set('#s6-consensus', { display: 'none' }, 61.6);
       tl.set('#s6-offer',     { display: 'none' }, 61.6);
 
@@ -1457,7 +1458,7 @@
 
       tl.from('#s6-ev-11', { x: 30, opacity: 0, duration: 0.4 }, 82.1);
 
-      // ─── Consensus beat — agreement locks, then hands off to the plan compiler ───
+      // ─── Consensus beat: agreement locks, then hands off to the plan compiler ───
       // Title swaps from "Current Offer" → "Agreement · compiling plan" with a green flip.
       // Consensus is a transition here, not the finale: the next scene is the plan.
       tl.to('#s6-offer-title', { opacity: 0, duration: 0.2 }, 81.3);
@@ -1472,7 +1473,7 @@
       // Offer values lock in green, staggered
       tl.to('#s6-offer .offer-val', { color: 'var(--green)', duration: 0.5, stagger: 0.08 }, 81.4);
 
-      // Header STATE flips NEGOTIATING → CONSENSUS in green — a beat, not a climax
+      // Header STATE flips NEGOTIATING → CONSENSUS in green: a beat, not a climax
       tl.to('#s6-state', { opacity: 0, duration: 0.2 }, 81.5);
       tl.set('#s6-state', { textContent: 'CONSENSUS', className: 'sess-state consensus' }, 81.7);
       tl.fromTo('#s6-state',
@@ -1492,7 +1493,7 @@
       tl.from('#s6b-ui .ui-topbar', { y: -10, opacity: 0, duration: 0.5 }, 86.5);
       tl.from('#s6b-ui .ui-subnav', { y: -10, opacity: 0, duration: 0.5 }, 86.65);
       tl.from('#s6b-ui .pane-header', { opacity: 0, duration: 0.4 }, 86.8);
-      // The plan file materializes — frame first, then checklist items populate
+      // The plan file materializes: frame first, then checklist items populate
       tl.from('#s6b-plan', { y: 24, opacity: 0, scale: 0.97, duration: 0.6, ease: 'power3.out' }, 87.1);
       tl.from('#s6b-plan .file-bar', { opacity: 0, duration: 0.35 }, 87.4);
       tl.from('#s6b-plan .pl-head', { x: -10, opacity: 0, duration: 0.4 }, 87.6);
@@ -1500,7 +1501,7 @@
       planTasks.forEach((sel, i) => {
         tl.from(sel, { x: -14, opacity: 0, duration: 0.35, ease: 'power2.out' }, 87.9 + i * 0.45);
       });
-      // The team starts working the plan — first task flips to - [x]
+      // The team starts working the plan: first task flips to - [x]
       tl.to('#s6b-t1 .box', { opacity: 0, duration: 0.18 }, 91.2);
       tl.set('#s6b-t1', { className: 'task done' }, 91.2);
       tl.set('#s6b-t1 .box', { textContent: '- [x]' }, 91.38);
@@ -1508,7 +1509,7 @@
         { opacity: 0, scale: 1.4 },
         { opacity: 1, scale: 1, duration: 0.4, ease: 'back.out(2)' },
         91.38);
-      // A second task flips — coordination keeps moving
+      // A second task flips: coordination keeps moving
       tl.to('#s6b-t2 .box', { opacity: 0, duration: 0.18 }, 92.3);
       tl.set('#s6b-t2', { className: 'task done' }, 92.3);
       tl.set('#s6b-t2 .box', { textContent: '- [x]' }, 92.48);

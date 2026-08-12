@@ -59,8 +59,7 @@ def resolve_python_binary() -> str:
 
     The daemon runs via `python -m mycelium.daemon`, so we hardcode the
     Python that currently has `mycelium` installed. This avoids picking up
-    a system Python that doesn't have the package, which was a frequent
-    failure mode for the openclaw plugin's npm-install pattern.
+    a system Python that doesn't have the package.
     """
     import sys
 
@@ -388,7 +387,35 @@ def _get_daemon_pid() -> int | None:
                         if part.isdigit():
                             return int(part)
 
-    return None
+    # Fall back to the singleton lock file, which every daemon writes its PID
+    # into on startup regardless of how it was launched. This is the only way to
+    # find a *foreground* daemon (`mycelium daemon run --foreground`) — it isn't
+    # registered with launchd/systemd, so the service lookups above miss it, and
+    # without this `daemon subscribe` / the demo can't SIGHUP-reload it.
+    return _pid_from_lock()
+
+
+def _pid_from_lock() -> int | None:
+    """Read the daemon PID from the singleton lock file, if one is running.
+
+    ``_acquire_singleton_lock`` writes ``os.getpid()`` into ``daemon.lock`` for
+    every daemon (service-managed or foreground). Verify the PID is actually
+    alive before returning it so a stale lock (daemon crashed without cleanup)
+    doesn't send us signalling a dead or recycled PID.
+    """
+    from mycelium.daemon.config import daemon_lock_path
+
+    try:
+        pid = int(daemon_lock_path().read_text().strip())
+    except (OSError, ValueError):
+        return None
+    if pid <= 0:
+        return None
+    try:
+        os.kill(pid, 0)  # liveness probe — signal 0 doesn't touch the process
+    except OSError:
+        return None
+    return pid
 
 
 def uninstall_daemon_service(verbose: bool = False) -> None:  # noqa: ARG001

@@ -23,7 +23,7 @@ def test_build_minimal_envelope_defaults():
     assert env.header.subprotocol == "mycelium"
     assert env.header.kind is Kind.exchange
     assert env.header.subkind is None
-    assert env.header.participants.actors[0].id == "CognitiveEngine"
+    assert env.header.participants.actors[0].id == "system"
     assert env.header.participants.groups is None
     assert env.header.message is not None
     uuid.UUID(env.header.message.id)  # valid UUID
@@ -47,7 +47,7 @@ def test_build_envelope_full():
     )
     assert env.header.subkind == "converged"
     assert [a.id for a in env.header.participants.actors] == [
-        "CognitiveEngine",
+        "system",
         "agent-a",
         "agent-b",
     ]
@@ -58,15 +58,15 @@ def test_build_envelope_full():
     assert env.payload.data["assignments"] == {"budget": "high"}
 
 
-# The Go CFN's authoritative table (ioc-cfn-svc handlers_l9.go). A failed
-# negotiation is commit:abort; the spec docs' "rejected"/"ready" are stale.
+# The SLIM-native table. A failed negotiation is commit:rejected;
+# the Go CFN's "abort" is retired with the CFN, and "ready" was never valid.
 @pytest.mark.parametrize(
     ("kind", "subkind", "ok"),
     [
         (Kind.commit, "converged", True),
         (Kind.commit, "resolved", True),
-        (Kind.commit, "abort", True),
-        (Kind.commit, "rejected", False),
+        (Kind.commit, "rejected", True),
+        (Kind.commit, "abort", False),
         (Kind.commit, "ready", False),
         (Kind.exchange, "team-formation", True),
         (Kind.exchange, "ready", False),
@@ -92,7 +92,7 @@ def test_subkind_validation(kind, subkind, ok):
 
 def test_build_envelope_rejects_bad_subkind():
     with pytest.raises(l9.L9ValidationError):
-        l9.build_envelope(kind=Kind.commit, subkind="rejected", episode="e")
+        l9.build_envelope(kind=Kind.commit, subkind="abort", episode="e")
 
 
 def test_envelope_roundtrip_via_dict():

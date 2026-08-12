@@ -23,7 +23,7 @@ interface Props {
   refreshTrigger: number;
 }
 
-// Filter the "title" file out of file chips — its content is the headline above.
+// Filter the "title" file out of file chips; its content is the headline above.
 const TITLE_SLUG = "title";
 
 type Open =
@@ -93,7 +93,7 @@ export function RoomPlanHeader({ roomName, refreshTrigger }: Props) {
 
   return (
     <div className="border-b border-border bg-paper/50 flex-shrink-0">
-      {/* Title hero — italic Cormorant, no label */}
+      {/* Title hero: italic Cormorant, no label */}
       <div className="px-8 pt-7 pb-5 group relative">
         {editingTitle ? (
           <textarea
@@ -211,7 +211,7 @@ function TasksDisclosure({
       </div>
       {tasks.length === 0 ? (
         <div className="text-center caps-mono-sm text-muted italic py-8">
-          no tasks yet — add one above
+          no tasks yet. add one above
         </div>
       ) : (
         <ul>

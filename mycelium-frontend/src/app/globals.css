@@ -173,7 +173,7 @@ body {
 .markdown-body hr { border: none; border-top: 1px solid var(--border); margin: 0.8em 0; }
 .markdown-body a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
 
-/* ── shadcn/ui token bridge — maps shadcn's semantic tokens onto the
+/* shadcn/ui token bridge: maps shadcn's semantic tokens onto the
  * existing onyx palette so <Dialog>/<Button> render native-dark. We add
  * ONLY new token names here; the app's own --color-* (accent, border,
  * muted, …) are left untouched. ── */

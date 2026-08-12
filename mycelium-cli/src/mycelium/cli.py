@@ -14,20 +14,21 @@ from mycelium import __version__
 from mycelium.commands import (
     adapter,
     agent,
-    cfn,
     config,
     daemon,
     demo,
     docs,
     doctor,
+    engine,
+    hub,
     install,
     instance,
     memory,
     metrics,
-    negotiate,
+    openshell,
+    participate,
     plan,
     room,
-    session,
     ui,
 )
 
@@ -71,39 +72,17 @@ def main(
 
 
 @app.command(name="skill")
-def skill(
-    claude_code: bool = typer.Option(
-        False,
-        "--claude-code",
-        help="Print the Claude Code adapter SKILL.md instead of the OpenClaw one.",
-    ),
-) -> None:
-    """Print the Mycelium SKILL.md (OpenClaw adapter skill definition).
-
-    Use --claude-code to print the Claude Code adapter skill instead.
-    """
-    if claude_code:
-        rel = "integrations/claude_code/assets/skills/mycelium/SKILL.md"
-        fallback_parts = (
-            "integrations",
-            "claude_code",
-            "assets",
-            "skills",
-            "mycelium",
-            "SKILL.md",
-        )
-    else:
-        rel = "integrations/openclaw/assets/mycelium/plugin/skills/mycelium/SKILL.md"
-        fallback_parts = (
-            "integrations",
-            "openclaw",
-            "assets",
-            "mycelium",
-            "plugin",
-            "skills",
-            "mycelium",
-            "SKILL.md",
-        )
+def skill() -> None:
+    """Print the Mycelium SKILL.md (Claude Code adapter skill definition)."""
+    rel = "integrations/claude_code/assets/skills/mycelium/SKILL.md"
+    fallback_parts = (
+        "integrations",
+        "claude_code",
+        "assets",
+        "skills",
+        "mycelium",
+        "SKILL.md",
+    )
 
     try:
         with resources.as_file(resources.files("mycelium").joinpath(rel)) as p:
@@ -128,15 +107,18 @@ app.command(name="up")(instance.start)
 app.command(name="down")(instance.stop)
 app.command(name="status")(instance.status)
 app.command(name="logs")(instance.logs)
-app.command(name="migrate")(instance.migrate)
 
 # Top-level shortcuts
 app.command(name="watch")(room.watch)
 app.command(name="sync")(memory.memory_sync)
+app.command(name="connect")(hub.connect)
+
+# Participation primitives — join a room's SLIM channel and reply, no daemon.
+app.command(name="await")(participate.await_room)
+app.command(name="respond")(participate.respond)
 
 # Command groups
 app.add_typer(room.app, name="room")
-app.add_typer(negotiate.app, name="negotiate")
 app.add_typer(memory.app, name="memory")
 app.add_typer(plan.app, name="plan")
 app.add_typer(config.app, name="config")
@@ -144,11 +126,12 @@ app.add_typer(adapter.app, name="adapter")
 app.add_typer(docs.app, name="docs")
 app.add_typer(metrics.app, name="metrics")
 app.add_typer(ui.app, name="ui")
-app.add_typer(session.app, name="session")
-app.add_typer(cfn.app, name="cfn")
 app.add_typer(agent.app, name="agent")
+app.add_typer(engine.app, name="engine")
+app.add_typer(openshell.app, name="openshell")
 app.add_typer(daemon.app, name="daemon")
 app.add_typer(demo.app, name="demo")
+app.add_typer(hub.app, name="hub")
 
 
 if __name__ == "__main__":

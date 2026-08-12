@@ -237,7 +237,7 @@ def status() -> None:
     elif oc_config_path.exists():
         console.print("[red]✗[/red] OTEL plugin        not enabled in openclaw.json")
         console.print(
-            "  [dim]Run [bold]mycelium adapter add openclaw --step=otel[/bold] to configure[/dim]"
+            "  [dim]Point an OTLP source (e.g. InsightClaw) at http://localhost:4318[/dim]"
         )
         all_ok = False
     else:
@@ -265,8 +265,7 @@ def status() -> None:
                     f"[yellow]⚠[/yellow] Model cost = $0     {', '.join(zero_cost_models)}"
                 )
                 console.print(
-                    "  [dim]OpenClaw will report $0 cost via OTLP. "
-                    "Run [bold]mycelium adapter add openclaw --step=otel[/bold] to patch.[/dim]"
+                    "  [dim]OpenClaw will report $0 cost via OTLP. Set it in openclaw.json.[/dim]"
                 )
                 all_ok = False
             elif otel_enabled:
@@ -274,8 +273,8 @@ def status() -> None:
             if missing_compat:
                 console.print(f"[yellow]⚠[/yellow] Missing compat      {', '.join(missing_compat)}")
                 console.print(
-                    "  [dim]supportsUsageInStreaming not set — streaming token counts may be lost. "
-                    "Run [bold]mycelium adapter add openclaw --step=otel[/bold] to patch.[/dim]"
+                    "  [dim]supportsUsageInStreaming not set; streaming token counts may be lost. "
+                    "Set it in openclaw.json.[/dim]"
                 )
                 all_ok = False
             elif otel_enabled:
@@ -316,7 +315,7 @@ def status() -> None:
     if all_ok:
         console.print("[bold green]Pipeline healthy[/bold green]")
     else:
-        console.print("[bold yellow]Pipeline has issues — see above[/bold yellow]")
+        console.print("[bold yellow]Pipeline has issues, see above[/bold yellow]")
 
 
 def _docker_collector_running() -> bool:
@@ -537,7 +536,7 @@ def collect(
     """Start the spoke OTLP collector (background by default).
 
     Accepts OpenClaw OTLP pushes and writes to the local metrics file.
-    Backend polling and Prometheus scraping are disabled — use this on
+    Backend polling and Prometheus scraping are disabled; use this on
     spoke nodes that fetch hub data via ``collector_url``.
 
     Stop with ``mycelium metrics stop``.
@@ -688,7 +687,7 @@ def stop_collector() -> None:
             if _port_in_use(port):
                 typer.secho(
                     f"⚠ Collector appears to be running on :{port} but no PID file found.\n"
-                    "  It may have been started in foreground mode — Ctrl+C it directly.",
+                    "  It may have been started in foreground mode; Ctrl+C it directly.",
                     fg=typer.colors.YELLOW,
                 )
                 raise typer.Exit(1)
@@ -1139,7 +1138,7 @@ def show(
                 "  The collector is running but hasn't received data.\n"
                 "  Make sure agents are active and OpenClaw's diagnostics-otel\n"
                 "  plugin is configured:\n"
-                "    [bold]mycelium adapter add openclaw --step=otel[/bold]"
+                "    Point your OTLP exporter (e.g. InsightClaw) at http://localhost:4318."
             )
         else:
             hint = (
@@ -1151,7 +1150,7 @@ def show(
                 f"[yellow]No metrics data available.[/yellow]\n\n"
                 f"{hint}\n\n"
                 "  Make sure OpenClaw's diagnostics-otel plugin is configured:\n"
-                "    [bold]mycelium adapter add openclaw --step=otel[/bold]"
+                "    Point your OTLP exporter (e.g. InsightClaw) at http://localhost:4318."
             )
         raise typer.Exit(0)
 
@@ -1256,7 +1255,7 @@ def show(
                 )
                 table.add_column("Info")
                 table.add_row(
-                    "No activity yet — this section populates when the backend\n"
+                    "No activity yet. This section populates when the backend\n"
                     "processes embeddings, LLM calls, knowledge, or briefings."
                 )
                 console.print(table)
@@ -1443,10 +1442,10 @@ def _render_overview(
         host_table.add_column("Last Seen")
         for hk in sorted(by_host, key=lambda h: by_host[h].get("last_seen", ""), reverse=True):
             hd = by_host[hk]
-            agents = ", ".join(hd.get("agents", [])) or "—"
+            agents = ", ".join(hd.get("agents", [])) or "-"
             spans = str(hd.get("spans", 0))
-            last = hd.get("last_seen", "—")
-            if last and last != "—":
+            last = hd.get("last_seen", "-")
+            if last and last != "-":
                 try:
                     from datetime import datetime
 
@@ -1672,7 +1671,7 @@ def _extract_oc_cost(oc: dict | None) -> dict | None:
 
 def _fmt_num(n: int | float | None) -> str:
     if n is None:
-        return "—"
+        return "-"
     # Show integers without decimals, floats with up to 2 decimals
     if isinstance(n, float) and n == int(n):
         return f"{int(n):,}"
@@ -1683,7 +1682,7 @@ def _fmt_num(n: int | float | None) -> str:
 
 def _fmt_cost(n: float | None) -> str:
     if n is None:
-        return "—"
+        return "-"
     return f"${n:,.4f}"
 
 
@@ -1769,7 +1768,7 @@ def _fmt_histogram_s(h: dict, n_width: int) -> str:
     """
     count = h.get("count", 0)
     if count == 0:
-        return "—"
+        return "-"
     avg = h.get("sum", 0) / count / 1000
     min_v = h.get("min")
     max_v = h.get("max")
@@ -1819,7 +1818,7 @@ def _fmt_prom_latency(lat: dict, n_width: int) -> str:
     """
     count = lat.get("count", 0)
     if count == 0:
-        return "—"
+        return "-"
 
     from mycelium.prom_scrape import histogram_quantile
 
@@ -1868,7 +1867,7 @@ def _fmt_ms(ms: float | None) -> str:
     Anything else  → seconds with two decimals.
     """
     if ms is None:
-        return "—"
+        return "-"
     if ms < 1.0:
         return f"{ms * 1000:.0f}µs"
     if ms < 1000.0:
@@ -1880,7 +1879,7 @@ def _fmt_histogram_raw(h: dict) -> str:
     """Format a unitless histogram with fixed-width aligned sparkline."""
     count = h.get("count", 0)
     if count == 0:
-        return "—"
+        return "-"
     avg = h.get("sum", 0) / count
     min_v = h.get("min")
     max_v = h.get("max")
@@ -1957,27 +1956,27 @@ def _render_summary_table(
     if run_dur.get("count", 0) > 0:
         table.add_row("Run duration", _fmt_histogram_s(run_dur, oc_durations_n))
     else:
-        table.add_row("Run duration", "—")
+        table.add_row("Run duration", "-")
 
     if msg_dur.get("count", 0) > 0:
         table.add_row("Msg duration", _fmt_histogram_s(msg_dur, oc_durations_n))
     else:
-        table.add_row("Msg duration", "—")
+        table.add_row("Msg duration", "-")
 
     qdepth = histograms.get("queue_depth", {})
     if qdepth.get("count", 0) > 0:
         table.add_row("Queue depth", _fmt_histogram_raw(qdepth))
     else:
-        table.add_row("Queue depth", "—")
+        table.add_row("Queue depth", "-")
 
     if qwait.get("count", 0) > 0:
         table.add_row("Queue wait", _fmt_histogram_s(qwait, oc_durations_n))
     else:
-        table.add_row("Queue wait", "—")
+        table.add_row("Queue wait", "-")
 
     table.add_row("Sessions (OTEL)", _fmt_num(len(otel_sessions)))
     total_turns = sum(s.get("turns", 1) for s in otel_sessions)
-    table.add_row("Total turns", _fmt_num(total_turns) if otel_sessions else "—")
+    table.add_row("Total turns", _fmt_num(total_turns) if otel_sessions else "-")
 
     # Context utilization histogram (newly captured)
     ctx = histograms.get("context_tokens", {})
@@ -2096,7 +2095,7 @@ def _render_agent_table(otel: dict | None, agents_meta: list[dict]) -> None:
         totals["sessions"] += sess_count
         totals["turns"] += total_turns
 
-        ws_size = "—"
+        ws_size = "-"
         for a in agents_meta:
             if a.get("name") == name:
                 wdir = a.get("workspaceDir")
@@ -2104,7 +2103,7 @@ def _render_agent_table(otel: dict | None, agents_meta: list[dict]) -> None:
                     ws_size = _fmt_size(_dir_size(Path(wdir)))
                 break
 
-        avg_run = "—"
+        avg_run = "-"
         agent_h = by_channel_histograms.get(name, {})
         rd = agent_h.get("run_duration_ms", {})
         if rd.get("count", 0) > 0:
@@ -2119,7 +2118,7 @@ def _render_agent_table(otel: dict | None, agents_meta: list[dict]) -> None:
             _fmt_num(tok.get("cache_write", 0)),
         ]
         row.append(str(sess_count))
-        row.append(str(total_turns) if total_turns else "—")
+        row.append(str(total_turns) if total_turns else "-")
         if has_hist:
             row.append(avg_run)
         row.append(ws_size)
@@ -2136,13 +2135,13 @@ def _render_agent_table(otel: dict | None, agents_meta: list[dict]) -> None:
         total_row.append(f"[bold]{totals['sessions']}[/bold]")
         total_row.append(f"[bold]{totals['turns']}[/bold]")
         if has_hist:
-            total_row.append("—")
-        total_row.append("—")
+            total_row.append("-")
+        total_row.append("-")
         table.add_row(*total_row)
 
     if not agent_names:
         placeholder_cols = 7 + (1 if has_hist else 0)
-        table.add_row("(none)", *["—"] * (placeholder_cols - 1))
+        table.add_row("(none)", *["-"] * (placeholder_cols - 1))
 
     console.print(table)
     console.print()
@@ -2193,7 +2192,7 @@ def _render_channel_table(
         totals["cache_read"] += tok.get("cache_read", 0)
         totals["cache_write"] += tok.get("cache_write", 0)
 
-        avg_run = "—"
+        avg_run = "-"
         ch_h = by_channel_histograms.get(name, {})
         rd = ch_h.get("run_duration_ms", {})
         if rd.get("count", 0) > 0:
@@ -2220,7 +2219,7 @@ def _render_channel_table(
             f"[bold]{_fmt_num(totals['cache_write'])}[/bold]",
         ]
         if has_hist:
-            total_row.append("—")
+            total_row.append("-")
         table.add_row(*total_row)
 
     console.print(table)
@@ -2253,7 +2252,7 @@ def _render_session_table(sessions: list[dict]) -> None:
             display_id,
             s.get("agent", ""),
             s.get("model", ""),
-            str(s.get("turns", "—")),
+            str(s.get("turns", "-")),
             _fmt_num(s.get("tokens", {}).get("input", 0)),
             _fmt_num(s.get("tokens", {}).get("output", 0)),
             ts,
@@ -2304,14 +2303,6 @@ def _render_workspace_tables(agents_meta: list[dict]) -> None:
 
         console.print(table)
         console.print()
-
-
-def _detect_model(otel: dict | None) -> str:
-    """Return the primary model name from OTLP token data (most tokens wins)."""
-    by_model = (otel or {}).get("counters", {}).get("tokens", {}).get("by_model", {})
-    if not by_model:
-        return ""
-    return max(by_model, key=lambda m: by_model[m].get("total", 0))
 
 
 # OpenClaw "channels" that represent background/idle traffic rather than agent work.
@@ -2807,120 +2798,6 @@ def _render_mycelium_llm_table(backend: dict | None) -> None:
     console.print()
 
 
-def _render_data_reuse_table(backend: dict | None) -> None:
-    """Render a panel showing data reuse metrics from Mycelium databases."""
-    if not backend:
-        return
-
-    be_counters = backend.get("counters", {})
-    be_histograms = backend.get("histograms", {})
-    memory = be_counters.get("memory", {})
-    synthesis = be_counters.get("synthesis", {})
-    knowledge = be_counters.get("knowledge", {})
-
-    # Check if we have any data reuse metrics
-    has_memory_reuse = memory.get("search_hits", 0) > 0 or memory.get("search_misses", 0) > 0
-    has_synthesis_reuse = synthesis.get("briefings", 0) > 0
-    has_knowledge_reuse = knowledge.get("queries", 0) > 0
-
-    if not (has_memory_reuse or has_synthesis_reuse or has_knowledge_reuse):
-        return
-
-    table = Table(
-        title=f"Mycelium Data Reuse{_hub_suffix()}",
-        title_style="bold magenta",
-        title_justify="left",
-        show_header=False,
-        border_style="dim",
-    )
-    table.add_column("Metric", style="bold")
-    table.add_column("Value", justify="right")
-
-    # Memory search reuse
-    if has_memory_reuse:
-        searches = memory.get("searches", 0)
-        hits = memory.get("search_hits", 0)
-        misses = memory.get("search_misses", 0)
-        results = memory.get("results_returned", 0)
-
-        table.add_row("Memory searches", _fmt_num(searches))
-        if searches > 0:
-            hit_rate = hits / searches * 100
-            table.add_row(
-                "  returned results", f"[green]{_fmt_num(hits)}[/green] ({hit_rate:.0f}%)"
-            )
-            table.add_row("  no results", _fmt_num(misses))
-            table.add_row("  total results returned", _fmt_num(results))
-
-    # Synthesis reuse
-    if has_synthesis_reuse:
-        if has_memory_reuse:
-            table.add_section()
-        briefings = synthesis.get("briefings", 0)
-        cache_hits = synthesis.get("cache_hits", 0)
-        cache_misses = synthesis.get("cache_misses", 0)
-
-        table.add_row("Briefing requests", _fmt_num(briefings))
-        if briefings > 0:
-            hit_rate = cache_hits / briefings * 100
-            table.add_row(
-                "  used cached synthesis",
-                f"[green]{_fmt_num(cache_hits)}[/green] ({hit_rate:.0f}%)",
-            )
-            table.add_row("  no cached synthesis", _fmt_num(cache_misses))
-
-        mem_since = be_histograms.get("synthesis.memories_since_last", {})
-        if mem_since.get("count", 0) > 0:
-            avg = mem_since["sum"] / mem_since["count"]
-            table.add_row("  avg memories since synthesis", f"{avg:.1f}")
-
-    # Knowledge graph reuse
-    if has_knowledge_reuse:
-        if has_memory_reuse or has_synthesis_reuse:
-            table.add_section()
-        queries = knowledge.get("queries", 0)
-        query_hits = knowledge.get("query_hits", 0)
-        query_misses = knowledge.get("query_misses", 0)
-        query_errors = knowledge.get("query_errors", 0)
-        results = knowledge.get("results_returned", 0)
-
-        table.add_row("Knowledge graph queries", _fmt_num(queries))
-        if queries > 0:
-            hit_rate = query_hits / queries * 100
-            table.add_row(
-                "  returned results",
-                f"[green]{_fmt_num(query_hits)}[/green] ({hit_rate:.0f}%)",
-            )
-            table.add_row("  no results", _fmt_num(query_misses))
-            if query_errors:
-                table.add_row("  errors", f"[red]{_fmt_num(query_errors)}[/red]")
-            table.add_row("  total results returned", _fmt_num(results))
-
-        # Query type breakdown
-        neighbor = knowledge.get("queries.neighbour", 0)
-        path = knowledge.get("queries.path", 0)
-        concept = knowledge.get("queries.concept", 0)
-        semantic = knowledge.get("queries.semantic", 0)
-        if neighbor + path + concept + semantic > 0:
-            table.add_section()
-            table.add_row("[dim]By query type:[/dim]", "")
-            if neighbor:
-                table.add_row("  neighbour", _fmt_num(neighbor))
-            if path:
-                table.add_row("  path", _fmt_num(path))
-            if concept:
-                table.add_row("  concept", _fmt_num(concept))
-            if semantic:
-                table.add_row("  semantic", _fmt_num(semantic))
-
-        query_lat = be_histograms.get("knowledge.query_latency_ms", {})
-        if query_lat.get("count", 0) > 0:
-            table.add_row("Query latency", _fmt_histogram_s(query_lat, _max_n_width(query_lat)))
-
-    console.print(table)
-    console.print()
-
-
 def _render_coordination_table(backend: dict | None, *, detail: bool = False) -> None:
     """Render a panel showing Mycelium coordination/negotiation metrics."""
     if not backend:
@@ -3354,7 +3231,7 @@ def _render_cfn_scrape_table(scrape: dict | None) -> None:
         if data is None:
             table.add_row(
                 f"[blue]{name}[/blue]",
-                f"[yellow][degraded — last attempt {scraped_at}][/yellow]",
+                f"[yellow][degraded, last attempt {scraped_at}][/yellow]",
             )
             continue
 
@@ -3367,7 +3244,7 @@ def _render_cfn_scrape_table(scrape: dict | None) -> None:
             # non-fastapi-instrumentator surface (raw prometheus_client).
             table.add_row(
                 f"[blue]{name}[/blue]",
-                f"[dim](no HTTP RED samples yet — last poll {scraped_at})[/dim]",
+                f"[dim](no HTTP RED samples yet, last poll {scraped_at})[/dim]",
             )
             continue
 
@@ -3487,10 +3364,10 @@ def _render_cost_estimates(
         if oc_reported_cost > 0:
             oc_pricing_label = "otel (provider-reported)"
         else:
-            oc_pricing_label = "[yellow]otel — $0 (check model cost config)[/yellow]"
+            oc_pricing_label = "[yellow]otel: $0 (check model cost config)[/yellow]"
         table.add_row(
             "[cyan]OpenClaw Agents[/cyan]",
-            _fmt_num(oc_total_tokens) if oc_total_tokens else "—",
+            _fmt_num(oc_total_tokens) if oc_total_tokens else "-",
             _fmt_cost(oc_reported_cost) if oc_reported_cost > 0 else "[dim]$0.00[/dim]",
             oc_pricing_label,
         )
@@ -3786,13 +3663,13 @@ def _render_spoke_sites_table(otel: dict | None) -> None:
         norm_local = local_host.lower().split(".")[0].replace("-", "")
         norm_key = host_key.lower().split(".")[0].replace("-", "")
         role = "hub" if norm_local == norm_key else "spoke"
-        agents = ", ".join(data.get("agents", [])) or "—"
+        agents = ", ".join(data.get("agents", [])) or "-"
         spans = str(data.get("spans", 0))
         tokens = data.get("tokens", {})
         total_tokens = tokens.get("total", 0)
-        tok_str = f"{total_tokens:,}" if total_tokens else "—"
-        last_seen = data.get("last_seen", "—")
-        if last_seen and last_seen != "—":
+        tok_str = f"{total_tokens:,}" if total_tokens else "-"
+        last_seen = data.get("last_seen", "-")
+        if last_seen and last_seen != "-":
             try:
                 from datetime import datetime
 
@@ -3838,7 +3715,7 @@ def _render_host_filtered_view(otel: dict | None, host: str) -> bool:
     table.add_column("Metric", style="bold")
     table.add_column("Value", justify="right")
 
-    agents = ", ".join(data.get("agents", [])) or "—"
+    agents = ", ".join(data.get("agents", [])) or "-"
     tokens = data.get("tokens", {})
     cost = data.get("cost_usd", 0.0)
     table.add_row("Agents", agents)
@@ -3848,8 +3725,8 @@ def _render_host_filtered_view(otel: dict | None, host: str) -> bool:
     table.add_row("Tokens (output)", f"{tokens.get('output', 0):,}")
     table.add_row("Tokens (cache read)", f"{tokens.get('cache_read', 0):,}")
     table.add_row("Tokens (total)", f"{tokens.get('total', 0):,}")
-    table.add_row("Cost (USD)", f"${cost:.4f}" if cost > 0 else "—")
-    table.add_row("Last seen", data.get("last_seen", "—"))
+    table.add_row("Cost (USD)", f"${cost:.4f}" if cost > 0 else "-")
+    table.add_row("Last seen", data.get("last_seen", "-"))
 
     console.print(table)
     console.print()
@@ -3859,13 +3736,13 @@ def _render_host_filtered_view(otel: dict | None, host: str) -> bool:
 def _render_field_legend() -> None:
     console.print("[dim]Data sources:[/dim]")
     console.print(
-        "[dim]  [cyan]OpenClaw[/cyan]  — Agent activity via OTLP telemetry (tokens, sessions)[/dim]"
+        "[dim]  [cyan]OpenClaw[/cyan]:  Agent activity via OTLP telemetry (tokens, sessions)[/dim]"
     )
     console.print(
-        "[dim]  [magenta]Mycelium[/magenta]  — Backend API metrics (embeddings, memory, LLM calls)[/dim]"
+        "[dim]  [magenta]Mycelium[/magenta]:  Backend API metrics (embeddings, memory, LLM calls)[/dim]"
     )
     console.print(
-        "[dim]  [blue]CFN[/blue]   — Cognition Fabric Node (coordination, negotiation)[/dim]"
+        "[dim]  [blue]CFN[/blue]:   Cognition Fabric Node (coordination, negotiation)[/dim]"
     )
     console.print()
 

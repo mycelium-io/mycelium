@@ -9,6 +9,7 @@ Mirrors the backend's filesystem service for local access.
 """
 
 import re
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -128,14 +129,83 @@ def read_memory(base_dir: Path, key: str) -> tuple[dict[str, Any], str] | None:
     return parse_memory(text)
 
 
-def delete_memory(base_dir: Path, key: str) -> bool:
-    """Delete a memory file. Returns True if existed."""
-    filename = key + ".md" if not key.endswith(".md") else key
-    file_path = base_dir / filename
-    if file_path.exists():
-        file_path.unlink()
-        return True
-    return False
+# ── Knowledge sync ───────────────────────────────────────────────────────────
+# The receiver half of the L9 ``knowledge`` write path: a connector applies a
+# carried memory write into its local store. Mirrors the backend's
+# ``app.services.memory_sync.apply_knowledge_to_dir`` — kept as a tiny local copy
+# because the CLI does not import the backend package. Conflict policy:
+# last-write-wins by ``version``; a write on a stale base fails with
+# details, no merge.
+
+
+@dataclass
+class KnowledgeApplyResult:
+    """The outcome of applying a carried memory write to the local store."""
+
+    key: str
+    applied: bool
+    conflict: bool
+    reason: str
+    version: int
+    current: dict[str, Any] | None = None
+
+
+def apply_knowledge(
+    base_dir: Path,
+    *,
+    key: str,
+    content: str,
+    version: int,
+    created_by: str = "system",
+    updated_by: str = "system",
+) -> KnowledgeApplyResult:
+    """Write a carried ``knowledge`` memory locally (last-write-wins).
+
+    Idempotent when the local file is already at ``version`` (the same-machine
+    loopback of a write the backend just made). A write whose ``version`` is
+    behind the local file is a **stale base**: kept out, current state returned
+    in ``current`` — never merged.
+    """
+    existing = read_memory(base_dir, key)
+    if existing is not None:
+        meta, body = existing
+        try:
+            current_version = int(meta.get("version", 1))
+        except (TypeError, ValueError):
+            current_version = 1
+        if version == current_version:
+            return KnowledgeApplyResult(
+                key=key,
+                applied=False,
+                conflict=False,
+                reason="already at this version (idempotent)",
+                version=version,
+            )
+        if version < current_version:
+            return KnowledgeApplyResult(
+                key=key,
+                applied=False,
+                conflict=True,
+                reason="incoming version behind local",
+                version=version,
+                current={
+                    "content": body,
+                    "version": current_version,
+                    "updated_by": meta.get("updated_by") or meta.get("created_by"),
+                    "updated_at": meta.get("updated_at"),
+                },
+            )
+    write_memory(
+        base_dir,
+        key,
+        content,
+        created_by=created_by,
+        updated_by=updated_by,
+        version=version,
+    )
+    return KnowledgeApplyResult(
+        key=key, applied=True, conflict=False, reason="applied", version=version
+    )
 
 
 def list_memories(

@@ -10,12 +10,8 @@ Checks:
   3. Runtime config drift — backend container env matches .env on disk
   4. Docker containers running and healthy
   5. Backend API reachable
-  6. Pending migrations — DB revision vs latest alembic file
-  7. LLM connectivity (real completion probe via backend)
-  8. Workspace ID in sync (CFN mgmt plane vs .env vs config.toml)
-  9. Room MAS IDs present (CFN-enabled installs)
-  10. OpenClaw adapter health (plugin, channel config, agent sandbox)
-  11. Hermes adapter health (plugin tree, config.yaml, gateway pid)
+  6. LLM connectivity (real completion probe via backend)
+  7. Cursor adapter health (binary, login, workspace assets)
 
 Single-device installs (the default) run the backend locally and exercise
 all checks. In the optional hub-and-spoke deployment mode, spoke nodes
@@ -23,8 +19,7 @@ connect to a remote backend and don't run local Docker containers. When
 ``server.api_url`` points at a non-local host the doctor auto-detects
 **spoke mode** and skips checks that only apply when the backend is
 local (Docker containers, runtime config drift, .env port vs Docker
-port, localhost CFN mgmt plane).  An explicit ``--mode hub|spoke`` flag
-overrides the auto-detection.
+port).  An explicit ``--mode hub|spoke`` flag overrides the auto-detection.
 """
 
 import subprocess
@@ -85,8 +80,7 @@ def _check_mycelium_dir_ownership() -> CheckResult:
     """Surface files under ``~/.mycelium/`` not owned by the current user.
 
     Root-owned files in here are a common cloud-install symptom (sudo
-    install + non-sudo agent add, or an openclaw gateway running as root
-    bind-mounting the user's home into a container). They lead to opaque
+    install + non-sudo agent add, or a service running as root). They lead to opaque
     ``PermissionError`` failures in later commands. Detect early and point
     at the single ``chown`` that fixes it.
     """
@@ -136,7 +130,7 @@ def _check_mycelium_dir_ownership() -> CheckResult:
     return CheckResult(
         name="~/.mycelium ownership",
         status="error",
-        message=f"{len(foreign)}+ file(s) owned by another user — agent/memory writes will fail",
+        message=f"{len(foreign)}+ file(s) owned by another user; agent/memory writes will fail",
         details=details,
     )
 
@@ -229,7 +223,7 @@ def _check_llm_connectivity() -> CheckResult:
         return CheckResult(
             name="LLM connectivity",
             status="ok",
-            message=f"{model} — completion probe succeeded",
+            message=f"{model}: completion probe succeeded",
         )
     if status == "not_configured":
         return CheckResult(
@@ -242,58 +236,49 @@ def _check_llm_connectivity() -> CheckResult:
         return CheckResult(
             name="LLM connectivity",
             status="error",
-            message=f"{model} — missing provider SDK in backend",
+            message=f"{model}: missing provider SDK in backend",
             details=details,
         )
     if status == "bad_model":
         return CheckResult(
             name="LLM connectivity",
             status="error",
-            message=f"{model} — invalid model string",
+            message=f"{model}: invalid model string",
             details=details,
         )
     if status == "auth_error":
         return CheckResult(
             name="LLM connectivity",
             status="warning",
-            message=f"{model} — authentication failed",
+            message=f"{model}: authentication failed",
             details=details,
         )
     if status == "unreachable":
         return CheckResult(
             name="LLM connectivity",
             status="warning",
-            message=f"{model} — provider unreachable",
+            message=f"{model}: provider unreachable",
             details=details,
         )
     if status == "unchecked":
         return CheckResult(
             name="LLM connectivity",
             status="ok",
-            message=f"{model} — probe unsupported for this provider",
+            message=f"{model}: probe unsupported for this provider",
             details=details,
         )
     # error | unknown
     return CheckResult(
         name="LLM connectivity",
         status="error",
-        message=f"{model} — {status}",
+        message=f"{model}: {status}",
         details=details,
     )
 
 
 def _check_docker_containers() -> CheckResult:
     """Check that expected containers are running and healthy."""
-    expected = ["mycelium-db", "mycelium-backend"]
-
-    # Check if CFN is enabled
-    env_path = Path.home() / ".mycelium" / ".env"
-    if env_path.exists():
-        from dotenv import dotenv_values
-
-        vals = dotenv_values(env_path)
-        if vals.get("CFN_MGMT_URL", ""):
-            expected += ["ioc-cfn-mgmt-plane-svc", "ioc-cfn-svc"]
+    expected = ["mycelium-backend"]
 
     try:
         r = subprocess.run(
@@ -347,6 +332,65 @@ def _check_docker_containers() -> CheckResult:
     )
 
 
+def _backend_container_running() -> bool:
+    """True if the ``mycelium-backend`` container is up (backend is dockerized)."""
+    try:
+        r = subprocess.run(
+            ["docker", "ps", "--format", "{{.Names}}"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return False
+    if r.returncode != 0:
+        return False
+    return "mycelium-backend" in r.stdout.split()
+
+
+def _check_mediator_pi_binary() -> CheckResult:
+    """The aligner's SAO mediator runs on Pi — warn if it's unreachable on a
+    host-run backend.
+
+    Pi is the mediator's *brain*; without it on PATH, an ``@aligner`` summon fails
+    (``PiBrainError: pi not found``). The released **backend image already installs
+    Pi**, so the normal ``mycelium up`` path is fine and needs no host binary. The
+    only gap is running the backend *outside Docker* (a contributor doing
+    ``uvicorn app.main:app`` on the host) — there Pi must be on the host PATH. So:
+    if the backend container is up, this is satisfied by the image; otherwise check
+    the host.
+    """
+    import os
+    import shutil
+
+    if _backend_container_running():
+        return CheckResult(
+            name="mediator Pi brain",
+            status="ok",
+            message="backend is dockerized (Pi ships in the image)",
+        )
+
+    binary = os.environ.get("ALIGNER_PI_BINARY") or "pi"
+    resolved = shutil.which(binary)
+    if resolved is not None:
+        return CheckResult(
+            name="mediator Pi brain",
+            status="ok",
+            message=f"pi on PATH ({resolved})",
+        )
+    return CheckResult(
+        name="mediator Pi brain",
+        status="warning",
+        message=f"`{binary}` not on PATH; @aligner negotiations will fail on a host-run backend",
+        details=[
+            "the released backend image already ships Pi, so `mycelium up` needs nothing here;",
+            "this only bites when you run the backend outside Docker (host uvicorn).",
+            "fix: npm install -g @mariozechner/pi-coding-agent",
+            "or point ALIGNER_PI_BINARY at an existing pi install.",
+        ],
+    )
+
+
 def _check_backend_reachable(*, local_backend: bool = True) -> CheckResult:
     """Check that the backend API responds to /health."""
     from mycelium.config import MyceliumConfig
@@ -393,158 +437,12 @@ def _check_backend_reachable(*, local_backend: bool = True) -> CheckResult:
         )
 
 
-def _check_workspace_id(*, local_backend: bool = True) -> CheckResult:
-    """Check workspace_id consistency between .env, config.toml, and CFN mgmt plane.
-
-    When *local_backend* is False (spoke mode) the localhost CFN management
-    plane check is skipped — the mgmt plane runs on the hub, not here.
-    """
-    env_path = Path.home() / ".mycelium" / ".env"
-    config_path = Path.home() / ".mycelium" / "config.toml"
-
-    # Read from .env
-    env_ws = ""
-    cfn_enabled = False
-    if env_path.exists():
-        from dotenv import dotenv_values
-
-        vals = dotenv_values(env_path)
-        env_ws = vals.get("WORKSPACE_ID", "")
-        cfn_enabled = bool(vals.get("CFN_MGMT_URL", ""))
-
-    # Read from config.toml
-    config_ws = ""
-    if config_path.exists():
-        from mycelium.config import MyceliumConfig
-
-        try:
-            cfg = MyceliumConfig.load(config_path)
-            config_ws = cfg.server.workspace_id or ""
-        except Exception:
-            pass
-
-    if not env_ws and not config_ws:
-        if not local_backend:
-            return CheckResult(
-                name="Workspace ID",
-                status="ok",
-                message="Not set (optional for spoke nodes)",
-            )
-        return CheckResult(
-            name="Workspace ID",
-            status="warning",
-            message="Not configured",
-            details=["Run: mycelium install --force"],
-        )
-
-    # If CFN is enabled *and* we're on the hub, check against the local
-    # mgmt plane.  Spoke nodes don't run the mgmt plane locally.
-    cfn_ws = None
-    if cfn_enabled and local_backend:
-        from mycelium.commands.install import _get_cfn_workspace_id
-
-        cfn_ws = _get_cfn_workspace_id("http://localhost:9000")
-
-    details: list[str] = []
-    mismatches: list[str] = []
-
-    if env_ws:
-        details.append(f".env: {env_ws}")
-    if config_ws and config_ws != env_ws:
-        details.append(f"config.toml: {config_ws}")
-        mismatches.append("config.toml")
-
-    if cfn_ws is not None:
-        details.append(f"CFN mgmt plane: {cfn_ws}")
-        if cfn_ws != env_ws:
-            mismatches.append("CFN mgmt plane")
-    elif cfn_enabled and local_backend:
-        details.append("CFN mgmt plane: unreachable")
-
-    if mismatches:
-        # Build a fix function that re-syncs from CFN (or from .env if no CFN)
-        source_ws = cfn_ws if cfn_ws else env_ws
-        fix_fn = (
-            _make_workspace_fix(source_ws, env_path, config_path, cfn_enabled)
-            if source_ws
-            else None
-        )
-
-        return CheckResult(
-            name="Workspace ID",
-            status="error",
-            message=f"Mismatch — {', '.join(mismatches)} differ from .env",
-            details=details,
-            fix_label=f"Sync all to {source_ws}",
-            fix_fn=fix_fn,
-        )
-
-    # All agree (or only one source exists)
-    display_ws = env_ws or config_ws
-    return CheckResult(
-        name="Workspace ID",
-        status="ok",
-        message=display_ws,
-        details=details if len(details) > 1 else [],
-    )
-
-
-def _make_workspace_fix(
-    target_ws: str,
-    env_path: Path,
-    config_path: Path,
-    cfn_enabled: bool,
-) -> Callable[[], None]:
-    """Return a closure that patches workspace_id in .env and config.toml."""
-
-    def _fix() -> None:
-        from mycelium.commands.install import (
-            _get_compose_path,
-            _patch_env_vars,
-            _restart_backend,
-            _write_mycelium_config,
-        )
-
-        # Patch .env
-        typer.echo(f"    Patching ~/.mycelium/.env WORKSPACE_ID={target_ws}")
-        _patch_env_vars(env_path, {"WORKSPACE_ID": target_ws})
-
-        # Patch config.toml
-        from mycelium.config import MyceliumConfig
-
-        try:
-            cfg = MyceliumConfig.load(config_path) if config_path.exists() else MyceliumConfig()
-        except Exception:
-            cfg = MyceliumConfig()
-
-        api_url = cfg.server.api_url or "http://localhost:8000"
-        mas_id = cfg.server.mas_id or ""
-
-        typer.echo(f"    Patching ~/.mycelium/config.toml server.workspace_id={target_ws}")
-        _write_mycelium_config(api_url, target_ws, mas_id)
-
-        # Restart backend so it picks up the new WORKSPACE_ID
-        typer.echo("    Restarting backend...")
-        try:
-            compose_path = _get_compose_path()
-            profiles = ["cfn"] if cfn_enabled else []
-            _restart_backend(compose_path, env_path, profiles, api_url)
-            typer.secho("  ✓ Workspace ID synced", fg=typer.colors.GREEN)
-        except Exception as exc:
-            typer.secho(f"  ⚠  Backend restart failed: {exc}", fg=typer.colors.YELLOW)
-            typer.echo("    Run: mycelium up")
-
-    return _fix
-
-
 # Keys that should match between ~/.mycelium/.env and config.toml. Each entry
 # is (env_key, config_accessor) — config_accessor pulls the equivalent value
 # out of a loaded MyceliumConfig. `mycelium config apply` regenerates .env
 # from config.toml, so config.toml is the source of truth on drift.
 _SHARED_CONFIG_KEYS: list[tuple[str, Callable[..., str]]] = [
     ("LLM_MODEL", lambda cfg: (cfg.llm.model or "") if getattr(cfg, "llm", None) else ""),
-    ("WORKSPACE_ID", lambda cfg: cfg.server.workspace_id or ""),
-    ("MAS_ID", lambda cfg: cfg.server.mas_id or ""),
 ]
 
 
@@ -728,643 +626,13 @@ def _check_runtime_config_drift() -> CheckResult:
     )
 
 
-def _check_cfn_intent(*, local_backend: bool = True) -> CheckResult:
-    """Catch the CFN intent/config mismatch that silently breaks negotiation.
-
-    Symptom: user has `server.mas_id` in config.toml (set at some point — usually
-    by an earlier `mycelium room create` against a CFN-enabled install) but
-    `.env` has no `CFN_MGMT_URL` / `CFN_SVC_URL`. `mycelium up`
-    then skips `--profile cfn`, the backend starts with empty CFN env vars, new
-    rooms get no `mas_id` / `workspace_id`, and the first negotiate tick fails
-    with `"CFN coordination required but not configured for this room"`. The
-    old CFN check (`_check_room_mas_ids`) silently skips when CFN is disabled,
-    so doctor reports all-green while negotiation is broken.
-
-    Spoke nodes talk to a remote hub — CFN URLs belong on the hub, not here.
-    """
-    if not local_backend:
-        return CheckResult(
-            name="CFN config",
-            status="ok",
-            message="Skipped (spoke — CFN runs on hub)",
-        )
-
-    env_path = Path.home() / ".mycelium" / ".env"
-    if not env_path.exists():
-        return CheckResult(name="CFN config", status="ok", message="Skipped (no .env)")
-
-    from dotenv import dotenv_values
-
-    vals = dotenv_values(env_path)
-    mgmt = (vals.get("CFN_MGMT_URL") or "").strip()
-    node = (vals.get("CFN_SVC_URL") or "").strip()
-
-    from mycelium.config import MyceliumConfig
-
-    try:
-        cfg = MyceliumConfig.load()
-        configured_mas_id = (cfg.server.mas_id or "").strip()
-    except Exception:
-        configured_mas_id = ""
-
-    if not mgmt and not node:
-        if configured_mas_id:
-            return CheckResult(
-                name="CFN config",
-                status="warning",
-                message="server.mas_id set but CFN URLs empty — negotiation will fail",
-                details=[
-                    f"  config.toml server.mas_id = {configured_mas_id}",
-                    "  .env CFN_MGMT_URL = (empty)",
-                    "  .env CFN_SVC_URL = (empty)",
-                    "Fix: set both URLs and run `mycelium up` to start the cfn profile:",
-                    "  CFN_MGMT_URL=http://ioc-cfn-mgmt-plane-svc:9000",
-                    "  CFN_SVC_URL=http://ioc-cfn-svc:9002",
-                ],
-            )
-        return CheckResult(name="CFN config", status="ok", message="CFN not enabled")
-
-    missing = [k for k, v in (("CFN_MGMT_URL", mgmt), ("CFN_SVC_URL", node)) if not v]
-    if missing:
-        return CheckResult(
-            name="CFN config",
-            status="warning",
-            message=f"partial CFN config — {', '.join(missing)} empty",
-            details=["Both URLs are required for the backend to forward ticks to CFN."],
-        )
-
-    return CheckResult(name="CFN config", status="ok", message="CFN URLs configured")
-
-
-def _check_room_mas_ids(*, local_backend: bool = True) -> CheckResult:
-    """Check that all rooms have a MAS ID (CFN-enabled installs only).
-
-    On hub nodes, skips when local ``CFN_MGMT_URL`` is unset (CFN profile
-    not active). On spoke nodes, queries the remote hub backend — CFN may be
-    enabled there even when this node's ``.env`` has no CFN URLs.
-    """
-    if local_backend:
-        env_path = Path.home() / ".mycelium" / ".env"
-        if not env_path.exists():
-            return CheckResult(name="Room MAS IDs", status="ok", message="Skipped (no .env)")
-
-        from dotenv import dotenv_values
-
-        vals = dotenv_values(env_path)
-        if not vals.get("CFN_MGMT_URL"):
-            return CheckResult(
-                name="Room MAS IDs", status="ok", message="Skipped (CFN not enabled)"
-            )
-
-    from mycelium.config import MyceliumConfig
-
-    try:
-        cfg = MyceliumConfig.load()
-        api_url = cfg.server.api_url or "http://localhost:8000"
-    except Exception:
-        api_url = "http://localhost:8000"
-
-    try:
-        import httpx
-
-        with httpx.Client(base_url=api_url, timeout=5) as client:
-            resp = client.get("/api/rooms")
-            resp.raise_for_status()
-            rooms = resp.json()
-    except httpx.HTTPStatusError as exc:
-        body = (exc.response.text or "").strip().replace("\n", " ")[:200]
-        details = [f"  {api_url.rstrip('/')}/api/rooms"]
-        if body:
-            details.append(f"  {body}")
-        details.append(
-            "  /health can still pass while /api/rooms fails — check hub logs and migrations."
-        )
-        return CheckResult(
-            name="Room MAS IDs",
-            status="warning",
-            message=f"GET /api/rooms returned HTTP {exc.response.status_code}",
-            details=details,
-        )
-    except httpx.RequestError as exc:
-        return CheckResult(
-            name="Room MAS IDs",
-            status="ok",
-            message="Skipped (backend unreachable)",
-            details=[str(exc)],
-        )
-    except (TypeError, KeyError, ValueError) as exc:
-        return CheckResult(
-            name="Room MAS IDs",
-            status="warning",
-            message="Skipped (unexpected /api/rooms response)",
-            details=[str(exc)],
-        )
-
-    # Session sub-rooms (name contains ":session:") don't need MAS IDs
-    top_level = [r for r in rooms if ":session:" not in r["name"]]
-    missing = [r["name"] for r in top_level if not r.get("mas_id")]
-    if not missing:
-        return CheckResult(
-            name="Room MAS IDs",
-            status="ok",
-            message=f"All {len(top_level)} room(s) have MAS IDs",
-        )
-
-    def _fix_missing_mas() -> None:
-        import httpx
-
-        fixed, failed = [], []
-        for room_name in missing:
-            try:
-                with httpx.Client(base_url=api_url, timeout=15) as client:
-                    resp = client.post(f"/api/rooms/{room_name}/sync-mas")
-                    resp.raise_for_status()
-                    data = resp.json()
-                mas = data.get("mas_id") or "(unknown)"
-                typer.echo(f"    Registered {room_name}: MAS ID = {mas}")
-                fixed.append(room_name)
-            except Exception as exc:
-                typer.echo(f"    Failed {room_name}: {exc}")
-                failed.append(room_name)
-        if fixed:
-            typer.secho(f"  Registered {len(fixed)} room(s) with CFN.", fg=typer.colors.GREEN)
-        if failed:
-            typer.secho(
-                f"  {len(failed)} room(s) could not be registered — check that CFN is running.",
-                fg=typer.colors.YELLOW,
-            )
-
-    return CheckResult(
-        name="Room MAS IDs",
-        status="warning",
-        message=f"{len(missing)} room(s) missing MAS ID",
-        details=[f"  {name}" for name in missing]
-        + ["Fix: run 'mycelium doctor --fix' to register with CFN"],
-        fix_fn=_fix_missing_mas,
-    )
-
-
-def _parse_alembic_current(stdout: str) -> str | None:
-    """Extract the current DB revision from ``alembic current`` stdout.
-
-    Returns ``None`` if no revision token can be found.  This is split out so
-    the parse logic can be unit-tested without spinning up a real database;
-    pre-Option-B, the parser lived inline and inherited a class of bugs
-    where substrings of Python tracebacks (e.g., ``aceback`` from
-    ``Traceback``) were mis-identified as revision IDs.
-
-    The contract:
-      * Look only at stdout (alembic emits INFO logs and tracebacks on
-        stderr); the caller must not pass stderr through this function.
-      * Anchor matches to start-of-line in multiline mode so log prefixes
-        like ``INFO  [alembic.runtime.migration]`` can never contribute.
-      * Accept 4–40 hex chars to cover mycelium's 4-digit numeric prefixes
-        (e.g. ``0016``) and stock alembic 12-char hashes (e.g. ``f3a1b2c4d5e6``).
-    """
-    import re
-
-    if not stdout:
-        return None
-    match = re.search(r"^\s*([0-9a-f]{4,40})\b", stdout, re.MULTILINE)
-    return match.group(1) if match else None
-
-
-def _check_pending_migrations() -> CheckResult:
-    """Check whether the DB is behind the latest alembic revision."""
-    from mycelium.migrations import (
-        find_local_backend_dir,
-        run_alembic_current,
-        run_alembic_heads,
-    )
-
-    backend_dir = find_local_backend_dir()
-    latest_file: str | None = None
-
-    if backend_dir is not None:
-        versions_dir = backend_dir / "alembic_migrations" / "versions"
-        if not versions_dir.exists():
-            return CheckResult(
-                name="Migrations", status="ok", message="Skipped (versions dir not found)"
-            )
-        revision_files = sorted(versions_dir.glob("*.py"))
-        if not revision_files:
-            return CheckResult(name="Migrations", status="ok", message="No migration files found")
-        latest_file = revision_files[-1].stem.split("_")[0]
-    else:
-        heads = run_alembic_heads()
-        if heads.mode == "unavailable":
-            return CheckResult(
-                name="Migrations",
-                status="warning",
-                message="Cannot check migrations (backend container not running)",
-                details=["fix: mycelium up", "fix: mycelium migrate"],
-            )
-        if heads.returncode != 0:
-            err_tail = (
-                heads.stderr.strip().splitlines()[-1]
-                if heads.stderr.strip()
-                else "(no error output)"
-            )
-            return CheckResult(
-                name="Migrations",
-                status="warning",
-                message=f"alembic heads failed (exit {heads.returncode})",
-                details=[f"stderr: {err_tail[:160]}", "fix: mycelium migrate"],
-            )
-        latest_file = _parse_alembic_current(heads.stdout) or "head"
-
-    try:
-        current = run_alembic_current()
-        stdout = current.stdout or ""
-        stderr = current.stderr or ""
-    except Exception as exc:
-        return CheckResult(
-            name="Migrations",
-            status="warning",
-            message=f"Could not run alembic current: {exc}",
-            details=["fix: mycelium migrate"],
-        )
-
-    if current.mode == "unavailable":
-        return CheckResult(
-            name="Migrations",
-            status="warning",
-            message="Cannot check migrations (backend container not running)",
-            details=["fix: mycelium up", "fix: mycelium migrate"],
-        )
-
-    if current.returncode != 0:
-        err_tail = stderr.strip().splitlines()[-1] if stderr.strip() else "(no error output)"
-        return CheckResult(
-            name="Migrations",
-            status="warning",
-            message=f"alembic current failed (exit {current.returncode})",
-            details=[f"stderr: {err_tail[:160]}", "fix: mycelium migrate"],
-        )
-
-    via = f" ({current.mode})" if current.mode == "container" else ""
-
-    if "head" in stdout.lower():
-        return CheckResult(
-            name="Migrations",
-            status="ok",
-            message=f"DB at head ({latest_file}){via}",
-        )
-
-    current_rev = _parse_alembic_current(stdout) or "unknown"
-
-    if not stdout.strip() or current_rev == "unknown":
-        return CheckResult(
-            name="Migrations",
-            status="warning",
-            message="Could not determine current DB revision",
-            details=[f"alembic stdout: {stdout.strip()[:120]}", "fix: mycelium migrate"],
-        )
-
-    return CheckResult(
-        name="Migrations",
-        status="warning",
-        message=f"DB at {current_rev}, latest is {latest_file} — pending migrations",
-        details=["fix: mycelium migrate"],
-    )
-
-
-# ── OpenClaw adapter checks ───────────────────────────────────────────────────
-#
-# All three openclaw checks are gated on whether the user has opted into the
-# mycelium OpenClaw adapter (by running `mycelium adapter add openclaw`).  We
-# read that from config.adapters in ~/.mycelium/config.toml.  A fresh mycelium
-# install that has never touched OpenClaw, and a user who happens to have
-# OpenClaw installed for unrelated reasons, should both see all three checks
-# cleanly skipped — doctor should only nag about adapter health once the user
-# has explicitly asked for the adapter.
-
-
-def _openclaw_adapter_registered() -> bool:
-    """True if the user has run `mycelium adapter add openclaw` at least once."""
-    from mycelium.config import MyceliumConfig
-
-    try:
-        cfg = MyceliumConfig.load()
-    except Exception:
-        return False
-    return "openclaw" in (cfg.adapters or {})
-
-
-def _check_openclaw_mycelium_plugin() -> CheckResult:
-    """Verify the `mycelium` plugin is installed, registers the mycelium-room channel,
-    and has the post-refactor source layout.  Catches three real failure modes
-    previously only surfaced at gateway startup or at first message routing:
-
-    1. Manifest missing ``kind: channel`` / ``channels: [mycelium-room]`` — gateway
-       refuses to start with "unknown channel id: mycelium-room" on any config
-       referencing the channel.
-    2. Pre-refactor layout (no ``src/channel/route.ts``) — a user who installed
-       before the channel logic was extracted still has the monolithic file and
-       will miss the unit-tested routing path entirely.
-    3. Stale ``instructions.ts`` from before the ``message`` → ``negotiate`` rename —
-       agents read the stale text on every turn and try to run commands that no
-       longer exist.
-    """
-    import json
-
-    if not _openclaw_adapter_registered():
-        return CheckResult(
-            name="openclaw plugin",
-            status="ok",
-            message="openclaw adapter not registered — skipped",
-        )
-
-    plugin_dir = Path.home() / ".openclaw" / "extensions" / "mycelium"
-    manifest = plugin_dir / "openclaw.plugin.json"
-    index = plugin_dir / "index.ts"
-    route_file = plugin_dir / "src" / "channel" / "route.ts"
-    instructions_file = plugin_dir / "src" / "instructions.ts"
-
-    if not manifest.exists():
-        return CheckResult(
-            name="openclaw plugin",
-            status="warning",
-            message="adapter registered but plugin not found",
-            details=[
-                f"expected: {plugin_dir}",
-                "fix: run `mycelium adapter add openclaw --reinstall`",
-            ],
-        )
-
-    if not index.exists():
-        return CheckResult(
-            name="openclaw plugin",
-            status="error",
-            message="manifest present but index.ts missing — corrupt install",
-            details=["fix: run `mycelium adapter add openclaw --reinstall`"],
-        )
-
-    # 1. Channel registration in manifest
-    try:
-        manifest_data = json.loads(manifest.read_text())
-    except Exception as exc:
-        return CheckResult(
-            name="openclaw plugin",
-            status="error",
-            message=f"manifest is not valid JSON: {exc}",
-            details=["fix: run `mycelium adapter add openclaw --reinstall`"],
-        )
-
-    channels = manifest_data.get("channels") or []
-    if manifest_data.get("kind") != "channel" or "mycelium-room" not in channels:
-        return CheckResult(
-            name="openclaw plugin",
-            status="error",
-            message="manifest does not register the mycelium-room channel",
-            details=[
-                f"found kind={manifest_data.get('kind')!r} channels={channels}",
-                'expected kind="channel" channels=["mycelium-room"]',
-                "symptom: gateway refuses to start with 'unknown channel id: mycelium-room'",
-                "fix: run `mycelium adapter add openclaw --reinstall`",
-            ],
-        )
-
-    # 2. Post-refactor layout
-    if not route_file.exists():
-        return CheckResult(
-            name="openclaw plugin",
-            status="warning",
-            message="pre-refactor plugin layout — missing src/channel/route.ts",
-            details=[
-                "the channel routing logic was extracted into a dedicated module",
-                "fix: run `mycelium adapter add openclaw --reinstall`",
-            ],
-        )
-
-    # 3. Staleness from the message → negotiate rename
-    if instructions_file.exists():
-        try:
-            instructions_text = instructions_file.read_text()
-        except Exception:
-            instructions_text = ""
-        if "mycelium message " in instructions_text:
-            return CheckResult(
-                name="openclaw plugin",
-                status="warning",
-                message="installed instructions.ts references `mycelium message` (stale)",
-                details=[
-                    "the `message` command group was renamed to `negotiate`",
-                    "agents reading this on wake will try commands that no longer exist",
-                    "fix: run `mycelium adapter add openclaw --reinstall`",
-                ],
-            )
-
-    return CheckResult(
-        name="openclaw plugin",
-        status="ok",
-        message=f"installed at {plugin_dir} (channel registered, layout current)",
-    )
-
-
-def _check_openclaw_channel_config() -> CheckResult:
-    """Verify channels.mycelium-room is configured correctly in openclaw.json."""
-    import json
-
-    if not _openclaw_adapter_registered():
-        return CheckResult(
-            name="channel config",
-            status="ok",
-            message="openclaw adapter not registered — skipped",
-        )
-
-    openclaw_json = Path.home() / ".openclaw" / "openclaw.json"
-    if not openclaw_json.exists():
-        return CheckResult(
-            name="channel config",
-            status="ok",
-            message="openclaw.json not found — skipped",
-        )
-
-    try:
-        with openclaw_json.open() as f:
-            oc = json.load(f)
-    except Exception as exc:
-        return CheckResult(
-            name="channel config",
-            status="error",
-            message=f"could not parse openclaw.json: {exc}",
-        )
-
-    channel = (oc.get("channels") or {}).get("mycelium-room")
-    if not channel:
-        return CheckResult(
-            name="channel config",
-            status="warning",
-            message="channels.mycelium-room not configured",
-            details=[
-                "the plugin will run in session-only mode (no addressed messaging)",
-                "fix: add channels.mycelium-room with backendUrl, room, agents, requireMention",
-            ],
-        )
-
-    if channel.get("enabled") is False:
-        return CheckResult(
-            name="channel config",
-            status="warning",
-            message="channels.mycelium-room present but disabled",
-        )
-
-    if not channel.get("backendUrl"):
-        return CheckResult(
-            name="channel config",
-            status="error",
-            message="missing required field: backendUrl",
-            details=["fix: set backendUrl in channels.mycelium-room"],
-        )
-
-    # Room/agents can come from a legacy top-level room+agents block OR the
-    # multi-room rooms:[{room,agents}] fan-out (or both). Build a normalized
-    # view that's valid if at least one room is configured anywhere.
-    normalized_rooms: list[tuple[str, list]] = []
-    if channel.get("room"):
-        normalized_rooms.append((str(channel["room"]), list(channel.get("agents") or [])))
-    for entry in channel.get("rooms") or []:
-        if isinstance(entry, dict) and entry.get("room"):
-            normalized_rooms.append((str(entry["room"]), list(entry.get("agents") or [])))
-
-    if not normalized_rooms:
-        return CheckResult(
-            name="channel config",
-            status="error",
-            message="no rooms configured (need top-level room or rooms[])",
-            details=[
-                "fix: `mycelium agent add <h> --adapter openclaw` writes this, "
-                "or set channels.mycelium-room.rooms = [{room, agents}]"
-            ],
-        )
-
-    # Check backendUrl matches mycelium config.toml's server.api_url
-    try:
-        import tomllib
-
-        mycelium_toml = Path.home() / ".mycelium" / "config.toml"
-        if mycelium_toml.exists():
-            with mycelium_toml.open("rb") as f:
-                mcfg = tomllib.load(f)
-            expected = (mcfg.get("server") or {}).get("api_url", "").rstrip("/")
-            actual = str(channel.get("backendUrl", "")).rstrip("/")
-            if expected and actual and expected != actual:
-                return CheckResult(
-                    name="channel config",
-                    status="error",
-                    message="backendUrl doesn't match mycelium config.toml",
-                    details=[
-                        f"openclaw.json:     {actual}",
-                        f"mycelium/config:   {expected}",
-                        "fix: update channels.mycelium-room.backendUrl to match",
-                    ],
-                )
-    except Exception:
-        pass  # non-fatal
-
-    require_mention = channel.get("requireMention", True)
-    summary = ", ".join(f"{r}:{len(a)}" for r, a in normalized_rooms)
-    return CheckResult(
-        name="channel config",
-        status="ok",
-        message=(f"{len(normalized_rooms)} room(s) [{summary}] requireMention={require_mention}"),
-    )
-
-
-def _check_openclaw_agent_sandbox() -> CheckResult:
-    """Warn about agents whose sandbox mode blocks the mycelium CLI."""
-    import json
-
-    if not _openclaw_adapter_registered():
-        return CheckResult(
-            name="agent sandbox",
-            status="ok",
-            message="openclaw adapter not registered — skipped",
-        )
-
-    openclaw_json = Path.home() / ".openclaw" / "openclaw.json"
-    if not openclaw_json.exists():
-        return CheckResult(
-            name="agent sandbox",
-            status="ok",
-            message="openclaw.json not found — skipped",
-        )
-
-    try:
-        with openclaw_json.open() as f:
-            oc = json.load(f)
-    except Exception as exc:
-        return CheckResult(
-            name="agent sandbox",
-            status="error",
-            message=f"could not parse openclaw.json: {exc}",
-        )
-
-    channel = (oc.get("channels") or {}).get("mycelium-room") or {}
-    # Union of legacy top-level agents + every rooms[] entry's agents.
-    channel_agents = set(channel.get("agents") or [])
-    for entry in channel.get("rooms") or []:
-        if isinstance(entry, dict):
-            channel_agents.update(entry.get("agents") or [])
-    if not channel_agents:
-        return CheckResult(
-            name="agent sandbox",
-            status="ok",
-            message="no channel agents configured — skipped",
-        )
-
-    default_sandbox = (((oc.get("agents") or {}).get("defaults") or {}).get("sandbox") or {}).get(
-        "mode", "all"
-    )
-
-    sandboxed: list[str] = []
-    for agent in (oc.get("agents") or {}).get("list", []):
-        agent_id = agent.get("id", "")
-        if agent_id not in channel_agents:
-            continue
-        mode = (agent.get("sandbox") or {}).get("mode") or default_sandbox
-        if mode == "off":
-            continue
-        # exec.host=gateway routes exec to the host (where mycelium lives) without
-        # disabling sandbox isolation for other tools — acceptable alternative to mode=off.
-        exec_host = ((agent.get("tools") or {}).get("exec") or {}).get("host")
-        if exec_host == "gateway":
-            continue
-        sandboxed.append(f"{agent_id} (sandbox.mode={mode}, exec.host={exec_host or 'auto'})")
-
-    if sandboxed:
-        return CheckResult(
-            name="agent sandbox",
-            status="warning",
-            message=f"{len(sandboxed)} channel agent(s) block mycelium CLI exec",
-            details=[
-                *sandboxed,
-                "sandboxed agents cannot execute `mycelium session join`, `message propose`,",
-                "or `message respond` — the exec approvals allowlist is bypassed in sandbox mode.",
-                "fix (option A — simpler): set sandbox.mode = 'off' in openclaw.json per agent",
-                "fix (option B — preserves sandbox): set tools.exec.host = 'gateway' per agent",
-                "  option B keeps container isolation for read/write/edit while routing exec",
-                "  calls to the gateway host where mycelium is installed and allowlisted.",
-                "restart the openclaw gateway after either change.",
-            ],
-        )
-
-    return CheckResult(
-        name="agent sandbox",
-        status="ok",
-        message=f"all {len(channel_agents)} channel agent(s) can exec mycelium CLI",
-    )
-
-
 # ── Cursor adapter checks ─────────────────────────────────────────────────────
 #
-# Mirrors the openclaw pattern: gate every check on whether the user has
-# opted into the cursor adapter (via ``mycelium adapter add cursor``).  A
-# fresh mycelium install that has never touched Cursor — and a user who
-# happens to have ``cursor-agent`` on PATH for unrelated reasons — should
-# both see all cursor checks cleanly skipped.  We surface health only after
-# the user has explicitly asked for the adapter.
+# Gate every check on whether the user has opted into the cursor adapter (via
+# ``mycelium adapter add cursor``).  A fresh mycelium install that has never
+# touched Cursor — and a user who happens to have ``cursor-agent`` on PATH for
+# unrelated reasons — should both see all cursor checks cleanly skipped.  We
+# surface health only after the user has explicitly asked for the adapter.
 
 
 def _cursor_adapter_registered() -> bool:
@@ -1376,285 +644,6 @@ def _cursor_adapter_registered() -> bool:
     except Exception:
         return False
     return "cursor" in (cfg.adapters or {})
-
-
-# ── hermes adapter health ────────────────────────────────────────────────────
-# Mirrors the openclaw block above: gate every check on whether the user has
-# explicitly run `mycelium adapter add hermes`. A user who happens to have
-# hermes installed but has not opted into the mycelium adapter should see all
-# four checks cleanly skipped — doctor only nags about hermes once asked.
-
-
-def _hermes_adapter_registered() -> bool:
-    """True if the user has run `mycelium adapter add hermes` at least once."""
-    from mycelium.config import MyceliumConfig
-
-    try:
-        cfg = MyceliumConfig.load()
-    except Exception:
-        return False
-    return "hermes" in (cfg.adapters or {})
-
-
-def _hermes_paths() -> tuple[Path, Path, Path]:
-    """(home, plugin_dir, config_yaml) for the active hermes profile.
-
-    Mycelium always targets whichever profile is active via ``HERMES_HOME``
-    (or ``~/.hermes/``); per-profile multi-tenancy is on hold until
-    hermes-agent#25660. See ``_hermes_home`` for the resolution rule.
-    """
-    from mycelium.integrations.hermes.install import (
-        _hermes_config_yaml,
-        _hermes_home,
-        _hermes_plugin_dst,
-    )
-
-    return _hermes_home(), _hermes_plugin_dst(), _hermes_config_yaml()
-
-
-def _check_hermes_plugin() -> CheckResult:
-    """Verify the hermes-side plugin tree is staged and well-formed.
-
-    Catches the three most likely "I ran adapter add but nothing happens"
-    failure modes: missing plugin dir (install never ran), missing
-    plugin.yaml manifest (partial copy), and a manifest with the wrong
-    ``kind``/name (a hand-edit that hermes will refuse to load).
-    """
-    if not _hermes_adapter_registered():
-        return CheckResult(
-            name="hermes plugin",
-            status="ok",
-            message="hermes adapter not registered — skipped",
-        )
-
-    _, plugin_dir, _ = _hermes_paths()
-    plugin_yaml = plugin_dir / "plugin.yaml"
-    adapter_py = plugin_dir / "adapter.py"
-
-    if not plugin_dir.exists():
-        return CheckResult(
-            name="hermes plugin",
-            status="warning",
-            message="adapter registered but plugin tree missing",
-            details=[
-                f"expected: {plugin_dir}",
-                "fix: run `mycelium adapter add hermes --reinstall`",
-            ],
-        )
-    if not plugin_yaml.exists():
-        return CheckResult(
-            name="hermes plugin",
-            status="error",
-            message="plugin.yaml manifest missing — corrupt install",
-            details=[
-                f"expected: {plugin_yaml}",
-                "fix: run `mycelium adapter add hermes --reinstall`",
-            ],
-        )
-    if not adapter_py.exists():
-        return CheckResult(
-            name="hermes plugin",
-            status="error",
-            message="adapter.py missing — corrupt install",
-            details=[
-                f"expected: {adapter_py}",
-                "fix: run `mycelium adapter add hermes --reinstall`",
-            ],
-        )
-
-    try:
-        import yaml
-
-        manifest = yaml.safe_load(plugin_yaml.read_text()) or {}
-    except Exception as exc:
-        return CheckResult(
-            name="hermes plugin",
-            status="error",
-            message=f"plugin.yaml is not valid YAML: {exc}",
-            details=["fix: run `mycelium adapter add hermes --reinstall`"],
-        )
-    if manifest.get("kind") != "platform" or manifest.get("name") != "mycelium":
-        return CheckResult(
-            name="hermes plugin",
-            status="error",
-            message="plugin.yaml manifest is wrong (need kind=platform, name=mycelium)",
-            details=[
-                f"found kind={manifest.get('kind')!r} name={manifest.get('name')!r}",
-                "fix: run `mycelium adapter add hermes --reinstall`",
-            ],
-        )
-    return CheckResult(
-        name="hermes plugin",
-        status="ok",
-        message=f"installed at {plugin_dir} (manifest valid)",
-    )
-
-
-def _check_hermes_config_yaml() -> CheckResult:
-    """Verify ``~/.hermes/config.yaml`` enables the plugin and platform."""
-    if not _hermes_adapter_registered():
-        return CheckResult(
-            name="hermes config",
-            status="ok",
-            message="hermes adapter not registered — skipped",
-        )
-
-    _, _, config_yaml = _hermes_paths()
-
-    if not config_yaml.exists():
-        return CheckResult(
-            name="hermes config",
-            status="error",
-            message="hermes config.yaml not found",
-            details=[
-                f"expected: {config_yaml}",
-                "fix: run `mycelium adapter add hermes --reinstall`",
-            ],
-        )
-
-    try:
-        import yaml
-
-        data = yaml.safe_load(config_yaml.read_text()) or {}
-    except Exception as exc:
-        return CheckResult(
-            name="hermes config",
-            status="error",
-            message=f"hermes config.yaml is not valid YAML: {exc}",
-        )
-    if not isinstance(data, dict):
-        return CheckResult(
-            name="hermes config",
-            status="error",
-            message="hermes config.yaml top-level is not a mapping",
-        )
-
-    plugins = data.get("plugins") or {}
-    enabled = plugins.get("enabled") if isinstance(plugins, dict) else None
-    if not isinstance(enabled, list) or "mycelium" not in enabled:
-        return CheckResult(
-            name="hermes config",
-            status="error",
-            message="plugins.enabled does not contain 'mycelium'",
-            details=[
-                "the hermes gateway loads user plugins only when allow-listed",
-                "fix: run `mycelium adapter add hermes --reinstall`",
-            ],
-        )
-
-    platforms = data.get("platforms") or {}
-    block = platforms.get("mycelium-room") if isinstance(platforms, dict) else None
-    if not isinstance(block, dict):
-        return CheckResult(
-            name="hermes config",
-            status="warning",
-            message="platforms.mycelium-room block missing",
-            details=["fix: run `mycelium adapter add hermes --reinstall`"],
-        )
-    if block.get("enabled") is False:
-        return CheckResult(
-            name="hermes config",
-            status="warning",
-            message="platforms.mycelium-room is disabled",
-        )
-    extra = block.get("extra") or {}
-    backend_url = extra.get("backend_url") if isinstance(extra, dict) else None
-    if not isinstance(backend_url, str) or not backend_url:
-        return CheckResult(
-            name="hermes config",
-            status="error",
-            message="platforms.mycelium-room.extra.backend_url is empty",
-            details=["fix: run `mycelium adapter add hermes --reinstall`"],
-        )
-
-    # Cross-check the backend URL against ~/.mycelium/config.toml so a stale
-    # patch from a renamed backend doesn't silently route to nowhere.
-    try:
-        import tomllib
-
-        mycelium_toml = Path.home() / ".mycelium" / "config.toml"
-        if mycelium_toml.exists():
-            with mycelium_toml.open("rb") as f:
-                mcfg = tomllib.load(f)
-            expected = (mcfg.get("server") or {}).get("api_url", "").rstrip("/")
-            if expected and expected != backend_url.rstrip("/"):
-                return CheckResult(
-                    name="hermes config",
-                    status="error",
-                    message="backend_url doesn't match mycelium config.toml",
-                    details=[
-                        f"hermes config.yaml:  {backend_url}",
-                        f"mycelium config:     {expected}",
-                        "fix: run `mycelium adapter add hermes --reinstall`",
-                    ],
-                )
-    except Exception:
-        pass  # non-fatal
-
-    rooms = extra.get("rooms") if isinstance(extra, dict) else None
-    rooms_count = (
-        sum(1 for r in rooms if isinstance(r, dict) and r.get("room"))
-        if isinstance(rooms, list)
-        else 0
-    )
-    return CheckResult(
-        name="hermes config",
-        status="ok",
-        message=f"plugin enabled, platform configured, {rooms_count} room(s) wired",
-    )
-
-
-def _check_hermes_gateway_running() -> CheckResult:
-    """Probe the hermes gateway pid file to confirm the long-lived process is up."""
-    if not _hermes_adapter_registered():
-        return CheckResult(
-            name="hermes gateway",
-            status="ok",
-            message="hermes adapter not registered — skipped",
-        )
-
-    import os
-
-    from mycelium.integrations.hermes.install import _hermes_gateway_pid, _read_gateway_pid
-
-    pid_path = _hermes_gateway_pid()
-    if not pid_path.exists():
-        return CheckResult(
-            name="hermes gateway",
-            status="warning",
-            message="gateway pid file not found",
-            details=[
-                f"expected: {pid_path}",
-                "the platform plugin only delivers ticks while the gateway is running",
-                "fix: start it with `hermes gateway start`",
-            ],
-        )
-
-    pid = _read_gateway_pid()
-    if pid is None:
-        return CheckResult(
-            name="hermes gateway",
-            status="warning",
-            message="gateway pid file is unreadable",
-            details=[
-                f"path: {pid_path}",
-                "fix: restart with `hermes gateway restart`",
-            ],
-        )
-    try:
-        os.kill(pid, 0)
-    except (OSError, ProcessLookupError):
-        return CheckResult(
-            name="hermes gateway",
-            status="warning",
-            message=f"pid file references {pid} but no such process",
-            details=["fix: start it with `hermes gateway start`"],
-        )
-    return CheckResult(
-        name="hermes gateway",
-        status="ok",
-        message=f"running (pid {pid})",
-    )
 
 
 def _check_cursor_agent_binary() -> CheckResult:
@@ -1669,7 +658,7 @@ def _check_cursor_agent_binary() -> CheckResult:
         return CheckResult(
             name="cursor-agent binary",
             status="ok",
-            message="cursor adapter not registered — skipped",
+            message="cursor adapter not registered (skipped)",
         )
 
     import shutil
@@ -1679,7 +668,7 @@ def _check_cursor_agent_binary() -> CheckResult:
         return CheckResult(
             name="cursor-agent binary",
             status="error",
-            message="cursor-agent not on PATH — mentions will fail",
+            message="cursor-agent not on PATH; mentions will fail",
             details=[
                 "install Cursor + the cursor CLI from https://cursor.com,",
                 "then run `cursor-agent login` to authenticate this host.",
@@ -1715,7 +704,7 @@ def _check_cursor_login() -> CheckResult:
         return CheckResult(
             name="cursor-agent login",
             status="ok",
-            message="cursor adapter not registered — skipped",
+            message="cursor adapter not registered (skipped)",
         )
 
     import json
@@ -1778,7 +767,7 @@ def _check_cursor_workspace_assets() -> CheckResult:
         return CheckResult(
             name="cursor workspace",
             status="ok",
-            message="cursor adapter not registered — skipped",
+            message="cursor adapter not registered (skipped)",
         )
 
     # Walk every room's agent manifests; collect (handle, cwd) tuples for
@@ -1792,7 +781,7 @@ def _check_cursor_workspace_assets() -> CheckResult:
         return CheckResult(
             name="cursor workspace",
             status="ok",
-            message="no rooms on disk — skipped",
+            message="no rooms on disk (skipped)",
         )
 
     cursor_agents: list[tuple[str, str, Path]] = []
@@ -1815,7 +804,7 @@ def _check_cursor_workspace_assets() -> CheckResult:
         return CheckResult(
             name="cursor workspace",
             status="ok",
-            message="no cursor agents registered — skipped",
+            message="no cursor agents registered (skipped)",
         )
 
     missing: list[str] = []
@@ -1869,7 +858,7 @@ def _check_daemon_service_registered() -> CheckResult:
             name="daemon service",
             status="ok",
             message=(
-                "agent daemon not installed — skipped "
+                "agent daemon not installed (skipped) "
                 "(install with: mycelium adapter add claude-code --step=daemon)"
             ),
         )
@@ -1887,7 +876,7 @@ def _check_daemon_running() -> CheckResult:
         return CheckResult(
             name="daemon health",
             status="ok",
-            message="not installed — skipped",
+            message="not installed (skipped)",
         )
 
     from mycelium.daemon.health import read_health_blocking
@@ -1915,7 +904,7 @@ def _check_daemon_running() -> CheckResult:
         f"  rooms:  {len(rooms_sub)}/{len(rooms_cfg)} connected",
     ]
     if not rooms_cfg:
-        details.append("  (no rooms subscribed — `mycelium daemon subscribe <room>`)")
+        details.append("  (no rooms subscribed; `mycelium daemon subscribe <room>`)")
     last = health.get("last_dispatch")
     if last:
         details.append(
@@ -1925,8 +914,7 @@ def _check_daemon_running() -> CheckResult:
     if errors:
         last_err = health.get("last_error") or {}
         details.append(
-            f"  errors: {errors} in last hour — last: "
-            f"{last_err.get('where')}: {last_err.get('msg')}"
+            f"  errors: {errors} in last hour, last: {last_err.get('where')}: {last_err.get('msg')}"
         )
 
     return CheckResult(
@@ -1936,68 +924,6 @@ def _check_daemon_running() -> CheckResult:
             "running, no errors" if not errors else f"running, but {errors} error(s) in last hour"
         ),
         details=details,
-    )
-
-
-def _check_cfn_pgvector() -> CheckResult:
-    """Check the pgvector extension is installed in the ioc-graph-db database.
-
-    The CFN knowledge graph (ioc-knowledge-memory-svc) needs pgvector in
-    ioc-graph-db. Without it, concept similarity-search 500s and the cognition
-    engine can hang the whole /decide call, surfacing as a
-    coordination_consensus with broken:true. cfn-db-init installs it on
-    `mycelium up`, but a hand-created ioc-graph-db can miss it.
-    """
-    name = "CFN pgvector (ioc-graph-db)"
-    env_path = Path.home() / ".mycelium" / ".env"
-    if not env_path.exists():
-        return CheckResult(name=name, status="ok", message="CFN not configured (skipped)")
-    from dotenv import dotenv_values
-
-    if not dotenv_values(env_path).get("CFN_MGMT_URL", ""):
-        return CheckResult(name=name, status="ok", message="CFN not enabled (skipped)")
-    try:
-        r = subprocess.run(
-            [
-                "docker",
-                "exec",
-                "mycelium-db",
-                "psql",
-                "-U",
-                "postgres",
-                "-d",
-                "ioc-graph-db",
-                "-tAc",
-                "SELECT extname FROM pg_extension WHERE extname='vector'",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        return CheckResult(
-            name=name, status="warning", message="Could not query mycelium-db (is it running?)"
-        )
-    if r.returncode != 0:
-        # DB / database unreachable — the container + backend checks already
-        # cover a down stack; don't double-report as an error here.
-        return CheckResult(
-            name=name,
-            status="warning",
-            message="Could not check (mycelium-db or ioc-graph-db unavailable)",
-        )
-    if "vector" in r.stdout:
-        return CheckResult(name=name, status="ok", message="pgvector installed in ioc-graph-db")
-    return CheckResult(
-        name=name,
-        status="error",
-        message="pgvector NOT installed in ioc-graph-db",
-        details=[
-            "CFN concept search will 500 and negotiations can hang (broken:true).",
-            "Fix: docker exec mycelium-db psql -U postgres -d ioc-graph-db \\",
-            "       -c 'CREATE EXTENSION IF NOT EXISTS vector;'",
-            "cfn-db-init installs this automatically on 'mycelium up'.",
-        ],
     )
 
 
@@ -2025,12 +951,12 @@ def doctor(
     exercise all checks. In the optional hub-and-spoke deployment mode
     spoke nodes talk to a remote backend and don't run Docker containers
     locally. When --mode is 'auto' (the default), doctor detects spoke
-    mode from server.api_url — if it points to a non-local host the
+    mode from server.api_url: if it points to a non-local host the
     Docker, runtime-drift, and port-drift checks are skipped automatically.
 
     \b
     Examples:
-        mycelium doctor              # interactive — auto-detects hub vs spoke
+        mycelium doctor              # interactive; auto-detects hub vs spoke
         mycelium doctor --fix        # auto-fix all fixable issues
         mycelium doctor --mode spoke # force spoke mode (skip local-only checks)
         mycelium doctor --mode hub   # force hub mode (run all checks)
@@ -2077,30 +1003,16 @@ def doctor(
         if local:
             service_checks.append(_check_docker_containers())
         service_checks.append(_check_backend_reachable(local_backend=local))
-        service_checks.append(_check_pending_migrations())
         service_checks.append(_check_llm_connectivity())
+        if local:
+            service_checks.append(_check_mediator_pi_binary())
 
         sections: list[tuple[str, list[CheckResult]]] = [
             ("Configuration", config_checks),
             ("Services", service_checks),
             (
-                "CFN",
-                [
-                    _check_cfn_intent(local_backend=local),
-                    _check_workspace_id(local_backend=local),
-                    _check_room_mas_ids(local_backend=local),
-                    _check_cfn_pgvector(),
-                ],
-            ),
-            (
                 "Adapters",
                 [
-                    _check_openclaw_mycelium_plugin(),
-                    _check_openclaw_channel_config(),
-                    _check_openclaw_agent_sandbox(),
-                    _check_hermes_plugin(),
-                    _check_hermes_config_yaml(),
-                    _check_hermes_gateway_running(),
                     _check_cursor_agent_binary(),
                     _check_cursor_login(),
                     _check_cursor_workspace_assets(),
@@ -2134,7 +1046,7 @@ def doctor(
         parsed_host = urlparse(api_url).hostname or api_url
         parsed_port = urlparse(api_url).port
         backend_label = f"{parsed_host}:{parsed_port}" if parsed_port else parsed_host
-        subtitle = f"{detected_mode} — backend at {backend_label}" if not local else None
+        subtitle = f"{detected_mode}, backend at {backend_label}" if not local else None
         print_title("Mycelium Doctor", subtitle=subtitle)
         for title, checks in sections:
             print_section(title)

@@ -4,8 +4,8 @@
 """
 Tests for the persistent memory API.
 
-Note: These tests use SQLite which doesn't support pgvector.
-Vector search tests are skipped; CRUD and subscription logic is tested.
+Backed by markdown files + a local JSONL index (no database). CRUD and
+subscription logic is tested here; semantic search lives in test_search.py.
 """
 
 import pytest

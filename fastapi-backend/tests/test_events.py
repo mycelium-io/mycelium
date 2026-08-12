@@ -7,18 +7,20 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import select
 
-from app.models import Message, Room
+from app.services import local_state
 from app.services.event_sweep import sweep_expired_events
 
 
 @pytest_asyncio.fixture()
-async def room(db_session):
-    r = Room(name="platform-eng")
-    db_session.add(r)
-    await db_session.commit()
-    return r
+async def room(client):
+    resp = await client.post("/api/rooms", json={"name": "platform-eng"})
+    assert resp.status_code == 201
+    return "platform-eng"
+
+
+def _stored(room_name: str) -> list[local_state.StoredMessage]:
+    return local_state.list_messages(room_name)
 
 
 def _event_body(**meta_overrides):
@@ -85,25 +87,25 @@ async def test_action_defaults_to_open(client, room):
 
 
 @pytest.mark.asyncio
-async def test_ttl_sets_expiry_column(client, room, db_session):
+async def test_ttl_sets_expiry(client, room):
     resp = await client.post("/api/rooms/platform-eng/messages", json=_event_body(ttl_seconds=3600))
     assert resp.status_code == 201
-    msg = (await db_session.execute(select(Message))).scalars().one()
+    msg = _stored("platform-eng")[0]
     assert msg.event_expires_at is not None
     assert msg.event_kind == "source_event"
 
 
 @pytest.mark.asyncio
-async def test_durable_event_has_no_expiry(client, room, db_session):
+async def test_durable_event_has_no_expiry(client, room):
     resp = await client.post("/api/rooms/platform-eng/messages", json=_event_body(kind="concern"))
     assert resp.status_code == 201
-    msg = (await db_session.execute(select(Message))).scalars().one()
+    msg = _stored("platform-eng")[0]
     assert msg.event_expires_at is None
     assert msg.event_status == "open"
 
 
 @pytest.mark.asyncio
-async def test_legacy_message_types_unchanged(client, room, db_session):
+async def test_legacy_message_types_unchanged(client, room):
     resp = await client.post(
         "/api/rooms/platform-eng/messages",
         json={"sender_handle": "a1", "message_type": "broadcast", "content": "hello"},
@@ -111,7 +113,7 @@ async def test_legacy_message_types_unchanged(client, room, db_session):
     assert resp.status_code == 201
     body = resp.json()
     assert body["metadata"] is None
-    msg = (await db_session.execute(select(Message))).scalars().one()
+    msg = _stored("platform-eng")[0]
     assert msg.event_kind is None and msg.event_status is None
 
 
@@ -150,11 +152,10 @@ async def test_since_filter(client, room):
 
 
 @pytest.mark.asyncio
-async def test_expired_events_hidden_from_get(client, room, db_session):
+async def test_expired_events_hidden_from_get(client, room):
     await client.post("/api/rooms/platform-eng/messages", json=_event_body(ttl_seconds=3600))
-    msg = (await db_session.execute(select(Message))).scalars().one()
+    msg = _stored("platform-eng")[0]
     msg.event_expires_at = datetime.now(UTC) - timedelta(seconds=1)
-    await db_session.commit()
 
     resp = await client.get("/api/rooms/platform-eng/messages")
     assert resp.json()["messages"] == []
@@ -209,10 +210,8 @@ async def test_status_transition_rejected_for_non_event(client, room):
 
 
 @pytest.mark.asyncio
-async def test_status_transition_404_for_wrong_room(client, room, db_session):
-    other = Room(name="other-room")
-    db_session.add(other)
-    await db_session.commit()
+async def test_status_transition_404_for_wrong_room(client, room):
+    await client.post("/api/rooms", json={"name": "other-room"})
     resp = await client.post(
         "/api/rooms/platform-eng/messages", json=_event_body(kind="action", payload={})
     )
@@ -227,31 +226,19 @@ async def test_status_transition_404_for_wrong_room(client, room, db_session):
 
 
 @pytest.mark.asyncio
-async def test_sweep_deletes_only_expired(client, room, db_session, monkeypatch):
-    from app.services import event_sweep
-
+async def test_sweep_deletes_only_expired(client, room):
     await client.post("/api/rooms/platform-eng/messages", json=_event_body(ttl_seconds=3600))
     await client.post(
         "/api/rooms/platform-eng/messages", json=_event_body(kind="action", payload={})
     )
-    msgs = (await db_session.execute(select(Message))).scalars().all()
-    for m in msgs:
+    for m in _stored("platform-eng"):
         if m.event_expires_at is not None:
             m.event_expires_at = datetime.now(UTC) - timedelta(seconds=1)
-    await db_session.commit()
 
-    # Point the sweep's session maker at the test database.
-    from sqlalchemy.ext.asyncio import async_sessionmaker
-
-    monkeypatch.setattr(
-        event_sweep,
-        "async_session_maker",
-        async_sessionmaker(db_session.bind, expire_on_commit=False),
-    )
     removed = await sweep_expired_events()
     assert removed == 1
 
-    remaining = (await db_session.execute(select(Message))).scalars().all()
+    remaining = _stored("platform-eng")
     assert len(remaining) == 1
     assert remaining[0].event_kind == "action"
 

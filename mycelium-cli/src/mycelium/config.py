@@ -18,15 +18,17 @@ Load priority (highest to lowest):
 
 import os
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any
 
 import toml
 from pydantic import BaseModel, Field, field_validator
 
+from mycelium.protocol import EngineRuntime
+
 # Header key prepended to every ~/.mycelium/config.json write. Strict JSON
 # has no comment syntax; ``"//"`` is the long-standing npm/package.json
 # convention for documentation keys and is ignored by every consumer of this
-# file (they look up known sections by name: server / llm / knowledge_ingest /
+# file (they look up known sections by name: server / llm / runtime /
 # etc). The key leads so it's the first thing a user sees on `cat`. Long
 # term we plan to delete this file entirely and have JS hooks parse
 # config.toml directly — see #146 — so this is interim.
@@ -62,24 +64,37 @@ class ServerConfig(BaseModel):
         default="http://localhost:8000",
         description="Mycelium backend API URL",
     )
-    workspace_id: str | None = Field(
-        default=None,
-        description="Default workspace UUID (created during install)",
-    )
-    mas_id: str | None = Field(
-        default=None,
-        description="Default MAS UUID (created during install)",
-    )
-    database_url: str | None = Field(
-        default=None,
-        description="Database URL override (defaults to backend container default)",
-    )
 
     @field_validator("api_url")
     @classmethod
     def validate_url(cls, v: str) -> str:
         """Ensure URLs don't have trailing slashes."""
         return v.rstrip("/")
+
+
+class SlimConfig(BaseModel):
+    """SLIM messaging-fabric connection configuration.
+
+    ``node_endpoint`` is the address of the ``slim`` node this agent connects
+    to. It's the same value whether the node is self-hosted (``mycelium hub
+    host``) or a shared mycelium-hosted rendezvous — set it with ``mycelium
+    connect <address>``. MLS makes the node a blind ciphertext forwarder, so the
+    host is untrusted either way.
+    """
+
+    node_endpoint: str = Field(
+        default="http://127.0.0.1:46357",
+        description="SLIM node endpoint (host:port), e.g. http://127.0.0.1:46357",
+    )
+
+    @field_validator("node_endpoint")
+    @classmethod
+    def normalize_endpoint(cls, v: str) -> str:
+        """Ensure the endpoint carries a scheme and no trailing slash."""
+        v = v.strip().rstrip("/")
+        if v and "://" not in v:
+            v = f"http://{v}"
+        return v
 
 
 class LLMConfig(BaseModel):
@@ -99,17 +114,34 @@ class LLMConfig(BaseModel):
     )
 
 
+class EngineConfig(BaseModel):
+    """First-party Cognition Engine runtime configuration.
+
+    ``runtime`` selects *where* a registered ``engine`` runs its NEGMAS drive:
+
+    - ``backend`` (default): the always-on backend owns the run via its summon
+      seam. The daemon skips engine manifests.
+    - ``host``: the local daemon holds the engine's connector and drives NEGMAS
+      **on the host**, where ``pi`` lives. The backend must be set to
+      ``ENGINE_RUNTIME=host`` in tandem so it does not also run the engine — the
+      two are a transition pair; flip both.
+    """
+
+    runtime: EngineRuntime = Field(
+        default="backend",
+        description="Where registered engines run their drive: 'backend' or 'host'.",
+    )
+
+    @field_validator("runtime", mode="before")
+    @classmethod
+    def _normalize_runtime(cls, v: object) -> object:
+        # Normalize casing/whitespace; the EngineRuntime Literal enforces membership.
+        return v.strip().lower() if isinstance(v, str) else v
+
+
 class RuntimeConfig(BaseModel):
     """Docker runtime / environment configuration."""
 
-    db_password: str = Field(
-        default="password",
-        description="Postgres password for the mycelium-db container",
-    )
-    db_port: int = Field(
-        default=5432,
-        description="Host port for Postgres",
-    )
     backend_port: int = Field(
         default=8000,
         description="Host port for the backend API",
@@ -126,48 +158,6 @@ class RuntimeConfig(BaseModel):
         default=None,
         description="Root directory for .mycelium/ data (defaults to ~/.mycelium)",
     )
-    coordination_tick_timeout_seconds: int = Field(
-        default=30,
-        description="Per-round timeout for CognitiveEngine negotiation",
-    )
-    cfn_mgmt_url: str | None = Field(
-        default=None,
-        description="IoC CFN management plane URL",
-    )
-    cfn_svc_url: str | None = Field(
-        default=None,
-        description="IoC CFN node service URL",
-    )
-    workspace_id: str | None = Field(
-        default=None,
-        description="Workspace ID in the CFN mgmt plane",
-    )
-    cfn_db: str = Field(
-        default="cfn_mgmt",
-        description="CFN management database name",
-    )
-    admin_user_password: str = Field(
-        default="admin",
-        description="Admin user password for CFN mgmt plane",
-    )
-    cfn_dev_mode: bool = Field(
-        default=False,
-        description="Enable CFN dev mode",
-    )
-
-
-class NegotiationConfig(BaseModel):
-    """Tunables for the CFN-mediated negotiation flow."""
-
-    n_steps: int = Field(
-        default=20,
-        description=(
-            "Maximum SAO rounds per session. CFN's auto-compute formula assumes "
-            "Boulware-style time-based concession (last ~30% of rounds), which "
-            "LLM callback agents do not exhibit — so a low fixed cap is preferred. "
-            "Set to 0 to fall through to CFN's auto-computed budget."
-        ),
-    )
 
 
 class RoomConfig(BaseModel):
@@ -179,55 +169,13 @@ class RoomConfig(BaseModel):
     )
 
 
-class KnowledgeIngestConfig(BaseModel):
-    """Control surface for the channel-message and ``memory set`` → CFN path.
-
-    KXP fires only on deliberate room artifacts; the silent per-turn hook is
-    gone. These knobs are user-facing and exposed via
-    ``mycelium config set knowledge_ingest.<key> <value>``. Values are also
-    overridable via ``MYCELIUM_INGEST_*`` env vars for ephemeral changes.
-    """
-
-    enabled: bool = Field(
-        default=True,
-        description=(
-            "Master kill switch. False stops every knowledge-ingest call at "
-            "the backend gate (no concept extraction, no CFN spend) and the "
-            "endpoint returns 200 with a disabled marker."
-        ),
-    )
-    max_input_tokens: int = Field(
-        default=50_000,
-        description=(
-            "Backend circuit breaker — payloads above this estimated input "
-            "token count are refused with 413. Set to 0 to disable."
-        ),
-    )
-    dedupe_ttl_seconds: int = Field(
-        default=300,
-        description=(
-            "Backend content-hash dedupe window. Identical payloads posted "
-            "within this many seconds return the cached response_id without "
-            "hitting CFN. Set to 0 to disable dedupe entirely."
-        ),
-    )
-    min_content_chars: int = Field(
-        default=32,
-        description=(
-            "Skip ingest for trivially short content. Channel posts like "
-            "'ack' or a single emoji produce KG noise without value. Set to "
-            "0 to ingest everything."
-        ),
-    )
-
-
 class ScrapeTarget(BaseModel):
     """A Prometheus ``/metrics`` endpoint for the collector to poll.
 
     Configured under ``[[metrics.scrape]]`` in ``config.toml``::
 
         [[metrics.scrape]]
-        name = "cfn-mgmt"
+        name = "my-service"
         url  = "http://localhost:9000/metrics"
         kind = "http_red"   # default; rolls up prometheus-fastapi-instrumentator series
 
@@ -240,7 +188,7 @@ class ScrapeTarget(BaseModel):
 
     name: str = Field(
         ...,
-        description="Stable, short identifier — used as the dict key in metrics.json and as the panel label.",
+        description="Stable, short identifier used as the dict key in metrics.json and as the panel label.",
         min_length=1,
         max_length=64,
     )
@@ -250,19 +198,19 @@ class ScrapeTarget(BaseModel):
     )
     kind: str = Field(
         default="http_red",
-        description="Roll-up strategy. Currently only 'http_red' is supported (HTTP rate/error/duration).",
+        description=(
+            "Roll-up strategy: 'http_red' (HTTP rate/error/duration, e.g. "
+            "prometheus-fastapi-instrumentator) or 'grpc_red' (gRPC RED, e.g. the "
+            "OpenShell gateway's *_grpc_requests_total + *_grpc_request_duration_seconds)."
+        ),
     )
 
 
 class MetricsConfig(BaseModel):
     """Configuration for the metrics collector + display.
 
-    For the common case (scraping stock CFN services whose URLs are
-    already in ``runtime.cfn_mgmt_url`` / ``runtime.cfn_svc_url``)
-    you don't need to touch this section at all — the collector auto-derives
-    scrape targets from those runtime URLs. Use ``[[metrics.scrape]]`` only
-    to add *additional* targets (e.g. a user's own Prometheus-instrumented
-    service) or to override an auto-derived target by matching its ``name``.
+    Use ``[[metrics.scrape]]`` to add Prometheus ``/metrics`` targets (e.g. a
+    user's own instrumented service) for the collector to poll.
 
     On spoke nodes, set ``collector_url`` to the hub's collector address
     (e.g. ``http://hub-ip:4318``). This makes ``mycelium metrics show``
@@ -281,10 +229,7 @@ class MetricsConfig(BaseModel):
     )
     scrape: list[ScrapeTarget] = Field(
         default_factory=list,
-        description=(
-            "Explicit Prometheus /metrics endpoints to scrape. Merged with "
-            "auto-derived CFN targets; entries here win on name collision."
-        ),
+        description="Explicit Prometheus /metrics endpoints for the collector to scrape.",
     )
 
 
@@ -293,15 +238,15 @@ class MyceliumConfig(BaseModel):
 
     identity: IdentityConfig = Field(default_factory=IdentityConfig)
     server: ServerConfig = Field(default_factory=ServerConfig)
+    slim: SlimConfig = Field(default_factory=SlimConfig)
     llm: LLMConfig = Field(default_factory=LLMConfig)
+    engine: EngineConfig = Field(default_factory=EngineConfig)
     runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
     rooms: RoomConfig = Field(default_factory=RoomConfig)
-    knowledge_ingest: KnowledgeIngestConfig = Field(default_factory=KnowledgeIngestConfig)
     metrics: MetricsConfig = Field(default_factory=MetricsConfig)
-    negotiation: NegotiationConfig = Field(default_factory=NegotiationConfig)
     adapters: dict[str, Any] = Field(
         default_factory=dict,
-        description="Registered agent framework adapters (openclaw, cursor, claude-code, …)",
+        description="Registered agent framework adapters (claude-code, cursor, …)",
     )
 
     model_config = {"arbitrary_types_allowed": True}
@@ -402,19 +347,21 @@ class MyceliumConfig(BaseModel):
         """Load configuration overrides from environment variables."""
         env_config: dict[str, Any] = {
             "server": {},
+            "slim": {},
             "rooms": {},
             "llm": {},
+            "engine": {},
             "runtime": {},
-            "knowledge_ingest": {},
             "metrics": {},
         }
 
+        if engine_runtime := os.getenv("ENGINE_RUNTIME"):
+            env_config["engine"]["runtime"] = engine_runtime
+
         if api_url := os.getenv("MYCELIUM_API_URL"):
             env_config["server"]["api_url"] = api_url
-        if workspace_id := os.getenv("MYCELIUM_WORKSPACE_ID"):
-            env_config["server"]["workspace_id"] = workspace_id
-        if mas_id := os.getenv("MYCELIUM_MAS_ID"):
-            env_config["server"]["mas_id"] = mas_id
+        if slim_endpoint := os.getenv("MYCELIUM_SLIM_ENDPOINT"):
+            env_config["slim"]["node_endpoint"] = slim_endpoint
         if active_room := os.getenv("MYCELIUM_ACTIVE_ROOM"):
             env_config["rooms"]["active"] = active_room
 
@@ -425,30 +372,6 @@ class MyceliumConfig(BaseModel):
             env_config["llm"]["api_key"] = llm_api_key
         if llm_base_url := os.getenv("LLM_BASE_URL"):
             env_config["llm"]["base_url"] = llm_base_url
-
-        # Knowledge-ingest overrides — ephemeral escape hatches
-        if (v := os.getenv("MYCELIUM_INGEST_ENABLED")) is not None:
-            env_config["knowledge_ingest"]["enabled"] = v.lower() not in (
-                "0",
-                "false",
-                "no",
-                "off",
-            )
-        if (v := os.getenv("MYCELIUM_INGEST_MAX_INPUT_TOKENS")) is not None:
-            try:
-                env_config["knowledge_ingest"]["max_input_tokens"] = int(v)
-            except ValueError:
-                pass
-        if (v := os.getenv("MYCELIUM_INGEST_DEDUPE_TTL_SECONDS")) is not None:
-            try:
-                env_config["knowledge_ingest"]["dedupe_ttl_seconds"] = int(v)
-            except ValueError:
-                pass
-        if (v := os.getenv("MYCELIUM_INGEST_MAX_TOOL_CONTENT_BYTES")) is not None:
-            try:
-                env_config["knowledge_ingest"]["max_tool_content_bytes"] = int(v)
-            except ValueError:
-                pass
 
         # Metrics overrides
         if collector_url := os.getenv("MYCELIUM_COLLECTOR_URL"):
@@ -468,47 +391,12 @@ class MyceliumConfig(BaseModel):
         return result
 
     def resolve_scrape_targets(self) -> list[dict]:
-        """Return the full list of Prometheus scrape targets for the collector.
+        """Return the list of Prometheus scrape targets for the collector.
 
-        Mirrors how OTLP ingestion works (no config needed — OpenClaw knows
-        where to push) by auto-deriving CFN scrape targets from the already-
-        installed ``runtime.cfn_mgmt_url`` / ``runtime.cfn_svc_url``
-        values. That way the common case needs zero new configuration, while
-        ``[[metrics.scrape]]`` remains an escape hatch for non-CFN targets
-        and for overriding an auto-derived entry (match by ``name``).
-
-        Merge rules:
-          1. Start from auto-derived CFN targets (below).
-          2. Layer explicit ``metrics.scrape`` entries on top, keyed by
-             ``name`` — an explicit entry with the same name replaces the
-             auto-derived one, so users can change URL/kind without losing
-             the rest of the auto set.
-
-        We only emit a target for ``cfn_svc_url`` when the
-        service actually exposes ``/metrics`` — today it does not (see
-        cfn_component_metrics_reconciliation.md), so we leave it out to
-        avoid a permanently "degraded" row. Flip ``_NODE_HAS_METRICS`` below
-        once that ships.
+        Targets are the explicit ``[[metrics.scrape]]`` entries declared in
+        ``config.toml`` (e.g. a user's own Prometheus-instrumented service).
         """
-        # Keep the URL of record in runtime.*; here we just append the
-        # Prometheus convention path. If a site runs CFN on a non-default
-        # path they can still declare an explicit [[metrics.scrape]].
-        _NODE_HAS_METRICS = False
-
         derived: dict[str, dict] = {}
-        if self.runtime.cfn_mgmt_url:
-            derived["cfn-mgmt"] = {
-                "name": "cfn-mgmt",
-                "url": self.runtime.cfn_mgmt_url.rstrip("/") + "/metrics",
-                "kind": "http_red",
-            }
-        if _NODE_HAS_METRICS and self.runtime.cfn_svc_url:
-            derived["cfn-node"] = {
-                "name": "cfn-node",
-                "url": self.runtime.cfn_svc_url.rstrip("/") + "/metrics",
-                "kind": "http_red",
-            }
-
         for explicit in self.metrics.scrape:
             derived[explicit.name] = explicit.model_dump()
 
@@ -528,13 +416,14 @@ class MyceliumConfig(BaseModel):
         global_path = self._global_config_path or self.get_global_config_path()
         global_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Global sections: identity, server, llm, runtime, knowledge_ingest, metrics, adapters
+        # Global sections: identity, server, llm, engine, runtime, metrics, adapters
         _global_sections = (
             "identity",
             "server",
+            "slim",
             "llm",
+            "engine",
             "runtime",
-            "knowledge_ingest",
             "metrics",
             "adapters",
         )
@@ -578,69 +467,6 @@ class MyceliumConfig(BaseModel):
         if self.runtime.data_dir:
             return Path(self.runtime.data_dir).expanduser()
         return self.get_global_config_dir()
-
-    # ── Database URL assembly ────────────────────────────────────────────────
-    #
-    # Single source of truth for the Postgres connection URL.  Compose, the
-    # generated ``~/.mycelium/.env``, and host-side tools (alembic, doctor,
-    # migrate) all flow through this method so the URL recipe lives in
-    # exactly one place.  The pieces (password, port) come from
-    # ``config.toml``; user, hostname, dbname, and async driver are
-    # mycelium-architectural and intentionally not user-tunable.
-    #
-    # ``server.database_url`` in config.toml stays as an explicit override
-    # (e.g., pointing at an external Postgres); when set, every consumer
-    # honours it verbatim.
-
-    # Constants that describe mycelium's bundled Postgres deployment.
-    # Centralised here so they can't drift between compose, alembic, and
-    # the CLI helpers.  ClassVar keeps these out of pydantic's field set so
-    # they don't show up in config.toml dumps or model_dump() output.
-    DB_USER: ClassVar[str] = "postgres"
-    DB_NAME: ClassVar[str] = "mycelium"
-    DB_CONTAINER_HOST: ClassVar[str] = "mycelium-db"  # resolves inside the compose network
-    DB_CONTAINER_PORT: ClassVar[int] = 5432  # fixed inside the compose network
-
-    def database_url(self, *, host_side: bool = False, async_driver: bool = True) -> str:
-        """Return the canonical Postgres connection URL.
-
-        Parameters
-        ----------
-        host_side
-            ``True`` → resolve via ``localhost:<published_port>``; appropriate
-            for tools running on the host (alembic, ``mycelium doctor``,
-            ``mycelium migrate``).
-            ``False`` → resolve via ``mycelium-db:5432``; appropriate for
-            services running inside the compose network (the backend
-            container, the graph indexer, etc.).
-        async_driver
-            ``True`` → ``postgresql+asyncpg://`` (SQLAlchemy async, used by
-            the backend and alembic).
-            ``False`` → ``postgresql://`` (psycopg/plain libpq, used by the
-            graph-db URL and any non-async consumer).
-
-        If ``server.database_url`` is set in config.toml, it is returned
-        verbatim (escape hatch for external/managed Postgres).  Callers that
-        need the ``host_side`` vs container distinction lose it in that
-        case; that's intentional — if you've pointed mycelium at an
-        external DB, there is no "container" alternative.
-        """
-        override = (self.server.database_url or "").strip()
-        if override:
-            return override
-
-        if host_side:
-            host = "localhost"
-            port = self.runtime.db_port
-        else:
-            host = self.DB_CONTAINER_HOST
-            port = self.DB_CONTAINER_PORT
-
-        from urllib.parse import quote
-
-        scheme = "postgresql+asyncpg" if async_driver else "postgresql"
-        password = quote(self.runtime.db_password, safe="")
-        return f"{scheme}://{self.DB_USER}:{password}@{host}:{port}/{self.DB_NAME}"
 
     def save_to_project(self, project_dir: Path | None = None) -> None:
         """Save room settings to project-local .mycelium/."""

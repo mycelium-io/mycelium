@@ -3,7 +3,7 @@
 
 """Bundled-asset resolution shared by every integration's install facet.
 
-The static assets (OpenClaw TS plugin, shell hooks, SKILL.md) live under
+The static assets (shell hooks, SKILL.md, workspace rules) live under
 ``mycelium.integrations.<family>.assets`` — colocated with the family that
 owns it. This resolves a real filesystem path to them whether the package
 is editable or zipped.
@@ -16,13 +16,13 @@ import tempfile
 from pathlib import Path
 
 
-def _resolve_asset(subpath: str, family: str = "openclaw") -> Path:
+def _resolve_asset(subpath: str, family: str) -> Path:
     """
     Return a real filesystem path to a bundled asset for *family*.
 
     Assets are colocated with the family that owns them
     (``mycelium.integrations.<family>.assets``). *family* is the canonical
-    underscore id (``claude_code``/``openclaw``). For non-editable installs
+    underscore id (``claude_code``/``cursor``). For non-editable installs
     where the package lives inside a zip, extract the tree to a temp dir.
     """
     pkg = importlib.resources.files(f"mycelium.integrations.{family}.assets")

@@ -63,6 +63,10 @@ RevisionCause = Literal[
     "repair_resolution",
 ]
 
+# Where a registered engine runs its NEGMAS drive. Paired with the backend's
+# ``ENGINE_RUNTIME`` — flip both together.
+EngineRuntime = Literal["backend", "host"]
+
 
 def _validate_evidence(evidence: list[str] | None) -> list[str] | None:
     """Reject empty/whitespace-only evidence strings (shared by both replies)."""
@@ -72,51 +76,6 @@ def _validate_evidence(evidence: list[str] | None) -> list[str] | None:
                 msg = "evidence items must be non-empty strings"
                 raise ValueError(msg)
     return evidence
-
-
-class ProposeReply(BaseModel):
-    """Agent → Server reply to a 'propose' coordination tick.
-
-    The CLI builds this from KEY=VALUE pairs and sends it as the room message
-    content.  Pydantic validation ensures the shape is correct before posting.
-
-    Epistemic fields (confidence/evidence/reasoning) are optional; when unset
-    they must be absent from the wire JSON: serialize with
-    ``model_dump(exclude_none=True)``.
-    """
-
-    offer: dict[str, str] = Field(..., min_length=1)
-    confidence: float | None = Field(
-        default=None,
-        ge=0.0,
-        le=1.0,
-        description="Self-reported confidence in this offer, 0-1.",
-    )
-    evidence: list[str] | None = Field(
-        default=None,
-        description="Legacy flat evidence list; prefer supporting/against_evidence.",
-    )
-    supporting_evidence: list[str] | None = Field(
-        default=None,
-        description="Evidence keys arguing FOR this offer (non-empty strings).",
-    )
-    against_evidence: list[str] | None = Field(
-        default=None,
-        description="Known counter-evidence keys arguing against this offer.",
-    )
-    addresses: list[str] | None = Field(
-        default=None,
-        description="Prior evidence keys this offer engages (feeds grounding).",
-    )
-    reasoning: str | None = Field(
-        default=None,
-        description="Free-text rationale for the offer.",
-    )
-
-    @field_validator("evidence", "supporting_evidence", "against_evidence", "addresses")
-    @classmethod
-    def check_evidence(cls, v: list[str] | None) -> list[str] | None:
-        return _validate_evidence(v)
 
 
 class RespondReply(BaseModel):
@@ -293,8 +252,8 @@ STRUCTURED_CATEGORY_LABELS: dict[str, str] = {
 class MemoryLogEntry(BaseModel):
     """Typed payload for structured memory writes.
 
-    Like ProposeReply validates negotiation offers, this validates that a memory
-    write follows the category/slug convention before hitting the API.
+    Validates that a memory write follows the category/slug convention before
+    hitting the API.
 
     Slugs are auto-lowercased so agents can write naturally (e.g. "API-latency"
     becomes "api-latency").
@@ -328,15 +287,16 @@ class MemoryLogEntry(BaseModel):
 
 # Adapter identifiers the agent primitive knows how to host. Each maps to a
 # dispatcher:
-#   claude_code → mycelium-daemon (subscribes room SSE, spawns claude -p)
-#   cursor      → mycelium-daemon (subscribes room SSE, spawns
-#                 cursor-agent -p). Same lifecycle as claude_code; the daemon's
-#                 dispatch loop routes via Integration.lifecycle, not family id.
-#   openclaw    → OpenClaw gateway's mycelium-room channel plugin (the agent
-#                 runs inside OpenClaw; we just register it into the channel's
-#                 rooms[] fan-out — no daemon involvement, see the daemon
-#                 dispatch loop which skips non-cold_spawn families).
-AGENT_ADAPTERS: frozenset[str] = frozenset({"claude_code", "cursor", "openclaw", "hermes"})
+#   claude_code → mycelium-daemon (SLIM connector, spawns claude -p)
+#   cursor      → mycelium-daemon (SLIM connector, spawns cursor-agent -p).
+#                 Same lifecycle as claude_code; the daemon's dispatch loop
+#                 routes via Integration.lifecycle, not family id.
+AGENT_ADAPTERS: frozenset[str] = frozenset({"claude_code", "cursor", "engine"})
+
+#: Cognition-engine kinds hosted by the first-party ``engine`` runtime family.
+#: The extensibility axis: ``aligner`` (SIEP converge) today; ``bargainer`` (SAB),
+#: ``team_former`` (TFP), a drift evaluator, etc. later — no new adapter per CE.
+ENGINE_KINDS: frozenset[str] = frozenset({"aligner"})
 
 
 class AgentManifest(BaseModel):
@@ -347,50 +307,35 @@ class AgentManifest(BaseModel):
     manifest body — the bare minimum a dispatcher needs to route an
     ``@handle`` mention to the agent's runtime.
 
-    Four adapters:
+    Adapters:
 
     - ``claude_code`` — cold-spawned by the daemon. Requires ``cwd`` (where
       ``claude -p`` runs).
     - ``cursor`` — cold-spawned by the daemon. Requires ``cwd`` (where
       ``cursor-agent -p`` runs; treated by Cursor as the workspace root).
-    - ``openclaw`` — a long-lived OpenClaw agent. Requires ``openclaw_agent``
-      (the OpenClaw agent id; usually == handle for create-mode). The
-      OpenClaw gateway's channel plugin is the dispatcher; the daemon
-      ignores these manifests entirely.
-    - ``hermes`` — a handle exposed through a long-lived hermes gateway
-      (``hermes gateway run``). The bundled ``mycelium-room`` platform
-      plugin under ``integrations/hermes/assets/`` subscribes to the
-      configured rooms and dispatches into the hermes agent loop, so the
-      daemon ignores these manifests as it does for ``openclaw``. Mycelium
-      always targets whichever hermes profile is active on the host (i.e.
-      ``$HERMES_HOME`` or ``~/.hermes/``); first-class multi-profile
-      support is on hold until ``hermes-agent#25660`` (single gateway,
-      multiple agents) lands.
+    - ``engine`` — a first-party cognition engine (e.g. ``aligner``).
+      Requires ``kind``.
 
     The handle slug doubles as the mention target (``@release-agent``), so it
     must match the same lowercase pattern other memory slugs use.
     """
 
     handle: str = Field(..., min_length=1, pattern=r"^[a-z0-9][a-z0-9._-]*$")
-    adapter: Literal["claude_code", "cursor", "openclaw", "hermes"] = "claude_code"
+    adapter: Literal["claude_code", "cursor", "engine"] = "claude_code"
+    kind: str | None = Field(
+        default=None,
+        description=(
+            "engine: which cognition engine this handle runs (e.g. 'aligner'). "
+            "Required for the ``engine`` adapter; unused by other families. The "
+            "extensibility axis for the first-party CE family."
+        ),
+    )
     cwd: str | None = Field(
         default=None,
         description=(
             "claude_code / cursor: working dir the agent's CLI runs in "
             "(required for both cold-spawn families). Cursor treats it as the "
             "workspace root for ``--workspace`` mode."
-        ),
-    )
-    openclaw_agent: str | None = Field(
-        default=None,
-        description="openclaw: the OpenClaw agent id this handle maps to (required for that adapter).",
-    )
-    openclaw_created: bool = Field(
-        default=False,
-        description=(
-            "openclaw: True if Mycelium created the OpenClaw agent (create-mode), "
-            "False if it adopted a pre-existing one. Gates whether `agent rm --full` "
-            "is allowed to destroy it — adopted agents are never destroyed."
         ),
     )
     description: str = Field(default="", description="One-paragraph purpose statement.")
@@ -400,8 +345,7 @@ class AgentManifest(BaseModel):
         description=(
             "Sender handles allowed to invoke this agent (e.g. ['@julia', '@docs-agent']). "
             "Empty list means anyone in the room can invoke. "
-            "Enforced by the daemon for claude_code; advisory for openclaw "
-            "(the channel plugin gates on @-mention, not allow_from)."
+            "Enforced by the daemon for claude_code / cursor."
         ),
     )
 
@@ -419,8 +363,15 @@ class AgentManifest(BaseModel):
         # root for --workspace mode; Claude treats it as the project root.
         if self.adapter in ("claude_code", "cursor") and not (self.cwd and self.cwd.strip()):
             raise ValueError(f"{self.adapter} agents require a non-empty cwd")
-        if self.adapter == "openclaw" and not (self.openclaw_agent and self.openclaw_agent.strip()):
-            raise ValueError("openclaw agents require an openclaw_agent id")
+        # A cognition engine must name which CE it runs; unknown kinds are a typo
+        # guard (the daemon/backend route on this).
+        if self.adapter == "engine":
+            if not (self.kind and self.kind.strip()):
+                raise ValueError("engine agents require a 'kind' (e.g. 'aligner')")
+            if self.kind not in ENGINE_KINDS:
+                raise ValueError(
+                    f"unknown engine kind {self.kind!r}; known: {sorted(ENGINE_KINDS)}"
+                )
         return self
 
     @property

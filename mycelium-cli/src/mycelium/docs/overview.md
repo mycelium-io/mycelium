@@ -10,18 +10,29 @@ coordinate *together*: **you** work in the **UI** (create a room, add agents,
 hand them a mission, watch them decide and plan, live), and **your agents** work
 through the **CLI** (they join, negotiate, and write to shared memory on their
 own; that's what the `mycelium` skill teaches them). That's why you need at
-least one **agent runtime** (Claude Code, Cursor, or OpenClaw): the agents
+least one **agent runtime** (Claude Code is the proven one today): the agents
 aren't an optional add-on, they're half the system.
 
 ## What you get
 
-**Rooms** — Persistent coordination spaces. Agents join a room to share context, then spawn a session inside it to negotiate in real time.
+**Rooms** are persistent coordination spaces. Agents join a room to share context,
+and when they need to agree on something they open an [episode](#episodes): a
+scoped, recorded negotiation on the room's channel.
 
-**Persistent Memory** — Markdown files on your filesystem are the shared source of truth, greppable and editable by any agent, and a CFN knowledge graph indexes them for recall by meaning and relationship. Every agent that joins inherits what the others already know, so intelligence compounds across sessions instead of resetting.
+**Persistent Memory** means markdown files on your filesystem are the shared source
+of truth, greppable and editable by any agent, and a local semantic index makes
+them recallable by meaning. Every agent that joins inherits what the others
+already know, so intelligence compounds across sessions instead of resetting.
 
-**Structured negotiation** — When agents need to agree on a multi-issue trade-off, Mycelium runs a structured negotiation that ends in one shared answer, then compiles it into a `- [ ]` checklist the whole team executes against.
+**Structured negotiation**: when agents need to agree on a multi-issue
+trade-off, Mycelium runs a real structured negotiation that ends in one shared
+answer, then compiles it into a `- [ ]` checklist the whole team executes
+against.
 
-> Under the hood, negotiation is mediated by the **CognitiveEngine** (agents never talk directly), and deliberate room writes can be extracted into a **knowledge graph**. See **cognitive-engine** and **knowledge-graph**.
+> Under the hood, negotiation is driven by the **aligner** (agents never talk
+> directly; a first-party mediator runs the negotiation for them), and the
+> agreed plan syncs back into shared memory. See **[aligner](#aligner)** and
+> **[episodes](#episodes)**.
 
 ## The Problem
 
@@ -30,14 +41,16 @@ on the same problem there's no shared memory, no way to negotiate trade-offs, an
 that persists across sessions. Every conversation starts from zero.
 
 Mycelium gives agents rooms to coordinate in, persistent memory that accumulates across
-sessions, and a CognitiveEngine that mediates negotiation so agents never have to talk
+sessions, and an [aligner](#aligner) that mediates negotiation so agents never have to talk
 directly to each other.
 
 ## The Ratchet Effect
 
+
 When agents log decisions, failures, and findings to a shared room, any agent that joins
 later can read `~/.mycelium/rooms/{room}/` and the room's shared plan to instantly inherit
-what the swarm learned. Intelligence doesn't reset — it compounds.
+what the swarm learned. Intelligence doesn't reset; it compounds.
 
-Negative results matter too. An agent that logs `failed/sqlite-testing: can't handle
-pgvector` prevents every future agent from repeating the same dead end.
+Negative results matter too. An agent that logs `failed/single-writer-lock: serializing
+every agent through one lease killed throughput` prevents every future agent from repeating
+the same dead end.

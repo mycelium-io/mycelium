@@ -5,7 +5,7 @@
 Integration — the single contract for a runtime family Mycelium integrates with.
 
 This is the source-of-truth the project tracked as #173: instead of
-``openclaw`` vs ``claude-code`` behaviour drifting apart across two unrelated
+per-family behaviour drifting apart across two unrelated
 code trees (an asset/installer pile in ``commands/adapter.py`` and a dispatch
 OOP layer in the old ``agent_adapters/``), every runtime family is one
 ``Integration`` subclass exposing the same facets. Adding a capability to one
@@ -46,10 +46,14 @@ if TYPE_CHECKING:
 #:   (``claude -p``, ``cursor-agent -p``, future Gemini/Codex/Aider). The
 #:   family overrides :meth:`Integration.spawn`.
 #: - ``long_lived_gateway``: agents live inside a separate, long-running runtime
-#:   that owns its own mention delivery (currently only ``openclaw``; future
-#:   ``hermes``). The daemon ignores these manifests entirely — the gateway
-#:   is responsible for dispatch.
-LifecycleModel = Literal["cold_spawn", "long_lived_gateway"]
+#:   that owns its own mention delivery. The daemon ignores these manifests
+#:   entirely — the gateway is responsible for dispatch. (No first-party family
+#:   uses this today; retained as a lifecycle seam.)
+#: - ``backend_engine``: a first-party cognition engine (``adapter="engine"``)
+#:   whose run the **backend** owns via its summon seam. The daemon skips these,
+#:   same as a gateway. With ``engine.runtime = host`` the engine instead runs
+#:   as a host-side runtime under the local daemon.
+LifecycleModel = Literal["cold_spawn", "long_lived_gateway", "backend_engine"]
 
 
 @dataclass
@@ -57,7 +61,7 @@ class AddOptions:
     """Adapter-agnostic context for `agent add`.
 
     Only fields that are meaningful to *every* integration live here. Family-
-    specific options (cwd, openclaw_agent, model, copy_auth_from, …) are NOT
+    specific options (cwd, …) are NOT
     here — they're passed straight to the concrete integration's constructor
     via ``get_integration(...)`` and stored on the instance. That keeps this
     base type from accreting one field per family as runtimes are added.
@@ -95,8 +99,9 @@ class Integration(ABC):
     # The host-level install/uninstall/step/status surface. The typer command
     # (`commands/adapter.py`) is a thin dispatcher: it resolves the integration
     # via ``get_integration`` and calls these — there is no ``if family ==``
-    # branching left. ``profile`` / ``container`` are OpenClaw-only knobs;
-    # families that ignore them just don't read them.
+    # branching left. ``profile`` / ``container`` are legacy gateway knobs
+    # carried on the signature for uniformity; families that ignore them just
+    # don't read them.
 
     @abstractmethod
     def install(
@@ -194,8 +199,7 @@ class Integration(ABC):
 
         ``full`` requests destructive teardown of the underlying runtime
         (gated + confirmed in the command layer). Integrations must still
-        refuse to destroy resources the user owns (e.g. an adopted OpenClaw
-        agent).
+        refuse to destroy resources the user owns.
         """
 
     def describe(self, manifest: AgentManifest, *, room: str) -> list[str]:
@@ -208,10 +212,9 @@ class Integration(ABC):
         """Cold-spawn this family for one ``@handle`` mention.
 
         Every ``lifecycle == "cold_spawn"`` family MUST override this. Long-
-        lived gateways (``openclaw``, future ``hermes``) inherit this raise —
-        the daemon dispatch loop checks ``lifecycle`` before calling and
-        never invokes ``spawn`` on a gateway family, so the raise is a
-        safety net for bugs in routing.
+        lived gateway families inherit this raise — the daemon dispatch loop
+        checks ``lifecycle`` before calling and never invokes ``spawn`` on a
+        gateway family, so the raise is a safety net for bugs in routing.
 
         Why not :func:`@abstractmethod`: forcing every long-lived-gateway
         family to declare a no-op stub buys no safety (the contract test

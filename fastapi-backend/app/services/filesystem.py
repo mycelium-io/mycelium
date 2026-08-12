@@ -17,8 +17,10 @@ File format:
     PostgreSQL chosen for graph+SQL+vector support.
 """
 
+import json
 import logging
 import re
+import zlib
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -26,6 +28,12 @@ from typing import Any
 import yaml
 
 logger = logging.getLogger(__name__)
+
+# Room metadata sidecar. Rooms are folders; this file holds the handful of
+# room attributes that aren't derivable from the memory files (description,
+# visibility, creation time). Absent for rooms created before the DB was
+# dropped — read_room_meta synthesizes defaults so those still list/get.
+ROOM_META_FILENAME = ".room.json"
 
 # Sentinel for "no default" so we can distinguish None from missing
 _MISSING = object()
@@ -277,6 +285,81 @@ def remove_room_dir(room_name: str) -> bool:
                 shutil.rmtree(child)
 
     return existed
+
+
+def _is_session_dir(name: str) -> bool:
+    """Coordination-session sub-rooms follow ``{parent}:session:{short}``."""
+    return ":session:" in name
+
+
+def room_id(room_name: str) -> int:
+    """Stable positive int id for a room, derived from its name.
+
+    The API's ``RoomRead.id`` is an int (a Postgres serial, historically). With
+    no database there's no serial to hand out, so we derive a deterministic id
+    from the name via CRC32. The frontend keys rooms by name, not id.
+    """
+    return zlib.crc32(room_name.encode()) & 0x7FFFFFFF
+
+
+def room_exists(room_name: str) -> bool:
+    """True if the room's directory exists on disk."""
+    return (get_data_dir() / "rooms" / room_name).is_dir()
+
+
+def list_room_names() -> list[str]:
+    """Names of all real rooms (excludes coordination-session sub-rooms)."""
+    rooms_dir = get_data_dir() / "rooms"
+    if not rooms_dir.exists():
+        return []
+    return sorted(
+        child.name
+        for child in rooms_dir.iterdir()
+        if child.is_dir() and not _is_session_dir(child.name)
+    )
+
+
+def write_room_meta(room_name: str, meta: dict[str, Any]) -> None:
+    """Persist a room's metadata sidecar (``.room.json``)."""
+    room_dir = get_room_dir(room_name)
+    (room_dir / ROOM_META_FILENAME).write_text(
+        json.dumps(meta, default=str, indent=2), encoding="utf-8"
+    )
+
+
+def read_room_meta(room_name: str) -> dict[str, Any] | None:
+    """Read a room's metadata, or None if the room directory doesn't exist.
+
+    Synthesizes sensible defaults when the sidecar is missing (a room dir that
+    predates the sidecar): creation time from the directory mtime, public and
+    persistent by default.
+    """
+    room_dir = get_data_dir() / "rooms" / room_name
+    if not room_dir.is_dir():
+        return None
+
+    meta_path = room_dir / ROOM_META_FILENAME
+    stored: dict[str, Any] = {}
+    if meta_path.exists():
+        try:
+            stored = json.loads(meta_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            logger.warning("Malformed room meta for %s; using defaults", room_name)
+
+    created_at = stored.get("created_at")
+    if not created_at:
+        created_at = datetime.fromtimestamp(room_dir.stat().st_mtime, tz=UTC).isoformat()
+
+    return {
+        "id": room_id(room_name),
+        "name": room_name,
+        "description": stored.get("description"),
+        "is_public": stored.get("is_public", True),
+        "is_persistent": stored.get("is_persistent", True),
+        "mas_id": stored.get("mas_id"),
+        "workspace_id": stored.get("workspace_id"),
+        "created_at": created_at,
+    }
 
 
 def value_to_content(value: dict | str) -> str:
