@@ -36,12 +36,11 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import shutil
 import subprocess
-from typing import TYPE_CHECKING, Any, cast
-
-if TYPE_CHECKING:
-    from pathlib import Path
+from pathlib import Path
+from typing import Any, cast
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +48,97 @@ logger = logging.getLogger(__name__)
 #: interpret-and-broker brain and would let it touch the filesystem — disable
 #: them so a mediator turn is cognition only.
 _NO_TOOLS = "--no-tools"
+
+#: Pi's streaming API per provider prefix. Anthropic (or an Anthropic-shaped
+#: proxy) speaks the Messages API; everything else is assumed OpenAI-compatible
+#: (Ollama, vLLM, LM Studio, most gateways).
+_ANTHROPIC_API = "anthropic-messages"
+_OPENAI_COMPAT_API = "openai-completions"
+
+
+def split_provider_model(model: str) -> tuple[str, str]:
+    """Split a ``provider/model-id`` string into ``(provider, model_id)``.
+
+    A bare id (no ``/``) has no provider prefix, so it is filed under ``custom``.
+    """
+    ref = model.strip()
+    if "/" in ref:
+        provider, model_id = ref.split("/", 1)
+        provider = provider.strip() or "custom"
+        model_id = model_id.strip()
+        if model_id:
+            return provider, model_id
+    return "custom", ref
+
+
+def _pi_agent_dir() -> Path:
+    """Pi's agent config dir — mirrors pi's ``getAgentDir()``.
+
+    ``$PI_CODING_AGENT_DIR`` (with the same leading-``~`` expansion pi does) when
+    set, else ``~/.pi/agent``. ``models.json`` lives directly inside it.
+    """
+    override = os.getenv("PI_CODING_AGENT_DIR")
+    if not override:
+        return Path.home() / ".pi" / "agent"
+    if override.startswith("~"):
+        return Path(str(Path.home()) + override[1:])
+    return Path(override)
+
+
+def _openai_compat_base_url(base_url: str) -> str:
+    """Ensure an OpenAI-compatible base URL ends in ``/v1`` (pi wants the full path)."""
+    trimmed = base_url.rstrip("/")
+    return trimmed if trimmed.endswith("/v1") else f"{trimmed}/v1"
+
+
+def ensure_custom_provider(
+    *,
+    provider: str,
+    model_id: str,
+    base_url: str,
+    api_key: str | None,
+    agent_dir: Path | None = None,
+) -> None:
+    """Declare a custom-endpoint provider in pi's ``models.json``.
+
+    Pi has **no ``--base-url`` flag** — a custom OpenAI-compatible or Anthropic
+    endpoint (Ollama, vLLM, a proxy) is reachable only via a ``providers`` entry
+    in ``<agent_dir>/models.json``. mycelium collects ``LLM_BASE_URL`` at install
+    time, so we translate it here: upsert one provider entry keyed by *provider*
+    and preserve any others the user already configured (merge, not clobber).
+    Called before each turn — cheap and idempotent — so the file exists even on a
+    fresh host.
+    """
+    api = _ANTHROPIC_API if provider == "anthropic" else _OPENAI_COMPAT_API
+    url = base_url if api == _ANTHROPIC_API else _openai_compat_base_url(base_url)
+    models_path = (agent_dir or _pi_agent_dir()) / "models.json"
+    models_path.parent.mkdir(parents=True, exist_ok=True)
+
+    data: dict[str, Any] = {}
+    if models_path.exists():
+        try:
+            loaded = json.loads(models_path.read_text())
+        except (json.JSONDecodeError, OSError):
+            logger.warning("pi models.json at %s unreadable; rewriting entry", models_path)
+        else:
+            if isinstance(loaded, dict):
+                data = cast("dict[str, Any]", loaded)
+    providers = data.get("providers")
+    if not isinstance(providers, dict):
+        providers = {}
+    providers[provider] = {
+        "baseUrl": url,
+        "api": api,
+        # pi requires the field; local servers (Ollama, LM Studio) ignore it.
+        "apiKey": api_key or "unused",
+        "models": [{"id": model_id}],
+    }
+    data["providers"] = providers
+    models_path.write_text(json.dumps(data, indent=2))
+    try:
+        models_path.chmod(0o600)
+    except OSError:
+        logger.debug("could not chmod %s to 0600", models_path)
 
 
 class PiBrainError(RuntimeError):
@@ -146,16 +236,20 @@ class PiBrain:
         self._binary = binary
         self._timeout_s = timeout_s
         self._openshell = openshell
-        if base_url:
-            # Pi has no ``--base-url`` flag (custom endpoints go through
-            # ``~/.pi/agent/models.json``), so a mycelium LLM_BASE_URL cannot be
-            # forwarded on the command line. Surface it once rather than silently
-            # sending the turn to the default endpoint — this is a live-validation
-            # rough edge to resolve when wiring a custom provider.
-            logger.warning(
-                "PiBrain: LLM_BASE_URL=%s is set but pi has no --base-url flag; "
-                "configure the endpoint in ~/.pi/agent/models.json instead",
-                base_url,
+        # A custom LLM_BASE_URL (Ollama, vLLM, a proxy) is not a command-line flag
+        # in pi — it becomes a ``models.json`` provider entry we generate. Split
+        # the "provider/model" ref up front so the entry and the ``--provider``
+        # invocation stay consistent. Direct-key providers leave this None.
+        self._custom: tuple[str, str] | None = split_provider_model(model) if base_url else None
+
+    def _ensure_provider(self) -> None:
+        if self._base_url and self._custom is not None:
+            provider, model_id = self._custom
+            ensure_custom_provider(
+                provider=provider,
+                model_id=model_id,
+                base_url=self._base_url,
+                api_key=self._api_key,
             )
 
     def _build_command(self, prompt: str, system: str) -> list[str]:
@@ -167,11 +261,16 @@ class PiBrain:
             "--session",
             str(self._session_path),
             _NO_TOOLS,
-            "--model",
-            self._model,
         ]
-        if self._api_key:
-            cmd += ["--api-key", self._api_key]
+        if self._custom is not None:
+            # Endpoint + key live in the generated models.json provider entry;
+            # address it by its canonical ``provider/model-id`` reference.
+            provider, model_id = self._custom
+            cmd += ["--provider", provider, "--model", f"{provider}/{model_id}"]
+        else:
+            cmd += ["--model", self._model]
+            if self._api_key:
+                cmd += ["--api-key", self._api_key]
         if system:
             cmd += ["--append-system-prompt", system]
         cmd.append(prompt)
@@ -203,6 +302,7 @@ class PiBrain:
                 f"`{binary}` not found on PATH — the engine's mediator runs on Pi; "
                 "install Pi (earendil-works/pi) or set ALIGNER_PI_BINARY to its path."
             )
+        self._ensure_provider()
         cmd = self._build_command(prompt, system)
         try:
             completed = subprocess.run(

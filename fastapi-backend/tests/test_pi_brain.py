@@ -134,12 +134,74 @@ def test_openshell_wrap(tmp_path: Path) -> None:
     assert "pi" in cmd[6:]  # the real pi invocation follows the sandbox prefix
 
 
-def test_base_url_warns_no_flag(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
-    """LLM_BASE_URL can't be forwarded (pi has no flag); surface it, don't drop it silently."""
-    with caplog.at_level("WARNING"):
-        cmd = _brain(tmp_path, base_url="http://vllm:8000")._build_command("p", system="")
-    assert "--base-url" not in cmd
-    assert any("base-url" in r.message for r in caplog.records)
+# ── custom endpoint (LLM_BASE_URL → models.json provider) ───────────────────
+
+
+def test_split_provider_model() -> None:
+    assert pi_brain.split_provider_model("ollama/llama3.3") == ("ollama", "llama3.3")
+    assert pi_brain.split_provider_model("anthropic/claude-sonnet-4-6") == (
+        "anthropic",
+        "claude-sonnet-4-6",
+    )
+    # A bare id (no provider prefix) is filed under "custom".
+    assert pi_brain.split_provider_model("my-model") == ("custom", "my-model")
+
+
+def test_base_url_uses_provider_flag_not_api_key(tmp_path: Path) -> None:
+    """With a base URL, pi is addressed by --provider/--model; the key rides in models.json."""
+    cmd = _brain(
+        tmp_path, model="ollama/llama3.3", base_url="http://host.docker.internal:11434"
+    )._build_command("p", system="")
+    assert cmd[cmd.index("--provider") + 1] == "ollama"
+    assert cmd[cmd.index("--model") + 1] == "ollama/llama3.3"
+    assert "--api-key" not in cmd
+    assert "--base-url" not in cmd  # pi has no such flag
+
+
+def test_ensure_custom_provider_writes_openai_compatible_entry(tmp_path: Path) -> None:
+    pi_brain.ensure_custom_provider(
+        provider="ollama",
+        model_id="llama3.3",
+        base_url="http://host.docker.internal:11434",
+        api_key=None,
+        agent_dir=tmp_path,
+    )
+    data = json.loads((tmp_path / "models.json").read_text())
+    entry = data["providers"]["ollama"]
+    assert entry["api"] == "openai-completions"
+    assert entry["baseUrl"] == "http://host.docker.internal:11434/v1"  # /v1 appended
+    assert entry["apiKey"] == "unused"  # dummy — local servers ignore it
+    assert entry["models"] == [{"id": "llama3.3"}]
+
+
+def test_ensure_custom_provider_anthropic_messages_no_v1(tmp_path: Path) -> None:
+    pi_brain.ensure_custom_provider(
+        provider="anthropic",
+        model_id="claude-sonnet-4-6",
+        base_url="https://proxy.example.com",
+        api_key="sk-ant-xyz",
+        agent_dir=tmp_path,
+    )
+    entry = json.loads((tmp_path / "models.json").read_text())["providers"]["anthropic"]
+    assert entry["api"] == "anthropic-messages"
+    assert entry["baseUrl"] == "https://proxy.example.com"  # no /v1 for the Messages API
+    assert entry["apiKey"] == "sk-ant-xyz"
+
+
+def test_ensure_custom_provider_merges_existing(tmp_path: Path) -> None:
+    """A pre-existing provider the user configured is preserved (merge, not clobber)."""
+    models_path = tmp_path / "models.json"
+    models_path.write_text(json.dumps({"providers": {"kept": {"baseUrl": "http://keep"}}}))
+    pi_brain.ensure_custom_provider(
+        provider="ollama",
+        model_id="qwen2.5",
+        base_url="http://localhost:11434/v1",
+        api_key=None,
+        agent_dir=tmp_path,
+    )
+    providers = json.loads(models_path.read_text())["providers"]
+    assert providers["kept"] == {"baseUrl": "http://keep"}
+    assert providers["ollama"]["baseUrl"] == "http://localhost:11434/v1"  # already had /v1
 
 
 # ── __call__ (subprocess mocked) ────────────────────────────────────────────
