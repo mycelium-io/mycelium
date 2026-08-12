@@ -293,6 +293,46 @@ In a hub-and-spoke setup, update tokens on every node that runs agents.
 
 ---
 
+### 15. Orphaned Local Room Directories
+
+**Symptom**: `mycelium doctor` reports `Orphaned rooms — X local room
+directories not registered in the backend`, or the spoke daemon logs:
+
+```
+room 'my-room' not registered in the backend — orphaned local directory
+at ~/.mycelium/rooms/my-room/ (run 'mycelium room gc' ...)
+```
+
+**Cause**: The room was deleted from the backend while the spoke daemon was
+offline and missed the `room_deleted` SSE tombstone.  The local directory and
+daemon subscription remain.
+
+**Diagnosis**:
+
+```bash
+mycelium doctor          # shows the Orphaned rooms check result
+mycelium room gc         # list orphans without removing anything
+```
+
+**Fix**:
+
+```bash
+# Remove orphaned directories and unregister adapter configs:
+mycelium room gc --prune-orphans
+
+# Or enable automatic cleanup on every daemon startup:
+mycelium config set daemon.auto_gc_orphaned_rooms true
+mycelium config apply
+mycelium daemon restart
+```
+
+The daemon reconciles on every startup: if it can reach the backend it will
+detect orphans and either warn or auto-remove them (depending on the
+`auto_gc_orphaned_rooms` setting).  No manual intervention needed once that
+setting is enabled.
+
+---
+
 ### 16. Spoke Cannot Reach Hub Backend
 
 **Symptom**: `mycelium status` or `mycelium room ls` from a spoke returns

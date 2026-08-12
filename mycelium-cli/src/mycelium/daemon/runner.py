@@ -62,12 +62,28 @@ async def _reconcile_rooms(
     desired = set(daemon_cfg.rooms)
     current = set(sse_tasks.keys())
 
+    # Clear tombstones only for rooms that are in config but do NOT have a
+    # live or done SSE task.  A room that is in both desired AND current means
+    # the config update failed (room still in daemon.toml) and the SSE task
+    # is still present (running or done) — that is not a re-add, so the
+    # tombstone must be kept to prevent a spurious re-subscription.
+    # A room in desired but NOT in current means it was removed from sse_tasks
+    # in a prior reconcile (task cleaned up) and then explicitly re-added to
+    # daemon.toml — clear the tombstone so the subscription proceeds.
+    re_added = (desired - current) & state.rooms_deleted
+    for room in re_added:
+        log.info("hot-reload: room '%s' re-added — clearing deleted tombstone", room)
+        state.rooms_deleted.discard(room)
+    # Exclude tombstoned rooms from desired so their completed SSE tasks are
+    # cleaned up even when _handle_room_deleted could not update the config file.
+    effective_desired = desired - state.rooms_deleted
+
     # Refresh handles on the live daemon_cfg so dispatch sees new agents
     if state.daemon_cfg is not None:
         state.daemon_cfg.handles = daemon_cfg.handles
         state.daemon_cfg.rooms = daemon_cfg.rooms
 
-    for room in desired - current:
+    for room in effective_desired - current:
         log.info("hot-reload: subscribing to %s", room)
         sse_tasks[room] = asyncio.create_task(
             subscribe_room(
@@ -79,7 +95,7 @@ async def _reconcile_rooms(
             name=f"sse[{room}]",
         )
 
-    for room in current - desired:
+    for room in current - effective_desired:
         log.info("hot-reload: unsubscribing from %s", room)
         task = sse_tasks.pop(room)
         task.cancel()
@@ -89,9 +105,11 @@ async def _reconcile_rooms(
             pass
         state.rooms_connected.discard(room)
 
-    state.rooms_configured = list(daemon_cfg.rooms)
+    state.rooms_configured = list(effective_desired)
     log.info(
-        "hot-reload complete: rooms=%d, handles=%d", len(daemon_cfg.rooms), len(daemon_cfg.handles)
+        "hot-reload complete: rooms=%d, handles=%d",
+        len(effective_desired),
+        len(daemon_cfg.handles),
     )
 
 
@@ -152,6 +170,15 @@ async def _amain(foreground: bool) -> int:
         await reconcile_local_rooms(mycelium_cfg)
     except Exception as exc:
         log.warning("Startup room reconcile raised unexpectedly: %s", exc)
+
+    # Reload so the in-memory daemon_cfg reflects whatever reconcile_local_rooms
+    # wrote to disk (it may have removed orphaned rooms from the subscription list).
+    try:
+        daemon_cfg = DaemonConfig.load()
+        state.rooms_configured = list(daemon_cfg.rooms)
+        state.daemon_cfg = daemon_cfg
+    except Exception as exc:
+        log.warning("Could not reload daemon config after startup reconcile: %s", exc)
 
     sse_tasks: dict[str, asyncio.Task[None]] = {
         room: asyncio.create_task(

@@ -1287,15 +1287,18 @@ async def _handle_room_deleted(
                 room_dir,
             )
 
-    # Remove from the daemon subscription list so the room is not re-subscribed
-    # after a daemon restart, and trigger a hot-reload to cancel the SSE task.
-    _room_was_subscribed = False
+    # Trigger hot-reload immediately — _reconcile_rooms filters state.rooms_deleted
+    # from desired, so the SSE task is cleaned up even if the config update below
+    # fails (e.g. disk-full on save()).
+    state.reload_requested.set()
+
+    # Best-effort: remove from daemon.toml so the room is not re-subscribed on
+    # next daemon restart.
     try:
         from mycelium.daemon.config import DaemonConfig
 
         daemon_cfg = DaemonConfig.load()
         if room_name in daemon_cfg.rooms:
-            _room_was_subscribed = True
             daemon_cfg.rooms.remove(room_name)
             try:
                 daemon_cfg.save()
@@ -1306,10 +1309,6 @@ async def _handle_room_deleted(
                 )
     except Exception as exc:
         log.warning("Could not load daemon config for deleted room '%s': %s", room_name, exc)
-    # Set reload_requested outside the save() try so a disk-full error does not
-    # leave the completed subscribe_room task as a zombie in sse_tasks.
-    if _room_was_subscribed:
-        state.reload_requested.set()
 
     try:
         from mycelium.integrations.openclaw.dispatch import unregister_room_from_openclaw
@@ -1351,9 +1350,9 @@ async def reconcile_local_rooms(config: MyceliumConfig) -> None:
       - True: remove the orphaned directory and unregister adapter configs
         automatically.
 
-    A ``ConnectError`` (hub unreachable) aborts the scan immediately — we'd
-    rather leave local state intact than delete rooms because the network was
-    down during startup.
+    A ``ConnectError`` or ``ConnectTimeout`` (hub unreachable) aborts the scan
+    immediately — we'd rather leave local state intact than delete rooms because
+    the network was down during startup.
     """
     import shutil
 
@@ -1365,6 +1364,17 @@ async def reconcile_local_rooms(config: MyceliumConfig) -> None:
 
     api_url = config.server.api_url
 
+    # Load daemon config once; patch it for each orphan found; save once at the
+    # end.  This avoids O(n) load/save cycles when many rooms are orphaned.
+    from mycelium.daemon.config import DaemonConfig as _DC
+
+    try:
+        _dcfg: _DC | None = _DC.load()
+    except Exception as exc:
+        log.warning("Startup reconcile: could not load daemon config: %s", exc)
+        _dcfg = None
+    _dcfg_changed = False
+
     try:
         async with httpx.AsyncClient(base_url=api_url, timeout=10) as client:
             for room_dir in sorted(rooms_root.iterdir()):
@@ -1373,9 +1383,14 @@ async def reconcile_local_rooms(config: MyceliumConfig) -> None:
                 room_name = room_dir.name
                 try:
                     resp = await client.get(f"/api/rooms/{room_name}")
-                except httpx.ConnectError:
-                    log.debug("Hub unreachable during startup reconcile — skipping remaining rooms")
-                    return
+                except (httpx.ConnectError, httpx.ConnectTimeout):
+                    # ConnectTimeout is not a subclass of ConnectError; catch both.
+                    # Break rather than return so the batched config save still runs
+                    # for any orphans already found before the hub became unreachable.
+                    log.warning(
+                        "Hub unreachable during startup reconcile — skipping remaining rooms"
+                    )
+                    break
                 except Exception as exc:
                     log.debug("Reconcile check failed for '%s': %s", room_name, exc)
                     continue
@@ -1383,7 +1398,13 @@ async def reconcile_local_rooms(config: MyceliumConfig) -> None:
                 if resp.status_code != 404:
                     continue
 
-                # Room is gone on the hub.
+                # Room is gone on the hub.  Queue removal from daemon_cfg.rooms so
+                # the runner does not spawn a 404-retry SSE task on startup.
+                # Saved once after this loop ends.
+                if _dcfg is not None and room_name in _dcfg.rooms:
+                    _dcfg.rooms.remove(room_name)
+                    _dcfg_changed = True
+
                 if config.daemon.auto_gc_orphaned_rooms:
                     try:
                         shutil.rmtree(room_dir)
@@ -1392,32 +1413,41 @@ async def reconcile_local_rooms(config: MyceliumConfig) -> None:
                         )
                     except Exception as exc:
                         log.warning("Startup reconcile: failed to remove '%s': %s", room_dir, exc)
-                    try:
-                        from mycelium.integrations.openclaw.dispatch import (
-                            unregister_room_from_openclaw,
-                        )
-
-                        unregister_room_from_openclaw(room_name)
-                    except Exception:
-                        pass
-                    try:
-                        from mycelium.integrations.hermes.dispatch import (
-                            unregister_room_from_hermes,
-                        )
-
-                        unregister_room_from_hermes(room_name)
-                    except Exception:
-                        pass
                 else:
-                        log.warning(
-                            "Startup reconcile: room '%s' not registered in the backend — "
-                            "orphaned local directory at %s "
-                            "(run 'mycelium room gc' or set daemon.auto_gc_orphaned_rooms=true)",
-                            room_name,
-                            room_dir,
-                        )
+                    log.warning(
+                        "Startup reconcile: room '%s' not registered in the backend — "
+                        "orphaned local directory at %s "
+                        "(run 'mycelium room gc' or set daemon.auto_gc_orphaned_rooms=true)",
+                        room_name,
+                        room_dir,
+                    )
+
+                # Always unregister adapter configs — the hub has deleted the room
+                # regardless of whether we removed the local directory.
+                try:
+                    from mycelium.integrations.openclaw.dispatch import (
+                        unregister_room_from_openclaw,
+                    )
+
+                    unregister_room_from_openclaw(room_name)
+                except Exception:
+                    pass
+                try:
+                    from mycelium.integrations.hermes.dispatch import (
+                        unregister_room_from_hermes,
+                    )
+
+                    unregister_room_from_hermes(room_name)
+                except Exception:
+                    pass
     except Exception as exc:
         log.warning("Startup room reconcile failed: %s", exc)
+
+    if _dcfg is not None and _dcfg_changed:
+        try:
+            _dcfg.save()
+        except Exception as exc:
+            log.warning("Startup reconcile: could not save daemon config: %s", exc)
 
 
 # ── SSE subscription per room ────────────────────────────────────────────────

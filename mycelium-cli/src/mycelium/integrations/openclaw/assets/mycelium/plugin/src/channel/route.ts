@@ -75,6 +75,10 @@ export function routeMessage(
     return routeJoin(msg);
   }
 
+  if (msg.message_type === "room_deleted") {
+    return formatRoomDeleted(cfg, msg);
+  }
+
   return routeBroadcast(cfg, msg);
 }
 
@@ -471,6 +475,24 @@ export function routeBroadcast(cfg: ChannelConfig, msg: any): RouteAction[] {
     agentId,
     sender,
     content,
+    messageId: msg.id,
+  }));
+}
+
+// ── Room deleted ───────────────────────────────────────────────────────────
+
+export function formatRoomDeleted(cfg: ChannelConfig, msg: any): RouteAction[] {
+  const room = msg.room ?? msg.room_name ?? cfg.room;
+  const instruction = [
+    `[Room Deleted] The room "${room}" has been removed from the backend.`,
+    "Your subscription to this room is now ending — save any in-progress work",
+    "and prepare to disconnect. You will not receive further messages from this room.",
+  ].join(" ");
+  return cfg.agents.map((agentId) => ({
+    kind: "dispatch" as const,
+    agentId,
+    sender: "Mycelium",
+    content: instruction,
     messageId: msg.id,
   }));
 }

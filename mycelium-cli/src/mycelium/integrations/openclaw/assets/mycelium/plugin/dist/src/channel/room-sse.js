@@ -55,6 +55,12 @@ export function startRoomSSE(runtime, cfg, abort, handleMessage, log) {
                             continue;
                         }
                         handleMessage(runtime, cfg, msg, log);
+                        // Stop the subscription loop permanently on room deletion.
+                        // The room no longer exists on the hub; retrying would 404-loop.
+                        if (msg.message_type === "room_deleted") {
+                            log.info(`[${CHANNEL_ID}] room "${cfg.room}" deleted — stopping SSE subscription`);
+                            return;
+                        }
                     }
                 }
             }

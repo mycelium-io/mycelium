@@ -1217,7 +1217,7 @@ def gc(
                     resp = client.get(f"/api/rooms/{room_name}")
                     if resp.status_code == 404:
                         orphans.append(room_name)
-                except httpx.ConnectError:
+                except (httpx.ConnectError, httpx.ConnectTimeout):
                     typer.secho(
                         f"Cannot reach hub at {config.server.api_url} — aborting scan.",
                         fg=typer.colors.RED,
@@ -1228,37 +1228,47 @@ def gc(
                         f"  Warning: check failed for '{room_name}': {exc}", fg=typer.colors.YELLOW
                     )
 
-        if json_output:
-            import json as json_module
-
-            typer.echo(json_module.dumps({"orphans": orphans}))
-            return
+        import json as json_module
 
         if not orphans:
-            typer.secho(
-                f"All {len(local_rooms)} local room(s) are registered in the backend — nothing to clean up.",
-                fg=typer.colors.GREEN,
-            )
+            if json_output:
+                typer.echo(json_module.dumps({"orphans": []}))
+            else:
+                typer.secho(
+                    f"All {len(local_rooms)} local room(s) are registered in the backend — nothing to clean up.",
+                    fg=typer.colors.GREEN,
+                )
             return
-
-        typer.secho(
-            f"Found {len(orphans)} orphaned room director{'y' if len(orphans) == 1 else 'ies'}:",
-            fg=typer.colors.YELLOW,
-        )
-        for name in orphans:
-            typer.echo(f"  {rooms_root / name}")
 
         if not prune_orphans:
-            typer.echo("")
-            typer.echo("Run with --prune-orphans to delete them.")
+            if json_output:
+                typer.echo(json_module.dumps({"orphans": orphans}))
+            else:
+                typer.secho(
+                    f"Found {len(orphans)} orphaned room director{'y' if len(orphans) == 1 else 'ies'}:",
+                    fg=typer.colors.YELLOW,
+                )
+                for name in orphans:
+                    typer.echo(f"  {rooms_root / name}")
+                typer.echo("")
+                typer.echo("Run with --prune-orphans to delete them.")
             return
+
+        if not json_output:
+            typer.secho(
+                f"Found {len(orphans)} orphaned room director{'y' if len(orphans) == 1 else 'ies'}:",
+                fg=typer.colors.YELLOW,
+            )
+            for name in orphans:
+                typer.echo(f"  {rooms_root / name}")
 
         verb = "Would remove" if dry_run else "Removing"
         removed_count = 0
         failed_count = 0
         for room_name in orphans:
             room_dir = rooms_root / room_name
-            typer.echo(f"  {verb}: {room_dir}")
+            if not json_output:
+                typer.echo(f"  {verb}: {room_dir}")
             if not dry_run:
                 dir_removed = False
                 try:
@@ -1305,16 +1315,46 @@ def gc(
                     )
 
         if dry_run:
-            typer.echo("")
-            typer.secho("Dry run — nothing was deleted.", fg=typer.colors.YELLOW)
+            if json_output:
+                typer.echo(json_module.dumps({"orphans": orphans, "dry_run": True}))
+            else:
+                typer.echo("")
+                typer.secho("Dry run — nothing was deleted.", fg=typer.colors.YELLOW)
         else:
-            noun = "directory" if removed_count == 1 else "directories"
-            typer.secho(f"\nRemoved {removed_count} orphaned room {noun}.", fg=typer.colors.GREEN)
-            if failed_count:
+            # Remove pruned rooms from daemon.toml so a running daemon stops
+            # its 404 retry loop for these rooms immediately.
+            try:
+                from mycelium.daemon.config import DaemonConfig as _DC
+
+                _dcfg = _DC.load()
+                _changed = False
+                for _r in orphans:
+                    if _r in _dcfg.rooms:
+                        _dcfg.rooms.remove(_r)
+                        _changed = True
+                if _changed:
+                    _dcfg.save()
+            except Exception as exc:
                 typer.secho(
-                    f"{failed_count} director{'y' if failed_count == 1 else 'ies'} could not be removed — check permissions.",
-                    fg=typer.colors.YELLOW,
+                    f"Warning: could not update daemon config: {exc}", fg=typer.colors.YELLOW
                 )
+
+            if json_output:
+                typer.echo(
+                    json_module.dumps(
+                        {"orphans": orphans, "removed": removed_count, "failed": failed_count}
+                    )
+                )
+            else:
+                noun = "directory" if removed_count == 1 else "directories"
+                typer.secho(
+                    f"\nRemoved {removed_count} orphaned room {noun}.", fg=typer.colors.GREEN
+                )
+                if failed_count:
+                    typer.secho(
+                        f"{failed_count} director{'y' if failed_count == 1 else 'ies'} could not be removed — check permissions.",
+                        fg=typer.colors.YELLOW,
+                    )
 
     except (typer.Exit, typer.Abort):
         raise
