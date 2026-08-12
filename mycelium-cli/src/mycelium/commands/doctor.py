@@ -1964,7 +1964,9 @@ def _check_orphaned_rooms() -> CheckResult:
             message="Skipped (cannot load config)",
         )
 
-    rooms_root = Path.home() / ".mycelium" / "rooms"
+    from mycelium.filesystem import get_mycelium_dir
+
+    rooms_root = get_mycelium_dir() / "rooms"
     if not rooms_root.exists():
         return CheckResult(name="Orphaned rooms", status="ok", message="No local rooms directory")
 

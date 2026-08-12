@@ -1305,7 +1305,7 @@ async def _handle_room_deleted(
     if config.daemon.auto_gc_orphaned_rooms:
         if room_dir.exists():
             try:
-                shutil.rmtree(room_dir)
+                await asyncio.to_thread(shutil.rmtree, room_dir)
                 log.info("Removed local room directory: %s", room_dir)
             except Exception as exc:
                 log.warning("Failed to remove local room directory %s: %s", room_dir, exc)
@@ -1420,7 +1420,7 @@ async def reconcile_local_rooms(config: MyceliumConfig) -> set[str]:
 
                 if config.daemon.auto_gc_orphaned_rooms:
                     try:
-                        shutil.rmtree(room_dir)
+                        await asyncio.to_thread(shutil.rmtree, room_dir)
                         log.info(
                             "Startup reconcile: removed orphaned room directory '%s'", room_name
                         )
@@ -1504,11 +1504,16 @@ async def subscribe_room(
                         room_name,
                         _404_retries,
                     )
-                    state.rooms_deleted.add(room_name)
-                    state.reload_requested.set()
-                    _unregister_room_from_adapters(room_name)
+                    await _handle_room_deleted(
+                        room_name=room_name,
+                        config=config,
+                        state=state,
+                    )
                     return
                 if resp.status_code >= 400:
+                    # Non-404 error: reset the 404 counter so interleaved 5xx responses
+                    # during a rolling restart don't accumulate toward the 404 threshold.
+                    _404_retries = 0
                     log.warning("SSE %s for %s — retry in 5s", resp.status_code, room_name)
                     await asyncio.sleep(5)
                     continue

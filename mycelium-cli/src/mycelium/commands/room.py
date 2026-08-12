@@ -1271,7 +1271,8 @@ def gc(
                     dir_removed = True
                     removed_count += 1
                 except Exception as exc:
-                    typer.secho(f"    Error removing directory: {exc}", fg=typer.colors.RED)
+                    if not json_output:
+                        typer.secho(f"    Error removing directory: {exc}", fg=typer.colors.RED)
                     failed_count += 1
 
                 # Always unregister adapter configs regardless of whether the directory
@@ -1283,33 +1284,35 @@ def gc(
                     )
 
                     oc_removed = unregister_room_from_openclaw(room_name)
-                    if oc_removed:
+                    if oc_removed and not json_output:
                         typer.secho(
                             f"    Unregistered {len(oc_removed)} openclaw agent(s)",
                             fg=typer.colors.CYAN,
                         )
                 except Exception as exc:
-                    typer.secho(
-                        f"    Warning: could not unregister openclaw agents for '{room_name}': {exc}",
-                        fg=typer.colors.YELLOW,
-                    )
+                    if not json_output:
+                        typer.secho(
+                            f"    Warning: could not unregister openclaw agents for '{room_name}': {exc}",
+                            fg=typer.colors.YELLOW,
+                        )
 
                 try:
                     from mycelium.integrations.hermes.dispatch import unregister_room_from_hermes
 
                     hm_removed = unregister_room_from_hermes(room_name)
-                    if hm_removed:
+                    if hm_removed and not json_output:
                         typer.secho(
                             f"    Unregistered {len(hm_removed)} hermes agent(s)",
                             fg=typer.colors.CYAN,
                         )
                 except Exception as exc:
-                    typer.secho(
-                        f"    Warning: could not unregister hermes agents for '{room_name}': {exc}",
-                        fg=typer.colors.YELLOW,
-                    )
+                    if not json_output:
+                        typer.secho(
+                            f"    Warning: could not unregister hermes agents for '{room_name}': {exc}",
+                            fg=typer.colors.YELLOW,
+                        )
 
-                if not dir_removed:
+                if not dir_removed and not json_output:
                     typer.secho(
                         "    Adapter configs unregistered; directory must be removed manually.",
                         fg=typer.colors.YELLOW,

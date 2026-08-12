@@ -52,6 +52,9 @@ export function startRoomSSE(
           return;
         }
         if (!res.ok || !res.body) {
+          // Non-404 error: reset the counter so interleaved 5xx responses
+          // during a rolling restart don't accumulate toward the 404 threshold.
+          notFoundRetries = 0;
           log.warn(`[${CHANNEL_ID}] SSE ${res.status} — retry 5s`);
           await new Promise((r) => setTimeout(r, 5000));
           continue;

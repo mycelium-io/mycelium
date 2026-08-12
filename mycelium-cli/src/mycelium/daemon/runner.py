@@ -171,12 +171,13 @@ async def _amain(foreground: bool) -> int:
     # wrote to disk (it may have removed orphaned rooms from the subscription list).
     try:
         daemon_cfg = DaemonConfig.load()
-        state.rooms_configured = list(daemon_cfg.rooms)
+        # Exclude tombstoned rooms so the health endpoint never reports orphaned
+        # rooms as configured — even when _dcfg.save() inside reconcile_local_rooms
+        # failed and daemon.toml still lists them.
+        state.rooms_configured = [r for r in daemon_cfg.rooms if r not in state.rooms_deleted]
         state.daemon_cfg = daemon_cfg
     except Exception as exc:
         log.warning("Could not reload daemon config after startup reconcile: %s", exc)
-        # Keep rooms_configured consistent with what sse_tasks will actually subscribe to
-        # so the health endpoint doesn't report tombstoned rooms as configured.
         state.rooms_configured = [r for r in daemon_cfg.rooms if r not in state.rooms_deleted]
 
     sse_tasks: dict[str, asyncio.Task[None]] = {
