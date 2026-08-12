@@ -1062,8 +1062,8 @@ def install(
             typer.echo(f"    mycelium-frontend → {ui_url}")
         print()
         typer.echo("  Next steps:")
-        typer.echo("    mycelium adapter add openclaw   # wire openclaw agents")
-        typer.echo("    mycelium room create <name>     # create your first room")
+        typer.echo("    mycelium adapter add claude-code  # wire your Claude Code agent")
+        typer.echo("    mycelium room create <name>      # create your first room")
         if enable_ui:
             typer.echo("    mycelium ui open                # open the frontend in your browser")
         print()

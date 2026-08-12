@@ -36,8 +36,8 @@ PAGES: list[tuple[str, str, str, str, str, str, str]] = [
      "CON-001", "CONCEPTS · ROOMS · EPISODES · MEMORY · PLAN",
      "The core concepts behind Mycelium: rooms, episodes, memory, plan, the aligner, and the L9 protocol."),
     ("adapters", "adapters.html", "Adapters · mycelium", "Adapters",
-     "ADP-001", "ADAPTERS · CLAUDE CODE · OPENCLAW · HERMES · REST API",
-     "Connect Claude Code, OpenClaw, Hermes, or any HTTP client to the Mycelium coordination layer."),
+     "ADP-001", "ADAPTERS · CLAUDE CODE · CURSOR · REST API",
+     "Connect Claude Code, Cursor, or any HTTP client to the Mycelium coordination layer."),
     ("reference", "reference.html", "Reference · mycelium", "Reference",
      "REF-001", "REFERENCE · ARCHITECTURE · CLI · CONFIG · GUIDES · HELP",
      "Architecture, CLI reference, configuration, guides, and troubleshooting for Mycelium."),
@@ -62,8 +62,6 @@ SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
     (None,                          "adapters",           "adapters",  "Adapters",     "Overview"),
     (None,                          "adapter-claude-code","adapters",  "Adapters",     "Claude Code"),
     (None,                          "adapter-cursor",     "adapters",  "Adapters",     "Cursor"),
-    (None,                          "adapter-openclaw",   "adapters",  "Adapters",     "OpenClaw"),
-    (None,                          "adapter-hermes",     "adapters",  "Adapters",     "Hermes"),
     (None,                          "adapter-api",        "adapters",  "Adapters",     "REST API"),
     # ── reference (reference.html) ──
     ("architecture.md",             "architecture",       "reference", "Architecture", "Architecture"),
@@ -76,7 +74,7 @@ SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
 # IDs that should be looked up in kept HTML (have <!-- keep --> markers, or rescued by id).
 _KEPT_IDS: set[str] = {
     "overview",
-    "adapters", "adapter-claude-code", "adapter-cursor", "adapter-openclaw", "adapter-hermes", "adapter-api",
+    "adapters", "adapter-claude-code", "adapter-cursor", "adapter-api",
 }
 
 # CLI groups for the cli-reference page.
@@ -619,7 +617,7 @@ GITHUB_SVG = (
 
 SKILL_MD_URL = (
     "https://raw.githubusercontent.com/mycelium-io/mycelium/main/"
-    "mycelium-cli/src/mycelium/integrations/openclaw/assets/mycelium/plugin/skills/"
+    "mycelium-cli/src/mycelium/integrations/claude_code/assets/skills/"
     "mycelium/SKILL.md"
 )
 

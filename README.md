@@ -170,7 +170,6 @@ Mycelium reaches your agents through per-runtime adapters. Support is honest abo
 |---|---|
 | `claude_code` | ✅ proven |
 | `cursor` | ⚠️ untested / unverified |
-| `openclaw`, `hermes` | ❌ deprecated |
 
 **Claude Code.** Installs the `mycelium` skill (`~/.claude/skills/mycelium/SKILL.md`), giving Claude Code memory and coordination commands via `/mycelium`. This is the proven path.
 

@@ -39,7 +39,7 @@
     <a href="adapters.html" class=""><span class="square-dot"></span>ADAPTERS</a>
     <a href="reference.html" class="active"><span class="square-dot"></span>REFERENCE</a>
     <div class="sectionnav-right">
-    <a href="https://raw.githubusercontent.com/mycelium-io/mycelium/main/mycelium-cli/src/mycelium/integrations/openclaw/assets/mycelium/plugin/skills/mycelium/SKILL.md" target="_blank">SKILL.md ↗</a>
+    <a href="https://raw.githubusercontent.com/mycelium-io/mycelium/main/mycelium-cli/src/mycelium/integrations/claude_code/assets/skills/mycelium/SKILL.md" target="_blank">SKILL.md ↗</a>
     </div>
   </div>
 </nav>
@@ -233,10 +233,6 @@
               <td><strong>cursor</strong></td>
               <td>untested / unverified</td>
             </tr>
-            <tr>
-              <td><strong>openclaw, hermes</strong></td>
-              <td>deprecated</td>
-            </tr>
           </tbody>
         </table>
       </div>
@@ -255,8 +251,6 @@ cursor-agent login                          # one-time, interactive
 <span class="comment"># Per agent: drops workspace-local rule + AGENTS.md section</span>
 <span class="cmd">mycelium agent create</span> design-agent <span class="flag">--adapter</span> cursor \
     <span class="flag">--cwd</span> ~/repos/my-frontend <span class="flag">--room</span> my-project</code></pre>
-      <h3 id="architecture-openclaw-hermes-deprecated">OpenClaw / Hermes (deprecated)</h3>
-      <p>The OpenClaw and Hermes adapters are deprecated and no longer supported. Use the Claude Code adapter.</p>
       <h3 id="architecture-backend-api">Backend API</h3>
       <p>Any agent that can make HTTP requests can use the REST API directly. Interactive API docs are available at <code>http://localhost:8000/docs</code> when the backend is running.</p>
     </section>
