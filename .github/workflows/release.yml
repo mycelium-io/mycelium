@@ -12,7 +12,7 @@ permissions:
 jobs:
   # Prerelease tags follow PEP 440: vX.Y.ZrcN, vX.Y.ZbN, vX.Y.ZaN, or
   # anything with "preview" in it. Prereleases skip every "promote to latest"
-  # step (Docker :latest tag, GH "Latest" label, Homebrew bump, ClawHub).
+  # step (Docker :latest tag, GH "Latest" label, Homebrew bump).
   detect-release-type:
     name: Detect release type
     runs-on: ubuntu-latest
@@ -145,8 +145,8 @@ jobs:
           cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/mycelium-frontend:cache,mode=max
 
       - name: Build and push mycelium-collector
-        # Receives OTLP from openclaw's diagnostics-otel + deep-observability
-        # plugins. Build context is the CLI dir because Dockerfile.collector
+        # Receives OTLP telemetry from agent diagnostics plugins. Build context
+        # is the CLI dir because Dockerfile.collector
         # COPYs ./pyproject.toml and ./src/ from there.
         uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
         with:
@@ -346,22 +346,3 @@ jobs:
           git add Formula/mycelium.rb
           git diff --staged --quiet || git commit -m "chore: bump mycelium to v${{ steps.version.outputs.version }}"
           git push
-  publish-clawhub:
-    needs: [detect-release-type, build-and-release]
-    if: needs.detect-release-type.outputs.is_prerelease == 'false'
-    name: Publish skill to clawhub
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-
-      - name: Get version from tag
-        id: version
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
-
-      - name: Publish to clawhub
-        run: |
-          curl -fsSL -X POST https://clawhub.ai/api/v1/skills \
-            -H "Authorization: Bearer ${{ secrets.CLAWHUB_TOKEN }}" \
-            -F "payload={\"slug\":\"mycelium-io\",\"displayName\":\"Mycelium\",\"version\":\"${{ steps.version.outputs.version }}\",\"changelog\":\"See https://github.com/mycelium-io/mycelium/releases/tag/${{ github.ref_name }}\",\"acceptLicenseTerms\":true,\"tags\":[\"latest\"]}" \
-            -F "files=@mycelium-cli/src/mycelium/integrations/openclaw/assets/mycelium/plugin/skills/mycelium/SKILL.md;type=text/markdown;filename=SKILL.md"

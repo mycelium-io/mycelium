@@ -24,8 +24,6 @@ from mycelium.integrations.base import AddOptions, AgentAdapter, Integration
 from mycelium.integrations.claude_code import ClaudeCodeIntegration
 from mycelium.integrations.cursor import CursorIntegration
 from mycelium.integrations.engine import EngineIntegration
-from mycelium.integrations.hermes import HermesIntegration
-from mycelium.integrations.openclaw import OpenClawIntegration
 
 __all__ = [
     "AddOptions",
@@ -59,42 +57,21 @@ def get_integration(
     name: str,
     *,
     cwd: str | None = None,
-    openclaw_agent: str | None = None,
-    model: str | None = None,
-    openclaw_profile: str | None = None,
-    copy_auth_from: str | None = None,
     engine_kind: str | None = None,
 ) -> Integration:
     """Return an integration instance for *name* (any accepted spelling).
 
     Family-specific `agent add` flags are passed through and bound to the
     instance so ``build_manifest``/``register`` keep a uniform signature. For
-    non-add call sites (e.g. ``agent rm``) the extra kwargs are simply omitted
-    — only ``openclaw_profile`` matters there and defaults to None.
+    non-add call sites (e.g. ``agent rm``) the extra kwargs are simply omitted.
     """
     canonical = normalize_family_id(name)
     if canonical == "claude_code":
         return ClaudeCodeIntegration(cwd=cwd)
     if canonical == "cursor":
         # cursor takes the same ``cwd`` flag claude_code does — it's the
-        # workspace root ``cursor-agent --workspace`` opens. The openclaw
-        # kwargs are silently ignored (kept on the factory signature so
-        # ``commands/adapter.py`` can pass everything uniformly).
+        # workspace root ``cursor-agent --workspace`` opens.
         return CursorIntegration(cwd=cwd)
-    if canonical == "openclaw":
-        return OpenClawIntegration(
-            openclaw_agent=openclaw_agent,
-            model=model,
-            openclaw_profile=openclaw_profile,
-            copy_auth_from=copy_auth_from,
-        )
-    if canonical == "hermes":
-        # Hermes always targets whichever profile is active on the host
-        # (``$HERMES_HOME`` or ``~/.hermes/``). First-class multi-profile
-        # selection is on hold until ``hermes-agent#25660`` (single gateway,
-        # multiple agents) lands — at which point handle-level routing
-        # replaces per-profile gateways entirely.
-        return HermesIntegration()
     if canonical == "engine":
         # First-party cognition-engine family; ``engine_kind`` selects the CE
         # (aligner today). The other kwargs are irrelevant here.

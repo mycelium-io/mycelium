@@ -365,7 +365,7 @@ def _cleanup_stale_claude_code_assets(claude_dir: Path, verbose: bool = False) -
 
 # ── daemon user-service install / uninstall ───────────────────────────────
 #
-# The daemon mirrors the OpenClaw gateway for Claude Code agents. It runs as a
+# The daemon is the userlevel dispatcher for Claude Code agents. It runs as a
 # user-level service that subscribes to room SSE, watches for `@handle`
 # mentions of agents registered under `agents/<handle>`, and dispatches them to
 # `claude -p` spawns. See `mycelium.daemon` for the dispatch implementation.

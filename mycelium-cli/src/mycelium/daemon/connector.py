@@ -118,7 +118,7 @@ def connector_targets(
     family (claude_code / cursor) — or a first-party **engine** when
     ``engine_runtime == "host"`` (the daemon holds the engine's connector and
     drives NEGMAS on the host instead of the backend running it).
-    ``long_lived_gateway`` families (openclaw, hermes) own their own delivery and
+    ``long_lived_gateway`` families own their own delivery and
     are skipped, exactly as the old SSE dispatch skipped them.
     """
     targets: list[tuple[str, str]] = []

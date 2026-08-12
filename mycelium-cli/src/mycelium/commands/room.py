@@ -304,32 +304,6 @@ def delete(
 
         typer.secho(f"Room '{room_name}' deleted.", fg=typer.colors.GREEN)
 
-        # Unregister all agents from the room in local adapter configs so the
-        # plugins stop reopening SSE connections to a room that no longer exists.
-        try:
-            from mycelium.integrations.openclaw.dispatch import unregister_room_from_openclaw
-
-            removed = unregister_room_from_openclaw(room_name)
-            if removed:
-                typer.secho(
-                    f"  Unregistered {len(removed)} agent(s) from '{room_name}' in local openclaw.json.",
-                    fg=typer.colors.CYAN,
-                )
-        except Exception:
-            pass  # openclaw not installed locally — skip silently
-
-        try:
-            from mycelium.integrations.hermes.dispatch import unregister_room_from_hermes
-
-            removed = unregister_room_from_hermes(room_name)
-            if removed:
-                typer.secho(
-                    f"  Unregistered {len(removed)} agent(s) from '{room_name}' in local hermes config.yaml.",
-                    fg=typer.colors.CYAN,
-                )
-        except Exception:
-            pass  # hermes not installed locally — skip silently
-
     except Exception as e:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
         print_error(e, verbose=verbose)
@@ -749,7 +723,7 @@ def watch(
 
 @doc_ref(
     usage='mycelium room send "<content>" [--room <room>] [--handle <handle>]',
-    desc="Send an addressed chat message into a room. Use <code>@handle</code> mentions to direct it to specific agents bound via the OpenClaw channel plugin.",
+    desc="Send an addressed chat message into a room. Use <code>@handle</code> mentions to direct it to specific agents.",
     group="room",
 )
 @app.command("send")
@@ -772,9 +746,8 @@ def send(
     """
     Send an addressed chat message into a room (cross-agent DM).
 
-    Drops a broadcast message into the room's message stream. Agents bound
-    to the room via the OpenClaw channel plugin will receive it if the
-    content @-mentions them (when `requireMention` is enabled, default true).
+    Drops a broadcast message into the room's message stream. Agents in the
+    room will receive it if the content @-mentions them.
 
     Use this for:
       - Addressed DMs between agents in the same room
@@ -783,8 +756,7 @@ def send(
 
     To participate in a room's coordination as a member (receive an addressed
     turn and reply as a position), use `mycelium await` / `mycelium respond`
-    instead. For agent-to-agent requests with a built-in reply loop, use
-    OpenClaw's `sessions_send` tool.
+    instead.
 
     Examples:
         mycelium room send "@julia-agent please review the cache config"

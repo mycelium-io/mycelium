@@ -9,10 +9,10 @@ addressed agent with a self-contained instruction so it can run
 ``mycelium negotiate respond accept`` (or the propose/reject equivalents)
 itself — no operator-driven accept loop required.
 
-Mirrors the openclaw ``routeTick`` / ``routeConsensus`` invariants so
-cold-spawn agents (cursor + claude_code) see the same prompt the openclaw
-agent runtime sees today. Without these tests a regression in the daemon
-would silently fall back to the operator-driven path.
+Pins the ``routeTick`` / ``routeConsensus`` invariants so cold-spawn agents
+(cursor + claude_code) see a self-contained coordination prompt. Without these
+tests a regression in the daemon would silently fall back to the
+operator-driven path.
 """
 
 from __future__ import annotations
@@ -118,8 +118,7 @@ def test_format_tick_lists_valid_offer_keys_when_counter_allowed() -> None:
         "r",
         "a",
     )
-    # Key-name fidelity matters — agents have miscoded keys without this hint
-    # (#276 / #285 from the openclaw side; pinned here too).
+    # Key-name fidelity matters — agents have miscoded keys without this hint.
     assert "Valid offer keys" in instr
     assert '"Cache TTL"' in instr
     assert '"Eviction Policy"' in instr
@@ -187,8 +186,7 @@ def test_format_tick_includes_walk_away_guidance() -> None:
     """The agent must be told that walking away is a legitimate outcome.
 
     Without this guidance an LLM tends to accept just to satisfy the prompt,
-    which silently degrades negotiation quality. The openclaw plugin pins
-    the same line; we mirror it here.
+    which silently degrades negotiation quality.
     """
     instr = dispatch._format_tick_instruction(
         {"payload": {"round": 1, "action": "respond"}},
@@ -401,41 +399,6 @@ async def test_on_message_ignores_tick_with_unparseable_content(
         msg=msg,
     )
     await asyncio.sleep(0)
-    _patched_dispatch["dispatch_one"].assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_on_message_skips_tick_for_long_lived_gateway_family(
-    _patched_dispatch: dict[str, MagicMock],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Openclaw agents have their own runtime tick handler; mycelium-daemon must
-    not also spawn — that would race with the gateway."""
-    openclaw_manifest = AgentManifest(
-        handle="planner",
-        adapter="openclaw",
-        openclaw_agent="planner",
-        description="ll gateway",
-    )
-    monkeypatch.setattr(dispatch, "load_manifest", lambda room, handle: openclaw_manifest)
-
-    daemon_cfg = DaemonConfig(rooms=["r"], handles=["planner"])
-    state = _make_state()
-    msg = {
-        "id": "tick-4",
-        "message_type": "coordination_tick",
-        "content": json.dumps({"payload": {"participant_id": "planner", "round": 1}}),
-    }
-
-    await dispatch.on_message(
-        config=_config(),
-        daemon_cfg=daemon_cfg,
-        state=state,
-        room_name="r",
-        msg=msg,
-    )
-    await asyncio.sleep(0)
-
     _patched_dispatch["dispatch_one"].assert_not_called()
 
 

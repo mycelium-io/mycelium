@@ -123,7 +123,7 @@ def test_no_if_family_branching_left_in_command_layer() -> None:
 
     repo = pathlib.Path(__file__).resolve().parents[1]
     src = (repo / "src/mycelium/commands/adapter.py").read_text()
-    assert 'adapter_type == "openclaw"' not in src
+    assert 'adapter_type == "cursor"' not in src
     assert 'adapter_type == "claude-code"' not in src
 
 

@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""@-mention parsing — Python port of the OpenClaw plugin's resolveMentions."""
+"""@-mention parsing — resolve which registered handles a message addresses."""
 
 from __future__ import annotations
 
@@ -11,12 +11,7 @@ _TRAILING_CHAR = re.compile(r"[a-z0-9_-]")
 
 
 def resolve_mentions(content: str, handles: list[str]) -> list[str]:
-    """Return the subset of ``handles`` that are @-mentioned in ``content``.
-
-    Mirrors the TypeScript implementation in
-    ``integrations/openclaw/assets/.../channel/mentions.ts`` so both gateways
-    agree on which agent a message addresses.
-    """
+    """Return the subset of ``handles`` that are @-mentioned in ``content``."""
     lower = content.lower()
     hit: list[str] = []
     for handle in handles:

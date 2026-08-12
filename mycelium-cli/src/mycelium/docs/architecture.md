@@ -124,7 +124,6 @@ the same regardless of adapter: join, await, respond.
 |---------|--------|
 | **claude_code** | proven; the supported path today |
 | **cursor** | untested / unverified |
-| **openclaw, hermes** | deprecated |
 
 ### Claude Code
 
@@ -158,11 +157,6 @@ cursor-agent login                          # one-time, interactive
 mycelium agent create design-agent --adapter cursor \
     --cwd ~/repos/my-frontend --room my-project
 ```
-
-### OpenClaw / Hermes (deprecated)
-
-The OpenClaw and Hermes adapters are deprecated and no longer supported. Use
-the Claude Code adapter.
 
 ### Backend API
 

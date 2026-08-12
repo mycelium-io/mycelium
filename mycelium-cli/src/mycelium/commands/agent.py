@@ -16,9 +16,7 @@ stream, dispatches ``@handle`` mentions to the right runtime, and posts the
 reply back to the room as ``@handle``.
 
 These commands are typing comfort on top of ``memory`` and ``room send``:
-``agent create``/``add`` write ``memory set agents/<handle>`` with
-validation (``create`` = greenfield, Mycelium-controlled; ``add`` = adopt an
-agent that already exists in your OpenClaw gateway, interactively or by id),
+``agent create`` writes ``memory set agents/<handle>`` with validation,
 ``agent invoke`` is ``room send "@handle ..."``. The primitives don't change.
 """
 
@@ -27,7 +25,6 @@ from __future__ import annotations
 import json as json_module
 import logging
 import sys
-from datetime import UTC, datetime
 from pathlib import Path
 
 import typer
@@ -41,14 +38,13 @@ from mycelium.doc_ref import doc_ref
 from mycelium.error_handler import print_error
 from mycelium.filesystem import get_room_dir, list_memories, read_memory
 from mycelium.integrations import AddOptions, Integration, get_adapter
-from mycelium.integrations.openclaw import OpenClawIntegration
 from mycelium.protocol import AGENT_ADAPTERS, AgentManifest
 
 app = typer.Typer(
     help=(
         "Name an addressable agent inside a room. "
-        "An agent is a memory entry plus an adapter route: `agent create` (new) "
-        "or `agent add` (adopt existing) writes the manifest, `agent invoke` "
+        "An agent is a memory entry plus an adapter route: `agent create` "
+        "writes the manifest, `agent invoke` "
         "sends an @handle message into its home room."
     ),
     no_args_is_help=True,
@@ -79,10 +75,9 @@ def _bail_root_owned(target: Path, blocking: Path, owner_name: str) -> None:
         err=True,
     )
     typer.echo(
-        "    user (sudo, a systemd service running as root, or an openclaw",
+        "    user (sudo, or a systemd service running as root).",
         err=True,
     )
-    typer.echo("    gateway container bind-mounting your home).", err=True)
     typer.echo("", err=True)
     typer.echo("    Fix with:", err=True)
     typer.echo("", err=True)
@@ -153,7 +148,7 @@ def _load_manifest(room_name: str, handle: str) -> AgentManifest | None:
     — callers can't tell the difference from the return value, but a corrupt
     manifest is logged at WARNING so it never fails silently. Without this,
     a bad YAML or schema mismatch looks identical to "agent not registered"
-    and the user re-runs ``agent add`` over their own broken file.
+    and the user re-runs ``agent create`` over their own broken file.
     """
     room_dir = get_room_dir(room_name)
     path = room_dir / "agents" / f"{handle}.md"
@@ -340,7 +335,7 @@ def _persist_and_describe(
     # re-read ``daemon.toml`` to pick up the newly-claimed handle —
     # otherwise the agent appears registered but mentions silently drop.
     # SIGHUP reload is issued here automatically; no-op when the daemon
-    # service isn't installed (e.g. openclaw-only boxes).
+    # service isn't installed.
     if getattr(impl, "lifecycle", None) == "cold_spawn":
         from mycelium.daemon.install import reload_daemon_service
 
@@ -367,12 +362,9 @@ _CWD_PROMPT_BY_ADAPTER: dict[str, str] = {
 @doc_ref(
     usage="mycelium agent create <handle> --adapter <name> [--cwd <path>]",
     desc=(
-        "Create a new, Mycelium-controlled agent in a room (greenfield). "
+        "Create a new, Mycelium-controlled agent in a room. "
         "<code>claude_code</code> and <code>cursor</code> agents are cold-"
-        "spawned by the daemon (one daemon serves both); "
-        "<code>openclaw</code> agents are newly created in the OpenClaw "
-        "gateway. To adopt an agent that already exists, use "
-        "<code>mycelium agent add</code>."
+        "spawned by the daemon (one daemon serves both)."
     ),
     group="agent",
 )
@@ -401,8 +393,6 @@ def _create_wizard(
         "[dim]  · claude_code: claim daemon ownership of the handle[/dim]\n"
         "[dim]  · cursor: claim daemon ownership of the handle and drop[/dim]\n"
         "[dim]    .cursor/rules/mycelium.mdc + AGENTS.md into the workspace[/dim]\n"
-        "[dim]  · openclaw: create the OpenClaw agent, wire it into the[/dim]\n"
-        "[dim]    room channel, allowlist the mycelium CLI, restart the gateway[/dim]\n"
     )
 
     handle = questionary.text("Agent handle (lowercase slug, e.g. release-agent):").ask()
@@ -479,25 +469,6 @@ def agent_create(
             "are dropped."
         ),
     ),
-    model: str | None = typer.Option(
-        None,
-        "--model",
-        help="openclaw: model for the new agent (else openclaw default).",
-    ),
-    openclaw_profile: str | None = typer.Option(
-        None,
-        "--openclaw-profile",
-        help="openclaw: target a named OpenClaw profile (e.g. 'work' → ~/.openclaw-work/).",
-    ),
-    copy_auth_from: str | None = typer.Option(
-        None,
-        "--copy-auth-from",
-        help=(
-            "openclaw: copy auth-profiles.json from this existing OpenClaw "
-            "agent so the new one can authenticate (it's created with no "
-            "creds otherwise). Duplicates a secret, so choose deliberately."
-        ),
-    ),
     room: str | None = typer.Option(
         None, "--room", "-r", help="Room to register in (defaults to active room)."
     ),
@@ -525,10 +496,6 @@ def agent_create(
 ) -> None:
     """Create a new, Mycelium-controlled agent in a room.
 
-    Greenfield: for openclaw this spins up a *new* OpenClaw agent. To wire
-    up agents that already exist in your OpenClaw gateway, use
-    ``mycelium agent add`` (interactive picker) instead.
-
     Examples:
         # claude_code (cold-spawned by the daemon)
         mycelium agent create release-agent --cwd ~/repos/mycelium
@@ -537,10 +504,6 @@ def agent_create(
         mycelium agent create design-agent --adapter cursor \\
             --cwd ~/repos/my-frontend \\
             --description "Owns the design system; pings @julia on ambiguity"
-
-        # openclaw — create a fresh OpenClaw agent named @planner
-        mycelium agent create planner --adapter openclaw \\
-            --description "Sprint planner, optimizes for shipping speed"
     """
     try:
         config = MyceliumConfig.load()
@@ -576,15 +539,7 @@ def agent_create(
 
         room_name = _resolve_room(config, room)
 
-        # No openclaw_agent → openclaw_created=True (greenfield) by the
-        # manifest validator. That is the whole point of `create`.
-        impl = get_adapter(
-            adapter,
-            cwd=cwd,
-            model=model,
-            openclaw_profile=openclaw_profile,
-            copy_auth_from=copy_auth_from,
-        )
+        impl = get_adapter(adapter, cwd=cwd)
 
         try:
             manifest = impl.build_manifest(
@@ -605,108 +560,6 @@ def agent_create(
             room_name=room_name,
             handle_flag=handle_flag,
             verb="created",
-        )
-    except typer.Exit:
-        raise
-    except Exception as e:
-        verbose = ctx.obj.get("verbose", False) if ctx.obj else False
-        print_error(e, verbose=verbose)
-        raise typer.Exit(1) from None
-
-
-# ── add (adopt existing — interactive picker, or one by id) ───────────────────
-
-
-@doc_ref(
-    usage="mycelium agent add [<openclaw-id>] [--room <room>]",
-    desc=(
-        "Adopt agents that already exist in your OpenClaw gateway. With no "
-        "argument in a terminal it opens an interactive picker that "
-        "discovers local OpenClaw agents, installs the adapter if needed, "
-        "and wires the selected ones into a room. Pass an id to adopt one "
-        "non-interactively. To create a new agent, use "
-        "<code>mycelium agent create</code>."
-    ),
-    group="agent",
-)
-@app.command("add")
-def agent_add(
-    ctx: typer.Context,
-    handle: str | None = typer.Argument(
-        None,
-        help="Existing OpenClaw agent id to adopt. Omit (in a TTY) for the interactive picker.",
-    ),
-    openclaw_profile: str | None = typer.Option(
-        None,
-        "--openclaw-profile",
-        help="openclaw: target a named OpenClaw profile (e.g. 'work' → ~/.openclaw-work/).",
-    ),
-    room: str | None = typer.Option(
-        None, "--room", "-r", help="Room to register in (defaults to active room)."
-    ),
-    description: str = typer.Option(
-        "", "--description", "-d", help="One-paragraph statement (single-adopt only)."
-    ),
-    budget: float = typer.Option(5.0, "--budget", help="Monthly USD spend cap."),
-    allow_from: str | None = typer.Option(
-        None, "--allow-from", help="Comma-separated sender handles allowed to invoke."
-    ),
-    handle_flag: str = typer.Option(
-        "cli-user", "--as", "-H", help="Your own handle (recorded as created_by)."
-    ),
-) -> None:
-    """Adopt agents that already exist in your OpenClaw gateway.
-
-    No argument + a terminal → interactive picker (discover → select →
-    install adapter if needed → wire into a room, one gateway restart).
-    ``mycelium agent add <openclaw-id>`` adopts a single agent
-    non-interactively. Greenfield agents: ``mycelium agent create``.
-    """
-    try:
-        config = MyceliumConfig.load()
-
-        if handle is None:
-            if not (sys.stdin.isatty() and sys.stdout.isatty()):
-                typer.secho(
-                    "mycelium agent add needs an OpenClaw agent id when "
-                    "non-interactive.\n"
-                    "  Interactive picker: run it in a terminal.\n"
-                    "  Adopt one: mycelium agent add <openclaw-id> [--room <room>]\n"
-                    "  Create new: mycelium agent create <handle> --adapter ...",
-                    fg=typer.colors.RED,
-                )
-                raise typer.Exit(1)
-            _onboard_wizard(
-                ctx,
-                config=config,
-                openclaw_profile=openclaw_profile,
-                room_opt=room,
-                handle_flag=handle_flag,
-            )
-            return
-
-        # Single non-interactive adopt: handle IS the existing OpenClaw id.
-        allow_list: list[str] = [a.strip() for a in (allow_from or "").split(",") if a.strip()]
-        room_name = _resolve_room(config, room)
-        impl = get_adapter("openclaw", openclaw_agent=handle, openclaw_profile=openclaw_profile)
-        try:
-            manifest = impl.build_manifest(
-                handle=handle,
-                opts=AddOptions(room=room_name),
-                description=description,
-                budget=budget,
-                allow_from=allow_list,
-            )
-        except ValidationError as exc:
-            typer.secho(f"Invalid agent manifest: {exc}", fg=typer.colors.RED)
-            raise typer.Exit(1) from exc
-        _persist_and_describe(
-            impl=impl,
-            manifest=manifest,
-            config=config,
-            room_name=room_name,
-            handle_flag=handle_flag,
-            verb="adopted",
         )
     except typer.Exit:
         raise
@@ -791,154 +644,6 @@ def _pick_room(config: MyceliumConfig) -> str | None:
         console.print(f"[red]Could not create room '{name}': {exc}[/red]")
         return None
     return name
-
-
-def _onboard_wizard(
-    ctx: typer.Context,
-    *,
-    config: MyceliumConfig,
-    openclaw_profile: str | None,
-    room_opt: str | None,
-    handle_flag: str,
-) -> None:
-    """Interactive brownfield onboarding: discover → pick → ensure adapter →
-    batch-adopt into a room (one gateway restart)."""
-    import questionary
-
-    console.print(
-        "\n[bold]Adopt OpenClaw agents into a Mycelium room[/bold]\n"
-        "[dim]This will:[/dim]\n"
-        "[dim]  · discover the OpenClaw agents on this machine[/dim]\n"
-        "[dim]  · let you pick which to adopt + the room to wire them into[/dim]\n"
-        "[dim]  · register each as a Mycelium agent manifest in that room[/dim]\n"
-        "[dim]  · allowlist the mycelium CLI for each agent[/dim]\n"
-        "[dim]  · restart the OpenClaw gateway once[/dim]\n"
-    )
-
-    impl = OpenClawIntegration(openclaw_profile=openclaw_profile)
-    discovered = impl.discover_local_agents()
-    if not discovered:
-        console.print(
-            "[yellow]No OpenClaw agents found[/yellow] in "
-            f"{'~/.openclaw' if not openclaw_profile else f'~/.openclaw-{openclaw_profile}'}.\n"
-            "  Create one with [cyan]openclaw agents add[/cyan], or a fresh "
-            "Mycelium-managed one with [cyan]mycelium agent create[/cyan]."
-        )
-        return
-
-    # Target room first — a manifest only exists inside a room. Fetch rooms
-    # from the backend and let the user pick (or create) one; guarantees the
-    # room exists before any side effects.
-    if room_opt:
-        room_name: str | None = room_opt
-    else:
-        room_name = _pick_room(config)
-    if not room_name:
-        console.print("[yellow]No room — aborted.[/yellow]")
-        return
-
-    # Mark agents already registered in this room so they aren't re-added.
-    choices: list = []
-    for a in discovered:
-        aid = a["id"]
-        already = _load_manifest(room_name, aid) is not None
-        label = f"{aid}  ·  openclaw" + (f"  ·  {a['model']}" if a["model"] else "")
-        choices.append(
-            questionary.Choice(
-                title=label + ("  (already added)" if already else ""),
-                value=aid,
-                disabled="already in room" if already else None,
-            )
-        )
-    # Key hint UNDER the list (questionary renders `instruction` on the
-    # question line; a trailing Separator is the only place it shows below
-    # the choices). Suppress the verbose default top instruction.
-    choices.append(
-        questionary.Separator("  ↑/↓ move · space select · a toggle all · enter confirm")
-    )
-
-    selected: list[str] = (
-        questionary.checkbox(
-            f"Select OpenClaw agents to add to room '{room_name}'",
-            choices=choices,
-            instruction="",
-        ).ask()
-        or []
-    )
-    if not selected:
-        console.print("[dim]Nothing selected — aborted.[/dim]")
-        return
-
-    # Ensure the openclaw adapter is installed (it owns the dispatch path).
-    if "openclaw" not in config.adapters:
-        proceed = questionary.confirm(
-            "The openclaw adapter isn't installed (required to dispatch "
-            "these agents). Install it now?",
-            default=True,
-        ).ask()
-        if not proceed:
-            console.print(
-                "[yellow]openclaw adapter is required — aborted.[/yellow] "
-                "Install later with: [cyan]mycelium adapter add openclaw[/cyan]"
-            )
-            return
-        console.print("[dim]Installing openclaw adapter…[/dim]")
-        get_adapter("openclaw", openclaw_profile=openclaw_profile).install(
-            config=config,
-            verbose=False,
-            profile=openclaw_profile,
-            container=None,
-            reinstall=False,
-        )
-        record: dict = {
-            "type": "openclaw",
-            "installed_at": datetime.now(UTC).isoformat(),
-            "api_url": config.server.api_url,
-        }
-        if openclaw_profile:
-            record["openclaw_profile"] = openclaw_profile
-        config.adapters["openclaw"] = record
-        config.save()
-        console.print("[green]openclaw adapter installed.[/green]")
-
-    # Build + validate manifests (adopt mode → openclaw_created=False).
-    valid: list[str] = []
-    manifests = []
-    for aid in selected:
-        try:
-            m = get_adapter(
-                "openclaw", openclaw_agent=aid, openclaw_profile=openclaw_profile
-            ).build_manifest(
-                handle=aid,
-                opts=AddOptions(room=room_name),
-                description="",
-                budget=5.0,
-                allow_from=[],
-            )
-        except ValidationError as exc:
-            console.print(f"  [yellow]skip {aid}[/yellow]: {exc}")
-            continue
-        valid.append(aid)
-        manifests.append(m)
-    if not valid:
-        console.print("[yellow]No valid agents to add — aborted.[/yellow]")
-        return
-
-    # Channel-register all, then ONE gateway restart.
-    impl.register_adopted_batch(valid, room=room_name, backend_url=config.server.api_url)
-    for m in manifests:
-        _write_manifest(config, room_name, m, created_by=handle_flag)
-
-    console.print(
-        f"\n[green]Added {len(valid)} agent"
-        f"{'' if len(valid) == 1 else 's'} to[/green] [bold]{room_name}[/bold]: "
-        + ", ".join(f"[cyan]@{h}[/cyan]" for h in valid)
-    )
-    console.print(
-        "[dim]Invoke with[/dim] "
-        f"[cyan]@{valid[0]} …[/cyan] [dim]in the room, or[/dim] "
-        f'[cyan]mycelium agent invoke {valid[0]} "…"[/cyan]'
-    )
 
 
 # ── ls ───────────────────────────────────────────────────────────────────────
@@ -1175,7 +880,7 @@ def agent_invoke(
     usage="mycelium agent rm <handle> [--room <room>] [--full] [--force]",
     desc=(
         "Unregister an agent. Default keeps the underlying runtime; "
-        "<code>--full</code> also destroys a Mycelium-created OpenClaw agent "
+        "<code>--full</code> also tears down the underlying runtime "
         "(requires confirmation unless <code>-y</code>)."
     ),
     group="agent",
@@ -1188,26 +893,17 @@ def agent_rm(
     full: bool = typer.Option(
         False,
         "--full",
-        help=(
-            "Destructive: also tear down the underlying runtime. For openclaw "
-            "create-mode agents this runs `openclaw agents remove` + deletes the "
-            "workspace. Adopted agents are never destroyed."
-        ),
+        help=("Destructive: also tear down the underlying runtime."),
     ),
     force: bool = typer.Option(False, "--force", "-f", "-y", help="Skip the confirmation prompt."),
 ) -> None:
     """Unregister an agent.
 
-    **Default (safe):** deletes the manifest. For openclaw, also drops the
-    handle from the mycelium-room channel and restarts the gateway — but
-    leaves the OpenClaw agent itself running. Notes/logs are preserved so the
+    **Default (safe):** deletes the manifest. Notes/logs are preserved so the
     agent can be re-registered later.
 
-    **--full (destructive):** additionally destroys the underlying runtime.
-    Only openclaw *create-mode* agents are destroyed (`openclaw agents
-    remove` + workspace delete); agents you *adopted* are never destroyed —
-    --full just unregisters them, same as default. Always prompts unless
-    -y/--force.
+    **--full (destructive):** additionally tears down the underlying runtime.
+    Always prompts unless -y/--force.
     """
     try:
         config = MyceliumConfig.load()
@@ -1230,14 +926,6 @@ def agent_rm(
                     f"the manifest."
                 )
                 prompt = f"Destroy @{handle} and its runtime?"
-            elif full and manifest.adapter == "openclaw" and not manifest.openclaw_created:
-                console.print(
-                    f"[yellow]@{handle} was adopted, not created by Mycelium — "
-                    f"--full will NOT destroy OpenClaw agent "
-                    f"'{manifest.openclaw_agent}'.[/yellow] It will only be "
-                    f"unregistered from the channel + manifest."
-                )
-                prompt = f"Unregister @{handle} from room '{room_name}'?"
             else:
                 prompt = f"Unregister @{handle} from room '{room_name}'? (notes + logs preserved)"
             if not typer.confirm(prompt):

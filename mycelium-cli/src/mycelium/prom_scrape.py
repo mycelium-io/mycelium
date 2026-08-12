@@ -5,7 +5,7 @@
 Minimal Prometheus text-format parser + scraper.
 
 We deliberately do *not* depend on ``prometheus_client`` here. The CLI ships
-to leaf nodes that already pull in OTLP/protobuf for OpenClaw telemetry; we
+to leaf nodes that already pull in OTLP/protobuf for telemetry; we
 don't want a second metrics SDK on disk just to parse a text stream.
 The Prometheus exposition format is small and stable enough that ~120 lines
 of stdlib code cover every case we hit in practice (counters, gauges,

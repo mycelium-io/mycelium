@@ -67,7 +67,7 @@ def test_install_claude_code_no_hooks_does_not_crash(
     # subpath="hooks" and the test fails fast with a clear message.
     real_resolve = claude_install._resolve_asset
 
-    def _guard(subpath: str, family: str = "openclaw") -> Path:
+    def _guard(subpath: str, family: str = "claude_code") -> Path:
         if subpath == "hooks":
             raise AssertionError(
                 "_install_claude_code resolved bundled 'hooks' asset "
@@ -100,7 +100,6 @@ def test_agent_create_accepts_kebab_case_adapter() -> None:
         ("claude-code", "claude_code"),
         ("claude_code", "claude_code"),
         ("cursor", "cursor"),
-        ("openclaw", "openclaw"),
     ]:
         normalised = hyphenated.replace("-", "_")
         assert normalised == expected
@@ -195,7 +194,7 @@ def test_persist_and_describe_kicks_daemon_for_cold_spawn(
 def test_persist_and_describe_skips_kick_for_long_lived(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Openclaw (long_lived_gateway) doesn't go through the mycelium-daemon;
+    """A long_lived_gateway family doesn't go through the mycelium-daemon;
     kicking it on every agent add would be wasted noise.
     """
     from mycelium.commands import agent as agent_cmd
@@ -224,9 +223,8 @@ def test_cursor_doctor_checks_skip_when_adapter_not_registered(
     """All three cursor checks must return status='ok' with a 'skipped'
     message when the cursor adapter isn't registered in config.toml.
 
-    This is the same shape as the openclaw skips and is what prevents a
-    fresh mycelium install from nagging users about an adapter they never
-    asked for.
+    This prevents a fresh mycelium install from nagging users about an
+    adapter they never asked for.
     """
     from mycelium.commands import doctor
 

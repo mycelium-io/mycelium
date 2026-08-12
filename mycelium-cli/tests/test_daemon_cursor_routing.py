@@ -11,9 +11,7 @@ Pins three integration-level invariants the daemon-core refactor introduced:
 
 2. Lifecycle dispatch is family-agnostic: ``cold_spawn`` integrations
    override ``Integration.spawn``, ``long_lived_gateway`` integrations
-   don't (and the daemon dispatch loop skips them). Without this
-   invariant, ``mycelium-daemon`` could try to cold-spawn an OpenClaw
-   agent — race condition with the OpenClaw gateway, double-replies.
+   don't (and the daemon dispatch loop skips them).
 
 3. Handle ownership in ``daemon.toml`` is family-blind: a single
    ``handles`` list serves both cursor and claude_code so a sibling
@@ -53,12 +51,12 @@ def test_binary_for_honours_override_and_round_trips() -> None:
     assert reloaded.binary_for("cursor") == "/opt/cursor-agent"
 
 
-def test_binary_for_long_lived_gateway_family_returns_empty_string() -> None:
-    """openclaw is dispatched by its own gateway, never cold-spawned by
-    the mycelium-daemon. ``binary_for`` returns an empty string so a programming
-    bug that calls into it for the wrong family fails loudly rather than
-    spawning ``claude`` against an openclaw manifest."""
-    assert DaemonConfig().binary_for("openclaw") == ""
+def test_binary_for_non_cold_spawn_family_returns_empty_string() -> None:
+    """A family the daemon never cold-spawns has no binary. ``binary_for``
+    returns an empty string so a programming bug that calls into it for the
+    wrong family fails loudly rather than spawning ``claude`` against the
+    wrong manifest."""
+    assert DaemonConfig().binary_for("engine") == ""
 
 
 # ── lifecycle dispatch routing ───────────────────────────────────────────────
@@ -76,17 +74,6 @@ def test_cold_spawn_families_share_one_daemon() -> None:
     assert type(cursor).lifecycle == "cold_spawn"
     assert type(claude).spawn is not Integration.spawn
     assert type(cursor).spawn is not Integration.spawn
-
-
-def test_long_lived_gateway_family_is_skipped_by_daemon() -> None:
-    """The daemon's @handle dispatch loop checks ``integration.lifecycle
-    != "cold_spawn"`` and skips. OpenClaw's own gateway delivers the
-    mention; double-dispatching would race two agents over the same
-    reply."""
-    openclaw = get_integration("openclaw")
-    assert type(openclaw).lifecycle == "long_lived_gateway"
-    # And it doesn't override spawn — that's a category error.
-    assert type(openclaw).spawn is Integration.spawn
 
 
 # ── handle ownership is family-blind ─────────────────────────────────────────

@@ -14,9 +14,8 @@ Shared by all cold-spawn integrations (currently ``claude_code`` and
 
 Without this, a cold-started agent has no idea it's been routed to as
 ``@handle`` — it tries to explain it's "actually <model name>," asks if
-the user meant to route somewhere else, etc. (Mirrors how OpenClaw injects
-identity via ``MYCELIUM_AGENT_HANDLE`` + ``before_agent_start``; cold-start
-agents have no env channel for that, so we bake it into the prompt.)
+the user meant to route somewhere else, etc. Cold-start agents have no env
+channel for identity, so we bake it into the prompt.
 """
 
 from __future__ import annotations

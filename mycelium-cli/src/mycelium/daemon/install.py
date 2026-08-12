@@ -59,8 +59,7 @@ def resolve_python_binary() -> str:
 
     The daemon runs via `python -m mycelium.daemon`, so we hardcode the
     Python that currently has `mycelium` installed. This avoids picking up
-    a system Python that doesn't have the package, which was a frequent
-    failure mode for the openclaw plugin's npm-install pattern.
+    a system Python that doesn't have the package.
     """
     import sys
 

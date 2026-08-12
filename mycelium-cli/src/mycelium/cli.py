@@ -72,39 +72,17 @@ def main(
 
 
 @app.command(name="skill")
-def skill(
-    claude_code: bool = typer.Option(
-        False,
-        "--claude-code",
-        help="Print the Claude Code adapter SKILL.md instead of the OpenClaw one.",
-    ),
-) -> None:
-    """Print the Mycelium SKILL.md (OpenClaw adapter skill definition).
-
-    Use --claude-code to print the Claude Code adapter skill instead.
-    """
-    if claude_code:
-        rel = "integrations/claude_code/assets/skills/mycelium/SKILL.md"
-        fallback_parts = (
-            "integrations",
-            "claude_code",
-            "assets",
-            "skills",
-            "mycelium",
-            "SKILL.md",
-        )
-    else:
-        rel = "integrations/openclaw/assets/mycelium/plugin/skills/mycelium/SKILL.md"
-        fallback_parts = (
-            "integrations",
-            "openclaw",
-            "assets",
-            "mycelium",
-            "plugin",
-            "skills",
-            "mycelium",
-            "SKILL.md",
-        )
+def skill() -> None:
+    """Print the Mycelium SKILL.md (Claude Code adapter skill definition)."""
+    rel = "integrations/claude_code/assets/skills/mycelium/SKILL.md"
+    fallback_parts = (
+        "integrations",
+        "claude_code",
+        "assets",
+        "skills",
+        "mycelium",
+        "SKILL.md",
+    )
 
     try:
         with resources.as_file(resources.files("mycelium").joinpath(rel)) as p:

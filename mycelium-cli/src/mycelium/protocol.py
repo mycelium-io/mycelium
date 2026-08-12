@@ -291,13 +291,7 @@ class MemoryLogEntry(BaseModel):
 #   cursor      → mycelium-daemon (SLIM connector, spawns cursor-agent -p).
 #                 Same lifecycle as claude_code; the daemon's dispatch loop
 #                 routes via Integration.lifecycle, not family id.
-#   openclaw    → OpenClaw gateway's mycelium-room channel plugin (the agent
-#                 runs inside OpenClaw; we just register it into the channel's
-#                 rooms[] fan-out — no daemon involvement, see the daemon
-#                 dispatch loop which skips non-cold_spawn families).
-AGENT_ADAPTERS: frozenset[str] = frozenset(
-    {"claude_code", "cursor", "openclaw", "hermes", "engine"}
-)
+AGENT_ADAPTERS: frozenset[str] = frozenset({"claude_code", "cursor", "engine"})
 
 #: Cognition-engine kinds hosted by the first-party ``engine`` runtime family.
 #: The extensibility axis: ``aligner`` (SIEP converge) today; ``bargainer`` (SAB),
@@ -313,32 +307,21 @@ class AgentManifest(BaseModel):
     manifest body — the bare minimum a dispatcher needs to route an
     ``@handle`` mention to the agent's runtime.
 
-    Four adapters:
+    Adapters:
 
     - ``claude_code`` — cold-spawned by the daemon. Requires ``cwd`` (where
       ``claude -p`` runs).
     - ``cursor`` — cold-spawned by the daemon. Requires ``cwd`` (where
       ``cursor-agent -p`` runs; treated by Cursor as the workspace root).
-    - ``openclaw`` — a long-lived OpenClaw agent. Requires ``openclaw_agent``
-      (the OpenClaw agent id; usually == handle for create-mode). The
-      OpenClaw gateway's channel plugin is the dispatcher; the daemon
-      ignores these manifests entirely.
-    - ``hermes`` — a handle exposed through a long-lived hermes gateway
-      (``hermes gateway run``). The bundled ``mycelium-room`` platform
-      plugin under ``integrations/hermes/assets/`` subscribes to the
-      configured rooms and dispatches into the hermes agent loop, so the
-      daemon ignores these manifests as it does for ``openclaw``. Mycelium
-      always targets whichever hermes profile is active on the host (i.e.
-      ``$HERMES_HOME`` or ``~/.hermes/``); first-class multi-profile
-      support is on hold until ``hermes-agent#25660`` (single gateway,
-      multiple agents) lands.
+    - ``engine`` — a first-party cognition engine (e.g. ``aligner``).
+      Requires ``kind``.
 
     The handle slug doubles as the mention target (``@release-agent``), so it
     must match the same lowercase pattern other memory slugs use.
     """
 
     handle: str = Field(..., min_length=1, pattern=r"^[a-z0-9][a-z0-9._-]*$")
-    adapter: Literal["claude_code", "cursor", "openclaw", "hermes", "engine"] = "claude_code"
+    adapter: Literal["claude_code", "cursor", "engine"] = "claude_code"
     kind: str | None = Field(
         default=None,
         description=(
@@ -355,18 +338,6 @@ class AgentManifest(BaseModel):
             "workspace root for ``--workspace`` mode."
         ),
     )
-    openclaw_agent: str | None = Field(
-        default=None,
-        description="openclaw: the OpenClaw agent id this handle maps to (required for that adapter).",
-    )
-    openclaw_created: bool = Field(
-        default=False,
-        description=(
-            "openclaw: True if Mycelium created the OpenClaw agent (create-mode), "
-            "False if it adopted a pre-existing one. Gates whether `agent rm --full` "
-            "is allowed to destroy it — adopted agents are never destroyed."
-        ),
-    )
     description: str = Field(default="", description="One-paragraph purpose statement.")
     budget_usd_per_month: float = Field(default=5.0, ge=0.0)
     allow_from: list[str] = Field(
@@ -374,8 +345,7 @@ class AgentManifest(BaseModel):
         description=(
             "Sender handles allowed to invoke this agent (e.g. ['@julia', '@docs-agent']). "
             "Empty list means anyone in the room can invoke. "
-            "Enforced by the daemon for claude_code; advisory for openclaw "
-            "(the channel plugin gates on @-mention, not allow_from)."
+            "Enforced by the daemon for claude_code / cursor."
         ),
     )
 
@@ -393,8 +363,6 @@ class AgentManifest(BaseModel):
         # root for --workspace mode; Claude treats it as the project root.
         if self.adapter in ("claude_code", "cursor") and not (self.cwd and self.cwd.strip()):
             raise ValueError(f"{self.adapter} agents require a non-empty cwd")
-        if self.adapter == "openclaw" and not (self.openclaw_agent and self.openclaw_agent.strip()):
-            raise ValueError("openclaw agents require an openclaw_agent id")
         # A cognition engine must name which CE it runs; unknown kinds are a typo
         # guard (the daemon/backend route on this).
         if self.adapter == "engine":

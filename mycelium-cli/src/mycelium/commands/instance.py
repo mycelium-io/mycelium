@@ -388,7 +388,6 @@ def init(
         typer.echo("")
         if metrics_config.collector_url:
             typer.echo("Next steps:")
-            typer.echo("  - Run 'mycelium adapter add openclaw --step=otel' to configure OTLP")
             typer.echo("  - Run 'mycelium metrics status' to verify collector connectivity")
         else:
             typer.echo("Next steps:")

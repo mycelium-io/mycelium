@@ -246,7 +246,7 @@ class MyceliumConfig(BaseModel):
     metrics: MetricsConfig = Field(default_factory=MetricsConfig)
     adapters: dict[str, Any] = Field(
         default_factory=dict,
-        description="Registered agent framework adapters (openclaw, cursor, claude-code, …)",
+        description="Registered agent framework adapters (claude-code, cursor, …)",
     )
 
     model_config = {"arbitrary_types_allowed": True}

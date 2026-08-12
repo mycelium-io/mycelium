@@ -10,7 +10,7 @@ lives behind the single ``Integration`` contract
 via ``get_integration(...)`` — there is no ``if adapter_type ==`` branching
 left (that asymmetry was the disease tracked as #173).
 
-Supported families: ``openclaw``, ``claude-code``, ``cursor``, ``hermes``.
+Supported families: ``claude-code``, ``cursor``.
 Every family that has an entry in ``ADAPTER_TYPES`` below is also wired
 through :func:`mycelium.integrations.get_integration`.
 """
@@ -18,9 +18,7 @@ through :func:`mycelium.integrations.get_integration`.
 from __future__ import annotations
 
 import json as json_module
-import shutil
 from datetime import UTC, datetime
-from pathlib import Path
 
 import typer
 
@@ -28,32 +26,24 @@ from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
 from mycelium.error_handler import print_error
 from mycelium.integrations import Integration, get_integration
-from mycelium.integrations._resources import _resolve_asset
-from mycelium.integrations.openclaw.install import _OPENCLAW_SCAFFOLD_ASSETS
 
 app = typer.Typer(
-    help="Connect agent frameworks (OpenClaw, Claude Code) to Mycelium. Install hooks, skills, and plugins.",
+    help="Connect agent frameworks (Claude Code, Cursor) to Mycelium. Install hooks, skills, and plugins.",
     no_args_is_help=True,
 )
 
 ADAPTER_TYPES = {
-    "openclaw": "plugin-based: installs mycelium via `openclaw plugins install`",
     "claude-code": "skill + hooks: copies SKILL.md and lifecycle hooks into ~/.claude/",
     "cursor": (
         "daemon-dispatched: drops .cursor/rules/mycelium.mdc + AGENTS.md "
         "into each cursor agent's workspace at `mycelium agent create` time"
-    ),
-    "hermes": (
-        "platform plugin: stages a hermes-side Python plugin into "
-        "~/.hermes/plugins/mycelium/ and enables platforms.mycelium-room "
-        "in ~/.hermes/config.yaml"
     ),
 }
 
 
 @app.callback()
 def adapter_main(ctx: typer.Context) -> None:
-    """Manage agent framework adapters (openclaw, cursor, claude-code, …)."""
+    """Manage agent framework adapters (claude-code, cursor, …)."""
 
 
 def _resolve_integration(adapter_type: str) -> Integration | None:
@@ -70,16 +60,14 @@ def _resolve_integration(adapter_type: str) -> Integration | None:
 
 
 @doc_ref(
-    usage="mycelium adapter add <type> [--openclaw-profile NAME] [--openclaw-container NAME] [--dry-run] [--force]",
-    desc="Install an agent framework adapter (openclaw, claude-code, cursor).",
+    usage="mycelium adapter add <type> [--dry-run]",
+    desc="Install an agent framework adapter (claude-code, cursor).",
     group="adapter",
 )
 @app.command("add")
 def add(
     ctx: typer.Context,
-    adapter_type: str = typer.Argument(
-        ..., help="Adapter type: openclaw, cursor, claude-code, hermes"
-    ),
+    adapter_type: str = typer.Argument(..., help="Adapter type: cursor, claude-code"),
     dry_run: bool = typer.Option(
         False, "--dry-run", help="Show what would be installed without doing it"
     ),
@@ -87,7 +75,7 @@ def add(
         None,
         "--step",
         help=(
-            "Follow-up step (repeatable). openclaw: otel, docker-env. "
+            "Follow-up step (repeatable). "
             "claude-code / cursor: daemon (the daemon is shared across "
             "both cold-spawn families, one service per host)."
         ),
@@ -100,40 +88,14 @@ def add(
     reinstall: bool = typer.Option(
         False, "--reinstall", help="Reinstall assets even if adapter is already registered"
     ),
-    scaffold_only: Path | None = typer.Option(
-        None,
-        "--scaffold-only",
-        help="Copy adapter assets to a directory without running install commands (for Docker/experiment setups)",
-    ),
-    force: bool = typer.Option(
-        False, "--force", "-f", help="Overwrite existing assets when using --scaffold-only"
-    ),
     yes: bool = typer.Option(
         False, "--yes", "-y", help="Skip confirmation prompts (e.g. reinstall overwrite warning)"
-    ),
-    openclaw_profile: str | None = typer.Option(
-        None,
-        "--openclaw-profile",
-        help="Target a named OpenClaw profile (e.g. 'work' → ~/.openclaw-work/). Omit for default gateway.",
-    ),
-    openclaw_container: str | None = typer.Option(
-        None,
-        "--openclaw-container",
-        help="OpenClaw gateway container name (e.g. 'openclaw'). Use when the gateway runs in Docker. Auto-read from OPENCLAW_CONTAINER env var.",
-        envvar="OPENCLAW_CONTAINER",
     ),
 ) -> None:
     """
     Register and install an agent framework adapter, then optionally wire it into your environment.
 
     Examples:
-        mycelium adapter add openclaw
-        mycelium adapter add openclaw --reinstall
-        mycelium adapter add openclaw --openclaw-profile work
-        mycelium adapter add openclaw --openclaw-container openclaw
-        mycelium adapter add openclaw --step=otel
-        mycelium adapter add openclaw --step=docker-env
-
         # claude-code and cursor share one daemon — install it under whichever
         # adapter you reach first; the other adapter then reuses the same service.
         mycelium adapter add claude-code
@@ -151,33 +113,6 @@ def add(
                 f"Unknown adapter type '{adapter_type}'. Known types: {known}", fg=typer.colors.RED
             )
             raise typer.Exit(1)
-
-        # ── Scaffold-only: copy assets to a directory without install commands ─
-        # Stages the OpenClaw asset bundle regardless of adapter_type — this
-        # is an experiment/Docker setup helper and predates per-family split.
-        if scaffold_only is not None:
-            target = scaffold_only.resolve()
-            installed: list[str] = []
-            skipped_: list[str] = []
-            for src_subpath, dst_subpath in _OPENCLAW_SCAFFOLD_ASSETS:
-                src = _resolve_asset(src_subpath)
-                dst = target / dst_subpath
-                if dst.exists() and not force:
-                    skipped_.append(dst_subpath)
-                    continue
-                dst.mkdir(parents=True, exist_ok=True)
-                for item in src.iterdir():
-                    dest_file = dst / item.name
-                    if item.is_file():
-                        dest_file.write_bytes(item.read_bytes())
-                    elif item.is_dir():
-                        shutil.copytree(str(item), str(dest_file), dirs_exist_ok=True)
-                installed.append(dst_subpath)
-            for path in installed:
-                typer.secho(f"  ✓ {path}", fg=typer.colors.GREEN)
-            for path in skipped_:
-                typer.secho(f"  - {path} (exists, use --force to overwrite)", dim=True)
-            return
 
         config = MyceliumConfig.load()
         integ = _resolve_integration(adapter_type)
@@ -203,8 +138,8 @@ def add(
                     s,
                     config=config,
                     verbose=verbose,
-                    profile=openclaw_profile,
-                    container=openclaw_container,
+                    profile=None,
+                    container=None,
                     remove=remove_step,
                 )
             return
@@ -217,16 +152,11 @@ def add(
             )
             raise typer.Exit(0)
 
-        # Confirm before a destructive reinstall. `openclaw plugins install`
-        # and `openclaw hooks install` skip files that already exist at the
-        # destination, so on reinstall we rmtree the plugin/hook directories
-        # ourselves first before asking openclaw to copy the bundled source in
-        # fresh. Any local edits or stale files from a prior version get wiped.
+        # Confirm before a destructive reinstall — any local edits or stale
+        # files from a prior version get wiped.
         if reinstall and not dry_run and not yes:
             targets = (
-                integ.reinstall_targets(profile=openclaw_profile, container=openclaw_container)
-                if integ is not None
-                else []
+                integ.reinstall_targets(profile=None, container=None) if integ is not None else []
             )
             typer.secho(
                 f"\n  Reinstalling the '{adapter_type}' adapter will overwrite:",
@@ -244,9 +174,7 @@ def add(
         if dry_run:
             typer.secho(f"[dry-run] Would install adapter: {adapter_type}", fg=typer.colors.CYAN)
             lines = (
-                integ.dry_run_lines(
-                    config=config, profile=openclaw_profile, container=openclaw_container
-                )
+                integ.dry_run_lines(config=config, profile=None, container=None)
                 if integ is not None
                 else []
             )
@@ -265,8 +193,8 @@ def add(
         integ.install(
             config=config,
             verbose=verbose,
-            profile=openclaw_profile,
-            container=openclaw_container,
+            profile=None,
+            container=None,
             reinstall=reinstall,
         )
 
@@ -276,10 +204,6 @@ def add(
                 "installed_at": datetime.now(UTC).isoformat(),
                 "api_url": config.server.api_url,
             }
-            if openclaw_profile:
-                adapter_record["openclaw_profile"] = openclaw_profile
-            if openclaw_container:
-                adapter_record["openclaw_container"] = openclaw_container
             config.adapters[adapter_type] = adapter_record
             config.save()
 
@@ -289,8 +213,8 @@ def add(
             integ.post_install_banner(
                 config=config,
                 reinstall=reinstall,
-                profile=openclaw_profile,
-                container=openclaw_container,
+                profile=None,
+                container=None,
             )
 
     except typer.Exit:
@@ -311,12 +235,6 @@ def remove(
     ctx: typer.Context,
     adapter_type: str = typer.Argument(..., help="Adapter type to remove"),
     force: bool = typer.Option(False, "--force", "-f", help="Skip confirmation"),
-    openclaw_container: str | None = typer.Option(
-        None,
-        "--openclaw-container",
-        envvar="OPENCLAW_CONTAINER",
-        help="Docker container name running the OpenClaw gateway (overrides saved config)",
-    ),
 ) -> None:
     """Unregister and uninstall an adapter."""
     try:
@@ -337,8 +255,8 @@ def remove(
             record = config.adapters[adapter_type]
             integ.uninstall(
                 record=record,
-                profile=record.get("openclaw_profile"),
-                container=openclaw_container or record.get("openclaw_container"),
+                profile=None,
+                container=None,
             )
 
         del config.adapters[adapter_type]

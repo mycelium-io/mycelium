@@ -124,11 +124,11 @@ def test_blocks_when_prereqs_missing() -> None:
         patch.object(
             demo,
             "_check_prereqs",
-            return_value=(object(), ["Adapter 'openclaw' is not installed."]),
+            return_value=(object(), ["Adapter 'claude_code' is not installed."]),
         ),
         patch.object(demo, "_provision") as prov,
     ):
-        result = runner.invoke(app, ["demo", "--adapter", "openclaw", "--yes"])
+        result = runner.invoke(app, ["demo", "--adapter", "claude_code", "--yes"])
     assert result.exit_code == 1
     assert "Can't run the live demo yet" in result.stdout
     prov.assert_not_called()
@@ -152,7 +152,7 @@ def _spec() -> dict:
     }
 
 
-def test_provision_runs_real_cli_sequence() -> None:
+def test_provision_runs_real_cli_sequence(tmp_path) -> None:  # noqa: ANN001
     """Provisioning creates the room, one agent per persona, then seeds."""
     spec = _spec()
     calls: list[list[str]] = []
@@ -164,81 +164,20 @@ def test_provision_runs_real_cli_sequence() -> None:
     with (
         patch.object(demo, "_fetch_persona", return_value="You are a test persona."),
         patch.object(demo, "_run", side_effect=fake_run),
-        patch.object(demo, "_await_openclaw_ready") as ready,
-        patch.object(demo, "_discover_openclaw_auth_source", return_value="main"),
+        patch.object(demo, "_demo_workdir", side_effect=lambda room, handle: tmp_path / handle),
     ):
-        demo._provision(spec, "openclaw", model="m/x", room="demo-room")
+        demo._provision(spec, "claude_code", room="demo-room")
 
     assert ["room", "create"] in [c[:2] for c in calls]
     agent_creates = [c for c in calls if c[:2] == ["agent", "create"]]
     assert len(agent_creates) == len(spec["agents"])
     for c in agent_creates:
-        assert "--adapter" in c and "openclaw" in c
-        assert "--model" in c  # openclaw + model provided
-        # discovered auth source must be copied so the agent can authenticate
-        assert "--copy-auth-from" in c and "main" in c
+        assert "--adapter" in c and "claude_code" in c
     invokes = [c for c in calls if c[:2] == ["agent", "invoke"]]
     assert len(invokes) == 1
     seed_text = invokes[0][3]
     for a in spec["agents"]:
         assert f"@{a['handle']}" in seed_text
-    # openclaw: must wait for the gateway to re-subscribe before seeding
-    ready.assert_called_once()
-
-
-def test_provision_explicit_auth_from_overrides_discovery() -> None:
-    """--auth-from wins over auto-discovery and is passed to every create."""
-    spec = _spec()
-    calls: list[list[str]] = []
-
-    with (
-        patch.object(demo, "_fetch_persona", return_value="p"),
-        patch.object(demo, "_run", side_effect=lambda args, **_: calls.append(args) or _ok()),
-        patch.object(demo, "_await_openclaw_ready"),
-        patch.object(demo, "_discover_openclaw_auth_source", return_value="auto") as disc,
-    ):
-        demo._provision(spec, "openclaw", model=None, room="r", auth_from="julia-agent")
-
-    disc.assert_not_called()  # explicit source short-circuits discovery
-    for c in [c for c in calls if c[:2] == ["agent", "create"]]:
-        assert c[c.index("--copy-auth-from") + 1] == "julia-agent"
-
-
-def test_provision_warns_when_no_auth_source(capsys: pytest.CaptureFixture[str]) -> None:
-    """No authenticated agent to copy from → warn, and don't pass the flag."""
-    spec = _spec()
-    calls: list[list[str]] = []
-
-    with (
-        patch.object(demo, "_fetch_persona", return_value="p"),
-        patch.object(demo, "_run", side_effect=lambda args, **_: calls.append(args) or _ok()),
-        patch.object(demo, "_await_openclaw_ready"),
-        patch.object(demo, "_discover_openclaw_auth_source", return_value=None),
-    ):
-        demo._provision(spec, "openclaw", model=None, room="r")
-
-    assert "No authenticated OpenClaw agent" in capsys.readouterr().out
-    for c in [c for c in calls if c[:2] == ["agent", "create"]]:
-        assert "--copy-auth-from" not in c  # nothing to copy → flag omitted
-
-
-def test_provision_no_model_for_non_openclaw(tmp_path) -> None:  # noqa: ANN001
-    spec = _spec()
-    calls: list[list[str]] = []
-
-    def fake_run(args, *, capture=True):  # noqa: ANN001, ARG001
-        calls.append(args)
-        return _ok()
-
-    with (
-        patch.object(demo, "_fetch_persona", return_value="persona"),
-        patch.object(demo, "_run", side_effect=fake_run),
-        patch.object(demo, "_demo_workdir", return_value=tmp_path),
-    ):
-        demo._provision(spec, "cursor", model="m/x", room="r")
-
-    for c in [c for c in calls if c[:2] == ["agent", "create"]]:
-        assert "--model" not in c  # model only applied to openclaw
 
 
 # ── cold-spawn (claude_code / cursor) plumbing ──────────────────────────────────
@@ -254,7 +193,7 @@ def test_provision_cold_spawn_subscribes_daemon_and_passes_cwd(tmp_path) -> None
         patch.object(demo, "_run", side_effect=lambda args, **_: calls.append(args) or _ok()),
         patch.object(demo, "_demo_workdir", side_effect=lambda room, handle: tmp_path / handle),
     ):
-        demo._provision(spec, "claude_code", model=None, room="r")
+        demo._provision(spec, "claude_code", room="r")
 
     # the daemon is subscribed to the room *before* agents are seeded
     subs = [c for c in calls if c[:2] == ["daemon", "subscribe"]]
@@ -282,7 +221,7 @@ def test_provision_cold_spawn_aborts_if_daemon_subscribe_fails(tmp_path) -> None
         patch.object(demo, "_demo_workdir", return_value=tmp_path),
         pytest.raises(typer.Exit),
     ):
-        demo._provision(spec, "claude_code", model=None, room="r")
+        demo._provision(spec, "claude_code", room="r")
 
 
 def test_drive_consensus_summons_aligner_after_positions() -> None:
@@ -333,83 +272,5 @@ def test_provision_aborts_on_persona_fetch_failure() -> None:
         patch.object(demo, "_run") as run,
         pytest.raises(typer.Exit),
     ):
-        demo._provision(spec, "openclaw", model=None, room="r")
+        demo._provision(spec, "cursor", room="r")
     run.assert_not_called()  # nothing created if personas can't be fetched
-
-
-# --------------------------------------------------------------------------- #
-# _await_openclaw_ready — the seed must wait for SSE re-subscription
-# --------------------------------------------------------------------------- #
-
-
-def _write_auth(agents_dir, name, profiles) -> None:
-    d = agents_dir / name / "agent"
-    d.mkdir(parents=True)
-    (d / "auth-profiles.json").write_text(__import__("json").dumps({"profiles": profiles}))
-
-
-def test_discover_auth_prefers_anthropic_and_skips_empty(tmp_path) -> None:
-    agents = tmp_path / ".openclaw" / "agents"
-    agents.mkdir(parents=True)
-    _write_auth(agents, "empty", {})  # empty profiles — skipped
-    _write_auth(agents, "openai-only", {"openai-codex:default": {"type": "oauth"}})
-    _write_auth(agents, "good", {"anthropic:claude": {"type": "token"}})
-    with patch.object(demo.Path, "home", return_value=tmp_path):
-        # exclude the demo agents themselves; anthropic source is preferred
-        assert demo._discover_openclaw_auth_source(exclude=set()) == "good"
-
-
-def test_discover_auth_falls_back_to_any_nonempty(tmp_path) -> None:
-    agents = tmp_path / ".openclaw" / "agents"
-    agents.mkdir(parents=True)
-    _write_auth(agents, "empty", {})
-    _write_auth(agents, "oauthy", {"openai-codex:default": {"type": "oauth"}})
-    with patch.object(demo.Path, "home", return_value=tmp_path):
-        assert demo._discover_openclaw_auth_source(exclude=set()) == "oauthy"
-
-
-def test_discover_auth_excludes_and_returns_none(tmp_path) -> None:
-    agents = tmp_path / ".openclaw" / "agents"
-    agents.mkdir(parents=True)
-    _write_auth(agents, "growth", {"anthropic:claude": {"type": "token"}})  # a demo agent
-    with patch.object(demo.Path, "home", return_value=tmp_path):
-        # the only authed agent is one we're creating → nothing to copy from
-        assert demo._discover_openclaw_auth_source(exclude={"growth"}) is None
-
-
-def test_await_ready_noop_when_openclaw_absent() -> None:
-    """No openclaw on PATH → nothing to wait for; never shells out or sleeps."""
-    with (
-        patch.object(demo.shutil, "which", return_value=None),
-        patch.object(demo.subprocess, "run") as run,
-        patch.object(demo.time, "sleep") as sleep,
-    ):
-        demo._await_openclaw_ready()
-    run.assert_not_called()
-    sleep.assert_not_called()
-
-
-def test_await_ready_settles_once_gateway_running() -> None:
-    """Gateway reports running → settle once for the SSE subscription, then return."""
-    with (
-        patch.object(demo.shutil, "which", return_value="/usr/bin/openclaw"),
-        patch.object(demo.subprocess, "run", return_value=_ok("Runtime: running (pid 1)")),
-        patch.object(demo.time, "sleep") as sleep,
-    ):
-        demo._await_openclaw_ready(settle=4.0)
-    # the only sleep is the settle (no poll-retry sleeps, since it's ready first try)
-    sleep.assert_called_once_with(4.0)
-
-
-def test_await_ready_times_out_and_warns(capsys: pytest.CaptureFixture[str]) -> None:
-    """Gateway never reports running → bounded wait ends with a warning, no hang."""
-    not_running = subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="down")
-    # monotonic: start (0), then jump past the deadline so the loop exits after one poll.
-    with (
-        patch.object(demo.shutil, "which", return_value="/usr/bin/openclaw"),
-        patch.object(demo.subprocess, "run", return_value=not_running),
-        patch.object(demo.time, "sleep"),
-        patch.object(demo.time, "monotonic", side_effect=[0.0, 0.5, 999.0]),
-    ):
-        demo._await_openclaw_ready(timeout=30.0)
-    assert "didn't report ready" in capsys.readouterr().out

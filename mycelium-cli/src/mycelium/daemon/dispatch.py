@@ -309,14 +309,12 @@ async def _post_reply(
 
 
 # The aligner emits ``coordination_tick`` and ``coordination_consensus``
-# messages addressed to specific participants in a session sub-room. The
-# openclaw plugin handles these via ``routeTick`` / ``routeConsensus`` in
-# ``integrations/openclaw/.../channel/route.ts``; cold-spawn families need the
-# equivalent so cursor / claude_code agents autonomously invoke
-# ``mycelium negotiate respond accept`` etc. instead of waiting for an
-# operator-driven accept loop. The two helpers below port
-# ``formatTickInstruction`` and ``formatConsensusSummary`` faithfully so the
-# prompt the agent sees is identical regardless of family.
+# messages addressed to specific participants in a session sub-room. Cold-spawn
+# families render these into a prompt so cursor / claude_code agents
+# autonomously invoke ``mycelium negotiate respond accept`` etc. instead of
+# waiting for an operator-driven accept loop. The two helpers below format the
+# tick and consensus payloads so the prompt the agent sees is identical
+# regardless of family.
 
 
 def _format_tick_instruction(
@@ -326,8 +324,7 @@ def _format_tick_instruction(
 ) -> str:
     """Render a ``coordination_tick`` payload as a self-contained agent prompt.
 
-    Mirrors ``formatTickInstruction`` in the openclaw plugin (see
-    ``route.ts``). Surfaces the round header, current offer, valid keys (when
+    Surfaces the round header, current offer, valid keys (when
     counter-proposing), shared context files, the parent-room plan tasks, and
     the exact ``mycelium negotiate ...`` commands the agent should invoke.
     Walking away with no agreement is explicitly named as a legitimate
@@ -529,7 +526,7 @@ def _format_error_tick(
 def _format_consensus_summary(consensus_data: dict[str, Any]) -> str:
     """Render a ``coordination_consensus`` payload as an agent prompt.
 
-    Mirrors ``formatConsensusSummary`` in the openclaw plugin. On success,
+    On success,
     surfaces the plan, per-agent assignments, and the ``plan_file`` pointer
     so the agent can flow straight into doing the work. On a broken
     negotiation, reports the failure plainly with the available context.
@@ -624,10 +621,10 @@ async def on_message(
         if manifest is None:
             log.warning("no manifest for @%s in %s", handle, room_name)
             continue
-        # Skip families this daemon doesn't dispatch (e.g. openclaw — its own
-        # gateway delivers mentions). The registry is the one source of truth
-        # for which families are cold_spawn vs long_lived_gateway; no more
-        # ``if manifest.adapter == "..."`` branching here.
+        # Skip families this daemon doesn't dispatch (e.g. a long-lived
+        # gateway family delivers its own mentions). The registry is the one
+        # source of truth for which families are cold_spawn vs
+        # long_lived_gateway; no more ``if manifest.adapter == "..."`` here.
         try:
             integration = get_integration(manifest.adapter)
         except ValueError:
@@ -726,7 +723,7 @@ async def _handle_tick(
     """Cold-spawn the addressed participant in response to a CFN tick.
 
     The aligner targets one agent per tick via
-    ``payload.participant_id``. We mirror the openclaw plugin's ``routeTick``:
+    ``payload.participant_id``. We
     parse the tick JSON, format a complete instruction (round / current
     offer / valid keys / accept-or-reject CLI commands), and dispatch the
     owned handle through the same ``_dispatch_one`` path as a normal
@@ -789,8 +786,8 @@ async def _handle_tick(
         )
         return
     if integration.lifecycle != "cold_spawn":
-        # ``long_lived_gateway`` families (openclaw, hermes) handle ticks in
-        # their own runtime; cold-spawn families are the daemon's responsibility.
+        # ``long_lived_gateway`` families handle ticks in their own runtime;
+        # cold-spawn families are the daemon's responsibility.
         log.debug(
             "skip tick → @%s — adapter=%s lifecycle=%s",
             target_handle,
@@ -841,7 +838,7 @@ async def _handle_consensus(
 ) -> None:
     """Cold-spawn every owned handle in *room_name* with the consensus summary.
 
-    Mirrors ``routeConsensus`` in the openclaw plugin: every agent that
+    Every agent that
     participated in the negotiation (or could have) sees the final plan and
     assignments, so the negotiation flows straight into doing the work
     rather than a silent ``type=consensus`` event the agent never observes.
