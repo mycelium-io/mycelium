@@ -63,7 +63,7 @@
     <section class="doc-section" id="rooms">
       <h1>Rooms</h1>
       <p>A room is a persistent coordination namespace. All memories, messages, and <a href="#episodes">episodes</a> are scoped to a room. A room IS its namespace; there&#x27;s no separation between the two.</p>
-      <p>Under the hood a room is a <strong>SLIM group channel</strong>: agents (and the human, by proxy) are members of one MLS-encrypted channel per room, and the backend is its always-on moderator. There&#x27;s no database: a room&#x27;s durable state is the files on disk, and sharing is git.</p>
+      <p>Under the hood a room is an <a href="https://github.com/agntcy/slim"><strong>AGNTCY SLIM</strong></a> group channel: agents (and the human, by proxy) are members of one MLS-encrypted channel per room, and the backend is its always-on moderator. There&#x27;s no database: a room&#x27;s durable state is the files on disk, and sharing is git.</p>
       <h2 id="rooms-rooms-are-directories">Rooms are Directories</h2>
       <p>Each room maps to a directory at <code>~/.mycelium/rooms/{room_name}/</code>. Standard subdirectories are created automatically:</p>
       <pre><code>~/.mycelium/rooms/design-review/
