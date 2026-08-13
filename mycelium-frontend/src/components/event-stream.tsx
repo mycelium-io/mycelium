@@ -236,12 +236,19 @@ type View = "channel" | "plan" | "l9";
 interface Props {
   roomName: string;
   onMemoryChanged?: () => void;
+  onConnectionChange?: (connected: boolean) => void;
   planRefreshTrigger?: number;
 }
 
-export function EventStream({ roomName, onMemoryChanged, planRefreshTrigger = 0 }: Props) {
+export function EventStream({ roomName, onMemoryChanged, onConnectionChange, planRefreshTrigger = 0 }: Props) {
   const [events, setEvents] = useState<Event[]>([]);
   const [connected, setConnected] = useState(false);
+
+  // Surface connection state to the shell's status bar (editor-style), so the
+  // chat header stays clean and the live/reconnecting signal has one home.
+  useEffect(() => {
+    onConnectionChange?.(connected);
+  }, [connected, onConnectionChange]);
   const [view, setView] = useState<View>("channel");
   const [agentHandles, setAgentHandles] = useState<Set<string>>(new Set());
   const [invites, setInvites] = useState<PendingInvite[]>([]);
@@ -352,14 +359,7 @@ export function EventStream({ roomName, onMemoryChanged, planRefreshTrigger = 0 
         onDecline={(invite) => respond(invite, "decline")}
       />
       <div className="flex items-center gap-3 border-b border-border shrink-0 h-[48px] bg-paper px-4">
-        {/* Only the abnormal state gets a badge — a healthy connection is the
-         * default and stays silent (no glowing "live" tell). */}
-        {!connected && (
-          <div className="flex items-center gap-1.5 text-micro font-medium text-yellow">
-            <span aria-hidden className="inline-block size-1.5 rounded-full bg-yellow" />
-            Reconnecting…
-          </div>
-        )}
+        {/* Connection state lives in the shell status bar now, not here. */}
         <div className="ml-auto flex items-center gap-0.5 rounded-lg border border-border bg-surface p-0.5">
           {([
             { id: "channel" as const, label: "Channel", count: channelCount as number | null },
@@ -519,7 +519,9 @@ export function EventStream({ roomName, onMemoryChanged, planRefreshTrigger = 0 
                 !SYSTEM_TYPES.has(prev.type) &&
                 prev.sender === ev.sender;
               const isAgent = agentHandles.has(ev.sender);
-              const color = isAgent ? "var(--green)" : "var(--accent)";
+              // Agents wear the accent; humans stay neutral. Consistent with the
+              // agents panel so one agent isn't two colors in two places.
+              const color = isAgent ? "var(--accent)" : "var(--muted-foreground)";
               return (
                 <div
                   key={ev.id}
@@ -549,7 +551,7 @@ export function EventStream({ roomName, onMemoryChanged, planRefreshTrigger = 0 
                         {isAgent && (
                           <span
                             className="rounded px-1.5 py-px text-micro font-medium"
-                            style={{ color: "var(--green)", background: "color-mix(in srgb, var(--green) 14%, transparent)" }}
+                            style={{ color: "var(--accent)", background: "color-mix(in srgb, var(--accent) 14%, transparent)" }}
                           >
                             agent
                           </span>

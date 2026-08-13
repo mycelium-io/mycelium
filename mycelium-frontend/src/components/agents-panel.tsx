@@ -30,10 +30,6 @@ function initials(handle: string): string {
   return s.toUpperCase();
 }
 
-/** Adapter → ring/initials color (shared app palette). */
-function adapterColor(adapter: string): string {
-  return adapter === "openclaw" ? "var(--green)" : "var(--accent)";
-}
 
 /**
  * Read-only roster of the addressable agents registered in a room (the
@@ -138,32 +134,29 @@ export function AgentsPanel({ roomName }: Props) {
           </div>
         )}
 
-        {agents.map((a) => {
-          const color = adapterColor(a.adapter);
-          return (
+        {agents.map((a) => (
+          <div
+            key={a.handle}
+            className="flex items-center gap-2.5 px-3 py-2.5 border-b border-border last:border-b-0"
+          >
             <div
-              key={a.handle}
-              className="flex items-center gap-2.5 px-3 py-2.5 border-b border-border last:border-b-0"
+              className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full font-mono text-micro font-semibold"
+              style={{ background: "color-mix(in srgb, var(--accent) 16%, transparent)", color: "var(--accent)" }}
+              aria-hidden
             >
-              <div
-                className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-surface font-mono text-micro font-bold"
-                style={{ border: `1.5px solid ${color}`, color }}
-                aria-hidden
-              >
-                {initials(a.handle)}
+              {initials(a.handle)}
+            </div>
+            <div className="min-w-0 flex-1 leading-tight">
+              <div className="font-mono text-label text-text font-semibold truncate leading-tight">
+                {a.handle}
               </div>
-              <div className="min-w-0 flex-1 leading-tight">
-                <div className="font-mono text-label text-text font-semibold truncate leading-tight">
-                  {a.handle}
-                </div>
-                <div className="text-micro text-muted-foreground truncate leading-tight">
-                  <span style={{ color }}>{a.adapter}</span>
-                  {a.description ? ` · ${a.description}` : ""}
-                </div>
+              <div className="text-micro text-muted-foreground truncate leading-tight">
+                {a.adapter}
+                {a.description ? ` · ${a.description}` : ""}
               </div>
             </div>
-          );
-        })}
+          </div>
+        ))}
       </div>
     </div>
   );
