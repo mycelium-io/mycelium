@@ -39,6 +39,13 @@ jobs:
         working-directory: fastapi-backend
         run: uv run ty check .
 
+      # Fast gate: the core protocol (room -> engine -> await -> respond ->
+      # converge -> plan) over the fake stack — no node, no LLM. Runs first so a
+      # broken happy path fails in seconds, ahead of the full suite.
+      - name: Smoke (fake stack)
+        working-directory: fastapi-backend
+        run: uv run pytest -m smoke -q
+
       - name: Unit tests
         working-directory: fastapi-backend
         env:
