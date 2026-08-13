@@ -56,9 +56,11 @@ SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
     ("episodes.md",                 "episodes",           "concepts",    "Concepts",     "Episodes"),
     ("memory.md",                   "memory",             "concepts",    "Concepts",     "Memory"),
     ("plan.md",                     "plan",               "concepts",    "Concepts",     "Plan"),
-    ("engines.md",                  "engines",            "concepts",    "Concepts",     "Engines"),
-    ("aligner.md",                  "aligner",            "concepts",    "Concepts",     "Aligner"),
     ("l9-protocol.md",              "l9-protocol",        "concepts",    "Concepts",     "L9 Protocol"),
+    # Engines are a nested group: the overview, then one page per kind.
+    ("engines.md",                  "engines",            "concepts",    "Engines",      "Overview"),
+    ("aligner.md",                  "aligner",            "concepts",    "Engines",      "Aligner"),
+    ("synthesizer.md",              "synthesizer",        "concepts",    "Engines",      "Synthesizer"),
     # ── adapters (adapters.html) — all hand-coded ──
     (None,                          "adapters",           "adapters",  "Adapters",     "Overview"),
     (None,                          "adapter-claude-code","adapters",  "Adapters",     "Claude Code"),

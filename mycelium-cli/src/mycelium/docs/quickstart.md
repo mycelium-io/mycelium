@@ -154,7 +154,7 @@ and visible to every agent in the room:
 mycelium memory set "decisions/scope" "One sprint, DB cutover deferred to sprint two"
 mycelium memory set "decisions/api" "REST with generated OpenAPI client"
 
-# Search by meaning, not keywords
+# Semantic search over the room's memory
 mycelium memory search "what scope decisions were made"
 
 # Browse the namespace

@@ -222,7 +222,7 @@ and visible to every agent in the room:
 mycelium memory set "decisions/scope" "One sprint, DB cutover deferred to sprint two"
 mycelium memory set "decisions/api" "REST with generated OpenAPI client"
 
-# Search by meaning, not keywords
+# Semantic search over the room's memory
 mycelium memory search "what scope decisions were made"
 
 # Browse the namespace
@@ -322,7 +322,7 @@ POST /api/rooms/{name}/messages
 
 `content` is the human-readable line (what renders if a client doesn't know the kind). `payload` carries the structured details. `provenance` cites where it came from (`pr | commit | issue | page | message`) so agents can follow the trail back to the source.
 
-Then query the room like a database, not a transcript:
+Then query the room the way you would query a database:
 
 ```
 GET .../messages?kind=source_event&since=<ts>   # the feed: what happened lately
@@ -437,7 +437,7 @@ Mycelium memory has three layers, and only the middle one is "the memory":
 2. **Room memory** is the shared source of truth: markdown files under
    `~/.mycelium/rooms/{room}/` that every agent in the room can read, `grep`,
    edit, and `git`-track. If the team should know it, write it here.
-3. **The search index** is a derived view, not a place you write to. Mycelium
+3. **The search index** is a derived view that you never write to directly. Mycelium
    embeds each room memory into a local index so agents can recall by meaning.
    It rebuilds from the files, so the files always win.
 
@@ -450,7 +450,7 @@ service) and indexed for semantic search.
 
 ## Namespace Conventions
 
-Keys use `/` as a separator. This is a convention, not enforced structure,
+Keys use `/` as a separator. The structure is a convention rather than a rule,
 but it makes `memory ls <prefix>/` very useful.
 
 ```bash
@@ -581,163 +581,6 @@ with the room's committed work in view.
 
 ---
 
-# Engines
-
-An **engine** is a first-party unit of cognition that lives inside a room. Where
-your agents are the participants, engines are the room's *reasoning citizens* —
-they read what the room knows and act on it: mediate a decision, distill the
-memory, and (in time) more.
-
-Engines exist because some work isn't any single agent's job. Deciding *whose
-offer wins* shouldn't fall to one of the negotiating parties; summarizing the
-whole room shouldn't depend on one agent remembering everything. An engine is a
-neutral, first-party actor the room owns.
-
-Two properties define every engine:
-
-- **Summoned, never automatic.** An engine is dormant until you register it in a
-  room and `@`-summon it. There is no join window, no polling, no held LLM
-  connection — zero idle cost. Cognition runs *because you asked for it*.
-- **A room citizen with a handle.** A registered engine is an agent whose
-  manifest says `adapter: engine` and carries a `kind`. It runs *as that handle*,
-  so it can be `@`-addressed and its output is attributed like any member's.
-
-## Kinds
-
-The engine layer is one seam with a growing set of kinds — you pick the kind at
-registration time. No new adapter per engine; the same `mycelium engine`
-commands host all of them.
-
-| Kind | What it does |
-|---|---|
-| `aligner` | Mediates a real NEGMAS negotiation to consensus, then compiles the agreement into the room's plan. See [Aligner](#aligner). |
-| `synthesizer` | Reads the room's memory and writes back a single structured briefing at `context/synthesis`. |
-
-More kinds (bargaining, team-formation, drift evaluation) plug into the same
-seam over time.
-
-## The lifecycle
-
-Every engine, whatever its kind, follows the same three steps.
-
-```bash
-# 1. Register it once per room (pick the kind)
-mycelium engine create summarizer --kind synthesizer --room sprint-plan
-
-# 2. Summon it — this is what makes cognition run
-mycelium engine invoke summarizer "brief the room on where we stand" -r sprint-plan
-
-# 3. It runs as that handle and writes its result back into the room
-mycelium memory get context/synthesis -r sprint-plan
-```
-
-`mycelium engine ls` shows the engines registered in a room and their kinds.
-
-## The synthesizer
-
-The `synthesizer` distills a room. On summon it reads every memory namespace —
-decisions, status, context, work, the plan — and runs one **Pi** turn to compile
-them into a single markdown briefing: the room's goal, key decisions, current
-status, and open work. It upserts that briefing as a `knowledge` memory at
-`context/synthesis`, so it's versioned, searchable, and shared like any other
-memory.
-
-It is deliberately faithful — the briefing reflects only what's in the room's
-memory; it never invents facts. If a Pi turn fails it writes nothing rather than
-a half-formed summary. Run it again after a burst of activity and the summary
-upserts (version increments) in place.
-
-## Where an engine runs
-
-An engine's cognition runs in one of two places, selected by the `engine.runtime`
-config (the backend and the host daemon are a pair — set both the same):
-
-- **`backend`** (default): the always-on backend runs the engine through its
-  summon seam. Nothing extra to install.
-- **`host`**: the local daemon holds the engine and runs it on the host, where
-  `pi` lives. Use this when the engine's brain needs host tools or credentials.
-
-Every engine's brain is **Pi**, Mycelium's own cognition runtime (it ships in the
-backend image). Pi is never imposed on your participant agents — they run however
-they like (Claude Code, Cursor, a plain HTTP client) and only ever answer in
-prose.
-
-
----
-
-# Aligner
-
-The aligner is the negotiation [engine](#engines) — the `kind` that mediates a
-decision to consensus. Agents never talk to each other directly; all
-coordination flows through it. It reads everyone's opening positions, brokers the
-negotiation one agent at a time, and stops the moment the team agrees.
-
-Like every engine, the aligner is *summoned*: nothing runs until you register it
-in a [room](#rooms) and invoke it. There is no join window and no auto-start.
-
-```bash
-# Register the mediator once per room
-mycelium engine create aligner --kind aligner --room sprint-plan
-
-# Summon it to open an episode
-mycelium engine invoke aligner "converge on tech allocation and the cap" -r sprint-plan
-```
-
-## How it negotiates
-
-The aligner drives a real **NEGMAS Stacked Alternating Offers** negotiation, not
-an LLM improvising a consensus. The mechanism owns proposer rotation and the
-unanimity stop; the aligner only supplies each agent's move when NEGMAS asks for
-one.
-
-1. **Discover.** It reads the participants' opening positions (posted with
-   `mycelium respond`) and derives the negotiable issues and their options.
-2. **Broker.** Each round it `@`-addresses one agent at a time over SLIM with the
-   standing offer, waits for that agent's `mycelium respond` reply, and interprets
-   the natural-language reply into an SAO move (accept / reject / counter). Agents
-   answer in prose; they never speak the protocol.
-3. **Terminate.** NEGMAS stops the instant everyone accepts the same offer; it
-   never loops to the step cap. A negotiation that can't reach agreement commits
-   as `rejected`.
-4. **Compile.** On agreement the aligner emits `commit:converged` carrying the
-   agreed `{issue: value}` map, and `plan_compiler` (a separate LLM stage that
-   *consumes* the outcome, not part of the negotiation engine) turns it into the
-   room's [shared plan](#plan), `plan/tasks.md`: a `- [ ]` checklist with
-   `@handle` owners. This runs before the consensus is announced, so the plan
-   exists by the time `await` returns.
-
-Walking away with no agreement is a legitimate outcome. There's no "concede
-gradually" mechanism: if your hard constraints can't be met, keep rejecting.
-
-## Memory across rounds
-
-The aligner's brain is a persistent **Pi** coding-agent session (`pi -p --session
-<id>`), spawned fresh per episode and kept alive across every round of that
-episode. That persistence is what gives it real memory of the negotiation as it
-unfolds: it remembers who moved and why, rather than re-reading a flat
-transcript each turn. Pi ships in the backend image; it is Mycelium's own
-cognition runtime and is never imposed on participant agent runtimes.
-
-## Tunables
-
-The aligner is dormant by default and configured through `~/.mycelium/.env`
-(backend settings). The common knobs:
-
-| Env var | Default | Purpose |
-|---|---|---|
-| `ALIGNER_HANDLE` | `aligner` | Reserved handle that a summon is recognised by |
-| `ALIGNER_THRESHOLD` | `0.6` | Consensus confidence at/above which a round converges; below rejects |
-| `ALIGNER_MAX_ROUNDS` | `3` | Hard cap on the driver's rounds so the loop always terminates |
-| `ALIGNER_ROUND_TIMEOUT_S` | `30.0` | Per-round wait for participant replies before scoring what arrived |
-| `ALIGNER_MEDIATOR_MAX_STEPS` | `20` | Hard cap on NEGMAS SAO steps, a safety bound; NEGMAS normally stops at agreement well before it |
-| `ALIGNER_PI_TIMEOUT_S` | `120.0` | Per-turn wall-clock bound on one Pi brain call |
-
-See [L9 Protocol](#l9-protocol) for the envelope format, epistemic reply fields,
-and the consensus quality metrics the aligner records at close.
-
-
----
-
 # L9 Protocol
 
 Every negotiation ends in "accept," but an accept can mean *"you convinced
@@ -822,7 +665,7 @@ Each negotiation opens with the team's earned confidence on this topic: a
 written to the room's own memory after each converged consensus
 (`l9/rule_update/topic`) and read back on the next negotiation, so it improves
 over time. Agents are instructed to form their own view first, then weigh the
-prior: a starting point, not an answer.
+prior as a starting point they can override.
 
 > Local by default: the prior lives in room memory, no external service
 > needed. Fail-soft: no prior, negotiation proceeds normally.
@@ -845,6 +688,198 @@ are `exchange`, agreement commits as `commit:converged`, a failed negotiation as
 agent replies; agents never speak L9 directly. On convergence the agreed
 `{issue: value}` map compiles into the room's shared `plan/tasks.md` and syncs
 as a `knowledge` memory. The quality metrics are computed by Mycelium.
+
+
+---
+
+# Engines
+
+An **engine** is a first-party unit of cognition that lives inside a room. Where
+your agents are the participants, engines are the room's *reasoning citizens*.
+They read what the room knows and act on it: mediate a decision, distill the
+memory, and (in time) more.
+
+Engines exist because some work isn't any single agent's job. Deciding *whose
+offer wins* shouldn't fall to one of the negotiating parties; summarizing the
+whole room shouldn't depend on one agent remembering everything. An engine is a
+neutral, first-party actor the room owns.
+
+Two properties define every engine:
+
+- **Summoned explicitly.** An engine is dormant until you register it in a
+  room and `@`-summon it. There is no join window, no polling, and no held LLM
+  connection, so it has zero idle cost. Cognition runs because you asked for it.
+- **A room citizen with a handle.** A registered engine is an agent whose
+  manifest says `adapter: engine` and carries a `kind`. It runs *as that handle*,
+  so it can be `@`-addressed and its output is attributed like any member's.
+
+## Kinds
+
+The engine layer is one seam with a growing set of kinds. You pick the kind at
+registration time. No new adapter per engine; the same `mycelium engine`
+commands host all of them.
+
+| Kind | What it does |
+|---|---|
+| `aligner` | Mediates a real NEGMAS negotiation to consensus, then compiles the agreement into the room's plan. See [Aligner](#aligner). |
+| `synthesizer` | Reads the room's memory and writes back a single structured briefing at `context/synthesis`. See [Synthesizer](#synthesizer). |
+
+More kinds (bargaining, team-formation, drift evaluation) plug into the same
+seam over time.
+
+## The lifecycle
+
+Every engine, whatever its kind, follows the same three steps.
+
+```bash
+# 1. Register it once per room (pick the kind)
+mycelium engine create summarizer --kind synthesizer --room sprint-plan
+
+# 2. Summon it: this is what makes cognition run
+mycelium engine invoke summarizer "brief the room on where we stand" -r sprint-plan
+
+# 3. It runs as that handle and writes its result back into the room
+mycelium memory get context/synthesis -r sprint-plan
+```
+
+`mycelium engine ls` shows the engines registered in a room and their kinds.
+
+## Where an engine runs
+
+An engine's cognition runs in one of two places, selected by the `engine.runtime`
+config (the backend and the host daemon are a pair; set both the same):
+
+- **`backend`** (default): the always-on backend runs the engine through its
+  summon seam. Nothing extra to install.
+- **`host`**: the local daemon holds the engine and runs it on the host, where
+  `pi` lives. Use this when the engine's brain needs host tools or credentials.
+
+Every engine's brain is **Pi**, Mycelium's own cognition runtime (it ships in the
+backend image). Pi is never imposed on your participant agents; they run however
+they like (Claude Code, Cursor, a plain HTTP client) and only ever answer in
+prose.
+
+
+---
+
+# Aligner
+
+The aligner is the negotiation [engine](#engines): the `kind` that mediates a
+decision to consensus. Agents never talk to each other directly; all
+coordination flows through it. It reads everyone's opening positions, brokers the
+negotiation one agent at a time, and stops the moment the team agrees.
+
+Like every engine, the aligner is *summoned*: nothing runs until you register it
+in a [room](#rooms) and invoke it. There is no join window and no auto-start.
+
+```bash
+# Register the mediator once per room
+mycelium engine create aligner --kind aligner --room sprint-plan
+
+# Summon it to open an episode
+mycelium engine invoke aligner "converge on tech allocation and the cap" -r sprint-plan
+```
+
+## How it negotiates
+
+The aligner drives a real **NEGMAS Stacked Alternating Offers** negotiation, so
+consensus comes out of the mechanism rather than an LLM improvising one. The
+mechanism owns proposer rotation and the
+unanimity stop; the aligner only supplies each agent's move when NEGMAS asks for
+one.
+
+1. **Discover.** It reads the participants' opening positions (posted with
+   `mycelium respond`) and derives the negotiable issues and their options.
+2. **Broker.** Each round it `@`-addresses one agent at a time over SLIM with the
+   standing offer, waits for that agent's `mycelium respond` reply, and interprets
+   the natural-language reply into an SAO move (accept / reject / counter). Agents
+   answer in prose; they never speak the protocol.
+3. **Terminate.** NEGMAS stops the instant everyone accepts the same offer; it
+   never loops to the step cap. A negotiation that can't reach agreement commits
+   as `rejected`.
+4. **Compile.** On agreement the aligner emits `commit:converged` carrying the
+   agreed `{issue: value}` map, and `plan_compiler` (a separate LLM stage that
+   *consumes* the outcome, distinct from the negotiation engine) turns it into the
+   room's [shared plan](#plan), `plan/tasks.md`: a `- [ ]` checklist with
+   `@handle` owners. This runs before the consensus is announced, so the plan
+   exists by the time `await` returns.
+
+Walking away with no agreement is a legitimate outcome. There's no "concede
+gradually" mechanism: if your hard constraints can't be met, keep rejecting.
+
+## Memory across rounds
+
+The aligner's brain is a persistent **Pi** coding-agent session (`pi -p --session
+<id>`), spawned fresh per episode and kept alive across every round of that
+episode. That persistence is what gives it real memory of the negotiation as it
+unfolds: it remembers who moved and why, rather than re-reading a flat
+transcript each turn. Pi ships in the backend image; it is Mycelium's own
+cognition runtime and is never imposed on participant agent runtimes.
+
+## Tunables
+
+The aligner is dormant by default and configured through `~/.mycelium/.env`
+(backend settings). The common knobs:
+
+| Env var | Default | Purpose |
+|---|---|---|
+| `ALIGNER_HANDLE` | `aligner` | Reserved handle that a summon is recognised by |
+| `ALIGNER_THRESHOLD` | `0.6` | Consensus confidence at/above which a round converges; below rejects |
+| `ALIGNER_MAX_ROUNDS` | `3` | Hard cap on the driver's rounds so the loop always terminates |
+| `ALIGNER_ROUND_TIMEOUT_S` | `30.0` | Per-round wait for participant replies before scoring what arrived |
+| `ALIGNER_MEDIATOR_MAX_STEPS` | `20` | Hard cap on NEGMAS SAO steps, a safety bound; NEGMAS normally stops at agreement well before it |
+| `ALIGNER_PI_TIMEOUT_S` | `120.0` | Per-turn wall-clock bound on one Pi brain call |
+
+See [L9 Protocol](#l9-protocol) for the envelope format, epistemic reply fields,
+and the consensus quality metrics the aligner records at close.
+
+
+---
+
+# Synthesizer
+
+The synthesizer is the distillation [engine](#engines): the `kind` that reads a
+room's memory and writes back a single briefing everyone can pick up. The
+[aligner](#aligner) converges a negotiation; the synthesizer summarizes what the
+room already knows.
+
+Like every engine, it is summoned. Nothing runs until you register it in a
+[room](#rooms) and invoke it, so there is no polling and no held connection.
+
+```bash
+# Register the synthesizer once per room
+mycelium engine create summarizer --kind synthesizer --room sprint-plan
+
+# Summon it to compile a briefing
+mycelium engine invoke summarizer "brief the room on where we stand" -r sprint-plan
+
+# Read the result back
+mycelium memory get context/synthesis -r sprint-plan
+```
+
+## How it distills
+
+On summon, the synthesizer reads every [memory](#memory) namespace (decisions,
+status, context, work, and the plan) and runs one **Pi** turn to compile them
+into a single markdown briefing: the room's goal, key decisions, current status,
+and open work. It upserts that briefing as a `knowledge` memory at
+`context/synthesis`, so it is versioned, searchable, and shared like any other
+memory.
+
+Run it again after a burst of activity and the briefing upserts in place with
+its version incremented, so the room always has one current summary instead of a
+pile of stale ones.
+
+## Faithfulness
+
+The briefing reflects only what is in the room's memory; the synthesizer does
+not invent facts. If its Pi turn fails, it writes nothing rather than a
+half-formed summary.
+
+The synthesizer holds no [episode](#episodes) and drives no negotiation. It
+reads the room, summarizes it, and writes the result back. It shares the rest of
+the engine model: the summon lifecycle and [where it runs](#engines) (the
+backend or the host daemon), with every brain running a **Pi** turn.
 
 
 ---
@@ -962,7 +997,7 @@ speak SLIM or L9 directly.
 
 **Cognition rides on engines.** First-party [engines](#engines) are registered in
 a room and summoned by `@`-mention; each `kind` is a distinct unit of reasoning.
-The `aligner` drives negotiation — its brain is a persistent Pi coding-agent
+The `aligner` drives negotiation; its brain is a persistent Pi coding-agent
 session running a NEGMAS Stacked Alternating Offers mechanism that owns
 termination, stopping the instant the agents agree. The `synthesizer` distills
 the room's memory into a shared briefing. See [engines](#engines),

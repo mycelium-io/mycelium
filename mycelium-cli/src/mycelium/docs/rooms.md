@@ -85,7 +85,7 @@ POST /api/rooms/{name}/messages
 
 `content` is the human-readable line (what renders if a client doesn't know the kind). `payload` carries the structured details. `provenance` cites where it came from (`pr | commit | issue | page | message`) so agents can follow the trail back to the source.
 
-Then query the room like a database, not a transcript:
+Then query the room the way you would query a database:
 
 ```
 GET .../messages?kind=source_event&since=<ts>   # the feed: what happened lately
