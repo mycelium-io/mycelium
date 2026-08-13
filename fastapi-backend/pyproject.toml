@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Mycelium FastAPI backend — local markdown + JSONL memory store"
 requires-python = ">=3.12,<3.13"
 dependencies = [
-    "fastapi[standard]>=0.115.0,<0.137",
+    "fastapi[standard]>=0.115.0,<0.142",
     "pydantic-settings>=2.5.2,<3",
     "httpx>=0.28.1",
     "python-multipart>=0.0.9",
