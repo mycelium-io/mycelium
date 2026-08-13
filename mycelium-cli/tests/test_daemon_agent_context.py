@@ -12,6 +12,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from mycelium.daemon import dispatch
+from tests.conftest import FakeHTTPX, FakeResp
 
 
 @pytest.fixture(autouse=True)
@@ -57,39 +58,11 @@ def test_humanize_age_minutes() -> None:
 # ── _fetch_agent_context cache ───────────────────────────────────────────────
 
 
-class _FakeResp:
-    def __init__(self, payload: dict) -> None:
-        self._payload = payload
-
-    def raise_for_status(self) -> None:
-        return None
-
-    def json(self) -> dict:
-        return self._payload
+_CTX = {"context": "ctx", "generated_at": "2026-05-21T18:00:00+00:00"}
 
 
-class _FakeClient:
-    """Stand-in for httpx.AsyncClient that counts GETs."""
-
-    calls = 0
-
-    def __init__(self, *_a, **_kw) -> None:
-        pass
-
-    async def __aenter__(self) -> _FakeClient:
-        return self
-
-    async def __aexit__(self, *_exc) -> None:
-        return None
-
-    async def get(self, _url: str, *, params: dict) -> _FakeResp:  # noqa: ARG002
-        type(self).calls += 1
-        return _FakeResp({"context": "ctx", "generated_at": "2026-05-21T18:00:00+00:00"})
-
-
-def test_fetch_agent_context_caches_within_ttl(monkeypatch: pytest.MonkeyPatch) -> None:
-    _FakeClient.calls = 0
-    monkeypatch.setattr(dispatch.httpx, "AsyncClient", _FakeClient)
+def test_fetch_agent_context_caches_within_ttl(fake_httpx: FakeHTTPX) -> None:
+    fake_httpx.respond_with(lambda *_a: FakeResp(_CTX))
 
     async def run() -> None:
         a = await dispatch._fetch_agent_context("http://hub", "room-a", "alpha")
@@ -98,27 +71,22 @@ def test_fetch_agent_context_caches_within_ttl(monkeypatch: pytest.MonkeyPatch) 
         assert b == a
 
     asyncio.run(run())
-    assert _FakeClient.calls == 1  # second call served from cache
+    assert len(fake_httpx.calls) == 1  # second call served from cache
 
 
-def test_fetch_agent_context_separate_per_room(monkeypatch: pytest.MonkeyPatch) -> None:
-    _FakeClient.calls = 0
-    monkeypatch.setattr(dispatch.httpx, "AsyncClient", _FakeClient)
+def test_fetch_agent_context_separate_per_room(fake_httpx: FakeHTTPX) -> None:
+    fake_httpx.respond_with(lambda *_a: FakeResp(_CTX))
 
     async def run() -> None:
         await dispatch._fetch_agent_context("http://hub", "room-a", "alpha")
         await dispatch._fetch_agent_context("http://hub", "room-b", "alpha")
 
     asyncio.run(run())
-    assert _FakeClient.calls == 2
+    assert len(fake_httpx.calls) == 2
 
 
-def test_fetch_agent_context_swallows_errors(monkeypatch: pytest.MonkeyPatch) -> None:
-    class _BoomClient(_FakeClient):
-        async def get(self, _url: str, *, params: dict) -> _FakeResp:  # noqa: ARG002
-            raise RuntimeError("network down")
-
-    monkeypatch.setattr(dispatch.httpx, "AsyncClient", _BoomClient)
+def test_fetch_agent_context_swallows_errors(fake_httpx: FakeHTTPX) -> None:
+    fake_httpx.respond_with(lambda *_a: FakeResp(boom=True))
 
     async def run() -> None:
         result = await dispatch._fetch_agent_context("http://hub", "room-x", "alpha")

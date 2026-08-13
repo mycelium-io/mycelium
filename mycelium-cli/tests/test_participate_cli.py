@@ -19,6 +19,7 @@ from typer.testing import CliRunner
 
 from mycelium.cli import app
 from mycelium.commands import participate
+from tests.conftest import FakeResp
 
 runner = CliRunner()
 
@@ -29,22 +30,11 @@ def _isolate(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("MYCELIUM_ROOM_ID", "demo")
 
 
-class _FakeResp:
-    def __init__(self, data: dict) -> None:
-        self._data = data
-
-    def raise_for_status(self) -> None:
-        pass
-
-    def json(self) -> dict:
-        return self._data
-
-
 def test_await_prints_addressed_message(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_get(url: str, params: dict | None = None, timeout: float | None = None) -> _FakeResp:
+    def fake_get(url: str, params: dict | None = None, timeout: float | None = None) -> FakeResp:
         assert url.endswith("/api/rooms/demo/await")
         assert params is not None and params["handle"] == "me"
-        return _FakeResp(
+        return FakeResp(
             {
                 "room": "demo",
                 "handle": "me",
@@ -68,7 +58,7 @@ def test_await_prints_addressed_message(monkeypatch: pytest.MonkeyPatch) -> None
 
 def test_await_timeout_exits_nonzero(monkeypatch: pytest.MonkeyPatch) -> None:
     def fake_get(url, params=None, timeout=None):
-        return _FakeResp({"room": "demo", "handle": "me", "message": None})
+        return FakeResp({"room": "demo", "handle": "me", "message": None})
 
     monkeypatch.setattr(participate.httpx, "get", fake_get)
     result = runner.invoke(app, ["await", "--handle", "me", "--timeout", "1", "--json"])
@@ -82,7 +72,7 @@ def test_respond_posts_reply(monkeypatch: pytest.MonkeyPatch) -> None:
     def fake_post(url, json=None, timeout=None):
         captured["url"] = url
         captured["body"] = json
-        return _FakeResp({"room": "demo", "handle": "me", "message_id": "r-1"})
+        return FakeResp({"room": "demo", "handle": "me", "message_id": "r-1"})
 
     monkeypatch.setattr(participate.httpx, "post", fake_post)
 

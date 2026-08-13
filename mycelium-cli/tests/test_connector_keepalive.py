@@ -21,6 +21,7 @@ import pytest
 from mycelium.daemon import connector
 from mycelium.engine.runtime import EngineDrive
 from mycelium.slim import l9, member
+from tests.conftest import FakeHTTPX, FakeResp
 
 
 def _keepalive(sender: str = "growth") -> dict:
@@ -139,50 +140,23 @@ async def test_drive_ignores_keepalive_then_reads_reply() -> None:
 # ── self-rejoin announce ─────────────────────────────────────────────────────
 
 
-class _FakeResp:
-    def __init__(self, boom: bool = False) -> None:
-        self._boom = boom
-
-    def raise_for_status(self) -> None:
-        if self._boom:
-            raise RuntimeError("500")
-
-
-class _FakeClient:
-    def __init__(self, calls: list[tuple[str, dict]], boom: bool = False) -> None:
-        self._calls = calls
-        self._boom = boom
-
-    async def __aenter__(self) -> _FakeClient:
-        return self
-
-    async def __aexit__(self, *_a: object) -> bool:
-        return False
-
-    async def post(self, url: str, json: dict | None = None) -> _FakeResp:
-        self._calls.append((url, json or {}))
-        return _FakeResp(self._boom)
-
-
 @pytest.mark.asyncio
-async def test_announce_presence_posts_join(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_announce_presence_posts_join(fake_httpx: FakeHTTPX) -> None:
     from mycelium.config import MyceliumConfig, ServerConfig
 
-    calls: list[tuple[str, dict]] = []
-    monkeypatch.setattr(connector.httpx, "AsyncClient", lambda **_k: _FakeClient(calls))
     cfg = MyceliumConfig(server=ServerConfig(api_url="http://localhost:8000"))
 
     await connector.announce_presence(cfg, "myroom", "agent-a")
 
-    assert calls == [
-        ("http://localhost:8000/api/rooms/myroom/sessions", {"agent_handle": "agent-a"})
+    assert fake_httpx.calls == [
+        ("POST", "http://localhost:8000/api/rooms/myroom/sessions", {"agent_handle": "agent-a"})
     ]
 
 
 @pytest.mark.asyncio
-async def test_announce_presence_is_best_effort(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_announce_presence_is_best_effort(fake_httpx: FakeHTTPX) -> None:
     from mycelium.config import MyceliumConfig
 
-    monkeypatch.setattr(connector.httpx, "AsyncClient", lambda **_k: _FakeClient([], boom=True))
+    fake_httpx.respond_with(lambda *_a: FakeResp(boom=True))
     # A backend error must not raise — the connector still falls back to waiting.
     await connector.announce_presence(MyceliumConfig(), "r", "a")

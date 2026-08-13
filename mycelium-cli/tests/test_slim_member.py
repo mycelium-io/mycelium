@@ -11,14 +11,13 @@ implementation so they can't drift.
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any
 
 import pytest
 
 from mycelium.config import MyceliumConfig, ServerConfig
 from mycelium.slim import l9, member
-from mycelium.slim.client import SlimReceiveTimeout
+from tests.conftest import FakeSlimClient
 
 
 def _exchange(sender: str, recipients: list[str], text: str, *, mid: str = "m1") -> dict:
@@ -95,44 +94,6 @@ def test_build_reply_lifts_position_marker() -> None:
 # ── the message stream (fake transport) ───────────────────────────────────────
 
 
-class _FakeSlimClient:
-    """A minimal stand-in for SlimClient that replays a scripted inbox."""
-
-    inbox: list[bytes] = []
-    published: list[bytes] = []
-
-    def __init__(self, _identity: Any, *, secret: str | None = None) -> None:
-        pass
-
-    async def connect(self, _endpoint: str) -> _FakeSlimClient:
-        return self
-
-    async def listen_for_session(self) -> str:
-        return "session-1"
-
-    async def close(self) -> None:
-        pass
-
-    @staticmethod
-    async def publish(_session: Any, data: bytes) -> None:
-        _FakeSlimClient.published.append(data)
-
-    @staticmethod
-    async def receive_message(_session: Any, *, timeout_s: float = 30.0):  # noqa: ARG004
-        if not _FakeSlimClient.inbox:
-            # Simulate a real idle window: block briefly, then report a benign
-            # timeout (which the stream treats as "still connected, just quiet").
-            await asyncio.sleep(0.02)
-            raise SlimReceiveTimeout("receive timeout")
-        payload = _FakeSlimClient.inbox.pop(0)
-
-        class _Msg:
-            def __init__(self, p: bytes) -> None:
-                self.payload = p
-
-        return _Msg(payload)
-
-
 def _cfg() -> MyceliumConfig:
     return MyceliumConfig(server=ServerConfig(api_url="http://localhost:8000"))
 
@@ -140,11 +101,11 @@ def _cfg() -> MyceliumConfig:
 @pytest.mark.asyncio
 async def test_await_addressed_returns_first_addressed(monkeypatch: pytest.MonkeyPatch) -> None:
     # No node: stub SlimClient and the presence announce (best-effort HTTP).
-    monkeypatch.setattr(member, "SlimClient", _FakeSlimClient)
+    monkeypatch.setattr(member, "SlimClient", FakeSlimClient)
     monkeypatch.setattr(member, "announce_presence", _noop_announce)
     monkeypatch.setattr(member, "KEEPALIVE_INTERVAL_S", 3600)  # keep it out of the way
-    _FakeSlimClient.published = []
-    _FakeSlimClient.inbox = [
+    FakeSlimClient.published = []
+    FakeSlimClient.inbox = [
         l9.serialize(_keepalive("other")),  # dropped
         l9.serialize(_exchange("backend", ["other"], "not me")),  # not addressed
         l9.serialize(_exchange("backend", ["agent-a"], "@agent-a your turn", mid="hit")),
@@ -157,7 +118,7 @@ async def test_await_addressed_returns_first_addressed(monkeypatch: pytest.Monke
 
 @pytest.mark.asyncio
 async def test_stream_applies_knowledge_and_swallows_it(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(member, "SlimClient", _FakeSlimClient)
+    monkeypatch.setattr(member, "SlimClient", FakeSlimClient)
     monkeypatch.setattr(member, "announce_presence", _noop_announce)
     monkeypatch.setattr(member, "KEEPALIVE_INTERVAL_S", 3600)
     applied: list[dict] = []
@@ -175,8 +136,8 @@ async def test_stream_applies_knowledge_and_swallows_it(monkeypatch: pytest.Monk
 
     knowledge = _exchange("backend", [], "plan updated")
     knowledge["l9"]["header"]["kind"] = l9.KNOWLEDGE_KIND
-    _FakeSlimClient.published = []
-    _FakeSlimClient.inbox = [
+    FakeSlimClient.published = []
+    FakeSlimClient.inbox = [
         l9.serialize(knowledge),
         l9.serialize(_exchange("backend", ["agent-a"], "@agent-a go", mid="hit")),
     ]
@@ -189,11 +150,11 @@ async def test_stream_applies_knowledge_and_swallows_it(monkeypatch: pytest.Monk
 
 @pytest.mark.asyncio
 async def test_await_addressed_times_out(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(member, "SlimClient", _FakeSlimClient)
+    monkeypatch.setattr(member, "SlimClient", FakeSlimClient)
     monkeypatch.setattr(member, "announce_presence", _noop_announce)
     monkeypatch.setattr(member, "KEEPALIVE_INTERVAL_S", 3600)
-    _FakeSlimClient.published = []
-    _FakeSlimClient.inbox = [l9.serialize(_exchange("backend", ["other"], "not me"))]
+    FakeSlimClient.published = []
+    FakeSlimClient.inbox = [l9.serialize(_exchange("backend", ["other"], "not me"))]
 
     # The one non-addressed message is consumed, then the stream idles — await
     # returns None once the (short) timeout elapses.
