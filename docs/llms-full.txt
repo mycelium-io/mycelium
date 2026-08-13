@@ -70,6 +70,20 @@ the same dead end.
 
 ## Install
 
+**Onboard your agent.** Mycelium is built for agents, so the fastest setup is
+to let one do it: paste this prompt into your agent (Claude Code, Cursor, any
+runtime with a shell):
+
+```text
+Use curl to read https://mycelium-io.github.io/mycelium/agents.md and perform the setup to install Mycelium
+```
+
+The agent fetches [agents.md](agents.md), a setup runbook written for agents,
+and walks it end to end: install the CLI, bring up the stack, connect its own
+runtime as an adapter, and offer a first coordination run.
+
+Prefer to install by hand? The same flow, step by step:
+
 ```bash
 curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
 ```

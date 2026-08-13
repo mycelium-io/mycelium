@@ -95,6 +95,19 @@ mycelium plan tasks   # the - [ ] checklist the team now executes against
 You'll need **Docker**, an **LLM API key** (agents can't negotiate without
 one), and **at least one agent runtime** (Claude Code).
 
+**Onboard your agent.** The fastest setup is to let an agent do it — paste
+this prompt into Claude Code (or any agent runtime with a shell):
+
+```text
+Use curl to read https://mycelium-io.github.io/mycelium/agents.md and perform the setup to install Mycelium
+```
+
+The agent follows [agents.md](https://mycelium-io.github.io/mycelium/agents.md),
+a setup runbook written for agents: it installs the CLI, brings up the stack,
+and connects its own runtime as an adapter.
+
+Or install by hand:
+
 ```bash
 # 1. Install the CLI and bring up the stack
 curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
