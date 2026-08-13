@@ -179,6 +179,7 @@ export function NegotiationView({ events }: { events: readonly NegEvent[] }) {
           <span className="text-label text-faint">Round</span>
           <span className="font-mono text-label tabular text-text">{neg.currentRound || "-"}</span>
           <span
+            data-tour="consensus"
             className="ml-auto rounded px-2 py-0.5 text-micro font-semibold capitalize"
             style={{ color: STATE_TONE[neg.state], background: `color-mix(in srgb, ${STATE_TONE[neg.state]} 14%, transparent)` }}
           >
@@ -188,7 +189,7 @@ export function NegotiationView({ events }: { events: readonly NegEvent[] }) {
         </div>
 
         {/* Current Offer board */}
-        <div className="mt-5">
+        <div data-tour="offer-board" className="mt-5">
           <div className="mb-2 text-micro uppercase tracking-wide text-faint">
             Current offer · {neg.issues.length} issue{neg.issues.length === 1 ? "" : "s"}
           </div>
@@ -224,7 +225,7 @@ export function NegotiationView({ events }: { events: readonly NegEvent[] }) {
 
         {/* Agent × Round swim lanes */}
         {neg.agents.length > 0 && (
-          <div className="mt-6">
+          <div data-tour="swimlanes" className="mt-6">
             <div className="mb-2 flex items-center gap-4 text-micro uppercase tracking-wide text-faint">
               <span>Agent × round · aligner brokers</span>
               <span className="ml-auto flex items-center gap-3 normal-case tracking-normal">

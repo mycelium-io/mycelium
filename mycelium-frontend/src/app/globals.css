@@ -267,6 +267,86 @@ body {
 .markdown-body.contrast li { color: var(--text); }
 .markdown-body.contrast p:first-child { margin-top: 0.15em; }
 
+/* Primary accent button: not a flat fill. A top-lit gradient, an inner
+ * highlight edge, and a soft lift give it dimension so it doesn't read cheap. */
+.btn-accent {
+  background-image: linear-gradient(to bottom, color-mix(in srgb, var(--accent) 90%, white), var(--accent));
+  color: var(--accent-fg);
+  border: 1px solid color-mix(in srgb, var(--accent) 74%, black) !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  transition: box-shadow 0.15s ease, background-image 0.15s ease, transform 0.05s ease;
+}
+.btn-accent:hover {
+  background-image: linear-gradient(to bottom, color-mix(in srgb, var(--accent) 96%, white), color-mix(in srgb, var(--accent) 95%, black));
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 35%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.24);
+}
+.btn-accent:active {
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.22);
+  transform: translateY(0.5px);
+}
+
+/* ── Onboarding tour (driver.js popover, themed to the app tokens) ── */
+.driver-popover.mycelium-tour {
+  background: var(--elevated);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
+  padding: 16px;
+  max-width: 320px;
+  font-family: 'IBM Plex Sans', -apple-system, sans-serif;
+}
+.driver-popover.mycelium-tour .driver-popover-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+.driver-popover.mycelium-tour .driver-popover-description {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--muted-foreground);
+  margin-top: 4px;
+}
+.driver-popover.mycelium-tour .driver-popover-progress-text {
+  font-size: 12px;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+.driver-popover.mycelium-tour .driver-popover-close-btn {
+  color: var(--muted-foreground);
+  font-size: 20px;
+}
+.driver-popover.mycelium-tour .driver-popover-close-btn:hover { color: var(--text); }
+.driver-popover.mycelium-tour .driver-popover-navigation-btns {
+  gap: 6px;
+  margin-top: 4px;
+}
+.driver-popover.mycelium-tour .driver-popover-navigation-btns button {
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  text-shadow: none;
+  border-radius: 8px;
+  padding: 5px 12px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+.driver-popover.mycelium-tour .driver-popover-navigation-btns button:hover {
+  background: var(--muted-bg);
+}
+.driver-popover.mycelium-tour .driver-popover-next-btn {
+  background: var(--accent) !important;
+  color: var(--accent-fg) !important;
+  border-color: transparent !important;
+}
+.driver-popover.mycelium-tour .driver-popover-next-btn:hover { opacity: 0.9; }
+/* Arrow follows the popover surface on whichever side it points from. */
+.driver-popover.mycelium-tour .driver-popover-arrow-side-left.driver-popover-arrow { border-left-color: var(--elevated); }
+.driver-popover.mycelium-tour .driver-popover-arrow-side-right.driver-popover-arrow { border-right-color: var(--elevated); }
+.driver-popover.mycelium-tour .driver-popover-arrow-side-top.driver-popover-arrow { border-top-color: var(--elevated); }
+.driver-popover.mycelium-tour .driver-popover-arrow-side-bottom.driver-popover-arrow { border-bottom-color: var(--elevated); }
+
 /* shadcn/ui token bridge: maps shadcn's semantic tokens onto the app palette
  * so <Dialog>/<Button>/<DropdownMenu> render in-theme (light + dark). Only
  * shadcn token names live here; the app's own --color-* are defined above. ── */

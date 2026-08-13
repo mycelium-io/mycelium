@@ -50,7 +50,7 @@ export function RoomsSidebar({ activeRoom = null }: Props) {
   }, [rooms, query]);
 
   return (
-    <aside className="flex w-[236px] flex-shrink-0 flex-col border-r border-border bg-surface/50">
+    <aside data-tour="rooms" className="flex w-[236px] flex-shrink-0 flex-col border-r border-border bg-surface/50">
       {/* Brand */}
       <Link
         href="/"
