@@ -35,7 +35,7 @@ def _health(rooms: list[dict]) -> dict:
 
 
 def _room(name: str, members: list[str] | None = None, **over: object) -> dict:
-    base = {
+    base: dict[str, object] = {
         "room": name,
         "provisioned": True,
         "members": members or [],
