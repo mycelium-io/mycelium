@@ -89,7 +89,7 @@ function SystemNotice({
 }
 
 function parseEvent(msg: Record<string, unknown>): Event {
-  const mtype = (msg.message_type as string) || (msg.type as string) || "unknown";
+  let mtype = (msg.message_type as string) || (msg.type as string) || "unknown";
   const sender = (msg.sender_handle as string) || (msg.updated_by as string) || "?";
   const recipient = (msg.recipient_handle as string) || null;
   const created = (msg.created_at as string) || new Date().toISOString();
@@ -165,7 +165,25 @@ function parseEvent(msg: Record<string, unknown>): Event {
       content = `${key} v${version} by ${by}`;
       break;
     }
+    case "l9_exchange":
+      // The live SSE stream wraps human/agent messages as an L9 exchange
+      // envelope, while the REST snapshot (loaded on mount/refresh) delivers the
+      // same message as a plain "broadcast". Unwrap the prose and normalise to
+      // the chat shape so the live feed matches a refresh instead of silently
+      // dropping the message.
+      content = (raw.content as string) || "";
+      mtype = recipient ? "direct" : "broadcast";
+      break;
     default:
+      // A message type nothing above handles would otherwise vanish from the
+      // channel view without a trace (exactly how l9_exchange hid). Surface it
+      // loudly so an unsupported/renamed type can't fail silently again.
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[mycelium] EventStream: unhandled message_type "${mtype}" — ` +
+          "rendered as a raw fallback and likely hidden from the channel view",
+        msg,
+      );
       content = (msg.content as string) || JSON.stringify(msg).slice(0, 100);
   }
 

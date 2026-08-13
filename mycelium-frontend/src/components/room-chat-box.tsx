@@ -111,6 +111,9 @@ export function RoomChatBox({ roomName, defaultSender, onSent }: Props) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setSending(false);
+      // The textarea is disabled while sending; it re-enables on the next
+      // render, so refocus after that commit lands to keep the user typing.
+      requestAnimationFrame(() => inputRef.current?.focus());
     }
   }, [content, onSent, roomName, sender, sending]);
 
