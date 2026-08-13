@@ -22,7 +22,9 @@ docs/               Docs site (generated from mycelium-cli/src/mycelium/docs/),
                     demo script, design notes
 mycelium-promo/     HyperFrames promo video, a code-defined HTML→MP4 walkthrough
                     (CLI install → app install → room → adapter → post positions →
-                    summon the aligner → await/respond → consensus → plan → work).
+                    summon the aligner → await/respond → consensus → plan → work →
+                    distill the room to memory via the synthesizer). The app-screen
+                    mockups mirror the frontend's workspace shell + dark design tokens.
                     Renders 1920x1080 H.264. `cd mycelium-promo && npm run dev` to
                     preview, `npm run render` to export to renders/*.mp4.
                     The README + docs/index.html embed the rendered MP4 via a
