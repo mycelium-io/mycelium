@@ -13,3 +13,5 @@ skills/
 
 # Rendered MP4s are uploaded to GitHub (user-attachments), not committed
 renders/
+
+renders/_*.mp4

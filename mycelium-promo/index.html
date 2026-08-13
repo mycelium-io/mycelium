@@ -14,16 +14,23 @@
       * { margin: 0; padding: 0; box-sizing: border-box; }
       html, body {
         margin: 0; width: 1920px; height: 1080px;
-        overflow: hidden; background: #0c0d10;
+        overflow: hidden; background: #0c0e11;
         font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-        color: #eaeaea;
+        color: #e8ebee;
       }
+      /* Tokens mirror the frontend's post-redesign dark theme
+         (mycelium-frontend/src/app/globals.css .dark). */
       :root {
-        --bg: #0c0d10; --surface: #111216; --paper: #14161b;
-        --border: rgba(234, 234, 234, 0.10); --border2: rgba(234, 234, 234, 0.22);
-        --accent: #5dd4e0; --accent2: #7dd3fc;
-        --green: #34d399; --purple: #c084fc; --yellow: #fbbf24;
-        --text: #eaeaea; --text2: #a8a6a0; --muted: #b8b5ae; --dim: #46443e;
+        --bg: #0c0e11; --surface: #14171c; --paper: #191d22; --elevated: #21262d;
+        --border: rgba(255, 255, 255, 0.08); --border2: rgba(255, 255, 255, 0.16);
+        --hairline: rgba(255, 255, 255, 0.035);
+        --accent: #5cc7d2; --accent-fg: #06181b; --accent-soft: rgba(92, 199, 210, 0.13);
+        --accent2: #8fd6de;
+        --green: #4fc296; --yellow: #d9a94e; --red: #e6746f;
+        /* Purple retired — the redesign is single-accent; kept as a neutral so
+           any lingering reference reads as muted, not off-brand violet. */
+        --purple: #a7adb5;
+        --text: #e8ebee; --text2: #a7adb5; --muted: #a7adb5; --dim: #565d65;
       }
 
       /* ── Background canvas ────────────────────────────── */
@@ -156,7 +163,7 @@
       }
       .ui-rail .label { color: var(--muted); letter-spacing: 0.18em; text-transform: uppercase; font-size: 16px; margin-bottom: 18px; }
       .ui-rail .item { padding: 12px 14px; color: var(--text2); border-left: 2px solid transparent; }
-      .ui-rail .item.active { color: var(--text); border-left-color: var(--accent); background: rgba(93, 212, 224, 0.04); }
+      .ui-rail .item.active { color: var(--text); border-left-color: var(--accent); background: rgba(92, 199, 210, 0.04); }
       .ui-pane { flex: 1; display: flex; flex-direction: column; min-width: 0; }
       .pane-header {
         height: 60px; padding: 0 32px;
@@ -187,8 +194,8 @@
         display: inline-block;
         padding: 3px 10px; margin-right: 8px;
         font-family: 'Geist Mono', monospace; font-size: 16px;
-        background: rgba(93, 212, 224, 0.08);
-        border: 1px solid rgba(93, 212, 224, 0.3);
+        background: rgba(92, 199, 210, 0.08);
+        border: 1px solid rgba(92, 199, 210, 0.3);
         color: var(--accent);
         border-radius: 3px;
       }
@@ -213,6 +220,105 @@
         color: var(--text2);
       }
       .mem-item .key { color: var(--accent); }
+
+      /* ── New workspace shell (mirrors the frontend redesign: full-height
+         rooms sidebar · room header · view tabs · tabbed inspector · status
+         bar). Kept alongside the older .ui-* chrome so scenes migrate one at a
+         time without breaking the timeline hooks. ── */
+      .ui-shell { flex: 1; display: flex; min-height: 0; }
+      .ui-sidebar {
+        width: 360px; flex-shrink: 0;
+        border-right: 1px solid var(--border);
+        background: color-mix(in srgb, var(--surface) 55%, transparent);
+        display: flex; flex-direction: column;
+      }
+      .ui-sidebar .brand {
+        height: 88px; display: flex; align-items: center; padding: 0 28px;
+        border-bottom: 1px solid var(--border);
+        font-family: 'Cormorant Garamond', serif; font-style: italic; font-weight: 600;
+        font-size: 42px; color: var(--text);
+      }
+      .ui-sidebar .side-head {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 24px 28px 14px;
+        font-family: 'Geist Mono', monospace; font-size: 16px; font-weight: 600;
+        letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted);
+      }
+      .ui-sidebar .side-head .count { color: var(--dim); }
+      .ui-search {
+        margin: 0 22px 16px; padding: 13px 16px;
+        border: 1px solid var(--border); border-radius: 10px; background: var(--bg);
+        font-family: 'Geist Mono', monospace; font-size: 18px; color: var(--dim);
+      }
+      .ui-rooms { flex: 1; padding: 0 14px; display: flex; flex-direction: column; gap: 4px; }
+      .ui-room {
+        display: flex; align-items: center; gap: 15px;
+        padding: 12px 12px; border-radius: 10px;
+        font-family: 'Geist Mono', monospace; font-size: 23px; color: var(--text2);
+      }
+      .ui-room.active { background: var(--elevated); box-shadow: inset 0 0 0 1px var(--border); color: var(--text); }
+      .ui-room .ravatar {
+        width: 42px; height: 42px; border-radius: 9px; flex-shrink: 0;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 17px; font-weight: 600; letter-spacing: 0.03em;
+        background: var(--surface); color: var(--muted);
+      }
+      .ui-room.active .ravatar { background: var(--accent); color: var(--accent-fg); }
+      .ui-sidebar .side-foot {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 18px 28px; border-top: 1px solid var(--border);
+        font-family: 'Geist Mono', monospace; font-size: 16px; color: var(--muted);
+      }
+      .ui-main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+      .ui-header {
+        height: 88px; flex-shrink: 0; display: flex; align-items: center; gap: 18px; padding: 0 34px;
+        border-bottom: 1px solid var(--border);
+        background: color-mix(in srgb, var(--surface) 50%, transparent);
+      }
+      .ui-header .rm-name { font-size: 31px; font-weight: 600; color: var(--text); }
+      .ui-header .rm-mas { font-family: 'Geist Mono', monospace; font-size: 18px; color: var(--dim); }
+      .ui-viewtabs {
+        display: flex; align-items: center; gap: 6px;
+        padding: 14px 26px; border-bottom: 1px solid var(--border);
+      }
+      .ui-viewtabs .vt {
+        padding: 8px 18px; border-radius: 8px;
+        font-family: 'Geist Mono', monospace; font-size: 18px; font-weight: 600;
+        letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted);
+      }
+      .ui-viewtabs .vt.active { background: var(--elevated); color: var(--text); box-shadow: inset 0 0 0 1px var(--border); }
+      .ui-composer {
+        margin: 8px 34px 30px; padding: 22px 26px;
+        border: 1px solid var(--border); border-radius: 18px; background: var(--surface);
+        font-family: 'IBM Plex Sans', sans-serif; font-size: 23px; color: var(--muted);
+      }
+      .ui-inspector {
+        width: 460px; flex-shrink: 0;
+        border-left: 1px solid var(--border);
+        background: color-mix(in srgb, var(--surface) 42%, transparent);
+        display: flex; flex-direction: column;
+      }
+      .insp-tabs {
+        height: 70px; flex-shrink: 0; display: flex; align-items: center; gap: 6px; padding: 0 18px;
+        border-bottom: 1px solid var(--border); background: var(--paper);
+      }
+      .insp-tabs .it {
+        display: flex; align-items: center; gap: 9px;
+        padding: 9px 16px; border-radius: 8px;
+        font-family: 'Geist Mono', monospace; font-size: 17px; font-weight: 600;
+        letter-spacing: 0.06em; color: var(--muted);
+      }
+      .insp-tabs .it.active { background: var(--elevated); color: var(--text); box-shadow: inset 0 0 0 1px var(--border); }
+      .insp-tabs .it .ic { width: 14px; height: 14px; border: 1.5px solid currentColor; border-radius: 3px; }
+      .ui-statusbar {
+        height: 42px; flex-shrink: 0; display: flex; align-items: center; gap: 24px;
+        padding: 0 26px; border-top: 1px solid var(--border);
+        background: var(--surface);
+        font-family: 'Geist Mono', monospace; font-size: 15px; letter-spacing: 0.04em; color: var(--muted);
+      }
+      .ui-statusbar .sb-accent { color: var(--accent); }
+      .ui-statusbar .sb-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); display: inline-block; margin-right: 8px; vertical-align: middle; }
+      .ui-statusbar .spacer { flex: 1; }
 
       /* ── Session view ────────────────────────────────── */
       .session-main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
@@ -295,8 +401,8 @@
         color: var(--dim); font-weight: 400;
       }
       .sess-table .cell.head.past { color: var(--accent); font-weight: 600; }
-      .sess-table .cell.head.cur  { color: var(--text); font-weight: 600; background: rgba(93,212,224,0.06); }
-      .sess-table .cell.cur { background: rgba(93,212,224,0.06); }
+      .sess-table .cell.head.cur  { color: var(--text); font-weight: 600; background: rgba(92, 199, 210,0.06); }
+      .sess-table .cell.cur { background: rgba(92, 199, 210,0.06); }
 
       /* Action glyphs */
       .glyph { display: inline-block; flex-shrink: 0; }
@@ -361,7 +467,7 @@
       .consensus-banner {
         margin: 16px 28px 0;
         border: 1px solid var(--green);
-        background: rgba(52,211,153,0.04);
+        background: rgba(79, 194, 150,0.04);
         padding: 16px 18px;
       }
       .consensus-banner .head {
@@ -491,8 +597,8 @@
         border: 1.5px solid var(--border2);
         color: var(--text);
       }
-      .chat-avatar.julia  { background: linear-gradient(135deg, #5dd4e0 0%, #7dd3fc 100%); color: #0c0d10; }
-      .chat-avatar.selina  { background: linear-gradient(135deg, #c084fc 0%, #a855f7 100%); }
+      .chat-avatar.julia  { background: linear-gradient(135deg, #5cc7d2 0%, #8fd6de 100%); color: #06181b; }
+      .chat-avatar.selina  { background: linear-gradient(135deg, #7f8a94 0%, #5b666f 100%); color: #e8ebee; }
       .chat-msg .body { flex: 1; min-width: 0; }
       .chat-msg .meta {
         display: flex; align-items: baseline; gap: 14px; margin-bottom: 6px;
@@ -506,9 +612,9 @@
         font-size: 12px; font-weight: 600;
         letter-spacing: 0.16em;
         padding: 2px 7px; border-radius: 3px;
-        background: rgba(93, 212, 224, 0.12);
+        background: rgba(92, 199, 210, 0.12);
         color: var(--accent);
-        border: 1px solid rgba(93, 212, 224, 0.4);
+        border: 1px solid rgba(92, 199, 210, 0.4);
       }
       .chat-msg .time {
         font-family: 'IBM Plex Sans', sans-serif;
@@ -519,13 +625,13 @@
         font-size: 22px; line-height: 1.45; color: #dbdbdf;
       }
       .chat-msg .text .mention {
-        background: rgba(93, 212, 224, 0.14);
+        background: rgba(92, 199, 210, 0.14);
         color: var(--accent);
         padding: 2px 6px; border-radius: 3px;
       }
       /* Typewriter: words start invisible, GSAP fades them in one by one */
       .word { opacity: 0; }
-      .chat-msg .text .mention.julia { background: rgba(93,212,224,0.16); color: var(--accent); }
+      .chat-msg .text .mention.julia { background: rgba(92, 199, 210,0.16); color: var(--accent); }
       .chat-msg .text .mention.selina { background: rgba(192,132,252,0.18); color: var(--purple); }
       .chat-typing {
         display: inline-flex; gap: 7px; align-items: center;
@@ -718,32 +824,52 @@
           </div>
         </div>
         <div id="s4-ui" class="ui-window" style="position: absolute; left: 60px; right: 60px; top: 200px;">
-          <div class="ui-topbar">
-            <span class="brand">mycelium</span>
-            <span class="tab active">rooms</span>
-            <span class="tab">episodes</span>
-            <span class="tab">settings</span>
-          </div>
-          <div class="ui-subnav">
-            <span><span class="sigil">rm:</span>design-review</span>
-          </div>
-          <div class="ui-body">
-            <div class="ui-rail">
-              <div class="label">Episodes</div>
-              <div class="item active">none yet</div>
+          <div class="ui-shell">
+            <div class="ui-sidebar">
+              <div class="brand">mycelium</div>
+              <div class="side-head"><span>Rooms</span><span class="count">3</span></div>
+              <div class="ui-search">Search rooms…</div>
+              <div class="ui-rooms">
+                <div class="ui-room active"><span class="ravatar">DR</span>design-review</div>
+                <div class="ui-room"><span class="ravatar">PM</span>pricing-model</div>
+                <div class="ui-room"><span class="ravatar">AT</span>atlas-migration</div>
+              </div>
+              <div class="side-foot"><span>metrics</span><span>◐ theme</span></div>
             </div>
-            <div class="ui-pane">
-              <div class="pane-header">Room activity</div>
-              <div class="event-stream">
-                <div class="event-row"><span class="ts">12:04:17</span><span class="who">julia</span><span class="body"><span class="pill">memory.set</span>decisions/scope → "Ship the reduced-scope Q3 spec first"</span></div>
+            <div class="ui-main">
+              <div class="ui-header">
+                <span class="rm-name">design-review</span>
+                <span class="rm-mas">mas_31ab77c0</span>
+              </div>
+              <div class="ui-viewtabs">
+                <span class="vt active">Channel</span>
+                <span class="vt">Negotiate</span>
+                <span class="vt">Plan</span>
+              </div>
+              <div class="ui-pane">
+                <div class="event-stream">
+                  <div class="event-row"><span class="ts">12:04:17</span><span class="who">julia</span><span class="body"><span class="pill">memory.set</span>decisions/scope → "Ship the reduced-scope Q3 spec first"</span></div>
+                </div>
+                <div class="ui-composer">message design-review · start with @handle to invoke an agent</div>
               </div>
             </div>
-            <div class="ui-memory">
-              <div class="mem-header">Memory</div>
+            <div class="ui-inspector">
+              <div class="insp-tabs">
+                <span class="it"><span class="ic"></span>Agents</span>
+                <span class="it"><span class="ic"></span>Episodes</span>
+                <span class="it active"><span class="ic"></span>Memory</span>
+              </div>
               <div class="mem-list">
                 <div class="mem-item"><span class="key">decisions/scope</span><div>Ship the reduced-scope Q3 spec first</div></div>
               </div>
             </div>
+          </div>
+          <div class="ui-statusbar">
+            <span><span class="sb-dot"></span>connected</span>
+            <span class="sb-accent">rm:design-review</span>
+            <span class="spacer"></span>
+            <span>SLIM · 127.0.0.1:46357</span>
+            <span>1 memory</span>
           </div>
         </div>
       </div>
@@ -1216,11 +1342,14 @@
       // UI window slides up over the terminal
       // ~2s pause after memory set so the viewer can read the terminal output
       tl.from('#s4-ui', { y: 800, opacity: 0, duration: 1.0, ease: 'power3.out' }, 35.0);
-      tl.from('#s4-ui .ui-topbar', { y: -10, opacity: 0, duration: 0.5 }, 36.0);
-      tl.from('#s4-ui .ui-subnav', { y: -10, opacity: 0, duration: 0.5 }, 36.2);
-      tl.from('#s4-ui .ui-rail .item', { x: -20, opacity: 0, duration: 0.4, stagger: 0.1 }, 36.4);
+      tl.from('#s4-ui .ui-sidebar', { x: -30, opacity: 0, duration: 0.5 }, 36.0);
+      tl.from('#s4-ui .ui-room', { x: -20, opacity: 0, duration: 0.4, stagger: 0.09 }, 36.3);
+      tl.from('#s4-ui .ui-header', { y: -10, opacity: 0, duration: 0.5 }, 36.2);
+      tl.from('#s4-ui .ui-viewtabs .vt', { y: -8, opacity: 0, duration: 0.35, stagger: 0.06 }, 36.5);
       tl.from('#s4-ui .event-row', { x: 30, opacity: 0, duration: 0.5 }, 36.8);
-      tl.from('#s4-ui .mem-item', { x: -20, opacity: 0, duration: 0.5 }, 37.0);
+      tl.from('#s4-ui .ui-inspector', { x: 30, opacity: 0, duration: 0.5 }, 36.9);
+      tl.from('#s4-ui .mem-item', { x: -20, opacity: 0, duration: 0.5 }, 37.2);
+      tl.from('#s4-ui .ui-statusbar', { y: 12, opacity: 0, duration: 0.45 }, 37.2);
 
       // ── Scene 5: Adapter add (41.4–52.4s) ──
       tl.from('#s5 .scene-title', { x: -40, opacity: 0, duration: 0.6, ease: 'expo.out' }, 41.6);
@@ -1467,7 +1596,7 @@
       // Offer table border + bg shift to green (locked)
       tl.to('#s6-offer .offer-table', {
         borderColor: 'var(--green)',
-        backgroundColor: 'rgba(52,211,153,0.06)',
+        backgroundColor: 'rgba(79, 194, 150,0.06)',
         duration: 0.6,
       }, 81.4);
       // Offer values lock in green, staggered
