@@ -17,6 +17,7 @@ import { MarkdownContent } from "@/components/markdown-content";
 import { RoomPlanHeader } from "@/components/room-plan-header";
 import { ConsentDialog } from "@/components/consent-dialog";
 import { L9Inspector } from "@/components/l9-inspector";
+import { NegotiationView } from "@/components/negotiation-view";
 
 interface Event {
   id: string;
@@ -231,7 +232,7 @@ function renderWithMentions(text: string): React.ReactNode {
   );
 }
 
-type View = "channel" | "plan" | "l9";
+type View = "channel" | "negotiate" | "plan" | "l9";
 
 interface Props {
   roomName: string;
@@ -351,6 +352,17 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, pla
     [events],
   );
 
+  // A negotiation is "live" while ticks have arrived with no consensus after.
+  const negotiating = useMemo(() => {
+    let lastTick = -1;
+    let lastConsensus = -1;
+    events.forEach((e, i) => {
+      if (e.type === "coordination_tick") lastTick = i;
+      if (e.type === "coordination_consensus") lastConsensus = i;
+    });
+    return lastTick > -1 && lastTick > lastConsensus;
+  }, [events]);
+
   return (
     <div className="flex flex-col h-full">
       <ConsentDialog
@@ -362,9 +374,10 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, pla
         {/* Connection state lives in the shell status bar now, not here. */}
         <div className="ml-auto flex items-center gap-0.5 rounded-lg border border-border bg-surface p-0.5">
           {([
-            { id: "channel" as const, label: "Channel", count: channelCount as number | null },
-            { id: "l9" as const,      label: "L9",      count: null },
-            { id: "plan" as const,    label: "Plan",    count: null },
+            { id: "channel" as const,   label: "Channel",   count: channelCount as number | null, dot: false },
+            { id: "negotiate" as const, label: "Negotiate", count: null,                          dot: negotiating },
+            { id: "l9" as const,        label: "L9",        count: null,                          dot: false },
+            { id: "plan" as const,      label: "Plan",      count: null,                          dot: false },
           ]).map(t => {
             const active = view === t.id;
             return (
@@ -378,6 +391,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, pla
                 }`}
               >
                 {t.label}
+                {t.dot && <span className="inline-block size-1.5 rounded-full bg-accent" aria-label="live" />}
                 {t.count !== null && (
                   <span className={`text-micro tabular ${active ? "text-accent" : "text-muted-foreground"}`}>
                     {t.count}
@@ -391,6 +405,10 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, pla
       {view === "l9" ? (
         <div className="flex-1 min-h-0">
           <L9Inspector roomName={roomName} />
+        </div>
+      ) : view === "negotiate" ? (
+        <div className="flex-1 min-h-0">
+          <NegotiationView events={events} />
         </div>
       ) : (
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
