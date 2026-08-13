@@ -18,6 +18,7 @@ import { RoomPlanHeader } from "@/components/room-plan-header";
 import { ConsentDialog } from "@/components/consent-dialog";
 import { L9Inspector } from "@/components/l9-inspector";
 import { NegotiationView } from "@/components/negotiation-view";
+import { RoomSlimView } from "@/components/room-slim";
 import { EmptyState } from "@/components/empty-state";
 import { MessagesSquare } from "lucide-react";
 
@@ -235,7 +236,7 @@ function renderWithMentions(text: string): React.ReactNode {
   );
 }
 
-export type View = "channel" | "negotiate" | "plan" | "l9";
+export type View = "channel" | "negotiate" | "plan" | "l9" | "slim";
 export type NegotiationPhase = "idle" | "negotiating" | "converged" | "rejected";
 
 interface Props {
@@ -407,6 +408,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
             { id: "negotiate" as const, label: "Negotiate", count: null,                          dot: negotiating },
             { id: "l9" as const,        label: "L9",        count: null,                          dot: false },
             { id: "plan" as const,      label: "Plan",      count: null,                          dot: false },
+            { id: "slim" as const,      label: "SLIM",      count: null,                          dot: false },
           ]).map(t => {
             const active = view === t.id;
             return (
@@ -439,6 +441,10 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
       ) : view === "negotiate" ? (
         <div className="flex-1 min-h-0">
           <NegotiationView events={events} />
+        </div>
+      ) : view === "slim" ? (
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          <RoomSlimView roomName={roomName} />
         </div>
       ) : (
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
