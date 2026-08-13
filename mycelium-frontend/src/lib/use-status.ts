@@ -18,8 +18,12 @@ export interface RoomStatus {
   openTasks: number | null;
 }
 
-/** Lightweight per-room counts for the status bar (polled, fail-soft). */
-export function useRoomStatus(roomName: string): RoomStatus {
+/** Lightweight per-room counts for the status bar (polled, fail-soft).
+ *
+ *  ``refreshKey`` triggers an immediate reload when it changes — the room page
+ *  bumps it on pushed presence/memory events so counts update without waiting
+ *  on the poll. */
+export function useRoomStatus(roomName: string, refreshKey = 0): RoomStatus {
   const [agents, setAgents] = useState<number | null>(null);
   const [episodes, setEpisodes] = useState<EpisodeSummary[] | null>(null);
   const [openTasks, setOpenTasks] = useState<number | null>(null);
@@ -34,7 +38,7 @@ export function useRoomStatus(roomName: string): RoomStatus {
     load();
     const t = setInterval(load, 8000);
     return () => { cancelled = true; clearInterval(t); };
-  }, [roomName]);
+  }, [roomName, refreshKey]);
 
   return { agents, episodes, openTasks };
 }

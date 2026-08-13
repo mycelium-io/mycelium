@@ -106,7 +106,7 @@ export function RoomInspector({
       </div>
 
       <div className="min-h-0 flex-1 overflow-hidden">
-        {tab === "agents" && <AgentsPanel roomName={roomName} />}
+        {tab === "agents" && <AgentsPanel roomName={roomName} refreshKey={memoryRefresh} />}
         {tab === "episodes" && <EpisodesRail roomName={roomName} />}
         {tab === "memory" && (
           <MemoryPanel roomName={roomName} masId={masId ?? null} refreshTrigger={memoryRefresh} />

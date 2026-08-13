@@ -31,6 +31,18 @@ def agent_channel(handle: str) -> str:
     return f"agent:{handle}"
 
 
+APP_CHANNEL = "app"
+
+
+def app_channel() -> str:
+    """Canonical channel for global, non-room-scoped app events.
+
+    Room create/delete happen outside any single room's context, so they can't
+    ride a ``room:{name}`` channel — the UI's room list subscribes here instead.
+    """
+    return APP_CHANNEL
+
+
 class _Bus:
     """A minimal in-memory channel fan-out.
 

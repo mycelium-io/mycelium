@@ -7,7 +7,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { BarChart3, Boxes, Plus, Search, SearchX } from "lucide-react";
-import { fetchRooms, logFetchError } from "@/lib/api";
+import { fetchRooms, getAppEventsSSEUrl, logFetchError } from "@/lib/api";
 import { CreateRoomDialog } from "@/components/create-room-dialog";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { EmptyState } from "@/components/empty-state";
@@ -40,8 +40,25 @@ export function RoomsSidebar({ activeRoom = null }: Props) {
 
   useEffect(() => {
     load();
-    const t = setInterval(load, 10_000);
-    return () => clearInterval(t);
+    // Push keeps the list instant; the slow poll is a fail-soft fallback for a
+    // dropped SSE connection.
+    const t = setInterval(load, 30_000);
+
+    let es: EventSource | undefined;
+    let retry: ReturnType<typeof setTimeout>;
+    function connect() {
+      es = new EventSource(getAppEventsSSEUrl());
+      es.onmessage = (e) => {
+        try {
+          const msg = JSON.parse(e.data);
+          if (msg.type === "room_created" || msg.type === "room_deleted") load();
+        } catch {}
+      };
+      es.onerror = () => { es?.close(); retry = setTimeout(connect, 5000); };
+    }
+    connect();
+
+    return () => { clearInterval(t); es?.close(); clearTimeout(retry); };
   }, []);
 
   const filtered = useMemo(() => {

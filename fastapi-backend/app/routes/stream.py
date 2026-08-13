@@ -10,6 +10,7 @@ invest here.
 
 GET /rooms/{room}/messages/stream — room event stream
 GET /agents/{handle}/stream       — per-agent event stream
+GET /events/stream                — global app events (room create/delete)
 """
 
 import asyncio
@@ -19,7 +20,7 @@ import logging
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
-from app.bus import agent_channel, bus, room_channel
+from app.bus import agent_channel, app_channel, bus, room_channel
 from app.services import local_state
 from app.services.filesystem import room_exists
 
@@ -74,6 +75,20 @@ async def stream_agent_events(handle: str, request: Request):
     """Server-Sent Events stream for a specific agent handle."""
     return StreamingResponse(
         _sse_from_channel(request, agent_channel(handle)),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@router.get("/events/stream")
+async def stream_app_events(request: Request):
+    """Server-Sent Events stream for global app state changes.
+
+    Carries non-room-scoped events (``room_created`` / ``room_deleted``) so the
+    UI's room list updates live without per-room polling.
+    """
+    return StreamingResponse(
+        _sse_from_channel(request, app_channel()),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
