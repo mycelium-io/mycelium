@@ -2673,49 +2673,16 @@ def _render_mycelium_llm_table(backend: dict | None) -> None:
     table.add_column("Metric", style="bold")
     table.add_column("Value", justify="right")
 
-    # Top section: synthesis-specific counters. Per-operation tokens were
-    # added in #296 so synthesis-only figures are honest even when other
-    # operations (e.g. ``health_probe``) also fire ``record_llm_call``. On
-    # backends that pre-date #296 the per-operation sub-keys are absent;
-    # we detect this and fall back to the grand totals (which equal
-    # synthesis in practice on those builds since synthesis was the only
-    # instrumented site).
-    is_post_296 = any(k.startswith("by_operation.") and k.count(".") >= 2 for k in llm)
-    synthesis_calls = llm.get("by_operation.synthesis", 0)
-    if is_post_296:
-        synthesis_input = llm.get("by_operation.synthesis.input_tokens", 0)
-        synthesis_output = llm.get("by_operation.synthesis.output_tokens", 0)
-        synthesis_errors = llm.get("by_operation.synthesis.errors", 0)
-    else:
-        synthesis_input = llm.get("input_tokens", 0)
-        synthesis_output = llm.get("output_tokens", 0)
-        synthesis_errors = llm.get("errors", 0)
-    table.add_row("Synthesis LLM calls", _fmt_num(synthesis_calls))
-    table.add_row("  input tokens", _fmt_num(synthesis_input))
-    table.add_row("  output tokens", _fmt_num(synthesis_output))
-    if synthesis_errors > 0:
-        table.add_row("  errors", f"[red]{_fmt_num(synthesis_errors)}[/red]")
-
-    # Bottom section: every non-synthesis operation broken out by its call
-    # count. We deliberately do NOT show per-operation tokens here because
-    # the non-synthesis sites (health_probe today; future heartbeats) are
-    # by design ~zero-token — surfacing the call count is enough to confirm
-    # they're firing without cluttering the table.
-    #
-    # The dotted-key exclusion below filters out the per-operation
-    # token/error sub-keys (e.g. ``by_operation.synthesis.input_tokens``)
-    # added in #296 so we only iterate the base operation counters.
-    by_op_keys = sorted(
-        k
-        for k in llm
-        if k.startswith("by_operation.")
-        and k != "by_operation.synthesis"
-        and k.count(".")
-        == 1  # base counters only; exclude .input_tokens / .output_tokens / .errors
-    )
+    # Break out each backend LLM operation by its call count. We deliberately
+    # do NOT show per-operation tokens here because these sites (health_probe
+    # today; future heartbeats) are by design ~zero-token — surfacing the call
+    # count is enough to confirm they're firing without cluttering the table.
+    # The ``count(".") == 1`` filter keeps only base operation counters,
+    # excluding any per-operation token/error sub-keys.
+    by_op_keys = sorted(k for k in llm if k.startswith("by_operation.") and k.count(".") == 1)
     if by_op_keys:
         table.add_section()
-        table.add_row("Other backend LLM calls", "")
+        table.add_row("Backend LLM calls", "")
         for key in by_op_keys:
             label = key.replace("by_operation.", "")
             table.add_row(f"  {label}", _fmt_num(llm[key]))
@@ -2762,20 +2729,6 @@ def _render_mycelium_llm_table(backend: dict | None) -> None:
         kg_lat = be_histograms.get("knowledge.ingestion_duration_ms", {})
         if kg_lat.get("count", 0) > 0:
             table.add_row("  ingestion duration", _fmt_histogram_s(kg_lat, _max_n_width(kg_lat)))
-
-    # Synthesis stats
-    synthesis = be_counters.get("synthesis", {})
-    if synthesis.get("runs", 0) > 0:
-        table.add_section()
-        table.add_row("Synthesis runs", _fmt_num(synthesis["runs"]))
-        synth_errors = synthesis.get("errors", 0)
-        if synth_errors:
-            table.add_row("  errors", f"[red]{_fmt_num(synth_errors)}[/red]")
-        synth_lat = be_histograms.get("synthesis.duration_ms", {})
-        if synth_lat.get("count", 0) > 0:
-            table.add_row(
-                "  synthesis duration", _fmt_histogram_s(synth_lat, _max_n_width(synth_lat))
-            )
 
     # Memory stats
     memory = be_counters.get("memory", {})
@@ -3560,11 +3513,11 @@ def _render_cost_estimates(
             )
             total_cost += myc_est
 
-        # Per-room breakdown under Mycelium LLM (#297). Synthesis sites
-        # started recording ``llm.by_room.<room>.*`` keys in #297; older
-        # backends don't have these keys (we just render nothing in that
-        # case). Prefers provider-reported cost when present, falling back
-        # to estimate. All rooms shown for parity with the CFN section.
+        # Per-room breakdown under Mycelium LLM. Backends record
+        # ``llm.by_room.<room>.*`` keys; older backends don't have these keys
+        # (we just render nothing in that case). Prefers provider-reported
+        # cost when present, falling back to estimate. All rooms shown for
+        # parity with the CFN section.
         myc_by_room = _aggregate_by_room(myc_llm, prefix="by_room.")
         if myc_by_room:
             ranked = sorted(
@@ -3604,7 +3557,7 @@ def _render_cost_estimates(
                             f"    [dim]{room}[/dim]",
                             f"[dim]{_fmt_num(r_total)}[/dim]",
                             f"[dim]{_fmt_cost(r_cost)}[/dim]",
-                            "[dim]est. (synthesis pricing)[/dim]",
+                            "[dim]est.[/dim]",
                         )
 
     # ── Claude Code (placeholder) ──────────────────────────────────────
