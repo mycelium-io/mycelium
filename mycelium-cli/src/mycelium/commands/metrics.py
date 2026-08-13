@@ -732,7 +732,8 @@ def reset() -> None:
         typer.echo("No metrics data to clear.")
 
 
-_LITELLM_CATALOG_API = "https://api.litellm.ai/model_catalog"
+# litellm's public model-catalog endpoint (data-only; litellm is not a dependency).
+_PRICING_CATALOG_API = "https://api.litellm.ai/model_catalog"
 
 _TRACKED_MODELS: list[dict] = [
     {"pattern": "claude-sonnet-4", "provider": "anthropic", "litellm_key": "claude-sonnet-4-5"},
@@ -773,10 +774,10 @@ _EMBEDDING_MODEL = "text-embedding-3-small"
 
 
 def _fetch_model_pricing_from_api(litellm_key: str) -> dict | None:
-    """Fetch a single model's pricing from the LiteLLM Model Catalog API."""
+    """Fetch a single model's pricing from the model pricing catalog."""
     import httpx
 
-    url = f"{_LITELLM_CATALOG_API}/{litellm_key}"
+    url = f"{_PRICING_CATALOG_API}/{litellm_key}"
     try:
         resp = httpx.get(url, headers={"Accept": "application/json"}, timeout=10.0)
         if resp.status_code != 200:
@@ -787,7 +788,7 @@ def _fetch_model_pricing_from_api(litellm_key: str) -> dict | None:
 
 
 def _build_pricing_entry(spec: dict, api_data: dict) -> dict | None:
-    """Transform LiteLLM Catalog API response into a pricing.json model entry."""
+    """Transform a model pricing catalog response into a pricing.json model entry."""
     input_price = api_data.get("input_cost_per_token", 0)
     output_price = api_data.get("output_cost_per_token", 0)
     cache_read = api_data.get("cache_read_input_token_cost")
@@ -905,7 +906,7 @@ def update_pricing(
         ),
     ),
 ) -> None:
-    """Fetch latest LLM pricing from the LiteLLM Model Catalog API.
+    """Fetch latest LLM pricing from the public model pricing catalog.
 
     Writes updated pricing to ``$MYCELIUM_DATA_DIR/metrics/pricing.json``,
     which is used by ``mycelium metrics show cost`` for cost estimates.
@@ -918,7 +919,7 @@ def update_pricing(
     """
     from datetime import UTC, datetime
 
-    console.print("[bold]Fetching pricing from LiteLLM Model Catalog API...[/bold]")
+    console.print("[bold]Fetching model pricing from the pricing catalog...[/bold]")
 
     models: list[dict] = []
     warnings: list[str] = []
@@ -1071,7 +1072,7 @@ def update_pricing(
             console.print("  No pricing changes vs bundled defaults.")
 
 
-_VALID_SECTIONS = ("openclaw", "claude", "mycelium", "cfn", "cost", "all")
+_VALID_SECTIONS = ("openclaw", "claude", "mycelium", "cost", "all")
 _SECTION_ALIASES: dict[str, str] = {}  # reserved for future aliases
 
 
@@ -1079,7 +1080,7 @@ _SECTION_ALIASES: dict[str, str] = {}  # reserved for future aliases
 def show(
     section: str | None = typer.Argument(
         None,
-        help="Section to show: openclaw, claude, mycelium, cfn, cost, all. Omit for overview.",
+        help="Section to show: openclaw, claude, mycelium, cost, all. Omit for overview.",
     ),
     json_output: bool = typer.Option(False, "--json", help="Output raw JSON"),
     workspace: bool = typer.Option(False, "--workspace", help="Show per-file workspace breakdown"),
@@ -1109,13 +1110,13 @@ def show(
     Display collected metrics with agent metadata and workspace sizes.
 
     With no argument, shows a compact overview. Pass a section name for
-    full detail: openclaw, claude, mycelium, cfn.
+    full detail: openclaw, claude, mycelium.
     """
     if section is not None:
         section = section.lower()
         if section not in _VALID_SECTIONS:
             typer.secho(
-                f"Unknown section '{section}'. Valid: openclaw, claude, mycelium, cfn, cost, all",
+                f"Unknown section '{section}'. Valid: openclaw, claude, mycelium, cost, all",
                 fg=typer.colors.RED,
             )
             raise typer.Exit(1)
@@ -1186,7 +1187,6 @@ def show(
     show_openclaw = section in ("openclaw", "all")
     show_claude = section in ("claude", "all")
     show_mycelium = section in ("mycelium", "all")
-    show_cfn = section in ("cfn", "all")
     show_cost = section in ("cost", "all")
 
     if show_claude:
@@ -1260,17 +1260,6 @@ def show(
                 )
                 console.print(table)
                 console.print()
-
-    if show_cfn:
-        _render_coordination_table(backend_data, detail=detail)
-        _render_cfn_llm_usage_table(backend_data, detail=detail)
-        _render_cfn_transport_table(backend_data)
-        _render_cfn_scrape_table((otel_data or {}).get("scrape"))
-        if not backend_data and not (otel_data or {}).get("scrape"):
-            console.print(
-                "[dim]CFN metrics not available (spoke mode or no CFN stack running)[/dim]"
-            )
-            console.print()
 
     if show_cost:
         _render_cost_estimates(
@@ -1367,62 +1356,6 @@ def _render_overview(
         label = "[dim]via hub[/dim]" if _is_spoke_mode() else ""
         table.add_row("[magenta]Mycelium Backend[/magenta]", f"[dim]No activity yet[/dim] {label}")
 
-    # ── CFN section ───────────────────────────────────────────────────
-    table.add_section()
-    if backend:
-        be_counters = backend.get("counters", {})
-        coord = be_counters.get("coordination", {})
-        cfn = be_counters.get("cfn", {})
-
-        cfn_llm = be_counters.get("cfn_llm", {})
-        has_cfn = (
-            coord.get("sessions_started", 0) > 0
-            or cfn.get("calls", 0) > 0
-            or cfn_llm.get("calls", 0) > 0
-        )
-
-        cfn_label = "[blue]CFN[/blue]"
-        if _is_spoke_mode():
-            cfn_label += " [dim](from hub)[/dim]"
-        table.add_row(cfn_label, "")
-        if has_cfn:
-            started = coord.get("sessions_started", 0)
-            completed = coord.get("sessions_completed", 0)
-            success = coord.get("outcome.success", 0)
-            failure = coord.get("outcome.failure", 0)
-            if started > 0:
-                table.add_row(
-                    "  Coordination",
-                    f"{_fmt_num(started)} started, {_fmt_num(completed)} completed",
-                )
-                if success + failure > 0:
-                    table.add_row(
-                        "  Outcomes",
-                        f"[green]{success}[/green] consensus, [red]{failure}[/red] failed",
-                    )
-            rounds = coord.get("rounds", 0)
-            if rounds > 0:
-                table.add_row("  Rounds", _fmt_num(rounds))
-            total_calls = cfn.get("calls", 0)
-            if total_calls > 0:
-                errors = cfn.get("errors", 0)
-                err_str = f"  [red]({errors} errors)[/red]" if errors else ""
-                table.add_row("  Transport calls", f"{_fmt_num(total_calls)}{err_str}")
-            llm_calls = cfn_llm.get("calls", 0)
-            if llm_calls > 0:
-                prompt_tok = cfn_llm.get("input_tokens", 0)
-                compl_tok = cfn_llm.get("output_tokens", 0)
-                table.add_row("  LLM calls (engines)", _fmt_num(llm_calls))
-                table.add_row(
-                    "  LLM tokens",
-                    f"{_fmt_num(prompt_tok)} in / {_fmt_num(compl_tok)} out",
-                )
-        else:
-            table.add_row("  [dim]No CFN activity yet[/dim]", "")
-    else:
-        label = "[dim]via hub[/dim]" if _is_spoke_mode() else ""
-        table.add_row("[blue]CFN[/blue]", f"[dim]No activity yet[/dim] {label}")
-
     console.print(table)
     console.print()
 
@@ -1457,7 +1390,7 @@ def _render_overview(
         console.print(host_table)
         console.print()
 
-    console.print("[dim]Detail: mycelium metrics show <openclaw|mycelium|cfn|cost>[/dim]")
+    console.print("[dim]Detail: mycelium metrics show <openclaw|mycelium|cost>[/dim]")
     if by_host and not is_spoke:
         console.print("[dim]Filter: mycelium metrics show --host <HOST>[/dim]")
     console.print()
@@ -1504,11 +1437,11 @@ def _load_metrics_json() -> dict | None:
       has everything.
 
     Spoke mode (``collector_url`` points to a remote hub):
-      1. Fetch backend + CFN data from the hub's ``/collector/metrics``.
+      1. Fetch backend data from the hub's ``/collector/metrics``.
       2. Read local ``metrics.json`` for OpenClaw OTLP data written by
          the lightweight spoke collector.
       3. Merge: local OpenClaw counters/histograms/sessions take priority;
-         hub ``backend`` and ``scrape`` sections are overlaid.
+         the hub ``backend`` section is overlaid.
     """
     if not _is_spoke_mode():
         return _load_local_metrics()
@@ -1527,8 +1460,6 @@ def _load_metrics_json() -> dict | None:
     merged = dict(local_data)
     if "backend" in hub_data:
         merged["backend"] = hub_data["backend"]
-    if "scrape" in hub_data:
-        merged["scrape"] = hub_data["scrape"]
     merged.setdefault("updated_at", hub_data.get("updated_at", ""))
     return merged
 
@@ -1750,9 +1681,8 @@ def _max_n_width(*hists: dict) -> int:
     """Width of the largest ``count`` (comma-formatted) across histograms.
 
     Pass every histogram that will share a column in the same panel; each
-    panel computes this once and feeds it to ``_fmt_histogram_s`` /
-    ``_fmt_prom_latency`` so their ``avg`` columns line up vertically
-    regardless of count magnitude.
+    panel computes this once and feeds it to ``_fmt_histogram_s`` so its
+    ``avg`` columns line up vertically regardless of count magnitude.
     """
     widths = [len(f"{h.get('count', 0):,}") for h in hists if h.get("count", 0) > 0]
     return max(widths) if widths else 0
@@ -1763,8 +1693,7 @@ def _fmt_histogram_s(h: dict, n_width: int) -> str:
 
     ``n_width`` is the rendered width of the largest ``n=`` in the
     caller's group (so every row's ``avg`` column lines up vertically).
-    Callers compute it once per panel — see ``_render_cfn_coord_table``
-    and ``_render_cfn_transport_table``.
+    Callers compute it once per panel.
     """
     count = h.get("count", 0)
     if count == 0:
@@ -1790,89 +1719,6 @@ def _fmt_histogram_s(h: dict, n_width: int) -> str:
     # the empty-bar slot entirely — saves ~16 chars and still shows the
     # value, the avg (which equals the only datum), and the count.
     return f"{_fmt_val_s(avg):>{_W}} [dim]avg {_fmt_val_s(avg):>{_W}} {n_field}[/dim]"
-
-
-def _fmt_prom_latency(lat: dict, n_width: int) -> str:
-    """Format a Prometheus-bucket latency dict for the CFN scrape panel.
-
-    Visual grammar mirrors ``_fmt_histogram_s`` (used by CFN Transport
-    Health) so both CFN panels read with the same rhythm — fixed-width
-    numeric columns, label-then-value, dim ``n=`` suffix:
-
-        avg  614µs  p50   —      p99   —       n=17,968
-        avg 49.0ms  p50   —      p99   —       n=2
-
-    Differences from ``_fmt_histogram_s``: no min/max sparkline (Prometheus
-    histograms can't give us those), p50/p99 columns instead, and a unit-
-    aware value formatter so sub-millisecond /health latencies don't read
-    as ``0.0s``.
-
-    ``avg`` is always shown (computed from exact ``_sum / _count``, the
-    only truly precise number Prometheus histograms give us). p50/p99 are
-    *suppressed with ``—``* — keeping the column in place — when the
-    bucket layout has insufficient resolution (no observations cross a
-    bucket boundary). Today CFN's mgmt-plane uses ``[100, 500, 1000]ms``
-    buckets and every observation lands in the first one; once
-    cfn_component_metrics_reconciliation.md item #6 ships finer buckets,
-    real p50/p99 numbers will appear with no code change.
-    """
-    count = lat.get("count", 0)
-    if count == 0:
-        return "-"
-
-    from mycelium.prom_scrape import histogram_quantile
-
-    buckets = lat.get("buckets") or []
-    avg_ms = lat.get("sum", 0.0) / count if count else 0.0
-
-    # "Useful" buckets = at least one cross-bucket transition exists.
-    finite = [(b, c) for b, c in buckets if not (isinstance(b, float) and b == float("inf"))]
-    crossings = sum(1 for i in range(1, len(finite)) if finite[i][1] > finite[i - 1][1])
-    p50_ms = histogram_quantile(0.50, buckets) if crossings >= 1 else None
-    p99_ms = histogram_quantile(0.99, buckets) if crossings >= 1 else None
-
-    # Fixed value-column width chosen to fit ``999.9ms`` and ``99.99s`` —
-    # the two longest realistic values from _fmt_ms. Right-aligned so the
-    # decimal points stack cleanly when scanning a column of routes.
-    _W = 7
-
-    def _slot(v_ms: float) -> str:
-        return f"{_fmt_ms(v_ms):>{_W}}"
-
-    # Conditional rendering keeps the row on a single line in the common
-    # CFN-today case (coarse buckets → no percentiles) and saves ~16 chars
-    # per row that Rich would otherwise wrap. When buckets get finer (see
-    # cfn_component_metrics_reconciliation.md item #6), the p50/p99
-    # columns reappear automatically.
-    parts = [f"avg {_slot(avg_ms)}"]
-    if p50_ms is not None:
-        parts.append(f"p50 {_slot(p50_ms)}")
-    if p99_ms is not None:
-        parts.append(f"p99 {_slot(p99_ms)}")
-    # Pad ``n=`` to the caller-supplied width so the ``avg`` column lines
-    # up across rows even when counts differ by orders of magnitude
-    # (e.g. /health at n=18,001 next to /api/...register at n=2). Width
-    # is the *rendered* width of the largest count's comma-formatted
-    # string in this group; falls back to natural width if unspecified.
-    n_field = f"n={count:,}".rjust(2 + n_width)
-    parts.append(f"[dim]{n_field}[/dim]")
-    return "  ".join(parts)
-
-
-def _fmt_ms(ms: float | None) -> str:
-    """Format a millisecond value with a sensibly chosen unit.
-
-    Sub-millisecond → µs (so ``/health`` stops reading as ``0.0s``).
-    Sub-second     → ms.
-    Anything else  → seconds with two decimals.
-    """
-    if ms is None:
-        return "-"
-    if ms < 1.0:
-        return f"{ms * 1000:.0f}µs"
-    if ms < 1000.0:
-        return f"{ms:.1f}ms"
-    return f"{ms / 1000:.2f}s"
 
 
 def _fmt_histogram_raw(h: dict) -> str:
@@ -2656,8 +2502,6 @@ def _render_mycelium_llm_table(backend: dict | None) -> None:
         return
 
     be_counters = backend.get("counters", {})
-    cfn_llm = be_counters.get("cfn_llm", {})
-    has_cfn_tokens = cfn_llm.get("calls", 0) > 0
     llm = be_counters.get("llm", {})
 
     if llm.get("calls", 0) == 0:
@@ -2721,7 +2565,7 @@ def _render_mycelium_llm_table(backend: dict | None) -> None:
         table.add_row("  concepts extracted", _fmt_num(knowledge.get("concepts_extracted", 0)))
         table.add_row("  relations extracted", _fmt_num(knowledge.get("relations_extracted", 0)))
         est_tokens = knowledge.get("estimated_input_tokens", 0)
-        if est_tokens and not has_cfn_tokens:
+        if est_tokens:
             table.add_row("  est. input tokens", _fmt_num(est_tokens))
         kg_errors = knowledge.get("errors", 0)
         if kg_errors:
@@ -2745,490 +2589,6 @@ def _render_mycelium_llm_table(backend: dict | None) -> None:
             if search_lat.get("count", 0) > 0:
                 table.add_row(
                     "  search latency", _fmt_histogram_s(search_lat, _max_n_width(search_lat))
-                )
-
-    console.print(table)
-    console.print()
-
-
-def _render_coordination_table(backend: dict | None, *, detail: bool = False) -> None:
-    """Render a panel showing Mycelium coordination/negotiation metrics."""
-    if not backend:
-        return
-
-    be_counters = backend.get("counters", {})
-    coord = be_counters.get("coordination", {})
-
-    if coord.get("sessions_started", 0) == 0 and coord.get("rounds", 0) == 0:
-        return
-
-    table = Table(
-        title=f"CFN Coordination{_hub_suffix()}",
-        title_style="bold blue",
-        title_justify="left",
-        show_header=False,
-        border_style="dim",
-    )
-    table.add_column("Metric", style="bold")
-    # MAS column populated only for the per-room rows below. CFN counters
-    # are keyed by ``room_name``, so we resolve room_name → mas_id at
-    # display time via /api/rooms; deleted rooms get a blank MAS cell.
-    table.add_column("MAS", style="dim", no_wrap=True)
-    table.add_column("Value", justify="right")
-
-    table.add_row("Sessions started", "", _fmt_num(coord.get("sessions_started", 0)))
-    table.add_row("Sessions completed", "", _fmt_num(coord.get("sessions_completed", 0)))
-
-    success = coord.get("outcome.success", 0)
-    failure = coord.get("outcome.failure", 0)
-
-    if success + failure > 0:
-        table.add_section()
-        if success > 0:
-            table.add_row("  consensus reached", "", f"[green]{_fmt_num(success)}[/green]")
-        if failure > 0:
-            table.add_row("  failed", "", f"[red]{_fmt_num(failure)}[/red]")
-
-    table.add_section()
-    table.add_row("Total rounds", "", _fmt_num(coord.get("rounds", 0)))
-
-    be_histograms = backend.get("histograms", {})
-
-    rounds_to_consensus = be_histograms.get("coordination.rounds_to_consensus", {})
-    if rounds_to_consensus.get("count", 0) > 0:
-        avg = rounds_to_consensus["sum"] / rounds_to_consensus["count"]
-        min_r = rounds_to_consensus.get("min", avg)
-        max_r = rounds_to_consensus.get("max", avg)
-        table.add_row("Rounds to consensus", "", f"{avg:.1f} (min {min_r:.0f}, max {max_r:.0f})")
-
-    # Pad ``n=`` across the histogram rows so the ``avg`` column lines up
-    # vertically even when counts span orders of magnitude
-    # (e.g. n=14 sessions vs n=334 rounds).
-    time_to_consensus = be_histograms.get("coordination.time_to_consensus_ms", {})
-    round_duration = be_histograms.get("coordination.round_duration_ms", {})
-    coord_n_width = max(
-        (
-            len(f"{h.get('count', 0):,}")
-            for h in (time_to_consensus, round_duration)
-            if h.get("count", 0) > 0
-        ),
-        default=0,
-    )
-    if time_to_consensus.get("count", 0) > 0:
-        table.add_row(
-            "Time to consensus",
-            "",
-            _fmt_histogram_s(time_to_consensus, n_width=coord_n_width),
-        )
-    if round_duration.get("count", 0) > 0:
-        table.add_row(
-            "Round duration",
-            "",
-            _fmt_histogram_s(round_duration, n_width=coord_n_width),
-        )
-
-    participants = be_histograms.get("coordination.session_participants", {})
-    if participants.get("count", 0) > 0:
-        avg = participants["sum"] / participants["count"]
-        table.add_row("Avg participants/session", "", f"{avg:.1f}")
-
-    # Aggregate per parent room across sessions. The raw counters are
-    # session-scoped (``by_room.<room>:session:<uuid>``); we sum them so a
-    # room with N session sub-rooms shows as a single line. Likewise for
-    # ``completed_by_room``, where we also break out success/failure.
-    # ``_parent_room`` is shared with the cfn-llm renderer via the module-
-    # level helper so the bucketing rule is consistent across panels.
-    rounds_by_room: dict[str, int] = {}
-    for key, val in coord.items():
-        if not key.startswith("by_room."):
-            continue
-        room = _parent_room(key.removeprefix("by_room."))
-        rounds_by_room[room] = rounds_by_room.get(room, 0) + int(val or 0)
-
-    completed_by_room: dict[str, dict[str, int]] = {}
-    for key, val in coord.items():
-        if not key.startswith("completed_by_room."):
-            continue
-        suffix = key.removeprefix("completed_by_room.")
-        # Two shapes: ``<sub-room>`` (total) and ``<sub-room>.<outcome>``.
-        head, _, outcome = suffix.rpartition(".")
-        if outcome in {"success", "failure"} and head:
-            room = _parent_room(head)
-            completed_by_room.setdefault(room, {"total": 0, "success": 0, "failure": 0})[
-                outcome
-            ] += int(val or 0)
-        else:
-            room = _parent_room(suffix)
-            completed_by_room.setdefault(room, {"total": 0, "success": 0, "failure": 0})[
-                "total"
-            ] += int(val or 0)
-
-    if rounds_by_room or completed_by_room:
-        name_to_mas = _resolve_mas_by_room_name()
-        table.add_section()
-        table.add_row("[dim]By room:[/dim]", "[dim]MAS id[/dim]", "")
-        # Sort by total rounds desc so the busiest room leads.
-        ranked = sorted(rounds_by_room.items(), key=lambda kv: kv[1], reverse=True)
-        cap = len(ranked) if detail else 5
-        for room, n_rounds in ranked[:cap]:
-            stats = completed_by_room.get(room, {"total": 0, "success": 0, "failure": 0})
-            n_done = stats["total"]
-            n_ok = stats["success"]
-            n_bad = stats["failure"]
-            # ``5 rounds  ·  3 done (3✓ 0✗)`` — only show the breakdown if
-            # we actually have completion stats for the room.
-            parts = [f"{_fmt_num(n_rounds)} rounds"]
-            if n_done > 0:
-                ok_str = f"[green]{n_ok}✓[/green]" if n_ok else f"{n_ok}✓"
-                bad_str = f"[red]{n_bad}✗[/red]" if n_bad else f"{n_bad}✗"
-                parts.append(f"{_fmt_num(n_done)} done ({ok_str} {bad_str})")
-            table.add_row(
-                f"  {room}",
-                _format_mas(name_to_mas.get(room, ""), detail=detail),
-                "  ·  ".join(parts),
-            )
-        if len(ranked) > cap:
-            table.add_row(
-                f"  [dim]...and {len(ranked) - cap} more (use --detail to expand)[/dim]",
-                "",
-                "",
-            )
-
-    console.print(table)
-    console.print()
-
-
-def _render_cfn_llm_usage_table(backend: dict | None, *, detail: bool = False) -> None:
-    """Render actual LLM token usage reported by the cognition engines via _usage."""
-    if not backend:
-        return
-
-    be_counters = backend.get("counters", {})
-    cfn_llm = be_counters.get("cfn_llm", {})
-
-    total_calls = cfn_llm.get("calls", 0)
-    if total_calls == 0:
-        return
-
-    table = Table(
-        title="CFN LLM Token Usage",
-        title_style="bold blue",
-        title_justify="left",
-        show_header=False,
-        border_style="dim",
-    )
-    table.add_column("Metric", style="bold")
-    # MAS column is populated only for the per-room rows below — CFN
-    # counters are keyed by ``room_name``, so we resolve room_name →
-    # mas_id at display time via /api/rooms. The aggregate, by-pipeline,
-    # and by-operation rows leave this cell blank.
-    table.add_column("MAS", style="dim", no_wrap=True)
-    table.add_column("Value", justify="right")
-
-    table.add_row("Total LLM calls (engines)", "", _fmt_num(total_calls))
-    table.add_row("  input tokens", "", _fmt_num(cfn_llm.get("input_tokens", 0)))
-    table.add_row("  output tokens", "", _fmt_num(cfn_llm.get("output_tokens", 0)))
-    total_tokens = cfn_llm.get("total_tokens", 0)
-    if total_tokens > 0:
-        table.add_row("  total tokens", "", _fmt_num(total_tokens))
-    cached = cfn_llm.get("cached_tokens", 0)
-    if cached > 0:
-        table.add_row("  cached tokens", "", _fmt_num(cached))
-
-    be_histograms = backend.get("histograms", {})
-    lat = be_histograms.get("cfn_llm.latency_ms", {})
-    if lat.get("count", 0) > 0:
-        table.add_row("LLM latency (total)", "", _fmt_histogram_s(lat, _max_n_width(lat)))
-
-    # By pipeline rollup
-    pipeline_keys = sorted(k for k in cfn_llm if k.startswith("by_pipeline."))
-    if pipeline_keys:
-        table.add_section()
-        table.add_row("[dim]By pipeline:[/dim]", "", "")
-        pipelines: dict[str, dict[str, int]] = {}
-        for key in pipeline_keys:
-            parts = key.split(".")
-            if len(parts) >= 3:
-                pip = parts[1]
-                metric = parts[2]
-                pipelines.setdefault(pip, {})[metric] = cfn_llm[key]
-        for pip, data in sorted(pipelines.items()):
-            calls = data.get("calls", 0)
-            inp = data.get("input_tokens", 0)
-            out = data.get("output_tokens", 0)
-            table.add_row(
-                f"  {pip}",
-                "",
-                f"{_fmt_num(calls)} calls, {_fmt_num(inp)} in / {_fmt_num(out)} out",
-            )
-
-    # By LLM operation detail
-    op_keys = sorted(k for k in cfn_llm if k.startswith("by_llm_operation."))
-    if op_keys:
-        table.add_section()
-        table.add_row("[dim]By operation:[/dim]", "", "")
-        operations: dict[str, dict[str, int]] = {}
-        for key in op_keys:
-            parts = key.split(".")
-            if len(parts) >= 3:
-                op = ".".join(parts[1:-1])
-                metric = parts[-1]
-                operations.setdefault(op, {})[metric] = cfn_llm[key]
-        for op, data in sorted(operations.items()):
-            calls = data.get("calls", 0)
-            inp = data.get("input_tokens", 0)
-            out = data.get("output_tokens", 0)
-            table.add_row(
-                f"  {op}",
-                "",
-                f"{_fmt_num(calls)} calls, {_fmt_num(inp)} in / {_fmt_num(out)} out",
-            )
-
-    # By room — aggregated across sessions via the shared ``_aggregate_by_room``
-    # helper, so the session-rollup rule (#295) is identical to what the
-    # cost-estimates panel uses (#297). Heaviest room leads; cap at 5 with
-    # an "...and N more" tail to match the coordination table's UX (use
-    # --detail to expand to all rooms).
-    rooms = _aggregate_by_room(cfn_llm, prefix="by_room.")
-    if rooms:
-        name_to_mas = _resolve_mas_by_room_name()
-        table.add_section()
-        table.add_row("[dim]By room:[/dim]", "[dim]MAS id[/dim]", "")
-        ranked = sorted(
-            rooms.items(),
-            key=lambda kv: kv[1].get("input_tokens", 0) + kv[1].get("output_tokens", 0),
-            reverse=True,
-        )
-        cap = len(ranked) if detail else 5
-        for room, data in ranked[:cap]:
-            calls = data.get("calls", 0)
-            inp = data.get("input_tokens", 0)
-            out = data.get("output_tokens", 0)
-            table.add_row(
-                f"  {room}",
-                _format_mas(name_to_mas.get(room, ""), detail=detail),
-                f"{_fmt_num(calls)} calls, {_fmt_num(inp)} in / {_fmt_num(out)} out",
-            )
-        if len(ranked) > cap:
-            table.add_row(
-                f"  [dim]...and {len(ranked) - cap} more (use --detail to expand)[/dim]",
-                "",
-                "",
-            )
-
-    console.print(table)
-    console.print()
-
-
-def _render_cfn_transport_table(backend: dict | None) -> None:
-    """Render a panel showing outbound CFN HTTP call health."""
-    if not backend:
-        return
-
-    be_counters = backend.get("counters", {})
-    cfn = be_counters.get("cfn", {})
-
-    total = cfn.get("calls", 0)
-    if total == 0:
-        return
-
-    table = Table(
-        title=f"CFN Transport Health{_hub_suffix()}",
-        title_style="bold blue",
-        title_justify="left",
-        show_header=False,
-        border_style="dim",
-    )
-    table.add_column("Metric", style="bold")
-    table.add_column("Value", justify="right")
-
-    table.add_row("Total outbound calls", _fmt_num(total))
-
-    node_calls = cfn.get("calls.node", 0)
-    mgmt_calls = cfn.get("calls.mgmt", 0)
-    if node_calls or mgmt_calls:
-        if node_calls:
-            table.add_row("  CFN node", _fmt_num(node_calls))
-        if mgmt_calls:
-            table.add_row("  CFN mgmt", _fmt_num(mgmt_calls))
-
-    errors = cfn.get("errors", 0)
-    if errors:
-        rate = (errors / total * 100) if total else 0
-        table.add_row("Errors", f"[red]{_fmt_num(errors)}[/red] ({rate:.1f}%)")
-        node_err = cfn.get("errors.node", 0)
-        mgmt_err = cfn.get("errors.mgmt", 0)
-        if node_err:
-            table.add_row("  node errors", f"[red]{_fmt_num(node_err)}[/red]")
-        if mgmt_err:
-            table.add_row("  mgmt errors", f"[red]{_fmt_num(mgmt_err)}[/red]")
-
-    be_histograms = backend.get("histograms", {})
-
-    cfn_lat = be_histograms.get("cfn.latency_ms", {})
-    node_lat = be_histograms.get("cfn.latency_ms.node", {})
-    mgmt_lat = be_histograms.get("cfn.latency_ms.mgmt", {})
-    # Same n-width trick as the Coordination panel — keeps avg columns
-    # aligned across all/node/mgmt rows when call volumes differ.
-    transport_n_width = max(
-        (
-            len(f"{h.get('count', 0):,}")
-            for h in (cfn_lat, node_lat, mgmt_lat)
-            if h.get("count", 0) > 0
-        ),
-        default=0,
-    )
-    if cfn_lat.get("count", 0) > 0:
-        table.add_section()
-        table.add_row(
-            "Latency (all)",
-            _fmt_histogram_s(cfn_lat, n_width=transport_n_width),
-        )
-    if node_lat.get("count", 0) > 0:
-        table.add_row("  node", _fmt_histogram_s(node_lat, n_width=transport_n_width))
-    if mgmt_lat.get("count", 0) > 0:
-        table.add_row("  mgmt", _fmt_histogram_s(mgmt_lat, n_width=transport_n_width))
-
-    # Per-operation breakdown
-    op_keys = sorted(k for k in cfn if k.startswith("calls.node.") or k.startswith("calls.mgmt."))
-    if op_keys:
-        table.add_section()
-        table.add_row("[dim]By operation:[/dim]", "")
-        for key in op_keys:
-            label = key.replace("calls.", "")
-            table.add_row(f"  {label}", _fmt_num(cfn[key]))
-
-    # Status code breakdown: aggregate 2xx, suppress 409 (expected for
-    # idempotent re-registrations), show remaining codes individually.
-    # status.0 means no HTTP response (timeout, connection refused, DNS).
-    status_keys = sorted(k for k in cfn if k.startswith("status."))
-    if status_keys:
-        ok_total = 0
-        other_rows: list[tuple[str, int]] = []
-        for key in status_keys:
-            code = int(key.replace("status.", ""))
-            count = cfn[key]
-            if 200 <= code < 300 or code == 409:
-                ok_total += count
-            elif code == 0:
-                other_rows.append(("no response", count))
-            else:
-                other_rows.append((str(code), count))
-        table.add_section()
-        table.add_row("[dim]By status code:[/dim]", "")
-        if ok_total:
-            table.add_row("  OK (2xx)", _fmt_num(ok_total))
-        for label, count in other_rows:
-            if label == "no response":
-                table.add_row("  no response (transport error)", f"[red]{_fmt_num(count)}[/red]")
-            else:
-                style = "red" if int(label) >= 500 else "yellow"
-                table.add_row(f"  HTTP {label}", f"[{style}]{_fmt_num(count)}[/{style}]")
-
-    console.print(table)
-    console.print()
-
-
-def _render_cfn_scrape_table(scrape: dict | None) -> None:
-    """Render Prometheus scrape data from configured CFN/IoC targets.
-
-    ``scrape`` is the top-level ``"scrape"`` dict in metrics.json — keyed by
-    target name, each value is ``{"data": <rolled-up dict | None>,
-    "scraped_at": <iso8601>}``. Targets unreachable on the last poll are
-    shown with a "[degraded]" marker rather than dropped, so users can
-    distinguish "I forgot to start the service" from "I never configured
-    the scrape target".
-
-    Scope: this is the *outbound* measurement of CFN's HTTP surface, which
-    is independent of (and complementary to) the inbound Mycelium-backend
-    counters surfaced by `_render_cfn_transport_table`. We expect CFN to
-    grow domain-specific Prometheus series (`cfn_llm_tokens_total`,
-    `cfn_llm_latency_seconds`, …); when they do, the panel below will
-    automatically pick them up only after the rollup function in
-    ``mycelium.prom_scrape`` learns to recognise them. Until then, all we
-    can show is HTTP-level RED.
-    """
-    if not scrape:
-        return
-
-    # Filter out targets that have never produced data (i.e. data is None
-    # *and* always has been). If even one scrape succeeded we render the
-    # row so the user sees the degraded state.
-    visible = {
-        name: payload
-        for name, payload in scrape.items()
-        if payload and (payload.get("data") is not None or payload.get("scraped_at"))
-    }
-    if not visible:
-        return
-
-    table = Table(
-        title="CFN /metrics Scrape",
-        title_style="bold blue",
-        title_justify="left",
-        show_header=False,
-        border_style="dim",
-    )
-    table.add_column("Metric", style="bold")
-    table.add_column("Value", justify="right")
-
-    first = True
-    for name, payload in sorted(visible.items()):
-        if not first:
-            table.add_section()
-        first = False
-
-        scraped_at = payload.get("scraped_at", "")
-        data = payload.get("data")
-
-        if data is None:
-            table.add_row(
-                f"[blue]{name}[/blue]",
-                f"[yellow][degraded, last attempt {scraped_at}][/yellow]",
-            )
-            continue
-
-        total_calls = data.get("calls", 0)
-        total_errors = data.get("errors", 0)
-        by_route = data.get("by_route", {})
-        if total_calls == 0 and not by_route:
-            # Endpoint reachable but produced no http_requests_total — likely
-            # a stock instrumentator that hasn't seen any traffic yet, OR a
-            # non-fastapi-instrumentator surface (raw prometheus_client).
-            table.add_row(
-                f"[blue]{name}[/blue]",
-                f"[dim](no HTTP RED samples yet, last poll {scraped_at})[/dim]",
-            )
-            continue
-
-        table.add_row(f"[blue]{name}[/blue]", "")
-        table.add_row("  Total requests", _fmt_num(total_calls))
-        if total_errors:
-            rate = (total_errors / total_calls * 100) if total_calls else 0
-            table.add_row(
-                "  Errors (4xx≠404 + 5xx)",
-                f"[red]{_fmt_num(total_errors)}[/red] ({rate:.1f}%)",
-            )
-
-        # Top routes by request volume — keep it short, the panel is
-        # already three steps removed from the user's primary concern.
-        top_routes = sorted(
-            by_route.items(),
-            key=lambda kv: kv[1].get("calls", 0),
-            reverse=True,
-        )[:6]
-        if top_routes:
-            table.add_row("  [dim]Top routes:[/dim]", "")
-            # Width of the largest n= field in this group, so every row's
-            # avg/p50/p99 columns align vertically regardless of traffic skew.
-            max_n_width = max(
-                len(f"{r.get('latency_ms', {}).get('count', 0):,}") for _, r in top_routes
-            )
-            for route_name, route_data in top_routes:
-                lat = route_data.get("latency_ms", {})
-                table.add_row(
-                    f"    {route_name}",
-                    _fmt_prom_latency(lat, n_width=max_n_width),
                 )
 
     console.print(table)
@@ -3279,9 +2639,9 @@ def _render_cost_estimates(
 
     try:
         config = MyceliumConfig.load()
-        cfn_model = config.llm.model or ""
+        est_model = config.llm.model or ""
     except Exception:
-        cfn_model = ""
+        est_model = ""
 
     table = Table(
         title="Cost Estimates",
@@ -3330,7 +2690,7 @@ def _render_cost_estimates(
         # configured room (from the local openclaw.json mycelium-room
         # channel block).  We can't compute per-room cost reliably without
         # provider-reported cost per session, so we estimate from the
-        # configured CFN model — labelled accordingly.  Sessions whose
+        # configured LLM model — labelled accordingly.  Sessions whose
         # agent isn't in the local channel config are bucketed under
         # ``other``.
         sessions = (otel or {}).get("sessions", []) if otel else []
@@ -3366,7 +2726,7 @@ def _render_cost_estimates(
                         output_tokens=b["output"],
                         cache_read_tokens=b["cache_read"],
                         cache_write_tokens=b["cache_write"],
-                        model=cfn_model,
+                        model=est_model,
                     )
                     label = "other (no channel match)" if room == "other" else room
                     table.add_row(
@@ -3376,109 +2736,8 @@ def _render_cost_estimates(
                         "[dim]est. (local agents only)[/dim]",
                     )
 
-    # ── CFN Engines (estimated from tokens + pricing.json) ─────────────
-    be_counters = (backend or {}).get("counters", {})
-    cfn_llm = be_counters.get("cfn_llm", {})
-    cfn_calls = cfn_llm.get("calls", 0)
-
-    if cfn_calls > 0:
-        cfn_prompt = cfn_llm.get("input_tokens", 0)
-        cfn_compl = cfn_llm.get("output_tokens", 0)
-        cfn_cached = cfn_llm.get("cached_tokens", 0)
-        cfn_total = cfn_prompt + cfn_compl
-
-        cfn_est_cost = _estimate_cost(
-            input_tokens=cfn_prompt,
-            output_tokens=cfn_compl,
-            cache_read_tokens=cfn_cached,
-            cache_write_tokens=0,
-            model=cfn_model,
-        )
-        _, model_label = _get_model_pricing(cfn_model)
-        table.add_row(
-            "[blue]CFN Engines[/blue]",
-            _fmt_num(cfn_total),
-            _fmt_cost(cfn_est_cost),
-            f"est. ({model_label})",
-        )
-        total_cost += cfn_est_cost
-
-        # Per-pipeline breakdown under CFN — clearly labelled as a separate
-        # axis from per-room so the two don't visually collide (each row
-        # answers a different question: "what kind of work" vs "for which
-        # workload"; the user feedback that motivated this split was that
-        # mixing them at the same indent felt like a flat union when
-        # they're really orthogonal).
-        pipeline_keys = sorted(k for k in cfn_llm if k.startswith("by_pipeline."))
-        if pipeline_keys:
-            pipelines: dict[str, dict[str, int]] = {}
-            for key in pipeline_keys:
-                parts = key.split(".")
-                if len(parts) >= 3:
-                    pip = parts[1]
-                    metric = parts[2]
-                    pipelines.setdefault(pip, {})[metric] = cfn_llm[key]
-            if pipelines:
-                table.add_row("  [dim italic]By pipeline:[/dim italic]", "", "", "")
-                for pip, data in sorted(pipelines.items()):
-                    p_prompt = data.get("input_tokens", 0)
-                    p_compl = data.get("output_tokens", 0)
-                    p_total = p_prompt + p_compl
-                    p_cost = _estimate_cost(
-                        input_tokens=p_prompt,
-                        output_tokens=p_compl,
-                        cache_read_tokens=0,
-                        cache_write_tokens=0,
-                        model=cfn_model,
-                    )
-                    label = pip.replace("_", " ").title()
-                    table.add_row(
-                        f"    [dim]{label}[/dim]",
-                        f"[dim]{_fmt_num(p_total)}[/dim]",
-                        f"[dim]{_fmt_cost(p_cost)}[/dim]",
-                        "[dim]est. (engine pricing)[/dim]",
-                    )
-
-        # Per-room breakdown under CFN (#297). Sessions of the same parent
-        # room are folded together via ``_parent_room`` so the bucketing
-        # matches what ``mycelium metrics show cfn`` shows under "By room".
-        # All rooms shown (no truncation) since the cost panel exists to
-        # surface where the spend is and a long-tail of leftover e2e rooms
-        # is still useful signal to the operator (they can `rooms delete`
-        # to clean up).
-        cfn_by_room = _aggregate_by_room(cfn_llm, prefix="by_room.")
-        if cfn_by_room:
-            ranked = sorted(
-                cfn_by_room.items(),
-                key=lambda kv: kv[1].get("input_tokens", 0) + kv[1].get("output_tokens", 0),
-                reverse=True,
-            )
-            shown = [
-                (r, d)
-                for r, d in ranked
-                if d.get("input_tokens", 0) + d.get("output_tokens", 0) > 0
-            ]
-            if shown:
-                table.add_row("  [dim italic]By room:[/dim italic]", "", "", "")
-                for room, data in shown:
-                    r_prompt = data.get("input_tokens", 0)
-                    r_compl = data.get("output_tokens", 0)
-                    r_total = r_prompt + r_compl
-                    r_cost = _estimate_cost(
-                        input_tokens=r_prompt,
-                        output_tokens=r_compl,
-                        cache_read_tokens=0,
-                        cache_write_tokens=0,
-                        model=cfn_model,
-                    )
-                    table.add_row(
-                        f"    [dim]{room}[/dim]",
-                        f"[dim]{_fmt_num(r_total)}[/dim]",
-                        f"[dim]{_fmt_cost(r_cost)}[/dim]",
-                        "[dim]est. (engine pricing)[/dim]",
-                    )
-
     # ── Mycelium Backend LLM (estimated) ───────────────────────────────
+    be_counters = (backend or {}).get("counters", {})
     myc_llm = be_counters.get("llm", {})
     myc_calls = myc_llm.get("calls", 0)
 
@@ -3493,7 +2752,7 @@ def _render_cost_estimates(
                 "[magenta]Mycelium LLM[/magenta]",
                 _fmt_num(myc_total),
                 _fmt_cost(myc_reported),
-                "litellm (provider-reported)",
+                "catalog (provider-reported)",
             )
             total_cost += myc_reported
         else:
@@ -3502,9 +2761,9 @@ def _render_cost_estimates(
                 output_tokens=myc_compl,
                 cache_read_tokens=0,
                 cache_write_tokens=0,
-                model=cfn_model,
+                model=est_model,
             )
-            _, model_label = _get_model_pricing(cfn_model)
+            _, model_label = _get_model_pricing(est_model)
             table.add_row(
                 "[magenta]Mycelium LLM[/magenta]",
                 _fmt_num(myc_total),
@@ -3516,8 +2775,7 @@ def _render_cost_estimates(
         # Per-room breakdown under Mycelium LLM. Backends record
         # ``llm.by_room.<room>.*`` keys; older backends don't have these keys
         # (we just render nothing in that case). Prefers provider-reported
-        # cost when present, falling back to estimate. All rooms shown for
-        # parity with the CFN section.
+        # cost when present, falling back to estimate. All rooms shown.
         myc_by_room = _aggregate_by_room(myc_llm, prefix="by_room.")
         if myc_by_room:
             ranked = sorted(
@@ -3543,7 +2801,7 @@ def _render_cost_estimates(
                             f"    [dim]{room}[/dim]",
                             f"[dim]{_fmt_num(r_total)}[/dim]",
                             f"[dim]{_fmt_cost(r_reported)}[/dim]",
-                            "[dim]litellm (provider-reported)[/dim]",
+                            "[dim]catalog (provider-reported)[/dim]",
                         )
                     else:
                         r_cost = _estimate_cost(
@@ -3551,7 +2809,7 @@ def _render_cost_estimates(
                             output_tokens=r_compl,
                             cache_read_tokens=0,
                             cache_write_tokens=0,
-                            model=cfn_model,
+                            model=est_model,
                         )
                         table.add_row(
                             f"    [dim]{room}[/dim]",
@@ -3568,7 +2826,7 @@ def _render_cost_estimates(
         table.add_section()
         table.add_row("[bold]Total[/bold]", "", f"[bold]{_fmt_cost(total_cost)}[/bold]", "")
 
-    if total_cost == 0 and oc_total_tokens == 0 and cfn_calls == 0:
+    if total_cost == 0 and oc_total_tokens == 0:
         table.add_row("[dim]No cost data yet[/dim]", "", "", "")
 
     console.print(table)
@@ -3576,7 +2834,7 @@ def _render_cost_estimates(
     # Pricing source note
     gen_date = _pricing_generated_at()
     if gen_date:
-        console.print(f"[dim]  Estimates use litellm pricing data (updated {gen_date})[/dim]")
+        console.print(f"[dim]  Estimates use catalog pricing data (updated {gen_date})[/dim]")
     console.print()
 
 
@@ -3693,9 +2951,6 @@ def _render_field_legend() -> None:
     )
     console.print(
         "[dim]  [magenta]Mycelium[/magenta]:  Backend API metrics (embeddings, memory, LLM calls)[/dim]"
-    )
-    console.print(
-        "[dim]  [blue]CFN[/blue]:   Cognition Fabric Node (coordination, negotiation)[/dim]"
     )
     console.print()
 
