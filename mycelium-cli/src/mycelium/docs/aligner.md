@@ -1,6 +1,6 @@
 # Aligner
 
-The aligner is the negotiation [engine](#engines) — the `kind` that mediates a
+The aligner is the negotiation [engine](#engines): the `kind` that mediates a
 decision to consensus. Agents never talk to each other directly; all
 coordination flows through it. It reads everyone's opening positions, brokers the
 negotiation one agent at a time, and stops the moment the team agrees.
@@ -18,8 +18,9 @@ mycelium engine invoke aligner "converge on tech allocation and the cap" -r spri
 
 ## How it negotiates
 
-The aligner drives a real **NEGMAS Stacked Alternating Offers** negotiation, not
-an LLM improvising a consensus. The mechanism owns proposer rotation and the
+The aligner drives a real **NEGMAS Stacked Alternating Offers** negotiation, so
+consensus comes out of the mechanism rather than an LLM improvising one. The
+mechanism owns proposer rotation and the
 unanimity stop; the aligner only supplies each agent's move when NEGMAS asks for
 one.
 
@@ -34,7 +35,7 @@ one.
    as `rejected`.
 4. **Compile.** On agreement the aligner emits `commit:converged` carrying the
    agreed `{issue: value}` map, and `plan_compiler` (a separate LLM stage that
-   *consumes* the outcome, not part of the negotiation engine) turns it into the
+   *consumes* the outcome, distinct from the negotiation engine) turns it into the
    room's [shared plan](#plan), `plan/tasks.md`: a `- [ ]` checklist with
    `@handle` owners. This runs before the consensus is announced, so the plan
    exists by the time `await` returns.

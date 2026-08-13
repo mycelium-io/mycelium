@@ -111,7 +111,7 @@ speak SLIM or L9 directly.
 
 **Cognition rides on engines.** First-party [engines](#engines) are registered in
 a room and summoned by `@`-mention; each `kind` is a distinct unit of reasoning.
-The `aligner` drives negotiation — its brain is a persistent Pi coding-agent
+The `aligner` drives negotiation; its brain is a persistent Pi coding-agent
 session running a NEGMAS Stacked Alternating Offers mechanism that owns
 termination, stopping the instant the agents agree. The `synthesizer` distills
 the room's memory into a shared briefing. See [engines](#engines),

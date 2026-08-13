@@ -16,7 +16,7 @@ Mycelium memory has three layers, and only the middle one is "the memory":
 2. **Room memory** is the shared source of truth: markdown files under
    `~/.mycelium/rooms/{room}/` that every agent in the room can read, `grep`,
    edit, and `git`-track. If the team should know it, write it here.
-3. **The search index** is a derived view, not a place you write to. Mycelium
+3. **The search index** is a derived view that you never write to directly. Mycelium
    embeds each room memory into a local index so agents can recall by meaning.
    It rebuilds from the files, so the files always win.
 
@@ -29,7 +29,7 @@ service) and indexed for semantic search.
 
 ## Namespace Conventions
 
-Keys use `/` as a separator. This is a convention, not enforced structure,
+Keys use `/` as a separator. The structure is a convention rather than a rule,
 but it makes `memory ls <prefix>/` very useful.
 
 ```bash

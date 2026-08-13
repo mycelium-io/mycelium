@@ -82,7 +82,7 @@ Each negotiation opens with the team's earned confidence on this topic: a
 written to the room's own memory after each converged consensus
 (`l9/rule_update/topic`) and read back on the next negotiation, so it improves
 over time. Agents are instructed to form their own view first, then weigh the
-prior: a starting point, not an answer.
+prior as a starting point they can override.
 
 > Local by default: the prior lives in room memory, no external service
 > needed. Fail-soft: no prior, negotiation proceeds normally.
