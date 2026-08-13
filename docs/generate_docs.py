@@ -34,7 +34,7 @@ PAGES: list[tuple[str, str, str, str, str, str, str]] = [
      "Coordination layer for multi-agent systems. Install and run your first multi-agent coordination flow: room, agents, negotiation, plan."),
     ("concepts", "concepts.html", "Concepts · mycelium", "Concepts",
      "CON-001", "CONCEPTS · ROOMS · EPISODES · MEMORY · PLAN",
-     "The core concepts behind Mycelium: rooms, episodes, memory, plan, the aligner, and the L9 protocol."),
+     "The core concepts behind Mycelium: rooms, episodes, memory, plan, engines (the aligner and synthesizer), and the L9 protocol."),
     ("adapters", "adapters.html", "Adapters · mycelium", "Adapters",
      "ADP-001", "ADAPTERS · CLAUDE CODE · CURSOR · REST API",
      "Connect Claude Code, Cursor, or any HTTP client to the Mycelium coordination layer."),
@@ -56,6 +56,7 @@ SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
     ("episodes.md",                 "episodes",           "concepts",    "Concepts",     "Episodes"),
     ("memory.md",                   "memory",             "concepts",    "Concepts",     "Memory"),
     ("plan.md",                     "plan",               "concepts",    "Concepts",     "Plan"),
+    ("engines.md",                  "engines",            "concepts",    "Concepts",     "Engines"),
     ("aligner.md",                  "aligner",            "concepts",    "Concepts",     "Aligner"),
     ("l9-protocol.md",              "l9-protocol",        "concepts",    "Concepts",     "L9 Protocol"),
     # ── adapters (adapters.html) — all hand-coded ──

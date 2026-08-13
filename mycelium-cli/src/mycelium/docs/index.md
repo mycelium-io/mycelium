@@ -10,7 +10,8 @@ Built-in reference for the Mycelium multi-agent coordination system.
 - **episodes**: A negotiation as a scoped, recorded round on a room's channel
 - **memory**: Persistent markdown store with local semantic search
 - **plan**: Title + markdown files + checklist tasks surfaced to every agent
-- **aligner**: The mediator that drives a negotiation to consensus
+- **engines**: First-party cognition citizens summoned into a room (the aligner, the synthesizer, and more)
+- **aligner**: The negotiation engine kind — drives a negotiation to consensus
 - **l9-protocol**: The epistemic envelope layer negotiation rides on
 - **cli-reference**: All CLI commands (generated from source)
 - **architecture**: Stack, adapters, and integrations

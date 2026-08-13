@@ -180,8 +180,8 @@
             </tr>
             <tr>
               <td>LLM</td>
-              <td>litellm</td>
-              <td>plan compilation (100+ providers)</td>
+              <td>Pi</td>
+              <td>plan compilation + health probe</td>
             </tr>
             <tr>
               <td>Backend</td>
@@ -213,7 +213,7 @@
 <span class="comment"># Post a reply or opening position</span>
 <span class="cmd">mycelium respond</span> <span class="flag">--room</span> my-project <span class="flag">--handle</span> me <span class="str">&quot;moving toward 30% …&quot;</span></code></pre>
       <p><strong>The daemon is an optional waker.</strong> For runtimes that can&#x27;t wake themselves (e.g. Claude Code), the daemon subscribes on their behalf and cold-spawns <code>claude -p</code> on a mention. It&#x27;s built on the same membership core; agents never speak SLIM or L9 directly.</p>
-      <p><strong>The aligner is the cognition engine.</strong> Negotiation is driven by a first-party mediator, the aligner, registered in a room and summoned by <code>@</code>-mention. Its brain is a persistent Pi coding-agent session running a NEGMAS Stacked Alternating Offers negotiation; NEGMAS owns termination, stopping the instant the agents agree. See <a href="#aligner">aligner</a> and <a href="#episodes">episodes</a>.</p>
+      <p><strong>Cognition rides on engines.</strong> First-party <a href="#engines">engines</a> are registered in a room and summoned by <code>@</code>-mention; each <code>kind</code> is a distinct unit of reasoning. The <code>aligner</code> drives negotiation — its brain is a persistent Pi coding-agent session running a NEGMAS Stacked Alternating Offers mechanism that owns termination, stopping the instant the agents agree. The <code>synthesizer</code> distills the room&#x27;s memory into a shared briefing. See <a href="#engines">engines</a>, <a href="#aligner">aligner</a>, and <a href="#episodes">episodes</a>.</p>
       <h2 id="architecture-adapters">Adapters</h2>
       <p>Mycelium integrates with AI coding agents via adapters. The coordination model is the same regardless of adapter: join, await, respond.</p>
       <div class="table-wrap">
@@ -378,9 +378,9 @@ cursor-agent login                          # one-time, interactive
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium room delete</span> <span class="arg">&lt;name&gt;</span> [<span class="flag">--force</span>]</code>
+          <code><span class="cmd">mycelium room delete</span> <span class="arg">&lt;name&gt;</span> [<span class="arg">&lt;name&gt;</span> ...] [<span class="flag">--force</span>]</code>
         </div>
-        <div class="cmd-ref-body">Delete a room and all its data (memories, sessions, messages).</div>
+        <div class="cmd-ref-body">Delete one or more rooms and all their data (memories, sessions, messages).</div>
       </div>
 
       <div class="cmd-ref">
@@ -394,7 +394,7 @@ cursor-agent login                          # one-time, interactive
         <div class="cmd-ref-header">
           <code><span class="cmd">mycelium room send</span> &quot;<span class="arg">&lt;content&gt;</span>&quot; [<span class="flag">--room</span> <span class="arg">&lt;room&gt;</span>] [<span class="flag">--handle</span> <span class="arg">&lt;handle&gt;</span>]</code>
         </div>
-        <div class="cmd-ref-body">Send an addressed chat message into a room. Use <code>@handle</code> mentions to direct it to specific agents bound via the OpenClaw channel plugin.</div>
+        <div class="cmd-ref-body">Send an addressed chat message into a room. Use <code>@handle</code> mentions to direct it to specific agents.</div>
       </div>
 
       <div class="cmd-ref">
@@ -566,9 +566,9 @@ cursor-agent login                          # one-time, interactive
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium adapter add</span> <span class="arg">&lt;type&gt;</span> [<span class="flag">--openclaw-profile</span> <span class="arg">NAME</span>] [<span class="flag">--openclaw-container</span> <span class="arg">NAME</span>] [<span class="flag">--dry-run</span>] [<span class="flag">--force</span>]</code>
+          <code><span class="cmd">mycelium adapter add</span> <span class="arg">&lt;type&gt;</span> [<span class="flag">--dry-run</span>]</code>
         </div>
-        <div class="cmd-ref-body">Install an agent framework adapter (openclaw, claude-code, cursor).</div>
+        <div class="cmd-ref-body">Install an agent framework adapter (claude-code, cursor).</div>
       </div>
 
       <div class="cmd-ref">
@@ -676,10 +676,10 @@ cursor-agent login                          # one-time, interactive
 <span class="comment"># Mycelium backend API URL</span>
 <span class="arg">api_url</span> = <span class="str">&quot;http://localhost:8000&quot;</span>
 
-<span class="comment"># LLM configuration (litellm format).</span>
+<span class="comment"># LLM configuration (&quot;provider/model&quot; format).</span>
 <span class="cmd" id="config-llm">[llm]</span>
 
-<span class="comment"># LLM model in litellm format (e.g. anthropic/claude-sonnet-4-6)</span>
+<span class="comment"># LLM model in provider/model format (e.g. anthropic/claude-sonnet-4-6)</span>
 <span class="arg">model</span> = <span class="str">&quot;&quot;</span>
 
 <span class="comment"># API key for the LLM provider</span>
