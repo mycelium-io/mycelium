@@ -4,8 +4,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { Users } from "lucide-react";
 import { fetchRoomAgents, logFetchError, type AgentSummary } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/empty-state";
 import {
   Dialog,
   DialogContent,
@@ -121,17 +123,17 @@ export function AgentsPanel({ roomName }: Props) {
 
       <div className="flex-1 overflow-y-auto">
         {loaded && agents.length === 0 && (
-          <div className="text-center text-label text-muted-foreground py-10">
-            No agents registered
-            <div className="text-label text-muted-foreground mt-3">
-              add one with
-              <div className="mt-2">
-                <code className="font-mono text-micro bg-surface px-1.5 py-0.5 text-accent border border-border rounded whitespace-nowrap">
-                  mycelium agent add
-                </code>
-              </div>
-            </div>
-          </div>
+          <EmptyState
+            size="sm"
+            icon={Users}
+            title="No agents registered"
+            description="Agents are registered from the CLI."
+            action={
+              <code className="font-mono text-micro bg-surface px-1.5 py-0.5 text-accent border border-border rounded whitespace-nowrap">
+                mycelium agent add
+              </code>
+            }
+          />
         )}
 
         {agents.map((a) => (

@@ -18,6 +18,8 @@ import { RoomPlanHeader } from "@/components/room-plan-header";
 import { ConsentDialog } from "@/components/consent-dialog";
 import { L9Inspector } from "@/components/l9-inspector";
 import { NegotiationView } from "@/components/negotiation-view";
+import { EmptyState } from "@/components/empty-state";
+import { MessagesSquare } from "lucide-react";
 
 interface Event {
   id: string;
@@ -417,9 +419,11 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, pla
         ) : (
           <>
         {visible.length === 0 && (
-          <div className="text-center text-label text-muted-foreground py-16">
-            No messages yet
-          </div>
+          <EmptyState
+            icon={MessagesSquare}
+            title="No messages yet"
+            description="Post a position or @-mention an agent to get the room talking."
+          />
         )}
         <div className="py-3">
         {visible.map((ev, idx) => {

@@ -12,7 +12,9 @@ import {
   type PlanResponse,
   type PlanFile,
 } from "@/lib/api";
+import { ListChecks } from "lucide-react";
 import { MarkdownContent } from "./markdown-content";
+import { EmptyState } from "@/components/empty-state";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Chip } from "@/components/ui/chip";
 import { Button } from "@/components/ui/button";
@@ -210,9 +212,7 @@ function TasksDisclosure({
         </Button>
       </div>
       {tasks.length === 0 ? (
-        <div className="text-center text-label text-muted-foreground py-8">
-          No tasks yet — add one above
-        </div>
+        <EmptyState size="sm" icon={ListChecks} title="No tasks yet" description="Add one above, or reach consensus to compile a plan." />
       ) : (
         <ul>
           {tasks.map(t => (

@@ -4,7 +4,8 @@
 "use client";
 
 import { useMemo } from "react";
-import { X } from "lucide-react";
+import { Scale, X } from "lucide-react";
+import { EmptyState } from "@/components/empty-state";
 
 // The Negotiation instrument: the aligner's NEGMAS Stacked Alternating Offers
 // mechanism made visible. It reconstructs, purely from the coordination_tick /
@@ -151,14 +152,17 @@ export function NegotiationView({ events }: { events: readonly NegEvent[] }) {
 
   if (neg.state === "idle") {
     return (
-      <div className="flex h-full items-center justify-center px-8">
-        <div className="max-w-sm text-center">
-          <div className="text-ui font-medium text-text">No active negotiation</div>
-          <p className="mt-1.5 text-label text-muted-foreground leading-relaxed">
-            Summon the aligner with <code className="font-mono text-accent">@aligner</code> to broker one.
-            Offers, rounds, and convergence will render here live.
-          </p>
-        </div>
+      <div className="flex h-full items-center justify-center">
+        <EmptyState
+          icon={Scale}
+          title="No active negotiation"
+          description={
+            <>
+              Summon the aligner with <code className="font-mono text-accent">@aligner</code> to broker one.
+              Offers, rounds, and convergence render here live.
+            </>
+          }
+        />
       </div>
     );
   }
@@ -173,7 +177,7 @@ export function NegotiationView({ events }: { events: readonly NegEvent[] }) {
         <div className="flex items-center gap-3">
           {shortId && <span className="font-mono text-label text-muted-foreground">{shortId}</span>}
           <span className="text-label text-faint">Round</span>
-          <span className="font-mono text-label tabular text-text">{neg.currentRound || "—"}</span>
+          <span className="font-mono text-label tabular text-text">{neg.currentRound || "-"}</span>
           <span
             className="ml-auto rounded px-2 py-0.5 text-micro font-semibold capitalize"
             style={{ color: STATE_TONE[neg.state], background: `color-mix(in srgb, ${STATE_TONE[neg.state]} 14%, transparent)` }}

@@ -5,6 +5,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { Boxes } from "lucide-react";
+import { EmptyState } from "@/components/empty-state";
 import {
   fetchRooms,
   fetchRoomAgents,
@@ -20,9 +22,9 @@ interface Room {
 }
 
 function relativeTime(iso: string): string {
-  if (!iso) return "—";
+  if (!iso) return "-";
   const t = new Date(iso).getTime();
-  if (Number.isNaN(t)) return "—";
+  if (Number.isNaN(t)) return "-";
   const min = Math.floor((Date.now() - t) / 60_000);
   if (min < 1) return "just now";
   if (min < 60) return `${min}m ago`;
@@ -73,11 +75,12 @@ export function CommandCenter() {
         </header>
 
         {loaded && rooms.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-border2 px-6 py-16 text-center">
-            <p className="text-text">No rooms yet</p>
-            <p className="mt-1 text-label text-muted-foreground">
-              Create one from the sidebar to get started.
-            </p>
+          <div className="rounded-xl border border-dashed border-border2">
+            <EmptyState
+              icon={Boxes}
+              title="No rooms yet"
+              description="Create one from the sidebar to get started."
+            />
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -136,10 +139,10 @@ function RoomCard({ room }: { room: Room }) {
 
       <div className="mt-4 flex items-center gap-4 text-micro text-muted-foreground">
         <span className="tabular">
-          <span className="text-text">{agentCount ?? "—"}</span> agent{agentCount === 1 ? "" : "s"}
+          <span className="text-text">{agentCount ?? "-"}</span> agent{agentCount === 1 ? "" : "s"}
         </span>
         <span className="tabular">
-          <span className="text-text">{episodes?.length ?? "—"}</span> episode{episodes?.length === 1 ? "" : "s"}
+          <span className="text-text">{episodes?.length ?? "-"}</span> episode{episodes?.length === 1 ? "" : "s"}
         </span>
         {latestState && !latestState.live && (
           <span className="ml-auto flex items-center gap-1.5 capitalize" style={{ color: latestState.color }}>

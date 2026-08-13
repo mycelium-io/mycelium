@@ -6,10 +6,11 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { BarChart3, Plus, Search } from "lucide-react";
+import { BarChart3, Boxes, Plus, Search, SearchX } from "lucide-react";
 import { fetchRooms, logFetchError } from "@/lib/api";
 import { CreateRoomDialog } from "@/components/create-room-dialog";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { EmptyState } from "@/components/empty-state";
 
 interface Room {
   name: string;
@@ -92,9 +93,11 @@ export function RoomsSidebar({ activeRoom = null }: Props) {
       {/* Rooms list */}
       <nav className="flex-1 overflow-y-auto px-2 pb-2">
         {filtered.length === 0 ? (
-          <div className="px-2 py-6 text-center text-label text-muted-foreground">
-            {rooms.length === 0 ? "No rooms yet" : "No matches"}
-          </div>
+          rooms.length === 0 ? (
+            <EmptyState size="sm" icon={Boxes} title="No rooms yet" description="Create one with the + above." />
+          ) : (
+            <EmptyState size="sm" icon={SearchX} title="No matches" />
+          )
         ) : (
           filtered.map(room => {
             const active = room.name === activeRoom;

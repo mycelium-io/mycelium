@@ -4,8 +4,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { Activity } from "lucide-react";
 import { fetchEpisodes, logFetchError, type EpisodeSummary } from "@/lib/api";
 import { DetailDrawer } from "@/components/detail-drawer";
+import { EmptyState } from "@/components/empty-state";
 import { EpisodeDetail } from "@/components/episode-detail";
 
 // The room's episodes at a glance: each convening of the aligner is one episode
@@ -74,7 +76,12 @@ export function EpisodesRail({ roomName }: EpisodesRailProps) {
         {!loaded ? (
           <div className="px-4 py-8 text-center text-label text-muted-foreground">loading…</div>
         ) : episodes.length === 0 ? (
-          <div className="px-4 py-8 text-center text-label text-muted-foreground">No episodes yet</div>
+          <EmptyState
+            size="sm"
+            icon={Activity}
+            title="No episodes yet"
+            description="Summon the aligner to open a negotiation."
+          />
         ) : (
           episodes.map((ep) => {
             const color = outcomeColor(ep);

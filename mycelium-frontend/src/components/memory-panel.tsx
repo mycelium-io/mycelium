@@ -4,8 +4,10 @@
 "use client";
 
 import { useEffect, useMemo, useState, useCallback } from "react";
+import { Brain } from "lucide-react";
 import { fetchMemories, searchMemories } from "@/lib/api";
 import { DetailDrawer } from "@/components/detail-drawer";
+import { EmptyState } from "@/components/empty-state";
 import { MemoryDetail } from "@/components/memory-detail";
 
 interface Memory {
@@ -168,9 +170,12 @@ export function MemoryPanel({ roomName, refreshTrigger }: Props) {
             </button>
           ))}
           {memories.length === 0 && (
-            <div className="text-center text-label text-muted-foreground py-10">
-              No memories yet
-            </div>
+            <EmptyState
+              size="sm"
+              icon={Brain}
+              title="No memories yet"
+              description="Decisions, context, and status land here as the room works."
+            />
           )}
         </div>
       </div>

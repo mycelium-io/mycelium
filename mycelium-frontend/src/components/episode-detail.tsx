@@ -85,7 +85,7 @@ export function EpisodeDetail({ roomName, shortId }: { roomName: string; shortId
         <Meta label="Outcome">
           <span className="capitalize" style={{ color }}>{state}</span>
         </Meta>
-        <Meta label="Participants">{detail.participants.join(", ") || "—"}</Meta>
+        <Meta label="Participants">{detail.participants.join(", ") || "-"}</Meta>
         {detail.plan_file && (
           <Meta label="Plan"><span className="font-mono text-micro text-accent">{detail.plan_file}</span></Meta>
         )}

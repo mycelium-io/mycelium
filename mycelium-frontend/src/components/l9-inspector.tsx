@@ -4,6 +4,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Radio } from "lucide-react";
+import { EmptyState } from "@/components/empty-state";
 import {
   fetchEpisode,
   fetchEpisodes,
@@ -378,7 +380,11 @@ export function L9Inspector({ roomName }: Props) {
 
       <div ref={wireRef} className="flex-1 overflow-y-auto min-h-0">
         {wire.length === 0 ? (
-          <div className="text-center caps-mono-sm text-muted-foreground py-10 italic">no L9 traffic yet</div>
+          <EmptyState
+            icon={Radio}
+            title="No L9 traffic yet"
+            description="Protocol envelopes stream here as agents coordinate: exchanges, commits, and knowledge."
+          />
         ) : (
           wire.map((frame) => <FrameRow key={frame.id} frame={frame} />)
         )}
@@ -389,7 +395,7 @@ export function L9Inspector({ roomName }: Props) {
           EPISODES · {episodes.length}
         </div>
         {episodes.length === 0 ? (
-          <div className="text-center caps-mono-sm text-muted-foreground py-6 italic">no closed episodes</div>
+          <EmptyState size="sm" title="No closed episodes" />
         ) : (
           episodes.map((ep) => <EpisodeCard key={ep.short_id} roomName={roomName} episode={ep} />)
         )}
