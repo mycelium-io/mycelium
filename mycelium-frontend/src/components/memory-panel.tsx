@@ -5,6 +5,8 @@
 
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { fetchMemories, searchMemories } from "@/lib/api";
+import { DetailDrawer } from "@/components/detail-drawer";
+import { MemoryDetail } from "@/components/memory-detail";
 
 interface Memory {
   key: string;
@@ -32,6 +34,7 @@ export function MemoryPanel({ roomName, refreshTrigger }: Props) {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[] | null>(null);
   const [searching, setSearching] = useState(false);
+  const [selected, setSelected] = useState<Memory | null>(null);
 
   const loadData = useCallback(async () => {
     try {
@@ -129,7 +132,11 @@ export function MemoryPanel({ roomName, refreshTrigger }: Props) {
               </button>
             </div>
             {searchResults.map((r, i) => (
-              <div key={i} className="px-4 py-2.5 border-b border-border last:border-b-0">
+              <button
+                key={i}
+                onClick={() => setSelected(r.memory)}
+                className="block w-full text-left px-4 py-2.5 border-b border-border last:border-b-0 transition-colors hover:bg-hairline"
+              >
                 <div className="flex items-baseline gap-2 mb-1">
                   <span className="font-mono text-label text-accent truncate">{r.memory.key}</span>
                   <span className="text-micro tabular ml-auto text-muted-foreground">
@@ -137,7 +144,7 @@ export function MemoryPanel({ roomName, refreshTrigger }: Props) {
                   </span>
                 </div>
                 <p className="text-label text-muted-foreground line-clamp-2 leading-snug">{formatValue(r.memory.value)}</p>
-              </div>
+              </button>
             ))}
           </div>
         )}
@@ -145,7 +152,11 @@ export function MemoryPanel({ roomName, refreshTrigger }: Props) {
         {/* Memory list */}
         <div>
           {memories.map(mem => (
-            <div key={mem.key} className="px-4 py-3 border-b border-border last:border-b-0 transition-colors hover:bg-hairline">
+            <button
+              key={mem.key}
+              onClick={() => setSelected(mem)}
+              className="block w-full text-left px-4 py-3 border-b border-border last:border-b-0 transition-colors hover:bg-hairline"
+            >
               <div className="flex items-baseline gap-2 mb-1">
                 <span className="font-mono text-label text-accent truncate min-w-0">{mem.key}</span>
                 <span className="font-mono text-micro text-muted-foreground tabular flex-shrink-0">v{mem.version}</span>
@@ -154,7 +165,7 @@ export function MemoryPanel({ roomName, refreshTrigger }: Props) {
               <p className="text-label text-muted-foreground line-clamp-2 leading-snug">
                 {formatValue(mem.value)}
               </p>
-            </div>
+            </button>
           ))}
           {memories.length === 0 && (
             <div className="text-center text-label text-muted-foreground py-10">
@@ -163,6 +174,15 @@ export function MemoryPanel({ roomName, refreshTrigger }: Props) {
           )}
         </div>
       </div>
+
+      <DetailDrawer
+        open={selected !== null}
+        onClose={() => setSelected(null)}
+        title={selected?.key}
+        subtitle={selected ? `v${selected.version} · ${selected.created_by}` : undefined}
+      >
+        {selected && <MemoryDetail memory={selected} />}
+      </DetailDrawer>
     </div>
   );
 }

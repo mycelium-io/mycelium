@@ -5,6 +5,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { fetchEpisodes, logFetchError, type EpisodeSummary } from "@/lib/api";
+import { DetailDrawer } from "@/components/detail-drawer";
+import { EpisodeDetail } from "@/components/episode-detail";
 
 // The room's episodes at a glance: each convening of the aligner is one episode
 // (a scoped, recorded negotiation on the room's channel). This rail lists them;
@@ -29,6 +31,7 @@ interface EpisodesRailProps {
 export function EpisodesRail({ roomName }: EpisodesRailProps) {
   const [episodes, setEpisodes] = useState<EpisodeSummary[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [selected, setSelected] = useState<EpisodeSummary | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -78,7 +81,11 @@ export function EpisodesRail({ roomName }: EpisodesRailProps) {
             const live = isLive(ep);
             const state = ep.subkind ?? ep.outcome;
             return (
-              <div key={ep.short_id} className="flex w-full flex-col gap-1.5 px-4 py-2.5 text-left transition-colors hover:bg-hairline">
+              <button
+                key={ep.short_id}
+                onClick={() => setSelected(ep)}
+                className="flex w-full flex-col gap-1.5 px-4 py-2.5 text-left transition-colors hover:bg-hairline"
+              >
                 <div className="flex items-center gap-2">
                   <span
                     className={`inline-block size-1.5 flex-shrink-0 rounded-full ${live ? "" : "opacity-60"}`}
@@ -105,11 +112,20 @@ export function EpisodesRail({ roomName }: EpisodesRailProps) {
                     </span>
                   )}
                 </div>
-              </div>
+              </button>
             );
           })
         )}
       </div>
+
+      <DetailDrawer
+        open={selected !== null}
+        onClose={() => setSelected(null)}
+        title={selected ? `episode ${selected.short_id}` : undefined}
+        subtitle={selected?.topic}
+      >
+        {selected && <EpisodeDetail roomName={roomName} shortId={selected.short_id} />}
+      </DetailDrawer>
     </div>
   );
 }
