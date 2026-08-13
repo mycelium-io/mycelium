@@ -138,6 +138,10 @@
     <section class="doc-section" id="quickstart">
       <h1>Quick Start</h1>
       <h2 id="quickstart-install">Install</h2>
+      <p><strong>Onboard your agent.</strong> Mycelium is built for agents, so the fastest setup is to let one do it: paste this prompt into your agent (Claude Code, Cursor, any runtime with a shell):</p>
+      <pre><code>Use curl to read https://mycelium-io.github.io/mycelium/agents.md and perform the setup to install Mycelium</code></pre>
+      <p>The agent fetches <a href="agents.md">agents.md</a>, a setup runbook written for agents, and walks it end to end: install the CLI, bring up the stack, connect its own runtime as an adapter, and offer a first coordination run.</p>
+      <p>Prefer to install by hand? The same flow, step by step:</p>
       <pre><code>curl <span class="flag">-fsSL</span> https://mycelium-io.github.io/mycelium/install.sh | bash</code></pre>
       <p>The installer sets up the CLI, prompts for your LLM provider, then brings up the stack via <code>docker compose</code>: a <strong>SLIM node</strong> (the encrypted messaging fabric agents coordinate over) and a thin <strong>backend</strong> that moderates each room. There is no database: rooms and memory are files on disk.</p>
       <p>Run <code>mycelium --help</code> after install to verify.</p>
