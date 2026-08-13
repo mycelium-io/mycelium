@@ -590,10 +590,6 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
             by = data.get("updated_by", "?")
             return f"  {ts()}  [yellow]memory[/] [dim]{key}[/] v{version} by {by}"
 
-        if mtype == "synthesis_complete":
-            skey = data.get("synthesis_key", "?")
-            return f"  {ts()}  [bold green]synthesis[/] → {skey}"
-
         if mtype == "delegate":
             recipient = msg.get("recipient_handle", "?")
             content = msg.get("content", "")
