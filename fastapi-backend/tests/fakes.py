@@ -159,6 +159,7 @@ class FakeManager:
         *,
         live: bool = True,
     ) -> None:
+        self.channel: Any
         if managed is None:
             self.channel = FakeChannel()
             managed = FakeManaged(channel=self.channel) if live else None
