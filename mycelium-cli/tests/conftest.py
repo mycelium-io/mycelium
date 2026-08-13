@@ -13,7 +13,7 @@ What stands in for what:
 
 * :class:`FakeSlimClient` — ``mycelium.slim.client.SlimClient`` with a scripted
   inbox, for the member/daemon message-stream tests.
-* :class:`FakeResp` / :class:`FakeHTTPXClient` + the :func:`fake_httpx` fixture —
+* :class:`FakeResp` + the :func:`fake_httpx` fixture (sync + async clients) —
   ``httpx.AsyncClient`` / ``httpx.Client``, so the connector/daemon HTTP calls run
   without a backend.
 * :func:`stub_typed_client` (via the :func:`backend` fixture) — the generated
@@ -129,15 +129,11 @@ class FakeResp:
         return self._payload
 
 
-class FakeHTTPXClient:
-    """A stand-in for ``httpx.AsyncClient`` / ``httpx.Client`` (async + sync).
+class _FakeHTTPXBase:
+    """Shared recording + context-manager plumbing for the httpx fakes.
 
     Records every request as ``(method, url, json/params)`` onto the shared
-    ``calls`` list and returns a scripted :class:`FakeResp`. ``responder`` maps a
-    request to a response; by default every call yields an empty-payload 200.
-    Works as both an async and a sync context manager, so the one fake covers the
-    connector's ``async with httpx.AsyncClient()`` and a command's
-    ``with httpx.Client()``.
+    ``calls`` list and returns a scripted :class:`FakeResp` from ``responder``.
     """
 
     def __init__(
@@ -148,22 +144,19 @@ class FakeHTTPXClient:
         self._calls = calls
         self._responder = responder
 
-    # context-manager protocol (both flavors)
-    async def __aenter__(self) -> FakeHTTPXClient:
+    def _record(self, method: str, url: str, payload: dict) -> FakeResp:
+        self._calls.append((method, url, payload))
+        return self._responder(method, url, payload)
+
+
+class FakeAsyncHTTPXClient(_FakeHTTPXBase):
+    """Stand-in for ``httpx.AsyncClient`` (the connector/daemon path)."""
+
+    async def __aenter__(self) -> FakeAsyncHTTPXClient:
         return self
 
     async def __aexit__(self, *_exc: object) -> bool:
         return False
-
-    def __enter__(self) -> FakeHTTPXClient:
-        return self
-
-    def __exit__(self, *_exc: object) -> bool:
-        return False
-
-    def _record(self, method: str, url: str, payload: dict) -> FakeResp:
-        self._calls.append((method, url, payload))
-        return self._responder(method, url, payload)
 
     async def get(self, url: str, *, params: dict | None = None, **_: Any) -> FakeResp:
         return self._record("GET", url, params or {})
@@ -172,11 +165,27 @@ class FakeHTTPXClient:
         return self._record("POST", url, json or {})
 
 
+class FakeSyncHTTPXClient(_FakeHTTPXBase):
+    """Stand-in for ``httpx.Client`` (a command's ``with httpx.Client()``)."""
+
+    def __enter__(self) -> FakeSyncHTTPXClient:
+        return self
+
+    def __exit__(self, *_exc: object) -> bool:
+        return False
+
+    def get(self, url: str, *, params: dict | None = None, **_: Any) -> FakeResp:
+        return self._record("GET", url, params or {})
+
+    def post(self, url: str, *, json: dict | None = None, **_: Any) -> FakeResp:
+        return self._record("POST", url, json or {})
+
+
 class FakeHTTPX:
     """Controller returned by the :func:`fake_httpx` fixture.
 
-    ``calls`` accumulates every request; ``respond_with`` swaps in a custom
-    responder (default: an empty-payload 200 for everything).
+    ``calls`` accumulates every request (across both the sync and async fakes);
+    ``respond_with`` swaps in a custom responder (default: an empty-payload 200).
     """
 
     def __init__(self) -> None:
@@ -186,13 +195,16 @@ class FakeHTTPX:
     def respond_with(self, responder: Callable[[str, str, dict], FakeResp]) -> None:
         self._responder = responder
 
-    def _factory(self, *_a: object, **_k: object) -> FakeHTTPXClient:
-        return FakeHTTPXClient(self.calls, lambda m, u, p: self._responder(m, u, p))
+    def _async_factory(self, *_a: object, **_k: object) -> FakeAsyncHTTPXClient:
+        return FakeAsyncHTTPXClient(self.calls, lambda m, u, p: self._responder(m, u, p))
+
+    def _sync_factory(self, *_a: object, **_k: object) -> FakeSyncHTTPXClient:
+        return FakeSyncHTTPXClient(self.calls, lambda m, u, p: self._responder(m, u, p))
 
 
 @pytest.fixture
 def fake_httpx(monkeypatch: pytest.MonkeyPatch) -> FakeHTTPX:
-    """Patch ``httpx.AsyncClient`` and ``httpx.Client`` with a recording fake.
+    """Patch ``httpx.AsyncClient`` and ``httpx.Client`` with recording fakes.
 
     Modules under test do ``import httpx; httpx.AsyncClient(...)``, so patching the
     attribute on the ``httpx`` module covers all of them. Returns the
@@ -200,8 +212,8 @@ def fake_httpx(monkeypatch: pytest.MonkeyPatch) -> FakeHTTPX:
     ``.respond_with``.
     """
     ctrl = FakeHTTPX()
-    monkeypatch.setattr(httpx, "AsyncClient", ctrl._factory)
-    monkeypatch.setattr(httpx, "Client", ctrl._factory)
+    monkeypatch.setattr(httpx, "AsyncClient", ctrl._async_factory)
+    monkeypatch.setattr(httpx, "Client", ctrl._sync_factory)
     return ctrl
 
 
@@ -214,12 +226,14 @@ def stub_typed_client(
     *,
     api_url: str = "http://localhost:8000",
     room: str | None = None,
+    active_room: str | None = None,
 ) -> None:
     """Neutralize a command module's backend plumbing for a unit test.
 
     Patches, on ``module``:
 
-    * ``MyceliumConfig.load`` → a config pointing at ``api_url`` (no config file);
+    * ``MyceliumConfig.load`` → a config pointing at ``api_url`` (no config file),
+      whose ``get_active_room()`` returns ``active_room``;
     * ``_typed_client`` → a no-op context manager yielding a dummy client;
     * ``_resolve_room`` → ``room`` (when the module has one and ``room`` is given).
 
@@ -227,7 +241,10 @@ def stub_typed_client(
     (``monkeypatch.setattr("mycelium_backend_client.api.<...>.sync", fake)``), the
     same shape the pre-existing ``test_room_messages`` used.
     """
-    fake_config = SimpleNamespace(server=SimpleNamespace(api_url=api_url))
+    fake_config = SimpleNamespace(
+        server=SimpleNamespace(api_url=api_url),
+        get_active_room=lambda: active_room,
+    )
     if hasattr(module, "MyceliumConfig"):
         monkeypatch.setattr(module.MyceliumConfig, "load", classmethod(lambda _cls: fake_config))
     if hasattr(module, "_typed_client"):
@@ -248,8 +265,14 @@ def backend(monkeypatch: pytest.MonkeyPatch) -> Callable[..., None]:
     ``monkeypatch``.
     """
 
-    def _install(module: Any, *, api_url: str = "http://localhost:8000", room: str | None = None):
-        stub_typed_client(monkeypatch, module, api_url=api_url, room=room)
+    def _install(
+        module: Any,
+        *,
+        api_url: str = "http://localhost:8000",
+        room: str | None = None,
+        active_room: str | None = None,
+    ) -> None:
+        stub_typed_client(monkeypatch, module, api_url=api_url, room=room, active_room=active_room)
 
     return _install
 
