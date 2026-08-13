@@ -12,6 +12,7 @@ wake-over-a-node slice lives in the CLI's
 
 from __future__ import annotations
 
+import asyncio
 from typing import cast
 from unittest.mock import AsyncMock, MagicMock
 
@@ -96,6 +97,31 @@ async def test_publish_human_returns_none_without_a_live_channel():
     assert await manager.publish_human("no-such-room", sender="julia", text="@x hi") is None
 
 
+@pytest.mark.asyncio
+async def test_publish_human_treats_await_lease_holder_as_present():
+    """A bare-CLI agent long-polling ``await`` holds a presence lease but no SLIM
+    membership. An @-mention of it must be a wake (delivered via the transcript its
+    poll reads), not a consent invite."""
+    manager, _managed = _manager_with_channel(members=set())
+    manager.refresh_lease(_ROOM, "workpc")  # an active `await` long-poll
+
+    result = await manager.publish_human(_ROOM, sender="julia", text="@workpc ping")
+
+    assert result is not None
+    assert result.invites == []  # present via lease → wake, no consent prompt
+    assert manager.pending_invites(_ROOM) == []
+
+
+def test_status_members_include_await_leases():
+    """status() reports the roster the mediator sees — SLIM members plus live
+    leases — so a server-held ``await`` participant is visible on ``/health``."""
+    manager, _managed = _manager_with_channel(members={"agent-x"})
+    manager.refresh_lease(_ROOM, "workpc")
+
+    entry = next(r for r in manager.status()["rooms"] if r["room"] == _ROOM)
+    assert set(entry["members"]) == {"agent-x", "workpc"}
+
+
 # ── consent: accept joins, decline does not ───────────────────────────────────
 
 
@@ -113,6 +139,7 @@ async def test_absent_invite_accept_joins():
 
     accepted = await manager.accept_invite(invite.id)
     assert accepted is not None and accepted.status == invites.ACCEPTED
+    await asyncio.gather(*manager._tasks)  # accept schedules the SLIM invite off the request path
     invite_mock.assert_awaited_once_with(_ROOM, "bob")
     assert manager.pending_invites(_ROOM) == []  # no longer open
 
@@ -198,6 +225,7 @@ async def test_accept_invites_remote_agent_by_identity_only(monkeypatch):
 
     accepted = await manager.accept_invite(invite.id)
     assert accepted is not None and accepted.status == invites.ACCEPTED
+    await asyncio.gather(*manager._tasks)  # the invite now runs off the request path
 
     # Addressed by identity only (no host/endpoint) — host-independent membership.
     assert resolved == [("mycelium", _ROOM, "remote-bob")]
