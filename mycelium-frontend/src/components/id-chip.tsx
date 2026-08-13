@@ -23,7 +23,7 @@ export function IDChip({ kind, name, active, className }: Props) {
     <span
       className={`font-mono text-label truncate ${className ?? ""}`}
       title={kind}
-      style={{ color: active === false ? "var(--text2)" : "var(--text)", fontWeight: 600 }}
+      style={{ color: active === false ? "var(--muted-foreground)" : "var(--text)", fontWeight: 600 }}
     >
       {name}
     </span>

@@ -1,53 +1,139 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-@theme {
-  --color-bg: #0c0d10;
-  --color-surface: #111216;
-  --color-paper: #14161b;
-  --color-border: rgba(234, 234, 234, 0.10);
-  --color-border2: rgba(234, 234, 234, 0.22);
-  --color-accent: #5dd4e0;
-  --color-text: #eaeaea;
-  --color-text2: #a8a6a0;
-  --color-muted: #b8b5ae;
-  --color-dim: #46443e;
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ── Palette ─────────────────────────────────────────────────────────────
+ * Two themes, one contract. Raw values live in :root (light) and .dark;
+ * everything else references the runtime vars via `@theme inline` below, so a
+ * class toggle reskins the app.
+ *
+ * TEXT vs BACKGROUND is kept honest (the shadcn contract): a token is either a
+ * surface you sit ON, or a foreground you paint WITH — never both.
+ *
+ *   TEXT (foreground)                     BACKGROUND (surface / fill)
+ *   ───────────────────────────────       ───────────────────────────────
+ *   text-text              primary        bg-bg        app canvas
+ *   text-muted-foreground  secondary      bg-surface   rails, inputs
+ *                          — the legible  bg-paper     card / header band
+ *                            FLOOR for    bg-elevated  popovers, dialogs
+ *                            any text     bg-muted     quiet fill (hover, chip)
+ *   text-faint  DECORATION ONLY —         bg-accent-soft  tinted accent wash
+ *               rules, disabled glyphs,
+ *               separators. NEVER body.
+ *
+ * Two legible text levels + one decoration level. There is deliberately no
+ * "quiet but still readable text" tier to misuse — if it holds words, it is
+ * text or muted-foreground, both audited legible on every surface, both themes.
+ * Design intent: cool neutral greys, one accent doing one job, desaturated
+ * semantics reserved for true state — not general emphasis.
+ * ──────────────────────────────────────────────────────────────────────── */
+:root {
+  /* surfaces */
+  --bg: #ffffff;
+  --surface: #f2f4f6;
+  --paper: #ffffff;
+  --elevated: #ffffff;
+  --muted-bg: #eceef1;
+  --hairline: rgba(17, 20, 24, 0.035);
+  /* text (audited legible on #fff, #f2f4f6 and #eceef1) */
+  --text: #14171b;
+  --muted-foreground: #545c65;
+  --faint: #9198a0;
+  /* lines */
+  --border: rgba(17, 20, 24, 0.10);
+  --border2: rgba(17, 20, 24, 0.17);
+  /* accent (one job) */
+  --accent: #0c7d8f;
+  --accent-fg: #ffffff;
+  --accent-soft: rgba(12, 125, 143, 0.10);
+  /* semantic state */
+  --green: #0d8a63;
+  --yellow: #8a6410;
+  --red: #bd3f3a;
+}
+
+.dark {
+  /* surfaces */
+  --bg: #0c0e11;
+  --surface: #14171c;
+  --paper: #191d22;
+  --elevated: #21262d;
+  --muted-bg: #21262d;
+  --hairline: rgba(255, 255, 255, 0.035);
+  /* text (audited legible on #0c0e11, #14171c and #21262d) */
+  --text: #e8ebee;
+  --muted-foreground: #a7adb5;
+  --faint: #565d65;
+  /* lines */
+  --border: rgba(255, 255, 255, 0.08);
+  --border2: rgba(255, 255, 255, 0.16);
+  /* accent (one job) */
+  --accent: #5cc7d2;
+  --accent-fg: #06181b;
+  --accent-soft: rgba(92, 199, 210, 0.13);
+  /* semantic state */
+  --green: #4fc296;
+  --yellow: #d9a94e;
+  --red: #e6746f;
+}
+
+/* Raw-var back-compat: legacy CSS + inline styles reference var(--text2),
+ * var(--muted), var(--dim) directly. var() resolves lazily, so aliasing once
+ * here tracks whichever theme is active. All three now point at LEGIBLE text
+ * values (muted → the muted-foreground floor, not a background). */
+:root, .dark {
+  --text2: var(--muted-foreground);
+  --muted: var(--muted-foreground);
+  --dim: var(--faint);
+}
+
+@theme inline {
+  /* backgrounds */
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-paper: var(--paper);
+  --color-elevated: var(--elevated);
+  --color-muted: var(--muted-bg);
+  --color-hairline: var(--hairline);
+  --color-accent-soft: var(--accent-soft);
+  /* lines */
+  --color-border: var(--border);
+  --color-border2: var(--border2);
+  /* text */
+  --color-text: var(--text);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-faint: var(--faint);
+  /* accent + semantics (foreground uses; fills pair with -fg) */
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-green: var(--green);
+  --color-yellow: var(--yellow);
+  --color-red: var(--red);
+
+  /* Back-compat aliases for names still in the tree. text2 → the one muted
+   * text level; dim → decoration. Both resolve to legible/decoration values,
+   * so no surface can regress while call sites migrate. */
+  --color-text2: var(--muted-foreground);
+  --color-dim: var(--faint);
 
   /* ── font-size scale ─────────────────────────────────────────────────
    * Five semantic tokens. Pick by role, not pixels.
    *   text-micro   counts, timestamps, tabular nums, decorations
-   *   text-label   caps-mono labels (uppercase, tracked)
-   *   text-body    default table cells, secondary copy
+   *   text-label   secondary copy, dense labels
+   *   text-body    default conversation + table cells
    *   text-ui      room names, prominent identifiers
    *   text-display serif brand wordmark
    * ──────────────────────────────────────────────────────────────────── */
   --text-micro:   12px;
-  --text-label:   14px;
-  --text-body:    15px;
+  --text-label:   13px;
+  --text-body:    14px;
   --text-ui:      16px;
   --text-display: 25px;
 
   --font-mono: "Geist Mono", "SF Mono", "JetBrains Mono", Menlo, monospace;
   --font-sans: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, sans-serif;
   --font-serif: "Cormorant Garamond", Georgia, serif;
-}
-
-:root {
-  --bg: #0c0d10;
-  --surface: #111216;
-  --paper: #14161b;
-  --card: #14161b;
-  --border: rgba(234, 234, 234, 0.10);
-  --border2: rgba(234, 234, 234, 0.22);
-  --accent: #5dd4e0;
-  --accent2: #7dd3fc;
-  --green: #34d399;
-  --purple: #c084fc;
-  --yellow: #fbbf24;
-  --text: #eaeaea;
-  --text2: #a8a6a0;
-  --muted: #b8b5ae;
-  --dim: #46443e;
 }
 
 body {
@@ -57,15 +143,15 @@ body {
 }
 
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.10);
-  border-radius: 0;
+  background: var(--border2);
+  border-radius: 8px;
 }
-::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.18); }
+::-webkit-scrollbar-thumb:hover { background: var(--muted); }
 
 /* ── Onyx atoms (used by RM-000 + future screens) ── */
 
@@ -124,15 +210,17 @@ body {
   font-family: 'Geist Mono', 'SF Mono', Menlo, monospace;
   font-size: 0.9em;
   padding: 1px 5px;
-  background: rgba(255,255,255,0.06);
-  border-radius: 3px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
   color: var(--accent);
 }
 .markdown-body pre {
   margin: 0.5em 0;
   padding: 10px 12px;
-  background: rgba(255,255,255,0.04);
-  border-left: 2px solid var(--border2);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
   overflow-x: auto;
   font-family: 'Geist Mono', 'SF Mono', Menlo, monospace;
   font-size: var(--text-micro);
@@ -140,6 +228,7 @@ body {
 }
 .markdown-body pre code {
   background: none;
+  border: none;
   padding: 0;
   color: var(--text);
 }
@@ -161,7 +250,7 @@ body {
   text-align: left;
 }
 .markdown-body th {
-  background: rgba(255,255,255,0.04);
+  background: var(--surface);
   font-weight: 600;
   color: var(--text);
   text-transform: uppercase;
@@ -173,26 +262,29 @@ body {
 .markdown-body hr { border: none; border-top: 1px solid var(--border); margin: 0.8em 0; }
 .markdown-body a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
 
-/* shadcn/ui token bridge: maps shadcn's semantic tokens onto the
- * existing onyx palette so <Dialog>/<Button> render native-dark. We add
- * ONLY new token names here; the app's own --color-* (accent, border,
- * muted, …) are left untouched. ── */
+/* Conversation copy reads at primary contrast (chat is the human register). */
+.markdown-body.contrast p,
+.markdown-body.contrast li { color: var(--text); }
+.markdown-body.contrast p:first-child { margin-top: 0.15em; }
+
+/* shadcn/ui token bridge: maps shadcn's semantic tokens onto the app palette
+ * so <Dialog>/<Button>/<DropdownMenu> render in-theme (light + dark). Only
+ * shadcn token names live here; the app's own --color-* are defined above. ── */
 @theme inline {
   --color-background: var(--bg);
   --color-foreground: var(--text);
-  --color-popover: var(--surface);
+  --color-popover: var(--elevated);
   --color-popover-foreground: var(--text);
   --color-card: var(--paper);
   --color-card-foreground: var(--text);
   --color-primary: var(--accent);
-  --color-primary-foreground: var(--bg);
-  --color-secondary: var(--paper);
+  --color-primary-foreground: var(--accent-fg);
+  --color-secondary: var(--surface);
   --color-secondary-foreground: var(--text);
-  --color-muted-foreground: var(--muted);
   --color-accent-foreground: var(--text);
   --color-input: var(--border2);
   --color-ring: var(--accent);
-  --color-destructive: var(--red, #f87171);
+  --color-destructive: var(--red);
   --radius-sm: 0.375rem;
   --radius-md: 0.5rem;
   --radius-lg: 0.625rem;

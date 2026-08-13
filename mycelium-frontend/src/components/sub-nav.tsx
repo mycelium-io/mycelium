@@ -27,10 +27,10 @@ export function SubNav({ crumbs, actions }: SubNavProps) {
           const kind = c.sigil === "rm:" ? "room" : c.sigil === "ss:" ? "session" : null;
           const inner = kind
             ? <IDChip kind={kind} name={c.label} active={!c.href} />
-            : <span className="font-mono text-label truncate" style={{ color: c.href ? "var(--text2)" : "var(--text)", fontWeight: 600 }}>{c.label}</span>;
+            : <span className="text-label truncate" style={{ color: c.href ? "var(--muted-foreground)" : "var(--text)", fontWeight: 500 }}>{c.label}</span>;
           return (
             <span key={i} className="flex items-center gap-2 min-w-0">
-              {i > 0 && <span className="text-dim caps-mono-sm flex-shrink-0">/</span>}
+              {i > 0 && <span className="text-faint text-label flex-shrink-0">/</span>}
               {c.href
                 ? <Link href={c.href} className="hover:opacity-80 transition-opacity min-w-0">{inner}</Link>
                 : inner}

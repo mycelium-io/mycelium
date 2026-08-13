@@ -26,15 +26,16 @@ export function Chip({
   const accent = variant === "accent";
 
   const styles = cn(
-    "caps-mono-sm px-3 py-1.5 border transition-colors",
-    accent ? "border-accent/40" : "border-border",
+    "text-label font-medium rounded-full px-3 py-1 border transition-colors",
+    accent ? "border-accent/30" : "border-border",
     active
       ? accent
-        ? "bg-accent/[0.12]"
-        : "bg-paper"
-      : "bg-transparent",
-    accent ? "text-accent" : active ? "text-text" : "text-text2",
-    onClick && "hover:bg-paper cursor-pointer",
+        ? "bg-accent-soft text-accent"
+        : "bg-surface text-text"
+      : accent
+        ? "text-accent hover:bg-accent-soft"
+        : "text-muted-foreground hover:bg-surface",
+    onClick && "cursor-pointer",
     className,
   );
 

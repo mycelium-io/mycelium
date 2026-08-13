@@ -60,8 +60,8 @@ export function EpisodesRail({ roomName }: EpisodesRailProps) {
   return (
     <div className="flex h-full flex-col overflow-hidden bg-surface/40">
       <div className="flex items-center gap-2 border-b border-border bg-paper px-4 py-2.5">
-        <span className="caps-mono-sm text-muted">EPISODES</span>
-        <span className="ml-auto text-micro text-muted tabular">
+        <span className="text-label font-semibold text-text">Episodes</span>
+        <span className="ml-auto text-micro text-muted-foreground tabular">
           {counts.total}
           {counts.live > 0 && <span className="text-accent"> · {counts.live} live</span>}
         </span>
@@ -69,35 +69,38 @@ export function EpisodesRail({ roomName }: EpisodesRailProps) {
 
       <div className="flex-1 overflow-y-auto py-1">
         {!loaded ? (
-          <div className="px-4 py-8 text-center caps-mono-sm text-muted italic">loading…</div>
+          <div className="px-4 py-8 text-center text-label text-muted-foreground">loading…</div>
         ) : episodes.length === 0 ? (
-          <div className="px-4 py-8 text-center caps-mono-sm text-muted italic">no episodes yet</div>
+          <div className="px-4 py-8 text-center text-label text-muted-foreground">No episodes yet</div>
         ) : (
           episodes.map((ep) => {
             const color = outcomeColor(ep);
             const live = isLive(ep);
             const state = ep.subkind ?? ep.outcome;
             return (
-              <div key={ep.short_id} className="flex w-full flex-col gap-1 px-4 py-2 text-left">
+              <div key={ep.short_id} className="flex w-full flex-col gap-1.5 px-4 py-2.5 text-left transition-colors hover:bg-hairline">
                 <div className="flex items-center gap-2">
                   <span
-                    className={`square-dot filled ${live ? "pulse" : ""}`}
-                    style={{ width: 6, height: 6, color }}
+                    className={`inline-block size-1.5 flex-shrink-0 rounded-full ${live ? "" : "opacity-60"}`}
+                    style={{ background: color }}
                   />
                   <span
-                    className="font-mono text-label text-text2 truncate"
+                    className="font-mono text-micro text-muted-foreground truncate"
                     title={ep.episode || ep.short_id}
                   >
                     {ep.short_id}
                   </span>
-                  <span className="ml-auto text-micro text-muted tabular">{ep.message_count} msg</span>
+                  <span className="ml-auto text-micro text-muted-foreground tabular">{ep.message_count} msg</span>
                 </div>
-                <div className="flex items-center gap-1.5 pl-3">
-                  <span className="caps-mono-sm" style={{ color, fontSize: "var(--text-micro)" }}>
+                <div className="flex items-center gap-2 pl-3.5">
+                  <span
+                    className="rounded px-1.5 py-0.5 text-micro font-medium capitalize"
+                    style={{ color, background: `color-mix(in srgb, ${color} 12%, transparent)` }}
+                  >
                     {state}
                   </span>
                   {ep.participants.length > 0 && (
-                    <span className="text-micro text-muted truncate">
+                    <span className="text-micro text-muted-foreground truncate">
                       {ep.participants.join(", ")}
                     </span>
                   )}

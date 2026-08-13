@@ -5,6 +5,8 @@
 
 import { useState } from "react";
 import { createRoom } from "@/lib/api";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 interface Props {
   open: boolean;
@@ -40,38 +42,35 @@ export function CreateRoomDialog({ open, onClose, onCreated }: Props) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={handleClose}>
-      <div className="bg-surface border border-border rounded-xl p-6 w-[420px] shadow-2xl" onClick={e => e.stopPropagation()}>
-        <h2 className="text-lg font-bold mb-4">Create Room</h2>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={handleClose}>
+      <div className="bg-elevated border border-border rounded-xl p-6 w-[420px] shadow-2xl" onClick={e => e.stopPropagation()}>
+        <h2 className="text-ui font-semibold text-text mb-1">Create room</h2>
+        <p className="text-label text-muted-foreground mb-4">Give it a short, memorable name.</p>
 
-        <label className="block text-sm text-muted mb-1">Name</label>
-        <input
-          className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm font-mono focus:border-accent/50 focus:outline-none mb-4"
+        <Input
           value={name}
           onChange={e => {
             setName(e.target.value);
             if (error) setError(null);
           }}
+          onKeyDown={e => e.key === "Enter" && name && !loading && handleCreate()}
           placeholder="design-review"
+          autoFocus
         />
 
         {error && (
-          <p role="alert" className="text-sm text-red-400 mb-4 break-words">
+          <p role="alert" className="text-label text-red mt-3 break-words">
             {error}
           </p>
         )}
 
-        <div className="flex gap-3 justify-end">
-          <button onClick={handleClose} className="px-4 py-2 text-sm text-muted hover:text-white transition-colors">
+        <div className="flex gap-2 justify-end mt-5">
+          <Button variant="ghost" onClick={handleClose}>
             Cancel
-          </button>
-          <button
-            onClick={handleCreate}
-            disabled={!name || loading}
-            className="px-4 py-2 bg-accent/20 text-accent border border-accent/30 rounded-lg text-sm font-bold hover:bg-accent/30 transition-all disabled:opacity-50"
-          >
-            {loading ? "Creating..." : "Create"}
-          </button>
+          </Button>
+          <Button onClick={handleCreate} disabled={!name || loading}>
+            {loading ? "Creating…" : "Create room"}
+          </Button>
         </div>
       </div>
     </div>

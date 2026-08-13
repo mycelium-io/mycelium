@@ -6,13 +6,14 @@
 import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 const NAV_TABS = [
-  { id: "rooms", label: "ROOMS", href: "/" },
-  { id: "metrics", label: "METRICS", href: "/metrics" },
-  { id: "memory", label: "MEMORY" },
-  { id: "agents", label: "AGENTS" },
-  { id: "logs", label: "LOGS" },
+  { id: "rooms", label: "Rooms", href: "/" },
+  { id: "metrics", label: "Metrics", href: "/metrics" },
+  { id: "memory", label: "Memory" },
+  { id: "agents", label: "Agents" },
+  { id: "logs", label: "Logs" },
 ];
 
 interface MainTopBarProps {
@@ -22,8 +23,8 @@ interface MainTopBarProps {
 
 export function MainTopBar({ activeTab = "rooms", actions }: MainTopBarProps) {
   return (
-    <header className="flex h-[52px] flex-shrink-0 items-stretch border-b border-border2 bg-surface/80 backdrop-blur">
-      <Link href="/" className="flex items-center gap-3 border-r border-border px-5 transition-colors hover:bg-white/[0.025]">
+    <header className="flex h-[52px] flex-shrink-0 items-center gap-1 border-b border-border bg-surface/70 px-4 backdrop-blur">
+      <Link href="/" className="flex items-center gap-2.5 rounded-md px-2 py-1 transition-colors hover:bg-hairline">
         <Image src="/logo.png" alt="Mycelium" width={22} height={22} className="opacity-90" />
         <span
           className="text-display leading-none text-text"
@@ -33,7 +34,7 @@ export function MainTopBar({ activeTab = "rooms", actions }: MainTopBarProps) {
         </span>
       </Link>
 
-      <nav className="flex items-stretch border-r border-border px-3">
+      <nav className="ml-4 flex items-center gap-0.5">
         {NAV_TABS.map(t => {
           const active = t.id === activeTab;
           if (t.href) {
@@ -41,8 +42,10 @@ export function MainTopBar({ activeTab = "rooms", actions }: MainTopBarProps) {
               <Link
                 key={t.id}
                 href={t.href}
-                className={`flex items-center px-3 caps-mono-sm transition-colors ${
-                  active ? "text-accent" : "text-text2 hover:text-text"
+                className={`rounded-md px-3 py-1.5 text-label font-medium transition-colors ${
+                  active
+                    ? "bg-elevated text-text ring-1 ring-border"
+                    : "text-muted-foreground hover:text-text hover:bg-hairline"
                 }`}
               >
                 {t.label}
@@ -54,7 +57,7 @@ export function MainTopBar({ activeTab = "rooms", actions }: MainTopBarProps) {
               key={t.id}
               aria-disabled="true"
               title="coming soon"
-              className="flex items-center px-3 caps-mono-sm text-dim cursor-not-allowed select-none"
+              className="cursor-not-allowed rounded-md px-3 py-1.5 text-label font-medium text-faint select-none"
             >
               {t.label}
             </span>
@@ -62,8 +65,9 @@ export function MainTopBar({ activeTab = "rooms", actions }: MainTopBarProps) {
         })}
       </nav>
 
-      <div className="flex flex-1 items-center justify-end gap-3 px-5">
+      <div className="ml-auto flex items-center gap-2">
         {actions}
+        <ThemeToggle />
       </div>
     </header>
   );

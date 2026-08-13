@@ -4,6 +4,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ArrowUp } from "lucide-react";
 import { fetchRoomAgents, logFetchError, sendRoomMessage, type AgentSummary } from "@/lib/api";
 
 interface Props {
@@ -142,24 +143,10 @@ export function RoomChatBox({ roomName, defaultSender, onSent }: Props) {
   };
 
   return (
-    <div className="border-t border-border bg-paper px-3 pt-2 pb-3 flex-shrink-0">
-      <div className="flex items-center gap-2 pb-2">
-        <span className="caps-mono-sm text-muted">SEND AS</span>
-        <input
-          type="text"
-          value={sender}
-          onChange={(e) => setSender(e.target.value)}
-          placeholder="handle"
-          className="font-mono text-micro bg-bg border border-border rounded px-2 py-0.5 w-32 focus:outline-none focus:border-accent"
-        />
-        <span className="caps-mono-sm text-muted ml-auto">
-          {agents.length} agent{agents.length === 1 ? "" : "s"}
-        </span>
-      </div>
-
+    <div className="border-t border-border bg-bg px-4 py-3 flex-shrink-0">
       <div className="relative">
         {mention !== null && candidates.length > 0 && (
-          <div className="absolute bottom-full left-0 mb-1 z-20 w-full max-w-md bg-paper border border-border rounded shadow-lg overflow-hidden">
+          <div className="absolute bottom-full left-0 mb-2 z-20 w-full max-w-md bg-elevated border border-border rounded-xl shadow-xl overflow-hidden p-1">
             {candidates.map((a, i) => (
               <button
                 key={a.handle}
@@ -170,24 +157,18 @@ export function RoomChatBox({ roomName, defaultSender, onSent }: Props) {
                   acceptMention(a.handle);
                 }}
                 onMouseEnter={() => setHighlight(i)}
-                className={`w-full text-left px-3 py-1.5 flex items-baseline gap-2 ${
-                  i === highlight ? "bg-bg" : "hover:bg-bg/60"
+                className={`w-full text-left px-2.5 py-1.5 rounded-lg flex items-baseline gap-2 transition-colors ${
+                  i === highlight ? "bg-surface" : "hover:bg-surface/60"
                 }`}
               >
                 <span className="font-mono text-label text-accent flex-shrink-0">
                   @{a.handle}
                 </span>
-                <span
-                  className="caps-mono-sm tabular flex-shrink-0"
-                  style={{
-                    color:
-                      a.adapter === "openclaw" ? "var(--green)" : "var(--muted)",
-                  }}
-                >
+                <span className="text-micro text-muted-foreground flex-shrink-0">
                   {a.adapter}
                 </span>
                 {a.description && (
-                  <span className="text-micro text-muted truncate min-w-0">
+                  <span className="text-micro text-muted-foreground truncate min-w-0">
                     · {a.description}
                   </span>
                 )}
@@ -196,30 +177,45 @@ export function RoomChatBox({ roomName, defaultSender, onSent }: Props) {
           </div>
         )}
 
-        <textarea
-          ref={inputRef}
-          value={content}
-          onChange={handleChange}
-          onKeyDown={handleKeyDown}
-          placeholder="message the room · @ to mention an agent · ⇧⏎ for newline"
-          rows={2}
-          className="w-full resize-none bg-bg border border-border rounded px-3 py-2 font-mono text-label focus:outline-none focus:border-accent placeholder:text-muted"
-          disabled={sending}
-        />
-      </div>
-
-      <div className="flex items-center justify-between mt-1">
-        <span className="text-micro text-muted">
-          {error ? <span style={{ color: "var(--red)" }}>{error}</span> : ""}
-        </span>
-        <button
-          type="button"
-          onClick={submit}
-          disabled={!content.trim() || sending}
-          className="caps-mono-sm px-3 py-1 border border-accent text-accent rounded disabled:opacity-40 disabled:cursor-not-allowed hover:bg-accent hover:text-bg transition-colors"
-        >
-          {sending ? "SENDING…" : "SEND"}
-        </button>
+        <div className="flex flex-col rounded-2xl border border-border bg-surface transition-colors focus-within:border-accent focus-within:bg-bg">
+          <textarea
+            ref={inputRef}
+            value={content}
+            onChange={handleChange}
+            onKeyDown={handleKeyDown}
+            placeholder="Message the room…  @ to mention an agent"
+            rows={1}
+            className="w-full resize-none bg-transparent px-4 pt-3 pb-1.5 text-body text-text leading-relaxed focus:outline-none placeholder:text-muted-foreground max-h-40"
+            disabled={sending}
+          />
+          <div className="flex items-center gap-2 px-3 pb-2.5 pt-0.5">
+            <label className="flex items-center gap-1.5 text-micro text-muted-foreground">
+              <span>as</span>
+              <input
+                type="text"
+                value={sender}
+                onChange={(e) => setSender(e.target.value)}
+                placeholder="user"
+                aria-label="Send as handle"
+                size={Math.max(sender.length || 4, 4)}
+                className="font-mono text-micro bg-transparent text-muted-foreground rounded px-1 py-0.5 focus:outline-none focus:bg-surface hover:bg-surface transition-colors"
+              />
+            </label>
+            {error && <span className="text-micro text-red truncate">{error}</span>}
+            <button
+              type="button"
+              onClick={submit}
+              disabled={!content.trim() || sending}
+              aria-label="Send message"
+              className="ml-auto flex size-8 items-center justify-center rounded-full bg-accent text-accent-fg transition-opacity hover:opacity-90 disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              <ArrowUp className="size-4" strokeWidth={2.5} />
+            </button>
+          </div>
+        </div>
+        <div className="mt-1.5 px-1 text-micro text-muted-foreground">
+          <kbd className="font-sans">Enter</kbd> to send · <kbd className="font-sans">Shift+Enter</kbd> for newline
+        </div>
       </div>
     </div>
   );

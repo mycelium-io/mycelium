@@ -82,7 +82,7 @@ export default function RoomPage() {
           <RoomChatBox roomName={roomName} />
         </main>
 
-        <CollapsibleRail label="MEMORY" open={memoryOpen} onOpenChange={setMemoryOpen}>
+        <CollapsibleRail label="Memory" open={memoryOpen} onOpenChange={setMemoryOpen}>
           <MemoryPanel
             roomName={roomName}
             masId={room?.mas_id ?? null}

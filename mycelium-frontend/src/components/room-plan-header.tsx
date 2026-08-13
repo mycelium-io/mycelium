@@ -111,7 +111,7 @@ export function RoomPlanHeader({ roomName, refreshTrigger }: Props) {
             }}
             placeholder="name this plan…"
             rows={2}
-            className="w-full bg-transparent border-none outline-none resize-none leading-[1.05] text-text placeholder:text-muted"
+            className="w-full bg-transparent border-none outline-none resize-none leading-[1.05] text-text placeholder:text-muted-foreground"
             style={{
               fontFamily: "var(--font-serif, 'Cormorant Garamond', Georgia, serif)",
               fontStyle: "italic",
@@ -128,7 +128,7 @@ export function RoomPlanHeader({ roomName, refreshTrigger }: Props) {
               fontStyle: "italic",
               fontWeight: 600,
               fontSize: "2.5rem",
-              color: titleText ? "var(--text)" : "var(--muted)",
+              color: titleText ? "var(--text)" : "var(--muted-foreground)",
             }}
             title="click to edit"
           >
@@ -206,27 +206,27 @@ function TasksDisclosure({
           onClick={() => onAddTask()}
           disabled={!newTaskText.trim()}
         >
-          ADD
+          Add
         </Button>
       </div>
       {tasks.length === 0 ? (
-        <div className="text-center caps-mono-sm text-muted italic py-8">
-          no tasks yet. add one above
+        <div className="text-center text-label text-muted-foreground py-8">
+          No tasks yet — add one above
         </div>
       ) : (
         <ul>
           {tasks.map(t => (
             <li key={t.id}>
-              <label className="flex items-start gap-3 px-8 py-2 border-b border-border/40 cursor-pointer hover:bg-paper/30">
+              <label className="flex items-start gap-3 px-8 py-2.5 border-b border-border/40 cursor-pointer hover:bg-hairline">
                 <Checkbox
                   checked={t.done}
                   onCheckedChange={(checked) => onToggleTask(t.id, checked === true)}
-                  className="mt-0"
+                  className="mt-0.5"
                 />
-                <span className={"text-label font-mono flex-1 " + (t.done ? "line-through text-muted" : "text-text")}>
+                <span className={"text-body flex-1 " + (t.done ? "line-through text-muted-foreground" : "text-text")}>
                   {t.text}
                 </span>
-                <span className="caps-mono-sm text-dim tabular flex-shrink-0">{t.slug}</span>
+                <span className="font-mono text-micro text-faint tabular flex-shrink-0">{t.slug}</span>
               </label>
             </li>
           ))}
