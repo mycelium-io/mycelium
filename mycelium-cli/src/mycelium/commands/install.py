@@ -190,7 +190,7 @@ def _prompt_llm() -> dict[str, str]:
         return {"LLM_MODEL": model, "LLM_BASE_URL": "http://host.docker.internal:11434"}
 
     if choice.startswith("Custom"):
-        model = _ask("  \x1b[2mModel (litellm format, e.g. openai/my-model):\x1b[0m ")
+        model = _ask("  \x1b[2mModel (provider/model format, e.g. openai/my-model):\x1b[0m ")
         base_url = _ask("  \x1b[2mBase URL:\x1b[0m ")
         key = _ask("  \x1b[2mAPI key (or empty):\x1b[0m ")
         print(f"  \x1b[32m✓\x1b[0m {model} at {base_url}")
@@ -214,7 +214,7 @@ def _write_env_file(env_path: Path, llm_config: dict[str, str]) -> None:
 
     # On re-install, preserve existing .env and only update/append changed keys.
     # Remove LLM_BASE_URL when the new config doesn't include it — avoids
-    # leaving a stale empty value that breaks litellm (see #97).
+    # leaving a stale empty value that breaks the LLM client (see #97).
     if env_path.exists():
         _patch_env_vars(env_path, llm_config)
         if "LLM_BASE_URL" not in llm_config:
@@ -462,9 +462,9 @@ def _probe_llm_via_backend(api_url: str) -> tuple[str, str, str, str]:
     """Probe the configured LLM via the backend's /health endpoint.
 
     Uses ``check_llm=true&llm_probe=completion`` so the backend runs a real
-    ``litellm.acompletion(max_tokens=1)`` call.  This catches missing provider
-    SDK extras (boto3 for Bedrock, etc.), bad model strings, and auth errors —
-    all of which would otherwise only surface at first inference.
+    one-shot ``pi`` turn.  This catches a missing/broken ``pi`` binary, bad model
+    strings, and auth errors — all of which would otherwise only surface at first
+    inference.
 
     Returns ``(status, model, message, remediation)``.  Status is one of the
     LLMHealthResult states (ok | auth_error | missing_extras | bad_model |
@@ -638,7 +638,7 @@ def install(
         False, "--non-interactive", "-n", help="Skip prompts and animation (use --llm-model etc.)"
     ),
     llm_model: str = typer.Option(
-        "", "--llm-model", help="LLM model in litellm format (non-interactive)"
+        "", "--llm-model", help="LLM model in provider/model format (non-interactive)"
     ),
     llm_base_url: str = typer.Option("", "--llm-base-url", help="LLM base URL (non-interactive)"),
     llm_api_key: str = typer.Option("", "--llm-api-key", help="LLM API key (non-interactive)"),
@@ -682,7 +682,7 @@ def install(
 
     \b
     FLAGS (non-interactive)
-      --llm-model     LLM in litellm format, e.g. anthropic/claude-sonnet-4-6
+      --llm-model     LLM in provider/model format, e.g. anthropic/claude-sonnet-4-6
                       or openai/gpt-4o or ollama/llama3
       --llm-base-url  Custom base URL (required for ollama / local models)
       --llm-api-key   API key for the chosen LLM provider
@@ -1032,9 +1032,9 @@ def install(
         typer.secho("  ✓ Config written to ~/.mycelium/config.toml", fg=typer.colors.GREEN)
 
         # ── Phase 7: LLM connectivity probe ─────────────────────────────────
-        # Real litellm.completion(max_tokens=1) call inside the backend. Catches
-        # missing provider SDKs (e.g. boto3 for Bedrock), bad model strings,
-        # and auth errors that would otherwise only surface at first inference.
+        # Real one-shot pi turn inside the backend. Catches a missing/broken pi
+        # binary, bad model strings, and auth errors that would otherwise only
+        # surface at first inference.
         # On failure we ask the user whether to continue — never hard-fail,
         # since the user may be installing with a known-bad LLM config on purpose.
         if llm_config.get("LLM_MODEL"):

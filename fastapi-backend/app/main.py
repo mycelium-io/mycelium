@@ -193,10 +193,9 @@ async def root(
 
     * ``provider`` (default) — zero-cost model-list call.  Free but only validates
       openai/anthropic/ollama; returns "unchecked" for bedrock/vertex/etc.
-    * ``completion`` — real ``litellm.acompletion(max_tokens=1)`` call.  Exercises
-      the same code path as inference and surfaces missing provider SDK extras
-      (e.g. boto3 for Bedrock), bad model strings, and endpoint-level auth
-      failures.  Costs a single token.
+    * ``completion`` — real one-shot ``pi`` turn.  Exercises the same runtime as
+      inference and surfaces a missing/broken ``pi`` binary, bad model strings,
+      and endpoint-level auth failures.  Costs a single token.
     """
     from app.services.llm_health import get_config_status, probe_completion, probe_provider
 

@@ -148,7 +148,7 @@ def record_llm_call(
     duration_ms: float = 0.0,
     error: bool = False,
 ) -> None:
-    """Record a backend LLM call (litellm completion).
+    """Record a backend LLM call (a Pi completion).
 
     Per-operation token totals are tracked alongside the grand totals so that
     callers (e.g. ``mycelium metrics show mycelium``) can show per-operation

@@ -5,10 +5,13 @@ zero-cost provider probes using read-only model-list endpoints.
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import tempfile
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TypedDict
 
 import httpx
@@ -335,47 +338,24 @@ def invalidate_cache() -> None:
 # reports "unchecked" for everything else — which means a user with a broken
 # Bedrock or Vertex config sees a green tick until their first real inference.
 #
-# probe_completion() actually calls litellm.acompletion(max_tokens=1) so it
-# exercises the real code path and surfaces problems that only show up on the
-# first inference: missing provider SDKs (boto3 for Bedrock, google-cloud-aiplatform
-# for Vertex, etc.), bad model strings, and auth errors at the true endpoint.
-
-
-# Map the provider prefix used in litellm model strings to the package the user
-# needs to install.  Used only for remediation hints when we detect a missing SDK.
-_PROVIDER_EXTRAS: dict[str, str] = {
-    "bedrock": "boto3",
-    "sagemaker": "boto3",
-    "vertex_ai": "google-cloud-aiplatform",
-    "vertex": "google-cloud-aiplatform",
-    "gemini": "google-generativeai",
-    "azure": "openai",
-    "cohere": "cohere",
-    "watsonx": "ibm-watsonx-ai",
-}
+# probe_completion() runs a real one-shot ``pi`` turn — the same runtime the
+# aligner's brain and the plan compiler use — so it exercises the actual
+# inference path and surfaces problems that only show up on the first inference:
+# a missing/broken ``pi`` binary, bad model strings, and auth errors at the true
+# endpoint.
 
 
 _cached_completion: LLMHealthResult | None = None
 _cached_completion_at: float = 0.0
 
 
-def _missing_sdk_remediation(provider: str, raw_message: str) -> str:
-    """Build an actionable install hint for a missing provider SDK."""
-    pkg = _PROVIDER_EXTRAS.get(provider)
-    if pkg:
-        return f"Install the provider SDK in the backend container: pip install {pkg}"
-    # Fall back to surfacing the underlying import error — litellm often embeds
-    # the correct pip command in its own message.
-    return f"Install the provider SDK: {raw_message}"
-
-
 async def probe_completion() -> LLMHealthResult:
-    """Level C: real completion probe via ``litellm.acompletion(max_tokens=1)``.
+    """Level C: real completion probe via a one-shot ``pi`` turn.
 
-    Surfaces three failure modes that ``probe_provider()`` cannot:
+    Surfaces failure modes that ``probe_provider()`` cannot:
 
-    1. Missing provider SDK extras (e.g. boto3 for Bedrock) — reported as
-       ``missing_extras`` with an actionable ``pip install`` hint.
+    1. A missing or non-functional ``pi`` binary — reported as ``error`` with an
+       install hint.
     2. Bad model strings — reported as ``bad_model``.
     3. Auth failures at the actual inference endpoint (not just the model-list
        endpoint) — reported as ``auth_error``.
@@ -404,70 +384,24 @@ async def probe_completion() -> LLMHealthResult:
         "key_required": config_result.key_required,
     }
 
-    # Lazy import: litellm is a heavy dep, only pull it in when we actually probe.
-    try:
-        import litellm
-    except ImportError as exc:
-        result = _result(
-            base,
-            status="error",
-            message=f"litellm not available in backend: {exc}",
-            remediation="Reinstall backend dependencies: uv sync",
-        )
-        _cached_completion = result
-        _cached_completion_at = now
-        return result
-
-    kwargs: dict = {
-        "model": model,
-        "messages": [{"role": "user", "content": "ping"}],
-        "max_tokens": 1,
-        "temperature": 0,
-        "timeout": _PROBE_TIMEOUT,
-    }
-    if settings.LLM_API_KEY:
-        kwargs["api_key"] = settings.LLM_API_KEY
-    if settings.LLM_BASE_URL:
-        kwargs["base_url"] = settings.LLM_BASE_URL
-
-    # Local import to avoid circular import at module load (metrics.py imports
-    # nothing from llm_health, but keep this lazy for symmetry with litellm).
     from app.services.metrics import record_llm_call
 
-    # Record exactly one health_probe sample per call regardless of which
-    # exception path (or success path) the probe takes, using a single
-    # ``finally`` block. Previously each except branch duplicated the
-    # ``elapsed_ms = ...`` + ``record_llm_call(..., error=True)`` pair,
-    # which made it easy to drift: a new except clause that forgot to
-    # call ``record_llm_call`` would silently undercount errors.
     t0 = time.monotonic()
     probe_error = False
     try:
-        try:
-            await litellm.acompletion(**kwargs)
-            result = _result(base, status="ok", message="Completion probe succeeded")
-        except ModuleNotFoundError as exc:
-            probe_error = True
-            # Missing provider SDK extras (boto3, google-cloud-aiplatform, ...).
-            result = _result(
-                base,
-                status="missing_extras",
-                message=f"Missing provider SDK for {provider}: {exc}",
-                remediation=_missing_sdk_remediation(provider, str(exc)),
-            )
-        except ImportError as exc:
-            probe_error = True
-            # litellm raises plain ImportError for some provider deps (e.g. bedrock
-            # when boto3 is missing from its runtime). Treat the same as ModuleNotFoundError.
-            result = _result(
-                base,
-                status="missing_extras",
-                message=f"Missing provider SDK for {provider}: {exc}",
-                remediation=_missing_sdk_remediation(provider, str(exc)),
-            )
-        except Exception as exc:
-            probe_error = True
-            result = _classify_litellm_error(litellm, exc, provider, base)
+        await asyncio.wait_for(asyncio.to_thread(_pi_ping, model), timeout=_PROBE_TIMEOUT + 5)
+        result = _result(base, status="ok", message="Completion probe succeeded")
+    except TimeoutError:
+        probe_error = True
+        result = _result(
+            base,
+            status="unreachable",
+            message=f"Timeout probing {provider}",
+            remediation="Check network connectivity from the backend container",
+        )
+    except Exception as exc:  # a probe classifies every failure, never propagates
+        probe_error = True
+        result = _classify_pi_error(exc, provider, base)
     finally:
         elapsed_ms = (time.monotonic() - t0) * 1000
         record_llm_call(
@@ -482,68 +416,76 @@ async def probe_completion() -> LLMHealthResult:
     return result
 
 
-def _classify_litellm_error(
-    litellm_module,
-    exc: Exception,
-    provider: str,
-    base: _ProbeBase,
-) -> LLMHealthResult:
-    """Map a litellm exception to an LLMHealthResult status + remediation."""
-    exc_name = type(exc).__name__
-    exc_msg = str(exc)
+def _pi_ping(model: str) -> str:
+    """One blocking ``pi`` turn (``"ping"``) against the configured model."""
+    from app.services.pi_brain import PiBrain
 
-    # litellm wraps provider SDK ImportErrors inside its own exceptions — the
-    # underlying ModuleNotFoundError is often stringified inside the message.
+    session_dir = Path(tempfile.gettempdir()) / "mycelium-pi-sessions"
+    session_dir.mkdir(parents=True, exist_ok=True)
+    brain = PiBrain(
+        session_path=session_dir / "health-probe.jsonl",
+        model=model,
+        api_key=settings.LLM_API_KEY,
+        base_url=settings.LLM_BASE_URL,
+        binary=settings.ALIGNER_PI_BINARY,
+        timeout_s=float(_PROBE_TIMEOUT),
+        openshell=settings.ALIGNER_PI_OPENSHELL,
+    )
+    return brain("ping")
+
+
+def _classify_pi_error(exc: Exception, provider: str, base: _ProbeBase) -> LLMHealthResult:
+    """Map a ``pi`` probe failure to an LLMHealthResult status + remediation.
+
+    ``PiBrain`` raises ``PiBrainError`` with the process stderr embedded; we
+    classify off that text since ``pi`` has no typed exception hierarchy to walk.
+    """
+    exc_msg = str(exc)
     lower = exc_msg.lower()
-    if ("no module named" in lower) or ("install" in lower and "pip install" in lower):
+
+    if "not found on path" in lower:
         return _result(
             base,
-            status="missing_extras",
-            message=f"Missing provider SDK for {provider}: {exc_msg}",
-            remediation=_missing_sdk_remediation(provider, exc_msg),
+            status="error",
+            message=f"pi binary unavailable: {exc_msg}",
+            remediation="Install Pi (earendil-works/pi) in the backend container "
+            "or set ALIGNER_PI_BINARY to its path.",
         )
-
-    # Walk the known litellm exception hierarchy if available.
-    auth_cls = getattr(litellm_module, "AuthenticationError", None)
-    if auth_cls and isinstance(exc, auth_cls):
+    if (
+        "auth" in lower
+        or "api key" in lower
+        or "api-key" in lower
+        or "401" in lower
+        or "403" in lower
+    ):
         return _result(
             base,
             status="auth_error",
             message=f"Authentication failed for {provider}: {exc_msg}",
             remediation="Check LLM_API_KEY in ~/.mycelium/.env",
         )
-
-    bad_req_cls = getattr(litellm_module, "BadRequestError", None)
-    if bad_req_cls and isinstance(exc, bad_req_cls):
+    if (
+        "not found" in lower
+        or "unknown model" in lower
+        or "no such model" in lower
+        or "404" in lower
+    ):
         return _result(
             base,
             status="bad_model",
-            message=f"Bad request (likely invalid model string): {exc_msg}",
-            remediation=f"Check LLM_MODEL — expected litellm format like '{provider}/<model-id>'",
+            message=f"Model not found or invalid: {exc_msg}",
+            remediation=f"Check LLM_MODEL — expected provider/model like '{provider}/<model-id>'",
         )
-
-    not_found_cls = getattr(litellm_module, "NotFoundError", None)
-    if not_found_cls and isinstance(exc, not_found_cls):
-        return _result(
-            base,
-            status="bad_model",
-            message=f"Model not found: {exc_msg}",
-            remediation="Verify LLM_MODEL exists for this provider",
-        )
-
-    timeout_cls = getattr(litellm_module, "Timeout", None)
-    if timeout_cls and isinstance(exc, timeout_cls):
+    if "timeout" in lower or "timed out" in lower or "exceeded" in lower:
         return _result(
             base,
             status="unreachable",
             message=f"Timeout probing {provider}",
             remediation="Check network connectivity from the backend container",
         )
-
-    conn_cls = getattr(litellm_module, "APIConnectionError", None)
-    if conn_cls and isinstance(exc, conn_cls):
+    if "connect" in lower or "network" in lower or "unreachable" in lower:
         return _result(
             base, status="unreachable", message=f"Cannot connect to {provider}: {exc_msg}"
         )
 
-    return _result(base, status="error", message=f"{exc_name}: {exc_msg}")
+    return _result(base, status="error", message=f"{type(exc).__name__}: {exc_msg}")

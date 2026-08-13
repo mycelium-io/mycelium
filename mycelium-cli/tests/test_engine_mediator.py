@@ -29,6 +29,22 @@ def _fake_brain(prompt: str, *, system: str = "", temperature: float = 0.3) -> s
     return "Everyone is close on the cap; let's lock 30."
 
 
+def test_extract_json_tolerates_fences_and_prose() -> None:
+    """The extractor must survive how chat models actually wrap JSON."""
+    ex = mediator._extract_json
+    # bare object
+    assert ex('{"action":"accept"}') == {"action": "accept"}
+    # ```json code fence with surrounding prose
+    fenced = (
+        'Here is my reading:\n```json\n{"action": "counter", "offer": {"cap": "30"}}\n```\nDone.'
+    )
+    assert ex(fenced) == {"action": "counter", "offer": {"cap": "30"}}
+    # a stray brace in preamble must not break the greedy span (the old bug)
+    assert ex('I considered {a few options} and chose: {"action":"reject"}') == {"action": "reject"}
+    # no JSON at all → empty dict, never a crash
+    assert ex("I accept the offer on the table.") == {}
+
+
 def test_discover_issues_parses_and_filters() -> None:
     issues = mediator.discover_issues(
         "task",
@@ -71,9 +87,3 @@ async def test_core_terminates_at_agreement() -> None:
     assert assignments == {"cap": "30"}  # agreed value recovered
     # Anti-theatre: it stopped at agreement — far fewer turns than the step cap.
     assert 0 < len(prompts_sent) < cap
-
-
-def test_build_litellm_brain_shape() -> None:
-    """The brain factory returns an llm_sync-compatible callable (no live call)."""
-    brain = mediator.build_litellm_brain("anthropic/claude-haiku-4-5", api_key="k")
-    assert callable(brain)

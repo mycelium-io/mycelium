@@ -136,12 +136,12 @@ def _check_mycelium_dir_ownership() -> CheckResult:
 
 
 def _check_llm_connectivity() -> CheckResult:
-    """Probe the backend's LLM with a real ``litellm.completion(max_tokens=1)`` call.
+    """Probe the backend's LLM with a real one-shot ``pi`` turn.
 
-    Exercises the same code path as inference and surfaces problems that only
-    show up at first use — missing provider SDK extras (e.g. boto3 for Bedrock),
-    bad model strings, and auth failures at the actual endpoint (not just the
-    free model-list endpoint).
+    Exercises the same runtime as inference and surfaces problems that only
+    show up at first use — a missing/broken ``pi`` binary, bad model strings,
+    and auth failures at the actual endpoint (not just the free model-list
+    endpoint).
 
     Runs via ``GET /health?check_llm=true&llm_probe=completion`` so the probe
     executes inside the backend container, which is where LLM calls will

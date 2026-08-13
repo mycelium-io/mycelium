@@ -20,8 +20,7 @@ negotiator's ``propose``/``respond`` bridge back to the loop with
 reply the persister records, then interpret the prose in-thread. NEGMAS keeps
 full ownership of proposer rotation and the unanimity stop; we only supply each
 agent's move when NEGMAS asks for it. LLM calls (discover/broker/interpret) run
-synchronously in-thread via ``litellm.completion`` — which also sidesteps the
-Bedrock ``acompletion`` issue (see ``plan_compiler``).
+synchronously in-thread against the injected Pi brain (see ``brain.py``).
 
 The mediator is deliberately *interpretation over the agents' prose*: agents are
 never required to emit structured markers. The mediator restates its reading into
@@ -47,10 +46,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Bounded LLM turns keep interpretation cheap and predictable.
-_MAX_TOKENS = 500
+# Deterministic interpretation; brokering keeps the Pi brain's own default.
 _DISCOVER_TEMPERATURE = 0.0
-_BROKER_TEMPERATURE = 0.3
 
 # No-deal framing — the BATNA that turns a hardliner into a negotiator (the one
 # thing the v1 spike lacked). Appended to every agent-facing prompt.
@@ -62,49 +59,24 @@ _BATNA = (
 
 
 def _extract_json(text: str) -> dict[str, Any]:
-    """First ``{...}`` JSON object in a model response (empty dict on miss)."""
-    match = re.search(r"\{.*\}", text, re.DOTALL)
-    if not match:
-        return {}
-    try:
-        parsed = json.loads(match.group(0))
-    except json.JSONDecodeError:
-        return {}
-    return parsed if isinstance(parsed, dict) else {}
+    """First JSON object embedded in a model response (empty dict on miss).
 
-
-def build_litellm_brain(
-    model: str, *, api_key: str | None = None, base_url: str | None = None
-) -> Callable[..., str]:
-    """A synchronous ``llm(prompt, *, system, temperature) -> str`` over litellm.
-
-    The mediator's LLM turns run inside NEGMAS's ``mech.run()`` worker thread, so
-    the brain is blocking on purpose; ``litellm.completion`` also avoids the
-    Bedrock ``acompletion`` breakage the backend plan compiler documents. On the
-    host the LLM config comes from the mycelium CLI config, not the
-    backend settings — hence a factory bound to explicit params.
+    Robust to the ways a chat model wraps JSON: a ```` ```json ```` code fence,
+    a sentence of preamble, or trailing commentary. We scan for each ``{`` and
+    let :meth:`json.JSONDecoder.raw_decode` consume the longest valid object
+    starting there — unlike a greedy ``\\{.*\\}`` regex, which spans from the
+    first brace to the *last* brace anywhere in the text and so is broken by any
+    stray brace in prose. The first ``{`` that yields a dict wins.
     """
-
-    def llm_sync(prompt: str, *, system: str = "", temperature: float = _BROKER_TEMPERATURE) -> str:
-        import litellm
-
-        kwargs: dict[str, Any] = {
-            "model": model,
-            "max_tokens": _MAX_TOKENS,
-            "temperature": temperature,
-            "messages": (
-                ([{"role": "system", "content": system}] if system else [])
-                + [{"role": "user", "content": prompt}]
-            ),
-        }
-        if api_key:
-            kwargs["api_key"] = api_key
-        if base_url:
-            kwargs["base_url"] = base_url
-        response = litellm.completion(**kwargs)
-        return response.choices[0].message.content or ""
-
-    return llm_sync
+    decoder = json.JSONDecoder()
+    for match in re.finditer(r"\{", text):
+        try:
+            parsed, _ = decoder.raw_decode(text, match.start())
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict):
+            return parsed
+    return {}
 
 
 def discover_issues(
@@ -116,7 +88,7 @@ def discover_issues(
     ``{"name": snake_case, "options": [token, ...]}``. An empty/degenerate result
     (fewer than one issue) is a signal to the caller to bail to a rejected
     verdict rather than build an empty mechanism. ``llm`` is required — the host
-    runtime always injects a brain (litellm or Pi); there is no global fallback.
+    runtime always injects a Pi brain; there is no global fallback.
     """
     opening = "\n".join(f"@{handle}: {prose}" for handle, prose in positions.items())
     out = _extract_json(

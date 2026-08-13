@@ -115,27 +115,23 @@ async def fetch_openings(api_url: str, room: str, participants: list[str]) -> di
     return latest
 
 
-# ── Brain (host LLM config — litellm by default, pi where it lives) ──────────
+# ── Brain (host LLM config — always Pi, where it lives) ──────────────────────
 
 
 def build_host_brain(config: MyceliumConfig, episode: str) -> Callable[..., str]:
-    """Build the engine's cognitive brain from the **host** LLM config.
+    """Build the engine's cognitive brain from the **host** LLM config — always Pi.
 
-    Default ``litellm`` (stateless, over the mycelium-configured model). Set
-    ``ALIGNER_BRAIN=pi`` to drive a persistent Pi session instead — now possible
-    because the runtime lives on the host, where ``pi`` is installed.
-    Session/binary/timeout/sandbox mirror the backend knobs so a
-    host run is configured identically to the backend run it replaces.
+    A persistent Pi session (the engine's only brain, matching the backend
+    aligner) bound to a per-episode ``--session`` file so the mediator keeps real
+    memory across SAO rounds. Running on the host is the whole point of relocating
+    the runtime here: ``pi`` is installed on the host.
+    Session/binary/timeout/sandbox mirror the backend knobs so a host run is
+    configured identically to the backend run it replaces.
     """
     model = config.llm.model
     if not model:
         msg = "engine: no llm.model configured — set `mycelium config set llm.model ...`"
         raise ValueError(msg)
-
-    if os.getenv("ALIGNER_BRAIN", "litellm").strip().lower() != "pi":
-        from mycelium.engine.mediator import build_litellm_brain
-
-        return build_litellm_brain(model, api_key=config.llm.api_key, base_url=config.llm.base_url)
 
     from mycelium.engine.brain import PiBrain
 

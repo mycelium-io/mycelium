@@ -98,11 +98,11 @@ class SlimConfig(BaseModel):
 
 
 class LLMConfig(BaseModel):
-    """LLM configuration (litellm format)."""
+    """LLM configuration ("provider/model" format)."""
 
     model: str | None = Field(
         default=None,
-        description="LLM model in litellm format (e.g. anthropic/claude-sonnet-4-6)",
+        description="LLM model in provider/model format (e.g. anthropic/claude-sonnet-4-6)",
     )
     api_key: str | None = Field(
         default=None,
