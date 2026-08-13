@@ -280,6 +280,19 @@ const pricing: RoomFixture = {
     { key: "agents/aligner", value: agentManifest("First-party mediator (NEGMAS SAO).", "engine"), created_by: "operator", version: 1, updated_at: iso(160) },
     { key: "agents/synthesizer", value: agentManifest("Distills room memory into a shared briefing.", "engine"), created_by: "operator", version: 1, updated_at: iso(160) },
     { key: "context/goal", value: "Pick a launch price for the Pro tier.", content_text: "Pick a launch price for the Pro tier.", created_by: "operator", version: 1, updated_at: iso(175) },
+    {
+      key: "context/synthesis",
+      value:
+        "# Pricing model — room briefing\n\n" +
+        "**Goal.** Pick a launch price for the Pro tier.\n\n" +
+        "**Outcome.** Pro launches at **$39/seat**, 75 seats, annual term — margin held above 60%.\n\n" +
+        "_Owners:_ @finance guards margin; @growth drives adoption.",
+      content_text:
+        "Pricing briefing: Pro tier launches at $39/seat, 75 seats, annual; margin held above 60%.",
+      created_by: "synthesizer",
+      version: 1,
+      updated_at: iso(6),
+    },
   ],
   plan: { room: "pricing-model", title: null, files: [], tasks: [], open_count: 0, done_count: 0 },
   messages: [
