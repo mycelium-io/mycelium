@@ -24,6 +24,7 @@
 
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
+import { Play } from "lucide-react";
 import {
   fmtNum, fmtUsd, fmtMs, fmtAgo, fmtDur,
   statusKind, errorRate, histAvg,
@@ -127,7 +128,7 @@ function deriveModels(c: CollectorMetrics): ByModel[] {
 // ── Atoms ─────────────────────────────────────────────────────────────────
 
 function Caps({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <div className={`caps-mono-sm text-muted ${className}`}>{children}</div>;
+  return <div className={`text-micro font-medium uppercase tracking-wide text-muted-foreground ${className}`}>{children}</div>;
 }
 
 function Sparkline({ values, width = 110, height = 30, dim = false }: {
@@ -138,7 +139,7 @@ function Sparkline({ values, width = 110, height = 30, dim = false }: {
   const stride = width / (values.length - 1);
   const points = values.map((v, i) => `${i * stride},${height - (v / max) * height}`).join(" ");
   const areaPoints = `0,${height} ${points} ${width},${height}`;
-  const stroke = dim ? "var(--muted)" : "var(--accent)";
+  const stroke = dim ? "var(--muted-foreground)" : "var(--accent)";
   return (
     <svg width={width} height={height} className="block flex-shrink-0">
       <polygon points={areaPoints} fill={stroke} opacity="0.10" />
@@ -166,31 +167,31 @@ function HeaderBand({
   setIntervalSec: (s: number) => void;
 }) {
   return (
-    <div className="flex h-[40px] flex-shrink-0 items-center gap-4 border-b border-border bg-paper px-5">
-      <div className="font-mono text-micro text-muted">
+    <div className="flex h-[44px] flex-shrink-0 items-center gap-4 border-b border-border bg-paper px-5">
+      <div className="font-mono text-micro text-muted-foreground">
         {backend ? (
           <>
-            up <span className="text-text2">{fmtDur(backend.started_at)}</span>
-            <span className="mx-1.5 text-dim">·</span>
-            updated <span className="text-text2">{fmtAgo(backend.updated_at)}</span>
+            up <span className="text-text">{fmtDur(backend.started_at)}</span>
+            <span className="mx-1.5 text-faint">·</span>
+            updated <span className="text-text">{fmtAgo(backend.updated_at)}</span>
           </>
         ) : (
-          <span className="text-accent">backend unreachable</span>
+          <span className="text-yellow">backend unreachable</span>
         )}
       </div>
 
       <div className="ml-auto flex items-center gap-3">
-        <div className="flex items-center gap-1.5">
-          <span className="caps-mono-sm text-dim">every</span>
-          <div className="flex border border-border">
+        <div className="flex items-center gap-2">
+          <span className="text-micro text-faint">Every</span>
+          <div className="flex items-center gap-0.5 rounded-lg border border-border bg-surface p-0.5">
             {[5, 10, 30, 60].map(s => {
               const on = intervalSec === s;
               return (
                 <button
                   key={s}
                   onClick={() => setIntervalSec(s)}
-                  className={`caps-mono-sm px-2 py-0.5 transition-colors ${
-                    on ? "bg-accent text-bg" : "text-text2 hover:text-text"
+                  className={`rounded-md px-2 py-0.5 text-micro font-medium tabular transition-colors ${
+                    on ? "bg-elevated text-text shadow-sm ring-1 ring-border" : "text-muted-foreground hover:text-text"
                   }`}
                 >
                   {s}s
@@ -200,27 +201,22 @@ function HeaderBand({
           </div>
         </div>
 
-        <div className="flex items-stretch border border-border">
+        <div className="flex items-stretch overflow-hidden rounded-lg border border-border">
           <button
             onClick={() => setPaused(!paused)}
-            className={`caps-mono-sm flex items-center gap-2 border-r border-border px-2.5 transition-colors ${
-              paused ? "text-text2 hover:text-text" : "text-accent"
+            className={`flex items-center gap-1.5 border-r border-border px-2.5 text-micro font-medium transition-colors ${
+              paused ? "text-muted-foreground hover:text-text" : "text-text"
             }`}
           >
             {paused ? (
               <>
-                <span style={{
-                  width: 0, height: 0,
-                  borderLeft: "6px solid currentColor",
-                  borderTop: "4px solid transparent",
-                  borderBottom: "4px solid transparent",
-                }} />
-                paused
+                <Play className="size-3" />
+                Paused
               </>
             ) : (
               <>
-                <span className="square-dot pulse filled" />
-                live
+                <span className="inline-block size-1.5 rounded-full bg-accent" />
+                Live
               </>
             )}
           </button>
@@ -233,20 +229,19 @@ function HeaderBand({
 
 function CollectorChip({ on }: { on: boolean }) {
   return (
-    <div className="group relative flex items-center gap-2 px-2.5">
-      <span className={`square-dot ${on ? "filled" : ""}`}
-            style={{ color: on ? "var(--accent)" : "var(--dim)" }} />
-      <span className={`caps-mono-sm ${on ? "text-text2" : "text-muted"}`}>
-        collector {on ? "on" : "off"}
+    <div className="group relative flex items-center gap-1.5 px-2.5">
+      <span className="inline-block size-1.5 rounded-full" style={{ background: on ? "var(--accent)" : "var(--faint)" }} />
+      <span className="text-micro font-medium text-muted-foreground">
+        Collector {on ? "on" : "off"}
       </span>
       {!on && (
-        <div className="pointer-events-none absolute right-0 top-full z-10 mt-1.5 w-[280px] origin-top-right border border-border2 bg-paper px-3.5 py-3 opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
-          <div className="caps-mono-sm text-muted">COLLECTOR OFF</div>
-          <p className="mt-1.5 text-micro leading-relaxed text-text2">
+        <div className="pointer-events-none absolute right-0 top-full z-10 mt-1.5 w-[280px] origin-top-right rounded-xl border border-border bg-elevated px-3.5 py-3 opacity-0 shadow-xl transition-opacity group-hover:opacity-100">
+          <div className="text-micro font-medium uppercase tracking-wide text-muted-foreground">Collector off</div>
+          <p className="mt-1.5 text-micro leading-relaxed text-muted-foreground">
             Cost, agent activity, and per-model breakdowns are not collected. Start the
             collector in another terminal to populate this section within 30s.
           </p>
-          <div className="mt-2 border border-accent/40 bg-accent/[0.06] px-2.5 py-1.5 font-mono text-micro text-accent">
+          <div className="mt-2 rounded-lg border border-border bg-surface px-2.5 py-1.5 font-mono text-micro text-accent">
             mycelium metrics collect
           </div>
         </div>
@@ -270,7 +265,7 @@ function KpiPlate({
   cta?: string;
 }) {
   const valueColor = (() => {
-    if (disabled) return "var(--dim)";
+    if (disabled) return "var(--faint)";
     if (errorRatePct != null && errorRatePct > 0) {
       // lerp from --text (#eaeaea) to red (#f87171) clamped at 20%
       const t = Math.min(errorRatePct / 20, 1);
@@ -297,7 +292,7 @@ function KpiPlate({
         >
           {value}
         </div>
-        <div className="text-micro leading-snug text-muted tabular">{sub}</div>
+        <div className="text-micro leading-snug text-muted-foreground tabular">{sub}</div>
         {disabled && cta && (
           <div className="font-mono text-micro text-accent">{cta}</div>
         )}
@@ -318,7 +313,7 @@ function LatencyStrip({ name, h }: { name: string; h?: BackendHistogram }) {
     return (
       <div className="border-r border-border px-5 py-3 last:border-r-0">
         <Caps>{name}</Caps>
-        <div className="mt-1.5 text-micro italic text-dim">no samples</div>
+        <div className="mt-1.5 text-micro italic text-faint">no samples</div>
       </div>
     );
   }
@@ -327,7 +322,7 @@ function LatencyStrip({ name, h }: { name: string; h?: BackendHistogram }) {
     <div className="border-r border-border px-5 py-3 last:border-r-0">
       <div className="flex items-baseline justify-between">
         <Caps>{name}</Caps>
-        <span className="font-mono text-micro text-dim">n={h.count}</span>
+        <span className="font-mono text-micro text-faint">n={h.count}</span>
       </div>
       <div className="mt-2 grid grid-cols-3 gap-3 tabular">
         <Cell k="avg" v={fmtMs(avg)} />
@@ -341,7 +336,7 @@ function LatencyStrip({ name, h }: { name: string; h?: BackendHistogram }) {
 function Cell({ k, v }: { k: string; v: string }) {
   return (
     <div className="flex flex-col gap-0.5">
-      <span className="font-mono text-micro text-dim">{k}</span>
+      <span className="font-mono text-micro text-faint">{k}</span>
       <span className="font-mono text-label font-semibold text-text">{v}</span>
     </div>
   );
@@ -369,9 +364,9 @@ function DiagTile({ title, rows, footer, alert = false }: {
           const a = opts?.alert;
           return (
             <div key={i} className="flex items-baseline justify-between gap-3 py-0.5">
-              <span className="text-micro lowercase text-muted">{k}</span>
+              <span className="text-micro lowercase text-muted-foreground">{k}</span>
               <span className={`font-mono text-label font-semibold tabular ${
-                a ? "italic text-accent" : dim ? "text-dim" : "text-text"
+                a ? "italic text-accent" : dim ? "text-faint" : "text-text"
               }`}>
                 {v}
               </span>
@@ -380,7 +375,7 @@ function DiagTile({ title, rows, footer, alert = false }: {
         })}
       </div>
       {footer && (
-        <div className="border-t border-border px-3.5 py-1.5 text-micro italic text-dim">{footer}</div>
+        <div className="border-t border-border px-3.5 py-1.5 text-micro italic text-faint">{footer}</div>
       )}
     </div>
   );
@@ -398,14 +393,14 @@ function CfnStatusTile({ cfn }: { cfn?: Record<string, number> }) {
     <div className="flex flex-col border border-border2 bg-paper">
       <div className="flex items-baseline justify-between border-b border-border px-3.5 py-2">
         <Caps className={hasErr ? "text-accent" : ""}>CFN HTTP</Caps>
-        <span className="font-mono text-micro text-dim">{fmtNum(cfn?.calls)}</span>
+        <span className="font-mono text-micro text-faint">{fmtNum(cfn?.calls)}</span>
       </div>
       <div className="flex-1 px-3.5 py-2">
         <Row k="mgmt" v={fmtNum(cfn?.["calls.mgmt"])} />
         <Row k="node" v={fmtNum(cfn?.["calls.node"])} />
         <div className="my-1.5 h-px bg-border" />
         {codes.length === 0 ? (
-          <div className="py-0.5 text-micro italic text-dim">no calls</div>
+          <div className="py-0.5 text-micro italic text-faint">no calls</div>
         ) : codes.map(({ code, count }) => {
           const k = statusKind(code);
           const label = code === "0" ? "transport err" : `HTTP ${code}`;
@@ -428,9 +423,9 @@ function Row({ k, v, alert = false, dim = false }: {
 }) {
   return (
     <div className="flex items-baseline justify-between gap-3 py-0.5">
-      <span className={`text-micro lowercase ${alert ? "text-accent" : "text-muted"}`}>{k}</span>
+      <span className={`text-micro lowercase ${alert ? "text-accent" : "text-muted-foreground"}`}>{k}</span>
       <span className={`font-mono text-label font-semibold tabular ${
-        alert ? "italic text-accent" : dim ? "text-dim" : "text-text"
+        alert ? "italic text-accent" : dim ? "text-faint" : "text-text"
       }`}>
         {v}
       </span>
@@ -448,15 +443,15 @@ function AgentActivityTable({ collector }: { collector: CollectorMetrics }) {
   return (
     <div className="border-b border-border2 px-6 py-5">
       <div className="mb-3.5 flex items-baseline justify-between">
-        <Caps className="text-text2">AGENT ACTIVITY</Caps>
-        <span className="font-mono text-micro italic text-dim">
+        <Caps className="text-muted-foreground">AGENT ACTIVITY</Caps>
+        <span className="font-mono text-micro italic text-faint">
           collector · {(collector.sessions || []).length} sessions · {agents.length} agents
         </span>
       </div>
       {agents.length === 0 ? (
         <div className="border border-dashed border-border2 bg-paper px-5 py-4">
           <Caps>WAITING ON OTLP</Caps>
-          <p className="mt-1.5 max-w-[640px] text-micro leading-relaxed text-text2">
+          <p className="mt-1.5 max-w-[640px] text-micro leading-relaxed text-muted-foreground">
             The collector is online but no OpenClaw agents are exporting traces. Wire it up with{" "}
             <span className="font-mono text-accent">mycelium adapter add openclaw --step=otel</span>{" "}
             and send a message through one of your configured channels. Per-agent rows appear here as soon as the first trace arrives.
@@ -482,17 +477,17 @@ function AgentActivityTable({ collector }: { collector: CollectorMetrics }) {
               <span className="text-label font-semibold text-text">{a.agent}</span>
               <span className="font-mono text-label tabular text-text">{fmtNum(a.tokens)}</span>
               <span className="font-mono text-label tabular text-text">{fmtUsd(a.cost)}</span>
-              <span className="font-mono text-label tabular text-text2">{a.sessions}</span>
+              <span className="font-mono text-label tabular text-muted-foreground">{a.sessions}</span>
               <div className="flex items-center gap-2">
                 <div className="relative h-1 w-[120px] flex-shrink-0 bg-border">
                   <div className="absolute inset-y-0 left-0 bg-accent/85"
                        style={{ width: `${(a.tokens / total) * 100}%` }} />
                 </div>
-                <span className="font-mono text-micro tabular text-muted">
+                <span className="font-mono text-micro tabular text-muted-foreground">
                   {Math.round((a.tokens / total) * 100)}%
                 </span>
               </div>
-              <span className="font-mono text-micro text-muted text-right">{a.last}</span>
+              <span className="font-mono text-micro text-muted-foreground text-right">{a.last}</span>
             </div>
           ))}
         </div>
@@ -509,7 +504,7 @@ function ByModelTable({ models }: { models: ByModel[] }) {
   const total = models.reduce((s, m) => s + m.cost_usd, 0) || 0.0001;
   if (models.length === 0) {
     return (
-      <div className="border border-border2 bg-paper px-5 py-4 text-micro italic text-dim">
+      <div className="border border-border2 bg-paper px-5 py-4 text-micro italic text-faint">
         no model usage yet
       </div>
     );
@@ -534,13 +529,13 @@ function ByModelTable({ models }: { models: ByModel[] }) {
           <span className="font-mono text-label font-semibold text-text">{m.model}</span>
           <span className="font-mono text-label tabular text-text">{fmtNum(m.tokens_in)}</span>
           <span className="font-mono text-label tabular text-text">{fmtNum(m.tokens_out)}</span>
-          <span className="font-mono text-label tabular text-text2">{m.calls}</span>
+          <span className="font-mono text-label tabular text-muted-foreground">{m.calls}</span>
           <div className="flex items-center gap-2">
             <div className="relative h-1 w-[120px] flex-shrink-0 bg-border">
               <div className="absolute inset-y-0 left-0 bg-accent"
                    style={{ width: `${(m.cost_usd / total) * 100}%` }} />
             </div>
-            <span className="font-mono text-micro tabular text-muted">
+            <span className="font-mono text-micro tabular text-muted-foreground">
               {Math.round((m.cost_usd / total) * 100)}%
             </span>
           </div>
@@ -570,18 +565,18 @@ function CollectorOffPlate() {
           Cost, agent activity, and per-model breakdowns are{" "}
           <span className="text-accent">not collected</span> on this host.
         </div>
-        <div className="mt-2 max-w-[620px] text-micro leading-relaxed text-muted">
+        <div className="mt-2 max-w-[620px] text-micro leading-relaxed text-muted-foreground">
           The backend dashboard above is fully populated; the collector adds OpenClaw OTLP traces
           and a Prometheus scrape of CFN. Start it in another terminal and this section will
           populate within 30 seconds.
         </div>
       </div>
       <div className="flex flex-col items-end gap-2">
-        <Caps>RUN</Caps>
-        <div className="border border-accent bg-accent/[0.06] px-3.5 py-2.5 font-mono text-label font-semibold text-accent">
+        <Caps>Run</Caps>
+        <div className="rounded-lg border border-border bg-surface px-3.5 py-2.5 font-mono text-label font-semibold text-accent">
           mycelium metrics collect
         </div>
-        <span className="font-mono text-micro text-dim">polls every 30s</span>
+        <span className="font-mono text-micro text-faint">polls every 30s</span>
       </div>
     </div>
   );
@@ -590,13 +585,13 @@ function CollectorOffPlate() {
 function BackendDownPlate() {
   return (
     <div className="flex flex-1 items-center justify-center p-10">
-      <div className="relative max-w-[560px] border border-accent bg-paper px-9 py-8">
-        <div className="absolute inset-y-0 left-0 w-[3px] bg-accent" />
-        <Caps className="text-accent">BACKEND UNREACHABLE</Caps>
+      <div className="relative max-w-[560px] overflow-hidden rounded-xl border border-border bg-paper px-9 py-8">
+        <div className="absolute inset-y-0 left-0 w-[3px] bg-yellow" />
+        <Caps className="text-yellow">Backend unreachable</Caps>
         <div className="mt-1.5 text-ui font-semibold leading-snug text-text">
           Could not reach <span className="font-mono text-accent">GET /api/observability</span>
         </div>
-        <div className="mt-2.5 text-micro leading-relaxed text-muted">
+        <div className="mt-2.5 text-micro leading-relaxed text-muted-foreground">
           The frontend is running but the backend isn&apos;t responding. Start it with{" "}
           <span className="font-mono text-accent">mycelium up</span> or check that postgres is
           reachable on the configured port.
@@ -619,18 +614,18 @@ function SpokeSitesTable({
   return (
     <div className="border-b border-border2 px-6 py-5">
       <div className="mb-3.5 flex items-baseline justify-between">
-        <Caps className="text-text2">SPOKE SITES</Caps>
-        <span className="font-mono text-micro italic text-dim">hosts reporting OTLP data</span>
+        <Caps className="text-muted-foreground">SPOKE SITES</Caps>
+        <span className="font-mono text-micro italic text-faint">hosts reporting OTLP data</span>
       </div>
       {activeHost && (
         <div className="mb-3 flex items-center gap-2">
-          <span className="text-micro text-muted">Filtered to</span>
-          <span className="border border-accent bg-accent/10 px-2 py-0.5 font-mono text-micro font-semibold text-accent">
+          <span className="text-micro text-muted-foreground">Filtered to</span>
+          <span className="rounded-full border border-accent/30 bg-accent-soft px-2 py-0.5 font-mono text-micro font-semibold text-accent">
             {activeHost}
           </span>
           <button
             onClick={() => onHostClick(null)}
-            className="text-micro text-dim hover:text-text transition-colors"
+            className="text-micro text-faint hover:text-text transition-colors"
           >
             clear
           </button>
@@ -639,7 +634,7 @@ function SpokeSitesTable({
       <div className="overflow-x-auto">
         <table className="w-full border-collapse font-mono text-micro">
           <thead>
-            <tr className="border-b border-border text-left text-dim">
+            <tr className="border-b border-border text-left text-faint">
               <th className="py-1.5 pr-4 font-normal">HOST</th>
               <th className="py-1.5 pr-4 font-normal">AGENTS</th>
               <th className="py-1.5 pr-4 font-normal text-right">SPANS</th>
@@ -656,17 +651,17 @@ function SpokeSitesTable({
                   key={h.host}
                   onClick={() => onHostClick(isActive ? null : h.host)}
                   className={`border-b border-border/50 cursor-pointer transition-colors ${
-                    isActive ? "bg-accent/10" : "hover:bg-surface/40"
+                    isActive ? "bg-accent-soft" : "hover:bg-hairline"
                   }`}
                 >
                   <td className="py-1.5 pr-4 font-semibold text-text">{h.host}</td>
-                  <td className="py-1.5 pr-4 text-text2">{h.agents.join(", ") || "-"}</td>
-                  <td className="py-1.5 pr-4 text-right tabular text-text2">{h.span_count.toLocaleString()}</td>
-                  <td className="py-1.5 pr-4 text-right tabular text-text2">{h.trace_count.toLocaleString()}</td>
-                  <td className={`py-1.5 pr-4 text-right tabular ${h.error_count > 0 ? "text-red-400 font-semibold" : "text-dim"}`}>
+                  <td className="py-1.5 pr-4 text-muted-foreground">{h.agents.join(", ") || "-"}</td>
+                  <td className="py-1.5 pr-4 text-right tabular text-muted-foreground">{h.span_count.toLocaleString()}</td>
+                  <td className="py-1.5 pr-4 text-right tabular text-muted-foreground">{h.trace_count.toLocaleString()}</td>
+                  <td className={`py-1.5 pr-4 text-right tabular ${h.error_count > 0 ? "text-red-400 font-semibold" : "text-faint"}`}>
                     {h.error_count}
                   </td>
-                  <td className="py-1.5 text-dim">{fmtAgo(h.last_seen)}</td>
+                  <td className="py-1.5 text-faint">{fmtAgo(h.last_seen)}</td>
                 </tr>
               );
             })}
@@ -765,11 +760,11 @@ export function MetricsScreen() {
             value={spendValue}
             sub={collectorOn ? (
               <>
-                <span className="text-text2">{Object.keys(collector?.counters?.tokens?.by_model || {}).length}</span>{" "}
-                models <span className="mx-1 text-dim">·</span>{" "}
-                <span className="text-text2">{fmtNum(tokensTotal)}</span> tokens
-                <span className="mx-1 text-dim">·</span>{" "}
-                since <span className="text-text2">{fmtDur(backend?.started_at)}</span>
+                <span className="text-muted-foreground">{Object.keys(collector?.counters?.tokens?.by_model || {}).length}</span>{" "}
+                models <span className="mx-1 text-faint">·</span>{" "}
+                <span className="text-muted-foreground">{fmtNum(tokensTotal)}</span> tokens
+                <span className="mx-1 text-faint">·</span>{" "}
+                since <span className="text-muted-foreground">{fmtDur(backend?.started_at)}</span>
               </>
             ) : "requires collector"}
             sparkline={collector?.spend_5m}
@@ -783,9 +778,9 @@ export function MetricsScreen() {
             errorRatePct={errPct}
             sub={errIsZero ? "no CFN calls yet" : (
               <>
-                <span className={errAlert ? "italic text-accent" : "text-text2"}>{errStats.errors}</span>
+                <span className={errAlert ? "italic text-accent" : "text-muted-foreground"}>{errStats.errors}</span>
                 {" of "}
-                <span className="text-text2">{errStats.total}</span> CFN calls failed
+                <span className="text-muted-foreground">{errStats.total}</span> CFN calls failed
               </>
             )}
             sparkline={collector?.err_5m}
@@ -795,19 +790,19 @@ export function MetricsScreen() {
             value={throughputValue}
             sub={collectorOn ? (
               <>
-                <span className="text-text2">{cc.messages?.queued ?? 0}</span> queued
-                <span className="mx-1 text-dim">·</span>
-                <span className="text-text2">{cc.sessions_stuck ?? 0}</span> stuck
-                <span className="mx-1 text-dim">·</span>{" "}
-                since <span className="text-text2">{fmtDur(backend?.started_at)}</span>
+                <span className="text-muted-foreground">{cc.messages?.queued ?? 0}</span> queued
+                <span className="mx-1 text-faint">·</span>
+                <span className="text-muted-foreground">{cc.sessions_stuck ?? 0}</span> stuck
+                <span className="mx-1 text-faint">·</span>{" "}
+                since <span className="text-muted-foreground">{fmtDur(backend?.started_at)}</span>
               </>
             ) : (
               <>
-                <span className="text-text2">{bc.coordination?.sessions_started ?? 0}</span>{" "}
-                sessions <span className="mx-1 text-dim">·</span>{" "}
-                <span className="text-text2">{bc.coordination?.rounds ?? 0}</span> rounds
-                <span className="mx-1 text-dim">·</span>{" "}
-                since <span className="text-text2">{fmtDur(backend?.started_at)}</span>
+                <span className="text-muted-foreground">{bc.coordination?.sessions_started ?? 0}</span>{" "}
+                sessions <span className="mx-1 text-faint">·</span>{" "}
+                <span className="text-muted-foreground">{bc.coordination?.rounds ?? 0}</span> rounds
+                <span className="mx-1 text-faint">·</span>{" "}
+                since <span className="text-muted-foreground">{fmtDur(backend?.started_at)}</span>
               </>
             )}
           />
@@ -817,7 +812,7 @@ export function MetricsScreen() {
         {zeroData ? (
           <div className="border-b border-border2 px-7 py-8">
             <Caps>NO TRAFFIC YET</Caps>
-            <div className="mt-1.5 max-w-[720px] text-ui leading-relaxed text-text2">
+            <div className="mt-1.5 max-w-[720px] text-ui leading-relaxed text-muted-foreground">
               The system is up and the backend is reporting in, but no agents have written memory,
               run a search, or started a session yet. Numbers below will fill in as soon as
               anything moves.
@@ -839,8 +834,8 @@ export function MetricsScreen() {
         {/* ── Diagnostic grid ──────────────────────────────────────────── */}
         <div className="px-6 py-5">
           <div className="mb-3.5 flex items-baseline justify-between">
-            <Caps className="text-text2">DIAGNOSTICS · BACKEND COUNTERS</Caps>
-            <span className="font-mono text-micro italic text-dim">always available · GET /api/observability</span>
+            <Caps className="text-muted-foreground">DIAGNOSTICS · BACKEND COUNTERS</Caps>
+            <span className="font-mono text-micro italic text-faint">always available · GET /api/observability</span>
           </div>
 
           <div className="mb-4 grid border border-border2 bg-paper" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
@@ -941,8 +936,8 @@ export function MetricsScreen() {
           return (
             <div className="px-6 pb-6">
               <div className="my-3.5 flex items-baseline justify-between">
-                <Caps className="text-text2">SPEND · BY MODEL</Caps>
-                <span className="font-mono text-micro italic text-dim">OpenClaw OTLP</span>
+                <Caps className="text-muted-foreground">SPEND · BY MODEL</Caps>
+                <span className="font-mono text-micro italic text-faint">OpenClaw OTLP</span>
               </div>
               <ByModelTable models={models} />
             </div>

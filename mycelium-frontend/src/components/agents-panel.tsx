@@ -4,8 +4,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { Users } from "lucide-react";
 import { fetchRoomAgents, logFetchError, type AgentSummary } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/empty-state";
 import {
   Dialog,
   DialogContent,
@@ -30,10 +32,6 @@ function initials(handle: string): string {
   return s.toUpperCase();
 }
 
-/** Adapter → ring/initials color (shared app palette). */
-function adapterColor(adapter: string): string {
-  return adapter === "openclaw" ? "var(--green)" : "var(--accent)";
-}
 
 /**
  * Read-only roster of the addressable agents registered in a room (the
@@ -69,21 +67,21 @@ export function AgentsPanel({ roomName }: Props) {
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <div className="flex items-center gap-3 border-b border-border bg-paper px-4 py-3 caps-mono-sm text-muted">
-        <span className="text-text font-semibold tabular">{agents.length}</span>
-        <span>agents</span>
+      <div className="flex items-center gap-2 border-b border-border bg-paper px-4 py-3">
+        <span className="text-label font-semibold text-text">Agents</span>
+        <span className="text-micro tabular text-muted-foreground">{agents.length}</span>
         <Dialog>
           <DialogTrigger
-            render={<Button variant="default" size="sm" className="ml-auto" />}
+            render={<Button variant="secondary" size="sm" className="ml-auto" />}
           >
-            + add
+            Add
           </DialogTrigger>
           <DialogContent className="sm:max-w-lg">
             <DialogHeader>
-              <DialogTitle className="font-mono text-ui text-text">
+              <DialogTitle className="text-ui font-semibold text-text">
                 Add an agent
               </DialogTitle>
-              <DialogDescription className="text-label text-muted leading-relaxed">
+              <DialogDescription className="text-label text-muted-foreground leading-relaxed">
                 Agents are registered from the CLI, because registration has
                 machine-local side effects (manifest mirror, OpenClaw gateway
                 config) the web UI can&apos;t perform. This panel is read-only.
@@ -91,30 +89,30 @@ export function AgentsPanel({ roomName }: Props) {
             </DialogHeader>
             <div className="space-y-6 mt-2">
               <section>
-                <div className="caps-mono-sm text-muted mb-1.5">
+                <div className="text-label font-semibold text-text mb-1.5">
                   Adopt agents you already have
                 </div>
-                <pre className="font-mono text-micro text-text2 bg-surface border border-border px-2.5 py-2 overflow-x-auto whitespace-pre-wrap break-words">
+                <pre className="font-mono text-micro text-muted-foreground bg-surface border border-border px-2.5 py-2 overflow-x-auto whitespace-pre-wrap break-words">
                   {"mycelium agent add"}
                 </pre>
-                <p className="text-micro text-muted mt-1 leading-snug">
+                <p className="text-micro text-muted-foreground mt-1 leading-snug">
                   Interactive picker: discovers your OpenClaw agents and wires
                   the chosen ones into a room.
                 </p>
               </section>
               <section>
-                <div className="caps-mono-sm text-muted mb-1.5">
+                <div className="text-label font-semibold text-text mb-1.5">
                   Create a new agent
                 </div>
-                <pre className="font-mono text-micro text-text2 bg-surface border border-border px-2.5 py-2 overflow-x-auto whitespace-pre-wrap break-words">
+                <pre className="font-mono text-micro text-muted-foreground bg-surface border border-border px-2.5 py-2 overflow-x-auto whitespace-pre-wrap break-words">
                   {"mycelium agent create <handle> --cwd ~/proj      # Claude Code\nmycelium agent create <handle> --adapter openclaw  # OpenClaw"}
                 </pre>
               </section>
               <section>
-                <div className="caps-mono-sm text-muted mb-1.5">
+                <div className="text-label font-semibold text-text mb-1.5">
                   Claude Code agents also need the daemon
                 </div>
-                <pre className="font-mono text-micro text-text2 bg-surface border border-border px-2.5 py-2 overflow-x-auto whitespace-pre-wrap break-words">
+                <pre className="font-mono text-micro text-muted-foreground bg-surface border border-border px-2.5 py-2 overflow-x-auto whitespace-pre-wrap break-words">
                   {"mycelium adapter add claude-code --step=daemon\nmycelium daemon subscribe <room>"}
                 </pre>
               </section>
@@ -125,45 +123,42 @@ export function AgentsPanel({ roomName }: Props) {
 
       <div className="flex-1 overflow-y-auto">
         {loaded && agents.length === 0 && (
-          <div className="text-center caps-mono-sm text-muted italic py-10">
-            no agents registered
-            <div className="font-mono text-label text-text2 mt-3 normal-case tracking-normal not-italic">
-              add one with
-              <div className="mt-2">
-                <code className="bg-surface px-1.5 py-0.5 text-accent border border-border whitespace-nowrap">
-                  mycelium agent add
-                </code>
+          <EmptyState
+            size="sm"
+            icon={Users}
+            title="No agents registered"
+            description="Agents are registered from the CLI."
+            action={
+              <code className="font-mono text-micro bg-surface px-1.5 py-0.5 text-accent border border-border rounded whitespace-nowrap">
+                mycelium agent add
+              </code>
+            }
+          />
+        )}
+
+        {agents.map((a) => (
+          <div
+            key={a.handle}
+            className="flex items-center gap-2.5 px-3 py-2.5 border-b border-border last:border-b-0"
+          >
+            <div
+              className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full font-mono text-micro font-semibold"
+              style={{ background: "color-mix(in srgb, var(--accent) 16%, transparent)", color: "var(--accent)" }}
+              aria-hidden
+            >
+              {initials(a.handle)}
+            </div>
+            <div className="min-w-0 flex-1 leading-tight">
+              <div className="font-mono text-label text-text font-semibold truncate leading-tight">
+                {a.handle}
+              </div>
+              <div className="text-micro text-muted-foreground truncate leading-tight">
+                {a.adapter}
+                {a.description ? ` · ${a.description}` : ""}
               </div>
             </div>
           </div>
-        )}
-
-        {agents.map((a) => {
-          const color = adapterColor(a.adapter);
-          return (
-            <div
-              key={a.handle}
-              className="flex items-center gap-2.5 px-3 py-2.5 border-b border-border last:border-b-0"
-            >
-              <div
-                className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-surface font-mono text-micro font-bold"
-                style={{ border: `1.5px solid ${color}`, color }}
-                aria-hidden
-              >
-                {initials(a.handle)}
-              </div>
-              <div className="min-w-0 flex-1 leading-tight">
-                <div className="font-mono text-label text-text font-semibold truncate leading-tight">
-                  {a.handle}
-                </div>
-                <div className="text-micro text-muted truncate leading-tight">
-                  <span style={{ color }}>{a.adapter}</span>
-                  {a.description ? ` · ${a.description}` : ""}
-                </div>
-              </div>
-            </div>
-          );
-        })}
+        ))}
       </div>
     </div>
   );

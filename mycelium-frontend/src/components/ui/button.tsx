@@ -3,35 +3,35 @@ import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
 
-// Re-themed to the app's button language: caps-mono labels, accent-outline
-// with a translucent fill that intensifies on hover (matches "+ NEW ROOM",
-// the chat SEND button, etc.). Square-ish, no heavy radius.
+// App button language: sentence-case sans labels, one solid accent primary,
+// quiet neutral variants. Modest radius. The system register (mono, tracked)
+// lives in badges/IDs, not in buttons.
 const buttonVariants = cva(
-  "inline-flex shrink-0 items-center justify-center gap-2 rounded-sm border whitespace-nowrap caps-mono-sm transition-colors outline-none select-none focus-visible:border-accent disabled:pointer-events-none disabled:opacity-40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3.5",
+  "inline-flex shrink-0 items-center justify-center gap-2 rounded-md border whitespace-nowrap text-label font-medium transition-colors outline-none select-none focus-visible:ring-2 focus-visible:ring-accent/40 disabled:pointer-events-none disabled:opacity-40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
         default:
-          "border-accent/40 bg-accent/[0.06] text-accent hover:bg-accent/[0.12] hover:border-accent/60",
+          "border-transparent bg-accent text-accent-fg hover:opacity-90",
         outline:
-          "border-border text-text2 hover:text-text hover:border-border2",
+          "border-border text-text hover:bg-surface hover:border-border2",
         secondary:
-          "border-border bg-surface text-text2 hover:text-text hover:border-border2",
+          "border-transparent bg-surface text-text hover:bg-elevated",
         ghost:
-          "border-transparent text-muted hover:text-text hover:bg-white/[0.04]",
+          "border-transparent text-muted-foreground hover:text-text hover:bg-hairline",
         destructive:
-          "border-[#f87171]/40 text-[#f87171] hover:bg-[#f87171]/10 hover:border-[#f87171]/60",
+          "border-transparent bg-red text-white hover:opacity-90",
         link: "border-transparent text-accent underline-offset-4 hover:underline",
       },
       size: {
-        default: "h-7 px-3",
-        xs: "h-5 px-1.5",
-        sm: "h-6 px-2",
-        lg: "h-8 px-4",
-        icon: "size-7",
-        "icon-xs": "size-5",
-        "icon-sm": "size-6",
-        "icon-lg": "size-8",
+        default: "h-8 px-3.5",
+        xs: "h-6 px-2 text-micro",
+        sm: "h-7 px-2.5",
+        lg: "h-9 px-4",
+        icon: "size-8",
+        "icon-xs": "size-6",
+        "icon-sm": "size-7",
+        "icon-lg": "size-9",
       },
     },
     defaultVariants: {
