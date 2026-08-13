@@ -21,36 +21,25 @@ from typing import Any
 import pytest
 
 from app.services import aligner, l9, mediator
-from tests.test_aligner import _FakeChannel, _FakeManaged, _FakeManager, _FakePersister
+from tests.fakes import (
+    FakeChannel,
+    FakeManaged,
+    FakeManager,
+    FakePersister,
+    fake_brain_factory,
+)
 
 _ROOM = "mediate-room"
 
 
-def _fake_llm(prompt: str, *, system: str = "", temperature: float = 0.3) -> str:
-    """Deterministic stand-in for the mediator's LLM, keyed on the prompt.
-
-    - discovery → one issue ``cap`` with three options;
-    - a propose interpretation → counter to ``cap = 30``;
-    - a respond interpretation → accept;
-    - any broker framing → a short note.
-    """
-    if "identify the negotiable ISSUES" in prompt:
-        return json.dumps({"issues": [{"name": "cap", "options": ["25", "30", "35"]}]})
-    if "Interpret @" in prompt:
-        if '"action":"counter"' in prompt:  # proposing schema
-            return json.dumps({"action": "counter", "offer": {"cap": "30"}})
-        return json.dumps({"action": "accept"})  # responding schema
-    return "Everyone is close on the cap; let's lock 30 and move."
-
-
-def _engine(manager: _FakeManager, **kw: Any) -> aligner.AlignerEngine:
+def _engine(manager: FakeManager, **kw: Any) -> aligner.AlignerEngine:
     kw.setdefault("handle", "aligner")
     kw.setdefault("round_timeout_s", 0.2)
     kw.setdefault("poll_interval_s", 0.01)
     kw.setdefault("max_steps", 12)
     # The mediator brain is Pi in production; inject the deterministic fake here so
     # the SAO runs node-free and LLM-free.
-    kw.setdefault("brain_factory", lambda _episode: _fake_llm)
+    kw.setdefault("brain_factory", fake_brain_factory)
     return aligner.AlignerEngine(manager, **kw)  # type: ignore[arg-type]
 
 
@@ -173,10 +162,10 @@ def test_propose_holds_own_line_not_the_table_when_unreadable() -> None:
 async def test_mediate_terminates_at_agreement() -> None:
     """Agents that accept the standing offer → NEGMAS stops, verdict is converged
     with the agreed issue=value map, and the episode is opened then closed."""
-    persister = _FakePersister()
-    channel = _FakeChannel(persister, reply_conf=0.9)  # every prompt draws a reply
-    managed = _FakeManaged(_ROOM, "mycelium", channel, persister)
-    manager = _FakeManager(managed, ["growth", "risk", "aligner"])
+    persister = FakePersister()
+    channel = FakeChannel(persister, reply_conf=0.9)  # every prompt draws a reply
+    managed = FakeManaged(_ROOM, "mycelium", channel, persister)
+    manager = FakeManager(managed, ["growth", "risk", "aligner"])
 
     verdict = await _engine(manager).mediate(_ROOM)
 
@@ -218,10 +207,10 @@ async def test_two_convenings_write_distinct_episode_records() -> None:
     ensure_room_structure(room_dir)
 
     async def _convene() -> str:
-        persister = _FakePersister()
-        channel = _FakeChannel(persister, reply_conf=0.9)
-        managed = _FakeManaged(_ROOM, "mycelium", channel, persister)
-        manager = _FakeManager(managed, ["growth", "risk", "aligner"])
+        persister = FakePersister()
+        channel = FakeChannel(persister, reply_conf=0.9)
+        managed = FakeManaged(_ROOM, "mycelium", channel, persister)
+        manager = FakeManager(managed, ["growth", "risk", "aligner"])
         verdict = await _engine(manager).mediate(_ROOM)
         assert verdict is not None
         return manager.opened[0]
@@ -244,10 +233,10 @@ async def test_mediate_scopes_to_named_participants() -> None:
     from app.services.l9_models import Kind as _Kind
     from app.services.persister import envelope_recipients
 
-    persister = _FakePersister()
-    channel = _FakeChannel(persister, reply_conf=0.9)
-    managed = _FakeManaged(_ROOM, "mycelium", channel, persister)
-    manager = _FakeManager(managed, ["growth", "risk", "legal", "aligner"])
+    persister = FakePersister()
+    channel = FakeChannel(persister, reply_conf=0.9)
+    managed = FakeManaged(_ROOM, "mycelium", channel, persister)
+    manager = FakeManager(managed, ["growth", "risk", "legal", "aligner"])
 
     await _engine(manager).mediate(_ROOM, scoped_participants=["growth", "risk"])
 
@@ -267,10 +256,10 @@ async def test_mediate_rejects_when_no_issues_discovered(
 ) -> None:
     """Discovery that yields no structurable issues → a clean rejected verdict,
     still closing the episode (never hanging or raising)."""
-    persister = _FakePersister()
-    channel = _FakeChannel(persister, reply_conf=0.9)
-    managed = _FakeManaged(_ROOM, "mycelium", channel, persister)
-    manager = _FakeManager(managed, ["growth", "risk"])
+    persister = FakePersister()
+    channel = FakeChannel(persister, reply_conf=0.9)
+    managed = FakeManaged(_ROOM, "mycelium", channel, persister)
+    manager = FakeManager(managed, ["growth", "risk"])
 
     monkeypatch.setattr(mediator, "discover_issues", lambda *a, **k: [])
 

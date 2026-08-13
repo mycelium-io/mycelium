@@ -23,6 +23,7 @@ import pytest
 
 from app.services import pi_brain
 from app.services.pi_brain import PiBrain, PiBrainError, parse_pi_json_output
+from tests.fakes import patch_pi_run
 
 
 def _stream(*events: dict[str, Any]) -> str:
@@ -261,26 +262,11 @@ def test_ensure_config_merges_existing(tmp_path: Path) -> None:
 # ── __call__ (subprocess mocked) ────────────────────────────────────────────
 
 
-def _patch_run(
-    monkeypatch: pytest.MonkeyPatch, *, stdout: str, returncode: int = 0
-) -> list[list[str]]:
-    """Capture argv and return a canned CompletedProcess from subprocess.run."""
-    calls: list[list[str]] = []
-
-    def fake_run(cmd: list[str], **_: Any) -> subprocess.CompletedProcess[str]:
-        calls.append(cmd)
-        return subprocess.CompletedProcess(cmd, returncode, stdout=stdout, stderr="boom")
-
-    monkeypatch.setattr(pi_brain.shutil, "which", lambda _b: "/usr/bin/pi")
-    monkeypatch.setattr(pi_brain.subprocess, "run", fake_run)
-    return calls
-
-
 def test_call_returns_parsed_text(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     stdout = _stream(
         {"type": "message_end", "message": {"role": "assistant", "content": "hello world"}}
     )
-    calls = _patch_run(monkeypatch, stdout=stdout)
+    calls = patch_pi_run(monkeypatch, stdout=stdout)
     out = _brain(tmp_path)("interpret this", system="sys")
     assert out == "hello world"
     assert calls and calls[0][-1] == "interpret this"
@@ -293,7 +279,7 @@ def test_call_raises_on_missing_binary(tmp_path: Path, monkeypatch: pytest.Monke
 
 
 def test_call_raises_on_nonzero_exit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    _patch_run(monkeypatch, stdout="", returncode=2)
+    patch_pi_run(monkeypatch, stdout="", returncode=2)
     with pytest.raises(PiBrainError, match="exited 2"):
         _brain(tmp_path)("p")
 
@@ -310,7 +296,7 @@ def test_call_raises_on_timeout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
 
 def test_call_ignores_temperature(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """temperature is accepted for brain-callable parity but never reaches the CLI."""
-    calls = _patch_run(
+    calls = patch_pi_run(
         monkeypatch,
         stdout=_stream({"type": "message_end", "message": {"role": "assistant", "content": "x"}}),
     )

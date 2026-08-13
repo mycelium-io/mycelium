@@ -12,116 +12,20 @@ observe slice is in ``test_l9_over_slim_roundtrip.py`` (guarded on a node).
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
 from typing import Any
 
 import pytest
 
 from app.services import aligner, l9
 from app.services.l9_models import Kind
-from app.services.l9_slim import serialize_content
-from app.services.persister import DeliveryLog, TranscriptRecord, record_from
+from tests.fakes import FakeChannel, FakeManaged, FakeManager, FakePersister
 
 _ROOM = "align-room"
 _EPISODE = l9.episode_urn(_ROOM, "live")
 _TOPIC = l9.topic_urn(_ROOM)
 
 
-def _position_record(
-    sender: str,
-    *,
-    confidence: float | None = None,
-    action: str = "accept",
-    role: str = "agent",
-    payload_type: str = "reply",
-    message_id: str | None = None,
-) -> TranscriptRecord:
-    """An agent-position transcript record carrying an epistemic payload."""
-    data: dict[str, Any] = {"action": action}
-    if confidence is not None:
-        data["confidence"] = confidence
-    env = l9.build_envelope(
-        kind=Kind.exchange,
-        episode=_EPISODE,
-        sender=sender,
-        sender_role=role,
-        recipients=[l9.SYSTEM_ACTOR_ID],
-        topic=_TOPIC,
-        payload_type=payload_type,
-        payload_data=data,
-        message_id=message_id,
-    )
-    return record_from(env, serialize_content(env, extra={"content": f"{sender} position"}))
-
-
-# ── fakes ────────────────────────────────────────────────────────────────────
-
-
-class _FakeChannel:
-    """Records broadcasts; optionally simulates a prompted participant replying."""
-
-    def __init__(self, persister: _FakePersister | None = None, reply_conf: float | None = None):
-        self.sent: list[tuple[Any, dict[str, Any] | None]] = []
-        self._persister = persister
-        self._reply_conf = reply_conf
-        self._reply_seq = 0
-
-    async def send(self, envelope: Any, *, extra: dict[str, Any] | None = None) -> None:
-        self.sent.append((envelope, extra))
-        # Only exchange prompts trigger a simulated reply — never the commit.
-        if self._reply_conf is None or envelope.header.kind != Kind.exchange:
-            return
-        assert self._persister is not None
-        for actor in envelope.header.participants.actors[1:]:
-            self._reply_seq += 1
-            self._persister.log.record(
-                _position_record(
-                    actor.id, confidence=self._reply_conf, message_id=f"reply-{self._reply_seq}"
-                ),
-                delivered_to=set(),
-            )
-
-
-class _FakePersister:
-    def __init__(self, records: list[TranscriptRecord] | None = None):
-        self.log = DeliveryLog(records or [])
-        self.ingested: list[tuple[Any, dict[str, Any]]] = []
-
-    def ingest_local(self, envelope: Any, content: dict[str, Any]) -> None:
-        self.ingested.append((envelope, content))
-
-
-@dataclass
-class _FakeManaged:
-    room: str
-    workspace: str
-    channel: Any
-    persister: Any
-
-
-class _FakeManager:
-    def __init__(self, managed: _FakeManaged, members: list[str]):
-        self._managed = managed
-        self._members = members
-        self.opened: list[str] = []
-        self.closed: list[str] = []
-
-    def get(self, room: str) -> _FakeManaged:
-        return self._managed
-
-    def members(self, room: str) -> list[str]:
-        return list(self._members)
-
-    def open_episode(self, room: str, episode: str) -> bool:
-        self.opened.append(episode)
-        return True
-
-    async def close_episode(self, room: str) -> bool:
-        self.closed.append(room)
-        return True
-
-
-def _engine(manager: _FakeManager, **kw: Any) -> aligner.AlignerEngine:
+def _engine(manager: FakeManager, **kw: Any) -> aligner.AlignerEngine:
     kw.setdefault("handle", "aligner")
     kw.setdefault("threshold", 0.6)
     return aligner.AlignerEngine(manager, **kw)  # type: ignore[arg-type]
@@ -132,8 +36,8 @@ def _engine(manager: _FakeManager, **kw: Any) -> aligner.AlignerEngine:
 
 @pytest.mark.asyncio
 async def test_summon_fires_only_for_the_reserved_handle():
-    managed = _FakeManaged(_ROOM, "mycelium", _FakeChannel(), _FakePersister())
-    engine = _engine(_FakeManager(managed, []))
+    managed = FakeManaged(_ROOM, "mycelium", FakeChannel(), FakePersister())
+    engine = _engine(FakeManager(managed, []))
 
     called: list[str] = []
 
@@ -190,8 +94,8 @@ async def test_engine_runtime_host_skips_registered_engine(
         created_by="cli-user",
     )
 
-    managed = _FakeManaged(room, "mycelium", _FakeChannel(), _FakePersister())
-    engine = _engine(_FakeManager(managed, []))
+    managed = FakeManaged(room, "mycelium", FakeChannel(), FakePersister())
+    engine = _engine(FakeManager(managed, []))
     called: list[str] = []
 
     async def fake_mediate(

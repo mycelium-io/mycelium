@@ -16,6 +16,7 @@ import pytest
 from app.services import l9, memory_sync, plan, plan_sync
 from app.services.filesystem import get_room_dir, read_memory_file
 from app.services.l9_models import L9, Kind
+from tests.fakes import FakeManager
 
 
 def _converged(assignments: dict) -> L9:
@@ -31,38 +32,10 @@ def _converged(assignments: dict) -> L9:
     )
 
 
-class _FakeChannel:
-    def __init__(self) -> None:
-        self.sent: list = []
-
-    async def send(self, envelope, *, extra=None) -> None:
-        self.sent.append((envelope, extra))
-
-
-class _FakeManaged:
-    def __init__(self, channel) -> None:
-        self.channel = channel
-        self.persister = None
-
-
-class _FakeManager:
-    """Just enough of RoomChannelManager for the consumer: get + members."""
-
-    def __init__(self, *, live: bool = True) -> None:
-        self.channel = _FakeChannel()
-        self._managed = _FakeManaged(self.channel) if live else None
-
-    def get(self, room):
-        return self._managed
-
-    def members(self, room):
-        return ["a", "b"]
-
-
 @pytest.mark.asyncio
 class TestConvergedToPlan:
     async def test_compiles_plan_file_with_expected_tasks(self):
-        mgr = _FakeManager()
+        mgr = FakeManager()
         engine = plan_sync.PlanSyncEngine(mgr)  # type: ignore[arg-type]
         fake_plan = "# MVP Delivery\n\n- [ ] ship auth @a\n- [ ] write docs @b"
         with patch.object(
@@ -84,7 +57,7 @@ class TestConvergedToPlan:
         assert carried is not None and carried.version == 1 and carried.base_version is None
 
     async def test_sets_plan_title_from_heading(self):
-        mgr = _FakeManager()
+        mgr = FakeManager()
         engine = plan_sync.PlanSyncEngine(mgr)  # type: ignore[arg-type]
         with patch.object(
             plan_sync.plan_compiler,
@@ -95,7 +68,7 @@ class TestConvergedToPlan:
         assert plan.get_title("r") == "Sprint Plan"
 
     async def test_recompile_bumps_version_and_threads_base(self):
-        mgr = _FakeManager()
+        mgr = FakeManager()
         engine = plan_sync.PlanSyncEngine(mgr)  # type: ignore[arg-type]
         with patch.object(
             plan_sync.plan_compiler,
@@ -111,7 +84,7 @@ class TestConvergedToPlan:
 
     async def test_fail_soft_compile_falls_back_to_raw_agreement(self):
         """A compiler outage must not sink the verdict — write the raw agreement."""
-        mgr = _FakeManager()
+        mgr = FakeManager()
         engine = plan_sync.PlanSyncEngine(mgr)  # type: ignore[arg-type]
         with patch.object(
             plan_sync.plan_compiler,
@@ -148,7 +121,7 @@ class TestConvergedToPlan:
         assert mgr._converged_adapter("room-x") is None
 
     async def test_no_channel_writes_plan_but_skips_broadcast(self):
-        mgr = _FakeManager(live=False)
+        mgr = FakeManager(live=False)
         engine = plan_sync.PlanSyncEngine(mgr)  # type: ignore[arg-type]
         with patch.object(
             plan_sync.plan_compiler, "compile_plan", AsyncMock(return_value="# P\n\n- [ ] a")
