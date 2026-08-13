@@ -267,6 +267,24 @@ body {
 .markdown-body.contrast li { color: var(--text); }
 .markdown-body.contrast p:first-child { margin-top: 0.15em; }
 
+/* Primary accent button: not a flat fill. A top-lit gradient, an inner
+ * highlight edge, and a soft lift give it dimension so it doesn't read cheap. */
+.btn-accent {
+  background-image: linear-gradient(to bottom, color-mix(in srgb, var(--accent) 90%, white), var(--accent));
+  color: var(--accent-fg);
+  border: 1px solid color-mix(in srgb, var(--accent) 74%, black) !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  transition: box-shadow 0.15s ease, background-image 0.15s ease, transform 0.05s ease;
+}
+.btn-accent:hover {
+  background-image: linear-gradient(to bottom, color-mix(in srgb, var(--accent) 96%, white), color-mix(in srgb, var(--accent) 95%, black));
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 35%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.24);
+}
+.btn-accent:active {
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.22);
+  transform: translateY(0.5px);
+}
+
 /* ── Onboarding tour (driver.js popover, themed to the app tokens) ── */
 .driver-popover.mycelium-tour {
   background: var(--elevated);

@@ -3,25 +3,12 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Boxes, Sparkles } from "lucide-react";
+import { Boxes, Plus, Sparkles } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
-
-// The seeded sample room the "Run a sample coordination" onboarding routes into.
-const SAMPLE_TOUR_HREF = "/room/pricing-model?tour=1";
-
-function RunSampleButton({ className = "" }: { className?: string }) {
-  return (
-    <Link
-      href={SAMPLE_TOUR_HREF}
-      className={`inline-flex items-center gap-2 rounded-md bg-accent px-3.5 py-2 text-label font-medium text-accent-fg transition-opacity hover:opacity-90 ${className}`}
-    >
-      <Sparkles className="size-4" />
-      Run a sample coordination
-    </Link>
-  );
-}
+import { Button } from "@/components/ui/button";
+import { CreateRoomDialog } from "@/components/create-room-dialog";
 import {
   fetchRooms,
   fetchRoomAgents,
@@ -29,6 +16,22 @@ import {
   logFetchError,
   type EpisodeSummary,
 } from "@/lib/api";
+
+// The seeded sample room the "Run a sample coordination" onboarding routes into.
+const SAMPLE_TOUR_HREF = "/room/pricing-model?tour=1";
+
+/** Secondary onboarding CTA: see it work before building anything. */
+function RunSampleLink({ className = "" }: { className?: string }) {
+  return (
+    <Link
+      href={SAMPLE_TOUR_HREF}
+      className={`inline-flex h-8 items-center gap-2 rounded-md border border-border px-3.5 text-label font-medium text-text transition-colors hover:border-border2 hover:bg-surface ${className}`}
+    >
+      <Sparkles className="size-4 text-accent" />
+      Run a sample
+    </Link>
+  );
+}
 
 interface Room {
   name: string;
@@ -67,21 +70,25 @@ function episodeState(ep: EpisodeSummary): { label: string; color: string; live:
 export function CommandCenter() {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [showCreate, setShowCreate] = useState(false);
+
+  const load = useCallback(
+    () =>
+      fetchRooms()
+        .then((data: Room[]) => { setRooms(data); setLoaded(true); })
+        .catch((e) => { logFetchError("fetchRooms")(e); setLoaded(true); }),
+    [],
+  );
 
   useEffect(() => {
-    let cancelled = false;
-    const load = () =>
-      fetchRooms()
-        .then((data: Room[]) => { if (!cancelled) { setRooms(data); setLoaded(true); } })
-        .catch((e) => { logFetchError("fetchRooms")(e); if (!cancelled) setLoaded(true); });
     load();
     const t = setInterval(load, 10_000);
-    return () => { cancelled = true; clearInterval(t); };
-  }, []);
+    return () => clearInterval(t);
+  }, [load]);
 
   return (
     <div className="flex-1 overflow-y-auto">
-      <div className="mx-auto max-w-5xl px-8 py-8">
+      <div className="px-8 py-8">
         <header className="mb-6 flex items-start justify-between gap-4">
           <div className="min-w-0">
             <h1 className="text-2xl font-semibold text-text">Command center</h1>
@@ -89,7 +96,13 @@ export function CommandCenter() {
               Every coordination workspace, at a glance. Open one to negotiate, plan, and remember.
             </p>
           </div>
-          <RunSampleButton className="mt-1 flex-shrink-0" />
+          <div className="mt-1 flex flex-shrink-0 items-center gap-2">
+            <RunSampleLink />
+            <Button onClick={() => setShowCreate(true)}>
+              <Plus className="size-4" />
+              New room
+            </Button>
+          </div>
         </header>
 
         {loaded && rooms.length === 0 ? (
@@ -97,18 +110,28 @@ export function CommandCenter() {
             <EmptyState
               icon={Boxes}
               title="No rooms yet"
-              description="See it work first: run a guided sample coordination, or create a room from the sidebar."
-              action={<RunSampleButton />}
+              description="Create your first coordination room, or run a guided sample to see it work."
+              action={
+                <div className="flex items-center gap-2">
+                  <Button onClick={() => setShowCreate(true)}>
+                    <Plus className="size-4" />
+                    New room
+                  </Button>
+                  <RunSampleLink />
+                </div>
+              }
             />
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {rooms.map(room => (
               <RoomCard key={room.name} room={room} />
             ))}
           </div>
         )}
       </div>
+
+      <CreateRoomDialog open={showCreate} onClose={() => setShowCreate(false)} onCreated={load} />
     </div>
   );
 }

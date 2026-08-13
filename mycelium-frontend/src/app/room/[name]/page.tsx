@@ -137,6 +137,7 @@ export default function RoomPage() {
               planRefreshTrigger={memoryRefresh}
               view={editorView}
               onViewChange={setEditorView}
+              suppressInvites={tourActive}
             />
           </div>
           <RoomChatBox roomName={roomName} />

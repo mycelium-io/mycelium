@@ -11,8 +11,7 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default:
-          "border-transparent bg-accent text-accent-fg hover:opacity-90",
+        default: "btn-accent",
         outline:
           "border-border text-text hover:bg-surface hover:border-border2",
         secondary:

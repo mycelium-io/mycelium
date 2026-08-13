@@ -246,9 +246,12 @@ interface Props {
   /** Optional controlled tab (e.g. driven by the onboarding tour). */
   view?: View;
   onViewChange?: (view: View) => void;
+  /** Hold back the consent-request modal (e.g. during the onboarding tour, so
+   *  its backdrop doesn't cover the coached highlights). */
+  suppressInvites?: boolean;
 }
 
-export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onNegotiationPhaseChange, planRefreshTrigger = 0, view: viewProp, onViewChange }: Props) {
+export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onNegotiationPhaseChange, planRefreshTrigger = 0, view: viewProp, onViewChange, suppressInvites = false }: Props) {
   const [events, setEvents] = useState<Event[]>([]);
   const [connected, setConnected] = useState(false);
 
@@ -387,7 +390,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
   return (
     <div className="flex flex-col h-full">
       <ConsentDialog
-        invite={invites[0] ?? null}
+        invite={suppressInvites ? null : (invites[0] ?? null)}
         onAccept={(invite) => respond(invite, "accept")}
         onDecline={(invite) => respond(invite, "decline")}
       />
