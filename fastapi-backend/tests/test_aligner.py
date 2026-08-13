@@ -76,6 +76,57 @@ async def test_summon_fires_only_for_the_reserved_handle():
 
 
 @pytest.mark.asyncio
+async def test_mediate_explains_when_too_few_participants():
+    """Summoned with fewer than two participants, the aligner posts a
+    brain-authored explanation to the room instead of silently opening and
+    rejecting a throwaway episode."""
+    channel = FakeChannel()
+    persister = FakePersister()
+    managed = FakeManaged(_ROOM, "mycelium", channel, persister)
+    manager = FakeManager(managed, ["solo"])  # one participant besides the aligner
+    engine = _engine(
+        manager,
+        brain_factory=lambda _ep: (lambda _prompt, **_kw: "Post positions first, then summon me."),
+    )
+
+    result = await engine.mediate(_ROOM)
+
+    assert result is None
+    assert manager.opened == []  # no throwaway episode opened
+    # The aligner broadcast its explanation to the room ...
+    assert len(channel.sent) == 1
+    env, extra = channel.sent[0]
+    assert env.header.kind == Kind.exchange
+    assert extra is not None and extra["content"] == "Post positions first, then summon me."
+    # ... and recorded it locally so the transcript / UI see it.
+    assert persister.ingested
+    assert persister.ingested[-1][1]["content"] == "Post positions first, then summon me."
+
+
+@pytest.mark.asyncio
+async def test_mediate_stall_falls_back_when_brain_unavailable():
+    """If the brain errors, the aligner still leaves a static, actionable reply
+    rather than saying nothing."""
+    channel = FakeChannel()
+    persister = FakePersister()
+    managed = FakeManaged(_ROOM, "mycelium", channel, persister)
+
+    def _boom(_ep: str) -> Any:
+        def _raise(_prompt: str, **_kw: Any) -> str:
+            raise RuntimeError("no pi")
+
+        return _raise
+
+    engine = _engine(FakeManager(managed, []), brain_factory=_boom)  # zero participants
+
+    await engine.mediate(_ROOM)
+
+    assert len(channel.sent) == 1
+    _, extra = channel.sent[0]
+    assert extra is not None and "at least two agents" in extra["content"]
+
+
+@pytest.mark.asyncio
 async def test_engine_runtime_host_skips_registered_engine(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -29,7 +29,11 @@ async function proxy(req: Request): Promise<Response> {
 
   const backend = getBackendUrl();
   const { pathname, search } = new URL(req.url);
-  const target = `${backend}${pathname}${search}`;
+  // The backend serves health at the root (`/health`), while everything else it
+  // exposes is under `/api`. Map the proxied `/api/health` onto the root path so
+  // the health/fabric views can read it through the same proxy.
+  const backendPath = pathname === "/api/health" ? "/health" : pathname;
+  const target = `${backend}${backendPath}${search}`;
 
   const headers = new Headers(req.headers);
   for (const h of STRIP_REQUEST) headers.delete(h);

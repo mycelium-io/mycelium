@@ -187,7 +187,10 @@ class RoomChannelManager:
                     "room": room,
                     "provisioned": True,
                     "persister_alive": task is not None and not task.done(),
-                    "members": sorted(managed.members),
+                    # Union of SLIM-connected members and live server-held `await`
+                    # leases — the same roster `members()` serves the mediator, so
+                    # a bare-CLI participant long-polling `await` is visible here.
+                    "members": self.members(room),
                     "pending_invites": len(self.pending_invites(room)),
                     "episode_active": managed.lifecycle.active,
                     "reserves": managed.persister.reserves if managed.persister else 0,
@@ -493,9 +496,14 @@ class RoomChannelManager:
         # cross-host agents (not registered here), so a CLI-only user can still
         # wake their own agent, and the consent surface is reserved for the
         # genuinely external case it's meant for.
+        # "Present" is SLIM-connected members plus live server-held `await` leases. A
+        # bare-CLI agent long-polling `await` is a first-class participant — its
+        # turn is delivered via the durable transcript cursor its poll reads, not a
+        # SLIM broadcast — so an @-mention of it is a wake, not a consent invite.
+        present = set(self.members(room))
         invites: list[PendingInvite] = []
         for handle in mentioned:
-            if handle in managed.members or handle == BACKEND_AGENT:
+            if handle in present or handle == BACKEND_AGENT:
                 continue
             if _is_own_registered_agent(room, handle):
                 if managed.lifecycle.active:
@@ -559,7 +567,12 @@ class RoomChannelManager:
                 managed.lifecycle.episode,
             )
             return self._invites.mark(invite_id, QUEUED)
-        await self.invite(invite.room, invite.agent)
+        # Schedule the SLIM invite off the request path. The group invite
+        # handshake retries against an absent member before failing, so awaiting it
+        # here would stall the HTTP accept for the whole retry budget (observed as a
+        # hung/timed-out accept). Mark accepted now; `members` updates if/when the
+        # invite lands, exactly as it does for a background join.
+        self.invite_in_background(invite.room, invite.agent)
         return self._invites.mark(invite_id, ACCEPTED)
 
     def decline_invite(self, invite_id: str) -> PendingInvite | None:

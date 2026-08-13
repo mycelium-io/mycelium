@@ -109,3 +109,46 @@ def test_room_messages_singular_count(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert result.exit_code == 0, result.output
     assert "1 message," in result.output  # singular, not "1 messages"
+
+
+def test_room_messages_shows_full_content_not_truncated(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The read-the-transcript command must not clip content (regression: was cut
+    to 100 chars with an ellipsis, so long messages were unreadable)."""
+    from mycelium_backend_client.models import MessageListResponse, MessageRead
+
+    long_text = "x" * 300 + " END-MARKER"
+    msg = MessageRead(
+        id=uuid4(),
+        sender_handle="operator",
+        message_type="broadcast",
+        content=long_text,
+        created_at=datetime.datetime(2026, 6, 11, 21, 22, 56),  # noqa: DTZ001
+    )
+    _patch_common(monkeypatch, lambda **_kw: MessageListResponse(messages=[msg], total=1))
+
+    result = CliRunner().invoke(room_cmd.app, ["messages", "msgtest"])
+
+    assert result.exit_code == 0, result.output
+    assert "END-MARKER" in result.output  # full content survives
+    assert "…" not in result.output  # no truncation ellipsis
+
+
+def test_room_messages_indents_multiline_content(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Multi-line content stays readable — continuation lines indented, not
+    flattened into a single space-joined line."""
+    from mycelium_backend_client.models import MessageListResponse, MessageRead
+
+    msg = MessageRead(
+        id=uuid4(),
+        sender_handle="operator",
+        message_type="broadcast",
+        content="first line\nsecond line",
+        created_at=datetime.datetime(2026, 6, 11, 21, 22, 56),  # noqa: DTZ001
+    )
+    _patch_common(monkeypatch, lambda **_kw: MessageListResponse(messages=[msg], total=1))
+
+    result = CliRunner().invoke(room_cmd.app, ["messages", "msgtest"])
+
+    assert result.exit_code == 0, result.output
+    assert "first line" in result.output
+    assert "second line" in result.output

@@ -46,7 +46,47 @@ export async function handleMock(req: Request): Promise<Response | null> {
   }
 
   // ── /health ─────────────────────────────────────────────────────────────────
-  if (rest[0] === "health") return json({ status: "ok", mock: true });
+  if (rest[0] === "health")
+    return json({
+      status: "ok",
+      mock: true,
+      coordination: {
+        endpoint: "http://mycelium-slim:46357",
+        slim_enabled: true,
+        channels_live: 2,
+        provisions_ok: 2,
+        provisions_failed: 0,
+        invite_failures: 0,
+        rooms: [
+          {
+            room: "atlas-migration",
+            provisioned: true,
+            persister_alive: true,
+            members: ["planner", "julia"],
+            pending_invites: 1,
+            episode_active: true,
+            reserves: 3,
+            reserve_failures: 0,
+            reserve_skipped: 0,
+            receive_errors: 0,
+            transient_errors: 0,
+          },
+          {
+            room: "design-review",
+            provisioned: true,
+            persister_alive: true,
+            members: [],
+            pending_invites: 0,
+            episode_active: false,
+            reserves: 0,
+            reserve_failures: 0,
+            reserve_skipped: 0,
+            receive_errors: 0,
+            transient_errors: 0,
+          },
+        ],
+      },
+    });
 
   if (rest[0] !== "rooms") return null;
 

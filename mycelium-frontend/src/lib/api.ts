@@ -366,3 +366,42 @@ export async function fetchEpisode(
   if (!res.ok) return null;
   return res.json();
 }
+
+// ── SLIM coordination fabric (the `/health` coordination block) ──────────────
+
+/** Per-room channel telemetry: present members (SLIM + server-held `await`
+ *  leases), open consent invites, episode state, and durable-inbox counters. */
+export interface CoordinationRoom {
+  room: string;
+  provisioned: boolean;
+  persister_alive: boolean;
+  members: string[];
+  pending_invites: number;
+  episode_active: boolean;
+  reserves: number;
+  reserve_failures: number;
+  reserve_skipped: number;
+  receive_errors: number;
+  transient_errors: number;
+}
+
+/** The fabric-wide view: SLIM node endpoint, live-channel + provision counters,
+ *  and one entry per provisioned room. */
+export interface CoordinationStatus {
+  endpoint: string;
+  slim_enabled: boolean;
+  channels_live: number;
+  provisions_ok: number;
+  provisions_failed: number;
+  invite_failures: number;
+  rooms: CoordinationRoom[];
+}
+
+/** Read the SLIM coordination telemetry from the backend `/health` endpoint.
+ *  Fail-soft: returns null when the backend is unreachable or has no block. */
+export async function fetchCoordination(): Promise<CoordinationStatus | null> {
+  const res = await fetch(`/api/health`, { cache: "no-store" });
+  if (!res.ok) return null;
+  const data = await res.json();
+  return data?.coordination ?? null;
+}

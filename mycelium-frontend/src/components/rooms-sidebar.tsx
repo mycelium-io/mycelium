@@ -11,6 +11,7 @@ import { fetchRooms, getAppEventsSSEUrl, logFetchError } from "@/lib/api";
 import { CreateRoomDialog } from "@/components/create-room-dialog";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { EmptyState } from "@/components/empty-state";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface Room {
   name: string;
@@ -108,7 +109,8 @@ export function RoomsSidebar({ activeRoom = null }: Props) {
       </div>
 
       {/* Rooms list */}
-      <nav className="flex-1 overflow-y-auto px-2 pb-2">
+      <ScrollArea className="min-h-0 flex-1">
+        <nav className="px-2 pb-2">
         {filtered.length === 0 ? (
           rooms.length === 0 ? (
             <EmptyState size="sm" icon={Boxes} title="No rooms yet" description="Create one with the + above." />
@@ -141,7 +143,8 @@ export function RoomsSidebar({ activeRoom = null }: Props) {
             );
           })
         )}
-      </nav>
+        </nav>
+      </ScrollArea>
 
       {/* Footer */}
       <div className="flex items-center gap-1 border-t border-border px-3 py-2">
