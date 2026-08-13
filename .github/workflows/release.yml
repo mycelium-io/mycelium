@@ -98,7 +98,7 @@ jobs:
           fi
 
       - name: Build and push mycelium-db
-        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: fastapi-backend
           file: fastapi-backend/docker/Dockerfile.agensgraph
@@ -118,7 +118,7 @@ jobs:
           sed -i.bak "s/^version = .*/version = \"$VERSION\"/" pyproject.toml && rm -f pyproject.toml.bak
 
       - name: Build and push mycelium-backend
-        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: fastapi-backend
           file: fastapi-backend/Dockerfile
@@ -129,7 +129,7 @@ jobs:
           cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/mycelium-backend:cache,mode=max
 
       - name: Build and push mycelium-frontend
-        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: mycelium-frontend
           file: mycelium-frontend/Dockerfile
@@ -148,7 +148,7 @@ jobs:
         # Receives OTLP telemetry from agent diagnostics plugins. Build context
         # is the CLI dir because Dockerfile.collector
         # COPYs ./pyproject.toml and ./src/ from there.
-        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: mycelium-cli
           file: mycelium-cli/Dockerfile.collector
