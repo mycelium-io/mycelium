@@ -48,7 +48,7 @@ export function ThemeToggle() {
         {mounted ? <Active className="size-4" /> : <span className="size-4" />}
       </button>
       {open && (
-        <div className="absolute right-0 top-full z-30 mt-1.5 w-36 overflow-hidden rounded-xl border border-border bg-elevated p-1 shadow-xl">
+        <div className="absolute right-0 bottom-full z-30 mb-1.5 w-36 overflow-hidden rounded-xl border border-border bg-elevated p-1 shadow-xl">
           {OPTIONS.map(({ value, label, icon: Icon }) => (
             <button
               key={value}

@@ -3,18 +3,14 @@
 
 "use client";
 
-import { MainTopBar } from "@/components/main-top-bar";
-import { SubNav, type Crumb } from "@/components/sub-nav";
+import { AppShell } from "@/components/app-shell";
 import { MetricsScreen } from "@/components/metrics-screen";
-
-const crumbs: Crumb[] = [{ label: "metrics" }];
+import { GlobalStatusItems } from "@/components/status-items";
 
 export default function MetricsPage() {
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-bg text-text">
-      <MainTopBar activeTab="metrics" />
-      <SubNav crumbs={crumbs} />
+    <AppShell activeRoom={null} statusLeft={<span>Metrics</span>} statusRight={<GlobalStatusItems />}>
       <MetricsScreen />
-    </div>
+    </AppShell>
   );
 }

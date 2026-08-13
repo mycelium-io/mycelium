@@ -4,6 +4,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import TextareaAutosize from "react-textarea-autosize";
 import { ArrowUp } from "lucide-react";
 import { fetchRoomAgents, logFetchError, sendRoomMessage, type AgentSummary } from "@/lib/api";
 
@@ -178,14 +179,15 @@ export function RoomChatBox({ roomName, defaultSender, onSent }: Props) {
         )}
 
         <div className="flex flex-col rounded-2xl border border-border bg-surface transition-colors focus-within:border-accent focus-within:bg-bg">
-          <textarea
+          <TextareaAutosize
             ref={inputRef}
             value={content}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
             placeholder="Message the room…  @ to mention an agent"
-            rows={1}
-            className="w-full resize-none bg-transparent px-4 pt-3 pb-1.5 text-body text-text leading-relaxed focus:outline-none placeholder:text-muted-foreground max-h-40"
+            minRows={1}
+            maxRows={10}
+            className="w-full resize-none bg-transparent px-4 pt-3 pb-1.5 text-body text-text leading-relaxed focus:outline-none placeholder:text-muted-foreground"
             disabled={sending}
           />
           <div className="flex items-center gap-2 px-3 pb-2.5 pt-0.5">
