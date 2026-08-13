@@ -19,6 +19,8 @@ import {
 
 interface Props {
   roomName: string;
+  /** Bumped by the room page on pushed presence/memory events to refetch now. */
+  refreshKey?: number;
 }
 
 /** Two-letter monogram from a handle: "backend-lead" → BL, "oc-test2" → OT,
@@ -43,7 +45,7 @@ function initials(handle: string): string {
  * side effects (mycelium-daemon manifest mirror, OpenClaw gateway config + restart)
  * that the hub cannot perform. Use `mycelium agent add` / `create` / `rm`.
  */
-export function AgentsPanel({ roomName }: Props) {
+export function AgentsPanel({ roomName, refreshKey = 0 }: Props) {
   const [agents, setAgents] = useState<AgentSummary[]>([]);
   const [loaded, setLoaded] = useState(false);
 
@@ -63,7 +65,7 @@ export function AgentsPanel({ roomName }: Props) {
     refresh();
     const t = setInterval(refresh, 30_000);
     return () => clearInterval(t);
-  }, [refresh]);
+  }, [refresh, refreshKey]);
 
   return (
     <div className="flex h-full flex-col overflow-hidden">

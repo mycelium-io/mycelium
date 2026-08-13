@@ -149,6 +149,11 @@ export function getSSEUrl(roomName: string) {
   return `/api/rooms/${roomName}/messages/stream`;
 }
 
+/** SSE endpoint for global app events (room create/delete). */
+export function getAppEventsSSEUrl() {
+  return `/api/events/stream`;
+}
+
 export async function sendRoomMessage(
   roomName: string,
   data: { sender_handle: string; content: string; message_type?: string },

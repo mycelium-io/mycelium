@@ -194,6 +194,7 @@ const typeStyles: Record<string, { tone: "accent" | "ok" | "warn" | "muted" | "i
   announce:               { tone: "ink",    label: "ANNOUNCE" },
   delegate:               { tone: "accent", label: "DELEGATE" },
   coordination_join:      { tone: "accent", label: "JOIN" },
+  coordination_leave:     { tone: "muted",  label: "LEAVE" },
   coordination_start:     { tone: "accent", label: "START" },
   coordination_tick:      { tone: "muted",  label: "TICK" },
   coordination_consensus: { tone: "ok",     label: "CONSENSUS" },
@@ -334,6 +335,10 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
           // A consensus compiles the negotiation into plan/tasks.md, so nudge
           // the plan header to refetch so the checklist surfaces immediately.
           if (event.type === "coordination_consensus" && event.raw.broken !== true) {
+            onMemoryChanged?.();
+          }
+          // Presence changes: refresh the room's derived state (agent roster/count).
+          if (event.type === "coordination_join" || event.type === "coordination_leave") {
             onMemoryChanged?.();
           }
         } catch {}

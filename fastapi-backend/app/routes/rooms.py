@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException
 
+from app.bus import app_channel, bus
 from app.schemas import RoomCreate, RoomRead
 from app.services import room_channels
 from app.services.filesystem import (
@@ -73,6 +74,17 @@ async def create_room(room: RoomCreate):
 
     result = _room_read(room.name)
     assert result is not None  # just created
+
+    # Push to the global app channel so every open UI's room list updates live.
+    bus.publish(
+        app_channel(),
+        {
+            "type": "room_created",
+            "room_name": room.name,
+            "mas_id": room.mas_id,
+            "created_at": datetime.now(UTC).isoformat(),
+        },
+    )
     return result
 
 
@@ -125,3 +137,5 @@ async def delete_room(room_name: str):
     await room_channels.manager.close(room_name)
     remove_room_dir(room_name)
     logger.info("Removed room %s", room_name)
+
+    bus.publish(app_channel(), {"type": "room_deleted", "room_name": room_name})

@@ -184,3 +184,15 @@ async def leave_room(room_name: str, session_id: UUID):
         raise HTTPException(status_code=404, detail="Participant not found")
     if handle is not None:
         await room_channels.manager.remove(room_name, handle)
+        # Mirror the join event so the room's agent roster updates live on leave.
+        bus.publish(
+            room_channel(room_name),
+            {
+                "type": "coordination_leave",
+                "room_name": room_name,
+                "agent_handle": handle,
+                "sender_handle": l9.SYSTEM_ACTOR_ID,
+                "message_type": "coordination_leave",
+                "created_at": datetime.now(UTC).isoformat(),
+            },
+        )

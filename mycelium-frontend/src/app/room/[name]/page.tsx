@@ -59,7 +59,7 @@ export default function RoomPage() {
     if (typeof window !== "undefined") window.history.replaceState(null, "", window.location.pathname);
   }, []);
 
-  const { agents, episodes, openTasks } = useRoomStatus(roomName);
+  const { agents, episodes, openTasks } = useRoomStatus(roomName, memoryRefresh);
 
   useEffect(() => {
     let cancelled = false;
