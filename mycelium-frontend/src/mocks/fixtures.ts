@@ -173,6 +173,13 @@ const atlas: RoomFixture = {
       updated_at: iso(60 * 20),
     },
     {
+      key: "agents/synthesizer",
+      value: agentManifest("Distills room memory into a shared briefing.", "engine"),
+      created_by: "operator",
+      version: 1,
+      updated_at: iso(60 * 20),
+    },
+    {
       key: "decisions/cutover",
       value: "Phased cutover over a 48h window; dual-write then flip reads.",
       content_text: "Phased cutover over a 48h window; dual-write then flip reads.",
@@ -195,6 +202,20 @@ const atlas: RoomFixture = {
       created_by: "growth",
       version: 2,
       updated_at: iso(120),
+    },
+    {
+      key: "context/synthesis",
+      value:
+        "# Atlas migration — room briefing\n\n" +
+        "**Decision.** Phased cutover over a 48h window; dual-write then flip reads.\n\n" +
+        "**Status.** Cutover rehearsal green; production flip scheduled Thursday.\n\n" +
+        "**Goal.** Move the Atlas catalog off the legacy store with zero downtime.\n\n" +
+        "_Owners:_ @growth drives delivery; @risk guards reliability.",
+      content_text:
+        "Atlas migration briefing: phased 48h cutover (dual-write then flip); rehearsal green, flip Thursday; zero-downtime goal.",
+      created_by: "synthesizer",
+      version: 1,
+      updated_at: iso(38),
     },
   ],
   plan: {
@@ -256,6 +277,8 @@ const pricing: RoomFixture = {
   memories: [
     { key: "agents/finance", value: agentManifest("Protects margin; models unit economics."), created_by: "operator", version: 1, updated_at: iso(160) },
     { key: "agents/growth", value: agentManifest("Wants adoption; favors a low entry price."), created_by: "operator", version: 1, updated_at: iso(160) },
+    { key: "agents/aligner", value: agentManifest("First-party mediator (NEGMAS SAO).", "engine"), created_by: "operator", version: 1, updated_at: iso(160) },
+    { key: "agents/synthesizer", value: agentManifest("Distills room memory into a shared briefing.", "engine"), created_by: "operator", version: 1, updated_at: iso(160) },
     { key: "context/goal", value: "Pick a launch price for the Pro tier.", content_text: "Pick a launch price for the Pro tier.", created_by: "operator", version: 1, updated_at: iso(175) },
   ],
   plan: { room: "pricing-model", title: null, files: [], tasks: [], open_count: 0, done_count: 0 },
@@ -340,6 +363,7 @@ export const COLLECTOR_METRICS = {
         growth: { input: 82_000, output: 21_000, cache_read: 40_000, cache_write: 5_000, total: 148_000 },
         risk: { input: 61_000, output: 18_000, cache_read: 30_000, cache_write: 4_000, total: 113_000 },
         aligner: { input: 41_300, output: 13_100, cache_read: 20_400, cache_write: 3_800, total: 78_600 },
+        synthesizer: { input: 12_600, output: 3_400, cache_read: 6_000, cache_write: 900, total: 22_900 },
       },
       by_model: {
         "anthropic/claude-sonnet-4-6": { input: 143_000, output: 39_000, cache_read: 70_000, cache_write: 9_000, total: 261_000 },
@@ -348,7 +372,7 @@ export const COLLECTOR_METRICS = {
     },
     cost_usd: {
       total: 4.82,
-      by_agent: { growth: 2.1, risk: 1.6, aligner: 1.12 },
+      by_agent: { growth: 2.1, risk: 1.6, aligner: 1.12, synthesizer: 0.28 },
       by_model: { "anthropic/claude-sonnet-4-6": 3.9, "anthropic/claude-haiku-4-5": 0.92 },
     },
     messages: { processed: 214 },
@@ -358,6 +382,7 @@ export const COLLECTOR_METRICS = {
       growth: { calls: 46, last: iso(28) },
       risk: { calls: 38, last: iso(31) },
       aligner: { calls: 22, last: iso(42) },
+      synthesizer: { calls: 6, last: iso(38) },
     },
   },
 };
