@@ -16,8 +16,7 @@ The mediator injects its brain as a callable
 long-lived ``pi -p --session <path> --mode json`` subprocess. Because one
 :class:`PiBrain` instance reuses a single ``--session`` file across every call,
 the brain accumulates **real durable memory across SAO rounds** — the natural
-home for the running state ``MediatedNegotiation`` threads by hand today (the
-v1→v2 "the camp counselor needs memory" lesson, now native).
+home for the running state ``MediatedNegotiation`` threads by hand today.
 
 **Synchronous on purpose.** The mediator's brain turns run inside NEGMAS's
 ``mech.run()`` worker thread, so this is blocking too. We shell out with a

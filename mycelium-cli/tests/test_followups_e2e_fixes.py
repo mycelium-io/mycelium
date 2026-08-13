@@ -114,8 +114,8 @@ def test_cursor_register_does_not_leak_handle_when_cwd_missing(tmp_path: Path) -
     ``install_workspace_assets`` raises ``NotADirectoryError`` and the
     handle must NOT have been persisted to ``daemon.toml``.
 
-    Before the fix the handle was claimed first and the asset drop ran
-    second, so the failure path left orphan ownership behind.
+    The asset drop must run before the handle is claimed, so a failure on
+    the asset path leaves no orphan ownership behind.
     """
     missing = tmp_path / "does-not-exist"
     assert not missing.exists()
@@ -275,8 +275,8 @@ def test_cursor_login_check_warns_when_no_config(
     assert result.status == "warning"
     assert "has not been run" in result.message.lower()
     assert any("cursor-agent login" in detail for detail in (result.details or []))
-    # The hint must point at the *current* config location (~/.config/cursor/auth.json),
-    # not the stale ~/.cursor/cli-config.json schema we used to read.
+    # The hint must point at the canonical config location
+    # (~/.config/cursor/auth.json), not the stale ~/.cursor/cli-config.json schema.
     assert any("/.config/cursor/auth.json" in d for d in (result.details or []))
 
 
@@ -313,16 +313,11 @@ def test_cursor_login_check_ok_with_auth_json_access_token(
 def test_cursor_login_check_warns_when_auth_json_missing_even_if_cli_config_has_authinfo(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Pins F1b. ``cli-config.json`` ``authInfo.email`` is biographical —
-    it persists across logout and lingers as a stale "user X used to be
-    logged in" breadcrumb. We do NOT treat it as a "currently
-    authenticated" signal, because doing so would let doctor green-light
-    a host where ``cursor-agent`` will fail to spawn.
-
-    Reproducer from the post-fix e2e rerun: with auth.json moved aside,
-    the daemon correctly posted a friendly "cursor-agent is not
-    authenticated" error, but doctor — using a previous version of this
-    check that included the cli-config fallback — reported "authenticated".
+    """``cli-config.json`` ``authInfo.email`` is biographical — it persists
+    across logout and is not a "currently authenticated" signal. auth.json is
+    canonical: when it is absent, doctor must warn even if cli-config.json
+    still carries ``authInfo``, otherwise doctor green-lights a host where
+    ``cursor-agent`` will fail to spawn.
     """
     import json
 
@@ -651,18 +646,14 @@ def test_load_manifest_remote_returns_none_for_missing_or_error() -> None:
 def test_agent_invoke_falls_through_to_backend_when_local_mirror_empty(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Pins F2 from the cursor-e2e walkthrough.
+    """``mycelium agent invoke <handle>`` must resolve manifests local-first
+    then fall through to the backend, so cross-host invocation works (hub
+    invoking a spoke-registered agent or vice-versa).
 
-    Before the fix, ``mycelium agent invoke <handle>`` checked the local
-    filesystem mirror for ``agents/<handle>`` and bailed with
-    ``Not found: no agent named …`` if the manifest hadn't been
-    materialised on this host. That blocked every cross-host invocation
-    (hub invoking a spoke-registered agent or vice-versa).
-
-    The fix calls ``_load_manifest`` first (cheap local read) and falls
-    through to ``_load_manifest_remote`` (backend memory API) only when
-    local returns ``None``. This test forces that fall-through path and
-    asserts the message is sent.
+    It calls ``_load_manifest`` first (cheap local read) and falls through to
+    ``_load_manifest_remote`` (backend memory API) only when local returns
+    ``None``. This test forces that fall-through path and asserts the message
+    is sent.
     """
     import importlib
 

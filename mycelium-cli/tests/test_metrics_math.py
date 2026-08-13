@@ -4,12 +4,10 @@
 """
 Unit tests for the metrics display math.
 
-These guard a class of bug that was present before the
-feat/simple_metrics restructure: the cache hit-rate and savings
-calculations were mathematically inconsistent with how LLM providers
-actually bill cached prefixes, and the ``heartbeat`` channel
-(idle-loop keep-alive traffic) was silently aggregated into headline
-token totals, drowning real agent work.
+These guard regressions in token bucketing (foreground work vs
+background ``heartbeat`` keep-alive traffic) and in the cache hit-rate
+and savings math, which must match how LLM providers bill cached
+prefixes.
 
 What's covered:
   * _oc_token_totals correctly splits by-channel tokens into

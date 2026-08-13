@@ -4,16 +4,15 @@
 """Claude Code install facet — hook registration is empty + stale-cleanup
 is exhaustive.
 
-This adapter no longer ships hook scripts (the in-process knowledge
-extractor handles what those wrappers used to do, with cleaner privacy
-gates). The risk in that change is twofold:
+Hook registration is empty because knowledge extraction is handled
+in-process; stale-cleanup covers the hooks a previous release may have
+registered. Two invariants:
 
 1. If ``_CLAUDE_CODE_HOOK_EVENTS`` ever drifts back to listing a hook,
    ``_register_claude_code_hooks`` would re-add a settings.json entry
    pointing at a hook script that the package no longer ships. Claude
-   Code then aborts every spawn with ``SessionEnd hook ... not found``
-   — which is exactly the regression that broke autonomous coordination
-   for ``claude_code`` agents in 2026-05.
+   Code then aborts every spawn with ``SessionEnd hook ... not found``,
+   which breaks autonomous coordination for ``claude_code`` agents.
 
 2. ``_CLAUDE_CODE_STALE_HOOKS`` must list every hook event a previous
    release may have registered. If a stale entry isn't covered here, an
@@ -128,8 +127,7 @@ def test_stale_and_live_hook_lists_are_disjoint() -> None:
     ``_CLAUDE_CODE_HOOK_EVENTS``, ``_install_claude_code`` would
     re-introduce the entry on every reinstall: the cleanup loop strips
     it from settings.json, then the registration loop adds it right
-    back. That's the exact bug we hit in 2026-05 when claude_code
-    spawns started failing with ``SessionEnd hook ... not found``."""
+    back, and claude_code spawns fail with ``SessionEnd hook ... not found``."""
     stale_events = {event for _name, event in claude_install._CLAUDE_CODE_STALE_HOOKS}
     live_events = {event for _name, event in claude_install._CLAUDE_CODE_HOOK_EVENTS}
     assert stale_events.isdisjoint(live_events), (

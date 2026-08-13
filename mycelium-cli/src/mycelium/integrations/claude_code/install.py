@@ -3,10 +3,9 @@
 
 """Claude Code install facet — skill/hooks install + daemon service core.
 
-Relocated verbatim from ``commands/adapter.py`` so the single ``Integration``
-contract (see ``integrations/base.py``) owns both the dispatch and install
-facets per runtime family — closing #173. The typer command layer is now a
-thin dispatcher over ``get_integration(...)``; nothing here changed behaviour.
+The single ``Integration`` contract (see ``integrations/base.py``) owns both
+the dispatch and install facets per runtime family. The typer command layer is
+a thin dispatcher over ``get_integration(...)``.
 """
 
 from __future__ import annotations

@@ -52,8 +52,9 @@ from mycelium.integrations import get_integration
 from mycelium.integrations._spawn_common import SpawnRequest
 from mycelium.slim import l9
 
-# Historical aliases — re-exported so callers/tests that import these membership
-# helpers from ``connector`` keep working; the single implementation is the core.
+# Re-exported for import compatibility so callers/tests that import these
+# membership helpers from ``connector`` keep working; the single implementation
+# lives in ``mycelium.slim.member``.
 from mycelium.slim.member import (  # noqa: F401
     KEEPALIVE_TYPE as _KEEPALIVE_TYPE,
 )

@@ -228,9 +228,7 @@ export async function fetchRoomAgents(roomName: string): Promise<AgentSummary[]>
     if (!rest || rest.includes("/")) continue;
     // The manifest is YAML. The memory API may hand it back as a raw string,
     // a structured dict, OR (what the backend actually does) wrapped as
-    // `{text: "<yaml>"}`. Normalize to one YAML string and parse that; the
-    // old code missed the {text} shape and defaulted every agent to
-    // claude_code.
+    // `{text: "<yaml>"}`. Normalize to one YAML string and parse that.
     const value = item.value;
     let raw = "";
     let structured: Record<string, unknown> | null = null;

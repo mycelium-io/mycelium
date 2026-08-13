@@ -118,8 +118,9 @@ def _new_episode_id() -> str:
     Each ``@``-summon convenes a *distinct* episode. The id flows into the episode
     URN (``l9.episode_urn``), every envelope on the wire, and the
     ``log/episodes/{id}.md`` record filename — so two convenings in the same room
-    never share a URN or clobber each other's record. Was a hardcoded constant
-    (``"align"``); every negotiation then overwrote the one ``align.md``.
+    never share a URN or clobber each other's record. Each ``@``-summon convenes a
+    distinct episode with its own tag, so negotiations don't collide on one
+    ``align.md``.
     """
     return uuid.uuid4().hex[:8]
 

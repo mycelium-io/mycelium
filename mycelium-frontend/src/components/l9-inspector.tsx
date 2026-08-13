@@ -15,7 +15,7 @@ import {
 // The L9 protocol inspector renders the AOP layer legibly: the live L9 payloads
 // crossing a room's channel (exchange ticks/replies, commit verdicts with
 // MPC/GAR/SCR, knowledge pushes) as a wire feed, plus the persisted episode
-// records, the causal chain the broadcast envelopes deliberately omit.
+// records and their causal chain.
 
 // ── frame model ────────────────────────────────────────────────────────────────
 

@@ -42,8 +42,9 @@ def test_announce_warns_when_no_env_file(
 def test_announce_warns_when_pin_missing_from_env(
     env_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """The bug we just fixed: ``mycelium config apply`` regenerates .env
-    without ``MYCELIUM_IMAGE_TAG``.  Compose silently falls back to ``:latest``.
+    """``MYCELIUM_IMAGE_TAG`` may be absent from a regenerated .env (e.g.
+    after ``mycelium config apply``); compose must not silently fall back to
+    ``:latest`` without warning.
     """
     env_path.write_text("MYCELIUM_DB_PASSWORD=password\n", encoding="utf-8")
     instance._announce_image_tag()

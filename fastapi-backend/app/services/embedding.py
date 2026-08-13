@@ -6,9 +6,6 @@ Local embedding service using fastembed (ONNX-based).
 
 Provides semantic vector embeddings for persistent memory search.
 Uses BAAI/bge-small-en-v1.5 (384 dimensions, runs locally, no PyTorch).
-
-Drop-in replacement for the previous sentence-transformers implementation.
-Aligned with cisco-eti/ioc-cfn-cognitive-agents embedding stack.
 """
 
 import logging

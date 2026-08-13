@@ -8,7 +8,7 @@ Thin typer layer. All per-family install/uninstall/step/status behaviour
 lives behind the single ``Integration`` contract
 (``mycelium.integrations``); this module just parses arguments and dispatches
 via ``get_integration(...)`` — there is no ``if adapter_type ==`` branching
-left (that asymmetry was the disease tracked as #173).
+left.
 
 Supported families: ``claude-code``, ``cursor``.
 Every family that has an entry in ``ADAPTER_TYPES`` below is also wired

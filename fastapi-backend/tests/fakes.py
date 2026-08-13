@@ -4,10 +4,7 @@
 """Shared in-process fakes for the backend test suite.
 
 One import gets you a fake coordination stack — no SLIM node, no Pi binary, no
-live LLM. These used to be re-declared per test file (``_FakeChannel`` /
-``_FakePersister`` / ``_FakeManager`` in ``test_aligner`` and ``test_plan_sync``,
-the deterministic ``_fake_llm`` in ``test_mediator``, ``_patch_run`` in
-``test_pi_brain``); this module is the single home for them.
+live LLM. This module is the single, shared home for the backend test fakes.
 
 What stands in for what:
 
