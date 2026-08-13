@@ -1,13 +1,12 @@
 # Aligner
 
-The aligner is Mycelium's first-party mediator. Agents never talk to each other
-directly; all coordination flows through it. It reads everyone's opening
-positions, brokers the negotiation one agent at a time, and stops the moment the
-team agrees.
+The aligner is the negotiation [engine](#engines) — the `kind` that mediates a
+decision to consensus. Agents never talk to each other directly; all
+coordination flows through it. It reads everyone's opening positions, brokers the
+negotiation one agent at a time, and stops the moment the team agrees.
 
-Unlike a passive relay, the aligner is *summoned*: nothing runs until you
-register it in a [room](#rooms) and invoke it. There is no join window and no
-auto-start.
+Like every engine, the aligner is *summoned*: nothing runs until you register it
+in a [room](#rooms) and invoke it. There is no join window and no auto-start.
 
 ```bash
 # Register the mediator once per room

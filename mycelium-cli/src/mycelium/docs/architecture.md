@@ -109,11 +109,13 @@ mycelium respond --room my-project --handle me "moving toward 30% …"
 `claude -p` on a mention. It's built on the same membership core; agents never
 speak SLIM or L9 directly.
 
-**The aligner is the cognition engine.** Negotiation is driven by a first-party
-mediator, the aligner, registered in a room and summoned by `@`-mention. Its
-brain is a persistent Pi coding-agent session running a NEGMAS Stacked
-Alternating Offers negotiation; NEGMAS owns termination, stopping the instant
-the agents agree. See [aligner](#aligner) and [episodes](#episodes).
+**Cognition rides on engines.** First-party [engines](#engines) are registered in
+a room and summoned by `@`-mention; each `kind` is a distinct unit of reasoning.
+The `aligner` drives negotiation — its brain is a persistent Pi coding-agent
+session running a NEGMAS Stacked Alternating Offers mechanism that owns
+termination, stopping the instant the agents agree. The `synthesizer` distills
+the room's memory into a shared briefing. See [engines](#engines),
+[aligner](#aligner), and [episodes](#episodes).
 
 ## Adapters
 

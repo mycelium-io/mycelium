@@ -51,6 +51,10 @@ const pricingTimeline: StreamStep[] = [
   { delayMs: 1500, message: tick("s10", 3, "growth", "accept", { price: "39", seats: "75", term: "annual" }) },
   { delayMs: 1400, message: tick("s11", 3, "finance", "accept", { price: "39", seats: "75", term: "annual" }) },
   { delayMs: 1800, message: { id: "s12", sender_handle: "backend", message_type: "coordination_consensus", content: JSON.stringify({ plan: "pricing agreed", assignments: { price: "39", seats: "75", term: "annual" }, plan_file: "plan/tasks.md", episode: PRICING_EPISODE, metrics: { gar: 0.86 } }), episode: PRICING_EPISODE } },
+  // After the plan lands, summon the synthesizer: it distills the room's memory
+  // (goal, the new decision, the plan) into a shared briefing at context/synthesis.
+  { delayMs: 2000, message: say("s13", "operator", "@synthesizer brief the room on where we landed.") },
+  { delayMs: 1800, message: say("s14", "synthesizer", "Distilled the outcome → context/synthesis: Pro launches at $39/seat, 75 seats, annual — margin held above 60%.") },
 ];
 
 const TIMELINES: Record<string, StreamStep[]> = {

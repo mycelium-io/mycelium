@@ -294,9 +294,10 @@ class MemoryLogEntry(BaseModel):
 AGENT_ADAPTERS: frozenset[str] = frozenset({"claude_code", "cursor", "engine"})
 
 #: Cognition-engine kinds hosted by the first-party ``engine`` runtime family.
-#: The extensibility axis: ``aligner`` (SIEP converge) today; ``bargainer`` (SAB),
-#: ``team_former`` (TFP), a drift evaluator, etc. later — no new adapter per CE.
-ENGINE_KINDS: frozenset[str] = frozenset({"aligner"})
+#: The extensibility axis: ``aligner`` (SIEP converge) and ``synthesizer`` (room
+#: memory → structured summary) today; ``bargainer`` (SAB), ``team_former`` (TFP),
+#: a drift evaluator, etc. later — no new adapter per CE.
+ENGINE_KINDS: frozenset[str] = frozenset({"aligner", "synthesizer"})
 
 
 class AgentManifest(BaseModel):

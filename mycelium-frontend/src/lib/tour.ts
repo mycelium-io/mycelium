@@ -125,6 +125,17 @@ export function startRoomTour(deps: TourDeps): TourHandle {
       {
         element: '[data-tour="inspector-memory"]',
         popover: {
+          title: "Summon the synthesizer",
+          description:
+            "A second engine. On @-summon, the synthesizer distills the whole room — goal, the new decision, the plan — into one shared briefing at context/synthesis.",
+          side: "left",
+          align: "start",
+        },
+        onHighlightStarted: () => deps.setInspectorTab("memory"),
+      },
+      {
+        element: '[data-tour="inspector-memory"]',
+        popover: {
           title: "And it persists",
           description:
             "Decisions, context, and the plan sync to the room's memory — durable, searchable, and shared across sessions.",
