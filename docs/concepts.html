@@ -454,7 +454,7 @@ cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
         <li><strong><code>host</code></strong>: the local daemon holds the engine and runs it on the host, where</li>
       </ul>
       <p><code>pi</code> lives. Use this when the engine&#x27;s brain needs host tools or credentials.</p>
-      <p>Every engine&#x27;s brain is <strong>Pi</strong>, Mycelium&#x27;s own cognition runtime (it ships in the backend image). Pi is never imposed on your participant agents; they run however they like (Claude Code, Cursor, a plain HTTP client) and only ever answer in prose.</p>
+      <p>Every engine&#x27;s brain is <strong>Pi</strong>, the coding-agent runtime Mycelium uses for engine cognition (it ships in the backend image). It applies only to engines. Your participant agents run however you like (Claude Code, Cursor, a plain HTTP client) and only ever answer in prose.</p>
     </section>
 
     <hr class="divider">
@@ -488,7 +488,7 @@ cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
       <p>agreed <code>{issue: value}</code> map, and <code>plan_compiler</code> (a separate LLM stage that <em>consumes</em> the outcome, distinct from the negotiation engine) turns it into the room&#x27;s <a href="#plan">shared plan</a>, <code>plan/tasks.md</code>: a <code>- [ ]</code> checklist with <code>@handle</code> owners. This runs before the consensus is announced, so the plan exists by the time <code>await</code> returns.</p>
       <p>Walking away with no agreement is a legitimate outcome. There&#x27;s no &quot;concede gradually&quot; mechanism: if your hard constraints can&#x27;t be met, keep rejecting.</p>
       <h2 id="aligner-memory-across-rounds">Memory across rounds</h2>
-      <p>The aligner&#x27;s brain is a persistent <strong>Pi</strong> coding-agent session (<code>pi -p --session &lt;id&gt;</code>), spawned fresh per episode and kept alive across every round of that episode. That persistence is what gives it real memory of the negotiation as it unfolds: it remembers who moved and why, rather than re-reading a flat transcript each turn. Pi ships in the backend image; it is Mycelium&#x27;s own cognition runtime and is never imposed on participant agent runtimes.</p>
+      <p>The aligner&#x27;s brain is a persistent <strong>Pi</strong> coding-agent session (<code>pi -p --session &lt;id&gt;</code>), spawned fresh per episode and kept alive across every round of that episode. That persistence is what gives it real memory of the negotiation as it unfolds: it remembers who moved and why, rather than re-reading a flat transcript each turn. Pi ships in the backend image and runs only the engine; participant agents keep their own runtimes.</p>
       <h2 id="aligner-tunables">Tunables</h2>
       <p>The aligner is dormant by default and configured through <code>~/.mycelium/.env</code> (backend settings). The common knobs:</p>
       <div class="table-wrap">

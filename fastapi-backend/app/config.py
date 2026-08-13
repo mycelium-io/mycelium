@@ -90,8 +90,8 @@ class Settings(BaseSettings):
     # mediator, an *internal* agent — always a persistent, optionally
     # OpenShell-sandboxed `pi -p --session <id> --mode json` session that gives the
     # internal agent real memory across SAO rounds (the anti-theatre property).
-    # This is ONLY mycelium's own cognition runtime — user/participant agent
-    # runtimes (claude_code, cursor, …) are untouched; Pi is never imposed on them.
+    # This is ONLY the runtime for mycelium's own cognition engines; user/participant
+    # agent runtimes (claude_code, cursor, …) are untouched and keep their own runtime.
     # Path/name of the `pi` binary the mediator brain runs.
     ALIGNER_PI_BINARY: str = "pi"
     # Wrap each pi session in an OpenShell sandbox when true. Off by default:

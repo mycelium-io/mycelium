@@ -49,8 +49,8 @@ The aligner's brain is a persistent **Pi** coding-agent session (`pi -p --sessio
 <id>`), spawned fresh per episode and kept alive across every round of that
 episode. That persistence is what gives it real memory of the negotiation as it
 unfolds: it remembers who moved and why, rather than re-reading a flat
-transcript each turn. Pi ships in the backend image; it is Mycelium's own
-cognition runtime and is never imposed on participant agent runtimes.
+transcript each turn. Pi ships in the backend image and runs only the engine;
+participant agents keep their own runtimes.
 
 ## Tunables
 

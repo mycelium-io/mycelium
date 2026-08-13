@@ -60,7 +60,7 @@ config (the backend and the host daemon are a pair; set both the same):
 - **`host`**: the local daemon holds the engine and runs it on the host, where
   `pi` lives. Use this when the engine's brain needs host tools or credentials.
 
-Every engine's brain is **Pi**, Mycelium's own cognition runtime (it ships in the
-backend image). Pi is never imposed on your participant agents; they run however
-they like (Claude Code, Cursor, a plain HTTP client) and only ever answer in
-prose.
+Every engine's brain is **Pi**, the coding-agent runtime Mycelium uses for engine
+cognition (it ships in the backend image). It applies only to engines. Your
+participant agents run however you like (Claude Code, Cursor, a plain HTTP
+client) and only ever answer in prose.
