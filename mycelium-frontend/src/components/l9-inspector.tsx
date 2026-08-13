@@ -3,17 +3,12 @@
 
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Radio } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
 import {
-  fetchEpisode,
-  fetchEpisodes,
   getSSEUrl,
-  logFetchError,
-  type EpisodeDetail,
   type EpisodeMetrics,
-  type EpisodeSummary,
   type L9Envelope,
 } from "@/lib/api";
 
@@ -218,88 +213,6 @@ function FrameRow({ frame }: { frame: L9Frame }) {
   );
 }
 
-/** One envelope in an episode's causal chain (parents come from the record). */
-function EnvelopeRow({ env }: { env: L9Envelope }) {
-  const header = env.header;
-  const message = header.message ?? { id: "" };
-  const actors = header.participants?.actors ?? [];
-  const sender = actors[0]?.id ?? "?";
-  const recipients = actors.slice(1).map((a) => a.id);
-  const metrics = env.payload?.data?.metrics as EpisodeMetrics | undefined;
-  return (
-    <div className="flex items-baseline gap-2 px-4 py-1.5 border-b border-border last:border-b-0 text-body">
-      <KindBadge kind={header.kind} subkind={header.subkind} />
-      <span className="font-mono text-micro text-muted-foreground" title={message.id}>
-        {message.id.slice(0, 6)}
-      </span>
-      <span className="font-mono text-label text-muted-foreground truncate">{sender}</span>
-      {recipients.length > 0 ? (
-        <span className="caps-mono-sm text-muted-foreground truncate">→ {recipients.join(", ")}</span>
-      ) : null}
-      {metrics ? <MetricsRow metrics={metrics} /> : null}
-      {message.parents && message.parents.length > 0 ? (
-        <span
-          className="ml-auto text-micro text-muted-foreground font-mono flex-shrink-0"
-          title={message.parents.join("\n")}
-        >
-          ← {message.parents.map((p) => p.slice(0, 6)).join(" ")}
-        </span>
-      ) : (
-        <span className="ml-auto text-micro text-muted-foreground font-mono flex-shrink-0">root</span>
-      )}
-    </div>
-  );
-}
-
-/** An expandable episode card: summary → full causal chain on demand. */
-function EpisodeCard({ roomName, episode }: { roomName: string; episode: EpisodeSummary }) {
-  const [detail, setDetail] = useState<EpisodeDetail | null>(null);
-  const [open, setOpen] = useState(false);
-  const tone = episode.subkind === "rejected" ? "var(--yellow)" : "var(--green)";
-
-  const toggle = useCallback(() => {
-    setOpen((prev) => !prev);
-    if (!detail) {
-      fetchEpisode(roomName, episode.short_id)
-        .then((d) => d && setDetail(d))
-        .catch(logFetchError("fetchEpisode"));
-    }
-  }, [detail, roomName, episode.short_id]);
-
-  return (
-    <div className="border-b border-border last:border-b-0">
-      <button
-        onClick={toggle}
-        className="flex w-full items-baseline gap-2 px-4 py-2 text-left hover:bg-surface transition-colors"
-      >
-        <span className="caps-mono-sm flex-shrink-0" style={{ color: tone }}>
-          {(episode.subkind ?? episode.outcome).toUpperCase()}
-        </span>
-        <span className="font-mono text-micro text-accent" title={episode.episode}>
-          {episode.short_id}
-        </span>
-        <span className="text-muted-foreground truncate">{episode.participants.join(", ")}</span>
-        {episode.metrics ? <MetricsRow metrics={episode.metrics} /> : null}
-        {episode.plan_file ? (
-          <span className="font-mono text-micro text-muted-foreground truncate">→ {episode.plan_file}</span>
-        ) : null}
-        <span className="ml-auto text-micro text-muted-foreground font-mono flex-shrink-0">
-          {episode.message_count} msg
-        </span>
-      </button>
-      {open ? (
-        <div className="bg-paper">
-          {detail ? (
-            detail.messages.map((env, i) => <EnvelopeRow key={env.header.message?.id ?? i} env={env} />)
-          ) : (
-            <div className="px-4 py-2 caps-mono-sm text-muted-foreground italic">loading chain…</div>
-          )}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 // ── inspector ─────────────────────────────────────────────────────────────────
 
 interface Props {
@@ -310,21 +223,12 @@ const MAX_FRAMES = 200;
 
 export function L9Inspector({ roomName }: Props) {
   const [frames, setFrames] = useState<L9Frame[]>([]);
-  const [episodes, setEpisodes] = useState<EpisodeSummary[]>([]);
   const [connected, setConnected] = useState(false);
   const wireRef = useRef<HTMLDivElement>(null);
 
-  const loadEpisodes = useCallback(() => {
-    fetchEpisodes(roomName)
-      .then(setEpisodes)
-      .catch(logFetchError("fetchEpisodes"));
-  }, [roomName]);
-
-  useEffect(() => {
-    loadEpisodes();
-  }, [loadEpisodes]);
-
-  // Live L9 wire: same EventSource pattern as the room feed.
+  // Live L9 wire: same EventSource pattern as the room feed. (Episodes have
+  // their own home in the inspector's Episodes tab + review drawer; this tab is
+  // purely the live protocol feed.)
   useEffect(() => {
     const url = getSSEUrl(roomName);
     let es: EventSource;
@@ -339,9 +243,6 @@ export function L9Inspector({ roomName }: Props) {
           const frame = toL9Frame(msg);
           if (!frame) return;
           setFrames((prev) => [...prev, frame].slice(-MAX_FRAMES));
-          // A commit means an episode record just closed. Refresh the list so
-          // its causal chain becomes browsable.
-          if (frame.kind === "commit") loadEpisodes();
         } catch {
           /* ignore malformed frames */
         }
@@ -358,7 +259,7 @@ export function L9Inspector({ roomName }: Props) {
       es?.close();
       clearTimeout(retry);
     };
-  }, [roomName, loadEpisodes]);
+  }, [roomName]);
 
   useEffect(() => {
     wireRef.current?.scrollTo({ top: wireRef.current.scrollHeight, behavior: "smooth" });
@@ -387,17 +288,6 @@ export function L9Inspector({ roomName }: Props) {
           />
         ) : (
           wire.map((frame) => <FrameRow key={frame.id} frame={frame} />)
-        )}
-      </div>
-
-      <div className="border-t border-border shrink-0 max-h-[45%] overflow-y-auto bg-paper">
-        <div className="px-4 py-2 caps-mono-sm text-muted-foreground sticky top-0 bg-paper border-b border-border">
-          EPISODES · {episodes.length}
-        </div>
-        {episodes.length === 0 ? (
-          <EmptyState size="sm" title="No closed episodes" />
-        ) : (
-          episodes.map((ep) => <EpisodeCard key={ep.short_id} roomName={roomName} episode={ep} />)
         )}
       </div>
     </div>
