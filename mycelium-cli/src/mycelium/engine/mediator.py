@@ -59,15 +59,24 @@ _BATNA = (
 
 
 def _extract_json(text: str) -> dict[str, Any]:
-    """First ``{...}`` JSON object in a model response (empty dict on miss)."""
-    match = re.search(r"\{.*\}", text, re.DOTALL)
-    if not match:
-        return {}
-    try:
-        parsed = json.loads(match.group(0))
-    except json.JSONDecodeError:
-        return {}
-    return parsed if isinstance(parsed, dict) else {}
+    """First JSON object embedded in a model response (empty dict on miss).
+
+    Robust to the ways a chat model wraps JSON: a ```` ```json ```` code fence,
+    a sentence of preamble, or trailing commentary. We scan for each ``{`` and
+    let :meth:`json.JSONDecoder.raw_decode` consume the longest valid object
+    starting there — unlike a greedy ``\\{.*\\}`` regex, which spans from the
+    first brace to the *last* brace anywhere in the text and so is broken by any
+    stray brace in prose. The first ``{`` that yields a dict wins.
+    """
+    decoder = json.JSONDecoder()
+    for match in re.finditer(r"\{", text):
+        try:
+            parsed, _ = decoder.raw_decode(text, match.start())
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict):
+            return parsed
+    return {}
 
 
 def discover_issues(

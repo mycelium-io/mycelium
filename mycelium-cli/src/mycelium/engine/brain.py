@@ -41,6 +41,7 @@ import shutil
 import subprocess
 from pathlib import Path
 from typing import Any, cast
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
@@ -49,11 +50,40 @@ logger = logging.getLogger(__name__)
 #: them so a mediator turn is cognition only.
 _NO_TOOLS = "--no-tools"
 
-#: Pi's streaming API per provider prefix. Anthropic (or an Anthropic-shaped
-#: proxy) speaks the Messages API; everything else is assumed OpenAI-compatible
-#: (Ollama, vLLM, LM Studio, most gateways).
-_ANTHROPIC_API = "anthropic-messages"
+#: A non-built-in endpoint is assumed OpenAI-compatible (Ollama, vLLM, LM Studio,
+#: most gateways) — pi's most widely compatible streaming API.
 _OPENAI_COMPAT_API = "openai-completions"
+
+#: Providers pi ships built-in (with a full, capability-annotated model catalog).
+#: A base URL for one of these is a *redirect* (baseUrl-only override that keeps
+#: the real catalog), never a replacement — see :func:`ensure_provider_config`.
+_PI_BUILTIN_PROVIDERS = frozenset(
+    {
+        "amazon-bedrock",
+        "anthropic",
+        "azure-openai-responses",
+        "openai",
+        "openai-codex",
+        "google",
+        "google-gemini-cli",
+        "google-antigravity",
+        "google-vertex",
+        "github-copilot",
+        "openrouter",
+        "vercel-ai-gateway",
+        "xai",
+        "groq",
+        "cerebras",
+        "zai",
+        "mistral",
+        "minimax",
+        "minimax-cn",
+        "huggingface",
+        "opencode",
+        "opencode-go",
+        "kimi-coding",
+    }
+)
 
 
 def split_provider_model(model: str) -> tuple[str, str]:
@@ -69,6 +99,40 @@ def split_provider_model(model: str) -> tuple[str, str]:
         if model_id:
             return provider, model_id
     return "custom", ref
+
+
+def provider_is_builtin(provider: str) -> bool:
+    """True when *provider* is one pi ships with a built-in model catalog."""
+    return provider in _PI_BUILTIN_PROVIDERS
+
+
+#: A built-in provider's own public API host(s). A ``LLM_BASE_URL`` that merely
+#: names one of these is a no-op — pi already routes there — so we must NOT write
+#: a models.json override for it (that both is redundant and, on a host with the
+#: user's real ~/.pi + OAuth, conflicts and hangs pi). Only a genuinely different
+#: host (a proxy) warrants an override.
+_PROVIDER_STANDARD_HOSTS: dict[str, frozenset[str]] = {
+    "anthropic": frozenset({"api.anthropic.com"}),
+    "openai": frozenset({"api.openai.com"}),
+    "openrouter": frozenset({"openrouter.ai"}),
+    "google": frozenset({"generativelanguage.googleapis.com"}),
+    "groq": frozenset({"api.groq.com"}),
+    "mistral": frozenset({"api.mistral.ai"}),
+    "xai": frozenset({"api.x.ai"}),
+    "cerebras": frozenset({"api.cerebras.ai"}),
+}
+
+
+def is_standard_endpoint(provider: str, base_url: str) -> bool:
+    """True when *base_url* just names *provider*'s own public endpoint (not a proxy)."""
+    hosts = _PROVIDER_STANDARD_HOSTS.get(provider)
+    if not hosts:
+        return False
+    try:
+        host = urlparse(base_url).hostname or ""
+    except ValueError:
+        return False
+    return host.lower() in hosts
 
 
 def _pi_agent_dir() -> Path:
@@ -91,7 +155,22 @@ def _openai_compat_base_url(base_url: str) -> str:
     return trimmed if trimmed.endswith("/v1") else f"{trimmed}/v1"
 
 
-def ensure_custom_provider(
+def _safe_prompt_arg(prompt: str) -> str:
+    """Neutralize a prompt that pi's arg parser would mis-read as a flag/file.
+
+    Pi treats a positional argument starting with ``@`` as an ``@file`` mention
+    (it tries to *read a file* named after the prompt) and one starting with
+    ``-`` as an option (see pi ``cli/args.js``). The brain feeds arbitrary text
+    — agent prose, opening positions, a mediator turn that opens with
+    ``@handle`` — as that positional, so a leading ``@`` or ``-`` would break the
+    turn. A single leading space makes pi parse it as a message; the model does
+    not care about one space of leading whitespace. Only the *leading* character
+    matters (mid-prompt ``@handle`` is parsed as text), so this is sufficient.
+    """
+    return f" {prompt}" if prompt[:1] in ("@", "-") else prompt
+
+
+def ensure_provider_config(
     *,
     provider: str,
     model_id: str,
@@ -99,21 +178,40 @@ def ensure_custom_provider(
     api_key: str | None,
     agent_dir: Path | None = None,
 ) -> None:
-    """Declare a custom-endpoint provider in pi's ``models.json``.
+    """Translate a mycelium ``LLM_BASE_URL`` into a pi ``models.json`` entry.
 
-    Pi has **no ``--base-url`` flag** — a custom OpenAI-compatible or Anthropic
-    endpoint (Ollama, vLLM, a proxy) is reachable only via a ``providers`` entry
-    in ``<agent_dir>/models.json``. mycelium collects ``LLM_BASE_URL`` at install
-    time, so we translate it here: upsert one provider entry keyed by *provider*
-    and preserve any others the user already configured (merge, not clobber).
+    Pi has **no ``--base-url`` flag** — a base URL reaches pi only via a
+    ``providers`` entry in ``<agent_dir>/models.json``. Two shapes, by provider:
+
+    - **Built-in provider** (anthropic, openai, openrouter, …): a *baseUrl-only
+      override* that redirects the endpoint while **keeping pi's real,
+      capability-annotated model catalog**. This is the common case (an install
+      that sets ``LLM_BASE_URL`` to the standard endpoint, or to a proxy in front
+      of it). The key still rides the ``--api-key`` flag, and the model is
+      addressed by its built-in id — so a bare ``{id}`` stub never shadows the
+      real model definition.
+    - **Custom provider** (Ollama, vLLM, a private OpenAI-compatible server): a
+      full entry (``baseUrl`` + ``api`` + ``apiKey`` + a one-model list), since
+      pi has no catalog for it.
+
+    Existing providers the user configured are preserved (merge, not clobber).
     Called before each turn — cheap and idempotent — so the file exists even on a
     fresh host.
     """
-    api = _ANTHROPIC_API if provider == "anthropic" else _OPENAI_COMPAT_API
-    url = base_url if api == _ANTHROPIC_API else _openai_compat_base_url(base_url)
+    if provider_is_builtin(provider):
+        # Redirect only; pi keeps its own model catalog + capabilities.
+        entry: dict[str, Any] = {"baseUrl": base_url}
+    else:
+        entry = {
+            "baseUrl": _openai_compat_base_url(base_url),
+            "api": _OPENAI_COMPAT_API,
+            # pi requires the field; local servers (Ollama, LM Studio) ignore it.
+            "apiKey": api_key or "unused",
+            "models": [{"id": model_id}],
+        }
+
     models_path = (agent_dir or _pi_agent_dir()) / "models.json"
     models_path.parent.mkdir(parents=True, exist_ok=True)
-
     data: dict[str, Any] = {}
     if models_path.exists():
         try:
@@ -126,13 +224,7 @@ def ensure_custom_provider(
     providers = data.get("providers")
     if not isinstance(providers, dict):
         providers = {}
-    providers[provider] = {
-        "baseUrl": url,
-        "api": api,
-        # pi requires the field; local servers (Ollama, LM Studio) ignore it.
-        "apiKey": api_key or "unused",
-        "models": [{"id": model_id}],
-    }
+    providers[provider] = entry
     data["providers"] = providers
     models_path.write_text(json.dumps(data, indent=2))
     try:
@@ -236,18 +328,30 @@ class PiBrain:
         self._binary = binary
         self._timeout_s = timeout_s
         self._openshell = openshell
-        # A custom LLM_BASE_URL (Ollama, vLLM, a proxy) is not a command-line flag
-        # in pi — it becomes a ``models.json`` provider entry we generate. Split
-        # the "provider/model" ref up front so the entry and the ``--provider``
-        # invocation stay consistent. Direct-key providers leave this None.
-        self._custom: tuple[str, str] | None = split_provider_model(model) if base_url else None
+        # A LLM_BASE_URL is not a pi command-line flag — it becomes a models.json
+        # provider entry we generate. Endpoint mode:
+        #   "direct"  — no base URL; --model/--api-key straight through.
+        #   "builtin" — base URL for a built-in provider; redirect its endpoint
+        #               but keep pi's model catalog (--model/--api-key unchanged).
+        #   "custom"  — base URL for a non-built-in provider (Ollama, a proxy);
+        #               address it via --provider, key rides in models.json.
+        self._provider, self._model_id = split_provider_model(model)
+        if not base_url:
+            self._endpoint_mode = "direct"
+        elif provider_is_builtin(self._provider):
+            # A base URL that just names the provider's own endpoint is a no-op —
+            # stay direct (no override written). Only a real proxy → "builtin".
+            self._endpoint_mode = (
+                "direct" if is_standard_endpoint(self._provider, base_url) else "builtin"
+            )
+        else:
+            self._endpoint_mode = "custom"
 
     def _ensure_provider(self) -> None:
-        if self._base_url and self._custom is not None:
-            provider, model_id = self._custom
-            ensure_custom_provider(
-                provider=provider,
-                model_id=model_id,
+        if self._base_url and self._endpoint_mode != "direct":
+            ensure_provider_config(
+                provider=self._provider,
+                model_id=self._model_id,
                 base_url=self._base_url,
                 api_key=self._api_key,
             )
@@ -262,18 +366,18 @@ class PiBrain:
             str(self._session_path),
             _NO_TOOLS,
         ]
-        if self._custom is not None:
+        if self._endpoint_mode == "custom":
             # Endpoint + key live in the generated models.json provider entry;
             # address it by its canonical ``provider/model-id`` reference.
-            provider, model_id = self._custom
-            cmd += ["--provider", provider, "--model", f"{provider}/{model_id}"]
+            cmd += ["--provider", self._provider, "--model", f"{self._provider}/{self._model_id}"]
         else:
+            # direct or builtin-redirect: pi keeps the real model + the key flag.
             cmd += ["--model", self._model]
             if self._api_key:
                 cmd += ["--api-key", self._api_key]
         if system:
             cmd += ["--append-system-prompt", system]
-        cmd.append(prompt)
+        cmd.append(_safe_prompt_arg(prompt))
         return self._sandbox_wrap(cmd)
 
     def _sandbox_wrap(self, cmd: list[str]) -> list[str]:
@@ -311,6 +415,12 @@ class PiBrain:
                 text=True,
                 timeout=self._timeout_s,
                 check=False,
+                # pi reads piped stdin (readPipedStdin) whenever stdin is not a
+                # TTY — which is exactly our case: the daemon and any container
+                # run pi with a non-TTY stdin. Without this it blocks reading
+                # stdin that never arrives and every turn hangs to the timeout.
+                # DEVNULL gives it immediate EOF so it uses the prompt arg.
+                stdin=subprocess.DEVNULL,
             )
         except subprocess.TimeoutExpired as exc:
             raise PiBrainError(f"pi turn exceeded {self._timeout_s:.0f}s and was killed") from exc

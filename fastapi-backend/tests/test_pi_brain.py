@@ -147,8 +147,21 @@ def test_split_provider_model() -> None:
     assert pi_brain.split_provider_model("my-model") == ("custom", "my-model")
 
 
-def test_base_url_uses_provider_flag_not_api_key(tmp_path: Path) -> None:
-    """With a base URL, pi is addressed by --provider/--model; the key rides in models.json."""
+def test_prompt_leading_at_and_dash_are_neutralized(tmp_path: Path) -> None:
+    """A prompt opening with @ or - must not be parsed by pi as a file/flag."""
+    # pi reads a positional starting with "@" as an @file and "-" as an option;
+    # the guard prepends a space so it is parsed as a message instead.
+    at_cmd = _brain(tmp_path)._build_command("@growth — step 0. propose.", system="")
+    assert at_cmd[-1] == " @growth — step 0. propose."
+    dash_cmd = _brain(tmp_path)._build_command("-50% is my floor.", system="")
+    assert dash_cmd[-1] == " -50% is my floor."
+    # a normal prompt is passed through untouched
+    plain_cmd = _brain(tmp_path)._build_command("propose your split.", system="")
+    assert plain_cmd[-1] == "propose your split."
+
+
+def test_custom_provider_base_url_uses_provider_flag(tmp_path: Path) -> None:
+    """A non-built-in base URL (Ollama): pi is addressed by --provider; key rides in models.json."""
     cmd = _brain(
         tmp_path, model="ollama/llama3.3", base_url="http://host.docker.internal:11434"
     )._build_command("p", system="")
@@ -158,41 +171,82 @@ def test_base_url_uses_provider_flag_not_api_key(tmp_path: Path) -> None:
     assert "--base-url" not in cmd  # pi has no such flag
 
 
-def test_ensure_custom_provider_writes_openai_compatible_entry(tmp_path: Path) -> None:
-    pi_brain.ensure_custom_provider(
+def test_standard_endpoint_stays_direct(tmp_path: Path) -> None:
+    """A base URL naming the provider's own endpoint is a no-op: direct mode, no override.
+
+    Regression: ``LLM_BASE_URL=https://api.anthropic.com`` must NOT write a
+    models.json override — a redundant override into a real ~/.pi (with the
+    user's OAuth) conflicts and hangs pi.
+    """
+    brain = _brain(
+        tmp_path,
+        model="anthropic/claude-haiku-4-5",
+        base_url="https://api.anthropic.com",
+        api_key="sk-ant-xyz",
+    )
+    assert brain._endpoint_mode == "direct"
+    cmd = brain._build_command("p", system="")
+    assert "--provider" not in cmd
+    assert cmd[cmd.index("--model") + 1] == "anthropic/claude-haiku-4-5"
+    assert cmd[cmd.index("--api-key") + 1] == "sk-ant-xyz"
+
+
+def test_builtin_provider_proxy_writes_override_keeps_model_and_key(tmp_path: Path) -> None:
+    """A *proxy* base URL on a built-in provider → baseUrl override, still --model/--api-key."""
+    brain = _brain(
+        tmp_path,
+        model="anthropic/claude-haiku-4-5",
+        base_url="https://proxy.internal.corp/anthropic",
+        api_key="sk-ant-xyz",
+    )
+    assert brain._endpoint_mode == "builtin"
+    cmd = brain._build_command("p", system="")
+    assert "--provider" not in cmd  # keep pi's built-in catalog; just redirect endpoint
+    assert cmd[cmd.index("--model") + 1] == "anthropic/claude-haiku-4-5"
+    assert cmd[cmd.index("--api-key") + 1] == "sk-ant-xyz"
+
+
+def test_is_standard_endpoint() -> None:
+    assert pi_brain.is_standard_endpoint("anthropic", "https://api.anthropic.com")
+    assert pi_brain.is_standard_endpoint("anthropic", "https://api.anthropic.com/")
+    assert pi_brain.is_standard_endpoint("openai", "https://api.openai.com/v1")
+    assert not pi_brain.is_standard_endpoint("anthropic", "https://proxy.corp/anthropic")
+    assert not pi_brain.is_standard_endpoint("ollama", "http://localhost:11434")  # not built-in
+
+
+def test_ensure_config_custom_writes_openai_compatible_entry(tmp_path: Path) -> None:
+    pi_brain.ensure_provider_config(
         provider="ollama",
         model_id="llama3.3",
         base_url="http://host.docker.internal:11434",
         api_key=None,
         agent_dir=tmp_path,
     )
-    data = json.loads((tmp_path / "models.json").read_text())
-    entry = data["providers"]["ollama"]
+    entry = json.loads((tmp_path / "models.json").read_text())["providers"]["ollama"]
     assert entry["api"] == "openai-completions"
     assert entry["baseUrl"] == "http://host.docker.internal:11434/v1"  # /v1 appended
     assert entry["apiKey"] == "unused"  # dummy — local servers ignore it
     assert entry["models"] == [{"id": "llama3.3"}]
 
 
-def test_ensure_custom_provider_anthropic_messages_no_v1(tmp_path: Path) -> None:
-    pi_brain.ensure_custom_provider(
+def test_ensure_config_builtin_writes_baseurl_only_override(tmp_path: Path) -> None:
+    """A built-in provider gets a baseUrl-only override — pi keeps its real catalog."""
+    pi_brain.ensure_provider_config(
         provider="anthropic",
-        model_id="claude-sonnet-4-6",
-        base_url="https://proxy.example.com",
+        model_id="claude-haiku-4-5",
+        base_url="https://api.anthropic.com",
         api_key="sk-ant-xyz",
         agent_dir=tmp_path,
     )
     entry = json.loads((tmp_path / "models.json").read_text())["providers"]["anthropic"]
-    assert entry["api"] == "anthropic-messages"
-    assert entry["baseUrl"] == "https://proxy.example.com"  # no /v1 for the Messages API
-    assert entry["apiKey"] == "sk-ant-xyz"
+    assert entry == {"baseUrl": "https://api.anthropic.com"}  # no models/api/apiKey stub
 
 
-def test_ensure_custom_provider_merges_existing(tmp_path: Path) -> None:
+def test_ensure_config_merges_existing(tmp_path: Path) -> None:
     """A pre-existing provider the user configured is preserved (merge, not clobber)."""
     models_path = tmp_path / "models.json"
     models_path.write_text(json.dumps({"providers": {"kept": {"baseUrl": "http://keep"}}}))
-    pi_brain.ensure_custom_provider(
+    pi_brain.ensure_provider_config(
         provider="ollama",
         model_id="qwen2.5",
         base_url="http://localhost:11434/v1",
