@@ -122,8 +122,7 @@ def test_propose_holds_own_line_not_the_table_when_unreadable() -> None:
     When an agent's proposing move can't be read onto the grid (here an off-grid
     '999'), it must be recorded as holding ITS OWN last line — never the standing
     offer on the table. Adopting the table's number silently converts a rejection
-    into a fabricated concession, which is exactly how the negotiation used to
-    'converge' on a value nobody actually offered.
+    into a fabricated concession.
     """
     import asyncio
 

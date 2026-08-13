@@ -9,9 +9,8 @@ import { join } from "node:path";
  * Resolve the internal backend URL: SERVER-SIDE, at REQUEST time.
  *
  * This MUST be evaluated per-request, never baked into the build: one image
- * runs in dev, Docker, and cloud against different backends. (A next.config
- * rewrite froze this at build time and ignored the runtime env, which broke the
- * Dockerized UI; see next.config.ts.) Precedence:
+ * runs in dev, Docker, and cloud against different backends. See next.config.ts
+ * for the request proxy. Precedence:
  *
  *   1. MYCELIUM_INTERNAL_API_URL (compose / runtime env)
  *   2. server.api_url from ~/.mycelium/config.toml (matches the CLI)

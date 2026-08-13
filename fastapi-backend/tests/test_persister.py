@@ -112,9 +112,8 @@ def test_cursors_survive_a_restart_so_an_offline_tail_is_still_reserved():
     """The D5 fix: an agent offline at shutdown must still be recognised as a
     reconnect and re-served exactly its missed tail after a backend restart.
 
-    Before cursors were persisted, only the transcript reloaded; the restarted
-    log knew no cursors, so undelivered() defaulted to the transcript end and the
-    reconnecting agent silently got nothing.
+    Cursors persist alongside the transcript, so a reconnecting agent re-serves
+    its missed tail after a backend restart.
     """
     room = "cursor-restart-room"
     get_room_dir(room)

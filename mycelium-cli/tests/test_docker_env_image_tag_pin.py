@@ -3,11 +3,9 @@
 
 """Regression tests for the ``MYCELIUM_IMAGE_TAG`` round-trip behaviour.
 
-Before this fix, ``write_env_file`` would silently drop the pin set by
-``mycelium pull --version <X>``, causing ``mycelium config apply`` (and any
-other path that regenerated .env) to roll users back to ``:latest`` on the
-next ``mycelium up``.  We caught this only when a test environment kept
-running 1.0.13 while we thought we were on 1.0.14rc3.
+``write_env_file`` must preserve a pre-existing ``MYCELIUM_IMAGE_TAG`` pin
+across regeneration, so that ``mycelium config apply`` (and any other path
+that regenerates .env) does not roll a pinned host back to ``:latest``.
 
 The contract:
 

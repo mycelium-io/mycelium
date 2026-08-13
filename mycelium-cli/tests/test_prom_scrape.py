@@ -6,26 +6,18 @@ Unit tests for the minimal Prometheus text-format parser and the HTTP-RED
 roll-up used by ``mycelium metrics collect`` to scrape CFN service
 ``/metrics`` endpoints.
 
-Why this is worth its own test file (and not just an integration smoke
-test against a live mgmt-plane container):
+Covers edge cases in Prometheus exposition parsing and HTTP-RED roll-up
+math:
 
-  * The exposition format has half a dozen edge cases (blank lines,
-    HELP/TYPE comments, label-value backslash escapes, +Inf buckets,
-    missing trailing newlines) that a "happy path" sample wouldn't cover.
-    Each one of those has burned someone in production at least once.
-  * The HTTP-RED roll-up specifically *excludes* 404 from the error count
-    (health probes / scanner noise dominate it) and converts seconds →
-    milliseconds (to match every other histogram panel in
-    ``mycelium metrics show``). Both of those decisions are easy to
-    silently regress, and both are the kind of bug that doesn't surface
-    until somebody is staring at a dashboard wondering why error rate
-    flipped or why latency suddenly looks 1000× off.
-  * ``histogram_quantile`` mirrors Prometheus's PromQL semantics
-    (linear interpolation within buckets, +Inf clamped to the previous
-    finite bound). Subtle behaviours like the +Inf clamp and the
-    "all observations in one bucket" edge case are exactly the kind of
-    thing where a one-line refactor can silently start returning ``inf``
-    or zero for a healthy p99.
+  * Exposition-format edge cases: blank lines, HELP/TYPE comments,
+    label-value backslash escapes, +Inf buckets, missing trailing
+    newlines.
+  * The HTTP-RED roll-up excludes 404 from the error count (health
+    probes / scanner noise) and converts seconds → milliseconds to match
+    the histogram panels in ``mycelium metrics show``.
+  * ``histogram_quantile`` mirrors Prometheus's PromQL semantics: linear
+    interpolation within buckets, +Inf clamped to the previous finite
+    bound, and the "all observations in one bucket" edge case.
 """
 
 from __future__ import annotations

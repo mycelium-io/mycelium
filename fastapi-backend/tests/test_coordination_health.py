@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Tests for the coordination health surface (D3).
+"""Tests for the coordination health surface.
 
 The ``/health`` endpoint's ``coordination`` block is how "is the fabric actually
-working" becomes answerable in one GET (H1). This pins its shape and the per-room
+working" becomes answerable in one GET. This pins its shape and the per-room
 counters that make channel provisioning, missed-message re-serves, and drops
 visible — signals the persister tracks but that were previously log-only.
 """

@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""TTL sweep for transient event messages (#392).
+"""TTL sweep for transient event messages.
 
 Events carrying ``metadata.ttl_seconds`` get an ``event_expires_at`` stamp at
 write time; this background loop drops messages past that stamp. Durable kinds

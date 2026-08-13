@@ -3,16 +3,9 @@
 
 """Claude Code cold-spawn — invokes ``claude -p`` for one ``@handle`` mention.
 
-Relocated from ``mycelium/daemon/dispatch.py`` (where it lived as
-``spawn_claude`` / ``_parse_claude_output``) so the daemon dispatch loop can
-call ``Integration.spawn(...)`` uniformly across cold-spawn families instead
-of branching on ``manifest.adapter``.
-
-The function body is unchanged — same shutil.which probe, same subprocess
-exec, same JSON parser. ``RunningProc`` registration also stays here in this
-commit; the next milestone (daemon-core) moves it up into the daemon loop so
-all cold-spawn families (claude_code, cursor, future) inherit abort/status
-behaviour from one place.
+A family-agnostic wrapper matching the ``Integration.spawn`` signature, so the
+daemon dispatch loop can call ``Integration.spawn(...)`` uniformly across
+cold-spawn families instead of branching on ``manifest.adapter``.
 """
 
 from __future__ import annotations

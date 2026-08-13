@@ -4,12 +4,9 @@
 """
 Integration — the single contract for a runtime family Mycelium integrates with.
 
-This is the source-of-truth the project tracked as #173: instead of
-per-family behaviour drifting apart across two unrelated
-code trees (an asset/installer pile in ``commands/adapter.py`` and a dispatch
-OOP layer in the old ``agent_adapters/``), every runtime family is one
-``Integration`` subclass exposing the same facets. Adding a capability to one
-family without the others now surfaces as an abstract-method gap (and a
+Every runtime family is one ``Integration`` subclass exposing the same
+facets, giving a unified dispatch/install contract. Adding a capability to one
+family without the others surfaces as an abstract-method gap (and a
 failing ``tests/test_integration_contract.py``), not a silent degradation.
 
 An integration has two facets, sliced by lifetime:

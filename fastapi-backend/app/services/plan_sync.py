@@ -12,14 +12,13 @@ seam — the backend, seeing the converged verdict, turns it into work:
    the aligner in ``aligner._fold``). :mod:`app.services.plan_compiler` — one LLM
    call — turns that into a ``- [ ]`` checklist materialized at ``plan/tasks.md``.
    Fail-soft: a compiler outage falls back to the raw ``assignments`` so the
-   verdict is never sunk (the old ``_finish_cfn`` behaviour).
+   verdict is never sunk.
 
 2. **Sync it as memory.** The compiled plan becomes a ``knowledge`` message that
    **carries the content** (push-with-content) so every participant's
-   local store converges — and, because the verdict was already on the wire when
+   local store converges — and, because the verdict is already on the wire when
    this fires, the ``knowledge`` broadcast doubles as the **"plan ready" signal**
-   a consumer waits for (the SLIM-path replacement for the old CFN plan-first
-   ordering).
+   a consumer waits for.
 
 Deliberately **not** a cognition-engine step (the CLAUDE.md plan-compiler
 decision): the compiler is a distinct consumer stage reached across the

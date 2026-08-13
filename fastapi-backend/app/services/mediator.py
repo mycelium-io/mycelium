@@ -3,10 +3,8 @@
 
 """The SAO mediator — the aligner as a *driver* of a real negotiation.
 
-The aligner as a passive **observer** only wakes to grade a finished transcript,
-so agents that had already agreed by message 5 kept re-agreeing for seven more
-turns because nothing *ran* the negotiation and said "you agreed — stop." This
-module fixes that by actively driving the negotiation.
+This module actively drives the NEGMAS SAO negotiation and terminates at
+unanimity, rather than only grading a finished transcript after the fact.
 
 An LLM mediator reads natural-language agent
 chatter, maps it onto a NEGMAS **Stacked Alternating Offers** mechanism, and
@@ -28,8 +26,7 @@ agent's move when NEGMAS asks for it. LLM calls (discover/broker/interpret) run
 synchronously in-thread against the injected Pi brain (see ``pi_brain``).
 
 The mediator is deliberately *interpretation over the agents' prose*: agents are
-never required to emit structured markers (a future cleanup will retire the
-``parse_position_marker`` hack entirely). The mediator restates its reading into
+never required to emit structured markers. The mediator restates its reading into
 the transcript ("recording @growth as counter → 35% tech") so a misread is
 visible and correctable in-band.
 """

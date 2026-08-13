@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Tests for the typed ``event`` message primitive (#392)."""
+"""Tests for the typed ``event`` message primitive."""
 
 from datetime import UTC, datetime, timedelta
 

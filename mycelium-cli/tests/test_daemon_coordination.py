@@ -530,9 +530,7 @@ async def test_handle_tick_looks_up_manifest_under_parent_room_not_subroom(
     because that's the only channel the aligner NOTIFY's on. Manifests
     are mirrored under the *parent* room, so the lookup must derive the
     parent — otherwise every tick stalls with "no manifest in local mirror"
-    even though the agent is registered correctly. This was the live failure
-    mode that surfaced when the mycelium-daemon first started subscribing to
-    session sub-rooms in 2026-05.
+    even though the agent is registered correctly.
     """
     seen_rooms: list[str] = []
 

@@ -29,7 +29,7 @@ from app.services.metrics import record_llm_call
 logger = logging.getLogger(__name__)
 
 # Hard ceiling on the LLM call so a hung provider can never make a negotiation's
-# `session await` hang forever — _finish_cfn falls back to the raw agreement.
+# `session await` hang forever; on timeout we fall back to the raw agreement.
 COMPILER_TIMEOUT_SECS = 30.0
 
 
@@ -109,7 +109,7 @@ def _build_prompt(
 
 
 def fallback_body(assignments: dict[str, str]) -> str:
-    """Deterministic non-LLM plan body. Used by _finish_cfn when the compiler fails.
+    """Deterministic non-LLM plan body, used as the fail-soft fallback when the compiler fails.
 
     Pure — no I/O. Ugly (one line per raw ``issue=value``) but lossless, so a
     compiler outage never costs the negotiation outcome.
@@ -206,8 +206,8 @@ async def compile_plan(
     the agreement and the agents' opening positions. Re-negotiation: a merge
     that preserves completed ``- [x]`` tasks verbatim and revises open ones.
 
-    RAISES on LLM failure/timeout — the caller (``_finish_cfn``) owns the
-    fail-soft fallback to :func:`fallback_body`.
+    RAISES on LLM failure/timeout — the caller owns the fail-soft
+    fallback to :func:`fallback_body`.
     """
     prompt = _build_prompt(
         assignments=assignments,
