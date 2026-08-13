@@ -55,3 +55,26 @@ def test_env_metrics_port_defaults_to_4318() -> None:
     cfg = MyceliumConfig()
     env = _parse_env(generate_env_file(cfg))
     assert env["MYCELIUM_METRICS_PORT"] == "4318"
+
+
+# ── engine runtime materialisation ───────────────────────────────────────────
+
+
+def test_env_materialises_engine_runtime_default() -> None:
+    """Default config writes ENGINE_RUNTIME=backend."""
+    env = _parse_env(generate_env_file(MyceliumConfig()))
+    assert env["ENGINE_RUNTIME"] == "backend"
+
+
+def test_env_materialises_engine_runtime_host() -> None:
+    """A ``host`` deployment must survive ``config apply``.
+
+    Regression: the generator previously omitted ENGINE_RUNTIME entirely, so
+    ``config apply`` silently reverted a host deployment to backend-run engines
+    (double-running the engine). The backend and daemon are a pair — the .env
+    must carry the host setting.
+    """
+    cfg = MyceliumConfig()
+    cfg.engine.runtime = "host"
+    env = _parse_env(generate_env_file(cfg))
+    assert env["ENGINE_RUNTIME"] == "host"
