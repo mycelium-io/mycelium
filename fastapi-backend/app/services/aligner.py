@@ -308,6 +308,21 @@ class AlignerEngine:
             scoped = {_norm(h) for h in scoped_participants}
             participants = [m for m in participants if _norm(m) in scoped]
             logger.info("aligner (mediator) room %s scoped to %s", room, participants)
+
+        # Nothing to broker: a negotiation needs at least two participants that are
+        # present with opening positions. Rather than open a throwaway episode and
+        # reject it in silence — leaving whoever summoned the aligner with no
+        # feedback at all — let the brain explain, in its own words, why it can't
+        # align and what to do next.
+        if len(participants) < 2:
+            logger.info(
+                "aligner (mediator) room %s: %d participant(s) present — nothing to align",
+                room,
+                len(participants),
+            )
+            await self._explain_stall(managed, room, me, participants)
+            return None
+
         episode_id = _new_episode_id()
         episode = l9.episode_urn(room, episode_id)
         topic = l9.topic_urn(room)
@@ -486,6 +501,59 @@ class AlignerEngine:
             if loop.time() >= deadline:
                 return ""
             await asyncio.sleep(self._poll_interval_s)
+
+    async def _explain_stall(
+        self, managed: ManagedRoomChannel, room: str, sender: str, participants: list[str]
+    ) -> None:
+        """Post the aligner's own account of why it can't align yet.
+
+        The brain writes the message so it reads naturally and in context (not a
+        canned string); a static line is the fail-soft fallback when the brain is
+        unavailable. Either way the room gets a plain, actionable reply instead of
+        silence.
+        """
+        roster = ", ".join(participants) if participants else "no other agents"
+        prompt = (
+            "You are this room's alignment mediator, just summoned to help it align, "
+            "but you cannot run a negotiation right now: it needs at least two agents "
+            "that are present in the room and holding opening positions, and the current "
+            f"roster is: {roster}. Write a short, friendly message to the room (2-3 "
+            "sentences) that explains you can't align yet and says what to do next — have "
+            "at least two agents join and post their opening positions (e.g. with "
+            "'mycelium respond'), then summon you again. Plain prose, no @-mentions."
+        )
+        text = ""
+        try:
+            brain = self._make_brain(l9.episode_urn(room, _new_episode_id()))
+            text = (await asyncio.to_thread(brain, prompt) or "").strip()
+        except Exception:
+            logger.warning("aligner brain unavailable to explain stall in %s", room, exc_info=True)
+        if not text:
+            text = (
+                "I can't align the room yet — a negotiation needs at least two agents "
+                "present with opening positions to broker between. Have the agents join "
+                "and post their positions, then summon me again."
+            )
+        await self._say(managed, room, sender, text)
+
+    async def _say(self, managed: ManagedRoomChannel, room: str, sender: str, text: str) -> None:
+        """Broadcast a plain message from the aligner (not a verdict envelope). Any
+        ``@`` tokens are stripped so the notice can't spuriously summon anyone."""
+        safe = _AT_MENTION.sub("", text)
+        env = l9.build_envelope(
+            kind=l9.Kind.exchange,
+            episode=l9.episode_urn(room, "live"),
+            sender=sender,
+            topic=l9.topic_urn(room),
+            payload_type="message",
+        )
+        content = serialize_content(env, extra={"content": safe})
+        try:
+            await managed.channel.send(env, extra={"content": safe})
+        except Exception:
+            logger.warning("aligner failed to broadcast message on room %s", room)
+        if managed.persister is not None:
+            managed.persister.ingest_local(env, content)
 
     def _fold_reading(
         self, ep: EpisodeState, handle: str, reading: dict[str, Any], proposing: bool
