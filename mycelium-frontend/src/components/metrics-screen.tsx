@@ -24,6 +24,7 @@
 
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
+import { Play } from "lucide-react";
 import {
   fmtNum, fmtUsd, fmtMs, fmtAgo, fmtDur,
   statusKind, errorRate, histAvg,
@@ -127,7 +128,7 @@ function deriveModels(c: CollectorMetrics): ByModel[] {
 // ── Atoms ─────────────────────────────────────────────────────────────────
 
 function Caps({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <div className={`caps-mono-sm text-muted-foreground ${className}`}>{children}</div>;
+  return <div className={`text-micro font-medium uppercase tracking-wide text-muted-foreground ${className}`}>{children}</div>;
 }
 
 function Sparkline({ values, width = 110, height = 30, dim = false }: {
@@ -166,31 +167,31 @@ function HeaderBand({
   setIntervalSec: (s: number) => void;
 }) {
   return (
-    <div className="flex h-[40px] flex-shrink-0 items-center gap-4 border-b border-border bg-paper px-5">
+    <div className="flex h-[44px] flex-shrink-0 items-center gap-4 border-b border-border bg-paper px-5">
       <div className="font-mono text-micro text-muted-foreground">
         {backend ? (
           <>
-            up <span className="text-muted-foreground">{fmtDur(backend.started_at)}</span>
+            up <span className="text-text">{fmtDur(backend.started_at)}</span>
             <span className="mx-1.5 text-faint">·</span>
-            updated <span className="text-muted-foreground">{fmtAgo(backend.updated_at)}</span>
+            updated <span className="text-text">{fmtAgo(backend.updated_at)}</span>
           </>
         ) : (
-          <span className="text-accent">backend unreachable</span>
+          <span className="text-yellow">backend unreachable</span>
         )}
       </div>
 
       <div className="ml-auto flex items-center gap-3">
-        <div className="flex items-center gap-1.5">
-          <span className="caps-mono-sm text-faint">every</span>
-          <div className="flex border border-border">
+        <div className="flex items-center gap-2">
+          <span className="text-micro text-faint">Every</span>
+          <div className="flex items-center gap-0.5 rounded-lg border border-border bg-surface p-0.5">
             {[5, 10, 30, 60].map(s => {
               const on = intervalSec === s;
               return (
                 <button
                   key={s}
                   onClick={() => setIntervalSec(s)}
-                  className={`caps-mono-sm px-2 py-0.5 transition-colors ${
-                    on ? "bg-accent text-bg" : "text-muted-foreground hover:text-text"
+                  className={`rounded-md px-2 py-0.5 text-micro font-medium tabular transition-colors ${
+                    on ? "bg-elevated text-text shadow-sm ring-1 ring-border" : "text-muted-foreground hover:text-text"
                   }`}
                 >
                   {s}s
@@ -200,27 +201,22 @@ function HeaderBand({
           </div>
         </div>
 
-        <div className="flex items-stretch border border-border">
+        <div className="flex items-stretch overflow-hidden rounded-lg border border-border">
           <button
             onClick={() => setPaused(!paused)}
-            className={`caps-mono-sm flex items-center gap-2 border-r border-border px-2.5 transition-colors ${
-              paused ? "text-muted-foreground hover:text-text" : "text-accent"
+            className={`flex items-center gap-1.5 border-r border-border px-2.5 text-micro font-medium transition-colors ${
+              paused ? "text-muted-foreground hover:text-text" : "text-text"
             }`}
           >
             {paused ? (
               <>
-                <span style={{
-                  width: 0, height: 0,
-                  borderLeft: "6px solid currentColor",
-                  borderTop: "4px solid transparent",
-                  borderBottom: "4px solid transparent",
-                }} />
-                paused
+                <Play className="size-3" />
+                Paused
               </>
             ) : (
               <>
-                <span className="square-dot pulse filled" />
-                live
+                <span className="inline-block size-1.5 rounded-full bg-accent" />
+                Live
               </>
             )}
           </button>
@@ -233,20 +229,19 @@ function HeaderBand({
 
 function CollectorChip({ on }: { on: boolean }) {
   return (
-    <div className="group relative flex items-center gap-2 px-2.5">
-      <span className={`square-dot ${on ? "filled" : ""}`}
-            style={{ color: on ? "var(--accent)" : "var(--faint)" }} />
-      <span className={`caps-mono-sm ${on ? "text-muted-foreground" : "text-muted-foreground"}`}>
-        collector {on ? "on" : "off"}
+    <div className="group relative flex items-center gap-1.5 px-2.5">
+      <span className="inline-block size-1.5 rounded-full" style={{ background: on ? "var(--accent)" : "var(--faint)" }} />
+      <span className="text-micro font-medium text-muted-foreground">
+        Collector {on ? "on" : "off"}
       </span>
       {!on && (
-        <div className="pointer-events-none absolute right-0 top-full z-10 mt-1.5 w-[280px] origin-top-right border border-border2 bg-paper px-3.5 py-3 opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
-          <div className="caps-mono-sm text-muted-foreground">COLLECTOR OFF</div>
+        <div className="pointer-events-none absolute right-0 top-full z-10 mt-1.5 w-[280px] origin-top-right rounded-xl border border-border bg-elevated px-3.5 py-3 opacity-0 shadow-xl transition-opacity group-hover:opacity-100">
+          <div className="text-micro font-medium uppercase tracking-wide text-muted-foreground">Collector off</div>
           <p className="mt-1.5 text-micro leading-relaxed text-muted-foreground">
             Cost, agent activity, and per-model breakdowns are not collected. Start the
             collector in another terminal to populate this section within 30s.
           </p>
-          <div className="mt-2 border border-accent/40 bg-accent/[0.06] px-2.5 py-1.5 font-mono text-micro text-accent">
+          <div className="mt-2 rounded-lg border border-border bg-surface px-2.5 py-1.5 font-mono text-micro text-accent">
             mycelium metrics collect
           </div>
         </div>
@@ -577,8 +572,8 @@ function CollectorOffPlate() {
         </div>
       </div>
       <div className="flex flex-col items-end gap-2">
-        <Caps>RUN</Caps>
-        <div className="border border-accent bg-accent/[0.06] px-3.5 py-2.5 font-mono text-label font-semibold text-accent">
+        <Caps>Run</Caps>
+        <div className="rounded-lg border border-border bg-surface px-3.5 py-2.5 font-mono text-label font-semibold text-accent">
           mycelium metrics collect
         </div>
         <span className="font-mono text-micro text-faint">polls every 30s</span>
@@ -590,9 +585,9 @@ function CollectorOffPlate() {
 function BackendDownPlate() {
   return (
     <div className="flex flex-1 items-center justify-center p-10">
-      <div className="relative max-w-[560px] border border-accent bg-paper px-9 py-8">
-        <div className="absolute inset-y-0 left-0 w-[3px] bg-accent" />
-        <Caps className="text-accent">BACKEND UNREACHABLE</Caps>
+      <div className="relative max-w-[560px] overflow-hidden rounded-xl border border-border bg-paper px-9 py-8">
+        <div className="absolute inset-y-0 left-0 w-[3px] bg-yellow" />
+        <Caps className="text-yellow">Backend unreachable</Caps>
         <div className="mt-1.5 text-ui font-semibold leading-snug text-text">
           Could not reach <span className="font-mono text-accent">GET /api/observability</span>
         </div>
@@ -625,7 +620,7 @@ function SpokeSitesTable({
       {activeHost && (
         <div className="mb-3 flex items-center gap-2">
           <span className="text-micro text-muted-foreground">Filtered to</span>
-          <span className="border border-accent bg-accent/10 px-2 py-0.5 font-mono text-micro font-semibold text-accent">
+          <span className="rounded-full border border-accent/30 bg-accent-soft px-2 py-0.5 font-mono text-micro font-semibold text-accent">
             {activeHost}
           </span>
           <button
@@ -656,7 +651,7 @@ function SpokeSitesTable({
                   key={h.host}
                   onClick={() => onHostClick(isActive ? null : h.host)}
                   className={`border-b border-border/50 cursor-pointer transition-colors ${
-                    isActive ? "bg-accent/10" : "hover:bg-surface/40"
+                    isActive ? "bg-accent-soft" : "hover:bg-hairline"
                   }`}
                 >
                   <td className="py-1.5 pr-4 font-semibold text-text">{h.host}</td>
