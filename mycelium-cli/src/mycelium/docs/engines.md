@@ -28,7 +28,7 @@ commands host all of them.
 | Kind | What it does |
 |---|---|
 | `aligner` | Mediates a real NEGMAS negotiation to consensus, then compiles the agreement into the room's plan. See [Aligner](#aligner). |
-| `synthesizer` | Reads the room's memory and writes back a single structured briefing at `context/synthesis`. |
+| `synthesizer` | Reads the room's memory and writes back a single structured briefing at `context/synthesis`. See [Synthesizer](#synthesizer). |
 
 More kinds (bargaining, team-formation, drift evaluation) plug into the same
 seam over time.
@@ -49,20 +49,6 @@ mycelium memory get context/synthesis -r sprint-plan
 ```
 
 `mycelium engine ls` shows the engines registered in a room and their kinds.
-
-## The synthesizer
-
-The `synthesizer` distills a room. On summon it reads every memory namespace —
-decisions, status, context, work, the plan — and runs one **Pi** turn to compile
-them into a single markdown briefing: the room's goal, key decisions, current
-status, and open work. It upserts that briefing as a `knowledge` memory at
-`context/synthesis`, so it's versioned, searchable, and shared like any other
-memory.
-
-It is deliberately faithful — the briefing reflects only what's in the room's
-memory; it never invents facts. If a Pi turn fails it writes nothing rather than
-a half-formed summary. Run it again after a burst of activity and the summary
-upserts (version increments) in place.
 
 ## Where an engine runs
 

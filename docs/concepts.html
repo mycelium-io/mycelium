@@ -52,9 +52,13 @@
       <a href="#episodes" class="nav-link sub">Episodes</a>
       <a href="#memory" class="nav-link sub">Memory</a>
       <a href="#plan" class="nav-link sub">Plan</a>
-      <a href="#engines" class="nav-link sub">Engines</a>
-      <a href="#aligner" class="nav-link sub">Aligner</a>
       <a href="#l9-protocol" class="nav-link sub">L9 Protocol</a>
+    </div>
+    <div class="nav-section">
+      <div class="nav-section-label">Engines</div>
+      <a href="#engines" class="nav-link sub">Overview</a>
+      <a href="#aligner" class="nav-link sub">Aligner</a>
+      <a href="#synthesizer" class="nav-link sub">Synthesizer</a>
     </div>
   </nav>
 
@@ -313,6 +317,86 @@ cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
 
     <hr class="divider">
 
+    <section class="doc-section" id="l9-protocol">
+      <h1>L9 Protocol</h1>
+      <p>Every negotiation ends in &quot;accept,&quot; but an accept can mean <em>&quot;you convinced me&quot;</em> or <em>&quot;fine, whatever, let&#x27;s move on.&quot;</em> If you can&#x27;t tell those apart, you can&#x27;t tell a real team decision from one agent steamrolling the rest, and the plan your agents execute inherits that blind spot.</p>
+      <p>L9 (the epistemic layer of the <a href="https://github.com/outshift-open/ioc-protocols-models">Internet of Cognition</a>) fixes this by making <em>how</em> the team decided as inspectable as <em>what</em> it decided. Agents say how sure they are and why; every consensus gets a quality score; every negotiation leaves a causal paper trail.</p>
+      <p>L9 rides the room&#x27;s SLIM channel as additive JSON envelopes on the coordination messages: ticks are <code>exchange</code>, agreement commits as <code>commit:converged</code>, failure as <code>commit:rejected</code>, and shared knowledge as <code>knowledge</code>. The backend synthesizes reply envelopes from what agents say, so agents never need to speak L9 themselves.</p>
+      <div class="callout callout-note">
+        <div class="callout-bar"></div>
+        <div class="callout-body">Everything on this page is <strong>additive and optional</strong>. Agents that never send epistemic fields participate exactly as before.</div>
+      </div>
+      <h2 id="l9-protocol-say-how-sure-you-are">Say how sure you are</h2>
+      <p>When you post a position or reply with <a href="#quickstart"><code>mycelium respond</code></a>, end it with a position marker to declare your epistemic state:</p>
+      <pre><code><span class="cmd">mycelium respond</span> <span class="flag">--room</span> design <span class="flag">--handle</span> me \
+  <span class="str">&quot;Only option that meets the latency target. [[mycelium: confidence=0.8 stance=accept]]&quot;</span>
+
+<span class="comment"># Accepting just to move on? Say so plainly in prose, and the aligner records</span>
+<span class="comment"># the deference:</span>
+<span class="cmd">mycelium respond</span> <span class="flag">--room</span> design <span class="flag">--handle</span> me \
+  &quot;I&#x27;m not persuaded, but I&#x27;ll defer to @julia-agent. [[mycelium: confidence=0.4 stance=accept]]&quot;</code></pre>
+      <p>The <code>[[mycelium: …]]</code> marker is lifted onto the L9 envelope and stripped from the prose. The aligner reads your reply and folds in the richer epistemic signals it can infer: the evidence you engaged, whether your position moved, and why:</p>
+      <ul>
+        <li><code>confidence</code> (0–1): how sure you are of your position</li>
+        <li><code>stance</code>: <code>accept</code> / <code>reject</code> (also <code>agree</code>/<code>yes</code>, <code>block</code>/<code>no</code>)</li>
+        <li><strong>supporting / against evidence</strong>: what argues for and against your position</li>
+        <li><strong>what you addressed</strong>: the prior evidence your turn engages (grounding is</li>
+      </ul>
+      <p>scored on this)</p>
+      <ul>
+        <li><strong>revision cause</strong>: why your position moved, one of <code>grounded_argument</code>,</li>
+      </ul>
+      <p><code>new_evidence</code>, <code>semantic_memory</code>, <code>repair_resolution</code>, or <code>social_compliance</code></p>
+      <ul>
+        <li><strong>deferral</strong>: yielding without being persuaded (a <code>social_compliance</code></li>
+      </ul>
+      <p>revision)</p>
+      <p>Defer honestly. It doesn&#x27;t change the outcome; it changes how much the outcome can be trusted, which is the point. A dishonest &quot;accept&quot; corrupts the team&#x27;s shared memory; an honest deferral just marks the consensus as thinner. If you move but cite no prior evidence, you get the benefit of the doubt (counted as genuine); compliance is only marked on a real signal.</p>
+      <h2 id="l9-protocol-read-the-quality-of-a-consensus">Read the quality of a consensus</h2>
+      <p>When enough agents report confidence, the consensus carries a <code>metrics</code> score (shown in the <a href="#episodes">episode</a> view, the cards, and the UI protocol inspector):</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Metric</th>
+              <th>Read it as</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>mpc</code></td>
+              <td>How sure the team is, on average</td>
+            </tr>
+            <tr>
+              <td><code>gar</code></td>
+              <td>Who was actually persuaded: did confidence move <em>toward</em> the outcome?</td>
+            </tr>
+            <tr>
+              <td><code>scr</code></td>
+              <td>Who just went along: fraction of belief revisions that were compliance (deferring, or moving without engaging evidence) rather than argument</td>
+            </tr>
+            <tr>
+              <td><code>provenance_weight</code></td>
+              <td>The single trust score: <code>(1 - scr) * gar</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Two negotiations can both end <code>accept × 3</code> and look nothing alike: MPC 0.85 with SCR 0 is a genuine team decision; MPC 0.5 with SCR 0.67 is one agent dragging two others. Now you can see the difference, and so can the agents reading the room&#x27;s history.</p>
+      <h2 id="l9-protocol-team-priors-start-from-what-the-team-already-learned">Team priors: start from what the team already learned</h2>
+      <p>Each negotiation opens with the team&#x27;s earned confidence on this topic: a <code>team_prior</code> on every tick (<code>{confidence, provenance_weight, episode_count}</code>), written to the room&#x27;s own memory after each converged consensus (<code>l9/rule_update/topic</code>) and read back on the next negotiation, so it improves over time. Agents are instructed to form their own view first, then weigh the prior: a starting point, not an answer.</p>
+      <div class="callout callout-note">
+        <div class="callout-bar"></div>
+        <div class="callout-body">Local by default: the prior lives in room memory, no external service needed. Fail-soft: no prior, negotiation proceeds normally.</div>
+      </div>
+      <h2 id="l9-protocol-the-paper-trail">The paper trail</h2>
+      <p>Every negotiation is an L9 <a href="#episodes">episode</a>: ticks, replies, and the closing commit, causally linked (each message cites its <code>parents</code>) from opening positions to outcome, scoped by the episode URN <code>urn:ioc:mycelium:episode:{room}:{short_id}</code>. On consensus the full record lands in room memory at <code>log/episodes/{short_id}.md</code>, git-shareable and searchable like any memory, so &quot;why did we decide this?&quot; has an answer months later.</p>
+      <h2 id="l9-protocol-under-the-hood">Under the hood</h2>
+      <p>Coordination messages carry an <code>l9</code> envelope inside their content JSON: ticks are <code>exchange</code>, agreement commits as <code>commit:converged</code>, a failed negotiation as <code>commit:rejected</code>. Reply envelopes are synthesized by the backend from parsed agent replies; agents never speak L9 directly. On convergence the agreed <code>{issue: value}</code> map compiles into the room&#x27;s shared <code>plan/tasks.md</code> and syncs as a <code>knowledge</code> memory. The quality metrics are computed by Mycelium.</p>
+    </section>
+
+    <hr class="divider">
+
     <section class="doc-section" id="engines">
       <h1>Engines</h1>
       <p>An <strong>engine</strong> is a first-party unit of cognition that lives inside a room. Where your agents are the participants, engines are the room&#x27;s <em>reasoning citizens</em> — they read what the room knows and act on it: mediate a decision, distill the memory, and (in time) more.</p>
@@ -343,7 +427,7 @@ cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
             </tr>
             <tr>
               <td><code>synthesizer</code></td>
-              <td>Reads the room&#x27;s memory and writes back a single structured briefing at <code>context/synthesis</code>.</td>
+              <td>Reads the room&#x27;s memory and writes back a single structured briefing at <code>context/synthesis</code>. See <a href="#synthesizer">Synthesizer</a>.</td>
             </tr>
           </tbody>
         </table>
@@ -360,9 +444,6 @@ cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
 <span class="comment"># 3. It runs as that handle and writes its result back into the room</span>
 <span class="cmd">mycelium memory get</span> context/synthesis <span class="flag">-r</span> sprint-plan</code></pre>
       <p><code>mycelium engine ls</code> shows the engines registered in a room and their kinds.</p>
-      <h2 id="engines-the-synthesizer">The synthesizer</h2>
-      <p>The <code>synthesizer</code> distills a room. On summon it reads every memory namespace — decisions, status, context, work, the plan — and runs one <strong>Pi</strong> turn to compile them into a single markdown briefing: the room&#x27;s goal, key decisions, current status, and open work. It upserts that briefing as a <code>knowledge</code> memory at <code>context/synthesis</code>, so it&#x27;s versioned, searchable, and shared like any other memory.</p>
-      <p>It is deliberately faithful — the briefing reflects only what&#x27;s in the room&#x27;s memory; it never invents facts. If a Pi turn fails it writes nothing rather than a half-formed summary. Run it again after a burst of activity and the summary upserts (version increments) in place.</p>
       <h2 id="engines-where-an-engine-runs">Where an engine runs</h2>
       <p>An engine&#x27;s cognition runs in one of two places, selected by the <code>engine.runtime</code> config (the backend and the host daemon are a pair — set both the same):</p>
       <ul>
@@ -458,82 +539,24 @@ cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
 
     <hr class="divider">
 
-    <section class="doc-section" id="l9-protocol">
-      <h1>L9 Protocol</h1>
-      <p>Every negotiation ends in &quot;accept,&quot; but an accept can mean <em>&quot;you convinced me&quot;</em> or <em>&quot;fine, whatever, let&#x27;s move on.&quot;</em> If you can&#x27;t tell those apart, you can&#x27;t tell a real team decision from one agent steamrolling the rest, and the plan your agents execute inherits that blind spot.</p>
-      <p>L9 (the epistemic layer of the <a href="https://github.com/outshift-open/ioc-protocols-models">Internet of Cognition</a>) fixes this by making <em>how</em> the team decided as inspectable as <em>what</em> it decided. Agents say how sure they are and why; every consensus gets a quality score; every negotiation leaves a causal paper trail.</p>
-      <p>L9 rides the room&#x27;s SLIM channel as additive JSON envelopes on the coordination messages: ticks are <code>exchange</code>, agreement commits as <code>commit:converged</code>, failure as <code>commit:rejected</code>, and shared knowledge as <code>knowledge</code>. The backend synthesizes reply envelopes from what agents say, so agents never need to speak L9 themselves.</p>
-      <div class="callout callout-note">
-        <div class="callout-bar"></div>
-        <div class="callout-body">Everything on this page is <strong>additive and optional</strong>. Agents that never send epistemic fields participate exactly as before.</div>
-      </div>
-      <h2 id="l9-protocol-say-how-sure-you-are">Say how sure you are</h2>
-      <p>When you post a position or reply with <a href="#quickstart"><code>mycelium respond</code></a>, end it with a position marker to declare your epistemic state:</p>
-      <pre><code><span class="cmd">mycelium respond</span> <span class="flag">--room</span> design <span class="flag">--handle</span> me \
-  <span class="str">&quot;Only option that meets the latency target. [[mycelium: confidence=0.8 stance=accept]]&quot;</span>
+    <section class="doc-section" id="synthesizer">
+      <h1>Synthesizer</h1>
+      <p>The synthesizer is the distillation <a href="#engines">engine</a> — the <code>kind</code> that reads a room&#x27;s memory and writes back a single briefing everyone can pick up. Where the <a href="#aligner">aligner</a> <em>converges</em> a negotiation, the synthesizer <em>distills</em> what the room already knows.</p>
+      <p>Like every engine, it is <em>summoned</em>: nothing runs until you register it in a <a href="#rooms">room</a> and invoke it. There is no polling and no held connection.</p>
+      <pre><code><span class="comment"># Register the synthesizer once per room</span>
+<span class="cmd">mycelium engine create</span> summarizer <span class="flag">--kind</span> synthesizer <span class="flag">--room</span> sprint-plan
 
-<span class="comment"># Accepting just to move on? Say so plainly in prose, and the aligner records</span>
-<span class="comment"># the deference:</span>
-<span class="cmd">mycelium respond</span> <span class="flag">--room</span> design <span class="flag">--handle</span> me \
-  &quot;I&#x27;m not persuaded, but I&#x27;ll defer to @julia-agent. [[mycelium: confidence=0.4 stance=accept]]&quot;</code></pre>
-      <p>The <code>[[mycelium: …]]</code> marker is lifted onto the L9 envelope and stripped from the prose. The aligner reads your reply and folds in the richer epistemic signals it can infer: the evidence you engaged, whether your position moved, and why:</p>
-      <ul>
-        <li><code>confidence</code> (0–1): how sure you are of your position</li>
-        <li><code>stance</code>: <code>accept</code> / <code>reject</code> (also <code>agree</code>/<code>yes</code>, <code>block</code>/<code>no</code>)</li>
-        <li><strong>supporting / against evidence</strong>: what argues for and against your position</li>
-        <li><strong>what you addressed</strong>: the prior evidence your turn engages (grounding is</li>
-      </ul>
-      <p>scored on this)</p>
-      <ul>
-        <li><strong>revision cause</strong>: why your position moved, one of <code>grounded_argument</code>,</li>
-      </ul>
-      <p><code>new_evidence</code>, <code>semantic_memory</code>, <code>repair_resolution</code>, or <code>social_compliance</code></p>
-      <ul>
-        <li><strong>deferral</strong>: yielding without being persuaded (a <code>social_compliance</code></li>
-      </ul>
-      <p>revision)</p>
-      <p>Defer honestly. It doesn&#x27;t change the outcome; it changes how much the outcome can be trusted, which is the point. A dishonest &quot;accept&quot; corrupts the team&#x27;s shared memory; an honest deferral just marks the consensus as thinner. If you move but cite no prior evidence, you get the benefit of the doubt (counted as genuine); compliance is only marked on a real signal.</p>
-      <h2 id="l9-protocol-read-the-quality-of-a-consensus">Read the quality of a consensus</h2>
-      <p>When enough agents report confidence, the consensus carries a <code>metrics</code> score (shown in the <a href="#episodes">episode</a> view, the cards, and the UI protocol inspector):</p>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Metric</th>
-              <th>Read it as</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td><code>mpc</code></td>
-              <td>How sure the team is, on average</td>
-            </tr>
-            <tr>
-              <td><code>gar</code></td>
-              <td>Who was actually persuaded: did confidence move <em>toward</em> the outcome?</td>
-            </tr>
-            <tr>
-              <td><code>scr</code></td>
-              <td>Who just went along: fraction of belief revisions that were compliance (deferring, or moving without engaging evidence) rather than argument</td>
-            </tr>
-            <tr>
-              <td><code>provenance_weight</code></td>
-              <td>The single trust score: <code>(1 - scr) * gar</code></td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <p>Two negotiations can both end <code>accept × 3</code> and look nothing alike: MPC 0.85 with SCR 0 is a genuine team decision; MPC 0.5 with SCR 0.67 is one agent dragging two others. Now you can see the difference, and so can the agents reading the room&#x27;s history.</p>
-      <h2 id="l9-protocol-team-priors-start-from-what-the-team-already-learned">Team priors: start from what the team already learned</h2>
-      <p>Each negotiation opens with the team&#x27;s earned confidence on this topic: a <code>team_prior</code> on every tick (<code>{confidence, provenance_weight, episode_count}</code>), written to the room&#x27;s own memory after each converged consensus (<code>l9/rule_update/topic</code>) and read back on the next negotiation, so it improves over time. Agents are instructed to form their own view first, then weigh the prior: a starting point, not an answer.</p>
-      <div class="callout callout-note">
-        <div class="callout-bar"></div>
-        <div class="callout-body">Local by default: the prior lives in room memory, no external service needed. Fail-soft: no prior, negotiation proceeds normally.</div>
-      </div>
-      <h2 id="l9-protocol-the-paper-trail">The paper trail</h2>
-      <p>Every negotiation is an L9 <a href="#episodes">episode</a>: ticks, replies, and the closing commit, causally linked (each message cites its <code>parents</code>) from opening positions to outcome, scoped by the episode URN <code>urn:ioc:mycelium:episode:{room}:{short_id}</code>. On consensus the full record lands in room memory at <code>log/episodes/{short_id}.md</code>, git-shareable and searchable like any memory, so &quot;why did we decide this?&quot; has an answer months later.</p>
-      <h2 id="l9-protocol-under-the-hood">Under the hood</h2>
-      <p>Coordination messages carry an <code>l9</code> envelope inside their content JSON: ticks are <code>exchange</code>, agreement commits as <code>commit:converged</code>, a failed negotiation as <code>commit:rejected</code>. Reply envelopes are synthesized by the backend from parsed agent replies; agents never speak L9 directly. On convergence the agreed <code>{issue: value}</code> map compiles into the room&#x27;s shared <code>plan/tasks.md</code> and syncs as a <code>knowledge</code> memory. The quality metrics are computed by Mycelium.</p>
+<span class="comment"># Summon it to compile a briefing</span>
+<span class="cmd">mycelium engine invoke</span> summarizer <span class="str">&quot;brief the room on where we stand&quot;</span> <span class="flag">-r</span> sprint-plan
+
+<span class="comment"># Read the result back</span>
+<span class="cmd">mycelium memory get</span> context/synthesis <span class="flag">-r</span> sprint-plan</code></pre>
+      <h2 id="synthesizer-how-it-distills">How it distills</h2>
+      <p>On summon the synthesizer reads every <a href="#memory">memory</a> namespace — decisions, status, context, work, and the plan — and runs one <strong>Pi</strong> turn to compile them into a single markdown briefing: the room&#x27;s goal, key decisions, current status, and open work. It upserts that briefing as a <code>knowledge</code> memory at <code>context/synthesis</code>, so it is versioned, searchable, and shared like any other memory.</p>
+      <p>Run it again after a burst of activity and the briefing upserts in place (its version increments) — the room always has one current summary, never a pile of stale ones.</p>
+      <h2 id="synthesizer-faithful-never-invented">Faithful, never invented</h2>
+      <p>The synthesizer is deliberately faithful: the briefing reflects only what&#x27;s in the room&#x27;s memory, and it never invents facts. If its Pi turn fails it writes nothing rather than a half-formed summary — a missing briefing is honest, a fabricated one isn&#x27;t.</p>
+      <p>Unlike the aligner it holds no <a href="#episodes">episode</a> and drives no negotiation — it is a pure read → summarize → write consumer. It shares the rest of the engine model: the summon lifecycle and <a href="#engines">where it runs</a> (the backend or the host daemon), every brain a <strong>Pi</strong> turn.</p>
     </section>
     <!-- FOOTER -->
     <div class="docs-footer">
