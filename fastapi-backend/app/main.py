@@ -19,6 +19,7 @@ import sys
 import tomllib
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 
 # Must be set before sentence-transformers / huggingface_hub are imported.
 # Prevents network calls when the model is already cached locally.
@@ -85,12 +86,33 @@ async def lifespan(app: FastAPI):
     from app.services.aligner import AlignerEngine
     from app.services.plan_sync import PlanSyncEngine
     from app.services.room_channels import manager as room_channel_manager
+    from app.services.synthesizer import SynthesizerEngine
 
+    # Two engine kinds share the one summon seam. Each engine self-selects by the
+    # summoned handle's manifest kind (and the aligner's reserved-handle
+    # fallback), so a fan-out dispatcher is enough — no central kind table. Only
+    # one engine ever acts per summon since a handle maps to a single kind.
     app.state.aligner = AlignerEngine(room_channel_manager)
-    room_channel_manager.on_summon = app.state.aligner.handle_summon
+    app.state.synthesizer = SynthesizerEngine(room_channel_manager)
+    _engine_handlers = (
+        app.state.aligner.handle_summon,
+        app.state.synthesizer.handle_summon,
+    )
+
+    def _dispatch_summon(
+        room: str, handle: str, envelope: Any, co_summons: list[str] | None = None
+    ) -> None:
+        for fire in _engine_handlers:
+            try:
+                fire(room, handle, envelope, co_summons)
+            except Exception:
+                logger.exception("engine summon handler failed for @%s in %s", handle, room)
+
+    room_channel_manager.on_summon = _dispatch_summon
     logger.info(
-        "SIEP aligner wired (@%s, mediator brain=pi via %s)",
+        "engines wired (aligner @%s, synthesizer @%s; brain=pi via %s)",
         app.state.aligner.handle,
+        app.state.synthesizer.handle,
         settings.ALIGNER_PI_BINARY,
     )
 

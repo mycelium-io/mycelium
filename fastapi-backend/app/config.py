@@ -100,6 +100,15 @@ class Settings(BaseSettings):
     ALIGNER_PI_OPENSHELL: bool = False
     # Per-turn wall-clock bound (seconds) on one pi brain call before it is killed.
     ALIGNER_PI_TIMEOUT_S: float = 120.0
+    # Synthesizer engine (kind ``synthesizer``) — reads a room's memory and
+    # compiles a structured summary as a ``knowledge`` memory. Dormant by
+    # default like the aligner: nothing runs until a registered synthesizer
+    # engine is @-summoned. Reuses the shared LLM_* + ALIGNER_PI_* Pi runtime
+    # settings; only its own handle default and per-turn timeout live here.
+    SYNTHESIZER_HANDLE: str = "synthesizer"
+    # Per-turn wall-clock bound (seconds) on the synthesizer's one-shot pi call.
+    SYNTHESIZER_PI_TIMEOUT_S: float = 120.0
+
     # Where a registered `engine` (kind aligner) runs its NEGMAS drive — selects
     # the engine runtime. "backend" (default):
     # this backend owns the run via its summon seam. "host": the host daemon owns
