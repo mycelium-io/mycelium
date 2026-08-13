@@ -34,7 +34,7 @@
     "@types/react-dom": "^19.0.0",
     "jsdom": "^30.0.1",
     "postcss": "^8.5.15",
-    "tailwindcss": "^4.3.0",
+    "tailwindcss": "^4.3.3",
     "typescript": "^6.0.3",
     "vitest": "^3.2.7"
   }
