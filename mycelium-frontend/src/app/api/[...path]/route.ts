@@ -2,6 +2,7 @@
 // Copyright 2026 Mycelium Contributors
 
 import { getBackendUrl } from "@/lib/backend";
+import { handleMock, isMockMode } from "@/mocks";
 
 /**
  * Catch-all proxy for `/api/*` → the backend, resolved at REQUEST time.
@@ -19,6 +20,13 @@ const STRIP_REQUEST = ["host", "connection", "keep-alive", "transfer-encoding", 
 const STRIP_RESPONSE = ["connection", "keep-alive", "transfer-encoding", "upgrade", "content-length", "content-encoding"];
 
 async function proxy(req: Request): Promise<Response> {
+  // Fake-backend mode: serve fixtures instead of proxying. A route we haven't
+  // mocked returns null and falls through to the real backend below.
+  if (isMockMode()) {
+    const mocked = await handleMock(req);
+    if (mocked) return mocked;
+  }
+
   const backend = getBackendUrl();
   const { pathname, search } = new URL(req.url);
   const target = `${backend}${pathname}${search}`;
