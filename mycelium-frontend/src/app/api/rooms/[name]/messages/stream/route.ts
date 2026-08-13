@@ -2,12 +2,16 @@
 // Copyright 2026 Mycelium Contributors
 
 import { getBackendUrl } from "@/lib/backend";
+import { isMockMode, mockStream } from "@/mocks";
 
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ name: string }> },
 ) {
   const { name } = await params;
+  // Fake-backend mode: replay a scripted live negotiation instead of proxying.
+  if (isMockMode()) return mockStream(name);
+
   const upstream = `${getBackendUrl()}/api/rooms/${encodeURIComponent(name)}/messages/stream`;
 
   const res = await fetch(upstream, {

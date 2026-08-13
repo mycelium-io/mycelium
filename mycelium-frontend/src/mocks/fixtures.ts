@@ -1,0 +1,368 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Mycelium Contributors
+
+/**
+ * Canonical mock data for the UI's fake-backend mode.
+ *
+ * These fixtures mirror the shapes the real backend serves (see
+ * `src/lib/api.ts`), so with `MYCELIUM_UI_MOCK=1` the *real* UI renders every
+ * surface — populated, in-progress, and empty — with no SLIM node, no LLM, and
+ * no backend server. This is the frontend analogue of the backend/CLI fake
+ * stacks: one place to reach any state, for design + visual work.
+ *
+ * Three rooms cover the states worth designing against:
+ *   - `atlas-migration` — a rich, converged room (memories, agents, a compiled
+ *     plan, a finished L9 episode);
+ *   - `pricing-model`   — an in-progress negotiation (no plan yet, a pending
+ *     consent invite, a live-looking episode);
+ *   - `scratch`         — a brand-new empty room (empty states).
+ */
+
+import type {
+  EpisodeDetail,
+  EpisodeSummary,
+  HostInfo,
+  L9Envelope,
+  PendingInvite,
+  PlanResponse,
+} from "@/lib/api";
+
+// A fixed "now" so relative timestamps render deterministically. Callers offset
+// from this; nothing here calls Date.now(), so snapshots stay stable.
+const NOW = Date.parse("2026-08-12T17:30:00Z");
+const iso = (minsAgo: number): string => new Date(NOW - minsAgo * 60_000).toISOString();
+
+export interface MockRoom {
+  id: number;
+  name: string;
+  created_at: string;
+  is_public: boolean;
+  is_persistent: boolean;
+  mas_id?: string | null;
+  title?: string | null;
+}
+
+export interface MockMemory {
+  key: string;
+  value: string;
+  content_text?: string;
+  created_by: string;
+  updated_by?: string;
+  version: number;
+  updated_at?: string;
+  room_name?: string;
+}
+
+export interface MockMessage {
+  id: string;
+  sender_handle: string;
+  message_type: string;
+  content: string;
+  created_at: string;
+  recipient_handle?: string | null;
+  episode?: string | null;
+}
+
+export interface RoomFixture {
+  room: MockRoom;
+  memories: MockMemory[];
+  plan: PlanResponse;
+  messages: MockMessage[];
+  episodes: EpisodeSummary[];
+  episodeDetails: Record<string, EpisodeDetail>;
+  invites: PendingInvite[];
+}
+
+// ── agent manifests (YAML strings — the UI parses description/adapter) ─────────
+
+const agentManifest = (description: string, adapter = "claude_code"): string =>
+  `adapter: ${adapter}\ndescription: "${description}"\n`;
+
+// ── atlas-migration: the rich, converged room ─────────────────────────────────
+
+const ATLAS_EPISODE = "urn:ioc:mycelium:episode:atlas-migration:e4f1a2";
+
+const atlasL9Chain: L9Envelope[] = [
+  {
+    header: {
+      protocol: "ioc",
+      kind: "exchange",
+      subkind: "tick",
+      participants: { actors: [{ id: "aligner", role: "mediator" }, { id: "growth", role: "agent" }] },
+      message: { id: "m1", parents: [], episode: ATLAS_EPISODE },
+      context: { topic: "urn:concept:mycelium:atlas-migration" },
+    },
+    payload: { type: "propose", data: { cutover: "phased", offer: { cutover: "phased" } } },
+  },
+  {
+    header: {
+      kind: "exchange",
+      subkind: "tick",
+      participants: { actors: [{ id: "aligner", role: "mediator" }, { id: "risk", role: "agent" }] },
+      message: { id: "m2", parents: ["m1"], episode: ATLAS_EPISODE },
+      context: { topic: "urn:concept:mycelium:atlas-migration" },
+    },
+    payload: { type: "respond", data: { action: "counter", offer: { cutover: "phased", window: "48h" } } },
+  },
+  {
+    header: {
+      kind: "commit",
+      subkind: "converged",
+      participants: {
+        actors: [
+          { id: "aligner", role: "mediator" },
+          { id: "growth", role: "agent" },
+          { id: "risk", role: "agent" },
+        ],
+      },
+      message: { id: "m3", parents: ["m2"], episode: ATLAS_EPISODE },
+      context: { topic: "urn:concept:mycelium:atlas-migration" },
+    },
+    payload: {
+      type: "consensus",
+      data: { assignments: { cutover: "phased", window: "48h" }, metrics: { mpc: 0.86, gar: 0.79 } },
+    },
+  },
+];
+
+const atlasEpisodeSummary: EpisodeSummary = {
+  short_id: "e4f1a2",
+  episode: ATLAS_EPISODE,
+  topic: "urn:concept:mycelium:atlas-migration",
+  outcome: "converged",
+  subkind: "converged",
+  participants: ["growth", "risk", "aligner"],
+  metrics: { mpc: 0.86, gar: 0.79, scr: 0.91, provenance_weight: 0.74, participants: 3 },
+  assignments: { cutover: "phased", window: "48h" },
+  plan_file: "plan/tasks.md",
+  message_count: 3,
+  updated_at: iso(42),
+  updated_by: "aligner",
+};
+
+const atlas: RoomFixture = {
+  room: {
+    id: 1,
+    name: "atlas-migration",
+    created_at: iso(60 * 26),
+    is_public: true,
+    is_persistent: true,
+    mas_id: "mas_7c1e9a2b",
+    title: "Atlas DB Migration",
+  },
+  memories: [
+    {
+      key: "agents/growth",
+      value: agentManifest("Ships fast; optimizes for delivery velocity."),
+      created_by: "operator",
+      version: 1,
+      updated_at: iso(60 * 20),
+    },
+    {
+      key: "agents/risk",
+      value: agentManifest("Guards reliability; wary of big-bang cutovers."),
+      created_by: "operator",
+      version: 1,
+      updated_at: iso(60 * 20),
+    },
+    {
+      key: "agents/aligner",
+      value: agentManifest("First-party mediator (NEGMAS SAO).", "engine"),
+      created_by: "operator",
+      version: 1,
+      updated_at: iso(60 * 20),
+    },
+    {
+      key: "decisions/cutover",
+      value: "Phased cutover over a 48h window; dual-write then flip reads.",
+      content_text: "Phased cutover over a 48h window; dual-write then flip reads.",
+      created_by: "aligner",
+      version: 3,
+      updated_at: iso(41),
+    },
+    {
+      key: "context/goal",
+      value: "Move the Atlas catalog off the legacy store with zero downtime.",
+      content_text: "Move the Atlas catalog off the legacy store with zero downtime.",
+      created_by: "operator",
+      version: 1,
+      updated_at: iso(60 * 25),
+    },
+    {
+      key: "status/sprint",
+      value: "Cutover rehearsal green; production flip scheduled Thursday.",
+      content_text: "Cutover rehearsal green; production flip scheduled Thursday.",
+      created_by: "growth",
+      version: 2,
+      updated_at: iso(120),
+    },
+  ],
+  plan: {
+    room: "atlas-migration",
+    title: "Atlas DB Migration",
+    files: [
+      {
+        slug: "tasks",
+        title: "Cutover plan",
+        content:
+          "# Cutover plan\n\n- [x] dual-write to the new store @growth\n- [x] backfill + verify parity @risk\n- [ ] flip reads behind a flag @growth\n- [ ] 48h soak, then retire the legacy store @risk",
+        updated_at: iso(40),
+        updated_by: "aligner",
+        tasks: [
+          { id: "t1", slug: "tasks", line: 2, text: "dual-write to the new store @growth", done: true },
+          { id: "t2", slug: "tasks", line: 3, text: "backfill + verify parity @risk", done: true },
+          { id: "t3", slug: "tasks", line: 4, text: "flip reads behind a flag @growth", done: false },
+          { id: "t4", slug: "tasks", line: 5, text: "48h soak, then retire the legacy store @risk", done: false },
+        ],
+      },
+    ],
+    tasks: [
+      { id: "t1", slug: "tasks", line: 2, text: "dual-write to the new store @growth", done: true },
+      { id: "t2", slug: "tasks", line: 3, text: "backfill + verify parity @risk", done: true },
+      { id: "t3", slug: "tasks", line: 4, text: "flip reads behind a flag @growth", done: false },
+      { id: "t4", slug: "tasks", line: 5, text: "48h soak, then retire the legacy store @risk", done: false },
+    ],
+    open_count: 2,
+    done_count: 2,
+  },
+  messages: [
+    { id: "a1", sender_handle: "operator", message_type: "broadcast", content: "@growth @risk let's settle the cutover strategy. Summon the aligner when ready.", created_at: iso(48) },
+    { id: "a2", sender_handle: "growth", message_type: "coordination_join", content: JSON.stringify({ handle: "growth", intent: "ship the migration this week", episode: ATLAS_EPISODE }), created_at: iso(47), episode: ATLAS_EPISODE },
+    { id: "a3", sender_handle: "risk", message_type: "coordination_join", content: JSON.stringify({ handle: "risk", intent: "no downtime, no data loss", episode: ATLAS_EPISODE }), created_at: iso(47), episode: ATLAS_EPISODE },
+    { id: "a4", sender_handle: "growth", message_type: "broadcast", content: "I want a big-bang cutover — it's simpler to reason about.", created_at: iso(46) },
+    { id: "a5", sender_handle: "risk", message_type: "broadcast", content: "Too risky. Phased, dual-write, then flip reads. @growth", created_at: iso(45) },
+    { id: "a6", sender_handle: "backend", message_type: "coordination_consensus", content: JSON.stringify({ plan: "phased cutover agreed", assignments: { cutover: "phased", window: "48h" }, plan_file: "plan/tasks.md", episode: ATLAS_EPISODE, metrics: { gar: 0.79 } }), created_at: iso(42), episode: ATLAS_EPISODE },
+    { id: "a7", sender_handle: "growth", message_type: "broadcast", content: "Works for me. Dual-write is live in staging. ✅", created_at: iso(30) },
+  ],
+  episodes: [atlasEpisodeSummary],
+  episodeDetails: { e4f1a2: { ...atlasEpisodeSummary, messages: atlasL9Chain } },
+  invites: [],
+};
+
+// ── pricing-model: an in-progress negotiation, no plan yet ─────────────────────
+
+const PRICING_EPISODE = "urn:ioc:mycelium:episode:pricing-model:b2d0";
+
+const pricing: RoomFixture = {
+  room: {
+    id: 2,
+    name: "pricing-model",
+    created_at: iso(180),
+    is_public: true,
+    is_persistent: true,
+    mas_id: "mas_31ab77c0",
+    title: null,
+  },
+  memories: [
+    { key: "agents/finance", value: agentManifest("Protects margin; models unit economics."), created_by: "operator", version: 1, updated_at: iso(160) },
+    { key: "agents/growth", value: agentManifest("Wants adoption; favors a low entry price."), created_by: "operator", version: 1, updated_at: iso(160) },
+    { key: "context/goal", value: "Pick a launch price for the Pro tier.", content_text: "Pick a launch price for the Pro tier.", created_by: "operator", version: 1, updated_at: iso(175) },
+  ],
+  plan: { room: "pricing-model", title: null, files: [], tasks: [], open_count: 0, done_count: 0 },
+  messages: [
+    { id: "p1", sender_handle: "operator", message_type: "broadcast", content: "@finance @growth what's the Pro price? @aligner mediate.", created_at: iso(12) },
+    { id: "p2", sender_handle: "finance", message_type: "coordination_join", content: JSON.stringify({ handle: "finance", intent: "margin >= 60%", episode: PRICING_EPISODE }), created_at: iso(11), episode: PRICING_EPISODE },
+    { id: "p3", sender_handle: "growth", message_type: "coordination_join", content: JSON.stringify({ handle: "growth", intent: "land and expand", episode: PRICING_EPISODE }), created_at: iso(11), episode: PRICING_EPISODE },
+    { id: "p4", sender_handle: "finance", message_type: "broadcast", content: "$49/seat holds the margin.", created_at: iso(9) },
+  ],
+  episodes: [
+    {
+      short_id: "b2d0",
+      episode: PRICING_EPISODE,
+      topic: "urn:concept:mycelium:pricing-model",
+      outcome: "open",
+      subkind: null,
+      participants: ["finance", "growth", "aligner"],
+      metrics: null,
+      assignments: null,
+      plan_file: null,
+      message_count: 4,
+      updated_at: iso(9),
+      updated_by: "aligner",
+    },
+  ],
+  episodeDetails: {},
+  invites: [
+    {
+      id: "inv1",
+      room: "pricing-model",
+      agent: "legal",
+      requested_by: "operator",
+      trigger_text: "@legal can you weigh in on the discount policy?",
+      status: "pending",
+      created_at: iso(3),
+    },
+  ],
+};
+
+// ── scratch: a brand-new empty room ───────────────────────────────────────────
+
+const scratch: RoomFixture = {
+  room: { id: 3, name: "scratch", created_at: iso(4), is_public: true, is_persistent: true, mas_id: null, title: null },
+  memories: [],
+  plan: { room: "scratch", title: null, files: [], tasks: [], open_count: 0, done_count: 0 },
+  messages: [],
+  episodes: [],
+  episodeDetails: {},
+  invites: [],
+};
+
+export const ROOM_FIXTURES: Record<string, RoomFixture> = {
+  "atlas-migration": atlas,
+  "pricing-model": pricing,
+  scratch,
+};
+
+export const ROOMS: MockRoom[] = Object.values(ROOM_FIXTURES).map((f) => f.room);
+
+export function getRoomFixture(name: string): RoomFixture | undefined {
+  return ROOM_FIXTURES[name];
+}
+
+// ── observability / metrics ───────────────────────────────────────────────────
+
+export const BACKEND_METRICS = {
+  counters: {
+    llm: { calls: 128 },
+    cfn: { calls: 42, "calls.mgmt": 12, "calls.node": 30 },
+    embeddings: { computed: 356 },
+    memory: { writes: 61, reads: 240 },
+    coordination: { sessions_started: 7, sessions_converged: 5 },
+  },
+  histograms: {},
+};
+
+export const COLLECTOR_METRICS = {
+  counters: {
+    tokens: {
+      total: { input: 184_300, output: 52_100, cache_read: 90_400, cache_write: 12_800, total: 339_600 },
+      by_agent: {
+        growth: { input: 82_000, output: 21_000, cache_read: 40_000, cache_write: 5_000, total: 148_000 },
+        risk: { input: 61_000, output: 18_000, cache_read: 30_000, cache_write: 4_000, total: 113_000 },
+        aligner: { input: 41_300, output: 13_100, cache_read: 20_400, cache_write: 3_800, total: 78_600 },
+      },
+      by_model: {
+        "anthropic/claude-sonnet-4-6": { input: 143_000, output: 39_000, cache_read: 70_000, cache_write: 9_000, total: 261_000 },
+        "anthropic/claude-haiku-4-5": { input: 41_300, output: 13_100, cache_read: 20_400, cache_write: 3_800, total: 78_600 },
+      },
+    },
+    cost_usd: {
+      total: 4.82,
+      by_agent: { growth: 2.1, risk: 1.6, aligner: 1.12 },
+      by_model: { "anthropic/claude-sonnet-4-6": 3.9, "anthropic/claude-haiku-4-5": 0.92 },
+    },
+    messages: { processed: 214 },
+  },
+  histograms: {
+    by_agent: {
+      growth: { calls: 46, last: iso(28) },
+      risk: { calls: 38, last: iso(31) },
+      aligner: { calls: 22, last: iso(42) },
+    },
+  },
+};
+
+export const HOSTS: HostInfo[] = [
+  { host: "hub-a.lan", span_count: 1820, trace_count: 143, last_seen: iso(2), agents: ["growth", "aligner"], error_count: 1 },
+  { host: "worker-b.lan", span_count: 940, trace_count: 77, last_seen: iso(6), agents: ["risk"], error_count: 0 },
+];
