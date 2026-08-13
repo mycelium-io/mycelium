@@ -7,9 +7,10 @@ import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchRoom, logFetchError, type EpisodeSummary } from "@/lib/api";
 import { AppShell } from "@/components/app-shell";
-import { EventStream } from "@/components/event-stream";
+import { EventStream, type View, type NegotiationPhase } from "@/components/event-stream";
 import { RoomChatBox } from "@/components/room-chat-box";
 import { RoomInspector, type Tab } from "@/components/room-inspector";
+import { RoomTour } from "@/components/room-tour";
 import { GlobalStatusItems, StatusButton } from "@/components/status-items";
 import { useRoomStatus } from "@/lib/use-status";
 
@@ -42,6 +43,21 @@ export default function RoomPage() {
   const [connected, setConnected] = useState(false);
   const [inspectorTab, setInspectorTab] = useState<Tab>("agents");
   const [inspectorOpen, setInspectorOpen] = useState(true);
+  const [editorView, setEditorView] = useState<View>("channel");
+  const [negPhase, setNegPhase] = useState<NegotiationPhase>("idle");
+  const [tourActive, setTourActive] = useState(false);
+
+  // Start the coached tour when arriving via "Run a sample coordination".
+  useEffect(() => {
+    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("tour") === "1") {
+      setTourActive(true);
+    }
+  }, []);
+
+  const handleTourExit = useCallback(() => {
+    setTourActive(false);
+    if (typeof window !== "undefined") window.history.replaceState(null, "", window.location.pathname);
+  }, []);
 
   const { agents, episodes, openTasks } = useRoomStatus(roomName);
 
@@ -117,7 +133,10 @@ export default function RoomPage() {
               roomName={roomName}
               onMemoryChanged={handleMemoryChanged}
               onConnectionChange={setConnected}
+              onNegotiationPhaseChange={setNegPhase}
               planRefreshTrigger={memoryRefresh}
+              view={editorView}
+              onViewChange={setEditorView}
             />
           </div>
           <RoomChatBox roomName={roomName} />
@@ -133,6 +152,14 @@ export default function RoomPage() {
           onOpenChange={setInspectorOpen}
         />
       </div>
+
+      <RoomTour
+        active={tourActive}
+        phase={negPhase}
+        setEditorView={setEditorView}
+        setInspectorTab={setInspectorTab}
+        onExit={handleTourExit}
+      />
     </AppShell>
   );
 }

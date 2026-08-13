@@ -5,8 +5,23 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Boxes } from "lucide-react";
+import { Boxes, Sparkles } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
+
+// The seeded sample room the "Run a sample coordination" onboarding routes into.
+const SAMPLE_TOUR_HREF = "/room/pricing-model?tour=1";
+
+function RunSampleButton({ className = "" }: { className?: string }) {
+  return (
+    <Link
+      href={SAMPLE_TOUR_HREF}
+      className={`inline-flex items-center gap-2 rounded-md bg-accent px-3.5 py-2 text-label font-medium text-accent-fg transition-opacity hover:opacity-90 ${className}`}
+    >
+      <Sparkles className="size-4" />
+      Run a sample coordination
+    </Link>
+  );
+}
 import {
   fetchRooms,
   fetchRoomAgents,
@@ -67,11 +82,14 @@ export function CommandCenter() {
   return (
     <div className="flex-1 overflow-y-auto">
       <div className="mx-auto max-w-5xl px-8 py-8">
-        <header className="mb-6">
-          <h1 className="text-2xl font-semibold text-text">Command center</h1>
-          <p className="mt-1 text-label text-muted-foreground">
-            Every coordination workspace, at a glance. Open one to negotiate, plan, and remember.
-          </p>
+        <header className="mb-6 flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h1 className="text-2xl font-semibold text-text">Command center</h1>
+            <p className="mt-1 text-label text-muted-foreground">
+              Every coordination workspace, at a glance. Open one to negotiate, plan, and remember.
+            </p>
+          </div>
+          <RunSampleButton className="mt-1 flex-shrink-0" />
         </header>
 
         {loaded && rooms.length === 0 ? (
@@ -79,7 +97,8 @@ export function CommandCenter() {
             <EmptyState
               icon={Boxes}
               title="No rooms yet"
-              description="Create one from the sidebar to get started."
+              description="See it work first: run a guided sample coordination, or create a room from the sidebar."
+              action={<RunSampleButton />}
             />
           </div>
         ) : (

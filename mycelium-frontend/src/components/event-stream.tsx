@@ -234,16 +234,21 @@ function renderWithMentions(text: string): React.ReactNode {
   );
 }
 
-type View = "channel" | "negotiate" | "plan" | "l9";
+export type View = "channel" | "negotiate" | "plan" | "l9";
+export type NegotiationPhase = "idle" | "negotiating" | "converged" | "rejected";
 
 interface Props {
   roomName: string;
   onMemoryChanged?: () => void;
   onConnectionChange?: (connected: boolean) => void;
+  onNegotiationPhaseChange?: (phase: NegotiationPhase) => void;
   planRefreshTrigger?: number;
+  /** Optional controlled tab (e.g. driven by the onboarding tour). */
+  view?: View;
+  onViewChange?: (view: View) => void;
 }
 
-export function EventStream({ roomName, onMemoryChanged, onConnectionChange, planRefreshTrigger = 0 }: Props) {
+export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onNegotiationPhaseChange, planRefreshTrigger = 0, view: viewProp, onViewChange }: Props) {
   const [events, setEvents] = useState<Event[]>([]);
   const [connected, setConnected] = useState(false);
 
@@ -252,7 +257,9 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, pla
   useEffect(() => {
     onConnectionChange?.(connected);
   }, [connected, onConnectionChange]);
-  const [view, setView] = useState<View>("channel");
+  const [viewInternal, setViewInternal] = useState<View>("channel");
+  const view = viewProp ?? viewInternal;
+  const setView = (v: View) => { if (viewProp === undefined) setViewInternal(v); onViewChange?.(v); };
   const [agentHandles, setAgentHandles] = useState<Set<string>>(new Set());
   const [invites, setInvites] = useState<PendingInvite[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -354,16 +361,28 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, pla
     [events],
   );
 
-  // A negotiation is "live" while ticks have arrived with no consensus after.
-  const negotiating = useMemo(() => {
+  // Negotiation phase, derived from the coordination stream. Drives the live
+  // tab dot and (via the callback) the onboarding tour's convergence sync.
+  const phase = useMemo<NegotiationPhase>(() => {
     let lastTick = -1;
     let lastConsensus = -1;
+    let consensusBroken = false;
     events.forEach((e, i) => {
       if (e.type === "coordination_tick") lastTick = i;
-      if (e.type === "coordination_consensus") lastConsensus = i;
+      if (e.type === "coordination_consensus") {
+        lastConsensus = i;
+        consensusBroken = e.raw.broken === true;
+      }
     });
-    return lastTick > -1 && lastTick > lastConsensus;
+    if (lastConsensus > -1 && lastConsensus > lastTick) return consensusBroken ? "rejected" : "converged";
+    if (lastTick > -1) return "negotiating";
+    return "idle";
   }, [events]);
+  const negotiating = phase === "negotiating";
+
+  useEffect(() => {
+    onNegotiationPhaseChange?.(phase);
+  }, [phase, onNegotiationPhaseChange]);
 
   return (
     <div className="flex flex-col h-full">
@@ -385,6 +404,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, pla
             return (
               <button
                 key={t.id}
+                data-tour={`tab-${t.id}`}
                 onClick={() => setView(t.id)}
                 className={`flex items-center gap-1.5 rounded-md px-3 py-1 text-label font-medium transition-colors ${
                   active

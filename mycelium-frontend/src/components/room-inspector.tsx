@@ -84,6 +84,7 @@ export function RoomInspector({
             return (
               <button
                 key={id}
+                data-tour={`inspector-${id}`}
                 onClick={() => setTab(id)}
                 className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-label font-medium transition-colors ${
                   active ? "bg-elevated text-text shadow-sm ring-1 ring-border" : "text-muted-foreground hover:text-text"

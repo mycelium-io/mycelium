@@ -144,7 +144,7 @@ export function RoomChatBox({ roomName, defaultSender, onSent }: Props) {
   };
 
   return (
-    <div className="border-t border-border bg-bg px-4 py-3 flex-shrink-0">
+    <div data-tour="composer" className="border-t border-border bg-bg px-4 py-3 flex-shrink-0">
       <div className="relative">
         {mention !== null && candidates.length > 0 && (
           <div className="absolute bottom-full left-0 mb-2 z-20 w-full max-w-md bg-elevated border border-border rounded-xl shadow-xl overflow-hidden p-1">
