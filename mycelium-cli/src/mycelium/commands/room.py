@@ -875,9 +875,13 @@ def messages(
         typer.secho(f"({len(msgs)} {plural}, newest first)\n", fg=typer.colors.BRIGHT_BLACK)
         for m in msgs:
             stamp = m.created_at.strftime("%H:%M:%S")
-            content = m.content.replace("\n", " ")
-            preview = content[:100] + ("…" if len(content) > 100 else "")
-            typer.echo(f"  {stamp}  {m.sender_handle} [{m.message_type}]: {preview}")
+            # Show the full message — this is the read-the-transcript command, so
+            # never truncate. Keep multi-line content readable by indenting any
+            # continuation lines under the first.
+            first, *rest = (m.content or "").split("\n")
+            typer.echo(f"  {stamp}  {m.sender_handle} [{m.message_type}]: {first}")
+            for line in rest:
+                typer.echo(f"              {line}")
         typer.echo()
 
     except (typer.Exit, typer.Abort):

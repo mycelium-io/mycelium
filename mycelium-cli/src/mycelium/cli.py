@@ -25,6 +25,7 @@ from mycelium.commands import (
     instance,
     memory,
     metrics,
+    network,
     openshell,
     participate,
     plan,
@@ -106,6 +107,7 @@ app.command(name="doctor")(doctor.doctor)
 app.command(name="up")(instance.start)
 app.command(name="down")(instance.stop)
 app.command(name="status")(instance.status)
+app.command(name="network")(network.network)
 app.command(name="logs")(instance.logs)
 
 # Top-level shortcuts
