@@ -13,6 +13,7 @@ import { RoomInspector, type Tab } from "@/components/room-inspector";
 import { RoomTour } from "@/components/room-tour";
 import { GlobalStatusItems, StatusButton } from "@/components/status-items";
 import { ActingAsPicker } from "@/components/acting-as-picker";
+import { NotificationBell } from "@/components/notification-bell";
 import { useRoomStatus } from "@/lib/use-status";
 
 interface Room {
@@ -125,7 +126,8 @@ export default function RoomPage() {
         {room?.mas_id && (
           <span className="font-mono text-micro text-faint truncate" title="MAS id">{room.mas_id}</span>
         )}
-        <div className="ml-auto flex-shrink-0">
+        <div className="ml-auto flex flex-shrink-0 items-center gap-1">
+          <NotificationBell />
           <ActingAsPicker />
         </div>
       </header>

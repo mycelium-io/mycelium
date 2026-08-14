@@ -2,9 +2,10 @@
 // Copyright 2026 Mycelium Contributors
 
 import { act } from "react";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeEventSource } from "@/test/fake-event-source";
+import { renderWithProviders } from "@/test/render-with-providers";
 
 vi.mock("@/lib/api", () => ({
   getSSEUrl: (room: string) => `/api/rooms/${room}/messages/stream`,
@@ -43,7 +44,7 @@ describe("<EventStream /> live message rendering", () => {
   });
 
   it("renders an l9_exchange streamed over SSE as a chat message", async () => {
-    render(<EventStream roomName="sprint" />);
+    renderWithProviders(<EventStream roomName="sprint" />);
     await act(async () => {});
     const es = FakeEventSource.latest();
 
@@ -59,7 +60,7 @@ describe("<EventStream /> live message rendering", () => {
 
   it("warns loudly on an unhandled message_type instead of dropping it silently", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    render(<EventStream roomName="sprint" />);
+    renderWithProviders(<EventStream roomName="sprint" />);
     await act(async () => {});
     const es = FakeEventSource.latest();
 

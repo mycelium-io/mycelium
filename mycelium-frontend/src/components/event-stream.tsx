@@ -22,6 +22,9 @@ import { RoomSlimView } from "@/components/room-slim";
 import { EmptyState } from "@/components/empty-state";
 import { initials } from "@/components/ui/monogram";
 import { MessagesSquare } from "lucide-react";
+import { useCurrentUser } from "@/components/current-user";
+import { useNotificationSettings, type PingScope } from "@/components/notification-settings";
+import { playPing } from "@/lib/audio-ping";
 
 interface Event {
   id: string;
@@ -245,6 +248,39 @@ function renderWithMentions(text: string): React.ReactNode {
   );
 }
 
+// Minimum gap between audio pings, so a burst of messages (a negotiation
+// round, several agent replies) plays one tone instead of a machine-gun.
+const PING_COOLDOWN_MS = 4000;
+
+function mentionedHandles(content: string): string[] {
+  return (content.match(MENTION_RE) ?? []).map((m) => m.slice(1).toLowerCase());
+}
+
+/** "needs me": consensus always qualifies (a room-wide outcome); chat only
+ *  qualifies when it's addressed to me, addressed to an agent I own, or
+ *  @-mentions either. Never true for my own outgoing messages. */
+function needsMe(event: Event, principal: string, agentOwners: Map<string, string>): boolean {
+  if (event.type === "coordination_consensus") return true;
+  if (!CHAT_TYPES.has(event.type) || !principal || event.sender === principal) return false;
+  if (event.recipient === principal) return true;
+  if (event.recipient && agentOwners.get(event.recipient) === principal) return true;
+  return mentionedHandles(event.content).some(
+    (h) => h === principal || agentOwners.get(h) === principal,
+  );
+}
+
+/** Whether `event` should ping under the given scope. "all" covers anything
+ *  that shows up in the channel view; "needs-me" narrows to `needsMe`. */
+function isPingable(
+  event: Event,
+  scope: PingScope,
+  principal: string,
+  agentOwners: Map<string, string>,
+): boolean {
+  if (scope === "needs-me") return needsMe(event, principal, agentOwners);
+  return event.sender !== principal && CHANNEL_VIEW_TYPES.has(event.type);
+}
+
 export type View = "channel" | "negotiate" | "plan" | "l9" | "slim";
 export type NegotiationPhase = "idle" | "negotiating" | "converged" | "rejected";
 
@@ -278,6 +314,16 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
   const [agentOwners, setAgentOwners] = useState<Map<string, string>>(new Map());
   const [invites, setInvites] = useState<PendingInvite[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // The audio ping (issue #514) needs the latest principal/settings/agentOwners
+  // inside the SSE handler below, which is set up once per `roomName` and would
+  // otherwise close over a stale render. A ref updated every render sidesteps
+  // re-subscribing the EventSource just to keep pinging fresh.
+  const { principal } = useCurrentUser();
+  const { settings: pingSettings } = useNotificationSettings();
+  const lastPingAtRef = useRef(0);
+  const pingCtxRef = useRef({ principal, agentOwners, pingSettings });
+  pingCtxRef.current = { principal, agentOwners, pingSettings };
 
   // Know which senders are registered agents (to badge their replies) and whom
   // each belongs to (to attribute them inline). Self-fetched (mirrors the chat
@@ -357,6 +403,22 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
           // Presence changes: refresh the room's derived state (agent roster/count).
           if (event.type === "coordination_join" || event.type === "coordination_leave") {
             onMemoryChanged?.();
+          }
+          // Audio ping (issue #514): only while the tab is actually hidden —
+          // never interrupt someone looking right at the feed — and only for
+          // events the current scope considers relevant. Rate-limited so a
+          // burst of activity plays one tone, not one per message.
+          const { principal: pingPrincipal, agentOwners: pingOwners, pingSettings: liveSettings } =
+            pingCtxRef.current;
+          if (liveSettings.enabled && document.hidden) {
+            const now = Date.now();
+            if (
+              now - lastPingAtRef.current > PING_COOLDOWN_MS &&
+              isPingable(event, liveSettings.scope, pingPrincipal, pingOwners)
+            ) {
+              lastPingAtRef.current = now;
+              playPing(liveSettings.sound, liveSettings.volume);
+            }
           }
         } catch {}
       };
