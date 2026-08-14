@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Claude Code install facet — skill/hooks install + daemon service core.
+"""Claude Code install facet — skill/hooks install.
 
 The single ``Integration`` contract (see ``integrations/base.py``) owns both
 the dispatch and install facets per runtime family. The typer command layer is
@@ -15,7 +15,6 @@ from pathlib import Path
 
 import typer
 
-from mycelium.daemon.install import install_daemon_service, uninstall_daemon_service
 from mycelium.integrations._resources import _resolve_asset
 
 # ── constants (relocated verbatim from commands/adapter.py) ───────────────────
@@ -54,9 +53,7 @@ _CLAUDE_CODE_STALE_SCRIPTS = [
     "mycelium-knowledge-extract.py",
 ]
 
-_CLAUDE_CODE_STEPS = {
-    "daemon": "install + register the mycelium-daemon user service",
-}
+_CLAUDE_CODE_STEPS: dict[str, str] = {}
 
 
 # ── skill + hooks install (relocated verbatim) ───────────────────────────────
@@ -138,11 +135,9 @@ def _install_claude_code(verbose: bool = False) -> None:
 
 # Maps hook script name → Claude Code hook event name. Must stay aligned
 # with ``_CLAUDE_CODE_HOOKS`` above: registering a hook in settings.json
-# without a matching script file results in Claude Code aborting with
-# ``SessionEnd hook ... not found`` on every spawn — which is exactly what
-# trips up cold-spawned agents the moment they try to honour an autonomous
-# coordination_tick. Currently the live hook list is empty, so this list
-# is empty too.
+# without a matching script file makes Claude Code abort with
+# ``SessionEnd hook ... not found`` on every session start. Currently the live
+# hook list is empty, so this list is empty too.
 _CLAUDE_CODE_HOOK_EVENTS: list[tuple[str, str]] = []
 
 
@@ -360,32 +355,3 @@ def _cleanup_stale_claude_code_assets(claude_dir: Path, verbose: bool = False) -
         except OSError as e:
             if verbose:
                 typer.echo(f"  warning: could not rewrite settings.json: {e}")
-
-
-# ── daemon user-service install / uninstall ───────────────────────────────
-#
-# The daemon is the userlevel dispatcher for Claude Code agents. It runs as a
-# user-level service that subscribes to room SSE, watches for `@handle`
-# mentions of agents registered under `agents/<handle>`, and dispatches them to
-# `claude -p` spawns. See `mycelium.daemon` for the dispatch implementation.
-#
-# The daemon service install/uninstall is shared with every cold-spawn family
-# (currently claude_code, soon cursor) via composition — see
-# ``mycelium.daemon.install``. The wrappers below add the family-specific bits
-# (currently none) on top of the shared install path.
-
-
-def _step_claude_daemon_install(verbose: bool = False) -> None:
-    """Install the daemon — claude_code's ``--step=daemon`` entrypoint.
-
-    Currently a thin pass-through to the shared family-agnostic helper.
-    Kept as a separate function so any future claude_code-specific daemon
-    setup (e.g. binary discovery, settings checks) lands here without
-    pulling family logic into ``daemon/install.py``.
-    """
-    install_daemon_service(verbose=verbose)
-
-
-def _step_claude_daemon_uninstall(verbose: bool = False) -> None:
-    """Reverse :func:`_step_claude_daemon_install`."""
-    uninstall_daemon_service(verbose=verbose)

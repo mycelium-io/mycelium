@@ -129,9 +129,9 @@ Memories are markdown files under `~/.mycelium/rooms/<room>/`. Any agent who joi
 
 ### A few things to remember
 
-- **Auto-wake for mentions.** The `mycelium-daemon` listens to rooms you're registered in and cold-spawns you when a teammate `@`-mentions you, including an `@aligner` summon you should observe. You don't need to poll or watch; the daemon wakes you. For one-shot questions like "did anyone reply?", check with `mycelium watch --room X` or `mycelium room messages`.
+- **Stay woken with `await`.** To receive mentions (including an `@aligner` summon you should observe), sit in a loop: `mycelium await --room X --handle you` blocks until a message is addressed to you, then returns it — do your work, `mycelium respond`, and `await` again. `mycelium await --loop --exec <cmd>` automates that loop for you. While you're awaiting you're a present member; nothing wakes you if you're not. For one-shot questions like "did anyone reply?", check with `mycelium watch --room X` or `mycelium room messages`.
 - **Write self-contained messages.** "What about the thing we discussed?" is useless to a recipient who doesn't share your history. Spell out the context.
-- **One turn per wake.** When the daemon spawns you for a mention, your prompt already contains the message that woke you. Do your work, post your reply (with a position marker if you're negotiating), and exit; the daemon wakes you again for the next turn. Don't try to block waiting for other agents.
+- **One turn per await.** Each `mycelium await` returns the single message that woke you. Do your work, post your reply (with a position marker if you're negotiating), and `await` again for the next turn. Don't try to block waiting for other agents.
 - **Run `mycelium` as single commands.** The adapter install pre-allowlists the mycelium CLI (`Bash(mycelium:*)` in `~/.claude/settings.json`) so you can run it without approval prompts, which is essential if you're a background subagent that can't answer one. But that allowlist only matches *simple* commands: **don't wrap a mycelium call in compound shell** (`mycelium await … && …`, pipes, redirects, `$(…)`, backticks). Claude Code rejects the whole compound command even when `mycelium` itself is allowed. Issue one `mycelium await` / `mycelium respond` per command.
 
 ## Memory as Files

@@ -4,16 +4,15 @@
 """
 Agent commands — name an addressable, durable agent inside a room.
 
-An agent is just two memory entries plus an adapter route:
+An agent is just two memory entries:
 
     <room>/agents/<handle>            ← manifest (this command writes it)
     <room>/agents/<handle>/notes      ← persistent brain, agent-curated
-    <room>/agents/<handle>/log/<ts>   ← per-invocation transcript (daemon writes)
 
-The corresponding daemon (``mycelium-daemon``, installed via
-``mycelium adapter add claude-code --step=daemon``) watches each room's SSE
-stream, dispatches ``@handle`` mentions to the right runtime, and posts the
-reply back to the room as ``@handle``.
+The agent's *runtime* is the user's own resident session — a Claude Code or
+Cursor session kept woken with ``mycelium await --loop``, which participates via
+``await``/``respond``. Mycelium names the agent and installs its skill; it does
+not run the process.
 
 These commands are typing comfort on top of ``memory`` and ``room send``:
 ``agent create`` writes ``memory set agents/<handle>`` with validation,
@@ -172,6 +171,27 @@ def _load_manifest(room_name: str, handle: str) -> AgentManifest | None:
         return None
 
 
+def _is_resident(config: MyceliumConfig, room_name: str, handle: str) -> bool:
+    """True if a runtime is currently present in the room for ``handle``.
+
+    Best-effort: queries the backend's live presence set (SLIM sockets + server-
+    held ``await`` leases). A network/parse failure returns ``False`` so the
+    caller falls back to the honest "not resident — queued" message rather than
+    claiming liveness it can't confirm.
+    """
+    import httpx
+
+    try:
+        url = f"{config.server.api_url}/api/rooms/{room_name}/sessions/members"
+        resp = httpx.get(url, timeout=5.0)
+        resp.raise_for_status()
+        members = resp.json().get("members", [])
+    except Exception:
+        return False
+    norm = handle.lstrip("@").lower()
+    return any(str(m.get("handle", "")).lstrip("@").lower() == norm for m in members)
+
+
 def _room_manifests(room_name: str) -> list[AgentManifest]:
     """Every agent manifest registered in a room (skips notes + log children)."""
     room_dir = get_room_dir(room_name)
@@ -309,8 +329,8 @@ def _write_manifest(
 ) -> None:
     """Upsert the manifest into the backend AND mirror it to the local filesystem.
 
-    The daemon resolves manifests by reading the local filesystem (single-machine
-    v0), so the backend write alone isn't enough — we mirror via the same
+    ``agent ls/show/invoke`` resolve manifests by reading the local filesystem, so
+    the backend write alone isn't enough — we mirror via the same
     ``filesystem.write_memory`` helper that the rest of the CLI uses for local
     copies of API-written memories.
     """
@@ -335,8 +355,8 @@ def _write_manifest(
     with _typed_client(config) as client:
         result = create_api.sync(room_name=room_name, client=client, body=batch)
 
-    # Mirror locally so `agent ls/show/invoke` + the daemon's filesystem lookup
-    # find the manifest without a round-trip.
+    # Mirror locally so `agent ls/show/invoke` find the manifest without a
+    # round-trip.
     room_dir = get_room_dir(room_name)
     version = 1
     if result and isinstance(result, list) and result:
@@ -383,15 +403,6 @@ def _persist_and_describe(
     # dangling manifest.
     impl.register(manifest=manifest, config=config, opts=opts)
     _write_manifest(config, room_name, manifest, created_by=handle_flag)
-    # Cold-spawn adapters (claude_code, cursor) need the daemon to
-    # re-read ``daemon.toml`` to pick up the newly-claimed handle —
-    # otherwise the agent appears registered but mentions silently drop.
-    # SIGHUP reload is issued here automatically; no-op when the daemon
-    # service isn't installed.
-    if getattr(impl, "lifecycle", None) == "cold_spawn":
-        from mycelium.daemon.install import reload_daemon_service
-
-        reload_daemon_service(verbose=False)
     console.print(
         f"\n[green]Agent {verb}:[/green] [cyan]@{manifest.handle}[/cyan] "
         f"in room [bold]{room_name}[/bold]"
@@ -400,14 +411,13 @@ def _persist_and_describe(
         console.print(line)
 
 
-#: CLI label per adapter for the wizard's cwd prompt. Cold-spawn families
-#: both need a cwd, but the wording differs — claude_code runs ``claude -p``
-#: while cursor opens the cwd as a workspace for ``cursor-agent --workspace``.
-#: Single source of truth so the wizard prompt and ``--cwd`` flag help stay
-#: in sync.
+#: CLI label per adapter for the wizard's cwd prompt. ``cwd`` is optional now
+#: (it's the session's working dir / cursor's workspace root, not a launch
+#: requirement). Single source of truth so the wizard prompt and ``--cwd`` flag
+#: help stay in sync.
 _CWD_PROMPT_BY_ADAPTER: dict[str, str] = {
-    "claude_code": "Working directory the agent runs `claude -p` in:",
-    "cursor": "Workspace directory for `cursor-agent` (also drop site for .cursor/rules/mycelium.mdc + AGENTS.md):",
+    "claude_code": "Working directory for the agent's session (optional):",
+    "cursor": "Workspace directory for the Cursor session (also drop site for .cursor/rules/mycelium.mdc + AGENTS.md):",
 }
 
 
@@ -415,8 +425,8 @@ _CWD_PROMPT_BY_ADAPTER: dict[str, str] = {
     usage="mycelium agent create <handle> --adapter <name> [--cwd <path>]",
     desc=(
         "Create a new, Mycelium-controlled agent in a room. "
-        "<code>claude_code</code> and <code>cursor</code> agents are cold-"
-        "spawned by the daemon (one daemon serves both)."
+        "<code>claude_code</code> and <code>cursor</code> agents are resident "
+        "sessions the user keeps woken with <code>mycelium await --loop</code>."
     ),
     group="agent",
 )
@@ -442,9 +452,8 @@ def _create_wizard(
         "[dim]This will:[/dim]\n"
         "[dim]  · ask for the agent's handle, adapter, and details[/dim]\n"
         "[dim]  · register it as a Mycelium agent manifest in a room[/dim]\n"
-        "[dim]  · claude_code: claim daemon ownership of the handle[/dim]\n"
-        "[dim]  · cursor: claim daemon ownership of the handle and drop[/dim]\n"
-        "[dim]    .cursor/rules/mycelium.mdc + AGENTS.md into the workspace[/dim]\n"
+        "[dim]  · cursor: drop .cursor/rules/mycelium.mdc + AGENTS.md into the "
+        "workspace[/dim]\n"
     )
 
     handle = questionary.text("Agent handle (lowercase slug, e.g. release-agent):").ask()
@@ -521,10 +530,9 @@ def agent_create(
         None,
         "--cwd",
         help=(
-            "claude_code / cursor: working dir the agent's CLI runs in "
-            "(required for both cold-spawn families). For cursor it's also "
-            "where .cursor/rules/mycelium.mdc + AGENTS.md (mycelium section) "
-            "are dropped."
+            "claude_code / cursor: optional working dir for the agent's session. "
+            "For cursor it's also where .cursor/rules/mycelium.mdc + AGENTS.md "
+            "(mycelium section) are dropped."
         ),
     ),
     room: str | None = typer.Option(
@@ -537,10 +545,9 @@ def agent_create(
         5.0,
         "--budget",
         help=(
-            "claude_code: monthly USD spend cap enforced by the daemon. "
-            "cursor: stored but not enforced. cursor-agent doesn't report "
-            "per-call $ cost (token counts only), so the daemon can't sum "
-            "spend reliably; cap your Cursor account separately."
+            "Monthly USD spend cap, stored on the manifest. Advisory — the "
+            "resident runtime is the user's own session, so enforce spend at "
+            "your provider account."
         ),
     ),
     allow_from: str | None = typer.Option(
@@ -563,10 +570,10 @@ def agent_create(
     """Create a new, Mycelium-controlled agent in a room.
 
     Examples:
-        # claude_code (cold-spawned by the daemon)
+        # claude_code (a resident session kept woken with `await --loop`)
         mycelium agent create release-agent --cwd ~/repos/mycelium
 
-        # cursor (cold-spawned by the daemon; same daemon as claude_code)
+        # cursor (resident Cursor session; drops workspace rules)
         mycelium agent create design-agent --adapter cursor \\
             --cwd ~/repos/my-frontend \\
             --description "Owns the design system; pings @julia on ambiguity"
@@ -833,31 +840,6 @@ def agent_show(
                 f"\n[dim]No notes yet. Seed with: "
                 f'mycelium memory set {manifest.notes_key} "..." --room {room_name}[/dim]'
             )
-
-        from mycelium.daemon.config import daemon_invocation_log_dir
-
-        log_dir = daemon_invocation_log_dir(room_name, manifest.handle)
-        log_files = sorted(log_dir.glob("*.json"), reverse=True)
-        if log_files:
-            try:
-                import json as _json
-
-                entry = _json.loads(log_files[0].read_text())
-                ts = str(entry.get("ts", "")).replace("T", " ").replace("Z", "")
-                console.print(f"\n[bold]last invocation[/bold]  [dim]{ts}[/dim]")
-                console.print(f"  {entry.get('sender', '?')} → {entry.get('prompt', '')[:120]}")
-                ok = entry.get("ok")
-                console.print(
-                    f"  [{'green' if ok else 'red'}]"
-                    f"{'ok' if ok else 'error'}[/]"
-                    f" · {entry.get('duration_s', 0)}s · ${entry.get('cost_usd', 0):.4f}"
-                )
-                reply = entry.get("final_message") or ""
-                if reply:
-                    preview = reply[:400]
-                    console.print(f"  reply: {preview}{'…' if len(reply) > 400 else ''}")
-            except (OSError, ValueError):
-                console.print(f"\n[dim]Last invocation log unreadable at {log_files[0]}[/dim]")
     except typer.Exit:
         raise
     except Exception as e:
@@ -891,9 +873,10 @@ def agent_invoke(
 ) -> None:
     """Send an @-addressed message to a registered agent.
 
-    Typing comfort over `mycelium room send "@handle ..."`. The daemon picks
-    up the message on its SSE subscription and dispatches it to the right
-    adapter.
+    Typing comfort over `mycelium room send "@handle ..."`. The message lands in
+    the room's transcript; a resident agent (one running `mycelium await --loop`)
+    picks it up on its next await. If nothing is resident for the handle, the
+    message waits on the durable cursor until a runtime comes up.
 
     Examples:
         mycelium agent invoke release-agent "pull latest, new release"
@@ -937,10 +920,20 @@ def agent_invoke(
             f"[cyan]@{manifest.handle}[/cyan][dim] in {room_name})[/dim]"
         )
         console.print(f"  {prompt[:200]}")
-        console.print(
-            f"\n[dim]The daemon will dispatch via {manifest.adapter} and reply in "
-            f"{room_name} as @{manifest.handle}.[/dim]"
-        )
+        # Report residence honestly: durability (message recorded) is not liveness
+        # (message handled). Tell the user whether a runtime is actually awake for
+        # this handle right now, or whether the message waits on the cursor.
+        if _is_resident(config, room_name, manifest.handle):
+            console.print(
+                f"\n[dim]@{manifest.handle} is resident — it'll pick this up on its "
+                f"next await.[/dim]"
+            )
+        else:
+            console.print(
+                f"\n[dim]@{manifest.handle} is not resident — queued on the transcript "
+                f"until a runtime awaits (start one with `mycelium await --loop "
+                f"--room {room_name} --handle {manifest.handle}`).[/dim]"
+            )
     except typer.Exit:
         raise
     except Exception as e:
@@ -1021,14 +1014,6 @@ def agent_rm(
         if local.exists():
             local.unlink()
 
-        # Kick the daemon for the same reason as ``agent create``: the
-        # cold-spawn handle just got released from ``daemon.toml`` and a
-        # running daemon will keep firing on stale entries until reload.
-        if getattr(impl, "lifecycle", None) == "cold_spawn":
-            from mycelium.daemon.install import reload_daemon_service
-
-            reload_daemon_service(verbose=False)
-
         verb = "Destroyed" if will_destroy else "Unregistered"
         console.print(f"[green]{verb}:[/green] @{handle} from {room_name}")
     except typer.Exit:
@@ -1039,7 +1024,7 @@ def agent_rm(
         raise typer.Exit(1) from None
 
 
-# Re-export for completeness — daemon and doctor reuse these.
+# Re-export for completeness — doctor and other commands reuse these.
 __all__ = [
     "_load_manifest",
     "_load_manifest_remote",

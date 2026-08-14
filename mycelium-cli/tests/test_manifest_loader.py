@@ -7,8 +7,8 @@
 that's a deliberate simplification so callers don't need a discriminated
 return — but the unreadable cases (bad YAML, wrong shape, schema mismatch)
 have to log at WARNING. Without this a corrupt file looks identical to "agent
-not registered": the user gets "agent not found" from every command and the
-daemon silently ignores every @handle mention.
+not registered": the user gets "agent not found" from every command and any
+registry consumer silently ignores every @handle.
 """
 
 from __future__ import annotations
@@ -19,8 +19,8 @@ from pathlib import Path
 import pytest
 
 from mycelium import filesystem
+from mycelium.agent_registry import load_manifest as registry_load_manifest
 from mycelium.commands.agent import _load_manifest
-from mycelium.daemon.dispatch import load_manifest as daemon_load_manifest
 
 
 @pytest.fixture(autouse=True)
@@ -57,10 +57,8 @@ def test_corrupt_yaml_logs_warning(caplog: pytest.LogCaptureFixture) -> None:
 
 
 def test_schema_violation_logs_warning(caplog: pytest.LogCaptureFixture) -> None:
-    # Valid YAML, wrong shape: AgentManifest requires `adapter` etc.
-    path = _write_manifest_file(
-        "room", "schema-bad", "---\nkey: agents/schema-bad\n---\nfoo: bar\n"
-    )
+    # Valid YAML, wrong shape: `adapter` must be one of the known Literal values.
+    path = _write_manifest_file("room", "schema-bad", "adapter: not-a-real-adapter\n")
     with caplog.at_level(logging.WARNING, logger="mycelium.commands.agent"):
         assert _load_manifest("room", "schema-bad") is None
     assert any(
@@ -68,13 +66,13 @@ def test_schema_violation_logs_warning(caplog: pytest.LogCaptureFixture) -> None
     ), "schema mismatch must surface as a WARNING with the file path"
 
 
-# ── daemon/dispatch.py:load_manifest (same swallow on the daemon side) ───────
+# ── agent_registry.py:load_manifest (same swallow on the registry side) ──────
 
 
-def test_daemon_loader_logs_corrupt_yaml(caplog: pytest.LogCaptureFixture) -> None:
-    path = _write_manifest_file("room", "daemon-broken", "---\n: not: valid: [\n")
-    with caplog.at_level(logging.WARNING, logger="mycelium.daemon"):
-        assert daemon_load_manifest("room", "daemon-broken") is None
+def test_registry_loader_logs_corrupt_yaml(caplog: pytest.LogCaptureFixture) -> None:
+    path = _write_manifest_file("room", "registry-broken", "---\n: not: valid: [\n")
+    with caplog.at_level(logging.WARNING, logger="mycelium.agent_registry"):
+        assert registry_load_manifest("room", "registry-broken") is None
     assert any("invalid YAML" in r.message and str(path) in r.message for r in caplog.records), (
-        "the daemon must log corrupt manifests, not silently ignore the mention"
+        "the registry must log corrupt manifests, not silently ignore the handle"
     )

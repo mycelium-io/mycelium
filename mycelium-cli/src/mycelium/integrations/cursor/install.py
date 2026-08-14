@@ -20,9 +20,7 @@ Unlike claude_code (which installs host-level skills/hooks into
 These drops happen per-agent in :class:`CursorIntegration.register` (called
 by ``mycelium agent create``), NOT in :meth:`Integration.install`. Cursor
 has no single host-level state dir, so ``mycelium adapter add cursor``
-itself is informational — it points the user at the agent-create path and
-optionally installs the daemon via ``--step=daemon`` (composed from the
-family-agnostic :mod:`mycelium.daemon.install`).
+itself is informational — it points the user at the agent-create path.
 """
 
 from __future__ import annotations
@@ -32,7 +30,6 @@ from pathlib import Path
 
 import typer
 
-from mycelium.daemon.install import install_daemon_service, uninstall_daemon_service
 from mycelium.integrations._resources import _resolve_asset
 
 # ── constants ────────────────────────────────────────────────────────────────
@@ -59,12 +56,8 @@ _CURSOR_AGENTS_ASSET = "AGENTS.md"
 _AGENTS_SECTION_START = "<!-- mycelium:start -->"
 _AGENTS_SECTION_END = "<!-- mycelium:end -->"
 
-#: ``mycelium adapter add cursor --step=<step>`` follow-up actions. Only
-#: ``daemon`` is supported — the daemon install/uninstall is family-
-#: agnostic and shared with claude_code via :mod:`mycelium.daemon.install`.
-_CURSOR_STEPS = {
-    "daemon": "install + register the mycelium-daemon user service",
-}
+#: ``mycelium adapter add cursor --step=<step>`` follow-up actions. None today.
+_CURSOR_STEPS: dict[str, str] = {}
 
 
 # ── workspace asset drop / remove ────────────────────────────────────────────
@@ -239,25 +232,3 @@ def _strip_agents_md_section(content: str) -> str | None:
     if not pattern.search(content):
         return None
     return pattern.sub("", content)
-
-
-# ── daemon user-service install / uninstall ──────────────────────────────
-#
-# Identical to claude_code's ``--step=daemon`` flow — the daemon is shared
-# infrastructure. One service per host services every cold-spawn family.
-
-
-def _step_cursor_daemon_install(verbose: bool = False) -> None:
-    """Install the daemon — cursor's ``--step=daemon`` entrypoint.
-
-    Thin pass-through to the shared family-agnostic helper. Kept as a
-    separate function so any future cursor-specific daemon setup (e.g.
-    an ``cursor-agent login`` probe, binary discovery) lands here without
-    pulling family logic into :mod:`mycelium.daemon.install`.
-    """
-    install_daemon_service(verbose=verbose)
-
-
-def _step_cursor_daemon_uninstall(verbose: bool = False) -> None:
-    """Reverse :func:`_step_cursor_daemon_install`."""
-    uninstall_daemon_service(verbose=verbose)

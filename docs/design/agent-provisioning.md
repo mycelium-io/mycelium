@@ -1,6 +1,17 @@
-# Design: daemon-mediated agent provisioning (UI-driven `agent add` / `rm`)
+# Design: spoke-mediated agent provisioning (UI-driven `agent add` / `rm`)
 
-Status: **proposed** — not implemented. Tracks the follow-up to PR #277.
+Status: **proposed / stale** — not implemented. Tracks the follow-up to PR #277.
+
+> **Note:** this doc predates the removal of the daemon and `claude -p`
+> cold-spawn. There is no longer an always-running spoke daemon to mediate
+> provisioning; an agent is now a resident runtime (the user's own Claude Code /
+> Cursor session, kept woken by `mycelium await --loop`). The topology problem
+> below still holds — registration's side effects are spoke-local, so the UI
+> can't provision through a hub-only endpoint — but the "mycelium-daemon picks up
+> the request" mechanism is gone. Cold-start-on-demand of a non-resident handle
+> is deferred to a future herdr integration plus per-agent identity (#446); a
+> UI-driven provisioner would ride the same seam. Treat the protocol sketch below
+> as historical.
 
 ## Problem
 

@@ -51,6 +51,16 @@ EXCHANGE_KIND = "exchange"
 KNOWLEDGE_KIND = "knowledge"
 
 
+def room_episode(room: str) -> str:
+    """The room's live-episode URN — must match the backend's ``l9.episode_urn``."""
+    return f"urn:ioc:mycelium:episode:{room}:live"
+
+
+def room_topic(room: str) -> str:
+    """The room's topic URN — must match the backend's ``l9.topic_urn``."""
+    return f"urn:concept:mycelium:{room}"
+
+
 def build_reply_content(
     *,
     sender: str,

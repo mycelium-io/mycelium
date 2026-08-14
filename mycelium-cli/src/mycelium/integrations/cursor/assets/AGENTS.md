@@ -12,7 +12,7 @@ specific agent identity, not as a generic Cursor instance.
 # Your manifest (adapter, cwd, budget, allow_from, description)
 mycelium memory get agents/$MYCELIUM_AGENT_HANDLE
 
-# Your persistent notes: the ONLY thing that crosses cold-spawn boundaries
+# Your persistent notes: your durable brain across sessions
 mycelium memory get agents/$MYCELIUM_AGENT_HANDLE/notes
 ```
 

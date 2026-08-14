@@ -118,13 +118,13 @@ mycelium adapter add cursor        # Cursor: drops workspace rules at agent-crea
 ```
 
 The user may need to restart their agent session if the runtime doesn't
-hot-reload skills (Claude Code doesn't). Optionally wire up the shared daemon
-so agents can be cold-spawned when a room mentions them while no session is
-awake:
+hot-reload skills (Claude Code doesn't).
 
-```bash
-mycelium adapter add claude-code --step=daemon
-```
+An agent participates as a **resident runtime**: your own live session, kept
+woken by looping the participation calls with
+`mycelium await --loop --exec <cmd>` (await → reason → respond → await). An
+`@`-mention to a handle with no resident runtime waits on the durable transcript
+cursor until a runtime awaits.
 
 ## Step 6: Suggest a first run
 

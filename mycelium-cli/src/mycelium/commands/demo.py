@@ -54,10 +54,10 @@ ALIGNER_HANDLE = "aligner"
 # Adapters that can host a demo agent. Mirrors AGENT_ADAPTERS (underscore form).
 _KNOWN_ADAPTERS = ("claude_code", "cursor")
 
-# Cold-spawn families: the daemon launches a fresh CLI process per @-mention.
-# They require a non-empty `cwd` per agent (protocol.py) and only get a SLIM
-# connector for a room the daemon is subscribed to.
-_COLD_SPAWN_ADAPTERS = ("claude_code", "cursor")
+# Resident families: their agents run in the user's own session (Claude Code /
+# Cursor), driven by `mycelium await --loop`. The demo seeds a room + agents but
+# does NOT auto-start those loops, so the autonomous drive is a manual step.
+_RESIDENT_ADAPTERS = ("claude_code", "cursor")
 
 
 def _cli_prefix() -> list[str]:
@@ -178,25 +178,17 @@ def _resolve_scenario(scenario_id: str) -> dict[str, Any]:
 
 
 def _demo_workdir(room: str, handle: str) -> Path:
-    """Per-agent working dir for cold-spawn adapters (claude_code/cursor).
+    """Per-agent working dir for resident adapters (claude_code/cursor).
 
-    Cold-spawn agents require a non-empty ``cwd`` — the daemon launches the
-    agent's CLI there per @-mention (Claude treats it as the project root, cursor
-    as the workspace root). Give each demo agent its own stable dir under
-    ``~/.mycelium/demo/`` so it survives the run and is inspectable afterward.
+    Give each demo agent its own stable dir under ``~/.mycelium/demo/`` (the
+    session's project root / cursor workspace root) so it survives the run and is
+    inspectable afterward.
     """
     from mycelium.config import MyceliumConfig
 
     d = MyceliumConfig.get_global_config_dir() / "demo" / room / handle
     d.mkdir(parents=True, exist_ok=True)
     return d
-
-
-def _daemon_running() -> bool:
-    """Whether the mycelium daemon is answering its health socket."""
-    from mycelium.daemon.health import read_health_blocking
-
-    return read_health_blocking(timeout=2.0) is not None
 
 
 def _adapter_installed(config: Any, adapter: str) -> bool:
@@ -237,15 +229,6 @@ def _check_prereqs(adapter: str) -> tuple[Any, list[str]]:
     except httpx.HTTPError:
         problems.append(f"Backend not reachable at {api}. Is the stack up? Try: mycelium status")
 
-    # Cold-spawn agents wake only through a running daemon subscribed to the
-    # room; without it they're created but never invoked. Fail fast with the fix.
-    if adapter in _COLD_SPAWN_ADAPTERS and not _daemon_running():
-        problems.append(
-            f"The mycelium daemon isn't running — {adapter} agents cold-spawn through it. "
-            "Start it with: mycelium daemon run --foreground "
-            "(or install the service: mycelium adapter add claude-code --step=daemon)."
-        )
-
     return config, problems
 
 
@@ -280,20 +263,6 @@ def _provision(
         raise typer.Exit(1)
     console.print(f"[green]✓[/green] Room [cyan]{room}[/cyan]")
 
-    # 2b. Cold-spawn adapters (claude_code/cursor) only get a SLIM connector for
-    #     a room the daemon is subscribed to. Subscribe now — before the agents
-    #     are seeded — so they actually wake on the mention.
-    if adapter in _COLD_SPAWN_ADAPTERS:
-        r = _run(["daemon", "subscribe", room])
-        if r.returncode != 0:
-            console.print(f"[red]daemon subscribe {room} failed:[/red]\n{r.stderr or r.stdout}")
-            console.print(
-                "[dim]Cold-spawn agents wake only through the daemon. "
-                "Check it with: mycelium daemon status[/dim]"
-            )
-            raise typer.Exit(1)
-        console.print(f"[green]✓[/green] Daemon subscribed to [cyan]{room}[/cyan]")
-
     # 3. Agents — one `mycelium agent create` per persona, on the chosen adapter.
     for a in scenario["agents"]:
         handle = a["handle"]
@@ -303,21 +272,17 @@ def _provision(
             "--room", room,
             "--description", personas[handle],
         ]  # fmt: skip
-        # Cold-spawn families require a per-agent working dir (protocol.py).
-        if adapter in _COLD_SPAWN_ADAPTERS:
+        # Give resident families a per-agent working dir (session/workspace root).
+        if adapter in _RESIDENT_ADAPTERS:
             args += ["--cwd", str(_demo_workdir(room, handle))]
         r = _run(args)
         if r.returncode != 0:
             console.print(f"[red]agent create {handle} failed:[/red]\n{r.stderr or r.stdout}")
-            console.print(
-                "[dim]Cold-spawn adapters (claude_code/cursor) need --cwd per agent and a "
-                "running daemon. See `mycelium adapter status`.[/dim]"
-            )
             raise typer.Exit(1)
         console.print(f"[green]✓[/green] Created [bold]@{handle}[/bold] ({adapter})")
 
-    # 4. Seed: one message mentioning every agent + the task. The adapter wakes
-    #    each agent, which then runs the Mycelium coordination protocol.
+    # 4. Seed: one message mentioning every agent + the task. A resident agent
+    #    (running `mycelium await --loop`) picks it up and runs the protocol.
     mentions = " ".join(f"@{h}" for h in handles)
     seed = f"{mentions} {scenario['task']}"
     r = _run(["agent", "invoke", handles[0], seed, "--room", room, "-H", "demo"])
@@ -353,9 +318,9 @@ def _drive_consensus(
 ) -> None:
     """Wait for the agents to state positions, then summon the aligner.
 
-    Cold-spawn turns land asynchronously (each is a live ``claude -p``), so poll
-    the room until every agent has spoken — then let a short settle window catch
-    their final positions — and post ``@aligner``. That summon is what the backend
+    Resident agents post their turns asynchronously (each reasons in its own
+    session), so poll the room until every agent has spoken — then let a short
+    settle window catch their final positions — and post ``@aligner``. That summon is what the backend
     scores into a ``commit:converged``/``rejected`` verdict and, on convergence,
     compiles into ``plan/tasks.md`` + syncs as a ``knowledge`` memory. Driving it
     here makes the payoff deterministic instead of hoping an agent remembers to.
@@ -424,17 +389,21 @@ def _print_intro(scenario: dict[str, Any], adapter: str, room: str) -> None:
 
 def _print_outro(scenario: dict[str, Any], adapter: str, room: str) -> None:
     handles = [a["handle"] for a in scenario["agents"]]
-    cold = adapter in _COLD_SPAWN_ADAPTERS
-    cwd_flag = " --cwd <dir>" if cold else ""
+    resident = adapter in _RESIDENT_ADAPTERS
+    cwd_flag = " --cwd <dir>" if resident else ""
     repro = "\n".join(
         [
             f"mycelium room create {room}",
-            # Cold-spawn agents wake only through a daemon subscribed to the room.
-            *([f"mycelium daemon subscribe {room}"] if cold else []),
             *[
                 f'mycelium agent create {h} --adapter {adapter} --room {room}{cwd_flag} -d "<persona>"'
                 for h in handles
             ],
+            # Resident agents answer only while a runtime is awake for them.
+            *(
+                [f"mycelium await --loop --room {room} --handle {handles[0]} --exec ..."]
+                if resident
+                else []
+            ),
             f'mycelium agent invoke {handles[0]} "@... <task>" -r {room}',
             f"mycelium watch {room}",
         ]

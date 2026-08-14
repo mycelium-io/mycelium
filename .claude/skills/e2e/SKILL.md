@@ -1,7 +1,7 @@
 ---
 name: e2e
-description: Run end-to-end smoke tests for the Mycelium stack. Verifies install, memory, search, coordination, and OpenClaw integration. Use when validating a release, after a deploy, or when something feels broken.
-argument-hint: "[--full | --quick | --openclaw]"
+description: Run end-to-end smoke tests for the Mycelium stack. Verifies install, memory, search, and aligner-mediated coordination to consensus. Use when validating a release, after a deploy, or when something feels broken.
+argument-hint: "[--full | --quick]"
 ---
 
 # End-to-End Testing
@@ -11,8 +11,7 @@ Run structured smoke tests against the live Mycelium stack. Tests are cumulative
 ## Arguments
 
 - `--quick` — Stack health + memory CRUD + search only (< 1 min)
-- `--full` — Quick + CLI negotiation to consensus (~ 3 min)
-- `--openclaw` — Full + OpenClaw agent wake/respond test (~ 5 min, requires gateway running)
+- `--full` — Quick + aligner-mediated negotiation to consensus (~ 3 min)
 - No argument — defaults to `--full`
 
 ## Phase 1: Stack Health
@@ -89,92 +88,76 @@ cat ~/.mycelium/rooms/e2e-test-room/decisions/test-db.md
 
 ## Phase 3: CLI Negotiation
 
-Test the full coordination pipeline: session create → join → tick → respond → consensus.
+Test the full coordination pipeline: post positions → summon the aligner → await → respond → consensus → plan.
 
-For cold-spawn families (`cursor`, `claude_code`) the operator no longer needs to drive an accept loop. The daemon polls `/api/coordination-sessions` every 5s, dynamically subscribes to each active session sub-room's SSE stream, and on every `coordination_tick` cold-spawns the owned agent with a formatted instruction. The agent then runs `mycelium negotiate respond accept|reject|counter_offer …` itself. CognitiveEngine drives rounds until consensus or a 20-round timeout. (For `openclaw`, the long-lived gateway plugin handles the same wakeup; see Phase 5.)
-
-```bash
-# Create session
-mycelium session create -r e2e-test-room
-# Expect: session ID, CFN enabled (if IoC)
-
-# Two agents join (these MUST be agents the daemon owns — i.e. they were
-# created via `mycelium agent create` on a host whose daemon subscribes to
-# this room. ``mycelium agent invoke @h ping`` first to confirm dispatch is
-# alive end-to-end.)
-mycelium session join --handle agent-alpha -m "Prioritize performance" -r e2e-test-room
-mycelium session join --handle agent-beta -m "Prioritize developer experience" -r e2e-test-room
-
-# That's it. Wait for the autonomous flow.
-# Expect within ~15s of joins:
-#   tail ~/.mycelium/logs/daemon.log → "dynamic subscribe → e2e-test-room:session:<id>"
-# Expect within join-window + ~30s:
-#   "coordination_tick @agent-alpha — round=1 action=respond"
-#   "dispatch @agent-alpha ← CognitiveEngine"
-# Expect repeatedly per round, until consensus or timeout.
-
-# Poll session state (5–10 min cap typical for converging negotiations)
-SESSION_ID=$(mycelium session ls -r e2e-test-room --json 2>/dev/null \
-  | python3 -c "import sys,json; print(json.load(sys.stdin)[0]['id'])" 2>/dev/null)
-curl -s "http://localhost:8000/api/coordination-sessions" \
-  | python3 -c "import sys,json,os
-sid=os.environ.get('SESSION_ID')
-for s in json.load(sys.stdin):
-    if s['id']==sid: print(s['state']); break"
-# Expect terminal value: "complete" (consensus) or "failed" (timeout / broken)
-
-# Inspect the consensus
-mycelium --json room messages "e2e-test-room:session:<short_id>" --type coordination_consensus --limit 200 \
-  | python3 -c "import sys,json
-for m in json.load(sys.stdin)['messages']:
-    print(m['content']); break"
-# Expect: type=consensus, assignments dict populated, broken=false
-```
-
-**Manual override** (operator playing an agent role, e.g. when only one side is daemon-owned, debugging, or simulating a non-mycelium counterparty):
+Coordination is the resident-runtime protocol: each participant is a live caller
+that loops `await` → reason → `respond`. The **aligner** (a backend engine) runs
+a real NEGMAS negotiation, `@`-addressing one agent at a time, and owns
+termination — it stops the instant the agents agree, then compiles the consensus
+into `plan/tasks.md`. There is no daemon and no cold-spawn: an `@`-mention to a
+non-resident handle just waits on the durable transcript cursor until someone
+awaits. For this smoke test, the operator plays each agent's turn by hand.
 
 ```bash
-# Use these only when the agent at this handle is NOT being dispatched by a
-# mycelium-daemon — otherwise you'll race the daemon's own respond and may post a
-# duplicate / out-of-turn action.
-mycelium session await --handle agent-alpha -r e2e-test-room
-mycelium negotiate respond accept --room e2e-test-room --handle agent-alpha
-# or:  mycelium negotiate propose ISSUE=VALUE … --room e2e-test-room --handle agent-alpha
-# or:  mycelium negotiate respond reject --room e2e-test-room --handle agent-alpha
+# Register the aligner once in the room
+mycelium engine create aligner --kind aligner --room e2e-test-room
+
+# Each participant posts an opening position
+mycelium respond --room e2e-test-room --handle agent-alpha "Prioritize performance"
+mycelium respond --room e2e-test-room --handle agent-beta  "Prioritize developer experience"
+
+# Summon the aligner to converge
+mycelium engine invoke aligner "converge on the priority tradeoff" -r e2e-test-room
+
+# Loop each agent: await the aligner's address, then reply. Repeat until the
+# plan lands. (In production the runtime does this via `mycelium await --loop
+# --exec <cmd>`; here we drive it by hand.)
+mycelium await   --room e2e-test-room --handle agent-alpha --json   # read the prompt
+mycelium respond --room e2e-test-room --handle agent-alpha "I can accept perf caps if DX tooling ships too"
+mycelium await   --room e2e-test-room --handle agent-beta  --json
+mycelium respond --room e2e-test-room --handle agent-beta  "works if we keep the fast path"
+
+# On agreement the aligner records the episode and compiles the plan BEFORE the
+# consensus is announced (so the plan exists when `await` returns).
+mycelium plan tasks --room e2e-test-room
+# Expect: a shared - [ ] checklist with @handle owners
 ```
 
 **Fail criteria**:
-- No ticks after 60s → CFN not configured or join timer didn't fire
-- Ticks arrive but no `dispatch @<handle> ← CognitiveEngine` in the daemon log → handle not in `daemon.toml.handles`, or daemon doesn't own it on this host (sibling daemon owns it instead)
-- `dispatch` fires but spawn exits 1 with credit / auth errors → adapter LLM provider not funded or not authed (this is what the autonomous flow exposes that the operator-driven loop used to mask). Top up credits, re-auth, or route through a different provider before retrying.
-- Counter_offer_not_your_turn loops in the room → agent ignored the per-round permission set in the tick payload; an agent-side prompt issue, not coordination
-- `broken: true` in consensus → 20-round budget elapsed without mutual accept → typically opposing personas locked on incompatible positions
-- `_expand_slim` DB session leak → check `pg_stat_activity` for idle-in-transaction
+- `await` never returns after the summon → aligner not registered, or LLM unavailable (`mycelium status` → llm)
+- Aligner loops to a step cap instead of stopping on agreement → NEGMAS termination regression (it must stop at unanimity, never run out the cap)
+- No `plan/tasks.md` after convergence → plan compiler outage; check backend logs (fail-soft should still emit the raw `issue=value` agreement)
+- An unreadable reply produces phantom convergence → interpretation regression (an unreadable proposer must hold its own last line, never the standing offer)
 
-## Phase 4: Multi-Session (same room)
+## Phase 4: Second episode (same room)
 
-Verify a second negotiation can run in a room after the first completes.
+Verify a second negotiation can run in a room after the first converges. A room
+is persistent; each summon opens a fresh, independent [episode](#episodes).
 
 ```bash
-# Session 2 in the same room
-mycelium session create -r e2e-test-room
-# Expect: new session ID (different from session 1)
+# Post fresh positions and summon again — same room, new episode
+mycelium respond --room e2e-test-room --handle agent-gamma "Ship fast"
+mycelium respond --room e2e-test-room --handle agent-delta "Ship safe"
+mycelium engine invoke aligner "converge on the ship-speed tradeoff" -r e2e-test-room
 
-# New agents join
-mycelium session join --handle agent-gamma -m "Ship fast" -r e2e-test-room
-mycelium session join --handle agent-delta -m "Ship safe" -r e2e-test-room
-
-# Same autonomous flow as Phase 3 — the daemon dispatches both agents on
-# every tick. (Use the Phase 3 manual-override block only if you're
-# simulating an agent role yourself.)
-# Expect: consensus reached without stale participant errors
+# Drive the await → respond loop for both agents as in Phase 3, then:
+mycelium plan tasks --room e2e-test-room
+# Expect: convergence with a distinct episode id and no stale-participant errors
 ```
 
 **Fail criteria**:
-- `session create` returns the old completed session → `_spawn_session_room` not filtering completed state
-- CFN start fails → stale Session rows not cleaned up (check `_finish_cfn`)
+- Second summon reuses the first episode's transcript slice → episode isolation regression
+- Aligner sees the prior episode's positions → episode scoping leaked across summons
 
-## Phase 5: OpenClaw Integration
+## Phase 5: OpenClaw Integration (DEPRECATED)
+
+> **Deprecated — does not run against current Mycelium.** OpenClaw rode the
+> removed SSE/coordination-tick model (`mycelium session create`/`session join`/
+> `negotiate respond`, daemon wake-on-tick), none of which exists after the SLIM
+> migration and the daemon removal. The current coordination path is
+> aligner-mediated await/respond (Phase 3), and the supported adapters are
+> `claude_code` (proven) and `cursor` (untested), each run as a resident runtime.
+> This phase is retained only as historical reference; skip it.
 
 Test that OpenClaw agents get woken by coordination ticks and respond autonomously.
 
@@ -221,7 +204,11 @@ mycelium room messages "e2e-openclaw-test:session:<short_id>" --limit 50
 - `Plugin runtime subagent methods are only available during a gateway request` → old plugin installed, needs `mycelium adapter add openclaw --reinstall`
 - SSE errors with `Failed to parse URL` → `getApiUrl()` returning empty, check `~/.mycelium/config.toml`
 
-## Phase 5.5: Knowledge Extraction Hook (PENDING — not yet tested)
+## Phase 5.5: Knowledge Extraction Hook (DEPRECATED — OpenClaw path)
+
+> **Deprecated** for the same reason as Phase 5: this rides the OpenClaw hook +
+> the old ingest endpoint. Retained as historical reference; skip it.
+
 
 Test that the `mycelium-knowledge-extract` OpenClaw hook correctly ships conversation turns to the backend and that the backend's two-stage LLM extraction writes memories into the room.
 
@@ -296,8 +283,7 @@ curl -s -X DELETE http://localhost:8000/api/rooms/e2e-openclaw-test
 |---------|-------------|-------|
 | Backend returns 500 on memory write | Embedding model not loaded | `docker logs mycelium-backend \| grep embed` |
 | Search returns empty | Embeddings are null (wrote with --no-embed) | Reindex: `mycelium memory reindex` |
-| Ticks never arrive | CFN not configured on room | `curl rooms/{room}` → check mas_id/workspace_id |
-| Ticks arrive but agents don't respond | OpenClaw plugin using old subagent.run() | Reinstall adapter |
-| Consensus has empty assignments | CFN response envelope not normalized | Check `_normalize_cfn_decide_response` |
-| Second session reuses completed room | Session cleanup bug | Check `_spawn_session_room` state filter |
-| Backend hangs after a few rounds | `_expand_slim` DB session leak | Check for idle-in-transaction in `pg_stat_activity` |
+| `await` never returns after a summon | aligner not registered or LLM down | `mycelium engine ls -r <room>`; `mycelium status` → llm |
+| Aligner never stops (runs to the cap) | NEGMAS termination regression | it must stop at unanimity, never run out the step cap |
+| No `plan/tasks.md` after convergence | plan compiler outage | backend logs; fail-soft emits the raw `issue=value` agreement |
+| Phantom convergence on an unreadable reply | interpretation regression | proposer must hold its own last line, never the standing offer |

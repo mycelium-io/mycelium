@@ -46,44 +46,16 @@ def test_family_resolves_to_concrete_integration(family: str) -> None:
 
 @pytest.mark.parametrize("family", FAMILIES)
 def test_family_declares_lifecycle(family: str) -> None:
-    """Every family declares whether it cold-spawns or runs a long-lived gateway.
+    """Every family declares where its agents run (``resident``/``backend_engine``).
 
-    The daemon dispatch loop branches on this — without a declared lifecycle,
-    a new family silently becomes a long_lived_gateway (skipped by the
-    daemon) or worse, raises mid-dispatch.
+    This is the liveness distinction tooling/UI surface — a resident (user/herdr)
+    runtime vs. a backend-run engine. A new family missing it is a bug.
     """
     cls = type(get_integration(family))
     assert hasattr(cls, "lifecycle"), f"{family} missing `lifecycle` ClassVar"
-    # backend_engine: a first-party cognition engine the backend runs (daemon
-    # skips it, same as a gateway).
-    assert cls.lifecycle in {"cold_spawn", "long_lived_gateway", "backend_engine"}, (
+    assert cls.lifecycle in {"resident", "backend_engine"}, (
         f"{family} has invalid lifecycle: {cls.lifecycle!r}"
     )
-
-
-@pytest.mark.parametrize("family", FAMILIES)
-def test_spawn_override_matches_lifecycle(family: str) -> None:
-    """Cold-spawn families override ``Integration.spawn``; long-lived gateways
-    do not.
-
-    The daemon dispatch loop checks ``lifecycle`` before invoking, but a
-    missing override on a cold_spawn family means a routing bug surfaces as
-    ``NotImplementedError`` instead of silent skip. Conversely, a long-lived
-    gateway that overrides ``spawn`` is a category error: its agents are
-    delivered by its own runtime, not the mycelium-daemon.
-    """
-    cls = type(get_integration(family))
-    if cls.lifecycle == "cold_spawn":
-        assert cls.spawn is not Integration.spawn, (
-            f"{family} declares lifecycle=cold_spawn but does not override "
-            "Integration.spawn (would raise NotImplementedError on dispatch)"
-        )
-    else:
-        assert cls.spawn is Integration.spawn, (
-            f"{family} declares lifecycle={cls.lifecycle} but overrides "
-            "spawn() — long-lived gateways shouldn't have spawn logic "
-            "(their own runtime owns mention delivery)"
-        )
 
 
 @pytest.mark.parametrize("family", FAMILIES)

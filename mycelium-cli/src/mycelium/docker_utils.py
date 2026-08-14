@@ -115,10 +115,9 @@ def generate_env_file(
         else "# LLM_BASE_URL not set — using provider default",
         "",
         "# ── Engine ───────────────────────────────────────────────────────────────",
-        # Where a registered `engine` runs its NEGMAS/Pi drive. The backend and
-        # the host daemon are a pair (see EngineConfig): emitted explicitly so
-        # `config apply` can't silently revert a `host` deployment to
-        # backend-run engines (which would double-run the engine).
+        # Where a registered `engine` runs its NEGMAS/Pi drive — backend-only now
+        # (the host runtime rode the removed daemon). Emitted for the backend to
+        # read; always `backend`.
         f"ENGINE_RUNTIME={config.engine.runtime}",
         "",
     ]
