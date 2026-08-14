@@ -453,7 +453,7 @@ def write_cursors(room: str, cursors: dict[str, int]) -> None:
 
 # ── The receive loop ─────────────────────────────────────────────────────────
 
-SummonHook = Callable[[str, "L9", list[str]], None]
+SummonHook = Callable[[str, "L9", list[str], str], None]
 ConvergedHook = Callable[["L9"], None]
 # Called with the handle of a member that dropped off the channel, so the
 # moderator can update its membership — presence, not a fatal error.
@@ -513,7 +513,9 @@ def _handle_from_disconnect(message: str) -> str | None:
     return parts[2] if len(parts) >= 3 else None
 
 
-def _default_summon_hook(handle: str, envelope: L9, co_summons: list[str]) -> None:
+def _default_summon_hook(
+    handle: str, envelope: L9, co_summons: list[str], message_text: str = ""
+) -> None:
     logger.info("summon hook (skeleton): @%s summoned", handle)
 
 
@@ -792,9 +794,10 @@ class RoomPersister:
         # summon list is passed to every hook call so an engine summoned alongside
         # other handles (``@aligner @a @b``) can scope the run to those co-mentions.
         summons = find_summons(content)
+        message_text = content.get("content", "") if isinstance(content, dict) else ""
         for handle in summons:
             try:
-                self.on_summon(handle, envelope, summons)
+                self.on_summon(handle, envelope, summons, message_text)
             except Exception:
                 logger.exception("summon hook failed for @%s", handle)
         if is_converged(envelope):
