@@ -233,19 +233,8 @@ jobs:
           tests/test_slim_roundtrip.py
           tests/test_l9_over_slim_roundtrip.py
 
-      - name: CLI deps
-        working-directory: mycelium-cli
-        run: uv sync --group dev --extra engine
-
-      - name: CLI live-node slices
-        working-directory: mycelium-cli
-        env:
-          MYCELIUM_SLIM_ENDPOINT: http://127.0.0.1:46357
-        run: >-
-          uv run pytest -q
-          tests/test_connector_knowledge_sync_over_slim.py
-          tests/test_connector_wake_over_slim.py
-          tests/test_human_mention_wakes_connector.py
+      # The CLI has no live-node slices: `await`/`respond` are pure HTTP (the
+      # SLIM member connector that needed a node was removed with the daemon).
 
       - name: SLIM node logs (on failure)
         if: failure()
