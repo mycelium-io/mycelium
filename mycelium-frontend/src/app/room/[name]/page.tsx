@@ -144,7 +144,7 @@ export default function RoomPage() {
               suppressInvites={tourActive}
             />
           </div>
-          <RoomChatBox roomName={roomName} />
+          <RoomChatBox roomName={roomName} className={editorView !== "channel" ? "hidden" : undefined} />
         </main>
 
         <RoomInspector

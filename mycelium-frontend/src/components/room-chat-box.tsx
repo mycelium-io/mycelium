@@ -13,9 +13,10 @@ interface Props {
   roomName: string;
   /** Fired after a successful POST so the parent can refresh the event stream. */
   onSent?: () => void;
+  className?: string;
 }
 
-export function RoomChatBox({ roomName, onSent }: Props) {
+export function RoomChatBox({ roomName, onSent, className }: Props) {
   const [content, setContent] = useState("");
   // A human message is sent as the acting-as principal — the single source of
   // "who am I" (the ActingAsPicker), not a per-composer handle. Anonymous falls
@@ -136,7 +137,7 @@ export function RoomChatBox({ roomName, onSent }: Props) {
   };
 
   return (
-    <div data-tour="composer" className="border-t border-border bg-bg px-4 py-3 flex-shrink-0">
+    <div data-tour="composer" className={`border-t border-border bg-bg px-4 py-3 flex-shrink-0${className ? ` ${className}` : ""}`}>
       <div className="relative">
         {mention !== null && candidates.length > 0 && (
           <div className="absolute bottom-full left-0 mb-2 z-20 w-full max-w-md bg-elevated border border-border rounded-xl shadow-xl overflow-hidden p-1">
