@@ -2,7 +2,7 @@
 // Copyright 2026 Mycelium Contributors
 
 import { act } from "react";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeEventSource } from "@/test/fake-event-source";
 
@@ -13,7 +13,7 @@ vi.mock("@/lib/api", () => ({
   logFetchError: () => () => undefined,
 }));
 
-import { L9Inspector, toL9Frame } from "@/components/l9-inspector";
+import { envelopeJson, L9Inspector, toL9Frame } from "@/components/l9-inspector";
 
 const CREATED = "2026-08-04T10:00:00.000000+00:00";
 
@@ -130,6 +130,28 @@ describe("toL9Frame", () => {
   it("returns null for plain chat (non-protocol traffic)", () => {
     expect(toL9Frame({ message_type: "broadcast", content: "hi there" })).toBeNull();
   });
+
+  it("retains the raw wire message on the frame", () => {
+    const msg = commitMessage();
+    const frame = toL9Frame(msg);
+    expect(frame?.raw).toBe(msg);
+  });
+});
+
+describe("envelopeJson", () => {
+  it("decodes the transport-encoded content string into structure", () => {
+    const json = envelopeJson(commitMessage());
+    expect(json).toContain('"subkind": "converged"');
+    expect(json).toContain('"scope": "mvp"');
+    expect(json).toContain('"parents"');
+    // The envelope must not remain a single escaped string.
+    expect(json).not.toContain('\\"header\\"');
+  });
+
+  it("leaves non-JSON content untouched", () => {
+    const json = envelopeJson({ message_type: "l9_exchange", content: "not json" });
+    expect(json).toContain('"content": "not json"');
+  });
 });
 
 describe("<L9Inspector />", () => {
@@ -156,5 +178,47 @@ describe("<L9Inspector />", () => {
     // Knowledge push renders as its own frame.
     expect(screen.getByText(/^KNOWLEDGE/)).toBeInTheDocument();
     expect(screen.getByText("decisions/scope")).toBeInTheDocument();
+  });
+
+  it("expands a wire row into the full envelope JSON and collapses it again", async () => {
+    render(<L9Inspector roomName="sprint" />);
+    const es = FakeEventSource.latest();
+
+    await act(async () => {
+      es.open();
+      es.emit(commitMessage());
+    });
+
+    const row = await screen.findByRole("button", { name: /COMMIT/ });
+    expect(row).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByTestId("frame-json")).not.toBeInTheDocument();
+
+    fireEvent.click(row);
+    expect(row).toHaveAttribute("aria-expanded", "true");
+    const json = screen.getByTestId("frame-json");
+    expect(json.textContent).toContain('"subkind": "converged"');
+    expect(json.textContent).toContain('"episode": "urn:ioc:mycelium:episode:sprint:s1"');
+    expect(json.textContent).toContain('"assignments"');
+
+    fireEvent.click(row);
+    expect(screen.queryByTestId("frame-json")).not.toBeInTheDocument();
+  });
+
+  it("keeps other rows collapsed when one row is expanded (row-local state)", async () => {
+    render(<L9Inspector roomName="sprint" />);
+    const es = FakeEventSource.latest();
+
+    await act(async () => {
+      es.open();
+      es.emit(commitMessage());
+      es.emit(knowledgeMessage());
+    });
+
+    fireEvent.click(await screen.findByRole("button", { name: /COMMIT/ }));
+    expect(screen.getAllByTestId("frame-json")).toHaveLength(1);
+    expect(screen.getByRole("button", { name: /KNOWLEDGE/ })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
   });
 });

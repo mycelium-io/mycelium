@@ -3,7 +3,7 @@
 
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Radio } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
 import {
@@ -29,6 +29,8 @@ export interface L9Frame {
   summary: string;
   metrics: EpisodeMetrics | null;
   time: string;
+  /** The wire message this frame was projected from, kept for the expanded view. */
+  raw: Record<string, unknown>;
 }
 
 /** Short, human episode id: the trailing `:session` segment of the URN. */
@@ -146,7 +148,25 @@ export function toL9Frame(msg: Record<string, unknown>): L9Frame | null {
     summary: frameSummary(kind, content, data),
     metrics,
     time,
+    raw: msg,
   };
+}
+
+/**
+ * Pretty-print a frame's wire message. The bus transports the envelope as a
+ * JSON string under `content`; decode it so headers, payload, and parents read
+ * as structure rather than one escaped string.
+ */
+export function envelopeJson(raw: Record<string, unknown>): string {
+  let display = raw;
+  if (typeof raw.content === "string") {
+    try {
+      display = { ...raw, content: JSON.parse(raw.content) };
+    } catch {
+      /* non-JSON content stays a string */
+    }
+  }
+  return JSON.stringify(display, null, 2);
 }
 
 // ── presentation ────────────────────────────────────────────────────────────────
@@ -190,25 +210,58 @@ export function MetricsRow({ metrics }: { metrics: EpisodeMetrics }) {
   );
 }
 
-/** One live wire frame. */
-function FrameRow({ frame }: { frame: L9Frame }) {
+/** One live wire frame; click toggles the full envelope JSON below the summary. */
+function FrameRow({
+  frame,
+  onExpandedChange,
+}: {
+  frame: L9Frame;
+  onExpandedChange: (delta: number) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  // Report expansion to the inspector (which pauses auto-scroll while any row
+  // is open); the cleanup un-reports when the row collapses or scrolls out of
+  // the frame cap.
+  useEffect(() => {
+    if (!expanded) return;
+    onExpandedChange(1);
+    return () => onExpandedChange(-1);
+  }, [expanded, onExpandedChange]);
+
   return (
-    <div className="flex items-baseline gap-2 px-4 py-2 border-b border-border last:border-b-0 text-body">
-      <KindBadge kind={frame.kind} subkind={frame.subkind} />
-      {frame.episode ? (
-        <span className="font-mono text-micro text-accent" title={frame.episode}>
-          {shortEpisode(frame.episode)}
-        </span>
+    <div className="border-b border-border last:border-b-0">
+      <button
+        type="button"
+        aria-expanded={expanded}
+        onClick={() => setExpanded((prev) => !prev)}
+        title={expanded ? "Collapse envelope" : "Expand full envelope JSON"}
+        className="flex items-baseline gap-2 px-4 py-2 w-full text-left cursor-pointer text-body"
+      >
+        <KindBadge kind={frame.kind} subkind={frame.subkind} />
+        {frame.episode ? (
+          <span className="font-mono text-micro text-accent" title={frame.episode}>
+            {shortEpisode(frame.episode)}
+          </span>
+        ) : null}
+        <span className="font-mono text-label text-muted-foreground truncate">{frame.sender}</span>
+        <span className="text-muted-foreground truncate">{frame.summary}</span>
+        {frame.metrics ? <MetricsRow metrics={frame.metrics} /> : null}
+        {frame.parents.length > 0 ? (
+          <span className="text-micro text-muted-foreground font-mono" title={frame.parents.join("\n")}>
+            ←{frame.parents.length}
+          </span>
+        ) : null}
+        <span className="ml-auto text-micro text-muted-foreground font-mono tabular flex-shrink-0">{frame.time}</span>
+      </button>
+      {expanded ? (
+        <pre
+          data-testid="frame-json"
+          className="mx-4 mb-2 px-2.5 py-2 font-mono text-micro text-muted-foreground bg-surface border border-border overflow-x-auto whitespace-pre-wrap break-words"
+        >
+          {envelopeJson(frame.raw)}
+        </pre>
       ) : null}
-      <span className="font-mono text-label text-muted-foreground truncate">{frame.sender}</span>
-      <span className="text-muted-foreground truncate">{frame.summary}</span>
-      {frame.metrics ? <MetricsRow metrics={frame.metrics} /> : null}
-      {frame.parents.length > 0 ? (
-        <span className="text-micro text-muted-foreground font-mono" title={frame.parents.join("\n")}>
-          ←{frame.parents.length}
-        </span>
-      ) : null}
-      <span className="ml-auto text-micro text-muted-foreground font-mono tabular flex-shrink-0">{frame.time}</span>
     </div>
   );
 }
@@ -225,6 +278,12 @@ export function L9Inspector({ roomName }: Props) {
   const [frames, setFrames] = useState<L9Frame[]>([]);
   const [connected, setConnected] = useState(false);
   const wireRef = useRef<HTMLDivElement>(null);
+  // How many rows are currently expanded; while > 0 the feed stops following
+  // the tail so incoming frames don't yank an open envelope out of view.
+  const expandedRows = useRef(0);
+  const onExpandedChange = useCallback((delta: number) => {
+    expandedRows.current += delta;
+  }, []);
 
   // Live L9 wire: same EventSource pattern as the room feed. (Episodes have
   // their own home in the inspector's Episodes tab + review drawer; this tab is
@@ -262,6 +321,7 @@ export function L9Inspector({ roomName }: Props) {
   }, [roomName]);
 
   useEffect(() => {
+    if (expandedRows.current > 0) return;
     wireRef.current?.scrollTo({ top: wireRef.current.scrollHeight, behavior: "smooth" });
   }, [frames]);
 
@@ -288,7 +348,9 @@ export function L9Inspector({ roomName }: Props) {
             description="Protocol envelopes stream here as agents coordinate: exchanges, commits, and knowledge."
           />
         ) : (
-          wire.map((frame) => <FrameRow key={frame.id} frame={frame} />)
+          wire.map((frame) => (
+            <FrameRow key={frame.id} frame={frame} onExpandedChange={onExpandedChange} />
+          ))
         )}
       </div>
     </div>
