@@ -33,6 +33,7 @@ import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from app.config import settings
@@ -127,6 +128,19 @@ class HumanPublishResult:
 
 
 @dataclass
+class MemberPresence:
+    """How a present room member is connected, for the presence surface.
+
+    ``kind`` is ``"slim"`` (live socket) or ``"lease"`` (server-held
+    ``await``/``reply`` poll). ``last_seen`` is the wall-clock epoch of a lease
+    member's most recent poll; ``None`` for SLIM members (continuously present).
+    """
+
+    kind: str
+    last_seen: float | None = None
+
+
+@dataclass
 class ChannelMetrics:
     """Process-wide coordination counters, surfaced by the health endpoint.
 
@@ -167,6 +181,13 @@ class RoomChannelManager:
         # is how a turn-based agent (a Claude session) is a first-class member
         # without holding a socket between turns.
         self._leases: dict[str, dict[str, float]] = {}
+        # Wall-clock epoch of each handle's most recent await/reply, keyed like
+        # ``_leases``. Monotonic time drives expiry (skew-proof); this parallel
+        # wall-clock stamp is only for surfacing "last seen 5s ago" in the UI.
+        self._last_seen: dict[str, dict[str, float]] = {}
+        # Tracks which handles have had a coordination_join notice emitted for each
+        # room. Cleared on leave/disconnect so a returning member re-announces.
+        self._announced: dict[str, set[str]] = {}
         # Set during teardown so a persister task ending is recognized as
         # intentional (no restart) rather than a crash to recover from.
         self._closing = False
@@ -235,6 +256,23 @@ class RoomChannelManager:
         slim_members = set(managed.members) if managed is not None else set()
         return sorted(slim_members | self._live_leases(room))
 
+    def presence(self, room: str) -> dict[str, MemberPresence]:
+        """Live presence breakdown: handle → :class:`MemberPresence` per member.
+
+        SLIM-socket members and server-held ``await``/``reply`` lease members are
+        both first-class; the ``kind`` distinguishes them and ``last_seen`` gives
+        a lease member's most recent poll time (``None`` for SLIM — a live socket
+        is continuously present).
+        """
+        managed = self._channels.get(room)
+        slim = set(managed.members) if managed is not None else set()
+        lease_only = self._live_leases(room) - slim
+        seen = self._last_seen.get(room, {})
+        out: dict[str, MemberPresence] = {h: MemberPresence(kind="slim") for h in slim}
+        for h in lease_only:
+            out[h] = MemberPresence(kind="lease", last_seen=seen.get(h))
+        return out
+
     def _live_leases(self, room: str) -> set[str]:
         """Handles with an unexpired presence lease in ``room``."""
         now = time.monotonic()
@@ -243,8 +281,15 @@ class RoomChannelManager:
             return set()
         live = {h for h, exp in leases.items() if exp > now}
         # Opportunistically drop expired leases so the map doesn't grow forever.
-        if len(live) != len(leases):
+        # Also clear from _announced so a returning handle re-announces its arrival.
+        expired = set(leases) - live
+        if expired:
             self._leases[room] = {h: leases[h] for h in live}
+            self._announced.get(room, set()).difference_update(expired)
+            seen = self._last_seen.get(room)
+            if seen:
+                for h in expired:
+                    seen.pop(h, None)
         return live
 
     def refresh_lease(self, room: str, handle: str, ttl_s: float = 180.0) -> None:
@@ -253,8 +298,58 @@ class RoomChannelManager:
         Called on every ``await``/``reply`` so an actively-participating agent stays
         in the roster; a generous TTL keeps it present through its own think time
         (and avoids a mid-episode membership flap) while a truly-gone agent lapses.
+        Emits a coordination_join notice on the not-present → present edge.
         """
+        was_present = handle in self._live_leases(room)
         self._leases.setdefault(room, {})[handle] = time.monotonic() + ttl_s
+        self._last_seen.setdefault(room, {})[handle] = time.time()
+        if not was_present:
+            self.announce_join(room, handle)
+
+    def announce_join(self, room: str, handle: str, intent: str = "") -> bool:
+        """Emit a coordination_join notice on the first not-present → present transition.
+
+        Idempotent: returns False (and does nothing) if the handle is already
+        announced for this room. Clears on leave/disconnect so a returning member
+        re-announces. Called from every join path so the channel feed shows arrivals
+        consistently regardless of whether the agent joined via HTTP session, SLIM
+        invite, or server-held await lease.
+        """
+        announced = self._announced.setdefault(room, set())
+        if handle in announced:
+            return False
+        announced.add(handle)
+        content = json.dumps({"handle": handle, "intent": intent})
+        try:
+            from app.services import local_state
+
+            local_state.add_message(
+                room,
+                local_state.StoredMessage(
+                    room_name=room,
+                    sender_handle=l9.SYSTEM_ACTOR_ID,
+                    message_type="coordination_join",
+                    content=content,
+                ),
+            )
+        except Exception:
+            logger.debug("join notice persist failed for %s in room %s", handle, room)
+        try:
+            from app.bus import bus, room_channel
+
+            bus.publish(
+                room_channel(room),
+                {
+                    "room_name": room,
+                    "sender_handle": l9.SYSTEM_ACTOR_ID,
+                    "message_type": "coordination_join",
+                    "content": content,
+                    "created_at": datetime.now(UTC).isoformat(),
+                },
+            )
+        except Exception:
+            logger.debug("join notice bus publish failed for %s in room %s", handle, room)
+        return True
 
     async def provision(
         self, room: str, *, workspace: str | None = None
@@ -325,11 +420,13 @@ class RoomChannelManager:
         so a later ``@``-mention re-raises a consent invite (instead of assuming
         the stale member is still present) and a re-join doesn't hit 'already in
         group'. Local bookkeeping only — the member is already gone from SLIM.
+        Clears the announced flag so the handle re-announces if they return.
         """
         managed = self._channels.get(room)
         if managed is None or handle not in managed.members:
             return
         managed.members.discard(handle)
+        self._announced.get(room, set()).discard(handle)
         logger.info("dropped absent member %s from room %s membership", handle, room)
 
     def _on_persister_done(self, room: str, task: asyncio.Task) -> None:
@@ -364,6 +461,9 @@ class RoomChannelManager:
         """
         managed = self._channels.pop(room, None)
         workspace = managed.workspace if managed else None
+        # Clear announcements so agents re-announce when they reconnect to the
+        # fresh channel — the old channel's membership record is gone.
+        self._announced.pop(room, None)
         if managed is not None:
             with contextlib.suppress(Exception):
                 await managed.client.close()
@@ -432,6 +532,7 @@ class RoomChannelManager:
             self._metrics.invite_failures += 1
             return False
         managed.members.add(agent)
+        self.announce_join(room, agent)
         # Durable inbox: a membership add for a handle the persister has already
         # seen is a *reconnect* — re-serve its missed tail. Kept separate from the
         # episode-abort path below: transcript continuity and episode lifecycle
@@ -635,6 +736,7 @@ class RoomChannelManager:
             logger.debug("SLIM remove skipped (room=%s agent=%s): %s", room, agent, exc)
             return False
         managed.members.discard(agent)
+        self._announced.get(room, set()).discard(agent)
         await self._enforce_membership_change(managed)
         return True
 

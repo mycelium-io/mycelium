@@ -5,7 +5,14 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Users } from "lucide-react";
-import { fetchMessages, fetchRoomAgents, logFetchError, type AgentSummary } from "@/lib/api";
+import {
+  fetchMessages,
+  fetchRoomAgents,
+  fetchRoomMembers,
+  logFetchError,
+  type AgentSummary,
+  type PresenceMember,
+} from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Chip } from "@/components/ui/chip";
 import { Monogram } from "@/components/ui/monogram";
@@ -36,6 +43,24 @@ interface Person {
   owns: boolean;
 }
 
+/** Minute-granular relative age; null under a minute (an actively-polling lease
+ *  reads plainly as "awaiting" rather than churning a seconds counter). */
+function relativeTime(iso: string): string | null {
+  const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60_000);
+  if (mins < 1) return null;
+  if (mins < 60) return `${mins}m ago`;
+  return `${Math.floor(mins / 60)}h ago`;
+}
+
+/** Subtext for a present member: live socket vs. a polling lease + last-seen age.
+ *  Returns null when the handle isn't currently present (caller falls back). */
+function presenceLabel(member?: PresenceMember): string | null {
+  if (!member) return null;
+  if (member.kind === "slim") return "connected";
+  const age = member.last_seen ? relativeTime(member.last_seen) : null;
+  return age ? `awaiting · seen ${age}` : "awaiting";
+}
+
 /**
  * Roster of who's in a room: the **people** (agent owners + anyone who's posted,
  * plus the handle you're acting as) and the **agents** (`agents/<handle>`
@@ -51,6 +76,7 @@ interface Person {
 export function AgentsPanel({ roomName, refreshKey = 0 }: Props) {
   const [agents, setAgents] = useState<AgentSummary[]>([]);
   const [posters, setPosters] = useState<string[]>([]);
+  const [liveMembers, setLiveMembers] = useState<PresenceMember[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [mineOnly, setMineOnly] = useState(false);
   const { principal } = useCurrentUser();
@@ -78,6 +104,11 @@ export function AgentsPanel({ roomName, refreshKey = 0 }: Props) {
         );
       })
       .catch(logFetchError("fetchMessages"));
+    // Live presence: SLIM-connected + server-held lease members. Catches handles
+    // that joined via `mycelium await` without registering an agent manifest.
+    fetchRoomMembers(roomName)
+      .then(setLiveMembers)
+      .catch(logFetchError("fetchRoomMembers"));
   }, [roomName]);
 
   useEffect(() => {
@@ -88,8 +119,22 @@ export function AgentsPanel({ roomName, refreshKey = 0 }: Props) {
 
   const agentHandles = useMemo(() => new Set(agents.map((a) => a.handle)), [agents]);
 
-  // People = owners of the room's agents ∪ human posters ∪ the acting-as handle.
-  // Teams roll up from each person's owned agents.
+  // presence map: handle → full presence member (kind + last_seen) for each live one.
+  const presenceMap = useMemo(
+    () => new Map(liveMembers.map((m) => [m.handle, m])),
+    [liveMembers],
+  );
+
+  // Re-tick once a minute so the minute-granular "seen Xm ago" labels advance
+  // without a refetch (matches the label resolution — no sub-minute churn).
+  const [, setNow] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setNow((n) => n + 1), 60_000);
+    return () => clearInterval(t);
+  }, []);
+
+  // People = owners of the room's agents ∪ human posters ∪ live presence members
+  // ∪ the acting-as handle. Teams roll up from each person's owned agents.
   const people = useMemo(() => {
     const byHandle = new Map<string, Person>();
     const add = (handle: string, owns: boolean) => {
@@ -104,6 +149,8 @@ export function AgentsPanel({ roomName, refreshKey = 0 }: Props) {
     };
     for (const a of agents) if (a.owner) add(a.owner, true);
     for (const p of posters) if (!agentHandles.has(p)) add(p, false);
+    // Include handles present via SLIM or lease that aren't registered agents.
+    for (const m of liveMembers) if (!agentHandles.has(m.handle)) add(m.handle, false);
     if (principal) add(principal, false);
     for (const person of byHandle.values()) {
       person.teams = [
@@ -113,7 +160,7 @@ export function AgentsPanel({ roomName, refreshKey = 0 }: Props) {
       ];
     }
     return [...byHandle.values()].sort((x, y) => x.handle.localeCompare(y.handle));
-  }, [agents, posters, agentHandles, principal]);
+  }, [agents, posters, liveMembers, agentHandles, principal]);
 
   // "Mine" scopes the agent list to the acting-as user: agents they own, plus
   // any agent fielded by a team their own agents claim.
@@ -218,40 +265,44 @@ export function AgentsPanel({ roomName, refreshKey = 0 }: Props) {
         {people.length > 0 && (
           <>
             <SectionLabel>People</SectionLabel>
-            {people.map((p) => (
-              <div
-                key={`person-${p.handle}`}
-                className="flex items-center gap-2.5 px-3 py-2.5 border-b border-border last:border-b-0"
-              >
-                <Monogram handle={p.handle} color="var(--muted-foreground)" />
-                <div className="min-w-0 flex-1 leading-tight">
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-mono text-label text-text font-semibold truncate leading-tight">
-                      @{p.handle}
-                    </span>
-                    {p.you && (
-                      <span className="text-micro text-accent font-medium">you</span>
-                    )}
-                  </div>
-                  <div className="text-micro text-muted-foreground truncate leading-tight">
-                    {p.owns ? "owner" : "posted here"}
-                    {p.teams.length > 0 ? ` · ${p.teams.join(", ")}` : ""}
+            {people.map((p) => {
+              const presence = presenceMap.get(p.handle);
+              return (
+                <div
+                  key={`person-${p.handle}`}
+                  className="flex items-center gap-2.5 px-3 py-2.5 border-b border-border last:border-b-0"
+                >
+                  <Monogram handle={p.handle} color="var(--muted-foreground)" presence={presence?.kind} />
+                  <div className="min-w-0 flex-1 leading-tight">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-mono text-label text-text font-semibold truncate leading-tight">
+                        @{p.handle}
+                      </span>
+                      {p.you && (
+                        <span className="text-micro text-accent font-medium">you</span>
+                      )}
+                    </div>
+                    <div className="text-micro text-muted-foreground truncate leading-tight">
+                      {presenceLabel(presence) ?? (p.owns ? "owner" : "posted here")}
+                      {p.teams.length > 0 ? ` · ${p.teams.join(", ")}` : ""}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </>
         )}
 
         {agents.length > 0 && <SectionLabel>Agents</SectionLabel>}
         {visibleAgents.map((a) => {
           const mine = principal !== "" && a.owner === principal;
+          const presence = presenceMap.get(a.handle);
           return (
             <div
               key={`agent-${a.handle}`}
               className="flex items-center gap-2.5 px-3 py-2.5 border-b border-border last:border-b-0"
             >
-              <Monogram handle={a.handle} />
+              <Monogram handle={a.handle} presence={presence?.kind} />
               <div className="min-w-0 flex-1 leading-tight">
                 <div className="flex items-center gap-1.5">
                   <span className="font-mono text-label text-text font-semibold truncate leading-tight">
@@ -273,8 +324,9 @@ export function AgentsPanel({ roomName, refreshKey = 0 }: Props) {
                   )}
                 </div>
                 <div className="text-micro text-muted-foreground truncate leading-tight">
-                  {a.adapter === "engine" && a.kind ? `engine · ${a.kind}` : a.adapter}
-                  {a.description ? ` · ${a.description}` : ""}
+                  {presenceLabel(presence) ??
+                    (a.adapter === "engine" && a.kind ? `engine · ${a.kind}` : a.adapter)}
+                  {presenceLabel(presence) ? "" : a.description ? ` · ${a.description}` : ""}
                 </div>
               </div>
             </div>
@@ -293,3 +345,4 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
     </div>
   );
 }
+
