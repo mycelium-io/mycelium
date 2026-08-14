@@ -101,7 +101,11 @@ async def lifespan(app: FastAPI):
     )
 
     def _dispatch_summon(
-        room: str, handle: str, envelope: Any, co_summons: list[str] | None = None, message_text: str = ""
+        room: str,
+        handle: str,
+        envelope: Any,
+        co_summons: list[str] | None = None,
+        message_text: str = "",
     ) -> None:
         for fire in _engine_handlers:
             try:

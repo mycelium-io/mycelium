@@ -513,7 +513,9 @@ def _handle_from_disconnect(message: str) -> str | None:
     return parts[2] if len(parts) >= 3 else None
 
 
-def _default_summon_hook(handle: str, envelope: L9, co_summons: list[str], message_text: str = "") -> None:
+def _default_summon_hook(
+    handle: str, envelope: L9, co_summons: list[str], message_text: str = ""
+) -> None:
     logger.info("summon hook (skeleton): @%s summoned", handle)
 
 

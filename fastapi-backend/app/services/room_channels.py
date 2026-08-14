@@ -388,7 +388,13 @@ class RoomChannelManager:
         if hook is None:
             return None
 
-        def adapter(handle: str, envelope: L9, co_summons: list[str], message_text: str = "", _room: str = room) -> None:
+        def adapter(
+            handle: str,
+            envelope: L9,
+            co_summons: list[str],
+            message_text: str = "",
+            _room: str = room,
+        ) -> None:
             hook(_room, handle, envelope, co_summons, message_text)
 
         return adapter
