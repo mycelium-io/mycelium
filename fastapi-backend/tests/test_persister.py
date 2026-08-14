@@ -245,7 +245,7 @@ def _persister_for(room: str, *, summoned: list, converged: list) -> persister.R
         room,
         channel=None,  # ty: ignore[invalid-argument-type]  # not exercised: we call _ingest directly
         members_provider=lambda: set(),
-        on_summon=lambda handle, env, co: summoned.append(handle),
+        on_summon=lambda handle, env, co, msg="": summoned.append(handle),
         on_converged=lambda env: converged.append(env),
         feed_bus=False,
     )
