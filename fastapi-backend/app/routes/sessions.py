@@ -145,6 +145,36 @@ async def list_sessions(room_name: str):
     )
 
 
+@router.get("/members")
+async def list_members(room_name: str):
+    """Live presence: SLIM-socket members and server-held lease members.
+
+    Returns every handle currently present in the room and how it's connected —
+    ``"slim"`` for an active SLIM socket subscription, ``"lease"`` for a
+    turn-based agent using ``await``/``reply`` (no persistent socket). Both
+    kinds are first-class room members; the distinction surfaces liveness in the
+    UI so you can tell a live connector from a polling agent at a glance.
+    """
+    if not room_exists(room_name):
+        raise HTTPException(status_code=404, detail="Room not found")
+    return {
+        "members": [
+            {
+                "handle": h,
+                "kind": info.kind,
+                # Wall-clock ISO of the lease member's last poll; None for SLIM
+                # members (a live socket is continuously present).
+                "last_seen": (
+                    datetime.fromtimestamp(info.last_seen, UTC).isoformat()
+                    if info.last_seen is not None
+                    else None
+                ),
+            }
+            for h, info in sorted(room_channels.manager.presence(room_name).items())
+        ]
+    }
+
+
 @router.delete("/{session_id}", status_code=204)
 async def leave_room(room_name: str, session_id: UUID):
     """Remove a participant (agent leaves the room + the SLIM channel)."""

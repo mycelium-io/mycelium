@@ -12,27 +12,53 @@ export function initials(handle: string): string {
   return s.toUpperCase();
 }
 
+/** Live-presence tier surfaced as a corner badge on the avatar. "slim" = active
+ *  SLIM socket (solid accent); "lease" = server-held await/reply poll (pulsing
+ *  muted). Undefined = not present, no badge. */
+export type Presence = "slim" | "lease";
+
 interface Props {
   handle: string;
   /** Glyph + tint color. Convention: accent for agents, muted for humans. */
   color?: string;
   /** Override the default size-8 circle (e.g. "size-5" for a compact chip). */
   className?: string;
+  /** Optional live-presence badge in the bottom-right corner (chat-app style). */
+  presence?: Presence;
 }
 
 /** Circular initials avatar shared across the agent roster, event stream, and
  *  the acting-as picker so every handle renders the same way. */
-export function Monogram({ handle, color = "var(--accent)", className }: Props) {
+export function Monogram({ handle, color = "var(--accent)", className, presence }: Props) {
   return (
-    <div
-      aria-hidden
-      className={cn(
-        "flex size-8 flex-shrink-0 items-center justify-center rounded-full font-mono text-micro font-semibold",
-        className,
-      )}
-      style={{ background: `color-mix(in srgb, ${color} 16%, transparent)`, color }}
-    >
-      {initials(handle)}
+    <div className="relative flex-shrink-0">
+      <div
+        aria-hidden
+        className={cn(
+          "flex size-8 items-center justify-center rounded-full font-mono text-micro font-semibold",
+          className,
+        )}
+        style={{ background: `color-mix(in srgb, ${color} 16%, transparent)`, color }}
+      >
+        {initials(handle)}
+      </div>
+      {presence && <PresenceBadge presence={presence} />}
     </div>
+  );
+}
+
+/** Corner presence dot, ringed by the panel background so it reads as an overlay
+ *  on the avatar edge. Solid accent for a live socket, pulsing muted for a lease. */
+function PresenceBadge({ presence }: { presence: Presence }) {
+  const slim = presence === "slim";
+  return (
+    <span
+      className={cn(
+        "absolute -bottom-0.5 -right-0.5 block size-2.5 rounded-full ring-2 ring-paper",
+        !slim && "animate-pulse",
+      )}
+      style={{ background: slim ? "var(--accent)" : "var(--muted-foreground)" }}
+      title={slim ? "SLIM connected" : "server-held lease (awaiting)"}
+    />
   );
 }

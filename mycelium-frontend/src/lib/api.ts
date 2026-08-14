@@ -225,6 +225,24 @@ export async function fetchRoomAgents(roomName: string): Promise<AgentSummary[]>
   return res.json();
 }
 
+export type PresenceKind = "slim" | "lease";
+
+export interface PresenceMember {
+  handle: string;
+  /** "slim" = active SLIM socket; "lease" = server-held await/reply (no socket). */
+  kind: PresenceKind;
+  /** ISO wall-clock of a lease member's last poll; null for SLIM (always now). */
+  last_seen: string | null;
+}
+
+/** Live presence set for a room: SLIM-connected + server-held lease members. */
+export async function fetchRoomMembers(roomName: string): Promise<PresenceMember[]> {
+  const res = await fetch(`/api/rooms/${roomName}/sessions/members`, { cache: "no-store" });
+  if (!res.ok) return [];
+  const data = await res.json();
+  return Array.isArray(data?.members) ? data.members : [];
+}
+
 // ── Principals (self-asserted user store) ─────────────────────────────────────
 
 export interface OwnedAgent {

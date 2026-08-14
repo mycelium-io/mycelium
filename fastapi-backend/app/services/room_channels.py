@@ -128,6 +128,19 @@ class HumanPublishResult:
 
 
 @dataclass
+class MemberPresence:
+    """How a present room member is connected, for the presence surface.
+
+    ``kind`` is ``"slim"`` (live socket) or ``"lease"`` (server-held
+    ``await``/``reply`` poll). ``last_seen`` is the wall-clock epoch of a lease
+    member's most recent poll; ``None`` for SLIM members (continuously present).
+    """
+
+    kind: str
+    last_seen: float | None = None
+
+
+@dataclass
 class ChannelMetrics:
     """Process-wide coordination counters, surfaced by the health endpoint.
 
@@ -168,6 +181,10 @@ class RoomChannelManager:
         # is how a turn-based agent (a Claude session) is a first-class member
         # without holding a socket between turns.
         self._leases: dict[str, dict[str, float]] = {}
+        # Wall-clock epoch of each handle's most recent await/reply, keyed like
+        # ``_leases``. Monotonic time drives expiry (skew-proof); this parallel
+        # wall-clock stamp is only for surfacing "last seen 5s ago" in the UI.
+        self._last_seen: dict[str, dict[str, float]] = {}
         # Tracks which handles have had a coordination_join notice emitted for each
         # room. Cleared on leave/disconnect so a returning member re-announces.
         self._announced: dict[str, set[str]] = {}
@@ -239,6 +256,23 @@ class RoomChannelManager:
         slim_members = set(managed.members) if managed is not None else set()
         return sorted(slim_members | self._live_leases(room))
 
+    def presence(self, room: str) -> dict[str, MemberPresence]:
+        """Live presence breakdown: handle → :class:`MemberPresence` per member.
+
+        SLIM-socket members and server-held ``await``/``reply`` lease members are
+        both first-class; the ``kind`` distinguishes them and ``last_seen`` gives
+        a lease member's most recent poll time (``None`` for SLIM — a live socket
+        is continuously present).
+        """
+        managed = self._channels.get(room)
+        slim = set(managed.members) if managed is not None else set()
+        lease_only = self._live_leases(room) - slim
+        seen = self._last_seen.get(room, {})
+        out: dict[str, MemberPresence] = {h: MemberPresence(kind="slim") for h in slim}
+        for h in lease_only:
+            out[h] = MemberPresence(kind="lease", last_seen=seen.get(h))
+        return out
+
     def _live_leases(self, room: str) -> set[str]:
         """Handles with an unexpired presence lease in ``room``."""
         now = time.monotonic()
@@ -252,6 +286,10 @@ class RoomChannelManager:
         if expired:
             self._leases[room] = {h: leases[h] for h in live}
             self._announced.get(room, set()).difference_update(expired)
+            seen = self._last_seen.get(room)
+            if seen:
+                for h in expired:
+                    seen.pop(h, None)
         return live
 
     def refresh_lease(self, room: str, handle: str, ttl_s: float = 180.0) -> None:
@@ -264,6 +302,7 @@ class RoomChannelManager:
         """
         was_present = handle in self._live_leases(room)
         self._leases.setdefault(room, {})[handle] = time.monotonic() + ttl_s
+        self._last_seen.setdefault(room, {})[handle] = time.time()
         if not was_present:
             self.announce_join(room, handle)
 
