@@ -494,6 +494,20 @@ def _consensus_quality_line(data: dict, indent: str) -> str | None:
     )
 
 
+def _agent_owner_map(room_name: str) -> dict[str, str]:
+    """Map each agent handle to its owner, for agents that declare one.
+
+    Resolved from the room's manifests so attribution reflects current
+    ownership, not a value stamped on the message.
+    """
+    try:
+        from mycelium.commands.agent import _room_manifests
+
+        return {m.handle: m.owner for m in _room_manifests(room_name) if m.owner}
+    except Exception:  # noqa: BLE001 — attribution is best-effort, never fatal
+        return {}
+
+
 def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
     """Core SSE watch loop — pretty-renders coordination and memory events."""
     import time
@@ -505,9 +519,15 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
     from rich.text import Text
 
     console = Console()
+    owners = _agent_owner_map(room_name)
 
     def ts() -> str:
         return f"[dim]{time.strftime('%H:%M:%S')}[/]"
+
+    def own_tag(handle: str) -> str:
+        """Owner attribution for an owned agent, else empty."""
+        owner = owners.get(handle)
+        return f" [dim]owned by @{owner}[/]" if owner else ""
 
     def render(msg: dict) -> str | None:
         mtype = msg.get("message_type", "") or msg.get("type", "")
@@ -593,12 +613,12 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
         if mtype == "delegate":
             recipient = msg.get("recipient_handle", "?")
             content = msg.get("content", "")
-            return f"  {ts()}  [magenta]{sender}[/] [dim]→[/] [cyan]{recipient}[/]: {content}"
+            return f"  {ts()}  [magenta]{sender}[/]{own_tag(sender)} [dim]→[/] [cyan]{recipient}[/]: {content}"
 
         if mtype in ("direct", "broadcast", "announce"):
             content = msg.get("content", "")
             color = "yellow" if mtype == "broadcast" else "blue"
-            return f"  {ts()}  [{color}]{sender}[/]: {content}"
+            return f"  {ts()}  [{color}]{sender}[/]{own_tag(sender)}: {content}"
 
         return None
 
@@ -871,6 +891,7 @@ def messages(
             return
 
         plural = "message" if len(msgs) == 1 else "messages"
+        owners = _agent_owner_map(room_name)
         typer.secho(f"\n  {room_name}  ", fg=typer.colors.CYAN, bold=True, nl=False)
         typer.secho(f"({len(msgs)} {plural}, newest first)\n", fg=typer.colors.BRIGHT_BLACK)
         for m in msgs:
@@ -879,7 +900,9 @@ def messages(
             # never truncate. Keep multi-line content readable by indenting any
             # continuation lines under the first.
             first, *rest = (m.content or "").split("\n")
-            typer.echo(f"  {stamp}  {m.sender_handle} [{m.message_type}]: {first}")
+            owner = owners.get(m.sender_handle)
+            own = f" owned by @{owner}" if owner else ""
+            typer.echo(f"  {stamp}  {m.sender_handle}{own} [{m.message_type}]: {first}")
             for line in rest:
                 typer.echo(f"              {line}")
         typer.echo()

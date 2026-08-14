@@ -31,6 +31,7 @@ from mycelium.commands import (
     plan,
     room,
     ui,
+    user,
 )
 
 app = typer.Typer(
@@ -111,6 +112,8 @@ app.command(name="network")(network.network)
 app.command(name="logs")(instance.logs)
 
 # Top-level shortcuts
+app.command(name="whoami")(user.whoami)
+app.command(name="iam")(user.iam)
 app.command(name="watch")(room.watch)
 app.command(name="sync")(memory.memory_sync)
 app.command(name="connect")(hub.connect)
@@ -129,6 +132,7 @@ app.add_typer(docs.app, name="docs")
 app.add_typer(metrics.app, name="metrics")
 app.add_typer(ui.app, name="ui")
 app.add_typer(agent.app, name="agent")
+app.add_typer(user.app, name="user")
 app.add_typer(engine.app, name="engine")
 app.add_typer(openshell.app, name="openshell")
 app.add_typer(daemon.app, name="daemon")

@@ -20,6 +20,7 @@ import { L9Inspector } from "@/components/l9-inspector";
 import { NegotiationView } from "@/components/negotiation-view";
 import { RoomSlimView } from "@/components/room-slim";
 import { EmptyState } from "@/components/empty-state";
+import { initials } from "@/components/ui/monogram";
 import { MessagesSquare } from "lucide-react";
 
 interface Event {
@@ -229,16 +230,6 @@ function toneColor(t: "accent" | "ok" | "warn" | "muted" | "ink"): string {
                         : "var(--muted-foreground)";
 }
 
-/** Two-letter monogram for a chat avatar (mirrors AgentsPanel). */
-function initials(handle: string): string {
-  const parts = handle.split(/[^a-z0-9]+/i).filter(Boolean);
-  const s =
-    parts.length >= 2
-      ? parts[0][0] + parts[1][0]
-      : (parts[0] ?? handle).slice(0, 2);
-  return s.toUpperCase();
-}
-
 const MENTION_RE = /(@[\w-]+)/g;
 
 function renderWithMentions(text: string): React.ReactNode {
@@ -284,17 +275,24 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
   const view = viewProp ?? viewInternal;
   const setView = (v: View) => { if (viewProp === undefined) setViewInternal(v); onViewChange?.(v); };
   const [agentHandles, setAgentHandles] = useState<Set<string>>(new Set());
+  const [agentOwners, setAgentOwners] = useState<Map<string, string>>(new Map());
   const [invites, setInvites] = useState<PendingInvite[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Know which senders are registered agents so their replies can be badged.
-  // Self-fetched (mirrors the chat box) so the page doesn't have to thread it.
+  // Know which senders are registered agents (to badge their replies) and whom
+  // each belongs to (to attribute them inline). Self-fetched (mirrors the chat
+  // box) so the page doesn't have to thread it; owner is resolved at render time
+  // so it always reflects the current manifest, never a stale stamp.
   useEffect(() => {
     let cancelled = false;
     const load = () =>
       fetchRoomAgents(roomName)
         .then((a) => {
-          if (!cancelled) setAgentHandles(new Set(a.map((x) => x.handle)));
+          if (cancelled) return;
+          setAgentHandles(new Set(a.map((x) => x.handle)));
+          setAgentOwners(
+            new Map(a.filter((x) => x.owner).map((x) => [x.handle, x.owner as string])),
+          );
         })
         .catch(logFetchError("fetchRoomAgents"));
     load();
@@ -628,6 +626,11 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
                             style={{ color: "var(--accent)", background: "color-mix(in srgb, var(--accent) 14%, transparent)" }}
                           >
                             agent
+                          </span>
+                        )}
+                        {isAgent && agentOwners.get(ev.sender) && (
+                          <span className="text-micro text-muted-foreground truncate">
+                            owned by @{agentOwners.get(ev.sender)}
                           </span>
                         )}
                         {ev.recipient && (

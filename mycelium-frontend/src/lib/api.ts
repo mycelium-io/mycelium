@@ -210,6 +210,10 @@ export interface AgentSummary {
   handle: string;
   description: string;
   adapter: string;
+  // Self-asserted principal binding: the users/<handle> this agent belongs to
+  // and the team it's fielded by. Absent (null) means principal-anonymous.
+  owner: string | null;
+  team: string | null;
 }
 
 /**
@@ -248,19 +252,106 @@ export async function fetchRoomAgents(roomName: string): Promise<AgentSummary[]>
 
     let description = "";
     let adapter = "claude_code";
+    let owner: string | null = null;
+    let team: string | null = null;
     if (structured) {
       description = String(structured.description || "");
       adapter = String(structured.adapter || "claude_code");
+      owner = structured.owner ? String(structured.owner) : null;
+      team = structured.team ? String(structured.team) : null;
     } else {
       const descMatch = raw.match(/description:\s*(.+)/);
       if (descMatch) description = descMatch[1].trim().replace(/^["']|["']$/g, "");
       const adMatch = raw.match(/adapter:\s*(\S+)/);
       if (adMatch) adapter = adMatch[1].trim();
+      // YAML renders an unset owner/team as `null`; treat that as anonymous.
+      const ownerMatch = raw.match(/owner:\s*(.+)/);
+      if (ownerMatch) {
+        const v = ownerMatch[1].trim().replace(/^["']|["']$/g, "");
+        owner = v && v !== "null" ? v : null;
+      }
+      const teamMatch = raw.match(/team:\s*(.+)/);
+      if (teamMatch) {
+        const v = teamMatch[1].trim().replace(/^["']|["']$/g, "");
+        team = v && v !== "null" ? v : null;
+      }
     }
-    agents.push({ handle: rest, description, adapter });
+    agents.push({ handle: rest, description, adapter, owner, team });
   }
   agents.sort((a, b) => a.handle.localeCompare(b.handle));
   return agents;
+}
+
+// ── Principals (self-asserted user store) ─────────────────────────────────────
+
+export interface OwnedAgent {
+  room: string;
+  handle: string;
+  adapter: string;
+  team: string | null;
+  budget_usd_per_month: number;
+}
+
+export interface User {
+  handle: string;
+  display_name: string;
+  teams: string[];
+  notify: string | null;
+  owns: OwnedAgent[];
+  budget_usd_per_month: number;
+}
+
+export interface Team {
+  team: string;
+  members: string[];
+  agent_count: number;
+  budget_usd_per_month: number;
+}
+
+/** List registered users with their owned-agent budget roll-up. */
+export async function fetchUsers(): Promise<User[]> {
+  const res = await fetch(`/api/users`, { cache: "no-store" });
+  if (!res.ok) return [];
+  const data = await res.json();
+  return Array.isArray(data.users) ? data.users : [];
+}
+
+/** Teams rolled up from agent manifests and user memberships. */
+export async function fetchTeams(): Promise<Team[]> {
+  const res = await fetch(`/api/teams`, { cache: "no-store" });
+  if (!res.ok) return [];
+  const data = await res.json();
+  return Array.isArray(data.teams) ? data.teams : [];
+}
+
+/** Best-effort human-readable message from a FastAPI error body. */
+async function errorDetail(res: Response): Promise<string> {
+  try {
+    const data = await res.json();
+    const d = data?.detail;
+    if (typeof d === "string") return d;
+    if (Array.isArray(d) && d[0]?.msg) return String(d[0].msg);
+  } catch {
+    // fall through to the status line
+  }
+  return `Request failed (${res.status})`;
+}
+
+/** Create or upsert a user in the global store. Throws with a readable message
+ *  on failure so callers can surface it instead of swallowing it. */
+export async function createUser(payload: {
+  handle: string;
+  display_name?: string;
+  teams?: string[];
+  notify?: string | null;
+}): Promise<User> {
+  const res = await fetch(`/api/users`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(await errorDetail(res));
+  return res.json();
 }
 
 // ── Metrics ──────────────────────────────────────────────────────────────────

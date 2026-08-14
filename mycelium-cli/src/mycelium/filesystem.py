@@ -35,6 +35,27 @@ def get_room_dir(room_name: str) -> Path:
     return room_dir
 
 
+def get_users_dir() -> Path:
+    """Get the global users store directory.
+
+    People span rooms, so the user store is global (a sibling of ``rooms/``)
+    rather than room-scoped like ``agents/``. Records live at
+    ``~/.mycelium/users/<handle>.md``, same markdown+frontmatter format as any
+    other memory entry.
+    """
+    users_dir = get_mycelium_dir() / "users"
+    users_dir.mkdir(parents=True, exist_ok=True)
+    return users_dir
+
+
+def list_room_names() -> list[str]:
+    """Names of every room materialized in the local store."""
+    rooms_root = get_mycelium_dir() / "rooms"
+    if not rooms_root.is_dir():
+        return []
+    return sorted(p.name for p in rooms_root.iterdir() if p.is_dir())
+
+
 def ensure_room_structure(room_dir: Path) -> None:
     """Create standard namespace subdirectories."""
     for subdir in ("decisions", "failed", "status", "context", "work", "procedures", "log"):

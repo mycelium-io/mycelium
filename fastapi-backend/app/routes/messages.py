@@ -25,7 +25,7 @@ from app.schemas import (
     MessageRead,
     MessageType,
 )
-from app.services import local_state, persister, room_channels
+from app.services import local_state, persister, principals, room_channels
 from app.services.filesystem import room_exists
 
 logger = logging.getLogger(__name__)
@@ -53,6 +53,15 @@ def _resolve_channel(name: str) -> tuple[str, local_state.CoordSessionShim | Non
 async def send_message(room_name: str, payload: MessageCreate):
     """Send a message to a room; publish it to the room's live stream."""
     channel, coord = _resolve_channel(room_name)
+
+    # A human posts under a self-asserted handle (may be unregistered), but no
+    # one may pose as an engine — engines speak only through their own runtime.
+    base_room = channel.split(":session:", 1)[0]
+    reason = principals.post_rejection_reason(
+        base_room, payload.sender_handle, allow_unregistered=True
+    )
+    if reason:
+        raise HTTPException(status_code=403, detail=reason)
 
     msg = local_state.StoredMessage(
         room_name=None if coord else channel,

@@ -171,8 +171,14 @@ class Integration(ABC):
         description: str,
         budget: float,
         allow_from: list[str],
+        owner: str | None = None,
+        team: str | None = None,
     ) -> AgentManifest:
         """Construct (and validate) the manifest for this family.
+
+        ``owner`` / ``team`` are the self-asserted principal binding: the
+        ``users/<handle>`` this agent belongs to and the team it's fielded by.
+        Both default to ``None`` (principal-anonymous).
 
         Raises pydantic ValidationError on bad input — the command layer
         catches it and prints a friendly message.

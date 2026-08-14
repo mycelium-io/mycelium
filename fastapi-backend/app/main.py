@@ -39,6 +39,7 @@ from app.routes.plan import router as plan_router
 from app.routes.rooms import router as rooms_router
 from app.routes.sessions import router as sessions_router
 from app.routes.stream import router as stream_router
+from app.routes.users import router as users_router
 
 from .config import settings
 
@@ -198,6 +199,7 @@ app.include_router(stream_router, prefix="/api")
 app.include_router(memory_router, prefix="/api")
 app.include_router(plan_router, prefix="/api")
 app.include_router(agent_context_router, prefix="/api")
+app.include_router(users_router, prefix="/api")
 
 
 @app.get("/", tags=["health"])

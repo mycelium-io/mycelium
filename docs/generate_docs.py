@@ -53,6 +53,7 @@ SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
     ("quickstart.md",               "quickstart",         "start",       "Get Started",  "Quick Start"),
     # ── concepts (concepts.html) ──
     ("rooms.md",                    "rooms",              "concepts",    "Concepts",     "Rooms"),
+    ("principals.md",               "users",              "concepts",    "Concepts",     "Users & Teams"),
     ("episodes.md",                 "episodes",           "concepts",    "Concepts",     "Episodes"),
     ("memory.md",                   "memory",             "concepts",    "Concepts",     "Memory"),
     ("plan.md",                     "plan",               "concepts",    "Concepts",     "Plan"),

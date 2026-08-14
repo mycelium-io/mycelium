@@ -55,6 +55,18 @@ def get_room_dir(room_name: str) -> Path:
     return room_dir
 
 
+def get_users_dir() -> Path:
+    """Get the global users store directory, creating it if needed.
+
+    People span rooms, so the user store is global (a sibling of ``rooms/``)
+    rather than room-scoped like ``agents/``. Records are the same
+    markdown+frontmatter format as any memory, at ``users/<handle>.md``.
+    """
+    users_dir = get_data_dir() / "users"
+    users_dir.mkdir(parents=True, exist_ok=True)
+    return users_dir
+
+
 def _sanitize_filename(key: str) -> str:
     """Convert a memory key to a safe filename.
 

@@ -3,11 +3,14 @@
 
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Users } from "lucide-react";
-import { fetchRoomAgents, logFetchError, type AgentSummary } from "@/lib/api";
+import { fetchMessages, fetchRoomAgents, logFetchError, type AgentSummary } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { Chip } from "@/components/ui/chip";
+import { Monogram } from "@/components/ui/monogram";
 import { EmptyState } from "@/components/empty-state";
+import { useCurrentUser } from "@/components/current-user";
 import {
   Dialog,
   DialogContent,
@@ -23,31 +26,34 @@ interface Props {
   refreshKey?: number;
 }
 
-/** Two-letter monogram from a handle: "backend-lead" → BL, "oc-test2" → OT,
- *  "main" → MA. Splits on non-alphanumerics, else first two chars. */
-function initials(handle: string): string {
-  const parts = handle.split(/[^a-z0-9]+/i).filter(Boolean);
-  const s =
-    parts.length >= 2
-      ? parts[0][0] + parts[1][0]
-      : (parts[0] ?? handle).slice(0, 2);
-  return s.toUpperCase();
+interface Person {
+  handle: string;
+  /** Team slugs, unioned from the agents this person owns. */
+  teams: string[];
+  /** True when this is the handle the browser is acting as. */
+  you: boolean;
+  /** True when they own ≥1 agent here (vs. only having posted). */
+  owns: boolean;
 }
 
-
 /**
- * Read-only roster of the addressable agents registered in a room (the
- * `agents/<handle>` manifests). Pairs with the room chat box (@-mention to
- * invoke) and the event stream (agent replies are badged) to make the whole
- * register → list → invoke → reply loop visible in the UI.
+ * Roster of who's in a room: the **people** (agent owners + anyone who's posted,
+ * plus the handle you're acting as) and the **agents** (`agents/<handle>`
+ * manifests). Pairs with the chat box (@-mention to invoke) and the event stream
+ * (replies are badged) to make the whole register → list → invoke → reply loop
+ * visible. Humans and agents share the monogram avatar, told apart by tint
+ * (muted for people, accent for agents).
  *
- * Registration / teardown are intentionally NOT here: both have spoke-local
- * side effects (mycelium-daemon manifest mirror, OpenClaw gateway config + restart)
- * that the hub cannot perform. Use `mycelium agent add` / `create` / `rm`.
+ * Agent registration / teardown are intentionally NOT here: both have
+ * spoke-local side effects (daemon manifest mirror, gateway config) the hub
+ * can't perform. Use `mycelium agent add` / `create` / `rm`.
  */
 export function AgentsPanel({ roomName, refreshKey = 0 }: Props) {
   const [agents, setAgents] = useState<AgentSummary[]>([]);
+  const [posters, setPosters] = useState<string[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [mineOnly, setMineOnly] = useState(false);
+  const { principal } = useCurrentUser();
 
   const refresh = useCallback(() => {
     fetchRoomAgents(roomName)
@@ -59,6 +65,19 @@ export function AgentsPanel({ roomName, refreshKey = 0 }: Props) {
         logFetchError("fetchRoomAgents")(err);
         setLoaded(true);
       });
+    // Human posters come from the transcript: a room chat post is a broadcast
+    // from a handle that isn't a registered agent.
+    fetchMessages(roomName, 200)
+      .then((data) => {
+        const msgs = Array.isArray(data) ? data : (data?.messages ?? []);
+        setPosters(
+          msgs
+            .filter((m: { message_type?: string }) => m.message_type === "broadcast")
+            .map((m: { sender_handle?: string }) => m.sender_handle ?? "")
+            .filter(Boolean),
+        );
+      })
+      .catch(logFetchError("fetchMessages"));
   }, [roomName]);
 
   useEffect(() => {
@@ -67,11 +86,69 @@ export function AgentsPanel({ roomName, refreshKey = 0 }: Props) {
     return () => clearInterval(t);
   }, [refresh, refreshKey]);
 
+  const agentHandles = useMemo(() => new Set(agents.map((a) => a.handle)), [agents]);
+
+  // People = owners of the room's agents ∪ human posters ∪ the acting-as handle.
+  // Teams roll up from each person's owned agents.
+  const people = useMemo(() => {
+    const byHandle = new Map<string, Person>();
+    const add = (handle: string, owns: boolean) => {
+      const h = handle.replace(/^@/, "").toLowerCase();
+      if (!h) return;
+      const existing = byHandle.get(h);
+      if (existing) {
+        existing.owns = existing.owns || owns;
+        return;
+      }
+      byHandle.set(h, { handle: h, teams: [], you: h === principal, owns });
+    };
+    for (const a of agents) if (a.owner) add(a.owner, true);
+    for (const p of posters) if (!agentHandles.has(p)) add(p, false);
+    if (principal) add(principal, false);
+    for (const person of byHandle.values()) {
+      person.teams = [
+        ...new Set(
+          agents.filter((a) => a.owner === person.handle && a.team).map((a) => a.team as string),
+        ),
+      ];
+    }
+    return [...byHandle.values()].sort((x, y) => x.handle.localeCompare(y.handle));
+  }, [agents, posters, agentHandles, principal]);
+
+  // "Mine" scopes the agent list to the acting-as user: agents they own, plus
+  // any agent fielded by a team their own agents claim.
+  const myTeams = useMemo(
+    () =>
+      new Set(
+        agents.filter((a) => a.owner === principal && a.team).map((a) => a.team as string),
+      ),
+    [agents, principal],
+  );
+  const visibleAgents = useMemo(
+    () =>
+      !mineOnly || !principal
+        ? agents
+        : agents.filter((a) => a.owner === principal || (a.team && myTeams.has(a.team))),
+    [agents, mineOnly, principal, myTeams],
+  );
+
   return (
     <div className="flex h-full flex-col overflow-hidden">
       <div className="flex items-center gap-2 border-b border-border bg-paper px-4 py-3">
-        <span className="text-label font-semibold text-text">Agents</span>
-        <span className="text-micro tabular text-muted-foreground">{agents.length}</span>
+        <span className="text-label font-semibold text-text">Members</span>
+        <span className="text-micro tabular text-muted-foreground">
+          {people.length + agents.length}
+        </span>
+        {principal && (
+          <Chip
+            variant="accent"
+            active={mineOnly}
+            onClick={() => setMineOnly((v) => !v)}
+            className="ml-1 px-2 py-0.5 text-micro"
+          >
+            mine
+          </Chip>
+        )}
         <Dialog>
           <DialogTrigger
             render={<Button variant="secondary" size="sm" className="ml-auto" />}
@@ -124,12 +201,12 @@ export function AgentsPanel({ roomName, refreshKey = 0 }: Props) {
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        {loaded && agents.length === 0 && (
+        {loaded && agents.length === 0 && people.length === 0 && (
           <EmptyState
             size="sm"
             icon={Users}
-            title="No agents registered"
-            description="Agents are registered from the CLI."
+            title="No members yet"
+            description="Agents are registered from the CLI; people appear once they own an agent or post."
             action={
               <code className="font-mono text-micro bg-surface px-1.5 py-0.5 text-accent border border-border rounded whitespace-nowrap">
                 mycelium agent add
@@ -138,30 +215,81 @@ export function AgentsPanel({ roomName, refreshKey = 0 }: Props) {
           />
         )}
 
-        {agents.map((a) => (
-          <div
-            key={a.handle}
-            className="flex items-center gap-2.5 px-3 py-2.5 border-b border-border last:border-b-0"
-          >
+        {people.length > 0 && (
+          <>
+            <SectionLabel>People</SectionLabel>
+            {people.map((p) => (
+              <div
+                key={`person-${p.handle}`}
+                className="flex items-center gap-2.5 px-3 py-2.5 border-b border-border last:border-b-0"
+              >
+                <Monogram handle={p.handle} color="var(--muted-foreground)" />
+                <div className="min-w-0 flex-1 leading-tight">
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-mono text-label text-text font-semibold truncate leading-tight">
+                      @{p.handle}
+                    </span>
+                    {p.you && (
+                      <span className="text-micro text-accent font-medium">you</span>
+                    )}
+                  </div>
+                  <div className="text-micro text-muted-foreground truncate leading-tight">
+                    {p.owns ? "owner" : "posted here"}
+                    {p.teams.length > 0 ? ` · ${p.teams.join(", ")}` : ""}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </>
+        )}
+
+        {agents.length > 0 && <SectionLabel>Agents</SectionLabel>}
+        {visibleAgents.map((a) => {
+          const mine = principal !== "" && a.owner === principal;
+          return (
             <div
-              className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full font-mono text-micro font-semibold"
-              style={{ background: "color-mix(in srgb, var(--accent) 16%, transparent)", color: "var(--accent)" }}
-              aria-hidden
+              key={`agent-${a.handle}`}
+              className="flex items-center gap-2.5 px-3 py-2.5 border-b border-border last:border-b-0"
             >
-              {initials(a.handle)}
-            </div>
-            <div className="min-w-0 flex-1 leading-tight">
-              <div className="font-mono text-label text-text font-semibold truncate leading-tight">
-                {a.handle}
+              <Monogram handle={a.handle} />
+              <div className="min-w-0 flex-1 leading-tight">
+                <div className="flex items-center gap-1.5">
+                  <span className="font-mono text-label text-text font-semibold truncate leading-tight">
+                    {a.handle}
+                  </span>
+                  {a.owner && (
+                    <span
+                      className="font-mono text-micro truncate"
+                      style={{ color: mine ? "var(--accent)" : "var(--muted-foreground)" }}
+                      title={`owner: @${a.owner}`}
+                    >
+                      @{a.owner}
+                    </span>
+                  )}
+                  {a.team && (
+                    <span className="text-micro text-muted-foreground truncate" title={`team: ${a.team}`}>
+                      · {a.team}
+                    </span>
+                  )}
+                </div>
+                <div className="text-micro text-muted-foreground truncate leading-tight">
+                  {a.adapter}
+                  {a.description ? ` · ${a.description}` : ""}
+                </div>
               </div>
-              <div className="text-micro text-muted-foreground truncate leading-tight">
-                {a.adapter}
-                {a.description ? ` · ${a.description}` : ""}
-              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
+    </div>
+  );
+}
+
+/** Small uppercase divider between the People and Agents groups. */
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="px-3 pt-3 pb-1 text-micro font-semibold uppercase tracking-wide text-faint">
+      {children}
     </div>
   );
 }

@@ -12,6 +12,7 @@ import { RoomChatBox } from "@/components/room-chat-box";
 import { RoomInspector, type Tab } from "@/components/room-inspector";
 import { RoomTour } from "@/components/room-tour";
 import { GlobalStatusItems, StatusButton } from "@/components/status-items";
+import { ActingAsPicker } from "@/components/acting-as-picker";
 import { useRoomStatus } from "@/lib/use-status";
 
 interface Room {
@@ -124,6 +125,9 @@ export default function RoomPage() {
         {room?.mas_id && (
           <span className="font-mono text-micro text-faint truncate" title="MAS id">{room.mas_id}</span>
         )}
+        <div className="ml-auto flex-shrink-0">
+          <ActingAsPicker />
+        </div>
       </header>
 
       <div className="flex flex-1 overflow-hidden">
