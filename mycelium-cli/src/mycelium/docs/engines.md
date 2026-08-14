@@ -52,13 +52,10 @@ mycelium memory get context/synthesis -r sprint-plan
 
 ## Where an engine runs
 
-An engine's cognition runs in one of two places, selected by the `engine.runtime`
-config (the backend and the host daemon are a pair; set both the same):
-
-- **`backend`** (default): the always-on backend runs the engine through its
-  summon seam. Nothing extra to install.
-- **`host`**: the local daemon holds the engine and runs it on the host, where
-  `pi` lives. Use this when the engine's brain needs host tools or credentials.
+An engine's cognition runs **backend-side**: the always-on backend runs the
+engine through its summon seam, so there is nothing extra to install. (`pi` ships
+in the backend image.) Legacy `engine.runtime = host` config coerces to
+`backend`.
 
 Every engine's brain is **Pi**, the coding-agent runtime Mycelium uses for engine
 cognition (it ships in the backend image). It applies only to engines. Your

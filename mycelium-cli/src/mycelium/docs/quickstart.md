@@ -125,8 +125,10 @@ mycelium agent create planner \
 mycelium agent ls
 ```
 
-`claude_code` agents are cold-spawned by the Mycelium daemon; see the
-**Adapters** guide for the full list and their support status.
+A `claude_code` (or `cursor`) agent participates as a resident runtime: keep the
+session woken with `mycelium await --loop`, so it picks up each `@handle` mention
+on its next turn. See the **Adapters** guide for the full list and their support
+status.
 
 ## Coordinate
 

@@ -1,23 +1,36 @@
 ---
 name: cursor-e2e
-description: Run end-to-end smoke tests for the Mycelium cursor adapter. Verifies cursor-agent prereqs, single-host dispatch, multi-host dispatch through the hub, cross-family negotiation with claude_code/openclaw, workspace asset drift, and auth failures. Use when validating the cursor integration on a fresh install, after touching cursor-family code (`integrations/cursor/**`, `daemon/dispatch.py`, `daemon/runner.py`), or after upgrading `cursor-agent` itself.
-argument-hint: "[--quick | --full | --multi-host]"
+description: Run end-to-end smoke tests for the Mycelium cursor adapter. Verifies cursor-agent prereqs, the resident participation loop (mycelium await --loop --exec) picking up an @-mention and posting a reply, workspace asset drift/healing, auth-failure handling, and an aligner-mediated negotiation with a resident cursor agent. Use when validating the cursor integration on a fresh install, after touching cursor-family code (`integrations/cursor/**`), or after upgrading `cursor-agent` itself.
+argument-hint: "[--quick | --full | --coord]"
 ---
 
 # Cursor Adapter End-to-End Testing
 
-Validate the cursor adapter by exercising the cold-spawn path end-to-end on real hosts. The general `e2e` skill covers stack health, memory, and negotiation; this one focuses on the cursor-specific surface that only `cursor-agent` exercises.
+Validate the cursor adapter against the **resident-runtime** model. An agent is
+your own live `cursor-agent` session, kept woken by `mycelium await --loop --exec
+<cmd>` (await → reason → respond → await). The loop *is* the wake — there is no
+daemon and no cold-spawn. This skill focuses on the cursor-specific surface:
+`cursor-agent` prereqs, the workspace assets (`.cursor/rules/mycelium.mdc` +
+`AGENTS.md`), auth-failure handling, and a resident cursor agent negotiating
+through the aligner.
+
+The general `e2e` skill covers stack health, memory, and the operator-driven
+negotiation walk. Cursor is **untested / unverified**; treat green here as
+necessary, not sufficient.
+
+> **Cold-start-on-demand is deferred.** Waking a handle when no runtime is
+> resident (herdr integration + per-agent identity, #446) does not exist yet. An
+> `@`-mention to a non-resident handle waits on the durable transcript cursor
+> until a runtime awaits. Every dispatch phase keeps a resident loop running.
 
 ## Arguments
 
-- `--quick` — Prereqs + single-host dispatch only (< 1 min)
-- `--full` — Quick + workspace asset drift + auth failure path (~ 3 min)
-- `--multi-host` — Full + spoke dispatch through hub + cross-family negotiation (~ 8 min, requires SSH to spoke hosts)
+- `--quick` — Prereqs + single resident round-trip (< 2 min)
+- `--full` — Quick + workspace asset drift + auth failure path (~ 4 min)
+- `--coord` — Full + aligner-mediated negotiation with a resident cursor agent (~ 6 min)
 - No argument — defaults to `--full`
 
 ## Prerequisites
-
-Before any phase runs, confirm:
 
 ```bash
 # 1. cursor-agent on PATH
@@ -30,58 +43,86 @@ cursor-agent --version
 ls ~/.config/cursor/auth.json
 python3 -c "import json,os; p=os.path.expanduser('~/.config/cursor/auth.json'); j=json.load(open(p)); print('authenticated' if j.get('accessToken') else 'NOT LOGGED IN')"
 
-# 3. Mycelium backend reachable + cursor doctor checks ok
+# 3. Adapter installed + backend reachable
+mycelium adapter add cursor
 mycelium doctor --mode auto
 ```
 
-**Fail criteria**: any of these missing → run `cursor-agent login` and `mycelium adapter add cursor --step=daemon` before proceeding.
+**Fail criteria**: any missing → run `cursor-agent login` and `mycelium adapter
+add cursor` before proceeding.
 
-## Phase 1: Single-host basic dispatch
+## The resident-loop harness
 
-The minimum viable cursor agent loop: create room → create cursor agent → @-mention → verify response posts back to the room.
+Every dispatch phase runs the agent as a resident loop: a tiny per-turn handler
+reads the turn JSON on stdin and answers with `mycelium respond`, and the loop
+keeps it woken. The handler here shells out to a one-shot `cursor-agent -p` to
+reason over the prompt — the choice of handler, not a daemon, drives the wake.
 
 ```bash
-# Setup
 mkdir -p /tmp/cursor-e2e-workspace
-mycelium room create cursor-e2e
-mycelium daemon subscribe cursor-e2e
+cat > /tmp/cursor-e2e-workspace/reply.sh <<'EOF'
+#!/usr/bin/env bash
+turn="$(cat)"
+room="$(printf '%s' "$turn" | python3 -c 'import sys,json;print(json.load(sys.stdin)["room"])')"
+handle="$(printf '%s' "$turn" | python3 -c 'import sys,json;print(json.load(sys.stdin)["handle"])')"
+prompt="$(printf '%s' "$turn" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("content",""))')"
+answer="$(cursor-agent -p "$prompt" 2>/dev/null)"
+mycelium respond --room "$room" --handle "$handle" "$answer"
+EOF
+chmod +x /tmp/cursor-e2e-workspace/reply.sh
+```
 
-# Create a cursor agent
+(Field names come from `mycelium await --json`; adjust the python extractions if
+the turn shape has drifted.)
+
+## Phase 1: Single resident round-trip
+
+Create a cursor agent, verify its workspace assets, run a resident loop, and
+confirm an `@`-mention gets a reply.
+
+```bash
+mycelium room create cursor-e2e
+
+# --cwd is now OPTIONAL — it's just the session's workspace root. We pass it
+# because cursor's rules/AGENTS.md assets live under it.
 mycelium agent create cursor-x \
   --adapter cursor \
   --cwd /tmp/cursor-e2e-workspace \
   --room cursor-e2e \
-  --description "smoke test agent"
+  --description "cursor resident smoke test agent"
 
 # Verify workspace assets dropped
 ls /tmp/cursor-e2e-workspace/.cursor/rules/mycelium.mdc
 ls /tmp/cursor-e2e-workspace/AGENTS.md
 grep -q "<!-- mycelium:start -->" /tmp/cursor-e2e-workspace/AGENTS.md && echo "marker present"
 
-# Verify handle owned in daemon.toml
-grep -A 5 '\[handles\]' ~/.mycelium/daemon.toml | grep cursor-x
+# Start the resident loop
+mycelium await --room cursor-e2e --handle cursor-x --loop \
+  --exec /tmp/cursor-e2e-workspace/reply.sh &
+LOOP_PID=$!
 
-# Invoke via the daemon
-mycelium agent invoke cursor-x "Reply with just the string OK so I know you got this." --room cursor-e2e
-
-# Wait for response (cursor cold-spawn is ~10-30s)
-sleep 30
-# Inspect recent chat messages (point-in-time read)
+# Address the handle; the resident loop picks it up on its next await.
+mycelium respond --room cursor-e2e --handle operator \
+  "@cursor-x reply with just the string OK so I know you got this."
+sleep 30   # cursor-agent -p is ~10-30s
 mycelium room messages cursor-e2e --limit 5
+# Expect: a reply from cursor-x containing OK
+
+kill $LOOP_PID 2>/dev/null
 ```
 
 **Fail criteria**:
-- No response in room within 60s → check `~/.mycelium/logs/daemon.log` for `dispatch @cursor-x` lines
-- "cursor-agent not authenticated" in logs → user needs to re-login
-- Handle missing from daemon.toml → `mycelium agent create` didn't persist; check `CursorIntegration.register`
-- Workspace assets missing → `install_workspace_assets` raised silently; check for `NotADirectoryError`
+- No reply within 60s → the loop isn't awaiting this handle, or `reply.sh` failed. Run `mycelium await --room cursor-e2e --handle cursor-x --json` once by hand.
+- "cursor-agent not authenticated" from the handler → user needs `cursor-agent login`.
+- Workspace assets missing → `install_workspace_assets` raised silently; check for `NotADirectoryError`.
 
 ## Phase 2: Workspace asset drift
 
-Verify the adapter heals AGENTS.md when the user adds content outside the marker fence, and that drift is detected by `mycelium doctor`.
+Verify the adapter heals `AGENTS.md` when the user adds content outside the marker
+fence, and that drift is detected by `mycelium doctor`. (Unchanged by the resident
+model — asset management runs at `agent create` time.)
 
 ```bash
-# Add user content OUTSIDE the mycelium marker block
 cat > /tmp/cursor-e2e-workspace/AGENTS.md <<'EOF'
 # My project agents
 
@@ -102,210 +143,126 @@ mycelium agent create cursor-x --adapter cursor --cwd /tmp/cursor-e2e-workspace 
 # Verify: my content preserved, mycelium block refreshed
 grep -c "This is content I wrote myself" /tmp/cursor-e2e-workspace/AGENTS.md
 grep -c "More of my content" /tmp/cursor-e2e-workspace/AGENTS.md
-# The mycelium-managed block opens with `# Mycelium Agent` (asset header)
 grep -c "# Mycelium Agent" /tmp/cursor-e2e-workspace/AGENTS.md
 
-# Now nuke the .cursor dir and check that doctor surfaces the drift
+# Nuke the .cursor dir and check that doctor surfaces the drift
 rm -rf /tmp/cursor-e2e-workspace/.cursor
 mycelium doctor --mode auto 2>&1 | grep -A 2 "cursor workspace assets"
 ```
 
 **Fail criteria**:
-- User content lost → `_strip_agents_md_section` is too aggressive; should only remove between markers
-- Marker block not refreshed → `_write_agents_md_section` didn't run on re-register
-- Doctor didn't flag the missing rule file → cursor doctor checks not wired up
+- User content lost → `_strip_agents_md_section` too aggressive; should only remove between markers.
+- Marker block not refreshed → `_write_agents_md_section` didn't run on re-register.
+- Doctor didn't flag the missing rule file → cursor doctor checks not wired up.
 
 ## Phase 3: Auth-failure friendly path
 
-Simulate "user installed `cursor-agent` but never ran `cursor-agent login`" and verify the daemon posts an actionable error rather than a stack trace.
+Simulate "user installed `cursor-agent` but never ran `cursor-agent login`" and
+verify the handler surfaces an actionable error rather than a stack trace.
 
 ```bash
-# Backup the auth file (this is where cursor-agent reads its tokens from at
-# spawn time — not ~/.cursor/cli-config.json, that one only holds session
-# metadata).
 cp ~/.config/cursor/auth.json /tmp/auth.backup.json
-
-# Move auth.json aside so cursor-agent fails to authenticate.
 rm ~/.config/cursor/auth.json
 
-# Try to invoke — should post a friendly message in the room, NOT crash the daemon.
-mycelium agent invoke cursor-x "Anything" --room cursor-e2e
+# Resident loop with no auth — the handler's cursor-agent call fails; it should
+# respond with a friendly message, not crash the loop.
+mycelium await --room cursor-e2e --handle cursor-x --loop \
+  --exec /tmp/cursor-e2e-workspace/reply.sh &
+LOOP_PID=$!
+mycelium respond --room cursor-e2e --handle operator "@cursor-x anything"
 sleep 15
 mycelium room messages cursor-e2e --limit 3
+kill $LOOP_PID 2>/dev/null
 
-# Confirm doctor catches the bad state while it's still bad
+# doctor catches the bad state while it's still bad
 mycelium doctor --mode auto 2>&1 | grep -A 2 "cursor-agent login"
 
-# Restore auth — if the file got recreated, this overwrites it; otherwise mv is fine
+# Restore auth
 cp /tmp/auth.backup.json ~/.config/cursor/auth.json
 rm /tmp/auth.backup.json
-# Verify
 mycelium doctor --mode auto 2>&1 | grep "cursor-agent login"
-# If for any reason the restore left auth in a weird state, run:
-#   cursor-agent login
+# If the restore left auth weird: cursor-agent login
 ```
 
 **Fail criteria**:
-- Daemon crashed (check `systemctl --user status mycelium-daemon`) → auth detection raised instead of returning a SpawnResult
-- Room shows a Python traceback → `_detect_auth_required` regression
-- Doctor didn't flag the missing token → cursor login check not reading the right field
+- Loop crashed on the auth error → the handler should catch the failure and respond, not propagate.
+- Room shows a Python traceback → handler isn't guarding the `cursor-agent` exit code.
+- Doctor didn't flag the missing token → cursor login check not reading `~/.config/cursor/auth.json` `accessToken`.
 
-## Phase 4: Multi-host dispatch (requires --multi-host)
+## Phase 4: Aligner-mediated negotiation
 
-Validate that a cursor agent created on a spoke responds to mentions sent from the hub.
-
-**Prerequisites**: SSH access to spoke host (`oclw3` / `oclw5` / similar), mycelium client installed on spoke, spoke pointed at hub's backend.
-
-```bash
-HUB_HOST=oclw4  # hub
-SPOKE_HOST=oclw3
-ROOM=cursor-multi-e2e
-
-# On the hub: create the room (room creation MUST happen on the host running the backend)
-mycelium room create $ROOM
-
-# On the spoke: install + create
-ssh $SPOKE_HOST bash <<EOF
-  # Verify spoke is pointed at the hub
-  grep api_url ~/.mycelium/config.toml
-  # Subscribe the spoke's daemon
-  mycelium daemon subscribe $ROOM
-  # Create the agent
-  mkdir -p /tmp/cursor-spoke-ws
-  mycelium agent create cursor-spoke \
-    --adapter cursor --cwd /tmp/cursor-spoke-ws --room $ROOM \
-    --description "spoke-side cursor agent"
-EOF
-
-# From the hub: subscribe locally + invoke the spoke agent
-mycelium daemon subscribe $ROOM
-sleep 3
-# Cross-host invoke works because agent invoke falls through to the backend
-# when the agent isn't in the local mirror (the hub didn't register cursor-spoke).
-mycelium agent invoke cursor-spoke \
-  "please reply with the hostname you're running on" \
-  --room $ROOM
-
-sleep 60  # cursor-agent cold start is slow
-mycelium room messages $ROOM --limit 5
-# Expect: a message FROM cursor-spoke containing the spoke host's hostname
-```
-
-**Fail criteria**:
-- No reply from spoke → spoke daemon not subscribed or auth not propagated; check `ssh $SPOKE_HOST mycelium daemon status`
-- Reply contains hub's hostname → handle ownership leaked to hub's daemon (both daemons firing on the same handle)
-- Spoke daemon logs `unknown adapter` → spoke client out of date; `uv tool install . --force --link-mode=copy` from `~/mycelium/mycelium-cli`
-
-## Phase 5: Cross-family negotiation (requires --multi-host)
-
-Confirm a cursor agent and a counterparty (`openclaw` or `claude_code`) on different hosts can negotiate via IOC, **autonomously** — i.e. without an operator running `mycelium negotiate respond` between rounds. The daemon gained this autonomous-coordination path in 2026-05: the daemon polls `/api/coordination-sessions`, dynamically subscribes SSE to each active session sub-room, and on every `coordination_tick` cold-spawns the owned agent which then calls `mycelium negotiate respond …` itself.
+Prove a **resident** cursor agent negotiates to consensus through the aligner. The
+cursor side runs the resident loop; the aligner (a backend engine) `@`-addresses
+it, the loop reasons and responds, and NEGMAS owns termination.
 
 ```bash
-ROOM=cursor-ioc-e2e
-
-# Hub: create room, register the counterparty locally.
-# (claude_code is the recommended counterparty when openclaw isn't running;
-# the autonomous flow is identical for both adapters.)
+ROOM=cursor-align-e2e
+mkdir -p /tmp/cursor-ws-designer
+cp /tmp/cursor-e2e-workspace/reply.sh /tmp/cursor-ws-designer/reply.sh
 mycelium room create $ROOM
-mkdir -p /tmp/claude-hub-ws
-mycelium agent create planner --adapter claude_code \
-  --cwd /tmp/claude-hub-ws --room $ROOM \
-  --description "ship-date-focused negotiation counterparty"
+mycelium engine create aligner --kind aligner --room $ROOM
 
-# Spoke: register cursor agent (auth must already be in place — cursor-agent
-# stores tokens at ~/.config/cursor/auth.json on the spoke host).
-ssh $SPOKE_HOST mycelium agent create designer --adapter cursor \
-  --cwd /tmp/cursor-spoke-ws --room $ROOM \
-  --description "design-polish-focused cursor side of the negotiation"
+mycelium agent create designer --adapter cursor \
+  --cwd /tmp/cursor-ws-designer --room $ROOM \
+  --description "design-polish-focused negotiator"
 
-# Trigger negotiation (operator's only role: create + join × N).
-mycelium session create -r $ROOM
-mycelium session join --handle planner -m "Optimise for ship date" -r $ROOM
-ssh $SPOKE_HOST mycelium session join --handle designer -m "Optimise for design polish" -r $ROOM
+# Start the resident loop
+mycelium await --room $ROOM --handle designer --loop \
+  --exec /tmp/cursor-ws-designer/reply.sh &
+LOOP_PID=$!
 
-# Watch the autonomous flow play out. Within ~5s of each join the
-# corresponding daemon's poller logs:
-#   "dynamic subscribe → cursor-ioc-e2e:session:<short_id> (coordination session)"
-# Within ~30s of join-window close, ticks arrive in the sub-room and the
-# daemon dispatches:
-#   "coordination_tick @planner — round=1 action=respond"
-#   "dispatch @planner ← CognitiveEngine"
-# Same on the spoke for @designer. Rounds advance every 10–30s as each
-# agent posts a {"action":"accept"} / "reject" / {"offer":{...}}.
+# Opening positions (counterparty operator-driven, or a second loop)
+mycelium respond --room $ROOM --handle planner  "Optimise for ship date"
+mycelium respond --room $ROOM --handle designer "Optimise for design polish"
 
-# Poll for terminal state. Typical converging session lands in 6–15 rounds
-# (1–4 minutes); the cap is 20 rounds.
-for i in $(seq 1 30); do
-  STATE=$(curl -s "http://localhost:8000/api/coordination-sessions?limit=20" \
-    | python3 -c "import sys,json
-data=json.load(sys.stdin)
-for s in data:
-    if s['parent_room_name']=='$ROOM' and s['state'] in ('complete','failed'):
-        print(s['state']); break
-else: print('negotiating')")
-  echo "[$i] state=$STATE"
-  [ "$STATE" = "complete" ] || [ "$STATE" = "failed" ] && break
-  sleep 15
+# Summon the aligner; it addresses designer by @mention each round.
+mycelium engine invoke aligner "converge on the ship-vs-polish tradeoff" -r $ROOM
+
+# Watch for convergence — the plan compiles before consensus is announced.
+for i in $(seq 1 20); do
+  if mycelium plan tasks --room $ROOM 2>/dev/null | grep -q '\- \['; then
+    echo "converged: plan compiled"; break
+  fi
+  echo "[$i] still negotiating"; sleep 15
 done
+mycelium plan tasks --room $ROOM
 
-# Inspect the consensus message
-SHORT=$(curl -s "http://localhost:8000/api/coordination-sessions?limit=20" \
-  | python3 -c "import sys,json
-for s in json.load(sys.stdin):
-    if s['parent_room_name']=='$ROOM' and s['state']=='complete':
-        print(s['short_id']); break")
-mycelium --json room messages "$ROOM:session:$SHORT" --type coordination_consensus --limit 200 \
-  | python3 -c "import sys,json
-for m in json.load(sys.stdin)['messages']:
-    print(m['content']); break"
-# Expect: {\"plan\":\"...\",\"assignments\":{...},\"broken\":false}
+kill $LOOP_PID 2>/dev/null
 ```
 
 **Fail criteria**:
-- No `dynamic subscribe` log on either daemon within 10s of join → daemon didn't reach the poller branch (deployment regression — verify the installed `dispatch.py` contains `poll_coordination_sessions`)
-- `dynamic subscribe` fires but no `dispatch @<handle>` on tick → handle not in this daemon's `daemon.toml.handles` (sibling daemon owns it on a different host); confirm with `mycelium daemon ls`
-- `dispatch` fires but spawn exits 1 with `Credit balance is too low` (claude) → counterparty's API key is unfunded; switch counterparty or top up
-- `dispatch` fires but spawn exits 1 with `SessionEnd hook ... not found` (claude) → stale `~/.claude/settings.json` from an older mycelium-cli; rerun `mycelium adapter add claude-code --reinstall`
-- Cursor agent never produces a counter_offer / accept → `cursor-agent` isn't seeing the mycelium rules (workspace assets missing on spoke); rerun `mycelium agent create designer …` to redrop them
-- `broken: true` in consensus after 20 rounds → opposing personas locked on incompatible positions; an agent-prompt issue, not coordination — re-run with less polarised intent strings or a higher `n_steps` budget on the CFN side
-- `counter_offer_not_your_turn` loops → agent ignored the per-round `allowed_actions` in the tick payload; agent-prompt issue
+- Aligner addresses designer but no reply lands → the resident loop isn't awaiting, or `reply.sh`/`cursor-agent` failed; run one `await` by hand.
+- Cursor agent ignores the mycelium rules → workspace assets missing; rerun `mycelium agent create designer …` to redrop them.
+- Aligner loops to the step cap → NEGMAS termination regression (must stop at unanimity).
+- No `plan/tasks.md` after agreement → plan compiler outage; fail-soft emits the raw `issue=value` agreement (check backend logs).
 
 ## Cleanup
 
 ```bash
-# Hub
-mycelium agent rm cursor-x --room cursor-e2e --full -y 2>/dev/null
-mycelium agent rm planner --room cursor-ioc-e2e --full -y 2>/dev/null
-mycelium daemon unsubscribe cursor-e2e 2>/dev/null
-mycelium daemon unsubscribe cursor-multi-e2e 2>/dev/null
-mycelium daemon unsubscribe cursor-ioc-e2e 2>/dev/null
-rm -rf /tmp/cursor-e2e-workspace
-
-# Spoke (if --multi-host ran)
-ssh $SPOKE_HOST mycelium agent rm cursor-spoke --room cursor-multi-e2e --full -y 2>/dev/null
-ssh $SPOKE_HOST mycelium agent rm designer --room cursor-ioc-e2e --full -y 2>/dev/null
-ssh $SPOKE_HOST rm -rf /tmp/cursor-spoke-ws
-
-# Drop rooms
+for h in cursor-x designer; do
+  for room in cursor-e2e cursor-align-e2e; do
+    mycelium agent rm "$h" --room "$room" --full -y 2>/dev/null
+  done
+done
+rm -rf /tmp/cursor-e2e-workspace /tmp/cursor-ws-designer
 curl -s -X DELETE http://localhost:8000/api/rooms/cursor-e2e
-curl -s -X DELETE http://localhost:8000/api/rooms/cursor-multi-e2e
-curl -s -X DELETE http://localhost:8000/api/rooms/cursor-ioc-e2e
+curl -s -X DELETE http://localhost:8000/api/rooms/cursor-align-e2e
 ```
 
 ## Interpreting Failures
 
 | Symptom | Likely cause | Check |
 |---------|-------------|-------|
-| `cursor-agent: command not found` in daemon log | binary not on daemon's PATH | restart daemon under correct env: `systemctl --user restart mycelium-daemon` |
-| Daemon log shows `not owned by this daemon` | handle missing from `daemon.toml` | `mycelium agent create` didn't trigger restart — re-run on this host |
-| "agent created" but @-mentions silently drop | daemon snapshot stale | restart daemon manually; verify `restart_daemon_service` is being called |
-| Workspace AGENTS.md double-merged | `_strip_agents_md_section` regex regression | re-run cursor install tests, esp. `test_cursor_install.py::test_marker_merge_*` |
-| `Cursor login expired` in room | token expired — `cursor-agent login` again | check `~/.config/cursor/auth.json` `accessToken` |
-| Cross-host mention not delivered | spoke daemon not subscribed to room | `mycelium daemon ls` on spoke must show the room |
-| Cross-family negotiation never starts | session/room mas_id not set | `mycelium doctor` flags Room MAS IDs |
+| Resident loop never picks up a mention | loop not awaiting this handle | `mycelium await --room <r> --handle <h> --json` once by hand |
+| `--exec` fires but no reply lands | handler didn't call `mycelium respond` | run `reply.sh` with a sample turn JSON on stdin |
+| `cursor-agent: command not found` in the loop | binary not on the loop shell's PATH | start the loop from a shell where `which cursor-agent` works |
+| Workspace `AGENTS.md` double-merged | `_strip_agents_md_section` regex regression | re-run cursor install tests, esp. `test_cursor_install.py::test_marker_merge_*` |
+| `Cursor login expired` in room | token expired — `cursor-agent login` again | `~/.config/cursor/auth.json` `accessToken` |
+| Aligner never stops (runs to the cap) | NEGMAS termination regression | it must stop at unanimity |
 
 ## When to Update This Skill
 
-- New cursor-specific feature in `integrations/cursor/` (e.g. new `cursor-agent` flag, new asset dropped) → add a phase that exercises it
-- New daemon-side regression caught in production → add a fail-criteria row
-- New adapter family that can negotiate with cursor → add a cross-family phase
+- The turn-JSON shape from `mycelium await --json` changes → update `reply.sh`'s field extraction
+- New cursor-specific asset dropped or new `cursor-agent` flag → add/extend a phase
+- `mycelium await` gains a new loop flag → add a phase exercising it
+- The aligner gains a new subkind or termination signal → extend Phase 4

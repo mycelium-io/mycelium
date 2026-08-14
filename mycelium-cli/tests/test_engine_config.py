@@ -14,26 +14,32 @@ def test_default_runtime_is_backend() -> None:
     assert MyceliumConfig().engine.runtime == "backend"
 
 
-@pytest.mark.parametrize(("given", "expected"), [("host", "host"), ("BACKEND", "backend")])
+@pytest.mark.parametrize(("given", "expected"), [("BACKEND", "backend"), (" backend ", "backend")])
 def test_runtime_normalized(given: str, expected: str) -> None:
     # given is a dynamic str exercising the normalizer; the field is the EngineRuntime Literal.
     assert EngineConfig(runtime=given).runtime == expected  # ty: ignore[invalid-argument-type]
 
 
+def test_legacy_host_coerces_to_backend() -> None:
+    """The retired ``host`` runtime (rode the removed daemon) coerces to backend
+    so a pre-existing config.toml keeps loading."""
+    assert EngineConfig(runtime="host").runtime == "backend"  # ty: ignore[invalid-argument-type]
+
+
 def test_invalid_runtime_rejected() -> None:
-    with pytest.raises(ValueError, match="Input should be 'backend' or 'host'"):
+    with pytest.raises(ValueError, match="Input should be 'backend'"):
         EngineConfig(runtime="cloud")  # ty: ignore[invalid-argument-type]
 
 
-def test_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_env_override_legacy_host_coerces(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ENGINE_RUNTIME", "host")
-    assert MyceliumConfig.load().engine.runtime == "host"
+    assert MyceliumConfig.load().engine.runtime == "backend"
 
 
 def test_save_roundtrips_engine_even_with_project_config(tmp_path) -> None:
     """Regression: ``save()`` filters to an allowlist of sections when a project
-    config exists — ``engine`` must be in it, or ``config set engine.runtime`` is
-    silently dropped (the host-runtime switch would never take effect)."""
+    config exists — ``engine`` must be in it, or ``config set engine.*`` is
+    silently dropped."""
     global_path = tmp_path / "global.toml"
     project_path = tmp_path / "project.toml"
     project_path.write_text("[identity]\n", encoding="utf-8")
@@ -41,7 +47,7 @@ def test_save_roundtrips_engine_even_with_project_config(tmp_path) -> None:
     cfg = MyceliumConfig.load(config_path=global_path)
     cfg._global_config_path = global_path
     cfg._project_config_path = project_path
-    cfg.engine.runtime = "host"
+    cfg.engine.runtime = "backend"
     cfg.save()
 
-    assert MyceliumConfig.load(config_path=global_path).engine.runtime == "host"
+    assert MyceliumConfig.load(config_path=global_path).engine.runtime == "backend"

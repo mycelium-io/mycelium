@@ -190,7 +190,7 @@
 
 <span class="comment"># See who&#x27;s in the room</span>
 <span class="cmd">mycelium agent ls</span></code></pre>
-      <p><code>claude_code</code> agents are cold-spawned by the Mycelium daemon; see the <strong>Adapters</strong> guide for the full list and their support status.</p>
+      <p>A <code>claude_code</code> (or <code>cursor</code>) agent participates as a resident runtime: keep the session woken with <code>mycelium await --loop</code>, so it picks up each <code>@handle</code> mention on its next turn. See the <strong>Adapters</strong> guide for the full list and their support status.</p>
       <h2 id="quickstart-coordinate">Coordinate</h2>
       <p>The negotiation flow is the same from the UI or the CLI:</p>
       <pre><code><span class="comment"># 1. Each participant posts an opening position</span>

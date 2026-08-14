@@ -485,15 +485,7 @@ cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
 <span class="cmd">mycelium memory get</span> context/synthesis <span class="flag">-r</span> sprint-plan</code></pre>
       <p><code>mycelium engine ls</code> shows the engines registered in a room and their kinds.</p>
       <h2 id="engines-where-an-engine-runs">Where an engine runs</h2>
-      <p>An engine&#x27;s cognition runs in one of two places, selected by the <code>engine.runtime</code> config (the backend and the host daemon are a pair; set both the same):</p>
-      <ul>
-        <li><strong><code>backend</code></strong> (default): the always-on backend runs the engine through its</li>
-      </ul>
-      <p>summon seam. Nothing extra to install.</p>
-      <ul>
-        <li><strong><code>host</code></strong>: the local daemon holds the engine and runs it on the host, where</li>
-      </ul>
-      <p><code>pi</code> lives. Use this when the engine&#x27;s brain needs host tools or credentials.</p>
+      <p>An engine&#x27;s cognition runs <strong>backend-side</strong>: the always-on backend runs the engine through its summon seam, so there is nothing extra to install. (<code>pi</code> ships in the backend image.) Legacy <code>engine.runtime = host</code> config coerces to <code>backend</code>.</p>
       <p>Every engine&#x27;s brain is <strong>Pi</strong>, the coding-agent runtime Mycelium uses for engine cognition (it ships in the backend image). It applies only to engines. Your participant agents run however you like (Claude Code, Cursor, a plain HTTP client) and only ever answer in prose.</p>
     </section>
 
@@ -596,7 +588,7 @@ cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
       <p>Run it again after a burst of activity and the briefing upserts in place with its version incremented, so the room always has one current summary instead of a pile of stale ones.</p>
       <h2 id="synthesizer-faithfulness">Faithfulness</h2>
       <p>The briefing reflects only what is in the room&#x27;s memory; the synthesizer does not invent facts. If its Pi turn fails, it writes nothing rather than a half-formed summary.</p>
-      <p>The synthesizer holds no <a href="#episodes">episode</a> and drives no negotiation. It reads the room, summarizes it, and writes the result back. It shares the rest of the engine model: the summon lifecycle and <a href="#engines">where it runs</a> (the backend or the host daemon), with every brain running a <strong>Pi</strong> turn.</p>
+      <p>The synthesizer holds no <a href="#episodes">episode</a> and drives no negotiation. It reads the room, summarizes it, and writes the result back. It shares the rest of the engine model: the summon lifecycle and <a href="#engines">where it runs</a> (backend-side), with every brain running a <strong>Pi</strong> turn.</p>
     </section>
     <!-- FOOTER -->
     <div class="docs-footer">

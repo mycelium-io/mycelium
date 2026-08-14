@@ -13,10 +13,8 @@ An engine is a first-class registered *room citizen* — a manifest at
 ``agents/<handle>`` (``adapter="engine"``, ``kind=<ce>``), listed by
 ``engine ls`` / ``agent ls``, invokable, posting as itself. Its run is owned
 by the **backend's summon seam** (which recognises registered engines instead of
-the old reserved ``ALIGNER_HANDLE``), so ``lifecycle="backend_engine"`` and the
-daemon skips it. There are no host-side assets — hence the no-op install facet.
-The host-side runtime path (``engine.runtime = host``) drives NEGMAS + Pi brain
-under the local daemon instead; see ``mycelium.integrations.engine.host``.
+the old reserved ``ALIGNER_HANDLE``), so ``lifecycle="backend_engine"``. There are
+no host-side assets — hence the no-op install/register facets.
 """
 
 from __future__ import annotations
@@ -69,29 +67,16 @@ class EngineIntegration(Integration):
     def register(
         self, *, manifest: AgentManifest, config: MyceliumConfig, opts: AddOptions
     ) -> None:
-        # Claim the handle in daemon.toml (same as a cold_spawn agent). Under
-        # ``engine.runtime = backend`` this is inert — ``connector_targets``
-        # skips ``backend_engine`` manifests — but with ``engine.runtime = host``
-        # it's what makes the local daemon hold the engine's connector and drive
-        # NEGMAS on the host. Claiming it always keeps the flip to host a pure
-        # config change, and prevents a second machine syncing the room from also
-        # owning the engine.
-        from mycelium.daemon.config import DaemonConfig
-
-        daemon_cfg = DaemonConfig.load()
-        if daemon_cfg.own_handle(manifest.handle):
-            daemon_cfg.save()
+        # No runtime side effects — the backend owns an engine's run via its
+        # summon seam. The manifest (persisted by the command layer) is the whole
+        # registration.
+        return
 
     def destroy(
         self, *, manifest: AgentManifest, config: MyceliumConfig, room: str, full: bool
     ) -> None:
-        # Release the daemon ownership claimed in register(); nothing else to
-        # tear down (no host assets).
-        from mycelium.daemon.config import DaemonConfig
-
-        daemon_cfg = DaemonConfig.load()
-        if daemon_cfg.disown_handle(manifest.handle):
-            daemon_cfg.save()
+        # No host assets and no runtime mycelium started; nothing to tear down.
+        return
 
     def describe(self, manifest: AgentManifest, *, room: str) -> list[str]:
         lines = [

@@ -40,5 +40,5 @@ half-formed summary.
 
 The synthesizer holds no [episode](#episodes) and drives no negotiation. It
 reads the room, summarizes it, and writes the result back. It shares the rest of
-the engine model: the summon lifecycle and [where it runs](#engines) (the
-backend or the host daemon), with every brain running a **Pi** turn.
+the engine model: the summon lifecycle and [where it runs](#engines)
+(backend-side), with every brain running a **Pi** turn.

@@ -63,9 +63,10 @@ RevisionCause = Literal[
     "repair_resolution",
 ]
 
-# Where a registered engine runs its NEGMAS drive. Paired with the backend's
-# ``ENGINE_RUNTIME`` — flip both together.
-EngineRuntime = Literal["backend", "host"]
+# Where a registered engine runs its NEGMAS drive. The ``host`` runtime rode the
+# (now-removed) daemon; engines run backend-side only. Retained as a single-value
+# type so config plumbing stays stable and legacy ``host`` coerces to ``backend``.
+EngineRuntime = Literal["backend"]
 
 
 def _validate_evidence(evidence: list[str] | None) -> list[str] | None:
@@ -285,12 +286,10 @@ class MemoryLogEntry(BaseModel):
 # ── Agent primitive ──────────────────────────────────────────────────────────
 
 
-# Adapter identifiers the agent primitive knows how to host. Each maps to a
-# dispatcher:
-#   claude_code → mycelium-daemon (SLIM connector, spawns claude -p)
-#   cursor      → mycelium-daemon (SLIM connector, spawns cursor-agent -p).
-#                 Same lifecycle as claude_code; the daemon's dispatch loop
-#                 routes via Integration.lifecycle, not family id.
+# Adapter identifiers the agent primitive knows how to host:
+#   claude_code → a resident Claude Code session (kept woken with `await --loop`)
+#   cursor      → a resident Cursor session (same resident lifecycle)
+#   engine      → a first-party cognition engine the backend runs
 AGENT_ADAPTERS: frozenset[str] = frozenset({"claude_code", "cursor", "engine"})
 
 #: Cognition-engine kinds hosted by the first-party ``engine`` runtime family.
@@ -310,12 +309,12 @@ class AgentManifest(BaseModel):
 
     Adapters:
 
-    - ``claude_code`` — cold-spawned by the daemon. Requires ``cwd`` (where
-      ``claude -p`` runs).
-    - ``cursor`` — cold-spawned by the daemon. Requires ``cwd`` (where
-      ``cursor-agent -p`` runs; treated by Cursor as the workspace root).
-    - ``engine`` — a first-party cognition engine (e.g. ``aligner``).
-      Requires ``kind``.
+    - ``claude_code`` — a resident Claude Code session (kept woken with
+      ``mycelium await --loop``). Optional ``cwd`` (the session's working dir).
+    - ``cursor`` — a resident Cursor session. Optional ``cwd`` (Cursor's workspace
+      root; also where workspace assets drop when set).
+    - ``engine`` — a first-party cognition engine (e.g. ``aligner``), run by the
+      backend. Requires ``kind``.
 
     The handle slug doubles as the mention target (``@release-agent``), so it
     must match the same lowercase pattern other memory slugs use.
@@ -334,9 +333,8 @@ class AgentManifest(BaseModel):
     cwd: str | None = Field(
         default=None,
         description=(
-            "claude_code / cursor: working dir the agent's CLI runs in "
-            "(required for both cold-spawn families). Cursor treats it as the "
-            "workspace root for ``--workspace`` mode."
+            "claude_code / cursor: optional working dir for the resident session. "
+            "Cursor treats it as the workspace root (and asset drop site) when set."
         ),
     )
     description: str = Field(default="", description="One-paragraph purpose statement.")
@@ -386,13 +384,10 @@ class AgentManifest(BaseModel):
 
     @model_validator(mode="after")
     def check_adapter_requirements(self) -> AgentManifest:
-        # cwd is required for every cold-spawn family — the daemon launches a
-        # fresh process there per @-mention. Cursor treats it as the workspace
-        # root for --workspace mode; Claude treats it as the project root.
-        if self.adapter in ("claude_code", "cursor") and not (self.cwd and self.cwd.strip()):
-            raise ValueError(f"{self.adapter} agents require a non-empty cwd")
+        # cwd is optional: it's the resident session's working dir / cursor's
+        # workspace root (used for asset drops when set), not a launch requirement.
         # A cognition engine must name which CE it runs; unknown kinds are a typo
-        # guard (the daemon/backend route on this).
+        # guard (the backend routes on this).
         if self.adapter == "engine":
             if not (self.kind and self.kind.strip()):
                 raise ValueError("engine agents require a 'kind' (e.g. 'aligner')")

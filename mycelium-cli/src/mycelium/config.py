@@ -117,26 +117,26 @@ class LLMConfig(BaseModel):
 class EngineConfig(BaseModel):
     """First-party Cognition Engine runtime configuration.
 
-    ``runtime`` selects *where* a registered ``engine`` runs its NEGMAS drive:
-
-    - ``backend`` (default): the always-on backend owns the run via its summon
-      seam. The daemon skips engine manifests.
-    - ``host``: the local daemon holds the engine's connector and drives NEGMAS
-      **on the host**, where ``pi`` lives. The backend must be set to
-      ``ENGINE_RUNTIME=host`` in tandem so it does not also run the engine — the
-      two are a transition pair; flip both.
+    ``runtime`` is ``backend``-only: the always-on backend owns a registered
+    engine's run via its summon seam. (The ``host`` runtime rode the daemon,
+    which has been removed; legacy ``host`` config coerces to ``backend``.)
     """
 
     runtime: EngineRuntime = Field(
         default="backend",
-        description="Where registered engines run their drive: 'backend' or 'host'.",
+        description="Where registered engines run their drive (backend-only).",
     )
 
     @field_validator("runtime", mode="before")
     @classmethod
     def _normalize_runtime(cls, v: object) -> object:
-        # Normalize casing/whitespace; the EngineRuntime Literal enforces membership.
-        return v.strip().lower() if isinstance(v, str) else v
+        # Normalize casing/whitespace; coerce the retired 'host' value to
+        # 'backend' so a pre-existing config.toml keeps loading after the daemon
+        # (and host runtime) removal.
+        if isinstance(v, str):
+            normalized = v.strip().lower()
+            return "backend" if normalized == "host" else normalized
+        return v
 
 
 class RuntimeConfig(BaseModel):

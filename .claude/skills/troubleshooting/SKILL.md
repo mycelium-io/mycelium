@@ -196,7 +196,7 @@ mycelium logs mycelium-backend --tail 100   # check startup errors
 
 ### 13. OpenClaw Agents Prompt for Approval on Mycelium Commands
 
-**Symptom**: Agents display "Approval required" messages when trying to run mycelium commands like `mycelium session join`, or you see "You are not authorized to approve exec requests" in your chat channel.
+**Symptom**: Agents display "Approval required" messages when trying to run mycelium commands like `mycelium await` / `mycelium respond`, or you see "You are not authorized to approve exec requests" in your chat channel.
 
 **Cause**: OpenClaw's exec approval system blocks shell commands by default. The mycelium binary must be explicitly allowlisted.
 

@@ -1,11 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""The host-side cognition-engine runtime.
+"""The host-side cognition-engine mediation core (currently unwired).
 
-A first-party engine (the SAO mediator) runs *where the daemon runs* — the host —
-so its brain executes where ``pi`` lives, not inside the backend container. This
-package holds the NEGMAS core (``mediator``), the Pi brain (``brain``), the fuzzy
-offer snap (``offer_snap``), and the SLIM drive loop (``runtime``). The heavy dep
-(negmas) comes from the ``mycelium[engine]`` extra.
+The first-party SAO mediator: the NEGMAS core (``mediator``), the Pi brain
+(``brain``), the fuzzy offer snap (``offer_snap``), and the SLIM drive loop
+(``runtime``). The heavy dep (negmas) comes from the ``mycelium[engine]`` extra.
+
+This core was driven host-side by the daemon's engine connector, which has been
+removed — engines now run backend-side only. The mediation core is retained,
+dormant, to be re-homed on the ``await``/``respond`` resident model rather than
+resurrected from a deletion; nothing wires it to a runtime entry point today.
 """

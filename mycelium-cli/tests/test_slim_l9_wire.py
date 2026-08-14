@@ -3,8 +3,8 @@
 
 """Contract drift guard for the shared SLIM+L9 wire primitives (CLI side).
 
-The CLI daemon carries its own copy of the SLIM+L9 primitives
-(``mycelium.slim.{naming,client,l9}`` + ``daemon.connector`` URN helpers) so the
+The CLI carries its own copy of the SLIM+L9 primitives
+(``mycelium.slim.{naming,client,l9}``) so the
 thin ``uv tool`` CLI need not import the FastAPI/ML backend. A diverging
 ``mint_shared_secret`` / master secret / ``workspace/room`` scope / envelope
 shape / URN form means MLS group keys mismatch and this connector **silently
@@ -21,8 +21,9 @@ from pathlib import Path
 
 import pytest
 
-from mycelium.daemon.connector import _room_episode, _room_topic
 from mycelium.slim import l9
+from mycelium.slim.l9 import room_episode as _room_episode
+from mycelium.slim.l9 import room_topic as _room_topic
 from mycelium.slim.naming import (
     _DEV_MASTER_SECRET,
     DEFAULT_CHANNEL_TOPIC,
@@ -64,7 +65,7 @@ def test_mint_shared_secret_matches_contract_digest():
 
 
 def test_episode_and_topic_urns_match_contract():
-    """The connector's episode/topic URN forms match the backend's."""
+    """The CLI's episode/topic URN forms match the backend's."""
     g = _contract()["urn"]
     assert _room_episode(g["room"]) == g["expected_episode"]
     assert _room_topic(g["room"]) == g["expected_topic"]

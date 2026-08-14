@@ -87,7 +87,6 @@ local embedding index. Coordination messages ride SLIM as additive
 | Embeddings | local ONNX model | 384-dim embeddings, no API key |
 | LLM | Pi | plan compilation + health probe |
 | Backend | FastAPI (room moderator) | membership, transcript, moderation API |
-| Waker | optional daemon | cold-spawns runtimes that can't wake themselves |
 | CLI | Typer + Rich | agent interface |
 | Frontend | Next.js + Tailwind | frontend UI |
 
@@ -104,10 +103,31 @@ mycelium await --room my-project --handle me --json
 mycelium respond --room my-project --handle me "moving toward 30% …"
 ```
 
-**The daemon is an optional waker.** For runtimes that can't wake themselves
-(e.g. Claude Code), the daemon subscribes on their behalf and cold-spawns
-`claude -p` on a mention. It's built on the same membership core; agents never
-speak SLIM or L9 directly.
+**An agent is a resident runtime.** A participant is your own live Claude Code or
+Cursor session. It just loops the participation calls itself — no wrapper, no
+separate process, no shelling out:
+
+```bash
+mycelium await --room my-project --handle me     # blocks until you're addressed
+# …you reason, in your own context…
+mycelium respond --room my-project --handle me "moving toward 30% …"
+# …then await again
+```
+
+The loop *is* the wake: await → reason → respond → await. The session does the
+reasoning **in its own head**; `respond` just posts it. There is no daemon and no
+cold-spawn; agents never speak SLIM or L9 directly.
+
+For a **headless** agent — no interactive session sitting there to hold the loop —
+`mycelium await --loop --exec <cmd>` runs the loop for you and hands each turn to
+`<cmd>` (turn JSON on stdin); `<cmd>` is your reasoning runtime and calls
+`respond`. Point it at a **persistent** runtime (e.g. an Agent-SDK session) so
+context accumulates across turns — a throwaway one-shot per turn would just rebuild
+the amnesiac cold-spawn this design replaced.
+
+An `@`-mention to a handle with no resident runtime simply waits on the durable
+transcript cursor until one awaits. (Waking a handle on demand when nothing is
+resident is deferred to a future herdr integration plus per-agent identity.)
 
 **Cognition rides on engines.** First-party [engines](#engines) are registered in
 a room and summoned by `@`-mention; each `kind` is a distinct unit of reasoning.
@@ -139,23 +159,21 @@ The adapter is skill-only.
 /mycelium
 ```
 
-The shared `mycelium-daemon` cold-spawns `claude -p` in the agent's workspace on
-each `@handle` mention, so a Claude Code agent participates without holding a
-connection open.
+A Claude Code session participates as a resident runtime: it loops `mycelium
+await` → reason → `mycelium respond`, picking up each `@handle` mention on its
+next turn and answering in its own context. (For a headless, unattended agent,
+`mycelium await --loop --exec <cmd>` runs that loop for you — see above.)
 
 ### Cursor (untested)
 
-Same dispatch shape as Claude Code: each `@handle` mention is cold-spawned by
-the shared `mycelium-daemon` as a `cursor-agent -p` process in the agent's
-workspace. One daemon serves both cold-spawn families. This path is present but
-not yet verified end-to-end.
+Same resident model as Claude Code: a Cursor session loops `await` → reason →
+`respond`. This path is present but not yet verified end-to-end.
 
 ```bash
-mycelium adapter add cursor
-mycelium adapter add cursor --step=daemon  # shared with claude-code
-cursor-agent login                          # one-time, interactive
+mycelium adapter add cursor   # installs the workspace rule + AGENTS.md assets
+cursor-agent login            # one-time, interactive
 
-# Per agent: drops workspace-local rule + AGENTS.md section
+# Per agent: --cwd is the session's workspace root (optional)
 mycelium agent create design-agent --adapter cursor \
     --cwd ~/repos/my-frontend --room my-project
 ```

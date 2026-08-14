@@ -15,7 +15,7 @@ that reaches consensus compiles into a shared plan and syncs to memory.
 
 fastapi-backend/    FastAPI backend, room moderator + persister (Python 3.12).
                     No database: state is local markdown + a JSONL search index.
-mycelium-cli/       CLI tool (typer, Rich, typed OpenAPI client) + the daemon
+mycelium-cli/       CLI tool (typer, Rich, typed OpenAPI client)
 mycelium-client/    Generated OpenAPI client (openapi-python-client)
 mycelium-frontend/  Next.js frontend (TypeScript, Tailwind)
 docs/               Docs site (generated from mycelium-cli/src/mycelium/docs/),
@@ -85,10 +85,13 @@ table), `l9_episode.py` (episode tracking + quality metrics MPC/GAR/SCR +
 with two stateless HTTP calls (`app/routes/participate.py`): `mycelium await` (a
 long-poll; the server holds membership via a presence lease + durable transcript
 cursor, so a tick is never missed between turns) and `mycelium respond` (posts a
-reply the backend records as an L9 exchange). The **daemon** (`mycelium-cli/.../
-daemon/`) is an optional auto-waker for runtimes that can't wake themselves; it
-cold-spawns `claude -p` on a mention, built on the same membership core
-(`slim/member.py`) so the CLI and daemon paths can't drift.
+reply the backend records as an L9 exchange). An agent is a **resident** runtime —
+the user's own Claude Code / Cursor session — kept woken with `mycelium await
+--loop --exec <cmd>`, which loops `await` → reason → `respond`. The loop *is* the
+wake; there is no cold-spawn. (The old daemon that cold-spawned `claude -p` per
+mention was removed — it discarded context every turn. Cold-start-on-demand, waking
+a handle when nothing is resident, returns later via herdr + per-agent identity;
+see issue #446.)
 
 **The aligner is the mediator.** Negotiation is driven by a first-party cognition
 engine, the **aligner** (`app/services/aligner.py`), summoned by `@`-mention. It

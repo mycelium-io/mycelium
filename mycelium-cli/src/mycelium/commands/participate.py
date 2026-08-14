@@ -19,14 +19,15 @@ the backend records as an L9 ``exchange`` the aligner scores as a position.
 
 No SLIM connection, no background process, no compound shell — which is exactly
 what a headless / allowlisted agent (a Claude Code session, a subagent) can safely
-issue. The member-session core (:mod:`mycelium.slim.member`) still backs the
-daemon's cold-spawn path; these commands are the server-held path for an already-
-awake caller.
+issue. This is the whole agent-side participation surface: a resident runtime loops
+``await`` → reason → ``respond`` (see ``await --loop``) to stay woken.
 """
 
 from __future__ import annotations
 
 import json as json_module
+import os
+import subprocess
 
 import httpx
 import typer
@@ -37,8 +38,46 @@ from mycelium.doc_ref import doc_ref
 from mycelium.error_handler import print_error
 
 
+def _await_once(config: MyceliumConfig, room_name: str, handle: str, timeout: int) -> dict | None:
+    """One long-poll. Returns the turn dict, or ``None`` on timeout."""
+    url = f"{config.server.api_url}/api/rooms/{room_name}/await"
+    # The server blocks up to `timeout`; give the client a little more headroom
+    # (or no cap when waiting indefinitely).
+    client_timeout = float(timeout) + 15.0 if timeout > 0 else None
+    resp = httpx.get(url, params={"handle": handle, "timeout": timeout}, timeout=client_timeout)
+    resp.raise_for_status()
+    data = resp.json()
+    return data if "prompt" in data else None
+
+
+def _run_exec(exec_cmd: str, turn: dict, room_name: str, handle: str) -> None:
+    """Hand a turn to the resident runtime: run ``exec_cmd`` with the turn on stdin.
+
+    The command is the user's own reasoning runtime (an Agent-SDK loop, a script,
+    etc.); it is expected to reason and call ``mycelium respond`` itself. The turn
+    JSON is piped to stdin and the salient fields are exported as env vars for
+    convenience. Run through the shell so the user can compose freely — this is a
+    resident runner the user starts, not an allowlisted-subagent surface.
+    """
+    env = {
+        **os.environ,
+        "MYCELIUM_ROOM": room_name,
+        "MYCELIUM_HANDLE": handle,
+        "MYCELIUM_SENDER": str(turn.get("sender") or ""),
+        "MYCELIUM_PROMPT": str(turn.get("prompt") or ""),
+    }
+    subprocess.run(  # noqa: S602 - user-supplied command, turn passed via stdin (no injection)
+        exec_cmd,
+        shell=True,
+        env=env,
+        input=json_module.dumps(turn),
+        text=True,
+        check=False,
+    )
+
+
 @doc_ref(
-    usage="mycelium await --room <room> --handle <handle> [--timeout N] [--json]",
+    usage="mycelium await --room <room> --handle <handle> [--loop] [--exec CMD] [--timeout N] [--json]",
     desc="Long-poll a room as a server-held member until a message is addressed to the handle.",
     group="other",
 )
@@ -49,6 +88,16 @@ def await_room(
     timeout: int = typer.Option(
         0, "--timeout", "-t", help="Seconds to wait before giving up (0 = wait indefinitely)"
     ),
+    loop: bool = typer.Option(
+        False,
+        "--loop",
+        help="Stay resident: keep re-awaiting after each turn instead of exiting.",
+    ),
+    exec_cmd: str | None = typer.Option(
+        None,
+        "--exec",
+        help="With --loop: run this command per turn (turn JSON on stdin); it should call `respond`.",
+    ),
     json_output: bool = typer.Option(False, "--json", help="Emit the message as JSON for agents"),
 ) -> None:
     """Block until a message addressed to the handle arrives, print it, and exit.
@@ -57,21 +106,32 @@ def await_room(
     room member for the purpose of the aligner's roster, without holding any
     connection. On timeout, exits non-zero with no message.
 
+    With ``--loop`` it becomes a **resident runner**: it re-awaits after every turn,
+    so the handle stays present (its lease refreshes each poll) and never misses a
+    tick. Pair with ``--exec`` to drive a reasoning runtime per turn — the command
+    receives the turn JSON on stdin and is expected to call ``mycelium respond``.
+    This is the supported way to keep a turn-based agent (Claude Code, Cursor) woken
+    without writing your own service.
+
     Examples:
         mycelium await --room design --handle me
         mycelium await --room design --handle me --json --timeout 120
+        mycelium await --room design --handle bot --loop --exec ./drive-agent.sh
     """
     try:
         config = MyceliumConfig.load()
         room_name = _resolve_room(config, room)
-        url = f"{config.server.api_url}/api/rooms/{room_name}/await"
-        # The server blocks up to `timeout`; give the client a little more headroom
-        # (or no cap when waiting indefinitely).
-        client_timeout = float(timeout) + 15.0 if timeout > 0 else None
-        resp = httpx.get(url, params={"handle": handle, "timeout": timeout}, timeout=client_timeout)
-        resp.raise_for_status()
-        data = resp.json()
-        if "prompt" not in data:  # timed out — backend returned {"message": null}
+
+        if loop:
+            _await_loop(config, room_name, handle, timeout, exec_cmd, json_output)
+            return
+
+        if exec_cmd:
+            typer.secho("  ⟫  --exec requires --loop", fg=typer.colors.RED)
+            raise typer.Exit(2)
+
+        data = _await_once(config, room_name, handle, timeout)
+        if data is None:  # timed out — backend returned {"message": null}
             if json_output:
                 typer.echo(
                     json_module.dumps({"room": room_name, "handle": handle, "message": None})
@@ -92,6 +152,55 @@ def await_room(
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
         print_error(e, verbose=verbose)
         raise typer.Exit(1) from e
+
+
+def _await_loop(
+    config: MyceliumConfig,
+    room_name: str,
+    handle: str,
+    timeout: int,
+    exec_cmd: str | None,
+    json_output: bool,
+) -> None:
+    """Resident-runner loop: re-await forever, dispatching each turn.
+
+    A timeout is not terminal here — it just means "nothing yet," so we re-await
+    (keeping the presence lease warm). Ctrl-C is the clean stop. Errors on a single
+    poll are surfaced and the loop backs off briefly rather than dying, so a blip in
+    the backend doesn't drop the agent out of the room.
+    """
+    import time
+
+    if not json_output:
+        typer.secho(
+            f"  ⟫  @{handle} resident in {room_name} — awaiting"
+            + (f", driving `{exec_cmd}` per turn" if exec_cmd else "")
+            + " (Ctrl-C to stop)",
+            fg=typer.colors.CYAN,
+        )
+    while True:
+        try:
+            data = _await_once(config, room_name, handle, timeout)
+        except KeyboardInterrupt:
+            typer.echo("\n  [Stopped]")
+            return
+        except Exception as e:  # noqa: BLE001 - a poll blip must not drop residency
+            typer.secho(f"  ⟫  await error: {e}; retrying…", fg=typer.colors.YELLOW)
+            time.sleep(2.0)
+            continue
+        if data is None:
+            continue  # timeout → nothing addressed yet; re-await, lease stays warm
+        try:
+            if json_output:
+                typer.echo(json_module.dumps(data))
+            else:
+                typer.secho(f"  ⟫  {data.get('sender') or '?'} → @{handle}:", fg=typer.colors.CYAN)
+                typer.echo(data.get("prompt") or "")
+            if exec_cmd:
+                _run_exec(exec_cmd, data, room_name, handle)
+        except KeyboardInterrupt:
+            typer.echo("\n  [Stopped]")
+            return
 
 
 @doc_ref(

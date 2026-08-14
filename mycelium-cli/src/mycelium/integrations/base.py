@@ -12,11 +12,9 @@ failing ``tests/test_integration_contract.py``), not a silent degradation.
 An integration has two facets, sliced by lifetime:
 
 - **Dispatch facet** (per-agent): build/register/destroy the ``agents/<handle>``
-  manifest and produce a reply for an ``@handle`` mention. Implemented here in
-  Stage 1.
-- **Install facet** (per-host, one-time): stage assets / wire hooks / plugin /
-  service into the runtime, reversible, plus follow-up ``--step`` actions. The
-  abstract surface lands with the install relocation (Stage 2); see
+  manifest.
+- **Install facet** (per-host, one-time): stage assets / wire hooks / plugin
+  into the runtime, reversible, plus follow-up ``--step`` actions; see
   ``integrations/<family>/install.py``.
 
 The command layer (``commands/agent.py``, ``commands/adapter.py``) stays thin:
@@ -33,24 +31,20 @@ from typing import TYPE_CHECKING, ClassVar, Literal
 
 if TYPE_CHECKING:
     from mycelium.config import MyceliumConfig
-    from mycelium.integrations._spawn_common import SpawnRequest, SpawnResult
     from mycelium.protocol import AgentManifest
 
 
-#: Discriminator for how this family's agents come into existence per mention.
+#: Discriminator for *where* this family's agents run — the liveness distinction
+#: the UI/tooling surface (backend-hosted vs. user/herdr runtime).
 #:
-#: - ``cold_spawn``: the daemon spawns a fresh process per mention
-#:   (``claude -p``, ``cursor-agent -p``, future Gemini/Codex/Aider). The
-#:   family overrides :meth:`Integration.spawn`.
-#: - ``long_lived_gateway``: agents live inside a separate, long-running runtime
-#:   that owns its own mention delivery. The daemon ignores these manifests
-#:   entirely — the gateway is responsible for dispatch. (No first-party family
-#:   uses this today; retained as a lifecycle seam.)
+#: - ``resident``: the agent runs in a user-owned (or herdr-managed) runtime that
+#:   participates via ``mycelium await``/``respond`` — e.g. a Claude Code or Cursor
+#:   session, typically kept woken with ``mycelium await --loop``. Mycelium names
+#:   and installs the skill; it does not run the process.
 #: - ``backend_engine``: a first-party cognition engine (``adapter="engine"``)
-#:   whose run the **backend** owns via its summon seam. The daemon skips these,
-#:   same as a gateway. With ``engine.runtime = host`` the engine instead runs
-#:   as a host-side runtime under the local daemon.
-LifecycleModel = Literal["cold_spawn", "long_lived_gateway", "backend_engine"]
+#:   whose run the **backend** owns via its summon seam. With
+#:   ``engine.runtime = host`` the engine instead runs as a host-side runtime.
+LifecycleModel = Literal["resident", "backend_engine"]
 
 
 @dataclass
@@ -81,10 +75,9 @@ class Integration(ABC):
     #: value persisted in ``agents/<handle>`` manifests.
     name: str
 
-    #: How this family delivers mentions to its agents — drives whether the
-    #: daemon dispatch loop calls :meth:`spawn` on this family or skips it.
-    #: Every subclass MUST declare a value; ``tests/test_integration_contract``
-    #: enforces this.
+    #: Where this family's agents run (``resident`` vs ``backend_engine``) — the
+    #: liveness distinction surfaced to tooling/UI. Every subclass MUST declare a
+    #: value; ``tests/test_integration_contract`` enforces this.
     lifecycle: ClassVar[LifecycleModel]
 
     #: Follow-up ``mycelium adapter add <family> --step=<name>`` actions this
@@ -208,26 +201,6 @@ class Integration(ABC):
     def describe(self, manifest: AgentManifest, *, room: str) -> list[str]:
         """Lines printed after a successful add. Override per family."""
         return [f"  adapter: {manifest.adapter}"]
-
-    # ── cold-spawn dispatch (per-mention) ───────────────────────────────────
-
-    async def spawn(self, *, request: SpawnRequest) -> SpawnResult:
-        """Cold-spawn this family for one ``@handle`` mention.
-
-        Every ``lifecycle == "cold_spawn"`` family MUST override this. Long-
-        lived gateway families inherit this raise — the daemon dispatch loop
-        checks ``lifecycle`` before calling and never invokes ``spawn`` on a
-        gateway family, so the raise is a safety net for bugs in routing.
-
-        Why not :func:`@abstractmethod`: forcing every long-lived-gateway
-        family to declare a no-op stub buys no safety (the contract test
-        enforces override on cold_spawn families directly) and adds
-        boilerplate to every future gateway integration.
-        """
-        raise NotImplementedError(
-            f"{type(self).__name__} (lifecycle={getattr(self, 'lifecycle', '?')}) "
-            "does not support cold-spawn dispatch"
-        )
 
     # ── helpers the command layer uses for confirmation copy ────────────────
 

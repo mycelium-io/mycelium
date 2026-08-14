@@ -35,8 +35,8 @@ app = typer.Typer(
 ADAPTER_TYPES = {
     "claude-code": "skill + hooks: copies SKILL.md and lifecycle hooks into ~/.claude/",
     "cursor": (
-        "daemon-dispatched: drops .cursor/rules/mycelium.mdc + AGENTS.md "
-        "into each cursor agent's workspace at `mycelium agent create` time"
+        "resident: drops .cursor/rules/mycelium.mdc + AGENTS.md into each cursor "
+        "agent's workspace at `mycelium agent create` time"
     ),
 }
 
@@ -74,16 +74,12 @@ def add(
     step: list[str] | None = typer.Option(
         None,
         "--step",
-        help=(
-            "Follow-up step (repeatable). "
-            "claude-code / cursor: daemon (the daemon is shared across "
-            "both cold-spawn families, one service per host)."
-        ),
+        help="Follow-up step (repeatable). No adapters define follow-up steps today.",
     ),
     remove_step: bool = typer.Option(
         False,
         "--remove-step",
-        help="Reverse the named --step instead of applying it (e.g. uninstall the daemon service).",
+        help="Reverse the named --step instead of applying it.",
     ),
     reinstall: bool = typer.Option(
         False, "--reinstall", help="Reinstall assets even if adapter is already registered"
@@ -96,12 +92,8 @@ def add(
     Register and install an agent framework adapter, then optionally wire it into your environment.
 
     Examples:
-        # claude-code and cursor share one daemon — install it under whichever
-        # adapter you reach first; the other adapter then reuses the same service.
         mycelium adapter add claude-code
-        mycelium adapter add claude-code --step=daemon
         mycelium adapter add cursor
-        mycelium adapter add cursor --step=daemon
     """
     try:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False

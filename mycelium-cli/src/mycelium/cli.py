@@ -15,7 +15,6 @@ from mycelium.commands import (
     adapter,
     agent,
     config,
-    daemon,
     demo,
     docs,
     doctor,
@@ -135,7 +134,6 @@ app.add_typer(agent.app, name="agent")
 app.add_typer(user.app, name="user")
 app.add_typer(engine.app, name="engine")
 app.add_typer(openshell.app, name="openshell")
-app.add_typer(daemon.app, name="daemon")
 app.add_typer(demo.app, name="demo")
 app.add_typer(hub.app, name="hub")
 

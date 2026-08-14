@@ -647,12 +647,12 @@ def _cursor_adapter_registered() -> bool:
 
 
 def _check_cursor_agent_binary() -> CheckResult:
-    """Verify ``cursor-agent`` is reachable on PATH for the daemon to spawn.
+    """Verify ``cursor-agent`` is reachable on PATH for a resident Cursor session.
 
-    The daemon shells out via ``asyncio.create_subprocess_exec("cursor-agent",
-    ...)`` — without the binary on PATH every mention silently fails with a
-    daemon-side ``FileNotFoundError``. Surfacing this early avoids the "I
-    @-mentioned my cursor agent and nothing happened" debugging spiral.
+    A cursor agent participates as the user's own Cursor session (kept woken with
+    ``mycelium await --loop``); ``cursor-agent`` must be installed for that session
+    to run. Surfacing this early avoids the "I set up a cursor agent and nothing
+    happened" debugging spiral.
     """
     if not _cursor_adapter_registered():
         return CheckResult(
@@ -682,7 +682,7 @@ def _check_cursor_agent_binary() -> CheckResult:
 
 
 def _check_cursor_login() -> CheckResult:
-    """Verify ``cursor-agent`` is authenticated so the daemon can spawn it headlessly.
+    """Verify ``cursor-agent`` is authenticated so a resident Cursor session can run.
 
     ``cursor-agent`` persists its session at ``~/.config/cursor/auth.json``
     (top-level ``accessToken`` / ``refreshToken``) — that's the file
@@ -834,99 +834,6 @@ def _check_cursor_workspace_assets() -> CheckResult:
     )
 
 
-# ── Agent daemon checks ───────────────────────────────────────────────────────
-
-
-def _claude_daemon_installed() -> bool:
-    """True if the daemon service unit exists on this platform."""
-    import platform
-
-    home = Path.home()
-    if platform.system() == "Darwin":
-        return (home / "Library" / "LaunchAgents" / "io.mycelium.daemon.plist").exists()
-    if platform.system() == "Linux":
-        return (home / ".config" / "systemd" / "user" / "mycelium-daemon.service").exists()
-    return False
-
-
-def _check_daemon_service_registered() -> CheckResult:
-    """The unit file is on disk in the right location for the service manager."""
-    import platform
-
-    if not _claude_daemon_installed():
-        return CheckResult(
-            name="daemon service",
-            status="ok",
-            message=(
-                "agent daemon not installed (skipped) "
-                "(install with: mycelium adapter add claude-code --step=daemon)"
-            ),
-        )
-    system = platform.system()
-    return CheckResult(
-        name="daemon service",
-        status="ok",
-        message=f"{system} service unit registered",
-    )
-
-
-def _check_daemon_running() -> CheckResult:
-    """The daemon answers on its unix-socket health endpoint."""
-    if not _claude_daemon_installed():
-        return CheckResult(
-            name="daemon health",
-            status="ok",
-            message="not installed (skipped)",
-        )
-
-    from mycelium.daemon.health import read_health_blocking
-
-    health = read_health_blocking(timeout=2.0)
-    if health is None:
-        return CheckResult(
-            name="daemon health",
-            status="error",
-            message="service installed but unix-socket /health did not respond",
-            details=[
-                "  socket: ~/.mycelium/daemon.sock",
-                "  logs:   ~/.mycelium/logs/daemon.log",
-                "  fix:    mycelium daemon restart",
-            ],
-        )
-
-    uptime = int(health.get("uptime_s") or 0)
-    rooms_cfg = health.get("rooms_configured") or []
-    rooms_sub = health.get("rooms_subscribed") or []
-    errors = int(health.get("errors_last_hour") or 0)
-
-    details: list[str] = [
-        f"  uptime: {uptime // 3600}h {uptime % 3600 // 60}m",
-        f"  rooms:  {len(rooms_sub)}/{len(rooms_cfg)} connected",
-    ]
-    if not rooms_cfg:
-        details.append("  (no rooms subscribed; `mycelium daemon subscribe <room>`)")
-    last = health.get("last_dispatch")
-    if last:
-        details.append(
-            f"  last run: @{last.get('agent')} in {last.get('room')} "
-            f"({last.get('result')}, {last.get('duration_s', 0):.1f}s)"
-        )
-    if errors:
-        last_err = health.get("last_error") or {}
-        details.append(
-            f"  errors: {errors} in last hour, last: {last_err.get('where')}: {last_err.get('msg')}"
-        )
-
-    return CheckResult(
-        name="daemon health",
-        status="warning" if errors else "ok",
-        message=(
-            "running, no errors" if not errors else f"running, but {errors} error(s) in last hour"
-        ),
-        details=details,
-    )
-
-
 @doc_ref(
     usage="mycelium doctor [--fix] [--json] [--mode auto|hub|spoke]",
     desc="Diagnose and fix common configuration issues (workspace sync, LLM, containers).",
@@ -1016,8 +923,6 @@ def doctor(
                     _check_cursor_agent_binary(),
                     _check_cursor_login(),
                     _check_cursor_workspace_assets(),
-                    _check_daemon_service_registered(),
-                    _check_daemon_running(),
                 ],
             ),
         ]

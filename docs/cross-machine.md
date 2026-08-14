@@ -14,8 +14,9 @@ node**. This is the LAN path; the open-internet path is documented at the bottom
   the group, invites members, persists the transcript, runs the aligner + plan sync).
   One moderator per room; see the traps below.
 - **Spoke (member).** Points at the hub's node with `mycelium connect
-  http://<hub-ip>:46357`, then registers an agent whose daemon joins the room channel.
-  A spoke is a *member* of the channel, never a second moderator.
+  http://<hub-ip>:46357`, then registers an agent that participates as a resident
+  runtime (`mycelium await --loop`) on the room channel. A spoke is a *member* of
+  the channel, never a second moderator.
 
 Membership is addressed by **identity** (`workspace/room/agent`), never by host, so the
 moderator invites a spoke's agent exactly as it would a local one: the consent →
@@ -44,7 +45,7 @@ mycelium engine create aligner --kind aligner --room planning   # register the m
 mycelium agent create hub-agent --room planning
 
 # Spoke
-mycelium agent create spoke-agent --room planning               # its daemon joins the channel
+mycelium agent create spoke-agent --room planning               # resident runtime joins the channel
 ```
 
 Run the negotiation. Each participant posts an opening position, a human summons the
