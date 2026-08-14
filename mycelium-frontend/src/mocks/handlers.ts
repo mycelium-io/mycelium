@@ -231,6 +231,7 @@ export async function handleMock(req: Request): Promise<Response | null> {
           note: t.done ? "task complete" : null,
         }));
         const ledgerRows = [
+          { id: "esc", source: "ledger", kind: "escalation", state: "open", title: "Bless the OpenFGA model change", escalated_by: "agent-y", ask: "sign-off", provenance: "raised by agent-y", ephemeral: true, expires_in: "3d", age: "2m", needs_you: true },
           { id: "d3f", source: "ledger", kind: "decision", state: "open", title: "JWT TTL — 15m or 60m?", choices: ["15m", "60m"], owner: { handle: "agent-y", kind: "agent", present: true }, provenance: "from agent-y", age: "6m", needs_you: true },
           { id: "a91", source: "ledger", kind: "concern", state: "blocked", title: "Enable thin-spoke join", waiting_on: "#502", github: { issue: 502, state: "open" }, age: "40m", needs_you: true },
           { id: "7c2", source: "ledger", kind: "review", state: "in_review", title: "agent-z opened a PR, wants eyes", owner: { handle: "agent-z", kind: "agent", present: true }, work: { branch: "feat/path-fix", pr: { number: 504, state: "open" }, ci: "green" }, provenance: "from agent-z", age: "12m", needs_you: true },

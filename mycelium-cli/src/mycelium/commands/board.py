@@ -38,6 +38,7 @@ console = Console()
 _LENS_ORDER = ["needs", "flight", "resolved"]
 _LENS_TITLE = {"needs": "⚠ NEEDS YOU", "flight": "◐ IN FLIGHT", "resolved": "✓ RESOLVED"}
 _KIND_STYLE = {
+    "escalation": "bold red",
     "decision": "yellow",
     "blocked": "red",
     "review": "cyan",
@@ -95,6 +96,10 @@ def _resolve_item(items: list[dict], partial: str) -> dict:
 def _meta_bits(item: dict) -> Text:
     """The dim trailing metadata: owner · work-links · deps · provenance · age."""
     bits = Text()
+    if item.get("escalated_by"):
+        ask = item.get("ask")
+        bits.append(f"⚑ {item['escalated_by']}", style="red")
+        bits.append(f" needs {ask}  " if ask else "  ", style="dim")
     owner = item.get("owner")
     if owner:
         glyph = "🤖" if owner.get("kind") == "agent" else "🧑"
@@ -119,6 +124,8 @@ def _meta_bits(item: dict) -> Text:
         bits.append(f"#{gh['issue']} ", style="dim")
     if item.get("provenance"):
         bits.append(f"{item['provenance']}  ", style="dim")
+    if item.get("ephemeral") and item.get("expires_in"):
+        bits.append(f"⌛{item['expires_in']}  ", style="dim")
     if item.get("age"):
         bits.append(str(item["age"]), style="dim")
     return bits
@@ -246,6 +253,32 @@ def capture(
         resp.raise_for_status()
         item = resp.json()
     console.print(f"[green]✓[/green] captured [dim]{_short(item['id'])}[/dim]  {item['title']}")
+
+
+@app.command()
+def escalate(
+    text: str = typer.Argument(..., help="What needs a human, in plain language."),
+    agent: str = typer.Option("cli", "--as", help="The agent (or you) raising the exception."),
+    ask: str | None = typer.Option(
+        None, "--ask", help="What's needed: sign-off / decision / review / unblock."
+    ),
+    issue: int | None = typer.Option(
+        None, "--issue", help="Back-link to a GitHub issue (makes it durable)."
+    ),
+    room: str | None = typer.Option(None, "--room", "-r"),
+) -> None:
+    """Raise a hand — an agent-style escalation lands at the top of 'needs you'."""
+    api_url, room_name = _base(room)
+    body: dict[str, object] = {"text": text, "agent": agent}
+    if ask is not None:
+        body["ask"] = ask
+    if issue is not None:
+        body["issue"] = issue
+    with httpx.Client(base_url=api_url, timeout=30) as client:
+        resp = client.post(f"/api/rooms/{room_name}/board/escalate", json=body)
+        resp.raise_for_status()
+        item = resp.json()
+    console.print(f"[red]⚑[/red] escalated [dim]{_short(item['id'])}[/dim]  {item['title']}")
 
 
 @app.command()

@@ -67,8 +67,14 @@ class BoardItemOut(BaseModel):
     choices: list[str] | None = None
     blocks: str | None = None
     waiting_on: str | None = None
+    # An escalation names the agent that raised it and what it's asking for.
+    escalated_by: str | None = None
+    ask: str | None = None
     provenance: str | None = None
     age: str | None = None
+    # Anti-rot: an unbacked item that will self-expire, and when.
+    ephemeral: bool = False
+    expires_in: str | None = None
     needs_you: bool = False
     note: str | None = None
     created_at: str | None = None
@@ -90,6 +96,15 @@ class BoardOut(BaseModel):
 class CaptureBody(BaseModel):
     text: str = Field(..., min_length=1, max_length=2000)
     sender: str = Field(default="frontend")
+
+
+class EscalateBody(BaseModel):
+    text: str = Field(..., min_length=1, max_length=2000)
+    agent: str = Field(..., description="The agent raising the exception.")
+    ask: str | None = Field(
+        None, description="What it needs: sign-off / decision / review / unblock."
+    )
+    issue: int | None = Field(None, description="Back-link to a GitHub issue, if this is durable.")
 
 
 class VerbBody(BaseModel):
@@ -115,6 +130,21 @@ async def capture(room_name: str, body: CaptureBody) -> BoardItemOut:
     """Natural-language capture → a structured, open concern on the board."""
     _require_room(room_name)
     item = board_service.capture_concern(room_name, body.text.strip(), sender=body.sender)
+    return BoardItemOut.model_validate(item)
+
+
+@router.post("/escalate", response_model=BoardItemOut, status_code=201)
+async def escalate(room_name: str, body: EscalateBody) -> BoardItemOut:
+    """An agent raises a hand → a human exception at the top of the board.
+
+    The target-model input: agents coordinate the doing and escalate what needs
+    human judgment. Same event ledger, so any awake agent can call this directly.
+    """
+    _require_room(room_name)
+    github = {"issue": body.issue, "state": "open"} if body.issue is not None else None
+    item = board_service.escalate_exception(
+        room_name, body.text.strip(), agent=body.agent, ask=body.ask, github=github
+    )
     return BoardItemOut.model_validate(item)
 
 

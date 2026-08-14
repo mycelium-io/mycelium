@@ -173,8 +173,12 @@ export interface BoardItem {
   choices?: string[] | null;
   blocks?: string | null;
   waiting_on?: string | null;
+  escalated_by?: string | null;
+  ask?: string | null;
   provenance?: string | null;
   age?: string | null;
+  ephemeral?: boolean;
+  expires_in?: string | null;
   needs_you: boolean;
   note?: string | null;
   created_at?: string | null;

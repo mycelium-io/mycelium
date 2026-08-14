@@ -155,6 +155,53 @@ class TestBoard:
         assert row["github"]["issue"] == 512
         assert row["note"] == "promoted → #512"
 
+    async def test_escalation_tops_needs_you_and_is_ephemeral(self, client: AsyncClient):
+        """An agent-raised escalation floats to the top and self-expires (anti-rot)."""
+        room = "board-escalate"
+        await _make_room(client, room)
+        # A prior plain concern, then an escalation raised after it.
+        await _post_event(client, room, kind="concern", title="older concern")
+        resp = await client.post(
+            f"/api/rooms/{room}/board/escalate",
+            json={"text": "bless the OpenFGA change", "agent": "agent-y", "ask": "sign-off"},
+        )
+        assert resp.status_code == 201, resp.text
+        item = resp.json()
+        assert item["kind"] == "escalation"
+        assert item["escalated_by"] == "agent-y"
+        assert item["ask"] == "sign-off"
+        assert item["needs_you"] is True
+        # Bespoke (no GitHub backing) → carries a TTL, marked ephemeral.
+        assert item["ephemeral"] is True
+        assert item["expires_in"] is not None
+
+        # Escalation sorts ahead of the older concern in the projection.
+        items = (await client.get(f"/api/rooms/{room}/board")).json()["items"]
+        assert items[0]["escalated_by"] == "agent-y"
+
+    async def test_github_backed_escalation_is_durable(self, client: AsyncClient):
+        room = "board-escalate-gh"
+        await _make_room(client, room)
+        resp = await client.post(
+            f"/api/rooms/{room}/board/escalate",
+            json={"text": "auth rollout decision", "agent": "planner", "issue": 512},
+        )
+        item = resp.json()
+        # Backed by a real issue → durable, not ephemeral.
+        assert item["ephemeral"] is False
+        assert item["github"]["issue"] == 512
+
+    async def test_captured_concern_self_expires(self, client: AsyncClient):
+        room = "board-capture-ttl"
+        await _make_room(client, room)
+        item = (
+            await client.post(
+                f"/api/rooms/{room}/board/capture", json={"text": "note", "sender": "julia"}
+            )
+        ).json()
+        assert item["ephemeral"] is True
+        assert item["expires_in"] is not None
+
     async def test_verb_on_missing_item_404(self, client: AsyncClient):
         room = "board-404"
         await _make_room(client, room)

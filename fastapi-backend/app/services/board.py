@@ -24,7 +24,7 @@ is purely a consumer view over it.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
@@ -43,6 +43,12 @@ BOARD_LEDGER_KINDS = frozenset({"action", "concern"})
 # These live in payload["state"]; the projection falls back to event_status.
 _STATUS_TO_STATE = {"open": "open", "in_progress": "in_progress", "resolved": "resolved"}
 
+# Anti-rot (see PR #494 framing): a bespoke item with no hard-source (GitHub)
+# backing must not live forever, or the board rots into a backlog to groom.
+# Captures/escalations carry a default TTL so they self-expire; a GitHub-backed
+# item is durable because its authority lives in GitHub, not here.
+BESPOKE_TTL_SECONDS = 3 * 24 * 3600  # 3 days
+
 
 def _humanize_age(created: datetime, now: datetime) -> str:
     secs = max(0.0, (now - created).total_seconds())
@@ -58,9 +64,13 @@ def _humanize_age(created: datetime, now: datetime) -> str:
 def _needs_you(kind: str, state: str, explicit: bool | None) -> bool:
     """Whether a row demands human attention (drives the default "Needs you" lens).
 
-    An explicit ``payload.needs_you`` wins; otherwise decisions, blocks, reviews,
+    In the target model (PR #494), "Needs you" is what agents *escalated* to the
+    human, not a pile of human to-dos — so an escalation always needs you. An
+    explicit ``payload.needs_you`` wins next; otherwise decisions, blocks, reviews,
     and freshly-opened concerns steer the human, while in-flight actions don't.
     """
+    if kind == "escalation" and state != "resolved":
+        return True
     if explicit is not None:
         return explicit
     if state == "blocked":
@@ -107,6 +117,17 @@ def _ledger_item(
     needs = _needs_you(kind, state, payload.get("needs_you"))
     title = str(payload.get("title") or msg.content or "").strip() or "(untitled)"
 
+    # Anti-rot legibility: an item is ephemeral when it has a TTL and no hard
+    # GitHub backing — the UI marks it so nobody mistakes a decaying pointer for
+    # a durable record.
+    github = payload.get("github")
+    ephemeral = msg.event_expires_at is not None and not github
+    expires_in = (
+        _humanize_age(now, msg.event_expires_at)
+        if (msg.event_expires_at is not None and msg.event_expires_at > now)
+        else None
+    )
+
     return {
         "id": str(msg.id),
         "source": "ledger",
@@ -116,12 +137,18 @@ def _ledger_item(
         "detail": payload.get("detail"),
         "owner": _owner_out(payload.get("owner"), present),
         "work": payload.get("work"),
-        "github": payload.get("github"),
+        "github": github,
         "choices": payload.get("choices"),
         "blocks": payload.get("blocks"),
         "waiting_on": payload.get("waiting_on"),
+        # An escalation names the agent that raised it and what it's asking for
+        # (sign-off / decision / review / unblock) — the exception routed to you.
+        "escalated_by": payload.get("escalated_by"),
+        "ask": payload.get("ask"),
         "provenance": payload.get("provenance") or f"from {msg.sender_handle}",
         "age": _humanize_age(msg.created_at, now),
+        "ephemeral": ephemeral,
+        "expires_in": expires_in,
         "needs_you": needs,
         "note": payload.get("note"),
         "created_at": msg.created_at.isoformat(),
@@ -205,8 +232,11 @@ def project_board(room_name: str) -> dict[str, Any]:
 
     items.extend(_plan_items(room_name, present, now))
 
-    # Newest ledger events first; plan/episode rows (no timestamp) sink below.
+    # Two stable passes (Python sort is stable): first newest-first (null
+    # timestamps sink to the bottom), then float agent escalations to the very
+    # top — they're the exceptions routed to the human, the point of the lens.
     items.sort(key=lambda r: r.get("created_at") or "", reverse=True)
+    items.sort(key=lambda r: 0 if r.get("escalated_by") else 1)
 
     counts = {"needs": 0, "flight": 0, "resolved": 0}
     for r in items:
@@ -257,8 +287,26 @@ class BoardError(Exception):
     """A verb that can't apply to the given item (maps to HTTP 409)."""
 
 
-def capture_concern(room_name: str, title: str, *, sender: str) -> dict[str, Any]:
-    """Natural-language capture → a structured, open ``concern`` on the ledger."""
+def _new_ledger_item(
+    room_name: str,
+    *,
+    sender: str,
+    title: str,
+    payload: dict[str, Any],
+    verb: str,
+    durable: bool,
+) -> dict[str, Any]:
+    """Add a stateful ``concern`` event to the ledger and return its board row.
+
+    Anti-rot: unless the item is ``durable`` (hard GitHub backing), it carries a
+    TTL so it self-expires instead of rotting into a permanent backlog.
+    """
+    now = datetime.now(UTC)
+    meta: dict[str, Any] = {"kind": "concern", "status": "open", "payload": payload}
+    expires_at = None
+    if not durable:
+        meta["ttl_seconds"] = BESPOKE_TTL_SECONDS
+        expires_at = now + timedelta(seconds=BESPOKE_TTL_SECONDS)
     msg = local_state.StoredMessage(
         room_name=room_name,
         sender_handle=sender,
@@ -266,23 +314,67 @@ def capture_concern(room_name: str, title: str, *, sender: str) -> dict[str, Any
         content=title,
         event_kind="concern",
         event_status="open",
-        event_metadata={
-            "kind": "concern",
-            "status": "open",
-            "payload": {
-                "kind": "concern",
-                "title": title,
-                "state": "open",
-                "needs_you": True,
-                "provenance": f"captured by {sender}",
-            },
-        },
+        event_metadata=meta,
+        event_expires_at=expires_at,
     )
     local_state.add_message(room_name, msg)
-    _publish_update(room_name, str(msg.id), "capture")
-    now = datetime.now(UTC)
+    _publish_update(room_name, str(msg.id), verb)
     present = set(channel_manager.members(room_name))
     return _ledger_item(msg, present, now)  # type: ignore[return-value]
+
+
+def capture_concern(room_name: str, title: str, *, sender: str) -> dict[str, Any]:
+    """Natural-language capture → a structured, open ``concern`` on the ledger."""
+    return _new_ledger_item(
+        room_name,
+        sender=sender,
+        title=title,
+        verb="capture",
+        durable=False,
+        payload={
+            "kind": "concern",
+            "title": title,
+            "state": "open",
+            "needs_you": True,
+            "provenance": f"captured by {sender}",
+        },
+    )
+
+
+def escalate_exception(
+    room_name: str,
+    title: str,
+    *,
+    agent: str,
+    ask: str | None = None,
+    github: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """An agent raises a hand → a human exception at the top of "Needs you".
+
+    This is the target-model input (PR #494): agents coordinate the doing and
+    *escalate* what needs human judgment; the human steers, never dispatches. A
+    GitHub-backed escalation is durable (its authority lives in the issue);
+    otherwise it self-expires like any bespoke item.
+    """
+    payload: dict[str, Any] = {
+        "kind": "escalation",
+        "title": title,
+        "state": "open",
+        "needs_you": True,
+        "escalated_by": agent,
+        "ask": ask,
+        "provenance": f"raised by {agent}",
+    }
+    if github:
+        payload["github"] = github
+    return _new_ledger_item(
+        room_name,
+        sender=agent,
+        title=title,
+        verb="escalate",
+        durable=bool(github),
+        payload=payload,
+    )
 
 
 def apply_verb(

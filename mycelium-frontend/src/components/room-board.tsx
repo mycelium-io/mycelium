@@ -275,6 +275,7 @@ function Legend({ k, label }: { k: string; label: string }) {
 // The leading anchor + kind pill. State wins the anchor (a resolved decision
 // reads as resolved, a blocked concern as blocked); kind drives the pill label.
 const KIND_META: Record<string, { tone: string; label: string }> = {
+  escalation: { tone: "var(--red)", label: "escalation" },
   decision: { tone: "var(--yellow)", label: "decision" },
   blocked: { tone: "var(--red)", label: "blocked" },
   review: { tone: "var(--accent)", label: "review" },
@@ -284,6 +285,8 @@ const KIND_META: Record<string, { tone: string; label: string }> = {
 
 function anchorFor(item: BoardItem): { icon: typeof Circle; tone: string } {
   if (item.state === "resolved") return { icon: CheckCircle2, tone: "var(--green)" };
+  // An agent-raised escalation is the loudest thing on the board.
+  if (item.kind === "escalation") return { icon: Hand, tone: "var(--red)" };
   if (item.state === "blocked") return { icon: Ban, tone: "var(--red)" };
   if (item.state === "in_review" || item.kind === "review") return { icon: Eye, tone: "var(--accent)" };
   if (item.kind === "decision") return { icon: AlertTriangle, tone: "var(--yellow)" };
@@ -344,10 +347,24 @@ function BoardRow({
 
         {/* Compact inline meta — quiet, right-aligned */}
         <div className="ml-auto flex shrink-0 items-center gap-2.5 text-micro text-muted-foreground">
+          {/* An escalation leads with the agent that raised it and its ask. */}
+          {item.escalated_by && (
+            <span className="inline-flex items-center gap-1" style={{ color: "var(--red)" }}>
+              <Bot className="size-3" />
+              <span className="font-medium">{item.escalated_by}</span>
+              {item.ask && <span className="text-muted-foreground">needs {item.ask}</span>}
+            </span>
+          )}
           {item.owner && <OwnerBadge owner={item.owner} />}
           {item.work?.ci && <CiDot ci={item.work.ci} />}
           {item.work?.pr && <span className="font-mono text-accent">PR#{item.work.pr.number}</span>}
           {item.waiting_on && <span className="text-yellow">⛔ {item.waiting_on}</span>}
+          {item.ephemeral && item.expires_in && (
+            <span className="inline-flex items-center gap-1 text-faint" title="transient — self-expires, no durable record here">
+              <Clock className="size-3" />
+              {item.expires_in}
+            </span>
+          )}
           {item.age && <span className="tabular text-faint">{item.age}</span>}
         </div>
 
@@ -400,6 +417,28 @@ function ExpandedDetail({ item }: { item: BoardItem }) {
         <Field label="id" value={<span className="font-mono text-micro text-muted-foreground">{item.id}</span>} />
         <Field label="source" value={item.source} />
         <Field label="state" value={item.state.replace("_", " ")} />
+        {item.escalated_by && (
+          <Field
+            label="escalated by"
+            value={
+              <span className="inline-flex items-center gap-1" style={{ color: "var(--red)" }}>
+                <Bot className="size-3" />
+                {item.escalated_by}
+                {item.ask && <span className="text-muted-foreground">· needs {item.ask}</span>}
+              </span>
+            }
+          />
+        )}
+        {item.ephemeral && (
+          <Field
+            label="lifespan"
+            value={
+              <span className="text-faint">
+                transient{item.expires_in ? ` · expires in ${item.expires_in}` : ""} — no durable record, promote to keep
+              </span>
+            }
+          />
+        )}
         {item.owner && (
           <Field
             label="owner"
