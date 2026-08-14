@@ -113,6 +113,7 @@ app.command(name="logs")(instance.logs)
 
 # Top-level shortcuts
 app.command(name="whoami")(user.whoami)
+app.command(name="iam")(user.iam)
 app.command(name="watch")(room.watch)
 app.command(name="sync")(memory.memory_sync)
 app.command(name="connect")(hub.connect)

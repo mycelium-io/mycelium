@@ -36,6 +36,9 @@ mycelium agent create release-agent --cwd ~/repo --owner julia --team core
 mycelium agent ls --owner julia   # "my agents"
 mycelium agent ls --team core     # "my team"
 
+# Declare who you are on this machine (sets identity + upserts the user record)
+mycelium iam julia --name "Julia Valenti" --team core
+
 # Who am I acting as?
 mycelium whoami
 ```

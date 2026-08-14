@@ -324,18 +324,33 @@ export async function fetchTeams(): Promise<Team[]> {
   return Array.isArray(data.teams) ? data.teams : [];
 }
 
-/** Create or upsert a user in the global store. */
+/** Best-effort human-readable message from a FastAPI error body. */
+async function errorDetail(res: Response): Promise<string> {
+  try {
+    const data = await res.json();
+    const d = data?.detail;
+    if (typeof d === "string") return d;
+    if (Array.isArray(d) && d[0]?.msg) return String(d[0].msg);
+  } catch {
+    // fall through to the status line
+  }
+  return `Request failed (${res.status})`;
+}
+
+/** Create or upsert a user in the global store. Throws with a readable message
+ *  on failure so callers can surface it instead of swallowing it. */
 export async function createUser(payload: {
   handle: string;
   display_name?: string;
   teams?: string[];
-}): Promise<User | null> {
+  notify?: string | null;
+}): Promise<User> {
   const res = await fetch(`/api/users`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) return null;
+  if (!res.ok) throw new Error(await errorDetail(res));
   return res.json();
 }
 

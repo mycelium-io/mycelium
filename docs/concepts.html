@@ -151,6 +151,9 @@ PATCH .../messages/{id}  {<span class="str">&quot;status&quot;</span>: <span cla
 <span class="cmd">mycelium agent ls</span> <span class="flag">--owner</span> julia   # <span class="str">&quot;my agents&quot;</span>
 <span class="cmd">mycelium agent ls</span> <span class="flag">--team</span> core     # <span class="str">&quot;my team&quot;</span>
 
+<span class="comment"># Declare who you are on this machine (sets identity + upserts the user record)</span>
+<span class="cmd">mycelium iam julia</span> <span class="flag">--name</span> <span class="str">&quot;Julia Valenti&quot;</span> <span class="flag">--team</span> core
+
 <span class="comment"># Who am I acting as?</span>
 <span class="cmd">mycelium whoami</span></code></pre>
       <h2 id="users-cost-roll-up">Cost roll-up</h2>

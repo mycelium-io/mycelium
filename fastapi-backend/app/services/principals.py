@@ -150,6 +150,10 @@ def write_user(payload: dict[str, Any]) -> dict[str, Any]:
     existing = read_memory_file(get_users_dir(), handle)
     version = 1
     if existing is not None:
+        # Content-idempotent: re-writing the same record is a no-op (no version
+        # bump), so repeated upserts converge instead of counting up forever.
+        if existing[1].strip() == yaml_body:
+            return {"handle": handle, **body}
         try:
             version = int(existing[0].get("version", 1)) + 1
         except (TypeError, ValueError):

@@ -86,6 +86,10 @@ def _write_user(user: UserManifest, created_by: str) -> None:
     existing = read_memory(get_users_dir(), user.handle)
     version = 1
     if existing is not None:
+        # Content-idempotent: re-writing the same record is a no-op (no version
+        # bump), so `iam` / `user create` can be re-run safely and converge.
+        if existing[1].strip() == yaml_body:
+            return
         try:
             version = int(existing[0].get("version", 1)) + 1
         except (TypeError, ValueError):
@@ -297,8 +301,7 @@ def whoami(ctx: typer.Context) -> None:
         console.print(f"[bold]acting as[/bold] [cyan]@{principal}[/cyan]  [dim]({identity})[/dim]")
         if user is None:
             console.print(
-                f"[dim]Not registered. Add yourself with: "
-                f'mycelium user create {principal} --name "…"[/dim]'
+                f'[dim]Not registered. Claim it with: mycelium iam {principal} --name "…"[/dim]'
             )
         else:
             if user.display_name:
@@ -311,6 +314,61 @@ def whoami(ctx: typer.Context) -> None:
                 console.print(
                     f"  @{m.handle} [dim]({room_name})[/dim] ${m.budget_usd_per_month:.2f}/mo"
                 )
+    except typer.Exit:
+        raise
+    except Exception as e:
+        verbose = ctx.obj.get("verbose", False) if ctx.obj else False
+        print_error(e, verbose=verbose)
+        raise typer.Exit(1) from None
+
+
+@doc_ref(
+    usage='mycelium iam <handle> [--name "Display Name"]',
+    desc="Set this machine's identity and ensure the user record exists.",
+    group="user",
+)
+def iam(
+    ctx: typer.Context,
+    handle: str = typer.Argument(..., help="Your user handle (lowercase slug, e.g. 'julia')."),
+    name: str | None = typer.Option(None, "--name", "-n", help="Display name to set/update."),
+    team: list[str] | None = typer.Option(None, "--team", help="Team slug to join (repeatable)."),
+) -> None:
+    """Declare who you are on this machine.
+
+    Sets ``identity.name`` (what ``whoami``, attribution, and the default reply
+    handle resolve to) and upserts the ``users/<handle>`` record so the principal
+    actually exists. The one-liner counterpart to the app's acting-as picker.
+
+    Examples:
+        mycelium iam julia --name "Julia Valenti" --team core
+    """
+    try:
+        try:
+            manifest = UserManifest(handle=handle, display_name=name or "", teams=team or [])
+        except ValidationError as exc:
+            typer.secho(f"Invalid handle: {exc}", fg=typer.colors.RED)
+            raise typer.Exit(1) from exc
+
+        config = MyceliumConfig.load()
+
+        # Preserve an existing display name / teams when the caller didn't pass them.
+        existing = load_user(manifest.handle)
+        if existing is not None:
+            if name is None:
+                manifest.display_name = existing.display_name
+            if not team:
+                manifest.teams = existing.teams
+        _write_user(manifest, created_by=manifest.handle)
+
+        config.identity.name = manifest.handle
+        config.save()
+
+        team_line = f" · teams: {', '.join(manifest.teams)}" if manifest.teams else ""
+        console.print(
+            f"[green]You are[/green] [cyan]@{manifest.handle}[/cyan]"
+            f"{f' ({manifest.display_name})' if manifest.display_name else ''}{team_line}"
+        )
+        console.print("[dim]Set as this machine's identity. Check with: mycelium whoami[/dim]")
     except typer.Exit:
         raise
     except Exception as e:
