@@ -49,11 +49,6 @@ async def list_agents(room_name: str) -> list[AgentRead]:
         if not isinstance(data, dict):
             continue
 
-        try:
-            budget = float(data.get("budget_usd_per_month", 0.0) or 0.0)
-        except (TypeError, ValueError):
-            budget = 0.0
-
         allow_from = data.get("allow_from") or []
         if not isinstance(allow_from, list):
             allow_from = []
@@ -67,7 +62,6 @@ async def list_agents(room_name: str) -> list[AgentRead]:
                 cwd=str(data["cwd"]) if data.get("cwd") else None,
                 owner=_norm(data.get("owner")),
                 team=_norm(data.get("team")),
-                budget_usd_per_month=budget,
                 allow_from=[str(h) for h in allow_from if h],
             )
         )

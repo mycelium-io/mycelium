@@ -51,19 +51,18 @@ def test_user_store_roundtrip(isolated_home) -> None:  # noqa: ANN001
     assert [u.handle for u in user_cmd.list_users()] == ["julia"]
 
 
-def _seed_agent(room: str, handle: str, *, owner: str | None, budget: float) -> None:
-    manifest = AgentManifest(handle=handle, cwd="/tmp", owner=owner, budget_usd_per_month=budget)
+def _seed_agent(room: str, handle: str, *, owner: str | None) -> None:
+    manifest = AgentManifest(handle=handle, cwd="/tmp", owner=owner)
     body = yaml.safe_dump(manifest.model_dump(exclude={"handle"}), sort_keys=False)
     write_memory(get_room_dir(room), manifest.memory_key, body, created_by="tester")
 
 
-def test_load_owned_agents_rolls_up_budget(isolated_home) -> None:  # noqa: ANN001
-    """Owned agents are collected across rooms and their budgets summed."""
-    _seed_agent("alpha", "a1", owner="julia", budget=5.0)
-    _seed_agent("beta", "a2", owner="julia", budget=7.5)
-    _seed_agent("beta", "a3", owner="sam", budget=99.0)
+def test_load_owned_agents_collects_across_rooms(isolated_home) -> None:  # noqa: ANN001
+    """Owned agents are collected across every local room."""
+    _seed_agent("alpha", "a1", owner="julia")
+    _seed_agent("beta", "a2", owner="julia")
+    _seed_agent("beta", "a3", owner="sam")
 
-    owned, total = load_owned_agents(owner="@Julia")
+    owned = load_owned_agents(owner="@Julia")
     handles = sorted(m.handle for _room, m in owned)
     assert handles == ["a1", "a2"]
-    assert total == 12.5

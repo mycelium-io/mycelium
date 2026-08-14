@@ -29,7 +29,7 @@ with no owner is unowned.
 # Register a human, once, globally
 mycelium user create julia --name "Julia Valenti" --team core
 mycelium user ls
-mycelium user show julia          # record + the agents she owns + summed budget
+mycelium user show julia          # record + the agents she owns
 
 # Bind an agent to its owner
 mycelium agent create release-agent --cwd ~/repo --owner julia --team core
@@ -42,13 +42,6 @@ mycelium iam julia --name "Julia Valenti" --team core
 # Who am I acting as?
 mycelium whoami
 ```
-
-## Cost roll-up
-
-Budget is a per-agent field (`budget_usd_per_month`). A user's cost is the **sum of
-the budgets of the agents they own**: the honest figure this tier can report
-without a per-action cost ledger. `user show` and `whoami` roll it up per user;
-`GET /api/teams` rolls it up per team.
 
 ## In the UI
 

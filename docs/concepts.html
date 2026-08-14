@@ -144,7 +144,7 @@ PATCH .../messages/{id}  {<span class="str">&quot;status&quot;</span>: <span cla
       <pre><code><span class="comment"># Register a human, once, globally</span>
 <span class="cmd">mycelium user create</span> julia <span class="flag">--name</span> <span class="str">&quot;Julia Valenti&quot;</span> <span class="flag">--team</span> core
 <span class="cmd">mycelium user ls</span>
-<span class="cmd">mycelium user show</span> julia          # record + the agents she owns + summed budget
+<span class="cmd">mycelium user show</span> julia          # record + the agents she owns
 
 <span class="comment"># Bind an agent to its owner</span>
 <span class="cmd">mycelium agent create</span> release-agent <span class="flag">--cwd</span> ~/repo <span class="flag">--owner</span> julia <span class="flag">--team</span> core
@@ -156,8 +156,6 @@ PATCH .../messages/{id}  {<span class="str">&quot;status&quot;</span>: <span cla
 
 <span class="comment"># Who am I acting as?</span>
 <span class="cmd">mycelium whoami</span></code></pre>
-      <h2 id="users-cost-roll-up">Cost roll-up</h2>
-      <p>Budget is a per-agent field (<code>budget_usd_per_month</code>). A user&#x27;s cost is the <strong>sum of the budgets of the agents they own</strong>: the honest figure this tier can report without a per-action cost ledger. <code>user show</code> and <code>whoami</code> roll it up per user; <code>GET /api/teams</code> rolls it up per team.</p>
       <h2 id="users-in-the-ui">In the UI</h2>
       <p>Agent rows show their owner and team. An <strong>acting-as</strong> picker (top of a room) selects the user the browser represents; the <strong>mine</strong> filter then scopes the agent roster to agents you own or your team fields. The acting-as choice is stored locally in the browser: the same self-asserted handle, no login.</p>
     </section>

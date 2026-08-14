@@ -230,15 +230,12 @@ def user_show(
         if user.notify:
             console.print(f"  notify: {user.notify}")
 
-        # Roll up owned agents across every room, summing their manifest budgets.
-        owned, total = _owned_agents(user.handle)
+        # Roll up owned agents across every room.
+        owned = _owned_agents(user.handle)
         if owned:
-            console.print(f"\n[bold]owns {len(owned)} agent(s)[/bold]  [dim]${total:.2f}/mo[/dim]")
+            console.print(f"\n[bold]owns {len(owned)} agent(s)[/bold]")
             for room_name, m in owned:
-                console.print(
-                    f"  @{m.handle} [dim]({m.adapter}, {room_name})[/dim] "
-                    f"${m.budget_usd_per_month:.2f}/mo"
-                )
+                console.print(f"  @{m.handle} [dim]({m.adapter}, {room_name})[/dim]")
         else:
             console.print("\n[dim]No agents owned yet.[/dim]")
     except typer.Exit:
@@ -249,12 +246,8 @@ def user_show(
         raise typer.Exit(1) from None
 
 
-def _owned_agents(owner: str) -> tuple[list[tuple[str, AgentManifest]], float]:
-    """Every agent whose manifest owner matches, across all rooms, + total budget.
-
-    The roll-up sums each owned agent's manifest ``budget_usd_per_month`` cap —
-    a budget figure, not measured spend (there's no per-action cost ledger yet).
-    """
+def _owned_agents(owner: str) -> list[tuple[str, AgentManifest]]:
+    """Every agent whose manifest owner matches, across all rooms."""
     from mycelium.commands.agent import load_owned_agents
 
     return load_owned_agents(owner=owner)
@@ -276,7 +269,7 @@ def whoami(ctx: typer.Context) -> None:
 
         json_output = ctx.obj.get("json", False) if ctx.obj else False
         user = load_user(principal)
-        owned, total = _owned_agents(principal)
+        owned = _owned_agents(principal)
 
         if json_output:
             typer.echo(
@@ -286,11 +279,7 @@ def whoami(ctx: typer.Context) -> None:
                         "principal": principal,
                         "registered": user is not None,
                         "user": user.model_dump() if user else None,
-                        "owns": [
-                            {"room": r, "handle": m.handle, "budget": m.budget_usd_per_month}
-                            for r, m in owned
-                        ],
-                        "budget_usd_per_month": total,
+                        "owns": [{"room": r, "handle": m.handle} for r, m in owned],
                     },
                     indent=2,
                     default=str,
@@ -309,11 +298,9 @@ def whoami(ctx: typer.Context) -> None:
             if user.teams:
                 console.print(f"  teams: {', '.join(user.teams)}")
         if owned:
-            console.print(f"\n[bold]owns {len(owned)} agent(s)[/bold]  [dim]${total:.2f}/mo[/dim]")
+            console.print(f"\n[bold]owns {len(owned)} agent(s)[/bold]")
             for room_name, m in owned:
-                console.print(
-                    f"  @{m.handle} [dim]({room_name})[/dim] ${m.budget_usd_per_month:.2f}/mo"
-                )
+                console.print(f"  @{m.handle} [dim]({room_name})[/dim]")
     except typer.Exit:
         raise
     except Exception as e:

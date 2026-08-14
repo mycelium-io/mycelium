@@ -236,7 +236,6 @@ export interface AgentSummary {
   cwd: string | null;
   owner: string | null;
   team: string | null;
-  budget_usd_per_month: number;
   allow_from: string[];
 }
 
@@ -302,7 +301,6 @@ export interface OwnedAgent {
   handle: string;
   adapter: string;
   team: string | null;
-  budget_usd_per_month: number;
 }
 
 export interface User {
@@ -311,17 +309,15 @@ export interface User {
   teams: string[];
   notify: string | null;
   owns: OwnedAgent[];
-  budget_usd_per_month: number;
 }
 
 export interface Team {
   team: string;
   members: string[];
   agent_count: number;
-  budget_usd_per_month: number;
 }
 
-/** List registered users with their owned-agent budget roll-up. */
+/** List registered users with their owned-agent roll-up. */
 export async function fetchUsers(): Promise<User[]> {
   const res = await fetch(`/api/users`, { cache: "no-store" });
   if (!res.ok) return [];

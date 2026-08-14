@@ -369,13 +369,12 @@ class UserCreate(BaseModel):
 
 
 class OwnedAgentRead(BaseModel):
-    """One agent bound to a principal, with its room and manifest budget."""
+    """One agent bound to a principal, with its room."""
 
     room: str
     handle: str
     adapter: str
     team: str | None = None
-    budget_usd_per_month: float = 0.0
 
 
 class UserRead(BaseModel):
@@ -383,10 +382,7 @@ class UserRead(BaseModel):
     display_name: str = ""
     teams: list[str] = Field(default_factory=list)
     notify: str | None = None
-    # Budget roll-up: agents this user owns and the sum of their manifest budget
-    # caps (not measured spend — there's no per-action cost ledger at this tier).
     owns: list[OwnedAgentRead] = Field(default_factory=list)
-    budget_usd_per_month: float = 0.0
 
 
 class UserListResponse(BaseModel):
@@ -400,7 +396,6 @@ class TeamRead(BaseModel):
     team: str
     members: list[str] = Field(default_factory=list)
     agent_count: int = 0
-    budget_usd_per_month: float = 0.0
 
 
 class TeamListResponse(BaseModel):
@@ -421,7 +416,6 @@ class AgentRead(BaseModel):
     cwd: str | None = None
     owner: str | None = None
     team: str | None = None
-    budget_usd_per_month: float = 0.0
     allow_from: list[str] = Field(default_factory=list)
 
 

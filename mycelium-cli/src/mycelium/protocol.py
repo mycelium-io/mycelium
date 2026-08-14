@@ -338,7 +338,6 @@ class AgentManifest(BaseModel):
         ),
     )
     description: str = Field(default="", description="One-paragraph purpose statement.")
-    budget_usd_per_month: float = Field(default=5.0, ge=0.0)
     owner: str | None = Field(
         default=None,
         description=(
@@ -349,8 +348,7 @@ class AgentManifest(BaseModel):
     team: str | None = Field(
         default=None,
         description=(
-            "Team slug this agent is fielded by; self-asserted. Scopes 'my team' "
-            "filtering and per-team budget roll-up."
+            "Team slug this agent is fielded by; self-asserted. Scopes 'my team' filtering."
         ),
     )
     allow_from: list[str] = Field(
