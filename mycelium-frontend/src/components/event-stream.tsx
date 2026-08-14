@@ -14,7 +14,7 @@ import {
   type PendingInvite,
 } from "@/lib/api";
 import { MarkdownContent } from "@/components/markdown-content";
-import { RoomPlanHeader } from "@/components/room-plan-header";
+import { RoomBoard } from "@/components/room-board";
 import { ConsentDialog } from "@/components/consent-dialog";
 import { L9Inspector } from "@/components/l9-inspector";
 import { NegotiationView } from "@/components/negotiation-view";
@@ -254,7 +254,7 @@ function renderWithMentions(text: string): React.ReactNode {
   );
 }
 
-export type View = "channel" | "negotiate" | "plan" | "l9" | "slim";
+export type View = "channel" | "negotiate" | "board" | "l9" | "slim";
 export type NegotiationPhase = "idle" | "negotiating" | "converged" | "rejected";
 
 interface Props {
@@ -425,7 +425,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
             { id: "channel" as const,   label: "Channel",   count: channelCount as number | null, dot: false },
             { id: "negotiate" as const, label: "Negotiate", count: null,                          dot: negotiating },
             { id: "l9" as const,        label: "L9",        count: null,                          dot: false },
-            { id: "plan" as const,      label: "Plan",      count: null,                          dot: false },
+            { id: "board" as const,     label: "Board",     count: null,                          dot: false },
             { id: "slim" as const,      label: "SLIM",      count: null,                          dot: false },
           ]).map(t => {
             const active = view === t.id;
@@ -464,12 +464,12 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
         <div className="flex-1 min-h-0 overflow-y-auto">
           <RoomSlimView roomName={roomName} />
         </div>
+      ) : view === "board" ? (
+        <div className="flex-1 min-h-0">
+          <RoomBoard roomName={roomName} refreshTrigger={planRefreshTrigger} />
+        </div>
       ) : (
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
-        {view === "plan" ? (
-          <RoomPlanHeader roomName={roomName} refreshTrigger={planRefreshTrigger} />
-        ) : (
-          <>
         {visible.length === 0 && (
           <EmptyState
             icon={MessagesSquare}
@@ -644,8 +644,6 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
               );
             })}
         </div>
-          </>
-        )}
       </div>
       )}
     </div>
