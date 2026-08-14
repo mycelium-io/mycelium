@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import tempfile
 import uuid
 from pathlib import Path
@@ -39,13 +40,17 @@ from app.config import settings
 
 # The manifest-kind gate and handle-fold are the shared summon-gate primitives;
 # reuse the aligner's single copy rather than re-deriving the manifest read.
+from app.services import l9
 from app.services.aligner import _norm, _registered_engine_kind
+from app.services.l9_slim import serialize_content
 
 if TYPE_CHECKING:
     from app.services.l9_models import L9
-    from app.services.room_channels import RoomChannelManager
+    from app.services.room_channels import ManagedRoomChannel, RoomChannelManager
 
 logger = logging.getLogger(__name__)
+
+_AT_MENTION = re.compile(r"@(?=\w)")
 
 # The engine kind this class owns. A summon whose manifest kind differs is
 # ignored, so the aligner and the synthesizer can share one summon seam.
@@ -77,19 +82,31 @@ def _read_room_memory(room: str) -> list[tuple[str, dict[str, Any], str]]:
     ]
 
 
-def _build_prompt(room: str, entries: list[tuple[str, dict[str, Any], str]]) -> str:
+def _build_prompt(
+    room: str, entries: list[tuple[str, dict[str, Any], str]], directive: str = ""
+) -> str:
     """Assemble the synthesizer prompt. Pure — no I/O, directly unit-testable."""
     blocks = [f"## {key}\n{content.strip()}" for key, _meta, content in entries]
     corpus = "\n\n".join(blocks)
+    if directive:
+        task = (
+            f'The user asked you: "{directive}"\n\n'
+            "Respond naturally and helpfully to their request using the room memory as your context. "
+            "If they asked for a briefing or summary, provide one. If they asked something else, "
+            "answer it based on what you know from the room. Be faithful — never invent facts not "
+            "present in the memory below."
+        )
+    else:
+        task = (
+            "Produce a single concise, well-structured markdown briefing that captures the "
+            "room's current state: key decisions, current status, open work, and any notable "
+            "context. Group related points; do not just list the memories back. Preserve "
+            "@handle owners where they matter. Be faithful — never invent facts not present below."
+        )
     return (
         f"You are the synthesizer for the Mycelium coordination room '{room}'.\n"
-        "Below are the room's memories, each under its namespace key. Produce a "
-        "single concise, well-structured markdown briefing that captures the "
-        "room's current state: key decisions, current status, open work, and any "
-        "notable context. Group related points; do not just list the memories "
-        "back. Preserve @handle owners where they matter. Be faithful — never "
-        "invent facts not present below.\n\n"
-        "Output ONLY the markdown briefing — no preamble, no code fences.\n\n"
+        f"Below are the room's memories, each under its namespace key.\n\n{task}\n\n"
+        "Output ONLY your response as markdown — no preamble, no code fences.\n\n"
         f"--- ROOM MEMORY ---\n{corpus}\n--- END ROOM MEMORY ---"
     )
 
@@ -160,7 +177,12 @@ class SynthesizerEngine:
     # -- the summon seam (sync; called from the persister's on_summon) --
 
     def handle_summon(
-        self, room: str, handle: str, envelope: L9, co_summons: list[str] | None = None
+        self,
+        room: str,
+        handle: str,
+        envelope: L9,
+        co_summons: list[str] | None = None,
+        message_text: str = "",
     ) -> None:
         """Fire the synthesizer when a registered ``engine`` (kind
         ``synthesizer``) is summoned; else ignore.
@@ -189,13 +211,15 @@ class SynthesizerEngine:
             logger.debug("synthesizer already active on room %s; ignoring re-summon", room)
             return
         self._active.add(room)
-        task = asyncio.create_task(self._run_and_release(room, handle))
+        # Strip the @handle prefix so only the user's actual request reaches Pi.
+        directive = _AT_MENTION.sub("", message_text).strip()
+        task = asyncio.create_task(self._run_and_release(room, handle, directive))
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
 
-    async def _run_and_release(self, room: str, engine_handle: str) -> None:
+    async def _run_and_release(self, room: str, engine_handle: str, directive: str = "") -> None:
         try:
-            await self.synthesize(room, engine_handle=engine_handle)
+            await self.synthesize(room, engine_handle=engine_handle, directive=directive)
         except Exception:
             logger.exception("synthesizer run failed on room %s", room)
         finally:
@@ -203,7 +227,9 @@ class SynthesizerEngine:
 
     # -- the one path: read → summarize → write --
 
-    async def synthesize(self, room: str, engine_handle: str | None = None) -> str | None:
+    async def synthesize(
+        self, room: str, engine_handle: str | None = None, directive: str = ""
+    ) -> str | None:
         """Compile the room's memory into a ``knowledge`` summary; return it.
 
         Returns the summary markdown on success, or ``None`` when there is
@@ -211,12 +237,17 @@ class SynthesizerEngine:
         summary is written).
         """
         me = engine_handle or self._handle
+        managed = self._manager.get(room)
         entries = _read_room_memory(room)
         if not entries:
             logger.info("synthesizer: room %s has no memory to summarize", room)
+            if managed is not None:
+                await self._say(
+                    managed, room, me, "No memories to summarize yet — post some context first."
+                )
             return None
 
-        prompt = _build_prompt(room, entries)
+        prompt = _build_prompt(room, entries, directive)
         try:
             raw = await asyncio.wait_for(
                 asyncio.to_thread(_pi_complete, prompt, self._timeout_s),
@@ -224,18 +255,41 @@ class SynthesizerEngine:
             )
         except Exception:
             logger.exception("synthesizer: Pi turn failed for room %s", room)
+            if managed is not None:
+                await self._say(managed, room, me, "Pi turn timed out or errored — try again.")
             return None
 
-        summary = _strip_fences(raw or "")
-        if not summary.strip():
-            logger.warning("synthesizer: Pi returned empty summary for room %s", room)
+        response = _strip_fences(raw or "")
+        if not response.strip():
+            logger.warning("synthesizer: Pi returned empty response for room %s", room)
+            if managed is not None:
+                await self._say(managed, room, me, "Pi returned an empty response — try again.")
             return None
 
-        await self._write_summary(room, summary, me)
+        await self._write_summary(room, response, me)
         logger.info(
             "synthesizer: wrote %s for room %s (%d memories)", SYNTHESIS_KEY, room, len(entries)
         )
-        return summary
+        if managed is not None:
+            await self._say(managed, room, me, response)
+        return response
+
+    async def _say(self, managed: ManagedRoomChannel, room: str, sender: str, text: str) -> None:
+        """Post a plain message from the synthesizer into the room channel."""
+        env = l9.build_envelope(
+            kind=l9.Kind.exchange,
+            episode=l9.episode_urn(room, "live"),
+            sender=sender,
+            topic=l9.topic_urn(room),
+            payload_type="message",
+        )
+        content = serialize_content(env, extra={"content": text})
+        try:
+            await managed.channel.send(env, extra={"content": text})
+        except Exception:
+            logger.warning("synthesizer failed to broadcast message on room %s", room)
+        if managed.persister is not None:
+            managed.persister.ingest_local(env, content)
 
     async def _write_summary(self, room: str, summary: str, created_by: str) -> None:
         """Upsert the summary through the canonical versioned + indexed path."""

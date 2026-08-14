@@ -24,10 +24,15 @@ export async function GET() {
   }
 
   const upstream = `${getBackendUrl()}/api/events/stream`;
-  const res = await fetch(upstream, {
-    headers: { Accept: "text/event-stream", "Cache-Control": "no-cache" },
-    cache: "no-store",
-  });
+  let res: Response;
+  try {
+    res = await fetch(upstream, {
+      headers: { Accept: "text/event-stream", "Cache-Control": "no-cache" },
+      cache: "no-store",
+    });
+  } catch {
+    return new Response("upstream SSE unavailable", { status: 502 });
+  }
 
   if (!res.ok || !res.body) {
     return new Response("upstream SSE unavailable", { status: 502 });

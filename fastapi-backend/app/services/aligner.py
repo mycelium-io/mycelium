@@ -197,7 +197,7 @@ class AlignerEngine:
     # -- the summon seam (sync; called from the persister's on_summon) --
 
     def handle_summon(
-        self, room: str, handle: str, envelope: L9, co_summons: list[str] | None = None
+        self, room: str, handle: str, envelope: L9, co_summons: list[str] | None = None, message_text: str = ""
     ) -> None:
         """Fire the aligner when a registered ``engine`` (kind ``aligner``) — or
         the legacy reserved handle — is summoned; else ignore.

@@ -37,7 +37,7 @@ export function RoomsSidebar({ activeRoom = null }: Props) {
   const [showCreate, setShowCreate] = useState(false);
 
   const load = () =>
-    fetchRooms().then((data: Room[]) => setRooms(data)).catch(logFetchError("fetchRooms"));
+    fetchRooms().then((data: unknown) => { if (Array.isArray(data)) setRooms(data as Room[]); }).catch(logFetchError("fetchRooms"));
 
   useEffect(() => {
     load();
