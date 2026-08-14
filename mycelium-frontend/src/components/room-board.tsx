@@ -5,21 +5,16 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  fetchPlan,
-  fetchRoomAgents,
-  fetchEpisodes,
+  fetchBoard,
+  runBoardVerb,
+  captureConcern,
   logFetchError,
-} from "@/lib/api";
-import {
-  projectBoard,
-  boardCounts,
-  lensOf,
   type BoardItem,
-  type CiState,
-  type ItemKind,
-  type Lens,
-  type Owner,
-} from "@/lib/board";
+  type BoardOwner,
+  type BoardVerb,
+  type BoardWork,
+} from "@/lib/api";
+import { boardCounts, lensOf, type Lens } from "@/lib/board";
 import {
   AlertTriangle,
   Ban,
@@ -43,25 +38,6 @@ interface Props {
   refreshTrigger: number;
 }
 
-// Local, optimistic overrides for the stubbed verbs. The real board writes these
-// back to the event ledger; here they mutate a projection in place so the triage
-// gestures feel live without a backend. See issue #493.
-interface Overrides {
-  hidden: Set<string>;
-  resolved: Set<string>;
-  blocked: Set<string>;
-  claimedBy: Record<string, string>;
-  captured: BoardItem[];
-}
-
-const emptyOverrides = (): Overrides => ({
-  hidden: new Set(),
-  resolved: new Set(),
-  blocked: new Set(),
-  claimedBy: {},
-  captured: [],
-});
-
 const YOU = "you";
 
 const LENSES: { id: Lens; label: string }[] = [
@@ -70,9 +46,16 @@ const LENSES: { id: Lens; label: string }[] = [
   { id: "resolved", label: "Resolved" },
 ];
 
+// Which verbs a row exposes, by source. Plan rows are read-mostly (resolve maps
+// to a task toggle); a live episode is read-only (reply in the channel).
+const VERBS_BY_SOURCE: Record<BoardItem["source"], BoardVerb[]> = {
+  ledger: ["claim", "resolve", "block", "promote", "dismiss"],
+  plan: ["resolve"],
+  episode: [],
+};
+
 export function RoomBoard({ roomName, refreshTrigger }: Props) {
-  const [base, setBase] = useState<BoardItem[]>([]);
-  const [overrides, setOverrides] = useState<Overrides>(emptyOverrides);
+  const [items, setItems] = useState<BoardItem[]>([]);
   const [lens, setLens] = useState<Lens | "all">("needs");
   const [selected, setSelected] = useState<string | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
@@ -81,14 +64,10 @@ export function RoomBoard({ roomName, refreshTrigger }: Props) {
 
   const load = useCallback(async () => {
     try {
-      const [plan, agents, episodes] = await Promise.all([
-        fetchPlan(roomName),
-        fetchRoomAgents(roomName).catch(() => []),
-        fetchEpisodes(roomName).catch(() => []),
-      ]);
-      setBase(projectBoard({ tasks: plan.tasks ?? [], agents, episodes }));
+      const board = await fetchBoard(roomName);
+      setItems(board.items);
     } catch (err) {
-      logFetchError("projectBoard")(err);
+      logFetchError("fetchBoard")(err);
     }
   }, [roomName]);
 
@@ -98,77 +77,40 @@ export function RoomBoard({ roomName, refreshTrigger }: Props) {
     return () => clearInterval(t);
   }, [load, refreshTrigger]);
 
-  // Merge the live projection with the local override state. Captured concerns
-  // ride on top; hidden rows drop; state overrides win over the projection.
-  const items = useMemo(() => {
-    const merged = [...overrides.captured, ...base]
-      .filter((it) => !overrides.hidden.has(it.id))
-      .map((it): BoardItem => {
-        if (overrides.resolved.has(it.id)) {
-          return { ...it, state: "resolved", needsYou: false, note: it.note ?? "resolved" };
-        }
-        if (overrides.blocked.has(it.id)) {
-          return { ...it, state: "blocked", needsYou: true };
-        }
-        const claimed = overrides.claimedBy[it.id];
-        if (claimed) {
-          return { ...it, state: "claimed", owner: { handle: claimed, kind: "human", present: true } };
-        }
-        return it;
-      });
-    return merged;
-  }, [base, overrides]);
-
   const counts = useMemo(() => boardCounts(items), [items]);
 
-  const flashAction = useCallback((msg: string) => {
-    setFlash(msg);
-  }, []);
-
-  // The shared verb vocabulary — the same gestures humans and agents drive over
-  // the ledger. Wired to optimistic local state (the sketch); logged so it's
-  // honest that no ledger write happens yet.
+  // Drive a triage verb: optimistic local update for snap, then the real call
+  // and a reload so the server projection is the source of truth.
   const verb = useCallback(
-    (name: string, id: string) => {
-      // eslint-disable-next-line no-console
-      console.info(`[mycelium] board verb (stub): ${name} ${id}`);
-      setOverrides((o) => {
-        const next: Overrides = {
-          hidden: new Set(o.hidden),
-          resolved: new Set(o.resolved),
-          blocked: new Set(o.blocked),
-          claimedBy: { ...o.claimedBy },
-          captured: o.captured,
-        };
-        if (name === "claim") next.claimedBy[id] = YOU;
-        if (name === "resolve") next.resolved.add(id);
-        if (name === "block") next.blocked.add(id);
-        if (name === "dismiss" || name === "promote") next.hidden.add(id);
-        return next;
-      });
-      if (name === "promote") flashAction(`promoted ${id} → filed a GitHub issue, dropped from the board`);
-      else if (name === "resolve") flashAction(`resolved ${id}`);
-      else if (name === "claim") flashAction(`claimed ${id}`);
-      else if (name === "block") flashAction(`blocked ${id}`);
-      else if (name === "dismiss") flashAction(`dismissed ${id}`);
+    async (name: BoardVerb, id: string, body?: { owner?: string; waiting_on?: string; issue?: number }) => {
+      setItems((prev) =>
+        prev.map((it) => {
+          if (it.id !== id) return it;
+          if (name === "resolve" || name === "promote") return { ...it, state: "resolved", needs_you: false };
+          if (name === "block") return { ...it, state: "blocked", needs_you: true };
+          if (name === "claim") return { ...it, state: "claimed", owner: { handle: body?.owner ?? YOU, kind: "human", present: true } };
+          return it;
+        }),
+      );
+      if (name === "dismiss") setItems((prev) => prev.filter((it) => it.id !== id));
+      setFlash(
+        name === "promote" ? `promoted ${short(id)} → filed a GitHub issue, dropped from the board` : `${name}ed ${short(id)}`,
+      );
+      const ok = await runBoardVerb(roomName, id, name, body);
+      if (!ok) setFlash(`couldn't ${name} ${short(id)} — reloading`);
+      await load();
     },
-    [flashAction],
+    [roomName, load],
   );
 
-  const onCapture = useCallback(() => {
+  const onCapture = useCallback(async () => {
     const text = capture.trim();
     if (!text) return;
     setCapture("");
-    const id = `c${overrides.captured.length + 1}`;
-    setOverrides((o) => ({
-      ...o,
-      captured: [
-        { id, kind: "concern", state: "open", title: text, provenance: "captured by you", needsYou: true },
-        ...o.captured,
-      ],
-    }));
-    flashAction(`captured "${text}" → structured concern`);
-  }, [capture, overrides.captured.length, flashAction]);
+    setFlash(`captured "${text}" → structured concern`);
+    await captureConcern(roomName, text, YOU);
+    await load();
+  }, [capture, roomName, load]);
 
   // Keyboard-first triage: ⌘K / "/" focuses capture; single letters drive the
   // selected row's verbs (Linear-style). Ignored while typing in the capture bar.
@@ -181,16 +123,17 @@ export function RoomBoard({ roomName, refreshTrigger }: Props) {
         return;
       }
       if (typing || !selected) return;
-      const map: Record<string, string> = { c: "claim", r: "resolve", b: "block", p: "promote", x: "dismiss" };
+      const map: Record<string, BoardVerb> = { c: "claim", r: "resolve", b: "block", p: "promote", x: "dismiss" };
       const name = map[e.key.toLowerCase()];
-      if (name) {
+      const item = items.find((it) => it.id === selected);
+      if (name && item && VERBS_BY_SOURCE[item.source].includes(name)) {
         e.preventDefault();
         verb(name, selected);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selected, verb]);
+  }, [selected, items, verb]);
 
   const shown = useMemo(
     () => (lens === "all" ? items : items.filter((it) => lensOf(it) === lens)),
@@ -265,7 +208,6 @@ export function RoomBoard({ roomName, refreshTrigger }: Props) {
           <div className="mt-2 flex items-center gap-2 text-micro text-muted-foreground">
             <span className="inline-block size-1.5 rounded-full bg-accent" />
             {flash}
-            <span className="text-faint">· sketch — no ledger write yet</span>
           </div>
         )}
       </div>
@@ -301,6 +243,11 @@ export function RoomBoard({ roomName, refreshTrigger }: Props) {
   );
 }
 
+function short(id: string): string {
+  // Ledger ids are UUIDs; plan/episode ids are already short and prefixed.
+  return id.includes(":") ? id : id.slice(0, 3);
+}
+
 function Legend({ k, label }: { k: string; label: string }) {
   return (
     <span className="mr-1 inline-flex items-center gap-1">
@@ -312,7 +259,7 @@ function Legend({ k, label }: { k: string; label: string }) {
 
 // ── Row ──────────────────────────────────────────────────────────────────────
 
-const KIND_META: Record<ItemKind, { icon: typeof AlertTriangle; tone: string; label: string }> = {
+const KIND_META: Record<string, { icon: typeof AlertTriangle; tone: string; label: string }> = {
   decision: { icon: AlertTriangle, tone: "var(--yellow)", label: "decision" },
   blocked: { icon: Ban, tone: "var(--red)", label: "blocked" },
   review: { icon: Eye, tone: "var(--accent)", label: "review" },
@@ -329,11 +276,16 @@ function BoardRow({
   item: BoardItem;
   selected: boolean;
   onSelect: () => void;
-  onVerb: (name: string, id: string) => void;
+  onVerb: (name: BoardVerb, id: string, body?: { owner?: string; waiting_on?: string; issue?: number }) => void;
 }) {
   const resolved = item.state === "resolved";
-  const meta = resolved ? { icon: CheckCircle2, tone: "var(--green)", label: "resolved" } : KIND_META[item.kind];
+  // A blocked row reads as blocked regardless of its underlying kind.
+  const metaKey = item.state === "blocked" ? "blocked" : item.kind;
+  const meta = resolved
+    ? { icon: CheckCircle2, tone: "var(--green)", label: "resolved" }
+    : KIND_META[metaKey] ?? KIND_META.action;
   const Icon = meta.icon;
+  const verbs = VERBS_BY_SOURCE[item.source];
 
   return (
     <li
@@ -346,7 +298,7 @@ function BoardRow({
 
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2">
-          <span className="font-mono text-micro text-faint tabular">{item.id}</span>
+          <span className="font-mono text-micro text-faint tabular">{short(item.id)}</span>
           <span
             className="rounded px-1.5 py-px text-micro font-medium"
             style={{ color: meta.tone, background: `color-mix(in srgb, ${meta.tone} 14%, transparent)` }}
@@ -356,11 +308,6 @@ function BoardRow({
           <span className={`text-body ${resolved ? "text-muted-foreground line-through" : "text-text"}`}>
             {item.title}
           </span>
-          {item.sample && (
-            <span className="rounded border border-border px-1 text-micro text-faint" title="illustrative — not this room's live data">
-              sample
-            </span>
-          )}
         </div>
 
         {item.detail && <div className="mt-0.5 text-label text-muted-foreground">{item.detail}</div>}
@@ -368,26 +315,13 @@ function BoardRow({
         {/* Meta line: owner · work links · deps · provenance · age */}
         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-micro text-muted-foreground">
           {item.owner && <OwnerBadge owner={item.owner} />}
-          {item.work?.branch && (
-            <span className="inline-flex items-center gap-1 font-mono text-faint">
-              <GitBranch className="size-3" />
-              {item.work.branch}
-            </span>
-          )}
-          {item.work?.ci && <CiBadge ci={item.work.ci} />}
-          {item.work?.pr && (
-            <span className="inline-flex items-center gap-1 font-mono">
-              <GitPullRequest className="size-3 text-accent" />
-              <span className="text-accent">PR #{item.work.pr.number}</span>
-              <span className="text-faint">{item.work.pr.state}</span>
-            </span>
-          )}
+          <WorkLinks work={item.work} />
           {item.blocks && (
             <span className="inline-flex items-center gap-1">
               <CornerDownRight className="size-3" /> blocks &ldquo;{item.blocks}&rdquo;
             </span>
           )}
-          {item.waitingOn && <span>waiting on {item.waitingOn}</span>}
+          {item.waiting_on && <span>waiting on {item.waiting_on}</span>}
           {item.github?.issue && (
             <span className="inline-flex items-center gap-1 text-faint">
               <ArrowUpRight className="size-3" />#{item.github.issue}
@@ -424,19 +358,19 @@ function BoardRow({
         )}
       </div>
 
-      {/* One-gesture triage — appears on hover/selection */}
-      {!resolved && (
+      {/* One-gesture triage — appears on hover/selection, per-source */}
+      {!resolved && verbs.length > 0 && (
         <div
           className={`flex shrink-0 items-start gap-1 transition-opacity ${
             selected ? "opacity-100" : "opacity-0 group-hover:opacity-100"
           }`}
           onClick={(e) => e.stopPropagation()}
         >
-          <RowAction icon={Hand} title="claim" onClick={() => onVerb("claim", item.id)} />
-          <RowAction icon={Check} title="resolve" onClick={() => onVerb("resolve", item.id)} />
-          <RowAction icon={Ban} title="block" onClick={() => onVerb("block", item.id)} />
-          <RowAction icon={ArrowUpRight} title="promote → GitHub issue" onClick={() => onVerb("promote", item.id)} />
-          <RowAction icon={X} title="dismiss" onClick={() => onVerb("dismiss", item.id)} />
+          {verbs.includes("claim") && <RowAction icon={Hand} title="claim" onClick={() => onVerb("claim", item.id, { owner: YOU })} />}
+          {verbs.includes("resolve") && <RowAction icon={Check} title="resolve" onClick={() => onVerb("resolve", item.id)} />}
+          {verbs.includes("block") && <RowAction icon={Ban} title="block" onClick={() => onVerb("block", item.id)} />}
+          {verbs.includes("promote") && <RowAction icon={ArrowUpRight} title="promote → GitHub issue" onClick={() => onVerb("promote", item.id)} />}
+          {verbs.includes("dismiss") && <RowAction icon={X} title="dismiss" onClick={() => onVerb("dismiss", item.id)} />}
         </div>
       )}
     </li>
@@ -455,7 +389,7 @@ function RowAction({ icon: Icon, title, onClick }: { icon: typeof Hand; title: s
   );
 }
 
-function OwnerBadge({ owner }: { owner: Owner }) {
+function OwnerBadge({ owner }: { owner: BoardOwner }) {
   const Icon = owner.kind === "agent" ? Bot : User;
   const color = owner.kind === "agent" ? "var(--accent)" : "var(--muted-foreground)";
   return (
@@ -469,12 +403,31 @@ function OwnerBadge({ owner }: { owner: Owner }) {
   );
 }
 
-function CiBadge({ ci }: { ci: CiState }) {
-  const color = ci === "green" ? "var(--green)" : ci === "running" ? "var(--yellow)" : "var(--red)";
+function WorkLinks({ work }: { work?: BoardWork | null }) {
+  if (!work) return null;
+  const ci = work.ci;
+  const ciColor = ci === "green" ? "var(--green)" : ci === "running" ? "var(--yellow)" : "var(--red)";
   return (
-    <span className="inline-flex items-center gap-1 font-mono">
-      <span className={`inline-block size-1.5 rounded-full ${ci === "running" ? "animate-pulse" : ""}`} style={{ background: color }} />
-      <span className="text-faint">CI {ci}</span>
-    </span>
+    <>
+      {work.branch && (
+        <span className="inline-flex items-center gap-1 font-mono text-faint">
+          <GitBranch className="size-3" />
+          {work.branch}
+        </span>
+      )}
+      {ci && (
+        <span className="inline-flex items-center gap-1 font-mono">
+          <span className={`inline-block size-1.5 rounded-full ${ci === "running" ? "animate-pulse" : ""}`} style={{ background: ciColor }} />
+          <span className="text-faint">CI {ci}</span>
+        </span>
+      )}
+      {work.pr && (
+        <span className="inline-flex items-center gap-1 font-mono">
+          <GitPullRequest className="size-3 text-accent" />
+          <span className="text-accent">PR #{work.pr.number}</span>
+          <span className="text-faint">{work.pr.state}</span>
+        </span>
+      )}
+    </>
   );
 }

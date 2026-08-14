@@ -158,6 +158,11 @@ function parseEvent(msg: Record<string, unknown>): Event {
       }
       break;
     }
+    case "board_updated":
+      // A coordination-board triage signal. Consumed as a refresh nudge (see the
+      // SSE handler); it carries no chat body and never renders in the feed.
+      content = "";
+      break;
     case "memory_changed": {
       const key = (raw.key || msg.key) as string;
       const version = (raw.version || msg.version) as number;
@@ -358,6 +363,11 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
           }
           // Presence changes: refresh the room's derived state (agent roster/count).
           if (event.type === "coordination_join" || event.type === "coordination_leave") {
+            onMemoryChanged?.();
+          }
+          // A board verb (claim/resolve/block/…) or a new ledger event nudges the
+          // board to refetch so triage lands live for everyone in the room.
+          if (event.type === "board_updated") {
             onMemoryChanged?.();
           }
         } catch {}

@@ -136,6 +136,98 @@ export async function addPlanTask(roomName: string, text: string, slug = "tasks"
   return res.json();
 }
 
+// ── Board (coordination surface, #493) ───────────────────────────────────────
+// A live projection over the room's event ledger, plan, and live episode. The
+// frontend consumes it read-only and drives triage verbs; the backend owns the
+// projection (see fastapi-backend/app/services/board.py).
+
+export interface BoardOwner {
+  handle: string;
+  kind: "agent" | "human";
+  present: boolean;
+}
+
+export interface BoardWork {
+  branch?: string | null;
+  pr?: { number: number; state: "draft" | "open" | "merged" } | null;
+  ci?: "green" | "running" | "failed" | null;
+}
+
+export interface BoardGithub {
+  issue?: number | null;
+  state?: "open" | "closed" | null;
+}
+
+export type BoardSource = "ledger" | "plan" | "episode";
+
+export interface BoardItem {
+  id: string;
+  source: BoardSource;
+  kind: string;
+  state: string;
+  title: string;
+  detail?: string | null;
+  owner?: BoardOwner | null;
+  work?: BoardWork | null;
+  github?: BoardGithub | null;
+  choices?: string[] | null;
+  blocks?: string | null;
+  waiting_on?: string | null;
+  provenance?: string | null;
+  age?: string | null;
+  needs_you: boolean;
+  note?: string | null;
+  created_at?: string | null;
+}
+
+export interface BoardResponse {
+  room: string;
+  items: BoardItem[];
+  members: string[];
+  counts: { needs: number; flight: number; resolved: number };
+}
+
+export type BoardVerb = "claim" | "block" | "resolve" | "promote" | "dismiss";
+
+export async function fetchBoard(roomName: string): Promise<BoardResponse> {
+  const res = await fetch(`/api/rooms/${roomName}/board`, { cache: "no-store" });
+  if (!res.ok) {
+    return { room: roomName, items: [], members: [], counts: { needs: 0, flight: 0, resolved: 0 } };
+  }
+  return res.json();
+}
+
+export async function runBoardVerb(
+  roomName: string,
+  itemId: string,
+  verb: BoardVerb,
+  body?: { owner?: string; waiting_on?: string; issue?: number },
+): Promise<boolean> {
+  const res = await fetch(
+    `/api/rooms/${roomName}/board/items/${encodeURIComponent(itemId)}/${verb}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body ?? {}),
+    },
+  );
+  return res.ok;
+}
+
+export async function captureConcern(
+  roomName: string,
+  text: string,
+  sender = "frontend",
+): Promise<BoardItem | null> {
+  const res = await fetch(`/api/rooms/${roomName}/board/capture`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text, sender }),
+  });
+  if (!res.ok) return null;
+  return res.json();
+}
+
 export async function fetchMessages(roomName: string, limit?: number) {
   const url = limit
     ? `/api/rooms/${roomName}/messages?limit=${limit}`
