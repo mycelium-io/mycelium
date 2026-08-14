@@ -81,7 +81,7 @@ export function RoomsSidebar({ activeRoom = null }: Props) {
         href="/"
         className="flex h-[52px] flex-shrink-0 items-center gap-2.5 border-b border-border px-4 transition-colors hover:bg-hairline"
       >
-        <Image src="/logo.png" alt="Mycelium" width={20} height={20} className="opacity-90" />
+        <Image src="/logo.png" alt="Mycelium" width={20} height={20} className="translate-y-[2px] opacity-90" />
         <span
           className="text-display leading-none text-text"
           style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontStyle: "italic", fontWeight: 600 }}
