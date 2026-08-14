@@ -17,7 +17,6 @@ GET    /rooms/{room}/sessions       — list who is in a room
 DELETE /rooms/{room}/sessions/{id}  — leave a room (SLIM remove)
 """
 
-import json
 import logging
 from datetime import UTC, datetime
 from uuid import UUID
@@ -27,7 +26,6 @@ from fastapi import APIRouter, HTTPException
 from app.bus import bus, room_channel
 from app.schemas import (
     CoordinationSessionRead,
-    MessageType,
     ParticipantCreate,
     ParticipantListResponse,
     ParticipantRead,
@@ -100,34 +98,12 @@ async def join_room(room_name: str, payload: ParticipantCreate):
     await room_channels.manager.provision(room_name, workspace=workspace)
     room_channels.manager.invite_in_background(room_name, payload.agent_handle)
 
-    # Persist a join message + fan it out on the FIRST join only, so a reconnecting
-    # member re-inviting itself every wake doesn't spam the room's presence feed.
+    # Emit a coordination_join notice on the first join. Delegated to the manager
+    # so all join paths (HTTP session, SLIM invite, await lease) share the same
+    # dedup logic and the channel feed shows arrivals consistently.
     if is_new:
-        join_content = json.dumps(
-            {
-                "handle": payload.agent_handle,
-                "intent": payload.intent,
-                "session": coord.display_name,
-            }
-        )
-        local_state.add_message(
-            room_name,
-            local_state.StoredMessage(
-                room_name=room_name,
-                sender_handle=l9.SYSTEM_ACTOR_ID,
-                message_type=MessageType.COORDINATION_JOIN,
-                content=join_content,
-            ),
-        )
-        bus.publish(
-            room_channel(room_name),
-            {
-                "room_name": room_name,
-                "sender_handle": l9.SYSTEM_ACTOR_ID,
-                "message_type": MessageType.COORDINATION_JOIN,
-                "content": json.dumps({"handle": payload.agent_handle, "intent": payload.intent}),
-                "created_at": datetime.now(UTC).isoformat(),
-            },
+        room_channels.manager.announce_join(
+            room_name, payload.agent_handle, intent=payload.intent or ""
         )
 
     return ParticipantRead.model_validate(participant)
