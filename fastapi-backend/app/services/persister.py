@@ -7,10 +7,10 @@ Backend-as-room-infrastructure: the persister / durable inbox.
 The backend runs as moderator on the room's SLIM group channel and consumes it.
 This module is that consumer, and it does four things as each message flows past:
 
-1. **Persister.** Records the full transcript to the room's markdown (``log/``)
-   so it survives, is git-shareable, and is picked up by the reindex watcher —
-   memory the normal way, a *distinct* artifact from the
-   episode-scoped ``log/episodes/*`` records ``l9_episode`` writes.
+1. **Persister.** Appends each message to the room's transcript
+   (``log/transcript.jsonl``, one JSON record per line) so it survives, is
+   git-shareable, and is written O(1) per message — a *distinct* artifact from
+   the episode-scoped ``log/episodes/*`` records ``l9_episode`` writes.
 
 2. **Durable inbox.** SLIM keeps **no** messages for an offline member: a
    broadcast that happened while a member was gone is never replayed on rejoin.
@@ -38,6 +38,7 @@ import contextlib
 import json
 import logging
 import re
+import uuid
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -48,19 +49,24 @@ from app.schemas import MessageType
 from app.services import l9
 from app.services.l9_slim import ChannelReceiveTimeout
 
+# Stable namespace so a transcript record maps to the same synthetic
+# ``StoredMessage.id`` on every read (the envelope id is the seed).
+_MESSAGE_ID_NS = uuid.UUID("6f1d2c3b-4a59-6e7d-8c9b-0a1b2c3d4e5f")
+
 if TYPE_CHECKING:
     import slim_bindings
 
     from app.services.l9_models import L9
     from app.services.l9_slim import L9SlimChannel
+    from app.services.local_state import StoredMessage
 
 logger = logging.getLogger(__name__)
 
-# The transcript memory key under a room's dir (``log/transcript.md``). One
-# jsonl-bearing markdown file per room: append-only, reindex-friendly, and
-# deliberately separate from ``log/episodes/*`` (episode-scoped) so the two
+# The transcript is a plain append-only JSONL file per room
+# (``log/transcript.jsonl``): one JSON record per line, written O(1) per message
+# and deliberately separate from ``log/episodes/*`` (episode-scoped) so the two
 # never clobber each other.
-TRANSCRIPT_KEY = "log/transcript"
+TRANSCRIPT_FILENAME = "log/transcript.jsonl"
 
 # An ``@``-summon token: ``@`` followed by a handle (letter/digit start, then
 # word chars or hyphens). Guarded so it doesn't fire mid-word (e.g. an email).
@@ -272,73 +278,145 @@ def record_from(
 
 # ── Transcript persistence (markdown + jsonl block) ──────────────────────────
 
-_TRANSCRIPT_HEADER = (
-    "The live room transcript — every message recorded off the SLIM channel, "
-    "one JSON record per line (distinct from the episode records under "
-    "`log/episodes/`)."
-)
+
+def _transcript_line(record: TranscriptRecord) -> str:
+    """Serialize one record to its canonical JSONL line (no trailing newline)."""
+    return json.dumps(record.to_json(), sort_keys=True)
 
 
-def render_transcript(records: list[TranscriptRecord]) -> str:
-    """The markdown body for the transcript file (a jsonl block)."""
-    lines = [
-        _TRANSCRIPT_HEADER,
-        "",
-        "```jsonl",
-        *(json.dumps(r.to_json(), sort_keys=True) for r in records),
-        "```",
-        "",
-    ]
-    return "\n".join(lines)
-
-
-def parse_transcript(body: str) -> list[TranscriptRecord]:
-    """Parse the jsonl block of a transcript body back into records."""
+def _parse_jsonl(text: str) -> list[TranscriptRecord]:
+    """Parse a plain JSONL transcript body back into records."""
     records: list[TranscriptRecord] = []
-    in_block = False
-    for line in body.splitlines():
+    for line in text.splitlines():
         stripped = line.strip()
-        if stripped == "```jsonl":
-            in_block = True
+        if not stripped:
             continue
-        if stripped == "```":
-            in_block = False
-            continue
-        if in_block and stripped:
-            try:
-                records.append(TranscriptRecord.from_json(json.loads(stripped)))
-            except (json.JSONDecodeError, KeyError, TypeError):
-                logger.warning("skipping malformed transcript line")
+        try:
+            records.append(TranscriptRecord.from_json(json.loads(stripped)))
+        except (json.JSONDecodeError, KeyError, TypeError):
+            logger.warning("skipping malformed transcript line")
     return records
 
 
 def load_transcript(room: str) -> list[TranscriptRecord]:
-    """Read a room's persisted transcript (empty when none exists)."""
-    from app.services.filesystem import get_room_dir, read_memory_file
+    """Read a room's persisted ``log/transcript.jsonl`` (empty when none exists)."""
+    from app.services.filesystem import get_room_dir
 
-    result = read_memory_file(get_room_dir(room), TRANSCRIPT_KEY)
-    if result is None:
+    path = get_room_dir(room) / TRANSCRIPT_FILENAME
+    if not path.exists():
         return []
-    _meta, body = result
-    return parse_transcript(body)
+    return _parse_jsonl(path.read_text(encoding="utf-8"))
+
+
+def append_transcript(room: str, record: TranscriptRecord) -> None:
+    """Append one record to ``log/transcript.jsonl`` in O(1) (best-effort)."""
+    try:
+        from app.services.filesystem import get_room_dir
+
+        path = get_room_dir(room) / TRANSCRIPT_FILENAME
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as fh:
+            fh.write(_transcript_line(record) + "\n")
+    except Exception:
+        logger.exception("transcript append failed for room %s", room)
 
 
 def write_transcript(room: str, records: list[TranscriptRecord]) -> None:
-    """Persist a room's transcript to ``log/transcript.md`` (best-effort)."""
-    try:
-        from app.services.filesystem import get_room_dir, write_memory_file
+    """Rewrite a room's whole transcript to ``log/transcript.jsonl``.
 
-        base = get_room_dir(room)
-        base.mkdir(parents=True, exist_ok=True)
-        write_memory_file(
-            base,
-            TRANSCRIPT_KEY,
-            render_transcript(records),
-            created_by=l9.SYSTEM_ACTOR_ID,
-            updated_by=l9.SYSTEM_ACTOR_ID,
-        )
+    A full-file rewrite for seeding a transcript wholesale (tests); the hot path
+    appends via :func:`append_transcript` instead of re-rendering the full list.
+    """
+    try:
+        from app.services.filesystem import get_room_dir
+
+        path = get_room_dir(room) / TRANSCRIPT_FILENAME
+        path.parent.mkdir(parents=True, exist_ok=True)
+        body = "".join(_transcript_line(r) + "\n" for r in records)
+        path.write_text(body, encoding="utf-8")
     except Exception:
         logger.exception("transcript write failed for room %s", room)
+
+
+def _conversational_text(content: dict[str, Any]) -> str | None:
+    """The human-facing chat text of a record, or None if it isn't chat.
+
+    Only a human ``message`` and an agent ``reply`` are chat; presence/ping and
+    other control payloads carry no chat text and stay out of the list.
+    """
+    payload_type = content.get("l9", {}).get("payload", {}).get("type")
+    text = content.get("content")
+    if payload_type not in ("message", "reply") or not isinstance(text, str) or not text:
+        return None
+    return text
+
+
+def stored_message_from_record(room: str, record: TranscriptRecord) -> StoredMessage | None:
+    """Project a transcript record into the ``StoredMessage`` the list/UI reads.
+
+    Returns None for a non-conversational record. The synthetic id is derived from
+    the envelope id so it's stable across reads, and ``message_id`` carries that
+    envelope id as the cross-store correlation key (dedup against ``local_state``).
+    """
+    from app.services.local_state import StoredMessage
+
+    text = _conversational_text(record.content)
+    if text is None:
+        return None
+    episode = record.content.get("l9", {}).get("header", {}).get("message", {}).get("episode")
+    seed = record.message_id or f"{record.recorded_at}:{record.sender}"
+    msg = StoredMessage(
+        room_name=room,
+        sender_handle=record.sender,
+        message_type=MessageType.BROADCAST,
+        content=text,
+        episode=episode if isinstance(episode, str) else None,
+        message_id=record.message_id or None,
+        id=uuid.uuid5(_MESSAGE_ID_NS, seed),
+    )
+    with contextlib.suppress(ValueError, TypeError):
+        msg.created_at = datetime.fromisoformat(record.recorded_at)
+    return msg
+
+
+# Per-room cache of the mapped conversational view, invalidated when the
+# transcript file changes, so a hot UI poll re-stats (cheap) rather than
+# re-parsing the whole file every read.
+_conversational_cache: dict[str, tuple[tuple[int, int], list[StoredMessage]]] = {}
+
+
+def _stat_stamp(path: Path) -> tuple[int, int] | None:
+    """A (mtime_ns, size) cache stamp for ``path``, or None if it doesn't exist."""
+    try:
+        st = path.stat()
+    except OSError:
+        return None
+    return (st.st_mtime_ns, st.st_size)
+
+
+def conversational_messages(room: str) -> list[StoredMessage]:
+    """The room's conversational history, projected from the durable transcript.
+
+    The read path's source of truth for chat: it survives restarts (the transcript
+    is on disk) and both post paths converge here (``respond`` and a human
+    broadcast both land in the transcript). Event-ledger rows live only in
+    ``local_state`` and are merged in by the route.
+    """
+    from app.services.filesystem import get_room_dir
+
+    path = get_room_dir(room) / TRANSCRIPT_FILENAME
+    stamp = _stat_stamp(path)
+    if stamp is None:
+        _conversational_cache.pop(room, None)
+        return []
+    cached = _conversational_cache.get(room)
+    if cached is not None and cached[0] == stamp:
+        return list(cached[1])
+    messages = [
+        m for r in load_transcript(room) if (m := stored_message_from_record(room, r)) is not None
+    ]
+    _conversational_cache[room] = (stamp, messages)
+    return list(messages)
 
 
 # Delivery cursors persist next to the transcript so a reconnecting agent's
@@ -659,14 +737,23 @@ class RoomPersister:
             for envelope, content in released:
                 self._ingest(envelope, content)
 
-    def ingest_local(self, envelope: L9, content: dict[str, Any]) -> None:
-        """Ingest a message the moderator published itself (the human proxy).
+    def ingest_local(
+        self, envelope: L9, content: dict[str, Any], *, list_write: bool = False
+    ) -> None:
+        """Ingest a message the moderator published itself (locally originated).
 
-        The backend speaks for the human on the fabric: it publishes
-        the human's ``exchange`` on the channel *and* records it here directly, so
-        the transcript and UI bus see it regardless of whether SLIM delivers a
+        The backend records the message into the transcript directly, so the
+        transcript and UI bus see it regardless of whether SLIM delivers a
         broadcast back to its own sender. :meth:`_ingest` de-dupes by message id,
         so a loopback of the same broadcast is a no-op.
+
+        ``list_write`` controls whether the message is also written to the
+        in-memory list store: the human-proxy broadcast path pre-writes nothing to
+        ``local_state`` (the transcript is its record, read back by
+        :func:`conversational_messages`), while ``respond`` (``/reply``) passes
+        ``list_write=True`` so an agent's turn is visible live, before it's flushed
+        to the durable transcript — otherwise ``respond`` and ``room send`` would
+        land in different stores.
 
         Also marks the message delivered in the channel's causal buffer: a locally
         ingested message never passes through ``receive_with_context``, so without
@@ -674,9 +761,9 @@ class RoomPersister:
         ``parents=[woke_id]``) is held in the buffer forever and never recorded.
         """
         self._channel.note_delivered(envelope)
-        self._ingest(envelope, content, local=True)
+        self._ingest(envelope, content, list_write=list_write)
 
-    def _ingest(self, envelope: L9, content: dict[str, Any], *, local: bool = False) -> None:
+    def _ingest(self, envelope: L9, content: dict[str, Any], *, list_write: bool = True) -> None:
         # Keepalive pings exist only to reset a member's SLIM liveness (which the
         # datapath already did before this message reached us), so they carry no
         # transcript value. Drop them here — otherwise a member's ~20s keepalive
@@ -691,13 +778,14 @@ class RoomPersister:
         record = record_from(envelope, content)
         present = set(self._members_provider())
         self.log.record(record, delivered_to=present, recipients=envelope_recipients(envelope))
-        write_transcript(self.room, self.log.records)
+        append_transcript(self.room, record)
         self._persist_cursors()
-        # A locally-ingested message (the human proxy) is already in the list store
-        # via POST /messages with its own id (for event/PATCH semantics); only
-        # messages that ARRIVE over SLIM (agent replies) have no other producer.
-        if not local:
-            self._record_to_list_store(record, content)
+        # The list store is the live/fast lens; the durable transcript is the read
+        # path's source of truth. SLIM arrivals (agent replies) and ``respond`` write
+        # here so they're visible immediately; the human-proxy broadcast skips it
+        # (``list_write=False``) since the transcript already carries it.
+        if list_write:
+            self._record_to_list_store(record)
         if self._feed_bus:
             self._publish_to_bus(record)
         # Triggers: @-summon and commit:converged (skeleton hooks). The full
@@ -741,42 +829,21 @@ class RoomPersister:
         except Exception:
             logger.debug("bus publish from persister failed for room %s", self.room, exc_info=True)
 
-    def _record_to_list_store(self, record: TranscriptRecord, content: dict[str, Any]) -> None:
-        """Record the message into the store the HTTP list/UI reads.
+    def _record_to_list_store(self, record: TranscriptRecord) -> None:
+        """Mirror a conversational record into the in-memory list store (live lens).
 
-        The persister is the **single writer** of a channel-backed room's message
-        record: ``POST /messages`` only publishes to SLIM, and everything (the
-        human's own message via ``ingest_local``, agents' replies via receive)
-        lands here. Before this, human messages reached the list via the POST
-        route but agent replies — which only ever arrive over SLIM — never did, so
-        they were invisible in the UI. Conversational messages only (presence and
-        other non-message payloads stay in the transcript/bus).
+        The durable transcript is the read path's source of truth; this write keeps
+        the message visible immediately (before a cold read re-projects the
+        transcript). Conversational payloads only — presence/control payloads stay
+        in the transcript/bus, out of the chat list. Carries the envelope id so a
+        cold read dedups this row against its transcript projection.
         """
-        # Conversational payloads only: a human ``message`` and an agent ``reply``
-        # (``build_reply`` tags replies "reply"). Presence/ping and other control
-        # payloads stay in the transcript/bus, out of the chat list.
-        payload_type = content.get("l9", {}).get("payload", {}).get("type")
-        text = content.get("content")
-        if payload_type not in ("message", "reply") or not text:
+        msg = stored_message_from_record(self.room, record)
+        if msg is None:
             return
         try:
             from app.services import local_state
 
-            created_at = None
-            with contextlib.suppress(ValueError, TypeError):
-                created_at = datetime.fromisoformat(record.recorded_at)
-            episode = (
-                content.get("l9", {}).get("header", {}).get("message", {}).get("episode") or None
-            )
-            msg = local_state.StoredMessage(
-                room_name=self.room,
-                sender_handle=record.sender,
-                message_type=MessageType.BROADCAST,
-                content=text,
-                episode=episode if isinstance(episode, str) else None,
-            )
-            if created_at is not None:
-                msg.created_at = created_at
             local_state.add_message(self.room, msg)
         except Exception:
             logger.debug("list-store write failed for room %s", self.room, exc_info=True)

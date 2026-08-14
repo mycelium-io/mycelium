@@ -96,6 +96,23 @@ def test_transcript_persists_in_order_and_survives_reload():
     assert reloaded[1].sender == "agent-a"
 
 
+def test_append_transcript_is_o1_and_accumulates():
+    """Appending records one at a time yields the same ordered history a
+    full rewrite would, without re-rendering the whole file."""
+    room = "append-room"
+    base = get_room_dir(room)
+    for mid in ("m1", "m2", "m3"):
+        persister.append_transcript(room, _record(mid))
+
+    reloaded = persister.load_transcript(room)
+    assert [r.message_id for r in reloaded] == ["m1", "m2", "m3"]
+    # Plain JSONL on disk: one JSON object per line, no markdown fence.
+    body = (base / persister.TRANSCRIPT_FILENAME).read_text(encoding="utf-8")
+    lines = [ln for ln in body.splitlines() if ln.strip()]
+    assert len(lines) == 3
+    assert "```" not in body
+
+
 # ── delivery-cursor persistence (D5) ─────────────────────────────────────────
 
 
@@ -173,8 +190,7 @@ def test_transcript_does_not_clobber_episode_records():
 
     # Both survive independently.
     assert read_memory_file(base, "log/episodes/abcd1234") is not None
-    assert read_memory_file(base, persister.TRANSCRIPT_KEY) is not None
-    assert (base / "log" / "transcript.md").exists()
+    assert (base / persister.TRANSCRIPT_FILENAME).exists()
     assert (base / "log" / "episodes" / "abcd1234.md").exists()
 
 
@@ -389,27 +405,32 @@ def test_list_store_human_and_agent_each_appear_once_in_order():
     room = "h2-invariant-room"
     p = _persister_for(room, summoned=[], converged=[])
 
-    # 1) The human's message: written by the POST route (its own producer), and
-    #    ingested locally by the persister (local=True → must NOT also list-write).
+    # 1) The human's message: written by the POST route (its own producer, stamped
+    #    with the envelope id), and ingested by the persister with list_write=False
+    #    so it is NOT double-written to the list store.
     human_env, human_content = _msg_content(
         "h-1", sender="julia", text="@smoke-agent hello", payload_type="message"
     )
     local_state.add_message(
         room,
         local_state.StoredMessage(
-            room_name=room, sender_handle="julia", message_type="broadcast", content="hello"
+            room_name=room,
+            sender_handle="julia",
+            message_type="broadcast",
+            content="hello",
+            message_id="h-1",
         ),
     )
-    p._ingest(human_env, human_content, local=True)
+    p._ingest(human_env, human_content, list_write=False)
     # Its SLIM loopback arrives on the receive path — de-duped by id, no re-write.
-    p._ingest(human_env, human_content, local=False)
+    p._ingest(human_env, human_content)
 
     # 2) The agent's reply: arrives only over SLIM (receive path) → the persister
     #    is its sole producer.
     agent_env, agent_content = _msg_content(
         "a-1", sender="smoke-agent", text="hi back", payload_type="reply"
     )
-    p._ingest(agent_env, agent_content, local=False)
+    p._ingest(agent_env, agent_content)
 
     stored = local_state.list_messages(room)
     assert [(m.sender_handle, m.content) for m in stored] == [
@@ -428,11 +449,70 @@ def test_list_store_message_carries_its_episode():
     p = _persister_for(room, summoned=[], converged=[])
 
     env, content = _msg_content("a-1", sender="growth", text="my position", payload_type="reply")
-    p._ingest(env, content, local=False)
+    p._ingest(env, content)
 
     stored = local_state.list_messages(room)
     assert len(stored) == 1
     assert stored[0].episode == "urn:ioc:mycelium:episode:r:s"
+
+
+def test_conversational_messages_project_from_the_durable_transcript():
+    """The read path's source of truth: chat records project out of the transcript
+    with their envelope id (correlation key) and episode; presence/control records
+    are skipped."""
+    room = "conv-projection-room"
+    get_room_dir(room)
+
+    for mid, sender, ptype in [
+        ("h-1", "julia", "message"),
+        ("a-1", "growth", "reply"),
+        ("p-1", "growth", "presence"),
+    ]:
+        env, content = _msg_content(
+            mid, sender=sender, text=f"{sender} says hi", payload_type=ptype
+        )
+        persister.append_transcript(room, persister.record_from(env, content))
+
+    projected = persister.conversational_messages(room)
+    assert [(m.sender_handle, m.message_id) for m in projected] == [
+        ("julia", "h-1"),
+        ("growth", "a-1"),
+    ]
+    assert projected[1].episode == "urn:ioc:mycelium:episode:r:s"
+
+
+def test_conversational_messages_survive_a_wiped_in_memory_store():
+    """The restart bug (issue #497 §3): the in-memory list store is empty after a
+    restart, but the durable transcript still projects the full history — so the
+    read path serves it regardless."""
+    from app.services import local_state
+
+    room = "conv-restart-room"
+    get_room_dir(room)
+    env, content = _msg_content("a-1", sender="growth", text="my position", payload_type="reply")
+    persister.append_transcript(room, persister.record_from(env, content))
+
+    local_state.clear_all()  # the restart: memory is gone, disk is not
+    projected = persister.conversational_messages(room)
+    assert [m.content for m in projected] == ["my position"]
+
+
+def test_conversational_projection_is_stable_and_dedups_against_the_list_store():
+    """The same message projected from disk carries the same synthetic id on every
+    read (so a UI keyed by id is stable), and shares its ``message_id`` with the
+    list-store row the persister wrote — the key the read path dedups on."""
+    from app.services import local_state
+
+    room = "conv-dedup-room"
+    p = _persister_for(room, summoned=[], converged=[])
+    env, content = _msg_content("a-1", sender="growth", text="hello", payload_type="reply")
+    p._ingest(env, content)  # writes both the transcript and the list store
+
+    disk = persister.conversational_messages(room)
+    assert persister.conversational_messages(room)[0].id == disk[0].id  # stable across reads
+    mem = local_state.list_messages(room)
+    assert len(disk) == 1 and len(mem) == 1
+    assert disk[0].message_id == mem[0].message_id == "a-1"  # one correlation key, dedupable
 
 
 def test_addressed_absent_recipient_holds_the_triggering_message():
@@ -502,6 +582,6 @@ def test_list_store_skips_presence_and_non_conversational():
     pres_env, pres_content = _msg_content(
         "p-1", sender="smoke-agent", text="joined the room", payload_type="presence"
     )
-    p._ingest(pres_env, pres_content, local=False)
+    p._ingest(pres_env, pres_content)
 
     assert local_state.list_messages(room) == []
