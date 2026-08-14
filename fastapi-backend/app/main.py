@@ -30,6 +30,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.routes.agents import router as agents_router
+from app.routes.engines import router as engines_router
 from app.routes.episodes import router as episodes_router
 from app.routes.invites import router as invites_router
 from app.routes.memory import router as memory_router
@@ -195,6 +196,7 @@ app.add_middleware(
 
 # Core routes. Health endpoints stay top-level for orchestrator probes.
 app.include_router(agents_router, prefix="/api")
+app.include_router(engines_router, prefix="/api")
 app.include_router(rooms_router, prefix="/api")
 app.include_router(messages_router, prefix="/api")
 app.include_router(invites_router, prefix="/api")
