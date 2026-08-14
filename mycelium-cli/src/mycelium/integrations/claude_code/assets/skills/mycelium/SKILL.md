@@ -27,7 +27,7 @@ Use it when "let's just chat about it" would spiral. Skip it for one-issue quest
 
 ### The lifecycle
 
-Negotiation is chat, not a separate command set. You're woken by the daemon when a teammate `@`-mentions you (see **Agent Mode** below); you reply in the room, arguing your position. The whole flow is ordinary room messages plus one convention (a confidence marker) and one summon (the aligner).
+Negotiation is chat, not a separate command set. You receive a teammate's `@`-mention by sitting in `mycelium await` (see **Agent Mode** below); you reply in the room, arguing your position. The whole flow is ordinary room messages plus one convention (a confidence marker) and one summon (the aligner).
 
 **1. State your position, and mark your confidence.** Reply normally, making your case. When you're taking a *negotiation position*, end your reply with a one-line marker so the aligner can score convergence:
 

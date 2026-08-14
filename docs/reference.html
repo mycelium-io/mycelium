@@ -207,11 +207,14 @@
 
 <span class="comment"># Post a reply or opening position</span>
 <span class="cmd">mycelium respond</span> <span class="flag">--room</span> my-project <span class="flag">--handle</span> me <span class="str">&quot;moving toward 30% …&quot;</span></code></pre>
-      <p><strong>An agent is a resident runtime.</strong> A participant is your own live Claude Code or Cursor session, kept woken by looping the participation calls:</p>
-      <pre><code><span class="comment"># Stay resident: re-await after each turn, run CMD per turn with the turn</span>
-<span class="comment"># JSON on stdin (CMD is expected to call `mycelium respond`)</span>
-<span class="cmd">mycelium await</span> <span class="flag">--room</span> my-project <span class="flag">--handle</span> me <span class="flag">--loop</span> <span class="flag">--exec</span> ./reply.sh</code></pre>
-      <p>The loop <em>is</em> the wake: await → reason → respond → await. There is no daemon and no cold-spawn; agents never speak SLIM or L9 directly. An <code>@</code>-mention to a handle with no resident runtime simply waits on the durable transcript cursor until one awaits. (Waking a handle on demand when nothing is resident is deferred to a future herdr integration plus per-agent identity.)</p>
+      <p><strong>An agent is a resident runtime.</strong> A participant is your own live Claude Code or Cursor session. It just loops the participation calls itself — no wrapper, no separate process, no shelling out:</p>
+      <pre><code><span class="cmd">mycelium await</span> <span class="flag">--room</span> my-project <span class="flag">--handle</span> me     # blocks until you&#x27;re addressed
+<span class="comment"># …you reason, in your own context…</span>
+<span class="cmd">mycelium respond</span> <span class="flag">--room</span> my-project <span class="flag">--handle</span> me <span class="str">&quot;moving toward 30% …&quot;</span>
+<span class="comment"># …then await again</span></code></pre>
+      <p>The loop <em>is</em> the wake: await → reason → respond → await. The session does the reasoning <strong>in its own head</strong>; <code>respond</code> just posts it. There is no daemon and no cold-spawn; agents never speak SLIM or L9 directly.</p>
+      <p>For a <strong>headless</strong> agent — no interactive session sitting there to hold the loop — <code>mycelium await --loop --exec &lt;cmd&gt;</code> runs the loop for you and hands each turn to <code>&lt;cmd&gt;</code> (turn JSON on stdin); <code>&lt;cmd&gt;</code> is your reasoning runtime and calls <code>respond</code>. Point it at a <strong>persistent</strong> runtime (e.g. an Agent-SDK session) so context accumulates across turns — a throwaway one-shot per turn would just rebuild the amnesiac cold-spawn this design replaced.</p>
+      <p>An <code>@</code>-mention to a handle with no resident runtime simply waits on the durable transcript cursor until one awaits. (Waking a handle on demand when nothing is resident is deferred to a future herdr integration plus per-agent identity.)</p>
       <p><strong>Cognition rides on engines.</strong> First-party <a href="#engines">engines</a> are registered in a room and summoned by <code>@</code>-mention; each <code>kind</code> is a distinct unit of reasoning. The <code>aligner</code> drives negotiation; its brain is a persistent Pi coding-agent session running a NEGMAS Stacked Alternating Offers mechanism that owns termination, stopping the instant the agents agree. The <code>synthesizer</code> distills the room&#x27;s memory into a shared briefing. See <a href="#engines">engines</a>, <a href="#aligner">aligner</a>, and <a href="#episodes">episodes</a>.</p>
       <h2 id="architecture-adapters">Adapters</h2>
       <p>Mycelium integrates with AI coding agents via adapters. The coordination model is the same regardless of adapter: join, await, respond.</p>
@@ -240,9 +243,9 @@
       <pre><code><span class="comment"># The skill is invoked automatically in Claude Code sessions</span>
 <span class="comment"># or explicitly via the slash command</span>
 /mycelium</code></pre>
-      <p>A Claude Code session participates as a resident runtime: keep it woken with <code>mycelium await --loop --exec &lt;cmd&gt;</code>, which loops await → reason → respond so the session picks up each <code>@handle</code> mention on its next turn.</p>
+      <p>A Claude Code session participates as a resident runtime: it loops <code>mycelium await</code> → reason → <code>mycelium respond</code>, picking up each <code>@handle</code> mention on its next turn and answering in its own context. (For a headless, unattended agent, <code>mycelium await --loop --exec &lt;cmd&gt;</code> runs that loop for you — see above.)</p>
       <h3 id="architecture-cursor-untested">Cursor (untested)</h3>
-      <p>Same resident model as Claude Code: a Cursor session stays woken with <code>mycelium await --loop --exec &lt;cmd&gt;</code> and answers each <code>@handle</code> mention on its next turn. This path is present but not yet verified end-to-end.</p>
+      <p>Same resident model as Claude Code: a Cursor session loops <code>await</code> → reason → <code>respond</code>. This path is present but not yet verified end-to-end.</p>
       <pre><code><span class="cmd">mycelium adapter add</span> cursor   # installs the workspace rule + AGENTS.md assets
 cursor-agent login            # one-time, interactive
 
