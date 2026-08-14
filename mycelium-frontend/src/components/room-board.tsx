@@ -21,7 +21,10 @@ import {
   Bot,
   Check,
   CheckCircle2,
+  ChevronRight,
+  Circle,
   CircleDashed,
+  Clock,
   CornerDownRight,
   Eye,
   GitBranch,
@@ -58,6 +61,7 @@ export function RoomBoard({ roomName, refreshTrigger }: Props) {
   const [items, setItems] = useState<BoardItem[]>([]);
   const [lens, setLens] = useState<Lens | "all">("needs");
   const [selected, setSelected] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [flash, setFlash] = useState<string | null>(null);
   const [capture, setCapture] = useState("");
   const captureRef = useRef<HTMLInputElement>(null);
@@ -225,7 +229,16 @@ export function RoomBoard({ roomName, refreshTrigger }: Props) {
                 key={it.id}
                 item={it}
                 selected={selected === it.id}
-                onSelect={() => setSelected((s) => (s === it.id ? null : it.id))}
+                expanded={expanded.has(it.id)}
+                onOpen={() => {
+                  setSelected(it.id);
+                  setExpanded((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(it.id)) next.delete(it.id);
+                    else next.add(it.id);
+                    return next;
+                  });
+                }}
                 onVerb={verb}
               />
             ))}
@@ -259,121 +272,213 @@ function Legend({ k, label }: { k: string; label: string }) {
 
 // ── Row ──────────────────────────────────────────────────────────────────────
 
-const KIND_META: Record<string, { icon: typeof AlertTriangle; tone: string; label: string }> = {
-  decision: { icon: AlertTriangle, tone: "var(--yellow)", label: "decision" },
-  blocked: { icon: Ban, tone: "var(--red)", label: "blocked" },
-  review: { icon: Eye, tone: "var(--accent)", label: "review" },
-  action: { icon: CircleDashed, tone: "var(--muted-foreground)", label: "action" },
-  concern: { icon: AlertTriangle, tone: "var(--accent)", label: "concern" },
+// The leading anchor + kind pill. State wins the anchor (a resolved decision
+// reads as resolved, a blocked concern as blocked); kind drives the pill label.
+const KIND_META: Record<string, { tone: string; label: string }> = {
+  decision: { tone: "var(--yellow)", label: "decision" },
+  blocked: { tone: "var(--red)", label: "blocked" },
+  review: { tone: "var(--accent)", label: "review" },
+  action: { tone: "var(--muted-foreground)", label: "action" },
+  concern: { tone: "var(--accent)", label: "concern" },
 };
+
+function anchorFor(item: BoardItem): { icon: typeof Circle; tone: string } {
+  if (item.state === "resolved") return { icon: CheckCircle2, tone: "var(--green)" };
+  if (item.state === "blocked") return { icon: Ban, tone: "var(--red)" };
+  if (item.state === "in_review" || item.kind === "review") return { icon: Eye, tone: "var(--accent)" };
+  if (item.kind === "decision") return { icon: AlertTriangle, tone: "var(--yellow)" };
+  if (item.state === "in_progress" || item.state === "claimed") return { icon: CircleDashed, tone: "var(--accent)" };
+  return { icon: Circle, tone: "var(--accent)" };
+}
 
 function BoardRow({
   item,
   selected,
-  onSelect,
+  expanded,
+  onOpen,
   onVerb,
 }: {
   item: BoardItem;
   selected: boolean;
-  onSelect: () => void;
+  expanded: boolean;
+  onOpen: () => void;
   onVerb: (name: BoardVerb, id: string, body?: { owner?: string; waiting_on?: string; issue?: number }) => void;
 }) {
   const resolved = item.state === "resolved";
-  // A blocked row reads as blocked regardless of its underlying kind.
-  const metaKey = item.state === "blocked" ? "blocked" : item.kind;
-  const meta = resolved
-    ? { icon: CheckCircle2, tone: "var(--green)", label: "resolved" }
-    : KIND_META[metaKey] ?? KIND_META.action;
-  const Icon = meta.icon;
+  const pillKey = item.state === "blocked" ? "blocked" : item.kind;
+  const pill = KIND_META[pillKey] ?? KIND_META.action;
+  const anchor = anchorFor(item);
+  const Anchor = anchor.icon;
   const verbs = VERBS_BY_SOURCE[item.source];
 
   return (
-    <li
-      onClick={onSelect}
-      className={`group flex cursor-pointer gap-3 px-6 py-3 transition-colors hover:bg-hairline ${
-        selected ? "bg-hairline ring-1 ring-inset ring-accent/40" : ""
-      } ${resolved ? "opacity-60" : ""}`}
-    >
-      <Icon className="mt-0.5 size-4 shrink-0" style={{ color: meta.tone }} />
+    <>
+      <li
+        onClick={onOpen}
+        className={`group flex cursor-pointer items-center gap-2.5 px-4 py-2.5 transition-colors hover:bg-hairline ${
+          selected ? "bg-hairline" : ""
+        } ${resolved ? "opacity-55" : ""}`}
+        style={selected ? { boxShadow: "inset 2px 0 0 var(--accent)" } : undefined}
+      >
+        {/* Chevron — the expand affordance */}
+        <ChevronRight
+          className="size-3.5 shrink-0 text-faint transition-transform"
+          style={expanded ? { transform: "rotate(90deg)", color: "var(--muted-foreground)" } : undefined}
+        />
 
-      <div className="min-w-0 flex-1">
-        <div className="flex items-baseline gap-2">
-          <span className="font-mono text-micro text-faint tabular">{short(item.id)}</span>
-          <span
-            className="rounded px-1.5 py-px text-micro font-medium"
-            style={{ color: meta.tone, background: `color-mix(in srgb, ${meta.tone} 14%, transparent)` }}
-          >
-            {meta.label}
-          </span>
-          <span className={`text-body ${resolved ? "text-muted-foreground line-through" : "text-text"}`}>
-            {item.title}
-          </span>
-        </div>
+        {/* State anchor */}
+        <Anchor className="size-4 shrink-0" style={{ color: anchor.tone }} />
 
-        {item.detail && <div className="mt-0.5 text-label text-muted-foreground">{item.detail}</div>}
+        {/* Kind pill */}
+        <span
+          className="shrink-0 rounded px-1.5 py-px text-micro font-semibold uppercase tracking-wide"
+          style={{ color: pill.tone, background: `color-mix(in srgb, ${pill.tone} 14%, transparent)` }}
+        >
+          {pill.label}
+        </span>
 
-        {/* Meta line: owner · work links · deps · provenance · age */}
-        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-micro text-muted-foreground">
+        {/* Title — the object's name, dominant */}
+        <span className={`truncate text-ui ${resolved ? "text-muted-foreground line-through" : "text-text"}`}>
+          {item.title}
+        </span>
+
+        {/* Compact inline meta — quiet, right-aligned */}
+        <div className="ml-auto flex shrink-0 items-center gap-2.5 text-micro text-muted-foreground">
           {item.owner && <OwnerBadge owner={item.owner} />}
-          <WorkLinks work={item.work} />
-          {item.blocks && (
-            <span className="inline-flex items-center gap-1">
-              <CornerDownRight className="size-3" /> blocks &ldquo;{item.blocks}&rdquo;
-            </span>
-          )}
-          {item.waiting_on && <span>waiting on {item.waiting_on}</span>}
-          {item.github?.issue && (
-            <span className="inline-flex items-center gap-1 text-faint">
-              <ArrowUpRight className="size-3" />#{item.github.issue}
-              {item.github.state ? ` ${item.github.state}` : ""}
-            </span>
-          )}
-          {item.provenance && <span className="text-faint">{item.provenance}</span>}
-          {item.age && <span className="text-faint tabular">{item.age}</span>}
-          {item.note && resolved && <span className="text-green">{item.note}</span>}
+          {item.work?.ci && <CiDot ci={item.work.ci} />}
+          {item.work?.pr && <span className="font-mono text-accent">PR#{item.work.pr.number}</span>}
+          {item.waiting_on && <span className="text-yellow">⛔ {item.waiting_on}</span>}
+          {item.age && <span className="tabular text-faint">{item.age}</span>}
         </div>
 
-        {/* Decision choices */}
+        {/* Inline decision choices — act without opening */}
         {item.choices && !resolved && (
-          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          <div className="flex shrink-0 items-center gap-1" onClick={(e) => e.stopPropagation()}>
             {item.choices.map((c) => (
               <button
                 key={c}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onVerb("resolve", item.id);
-                }}
-                className="rounded-md border border-border bg-surface px-2.5 py-1 text-label font-medium text-text transition-colors hover:bg-elevated"
+                onClick={() => onVerb("resolve", item.id)}
+                className="rounded-md border border-border bg-surface px-2 py-0.5 text-label font-medium text-text transition-colors hover:bg-elevated"
               >
                 {c}
               </button>
             ))}
-            <button
-              onClick={(e) => e.stopPropagation()}
-              className="rounded-md px-2 py-1 text-label text-muted-foreground transition-colors hover:text-text"
-            >
-              reply ↗
-            </button>
           </div>
         )}
-      </div>
 
-      {/* One-gesture triage — appears on hover/selection, per-source */}
-      {!resolved && verbs.length > 0 && (
-        <div
-          className={`flex shrink-0 items-start gap-1 transition-opacity ${
-            selected ? "opacity-100" : "opacity-0 group-hover:opacity-100"
-          }`}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {verbs.includes("claim") && <RowAction icon={Hand} title="claim" onClick={() => onVerb("claim", item.id, { owner: YOU })} />}
-          {verbs.includes("resolve") && <RowAction icon={Check} title="resolve" onClick={() => onVerb("resolve", item.id)} />}
-          {verbs.includes("block") && <RowAction icon={Ban} title="block" onClick={() => onVerb("block", item.id)} />}
-          {verbs.includes("promote") && <RowAction icon={ArrowUpRight} title="promote → GitHub issue" onClick={() => onVerb("promote", item.id)} />}
-          {verbs.includes("dismiss") && <RowAction icon={X} title="dismiss" onClick={() => onVerb("dismiss", item.id)} />}
-        </div>
-      )}
+        {/* One-gesture triage — on hover/selection, per-source */}
+        {!resolved && verbs.length > 0 && (
+          <div
+            className={`flex shrink-0 items-center gap-0.5 transition-opacity ${
+              selected ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+            }`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {verbs.includes("claim") && <RowAction icon={Hand} title="claim" onClick={() => onVerb("claim", item.id, { owner: YOU })} />}
+            {verbs.includes("resolve") && <RowAction icon={Check} title="resolve" onClick={() => onVerb("resolve", item.id)} />}
+            {verbs.includes("block") && <RowAction icon={Ban} title="block" onClick={() => onVerb("block", item.id)} />}
+            {verbs.includes("promote") && <RowAction icon={ArrowUpRight} title="promote → GitHub issue" onClick={() => onVerb("promote", item.id)} />}
+            {verbs.includes("dismiss") && <RowAction icon={X} title="dismiss" onClick={() => onVerb("dismiss", item.id)} />}
+          </div>
+        )}
+      </li>
+
+      {expanded && <ExpandedDetail item={item} />}
+    </>
+  );
+}
+
+/** Detail-on-demand: provenance, dependencies, work, activity — the context the
+ *  row hides until you ask for it. Progressive disclosure, not navigation. */
+function ExpandedDetail({ item }: { item: BoardItem }) {
+  const created = item.created_at ? new Date(item.created_at) : null;
+  return (
+    <li className="border-l-2 border-accent/40 bg-bg/40 px-6 py-3 pl-11">
+      {item.detail && <p className="mb-2 text-body text-text">{item.detail}</p>}
+
+      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-label">
+        <Field label="id" value={<span className="font-mono text-micro text-muted-foreground">{item.id}</span>} />
+        <Field label="source" value={item.source} />
+        <Field label="state" value={item.state.replace("_", " ")} />
+        {item.owner && (
+          <Field
+            label="owner"
+            value={
+              <span className="inline-flex items-center gap-1">
+                {item.owner.handle}
+                <span className="text-faint">({item.owner.kind}{item.owner.present ? ", live" : ""})</span>
+              </span>
+            }
+          />
+        )}
+        {item.provenance && <Field label="from" value={item.provenance} />}
+        {created && (
+          <Field
+            label="opened"
+            value={
+              <span className="inline-flex items-center gap-1">
+                <Clock className="size-3 text-faint" />
+                {created.toLocaleString()} {item.age ? <span className="text-faint">· {item.age} ago</span> : null}
+              </span>
+            }
+          />
+        )}
+        {item.waiting_on && <Field label="waiting on" value={<span className="text-yellow">{item.waiting_on}</span>} />}
+        {item.blocks && (
+          <Field
+            label="blocks"
+            value={
+              <span className="inline-flex items-center gap-1">
+                <CornerDownRight className="size-3" /> {item.blocks}
+              </span>
+            }
+          />
+        )}
+        {item.work && (item.work.branch || item.work.pr || item.work.ci) && (
+          <Field label="work" value={<span className="flex flex-wrap items-center gap-x-3 gap-y-1"><WorkLinks work={item.work} /></span>} />
+        )}
+        {item.github?.issue && (
+          <Field
+            label="github"
+            value={
+              <span className="inline-flex items-center gap-1 text-faint">
+                <ArrowUpRight className="size-3" />#{item.github.issue}
+                {item.github.state ? ` ${item.github.state}` : ""}
+              </span>
+            }
+          />
+        )}
+        {item.note && <Field label="note" value={<span className="text-green">{item.note}</span>} />}
+      </dl>
+
+      {/* Affordances into the underlying work — display-only for now */}
+      <div className="mt-2.5 flex flex-wrap items-center gap-2 text-label">
+        {(item.kind === "decision" || item.kind === "review") && (
+          <span className="inline-flex cursor-default items-center gap-1 text-accent">reply in channel ↗</span>
+        )}
+        {item.work?.pr && <span className="inline-flex cursor-default items-center gap-1 text-accent">open PR #{item.work.pr.number} ↗</span>}
+        {item.source === "plan" && <span className="text-faint">from {item.provenance}</span>}
+      </div>
     </li>
+  );
+}
+
+function Field({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <>
+      <dt className="text-micro uppercase tracking-wide text-faint">{label}</dt>
+      <dd className="text-muted-foreground">{value}</dd>
+    </>
+  );
+}
+
+function CiDot({ ci }: { ci: NonNullable<BoardWork["ci"]> }) {
+  const color = ci === "green" ? "var(--green)" : ci === "running" ? "var(--yellow)" : "var(--red)";
+  return (
+    <span className="inline-flex items-center gap-1 font-mono">
+      <span className={`inline-block size-1.5 rounded-full ${ci === "running" ? "animate-pulse" : ""}`} style={{ background: color }} />
+      <span className="text-faint">CI</span>
+    </span>
   );
 }
 
