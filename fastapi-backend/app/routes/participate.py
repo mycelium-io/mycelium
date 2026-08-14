@@ -223,7 +223,9 @@ async def post_reply(room_name: str, body: ReplyBody):
     # Record into the transcript (the aligner polls it for positions). SLIM does
     # not echo a broadcast back to its own sender, so a local record is required —
     # then also broadcast so any client-connected members / the UI see it.
-    managed.persister.ingest_local(envelope, content)
+    # ``list_write=True`` so the reply is visible in the room view immediately, the
+    # same store a ``room send`` broadcast lands in (no store divergence).
+    managed.persister.ingest_local(envelope, content, list_write=True)
     try:
         await managed.channel.send(envelope, extra={"content": clean})
     except Exception:

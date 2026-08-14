@@ -120,6 +120,10 @@ class HumanPublishResult:
     mentioned: list[str]
     recipients: list[str]
     invites: list[PendingInvite]
+    # The published envelope's L9 message id — the correlation key the POST route
+    # stamps on its ``local_state`` row so a cold read from the durable transcript
+    # dedups against it instead of showing the human's message twice.
+    message_id: str | None = None
 
 
 @dataclass
@@ -483,12 +487,16 @@ class RoomChannelManager:
             payload_type="message",
         )
         content = serialize_content(envelope, extra={"content": text})
+        message_id = envelope.header.message.id if envelope.header.message else None
         try:
             await managed.channel.send(envelope, extra={"content": text})
         except Exception as exc:  # best-effort broadcast
             logger.warning("failed to publish human message on room %s: %s", room, exc)
         if managed.persister is not None:
-            managed.persister.ingest_local(envelope, content)
+            # Transcript-only here (``list_write=False``): the POST route owns the
+            # ``local_state`` row (its id/ledger), stamped with this envelope's id so
+            # a cold read dedups the two.
+            managed.persister.ingest_local(envelope, content, list_write=False)
 
         # Consent gate: an @-mention of an agent not on the channel invites
         # it — but the user's OWN registered agents in this room are pre-authorized
@@ -522,7 +530,9 @@ class RoomChannelManager:
                 invites.append(invite)
 
         recipients = [h for h in mentioned if h != BACKEND_AGENT]
-        return HumanPublishResult(mentioned=mentioned, recipients=recipients, invites=invites)
+        return HumanPublishResult(
+            mentioned=mentioned, recipients=recipients, invites=invites, message_id=message_id
+        )
 
     # -- consent-gated invites --
 

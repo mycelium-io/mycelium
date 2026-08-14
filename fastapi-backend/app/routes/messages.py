@@ -25,7 +25,7 @@ from app.schemas import (
     MessageRead,
     MessageType,
 )
-from app.services import local_state, room_channels
+from app.services import local_state, persister, room_channels
 from app.services.filesystem import room_exists
 
 logger = logging.getLogger(__name__)
@@ -71,11 +71,6 @@ async def send_message(room_name: str, payload: MessageCreate):
             msg.event_expires_at = datetime.now(UTC) + timedelta(
                 seconds=payload.metadata.ttl_seconds
             )
-    # The human's message is stored here with its own id so event semantics
-    # (status transitions, PATCH-by-id, ttl) work. Agent replies arrive over SLIM
-    # and are written into this same store by the persister — one list store,
-    # two producers, no duplication (the persister skips locally-ingested ids).
-    local_state.add_message(channel, msg)
 
     notify_payload: dict = {
         "id": str(msg.id),
@@ -91,14 +86,14 @@ async def send_message(room_name: str, payload: MessageCreate):
         notify_payload["coordination_session_id"] = str(coord.id)
     notify_payload["room_name"] = channel
 
-    # Human-in-the-room: for a real room with a live SLIM channel,
-    # the backend publishes the human's message onto the channel as their proxy —
-    # ``@``-parsing recipients so in-room agents wake, and raising consent for
-    # absent mentions. The persister is then the SINGLE writer of the room's record:
-    # it records this message (via ``ingest_local``) into both the
-    # list store and the bus, so we must NOT also write local_state / bus.publish
-    # here (that would double it). Coordination sub-rooms and the no-channel path
-    # have no persister, so they keep the direct local_state write + legacy bus.
+    # Human-in-the-room: for a real room with a live SLIM channel, the backend
+    # publishes the human's message onto the channel as their proxy — ``@``-parsing
+    # recipients so in-room agents wake, and raising consent for absent mentions.
+    # The persister records it to the durable transcript (via ``ingest_local``),
+    # which is the read path's source of truth, so we must NOT also write
+    # ``local_state`` / ``bus.publish`` here (that would double it). The no-channel
+    # path and event/non-broadcast messages have no persister, so they keep the
+    # direct ``local_state`` write + legacy bus.
     published = False
     if (
         coord is None
@@ -109,10 +104,42 @@ async def send_message(room_name: str, payload: MessageCreate):
             channel, sender=msg.sender_handle, text=msg.content
         )
         published = result is not None
+        if result is not None:
+            # Correlation key: the same envelope the persister records to the
+            # transcript, so a cold read dedups this row against its transcript copy.
+            msg.message_id = result.message_id
+    # The human's message always lands in ``local_state`` — its id backs PATCH /
+    # event semantics and it's the live lens. The persister records the same
+    # message to the durable transcript (the read path's source of truth); the two
+    # dedup by ``message_id`` on read. When published, the persister owns the bus
+    # push, so only the un-published path publishes here.
+    local_state.add_message(channel, msg)
     if not published:
         bus.publish(room_channel(channel), notify_payload)
 
     return MessageRead.model_validate(msg)
+
+
+def _read_messages(
+    channel: str, coord: local_state.CoordSessionShim | None
+) -> list[local_state.StoredMessage]:
+    """The room view: durable conversational history + in-memory event-ledger rows.
+
+    A real room's durable conversational history lives in the transcript (survives
+    restarts; both ``respond`` and ``room send`` converge there). The in-memory
+    ``local_state`` is the live lens and holds the ledger fields (ttl/status) plus
+    the ids clients already hold, so where a message is in both stores the
+    ``local_state`` row wins; the transcript only fills what memory lost (a message
+    from before a restart). Dedup is by envelope ``message_id`` (a distinct id space
+    from ``StoredMessage.id``). A coordination session has no transcript.
+    """
+    if coord is not None:
+        return local_state.list_messages(channel)
+
+    mem = local_state.list_messages(channel)
+    live_ids = {m.message_id for m in mem if m.message_id}
+    disk = [m for m in persister.conversational_messages(channel) if m.message_id not in live_ids]
+    return disk + mem
 
 
 @router.get("", response_model=MessageListResponse)
@@ -130,10 +157,10 @@ async def list_messages(
     ),
 ):
     """List messages in a room (or coordination session), newest first."""
-    channel, _coord = _resolve_channel(room_name)
+    channel, coord = _resolve_channel(room_name)
     now = datetime.now(UTC)
 
-    messages = local_state.list_messages(channel)
+    messages = _read_messages(channel, coord)
     filtered = []
     for m in messages:
         if m.event_expires_at is not None and m.event_expires_at <= now:

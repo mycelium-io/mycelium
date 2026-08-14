@@ -87,6 +87,12 @@ class StoredMessage:
     # casual reply carries the room's default). Lets the UI group/fold a
     # negotiation's turns under their episode instead of interleaving them inline.
     episode: str | None = None
+    # The L9 envelope id when this message rode the channel (respond / broadcast /
+    # agent reply). A cross-store correlation key: the same message can surface
+    # from the durable transcript and this in-memory store, and they dedup by this
+    # id (``StoredMessage.id`` is a distinct id space). ``None`` for a message that
+    # only ever lived here (an event-ledger row, or a broadcast to a dead channel).
+    message_id: str | None = None
     id: uuid.UUID = field(default_factory=uuid.uuid4)
     created_at: datetime = field(default_factory=_now)
 
