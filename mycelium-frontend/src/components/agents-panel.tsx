@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Chip } from "@/components/ui/chip";
 import { Monogram } from "@/components/ui/monogram";
 import { EmptyState } from "@/components/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useCurrentUser } from "@/components/current-user";
 import {
   Dialog,
@@ -248,6 +249,16 @@ export function AgentsPanel({ roomName, refreshKey = 0 }: Props) {
       </div>
 
       <div className="flex-1 overflow-y-auto">
+        {!loaded &&
+          ["w-20", "w-28", "w-16"].map((w, i) => (
+            <div key={i} className="flex items-center gap-2.5 border-b border-border px-3 py-2.5 last:border-b-0">
+              <Skeleton className="size-8 flex-shrink-0 rounded-full" />
+              <div className="min-w-0 flex-1">
+                <Skeleton className={`h-3 ${w}`} />
+                <Skeleton className="mt-1.5 h-2.5 w-24" />
+              </div>
+            </div>
+          ))}
         {loaded && agents.length === 0 && people.length === 0 && (
           <EmptyState
             size="sm"

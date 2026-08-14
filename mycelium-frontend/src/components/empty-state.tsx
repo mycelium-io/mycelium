@@ -16,7 +16,9 @@ interface Props {
   className?: string;
 }
 
-/** The one empty state for the whole app — consistent icon chip, title, copy. */
+/** The one empty state for the whole app — consistent icon chip, title, copy.
+ *  Full-pane usages (Channel, Negotiate, L9) pass `className="h-full"` so the
+ *  state centers vertically; rail/list usages sit in flow near the top. */
 export function EmptyState({ icon: Icon, title, description, action, size = "md", className }: Props) {
   const sm = size === "sm";
   return (

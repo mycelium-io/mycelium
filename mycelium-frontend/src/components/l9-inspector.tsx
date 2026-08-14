@@ -282,6 +282,7 @@ export function L9Inspector({ roomName }: Props) {
       <div ref={wireRef} className="flex-1 overflow-y-auto min-h-0">
         {wire.length === 0 ? (
           <EmptyState
+            className="h-full"
             icon={Radio}
             title="No L9 traffic yet"
             description="Protocol envelopes stream here as agents coordinate: exchanges, commits, and knowledge."

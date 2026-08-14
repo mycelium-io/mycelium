@@ -20,6 +20,7 @@ import { L9Inspector } from "@/components/l9-inspector";
 import { NegotiationView } from "@/components/negotiation-view";
 import { RoomSlimView } from "@/components/room-slim";
 import { EmptyState } from "@/components/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
 import { initials } from "@/components/ui/monogram";
 import { MessagesSquare } from "lucide-react";
 
@@ -58,6 +59,24 @@ const SYSTEM_TYPES = new Set([
   "coordination_consensus",
   "plan_updated",
 ]);
+
+/** Loading placeholder shaped like a short run of chat rows (avatar + lines). */
+function ChannelSkeleton() {
+  const widths = ["w-3/5", "w-2/5", "w-1/2"];
+  return (
+    <div className="flex flex-col gap-5 px-5 py-4">
+      {widths.map((w, i) => (
+        <div key={i} className="flex gap-3">
+          <Skeleton className="size-8 flex-shrink-0 rounded-full" />
+          <div className="min-w-0 flex-1 pt-0.5">
+            <Skeleton className="h-3 w-24" />
+            <Skeleton className={`mt-2 h-3 ${w}`} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 /** A quiet, centered lifecycle line woven into the conversation. */
 function SystemNotice({
@@ -264,6 +283,7 @@ interface Props {
 
 export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onNegotiationPhaseChange, planRefreshTrigger = 0, view: viewProp, onViewChange, suppressInvites = false }: Props) {
   const [events, setEvents] = useState<Event[]>([]);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const [connected, setConnected] = useState(false);
 
   // Surface connection state to the shell's status bar (editor-style), so the
@@ -308,7 +328,11 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
     fetchMessages(roomName).then(data => {
       const msgs = (data.messages || []).reverse();
       setEvents(msgs.map(parseEvent));
-    }).catch(logFetchError("fetchMessages"));
+      setHistoryLoaded(true);
+    }).catch((err) => {
+      logFetchError("fetchMessages")(err);
+      setHistoryLoaded(true);
+    });
   }, [roomName]);
 
   // Load any consent prompts already open (an @-invite raised before this
@@ -466,15 +490,16 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
         {view === "plan" ? (
           <RoomPlanHeader roomName={roomName} refreshTrigger={planRefreshTrigger} />
-        ) : (
-          <>
-        {visible.length === 0 && (
+        ) : !historyLoaded ? (
+          <ChannelSkeleton />
+        ) : visible.length === 0 ? (
           <EmptyState
+            className="h-full"
             icon={MessagesSquare}
             title="No messages yet"
             description="Post a position or @-mention an agent to get the room talking."
           />
-        )}
+        ) : (
         <div className="py-3">
         {visible.map((ev, idx) => {
               // Coordination + plan lifecycle events render as slim, centered
@@ -647,7 +672,6 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
               );
             })}
         </div>
-          </>
         )}
       </div>
       )}
