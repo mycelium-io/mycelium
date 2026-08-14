@@ -20,6 +20,7 @@ from app.services.filesystem import (
     room_exists,
     write_room_meta,
 )
+from app.services.persister import TRANSCRIPT_FILENAME
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,21 @@ def _room_read(room_name: str) -> RoomRead | None:
     if meta is None:
         return None
     return RoomRead(**meta)
+
+
+def _last_activity(room: RoomRead) -> datetime:
+    """When a room was last active: its transcript's mtime, or ``created_at``.
+
+    The transcript (``log/transcript.jsonl``) is appended to on every message
+    (see ``persister.py``), so its mtime is a cheap proxy for "last message
+    time" without parsing the file. Rooms with no messages yet fall back to
+    creation time.
+    """
+    transcript_path = get_room_dir(room.name) / TRANSCRIPT_FILENAME
+    try:
+        return datetime.fromtimestamp(transcript_path.stat().st_mtime, tz=UTC)
+    except OSError:
+        return room.created_at
 
 
 @router.post("", response_model=RoomRead, status_code=201)
@@ -101,7 +117,7 @@ async def list_rooms(
     visible = [r for r in rooms if r is not None and r.is_public]
     if name:
         visible = [r for r in visible if name.lower() in r.name.lower()]
-    visible.sort(key=lambda r: r.created_at, reverse=True)
+    visible.sort(key=_last_activity, reverse=True)
     return visible[skip : skip + limit]
 
 
