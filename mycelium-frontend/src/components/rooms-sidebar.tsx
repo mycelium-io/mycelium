@@ -19,6 +19,11 @@ interface Room {
   is_persistent: boolean;
 }
 
+// The sidebar lives inside each page's AppShell, so navigation remounts it. A
+// module-level cache lets a fresh mount paint the last-known rooms immediately
+// (no count flashing 100 → 0 → 100 while the refetch is in flight).
+let roomsCache: Room[] = [];
+
 /** Two-letter monogram from a room name (mirrors the agent avatars). */
 function monogram(name: string): string {
   const parts = name.split(/[^a-z0-9]+/i).filter(Boolean);
@@ -32,12 +37,14 @@ interface Props {
 }
 
 export function RoomsSidebar({ activeRoom = null }: Props) {
-  const [rooms, setRooms] = useState<Room[]>([]);
+  const [rooms, setRooms] = useState<Room[]>(roomsCache);
   const [query, setQuery] = useState("");
   const [showCreate, setShowCreate] = useState(false);
 
   const load = () =>
-    fetchRooms().then((data: unknown) => { if (Array.isArray(data)) setRooms(data as Room[]); }).catch(logFetchError("fetchRooms"));
+    fetchRooms().then((data: unknown) => {
+      if (Array.isArray(data)) { roomsCache = data as Room[]; setRooms(roomsCache); }
+    }).catch(logFetchError("fetchRooms"));
 
   useEffect(() => {
     load();
