@@ -424,6 +424,15 @@ def stored_message_from_record(room: str, record: TranscriptRecord) -> StoredMes
 _conversational_cache: dict[str, tuple[tuple[int, int], list[StoredMessage]]] = {}
 
 
+def _stat_stamp(path: Path) -> tuple[int, int] | None:
+    """A (mtime_ns, size) cache stamp for ``path``, or None if it doesn't exist."""
+    try:
+        st = path.stat()
+    except OSError:
+        return None
+    return (st.st_mtime_ns, st.st_size)
+
+
 def conversational_messages(room: str) -> list[StoredMessage]:
     """The room's conversational history, projected from the durable transcript.
 
@@ -435,19 +444,24 @@ def conversational_messages(room: str) -> list[StoredMessage]:
     from app.services.filesystem import get_room_dir
 
     path = get_room_dir(room) / TRANSCRIPT_FILENAME
-    try:
-        st = path.stat()
-        stamp = (st.st_mtime_ns, st.st_size)
-    except OSError:
-        _conversational_cache.pop(room, None)
-        return []
-    cached = _conversational_cache.get(room)
-    if cached is not None and cached[0] == stamp:
-        return list(cached[1])
+    stamp = _stat_stamp(path)
+    if stamp is not None:
+        cached = _conversational_cache.get(room)
+        if cached is not None and cached[0] == stamp:
+            return list(cached[1])
+    # Fall through to load_transcript even when the .jsonl is absent: it migrates a
+    # legacy fenced transcript.md forward on first read, so a dormant legacy room
+    # (read-only browsed before it's next provisioned) isn't shown empty.
     messages = [
         m for r in load_transcript(room) if (m := stored_message_from_record(room, r)) is not None
     ]
-    _conversational_cache[room] = (stamp, messages)
+    # Re-stat when the file was absent: a legacy migration may have just created
+    # it. Cache only when it exists on disk, so a truly empty room stays cheap.
+    post = stamp if stamp is not None else _stat_stamp(path)
+    if post is not None:
+        _conversational_cache[room] = (post, messages)
+    else:
+        _conversational_cache.pop(room, None)
     return list(messages)
 
 

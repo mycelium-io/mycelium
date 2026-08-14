@@ -506,6 +506,27 @@ def test_conversational_messages_project_from_the_durable_transcript():
     assert projected[1].episode == "urn:ioc:mycelium:episode:r:s"
 
 
+def test_conversational_messages_migrate_and_serve_a_legacy_transcript():
+    """A dormant legacy room (only the fenced transcript.md, never provisioned
+    since deploy) must not read as empty: conversational_messages falls through to
+    load_transcript, which migrates the .md forward, so the read path serves it."""
+    from app.services.filesystem import write_memory_file
+
+    room = "conv-legacy-room"
+    base = get_room_dir(room)
+    env, content = _msg_content(
+        "h-1", sender="julia", text="from the old format", payload_type="message"
+    )
+    line = persister._transcript_line(persister.record_from(env, content))
+    body = "\n".join(["The live room transcript.", "", "```jsonl", line, "```", ""])
+    write_memory_file(base, persister.TRANSCRIPT_KEY, body, created_by="x")
+    assert not (base / persister.TRANSCRIPT_FILENAME).exists()  # no .jsonl yet
+
+    projected = persister.conversational_messages(room)
+    assert [m.content for m in projected] == ["from the old format"]
+    assert (base / persister.TRANSCRIPT_FILENAME).exists()  # migrated forward on read
+
+
 def test_conversational_messages_survive_a_wiped_in_memory_store():
     """The restart bug (issue #497 §3): the in-memory list store is empty after a
     restart, but the durable transcript still projects the full history — so the
