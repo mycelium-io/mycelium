@@ -4,7 +4,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useCallback } from "react";
-import { Brain, ChevronRight } from "lucide-react";
+import { Brain, ChevronRight, Folder, FolderOpen, FileText } from "lucide-react";
 import { fetchMemories, searchMemories } from "@/lib/api";
 import { DetailDrawer } from "@/components/detail-drawer";
 import { EmptyState } from "@/components/empty-state";
@@ -59,7 +59,6 @@ function buildTree(memories: Memory[]): TreeNode[] {
 
   const sort = (nodes: TreeNode[]) => {
     nodes.sort((a, b) => {
-      // folders before leaves, then alphabetically
       const aFolder = a.children.length > 0;
       const bFolder = b.children.length > 0;
       if (aFolder !== bFolder) return aFolder ? -1 : 1;
@@ -82,81 +81,89 @@ function formatValue(v: unknown): string {
   return String(v);
 }
 
+const ROW_H = 22; // px, matches vscode compact density
+const INDENT = 12; // px per depth level
+
 interface TreeRowsProps {
   nodes: TreeNode[];
   depth: number;
   collapsed: Set<string>;
   onToggle: (path: string) => void;
   onSelect: (mem: Memory) => void;
+  selected: Memory | null;
 }
 
-function TreeRows({ nodes, depth, collapsed, onToggle, onSelect }: TreeRowsProps) {
+function TreeRows({ nodes, depth, collapsed, onToggle, onSelect, selected }: TreeRowsProps) {
   return (
     <>
       {nodes.map(node => {
         const isFolder = node.children.length > 0;
-        const isCollapsed = collapsed.has(node.path);
-        const indent = depth * 12 + 16;
+        const isOpen = isFolder && !collapsed.has(node.path);
+        const isSelected = selected?.key === node.path;
+        const paddingLeft = 8 + depth * INDENT;
 
         return (
           <div key={node.path}>
-            {isFolder ? (
-              <>
-                <button
-                  onClick={() => {
-                    onToggle(node.path);
-                    if (node.memory) onSelect(node.memory);
-                  }}
-                  className="flex w-full items-center gap-1 py-1.5 text-left text-label text-muted-foreground hover:text-text border-b border-border transition-colors select-none"
-                  style={{ paddingLeft: indent }}
-                >
-                  <ChevronRight
-                    size={12}
-                    className={`flex-shrink-0 text-faint transition-transform ${isCollapsed ? "" : "rotate-90"}`}
-                  />
-                  <span className="font-mono">{node.name}/</span>
-                  {node.memory && (
-                    <span className="ml-1.5 text-micro text-faint font-mono">v{node.memory.version}</span>
-                  )}
-                  <span className="ml-auto pr-4 font-mono text-micro text-faint tabular">
-                    {node.children.length}
-                  </span>
-                </button>
-                {!isCollapsed && (
-                  <TreeRows
-                    nodes={node.children}
-                    depth={depth + 1}
-                    collapsed={collapsed}
-                    onToggle={onToggle}
-                    onSelect={onSelect}
-                  />
-                )}
-              </>
-            ) : (
+            <div
+              style={{ paddingLeft, height: ROW_H }}
+              className={`flex w-full items-center gap-1.5 pr-3 transition-colors
+                ${isSelected ? "bg-accent/15 text-text" : "hover:bg-muted text-muted-foreground hover:text-text"}`}
+            >
+              {/* chevron — separate click target so it only toggles */}
               <button
-                onClick={() => node.memory && onSelect(node.memory)}
-                className="block w-full text-left py-2.5 border-b border-border last:border-b-0 transition-colors hover:bg-hairline"
-                style={{ paddingLeft: indent + 16, paddingRight: 16 }}
+                onClick={() => isFolder && onToggle(node.path)}
+                className="flex-shrink-0 w-3 flex items-center justify-center"
+                tabIndex={isFolder ? 0 : -1}
               >
-                <div className="flex items-baseline gap-2 mb-0.5">
-                  <span className="font-mono text-label text-accent truncate min-w-0">{node.name}</span>
-                  {node.memory && (
-                    <>
-                      <span className="font-mono text-micro text-muted-foreground tabular flex-shrink-0">
-                        v{node.memory.version}
-                      </span>
-                      <span className="ml-auto text-micro text-muted-foreground truncate flex-shrink-0">
-                        {node.memory.created_by}
-                      </span>
-                    </>
-                  )}
-                </div>
-                {node.memory && (
-                  <p className="text-label text-muted-foreground line-clamp-2 leading-snug">
-                    {formatValue(node.memory.value)}
-                  </p>
+                {isFolder && (
+                  <ChevronRight
+                    size={11}
+                    className={`text-faint transition-transform ${isOpen ? "rotate-90" : ""}`}
+                  />
                 )}
               </button>
+
+              {/* icon + name — clicking opens the memory (or toggles folder if no memory) */}
+              <button
+                onClick={() => node.memory ? onSelect(node.memory) : isFolder && onToggle(node.path)}
+                className="flex items-center gap-1.5 min-w-0 flex-1 text-left"
+              >
+                <span className="flex-shrink-0">
+                  {isFolder
+                    ? isOpen
+                      ? <FolderOpen size={14} className="text-accent" />
+                      : <Folder size={14} className="text-accent opacity-70" />
+                    : <FileText size={13} className="text-faint" />
+                  }
+                </span>
+
+                <span className="font-mono text-[11.5px] leading-none truncate min-w-0">
+                  {node.name}
+                </span>
+
+                {/* dot indicator when node is both a file and a folder */}
+                {isFolder && node.memory && (
+                  <span className="flex-shrink-0 w-1 h-1 rounded-full bg-accent opacity-60" />
+                )}
+              </button>
+
+              {/* version badge — files only */}
+              {node.memory && !isFolder && (
+                <span className="flex-shrink-0 font-mono text-[10px] tabular text-faint">
+                  v{node.memory.version}
+                </span>
+              )}
+            </div>
+
+            {isOpen && (
+              <TreeRows
+                nodes={node.children}
+                depth={depth + 1}
+                collapsed={collapsed}
+                onToggle={onToggle}
+                onSelect={onSelect}
+                selected={selected}
+              />
             )}
           </div>
         );
@@ -279,7 +286,9 @@ export function MemoryPanel({ roomName, refreshTrigger }: Props) {
                     {(r.similarity * 100).toFixed(0)}% match
                   </span>
                 </div>
-                <p className="text-label text-muted-foreground line-clamp-2 leading-snug">{formatValue(r.memory.value)}</p>
+                <p className="text-label text-muted-foreground line-clamp-2 leading-snug">
+                  {formatValue(r.memory.value)}
+                </p>
               </button>
             ))}
           </div>
@@ -287,7 +296,7 @@ export function MemoryPanel({ roomName, refreshTrigger }: Props) {
 
         {/* File tree */}
         {!searchResults && (
-          <div>
+          <div className="py-1">
             {memories.length === 0 ? (
               <EmptyState
                 size="sm"
@@ -302,6 +311,7 @@ export function MemoryPanel({ roomName, refreshTrigger }: Props) {
                 collapsed={collapsed}
                 onToggle={toggleNs}
                 onSelect={setSelected}
+                selected={selected}
               />
             )}
           </div>
