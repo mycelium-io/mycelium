@@ -5,6 +5,7 @@
 
 import { useEffect, useState } from "react";
 import { fetchEpisode, type EpisodeDetail as EpisodeDetailT, type L9Envelope } from "@/lib/api";
+import { Skeleton } from "@/components/ui/skeleton";
 
 function outcomeColor(state: string | null): string {
   if (state === "converged" || state === "resolved") return "var(--green)";
@@ -68,7 +69,18 @@ export function EpisodeDetail({ roomName, shortId }: { roomName: string; shortId
   }, [roomName, shortId]);
 
   if (loading) {
-    return <div className="px-5 py-8 text-center text-label text-muted-foreground">Loading chain…</div>;
+    return (
+      <div className="px-5 py-4">
+        <div className="grid grid-cols-2 gap-x-6 gap-y-4">
+          {Array.from({ length: 4 }, (_, i) => (
+            <div key={i} className="flex flex-col gap-1.5">
+              <Skeleton className="h-2.5 w-16" />
+              <Skeleton className="h-3 w-24" />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
   }
   if (!detail) {
     return <div className="px-5 py-8 text-center text-label text-muted-foreground">Episode not found</div>;

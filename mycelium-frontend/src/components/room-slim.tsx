@@ -10,6 +10,7 @@ import {
   type CoordinationRoom,
   type CoordinationStatus,
 } from "@/lib/api";
+import { Skeleton } from "@/components/ui/skeleton";
 
 /** The "SLIM" room view: this room's SLIM channel status — the node it rides,
  *  who is present (SLIM members plus server-held `await` participants), episode
@@ -79,9 +80,16 @@ export function RoomSlimView({ roomName }: { roomName: string }) {
           dotLabel={room?.provisioned ? "provisioned" : "not provisioned"}
         />
         {!room ? (
-          <div className="px-4 py-3 text-label text-muted-foreground">
-            {loaded ? "No live channel for this room yet." : "Loading…"}
-          </div>
+          loaded ? (
+            <div className="px-4 py-3 text-label text-muted-foreground">
+              No live channel for this room yet.
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2.5 px-4 py-3.5">
+              <Skeleton className="h-3 w-3/5" />
+              <Skeleton className="h-3 w-2/5" />
+            </div>
+          )
         ) : (
           <div className="divide-y divide-border">
             <Stat label="Members present">

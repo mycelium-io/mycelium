@@ -152,18 +152,17 @@ export function NegotiationView({ events }: { events: readonly NegEvent[] }) {
 
   if (neg.state === "idle") {
     return (
-      <div className="flex h-full items-center justify-center">
-        <EmptyState
-          icon={Scale}
-          title="No active negotiation"
-          description={
-            <>
-              Summon the aligner with <code className="font-mono text-accent">@aligner</code> to broker one.
-              Offers, rounds, and convergence render here live.
-            </>
-          }
-        />
-      </div>
+      <EmptyState
+        className="h-full"
+        icon={Scale}
+        title="No active negotiation"
+        description={
+          <>
+            Summon the aligner with <code className="font-mono text-accent">@aligner</code> to broker one.
+            Offers, rounds, and convergence render here live.
+          </>
+        }
+      />
     );
   }
 

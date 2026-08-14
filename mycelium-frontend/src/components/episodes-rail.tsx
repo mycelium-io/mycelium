@@ -8,6 +8,7 @@ import { Activity } from "lucide-react";
 import { fetchEpisodes, logFetchError, type EpisodeSummary } from "@/lib/api";
 import { DetailDrawer } from "@/components/detail-drawer";
 import { EmptyState } from "@/components/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
 import { EpisodeDetail } from "@/components/episode-detail";
 
 // The room's episodes at a glance: each convening of the aligner is one episode
@@ -74,7 +75,18 @@ export function EpisodesRail({ roomName }: EpisodesRailProps) {
 
       <div className="flex-1 overflow-y-auto py-1">
         {!loaded ? (
-          <div className="px-4 py-8 text-center text-label text-muted-foreground">loading…</div>
+          Array.from({ length: 3 }, (_, i) => (
+            <div key={i} className="flex flex-col gap-1.5 px-4 py-2.5">
+              <div className="flex items-center gap-2">
+                <Skeleton className="size-1.5 flex-shrink-0 rounded-full" />
+                <Skeleton className="h-2.5 w-20" />
+                <Skeleton className="ml-auto h-2.5 w-10" />
+              </div>
+              <div className="pl-3.5">
+                <Skeleton className="h-4 w-24 rounded" />
+              </div>
+            </div>
+          ))
         ) : episodes.length === 0 ? (
           <EmptyState
             size="sm"

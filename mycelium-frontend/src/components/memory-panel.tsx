@@ -8,6 +8,7 @@ import { Brain, ChevronRight, Folder, FolderOpen, FileText } from "lucide-react"
 import { fetchMemories, searchMemories } from "@/lib/api";
 import { DetailDrawer } from "@/components/detail-drawer";
 import { EmptyState } from "@/components/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
 import { MemoryDetail } from "@/components/memory-detail";
 
 interface Memory {
@@ -174,6 +175,7 @@ function TreeRows({ nodes, depth, collapsed, onToggle, onSelect, selected }: Tre
 
 export function MemoryPanel({ roomName, refreshTrigger }: Props) {
   const [memories, setMemories] = useState<Memory[]>([]);
+  const [loaded, setLoaded] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[] | null>(null);
   const [searching, setSearching] = useState(false);
@@ -184,7 +186,9 @@ export function MemoryPanel({ roomName, refreshTrigger }: Props) {
     try {
       const mems = await fetchMemories(roomName);
       setMemories(mems);
-    } catch {}
+    } catch {} finally {
+      setLoaded(true);
+    }
   }, [roomName]);
 
   const contributors = useMemo(
@@ -297,7 +301,14 @@ export function MemoryPanel({ roomName, refreshTrigger }: Props) {
         {/* File tree */}
         {!searchResults && (
           <div className="py-1">
-            {memories.length === 0 ? (
+            {!loaded ? (
+              ["w-24", "w-32", "w-20", "w-28"].map((w, i) => (
+                <div key={i} className="flex items-center gap-1.5 pr-3" style={{ height: ROW_H, paddingLeft: 8 }}>
+                  <Skeleton className="size-3 rounded-sm" />
+                  <Skeleton className={`h-2.5 ${w}`} />
+                </div>
+              ))
+            ) : memories.length === 0 ? (
               <EmptyState
                 size="sm"
                 icon={Brain}

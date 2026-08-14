@@ -8,6 +8,7 @@ import Link from "next/link";
 import { Boxes, Plus, Sparkles } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { CreateRoomDialog } from "@/components/create-room-dialog";
 import {
   fetchRooms,
@@ -105,7 +106,13 @@ export function CommandCenter() {
           </div>
         </header>
 
-        {loaded && rooms.length === 0 ? (
+        {!loaded ? (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {Array.from({ length: 4 }, (_, i) => (
+              <RoomCardSkeleton key={i} />
+            ))}
+          </div>
+        ) : rooms.length === 0 ? (
           <div className="rounded-xl border border-dashed border-border2">
             <EmptyState
               icon={Boxes}
@@ -132,6 +139,25 @@ export function CommandCenter() {
       </div>
 
       <CreateRoomDialog open={showCreate} onClose={() => setShowCreate(false)} onCreated={load} />
+    </div>
+  );
+}
+
+/** Loading placeholder mirroring RoomCard's layout, so the grid doesn't jump. */
+function RoomCardSkeleton() {
+  return (
+    <div className="flex flex-col rounded-xl border border-border bg-paper p-4">
+      <div className="flex items-center gap-3">
+        <Skeleton className="size-9 flex-shrink-0 rounded-lg" />
+        <div className="min-w-0 flex-1">
+          <Skeleton className="h-3.5 w-2/3" />
+          <Skeleton className="mt-1.5 h-2.5 w-1/3" />
+        </div>
+      </div>
+      <div className="mt-4 flex items-center gap-4">
+        <Skeleton className="h-2.5 w-14" />
+        <Skeleton className="h-2.5 w-16" />
+      </div>
     </div>
   );
 }
