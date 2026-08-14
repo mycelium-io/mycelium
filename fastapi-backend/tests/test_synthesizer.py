@@ -171,7 +171,7 @@ async def test_summon_fires_only_for_a_registered_synthesizer(
     engine = _engine()
     called: list[str] = []
 
-    async def fake_synthesize(room: str, engine_handle: str | None = None) -> None:
+    async def fake_synthesize(room: str, engine_handle: str | None = None, directive: str = "") -> None:
         called.append(engine_handle or "?")
 
     engine.synthesize = fake_synthesize  # type: ignore[method-assign]
@@ -205,7 +205,7 @@ async def test_summon_skipped_when_engine_runtime_host(
     engine = _engine()
     called: list[str] = []
 
-    async def fake_synthesize(room: str, engine_handle: str | None = None) -> None:
+    async def fake_synthesize(room: str, engine_handle: str | None = None, directive: str = "") -> None:
         called.append(engine_handle or "?")
 
     engine.synthesize = fake_synthesize  # type: ignore[method-assign]
