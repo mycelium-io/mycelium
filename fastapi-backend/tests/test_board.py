@@ -108,9 +108,13 @@ class TestBoard:
         assert (
             await client.post(f"/api/rooms/{room}/board/items/{eid}/claim", json={"owner": "julia"})
         ).status_code == 204
-        row = _by_id((await client.get(f"/api/rooms/{room}/board")).json()["items"], eid)
+        data = (await client.get(f"/api/rooms/{room}/board")).json()
+        row = _by_id(data["items"], eid)
         assert row["state"] == "claimed"
         assert row["owner"]["handle"] == "julia"
+        # claimed work is in flight, not awaiting the human
+        assert row["needs_you"] is False
+        assert data["counts"]["flight"] == 1
 
         # block → needs you
         assert (

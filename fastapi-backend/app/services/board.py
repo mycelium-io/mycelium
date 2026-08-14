@@ -324,8 +324,12 @@ def apply_verb(
         who = owner or msg.sender_handle
         present = set(channel_manager.members(room_name))
         kind = "agent" if who in present else "human"
+        # Claimed work is in flight, not awaiting the human — clear needs_you so
+        # the row leaves the "Needs you" lens for "In flight".
         _write_payload(
-            msg, {"owner": {"handle": who, "kind": kind}, "state": "claimed"}, status="in_progress"
+            msg,
+            {"owner": {"handle": who, "kind": kind}, "state": "claimed", "needs_you": False},
+            status="in_progress",
         )
     elif verb == "block":
         updates: dict[str, Any] = {"state": "blocked", "needs_you": True}
