@@ -71,8 +71,9 @@ function presenceLabel(member?: PresenceMember): string | null {
  * (muted for people, accent for agents).
  *
  * Agent registration / teardown are intentionally NOT here: both have
- * spoke-local side effects (daemon manifest mirror, gateway config) the hub
- * can't perform. Use `mycelium agent add` / `create` / `rm`.
+ * spoke-local side effects (daemon manifest mirror, workspace assets) the hub
+ * can't perform. Use `mycelium agent create` / `rm` and `mycelium engine
+ * create` / `rm`.
  */
 export function AgentsPanel({ roomName, refreshKey = 0 }: Props) {
   const [agents, setAgents] = useState<AgentSummary[]>([]);
@@ -80,6 +81,7 @@ export function AgentsPanel({ roomName, refreshKey = 0 }: Props) {
   const [liveMembers, setLiveMembers] = useState<PresenceMember[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [mineOnly, setMineOnly] = useState(false);
+  const [addTab, setAddTab] = useState<"agents" | "engines">("agents");
   const { principal } = useCurrentUser();
 
   const refresh = useCallback(() => {
@@ -206,44 +208,82 @@ export function AgentsPanel({ roomName, refreshKey = 0 }: Props) {
           <DialogContent className="sm:max-w-lg">
             <DialogHeader>
               <DialogTitle className="text-ui font-semibold text-text">
-                Add an agent
+                Add an agent or engine
               </DialogTitle>
               <DialogDescription className="text-label text-muted-foreground leading-relaxed">
-                Agents are registered from the CLI, because registration has
-                machine-local side effects (manifest mirror, OpenClaw gateway
-                config) the web UI can&apos;t perform. This panel is read-only.
+                Members are registered from the CLI, because registration has
+                machine-local side effects (daemon manifest mirror, workspace
+                assets) the web UI can&apos;t perform. This panel is read-only.
               </DialogDescription>
             </DialogHeader>
-            <div className="space-y-6 mt-2">
-              <section>
-                <div className="text-label font-semibold text-text mb-1.5">
-                  Adopt agents you already have
-                </div>
-                <pre className="font-mono text-micro text-muted-foreground bg-surface border border-border px-2.5 py-2 overflow-x-auto whitespace-pre-wrap break-words">
-                  {"mycelium agent add"}
-                </pre>
-                <p className="text-micro text-muted-foreground mt-1 leading-snug">
-                  Interactive picker: discovers your OpenClaw agents and wires
-                  the chosen ones into a room.
-                </p>
-              </section>
-              <section>
-                <div className="text-label font-semibold text-text mb-1.5">
-                  Create a new agent
-                </div>
-                <pre className="font-mono text-micro text-muted-foreground bg-surface border border-border px-2.5 py-2 overflow-x-auto whitespace-pre-wrap break-words">
-                  {"mycelium agent create <handle> --cwd ~/proj      # Claude Code\nmycelium agent create <handle> --adapter openclaw  # OpenClaw"}
-                </pre>
-              </section>
-              <section>
-                <div className="text-label font-semibold text-text mb-1.5">
-                  Claude Code agents also need the daemon
-                </div>
-                <pre className="font-mono text-micro text-muted-foreground bg-surface border border-border px-2.5 py-2 overflow-x-auto whitespace-pre-wrap break-words">
-                  {"mycelium adapter add claude-code --step=daemon\nmycelium daemon subscribe <room>"}
-                </pre>
-              </section>
+            <div className="flex items-center gap-1.5 mt-2">
+              <Chip
+                variant="accent"
+                active={addTab === "agents"}
+                onClick={() => setAddTab("agents")}
+                className="px-2.5 py-0.5 text-micro"
+              >
+                Agents
+              </Chip>
+              <Chip
+                variant="accent"
+                active={addTab === "engines"}
+                onClick={() => setAddTab("engines")}
+                className="px-2.5 py-0.5 text-micro"
+              >
+                Engines
+              </Chip>
             </div>
+            {addTab === "agents" ? (
+              <div className="space-y-6 mt-2">
+                <section>
+                  <div className="text-label font-semibold text-text mb-1.5">
+                    Create a new agent
+                  </div>
+                  <pre className="font-mono text-micro text-muted-foreground bg-surface border border-border px-2.5 py-2 overflow-x-auto whitespace-pre-wrap break-words">
+                    {"mycelium agent create <handle> --cwd ~/proj                 # claude_code\nmycelium agent create <handle> --adapter cursor --cwd ~/proj  # cursor"}
+                  </pre>
+                  <p className="text-micro text-muted-foreground mt-1 leading-snug">
+                    Cold-spawned by the daemon on @-mention. claude_code is
+                    proven; cursor is supported but less travelled. Add{" "}
+                    <code className="font-mono">--owner &lt;you&gt; --team &lt;slug&gt;</code>{" "}
+                    so the agent is attributed to you from creation.
+                  </p>
+                </section>
+                <section>
+                  <div className="text-label font-semibold text-text mb-1.5">
+                    Cold-spawn agents also need the daemon
+                  </div>
+                  <pre className="font-mono text-micro text-muted-foreground bg-surface border border-border px-2.5 py-2 overflow-x-auto whitespace-pre-wrap break-words">
+                    {"mycelium adapter add claude-code --step=daemon\nmycelium daemon subscribe <room>"}
+                  </pre>
+                  <p className="text-micro text-muted-foreground mt-1 leading-snug">
+                    One daemon per host serves both claude_code and cursor
+                    agents.
+                  </p>
+                </section>
+              </div>
+            ) : (
+              <div className="space-y-6 mt-2">
+                <section>
+                  <div className="text-label font-semibold text-text mb-1.5">
+                    Register and summon an engine
+                  </div>
+                  <pre className="font-mono text-micro text-muted-foreground bg-surface border border-border px-2.5 py-2 overflow-x-auto whitespace-pre-wrap break-words">
+                    {'mycelium engine create aligner --kind aligner -r <room>\nmycelium engine invoke aligner "converge on <topic>"'}
+                  </pre>
+                  <p className="text-micro text-muted-foreground mt-1 leading-snug">
+                    An engine is a first-party citizen of the room, run by the
+                    backend when @-mentioned — not cold-spawned by the daemon,
+                    a different runtime family from claude_code/cursor. The{" "}
+                    <span className="text-text">aligner</span> mediates
+                    negotiation to consensus; the{" "}
+                    <span className="text-text">synthesizer</span> distills the
+                    room to memory.
+                  </p>
+                </section>
+              </div>
+            )}
           </DialogContent>
         </Dialog>
       </div>
@@ -267,7 +307,7 @@ export function AgentsPanel({ roomName, refreshKey = 0 }: Props) {
             description="Agents are registered from the CLI; people appear once they own an agent or post."
             action={
               <code className="font-mono text-micro bg-surface px-1.5 py-0.5 text-accent border border-border rounded whitespace-nowrap">
-                mycelium agent add
+                mycelium agent create
               </code>
             }
           />
