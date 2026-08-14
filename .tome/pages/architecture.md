@@ -1,2 +1,17 @@
-<!-- TODO: describe the system's shape. Major components, how they talk to
-each other, key design decisions and why. -->
+Mycelium is SLIM-native: one secure messaging node, a thin FastAPI backend, and local files. There is no database.
+
+**Fabric layer — SLIM node.** A single `slim` messaging process. Each room is a durable AGNTCY SLIM group channel (MLS end-to-end encrypted multicast); the node forwards only ciphertext and never sees plaintext. The always-on backend is each room's **moderator**; agents (and the human, by proxy) are members.
+
+**Coordination layer — FastAPI backend, two engine kinds.** A thin Python backend owns room lifecycle, memory persistence, and its cognition engines:
+- The **aligner** mediates negotiation. It runs a real NEGMAS Stacked Alternating Offers mechanism, `@`-addressing one agent at a time, interpreting each reply into an SAO move, snapping near-misses to the nearest real grid point rather than fabricating agreement. NEGMAS owns termination — it stops the instant agents converge, which is the property that kills "AI Theater" (agents that appear to agree by message 5 and then keep re-stating it for seven more turns). Its brain is a persistent Pi coding-agent session, so it keeps memory across negotiation rounds.
+- The **synthesizer** is a second engine kind. Unlike the aligner it doesn't mediate — on `@`-summon it reads a room's memory namespaces and compiles a structured briefing, upserted as a `knowledge` memory at `context/synthesis`.
+
+Both engines run on **Pi as the sole LLM runtime** (litellm was removed entirely). On convergence, the aligner hands the agreed `{issue: value}` map to a plan-compiler stage that materializes `plan/tasks.md` — one shared `- [ ]` checklist with `@handle` owners — *before* consensus is announced, so a caller's `await` returns once the plan already exists.
+
+**Epistemic layer — L9, in-house.** Every coordination message carries an L9 envelope (`exchange` ticks/replies, `commit:converged|resolved|rejected`, `knowledge`), implemented directly in Mycelium rather than consumed from an upstream service. Agents can optionally attach confidence, evidence, and revision-cause metadata; the backend computes MPC (Multi-Party Consensus), GAR (Genuine Agreement Ratio), SCR (Social Compliance Ratio), and provenance_weight locally. Every negotiation is a distinct **episode** — a tagged, membership-scoped round on the room's existing channel, not a separate one — recorded at `log/episodes/{id}.md`.
+
+**Adapter layer — meet agents where they are.** Any awake caller joins a room and coordinates with two stateless HTTP calls: a long-poll `await` (server-held membership via a presence lease + durable transcript cursor, so a turn-based agent never misses a tick between turns) and `respond`. The **daemon** is an optional auto-waker for runtimes that can't wake themselves — it cold-spawns `claude -p` on a mention, built on the same membership core the CLI uses. Adapter capability is uneven by design: `claude_code` is proven; `cursor` is untested; `openclaw` and `hermes` are deprecated pending migration off the removed SSE/coordination-tick model.
+
+**State is just files.** Rooms are folders at `~/.mycelium/rooms/{name}/` with standard subdirs (`decisions/`, `failed/`, `status/`, `context/`, `work/`, `procedures/`, `log/`, `plan/`); memories are markdown with YAML frontmatter; search is a local fastembed (`BAAI/bge-small-en-v1.5`, 384-dim ONNX) index persisted as JSONL, no external embedding service. Sharing is git; cross-machine coordination is the same SLIM channel over a shared node.
+
+This replaced a four-service closed-source CFN cluster (a Postgres/AgensGraph-backed CognitiveEngine, negotiation, and knowledge services) — that dependency was removed outright (PR #418) rather than reimplemented, once CFN/KXP/L9/CognitiveEngines went off open source.
