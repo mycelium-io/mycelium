@@ -25,20 +25,144 @@ interface SearchResult {
   similarity: number;
 }
 
+interface TreeNode {
+  name: string;
+  path: string;
+  memory?: Memory;
+  children: TreeNode[];
+}
+
 interface Props {
   roomName: string;
   masId?: string | null;
   refreshTrigger: number;
 }
 
-function namespace(key: string): string {
-  const slash = key.indexOf("/");
-  return slash >= 0 ? key.slice(0, slash) : "";
+function buildTree(memories: Memory[]): TreeNode[] {
+  const root: TreeNode = { name: "", path: "", children: [] };
+
+  for (const mem of memories) {
+    const parts = mem.key.split("/");
+    let node = root;
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+      const path = parts.slice(0, i + 1).join("/");
+      let child = node.children.find(c => c.name === part);
+      if (!child) {
+        child = { name: part, path, children: [] };
+        node.children.push(child);
+      }
+      if (i === parts.length - 1) child.memory = mem;
+      node = child;
+    }
+  }
+
+  const sort = (nodes: TreeNode[]) => {
+    nodes.sort((a, b) => {
+      // folders before leaves, then alphabetically
+      const aFolder = a.children.length > 0;
+      const bFolder = b.children.length > 0;
+      if (aFolder !== bFolder) return aFolder ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+    for (const n of nodes) sort(n.children);
+  };
+  sort(root.children);
+
+  return root.children;
 }
 
-function leafName(key: string): string {
-  const slash = key.indexOf("/");
-  return slash >= 0 ? key.slice(slash + 1) : key;
+function formatValue(v: unknown): string {
+  if (typeof v === "string") return v;
+  if (typeof v === "object" && v !== null) {
+    const obj = v as Record<string, unknown>;
+    if ("text" in obj) return obj.text as string;
+    return JSON.stringify(v, null, 0);
+  }
+  return String(v);
+}
+
+interface TreeRowsProps {
+  nodes: TreeNode[];
+  depth: number;
+  collapsed: Set<string>;
+  onToggle: (path: string) => void;
+  onSelect: (mem: Memory) => void;
+}
+
+function TreeRows({ nodes, depth, collapsed, onToggle, onSelect }: TreeRowsProps) {
+  return (
+    <>
+      {nodes.map(node => {
+        const isFolder = node.children.length > 0;
+        const isCollapsed = collapsed.has(node.path);
+        const indent = depth * 12 + 16;
+
+        return (
+          <div key={node.path}>
+            {isFolder ? (
+              <>
+                <button
+                  onClick={() => {
+                    onToggle(node.path);
+                    if (node.memory) onSelect(node.memory);
+                  }}
+                  className="flex w-full items-center gap-1 py-1.5 text-left text-label text-muted-foreground hover:text-text border-b border-border transition-colors select-none"
+                  style={{ paddingLeft: indent }}
+                >
+                  <ChevronRight
+                    size={12}
+                    className={`flex-shrink-0 text-faint transition-transform ${isCollapsed ? "" : "rotate-90"}`}
+                  />
+                  <span className="font-mono">{node.name}/</span>
+                  {node.memory && (
+                    <span className="ml-1.5 text-micro text-faint font-mono">v{node.memory.version}</span>
+                  )}
+                  <span className="ml-auto pr-4 font-mono text-micro text-faint tabular">
+                    {node.children.length}
+                  </span>
+                </button>
+                {!isCollapsed && (
+                  <TreeRows
+                    nodes={node.children}
+                    depth={depth + 1}
+                    collapsed={collapsed}
+                    onToggle={onToggle}
+                    onSelect={onSelect}
+                  />
+                )}
+              </>
+            ) : (
+              <button
+                onClick={() => node.memory && onSelect(node.memory)}
+                className="block w-full text-left py-2.5 border-b border-border last:border-b-0 transition-colors hover:bg-hairline"
+                style={{ paddingLeft: indent + 16, paddingRight: 16 }}
+              >
+                <div className="flex items-baseline gap-2 mb-0.5">
+                  <span className="font-mono text-label text-accent truncate min-w-0">{node.name}</span>
+                  {node.memory && (
+                    <>
+                      <span className="font-mono text-micro text-muted-foreground tabular flex-shrink-0">
+                        v{node.memory.version}
+                      </span>
+                      <span className="ml-auto text-micro text-muted-foreground truncate flex-shrink-0">
+                        {node.memory.created_by}
+                      </span>
+                    </>
+                  )}
+                </div>
+                {node.memory && (
+                  <p className="text-label text-muted-foreground line-clamp-2 leading-snug">
+                    {formatValue(node.memory.value)}
+                  </p>
+                )}
+              </button>
+            )}
+          </div>
+        );
+      })}
+    </>
+  );
 }
 
 export function MemoryPanel({ roomName, refreshTrigger }: Props) {
@@ -74,48 +198,14 @@ export function MemoryPanel({ roomName, refreshTrigger }: Props) {
     }
   };
 
-  const formatValue = (v: unknown): string => {
-    if (typeof v === "string") return v;
-    if (typeof v === "object" && v !== null) {
-      const obj = v as Record<string, unknown>;
-      if ("text" in obj) return obj.text as string;
-      return JSON.stringify(v, null, 0);
-    }
-    return String(v);
-  };
+  const tree = useMemo(() => buildTree(memories), [memories]);
 
-  // Group memories by first path segment; sort within each group by updated_at desc
-  const tree = useMemo(() => {
-    const groups: Record<string, Memory[]> = {};
-    for (const mem of memories) {
-      const ns = namespace(mem.key);
-      if (!groups[ns]) groups[ns] = [];
-      groups[ns].push(mem);
-    }
-    for (const ns of Object.keys(groups)) {
-      groups[ns].sort((a, b) =>
-        new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
-      );
-    }
-    return groups;
-  }, [memories]);
-
-  const namespaces = useMemo(() => {
-    const ns = Object.keys(tree);
-    // root-level (no namespace) last, others alphabetically
-    return ns.sort((a, b) => {
-      if (!a) return 1;
-      if (!b) return -1;
-      return a.localeCompare(b);
-    });
-  }, [tree]);
-
-  const toggleNs = (ns: string) =>
+  const toggleNs = useCallback((path: string) =>
     setCollapsed(prev => {
       const next = new Set(prev);
-      next.has(ns) ? next.delete(ns) : next.add(ns);
+      next.has(path) ? next.delete(path) : next.add(path);
       return next;
-    });
+    }), []);
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -206,50 +296,13 @@ export function MemoryPanel({ roomName, refreshTrigger }: Props) {
                 description="Decisions, context, and status land here as the room works."
               />
             ) : (
-              namespaces.map(ns => {
-                const items = tree[ns];
-                const isCollapsed = collapsed.has(ns);
-                const label = ns || "root";
-
-                return (
-                  <div key={ns || "__root__"}>
-                    {/* Folder header — only show if there's a namespace */}
-                    {ns && (
-                      <button
-                        onClick={() => toggleNs(ns)}
-                        className="flex w-full items-center gap-1.5 px-3 py-1.5 text-left text-label font-medium text-muted-foreground bg-surface border-b border-border hover:text-text transition-colors select-none"
-                      >
-                        <ChevronRight
-                          size={13}
-                          className={`flex-shrink-0 text-faint transition-transform ${isCollapsed ? "" : "rotate-90"}`}
-                        />
-                        <span className="font-mono">{label}/</span>
-                        <span className="ml-auto font-mono text-micro text-faint tabular">{items.length}</span>
-                      </button>
-                    )}
-
-                    {/* Items */}
-                    {!isCollapsed && items.map(mem => (
-                      <button
-                        key={mem.key}
-                        onClick={() => setSelected(mem)}
-                        className={`block w-full text-left py-2.5 border-b border-border last:border-b-0 transition-colors hover:bg-hairline ${ns ? "pl-7 pr-4" : "px-4"}`}
-                      >
-                        <div className="flex items-baseline gap-2 mb-0.5">
-                          <span className="font-mono text-label text-accent truncate min-w-0">
-                            {ns ? leafName(mem.key) : mem.key}
-                          </span>
-                          <span className="font-mono text-micro text-muted-foreground tabular flex-shrink-0">v{mem.version}</span>
-                          <span className="ml-auto text-micro text-muted-foreground truncate flex-shrink-0">{mem.created_by}</span>
-                        </div>
-                        <p className="text-label text-muted-foreground line-clamp-2 leading-snug">
-                          {formatValue(mem.value)}
-                        </p>
-                      </button>
-                    ))}
-                  </div>
-                );
-              })
+              <TreeRows
+                nodes={tree}
+                depth={0}
+                collapsed={collapsed}
+                onToggle={toggleNs}
+                onSelect={setSelected}
+              />
             )}
           </div>
         )}
