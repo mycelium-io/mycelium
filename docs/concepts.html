@@ -49,6 +49,7 @@
     <div class="nav-section">
       <div class="nav-section-label">Concepts</div>
       <a href="#rooms" class="nav-link sub">Rooms</a>
+      <a href="#users" class="nav-link sub">Users &amp; Teams</a>
       <a href="#episodes" class="nav-link sub">Episodes</a>
       <a href="#memory" class="nav-link sub">Memory</a>
       <a href="#plan" class="nav-link sub">Plan</a>
@@ -120,6 +121,42 @@
 GET .../messages?kind=action&amp;status=open        # the ledger: what&#x27;s still open
 PATCH .../messages/{id}  {<span class="str">&quot;status&quot;</span>: <span class="str">&quot;resolved&quot;</span>}  # close it out (broadcast over SSE)</code></pre>
       <p>The kind vocabulary is open. Post your own (<code>note</code>, <code>decision</code>, <code>ci_result</code>, ...) and it works today: stateless and durable unless you set a TTL. Events arrive on the room&#x27;s SSE stream like any message; clients that don&#x27;t know a kind just show the <code>content</code> line.</p>
+    </section>
+
+    <hr class="divider">
+
+    <section class="doc-section" id="users">
+      <h1>Users &amp; teams</h1>
+      <p>Mycelium models <em>whom an agent belongs to</em>. Without it, every agent on the fabric is anonymous: presence says &quot;agent-y is live,&quot; never &quot;julia&#x27;s agent-y is live.&quot; Ownership gives scoping (&quot;my agents&quot; vs another team&#x27;s), attribution (whose agent edited that?), and routing (escalate back to an agent&#x27;s owner).</p>
+      <p>Two entities, symmetric on disk:</p>
+      <ul>
+        <li><strong>Agents</strong> are room-scoped (<code>rooms/{room}/agents/{handle}</code>). A manifest can name</li>
+      </ul>
+      <p>an <code>owner</code> (a user handle) and a <code>team</code> (a slug).</p>
+      <ul>
+        <li><strong>Users</strong> are global (<code>users/{handle}</code>), because a person spans rooms. A user is</li>
+      </ul>
+      <p>what an <code>owner</code> points at.</p>
+      <h2 id="users-self-asserted-for-now">Self-asserted, for now</h2>
+      <p>At this tier trust is exactly today&#x27;s handles: <strong>consistent, not cryptographic</strong>. <code>owner: julia</code> is a claim, not a verified identity; anyone can assert it. That&#x27;s deliberate: it shapes the model right so scoping, attribution, and routing have real slots to read, ahead of verified identity (per-member SLIM binding / JWT / SPIRE) filling those slots with signed claims. Don&#x27;t rely on it for access control.</p>
+      <p>Both fields default to empty, so nothing about existing agents changes: an agent with no owner is unowned.</p>
+      <h2 id="users-commands">Commands</h2>
+      <pre><code><span class="comment"># Register a human, once, globally</span>
+<span class="cmd">mycelium user create</span> julia <span class="flag">--name</span> <span class="str">&quot;Julia Valenti&quot;</span> <span class="flag">--team</span> core
+<span class="cmd">mycelium user ls</span>
+<span class="cmd">mycelium user show</span> julia          # record + the agents she owns + summed budget
+
+<span class="comment"># Bind an agent to its owner</span>
+<span class="cmd">mycelium agent create</span> release-agent <span class="flag">--cwd</span> ~/repo <span class="flag">--owner</span> julia <span class="flag">--team</span> core
+<span class="cmd">mycelium agent ls</span> <span class="flag">--owner</span> julia   # <span class="str">&quot;my agents&quot;</span>
+<span class="cmd">mycelium agent ls</span> <span class="flag">--team</span> core     # <span class="str">&quot;my team&quot;</span>
+
+<span class="comment"># Who am I acting as?</span>
+<span class="cmd">mycelium whoami</span></code></pre>
+      <h2 id="users-cost-roll-up">Cost roll-up</h2>
+      <p>Budget is a per-agent field (<code>budget_usd_per_month</code>). A user&#x27;s cost is the <strong>sum of the budgets of the agents they own</strong>: the honest figure this tier can report without a per-action cost ledger. <code>user show</code> and <code>whoami</code> roll it up per user; <code>GET /api/teams</code> rolls it up per team.</p>
+      <h2 id="users-in-the-ui">In the UI</h2>
+      <p>Agent rows show their owner and team. An <strong>acting-as</strong> picker (top of a room) selects the user the browser represents; the <strong>mine</strong> filter then scopes the agent roster to agents you own or your team fields. The acting-as choice is stored locally in the browser: the same self-asserted handle, no login.</p>
     </section>
 
     <hr class="divider">

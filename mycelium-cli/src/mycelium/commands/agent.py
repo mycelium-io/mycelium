@@ -172,6 +172,58 @@ def _load_manifest(room_name: str, handle: str) -> AgentManifest | None:
         return None
 
 
+def _room_manifests(room_name: str) -> list[AgentManifest]:
+    """Every agent manifest registered in a room (skips notes + log children)."""
+    room_dir = get_room_dir(room_name)
+    out: list[AgentManifest] = []
+    for key, _meta, _content in list_memories(room_dir, prefix="agents/", limit=500):
+        handle = key.removeprefix("agents/")
+        if "/" in handle:
+            continue
+        m = _load_manifest(room_name, handle)
+        if m is not None:
+            out.append(m)
+    return out
+
+
+def load_owned_agents(*, owner: str) -> tuple[list[tuple[str, AgentManifest]], float]:
+    """Agents owned by ``owner`` across every local room, plus summed budget.
+
+    Returns ``([(room, manifest), …], total_budget_usd_per_month)``. The total is
+    the sum of each owned agent's manifest budget *cap* — a per-principal budget
+    figure, not measured spend (no per-action cost ledger exists at this tier).
+    """
+    from mycelium.filesystem import list_room_names
+
+    owner = owner.strip().lstrip("@").lower()
+    owned: list[tuple[str, AgentManifest]] = []
+    total = 0.0
+    for room_name in list_room_names():
+        for m in _room_manifests(room_name):
+            if m.owner == owner:
+                owned.append((room_name, m))
+                total += m.budget_usd_per_month
+    return owned, total
+
+
+def _warn_unknown_principal(manifest: AgentManifest) -> None:
+    """Warn (never fail) when an agent's owner has no user record.
+
+    The binding is self-asserted, so a dangling owner is a soft signal, not an
+    error — it just nudges the user to register the principal so 'my agents'
+    and budget roll-up have something to resolve.
+    """
+    if not manifest.owner:
+        return
+    from mycelium.commands.user import load_user
+
+    if load_user(manifest.owner) is None:
+        console.print(
+            f"[yellow]note:[/yellow] owner '@{manifest.owner}' has no user record. "
+            f'Register it with: mycelium user create {manifest.owner} --name "…"'
+        )
+
+
 def _load_manifest_remote(client, room_name: str, handle: str) -> AgentManifest | None:
     """Fetch a manifest from the backend memory API and rehydrate the model.
 
@@ -417,6 +469,9 @@ def _create_wizard(
 
     description = questionary.text("Description (what does this agent do?):").ask() or ""
 
+    owner = (questionary.text("Owner (a users/<handle>, optional):").ask() or "").strip() or None
+    team = (questionary.text("Team slug (optional):").ask() or "").strip() or None
+
     room_name = room_opt or _pick_room(config)
     if not room_name:
         return
@@ -429,11 +484,14 @@ def _create_wizard(
             description=description,
             budget=5.0,
             allow_from=[],
+            owner=owner,
+            team=team,
         )
     except ValidationError as exc:
         typer.secho(f"Invalid agent manifest: {exc}", fg=typer.colors.RED)
         raise typer.Exit(1) from exc
 
+    _warn_unknown_principal(manifest)
     _persist_and_describe(
         impl=impl,
         manifest=manifest,
@@ -489,6 +547,14 @@ def agent_create(
         None,
         "--allow-from",
         help="Comma-separated sender handles allowed to invoke (e.g. '@julia,@docs-agent').",
+    ),
+    owner: str | None = typer.Option(
+        None,
+        "--owner",
+        help="User (a users/<handle>) this agent belongs to. Self-asserted.",
+    ),
+    team: str | None = typer.Option(
+        None, "--team", help="Team slug this agent is fielded by. Self-asserted."
     ),
     handle_flag: str = typer.Option(
         "cli-user", "--as", "-H", help="Your own handle (recorded as created_by)."
@@ -548,11 +614,14 @@ def agent_create(
                 description=description,
                 budget=budget,
                 allow_from=allow_list,
+                owner=owner,
+                team=team,
             )
         except ValidationError as exc:
             typer.secho(f"Invalid agent manifest: {exc}", fg=typer.colors.RED)
             raise typer.Exit(1) from exc
 
+        _warn_unknown_principal(manifest)
         _persist_and_describe(
             impl=impl,
             manifest=manifest,
@@ -658,24 +727,25 @@ def _pick_room(config: MyceliumConfig) -> str | None:
 def agent_ls(
     ctx: typer.Context,
     room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
+    owner: str | None = typer.Option(
+        None, "--owner", help="Filter to agents owned by this user handle ('my agents')."
+    ),
+    team: str | None = typer.Option(
+        None, "--team", help="Filter to agents fielded by this team ('my team')."
+    ),
 ) -> None:
     """List registered agents in a room."""
     try:
         config = MyceliumConfig.load()
         room_name = _resolve_room(config, room)
-        room_dir = get_room_dir(room_name)
 
-        entries = list_memories(room_dir, prefix="agents/", limit=200)
-        # Drop notes + log children — manifests only live at agents/<handle>
-        # without further path segments.
-        manifests: list[AgentManifest] = []
-        for key, _meta, _content in entries:
-            handle = key.removeprefix("agents/")
-            if "/" in handle:
-                continue
-            m = _load_manifest(room_name, handle)
-            if m is not None:
-                manifests.append(m)
+        manifests = _room_manifests(room_name)
+        if owner:
+            wanted = owner.strip().lstrip("@").lower()
+            manifests = [m for m in manifests if m.owner == wanted]
+        if team:
+            wanted = team.strip().lstrip("@").lower()
+            manifests = [m for m in manifests if m.team == wanted]
 
         json_output = ctx.obj.get("json", False) if ctx.obj else False
         if json_output:
@@ -694,16 +764,18 @@ def agent_ls(
         table = Table(title=f"{room_name} — agents", show_lines=False)
         table.add_column("Handle", style="cyan", no_wrap=True)
         table.add_column("Adapter", style="magenta")
-        table.add_column("Cwd")
+        table.add_column("Owner", style="green")
+        table.add_column("Team", style="green")
         table.add_column("Budget", justify="right")
         table.add_column("Description", overflow="fold")
         for m in manifests:
             table.add_row(
                 f"@{m.handle}",
                 m.adapter,
-                m.cwd,
+                f"@{m.owner}" if m.owner else "[dim]—[/dim]",
+                m.team or "[dim]—[/dim]",
                 f"${m.budget_usd_per_month:.2f}/mo",
-                (m.description or "")[:80],
+                (m.description or "")[:60],
             )
         console.print(table)
     except typer.Exit:
@@ -742,6 +814,10 @@ def agent_show(
         console.print(f"[bold cyan]@{manifest.handle}[/bold cyan]  [dim]({manifest.adapter})[/dim]")
         console.print(f"  cwd: {manifest.cwd}")
         console.print(f"  budget: ${manifest.budget_usd_per_month:.2f}/mo")
+        if manifest.owner:
+            console.print(f"  owner: @{manifest.owner}")
+        if manifest.team:
+            console.print(f"  team: {manifest.team}")
         if manifest.allow_from:
             console.print(f"  allow_from: {', '.join(manifest.allow_from)}")
         if manifest.description:

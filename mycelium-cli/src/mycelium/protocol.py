@@ -341,6 +341,20 @@ class AgentManifest(BaseModel):
     )
     description: str = Field(default="", description="One-paragraph purpose statement.")
     budget_usd_per_month: float = Field(default=5.0, ge=0.0)
+    owner: str | None = Field(
+        default=None,
+        description=(
+            "User (a `users/<handle>` in the global store) this agent belongs to. "
+            "Self-asserted: consistent, not cryptographic. None means unowned."
+        ),
+    )
+    team: str | None = Field(
+        default=None,
+        description=(
+            "Team slug this agent is fielded by; self-asserted. Scopes 'my team' "
+            "filtering and per-team budget roll-up."
+        ),
+    )
     allow_from: list[str] = Field(
         default_factory=list,
         description=(
@@ -353,8 +367,21 @@ class AgentManifest(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def lowercase_handle(cls, data: dict) -> dict:
-        if isinstance(data, dict) and "handle" in data and isinstance(data["handle"], str):
-            data["handle"] = data["handle"].lower()
+        if not isinstance(data, dict):
+            return data
+        # Handle and the two principal pointers are all lowercase slugs — an
+        # owner/team is a `users/<handle>` / team slug, so `--owner Julia`
+        # binds to `users/julia`. The handle is required, so an empty result
+        # stays a string (and fails the pattern); owner/team collapse to None.
+        for field in ("handle", "owner", "team"):
+            value = data.get(field)
+            if not isinstance(value, str):
+                continue
+            normalized = value.strip().lstrip("@").lower()
+            if field == "handle":
+                data[field] = normalized
+            else:
+                data[field] = normalized or None
         return data
 
     @model_validator(mode="after")
@@ -384,3 +411,46 @@ class AgentManifest(BaseModel):
     def notes_key(self) -> str:
         """Memory key the agent's persistent notes are stored under."""
         return f"agents/{self.handle}/notes"
+
+
+# ── User primitive ───────────────────────────────────────────────────────────
+
+
+class UserManifest(BaseModel):
+    """Typed payload for a global ``users/<handle>`` record.
+
+    The human, made first-class and symmetric with ``agents/<handle>``. An
+    agent's ``owner`` points here; a ``team`` groups these handles. People span
+    rooms, so this store is global (``~/.mycelium/users/<handle>``), not
+    room-scoped. Trust is self-asserted — the handle is consistent, not
+    cryptographic.
+    """
+
+    handle: str = Field(..., min_length=1, pattern=r"^[a-z0-9][a-z0-9._-]*$")
+    display_name: str = Field(default="", description="Human-readable name, e.g. 'Julia Valenti'.")
+    teams: list[str] = Field(
+        default_factory=list,
+        description="Team slugs this person belongs to. Scopes 'my team' views.",
+    )
+    notify: str | None = Field(
+        default=None,
+        description="Where to route 'needs you' escalations (e.g. an email or webhook). Optional.",
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize(cls, data: dict) -> dict:
+        if not isinstance(data, dict):
+            return data
+        handle = data.get("handle")
+        if isinstance(handle, str):
+            data["handle"] = handle.strip().lstrip("@").lower()
+        teams = data.get("teams")
+        if isinstance(teams, list):
+            data["teams"] = [t.strip().lstrip("@").lower() for t in teams if str(t).strip()]
+        return data
+
+    @property
+    def memory_key(self) -> str:
+        """Store key (relative to the global users dir)."""
+        return self.handle

@@ -32,7 +32,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from app.services import l9, room_channels
+from app.services import l9, principals, room_channels
 from app.services.filesystem import room_exists
 from app.services.l9_models import Kind
 from app.services.l9_slim import serialize_content
@@ -190,6 +190,12 @@ async def post_reply(room_name: str, body: ReplyBody):
     """Publish ``handle``'s reply as an L9 agent exchange the aligner scores."""
     if not room_exists(room_name):
         raise HTTPException(status_code=404, detail="Room not found")
+    # The reply rides as sender_role="agent", so the handle must be a real
+    # principal — a registered agent or a known user — and never an engine
+    # (engines aren't impersonable). Guard before provisioning a channel.
+    reason = principals.post_rejection_reason(room_name, body.handle, allow_unregistered=False)
+    if reason:
+        raise HTTPException(status_code=403, detail=reason)
     managed = await room_channels.manager.provision(room_name)
     room_channels.manager.refresh_lease(room_name, body.handle)
     if managed is None or managed.persister is None:

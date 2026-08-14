@@ -7,37 +7,26 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import TextareaAutosize from "react-textarea-autosize";
 import { ArrowUp } from "lucide-react";
 import { fetchRoomAgents, logFetchError, sendRoomMessage, type AgentSummary } from "@/lib/api";
+import { useCurrentUser } from "@/components/current-user";
 
 interface Props {
   roomName: string;
-  /** Sender handle persisted to localStorage. Falls back to "user". */
-  defaultSender?: string;
   /** Fired after a successful POST so the parent can refresh the event stream. */
   onSent?: () => void;
 }
 
-const SENDER_STORAGE_KEY = "mycelium.chat.sender";
-
-export function RoomChatBox({ roomName, defaultSender, onSent }: Props) {
+export function RoomChatBox({ roomName, onSent }: Props) {
   const [content, setContent] = useState("");
-  const [sender, setSender] = useState<string>(() => defaultSender || "user");
+  // A human message is sent as the acting-as principal — the single source of
+  // "who am I" (the ActingAsPicker), not a per-composer handle. Anonymous falls
+  // back to "user" so the room still has a sender to attribute the message to.
+  const { principal } = useCurrentUser();
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [agents, setAgents] = useState<AgentSummary[]>([]);
   const [mention, setMention] = useState<{ start: number; query: string } | null>(null);
   const [highlight, setHighlight] = useState(0);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
-
-  // Persist sender across reloads so agents see the same handle every time.
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const saved = window.localStorage.getItem(SENDER_STORAGE_KEY);
-    if (saved) setSender(saved);
-  }, []);
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(SENDER_STORAGE_KEY, sender);
-  }, [sender]);
 
   const refreshAgents = useCallback(() => {
     fetchRoomAgents(roomName).then(setAgents).catch((err) => {
@@ -99,7 +88,7 @@ export function RoomChatBox({ roomName, defaultSender, onSent }: Props) {
   const submit = useCallback(async () => {
     const body = content.trim();
     if (!body || sending) return;
-    const handle = sender.trim() || "user";
+    const handle = principal.trim() || "user";
     setSending(true);
     setError(null);
     try {
@@ -115,7 +104,7 @@ export function RoomChatBox({ roomName, defaultSender, onSent }: Props) {
       // render, so refocus after that commit lands to keep the user typing.
       requestAnimationFrame(() => inputRef.current?.focus());
     }
-  }, [content, onSent, roomName, sender, sending]);
+  }, [content, onSent, roomName, principal, sending]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (mention !== null && candidates.length > 0) {
@@ -194,18 +183,6 @@ export function RoomChatBox({ roomName, defaultSender, onSent }: Props) {
             disabled={sending}
           />
           <div className="flex items-center gap-2 px-3 pb-2.5 pt-0.5">
-            <label className="flex items-center gap-1.5 text-micro text-muted-foreground">
-              <span>as</span>
-              <input
-                type="text"
-                value={sender}
-                onChange={(e) => setSender(e.target.value)}
-                placeholder="user"
-                aria-label="Send as handle"
-                size={Math.max(sender.length || 4, 4)}
-                className="font-mono text-micro bg-transparent text-muted-foreground rounded px-1 py-0.5 focus:outline-none focus:bg-surface hover:bg-surface transition-colors"
-              />
-            </label>
             {error && <span className="text-micro text-red truncate">{error}</span>}
             <button
               type="button"

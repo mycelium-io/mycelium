@@ -12,7 +12,7 @@ import { MemoryPanel } from "@/components/memory-panel";
 export type Tab = "agents" | "episodes" | "memory";
 
 const TABS: { id: Tab; label: string; icon: LucideIcon }[] = [
-  { id: "agents", label: "Agents", icon: Users },
+  { id: "agents", label: "Members", icon: Users },
   { id: "episodes", label: "Episodes", icon: Activity },
   { id: "memory", label: "Memory", icon: Brain },
 ];

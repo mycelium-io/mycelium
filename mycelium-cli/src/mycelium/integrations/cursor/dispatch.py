@@ -66,6 +66,8 @@ class CursorIntegration(Integration):
         description: str,
         budget: float,
         allow_from: list[str],
+        owner: str | None = None,
+        team: str | None = None,
     ) -> AgentManifest:
         return AgentManifest(
             handle=handle,
@@ -74,6 +76,8 @@ class CursorIntegration(Integration):
             description=description,
             budget_usd_per_month=budget,
             allow_from=allow_from,
+            owner=owner,
+            team=team,
         )
 
     def register(
