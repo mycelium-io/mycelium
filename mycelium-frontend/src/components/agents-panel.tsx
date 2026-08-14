@@ -6,15 +6,18 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Users } from "lucide-react";
 import {
+  createEngine,
   fetchMessages,
   fetchRoomAgents,
   fetchRoomMembers,
   logFetchError,
   type AgentSummary,
+  type EngineKind,
   type PresenceMember,
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Chip } from "@/components/ui/chip";
+import { Input } from "@/components/ui/input";
 import { Monogram } from "@/components/ui/monogram";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -70,10 +73,10 @@ function presenceLabel(member?: PresenceMember): string | null {
  * visible. Humans and agents share the monogram avatar, told apart by tint
  * (muted for people, accent for agents).
  *
- * Agent registration / teardown are intentionally NOT here: both have
- * spoke-local side effects (daemon manifest mirror, workspace assets) the hub
- * can't perform. Use `mycelium agent create` / `rm` and `mycelium engine
- * create` / `rm`.
+ * Engines (aligner / synthesizer) can be invited from the Add dialog — they're
+ * backend-owned, so registration is a pure manifest write. Agent registration /
+ * teardown stay CLI-only: those have spoke-local side effects (resident session,
+ * workspace assets) the hub can't perform. Use `mycelium agent create` / `rm`.
  */
 export function AgentsPanel({ roomName, refreshKey = 0 }: Props) {
   const [agents, setAgents] = useState<AgentSummary[]>([]);
@@ -82,6 +85,7 @@ export function AgentsPanel({ roomName, refreshKey = 0 }: Props) {
   const [loaded, setLoaded] = useState(false);
   const [mineOnly, setMineOnly] = useState(false);
   const [addTab, setAddTab] = useState<"agents" | "engines">("agents");
+  const [addOpen, setAddOpen] = useState(false);
   const { principal } = useCurrentUser();
 
   const refresh = useCallback(() => {
@@ -199,7 +203,7 @@ export function AgentsPanel({ roomName, refreshKey = 0 }: Props) {
             mine
           </Chip>
         )}
-        <Dialog>
+        <Dialog open={addOpen} onOpenChange={setAddOpen}>
           <DialogTrigger
             render={<Button variant="secondary" size="sm" className="ml-auto" />}
           >
@@ -211,9 +215,11 @@ export function AgentsPanel({ roomName, refreshKey = 0 }: Props) {
                 Add an agent or engine
               </DialogTitle>
               <DialogDescription className="text-label text-muted-foreground leading-relaxed">
-                Members are registered from the CLI, because registration has
-                machine-local side effects (daemon manifest mirror, workspace
-                assets) the web UI can&apos;t perform. This panel is read-only.
+                <span className="text-text">Engines</span> are backend-owned, so
+                you can invite one right here. <span className="text-text">Agents</span>{" "}
+                are registered from the CLI, because they have machine-local side
+                effects (resident session, workspace assets) the web UI can&apos;t
+                perform.
               </DialogDescription>
             </DialogHeader>
             <div className="flex items-center gap-1.5 mt-2">
@@ -241,48 +247,42 @@ export function AgentsPanel({ roomName, refreshKey = 0 }: Props) {
                     Create a new agent
                   </div>
                   <pre className="font-mono text-micro text-muted-foreground bg-surface border border-border px-2.5 py-2 overflow-x-auto whitespace-pre-wrap break-words">
-                    {"mycelium agent create <handle> --cwd ~/proj                 # claude_code\nmycelium agent create <handle> --adapter cursor --cwd ~/proj  # cursor"}
+                    {"mycelium agent create <handle>                  # claude_code\nmycelium agent create <handle> --adapter cursor  # cursor"}
                   </pre>
                   <p className="text-micro text-muted-foreground mt-1 leading-snug">
-                    Cold-spawned by the daemon on @-mention. claude_code is
-                    proven; cursor is supported but less travelled. Add{" "}
+                    claude_code is proven; cursor is supported but less
+                    travelled. Optional:{" "}
+                    <code className="font-mono">--cwd &lt;path&gt;</code> for the session&apos;s
+                    working dir, and{" "}
                     <code className="font-mono">--owner &lt;you&gt; --team &lt;slug&gt;</code>{" "}
-                    so the agent is attributed to you from creation.
+                    to attribute it from creation.
                   </p>
                 </section>
                 <section>
                   <div className="text-label font-semibold text-text mb-1.5">
-                    Cold-spawn agents also need the daemon
+                    Keep the session resident
                   </div>
                   <pre className="font-mono text-micro text-muted-foreground bg-surface border border-border px-2.5 py-2 overflow-x-auto whitespace-pre-wrap break-words">
-                    {"mycelium adapter add claude-code --step=daemon\nmycelium daemon subscribe <room>"}
+                    {"mycelium await --loop --handle <handle> --exec <cmd>"}
                   </pre>
                   <p className="text-micro text-muted-foreground mt-1 leading-snug">
-                    One daemon per host serves both claude_code and cursor
-                    agents.
+                    An agent is your own claude_code / cursor session, kept woken
+                    by the loop: it <span className="text-text">await</span>s each
+                    @-mention, reasons, and <span className="text-text">respond</span>s
+                    on the same turn. The loop is the wake — no daemon, no
+                    cold-spawn.
                   </p>
                 </section>
               </div>
             ) : (
-              <div className="space-y-6 mt-2">
-                <section>
-                  <div className="text-label font-semibold text-text mb-1.5">
-                    Register and summon an engine
-                  </div>
-                  <pre className="font-mono text-micro text-muted-foreground bg-surface border border-border px-2.5 py-2 overflow-x-auto whitespace-pre-wrap break-words">
-                    {'mycelium engine create aligner --kind aligner -r <room>\nmycelium engine invoke aligner "converge on <topic>"'}
-                  </pre>
-                  <p className="text-micro text-muted-foreground mt-1 leading-snug">
-                    An engine is a first-party citizen of the room, run by the
-                    backend when @-mentioned — not cold-spawned by the daemon,
-                    a different runtime family from claude_code/cursor. The{" "}
-                    <span className="text-text">aligner</span> mediates
-                    negotiation to consensus; the{" "}
-                    <span className="text-text">synthesizer</span> distills the
-                    room to memory.
-                  </p>
-                </section>
-              </div>
+              <EngineInviteForm
+                roomName={roomName}
+                createdBy={principal}
+                onCreated={() => {
+                  refresh();
+                  setAddOpen(false);
+                }}
+              />
             )}
           </DialogContent>
         </Dialog>
@@ -393,6 +393,123 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
     <div className="px-3 pt-3 pb-1 text-micro font-semibold uppercase tracking-wide text-faint">
       {children}
+    </div>
+  );
+}
+
+const ENGINE_KINDS: { kind: EngineKind; blurb: string }[] = [
+  { kind: "aligner", blurb: "Mediates negotiation to consensus." },
+  { kind: "synthesizer", blurb: "Distills the room to memory." },
+];
+
+/** Invite a first-party cognition engine into the room — a native manifest
+ *  write over the backend (no CLI, no machine-local side effects). */
+function EngineInviteForm({
+  roomName,
+  createdBy,
+  onCreated,
+}: {
+  roomName: string;
+  createdBy: string | null;
+  onCreated: () => void;
+}) {
+  const [kind, setKind] = useState<EngineKind>("aligner");
+  // The handle defaults to the kind name (the common case: one aligner named
+  // "aligner"). It tracks the kind until the user edits it, then it's theirs.
+  const [handle, setHandle] = useState<EngineKind | string>("aligner");
+  const [handleTouched, setHandleTouched] = useState(false);
+  const [description, setDescription] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const trimmed = handle.trim().replace(/^@/, "");
+  const canSubmit = trimmed.length > 0 && !submitting;
+
+  const submit = async () => {
+    if (!canSubmit) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await createEngine(roomName, {
+        handle: trimmed,
+        kind,
+        description: description.trim(),
+        created_by: createdBy || "web-ui",
+      });
+      onCreated();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to register engine");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4 mt-2">
+      <div className="grid grid-cols-2 gap-2">
+        {ENGINE_KINDS.map(({ kind: k, blurb }) => (
+          <button
+            key={k}
+            type="button"
+            onClick={() => {
+              setKind(k);
+              if (!handleTouched) setHandle(k);
+            }}
+            className={`flex flex-col gap-0.5 rounded-lg border px-3 py-2 text-left transition-colors ${
+              kind === k ? "border-accent bg-accent/10" : "border-border hover:bg-hairline"
+            }`}
+          >
+            <span className={`text-label font-medium ${kind === k ? "text-text" : "text-muted-foreground"}`}>
+              {k}
+            </span>
+            <span className="text-micro leading-snug text-muted-foreground">{blurb}</span>
+          </button>
+        ))}
+      </div>
+
+      <div className="space-y-1.5">
+        <label className="text-label font-medium text-text">Handle</label>
+        <Input
+          value={handle}
+          onChange={(e) => {
+            setHandle(e.target.value);
+            setHandleTouched(true);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") submit();
+          }}
+          placeholder={kind}
+          autoCapitalize="none"
+          spellCheck={false}
+          aria-invalid={!!error}
+        />
+        <p className="text-micro text-muted-foreground leading-snug">
+          Summon it in the channel with{" "}
+          <code className="font-mono text-accent">@{trimmed || kind}</code>. Lowercase slug.
+        </p>
+      </div>
+
+      <div className="space-y-1.5">
+        <label className="text-label font-medium text-text">
+          Description <span className="text-faint">(optional)</span>
+        </label>
+        <Input
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="What this engine does in the room"
+        />
+      </div>
+
+      {error && <p className="text-micro text-[#f87171] leading-snug">{error}</p>}
+
+      <div className="flex items-center gap-2">
+        <Button variant="default" size="sm" onClick={submit} disabled={!canSubmit}>
+          {submitting ? "Registering…" : "Invite engine"}
+        </Button>
+        <span className="text-micro text-muted-foreground">
+          or <code className="font-mono">mycelium engine create</code> from the CLI
+        </span>
+      </div>
     </div>
   );
 }

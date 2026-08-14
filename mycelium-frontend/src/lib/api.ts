@@ -225,6 +225,36 @@ export async function fetchRoomAgents(roomName: string): Promise<AgentSummary[]>
   return res.json();
 }
 
+export type EngineKind = "aligner" | "synthesizer";
+
+/** Invite a first-party cognition engine (aligner / synthesizer) into a room.
+ *  Engines are backend-owned — registration is just a manifest write with no
+ *  machine-local side effects — so the UI can do this natively (no CLI). */
+export async function createEngine(
+  roomName: string,
+  data: { handle: string; kind: EngineKind; description?: string; created_by?: string },
+): Promise<AgentSummary> {
+  const res = await fetch(`/api/rooms/${roomName}/engines`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    // Surface the backend's reason (FastAPI `{ detail: ... }`) instead of failing silently.
+    let detail = `Failed to register engine (${res.status})`;
+    try {
+      const body = await res.json();
+      if (body?.detail) {
+        detail = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail);
+      }
+    } catch {
+      /* non-JSON error body: keep the status-based message */
+    }
+    throw new Error(detail);
+  }
+  return res.json();
+}
+
 export type PresenceKind = "slim" | "lease";
 
 export interface PresenceMember {
