@@ -113,31 +113,6 @@ def test_append_transcript_is_o1_and_accumulates():
     assert "```" not in body
 
 
-def test_legacy_markdown_transcript_migrates_forward_on_load():
-    """A room persisted under the old fenced ``transcript.md`` reads back and is
-    rewritten as ``transcript.jsonl``, with the legacy file removed."""
-    from app.services.filesystem import write_memory_file
-
-    room = "legacy-room"
-    base = get_room_dir(room)
-    body = "\n".join(
-        [
-            "The live room transcript.",
-            "",
-            "```jsonl",
-            *(persister._transcript_line(_record(mid)) for mid in ("m1", "m2")),
-            "```",
-            "",
-        ]
-    )
-    write_memory_file(base, persister.TRANSCRIPT_KEY, body, created_by="x")
-
-    reloaded = persister.load_transcript(room)
-    assert [r.message_id for r in reloaded] == ["m1", "m2"]
-    assert (base / persister.TRANSCRIPT_FILENAME).exists()
-    assert read_memory_file(base, persister.TRANSCRIPT_KEY) is None
-
-
 # ── delivery-cursor persistence (D5) ─────────────────────────────────────────
 
 
@@ -504,27 +479,6 @@ def test_conversational_messages_project_from_the_durable_transcript():
         ("growth", "a-1"),
     ]
     assert projected[1].episode == "urn:ioc:mycelium:episode:r:s"
-
-
-def test_conversational_messages_migrate_and_serve_a_legacy_transcript():
-    """A dormant legacy room (only the fenced transcript.md, never provisioned
-    since deploy) must not read as empty: conversational_messages falls through to
-    load_transcript, which migrates the .md forward, so the read path serves it."""
-    from app.services.filesystem import write_memory_file
-
-    room = "conv-legacy-room"
-    base = get_room_dir(room)
-    env, content = _msg_content(
-        "h-1", sender="julia", text="from the old format", payload_type="message"
-    )
-    line = persister._transcript_line(persister.record_from(env, content))
-    body = "\n".join(["The live room transcript.", "", "```jsonl", line, "```", ""])
-    write_memory_file(base, persister.TRANSCRIPT_KEY, body, created_by="x")
-    assert not (base / persister.TRANSCRIPT_FILENAME).exists()  # no .jsonl yet
-
-    projected = persister.conversational_messages(room)
-    assert [m.content for m in projected] == ["from the old format"]
-    assert (base / persister.TRANSCRIPT_FILENAME).exists()  # migrated forward on read
 
 
 def test_conversational_messages_survive_a_wiped_in_memory_store():

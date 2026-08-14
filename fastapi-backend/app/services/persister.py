@@ -65,9 +65,7 @@ logger = logging.getLogger(__name__)
 # The transcript is a plain append-only JSONL file per room
 # (``log/transcript.jsonl``): one JSON record per line, written O(1) per message
 # and deliberately separate from ``log/episodes/*`` (episode-scoped) so the two
-# never clobber each other. ``TRANSCRIPT_KEY`` names the legacy fenced-markdown
-# transcript (``log/transcript.md``), read once on load and migrated forward.
-TRANSCRIPT_KEY = "log/transcript"
+# never clobber each other.
 TRANSCRIPT_FILENAME = "log/transcript.jsonl"
 
 # An ``@``-summon token: ``@`` followed by a handle (letter/digit start, then
@@ -300,51 +298,14 @@ def _parse_jsonl(text: str) -> list[TranscriptRecord]:
     return records
 
 
-def _parse_legacy_transcript(body: str) -> list[TranscriptRecord]:
-    """Parse the fenced ```jsonl``` block of a legacy ``transcript.md`` body."""
-    in_block = False
-    inner: list[str] = []
-    for line in body.splitlines():
-        stripped = line.strip()
-        if stripped == "```jsonl":
-            in_block = True
-            continue
-        if stripped == "```":
-            in_block = False
-            continue
-        if in_block:
-            inner.append(line)
-    return _parse_jsonl("\n".join(inner))
-
-
 def load_transcript(room: str) -> list[TranscriptRecord]:
-    """Read a room's persisted transcript (empty when none exists).
+    """Read a room's persisted ``log/transcript.jsonl`` (empty when none exists)."""
+    from app.services.filesystem import get_room_dir
 
-    Reads the append-only ``log/transcript.jsonl``. If only the legacy fenced
-    ``log/transcript.md`` exists, it is parsed and migrated forward in place.
-    """
-    from app.services.filesystem import (
-        delete_memory_file,
-        get_room_dir,
-        read_memory_file,
-    )
-
-    base = get_room_dir(room)
-    path = base / TRANSCRIPT_FILENAME
-    if path.exists():
-        return _parse_jsonl(path.read_text(encoding="utf-8"))
-
-    legacy = read_memory_file(base, TRANSCRIPT_KEY)
-    if legacy is None:
+    path = get_room_dir(room) / TRANSCRIPT_FILENAME
+    if not path.exists():
         return []
-    _meta, body = legacy
-    records = _parse_legacy_transcript(body)
-    try:  # best-effort one-time migration to plain JSONL
-        write_transcript(room, records)
-        delete_memory_file(base, TRANSCRIPT_KEY)
-    except Exception:
-        logger.exception("transcript migration failed for room %s", room)
-    return records
+    return _parse_jsonl(path.read_text(encoding="utf-8"))
 
 
 def append_transcript(room: str, record: TranscriptRecord) -> None:
@@ -363,8 +324,8 @@ def append_transcript(room: str, record: TranscriptRecord) -> None:
 def write_transcript(room: str, records: list[TranscriptRecord]) -> None:
     """Rewrite a room's whole transcript to ``log/transcript.jsonl``.
 
-    Used for migration and tests; the hot path appends via
-    :func:`append_transcript` instead of re-rendering the full list.
+    A full-file rewrite for seeding a transcript wholesale (tests); the hot path
+    appends via :func:`append_transcript` instead of re-rendering the full list.
     """
     try:
         from app.services.filesystem import get_room_dir
@@ -445,23 +406,16 @@ def conversational_messages(room: str) -> list[StoredMessage]:
 
     path = get_room_dir(room) / TRANSCRIPT_FILENAME
     stamp = _stat_stamp(path)
-    if stamp is not None:
-        cached = _conversational_cache.get(room)
-        if cached is not None and cached[0] == stamp:
-            return list(cached[1])
-    # Fall through to load_transcript even when the .jsonl is absent: it migrates a
-    # legacy fenced transcript.md forward on first read, so a dormant legacy room
-    # (read-only browsed before it's next provisioned) isn't shown empty.
+    if stamp is None:
+        _conversational_cache.pop(room, None)
+        return []
+    cached = _conversational_cache.get(room)
+    if cached is not None and cached[0] == stamp:
+        return list(cached[1])
     messages = [
         m for r in load_transcript(room) if (m := stored_message_from_record(room, r)) is not None
     ]
-    # Re-stat when the file was absent: a legacy migration may have just created
-    # it. Cache only when it exists on disk, so a truly empty room stays cheap.
-    post = stamp if stamp is not None else _stat_stamp(path)
-    if post is not None:
-        _conversational_cache[room] = (post, messages)
-    else:
-        _conversational_cache.pop(room, None)
+    _conversational_cache[room] = (stamp, messages)
     return list(messages)
 
 
