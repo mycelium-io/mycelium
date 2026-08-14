@@ -405,6 +405,23 @@ class TeamListResponse(BaseModel):
     total: int
 
 
+# ── Agent manifest ────────────────────────────────────────────────────────────
+
+
+class AgentRead(BaseModel):
+    """Structured view of an agent's manifest, as returned by GET /rooms/{room}/agents."""
+
+    handle: str
+    adapter: str
+    kind: str | None = None
+    description: str = ""
+    cwd: str | None = None
+    owner: str | None = None
+    team: str | None = None
+    budget_usd_per_month: float = 0.0
+    allow_from: list[str] = Field(default_factory=list)
+
+
 class SubscriptionCreate(BaseModel):
     key_pattern: str = Field(..., min_length=1, description="Glob pattern for keys to watch")
     subscriber: str = Field(..., description="Agent handle subscribing")

@@ -208,78 +208,21 @@ export async function respondToInvite(
 
 export interface AgentSummary {
   handle: string;
-  description: string;
   adapter: string;
-  // Self-asserted principal binding: the users/<handle> this agent belongs to
-  // and the team it's fielded by. Absent (null) means principal-anonymous.
+  kind: string | null;
+  description: string;
+  cwd: string | null;
   owner: string | null;
   team: string | null;
+  budget_usd_per_month: number;
+  allow_from: string[];
 }
 
-/**
- * List addressable agents in a room. Each agent is a memory entry under
- * `agents/<handle>` (without further path segments; `agents/<handle>/notes`
- * and `agents/<handle>/log/...` are filtered out). Used to drive the
- * `@`-mention autocomplete in the room chat box.
- */
+/** List addressable agents in a room. Used to drive `@`-mention autocomplete. */
 export async function fetchRoomAgents(roomName: string): Promise<AgentSummary[]> {
-  const res = await fetch(
-    `/api/rooms/${roomName}/memory?prefix=agents/&limit=200`,
-    { cache: "no-store" },
-  );
+  const res = await fetch(`/api/rooms/${roomName}/agents`, { cache: "no-store" });
   if (!res.ok) return [];
-  const data = await res.json();
-  const items = Array.isArray(data) ? data : data.items || data.memories || [];
-  const agents: AgentSummary[] = [];
-  for (const item of items) {
-    const key: string = item.key || "";
-    const rest = key.replace(/^agents\//, "");
-    if (!rest || rest.includes("/")) continue;
-    // The manifest is YAML. The memory API may hand it back as a raw string,
-    // a structured dict, OR (what the backend actually does) wrapped as
-    // `{text: "<yaml>"}`. Normalize to one YAML string and parse that.
-    const value = item.value;
-    let raw = "";
-    let structured: Record<string, unknown> | null = null;
-    if (typeof value === "string") {
-      raw = value;
-    } else if (value && typeof value === "object") {
-      const v = value as Record<string, unknown>;
-      if (typeof v.text === "string") raw = v.text;
-      else if (typeof v.content === "string") raw = v.content;
-      else structured = v;
-    }
-
-    let description = "";
-    let adapter = "claude_code";
-    let owner: string | null = null;
-    let team: string | null = null;
-    if (structured) {
-      description = String(structured.description || "");
-      adapter = String(structured.adapter || "claude_code");
-      owner = structured.owner ? String(structured.owner) : null;
-      team = structured.team ? String(structured.team) : null;
-    } else {
-      const descMatch = raw.match(/description:\s*(.+)/);
-      if (descMatch) description = descMatch[1].trim().replace(/^["']|["']$/g, "");
-      const adMatch = raw.match(/adapter:\s*(\S+)/);
-      if (adMatch) adapter = adMatch[1].trim();
-      // YAML renders an unset owner/team as `null`; treat that as anonymous.
-      const ownerMatch = raw.match(/owner:\s*(.+)/);
-      if (ownerMatch) {
-        const v = ownerMatch[1].trim().replace(/^["']|["']$/g, "");
-        owner = v && v !== "null" ? v : null;
-      }
-      const teamMatch = raw.match(/team:\s*(.+)/);
-      if (teamMatch) {
-        const v = teamMatch[1].trim().replace(/^["']|["']$/g, "");
-        team = v && v !== "null" ? v : null;
-      }
-    }
-    agents.push({ handle: rest, description, adapter, owner, team });
-  }
-  agents.sort((a, b) => a.handle.localeCompare(b.handle));
-  return agents;
+  return res.json();
 }
 
 // ── Principals (self-asserted user store) ─────────────────────────────────────

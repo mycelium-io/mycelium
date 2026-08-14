@@ -159,7 +159,7 @@ export function RoomChatBox({ roomName, onSent, className }: Props) {
                   @{a.handle}
                 </span>
                 <span className="text-micro text-muted-foreground flex-shrink-0">
-                  {a.adapter}
+                  {a.adapter === "engine" && a.kind ? `engine · ${a.kind}` : a.adapter}
                 </span>
                 {a.description && (
                   <span className="text-micro text-muted-foreground truncate min-w-0">
