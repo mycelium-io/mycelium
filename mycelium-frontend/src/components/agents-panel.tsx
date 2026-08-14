@@ -273,7 +273,7 @@ export function AgentsPanel({ roomName, refreshKey = 0 }: Props) {
                   )}
                 </div>
                 <div className="text-micro text-muted-foreground truncate leading-tight">
-                  {a.adapter}
+                  {a.adapter === "engine" && a.kind ? `engine · ${a.kind}` : a.adapter}
                   {a.description ? ` · ${a.description}` : ""}
                 </div>
               </div>
