@@ -204,6 +204,51 @@ export async function handleMock(req: Request): Promise<Response | null> {
       return null;
     }
 
+    case "board": {
+      // POST /board/capture → a fresh open concern
+      if (sub[1] === "capture" && method === "POST") {
+        const body = await readJson(req);
+        const text = String(body.text ?? "concern");
+        return json(
+          { id: "cap1", source: "ledger", kind: "concern", state: "open", title: text, needs_you: true, provenance: "captured by you" },
+          201,
+        );
+      }
+      // POST /board/items/:id/:verb → no-op success (fixtures are static)
+      if (sub[1] === "items" && sub[2] && sub[3] && method === "POST") {
+        return new Response(null, { status: 204 });
+      }
+      // GET /board → project the plan tasks + a few representative ledger rows
+      if (method === "GET") {
+        const planRows = fx.plan.tasks.map((t) => ({
+          id: `plan:${t.id}`,
+          source: "plan",
+          kind: "action",
+          state: t.done ? "resolved" : "in_progress",
+          title: t.text,
+          provenance: `plan/${t.slug}.md`,
+          needs_you: false,
+          note: t.done ? "task complete" : null,
+        }));
+        const ledgerRows = [
+          { id: "esc", source: "ledger", kind: "escalation", state: "open", title: "Bless the OpenFGA model change", escalated_by: "agent-y", ask: "sign-off", provenance: "raised by agent-y", ephemeral: true, expires_in: "3d", age: "2m", needs_you: true },
+          { id: "d3f", source: "ledger", kind: "decision", state: "open", title: "JWT TTL — 15m or 60m?", choices: ["15m", "60m"], owner: { handle: "agent-y", kind: "agent", present: true }, provenance: "from agent-y", age: "6m", needs_you: true },
+          { id: "a91", source: "ledger", kind: "concern", state: "blocked", title: "Enable thin-spoke join", waiting_on: "#502", github: { issue: 502, state: "open" }, age: "40m", needs_you: true },
+          { id: "7c2", source: "ledger", kind: "review", state: "in_review", title: "agent-z opened a PR, wants eyes", owner: { handle: "agent-z", kind: "agent", present: true }, work: { branch: "feat/path-fix", pr: { number: 504, state: "open" }, ci: "green" }, provenance: "from agent-z", age: "12m", needs_you: true },
+          { id: "e45", source: "ledger", kind: "action", state: "in_progress", title: "Cache TTL sweep", owner: { handle: "julia", kind: "human", present: true }, work: { branch: "feat/cache", ci: "running" }, age: "3m", needs_you: false },
+          { id: "b90", source: "ledger", kind: "action", state: "resolved", title: "Fix path traversal in loader", owner: { handle: "agent-z", kind: "agent", present: false }, work: { branch: "fix/traversal", pr: { number: 499, state: "merged" }, ci: "green" }, note: "PR #499 merged", age: "1h", needs_you: false },
+        ];
+        const items = [...ledgerRows, ...planRows];
+        const counts = { needs: 0, flight: 0, resolved: 0 };
+        for (const it of items) {
+          const lens = it.state === "resolved" ? "resolved" : it.needs_you ? "needs" : "flight";
+          counts[lens as "needs" | "flight" | "resolved"] += 1;
+        }
+        return json({ room: roomName, items, members: ["agent-y", "agent-z", "julia"], counts });
+      }
+      return null;
+    }
+
     case "episodes": {
       // GET /episodes/:shortId
       if (sub[1] && method === "GET") {

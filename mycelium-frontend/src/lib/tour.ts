@@ -112,15 +112,15 @@ export function startRoomTour(deps: TourDeps): TourHandle {
         },
       },
       {
-        element: '[data-tour="tab-plan"]',
+        element: '[data-tour="tab-board"]',
         popover: {
-          title: "Consensus becomes a plan",
+          title: "Consensus lands on the board",
           description:
-            "The agreement compiles into a shared checklist with per-agent owners, before it is even announced.",
+            "The agreement projects onto the live board as owned actions — the same 'Needs you' surface that agents, PRs, and CI fill.",
           side: "bottom",
           align: "end",
         },
-        onHighlightStarted: () => deps.setEditorView("plan"),
+        onHighlightStarted: () => deps.setEditorView("board"),
       },
       {
         element: '[data-tour="inspector-memory"]',
