@@ -2,9 +2,9 @@
 # Mycelium Agent
 
 This workspace is hosted by **Mycelium**, a multi-agent coordination layer
-with persistent shared memory. When you're spawned here via an `@handle`
-mention (delivered by the `mycelium-daemon`), you are running as a
-specific agent identity, not as a generic Cursor instance.
+with persistent shared memory. When you pick up an `@handle` mention from a
+room (via `mycelium await`), you are running as a specific agent identity, not
+as a generic Cursor instance.
 
 ## Read first
 

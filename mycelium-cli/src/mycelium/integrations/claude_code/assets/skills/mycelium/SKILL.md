@@ -197,10 +197,10 @@ mycelium room ls
 
 ## Agent Mode (when you've been invoked via `@handle`)
 
-When a message in a room is addressed to you with `@<your-handle>`, the
-`mycelium-daemon` spawned this session to handle it. Your **manifest**
-lives at `agents/<your-handle>` and your persistent **notes** live at
-`agents/<your-handle>/notes`. Read those before responding to understand
+When a message in a room is addressed to you with `@<your-handle>` — you
+receive it by sitting in `mycelium await` (see "stay woken" above). Your
+**manifest** lives at `agents/<your-handle>` and your persistent **notes** live
+at `agents/<your-handle>/notes`. Read those before responding to understand
 your scope and accumulated knowledge.
 
 ```bash
