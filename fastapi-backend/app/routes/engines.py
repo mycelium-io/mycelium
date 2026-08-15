@@ -81,13 +81,11 @@ async def create_engine(room_name: str, payload: EngineCreate) -> AgentRead:
         raise HTTPException(status_code=409, detail=f"@{handle} already exists in {room_name}")
 
     # Mirror the CLI manifest so the summon seam + agents listing read it
-    # identically. ``handle`` is the memory key, so it stays out of the body;
-    # engines carry no per-agent budget (they run on the mycelium-configured LLM).
+    # identically. ``handle`` is the memory key, so it stays out of the body.
     body = {
         "adapter": "engine",
         "kind": kind,
         "description": payload.description,
-        "budget_usd_per_month": 0.0,
         "allow_from": [h for h in (_norm(a) for a in payload.allow_from) if h],
         "owner": _norm(payload.owner),
         "team": _norm(payload.team),
@@ -117,6 +115,5 @@ async def create_engine(room_name: str, payload: EngineCreate) -> AgentRead:
         description=payload.description,
         owner=body["owner"],
         team=body["team"],
-        budget_usd_per_month=0.0,
         allow_from=body["allow_from"],
     )
