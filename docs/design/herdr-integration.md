@@ -54,8 +54,18 @@ Right after a wake, `_is_resident` (`commands/agent.py:174`, the backend's
 is **not** looping. So the *next* `invoke` takes the "resident — it'll pick this
 up" branch and skips the wake, but nothing is actually awaiting; the message waits
 for the lease to lapse. The lease TTL is a liveness *approximation*; cold-wake
-makes the gap observable. A wake-aware residence check (or a shorter lease when
-no `--loop` is running) would close it.
+makes the gap observable.
+
+**Fixed in this PR (CLI-side).** The backend runs containerized and is herdr-blind,
+so it can't validate its own leases; the CLI is the one layer that reaches both
+the backend `/members` API and the local herdr socket. So residence is now
+*reconciled* there: for a herdr-mapped handle, herdr's live agent list is
+authoritative (`commands/agent.py:_resolve_presence`) — a live+idle pane is woken
+over a stale lease, a dead pane reads as stale (queued + warned), and only unmapped
+handles fall back to the raw lease. `mycelium herdr ls` surfaces the same
+reconciliation as a table (`slim`/`lease` × live pane state → `stale lease` /
+`herdr-only` / `in sync`). The remaining backend-side refinement (a shorter lease
+when no `--loop` is running) is orthogonal and left to the backend.
 
 These are exactly the "wake semantics" and "lifecycle ownership" open questions
 from the issue — now concrete, reproducible, and with `file:line` anchors.
