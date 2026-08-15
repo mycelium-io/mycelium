@@ -399,14 +399,19 @@ export async function createEngine(
   });
 }
 
-export type PresenceKind = "slim" | "lease";
+export type PresenceKind = "slim" | "lease" | "herdr";
 
 export interface PresenceMember {
   handle: string;
-  /** "slim" = active SLIM socket; "lease" = server-held await/reply (no socket). */
+  /** "slim" = active SLIM socket; "lease" = server-held await/reply (no socket);
+   *  "herdr" = alive in a herdr-managed pane but not joined (pushed by the host
+   *  `mycelium herdr sync` bridge). */
   kind: PresenceKind;
   /** ISO wall-clock of a lease member's last poll; null for SLIM (always now). */
   last_seen: string | null;
+  /** herdr live agent state (idle/working/blocked/done) when the handle is mapped
+   *  to a live herdr pane; null otherwise. */
+  status?: string | null;
 }
 
 /** Live presence set for a room: SLIM-connected + server-held lease members. */

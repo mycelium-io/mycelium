@@ -59,9 +59,14 @@ function relativeTime(iso: string): string | null {
  *  Returns null when the handle isn't currently present (caller falls back). */
 function presenceLabel(member?: PresenceMember): string | null {
   if (!member) return null;
-  if (member.kind === "slim") return "connected";
+  if (member.kind === "herdr") {
+    // Alive in a herdr pane but not joined to the room (pushed by `herdr sync`).
+    return `herdr · ${member.status ?? "alive"} · not joined`;
+  }
+  const herdr = member.status ? ` · herdr ${member.status}` : "";
+  if (member.kind === "slim") return `connected${herdr}`;
   const age = member.last_seen ? relativeTime(member.last_seen) : null;
-  return age ? `awaiting · seen ${age}` : "awaiting";
+  return `${age ? `awaiting · seen ${age}` : "awaiting"}${herdr}`;
 }
 
 /**
@@ -316,7 +321,7 @@ export function AgentsPanel({ roomName, refreshKey = 0 }: Props) {
                   key={`person-${p.handle}`}
                   className="flex items-center gap-2.5 px-3 py-2.5 border-b border-border last:border-b-0"
                 >
-                  <Monogram handle={p.handle} color="var(--muted-foreground)" presence={presence?.kind} />
+                  <Monogram handle={p.handle} color="var(--muted-foreground)" presence={presence?.kind} status={presence?.status} />
                   <div className="min-w-0 flex-1 leading-tight">
                     <div className="flex items-center gap-1.5">
                       <span className="font-mono text-label text-text font-semibold truncate leading-tight">
@@ -346,7 +351,7 @@ export function AgentsPanel({ roomName, refreshKey = 0 }: Props) {
               key={`agent-${a.handle}`}
               className="flex items-center gap-2.5 px-3 py-2.5 border-b border-border last:border-b-0"
             >
-              <Monogram handle={a.handle} presence={presence?.kind} />
+              <Monogram handle={a.handle} presence={presence?.kind} status={presence?.status} />
               <div className="min-w-0 flex-1 leading-tight">
                 <div className="flex items-center gap-1.5">
                   <span className="font-mono text-label text-text font-semibold truncate leading-tight">

@@ -419,3 +419,35 @@ def test_derive_handle_disambiguates_duplicate_tab_names() -> None:
     assert first == "build"
     assert second == "build-pb"  # collision → pane suffix appended
     assert _HANDLE_RE.match(second)
+
+
+# ── sync presence collection ────────────────────────────────────────────────────
+
+
+def test_collect_presence_maps_live_panes_per_room(
+    monkeypatch: pytest.MonkeyPatch, isolated_home: Path
+) -> None:
+    from mycelium.commands.herdr import _collect_presence
+
+    reg = HerdrRegistry()
+    reg.set(HerdrPaneMapping(room="design", handle="reviewer", pane="w2:pV"))
+    reg.set(HerdrPaneMapping(room="design", handle="docs", pane="w2:pT"))
+    reg.set(HerdrPaneMapping(room="ops", handle="ci", pane="w3:pA"))
+    reg.set(HerdrPaneMapping(room="ops", handle="ghost", pane="w9:pZ"))  # dead pane
+
+    monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/herdr")
+    agents = [
+        {"pane_id": "w2:pV", "agent_status": "idle"},
+        {"pane_id": "w2:pT", "agent_status": "working"},
+        {"pane_id": "w3:pA", "agent_status": "blocked"},
+        # w9:pZ absent → 'ghost' omitted so its backend entry lapses.
+    ]
+    bridge = HerdrBridge(runner=ScriptedRunner({"agent list": _proc(_ok({"agents": agents}))}))
+
+    view = _collect_presence(bridge, room_filter=None)
+    assert view == {
+        "design": {"reviewer": "idle", "docs": "working"},
+        "ops": {"ci": "blocked"},
+    }
+    # Room filter scopes the push.
+    assert _collect_presence(bridge, room_filter="ops") == {"ops": {"ci": "blocked"}}

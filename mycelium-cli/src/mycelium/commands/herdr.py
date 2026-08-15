@@ -502,6 +502,122 @@ def herdr_wake(
     except HerdrError as e:
         console.print(f"[red]herdr error:[/red] {e}")
         raise typer.Exit(1) from None
+
+
+def _collect_presence(bridge: HerdrBridge, room_filter: str | None) -> dict[str, dict[str, str]]:
+    """Current herdr liveness for every mapped handle → ``{room: {handle: status}}``.
+
+    Only mapped handles whose pane currently hosts a live agent are included; an
+    unmapped/dead pane is simply omitted so its backend entry lapses on its TTL.
+    """
+    live = {
+        str(a["pane_id"]): str(a.get("agent_status") or "unknown")
+        for a in bridge.list_agents()
+        if a.get("pane_id")
+    }
+    view: dict[str, dict[str, str]] = {}
+    for m in bridge.registry.all():
+        if room_filter and m.room != room_filter:
+            continue
+        status = live.get(m.pane)
+        if status is not None:
+            view.setdefault(m.room, {})[m.handle] = status
+    return view
+
+
+def _push_presence(
+    config: MyceliumConfig, room: str, statuses: dict[str, str], ttl_s: float
+) -> bool:
+    """POST one room's herdr liveness to the backend. Best-effort → ``bool`` ok."""
+    import httpx
+
+    try:
+        url = f"{config.server.api_url}/api/rooms/{room}/sessions/herdr-presence"
+        resp = httpx.post(url, json={"statuses": statuses, "ttl_s": ttl_s}, timeout=5.0)
+        resp.raise_for_status()
+    except Exception:
+        return False
+    return True
+
+
+@doc_ref(
+    usage="mycelium herdr sync [--room <room>] [--watch] [--interval N]",
+    desc="Push herdr liveness to the backend so the UI can show idle/working/blocked.",
+    group="agent",
+)
+@app.command("sync")
+def herdr_sync(
+    ctx: typer.Context,
+    room: str | None = typer.Option(None, "--room", "-r", help="Only sync this room."),
+    watch: bool = typer.Option(False, "--watch", help="Keep polling and pushing on change."),
+    interval: int = typer.Option(5, "--interval", help="Poll interval seconds (with --watch)."),
+) -> None:
+    """Mirror herdr's live agent states into the backend presence surface.
+
+    The backend runs containerized and can't see the host's herdr socket, so this
+    host-side bridge polls ``herdr agent list`` and pushes each mapped handle's
+    state to the backend, which the frontend renders as a liveness badge. This is
+    the honest home for a host-side loop after the cold-spawn daemon's removal: it
+    only mirrors liveness — it never spawns or wakes agents.
+
+    One-shot by default; ``--watch`` keeps it running (pushes on change, with a
+    periodic heartbeat so entries don't lapse). Ctrl-C clears the overlay.
+    """
+    import time
+
+    try:
+        config = MyceliumConfig.load()
+        room_filter = _resolve_room(config, room) if room else None
+        bridge = _bridge()
+        if not bridge.available():
+            console.print("[yellow]herdr not reachable[/yellow] — nothing to sync.")
+            raise typer.Exit(1)
+
+        ttl_s = max(90.0, interval * 4.0)
+
+        def push_all(view: dict[str, dict[str, str]]) -> int:
+            ok = 0
+            for r, statuses in view.items():
+                if _push_presence(config, r, statuses, ttl_s):
+                    ok += 1
+            return ok
+
+        view = _collect_presence(bridge, room_filter)
+        pushed = push_all(view)
+        total = sum(len(v) for v in view.values())
+        console.print(
+            f"[green]Synced[/green] {total} agent state(s) across {pushed} room(s)."
+            + ("" if watch else " [dim](one-shot; --watch to keep live)[/dim]")
+        )
+        if not watch:
+            return
+
+        console.print(f"[dim]Watching herdr every {interval}s — Ctrl-C to stop.[/dim]")
+        last: dict[str, dict[str, str]] = view
+        last_push = time.monotonic()
+        rooms_seen = set(view)
+        try:
+            while True:
+                time.sleep(interval)
+                view = _collect_presence(bridge, room_filter)
+                rooms_seen |= set(view)
+                # Push on change, or heartbeat every ~half-TTL to keep entries live.
+                changed = view != last
+                if changed or (time.monotonic() - last_push) >= ttl_s / 2:
+                    push_all(view)
+                    # Clear rooms that dropped to empty so their badges disappear.
+                    for r in rooms_seen - set(view):
+                        _push_presence(config, r, {}, ttl_s)
+                    last, last_push = view, time.monotonic()
+                    if changed:
+                        total = sum(len(v) for v in view.values())
+                        console.print(f"[dim]↻ pushed {total} state(s)[/dim]")
+        except KeyboardInterrupt:
+            for r in rooms_seen:
+                _push_presence(config, r, {}, ttl_s)
+            console.print("\n[dim]Stopped — cleared herdr overlay.[/dim]")
+    except typer.Exit:
+        raise
     except Exception as e:
         print_error(e, verbose=bool(ctx.obj and ctx.obj.get("verbose")))
         raise typer.Exit(1) from None

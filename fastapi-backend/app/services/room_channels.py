@@ -131,13 +131,19 @@ class HumanPublishResult:
 class MemberPresence:
     """How a present room member is connected, for the presence surface.
 
-    ``kind`` is ``"slim"`` (live socket) or ``"lease"`` (server-held
-    ``await``/``reply`` poll). ``last_seen`` is the wall-clock epoch of a lease
-    member's most recent poll; ``None`` for SLIM members (continuously present).
+    ``kind`` is ``"slim"`` (live socket), ``"lease"`` (server-held
+    ``await``/``reply`` poll), or ``"herdr"`` (alive in a herdr-managed pane but
+    not currently joined — pushed by the host-side ``mycelium herdr sync`` bridge,
+    since the backend is containerized and herdr-blind). ``last_seen`` is the
+    wall-clock epoch of the member's most recent poll/sync (``None`` for SLIM).
+    ``status`` carries herdr's live agent state (``idle``/``working``/``blocked``/
+    ``done``) — set on a herdr member, or overlaid onto a slim/lease member that is
+    *also* mapped to a live herdr pane.
     """
 
     kind: str
     last_seen: float | None = None
+    status: str | None = None
 
 
 @dataclass
@@ -188,6 +194,13 @@ class RoomChannelManager:
         # Tracks which handles have had a coordination_join notice emitted for each
         # room. Cleared on leave/disconnect so a returning member re-announces.
         self._announced: dict[str, set[str]] = {}
+        # herdr liveness overlay: room → handle → (status, monotonic expiry,
+        # wall-clock last_seen). Pushed by the host-side `mycelium herdr sync`
+        # bridge (the backend can't see the host's herdr socket). Purely a
+        # presence/UI surface — it never enters `members()` (the mediator roster),
+        # so a herdr-alive-but-not-joined agent is *visible* without being made a
+        # negotiation participant. Entries lapse on their TTL if sync stops.
+        self._herdr: dict[str, dict[str, tuple[str, float, float]]] = {}
         # Set during teardown so a persister task ending is recognized as
         # intentional (no restart) rather than a crash to recover from.
         self._closing = False
@@ -271,7 +284,49 @@ class RoomChannelManager:
         out: dict[str, MemberPresence] = {h: MemberPresence(kind="slim") for h in slim}
         for h in lease_only:
             out[h] = MemberPresence(kind="lease", last_seen=seen.get(h))
+        # Overlay herdr liveness: a handle already present (slim/lease) just gains
+        # its herdr ``status``; a herdr-only handle appears as ``kind="herdr"`` so
+        # the UI can surface "alive in herdr, not joined" without it becoming a
+        # roster member.
+        for h, (status, last_seen) in self._live_herdr(room).items():
+            if h in out:
+                out[h].status = status
+            else:
+                out[h] = MemberPresence(kind="herdr", last_seen=last_seen, status=status)
         return out
+
+    def _live_herdr(self, room: str) -> dict[str, tuple[str, float]]:
+        """Unexpired herdr presence for ``room``: handle → (status, last_seen).
+
+        Opportunistically drops lapsed entries so a handle whose sync stopped
+        (herdr closed, bridge killed) disappears from the surface on its own.
+        """
+        now = time.monotonic()
+        entries = self._herdr.get(room)
+        if not entries:
+            return {}
+        live = {h: (status, seen) for h, (status, exp, seen) in entries.items() if exp > now}
+        if len(live) != len(entries):
+            self._herdr[room] = {
+                h: entries[h] for h in entries if entries[h][1] > now
+            }
+        return live
+
+    def set_herdr_presence(
+        self, room: str, statuses: dict[str, str], *, ttl_s: float = 90.0
+    ) -> None:
+        """Replace the herdr liveness overlay for ``room`` (the sync bridge's push).
+
+        ``statuses`` maps handle → herdr agent state. Each entry is stamped with a
+        fresh ``ttl_s`` expiry; a handle omitted from a later push lapses on its
+        own once its TTL elapses (so a closed pane clears without an explicit
+        delete). Replaces rather than merges — the push is the full current view.
+        """
+        now_m = time.monotonic()
+        now_w = time.time()
+        self._herdr[room] = {
+            handle: (status, now_m + ttl_s, now_w) for handle, status in statuses.items()
+        }
 
     def _live_leases(self, room: str) -> set[str]:
         """Handles with an unexpired presence lease in ``room``."""

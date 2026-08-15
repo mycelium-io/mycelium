@@ -22,6 +22,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
 
 from app.bus import bus, room_channel
 from app.schemas import (
@@ -41,6 +42,19 @@ from app.services.filesystem import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/rooms/{room_name}/sessions", tags=["sessions"])
+
+
+class HerdrPresenceBody(BaseModel):
+    """The host-side ``mycelium herdr sync`` push: handle → herdr agent state."""
+
+    statuses: dict[str, str] = Field(
+        default_factory=dict,
+        description="Map of agent handle → herdr state (idle/working/blocked/done).",
+    )
+    ttl_s: float | None = Field(
+        default=None,
+        description="Seconds an entry stays live without a refresh (default 90).",
+    )
 
 
 def _ensure_room(room_name: str) -> None:
@@ -169,10 +183,30 @@ async def list_members(room_name: str):
                     if info.last_seen is not None
                     else None
                 ),
+                # herdr live agent state (idle/working/blocked/…) when the handle
+                # is mapped to a live herdr pane; None otherwise.
+                "status": info.status,
             }
             for h, info in sorted(room_channels.manager.presence(room_name).items())
         ]
     }
+
+
+@router.post("/herdr-presence", status_code=204)
+async def push_herdr_presence(room_name: str, body: HerdrPresenceBody):
+    """Overlay herdr liveness for a room (the ``mycelium herdr sync`` bridge's push).
+
+    The backend runs containerized and can't see the host's herdr socket, so the
+    host-side bridge polls ``herdr agent list`` and pushes the current per-handle
+    state here. This is a presence/UI surface only — it never enters the mediator
+    roster. Entries lapse on their TTL, so a stopped bridge / closed pane clears
+    itself without an explicit delete.
+    """
+    if not room_exists(room_name):
+        raise HTTPException(status_code=404, detail="Room not found")
+    room_channels.manager.set_herdr_presence(
+        room_name, body.statuses, ttl_s=body.ttl_s if body.ttl_s else 90.0
+    )
 
 
 @router.delete("/{session_id}", status_code=204)

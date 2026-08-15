@@ -117,6 +117,38 @@ def test_expired_lease_drops_from_membership(
     assert manager.members("room-a") == []
 
 
+def test_herdr_presence_surfaces_without_joining_roster(
+    manager: room_channels.RoomChannelManager,
+) -> None:
+    # A herdr-only handle appears in presence() (the UI surface) but NOT in
+    # members() (the mediator roster) — visible, not a negotiation participant.
+    manager.set_herdr_presence("room-a", {"reviewer": "idle"})
+    presence = manager.presence("room-a")
+    assert presence["reviewer"].kind == "herdr"
+    assert presence["reviewer"].status == "idle"
+    assert manager.members("room-a") == []
+
+
+def test_herdr_status_overlays_a_lease_member(
+    manager: room_channels.RoomChannelManager,
+) -> None:
+    # A handle present via lease AND mapped to a live herdr pane keeps its lease
+    # kind but gains the herdr status.
+    manager.refresh_lease("room-a", "reviewer")
+    manager.set_herdr_presence("room-a", {"reviewer": "working"})
+    presence = manager.presence("room-a")
+    assert presence["reviewer"].kind == "lease"
+    assert presence["reviewer"].status == "working"
+
+
+def test_expired_herdr_presence_drops(
+    manager: room_channels.RoomChannelManager,
+) -> None:
+    # A stopped sync bridge (TTL lapsed) clears the overlay on its own.
+    manager.set_herdr_presence("room-a", {"reviewer": "idle"}, ttl_s=-1.0)
+    assert "reviewer" not in manager.presence("room-a")
+
+
 @pytest.mark.asyncio
 async def test_open_and_close_episode_lifecycle(
     manager: room_channels.RoomChannelManager,
