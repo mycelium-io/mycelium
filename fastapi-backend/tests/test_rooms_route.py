@@ -47,12 +47,19 @@ async def test_list_rooms_orders_by_last_activity(client) -> None:
 
     resp = await client.get("/api/rooms")
     assert resp.status_code == 200
-    names = [r["name"] for r in resp.json()]
+    rooms = resp.json()
+    names = [r["name"] for r in rooms]
 
     # "beta" was just active, so it leads even though "gamma" was created later.
     assert names.index("beta") < names.index("gamma")
     # "alpha" has never had a message and was created first: it sorts last.
     assert names[-1] == "alpha"
+
+    # Each room surfaces last_activity; the active one's is newer than its own
+    # created_at (the field the UI renders instead of creation time).
+    beta = next(r for r in rooms if r["name"] == "beta")
+    assert beta["last_activity"] is not None
+    assert beta["last_activity"] >= beta["created_at"]
 
 
 @pytest.mark.asyncio

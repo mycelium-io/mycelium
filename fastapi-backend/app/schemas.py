@@ -29,6 +29,9 @@ class RoomRead(BaseModel):
     description: str | None = None
     is_public: bool
     created_at: datetime
+    #: When the room was last active (its transcript's mtime), or ``created_at``
+    #: for a room with no messages yet. Populated by ``GET /rooms``.
+    last_activity: datetime | None = None
     is_persistent: bool = False
     mas_id: str | None = None
     workspace_id: str | None = None

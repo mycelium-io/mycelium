@@ -117,7 +117,11 @@ async def list_rooms(
     visible = [r for r in rooms if r is not None and r.is_public]
     if name:
         visible = [r for r in visible if name.lower() in r.name.lower()]
-    visible.sort(key=_last_activity, reverse=True)
+    # Stamp last-activity once, then sort + surface it (the UI shows this, not
+    # created_at — "when was this room last used" is the useful signal).
+    for r in visible:
+        r.last_activity = _last_activity(r)
+    visible.sort(key=lambda r: r.last_activity or r.created_at, reverse=True)
     return visible[skip : skip + limit]
 
 

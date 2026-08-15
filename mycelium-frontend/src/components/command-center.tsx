@@ -37,6 +37,8 @@ function RunSampleLink({ className = "" }: { className?: string }) {
 interface Room {
   name: string;
   created_at: string;
+  /** When the room was last active (transcript mtime); falls back to created_at. */
+  last_activity?: string | null;
   is_persistent: boolean;
 }
 
@@ -195,7 +197,7 @@ function RoomCard({ room }: { room: Room }) {
         </span>
         <div className="min-w-0 flex-1">
           <div className="truncate text-ui font-medium text-text">{room.name}</div>
-          <div className="text-micro text-muted-foreground">{relativeTime(room.created_at)}</div>
+          <div className="text-micro text-muted-foreground">{relativeTime(room.last_activity ?? room.created_at)}</div>
         </div>
         {live > 0 && (
           <span className="flex items-center gap-1.5 text-micro text-accent">
