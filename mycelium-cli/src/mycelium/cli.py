@@ -22,6 +22,7 @@ from mycelium.commands import (
     hub,
     install,
     instance,
+    join,
     memory,
     metrics,
     network,
@@ -121,6 +122,9 @@ app.command(name="connect")(hub.connect)
 # Participation primitives — join a room's SLIM channel and reply, no daemon.
 app.command(name="await")(participate.await_room)
 app.command(name="respond")(participate.respond)
+
+# Thin spoke — hold membership on a hub-hosted room and apply its memory writes.
+app.command(name="join")(join.join)
 
 # Command groups
 app.add_typer(room.app, name="room")

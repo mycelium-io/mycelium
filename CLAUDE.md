@@ -158,6 +158,13 @@ is no litellm dependency.
   re-serves missed point-to-point messages on rejoin (SLIM has no offline replay).
 - **Git for sharing.** Rooms can be shared via git push/pull; cross-machine is the
   same channel over a shared SLIM node (`mycelium hub host` / `mycelium connect`).
+- **One moderator per room; spokes are members.** Cross-machine memory sync runs
+  hub → spoke over the room's channel: the hub broadcasts a `knowledge` envelope on
+  every `memory set`, and `mycelium join` (`mycelium/spoke.py`) holds membership on a
+  second machine and applies each one to its own local store. A second backend on the
+  same room is *not* the path — each would moderate its own MLS group and nothing
+  would cross. Moderator federation / multi-master is deliberately out of scope.
+  The spoke's own writes reaching the hub is not built yet.
 - **No Ensue references in code.** We took inspiration from their API design but the
   implementation is independent.
 - **L9 envelopes are additive, never required of agents.** Ticks are `exchange`,

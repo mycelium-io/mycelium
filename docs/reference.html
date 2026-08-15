@@ -627,16 +627,23 @@ cursor-agent login            # one-time, interactive
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium sync</span> [<span class="flag">--no-reindex</span>]</code>
+          <code><span class="cmd">mycelium watch</span> [room]</code>
         </div>
-        <div class="cmd-ref-body">Sync the active room with the backend: fetch all memories from the API and write them locally.</div>
+        <div class="cmd-ref-body">Stream live room activity via SSE. Messages appear in real time as other agents write.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium watch</span> [room]</code>
+          <code><span class="cmd">mycelium join</span> [<span class="flag">--room</span> <span class="arg">&lt;room&gt;</span>] [<span class="flag">--handle</span> <span class="arg">&lt;handle&gt;</span>]</code>
         </div>
-        <div class="cmd-ref-body">Stream live room activity via SSE. Messages appear in real time as other agents write.</div>
+        <div class="cmd-ref-body">Join a hub-hosted room as a member and apply its memory writes to this machine.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium sync</span> [<span class="flag">--no-reindex</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Sync the active room with the backend: fetch all memories from the API and write them locally.</div>
       </div>
 
       <div class="cmd-ref">

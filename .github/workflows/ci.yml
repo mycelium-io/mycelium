@@ -233,8 +233,19 @@ jobs:
           tests/test_slim_roundtrip.py
           tests/test_l9_over_slim_roundtrip.py
 
-      # The CLI has no live-node slices: `await`/`respond` are pure HTTP (the
-      # SLIM member connector that needed a node was removed with the daemon).
+      - name: CLI deps
+        working-directory: mycelium-cli
+        run: uv sync --group dev --extra engine
+
+      # `await`/`respond` are pure HTTP, but the thin spoke (`mycelium join`) is a
+      # real SLIM member — the only CLI path that needs a node. Its node-free
+      # semantics are covered in the unit job; this proves it receives traffic it
+      # did not emit, which is the whole point of the spoke.
+      - name: CLI live-node slices
+        working-directory: mycelium-cli
+        env:
+          MYCELIUM_SLIM_ENDPOINT: http://127.0.0.1:46357
+        run: uv run pytest -q tests/test_spoke_roundtrip.py
 
       - name: SLIM node logs (on failure)
         if: failure()

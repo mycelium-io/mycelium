@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Ephemeral SLIM room membership — join, publish once, leave (dev/testing).
+"""SLIM room membership from outside the backend — join, then publish or receive.
 
 The CLI's ``l9 send`` / ``slim send`` plumbing (see ``mycelium.commands.wire``)
 needs to put real bytes on a room's SLIM channel so the backend's own
@@ -19,16 +19,28 @@ connector makes on every reconnect (``POST /rooms/{room}/sessions``,
 ``app/routes/sessions.py::join_room`` → ``room_channels.manager.invite_in_background``).
 That call is fire-and-forget on the backend side, with its own retrying
 handshake, so asking before this process has even connected to the node is fine.
+
+The same handshake admits a *long-lived* member: :func:`joined_member` holds the
+session open instead of publishing once and leaving, which is how the thin spoke
+(``mycelium join``, see :mod:`mycelium.spoke`) receives a room's traffic on a
+machine that is not the moderator.
 """
 
 from __future__ import annotations
 
 import asyncio
+from contextlib import asynccontextmanager
+from typing import TYPE_CHECKING
 
 import httpx
 
 from mycelium.slim.client import SlimClient, SlimError
 from mycelium.slim.naming import DEFAULT_WORKSPACE, SlimIdentity, node_reachable
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
+    import slim_bindings
 
 # How long to wait, after asking the backend to invite us, for the moderator's
 # handshake to land and admit us into the encrypted group. Comfortably inside the
@@ -42,7 +54,7 @@ _HTTP_TIMEOUT_S = 10.0
 
 
 class SlimSendError(SlimError):
-    """A join/connect/publish attempt as an ephemeral room member failed."""
+    """A join/connect/publish attempt as a room member failed."""
 
 
 async def announce_presence(api_url: str, room: str, handle: str) -> None:
@@ -58,25 +70,29 @@ async def announce_presence(api_url: str, room: str, handle: str) -> None:
     resp.raise_for_status()
 
 
-async def publish_once(
+@asynccontextmanager
+async def joined_member(
     *,
     api_url: str,
     node_endpoint: str,
     room: str,
     handle: str,
-    payload: bytes,
     workspace: str = DEFAULT_WORKSPACE,
     join_timeout_s: float = DEFAULT_JOIN_TIMEOUT_S,
-) -> None:
-    """Join ``room`` as ``handle`` over a live SLIM connection, publish once, leave.
+) -> AsyncIterator[slim_bindings.Session]:
+    """Join ``room``'s channel as member ``handle`` and yield the live session.
 
     Connects a new SLIM app under ``workspace/room/handle``, asks the backend to
-    invite it in, waits to be admitted into the moderator's encrypted group,
-    publishes ``payload`` verbatim, and disconnects. Raises :class:`SlimSendError`
-    if the node is unreachable or the invite never lands within
-    ``join_timeout_s``; raises :class:`~mycelium.slim.client.SlimUnavailableError`
-    (via ``SlimClient.connect``) if ``slim_bindings`` has no wheel for this
-    platform — both are :class:`~mycelium.slim.client.SlimError`.
+    invite it in, and waits to be admitted into the moderator's encrypted group.
+    The caller gets the group session for as long as the block runs; the app is
+    torn down on exit. **Member only** — no group is created here, so joining
+    never races a second moderator onto the room's channel.
+
+    Raises :class:`SlimSendError` if the node is unreachable or the invite never
+    lands within ``join_timeout_s``; raises
+    :class:`~mycelium.slim.client.SlimUnavailableError` (via
+    ``SlimClient.connect``) if ``slim_bindings`` has no wheel for this platform —
+    both are :class:`~mycelium.slim.client.SlimError`.
     """
     if not node_reachable(node_endpoint):
         raise SlimSendError(
@@ -95,6 +111,28 @@ async def publish_once(
                 f"timed out waiting to be invited into room {room!r} as @{handle} "
                 "— is the backend up and moderating this room?"
             ) from exc
-        await SlimClient.publish(session, payload)
+        yield session
     finally:
         await client.close()
+
+
+async def publish_once(
+    *,
+    api_url: str,
+    node_endpoint: str,
+    room: str,
+    handle: str,
+    payload: bytes,
+    workspace: str = DEFAULT_WORKSPACE,
+    join_timeout_s: float = DEFAULT_JOIN_TIMEOUT_S,
+) -> None:
+    """Join ``room`` as ``handle`` over a live SLIM connection, publish once, leave."""
+    async with joined_member(
+        api_url=api_url,
+        node_endpoint=node_endpoint,
+        room=room,
+        handle=handle,
+        workspace=workspace,
+        join_timeout_s=join_timeout_s,
+    ) as session:
+        await SlimClient.publish(session, payload)

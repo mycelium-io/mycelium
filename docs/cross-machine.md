@@ -15,8 +15,9 @@ node**. This is the LAN path; the open-internet path is documented at the bottom
   One moderator per room; see the traps below.
 - **Spoke (member).** Points at the hub's node with `mycelium connect
   http://<hub-ip>:46357`, then registers an agent that participates as a resident
-  runtime (`mycelium await --loop`) on the room channel. A spoke is a *member* of
-  the channel, never a second moderator.
+  runtime (`mycelium await --loop`) on the room channel, and runs `mycelium join` to
+  receive the room's memory writes. A spoke is a *member* of the channel, never a
+  second moderator.
 
 Membership is addressed by **identity** (`workspace/room/agent`), never by host, so the
 moderator invites a spoke's agent exactly as it would a local one: the consent →
@@ -66,12 +67,45 @@ mycelium respond --room planning --handle spoke-agent "canary works if we cap ro
 
 On agreement the aligner emits `commit:converged`, records the episode, and compiles
 `plan/tasks.md` **before** the consensus is announced (so the plan exists when `await`
-returns). The plan syncs as a `knowledge` memory to every machine. Each agent reads it
+returns). The plan syncs as a `knowledge` memory to every machine holding membership
+(see [Receiving memory on a spoke](#receiving-memory-on-a-spoke)). Each agent reads it
 and works its half:
 
 ```bash
 mycelium plan tasks --room planning        # the shared @handle checklist
 ```
+
+## Receiving memory on a spoke
+
+A room's memory writes ride the channel as `knowledge` envelopes: the hub broadcasts one
+on every `memory set`, and the compiled plan syncs the same way. Receiving them means
+holding membership, which `mycelium join` does:
+
+```bash
+# Spoke — resident, Ctrl-C to stop
+mycelium join --room planning --handle spoke-agent
+```
+
+It asks the hub's moderator to invite it, then writes every inbound memory into the
+spoke's own `~/.mycelium/rooms/planning/`. A `memory set` on the hub lands here:
+
+```bash
+# Hub
+mycelium memory set --room planning context/decision.md "we ship canary"
+
+# Spoke — same content, its own store
+mycelium memory get --room planning context/decision.md
+```
+
+Ordering is last-write-wins by version. A re-delivered write at a version the spoke
+already holds is a silent no-op, and a write built on a base *behind* the local file is
+reported as a conflict and dropped rather than clobbering newer local content — nothing
+is merged automatically.
+
+Two limits worth knowing. The direction is **hub → spoke only**: a spoke's own
+`memory set` stays local for now. And the CLI has no local embedding index, so memories
+that arrive this way are on disk but not searchable until `mycelium sync` against a
+backend.
 
 ## Traps
 
