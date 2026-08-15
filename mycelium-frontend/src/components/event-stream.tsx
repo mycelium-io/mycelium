@@ -524,7 +524,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
           <RoomSlimView roomName={roomName} />
         </ScrollArea>
       ) : (
-      <ScrollArea className="flex-1" viewportRef={scrollRef}>
+      <ScrollArea className="flex-1 min-h-0" viewportRef={scrollRef}>
         {view === "plan" ? (
           <RoomPlanHeader roomName={roomName} refreshTrigger={planRefreshTrigger} />
         ) : !historyLoaded ? (
