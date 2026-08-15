@@ -419,6 +419,41 @@ def conversational_messages(room: str) -> list[StoredMessage]:
     return list(messages)
 
 
+def l9_bus_frame(room: str, record: TranscriptRecord) -> dict[str, Any]:
+    """Project a transcript record into the L9 wire frame the SSE bus carries.
+
+    The single shape the frontend L9 inspector reads (``l9_<kind>`` + the full
+    ``content`` envelope). Shared by the live push (:meth:`Persister._publish_to_bus`)
+    and the history replay (:func:`l9_wire_history`) so backfilled and live frames
+    are byte-identical.
+    """
+    episode = record.content.get("l9", {}).get("header", {}).get("message", {}).get("episode")
+    return {
+        "id": record.message_id,
+        "sender_handle": record.sender or l9.SYSTEM_ACTOR_ID,
+        "message_type": f"l9_{record.kind}",
+        "content": json.dumps(record.content),
+        "created_at": record.recorded_at,
+        "room_name": room,
+        "episode": episode if isinstance(episode, str) else None,
+    }
+
+
+def l9_wire_history(room: str, limit: int = 200) -> list[dict[str, Any]]:
+    """The room's L9 wire feed replayed from the durable transcript (oldest first).
+
+    The live inspector is fed only by the bus (SSE, no history), so a freshly
+    opened tab misses everything before it connected. This projects the transcript
+    through the same frame shape so the tab can seed itself, then append live — the
+    history-then-live pattern the room chat feed already uses. Returns at most the
+    last ``limit`` frames.
+    """
+    records = load_transcript(room)
+    if limit and len(records) > limit:
+        records = records[-limit:]
+    return [l9_bus_frame(room, r) for r in records]
+
+
 # Delivery cursors persist next to the transcript so a reconnecting agent's
 # missed tail survives a backend restart. A dot-prefixed .json — not a markdown
 # memory — so it stays out of the memory/search surface (which globs ``*.md``).
@@ -816,19 +851,7 @@ class RoomPersister:
         try:
             from app.bus import bus, room_channel
 
-            episode = (
-                record.content.get("l9", {}).get("header", {}).get("message", {}).get("episode")
-            )
-            payload = {
-                "id": record.message_id,
-                "sender_handle": record.sender or l9.SYSTEM_ACTOR_ID,
-                "message_type": f"l9_{record.kind}",
-                "content": json.dumps(record.content),
-                "created_at": record.recorded_at,
-                "room_name": self.room,
-                "episode": episode if isinstance(episode, str) else None,
-            }
-            bus.publish(room_channel(self.room), payload)
+            bus.publish(room_channel(self.room), l9_bus_frame(self.room, record))
         except Exception:
             logger.debug("bus publish from persister failed for room %s", self.room, exc_info=True)
 

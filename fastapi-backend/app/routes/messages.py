@@ -198,6 +198,20 @@ async def list_messages(
     )
 
 
+@router.get("/l9")
+async def list_l9_wire(room_name: str, limit: int = Query(200, le=1000)) -> list[dict]:
+    """The room's L9 wire feed, replayed from the transcript (oldest first).
+
+    Backfills the live L9 inspector: the SSE bus carries no history, so a freshly
+    opened tab would otherwise start empty. Frames are the exact shape the bus
+    pushes, so the client projects backfill and live frames identically.
+    """
+    channel, coord = _resolve_channel(room_name)
+    if coord is not None:
+        return []  # a coordination session has no durable transcript
+    return persister.l9_wire_history(channel, limit=limit)
+
+
 @router.patch("/{message_id}", response_model=MessageRead)
 async def update_event_status(
     room_name: str,
