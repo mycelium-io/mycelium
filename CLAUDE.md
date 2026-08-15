@@ -71,7 +71,8 @@ backend is each room's **moderator**; agents (and the human, by proxy) are membe
 `.mycelium/rooms/{room}/{key}.md`. Search is a **local embedding index** (fastembed
 ONNX, `BAAI/bge-small-en-v1.5`, 384-dim, no external service) persisted as JSONL
 per room. `memory set` writes the markdown and updates the index; direct file
-writes work too; run `mycelium reindex` to resync. Sharing is git.
+writes work too; run `mycelium reindex` to resync. Git can version or back up the
+files, but it is **not** the sharing path — see **Sharing is the live channel** below.
 
 **L9 rides SLIM.** Coordination messages carry additive IOC **L9** JSON envelopes:
 `exchange` (ticks/replies), `commit:converged|resolved|rejected`, `knowledge`.
@@ -156,8 +157,11 @@ is no litellm dependency.
   `members()` is the union of live SLIM members and lease holders. This is why
   turn-based agents never miss a tick. The **durable inbox** (`persister.py`)
   re-serves missed point-to-point messages on rejoin (SLIM has no offline replay).
-- **Git for sharing.** Rooms can be shared via git push/pull; cross-machine is the
-  same channel over a shared SLIM node (`mycelium hub host` / `mycelium connect`).
+- **Sharing is the live channel.** Cross-machine sharing is the same SLIM channel over a
+  shared node (`mycelium hub host` / `mycelium connect` / `mycelium join`), plus
+  `mycelium room clone --from <api-url>` for a point-in-time HTTP snapshot. Git can back
+  up or version the `.mycelium/` files but is **not** a sharing mechanism — no room flow
+  pushes or pulls over git.
 - **One moderator per room; spokes are members.** Cross-machine memory sync runs
   hub → spoke over the room's channel: the hub broadcasts a `knowledge` envelope on
   every `memory set`, and `mycelium join` (`mycelium/spoke.py`) holds membership on a
