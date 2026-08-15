@@ -10,7 +10,6 @@ import {
   fetchMessages,
   fetchRoomAgents,
   fetchRoomMembers,
-  logFetchError,
   type AgentSummary,
   type EngineKind,
   type PresenceMember,
@@ -89,33 +88,27 @@ export function AgentsPanel({ roomName, refreshKey = 0 }: Props) {
   const { principal } = useCurrentUser();
 
   const refresh = useCallback(() => {
-    fetchRoomAgents(roomName)
-      .then((a) => {
-        setAgents(a);
-        setLoaded(true);
-      })
-      .catch((err) => {
-        logFetchError("fetchRoomAgents")(err);
-        setLoaded(true);
-      });
+    // fetchRoomAgents degrades to [] on failure, so no .catch is needed —
+    // `loaded` still flips so the skeleton clears either way.
+    fetchRoomAgents(roomName).then((a) => {
+      setAgents(a);
+      setLoaded(true);
+    });
     // Human posters come from the transcript: a room chat post is a broadcast
-    // from a handle that isn't a registered agent.
-    fetchMessages(roomName, 200)
-      .then((data) => {
-        const msgs = Array.isArray(data) ? data : (data?.messages ?? []);
-        setPosters(
-          msgs
-            .filter((m: { message_type?: string }) => m.message_type === "broadcast")
-            .map((m: { sender_handle?: string }) => m.sender_handle ?? "")
-            .filter(Boolean),
-        );
-      })
-      .catch(logFetchError("fetchMessages"));
+    // from a handle that isn't a registered agent. fetchMessages degrades to
+    // { messages: [] } on failure, so no .catch is needed.
+    fetchMessages(roomName, 200).then(({ messages }) => {
+      setPosters(
+        messages
+          .filter((m) => m.message_type === "broadcast")
+          .map((m) => m.sender_handle ?? "")
+          .filter(Boolean),
+      );
+    });
     // Live presence: SLIM-connected + server-held lease members. Catches handles
     // that joined via `mycelium await` without registering an agent manifest.
-    fetchRoomMembers(roomName)
-      .then(setLiveMembers)
-      .catch(logFetchError("fetchRoomMembers"));
+    // fetchRoomMembers degrades to [] on failure, so no .catch is needed.
+    fetchRoomMembers(roomName).then(setLiveMembers);
   }, [roomName]);
 
   useEffect(() => {

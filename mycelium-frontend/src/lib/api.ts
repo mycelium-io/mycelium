@@ -19,53 +19,166 @@ export const logFetchError =
     return undefined;
   };
 
-export async function fetchRooms() {
-  const res = await fetch(`/api/rooms`, { cache: "no-store" });
-  return res.json();
+/** Thrown by `apiFetch` (no `fallback`) on a non-2xx response or a payload
+ *  that fails its shape guard. `message` is the backend's FastAPI `detail`
+ *  when present, else a status-line fallback. */
+export class ApiError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
 }
 
-export async function fetchRoom(name: string) {
-  const res = await fetch(`/api/rooms/${name}`, { cache: "no-store" });
-  return res.json();
+/** Best-effort human-readable message from a FastAPI error body. */
+async function errorDetail(res: Response): Promise<string> {
+  try {
+    const data = await res.json();
+    const d = data?.detail;
+    if (typeof d === "string") return d;
+    if (Array.isArray(d) && d[0]?.msg) return String(d[0].msg);
+  } catch {
+    // fall through to the status line
+  }
+  return `Request failed (${res.status})`;
 }
 
-export async function createRoom(data: { name: string; is_persistent?: boolean }) {
-  const res = await fetch(`/api/rooms`, {
+interface ApiFetchOptions<T> extends RequestInit {
+  /** Returned instead of throwing when the request fails (network error,
+   *  non-2xx, or a shape-guard rejection). Omit to let the caller handle the
+   *  rejected promise — the right choice for user-initiated mutations, where
+   *  the failure needs to reach the UI rather than disappear into a default. */
+  fallback?: T;
+  /** Narrows/validates the parsed JSON. A payload that fails the guard is
+   *  treated the same as a failed request (falls back, or throws). */
+  guard?: (data: unknown) => data is T;
+}
+
+/**
+ * The one fetch path every function below routes through: checks `res.ok`,
+ * parses the backend's `{ detail: ... }` error shape, and optionally
+ * validates the success shape. Callers pick one of two contracts:
+ *   - pass `fallback` for a fire-and-forget read (state setter callers) that
+ *     should degrade to a safe default instead of throwing;
+ *   - omit it for a mutation or a read whose caller needs to see the failure
+ *     (throws `ApiError` with the backend's message).
+ */
+async function apiFetch<T = unknown>(path: string, opts: ApiFetchOptions<T> = {}): Promise<T> {
+  const { fallback, guard, ...init } = opts;
+  const hasFallback = "fallback" in opts;
+
+  let res: Response;
+  try {
+    res = await fetch(path, init);
+  } catch (err) {
+    logFetchError(path)(err);
+    if (hasFallback) return fallback as T;
+    throw err;
+  }
+
+  if (!res.ok) {
+    const message = await errorDetail(res);
+    if (hasFallback) {
+      logFetchError(path)(new Error(message));
+      return fallback as T;
+    }
+    throw new ApiError(message, res.status);
+  }
+
+  let data: unknown = null;
+  try {
+    data = await res.json();
+  } catch (err) {
+    if (hasFallback) {
+      logFetchError(path)(err);
+      return fallback as T;
+    }
+    throw new ApiError(`Invalid JSON response from ${path}`, res.status);
+  }
+
+  if (guard && !guard(data)) {
+    const message = `Unexpected response shape from ${path}`;
+    if (hasFallback) {
+      logFetchError(path)(new Error(message));
+      return fallback as T;
+    }
+    throw new ApiError(message, res.status);
+  }
+
+  return data as T;
+}
+
+const isArray = (d: unknown): d is unknown[] => Array.isArray(d);
+
+// ── Rooms ────────────────────────────────────────────────────────────────────
+
+export interface Room {
+  id?: number;
+  name: string;
+  description?: string | null;
+  is_public?: boolean;
+  created_at: string;
+  /** When the room was last active (transcript mtime); falls back to created_at. */
+  last_activity?: string | null;
+  is_persistent: boolean;
+  mas_id?: string | null;
+  workspace_id?: string | null;
+}
+
+export async function fetchRooms(): Promise<Room[]> {
+  return apiFetch<Room[]>(`/api/rooms`, { cache: "no-store", fallback: [], guard: isArray as (d: unknown) => d is Room[] });
+}
+
+export async function fetchRoom(name: string): Promise<Room> {
+  return apiFetch<Room>(`/api/rooms/${name}`, { cache: "no-store" });
+}
+
+export async function createRoom(data: { name: string; is_persistent?: boolean }): Promise<Room> {
+  return apiFetch<Room>(`/api/rooms`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ...data, is_public: true }),
   });
-  if (!res.ok) {
-    // Surface the backend's reason (FastAPI returns `{ detail: ... }`) so the
-    // caller can show it instead of failing silently.
-    let detail = `Failed to create room (${res.status})`;
-    try {
-      const body = await res.json();
-      if (body?.detail) {
-        detail = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail);
-      }
-    } catch {
-      /* non-JSON error body: keep the status-based message */
-    }
-    throw new Error(detail);
-  }
-  return res.json();
 }
 
-export async function fetchMemories(roomName: string, prefix?: string) {
+// ── Memory ───────────────────────────────────────────────────────────────────
+
+export interface Memory {
+  key: string;
+  value: unknown;
+  content_text?: string;
+  version: number;
+  created_by: string;
+  updated_at: string;
+  file_path?: string;
+}
+
+export async function fetchMemories(roomName: string, prefix?: string): Promise<Memory[]> {
   const params = new URLSearchParams({ limit: "50" });
   if (prefix) params.set("prefix", prefix);
-  const res = await fetch(`/api/rooms/${roomName}/memory?${params}`, { cache: "no-store" });
-  return res.json();
+  return apiFetch<Memory[]>(`/api/rooms/${roomName}/memory?${params}`, {
+    cache: "no-store",
+    fallback: [],
+    guard: isArray as (d: unknown) => d is Memory[],
+  });
 }
 
-export async function searchMemories(roomName: string, query: string) {
-  const res = await fetch(`/api/rooms/${roomName}/memory/search`, {
+export interface MemorySearchResult {
+  memory: Memory;
+  similarity: number;
+}
+
+/** Semantic search, triggered by a user action — throws (rather than falling
+ *  back to empty) so the search UI can distinguish "no results" from "the
+ *  request failed" and show the latter instead of silently showing nothing. */
+export async function searchMemories(roomName: string, query: string): Promise<MemorySearchResult[]> {
+  const data = await apiFetch<{ results?: MemorySearchResult[] }>(`/api/rooms/${roomName}/memory/search`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ query, limit: 10 }),
   });
-  return res.json();
+  return data.results ?? [];
 }
 
 // ── Plan ─────────────────────────────────────────────────────────────────────
@@ -97,26 +210,26 @@ export interface PlanResponse {
 }
 
 export async function fetchPlan(roomName: string): Promise<PlanResponse> {
-  const res = await fetch(`/api/rooms/${roomName}/plan`, { cache: "no-store" });
-  if (!res.ok) {
-    return { room: roomName, title: null, files: [], tasks: [], open_count: 0, done_count: 0 };
-  }
-  return res.json();
+  return apiFetch<PlanResponse>(`/api/rooms/${roomName}/plan`, {
+    cache: "no-store",
+    fallback: { room: roomName, title: null, files: [], tasks: [], open_count: 0, done_count: 0 },
+  });
 }
 
-export async function setPlanTitle(roomName: string, text: string): Promise<string | null> {
-  const res = await fetch(`/api/rooms/${roomName}/plan/title`, {
+/** Mutations below throw `ApiError` on failure so the plan header can surface
+ *  the reason instead of silently discarding the edit or the checklist toggle. */
+
+export async function setPlanTitle(roomName: string, text: string): Promise<string> {
+  const data = await apiFetch<{ title?: string }>(`/api/rooms/${roomName}/plan/title`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ text }),
   });
-  if (!res.ok) return null;
-  const data = await res.json();
-  return data.title ?? null;
+  return data.title ?? "";
 }
 
 export async function togglePlanTask(roomName: string, taskId: string, done: boolean): Promise<PlanTask> {
-  const res = await fetch(
+  return apiFetch<PlanTask>(
     `/api/rooms/${roomName}/plan/tasks/${encodeURIComponent(taskId)}/toggle`,
     {
       method: "POST",
@@ -124,26 +237,51 @@ export async function togglePlanTask(roomName: string, taskId: string, done: boo
       body: JSON.stringify({ done }),
     },
   );
-  return res.json();
 }
 
 export async function addPlanTask(roomName: string, text: string, slug = "tasks"): Promise<PlanTask> {
-  const res = await fetch(`/api/rooms/${roomName}/plan/tasks`, {
+  return apiFetch<PlanTask>(`/api/rooms/${roomName}/plan/tasks`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ text, slug }),
   });
-  return res.json();
 }
 
-export async function fetchMessages(roomName: string, limit?: number) {
+// ── Messages ─────────────────────────────────────────────────────────────────
+
+export interface RoomMessage {
+  id?: string;
+  message_type?: string;
+  type?: string;
+  content?: unknown;
+  sender_handle?: string;
+  updated_by?: string;
+  recipient_handle?: string | null;
+  created_at?: string;
+  key?: string;
+  version?: number;
+  episode?: string | null;
+  [key: string]: unknown;
+}
+
+export interface MessagesResponse {
+  messages: RoomMessage[];
+  total?: number;
+}
+
+const isMessagesResponse = (d: unknown): d is MessagesResponse =>
+  !!d && typeof d === "object" && Array.isArray((d as { messages?: unknown }).messages);
+
+export async function fetchMessages(roomName: string, limit?: number): Promise<MessagesResponse> {
   const url = limit
     ? `/api/rooms/${roomName}/messages?limit=${limit}`
     : `/api/rooms/${roomName}/messages`;
-  const res = await fetch(url, { cache: "no-store" });
-  return res.json();
+  return apiFetch<MessagesResponse>(url, {
+    cache: "no-store",
+    fallback: { messages: [] },
+    guard: isMessagesResponse,
+  });
 }
-
 
 export function getSSEUrl(roomName: string) {
   return `/api/rooms/${roomName}/messages/stream`;
@@ -156,12 +294,11 @@ export async function fetchL9History(
   roomName: string,
   limit = 200,
 ): Promise<Record<string, unknown>[]> {
-  const res = await fetch(`/api/rooms/${roomName}/messages/l9?limit=${limit}`, {
+  return apiFetch<Record<string, unknown>[]>(`/api/rooms/${roomName}/messages/l9?limit=${limit}`, {
     cache: "no-store",
+    fallback: [],
+    guard: isArray as (d: unknown) => d is Record<string, unknown>[],
   });
-  if (!res.ok) return [];
-  const data = await res.json();
-  return Array.isArray(data) ? data : [];
 }
 
 /** SSE endpoint for global app events (room create/delete). */
@@ -179,17 +316,12 @@ export function getNotificationsSSEUrl() {
 export async function sendRoomMessage(
   roomName: string,
   data: { sender_handle: string; content: string; message_type?: string },
-) {
-  const res = await fetch(`/api/rooms/${roomName}/messages`, {
+): Promise<RoomMessage> {
+  return apiFetch<RoomMessage>(`/api/rooms/${roomName}/messages`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ message_type: "broadcast", ...data }),
   });
-  if (!res.ok) {
-    const detail = await res.text().catch(() => "");
-    throw new Error(`send failed (${res.status}): ${detail.slice(0, 200)}`);
-  }
-  return res.json();
 }
 
 /**
@@ -209,23 +341,26 @@ export interface PendingInvite {
 
 /** Open (pending or queued) consent requests for a room. */
 export async function fetchPendingInvites(roomName: string): Promise<PendingInvite[]> {
-  const res = await fetch(`/api/rooms/${roomName}/invites`, { cache: "no-store" });
-  if (!res.ok) return [];
-  const data = await res.json();
-  return (data.invites || []) as PendingInvite[];
+  const data = await apiFetch<{ invites?: PendingInvite[] }>(`/api/rooms/${roomName}/invites`, {
+    cache: "no-store",
+    fallback: {},
+  });
+  return data.invites ?? [];
 }
 
-/** Accept or decline a consent prompt. Only `accept` invites (or queues) the agent. */
+/** Accept or decline a consent prompt. Only `accept` invites (or queues) the
+ *  agent. Fire-and-forget from the UI's perspective (the dialog has already
+ *  closed by the time this resolves), so it degrades to `null` on failure
+ *  rather than surfacing a rejected promise with nowhere to show it. */
 export async function respondToInvite(
   roomName: string,
   inviteId: string,
   decision: "accept" | "decline",
 ): Promise<PendingInvite | null> {
-  const res = await fetch(`/api/rooms/${roomName}/invites/${inviteId}/${decision}`, {
+  return apiFetch<PendingInvite | null>(`/api/rooms/${roomName}/invites/${inviteId}/${decision}`, {
     method: "POST",
+    fallback: null,
   });
-  if (!res.ok) return null;
-  return res.json();
 }
 
 export interface AgentSummary {
@@ -241,9 +376,11 @@ export interface AgentSummary {
 
 /** List addressable agents in a room. Used to drive `@`-mention autocomplete. */
 export async function fetchRoomAgents(roomName: string): Promise<AgentSummary[]> {
-  const res = await fetch(`/api/rooms/${roomName}/agents`, { cache: "no-store" });
-  if (!res.ok) return [];
-  return res.json();
+  return apiFetch<AgentSummary[]>(`/api/rooms/${roomName}/agents`, {
+    cache: "no-store",
+    fallback: [],
+    guard: isArray as (d: unknown) => d is AgentSummary[],
+  });
 }
 
 export type EngineKind = "aligner" | "synthesizer";
@@ -255,25 +392,11 @@ export async function createEngine(
   roomName: string,
   data: { handle: string; kind: EngineKind; description?: string; created_by?: string },
 ): Promise<AgentSummary> {
-  const res = await fetch(`/api/rooms/${roomName}/engines`, {
+  return apiFetch<AgentSummary>(`/api/rooms/${roomName}/engines`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
-  if (!res.ok) {
-    // Surface the backend's reason (FastAPI `{ detail: ... }`) instead of failing silently.
-    let detail = `Failed to register engine (${res.status})`;
-    try {
-      const body = await res.json();
-      if (body?.detail) {
-        detail = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail);
-      }
-    } catch {
-      /* non-JSON error body: keep the status-based message */
-    }
-    throw new Error(detail);
-  }
-  return res.json();
 }
 
 export type PresenceKind = "slim" | "lease";
@@ -288,10 +411,11 @@ export interface PresenceMember {
 
 /** Live presence set for a room: SLIM-connected + server-held lease members. */
 export async function fetchRoomMembers(roomName: string): Promise<PresenceMember[]> {
-  const res = await fetch(`/api/rooms/${roomName}/sessions/members`, { cache: "no-store" });
-  if (!res.ok) return [];
-  const data = await res.json();
-  return Array.isArray(data?.members) ? data.members : [];
+  const data = await apiFetch<{ members?: PresenceMember[] }>(`/api/rooms/${roomName}/sessions/members`, {
+    cache: "no-store",
+    fallback: {},
+  });
+  return Array.isArray(data.members) ? data.members : [];
 }
 
 // ── Principals (self-asserted user store) ─────────────────────────────────────
@@ -319,62 +443,45 @@ export interface Team {
 
 /** List registered users with their owned-agent roll-up. */
 export async function fetchUsers(): Promise<User[]> {
-  const res = await fetch(`/api/users`, { cache: "no-store" });
-  if (!res.ok) return [];
-  const data = await res.json();
+  const data = await apiFetch<{ users?: User[] }>(`/api/users`, { cache: "no-store", fallback: {} });
   return Array.isArray(data.users) ? data.users : [];
 }
 
 /** Teams rolled up from agent manifests and user memberships. */
 export async function fetchTeams(): Promise<Team[]> {
-  const res = await fetch(`/api/teams`, { cache: "no-store" });
-  if (!res.ok) return [];
-  const data = await res.json();
+  const data = await apiFetch<{ teams?: Team[] }>(`/api/teams`, { cache: "no-store", fallback: {} });
   return Array.isArray(data.teams) ? data.teams : [];
 }
 
-/** Best-effort human-readable message from a FastAPI error body. */
-async function errorDetail(res: Response): Promise<string> {
-  try {
-    const data = await res.json();
-    const d = data?.detail;
-    if (typeof d === "string") return d;
-    if (Array.isArray(d) && d[0]?.msg) return String(d[0].msg);
-  } catch {
-    // fall through to the status line
-  }
-  return `Request failed (${res.status})`;
-}
-
-/** Create or upsert a user in the global store. Throws with a readable message
- *  on failure so callers can surface it instead of swallowing it. */
+/** Create or upsert a user in the global store. Throws `ApiError` with a
+ *  readable message on failure so callers can surface it instead of
+ *  swallowing it. */
 export async function createUser(payload: {
   handle: string;
   display_name?: string;
   teams?: string[];
   notify?: string | null;
 }): Promise<User> {
-  const res = await fetch(`/api/users`, {
+  return apiFetch<User>(`/api/users`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) throw new Error(await errorDetail(res));
-  return res.json();
 }
 
 // ── Metrics ──────────────────────────────────────────────────────────────────
 
-export async function fetchBackendMetrics() {
-  const res = await fetch(`/api/observability`, { cache: "no-store" });
-  if (!res.ok) return null;
-  return res.json();
+// The backend/collector metrics payloads are large, loosely-structured, and
+// shaped differently by each consumer (the metrics screen wants the full
+// dashboard shape; the status bar wants just a couple of counters), so these
+// stay generic rather than forcing one shared interface — callers supply the
+// slice of the shape they actually read.
+export async function fetchBackendMetrics<T = Record<string, unknown>>(): Promise<T | null> {
+  return apiFetch<T | null>(`/api/observability`, { cache: "no-store", fallback: null });
 }
 
-export async function fetchCollectorMetrics() {
-  const res = await fetch(`/api/observability/collector`, { cache: "no-store" });
-  if (!res.ok) return null;
-  return res.json();
+export async function fetchCollectorMetrics<T = Record<string, unknown>>(): Promise<T | null> {
+  return apiFetch<T | null>(`/api/observability/collector`, { cache: "no-store", fallback: null });
 }
 
 // ── Traces & Logs ────────────────────────────────────────────────────────────
@@ -389,9 +496,7 @@ export interface HostInfo {
 }
 
 export async function fetchHosts(): Promise<{ hosts: HostInfo[] } | null> {
-  const res = await fetch(`/api/observability/hosts`, { cache: "no-store" });
-  if (!res.ok) return null;
-  return res.json();
+  return apiFetch<{ hosts: HostInfo[] } | null>(`/api/observability/hosts`, { cache: "no-store", fallback: null });
 }
 
 // ── L9 protocol / episodes ─────────────────────────────────────────────────────
@@ -448,10 +553,11 @@ export interface EpisodeDetail extends EpisodeSummary {
 
 /** Episode summaries for a room, newest first. */
 export async function fetchEpisodes(roomName: string): Promise<EpisodeSummary[]> {
-  const res = await fetch(`/api/rooms/${roomName}/episodes`, { cache: "no-store" });
-  if (!res.ok) return [];
-  const data = await res.json();
-  return (data.episodes || []) as EpisodeSummary[];
+  const data = await apiFetch<{ episodes?: EpisodeSummary[] }>(`/api/rooms/${roomName}/episodes`, {
+    cache: "no-store",
+    fallback: {},
+  });
+  return data.episodes ?? [];
 }
 
 /** One episode plus its full L9 envelope chain, or null if unknown. */
@@ -459,12 +565,10 @@ export async function fetchEpisode(
   roomName: string,
   shortId: string,
 ): Promise<EpisodeDetail | null> {
-  const res = await fetch(
+  return apiFetch<EpisodeDetail | null>(
     `/api/rooms/${roomName}/episodes/${encodeURIComponent(shortId)}`,
-    { cache: "no-store" },
+    { cache: "no-store", fallback: null },
   );
-  if (!res.ok) return null;
-  return res.json();
 }
 
 // ── SLIM coordination fabric (the `/health` coordination block) ──────────────
@@ -500,8 +604,9 @@ export interface CoordinationStatus {
 /** Read the SLIM coordination telemetry from the backend `/health` endpoint.
  *  Fail-soft: returns null when the backend is unreachable or has no block. */
 export async function fetchCoordination(): Promise<CoordinationStatus | null> {
-  const res = await fetch(`/api/health`, { cache: "no-store" });
-  if (!res.ok) return null;
-  const data = await res.json();
-  return data?.coordination ?? null;
+  const data = await apiFetch<{ coordination?: CoordinationStatus }>(`/api/health`, {
+    cache: "no-store",
+    fallback: {},
+  });
+  return data.coordination ?? null;
 }

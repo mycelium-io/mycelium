@@ -14,8 +14,8 @@ import {
   fetchRooms,
   fetchRoomAgents,
   fetchEpisodes,
-  logFetchError,
   type EpisodeSummary,
+  type Room,
 } from "@/lib/api";
 
 // The seeded sample room the "Run a sample coordination" onboarding routes into.
@@ -32,14 +32,6 @@ function RunSampleLink({ className = "" }: { className?: string }) {
       Run a sample
     </Link>
   );
-}
-
-interface Room {
-  name: string;
-  created_at: string;
-  /** When the room was last active (transcript mtime); falls back to created_at. */
-  last_activity?: string | null;
-  is_persistent: boolean;
 }
 
 function relativeTime(iso: string): string {
@@ -75,11 +67,10 @@ export function CommandCenter() {
   const [loaded, setLoaded] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
 
+  // fetchRooms degrades to [] on failure (fire-and-forget list), so no
+  // .catch is needed — `loaded` still flips so the skeleton clears either way.
   const load = useCallback(
-    () =>
-      fetchRooms()
-        .then((data: Room[]) => { setRooms(data); setLoaded(true); })
-        .catch((e) => { logFetchError("fetchRooms")(e); setLoaded(true); }),
+    () => fetchRooms().then((data) => { setRooms(data); setLoaded(true); }),
     [],
   );
 

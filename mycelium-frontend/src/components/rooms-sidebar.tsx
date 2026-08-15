@@ -7,18 +7,12 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { BarChart3, Boxes, Plus, Search, SearchX } from "lucide-react";
-import { fetchRooms, getAppEventsSSEUrl, logFetchError } from "@/lib/api";
+import { fetchRooms, getAppEventsSSEUrl, type Room } from "@/lib/api";
 import { CreateRoomDialog } from "@/components/create-room-dialog";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { NotificationBell } from "@/components/notification-bell";
 import { EmptyState } from "@/components/empty-state";
 import { ScrollArea } from "@/components/ui/scroll-area";
-
-interface Room {
-  name: string;
-  created_at: string;
-  is_persistent: boolean;
-}
 
 // The sidebar lives inside each page's AppShell, so navigation remounts it. A
 // module-level cache lets a fresh mount paint the last-known rooms immediately
@@ -42,10 +36,9 @@ export function RoomsSidebar({ activeRoom = null }: Props) {
   const [query, setQuery] = useState("");
   const [showCreate, setShowCreate] = useState(false);
 
-  const load = () =>
-    fetchRooms().then((data: unknown) => {
-      if (Array.isArray(data)) { roomsCache = data as Room[]; setRooms(roomsCache); }
-    }).catch(logFetchError("fetchRooms"));
+  // fetchRooms degrades to [] on failure (fire-and-forget list), so no
+  // .catch is needed — a failed poll just leaves the last-known rooms in place.
+  const load = () => fetchRooms().then((data) => { roomsCache = data; setRooms(roomsCache); });
 
   useEffect(() => {
     load();
