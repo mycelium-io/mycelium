@@ -416,9 +416,9 @@ cursor-agent login            # one-time, interactive
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium memory set</span> <span class="arg">&lt;key&gt;</span> <span class="arg">&lt;value&gt;</span> [<span class="flag">--handle</span> <span class="arg">&lt;handle&gt;</span>]</code>
+          <code><span class="cmd">mycelium memory set</span> <span class="arg">&lt;key&gt;</span> [<span class="arg">&lt;value&gt;</span>] [<span class="flag">--file</span> <span class="arg">&lt;path&gt;</span>] [<span class="flag">--handle</span> <span class="arg">&lt;handle&gt;</span>]</code>
         </div>
-        <div class="cmd-ref-body">Write a memory (upsert). Structured category keys (<code>work/</code>, <code>decisions/</code>, <code>status/</code>, <code>context/</code>) are auto-validated. Always upserts; the backend handles versioning.</div>
+        <div class="cmd-ref-body">Write a memory (upsert). The value comes from the positional argument or <code>--file</code> (<code>-</code> reads stdin) — one or the other, not both. Structured category keys (<code>work/</code>, <code>decisions/</code>, <code>status/</code>, <code>context/</code>) are auto-validated. Always upserts; the backend handles versioning.</div>
       </div>
 
       <div class="cmd-ref">

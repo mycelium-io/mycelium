@@ -9,7 +9,9 @@ Search and subscribe use the backend API (local JSONL index).
 """
 
 import json
+import sys
 from datetime import UTC, datetime
+from pathlib import Path
 
 import typer
 from pydantic import ValidationError
@@ -76,6 +78,35 @@ def _write_local_copy(room_name: str, mem) -> None:
     )
 
 
+def _resolve_value(value: str | None, file: str | None) -> str:
+    """Resolve the memory value from the positional arg or a file.
+
+    ``--file -`` reads stdin. The file's text is used verbatim; the two sources
+    are mutually exclusive and exactly one must be given.
+    """
+    if value is not None and file is not None:
+        console.print("[red]Error:[/red] pass either a value or --file, not both.")
+        raise typer.Exit(1)
+
+    if file is not None:
+        if file == "-":
+            return sys.stdin.read()
+        try:
+            return Path(file).read_text(encoding="utf-8")
+        except OSError as exc:
+            console.print(f"[red]Error:[/red] cannot read {file}: {exc.strerror or exc}")
+            raise typer.Exit(1) from exc
+        except UnicodeDecodeError as exc:
+            console.print(f"[red]Error:[/red] {file} is not valid UTF-8 text.")
+            raise typer.Exit(1) from exc
+
+    if value is None:
+        console.print("[red]Error:[/red] provide a value or --file <path> (use '-' for stdin).")
+        raise typer.Exit(1)
+
+    return value
+
+
 def _get_active_room(room: str | None) -> str:
     """Get room name from arg or active config."""
     if room:
@@ -91,14 +122,17 @@ def _get_active_room(room: str | None) -> str:
 
 
 @doc_ref(
-    usage="mycelium memory set <key> <value> [--handle <handle>]",
-    desc="Write a memory (upsert). Structured category keys (<code>work/</code>, <code>decisions/</code>, <code>status/</code>, <code>context/</code>) are auto-validated. Always upserts; the backend handles versioning.",
+    usage="mycelium memory set <key> [<value>] [--file <path>] [--handle <handle>]",
+    desc="Write a memory (upsert). The value comes from the positional argument or <code>--file</code> (<code>-</code> reads stdin) — one or the other, not both. Structured category keys (<code>work/</code>, <code>decisions/</code>, <code>status/</code>, <code>context/</code>) are auto-validated. Always upserts; the backend handles versioning.",
     group="memory",
 )
 @app.command(name="set")
 def memory_set(
     key: str = typer.Argument(..., help="Memory key (e.g. 'status/deploy', 'project/config')"),
-    value: str = typer.Argument(..., help="Memory value (string or JSON)"),
+    value: str | None = typer.Argument(None, help="Memory value (string or JSON)"),
+    file: str | None = typer.Option(
+        None, "--file", "-f", help="Read the value from a file ('-' for stdin)"
+    ),
     room: str | None = typer.Option(
         None, "--room", "-r", help="Room name (defaults to active room)"
     ),
@@ -107,6 +141,9 @@ def memory_set(
     tags: str | None = typer.Option(None, "--tags", "-t", help="Comma-separated tags"),
 ) -> None:
     """Write a memory to a room's persistent namespace (upsert).
+
+    The value comes from the positional argument or --file; they are mutually
+    exclusive and one is required.
 
     Keys with a known category prefix (work/, decisions/, context/, status/) are
     validated for slug format. Other keys pass through freely.
@@ -117,12 +154,15 @@ def memory_set(
         mycelium memory set status/deploy ACTIVE
         mycelium memory set decisions/db-choice "Chose AgensGraph for graph+SQL+vector"
         mycelium memory set work/api-server "Built 12 endpoints with auth"
+        mycelium memory set reference/spec --file spec.md
+        cat notes.md | mycelium memory set context/notes -f -
     """
     from mycelium_backend_client.api.memory import (
         create_memories_api_rooms_room_name_memory_post as create_api,
     )
     from mycelium_backend_client.models import MemoryBatchCreate, MemoryCreate
 
+    value = _resolve_value(value, file)
     room_name = _get_active_room(room)
 
     # Validate structured keys when category prefix is recognized
