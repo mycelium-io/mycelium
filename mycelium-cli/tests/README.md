@@ -10,8 +10,8 @@ exactly one of each fake — don't re-declare them per file.
 | You're testing… | Use | It stands in for |
 | --- | --- | --- |
 | A command that calls the backend (`room`, `memory`, `plan`, …) | the `backend` fixture + patch the one generated `…​.sync` | the typed `mycelium_backend_client` plumbing |
-| Connector / daemon HTTP (`announce_presence`, `reindex_after_knowledge`, briefing fetch) | the `fake_httpx` fixture, `FakeResp` | `httpx.AsyncClient` / `httpx.Client` |
-| The member message stream / wake decision | `FakeSlimClient` (or the `fake_slim_client` fixture) | `slim.client.SlimClient` |
+| Connector HTTP (`slim.member.announce_presence`, briefing fetch) | the `fake_httpx` fixture, `FakeResp` | `httpx.AsyncClient` / `httpx.Client` |
+| Joining/publishing over SLIM (`slim.member.publish_once`, the `l9 send`/`slim send` plumbing) | `FakeSlimClient` (or the `fake_slim_client` fixture) | `slim.client.SlimClient` |
 | Anything that touches `~/.mycelium` | the `isolated_home` fixture | points `Path.home()` at a temp dir |
 
 ### Example — a command test (typed backend client)
@@ -35,20 +35,23 @@ def test_list_rooms(backend, monkeypatch):
 from tests.conftest import FakeHTTPX, FakeResp
 
 async def test_announce(fake_httpx: FakeHTTPX):
-    await connector.announce_presence(cfg, "myroom", "agent-a")
+    await member.announce_presence("http://localhost:8000", "myroom", "agent-a")
     assert fake_httpx.calls == [("POST", ".../api/rooms/myroom/sessions", {"agent_handle": "agent-a"})]
 
     fake_httpx.respond_with(lambda *_: FakeResp(boom=True))   # exercise the error branch
 ```
 
-### Example — the member stream (`FakeSlimClient`)
+### Example — joining + publishing over SLIM (`FakeSlimClient`)
 
 ```python
 from tests.conftest import FakeSlimClient
 
-monkeypatch.setattr(member, "SlimClient", FakeSlimClient)
-FakeSlimClient.inbox = [l9.serialize(tick), ...]     # scripted inbound messages
-content = await member.await_addressed(cfg, "r", "agent-a", timeout_s=2)
+monkeypatch.setattr(member, "SlimClient", fake_slim_client)   # the fixture, reset per test
+await member.publish_once(
+    api_url="http://localhost:8000", node_endpoint="http://127.0.0.1:46357",
+    room="r", handle="agent-a", payload=l9.serialize(content),
+)
+assert FakeSlimClient.published == [l9.serialize(content)]
 ```
 
 ## Commands
