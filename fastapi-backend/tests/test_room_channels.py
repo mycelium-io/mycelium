@@ -149,6 +149,54 @@ def test_expired_herdr_presence_drops(
     assert "reviewer" not in manager.presence("room-a")
 
 
+def test_herdr_wake_queue_dedupes_and_releases_idle(
+    manager: room_channels.RoomChannelManager,
+) -> None:
+    manager.set_herdr_presence("room-a", {"reviewer": "idle", "docs": "idle"})
+    manager.enqueue_herdr_wake("room-a", "reviewer")
+    manager.enqueue_herdr_wake("room-a", "docs")
+    # Repeat tags of the same handle collapse to one doorbell (no payload to lose).
+    manager.enqueue_herdr_wake("room-a", "reviewer")
+
+    drained = manager.drain_herdr_wakes("room-a")
+    assert sorted(w["handle"] for w in drained) == ["docs", "reviewer"]
+    # Drain removes released wakes.
+    assert manager.drain_herdr_wakes("room-a") == []
+
+
+def test_herdr_wake_held_until_idle(
+    manager: room_channels.RoomChannelManager,
+) -> None:
+    # The "agent hold": a tag for a busy agent is queued but NOT released until it
+    # goes idle — so a mention mid-turn is delivered, not dropped.
+    manager.set_herdr_presence("room-a", {"reviewer": "working"})
+    manager.enqueue_herdr_wake("room-a", "reviewer")
+    assert manager.drain_herdr_wakes("room-a") == []  # held while working
+
+    manager.set_herdr_presence("room-a", {"reviewer": "idle"})  # turn finished
+    released = manager.drain_herdr_wakes("room-a")
+    assert [w["handle"] for w in released] == ["reviewer"]
+
+
+def test_herdr_wake_hold_expires(
+    manager: room_channels.RoomChannelManager,
+) -> None:
+    # A never-idle agent doesn't hold a tag forever.
+    manager.set_herdr_presence("room-a", {"reviewer": "working"})
+    manager.enqueue_herdr_wake("room-a", "reviewer")
+    assert manager.drain_herdr_wakes("room-a", hold_ttl_s=-1.0) == []  # expired, dropped
+    manager.set_herdr_presence("room-a", {"reviewer": "idle"})
+    assert manager.drain_herdr_wakes("room-a") == []  # gone, not resurrected
+
+
+def test_herdr_status_lookup(
+    manager: room_channels.RoomChannelManager,
+) -> None:
+    manager.set_herdr_presence("room-a", {"reviewer": "working"})
+    assert manager.herdr_status("room-a", "reviewer") == "working"
+    assert manager.herdr_status("room-a", "nobody") is None
+
+
 @pytest.mark.asyncio
 async def test_open_and_close_episode_lifecycle(
     manager: room_channels.RoomChannelManager,

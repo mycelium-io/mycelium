@@ -205,7 +205,7 @@ herdr is the cleanest one that already recognizes our exact agent cast.
 |---|---|---|
 | **1. herdr as a wake target / connector** | **Build first (the PoC).** | Replace cold-spawn with `herdr agent prompt`. Slots under the existing `Integration` seam; strictly better than the removed daemon. |
 | **2. mycelium *as a herdr integration*** | **Reframe.** | herdr's `integration install` is agent-state hooks, not a plugin bus. The composition is mycelium-calls-herdr + mycelium installs its own skill into herdr agents. Still yields "a herdr workspace is a coordination space," just built the other way. |
-| **3. liveness in the UI** | **High-value, cheap follow-on.** | Surface `agent list`'s `idle`/`working`/`blocked` in the room/inspector. "agent X is blocked on a permission prompt" is richer presence than cold-spawn could ever report. Ties into `project_ui_refresh_events`. |
+| **3. liveness in the UI** | **Built.** | `mycelium herdr sync [--watch]` (host-side) mirrors `agent list`'s `idle`/`working`/`blocked` into the backend presence surface (new `POST /sessions/herdr-presence`, `kind="herdr"` overlaid onto `presence()` but never `members()`); the frontend renders a status-colored badge per agent. Backend is herdr-blind (containerized), so the CLI is the only layer that sees both — hence the host-side sync loop (the honest home for a poller after the daemon's removal). |
 | **4. remote / hub-and-spoke** | **Symmetric, later.** | `--remote` maps onto hub-and-spoke; defer until single-host is proven. |
 | **Bonus: aligner's Pi brain as a herdr `pi` agent** | **Plausible.** | herdr recognizes `pi`; the aligner's persistent Pi session could run herdr-hosted instead of backend-hosted. Interesting, not on the critical path. |
 
@@ -299,6 +299,42 @@ Other policies are possible on the same seam (cwd/repo → room; the agent
 self-selecting via `room use`) — workspace→room is the default because it's the
 one that needs the least per-agent input. Lifecycle stays honest: enroll only
 *drives* agents the user already started; it never spawns panes.
+
+## Wake-on-mention (the bidirectional bridge) + a reliability finding
+
+The `herdr sync` bridge is **bidirectional**: presence *up* (Shape 3) and wake
+commands *down*. When a tag `@`-mentions a herdr-present handle, the backend
+(herdr-blind) can't wake it — so it **enqueues a doorbell**; the host-side bridge
+drains it and runs `herdr agent prompt`. Two properties fell out of live use:
+
+- **Hold-until-idle.** A tag for a `working`/`blocked` agent is *held* in the
+  backend queue and only *released* once herdr shows it `idle` — so a mention
+  mid-turn is delivered when the agent frees up, not dropped. (TTL'd so a
+  never-idle agent can't hold a tag forever.)
+- **The wake is a doorbell, not a payload.** It carries no message text — just
+  "you have messages waiting in room X, run `mycelium room messages …`." The
+  agent reads the transcript itself (source of truth, ordered, nothing lost) and
+  keeps agency to defer. This dissolved an accumulate/dedup/first-await-cursor
+  mess that came from trying to hand the messages over inline.
+
+**Reliability finding — herdr's Claude state is title-scraped.** With the herdr
+Claude state-hook *not* installed, herdr infers `working` by matching the
+terminal-title spinner (`osc_title_working`, priority 1100) — which outranks the
+idle `❯`-prompt-box rule (`live_prompt_box`, 950) and can stick after an
+interrupted turn, so a pane reads `working` while actually idle and its held wake
+never releases. The hold/doorbell make *our* layer robust, but authoritative
+state needs `herdr integration install claude` (real lifecycle hooks) rather than
+title heuristics. Also observed: **the enrolled agent can *be* your active
+session** (mapping `@herdr` → the very pane you're driving), and waking a
+`working` agent is correctly declined.
+
+> **Security boundary (hard prerequisite).** The two new endpoints
+> (`POST /sessions/herdr-presence`, `GET /sessions/herdr-wakes`) are
+> **unauthenticated**, and a wake ultimately runs `herdr agent prompt` against a
+> local coding-agent pane — i.e. room-post content can steer a local agent. This
+> is single-user-local PoC only; it must be architected around the D1
+> **JWT/SPIRE** identity work (the bridge authenticating as a real principal,
+> per-agent authz on wake) before anything hosted or multi-user.
 
 ## Non-goals
 

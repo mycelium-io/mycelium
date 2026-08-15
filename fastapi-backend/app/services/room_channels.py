@@ -201,6 +201,13 @@ class RoomChannelManager:
         # so a herdr-alive-but-not-joined agent is *visible* without being made a
         # negotiation participant. Entries lapse on their TTL if sync stops.
         self._herdr: dict[str, dict[str, tuple[str, float, float]]] = {}
+        # herdr wake queue: room → list of pending {handle, ts} "doorbells". A tag
+        # of a herdr-present handle enqueues one entry (deduped by handle — the
+        # wake is a nudge, not a payload; the agent reads the room itself, so extra
+        # tags don't add information). The backend is herdr-blind, so it enqueues
+        # here and the host-side `herdr sync` bridge drains + runs the actual
+        # `herdr agent prompt`. The "commands down" half of the bidirectional bridge.
+        self._herdr_wakes: dict[str, list[dict]] = {}
         # Set during teardown so a persister task ending is recognized as
         # intentional (no restart) rather than a crash to recover from.
         self._closing = False
@@ -327,6 +334,56 @@ class RoomChannelManager:
         self._herdr[room] = {
             handle: (status, now_m + ttl_s, now_w) for handle, status in statuses.items()
         }
+
+    def herdr_status(self, room: str, handle: str) -> str | None:
+        """The live herdr state for ``handle`` in ``room``, or ``None`` if not
+        herdr-present. Used to decide whether a mention should enqueue a wake."""
+        return self._live_herdr(room).get(handle, (None,))[0]
+
+    def enqueue_herdr_wake(self, room: str, handle: str) -> None:
+        """Ring the doorbell for a herdr-present handle mentioned in ``room``.
+
+        Enqueued regardless of the agent's current state — a tag for a *busy*
+        agent is **held** here and released once it goes idle (see
+        :meth:`drain_herdr_wakes`), so the nudge is never lost just because the
+        agent was mid-turn. Deduped by handle: the wake carries no payload (the
+        agent reads the room itself), so repeated tags collapse to one pending
+        nudge — refreshing its hold timer, never adding content to lose.
+        """
+        queue = self._herdr_wakes.setdefault(room, [])
+        for w in queue:
+            if w["handle"] == handle:
+                w["ts"] = time.monotonic()  # fresh activity refreshes the hold timer
+                return
+        queue.append({"handle": handle, "ts": time.monotonic()})
+
+    def drain_herdr_wakes(self, room: str, *, hold_ttl_s: float = 600.0) -> list[dict]:
+        """Release wakes for handles that are **currently idle**; hold the rest.
+
+        The "agent hold": a queued wake is returned to the bridge only once herdr
+        shows its handle ``idle``/``done`` (ready to take a turn). A ``working``/
+        ``blocked`` handle keeps its wake queued until it frees up. A wake older
+        than ``hold_ttl_s`` is dropped so a never-idle agent doesn't hold a tag
+        forever. Presence is refreshed by the sync bridge every few seconds, so
+        the backend's view of "idle" is near-live.
+        """
+        queue = self._herdr_wakes.get(room)
+        if not queue:
+            return []
+        now = time.monotonic()
+        live = self._live_herdr(room)
+        released: list[dict] = []
+        held: list[dict] = []
+        for w in queue:
+            if now - float(w.get("ts", now)) > hold_ttl_s:
+                continue  # stale hold — drop
+            status = live.get(w["handle"], (None,))[0]
+            if status in {"idle", "done", "unknown"}:
+                released.append(w)
+            else:  # working/blocked (or presence briefly gone) → keep holding
+                held.append(w)
+        self._herdr_wakes[room] = held
+        return released
 
     def _live_leases(self, room: str) -> set[str]:
         """Handles with an unexpired presence lease in ``room``."""

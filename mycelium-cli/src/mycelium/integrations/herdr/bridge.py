@@ -98,6 +98,23 @@ def build_wake_prompt(room: str, handle: str) -> str:
     )
 
 
+def build_mention_prompt(room: str, handle: str) -> str:
+    """A doorbell, not a payload: nudge the agent that messages are waiting.
+
+    Deliberately carries no message text — the room transcript is the source of
+    truth, so the agent reads it itself (seeing everything, in order, nothing
+    lost) and keeps full agency: catch up now, or finish what it's doing and
+    address mycelium after. This also sidesteps the accumulate/dedup/first-await
+    problems that come with trying to hand the messages over inline.
+    """
+    h = handle.lstrip("@")
+    return (
+        f"[mycelium] You have messages awaiting in room '{room}'. "
+        f"Run `mycelium room messages --room {room}` to see them, then reply with "
+        f'`mycelium respond --room {room} --handle {h} "..."`.'
+    )
+
+
 class HerdrRegistry:
     """JSON-file registry of ``handle -> pane`` mappings under ``~/.mycelium/herdr``.
 

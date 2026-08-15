@@ -35,6 +35,7 @@ from mycelium.integrations.herdr import (
     HerdrBridge,
     HerdrError,
     HerdrPaneMapping,
+    build_mention_prompt,
     build_wake_prompt,
 )
 
@@ -540,6 +541,44 @@ def _push_presence(
     return True
 
 
+def _drain_wakes(config: MyceliumConfig, bridge: HerdrBridge, room: str) -> int:
+    """Drain the backend's herdr wake queue for a room and run each wake.
+
+    The "commands down" leg: the backend queued a wake when a tag mentioned a
+    herdr-present-but-not-joined handle; here — the only place that can reach the
+    herdr socket — we turn each into a ``herdr agent prompt``. The mention text
+    rides inline (no await), so the woken agent replies straight to the room.
+    Returns the number of agents actually woken.
+    """
+    import httpx
+
+    try:
+        url = f"{config.server.api_url}/api/rooms/{room}/sessions/herdr-wakes"
+        resp = httpx.get(url, timeout=5.0)
+        resp.raise_for_status()
+        wakes = resp.json().get("wakes", [])
+    except Exception:
+        return 0
+
+    woke = 0
+    for w in wakes:
+        handle = str(w.get("handle") or "")
+        mapping = bridge.registry.get(room, handle)
+        if mapping is None:
+            continue
+        prompt = build_mention_prompt(room, handle)
+        try:
+            result = bridge.wake(mapping, prompt, timeout_ms=config.herdr.wake_timeout_ms)
+        except HerdrError:
+            continue
+        if result.ok:
+            woke += 1
+            console.print(f"[green]↯ woke[/green] @{handle} [dim]on mention → {mapping.pane}[/dim]")
+        else:
+            console.print(f"[yellow]↯ skip[/yellow] @{handle} [dim]— {result.detail}[/dim]")
+    return woke
+
+
 @doc_ref(
     usage="mycelium herdr sync [--room <room>] [--watch] [--interval N]",
     desc="Push herdr liveness to the backend so the UI can show idle/working/blocked.",
@@ -585,6 +624,8 @@ def herdr_sync(
         view = _collect_presence(bridge, room_filter)
         pushed = push_all(view)
         total = sum(len(v) for v in view.values())
+        for r in view:
+            _drain_wakes(config, bridge, r)  # handle any tags waiting on the queue
         console.print(
             f"[green]Synced[/green] {total} agent state(s) across {pushed} room(s)."
             + ("" if watch else " [dim](one-shot; --watch to keep live)[/dim]")
@@ -592,7 +633,10 @@ def herdr_sync(
         if not watch:
             return
 
-        console.print(f"[dim]Watching herdr every {interval}s — Ctrl-C to stop.[/dim]")
+        console.print(
+            f"[dim]Watching herdr every {interval}s (presence up, wakes down) — "
+            f"Ctrl-C to stop.[/dim]"
+        )
         last: dict[str, dict[str, str]] = view
         last_push = time.monotonic()
         rooms_seen = set(view)
@@ -601,7 +645,10 @@ def herdr_sync(
                 time.sleep(interval)
                 view = _collect_presence(bridge, room_filter)
                 rooms_seen |= set(view)
-                # Push on change, or heartbeat every ~half-TTL to keep entries live.
+                # Drain wake-on-mention every tick — tags are time-sensitive.
+                for r in rooms_seen:
+                    _drain_wakes(config, bridge, r)
+                # Push presence on change, or heartbeat every ~half-TTL to keep live.
                 changed = view != last
                 if changed or (time.monotonic() - last_push) >= ttl_s / 2:
                     push_all(view)

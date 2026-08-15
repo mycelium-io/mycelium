@@ -209,6 +209,19 @@ async def push_herdr_presence(room_name: str, body: HerdrPresenceBody):
     )
 
 
+@router.get("/herdr-wakes")
+async def drain_herdr_wakes(room_name: str):
+    """Drain pending herdr wake requests for a room (the sync bridge polls this).
+
+    Returns and clears the queue the backend filled when a tag mentioned a
+    herdr-present-but-not-joined handle. The bridge — the only actor that can
+    reach the host's herdr socket — then runs the actual ``herdr agent prompt``.
+    """
+    if not room_exists(room_name):
+        raise HTTPException(status_code=404, detail="Room not found")
+    return {"wakes": room_channels.manager.drain_herdr_wakes(room_name)}
+
+
 @router.delete("/{session_id}", status_code=204)
 async def leave_room(room_name: str, session_id: UUID):
     """Remove a participant (agent leaves the room + the SLIM channel)."""
