@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ChevronRight, Radio } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   fetchL9History,
   getSSEUrl,
@@ -296,12 +297,14 @@ function FrameRow({
         <span className="ml-auto text-micro text-muted-foreground font-mono tabular flex-shrink-0">{frame.time}</span>
       </button>
       {expanded ? (
-        <pre
-          data-testid="frame-json"
-          className="mx-4 mb-2 max-h-64 overflow-auto px-2.5 py-2 font-mono text-micro text-muted-foreground bg-surface border border-border whitespace-pre-wrap break-words"
-        >
-          {highlightJson(envelopeJson(frame.raw))}
-        </pre>
+        <ScrollArea className="mx-4 mb-2 h-64 border border-border bg-surface">
+          <pre
+            data-testid="frame-json"
+            className="px-2.5 py-2 font-mono text-micro text-muted-foreground whitespace-pre-wrap break-words"
+          >
+            {highlightJson(envelopeJson(frame.raw))}
+          </pre>
+        </ScrollArea>
       ) : null}
     </div>
   );
@@ -318,6 +321,10 @@ const MAX_FRAMES = 200;
 export function L9Inspector({ roomName }: Props) {
   const [frames, setFrames] = useState<L9Frame[]>([]);
   const [connected, setConnected] = useState(false);
+  // Kinds toggled off by the filter chips. Empty by default (nothing hidden) so a
+  // newly-seen kind shows up automatically instead of needing to be opted in.
+  const [hiddenKinds, setHiddenKinds] = useState<Set<string>>(new Set());
+  const [episodeFilter, setEpisodeFilter] = useState<string>("all");
   const wireRef = useRef<HTMLDivElement>(null);
   // Frame ids already shown, so a history-backfill row and its live re-push don't
   // double up. Reset per room.
@@ -389,12 +396,45 @@ export function L9Inspector({ roomName }: Props) {
     };
   }, [roomName]);
 
+  // Kinds + episodes actually present in the feed so far, for the filter controls.
+  const kindsPresent = useMemo(
+    () => Array.from(new Set(frames.map((f) => f.kind))).sort(),
+    [frames],
+  );
+  const episodesPresent = useMemo(
+    () => Array.from(new Set(frames.map((f) => f.episode).filter((e): e is string => Boolean(e)))),
+    [frames],
+  );
+  // Reset filters that no longer apply to any frame (e.g. the selected episode
+  // scrolled out of the MAX_FRAMES window).
+  useEffect(() => {
+    if (episodeFilter !== "all" && !episodesPresent.includes(episodeFilter)) {
+      setEpisodeFilter("all");
+    }
+  }, [episodeFilter, episodesPresent]);
+
+  const toggleKind = useCallback((kind: string) => {
+    setHiddenKinds((prev) => {
+      const next = new Set(prev);
+      next.has(kind) ? next.delete(kind) : next.add(kind);
+      return next;
+    });
+  }, []);
+
+  const wire = useMemo(
+    () =>
+      frames.filter(
+        (f) => !hiddenKinds.has(f.kind) && (episodeFilter === "all" || f.episode === episodeFilter),
+      ),
+    [frames, hiddenKinds, episodeFilter],
+  );
+
   useEffect(() => {
     if (expandedRows.current > 0) return;
     wireRef.current?.scrollTo({ top: wireRef.current.scrollHeight, behavior: "smooth" });
-  }, [frames]);
+  }, [wire]);
 
-  const wire = useMemo(() => frames, [frames]);
+  const filtered = frames.length > 0 && wire.length === 0;
 
   return (
     <div className="flex flex-col h-full" data-testid="l9-inspector">
@@ -408,20 +448,72 @@ export function L9Inspector({ roomName }: Props) {
         )}
       </div>
 
-      <div ref={wireRef} className="flex-1 overflow-y-auto min-h-0">
+      {frames.length > 0 && (
+        <div className="flex items-center gap-2 px-4 py-2 border-b border-border shrink-0 bg-paper">
+          <div className="flex flex-wrap items-center gap-1">
+            {kindsPresent.map((kind) => {
+              const active = !hiddenKinds.has(kind);
+              return (
+                <button
+                  key={kind}
+                  type="button"
+                  aria-pressed={active}
+                  aria-label={`Toggle ${kind} frames`}
+                  onClick={() => toggleKind(kind)}
+                  className={`flex items-center gap-1.5 rounded-md px-2 py-1 caps-mono-sm transition-colors ${
+                    active
+                      ? "bg-elevated text-text shadow-sm ring-1 ring-border"
+                      : "text-muted-foreground hover:bg-hairline hover:text-text"
+                  }`}
+                >
+                  <span
+                    aria-hidden
+                    className="inline-block size-1.5 rounded-full"
+                    style={{ background: active ? kindTone(kind) : "var(--muted-foreground)" }}
+                  />
+                  {/* Lowercase text node; caps-mono-sm uppercases it visually. Keeps this text
+                      distinct from KindBadge's literal-uppercase text for the same kind. */}
+                  {kind}
+                </button>
+              );
+            })}
+          </div>
+          {episodesPresent.length > 0 && (
+            <select
+              aria-label="Filter by episode"
+              value={episodeFilter}
+              onChange={(e) => setEpisodeFilter(e.target.value)}
+              className="ml-auto rounded-md border border-border bg-surface px-2 py-1 font-mono text-micro text-muted-foreground focus:border-accent focus:text-text focus:outline-none"
+            >
+              <option value="all">All episodes</option>
+              {episodesPresent.map((ep) => (
+                <option key={ep} value={ep}>
+                  {shortEpisode(ep)}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+      )}
+
+      <ScrollArea className="flex-1 min-h-0" viewportRef={wireRef}>
         {wire.length === 0 ? (
           <EmptyState
             className="h-full"
             icon={Radio}
-            title="No L9 traffic yet"
-            description="Protocol envelopes stream here as agents coordinate: exchanges, commits, and knowledge."
+            title={filtered ? "No frames match the current filters" : "No L9 traffic yet"}
+            description={
+              filtered
+                ? "Try clearing a kind toggle or switching episodes."
+                : "Protocol envelopes stream here as agents coordinate: exchanges, commits, and knowledge."
+            }
           />
         ) : (
           wire.map((frame) => (
             <FrameRow key={frame.id} frame={frame} onExpandedChange={onExpandedChange} />
           ))
         )}
-      </div>
+      </ScrollArea>
     </div>
   );
 }

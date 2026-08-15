@@ -247,4 +247,45 @@ describe("<L9Inspector />", () => {
       "false",
     );
   });
+
+  it("filters the wire by kind via the toggle chips", async () => {
+    render(<L9Inspector roomName="sprint" />);
+    const es = FakeEventSource.latest();
+
+    await act(async () => {
+      es.open();
+      es.emit(commitMessage());
+      es.emit(knowledgeMessage());
+    });
+
+    expect(await screen.findByText(/^COMMIT/)).toBeInTheDocument();
+    expect(screen.getByText(/^KNOWLEDGE/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Toggle knowledge frames" }));
+    expect(screen.getByText(/^COMMIT/)).toBeInTheDocument();
+    expect(screen.queryByText(/^KNOWLEDGE/)).not.toBeInTheDocument();
+
+    // Toggling every kind off surfaces the filtered-empty state.
+    fireEvent.click(screen.getByRole("button", { name: "Toggle commit frames" }));
+    expect(screen.getByText("No frames match the current filters")).toBeInTheDocument();
+  });
+
+  it("filters the wire by episode via the select", async () => {
+    render(<L9Inspector roomName="sprint" />);
+    const es = FakeEventSource.latest();
+
+    await act(async () => {
+      es.open();
+      es.emit(commitMessage()); // episode urn:ioc:mycelium:episode:sprint:s1
+      es.emit(knowledgeMessage()); // no episode
+    });
+
+    expect(await screen.findByText(/^COMMIT/)).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Filter by episode"), {
+      target: { value: "urn:ioc:mycelium:episode:sprint:s1" },
+    });
+    expect(screen.getByText(/^COMMIT/)).toBeInTheDocument();
+    expect(screen.queryByText(/^KNOWLEDGE/)).not.toBeInTheDocument();
+  });
 });
