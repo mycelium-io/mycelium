@@ -5,7 +5,7 @@
 
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { fetchRoom, logFetchError, type EpisodeSummary } from "@/lib/api";
+import { fetchRoom, logFetchError, type EpisodeSummary, type Room } from "@/lib/api";
 import { AppShell } from "@/components/app-shell";
 import { EventStream, type View, type NegotiationPhase } from "@/components/event-stream";
 import { RoomChatBox } from "@/components/room-chat-box";
@@ -14,13 +14,6 @@ import { RoomTour } from "@/components/room-tour";
 import { GlobalStatusItems, StatusButton } from "@/components/status-items";
 import { ActingAsPicker } from "@/components/acting-as-picker";
 import { useRoomStatus } from "@/lib/use-status";
-
-interface Room {
-  name: string;
-  mas_id?: string | null;
-  is_persistent?: boolean;
-  parent_namespace?: string | null;
-}
 
 function episodeSummaryLabel(episodes: EpisodeSummary[] | null): { text: string; color: string } | null {
   if (!episodes || episodes.length === 0) return null;

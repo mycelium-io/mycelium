@@ -686,11 +686,11 @@ export function MetricsScreen() {
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
-      const b = await fetchBackendMetrics();
+      const b = await fetchBackendMetrics<BackendMetrics>();
       if (cancelled) return;
       setBackend(b);
       setBackendUnreachable(b == null);
-      const c = await fetchCollectorMetrics();
+      const c = await fetchCollectorMetrics<CollectorMetrics>();
       if (cancelled) return;
       setCollector(c);
       const h = await fetchHosts();

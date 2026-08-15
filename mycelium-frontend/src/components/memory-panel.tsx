@@ -4,27 +4,12 @@
 "use client";
 
 import { useEffect, useMemo, useState, useCallback } from "react";
-import { Brain, ChevronRight, Folder, FolderOpen, FileText } from "lucide-react";
-import { fetchMemories, searchMemories } from "@/lib/api";
+import { Brain, ChevronRight, Folder, FolderOpen, FileText, AlertCircle } from "lucide-react";
+import { fetchMemories, searchMemories, type Memory, type MemorySearchResult } from "@/lib/api";
 import { DetailDrawer } from "@/components/detail-drawer";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MemoryDetail } from "@/components/memory-detail";
-
-interface Memory {
-  key: string;
-  value: unknown;
-  content_text?: string;
-  version: number;
-  created_by: string;
-  updated_at: string;
-  file_path?: string;
-}
-
-interface SearchResult {
-  memory: Memory;
-  similarity: number;
-}
 
 interface TreeNode {
   name: string;
@@ -177,18 +162,17 @@ export function MemoryPanel({ roomName, refreshTrigger }: Props) {
   const [memories, setMemories] = useState<Memory[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<SearchResult[] | null>(null);
+  const [searchResults, setSearchResults] = useState<MemorySearchResult[] | null>(null);
   const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Memory | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
+  // fetchMemories degrades to [] on failure (fire-and-forget list), so no
+  // try/catch is needed here — a failed load just shows the empty state.
   const loadData = useCallback(async () => {
-    try {
-      const mems = await fetchMemories(roomName);
-      setMemories(mems);
-    } catch {} finally {
-      setLoaded(true);
-    }
+    setMemories(await fetchMemories(roomName));
+    setLoaded(true);
   }, [roomName]);
 
   const contributors = useMemo(
@@ -199,11 +183,14 @@ export function MemoryPanel({ roomName, refreshTrigger }: Props) {
   useEffect(() => { loadData(); }, [loadData, refreshTrigger]);
 
   const handleSearch = async () => {
-    if (!searchQuery.trim()) { setSearchResults(null); return; }
+    if (!searchQuery.trim()) { setSearchResults(null); setSearchError(null); return; }
     setSearching(true);
+    setSearchError(null);
     try {
-      const data = await searchMemories(roomName, searchQuery);
-      setSearchResults(data.results || []);
+      setSearchResults(await searchMemories(roomName, searchQuery));
+    } catch (err) {
+      setSearchError(err instanceof Error ? err.message : "Search failed");
+      setSearchResults(null);
     } finally {
       setSearching(false);
     }
@@ -262,6 +249,12 @@ export function MemoryPanel({ roomName, refreshTrigger }: Props) {
               {searching ? "…" : "Search"}
             </button>
           </div>
+          {searchError && (
+            <p role="alert" className="mt-2 flex items-center gap-1.5 text-micro text-red">
+              <AlertCircle className="size-3.5 flex-shrink-0" />
+              {searchError}
+            </p>
+          )}
         </div>
 
         {/* Search results — flat list with similarity scores */}

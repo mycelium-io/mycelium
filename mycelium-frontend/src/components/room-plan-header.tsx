@@ -12,7 +12,7 @@ import {
   type PlanResponse,
   type PlanFile,
 } from "@/lib/api";
-import { ListChecks } from "lucide-react";
+import { ListChecks, AlertCircle } from "lucide-react";
 import { MarkdownContent } from "./markdown-content";
 import { EmptyState } from "@/components/empty-state";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -39,11 +39,12 @@ export function RoomPlanHeader({ roomName, refreshTrigger }: Props) {
   const [titleDraft, setTitleDraft] = useState("");
   const [open, setOpen] = useState<Open>({ kind: "tasks" });
   const [newTaskText, setNewTaskText] = useState("");
+  const [actionError, setActionError] = useState<string | null>(null);
 
+  // fetchPlan degrades to an empty plan on failure, so no try/catch is
+  // needed here — a failed load just shows the "no tasks yet" empty state.
   const load = useCallback(async () => {
-    try {
-      setPlan(await fetchPlan(roomName));
-    } catch {}
+    setPlan(await fetchPlan(roomName));
   }, [roomName]);
 
   // Reload on mount, on refreshTrigger bumps, and on a slow poll. A
@@ -62,22 +63,39 @@ export function RoomPlanHeader({ roomName, refreshTrigger }: Props) {
   };
 
   const saveTitle = async () => {
-    await setPlanTitle(roomName, titleDraft.trim());
-    setEditingTitle(false);
-    await load();
+    setActionError(null);
+    try {
+      await setPlanTitle(roomName, titleDraft.trim());
+      setEditingTitle(false);
+      await load();
+    } catch (err) {
+      // Keep the editor open so the draft (and the retry) isn't lost.
+      setActionError(err instanceof Error ? err.message : "Failed to save title");
+    }
   };
 
   const onToggleTask = async (taskId: string, done: boolean) => {
-    await togglePlanTask(roomName, taskId, done);
-    await load();
+    setActionError(null);
+    try {
+      await togglePlanTask(roomName, taskId, done);
+      await load();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to update task");
+    }
   };
 
   const onAddTask = async () => {
     const text = newTaskText.trim();
     if (!text) return;
+    setActionError(null);
     setNewTaskText("");
-    await addPlanTask(roomName, text);
-    await load();
+    try {
+      await addPlanTask(roomName, text);
+      await load();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to add task");
+      setNewTaskText(text); // restore the draft so the user doesn't retype it
+    }
   };
 
   const toggleOpen = (next: Open) => {
@@ -161,6 +179,13 @@ export function RoomPlanHeader({ roomName, refreshTrigger }: Props) {
           </Chip>
         ))}
       </div>
+
+      {actionError && (
+        <p role="alert" className="mx-8 mb-3 flex items-center gap-1.5 text-micro text-red">
+          <AlertCircle className="size-3.5 flex-shrink-0" />
+          {actionError}
+        </p>
+      )}
 
       {/* Inline disclosure */}
       {open.kind === "tasks" && (

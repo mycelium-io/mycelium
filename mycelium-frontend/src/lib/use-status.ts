@@ -12,6 +12,15 @@ import {
   type EpisodeSummary,
 } from "@/lib/api";
 
+/** The slice of the collector's metrics payload the status bar reads: total
+ *  spend and per-model token totals (to find the primary model). */
+interface CollectorSpendShape {
+  counters?: {
+    cost_usd?: { total?: number };
+    tokens?: { by_model?: Record<string, { total?: number }> };
+  };
+}
+
 export interface RoomStatus {
   agents: number | null;
   episodes: EpisodeSummary[] | null;
@@ -60,7 +69,7 @@ export function useGlobalStatus(): GlobalStatus {
     let cancelled = false;
     const load = async () => {
       try {
-        const col = await fetchCollectorMetrics();
+        const col = await fetchCollectorMetrics<CollectorSpendShape>();
         if (!cancelled && col) {
           const cost = col.counters?.cost_usd;
           setSpend(typeof cost?.total === "number" ? cost.total : null);
