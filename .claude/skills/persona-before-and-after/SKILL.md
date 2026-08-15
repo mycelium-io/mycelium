@@ -19,6 +19,11 @@ Each agent's identity is composed from two YAML files:
 **You are the test harness.** Fetch personas, build agents, seed scenarios, observe
 transcripts, evaluate.
 
+Agents are **resident `claude_code` runtimes** — a live `claude` session per agent,
+kept awake with `mycelium await --loop --exec claude`. The loop *is* the wake: each
+agent long-polls its room, reasons on what it reads, and posts a reply with
+`mycelium respond`. There is no gateway, no daemon, and no per-mention cold-spawn.
+
 ---
 
 ## Phase 0: Prerequisites Check
@@ -40,22 +45,19 @@ echo "Backend: $MYCELIUM_API_URL"
 # 3. Stack health
 curl -sf "$MYCELIUM_API_URL/health" | python3 -m json.tool
 
-# 4. OpenClaw
-openclaw --version
+# 4. claude CLI (the resident agent runtime)
+claude --version
 
 # 4b. Mycelium health check
 mycelium doctor
 # All checks should be green. Fix any errors before proceeding.
 
-# 5. OpenClaw gateway
-openclaw channels status
-
-# 6. git (required to fetch the persona dataset at runtime)
+# 5. git (required to fetch the persona dataset at runtime)
 git --version
 
-# 7. Mycelium repo path (for the bundled plugin source)
+# 6. Mycelium repo path (for the bundled adapter source)
 MYCELIUM_REPO=$(pwd)  # assumes running from the mycelium repo
-ls "$MYCELIUM_REPO/mycelium-cli/src/mycelium/integrations/openclaw/assets/mycelium/plugin/index.ts" 2>/dev/null \
+ls "$MYCELIUM_REPO/mycelium-cli/src/mycelium/integrations/claude_code" 2>/dev/null \
   && echo "Repo found: $MYCELIUM_REPO" \
   || echo "ERROR: not in the mycelium repo — cd to it first"
 ```
@@ -63,77 +65,6 @@ ls "$MYCELIUM_REPO/mycelium-cli/src/mycelium/integrations/openclaw/assets/myceli
 If any prerequisite fails, fix it before proceeding.
 
 **Throughout this skill, use `$MYCELIUM_API_URL` for all backend requests. Never hardcode a port.**
-
----
-
-### 0b. Verify server.mas_id is set
-
-The `mycelium-knowledge-extract` hook reads `server.mas_id` from
-`~/.mycelium/config.toml` to know which MAS to ingest into. If it's empty,
-every ingest attempt silently falls back to the local log file and nothing
-reaches CFN's knowledge graph.
-
-```bash
-python3 -c "
-import toml, os
-cfg = toml.load(os.path.expanduser('~/.mycelium/config.toml'))
-mas_id = cfg.get('server', {}).get('mas_id', '')
-print(f'mas_id = \"{mas_id}\"')
-if not mas_id:
-    print('WARNING: mas_id is empty — knowledge ingest will silently fail')
-"
-```
-
-If `mas_id` is empty, fetch the default MAS for the workspace and set it:
-
-```bash
-# List MASes for the configured workspace
-WORKSPACE_ID=$(python3 -c "
-import toml, os
-cfg = toml.load(os.path.expanduser('~/.mycelium/config.toml'))
-print(cfg.get('server', {}).get('workspace_id', ''))
-")
-echo "workspace_id = $WORKSPACE_ID"
-
-# Option A: get mas_id from the active room (if a room is already set)
-ACTIVE_ROOM=$(python3 -c "
-import toml, os
-cfg = toml.load(os.path.expanduser('~/.mycelium/config.toml'))
-print(cfg.get('rooms', {}).get('active', ''))
-")
-if [ -n "$ACTIVE_ROOM" ]; then
-    MAS_ID=$(curl -sf "$MYCELIUM_API_URL/api/rooms/$ACTIVE_ROOM" | python3 -c "
-import sys, json
-r = json.load(sys.stdin)
-print(r.get('mas_id') or '')
-")
-    echo "Room mas_id: $MAS_ID"
-fi
-
-# Option B: use mycelium config set
-mycelium config set server.mas_id "$MAS_ID"
-```
-
-Verify:
-
-```bash
-python3 -c "
-import toml, os
-cfg = toml.load(os.path.expanduser('~/.mycelium/config.toml'))
-print('mas_id:', cfg['server']['mas_id'])
-"
-```
-
-A non-empty `mas_id` here is required for knowledge ingest to work in Phase 3.
-
-**If you just set `mas_id`, restart the gateway now.** The hook process holds
-module-level state that isn't flushed on config hot-reload — only a full
-restart picks up the new value:
-
-```bash
-openclaw gateway restart
-```
-
 
 ---
 
@@ -420,19 +351,11 @@ files — check the profile YAML.
 Each scenario fires 10–40+ LLM calls. **Default to haiku** unless the user explicitly
 wants sonnet.
 
-First, check what model is already configured in openclaw:
+Check what model the resident `claude` sessions will use by default:
 
 ```bash
-CONFIGURED_MODEL=$(python3 -c "
-import json, os
-p = os.path.expanduser('~/.openclaw/openclaw.json')
-try:
-    cfg = json.load(open(p))
-    print(cfg.get('agents', {}).get('defaults', {}).get('model', ''))
-except Exception:
-    print('')
-")
-echo "Currently configured model: ${CONFIGURED_MODEL:-'(none)'}"
+CONFIGURED_MODEL="${ANTHROPIC_MODEL:-}"
+echo "Currently configured model: ${CONFIGURED_MODEL:-'(claude default)'}"
 ```
 
 Use `AskUserQuestion` — **include the currently configured model as an option if one is set**:
@@ -440,37 +363,39 @@ Use `AskUserQuestion` — **include the currently configured model as an option 
 > **Which LLM should the experiment agents use?**
 > 1. **Haiku** *(recommended — ~$0.10–0.30 per full experiment)*
 > 2. **Sonnet** *(~$1.50–4.00 per full experiment)*
-> 3. **Currently configured model** (`$CONFIGURED_MODEL`) *(reuse existing openclaw default — no setup needed)* ← only show if `$CONFIGURED_MODEL` is non-empty
+> 3. **Currently configured model** (`$CONFIGURED_MODEL`) *(reuse the current `claude` default — no setup needed)* ← only show if `$CONFIGURED_MODEL` is non-empty
 > 4. **Different API key or provider** *(isolate experiment cost to a separate key)*
 
 If the configured model is already haiku or sonnet, collapse options 1/2 and 3 into one.
 
 ```bash
 # Option 1
-EXP_MODEL="litellm/bedrock/global.anthropic.claude-haiku-4-5-20251001-v1:0"
+EXP_MODEL="claude-haiku-4-5"
 
 # Option 2
-EXP_MODEL="litellm/bedrock/global.anthropic.claude-sonnet-4-6"
+EXP_MODEL="claude-sonnet-4-6"
 
-# Option 3 — reuse already-configured openclaw model
+# Option 3 — reuse the already-configured claude default
 EXP_MODEL="$CONFIGURED_MODEL"
 
-# Option 4 — ask for provider+model string and API key; export key in shell only
-EXP_MODEL="<provider/model from user>"
-export ANTHROPIC_API_KEY="sk-ant-..."   # or equivalent; ephemeral, not written to openclaw.json
+# Option 4 — ask for a model string and API key; export both in shell only
+EXP_MODEL="<model from user>"
+export ANTHROPIC_API_KEY="sk-ant-..."   # ephemeral; scoped to this shell only
 ```
 
-**Never hardcode a model.** Always use `$EXP_MODEL`.
+**Never hardcode a model.** Always use `$EXP_MODEL`. The resident `claude` sessions
+read it from `ANTHROPIC_MODEL`:
 
 ```bash
-echo "Using model: $EXP_MODEL (key: $([ -n "${EXP_ANTHROPIC_KEY:-}" ] && echo 'experiment-scoped' || echo 'openclaw default'))"
+export ANTHROPIC_MODEL="$EXP_MODEL"
+echo "Using model: $EXP_MODEL (key: $([ -n "${ANTHROPIC_API_KEY:-}" ] && echo 'experiment-scoped' || echo 'claude default'))"
 ```
 
 ---
 
 ## Phase 1: Setup
 
-### 1a. Create Temporary Experiment Agents
+### 1a. Create Temporary Experiment Handles + Workspaces
 
 ```bash
 EXP_ID="exp-$(date +%s | tail -c 5)"
@@ -484,33 +409,15 @@ AGENT_NAMES=$(python3 -c "import json; d=json.load(open('/tmp/exp_personas_befor
 echo "Agents: $AGENT_NAMES"
 ```
 
-Create one OpenClaw agent per persona:
+Each persona runs as a resident `claude_code` agent out of its own workspace
+directory. Create one workspace per persona:
 
 ```bash
 for AGENT_NAME in $AGENT_NAMES; do
   EXP_AGENT="${EXP_ID}-${AGENT_NAME}"
-  openclaw agents add "$EXP_AGENT" \
-    --non-interactive \
-    --workspace ~/.openclaw/workspaces/${EXP_AGENT} \
-    --model "$EXP_MODEL"
-  echo "Created: $EXP_AGENT"
+  mkdir -p ~/.mycelium/experiments/${EXP_AGENT}
+  echo "Created workspace: ~/.mycelium/experiments/${EXP_AGENT}"
 done
-```
-
-Disable sandbox for all experiment agents (without this, agents can't run the
-`mycelium` CLI in the after case):
-
-```bash
-python3 -c "
-import json, os
-p = os.path.expanduser('~/.openclaw/openclaw.json')
-cfg = json.load(open(p))
-for a in cfg['agents']['list']:
-    if a.get('id', '').startswith('${EXP_ID}-'):
-        a['sandbox'] = {'mode': 'off'}
-        print(f\"{a['id']} → sandbox: off\")
-json.dump(cfg, open(p, 'w'), indent=2)
-"
 ```
 
 ### 1b. Write Persona SOUL.md Files (before-case: preference-only)
@@ -528,7 +435,7 @@ agents = json.load(open("/tmp/exp_personas_before.json"))
 
 for agent_name, soul_text in agents.items():
     exp_agent = f"{exp_id}-{agent_name}"
-    workspace = os.path.expanduser(f"~/.openclaw/workspaces/{exp_agent}")
+    workspace = os.path.expanduser(f"~/.mycelium/experiments/{exp_agent}")
     os.makedirs(workspace, exist_ok=True)
     soul_path = os.path.join(workspace, "SOUL.md")
     with open(soul_path, "w") as f:
@@ -548,113 +455,37 @@ The SOUL.md at this point contains **only** the identity/domain block — who th
 is, their position, red lines, and concession order. The strategy/negotiate block is
 intentionally absent. It will be written in Phase 3a before the after case runs.
 
-### 1c. Disable the mycelium-bootstrap hook (contamination guard)
+### 1c. Install the claude_code adapter
 
-The `mycelium-bootstrap` hook is the sole contamination vector. It injects
-`MYCELIUM_ROOM_ID` and `MYCELIUM_API_URL` into every agent's environment at
-bootstrap — which causes agents in the before case to spontaneously use
-`mycelium session join` and `mycelium negotiate` even when the seed says to
-just chat.
-
-The `mycelium-room` **channel plugin must stay active** — agents need it to
-route messages to each other. Only the bootstrap hook needs to be off.
+The adapter installs the Mycelium SKILL.md into each workspace so the resident
+`claude` session knows the participation protocol (`await` → reason → `respond`).
 
 ```bash
-openclaw hooks disable mycelium-bootstrap
+mycelium adapter add claude_code 2>/dev/null \
+  && echo "claude_code adapter installed" \
+  || echo "claude_code adapter already present"
 ```
 
-Verify:
+For the **before** case, we deliberately keep the Mycelium skill *out* of the
+agents' path — the control must not know the protocol. We run before-case `claude`
+sessions from a bare workspace with only SOUL.md, so nothing steers them toward the
+CLI. The skill is only surfaced to the after-case workspaces in Phase 3a.
 
-```bash
-openclaw hooks list 2>&1 | grep -E "mycelium-bootstrap|mycelium-room"
-# mycelium-bootstrap should show ⏸ (disabled)
-# mycelium-room channel should still be listed as configured
-```
-
-### 1d. Install the Mycelium Plugin
-
-```bash
-ls ~/.openclaw/extensions/mycelium/openclaw.plugin.json 2>/dev/null \
-  && echo "Mycelium plugin already installed" \
-  || { echo "Installing..."; mycelium adapter add openclaw; }
-```
-
-If newly installed:
-
-```bash
-openclaw gateway restart
-```
-
-### 1e. Configure openclaw.json
-
-Build the agent list and configure the channel:
-
-```python
-python3 << 'PYEOF'
-import json, os, toml
-
-mycelium_cfg = toml.load(os.path.expanduser("~/.mycelium/config.toml"))
-backend_url  = mycelium_cfg.get("server", {}).get("api_url", "http://localhost:8000")
-
-exp_id    = os.environ["EXP_ID"]
-room_name = os.environ.get("EXP_ROOM", f"{exp_id}-before")
-
-personas   = json.load(open("/tmp/exp_personas_before.json"))
-exp_agents = [f"{exp_id}-{name}" for name in personas.keys()]
-
-oc_path = os.path.expanduser("~/.openclaw/openclaw.json")
-with open(oc_path) as f:
-    oc = json.load(f)
-
-oc.setdefault("plugins", {}).setdefault("entries", {})["mycelium-channel"] = {"enabled": True}
-allow = oc["plugins"].setdefault("allow", [])
-if "mycelium-channel" not in allow:
-    allow.append("mycelium-channel")
-ext_path = os.path.expanduser("~/.openclaw/extensions/mycelium-channel")
-load_paths = oc["plugins"].setdefault("load", {}).setdefault("paths", [])
-if ext_path not in load_paths:
-    load_paths.append(ext_path)
-
-oc.setdefault("channels", {})["mycelium-room"] = {
-    "enabled": True,
-    "backendUrl": backend_url,
-    "room": room_name,
-    "agents": exp_agents,
-    "requireMention": True,
-}
-
-with open(oc_path, "w") as f:
-    json.dump(oc, f, indent=2)
-
-print(f"Config updated: room={room_name}, agents={exp_agents}, backend={backend_url}")
-PYEOF
-```
-
-```bash
-export EXP_ID EXP_ROOM="${EXP_ID}-before"
-python3 << 'PYEOF'
-# ... (script above)
-PYEOF
-```
-
-### 1f. Create Experiment Rooms
+### 1d. Create Experiment Rooms
 
 ```bash
 mycelium room create "${EXP_ID}-before"
 mycelium room create "${EXP_ID}-after"
 ```
 
-### 1f. Restart Gateway and Verify
-
-```bash
-openclaw gateway restart
-sleep 3
-grep "mycelium-room.*SSE connected" /tmp/openclaw/openclaw-$(date +%Y-%m-%d).log | tail -1
-```
-
 ---
 
-## Phase 2: Run "Before" (Unstructured Channel)
+## Phase 2: Run "Before" (Unstructured Chat)
+
+In the before case there is no aligner and no protocol. Each agent is a resident
+`claude` session pointed at the before room; they converse by posting plain messages
+and reading each other's replies. The contrast the experiment measures is: does
+free-form chat reach a clean consensus on its own?
 
 ### 2a. Build the Scenario Prompt
 
@@ -682,41 +513,51 @@ for name, soul in agents.items():
 fi
 ```
 
-### 2b. Seed the Conversation
+### 2b. Launch the Before-Case Agents
 
-The seed must @-mention every agent (channel is `requireMention: true`) and tell them
-to @-mention each other to continue:
+Start one resident `claude` loop per agent against the before room. Each loop
+long-polls the room, reasons with its SOUL.md, and posts a plain reply. Run them in
+the background so all agents are live at once:
 
 ```bash
 AGENT_NAMES=$(python3 -c "import json; d=json.load(open('/tmp/exp_personas_before.json')); print(' '.join(d.keys()))")
-MENTIONS=$(for n in $AGENT_NAMES; do printf "@${EXP_ID}-${n} "; done)
 
-SEED_BODY="${MENTIONS}
-
-${SCENARIO_PROMPT}
-
-How to work together in this room:
-- Reply by @-mentioning the other agent(s) whenever you want them to respond.
-  Messages without an @mention are ignored.
-- Keep each message to 2–3 paragraphs.
-- Aim for consensus. When you agree, @-mention the others and say 'I agree' with
-  the final decision explicitly stated.
-
-IMPORTANT: This is a plain-text chat room. Do NOT use any CLI tools, shell
-commands, or negotiation protocols. Do NOT reference CognitiveEngine, mycelium
-session join, or any structured negotiation framework. Respond only in plain
-conversational text."
-
-curl -sf "$MYCELIUM_API_URL/api/rooms/${EXP_ID}-before/messages" \
-  -H "Content-Type: application/json" \
-  -d "$(python3 -c "import json,sys; print(json.dumps({'sender_handle':'facilitator','message_type':'broadcast','content':sys.argv[1]}))" "$SEED_BODY")"
+for AGENT_NAME in $AGENT_NAMES; do
+  EXP_AGENT="${EXP_ID}-${AGENT_NAME}"
+  WORKSPACE=~/.mycelium/experiments/${EXP_AGENT}
+  ( cd "$WORKSPACE" && \
+    mycelium await --loop \
+      --room "${EXP_ID}-before" \
+      --handle "$EXP_AGENT" \
+      --exec "claude --append-system-prompt \"\$(cat $WORKSPACE/SOUL.md)\"" \
+    ) > "$WORKSPACE/before.log" 2>&1 &
+  echo "Launched before-case agent: $EXP_AGENT (pid $!)"
+done
 ```
 
-### 2c. Monitor and Wait for Convergence
+### 2c. Seed the Conversation
+
+The seed kicks off the discussion. It tells the agents to reply to each other in
+plain text and to aim for consensus — and explicitly forbids the Mycelium CLI so the
+control stays uncontaminated:
 
 ```bash
-grep "mycelium-room.*←\|mycelium-room.*→" /tmp/openclaw/openclaw-$(date +%Y-%m-%d).log | tail -20
+SEED_BODY="${SCENARIO_PROMPT}
+
+How to work together in this room:
+- Reply in plain conversational text; the other agents will read what you post.
+- Keep each message to 2–3 paragraphs.
+- Aim for consensus. When you agree, say 'I agree' with the final decision explicitly stated.
+
+IMPORTANT: This is a plain-text chat room. Do NOT use any CLI tools, shell
+commands, or negotiation protocols. Do NOT reference the aligner, mycelium
+respond/await, or any structured negotiation framework. Respond only in plain
+conversational text."
+
+mycelium respond --room "${EXP_ID}-before" --handle facilitator "$SEED_BODY"
 ```
+
+### 2d. Monitor and Wait for Convergence
 
 Poll room messages:
 
@@ -736,20 +577,13 @@ if isinstance(msgs, list):
 **Cost guard:** Cut the before case if you see ≥3 distinct "consensus" messages with
 different substance, scope creep re-opening settled items, or >${COST_GUARD_STEPS:-30}
 messages without unanimous agreement (`n_steps` from `missions.yaml` when a mission is
-loaded, otherwise 30). To kill it cleanly:
+loaded, otherwise 30). To kill it cleanly, stop the resident loops:
 
 ```bash
-python3 -c "
-import json, os
-p = os.path.expanduser('~/.openclaw/openclaw.json')
-cfg = json.load(open(p))
-cfg['channels']['mycelium-room']['room'] = '${EXP_ID}-after'
-json.dump(cfg, open(p, 'w'), indent=2)
-"
-openclaw gateway restart
+pkill -f "mycelium await --loop --room ${EXP_ID}-before" || true
 ```
 
-### 2d. Capture Transcript
+### 2e. Capture Transcript
 
 ```bash
 curl -sf "$MYCELIUM_API_URL/api/rooms/${EXP_ID}-before/messages?limit=50" | python3 -c "
@@ -763,35 +597,28 @@ if isinstance(msgs, list):
         print(m['content'])
         print()
 " > ~/.mycelium/rooms/${EXP_ID}-before/transcript.md
+
+# Stop the before-case loops before moving on
+pkill -f "mycelium await --loop --room ${EXP_ID}-before" || true
 ```
-
-### 2e. Capture CFN Ingest Log for the Before Window
-
-Every time the `mycelium-knowledge-extract` hook fires during the before run
-it appends an event to the in-memory buffer on mycelium-backend. Capture the
-full buffer to disk so the experiment artifact has a per-event cost trail.
-
-```bash
-mycelium cfn log --limit 500 --json > ~/.mycelium/rooms/${EXP_ID}-before/ingest-log.json
-mycelium cfn stats --json > ~/.mycelium/rooms/${EXP_ID}-before/ingest-stats.json
-```
-
-For human review during the run, `mycelium cfn log --state=refused,error` is
-the fast signal on “did anything blow up here.”
 
 ---
 
 ## Phase 3: Run "After" (Mycelium Structured Negotiation)
 
-### 3a. Rewrite SOUL.md with full personas, re-enable bootstrap hook, switch to after room
+In the after case the personas carry the full negotiation protocol and coordination
+runs through the **aligner** — a backend engine summoned by `@`-mention that runs a
+real NEGMAS negotiation, `@`-addresses one agent at a time, owns termination, and
+compiles the consensus into `plan/tasks.md`.
 
-Three things happen here in order:
+### 3a. Rewrite SOUL.md with full personas and install the skill
+
+Two things happen here in order:
 
 1. **Rewrite SOUL.md** — swap the preference-only SOUL.md for the full persona
    (preference + strategy). Agents now carry the Mycelium CLI negotiation protocol.
-2. **Re-enable bootstrap hook** (if it was disabled) — agents get `MYCELIUM_ROOM_ID`
-   injected at bootstrap.
-3. **Switch channel to the after room** and restart the gateway.
+2. **Ensure the claude_code SKILL.md is present** in each after-case workspace so the
+   resident session knows the `await` → reason → `respond` participation protocol.
 
 ```python
 # Step 1: rewrite SOUL.md files with full (preference + strategy) personas
@@ -803,7 +630,7 @@ agents = json.load(open("/tmp/exp_personas_after.json"))
 
 for agent_name, soul_text in agents.items():
     exp_agent = f"{exp_id}-{agent_name}"
-    soul_path = os.path.expanduser(f"~/.openclaw/workspaces/{exp_agent}/SOUL.md")
+    soul_path = os.path.expanduser(f"~/.mycelium/experiments/{exp_agent}/SOUL.md")
     with open(soul_path, "w") as f:
         f.write(soul_text + "\n")
     print(f"Rewrote SOUL.md for {exp_agent} ({len(soul_text)} chars, preference + strategy)")
@@ -815,87 +642,80 @@ export EXP_ID
 python3 << 'PYEOF'
 # ... (script above)
 PYEOF
+
+# Step 2: install the claude_code SKILL.md into each after-case workspace
+for AGENT_NAME in $AGENT_NAMES; do
+  EXP_AGENT="${EXP_ID}-${AGENT_NAME}"
+  mycelium adapter add claude_code --workspace ~/.mycelium/experiments/${EXP_AGENT} 2>/dev/null \
+    && echo "skill installed for $EXP_AGENT" \
+    || echo "skill already present for $EXP_AGENT"
+done
 ```
 
+### 3b. Register the aligner and launch the After-Case Agents
+
+Register the aligner in the after room, then start a resident loop per agent. In the
+after case the loop drives the full protocol: `await` the aligner's address → reason →
+`respond`.
+
 ```bash
-# Step 2: re-enable bootstrap hook — agents now get MYCELIUM_ROOM_ID injected
-openclaw hooks enable mycelium-bootstrap
+# Register the aligner once in the after room
+mycelium engine create aligner --kind aligner --room "${EXP_ID}-after"
 
-# Step 3: switch channel to after room
-python3 -c "
-import json, os
-oc_path = os.path.expanduser('~/.openclaw/openclaw.json')
-with open(oc_path) as f:
-    oc = json.load(f)
-oc['channels']['mycelium-room']['room'] = '${EXP_ID}-after'
-with open(oc_path, 'w') as f:
-    json.dump(oc, f, indent=2)
-print('Switched to ${EXP_ID}-after')
-"
-
-openclaw gateway restart
-sleep 4
-grep "SSE connected.*${EXP_ID}-after" /tmp/openclaw/openclaw-$(date +%Y-%m-%d).log | tail -1
-# Should show: [mycelium-room] SSE connected: {EXP_ID}-after (agents: ...)
+# Launch each agent as a resident that participates via the protocol
+for AGENT_NAME in $AGENT_NAMES; do
+  EXP_AGENT="${EXP_ID}-${AGENT_NAME}"
+  WORKSPACE=~/.mycelium/experiments/${EXP_AGENT}
+  ( cd "$WORKSPACE" && \
+    mycelium await --loop \
+      --room "${EXP_ID}-after" \
+      --handle "$EXP_AGENT" \
+      --exec "claude --append-system-prompt \"\$(cat $WORKSPACE/SOUL.md)\"" \
+    ) > "$WORKSPACE/after.log" 2>&1 &
+  echo "Launched after-case agent: $EXP_AGENT (pid $!)"
+done
 ```
 
-### 3b. Seed with Negotiation Instructions
+### 3c. Post Opening Positions and Summon the Aligner
 
-The agents now have the negotiation protocol in their SOUL.md (just written in 3a).
-The seed activates it — tell them to use `mycelium session join` and the CLI protocol
-rather than chatting:
+Each agent posts an opening position, then summon the aligner to converge. The
+aligner discovers issues from the opening positions and brokers the rounds:
 
 ```bash
-MENTIONS=$(for n in $AGENT_NAMES; do printf "@${EXP_ID}-${n} "; done)
+# Each agent posts an opening position (the resident loops will pick up the
+# aligner's addresses from here on). Derive each position from the persona.
+for AGENT_NAME in $AGENT_NAMES; do
+  EXP_AGENT="${EXP_ID}-${AGENT_NAME}"
+  # Replace with a one-line opening position derived from the agent's SOUL.md
+  mycelium respond --room "${EXP_ID}-after" --handle "$EXP_AGENT" "<opening position for $AGENT_NAME>"
+done
 
-SEED_BODY="${MENTIONS}
-
-${SCENARIO_PROMPT}
-
-Use Mycelium structured negotiation. Do NOT discuss in chat — run CLI commands instead:
-
-1. Each of you joins the session once with your own handle:
-     mycelium session join --handle <your-handle> --room ${EXP_ID}-after -m \"<your opening position>\"
-
-2. Wait for the CognitiveEngine tick. It will tell you the current offer and
-   whether to 'propose' or 'respond'.
-
-3. Respond via CLI (your SOUL.md has the exact JSON format):
-     mycelium negotiate propose ISSUE=VALUE ISSUE=VALUE ... --room ${EXP_ID}-after --handle <your-handle>
-     mycelium negotiate respond accept --room ${EXP_ID}-after --handle <your-handle>
-     mycelium negotiate respond reject --room ${EXP_ID}-after --handle <your-handle>
-
-Briefly explain your reasoning in chat before each CLI command (1–2 sentences max).
-Your SOUL.md already contains the full negotiation protocol — follow it.
-
-IMPORTANT: Never declare consensus yourself in chat. Only CognitiveEngine can
-confirm consensus. Keep responding to ticks until one of two things happens:
-- CognitiveEngine sends a 'consensus' message → negotiation is complete.
-- CognitiveEngine sends a 'timeout' or broken=true message → rounds exhausted
-  without agreement. In that case, post one final message stating the last
-  position you accepted (if any), so the transcript has a readable final state."
-
-curl -sf "$MYCELIUM_API_URL/api/rooms/${EXP_ID}-after/messages" \
-  -H "Content-Type: application/json" \
-  -d "$(python3 -c "import json,sys; print(json.dumps({'sender_handle':'facilitator','message_type':'broadcast','content':sys.argv[1]}))" "$SEED_BODY")"
+# Summon the aligner to converge on the scenario
+mycelium engine invoke aligner "$SCENARIO_PROMPT" -r "${EXP_ID}-after"
 ```
 
-### 3c. Monitor
+The aligner now `@`-addresses one agent at a time; each resident loop `await`s its
+address, reasons with its SOUL.md strategy block, and posts a `respond`. NEGMAS owns
+termination — it stops the instant the agents agree, then the plan compiler
+materializes `plan/tasks.md` *before* consensus is announced.
+
+### 3d. Monitor
 
 ```bash
-# Ticks and consensus
-grep "mycelium-room.*🎯\|mycelium-room.*🤝" /tmp/openclaw/openclaw-$(date +%Y-%m-%d).log | tail -20
-
-# Session state
+# Room coordination state
 curl -sf "$MYCELIUM_API_URL/api/rooms" | python3 -c "
 import sys, json
 for r in json.load(sys.stdin):
     if '${EXP_ID}-after' in r['name']:
         print(f'{r[\"name\"]}: {r.get(\"coordination_state\", \"none\")}')
 "
+
+# The compiled plan (exists once the aligner converges)
+mycelium plan tasks --room "${EXP_ID}-after"
+# Expect: a shared - [ ] checklist with @handle owners
 ```
 
-### 3d. Capture Transcript
+### 3e. Capture Transcript
 
 ```bash
 # Main room
@@ -911,15 +731,16 @@ if isinstance(msgs, list):
         print()
 " > ~/.mycelium/rooms/${EXP_ID}-after/transcript.md
 
-# Session sub-room (ticks, proposals, consensus records)
-SESSION_ROOM=$(curl -sf "$MYCELIUM_API_URL/api/rooms" | python3 -c "
+# Episode sub-room (aligner addresses, replies, consensus record)
+EPISODE_ROOM=$(curl -sf "$MYCELIUM_API_URL/api/rooms" | python3 -c "
 import sys, json
 for r in json.load(sys.stdin):
-    if '${EXP_ID}-after:session:' in r['name']:
+    if '${EXP_ID}-after:episode:' in r['name']:
         print(r['name']); break
 ")
-echo "Session room: $SESSION_ROOM"
-curl -sf "$MYCELIUM_API_URL/api/rooms/$SESSION_ROOM/messages?limit=100" | python3 -c "
+echo "Episode room: $EPISODE_ROOM"
+if [ -n "$EPISODE_ROOM" ]; then
+curl -sf "$MYCELIUM_API_URL/api/rooms/$EPISODE_ROOM/messages?limit=100" | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
 msgs = data.get('messages', data) if isinstance(data, dict) else data
@@ -930,24 +751,15 @@ if isinstance(msgs, list):
         c = (json.dumps(raw) if isinstance(raw, (dict, list)) else str(raw))[:200]
         print(f'[{m[\"message_type\"]}] {m.get(\"sender_handle\",\"\")}: {c}')
         print()
-" > ~/.mycelium/rooms/${EXP_ID}-after/session-transcript.md
+" > ~/.mycelium/rooms/${EXP_ID}-after/episode-transcript.md
+fi
+
+# Also capture the compiled plan as an artifact
+mycelium plan tasks --room "${EXP_ID}-after" > ~/.mycelium/rooms/${EXP_ID}-after/plan-tasks.md 2>/dev/null || true
+
+# Stop the after-case loops
+pkill -f "mycelium await --loop --room ${EXP_ID}-after" || true
 ```
-
-### 3e. Capture CFN Ingest Log for the After Window
-
-Mirrors Phase 2e. Snapshot the full buffer + stats for the after run so the
-gist carries both-case cost evidence.
-
-```bash
-mycelium cfn log --limit 500 --json > ~/.mycelium/rooms/${EXP_ID}-after/ingest-log.json
-mycelium cfn stats --json > ~/.mycelium/rooms/${EXP_ID}-after/ingest-stats.json
-```
-
-**Important**: the in-memory buffer is shared across both runs and resets
-only on backend restart. If you don't snapshot after Phase 2 (before) and
-again after Phase 3 (after), you'll lose the separation. Phase 2e + 3e
-ordering matters — each snapshot captures everything seen so far, and you
-diff them in Phase 4 to get the per-run cost.
 
 ---
 
@@ -979,7 +791,7 @@ def count_room_msgs(label):
     return sum(1 for l in p.read_text().splitlines()
                if l.startswith("**") and l.rstrip().endswith(":**"))
 
-def count_session_msgs(transcript):
+def count_episode_msgs(transcript):
     # Count by message type from [type] prefix lines
     counts = {}
     for l in transcript.splitlines():
@@ -994,26 +806,20 @@ after_chat  = count_room_msgs("after")
 print(f"before — room chat messages (= negotiation moves): {before_chat}")
 print(f"after  — room chat messages (narration only):      {after_chat}")
 
-sess_path = base / f"{exp}-after" / "session-transcript.md"
-if sess_path.exists():
-    sc = count_session_msgs(sess_path.read_text())
-    direct = sc.get("direct", 0)
-    ticks  = sc.get("coordination_tick", 0)
-    joins  = sc.get("coordination_join", 0)
-    rounds = ticks // max(sc.get("coordination_join", 1), 1)  # ticks / n_agents
-    print(f"after  — session direct responses (= negotiation moves): {direct}")
-    print(f"after  — CE ticks (protocol overhead): {ticks}  joins: {joins}")
-    print(f"after  — rounds (ticks / n_agents): {ticks // joins if joins else '?'}")
+ep_path = base / f"{exp}-after" / "episode-transcript.md"
+if ep_path.exists():
+    ec = count_episode_msgs(ep_path.read_text())
+    print(f"after  — episode message types: {ec}")
 PY
 ```
 
 **What these numbers mean for the Summary table:**
 - `before room chat messages` ≈ negotiation moves (every chat turn is a decision)
-- `after session direct responses` = negotiation moves (the JSON accept/reject/counter-offer actions)
-- `after room chat messages` = narration overhead only — agents explain reasoning before running CLI
-- CE ticks are protocol infrastructure, not comparable to anything in the before case
+- `after episode replies` = negotiation moves (the accept/reject/counter-offer actions the aligner interprets)
+- `after room chat messages` = narration overhead only — agents explain reasoning around each move
+- Aligner addresses are protocol infrastructure, not comparable to anything in the before case
 
-Use `before room chat` vs `after session direct` as the apples-to-apples move count.
+Use `before room chat` vs `after episode replies` as the apples-to-apples move count.
 Use `after room chat` as a separate "narration overhead" metric if desired.
 
 Write the report to `~/.mycelium/rooms/${EXP_ID}/evaluation.md`:
@@ -1027,46 +833,16 @@ Write the report to `~/.mycelium/rooms/${EXP_ID}/evaluation.md`:
 | ... | ... | ... |
 
 ### Summary
-| Metric | Before (Channel) | After (Mycelium) |
+| Metric | Before (Chat) | After (Mycelium) |
 |--------|-----------------|-----------------|
 | Consensus reached? | ... | ... |
-| Negotiation moves | {before room msgs} | {after session direct responses} |
+| Plan compiled? | n/a | ... |
+| Negotiation moves | {before room msgs} | {after episode replies} |
 | Chat/reasoning messages | {before room msgs} | {after room msgs} |
-| CE protocol overhead | n/a | {ticks} ticks / {rounds} rounds |
+| Rounds | n/a | {aligner rounds} |
 | Issues explicitly identified | ... | ... |
 | Issues resolved | ... | ... |
 | Overall score | X/5 | X/5 |
-
-### CFN ingest activity (per-run cost delta)
-
-Diff `ingest-stats.json` between the two runs and render the delta. Use
-this block to catch cost regressions: if the `after` case ingests 10x the
-tokens of `before` for the same scenario, something's wrong upstream of
-the dedupe + circuit breaker.
-
-```bash
-python3 - <<'PY'
-import json, pathlib
-exp = "${EXP_ID}"
-for label in ("before", "after"):
-    p = pathlib.Path(f"~/.mycelium/rooms/{exp}-{label}/ingest-stats.json").expanduser()
-    if not p.exists():
-        print(f"{label}: (missing)"); continue
-    d = json.loads(p.read_text())
-    t = d.get("total", {})
-    print(f"{label}: events={t.get('events',0)} "
-          f"tokens≈{t.get('estimated_cfn_knowledge_input_tokens',0):,} "
-          f"bytes={t.get('payload_bytes',0):,}")
-PY
-```
-
-| Metric | Before | After | Delta |
-|---|---|---|---|
-| Ingest events | ... | ... | +/-N |
-| Est. input tokens | ~... | ~... | +/-N% |
-| Refused (circuit breaker) | ... | ... | ... |
-| Deduped (hash hit) | ... | ... | ... |
-| Errors | ... | ... | ... |
 
 ### Success Criteria
 | Criterion | Before | After | Delta |
@@ -1075,7 +851,7 @@ PY
 
 ### Qualitative Analysis
 
-**Before (unstructured channel):**
+**Before (unstructured chat):**
 - What worked:
 - What failed:
 - Did persona identity survive unstructured chat? (did agents stay in character?)
@@ -1084,6 +860,7 @@ PY
 - What worked:
 - What failed:
 - Did the strategy protocol (JSON counter-offers, convergence rules) produce better outcomes?
+- Did the compiled plan (`plan/tasks.md`) accurately capture the agreement?
 
 ### Verdict
 {honest assessment — include whether persona richness made a difference}
@@ -1103,65 +880,18 @@ paths, API keys from shell env, or session tokens:
 for f in ~/.mycelium/rooms/${EXP_ID}/evaluation.md \
          ~/.mycelium/rooms/${EXP_ID}-before/transcript.md \
          ~/.mycelium/rooms/${EXP_ID}-after/transcript.md \
-         ~/.mycelium/rooms/${EXP_ID}-after/session-transcript.md \
-         ~/.mycelium/rooms/${EXP_ID}-before/ingest-log.json \
-         ~/.mycelium/rooms/${EXP_ID}-after/ingest-log.json \
-         ~/.mycelium/rooms/${EXP_ID}-before/ingest-stats.json \
-         ~/.mycelium/rooms/${EXP_ID}-after/ingest-stats.json; do
+         ~/.mycelium/rooms/${EXP_ID}-after/episode-transcript.md \
+         ~/.mycelium/rooms/${EXP_ID}-after/plan-tasks.md; do
   [ -f "$f" ] || continue
   echo "=== $f ==="
   grep -inE 'sk-[a-z0-9]|ghp_|gho_|bearer [a-z0-9]|api[_-]?key.*[=:]|password.*[=:]|/Users/|/home/' "$f" | head -5 || echo "  (clean)"
 done
-
-The ingest-log JSON files are particularly worth scanning — they include
-the full payload content that was forwarded to CFN, which for agent turns
-may include filesystem paths, shell output, or tool results. Err on the
-side of redacting.
 ```
+
+The transcripts are particularly worth scanning — agent narration may include
+filesystem paths, shell output, or tool results. Err on the side of redacting.
 
 If anything lights up, redact or skip the gist. **Always ask the user before uploading.**
-
-Also fetch the knowledge graph and run semantic queries — this is the most interesting
-artifact to show teammates:
-
-```bash
-# Get the MAS ID from config
-MAS=$(python3 -c "
-import toml, os
-cfg = toml.load(os.path.expanduser('~/.mycelium/config.toml'))
-print(cfg['server']['mas_id'])
-")
-
-# Dump all nodes grouped by type
-mycelium cfn ls --mas "$MAS" --limit 500 --json 2>/dev/null | python3 -c "
-import sys, json
-nodes = json.load(sys.stdin).get('nodes', [])
-print(f'## Knowledge Graph ({len(nodes)} nodes)\\n')
-by_type = {}
-for n in nodes:
-    t = n.get('node_type', 'unknown')
-    by_type.setdefault(t, []).append(n)
-for t, ns in sorted(by_type.items(), key=lambda x: -len(x[1])):
-    print(f'### {t} ({len(ns)})')
-    for n in ns[:20]:
-        label = n.get('label') or n.get('name') or n.get('id', '')[:12]
-        desc = (n.get('description') or n.get('summary') or '')[:100]
-        print(f'- **{label}**: {desc}')
-    if len(ns) > 20:
-        print(f'  ... and {len(ns)-20} more')
-    print()
-" > /tmp/cfn-knowledge-graph.md
-
-# Run 2-3 semantic queries relevant to the scenario
-mycelium cfn query "What were the key decisions and agreements reached?" \
-  --mas "$MAS" > /tmp/cfn-query-decisions.txt 2>&1
-
-mycelium cfn query "What were the main points of disagreement and how were they resolved?" \
-  --mas "$MAS" > /tmp/cfn-query-disagreements.txt 2>&1
-
-echo "Knowledge graph: $(wc -l < /tmp/cfn-knowledge-graph.md) lines"
-echo "Query results written"
-```
 
 Stage everything under unique names to avoid filename collisions, then push as a gist:
 
@@ -1171,7 +901,7 @@ EVAL_DIR=~/.mycelium/rooms/${EXP_ID}
 cp "$EVAL_DIR/evaluation.md" "$STAGE/evaluation.md"
 # Transcripts — prefer copies in eval dir (written by Phase 5), fall back to live room dirs
 for label in before after; do
-  for fname in transcript.md session-transcript.md ingest-log.json ingest-stats.json; do
+  for fname in transcript.md episode-transcript.md plan-tasks.md; do
     src_eval="$EVAL_DIR/${label}-${fname}"
     src_room=~/.mycelium/rooms/${EXP_ID}-${label}/${fname}
     dest="$STAGE/${label}-${fname}"
@@ -1182,10 +912,6 @@ for label in before after; do
     fi
   done
 done
-# Knowledge graph artifacts
-cp /tmp/cfn-knowledge-graph.md       "$STAGE/cfn-knowledge-graph.md" 2>/dev/null || true
-cp /tmp/cfn-query-decisions.txt      "$STAGE/cfn-query-decisions.txt" 2>/dev/null || true
-cp /tmp/cfn-query-disagreements.txt  "$STAGE/cfn-query-disagreements.txt" 2>/dev/null || true
 
 # Upload via API (no gh CLI required)
 GIST_PAYLOAD=$(python3 -c "
@@ -1213,22 +939,8 @@ Notes:
 ## Phase 5: Cleanup
 
 ```bash
-# Remove experiment agents from openclaw config
-python3 -c "
-import json, os
-oc_path = os.path.expanduser('~/.openclaw/openclaw.json')
-with open(oc_path) as f:
-    oc = json.load(f)
-oc['agents']['list'] = [a for a in oc.get('agents',{}).get('list',[]) if not a.get('id','').startswith('${EXP_ID}')]
-oc.get('channels', {}).pop('mycelium-room', None)
-with open(oc_path, 'w') as f:
-    json.dump(oc, f, indent=2)
-print('Cleaned openclaw config')
-"
-
-# Remove workspaces
-rm -rf ~/.openclaw/workspaces/${EXP_ID}-*
-rm -rf ~/.openclaw/agents/${EXP_ID}-*
+# Stop any resident loops still running for this experiment
+pkill -f "mycelium await --loop --room ${EXP_ID}-" || true
 
 # Preserve transcripts into evaluation dir before deleting rooms
 # (required by summarize_experiments.py for issue recall/F1 scoring)
@@ -1237,25 +949,21 @@ for label in before after; do
   src=~/.mycelium/rooms/${EXP_ID}-${label}
   dst=~/.mycelium/rooms/${EXP_ID}
   [ -f "$src/transcript.md" ]         && cp "$src/transcript.md"         "$dst/${label}-transcript.md"
-  [ -f "$src/session-transcript.md" ] && cp "$src/session-transcript.md" "$dst/${label}-session-transcript.md"
-  [ -f "$src/ingest-log.json" ]       && cp "$src/ingest-log.json"       "$dst/${label}-ingest-log.json"
-  [ -f "$src/ingest-stats.json" ]     && cp "$src/ingest-stats.json"     "$dst/${label}-ingest-stats.json"
+  [ -f "$src/episode-transcript.md" ] && cp "$src/episode-transcript.md" "$dst/${label}-episode-transcript.md"
+  [ -f "$src/plan-tasks.md" ]         && cp "$src/plan-tasks.md"         "$dst/${label}-plan-tasks.md"
 done
 echo "Transcripts preserved in ~/.mycelium/rooms/${EXP_ID}/"
+
+# Remove experiment workspaces
+rm -rf ~/.mycelium/experiments/${EXP_ID}-*
 
 # Delete rooms
 mycelium room delete "${EXP_ID}-before" -f 2>/dev/null || curl -sf -X DELETE "$MYCELIUM_API_URL/api/rooms/${EXP_ID}-before"
 mycelium room delete "${EXP_ID}-after"  -f 2>/dev/null || curl -sf -X DELETE "$MYCELIUM_API_URL/api/rooms/${EXP_ID}-after"
 
-# Ensure hooks are back to their normal state
-openclaw hooks enable mycelium-bootstrap
-openclaw hooks enable mycelium-knowledge-extract
-
 # Clean up temp dirs
 rm -rf "$PERSONAS_DIR"
 rm -f /tmp/exp_personas_before.json /tmp/exp_personas_after.json
-
-openclaw gateway restart
 ```
 
 ---
@@ -1321,14 +1029,10 @@ The skill always does `--depth 1` clone so it gets the latest version automatica
 | `yaml` module not found | PyYAML not installed | `pip install pyyaml` |
 | Profile YAML has no `persona_parts` | Wrong file or typo | Check `ls $PERSONAS_DIR/profiles/$SCENARIO/` |
 | Strategy block missing from after-case SOUL.md | Profile only refs a preference file | Add a strategy to `persona_parts` in the profile YAML; the before case intentionally omits it |
-| `openclaw agents add` prompts interactively | Missing `--non-interactive` | Add `--non-interactive --workspace <path>` |
 | `mycelium room create` returns 400 | Room name already exists | Use unique `$EXP_ID` prefix or delete existing room first |
-| Agents don't respond in after case | Sandbox blocks `mycelium` CLI | Verify `sandbox: {mode: off}` was patched in Phase 1a, or `tools.exec.host = 'gateway'` set |
-| After-case agents chat instead of using CLI | Strategy block not in SOUL.md | See above |
+| After-case agents chat instead of using the protocol | Strategy block not in SOUL.md, or skill not installed | Check the after-case SOUL.md has the `negotiate:` block; verify `mycelium adapter add claude_code --workspace ...` ran for the workspace |
 | `curl` to backend fails | Wrong port | Read from `~/.mycelium/config.toml` |
-| No SSE connection | Plugin not loaded | Check plugin in `load.paths` and `allow` |
-| Ticks never arrive (after case) | Session room SSE not subscribed | Check poll found session room; verify CFN is running (`docker logs mycelium-backend`) |
-| Agent processes hang | `--local` flag or SSE loop in child | Ensure NOT using `--local`; check `MYCELIUM_CHANNEL_ONESHOT` env var |
-| After-case agents say "mycelium CLI isn't available" | Experiment agents are sandboxed | Set `sandbox: {mode: "off"}` or `tools.exec.host = "gateway"` on each `exp-*` agent in `openclaw.json` and restart gateway. See Phase 1a. |
-
-
+| Resident loop never picks up an address | `claude` not on PATH, or `await` handle mismatch | Check the loop's log (`~/.mycelium/experiments/<agent>/after.log`); confirm the `--handle` matches the summoned agents |
+| Ticks/addresses never arrive (after case) | aligner not registered or LLM down | `mycelium engine ls -r <room>`; `mycelium status` → llm |
+| Aligner never stops (runs to the cap) | NEGMAS termination regression | it must stop at unanimity, never run out the step cap |
+| No `plan/tasks.md` after convergence | plan compiler outage | check backend logs; fail-soft should still emit the raw `issue=value` agreement |
