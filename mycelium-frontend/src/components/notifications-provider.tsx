@@ -154,7 +154,12 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
           seenIds.current.add(n.id);
           if (!isAdmitted(n, settingsRef.current)) return;
           setNotifications((prev) => [...prev, { ...n, read: false }]);
-          if (isLeader.current && document.visibilityState !== "visible") {
+          // Notify when this tab isn't the one you're looking at. `hasFocus()`
+          // (not visibilityState) is the right signal: it's false when you've
+          // switched to another tab, minimized, OR alt-tabbed to another app —
+          // whereas visibilityState stays "visible" for a window that's merely
+          // behind another app, so those pings would be silently dropped.
+          if (isLeader.current && !document.hasFocus()) {
             if (settingsRef.current.soundEnabled) ping(settingsRef.current.soundVolume);
             if (settingsRef.current.desktopEnabled && "Notification" in window && window.Notification.permission === "granted") {
               try {
