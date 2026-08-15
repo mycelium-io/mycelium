@@ -40,7 +40,7 @@ from app.schemas import (
     SubscriptionCreate,
     SubscriptionRead,
 )
-from app.services import local_state, search_index
+from app.services import local_state, memory_sync, search_index
 from app.services.embedding import embed_text
 from app.services.filesystem import (
     delete_memory_file,
@@ -115,6 +115,78 @@ def _notify_change(room_name: str, key: str, updated_by: str, version: int) -> N
     for sub in local_state.list_subscriptions(room_name):
         if fnmatch.fnmatch(key, sub.key_pattern):
             bus.publish(agent_channel(sub.subscriber), payload)
+
+
+# Strong refs for the fire-and-forget broadcasts below — an unreferenced
+# asyncio task can be garbage-collected mid-flight (mirrors
+# RoomChannelManager._tasks / PlanSyncEngine._tasks).
+_broadcast_tasks: set[asyncio.Task[Any]] = set()
+
+
+def _broadcast_memory_write(
+    room_name: str,
+    *,
+    key: str,
+    content: str,
+    version: int,
+    base_version: int | None,
+    created_by: str,
+    updated_by: str,
+    updated_at: str,
+) -> None:
+    """Schedule an ``extraction`` knowledge push mirroring a direct memory write.
+
+    Fire-and-forget — the write has already landed on disk and in the index by
+    the time this runs, so a broadcast failure must never surface as a write
+    failure. Scoped to shared rooms: a room with no live channel
+    (``RoomChannelManager.get`` returns ``None`` — not yet provisioned, or
+    purely local) is a silent no-op, same as the plan-sync consumer.
+    """
+    from app.services import room_channels
+
+    managed = room_channels.manager.get(room_name)
+    if managed is None:
+        return
+    write = memory_sync.KnowledgeWrite(
+        key=key,
+        content=content,
+        version=version,
+        base_version=base_version,
+        created_by=created_by,
+        updated_by=updated_by,
+        updated_at=updated_at,
+    )
+    recipients = room_channels.manager.members(room_name)
+    task = asyncio.create_task(_send_memory_write_knowledge(room_name, managed, write, recipients))
+    _broadcast_tasks.add(task)
+    task.add_done_callback(_broadcast_tasks.discard)
+
+
+async def _send_memory_write_knowledge(
+    room_name: str, managed: Any, write: memory_sync.KnowledgeWrite, recipients: list[str]
+) -> None:
+    """Broadcast ``write`` on the room channel and record it locally.
+
+    Mirrors ``plan_sync.PlanSyncEngine._broadcast_knowledge``: send over SLIM,
+    then ``ingest_local`` so the transcript/UI bus see it even if SLIM never
+    loops the broadcast back to the moderator. ``ingest_local`` only records —
+    it never re-enters this write path, so this cannot re-trigger itself.
+    """
+    from app.services.l9_slim import serialize_content
+
+    envelope = memory_sync.build_knowledge_envelope(
+        room=room_name,
+        write=write,
+        recipients=recipients,
+        subkind=memory_sync.MEMORY_WRITE_SUBKIND,
+    )
+    content = serialize_content(envelope, extra={"content": f"memory updated → {write.key}"})
+    try:
+        await managed.channel.send(envelope, extra={"content": content["content"]})
+    except Exception:
+        logger.warning("failed to broadcast memory-write knowledge on room %s", room_name)
+    if managed.persister is not None:
+        managed.persister.ingest_local(envelope, content)
 
 
 @router.post("", response_model=list[MemoryRead], status_code=201)
@@ -232,6 +304,16 @@ async def create_memories(room_name: str, payload: MemoryBatchCreate):
             )
         )
         _notify_change(room_name, item.key, item.created_by, new_version)
+        _broadcast_memory_write(
+            room_name,
+            key=item.key,
+            content=body.rstrip("\n") + "\n",
+            version=new_version,
+            base_version=current_version if existing else None,
+            created_by=created_by,
+            updated_by=item.created_by,
+            updated_at=now.isoformat(),
+        )
 
     for embedded in write_metrics:
         record_memory_write(scope="namespace", embedded=embedded)

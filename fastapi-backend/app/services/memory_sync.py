@@ -10,9 +10,11 @@ running agent's working set updates mid-task (the one thing git can't stream).
 This module owns both halves of that seam:
 
 1. **Emit** — :func:`build_knowledge_envelope` wraps a :class:`KnowledgeWrite`
-   (key + markdown body + version metadata) as a ``knowledge:distillation``
-   envelope broadcast on the room channel. Converged content (the compiled plan)
-   flows out this way (see :mod:`app.services.plan_sync`).
+   (key + markdown body + version metadata) as a ``knowledge`` envelope
+   broadcast on the room channel. Converged content (the compiled plan) flows
+   out ``knowledge:distillation`` (see :mod:`app.services.plan_sync`); a direct
+   ``memory set`` write flows out ``knowledge:extraction`` (see
+   ``app.routes.memory.create_memories``) — same shape, distinct subkind.
 
 2. **Apply** — :func:`apply_knowledge` writes the carried markdown into a local
    store and reindexes the JSONL. It is the receiver half every connector runs
@@ -42,11 +44,14 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# The ``knowledge`` subkind a memory-sync write rides as. ``distillation`` (from
-# the SLIM-native subkind table, l9.VALID_SUBKINDS) is converged content
-# distilled to a shareable artifact — exactly the compiled plan.
+# The ``knowledge`` subkinds a memory-sync write rides as (both from the
+# SLIM-native subkind table, l9.VALID_SUBKINDS). ``distillation`` is converged
+# content distilled to a shareable artifact — the compiled plan
+# (:mod:`app.services.plan_sync`). ``extraction`` is a raw ``memory set`` write
+# broadcast as-is, with no negotiation behind it — kept distinct so a reader
+# can tell "the room agreed to this" from "someone just wrote this".
 KNOWLEDGE_SUBKIND = "distillation"
-KNOWLEDGE_PAYLOAD_TYPE = "distillation"
+MEMORY_WRITE_SUBKIND = "extraction"
 
 
 @dataclass
@@ -124,21 +129,26 @@ def build_knowledge_envelope(
     room: str,
     write: KnowledgeWrite,
     recipients: list[str],
+    subkind: str = KNOWLEDGE_SUBKIND,
 ) -> L9:
-    """Build the ``knowledge:distillation`` envelope that carries ``write``.
+    """Build the ``knowledge`` envelope that carries ``write``.
 
     Broadcast on the room channel; every connector applies it locally. Emitted
     with empty causal parents — like the aligner's terminal verdict, a broadcast
     memory push must be releasable by every member regardless of what each has
-    seen (the rich causal chain stays in the episode record).
+    seen (the rich causal chain stays in the episode record). ``subkind``
+    defaults to the converged-plan shape (:data:`KNOWLEDGE_SUBKIND`); a raw
+    ``memory set`` write passes :data:`MEMORY_WRITE_SUBKIND` instead. The
+    payload's ``type`` always mirrors ``subkind`` so a reader can tell the two
+    apart without unpacking ``data``.
     """
     return l9.build_envelope(
         kind=Kind.knowledge,
-        subkind=KNOWLEDGE_SUBKIND,
+        subkind=subkind,
         episode=l9.episode_urn(room, "knowledge"),
         recipients=recipients,
         topic=l9.topic_urn(room),
-        payload_type=KNOWLEDGE_PAYLOAD_TYPE,
+        payload_type=subkind,
         payload_data=write.to_payload(),
     )
 
