@@ -229,6 +229,12 @@ class RoomChannelManager:
                     "transient_errors": (
                         managed.persister.transient_errors if managed.persister else 0
                     ),
+                    "knowledge_applied": (
+                        managed.persister.knowledge_applied if managed.persister else 0
+                    ),
+                    "knowledge_conflicts": (
+                        managed.persister.knowledge_conflicts if managed.persister else 0
+                    ),
                 }
             )
         return {

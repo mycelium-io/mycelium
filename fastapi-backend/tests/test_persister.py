@@ -11,7 +11,7 @@ round trip over a real SLIM node is in ``test_l9_over_slim_roundtrip.py``
 
 import pytest
 
-from app.services import l9, persister
+from app.services import l9, memory_sync, persister
 from app.services.filesystem import get_room_dir, read_memory_file
 from app.services.l9_models import Kind
 
@@ -585,3 +585,136 @@ def test_list_store_skips_presence_and_non_conversational():
     p._ingest(pres_env, pres_content)
 
     assert local_state.list_messages(room) == []
+
+
+# ── knowledge apply: inbound memory-sync writes converge the local store ─────
+
+
+@pytest.fixture(autouse=True)
+def _stub_embeddings(monkeypatch):
+    """Applying a knowledge write reindexes through the embedder; stub it so
+    these tests never load the fastembed ONNX model (matches
+    ``test_memory_sync.py``'s fixture)."""
+    monkeypatch.setattr("app.services.embedding._STUB", True)
+
+
+def _knowledge_envelope(
+    *,
+    room: str,
+    key: str = "plan/tasks.md",
+    content: str = "# Plan\n\n- [ ] first task\n",
+    version: int = 1,
+    base_version: int | None = None,
+    subkind: str = memory_sync.KNOWLEDGE_SUBKIND,
+):
+    """A `knowledge` envelope; `build_knowledge_envelope` mints a fresh random
+    message id per call, so distinct calls are never deduped against each other."""
+    from app.services.l9_slim import serialize_content
+
+    write = memory_sync.KnowledgeWrite(
+        key=key,
+        content=content,
+        version=version,
+        created_by="system",
+        updated_by="system",
+        updated_at="2026-08-04T00:00:00+00:00",
+        base_version=base_version,
+    )
+    env = memory_sync.build_knowledge_envelope(
+        room=room, write=write, recipients=["bob"], subkind=subkind
+    )
+    return env, serialize_content(env)
+
+
+@pytest.mark.asyncio
+async def test_ingest_applies_inbound_knowledge_write_to_local_store():
+    """A `knowledge` envelope arriving on the channel writes the carried markdown
+    into this backend's local store — the receive half of cross-store memory
+    convergence (#549)."""
+    room = "knowledge-room-1"
+    p = _persister_for(room, summoned=[], converged=[])
+
+    env, content = _knowledge_envelope(room=room, version=1)
+    p._ingest(env, content)
+    for task in list(p._knowledge_tasks):
+        await task
+
+    got = read_memory_file(get_room_dir(room), "plan/tasks.md")
+    assert got is not None
+    assert got[1] == "# Plan\n\n- [ ] first task"
+    assert p.knowledge_applied == 1
+    assert p.knowledge_conflicts == 0
+
+
+@pytest.mark.asyncio
+async def test_ingest_applies_extraction_subkind_the_same_way():
+    """`extraction` (a raw ``memory set``) applies identically to `distillation`
+    — the applier is subkind-agnostic."""
+    room = "knowledge-room-2"
+    p = _persister_for(room, summoned=[], converged=[])
+
+    env, content = _knowledge_envelope(
+        room=room,
+        key="notes/idea.md",
+        content="an idea\n",
+        version=1,
+        subkind=memory_sync.MEMORY_WRITE_SUBKIND,
+    )
+    p._ingest(env, content)
+    for task in list(p._knowledge_tasks):
+        await task
+
+    got = read_memory_file(get_room_dir(room), "notes/idea.md")
+    assert got is not None
+    assert got[1] == "an idea"
+    assert p.knowledge_applied == 1
+
+
+@pytest.mark.asyncio
+async def test_ingest_knowledge_loopback_is_idempotent_not_a_double_write():
+    """The sender's own broadcast loops back through ``ingest_local`` /
+    ``_ingest`` too. Applying it again must be a silent no-op (same version) —
+    never a re-broadcast or a double-write — so two hosts can't ping-pong."""
+    room = "knowledge-room-3"
+    p = _persister_for(room, summoned=[], converged=[])
+
+    env, content = _knowledge_envelope(room=room, version=1)
+    p._ingest(env, content)
+    for task in list(p._knowledge_tasks):
+        await task
+    assert p.knowledge_applied == 1
+
+    # Same write, same version, arriving again (e.g. a second connector's own
+    # loopback of the same broadcast, or a redelivery).
+    env2, content2 = _knowledge_envelope(room=room, version=1)
+    p._ingest(env2, content2)
+    for task in list(p._knowledge_tasks):
+        await task
+
+    assert p.knowledge_applied == 1  # unchanged: idempotent, not a second write
+    assert p.knowledge_conflicts == 0
+
+
+@pytest.mark.asyncio
+async def test_ingest_knowledge_stale_base_is_a_conflict_not_a_merge():
+    """An incoming write behind the local version is rejected (last-write-wins);
+    the newer local content survives untouched."""
+    room = "knowledge-room-4"
+    p = _persister_for(room, summoned=[], converged=[])
+
+    newer, newer_content = _knowledge_envelope(room=room, content="v2 content\n", version=2)
+    p._ingest(newer, newer_content)
+    for task in list(p._knowledge_tasks):
+        await task
+    assert p.knowledge_applied == 1
+
+    stale, stale_content = _knowledge_envelope(room=room, content="v1 content\n", version=1)
+    p._ingest(stale, stale_content)
+    for task in list(p._knowledge_tasks):
+        await task
+
+    got = read_memory_file(get_room_dir(room), "plan/tasks.md")
+    assert got is not None
+    assert got[1] == "v2 content"  # the newer local content was not overwritten
+    assert p.knowledge_applied == 1  # the stale write did not count as applied
+    assert p.knowledge_conflicts == 1
