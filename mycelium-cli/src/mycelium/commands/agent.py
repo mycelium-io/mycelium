@@ -907,6 +907,11 @@ def agent_invoke(
                 f"\n[dim]@{manifest.handle} is resident — it'll pick this up on its "
                 f"next await.[/dim]"
             )
+        elif _try_herdr_wake(config, room_name, manifest.handle):
+            console.print(
+                f"\n[dim]@{manifest.handle} is not resident — woke its herdr pane in "
+                f"place; it'll drain this turn and respond through the room.[/dim]"
+            )
         else:
             console.print(
                 f"\n[dim]@{manifest.handle} is not resident — queued on the transcript "
@@ -919,6 +924,35 @@ def agent_invoke(
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
         print_error(e, verbose=verbose)
         raise typer.Exit(1) from None
+
+
+def _try_herdr_wake(config: MyceliumConfig, room_name: str, handle: str) -> bool:
+    """Opt-in, fail-soft: wake ``handle``'s mapped herdr pane in place.
+
+    Returns ``True`` only when herdr actually woke the agent — the strictly-better
+    replacement for the removed cold-spawn daemon (the agent wakes with full
+    context instead of re-spawning from zero). Any miss (feature off, herdr
+    absent/unreachable, no pane mapped, agent busy, stale mapping) returns
+    ``False`` so the caller prints the honest "queued on the cursor" fallback.
+    Never raises: a herdr hiccup must not break ``agent invoke``.
+    """
+    if not config.herdr.autowake:
+        return False
+    try:
+        from mycelium.integrations.herdr import HerdrBridge, build_wake_prompt
+
+        bridge = HerdrBridge()
+        mapping = bridge.registry.get(room_name, handle)
+        if mapping is None or not bridge.available():
+            return False
+        result = bridge.wake(
+            mapping,
+            build_wake_prompt(room_name, mapping.handle),
+            timeout_ms=config.herdr.wake_timeout_ms,
+        )
+        return result.ok
+    except Exception:  # noqa: BLE001 - wake is best-effort; fall back to the cursor
+        return False
 
 
 # ── rm ───────────────────────────────────────────────────────────────────────

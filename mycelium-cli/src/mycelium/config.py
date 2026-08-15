@@ -160,6 +160,26 @@ class RuntimeConfig(BaseModel):
     )
 
 
+class HerdrConfig(BaseModel):
+    """Optional herdr persistent-runtime wake layer.
+
+    herdr (https://herdr.dev) keeps coding-agent sessions alive and addressable.
+    When ``autowake`` is on, a non-resident ``agent invoke`` tries to wake the
+    handle's mapped herdr pane (``mycelium herdr map``) instead of only queuing on
+    the durable cursor. Off by default and always fail-soft: a missing/unreachable
+    herdr, or an unmapped/busy agent, falls straight back to the cursor behavior.
+    """
+
+    autowake: bool = Field(
+        default=False,
+        description="On a non-resident `agent invoke`, wake the handle's mapped herdr pane.",
+    )
+    wake_timeout_ms: int = Field(
+        default=120000,
+        description="Wait budget (ms) for a herdr wake to settle.",
+    )
+
+
 class RoomConfig(BaseModel):
     """Room management configuration."""
 
@@ -242,6 +262,7 @@ class MyceliumConfig(BaseModel):
     llm: LLMConfig = Field(default_factory=LLMConfig)
     engine: EngineConfig = Field(default_factory=EngineConfig)
     runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
+    herdr: HerdrConfig = Field(default_factory=HerdrConfig)
     rooms: RoomConfig = Field(default_factory=RoomConfig)
     metrics: MetricsConfig = Field(default_factory=MetricsConfig)
     adapters: dict[str, Any] = Field(
@@ -424,6 +445,7 @@ class MyceliumConfig(BaseModel):
             "llm",
             "engine",
             "runtime",
+            "herdr",
             "metrics",
             "adapters",
         )
