@@ -12,6 +12,8 @@ here we pin the accessors and the round trip.
 
 from __future__ import annotations
 
+import pytest
+
 from mycelium.slim import l9
 
 
@@ -81,3 +83,89 @@ def test_no_topic_omits_context() -> None:
     )
     assert "context" not in content["l9"]["header"]
     assert l9.topic_of(content) is None
+
+
+# ── build_envelope_content — the generic builder behind `l9 send` ───────────
+
+
+def test_build_envelope_content_sets_kind_and_subkind() -> None:
+    content = l9.build_envelope_content(
+        kind="commit",
+        subkind="resolved",
+        sender="julia",
+        recipients=["bob"],
+        episode="ep-1",
+        parents=["p-1"],
+        payload_data={"assignments": {"cap": "30"}},
+    )
+    assert content["l9"]["header"]["kind"] == "commit"
+    assert content["l9"]["header"]["subkind"] == "resolved"
+    assert content["l9"]["header"]["message"]["parents"] == ["p-1"]
+    assert content["l9"]["payload"]["data"] == {"assignments": {"cap": "30"}}
+
+
+def test_build_envelope_content_omits_subkind_when_absent() -> None:
+    content = l9.build_envelope_content(kind="exchange", sender="julia", episode="ep-1")
+    assert "subkind" not in content["l9"]["header"]
+
+
+def test_build_envelope_content_rejects_invalid_subkind() -> None:
+    with pytest.raises(l9.L9ValidationError):
+        l9.build_envelope_content(
+            kind="exchange", subkind="not-a-real-subkind", sender="julia", episode="ep-1"
+        )
+
+
+def test_build_reply_content_matches_generic_builder_for_exchange() -> None:
+    """build_reply_content is exactly the exchange-kind specialization."""
+    via_generic = l9.build_envelope_content(
+        kind=l9.EXCHANGE_KIND,
+        sender="a",
+        recipients=["b"],
+        episode="ep",
+        parents=["p"],
+        topic="t",
+        text="hi",
+        message_id="m-1",
+        payload_type="reply",
+    )
+    via_reply = l9.build_reply_content(
+        sender="a",
+        recipients=["b"],
+        episode="ep",
+        parents=["p"],
+        topic="t",
+        text="hi",
+        message_id="m-1",
+        payload_type="reply",
+    )
+    assert via_generic == via_reply
+
+
+# ── kind/subkind validation ──────────────────────────────────────────────────
+
+
+def test_validate_kind_accepts_known_kinds() -> None:
+    for kind in l9.VALID_KINDS:
+        l9.validate_kind(kind)  # must not raise
+
+
+def test_validate_kind_rejects_unknown_kind() -> None:
+    with pytest.raises(l9.L9ValidationError):
+        l9.validate_kind("not-a-kind")
+
+
+def test_validate_subkind_none_always_valid() -> None:
+    for kind in l9.VALID_KINDS:
+        l9.validate_subkind(kind, None)  # must not raise
+
+
+def test_validate_subkind_accepts_allowed_pairs() -> None:
+    for kind, subkinds in l9.VALID_SUBKINDS.items():
+        for subkind in subkinds:
+            l9.validate_subkind(kind, subkind)  # must not raise
+
+
+def test_validate_subkind_rejects_mismatched_pair() -> None:
+    with pytest.raises(l9.L9ValidationError):
+        l9.validate_subkind("exchange", "converged")  # "converged" belongs to commit

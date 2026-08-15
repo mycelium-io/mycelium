@@ -127,6 +127,14 @@ def test_knowledge_envelope_serializes_to_contract():
     assert produced == g["expected_envelope"]
 
 
+def test_valid_subkinds_match_contract():
+    """The backend's subkind table matches the frozen contract the CLI mirrors."""
+    g = {k: v for k, v in _contract()["valid_subkinds"].items() if k != "_comment"}
+    assert {k.value for k in l9.VALID_SUBKINDS} == set(g)
+    for kind, allowed in g.items():
+        assert l9.VALID_SUBKINDS[Kind(kind)] == frozenset(allowed)
+
+
 def test_channel_name_topic_matches_contract():
     """A room channel's app segment is the frozen default topic."""
     pytest.importorskip("slim_bindings")

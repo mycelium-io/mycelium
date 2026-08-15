@@ -117,6 +117,15 @@ def test_knowledge_envelope_parses_to_contract_write():
     assert data["updated_at"] == w["updated_at"]
 
 
+def test_valid_subkinds_match_contract():
+    """The CLI's kind/subkind vocabulary (used by the hidden `l9 send` plumbing)
+    is byte-for-byte the backend's ``app.services.l9.VALID_SUBKINDS`` table."""
+    g = {k: v for k, v in _contract()["valid_subkinds"].items() if k != "_comment"}
+    assert set(l9.VALID_KINDS) == set(g)
+    for kind, allowed in g.items():
+        assert l9.VALID_SUBKINDS[kind] == frozenset(allowed)
+
+
 def test_channel_name_topic_matches_contract():
     """A room channel's app segment is the frozen default topic."""
     pytest.importorskip("slim_bindings")

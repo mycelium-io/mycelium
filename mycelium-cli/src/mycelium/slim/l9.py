@@ -51,6 +51,42 @@ EXCHANGE_KIND = "exchange"
 KNOWLEDGE_KIND = "knowledge"
 
 
+class L9ValidationError(ValueError):
+    """A hand-crafted envelope's kind/subkind falls outside the wire vocabulary."""
+
+
+# Kind -> allowed subkinds. Mirrors the backend's authoritative table
+# (``app.services.l9.VALID_SUBKINDS``) byte-for-byte — see
+# ``contracts/slim-l9-wire.json`` for the drift guard both suites assert
+# against. An empty/None subkind is always valid, whatever the kind.
+VALID_SUBKINDS: dict[str, frozenset[str]] = {
+    "knowledge": frozenset({"query", "distillation", "extraction", "feedback"}),
+    "commit": frozenset({"converged", "resolved", "rejected"}),
+    "intent": frozenset({"coordinator-assignment", "mission"}),
+    "exchange": frozenset({"team-formation"}),
+    "contingency": frozenset({"negotiation"}),
+}
+
+VALID_KINDS: frozenset[str] = frozenset(VALID_SUBKINDS)
+
+
+def validate_kind(kind: str) -> None:
+    """Reject a kind outside the L9 vocabulary."""
+    if kind not in VALID_KINDS:
+        raise L9ValidationError(f"invalid kind {kind!r} (allowed: {sorted(VALID_KINDS)})")
+
+
+def validate_subkind(kind: str, subkind: str | None) -> None:
+    """Reject a subkind outside the allowed table for ``kind`` (mirrors the backend)."""
+    if not subkind:
+        return
+    allowed = VALID_SUBKINDS.get(kind, frozenset())
+    if subkind not in allowed:
+        raise L9ValidationError(
+            f"invalid subkind {subkind!r} for kind={kind} (allowed: {sorted(allowed)})"
+        )
+
+
 def room_episode(room: str) -> str:
     """The room's live-episode URN — must match the backend's ``l9.episode_urn``."""
     return f"urn:ioc:mycelium:episode:{room}:live"
@@ -59,6 +95,60 @@ def room_episode(room: str) -> str:
 def room_topic(room: str) -> str:
     """The room's topic URN — must match the backend's ``l9.topic_urn``."""
     return f"urn:concept:mycelium:{room}"
+
+
+def build_envelope_content(
+    *,
+    kind: str,
+    subkind: str | None = None,
+    sender: str,
+    recipients: list[str] | None = None,
+    episode: str,
+    parents: list[str] | None = None,
+    topic: str | None = None,
+    text: str = "",
+    message_id: str | None = None,
+    payload_type: str = "data",
+    payload_data: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build a full content dict for a hand-crafted envelope of any kind/subkind.
+
+    The general form: :func:`build_reply_content` is the ``exchange``-reply
+    specialization every connector uses; this is the escape hatch for crafting
+    anything else (a ``commit``, a ``knowledge`` push, an odd subkind) — the CLI's
+    ``mycelium l9 send`` plumbing. Raises :class:`L9ValidationError` before
+    touching the wire if ``subkind`` isn't valid for ``kind``.
+    """
+    validate_subkind(kind, subkind)
+
+    actors: list[dict[str, str]] = [{"id": sender, "role": "agent"}]
+    actors += [{"id": r, "role": "agent"} for r in (recipients or [])]
+
+    header: dict[str, Any] = {
+        "protocol": PROTOCOL,
+        "subprotocol": SUBPROTOCOL,
+        "version": VERSION,
+        "kind": kind,
+    }
+    if subkind:
+        header["subkind"] = subkind
+    # ``participants.groups`` is required-but-nullable in the schema; the
+    # backend restores an explicit null after ``exclude_none``, so we mirror
+    # that here for a clean re-validation.
+    header["participants"] = {"actors": actors, "groups": None}
+    header["message"] = {
+        "id": message_id or str(uuid.uuid4()),
+        "parents": list(parents or []),
+        "episode": episode,
+    }
+    if topic:
+        header["context"] = {"topic": topic}
+
+    envelope: dict[str, Any] = {
+        "header": header,
+        "payload": {"type": payload_type, "data": payload_data or {}},
+    }
+    return {CONTENT_TEXT_KEY: text, CONTENT_L9_KEY: envelope}
 
 
 def build_reply_content(
@@ -80,32 +170,18 @@ def build_reply_content(
     message that woke the agent) so the backend's causal ordering + transcript
     stay correct.
     """
-    actors: list[dict[str, str]] = [{"id": sender, "role": "agent"}]
-    actors += [{"id": r, "role": "agent"} for r in recipients]
-
-    header: dict[str, Any] = {
-        "protocol": PROTOCOL,
-        "subprotocol": SUBPROTOCOL,
-        "version": VERSION,
-        "kind": EXCHANGE_KIND,
-        # ``participants.groups`` is required-but-nullable in the schema; the
-        # backend restores an explicit null after ``exclude_none``, so we mirror
-        # that here for a clean re-validation.
-        "participants": {"actors": actors, "groups": None},
-        "message": {
-            "id": message_id or str(uuid.uuid4()),
-            "parents": list(parents),
-            "episode": episode,
-        },
-    }
-    if topic:
-        header["context"] = {"topic": topic}
-
-    envelope: dict[str, Any] = {
-        "header": header,
-        "payload": {"type": payload_type, "data": payload_data or {}},
-    }
-    return {CONTENT_TEXT_KEY: text, CONTENT_L9_KEY: envelope}
+    return build_envelope_content(
+        kind=EXCHANGE_KIND,
+        sender=sender,
+        recipients=recipients,
+        episode=episode,
+        parents=parents,
+        topic=topic,
+        text=text,
+        message_id=message_id,
+        payload_type=payload_type,
+        payload_data=payload_data,
+    )
 
 
 def serialize(content: dict[str, Any]) -> bytes:
