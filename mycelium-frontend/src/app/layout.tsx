@@ -5,6 +5,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { CurrentUserProvider } from "@/components/current-user";
+import { NotificationsProvider } from "@/components/notifications-provider";
 
 export const metadata: Metadata = {
   title: "mycelium",
@@ -23,7 +24,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className="min-h-screen bg-bg text-text antialiased">
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange>
-          <CurrentUserProvider>{children}</CurrentUserProvider>
+          <CurrentUserProvider>
+            <NotificationsProvider>{children}</NotificationsProvider>
+          </CurrentUserProvider>
         </ThemeProvider>
       </body>
     </html>

@@ -49,6 +49,7 @@ const CHANNEL_VIEW_TYPES = new Set([
   "coordination_join",
   "coordination_consensus",
   "plan_updated",
+  "l9_knowledge",
 ]);
 
 // Lifecycle events that render as slim system notices (not chat rows). Used to
@@ -58,6 +59,7 @@ const SYSTEM_TYPES = new Set([
   "coordination_join",
   "coordination_consensus",
   "plan_updated",
+  "l9_knowledge",
 ]);
 
 /** Loading placeholder shaped like a short run of chat rows (avatar + lines). */
@@ -194,6 +196,39 @@ function parseEvent(msg: Record<string, unknown>): Event {
       content = (raw.content as string) || "";
       mtype = recipient ? "direct" : "broadcast";
       break;
+    case "l9_commit": {
+      // The aligner's verdict rides as an L9 "commit" envelope, not the legacy
+      // `coordination_consensus` message_type nothing on the live wire actually
+      // emits anymore. Unwrap it into the shape the (still-live)
+      // "coordination_consensus" render path and NegotiationView expect, so a
+      // real consensus renders instead of hitting the unhandled-type fallback.
+      const l9env = (raw.l9 as Record<string, unknown> | undefined) ?? {};
+      const header = (l9env.header as Record<string, unknown> | undefined) ?? {};
+      const payload = (l9env.payload as Record<string, unknown> | undefined) ?? {};
+      const data = (payload.data as Record<string, unknown> | undefined) ?? {};
+      const message = header.message as Record<string, unknown> | undefined;
+      content = (raw.content as string) || "";
+      raw = {
+        ...raw,
+        broken: header.subkind !== "converged",
+        assignments: data.assignments,
+        metrics: data.metrics,
+        episode: message?.episode,
+      };
+      mtype = "coordination_consensus";
+      break;
+    }
+    case "l9_knowledge": {
+      // A memory push (e.g. the compiled plan syncing to every member) rides as
+      // an L9 "knowledge" envelope. Recognized as its own system notice rather
+      // than falling to the unhandled-type fallback.
+      const l9env = (raw.l9 as Record<string, unknown> | undefined) ?? {};
+      const payload = (l9env.payload as Record<string, unknown> | undefined) ?? {};
+      const data = (payload.data as Record<string, unknown> | undefined) ?? {};
+      content = (raw.content as string) || `${(data.key as string) ?? "memory"} updated`;
+      raw = { ...raw, key: data.key, updated_by: data.updated_by, version: data.version };
+      break;
+    }
     default:
       // A message type nothing above handles would otherwise vanish from the
       // channel view without a trace (exactly how l9_exchange hid). Surface it
@@ -238,6 +273,7 @@ const typeStyles: Record<string, { tone: "accent" | "ok" | "warn" | "muted" | "i
   coordination_tick:      { tone: "muted",  label: "TICK" },
   coordination_consensus: { tone: "ok",     label: "CONSENSUS" },
   memory_changed:         { tone: "warn",   label: "MEMORY" },
+  l9_knowledge:           { tone: "warn",   label: "KNOWLEDGE" },
 };
 const defaultStyle = { tone: "muted" as const, label: "MSG" };
 
@@ -543,6 +579,17 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
                 return (
                   <SystemNotice key={ev.id} time={ev.time} dot="var(--accent)" label="Plan">
                     {body}
+                  </SystemNotice>
+                );
+              }
+              if (ev.type === "l9_knowledge") {
+                const key = ev.raw.key as string | undefined;
+                const updatedBy = ev.raw.updated_by as string | undefined;
+                return (
+                  <SystemNotice key={ev.id} time={ev.time} dot="var(--yellow)" label="Knowledge">
+                    <span>{ev.content}</span>
+                    {key && <span className="font-mono text-muted-foreground">{key}</span>}
+                    {updatedBy ? <span>by @{updatedBy}</span> : null}
                   </SystemNotice>
                 );
               }
