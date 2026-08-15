@@ -10,6 +10,7 @@ import { BarChart3, Boxes, Plus, Search, SearchX } from "lucide-react";
 import { fetchRooms, getAppEventsSSEUrl, logFetchError } from "@/lib/api";
 import { CreateRoomDialog } from "@/components/create-room-dialog";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { NotificationBell } from "@/components/notification-bell";
 import { EmptyState } from "@/components/empty-state";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
@@ -162,7 +163,8 @@ export function RoomsSidebar({ activeRoom = null }: Props) {
           <BarChart3 className="size-4" />
           Metrics
         </Link>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-0.5">
+          <NotificationBell />
           <ThemeToggle />
         </div>
       </div>

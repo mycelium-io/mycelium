@@ -11,6 +11,7 @@ invest here.
 GET /rooms/{room}/messages/stream — room event stream
 GET /agents/{handle}/stream       — per-agent event stream
 GET /events/stream                — global app events (room create/delete)
+GET /notifications/stream         — aggregate: every room's activity, one stream
 """
 
 import asyncio
@@ -22,7 +23,7 @@ from fastapi.responses import StreamingResponse
 
 from app.bus import agent_channel, app_channel, bus, room_channel
 from app.services import local_state
-from app.services.filesystem import room_exists
+from app.services.filesystem import list_room_names, room_exists
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +90,71 @@ async def stream_app_events(request: Request):
     """
     return StreamingResponse(
         _sse_from_channel(request, app_channel()),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+async def _sse_notifications(request: Request):
+    """Yield SSE frames merging the app channel with every room's channel.
+
+    One subscription in place of the UI opening a per-room stream for every
+    room the user participates in — the notification center's source feed.
+    Frames are byte-identical to the per-room stream's (``l9_*``,
+    ``coordination_join``, ``plan_updated``, each carrying ``room_name``), plus
+    the app channel's ``room_created``/``room_deleted``, which this generator
+    also uses to grow/shrink its own room subscription set live.
+    """
+    app_queue = bus.subscribe(app_channel())
+    room_queues: dict[str, asyncio.Queue] = {
+        name: bus.subscribe(room_channel(name)) for name in list_room_names()
+    }
+    pending: set[asyncio.Task] = set()
+    try:
+        yield "event: ping\ndata: {}\n\n"
+        while True:
+            if await request.is_disconnected():
+                break
+            queues = [app_queue, *room_queues.values()]
+            pending = {asyncio.ensure_future(q.get()) for q in queues}
+            done, pending = await asyncio.wait(
+                pending, timeout=15.0, return_when=asyncio.FIRST_COMPLETED
+            )
+            for task in pending:
+                task.cancel()
+            pending = set()
+            if not done:
+                yield ": keep-alive\n\n"
+                continue
+            for task in done:
+                payload = task.result()
+                kind = payload.get("type")
+                name = payload.get("room_name")
+                if kind == "room_created" and isinstance(name, str) and name not in room_queues:
+                    room_queues[name] = bus.subscribe(room_channel(name))
+                elif kind == "room_deleted" and isinstance(name, str):
+                    stale = room_queues.pop(name, None)
+                    if stale is not None:
+                        bus.unsubscribe(room_channel(name), stale)
+                yield f"data: {json.dumps(payload, default=str)}\n\n"
+    finally:
+        for task in pending:
+            task.cancel()
+        bus.unsubscribe(app_channel(), app_queue)
+        for name, q in room_queues.items():
+            bus.unsubscribe(room_channel(name), q)
+
+
+@router.get("/notifications/stream")
+async def stream_notifications(request: Request):
+    """Server-Sent Events stream aggregating activity across every room.
+
+    Powers the notification center: a single connection, independent of which
+    room (if any) is open, instead of the per-room stream that only carries
+    activity for whatever room is currently on screen.
+    """
+    return StreamingResponse(
+        _sse_notifications(request),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

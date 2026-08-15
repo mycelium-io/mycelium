@@ -169,6 +169,13 @@ export function getAppEventsSSEUrl() {
   return `/api/events/stream`;
 }
 
+/** SSE endpoint aggregating every room's activity into one stream — the
+ *  notification center's feed, so it doesn't have to open one connection per
+ *  room the user participates in. */
+export function getNotificationsSSEUrl() {
+  return `/api/notifications/stream`;
+}
+
 export async function sendRoomMessage(
   roomName: string,
   data: { sender_handle: string; content: string; message_type?: string },
