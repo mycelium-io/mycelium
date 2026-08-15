@@ -366,3 +366,56 @@ def test_reconcile_note_both_absent() -> None:
 
     text, _ = _reconcile_note(None, None)
     assert text == "—"
+
+
+# ── enroll handle derivation ────────────────────────────────────────────────────
+
+_HANDLE_RE = __import__("re").compile(r"^[a-z0-9][a-z0-9._-]*$")  # AgentManifest.handle rule
+
+
+def test_sanitize_handle_coerces_tab_label() -> None:
+    from mycelium.commands.herdr import _sanitize_handle
+
+    # A real tab label with spaces/emoji/punctuation → a valid handle.
+    h = _sanitize_handle("✳ Review pull requests excluding PR 494", "")
+    assert _HANDLE_RE.match(h)
+    assert h.startswith("review-pull-requests") and len(h) <= 32  # emoji dropped, capped
+    # Prefix namespacing still yields a valid handle.
+    assert _sanitize_handle("pr review", "agent-") == "agent-pr-review"
+    # Nothing usable → empty (caller falls back to the pane).
+    assert _sanitize_handle("✳✳✳", "") == ""
+
+
+def test_derive_handle_prefers_tab_then_falls_back_to_pane() -> None:
+    from mycelium.commands.herdr import _derive_handle
+
+    taken: set[str] = set()
+    # Tab name wins.
+    h1 = _derive_handle(
+        tab_label="pr review", pane_id="w2:pQ", prefix="", name_from="tab", taken=taken
+    )
+    assert h1 == "pr-review"
+    # Empty/unusable label → pane fallback (namespaced so it isn't a bare "pr").
+    h2 = _derive_handle(tab_label="", pane_id="w2:pR", prefix="", name_from="tab", taken=taken)
+    assert h2 == "agent-pr"
+    # name_from='pane' ignores the label entirely.
+    h3 = _derive_handle(
+        tab_label="pr review", pane_id="w2:pS", prefix="", name_from="pane", taken=taken
+    )
+    assert h3 == "ps"
+
+
+def test_derive_handle_disambiguates_duplicate_tab_names() -> None:
+    from mycelium.commands.herdr import _derive_handle
+
+    taken: set[str] = set()
+    first = _derive_handle(
+        tab_label="build", pane_id="w2:pA", prefix="", name_from="tab", taken=taken
+    )
+    taken.add(first)
+    second = _derive_handle(
+        tab_label="build", pane_id="w2:pB", prefix="", name_from="tab", taken=taken
+    )
+    assert first == "build"
+    assert second == "build-pb"  # collision → pane suffix appended
+    assert _HANDLE_RE.match(second)

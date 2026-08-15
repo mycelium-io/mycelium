@@ -21,6 +21,8 @@ would.
 
 from __future__ import annotations
 
+import re
+
 import typer
 from rich.console import Console
 from rich.table import Table
@@ -242,6 +244,175 @@ def herdr_ls(
                 f"[{ncolour}]{note}[/{ncolour}]",
             )
         console.print(table)
+    except typer.Exit:
+        raise
+    except Exception as e:
+        print_error(e, verbose=bool(ctx.obj and ctx.obj.get("verbose")))
+        raise typer.Exit(1) from None
+
+
+def _sanitize_handle(raw: str, prefix: str) -> str:
+    """Coerce arbitrary text (a tab label / pane id) to the manifest handle rule.
+
+    Handles must match ``^[a-z0-9][a-z0-9._-]*$``. Lowercase, collapse runs of
+    invalid chars to a single ``-``, trim separators, cap length, prepend
+    ``prefix``. Returns ``""`` if nothing usable survives (caller falls back).
+    """
+    s = re.sub(r"[^a-z0-9._-]+", "-", raw.strip().lower())
+    s = re.sub(r"[-._]{2,}", "-", s).strip("-._")[:32].strip("-._")
+    if not s:
+        return ""
+    cand = f"{prefix}{s}".lstrip("-._")
+    return cand if re.match(r"^[a-z0-9][a-z0-9._-]*$", cand) else ""
+
+
+def _pane_suffix(pane_id: str) -> str:
+    """The stable, unique tail of a pane id (``w2:pV`` → ``pv``)."""
+    return re.sub(r"[^a-z0-9]+", "", pane_id.split(":")[-1].lower()) or "x"
+
+
+def _derive_handle(
+    *, tab_label: str, pane_id: str, prefix: str, name_from: str, taken: set[str]
+) -> str:
+    """Pick a unique handle for a pane, preferring the tab name when asked.
+
+    ``name_from='tab'`` uses the (meaningful) tab label, falling back to the pane
+    id when the label is empty/unusable; ``'pane'`` always uses the pane id. On a
+    collision within the batch (two tabs with the same name), the pane suffix is
+    appended to keep handles unique — pane ids are unique by construction.
+    """
+    if name_from == "tab":
+        base = _sanitize_handle(tab_label, prefix)
+        if not base:  # unusable tab label → pane fallback, namespaced so it isn't bare
+            base = _sanitize_handle(_pane_suffix(pane_id), prefix or "agent-")
+    else:  # pane mode: the pane id with the caller's prefix (verbatim)
+        base = _sanitize_handle(_pane_suffix(pane_id), prefix)
+    if not base:
+        base = f"agent-{_pane_suffix(pane_id)}"
+    if base not in taken:
+        return base
+    disambiguated = _sanitize_handle(f"{base}-{_pane_suffix(pane_id)}", "")
+    return disambiguated or f"{base}-{_pane_suffix(pane_id)}"
+
+
+@doc_ref(
+    usage="mycelium herdr enroll --workspace <id> --room <room> [--kind K] [--wake] [--dry-run]",
+    desc="Enroll every live herdr agent in a workspace into a mycelium room.",
+    group="agent",
+)
+@app.command("enroll")
+def herdr_enroll(
+    ctx: typer.Context,
+    workspace: str = typer.Option(..., "--workspace", "-w", help="herdr workspace id, e.g. w2."),
+    room: str | None = typer.Option(None, "--room", "-r", help="Room (defaults to active)."),
+    kind: str | None = typer.Option(None, "--kind", help="Only agents of this herdr kind."),
+    name_from: str = typer.Option(
+        "tab", "--name-from", help="Handle source: 'tab' (tab name) or 'pane' (pane id)."
+    ),
+    prefix: str = typer.Option("", "--prefix", help="Handle prefix (e.g. 'agent-' to namespace)."),
+    wake: bool = typer.Option(False, "--wake", help="Wake each enrolled agent to join now."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show the plan without registering."),
+) -> None:
+    """Bind a herdr **workspace** to a mycelium **room** in one shot.
+
+    A herdr workspace already groups agents that work together, so it's the
+    natural unit to map onto a coordination space (design-doc Shape 2). For each
+    live agent in the workspace this registers a ``claude_code`` manifest, binds
+    handle↔pane, and — with ``--wake`` — wakes it to join. The handle is derived
+    from the **tab name** by default (``--name-from pane`` to use the pane id),
+    with collisions disambiguated by the pane suffix. Idempotent: re-running skips
+    agents already registered + mapped.
+
+    This only *drives* agents you already started in herdr; it never spawns panes.
+    """
+    try:
+        config = MyceliumConfig.load()
+        room_name = _resolve_room(config, room)
+        bridge = _bridge()
+        if not bridge.available():
+            console.print("[yellow]herdr not reachable[/yellow] — cannot enroll.")
+            raise typer.Exit(1)
+
+        agents = [
+            a
+            for a in bridge.list_agents()
+            if a.get("workspace_id") == workspace
+            and a.get("pane_id")
+            and (kind is None or a.get("agent") == kind)
+        ]
+        if not agents:
+            console.print(
+                f"[yellow]No live agents[/yellow] in workspace {workspace}"
+                + (f" of kind {kind}" if kind else "")
+                + "."
+            )
+            raise typer.Exit(1)
+
+        # Reuse the exact manifest-registration path `agent create` uses.
+        from mycelium.commands.agent import _load_manifest, _write_manifest
+        from mycelium.integrations import AddOptions, get_integration
+
+        tab_labels = bridge.tab_labels(workspace) if name_from == "tab" else {}
+        sender = config.get_current_identity()
+        table = Table(title=f"enroll {workspace} → {room_name}", show_lines=False)
+        table.add_column("pane", style="cyan")
+        table.add_column("tab", style="dim")
+        table.add_column("handle", style="cyan")
+        table.add_column("action")
+        planned: list[tuple[str, str, str]] = []
+        taken: set[str] = set()
+        for a in agents:
+            pane = str(a["pane_id"])
+            tab_label = tab_labels.get(str(a.get("tab_id") or ""), "")
+            handle = _derive_handle(
+                tab_label=tab_label,
+                pane_id=pane,
+                prefix=prefix,
+                name_from=name_from,
+                taken=taken,
+            )
+            taken.add(handle)
+            already = _load_manifest(room_name, handle) is not None
+            mapped = bridge.registry.get(room_name, handle) is not None
+            action = "skip (registered+mapped)" if already and mapped else "register + map"
+            planned.append((pane, handle, action))
+            tab_display = tab_label or "[dim]—[/dim]"
+            if dry_run:
+                table.add_row(pane, tab_display, f"@{handle}", f"[dim]{action}[/dim]")
+                continue
+            mapping = HerdrPaneMapping(
+                room=room_name, handle=handle, pane=pane, kind=a.get("agent")
+            )
+            if not (already and mapped):
+                if not already:
+                    impl = get_integration("claude_code", cwd=a.get("cwd"))
+                    manifest = impl.build_manifest(
+                        handle=handle,
+                        opts=AddOptions(room=room_name),
+                        description=f"herdr-enrolled from {pane} ({a.get('agent')})",
+                        allow_from=[],
+                        owner=sender,
+                    )
+                    _write_manifest(config, room_name, manifest, created_by=sender)
+                bridge.registry.set(mapping)
+            woke = ""
+            if wake and not dry_run:
+                result = bridge.wake(
+                    mapping,
+                    build_wake_prompt(room_name, handle),
+                    timeout_ms=config.herdr.wake_timeout_ms,
+                )
+                woke = " + woke" if result.ok else f" + wake failed ({result.detail})"
+            table.add_row(pane, tab_display, f"@{handle}", f"[green]{action}[/green]{woke}")
+
+        console.print(table)
+        if dry_run:
+            console.print("[dim]Dry run — nothing registered. Drop --dry-run to apply.[/dim]")
+        else:
+            console.print(
+                f"[green]Enrolled[/green] {len(planned)} agent(s) into [cyan]{room_name}[/cyan]. "
+                f"Inspect with [dim]mycelium herdr ls --room {room_name}[/dim]"
+            )
     except typer.Exit:
         raise
     except Exception as e:

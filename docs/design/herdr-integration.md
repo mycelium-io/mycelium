@@ -269,6 +269,37 @@ mycelium consent path instead of silently stalling.
   this rides the same D1 (JWT/SPIRE) prerequisite as everything else before
   anything hosted/multi-user. herdr does not change that calculus.
 
+## Determining which herdr agents belong to which room
+
+herdr and rooms are **orthogonal namespaces** — herdr groups agents by
+workspace → tab → pane → cwd; a room is a coordination namespace. Nothing in a
+herdr agent intrinsically says "I belong to room X," so *some* policy supplies the
+binding. And "add an agent to a room" is really **two layers**: (1) *binding* a
+pane to a room+handle, and (2) *enrollment* — actually becoming a member by
+registering a manifest **and** joining (a wake, or `await --loop`). A binding
+alone doesn't make an agent appear as a member — which is exactly why a freshly
+mapped-but-unwoken agent reads `herdr-only (not joined)` in `herdr ls`.
+
+The PoC ships the **workspace → room** policy (design Shape 2), because a herdr
+workspace already *is* "a set of agents working together":
+
+```
+mycelium herdr enroll --workspace w2 --room design [--kind claude] [--wake] [--dry-run]
+```
+
+For every live agent in the workspace it registers a `claude_code` manifest, binds
+handle↔pane, and (with `--wake`) wakes it to join — idempotent, so re-running skips
+what's already enrolled. The **handle is the tab name** by default
+(`--name-from tab`; `pane` uses the pane id), sanitized to the manifest handle rule
+and disambiguated by the pane suffix on collision — so `w2` enrolls as
+`@pr-review`, `@test-area`, `@herdr`, … rather than opaque pane ids. Verified live
+against the running stack.
+
+Other policies are possible on the same seam (cwd/repo → room; the agent
+self-selecting via `room use`) — workspace→room is the default because it's the
+one that needs the least per-agent input. Lifecycle stays honest: enroll only
+*drives* agents the user already started; it never spawns panes.
+
 ## Non-goals
 
 - Not replacing `await`/`respond` — herdr is an optional wake, not a requirement.

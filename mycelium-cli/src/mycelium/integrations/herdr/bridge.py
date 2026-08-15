@@ -237,6 +237,26 @@ class HerdrBridge:
         agents = result.get("agents", [])
         return agents if isinstance(agents, list) else []
 
+    def tab_labels(self, workspace: str | None = None) -> dict[str, str]:
+        """Map ``tab_id -> label`` (the user-set tab name), optionally scoped.
+
+        The tab label is a far more meaningful handle source than a pane id — it's
+        what the user named the work ("pr review", "explore herdr"). Empty on any
+        herdr error so callers fall back to pane-derived names.
+        """
+        args = ["tab", "list"]
+        if workspace:
+            args += ["--workspace", workspace]
+        try:
+            tabs = self._run_json(args).get("result", {}).get("tabs", [])
+        except HerdrError:
+            return {}
+        return {
+            str(t["tab_id"]): str(t.get("label") or "")
+            for t in tabs
+            if isinstance(t, dict) and t.get("tab_id")
+        }
+
     def get_agent(self, target: str) -> dict | None:
         """One agent's live state, or ``None`` if no agent occupies ``target``."""
         try:
