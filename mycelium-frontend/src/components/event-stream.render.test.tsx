@@ -57,6 +57,24 @@ describe("<EventStream /> live message rendering", () => {
     expect(await screen.findByText("hello over the live channel")).toBeInTheDocument();
   });
 
+  it("auto-scrolls the ScrollArea viewport, not the outer wrapper, on new messages", async () => {
+    const scrollTo = vi.spyOn(Element.prototype, "scrollTo");
+    render(<EventStream roomName="sprint" />);
+    await act(async () => {});
+    const es = FakeEventSource.latest();
+
+    await act(async () => {
+      es.open();
+      es.emit(l9Exchange("stick to bottom"));
+    });
+    await screen.findByText("stick to bottom");
+
+    expect(scrollTo).toHaveBeenCalled();
+    const scrolledEl = scrollTo.mock.contexts[scrollTo.mock.contexts.length - 1] as Element;
+    expect(scrolledEl.getAttribute("data-slot")).toBe("scroll-area-viewport");
+    scrollTo.mockRestore();
+  });
+
   it("renders an l9_commit streamed over SSE as a consensus notice, not the unhandled fallback", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     render(<EventStream roomName="sprint" />);
