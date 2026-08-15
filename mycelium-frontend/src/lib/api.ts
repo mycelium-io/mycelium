@@ -149,6 +149,21 @@ export function getSSEUrl(roomName: string) {
   return `/api/rooms/${roomName}/messages/stream`;
 }
 
+/** The room's L9 wire history (transcript replay), for backfilling the live
+ *  inspector on mount. Frames match the SSE bus shape, so the client projects
+ *  backfill + live identically. Returns [] on any error (best-effort). */
+export async function fetchL9History(
+  roomName: string,
+  limit = 200,
+): Promise<Record<string, unknown>[]> {
+  const res = await fetch(`/api/rooms/${roomName}/messages/l9?limit=${limit}`, {
+    cache: "no-store",
+  });
+  if (!res.ok) return [];
+  const data = await res.json();
+  return Array.isArray(data) ? data : [];
+}
+
 /** SSE endpoint for global app events (room create/delete). */
 export function getAppEventsSSEUrl() {
   return `/api/events/stream`;

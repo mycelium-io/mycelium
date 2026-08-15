@@ -9,11 +9,13 @@ import { FakeEventSource } from "@/test/fake-event-source";
 vi.mock("@/lib/api", () => ({
   fetchEpisodes: vi.fn().mockResolvedValue([]),
   fetchEpisode: vi.fn().mockResolvedValue(null),
+  fetchL9History: vi.fn().mockResolvedValue([]),
   getSSEUrl: (room: string) => `/api/rooms/${room}/messages/stream`,
   logFetchError: () => () => undefined,
 }));
 
 import { envelopeJson, L9Inspector, toL9Frame } from "@/components/l9-inspector";
+import { fetchL9History } from "@/lib/api";
 
 const CREATED = "2026-08-04T10:00:00.000000+00:00";
 
@@ -178,6 +180,30 @@ describe("<L9Inspector />", () => {
     // Knowledge push renders as its own frame.
     expect(screen.getByText(/^KNOWLEDGE/)).toBeInTheDocument();
     expect(screen.getByText("decisions/scope")).toBeInTheDocument();
+  });
+
+  it("backfills history frames on mount, with no live event", async () => {
+    vi.mocked(fetchL9History).mockResolvedValueOnce([commitMessage()]);
+    render(<L9Inspector roomName="sprint" />);
+
+    // The frame comes purely from the transcript replay — nothing emitted on SSE.
+    expect(await screen.findByText(/^COMMIT/)).toBeInTheDocument();
+    expect(screen.getByText("MPC")).toBeInTheDocument();
+  });
+
+  it("dedups a backfilled frame against its live re-push (same envelope id)", async () => {
+    vi.mocked(fetchL9History).mockResolvedValueOnce([commitMessage()]);
+    render(<L9Inspector roomName="sprint" />);
+    expect(await screen.findByText(/^COMMIT/)).toBeInTheDocument();
+
+    const es = FakeEventSource.latest();
+    await act(async () => {
+      es.open();
+      es.emit(commitMessage()); // same id as the backfilled row
+    });
+
+    // Still exactly one COMMIT row — the live push was deduped by frame id.
+    expect(screen.getAllByText(/^COMMIT/)).toHaveLength(1);
   });
 
   it("expands a wire row into the full envelope JSON and collapses it again", async () => {

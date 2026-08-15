@@ -3,11 +3,13 @@
 
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Radio } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { ChevronRight, Radio } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
 import {
+  fetchL9History,
   getSSEUrl,
+  logFetchError,
   type EpisodeMetrics,
   type L9Envelope,
 } from "@/lib/api";
@@ -169,6 +171,41 @@ export function envelopeJson(raw: Record<string, unknown>): string {
   return JSON.stringify(display, null, 2);
 }
 
+// One pass over pretty-printed JSON: quoted strings (key when a colon follows,
+// else value), literals, and numbers. Punctuation/whitespace fall between matches.
+const JSON_TOKENS = /("(?:\\.|[^"\\])*")(\s*:)?|\b(true|false|null)\b|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g;
+
+/** Dependency-free JSON syntax highlight for the expanded envelope. Colors keys,
+ *  strings, numbers, and literals with the app palette; everything else inherits.
+ *  Operates on the printed string, so the visible text is byte-for-byte unchanged. */
+export function highlightJson(src: string): ReactNode[] {
+  const out: ReactNode[] = [];
+  let last = 0;
+  let key = 0;
+  for (const m of src.matchAll(JSON_TOKENS)) {
+    const start = m.index ?? 0;
+    if (start > last) out.push(src.slice(last, start));
+    const [full, str, colon, lit, num] = m;
+    if (str !== undefined) {
+      out.push(
+        colon ? (
+          <span key={key++} className="text-accent">{str}</span>
+        ) : (
+          <span key={key++} style={{ color: "var(--green)" }}>{str}</span>
+        ),
+      );
+      if (colon) out.push(colon);
+    } else if (lit !== undefined) {
+      out.push(<span key={key++} className="text-red">{lit}</span>);
+    } else if (num !== undefined) {
+      out.push(<span key={key++} className="text-yellow">{num}</span>);
+    }
+    last = start + full.length;
+  }
+  if (last < src.length) out.push(src.slice(last));
+  return out;
+}
+
 // ── presentation ────────────────────────────────────────────────────────────────
 
 const KIND_TONE: Record<string, string> = {
@@ -236,8 +273,12 @@ function FrameRow({
         aria-expanded={expanded}
         onClick={() => setExpanded((prev) => !prev)}
         title={expanded ? "Collapse envelope" : "Expand full envelope JSON"}
-        className="flex items-baseline gap-2 px-4 py-2 w-full text-left cursor-pointer text-body"
+        className="group flex items-baseline gap-2 px-4 py-2 w-full text-left cursor-pointer text-body transition-colors hover:bg-hairline"
       >
+        <ChevronRight
+          aria-hidden
+          className={`size-3.5 flex-shrink-0 self-center text-faint transition-transform group-hover:text-muted-foreground ${expanded ? "rotate-90" : ""}`}
+        />
         <KindBadge kind={frame.kind} subkind={frame.subkind} />
         {frame.episode ? (
           <span className="font-mono text-micro text-accent" title={frame.episode}>
@@ -257,9 +298,9 @@ function FrameRow({
       {expanded ? (
         <pre
           data-testid="frame-json"
-          className="mx-4 mb-2 px-2.5 py-2 font-mono text-micro text-muted-foreground bg-surface border border-border overflow-x-auto whitespace-pre-wrap break-words"
+          className="mx-4 mb-2 max-h-64 overflow-auto px-2.5 py-2 font-mono text-micro text-muted-foreground bg-surface border border-border whitespace-pre-wrap break-words"
         >
-          {envelopeJson(frame.raw)}
+          {highlightJson(envelopeJson(frame.raw))}
         </pre>
       ) : null}
     </div>
@@ -278,12 +319,39 @@ export function L9Inspector({ roomName }: Props) {
   const [frames, setFrames] = useState<L9Frame[]>([]);
   const [connected, setConnected] = useState(false);
   const wireRef = useRef<HTMLDivElement>(null);
+  // Frame ids already shown, so a history-backfill row and its live re-push don't
+  // double up. Reset per room.
+  const seenIds = useRef<Set<string>>(new Set());
   // How many rows are currently expanded; while > 0 the feed stops following
   // the tail so incoming frames don't yank an open envelope out of view.
   const expandedRows = useRef(0);
   const onExpandedChange = useCallback((delta: number) => {
     expandedRows.current += delta;
   }, []);
+
+  // History backfill: the transcript replayed through the same frame shape, so a
+  // freshly opened tab isn't empty (the SSE bus below carries no history). Runs
+  // per room, before/alongside the live stream; the shared seenIds set dedups a
+  // backfilled row against any live re-push.
+  useEffect(() => {
+    let cancelled = false;
+    seenIds.current = new Set();
+    setFrames([]);
+    fetchL9History(roomName).then((rows) => {
+      if (cancelled) return;
+      const seeded: L9Frame[] = [];
+      for (const row of rows) {
+        const frame = toL9Frame(row);
+        if (frame && !seenIds.current.has(frame.id)) {
+          seenIds.current.add(frame.id);
+          seeded.push(frame);
+        }
+      }
+      // Prepend history ahead of any live frames that arrived during the fetch.
+      setFrames((prev) => [...seeded, ...prev].slice(-MAX_FRAMES));
+    }).catch(logFetchError("fetchL9History"));
+    return () => { cancelled = true; };
+  }, [roomName]);
 
   // Live L9 wire: same EventSource pattern as the room feed. (Episodes have
   // their own home in the inspector's Episodes tab + review drawer; this tab is
@@ -300,7 +368,8 @@ export function L9Inspector({ roomName }: Props) {
         try {
           const msg = JSON.parse(e.data);
           const frame = toL9Frame(msg);
-          if (!frame) return;
+          if (!frame || seenIds.current.has(frame.id)) return;
+          seenIds.current.add(frame.id);
           setFrames((prev) => [...prev, frame].slice(-MAX_FRAMES));
         } catch {
           /* ignore malformed frames */
