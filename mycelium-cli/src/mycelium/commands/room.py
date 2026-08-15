@@ -28,6 +28,24 @@ from mycelium.doc_ref import doc_ref
 from mycelium.error_handler import print_error
 from mycelium.exceptions import ConfigNotFoundError, MyceliumError
 
+# The L9 "raise-up" whitelist: message types promoted onto the primary channel
+# surface (here, `room watch`'s live stream) rather than staying inspector-only.
+# Must mirror contracts/l9-surface.json's `raise_up_types` byte-for-byte — the
+# frontend (mycelium-frontend/src/components/event-stream.tsx) carries an
+# independent copy, and tests/test_l9_surface_contract.py asserts both stay in
+# sync with the contract so the two surfaces can't silently drift apart.
+# (`room watch` also renders CLI-native detail — ticks, session start, raw
+# memory_changed — that has no frontend-inspector equivalent to hide behind;
+# that detail is intentionally outside this shared list.)
+L9_RAISE_UP_TYPES = frozenset(
+    {
+        "coordination_join",
+        "coordination_consensus",
+        "plan_updated",
+        "l9_knowledge",
+    }
+)
+
 
 def _typed_client(config: MyceliumConfig):
     """Get a typed OpenAPI client."""
@@ -603,6 +621,29 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
             if quality_line:
                 lines.append(f"[dim]{quality_line}[/]")
             return "\n".join(lines)
+
+        if mtype == "plan_updated":
+            kind = data.get("kind")
+            if kind == "task_toggled":
+                mark = "[green]✓[/]" if data.get("done") else "[dim]○[/]"
+                return f"  {ts()}  [bold]plan[/] {mark} [dim]{data.get('text', 'task')}[/]"
+            if kind == "task_added":
+                return f"  {ts()}  [bold]plan[/] + [dim]{data.get('text', 'task')}[/]"
+            if kind == "title_set":
+                by = data.get("updated_by")
+                suffix = f" [dim]by {by}[/]" if by else ""
+                return (
+                    f"  {ts()}  [bold]plan[/] title set to [dim]{data.get('title', '')}[/]{suffix}"
+                )
+            return f"  {ts()}  [bold]plan[/] updated"
+
+        if mtype == "l9_knowledge":
+            l9_payload = data.get("l9", {}).get("payload", {}).get("data", {})
+            key = l9_payload.get("key", "memory")
+            by = l9_payload.get("updated_by")
+            text = data.get("content") or f"{key} updated"
+            suffix = f" [dim]by {by}[/]" if by else ""
+            return f"  {ts()}  [yellow]knowledge[/] {text}{suffix}"
 
         if mtype == "memory_changed":
             key = data.get("key", "?")
