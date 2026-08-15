@@ -25,6 +25,14 @@ This module is that consumer, and it does four things as each message flows past
    ``on_converged`` seam the plan-sync consumer runs ``plan_compiler`` off of;
    the persister itself does **not** compile — it just fires the seam.
 
+5. **Memory-sync receiver.** On a ``knowledge`` envelope — from a real SLIM
+   arrival or the sender's own :meth:`RoomPersister.ingest_local` loopback
+   alike — it applies the carried write to this backend's local store via
+   :func:`app.services.memory_sync.apply_knowledge`, closing the loop the
+   emit side (``_broadcast_memory_write`` / :mod:`app.services.plan_sync`)
+   opens. Unlike the summon/converged hooks this isn't a pluggable engine
+   seam: the applier is stateless and version-idempotent, so it always runs.
+
 The pure pieces (:class:`DeliveryLog`, the transcript read/write, the trigger
 detection) carry no SLIM dependency and are unit-tested without a node;
 :class:`RoomPersister` is the thin async loop that drives them over a live
@@ -46,7 +54,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from app.schemas import MessageType
-from app.services import l9
+from app.services import l9, memory_sync
 from app.services.l9_slim import ChannelReceiveTimeout
 
 # Stable namespace so a transcript record maps to the same synthetic
@@ -603,17 +611,25 @@ class RoomPersister:
         # publishes itself (the human proxy) is recorded/fed to the bus exactly
         # once even if SLIM loops the broadcast back to the moderator.
         self._ingested_ids: set[str] = set()
+        # Strong refs to in-flight knowledge-apply tasks (apply_knowledge does file
+        # IO + reindexing, so it can't run inline in the sync ``_ingest`` call);
+        # without this the task could be GC'd mid-flight.
+        self._knowledge_tasks: set[asyncio.Task[None]] = set()
         # Health counters surfaced via RoomChannelManager.status(). ``receive_errors``
         # is genuine (fatal) transport faults; ``transient_errors`` is recoverable
         # membership-churn receive errors (retried, not lost) — split so the health
         # surface distinguishes "the channel is faulting" from "the channel is
         # churning". ``reserve_failures``/``reserve_skipped`` make the two ways a
         # missed-message re-serve fails to land visible instead of log-only.
+        # ``knowledge_applied``/``knowledge_conflicts`` are the memory-sync receiver's
+        # equivalent: how many inbound writes converged vs. lost to a stale base.
         self.reserves = 0
         self.receive_errors = 0
         self.transient_errors = 0
         self.reserve_failures = 0
         self.reserve_skipped = 0
+        self.knowledge_applied = 0
+        self.knowledge_conflicts = 0
 
     def _persist_cursors(self) -> None:
         """Snapshot the delivery cursors to disk (best-effort, per mutation)."""
@@ -840,6 +856,38 @@ class RoomPersister:
                 self.on_converged(envelope)
             except Exception:
                 logger.exception("converged hook failed")
+        if memory_sync.is_knowledge(envelope):
+            self._schedule_knowledge_apply(envelope)
+
+    def _schedule_knowledge_apply(self, envelope: L9) -> None:
+        """Apply an inbound ``knowledge`` write off the ingest path.
+
+        Fires for a real SLIM arrival and for the sender's own
+        :meth:`ingest_local` loopback alike — ``apply_knowledge`` is
+        version-idempotent (see :mod:`app.services.memory_sync`), so re-applying
+        a write this store already holds is a silent no-op, not a double-write.
+        Scheduled as a tracked background task since ``_ingest`` is sync but the
+        applier does file IO + reindexing; never re-broadcasts, so this cannot
+        loop with the emit side (``_broadcast_memory_write`` / ``plan_sync``).
+        """
+        write = memory_sync.knowledge_write_from_envelope(envelope)
+        if write is None:
+            logger.warning("malformed knowledge envelope on room %s; not applied", self.room)
+            return
+        task = asyncio.create_task(self._apply_knowledge(write))
+        self._knowledge_tasks.add(task)
+        task.add_done_callback(self._knowledge_tasks.discard)
+
+    async def _apply_knowledge(self, write: memory_sync.KnowledgeWrite) -> None:
+        try:
+            result = await memory_sync.apply_knowledge(self.room, write)
+        except Exception:
+            logger.exception("apply_knowledge failed for %s/%s", self.room, write.key)
+            return
+        if result.conflict:
+            self.knowledge_conflicts += 1
+        elif result.applied:
+            self.knowledge_applied += 1
 
     def _publish_to_bus(self, record: TranscriptRecord) -> None:
         """Feed the recorded message to the in-process bus so the SSE UI sees it.
