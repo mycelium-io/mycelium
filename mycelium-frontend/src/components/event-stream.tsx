@@ -21,6 +21,7 @@ import { NegotiationView } from "@/components/negotiation-view";
 import { RoomSlimView } from "@/components/room-slim";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { initials } from "@/components/ui/monogram";
 import { MessagesSquare } from "lucide-react";
 
@@ -519,11 +520,11 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
           <NegotiationView events={events} />
         </div>
       ) : view === "slim" ? (
-        <div className="flex-1 min-h-0 overflow-y-auto">
+        <ScrollArea className="flex-1 min-h-0">
           <RoomSlimView roomName={roomName} />
-        </div>
+        </ScrollArea>
       ) : (
-      <div ref={scrollRef} className="flex-1 overflow-y-auto">
+      <ScrollArea className="flex-1 min-h-0" viewportRef={scrollRef}>
         {view === "plan" ? (
           <RoomPlanHeader roomName={roomName} refreshTrigger={planRefreshTrigger} />
         ) : !historyLoaded ? (
@@ -720,7 +721,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
             })}
         </div>
         )}
-      </div>
+      </ScrollArea>
       )}
     </div>
   );
