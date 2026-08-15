@@ -6,10 +6,10 @@ User + team endpoints — the human as a first-class principal.
 
 The user store is global (people span rooms), unlike the room-scoped agent
 manifests. Owner/team on a manifest point here; these endpoints surface the
-records and the per-user / per-team budget roll-ups. Self-asserted: handles are
-consistent, not cryptographic.
+records and the per-user / per-team owned-agent roll-ups. Self-asserted:
+handles are consistent, not cryptographic.
 
-GET  /users            — list users, each with owned-agent + budget roll-up
+GET  /users            — list users, each with an owned-agent roll-up
 POST /users            — create/upsert a user record
 GET  /users/{handle}   — one user + the agents they own
 GET  /teams            — teams rolled up from manifests + user memberships
@@ -35,7 +35,7 @@ router = APIRouter(tags=["users"])
 
 @router.get("/users", response_model=UserListResponse)
 async def list_users():
-    """List every registered user with their owned-agent budget roll-up."""
+    """List every registered user with their owned-agent roll-up."""
     users = [UserRead(**u) for u in principals.list_users_with_rollup()]
     return UserListResponse(users=users, total=len(users))
 

@@ -54,36 +54,29 @@ async def test_unknown_user_404(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_user_rollup_sums_owned_agent_budgets(client: AsyncClient):
+async def test_user_rollup_lists_owned_agents(client: AsyncClient):
     await client.post("/api/users", json={"handle": "julia", "teams": ["core"]})
     await _register_agent(
         client,
         "alpha",
         "a1",
-        {"adapter": "claude_code", "cwd": "/tmp", "owner": "julia", "budget_usd_per_month": 5.0},
+        {"adapter": "claude_code", "cwd": "/tmp", "owner": "julia"},
     )
     await _register_agent(
         client,
         "beta",
         "a2",
-        {
-            "adapter": "claude_code",
-            "cwd": "/tmp",
-            "owner": "julia",
-            "team": "core",
-            "budget_usd_per_month": 7.5,
-        },
+        {"adapter": "claude_code", "cwd": "/tmp", "owner": "julia", "team": "core"},
     )
     await _register_agent(
         client,
         "beta",
         "a3",
-        {"adapter": "claude_code", "cwd": "/tmp", "owner": "sam", "budget_usd_per_month": 99.0},
+        {"adapter": "claude_code", "cwd": "/tmp", "owner": "sam"},
     )
 
     user = (await client.get("/api/users/julia")).json()
     assert {o["handle"] for o in user["owns"]} == {"a1", "a2"}
-    assert user["budget_usd_per_month"] == 12.5
 
 
 @pytest.mark.asyncio
@@ -93,17 +86,10 @@ async def test_teams_rollup(client: AsyncClient):
         client,
         "beta",
         "a2",
-        {
-            "adapter": "claude_code",
-            "cwd": "/tmp",
-            "owner": "julia",
-            "team": "core",
-            "budget_usd_per_month": 7.5,
-        },
+        {"adapter": "claude_code", "cwd": "/tmp", "owner": "julia", "team": "core"},
     )
 
     teams = {t["team"]: t for t in (await client.get("/api/teams")).json()["teams"]}
     assert "core" in teams
     assert teams["core"]["agent_count"] == 1
-    assert teams["core"]["budget_usd_per_month"] == 7.5
     assert "julia" in teams["core"]["members"]

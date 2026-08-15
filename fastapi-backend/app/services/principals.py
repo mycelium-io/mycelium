@@ -172,7 +172,7 @@ def write_user(payload: dict[str, Any]) -> dict[str, Any]:
 def iter_agent_manifests() -> list[dict[str, Any]]:
     """Every agent manifest across all rooms, with room + parsed principal fields.
 
-    Each entry: ``{room, handle, adapter, owner, team, budget_usd_per_month}``.
+    Each entry: ``{room, handle, adapter, owner, team}``.
     """
     out: list[dict[str, Any]] = []
     for room_name in list_room_names():
@@ -188,10 +188,6 @@ def iter_agent_manifests() -> list[dict[str, Any]]:
                 continue
             if not isinstance(data, dict):
                 continue
-            try:
-                budget = float(data.get("budget_usd_per_month", 0.0) or 0.0)
-            except (TypeError, ValueError):
-                budget = 0.0
             out.append(
                 {
                     "room": room_name,
@@ -199,14 +195,13 @@ def iter_agent_manifests() -> list[dict[str, Any]]:
                     "adapter": data.get("adapter", "claude_code"),
                     "owner": _norm(data.get("owner")),
                     "team": _norm(data.get("team")),
-                    "budget_usd_per_month": budget,
                 }
             )
     return out
 
 
 def _apply_rollup(user: dict[str, Any], manifests: list[dict[str, Any]]) -> dict[str, Any]:
-    """Attach the owned-agent list + summed budget cap to a user record in place."""
+    """Attach the owned-agent list to a user record in place."""
     owned = [m for m in manifests if m["owner"] == user["handle"]]
     user["owns"] = [
         {
@@ -214,16 +209,14 @@ def _apply_rollup(user: dict[str, Any], manifests: list[dict[str, Any]]) -> dict
             "handle": m["handle"],
             "adapter": m["adapter"],
             "team": m["team"],
-            "budget_usd_per_month": m["budget_usd_per_month"],
         }
         for m in owned
     ]
-    user["budget_usd_per_month"] = round(sum(m["budget_usd_per_month"] for m in owned), 2)
     return user
 
 
 def user_with_rollup(handle: str) -> dict[str, Any] | None:
-    """A user record enriched with the agents they own + summed budget cap."""
+    """A user record enriched with the agents they own."""
     user = load_user(handle)
     if user is None:
         return None
@@ -239,8 +232,7 @@ def list_users_with_rollup() -> list[dict[str, Any]]:
 def list_teams() -> list[dict[str, Any]]:
     """Teams rolled up from agent manifests and user records.
 
-    A team's members are the users who claim it; its budget is the sum of every
-    manifest budget fielded under that team slug.
+    A team's members are the users who claim it.
     """
     manifests = iter_agent_manifests()
     users = list_users()
@@ -248,15 +240,12 @@ def list_teams() -> list[dict[str, Any]]:
     teams: dict[str, dict[str, Any]] = {}
 
     def _slot(name: str) -> dict[str, Any]:
-        return teams.setdefault(
-            name, {"team": name, "members": set(), "agent_count": 0, "budget_usd_per_month": 0.0}
-        )
+        return teams.setdefault(name, {"team": name, "members": set(), "agent_count": 0})
 
     for m in manifests:
         if m["team"]:
             slot = _slot(m["team"])
             slot["agent_count"] += 1
-            slot["budget_usd_per_month"] += m["budget_usd_per_month"]
     for u in users:
         for team in u["teams"]:
             _slot(team)["members"].add(u["handle"])
@@ -266,7 +255,6 @@ def list_teams() -> list[dict[str, Any]]:
             "team": name,
             "members": sorted(slot["members"]),
             "agent_count": slot["agent_count"],
-            "budget_usd_per_month": round(slot["budget_usd_per_month"], 2),
         }
         for name, slot in sorted(teams.items())
     ]

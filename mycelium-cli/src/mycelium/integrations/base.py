@@ -162,7 +162,6 @@ class Integration(ABC):
         handle: str,
         opts: AddOptions,
         description: str,
-        budget: float,
         allow_from: list[str],
         owner: str | None = None,
         team: str | None = None,

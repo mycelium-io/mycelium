@@ -60,7 +60,6 @@ def test_build_manifest_threads_kind() -> None:
         handle="mediator-1",
         opts=AddOptions(room="portfolio"),
         description="SAO mediator",
-        budget=0.0,
         allow_from=[],
     )
     assert m.adapter == "engine"

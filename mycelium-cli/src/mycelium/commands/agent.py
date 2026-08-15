@@ -206,24 +206,17 @@ def _room_manifests(room_name: str) -> list[AgentManifest]:
     return out
 
 
-def load_owned_agents(*, owner: str) -> tuple[list[tuple[str, AgentManifest]], float]:
-    """Agents owned by ``owner`` across every local room, plus summed budget.
-
-    Returns ``([(room, manifest), …], total_budget_usd_per_month)``. The total is
-    the sum of each owned agent's manifest budget *cap* — a per-principal budget
-    figure, not measured spend (no per-action cost ledger exists at this tier).
-    """
+def load_owned_agents(*, owner: str) -> list[tuple[str, AgentManifest]]:
+    """Agents owned by ``owner`` across every local room."""
     from mycelium.filesystem import list_room_names
 
     owner = owner.strip().lstrip("@").lower()
     owned: list[tuple[str, AgentManifest]] = []
-    total = 0.0
     for room_name in list_room_names():
         for m in _room_manifests(room_name):
             if m.owner == owner:
                 owned.append((room_name, m))
-                total += m.budget_usd_per_month
-    return owned, total
+    return owned
 
 
 def _warn_unknown_principal(manifest: AgentManifest) -> None:
@@ -231,7 +224,7 @@ def _warn_unknown_principal(manifest: AgentManifest) -> None:
 
     The binding is self-asserted, so a dangling owner is a soft signal, not an
     error — it just nudges the user to register the principal so 'my agents'
-    and budget roll-up have something to resolve.
+    has something to resolve.
     """
     if not manifest.owner:
         return
@@ -491,7 +484,6 @@ def _create_wizard(
             handle=handle,
             opts=AddOptions(room=room_name),
             description=description,
-            budget=5.0,
             allow_from=[],
             owner=owner,
             team=team,
@@ -540,15 +532,6 @@ def agent_create(
     ),
     description: str = typer.Option(
         "", "--description", "-d", help="One-paragraph statement of what this agent does."
-    ),
-    budget: float = typer.Option(
-        5.0,
-        "--budget",
-        help=(
-            "Monthly USD spend cap, stored on the manifest. Advisory — the "
-            "resident runtime is the user's own session, so enforce spend at "
-            "your provider account."
-        ),
     ),
     allow_from: str | None = typer.Option(
         None,
@@ -619,7 +602,6 @@ def agent_create(
                 handle=handle,
                 opts=AddOptions(room=room_name),
                 description=description,
-                budget=budget,
                 allow_from=allow_list,
                 owner=owner,
                 team=team,
@@ -773,7 +755,6 @@ def agent_ls(
         table.add_column("Adapter", style="magenta")
         table.add_column("Owner", style="green")
         table.add_column("Team", style="green")
-        table.add_column("Budget", justify="right")
         table.add_column("Description", overflow="fold")
         for m in manifests:
             table.add_row(
@@ -781,7 +762,6 @@ def agent_ls(
                 m.adapter,
                 f"@{m.owner}" if m.owner else "[dim]—[/dim]",
                 m.team or "[dim]—[/dim]",
-                f"${m.budget_usd_per_month:.2f}/mo",
                 (m.description or "")[:60],
             )
         console.print(table)
@@ -820,7 +800,6 @@ def agent_show(
 
         console.print(f"[bold cyan]@{manifest.handle}[/bold cyan]  [dim]({manifest.adapter})[/dim]")
         console.print(f"  cwd: {manifest.cwd}")
-        console.print(f"  budget: ${manifest.budget_usd_per_month:.2f}/mo")
         if manifest.owner:
             console.print(f"  owner: @{manifest.owner}")
         if manifest.team:

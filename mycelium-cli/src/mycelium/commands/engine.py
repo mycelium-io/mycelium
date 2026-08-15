@@ -85,7 +85,6 @@ def engine_create(
                 handle=handle,
                 opts=AddOptions(room=room_name),
                 description=description,
-                budget=0.0,  # engines run on the mycelium-configured LLM, not a per-agent cap
                 allow_from=allow_list,
             )
         except ValidationError as exc:
