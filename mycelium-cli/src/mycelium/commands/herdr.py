@@ -129,9 +129,48 @@ def herdr_unmap(
         raise typer.Exit(1) from None
 
 
+def _room_members(config: MyceliumConfig, room_name: str) -> dict[str, str] | None:
+    """The backend's live presence for a room: ``{handle: kind}`` (``slim``/``lease``).
+
+    ``None`` if the backend is unreachable — so ``ls`` can distinguish "no lease"
+    from "couldn't ask." Best-effort, mirrors ``agent._is_resident``.
+    """
+    import httpx
+
+    try:
+        url = f"{config.server.api_url}/api/rooms/{room_name}/sessions/members"
+        resp = httpx.get(url, timeout=5.0)
+        resp.raise_for_status()
+        members = resp.json().get("members", [])
+    except Exception:
+        return None
+    return {
+        str(m.get("handle", "")).lstrip("@").lower(): str(m.get("kind") or "?") for m in members
+    }
+
+
+def _reconcile_note(mycelium_kind: str | None, herdr_status: str | None) -> tuple[str, str]:
+    """The three-way verdict for one binding → ``(text, colour)``.
+
+    ``mycelium_kind`` is the backend presence kind (``slim``/``lease``/``None``);
+    ``herdr_status`` is the live pane state (``None`` = pane empty / herdr blind).
+    Flags the two disagreements that matter: a lease with no live pane (stale
+    lease — the Finding-2 false positive) and a live pane the backend doesn't
+    list (a herdr agent that isn't participating).
+    """
+    herdr_live = herdr_status in {"idle", "working", "blocked", "done"}
+    if mycelium_kind in {"slim", "lease"} and not herdr_live:
+        return ("⚠ stale lease", "red")
+    if mycelium_kind is None and herdr_live:
+        return ("herdr-only (not joined)", "yellow")
+    if mycelium_kind in {"slim", "lease"} and herdr_live:
+        return ("✓ in sync", "green")
+    return ("—", "dim")
+
+
 @doc_ref(
     usage="mycelium herdr ls [--room <room>]",
-    desc="List handle → pane bindings with live herdr liveness.",
+    desc="Reconcile handle → pane bindings: backend presence × live herdr state.",
     group="agent",
 )
 @app.command("ls")
@@ -139,17 +178,19 @@ def herdr_ls(
     ctx: typer.Context,
     room: str | None = typer.Option(None, "--room", "-r", help="Only this room."),
 ) -> None:
-    """Show the registry joined against herdr's live agent state.
+    """Reconcile each binding across three views: the registry, the backend's
+    presence (``slim``/``lease``), and herdr's live agent list.
 
-    The liveness column is what cold-spawn could never report: ``idle`` /
-    ``working`` / ``blocked`` per mapped agent, or ``—`` when herdr is unreachable
-    or the pane is empty (a stale mapping).
+    The backend runs containerized and is herdr-blind, so its presence lease can
+    outlive an agent that has stopped looping ``await``. This is the one place
+    that can cross-check — so a lease with a dead pane shows as **stale lease**,
+    and a live herdr agent the backend never joined shows as **herdr-only**.
     """
     try:
+        config = MyceliumConfig.load()
         bridge = _bridge()
         mappings = bridge.registry.all()
         if room:
-            config = MyceliumConfig.load()
             room_name = _resolve_room(config, room)
             mappings = [m for m in mappings if m.room == room_name]
 
@@ -166,22 +207,39 @@ def herdr_ls(
                 if pane:
                     live[pane] = str(a.get("agent_status") or "unknown")
 
-        table = Table(title="herdr ↔ mycelium bindings", show_lines=False)
+        # Backend presence, fetched once per distinct room in the view.
+        members_by_room: dict[str, dict[str, str] | None] = {}
+        for m in mappings:
+            if m.room not in members_by_room:
+                members_by_room[m.room] = _room_members(config, m.room)
+
+        table = Table(title="herdr ↔ mycelium reconciliation", show_lines=False)
         table.add_column("room", style="dim")
         table.add_column("handle", style="cyan")
         table.add_column("pane", style="cyan")
-        table.add_column("kind", style="dim")
-        table.add_column("liveness")
+        table.add_column("mycelium")  # backend presence kind
+        table.add_column("herdr")  # live pane state
+        table.add_column("verdict")
         for m in mappings:
-            status = live.get(m.pane, "—")
-            colour = {
+            herdr_status = live.get(m.pane)
+            members = members_by_room.get(m.room)
+            myc_kind = members.get(m.handle.lower()) if members is not None else None
+
+            hcolour = {
                 "idle": "green",
                 "done": "green",
                 "working": "yellow",
                 "blocked": "red",
-            }.get(status, "dim")
+            }.get(herdr_status or "", "dim")
+            note, ncolour = _reconcile_note(myc_kind, herdr_status)
+            myc_display = "[dim]?[/dim]" if members is None else (myc_kind or "[dim]absent[/dim]")
             table.add_row(
-                m.room, f"@{m.handle}", m.pane, m.kind or "—", f"[{colour}]{status}[/{colour}]"
+                m.room,
+                f"@{m.handle}",
+                m.pane,
+                myc_display,
+                f"[{hcolour}]{herdr_status or '—'}[/{hcolour}]",
+                f"[{ncolour}]{note}[/{ncolour}]",
             )
         console.print(table)
     except typer.Exit:

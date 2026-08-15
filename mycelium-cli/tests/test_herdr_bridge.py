@@ -235,24 +235,134 @@ def test_build_wake_prompt_mentions_room_handle_and_cycle() -> None:
     assert "mycelium await" in p and "mycelium respond" in p
 
 
-# ── invoke auto-wake gate ───────────────────────────────────────────────────────
+# ── invoke residence resolution (herdr-grounded) ────────────────────────────────
 
 
-def test_invoke_autowake_gated_off_by_default(isolated_home: Path) -> None:
-    """`agent invoke` must not touch herdr unless `herdr.autowake` is on."""
-    from mycelium.commands.agent import _try_herdr_wake
+def test_herdr_presence_defers_when_autowake_off(isolated_home: Path) -> None:
+    """`agent invoke` must not consult herdr unless `herdr.autowake` is on."""
+    from mycelium.commands.agent import _herdr_presence
     from mycelium.config import MyceliumConfig
 
     config = MyceliumConfig()  # autowake defaults False
     assert config.herdr.autowake is False
-    assert _try_herdr_wake(config, "design", "reviewer") is False
+    # None = "defer to the backend lease" — herdr never consulted.
+    assert _herdr_presence(config, "design", "reviewer") is None
 
 
-def test_invoke_autowake_on_but_unmapped_returns_false(isolated_home: Path) -> None:
-    """Feature on, but no pane mapped → fall back to the cursor (False)."""
-    from mycelium.commands.agent import _try_herdr_wake
+def test_herdr_presence_defers_when_unmapped(
+    monkeypatch: pytest.MonkeyPatch, isolated_home: Path
+) -> None:
+    """Feature on, but no pane mapped → defer to the lease (None), never wake."""
+    from mycelium.commands import agent as agent_cmd
     from mycelium.config import MyceliumConfig
+
+    # herdr reachable + agent list empty, but nothing is mapped for this handle.
+    monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/herdr")
+    monkeypatch.setattr(
+        agent_cmd,
+        "_is_resident",
+        lambda *_: False,  # keep the fallback off the network
+    )
+    monkeypatch.setattr(
+        "mycelium.integrations.herdr.HerdrBridge._default_runner",
+        lambda self, args: _proc(_ok({"agents": []})),
+    )
+    config = MyceliumConfig()
+    config.herdr.autowake = True
+    assert agent_cmd._herdr_presence(config, "design", "reviewer") is None
+
+
+def test_herdr_presence_wakes_idle_over_stale_lease(
+    monkeypatch: pytest.MonkeyPatch, isolated_home: Path
+) -> None:
+    """The Finding-2 fix: a mapped, idle herdr pane is woken even when the backend
+    lease would (falsely) report the handle as resident."""
+    from mycelium.commands import agent as agent_cmd
+    from mycelium.config import MyceliumConfig
+    from mycelium.integrations.herdr import HerdrBridge, HerdrPaneMapping
+
+    HerdrBridge().registry.set(
+        HerdrPaneMapping(room="design", handle="reviewer", pane="w2:pV", kind="claude")
+    )
+
+    def runner(self: object, args: list[str]) -> subprocess.CompletedProcess:
+        if args[:2] == ["agent", "list"]:
+            return _proc(_ok({"agents": [{"pane_id": "w2:pV", "agent_status": "idle"}]}))
+        if args[:2] == ["agent", "get"]:
+            return _proc(_ok({"agent": {"pane_id": "w2:pV", "agent_status": "idle"}}))
+        if args[:2] == ["agent", "prompt"]:
+            return _proc(_ok({"agent_status": "idle"}))
+        return _proc(returncode=2)
+
+    monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/herdr")
+    monkeypatch.setattr("mycelium.integrations.herdr.HerdrBridge._default_runner", runner)
+    # Stale lease: the backend would call this handle resident — herdr must win.
+    monkeypatch.setattr(agent_cmd, "_is_resident", lambda *_: True)
 
     config = MyceliumConfig()
     config.herdr.autowake = True
-    assert _try_herdr_wake(config, "design", "reviewer") is False
+    state, _ = agent_cmd._resolve_presence(config, "design", "reviewer")
+    assert state == "woke"
+
+
+def test_resolve_presence_reports_stale_mapping(
+    monkeypatch: pytest.MonkeyPatch, isolated_home: Path
+) -> None:
+    """Mapped but the herdr pane is empty → 'stale', not a phantom 'resident'."""
+    from mycelium.commands import agent as agent_cmd
+    from mycelium.config import MyceliumConfig
+    from mycelium.integrations.herdr import HerdrBridge, HerdrPaneMapping
+
+    HerdrBridge().registry.set(HerdrPaneMapping(room="design", handle="reviewer", pane="w2:pV"))
+
+    def runner(self: object, args: list[str]) -> subprocess.CompletedProcess:
+        if args[:2] == ["agent", "list"]:
+            return _proc(_ok({"agents": []}))
+        if args[:2] == ["agent", "get"]:
+            return _proc(_ok({"agent": {}}))  # no live agent at the pane
+        return _proc(returncode=2)
+
+    monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/herdr")
+    monkeypatch.setattr("mycelium.integrations.herdr.HerdrBridge._default_runner", runner)
+    monkeypatch.setattr(agent_cmd, "_is_resident", lambda *_: True)
+
+    config = MyceliumConfig()
+    config.herdr.autowake = True
+    state, detail = agent_cmd._resolve_presence(config, "design", "reviewer")
+    assert state == "stale"
+    assert detail and "stale" in detail.lower()
+
+
+# ── ls reconciliation verdict ───────────────────────────────────────────────────
+
+
+def test_reconcile_note_stale_lease() -> None:
+    """Backend holds a lease but the herdr pane is dead → the Finding-2 flag."""
+    from mycelium.commands.herdr import _reconcile_note
+
+    text, colour = _reconcile_note("lease", None)
+    assert "stale" in text.lower()
+    assert colour == "red"
+
+
+def test_reconcile_note_in_sync() -> None:
+    from mycelium.commands.herdr import _reconcile_note
+
+    text, _ = _reconcile_note("slim", "idle")
+    assert "sync" in text.lower()
+
+
+def test_reconcile_note_herdr_only() -> None:
+    """A live herdr agent the backend never joined."""
+    from mycelium.commands.herdr import _reconcile_note
+
+    text, colour = _reconcile_note(None, "working")
+    assert "herdr-only" in text.lower()
+    assert colour == "yellow"
+
+
+def test_reconcile_note_both_absent() -> None:
+    from mycelium.commands.herdr import _reconcile_note
+
+    text, _ = _reconcile_note(None, None)
+    assert text == "—"
