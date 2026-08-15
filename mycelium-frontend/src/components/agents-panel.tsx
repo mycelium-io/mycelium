@@ -18,6 +18,13 @@ import { Button } from "@/components/ui/button";
 import { Chip } from "@/components/ui/chip";
 import { Input } from "@/components/ui/input";
 import { Monogram } from "@/components/ui/monogram";
+import { HerdrRam } from "@/components/ui/herdr-ram";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCurrentUser } from "@/components/current-user";
@@ -55,18 +62,136 @@ function relativeTime(iso: string): string | null {
   return `${Math.floor(mins / 60)}h ago`;
 }
 
-/** Subtext for a present member: live socket vs. a polling lease + last-seen age.
- *  Returns null when the handle isn't currently present (caller falls back). */
-function presenceLabel(member?: PresenceMember): string | null {
+/** Per-herdr-state accent for the roster's activity line, so the palette isn't
+ *  uniformly cold: working reads warm, blocked hot, done green, idle muted. */
+const HERDR_STATE_COLOR: Record<string, string> = {
+  working: "var(--warning, #d19a45)",
+  blocked: "var(--destructive, #d1495b)",
+  done: "var(--success, #4c9a6a)",
+  idle: "var(--muted-foreground)",
+};
+
+/** Subtext for a present member. For a herdr-hosted agent this is the ram mark +
+ *  its **current task** (herdr's terminal title) — replacing the old
+ *  "herdr · working · not joined" jargon. A bare SLIM/lease member keeps the
+ *  plain connection line. Returns null when not present (caller falls back). */
+function presenceLine(member?: PresenceMember): React.ReactNode {
   if (!member) return null;
-  if (member.kind === "herdr") {
-    // Alive in a herdr pane but not joined to the room (pushed by `herdr sync`).
-    return `herdr · ${member.status ?? "alive"} · not joined`;
+  const isHerdr =
+    member.kind === "herdr" || (!!member.status && member.status in HERDR_STATE_COLOR);
+  const queued = member.wake_pending ? (
+    <span style={{ color: "var(--accent)" }}> · queued</span>
+  ) : null;
+
+  if (isHerdr) {
+    const task = member.title?.trim();
+    const state = member.status ?? "alive";
+    const stateColor = HERDR_STATE_COLOR[member.status ?? ""] ?? "var(--muted-foreground)";
+    return (
+      <span className="inline-flex min-w-0 max-w-full items-center gap-1">
+        <HerdrRam className="size-3 shrink-0" style={{ color: "var(--accent)" }} />
+        <span className="truncate" style={{ color: task ? "var(--text)" : stateColor }}>
+          {task || state}
+        </span>
+        {queued}
+      </span>
+    );
   }
-  const herdr = member.status ? ` · herdr ${member.status}` : "";
-  if (member.kind === "slim") return `connected${herdr}`;
+
   const age = member.last_seen ? relativeTime(member.last_seen) : null;
-  return `${age ? `awaiting · seen ${age}` : "awaiting"}${herdr}`;
+  const base = member.kind === "slim" ? "connected" : age ? `awaiting · seen ${age}` : "awaiting";
+  return (
+    <>
+      {base}
+      {queued}
+    </>
+  );
+}
+
+/** One label/value line in a member tooltip. Rendered only when it has a value. */
+function DetailRow({
+  label,
+  value,
+  color,
+}: {
+  label: string;
+  value?: React.ReactNode;
+  color?: string;
+}) {
+  if (value == null || value === "") return null;
+  return (
+    <div className="flex gap-2 text-micro leading-relaxed">
+      <span className="w-14 shrink-0 text-faint">{label}</span>
+      <span className="min-w-0 flex-1 break-words" style={color ? { color } : undefined}>
+        {value}
+      </span>
+    </div>
+  );
+}
+
+/** How a member is hosted, in words — the honest expansion of the presence kind. */
+function hostingLabel(member: PresenceMember): string {
+  if (member.kind === "herdr") return "herdr pane (not joined)";
+  if (member.kind === "slim") return "SLIM socket";
+  return "server-held await lease";
+}
+
+/** The presence half of a member tooltip: hosting, live state, current task,
+ *  queued wake, last-seen — the "full details" behind the compact row. */
+function presenceDetail(member?: PresenceMember): React.ReactNode {
+  if (!member) return null;
+  const stateColor = HERDR_STATE_COLOR[member.status ?? ""];
+  const age = member.last_seen ? relativeTime(member.last_seen) : null;
+  return (
+    <>
+      <DetailRow label="hosting" value={hostingLabel(member)} />
+      <DetailRow label="state" value={member.status} color={stateColor} />
+      <DetailRow label="task" value={member.title?.trim()} />
+      <DetailRow
+        label="wake"
+        value={member.wake_pending ? "queued — held until idle" : undefined}
+        color="var(--accent)"
+      />
+      <DetailRow label="last seen" value={member.kind === "slim" ? "now (live socket)" : age} />
+    </>
+  );
+}
+
+/** The hover card shown for any roster row: a monogram header + the full detail
+ *  list (identity rows the caller passes + the shared presence rows). */
+function MemberTooltipCard({
+  handle,
+  color,
+  presence,
+  children,
+}: {
+  handle: string;
+  color?: string;
+  presence?: PresenceMember;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center gap-2">
+        <Monogram
+          handle={handle}
+          color={color}
+          className="size-6"
+          presence={presence?.kind}
+          status={presence?.status}
+          wakePending={presence?.wake_pending}
+        />
+        <span className="font-mono text-label font-semibold text-text">@{handle}</span>
+        {presence?.kind === "herdr" && (
+          <HerdrRam className="size-3 opacity-70" style={{ color: "var(--accent)" }} />
+        )}
+      </div>
+      <div className="flex flex-col gap-0.5">
+        {children}
+        {presenceDetail(presence)}
+      </div>
+    </div>
+  );
 }
 
 /**
@@ -118,7 +243,9 @@ export function AgentsPanel({ roomName, refreshKey = 0 }: Props) {
 
   useEffect(() => {
     refresh();
-    const t = setInterval(refresh, 30_000);
+    // Poll at the herdr sync bridge's cadence (~5s) so liveness badges + queued-
+    // wake dots track the roster near-live instead of lagging up to 30s behind.
+    const t = setInterval(refresh, 5_000);
     return () => clearInterval(t);
   }, [refresh, refreshKey]);
 
@@ -185,7 +312,8 @@ export function AgentsPanel({ roomName, refreshKey = 0 }: Props) {
   );
 
   return (
-    <div className="flex h-full flex-col overflow-hidden">
+    <TooltipProvider>
+      <div className="flex h-full flex-col overflow-hidden">
       <div className="flex items-center gap-2 border-b border-border bg-paper px-4 py-3">
         <span className="text-label font-semibold text-text">Members</span>
         <span className="text-micro tabular text-muted-foreground">
@@ -317,26 +445,42 @@ export function AgentsPanel({ roomName, refreshKey = 0 }: Props) {
             {people.map((p) => {
               const presence = presenceMap.get(p.handle);
               return (
-                <div
-                  key={`person-${p.handle}`}
-                  className="flex items-center gap-2.5 px-3 py-2.5 border-b border-border last:border-b-0"
-                >
-                  <Monogram handle={p.handle} color="var(--muted-foreground)" presence={presence?.kind} status={presence?.status} />
-                  <div className="min-w-0 flex-1 leading-tight">
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-mono text-label text-text font-semibold truncate leading-tight">
-                        @{p.handle}
-                      </span>
-                      {p.you && (
-                        <span className="text-micro text-accent font-medium">you</span>
-                      )}
+                <Tooltip key={`person-${p.handle}`}>
+                  <TooltipTrigger
+                    render={
+                      <div className="flex items-center gap-2.5 px-3 py-2.5 border-b border-border last:border-b-0 hover:bg-hairline" />
+                    }
+                  >
+                    <Monogram handle={p.handle} color="var(--muted-foreground)" presence={presence?.kind} status={presence?.status} wakePending={presence?.wake_pending} />
+                    <div className="min-w-0 flex-1 leading-tight text-left">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-mono text-label text-text font-semibold truncate leading-tight">
+                          @{p.handle}
+                        </span>
+                        {p.you && (
+                          <span className="text-micro text-accent font-medium">you</span>
+                        )}
+                      </div>
+                      <div className="text-micro text-muted-foreground truncate leading-tight">
+                        {presence ? (
+                          presenceLine(presence)
+                        ) : (
+                          <>
+                            {p.owns ? "owner" : "posted here"}
+                            {p.teams.length > 0 ? ` · ${p.teams.join(", ")}` : ""}
+                          </>
+                        )}
+                      </div>
                     </div>
-                    <div className="text-micro text-muted-foreground truncate leading-tight">
-                      {presenceLabel(presence) ?? (p.owns ? "owner" : "posted here")}
-                      {p.teams.length > 0 ? ` · ${p.teams.join(", ")}` : ""}
-                    </div>
-                  </div>
-                </div>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <MemberTooltipCard handle={p.handle} color="var(--muted-foreground)" presence={presence}>
+                      <DetailRow label="role" value={p.owns ? "agent owner" : "posted here"} />
+                      {p.you && <DetailRow label="note" value="acting as you" color="var(--accent)" />}
+                      {p.teams.length > 0 && <DetailRow label="teams" value={p.teams.join(", ")} />}
+                    </MemberTooltipCard>
+                  </TooltipContent>
+                </Tooltip>
               );
             })}
           </>
@@ -347,42 +491,67 @@ export function AgentsPanel({ roomName, refreshKey = 0 }: Props) {
           const mine = principal !== "" && a.owner === principal;
           const presence = presenceMap.get(a.handle);
           return (
-            <div
-              key={`agent-${a.handle}`}
-              className="flex items-center gap-2.5 px-3 py-2.5 border-b border-border last:border-b-0"
-            >
-              <Monogram handle={a.handle} presence={presence?.kind} status={presence?.status} />
-              <div className="min-w-0 flex-1 leading-tight">
-                <div className="flex items-center gap-1.5">
-                  <span className="font-mono text-label text-text font-semibold truncate leading-tight">
-                    {a.handle}
-                  </span>
+            <Tooltip key={`agent-${a.handle}`}>
+              <TooltipTrigger
+                render={
+                  <div className="flex items-center gap-2.5 px-3 py-2.5 border-b border-border last:border-b-0 hover:bg-hairline" />
+                }
+              >
+                <Monogram handle={a.handle} presence={presence?.kind} status={presence?.status} wakePending={presence?.wake_pending} />
+                <div className="min-w-0 flex-1 leading-tight text-left">
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-mono text-label text-text font-semibold truncate leading-tight">
+                      {a.handle}
+                    </span>
+                    {a.owner && (
+                      <span
+                        className="font-mono text-micro truncate"
+                        style={{ color: mine ? "var(--accent)" : "var(--muted-foreground)" }}
+                      >
+                        @{a.owner}
+                      </span>
+                    )}
+                    {a.team && (
+                      <span className="text-micro text-muted-foreground truncate">
+                        · {a.team}
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-micro text-muted-foreground truncate leading-tight">
+                    {presence ? (
+                      presenceLine(presence)
+                    ) : (
+                      <>
+                        {a.adapter === "engine" && a.kind ? `engine · ${a.kind}` : a.adapter}
+                        {a.description ? ` · ${a.description}` : ""}
+                      </>
+                    )}
+                  </div>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>
+                <MemberTooltipCard handle={a.handle} presence={presence}>
+                  <DetailRow
+                    label="kind"
+                    value={a.adapter === "engine" && a.kind ? `engine · ${a.kind}` : a.adapter}
+                  />
                   {a.owner && (
-                    <span
-                      className="font-mono text-micro truncate"
-                      style={{ color: mine ? "var(--accent)" : "var(--muted-foreground)" }}
-                      title={`owner: @${a.owner}`}
-                    >
-                      @{a.owner}
-                    </span>
+                    <DetailRow
+                      label="owner"
+                      value={`@${a.owner}`}
+                      color={mine ? "var(--accent)" : undefined}
+                    />
                   )}
-                  {a.team && (
-                    <span className="text-micro text-muted-foreground truncate" title={`team: ${a.team}`}>
-                      · {a.team}
-                    </span>
-                  )}
-                </div>
-                <div className="text-micro text-muted-foreground truncate leading-tight">
-                  {presenceLabel(presence) ??
-                    (a.adapter === "engine" && a.kind ? `engine · ${a.kind}` : a.adapter)}
-                  {presenceLabel(presence) ? "" : a.description ? ` · ${a.description}` : ""}
-                </div>
-              </div>
-            </div>
+                  {a.team && <DetailRow label="team" value={a.team} />}
+                  {a.description && <DetailRow label="about" value={a.description} />}
+                </MemberTooltipCard>
+              </TooltipContent>
+            </Tooltip>
           );
         })}
       </div>
-    </div>
+      </div>
+    </TooltipProvider>
   );
 }
 

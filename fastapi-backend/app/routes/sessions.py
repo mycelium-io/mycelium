@@ -44,12 +44,25 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/rooms/{room_name}/sessions", tags=["sessions"])
 
 
-class HerdrPresenceBody(BaseModel):
-    """The host-side ``mycelium herdr sync`` push: handle → herdr agent state."""
+class HerdrAgentState(BaseModel):
+    """One agent's live herdr state in a sync push."""
 
-    statuses: dict[str, str] = Field(
+    status: str | None = Field(default=None, description="idle/working/blocked/done.")
+    title: str | None = Field(
+        default=None, description="herdr terminal title — the agent's current task."
+    )
+
+
+class HerdrPresenceBody(BaseModel):
+    """The host-side ``mycelium herdr sync`` push: handle → herdr agent state.
+
+    Each value may be a bare status string (legacy/simple) or a
+    :class:`HerdrAgentState` object carrying the status + current task title.
+    """
+
+    statuses: dict[str, str | HerdrAgentState] = Field(
         default_factory=dict,
-        description="Map of agent handle → herdr state (idle/working/blocked/done).",
+        description="Map of agent handle → herdr state (status + optional task title).",
     )
     ttl_s: float | None = Field(
         default=None,
@@ -186,6 +199,11 @@ async def list_members(room_name: str):
                 # herdr live agent state (idle/working/blocked/…) when the handle
                 # is mapped to a live herdr pane; None otherwise.
                 "status": info.status,
+                # True when a room mention is queued for this handle but held until
+                # it goes idle (the hold-until-idle doorbell).
+                "wake_pending": info.wake_pending,
+                # herdr terminal title — the agent's current task, when herdr-present.
+                "title": info.title,
             }
             for h, info in sorted(room_channels.manager.presence(room_name).items())
         ]
@@ -204,8 +222,12 @@ async def push_herdr_presence(room_name: str, body: HerdrPresenceBody):
     """
     if not room_exists(room_name):
         raise HTTPException(status_code=404, detail="Room not found")
+    normalized: dict[str, str | dict] = {
+        h: ({"status": v.status, "title": v.title} if isinstance(v, HerdrAgentState) else v)
+        for h, v in body.statuses.items()
+    }
     room_channels.manager.set_herdr_presence(
-        room_name, body.statuses, ttl_s=body.ttl_s if body.ttl_s else 90.0
+        room_name, normalized, ttl_s=body.ttl_s if body.ttl_s else 90.0
     )
 
 

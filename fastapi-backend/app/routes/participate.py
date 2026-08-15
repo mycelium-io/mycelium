@@ -236,6 +236,11 @@ async def post_reply(room_name: str, body: ReplyBody):
         await managed.channel.send(envelope, extra={"content": clean})
     except Exception:
         pass
+    # herdr wake-on-mention, agent→agent leg: a reply that tags another handle
+    # should wake it the same as a human's tag does. Shares the one hook the
+    # human POST /messages path uses; ``exclude`` skips a self-mention so a reply
+    # naming its own handle doesn't enqueue a self-wake.
+    room_channels.manager.enqueue_herdr_wakes_for_mentions(room_name, clean, exclude=body.handle)
     return {
         "room": room_name,
         "handle": body.handle,

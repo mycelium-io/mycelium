@@ -317,6 +317,24 @@ def _load_manifest_remote(client, room_name: str, handle: str) -> AgentManifest 
         return None
 
 
+def _delete_manifest(config: MyceliumConfig, room_name: str, manifest: AgentManifest) -> None:
+    """Delete a manifest from the backend and the local mirror (notes/logs kept).
+
+    The unregister half of ``agent rm``, factored out so other lifecycle owners
+    (e.g. the herdr sync bridge retiring a member whose pane closed) reuse the
+    exact same teardown instead of re-implementing the backend delete + unlink.
+    """
+    from mycelium_backend_client.api.memory import (
+        delete_memory_api_rooms_room_name_memory_key_delete as delete_api,
+    )
+
+    with _typed_client(config) as client:
+        delete_api.sync_detailed(room_name=room_name, key=manifest.memory_key, client=client)
+    local = get_room_dir(room_name) / f"{manifest.memory_key}.md"
+    if local.exists():
+        local.unlink()
+
+
 def _write_manifest(
     config: MyceliumConfig, room_name: str, manifest: AgentManifest, created_by: str
 ) -> None:
@@ -1059,15 +1077,7 @@ def agent_rm(
         impl.destroy(manifest=manifest, config=config, room=room_name, full=full)
 
         # 2. Delete the manifest (backend + local mirror).
-        from mycelium_backend_client.api.memory import (
-            delete_memory_api_rooms_room_name_memory_key_delete as delete_api,
-        )
-
-        with _typed_client(config) as client:
-            delete_api.sync_detailed(room_name=room_name, key=manifest.memory_key, client=client)
-        local = get_room_dir(room_name) / f"{manifest.memory_key}.md"
-        if local.exists():
-            local.unlink()
+        _delete_manifest(config, room_name, manifest)
 
         verb = "Destroyed" if will_destroy else "Unregistered"
         console.print(f"[green]{verb}:[/green] @{handle} from {room_name}")
@@ -1081,7 +1091,9 @@ def agent_rm(
 
 # Re-export for completeness — doctor and other commands reuse these.
 __all__ = [
+    "_delete_manifest",
     "_load_manifest",
     "_load_manifest_remote",
+    "_write_manifest",
     "app",
 ]

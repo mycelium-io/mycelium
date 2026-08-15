@@ -412,6 +412,12 @@ export interface PresenceMember {
   /** herdr live agent state (idle/working/blocked/done) when the handle is mapped
    *  to a live herdr pane; null otherwise. */
   status?: string | null;
+  /** True when a room mention is queued for this handle but held until it goes
+   *  idle (the hold-until-idle doorbell) — surfaced as a "wake queued" indicator. */
+  wake_pending?: boolean;
+  /** herdr's terminal title — the agent's current task ("Review PR 540 comments").
+   *  Shown as the roster's activity line for herdr-hosted members. */
+  title?: string | null;
 }
 
 /** Live presence set for a room: SLIM-connected + server-held lease members. */

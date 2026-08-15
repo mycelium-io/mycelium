@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import json
 import subprocess
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
@@ -28,6 +28,8 @@ from mycelium.integrations.herdr import (
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from mycelium.config import MyceliumConfig
 
 
 def _proc(stdout: str = "", stderr: str = "", returncode: int = 0) -> subprocess.CompletedProcess:
@@ -100,6 +102,29 @@ def test_registry_corrupt_file_reads_empty(isolated_home: Path) -> None:
     reg.path.write_text("}{ not json")
     assert reg.all() == []
     assert reg.get("design", "bot") is None
+
+
+def test_registry_managed_roundtrips(isolated_home: Path) -> None:
+    reg = HerdrRegistry()
+    reg.set(HerdrPaneMapping(room="r", handle="auto", pane="w2:pA", managed=True))
+    reg.set(HerdrPaneMapping(room="r", handle="hand", pane="w2:pB"))  # default False
+    auto = reg.get("r", "auto")
+    hand = reg.get("r", "hand")
+    assert auto is not None and auto.managed is True
+    assert hand is not None and hand.managed is False
+    assert {m.handle: m.managed for m in reg.all()} == {"auto": True, "hand": False}
+
+
+def test_registry_workspace_bindings_roundtrip(isolated_home: Path) -> None:
+    reg = HerdrRegistry()
+    assert reg.bindings() == {}
+    reg.bind("w2", "design")
+    reg.bind("w3", "ops")
+    reg.bind("w2", "design-v2")  # idempotent upsert (last write wins)
+    assert reg.bindings() == {"w2": "design-v2", "w3": "ops"}
+    assert reg.unbind("w3") is True
+    assert reg.unbind("w9") is False
+    assert reg.bindings() == {"w2": "design-v2"}
 
 
 # ── availability ────────────────────────────────────────────────────────────────
@@ -368,7 +393,7 @@ def test_reconcile_note_both_absent() -> None:
     assert text == "—"
 
 
-# ── enroll handle derivation ────────────────────────────────────────────────────
+# ── sync handle derivation ────────────────────────────────────────────────────
 
 _HANDLE_RE = __import__("re").compile(r"^[a-z0-9][a-z0-9._-]*$")  # AgentManifest.handle rule
 
@@ -421,6 +446,83 @@ def test_derive_handle_disambiguates_duplicate_tab_names() -> None:
     assert _HANDLE_RE.match(second)
 
 
+# ── sync membership reconcile ─────────────────────────────────────────────────
+
+
+def test_reconcile_workspace_enrolls_new_and_retires_closed(
+    monkeypatch: pytest.MonkeyPatch, isolated_home: Path
+) -> None:
+    """The lifecycle mirror: a live workspace agent that isn't a member gets
+    enrolled; a sync-managed member whose pane closed is retired; a hand-mapped
+    (unmanaged) member is left alone even if its pane is gone."""
+    from mycelium.commands import herdr as herdr_cmd
+
+    reg = HerdrRegistry()
+    reg.set(HerdrPaneMapping(room="r", handle="old", pane="w2:pDEAD", kind="claude", managed=True))
+    reg.set(HerdrPaneMapping(room="r", handle="manual", pane="w2:pGONE"))  # unmanaged
+
+    written: list[str] = []
+    deleted: list[str] = []
+
+    class _FakeManifest:
+        def __init__(self, handle: str) -> None:
+            self.handle = handle
+            self.memory_key = f"agents/{handle}"
+
+    class _FakeImpl:
+        def build_manifest(self, *, handle: str, **_: object) -> _FakeManifest:
+            return _FakeManifest(handle)
+
+    monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/herdr")
+    monkeypatch.setattr("mycelium.integrations.get_integration", lambda *_a, **_k: _FakeImpl())
+    monkeypatch.setattr(
+        "mycelium.commands.agent._write_manifest",
+        lambda config, room, manifest, created_by: written.append(manifest.handle),
+    )
+    # Retire path loads then deletes the manifest; enroll of a new pane never loads.
+    monkeypatch.setattr(
+        "mycelium.commands.agent._load_manifest", lambda room, handle: _FakeManifest(handle)
+    )
+    monkeypatch.setattr(
+        "mycelium.commands.agent._delete_manifest",
+        lambda config, room, manifest: deleted.append(manifest.handle),
+    )
+
+    agents = [
+        {
+            "pane_id": "w2:pNEW",
+            "agent_status": "idle",
+            "tab_id": "w2:tNEW",
+            "workspace_id": "w2",
+            "agent": "claude",
+            "cwd": "/x",
+        }
+    ]
+    tabs = [{"tab_id": "w2:tNEW", "label": "fresh agent"}]
+    bridge = HerdrBridge(
+        runner=ScriptedRunner(
+            {"agent list": _proc(_ok({"agents": agents})), "tab list": _proc(_ok({"tabs": tabs}))}
+        )
+    )
+
+    class _Cfg:
+        def get_current_identity(self) -> str:
+            return "tester"
+
+    enrolled, retired = herdr_cmd._reconcile_workspace(
+        cast("MyceliumConfig", _Cfg()), bridge, "w2", "r", name_from="tab", prefix="", kind=None
+    )
+
+    assert enrolled == ["fresh-agent"]
+    assert written == ["fresh-agent"]
+    assert retired == ["old"] and deleted == ["old"]
+    # New member is managed; the dead managed one is gone; the hand-mapped one stays.
+    fresh = bridge.registry.get("r", "fresh-agent")
+    assert fresh is not None and fresh.managed is True
+    assert bridge.registry.get("r", "old") is None
+    assert bridge.registry.get("r", "manual") is not None
+
+
 # ── sync presence collection ────────────────────────────────────────────────────
 
 
@@ -437,17 +539,23 @@ def test_collect_presence_maps_live_panes_per_room(
 
     monkeypatch.setattr("shutil.which", lambda _: "/usr/bin/herdr")
     agents = [
-        {"pane_id": "w2:pV", "agent_status": "idle"},
-        {"pane_id": "w2:pT", "agent_status": "working"},
-        {"pane_id": "w3:pA", "agent_status": "blocked"},
+        {"pane_id": "w2:pV", "agent_status": "idle", "terminal_title_stripped": "Review PR 12"},
+        {"pane_id": "w2:pT", "agent_status": "working"},  # no title → None
+        {"pane_id": "w3:pA", "agent_status": "blocked", "terminal_title_stripped": "Fix CI"},
         # w9:pZ absent → 'ghost' omitted so its backend entry lapses.
     ]
     bridge = HerdrBridge(runner=ScriptedRunner({"agent list": _proc(_ok({"agents": agents}))}))
 
+    # Each handle carries status + terminal title (the current task) for the roster.
     view = _collect_presence(bridge, room_filter=None)
     assert view == {
-        "design": {"reviewer": "idle", "docs": "working"},
-        "ops": {"ci": "blocked"},
+        "design": {
+            "reviewer": {"status": "idle", "title": "Review PR 12"},
+            "docs": {"status": "working", "title": None},
+        },
+        "ops": {"ci": {"status": "blocked", "title": "Fix CI"}},
     }
     # Room filter scopes the push.
-    assert _collect_presence(bridge, room_filter="ops") == {"ops": {"ci": "blocked"}}
+    assert _collect_presence(bridge, room_filter="ops") == {
+        "ops": {"ci": {"status": "blocked", "title": "Fix CI"}}
+    }

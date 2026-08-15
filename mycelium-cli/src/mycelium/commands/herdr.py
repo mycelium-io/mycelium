@@ -296,129 +296,135 @@ def _derive_handle(
     return disambiguated or f"{base}-{_pane_suffix(pane_id)}"
 
 
-@doc_ref(
-    usage="mycelium herdr enroll --workspace <id> --room <room> [--kind K] [--wake] [--dry-run]",
-    desc="Enroll every live herdr agent in a workspace into a mycelium room.",
-    group="agent",
-)
-@app.command("enroll")
-def herdr_enroll(
-    ctx: typer.Context,
-    workspace: str = typer.Option(..., "--workspace", "-w", help="herdr workspace id, e.g. w2."),
-    room: str | None = typer.Option(None, "--room", "-r", help="Room (defaults to active)."),
-    kind: str | None = typer.Option(None, "--kind", help="Only agents of this herdr kind."),
-    name_from: str = typer.Option(
-        "tab", "--name-from", help="Handle source: 'tab' (tab name) or 'pane' (pane id)."
-    ),
-    prefix: str = typer.Option("", "--prefix", help="Handle prefix (e.g. 'agent-' to namespace)."),
-    wake: bool = typer.Option(False, "--wake", help="Wake each enrolled agent to join now."),
-    dry_run: bool = typer.Option(False, "--dry-run", help="Show the plan without registering."),
-) -> None:
-    """Bind a herdr **workspace** to a mycelium **room** in one shot.
+def _enroll_one(
+    config: MyceliumConfig,
+    bridge: HerdrBridge,
+    room: str,
+    agent: dict,
+    *,
+    taken: set[str],
+    name_from: str,
+    prefix: str,
+    tab_labels: dict[str, str],
+    sender: str,
+) -> str | None:
+    """Ensure one live herdr agent is a member of ``room``; return its handle if
+    this call newly enrolled it (``None`` if it was already bound).
 
-    A herdr workspace already groups agents that work together, so it's the
-    natural unit to map onto a coordination space (design-doc Shape 2). For each
-    live agent in the workspace this registers a ``claude_code`` manifest, binds
-    handle↔pane, and — with ``--wake`` — wakes it to join. The handle is derived
-    from the **tab name** by default (``--name-from pane`` to use the pane id),
-    with collisions disambiguated by the pane suffix. Idempotent: re-running skips
-    agents already registered + mapped.
-
-    This only *drives* agents you already started in herdr; it never spawns panes.
+    Idempotency is keyed on the **pane**, not the derived handle: if any mapping
+    in the room already points at this pane, the agent is already a member (we
+    just re-materialize its manifest if it went missing). Only a genuinely new
+    pane derives a fresh handle — collision-checked against the room's existing
+    handles — and gets a manifest + a ``managed`` mapping.
     """
-    try:
-        config = MyceliumConfig.load()
-        room_name = _resolve_room(config, room)
-        bridge = _bridge()
-        if not bridge.available():
-            console.print("[yellow]herdr not reachable[/yellow] — cannot enroll.")
-            raise typer.Exit(1)
+    from mycelium.commands.agent import _load_manifest, _write_manifest
+    from mycelium.integrations import AddOptions, get_integration
 
-        agents = [
-            a
-            for a in bridge.list_agents()
-            if a.get("workspace_id") == workspace
-            and a.get("pane_id")
-            and (kind is None or a.get("agent") == kind)
-        ]
-        if not agents:
-            console.print(
-                f"[yellow]No live agents[/yellow] in workspace {workspace}"
-                + (f" of kind {kind}" if kind else "")
-                + "."
+    pane = str(agent["pane_id"])
+    existing = next((m for m in bridge.registry.all() if m.room == room and m.pane == pane), None)
+    if existing is not None:
+        # Already bound to this pane — heal a manifest that was deleted out from
+        # under us so the member doesn't silently drop off the roster.
+        if _load_manifest(room, existing.handle) is None:
+            impl = get_integration("claude_code", cwd=agent.get("cwd"))
+            manifest = impl.build_manifest(
+                handle=existing.handle,
+                opts=AddOptions(room=room),
+                description=f"herdr-enrolled from {pane} ({agent.get('agent')})",
+                allow_from=[],
+                owner=sender,
             )
-            raise typer.Exit(1)
+            _write_manifest(config, room, manifest, created_by=sender)
+        return None
 
-        # Reuse the exact manifest-registration path `agent create` uses.
-        from mycelium.commands.agent import _load_manifest, _write_manifest
-        from mycelium.integrations import AddOptions, get_integration
+    handle = _derive_handle(
+        tab_label=tab_labels.get(str(agent.get("tab_id") or ""), ""),
+        pane_id=pane,
+        prefix=prefix,
+        name_from=name_from,
+        taken=taken,
+    )
+    taken.add(handle)
+    impl = get_integration("claude_code", cwd=agent.get("cwd"))
+    manifest = impl.build_manifest(
+        handle=handle,
+        opts=AddOptions(room=room),
+        description=f"herdr-enrolled from {pane} ({agent.get('agent')})",
+        allow_from=[],
+        owner=sender,
+    )
+    _write_manifest(config, room, manifest, created_by=sender)
+    bridge.registry.set(
+        HerdrPaneMapping(room=room, handle=handle, pane=pane, kind=agent.get("agent"), managed=True)
+    )
+    return handle
 
-        tab_labels = bridge.tab_labels(workspace) if name_from == "tab" else {}
-        sender = config.get_current_identity()
-        table = Table(title=f"enroll {workspace} → {room_name}", show_lines=False)
-        table.add_column("pane", style="cyan")
-        table.add_column("tab", style="dim")
-        table.add_column("handle", style="cyan")
-        table.add_column("action")
-        planned: list[tuple[str, str, str]] = []
-        taken: set[str] = set()
-        for a in agents:
-            pane = str(a["pane_id"])
-            tab_label = tab_labels.get(str(a.get("tab_id") or ""), "")
-            handle = _derive_handle(
-                tab_label=tab_label,
-                pane_id=pane,
-                prefix=prefix,
-                name_from=name_from,
+
+def _retire_one(config: MyceliumConfig, bridge: HerdrBridge, mapping: HerdrPaneMapping) -> None:
+    """Remove a sync-managed member whose herdr pane is gone: deregister its
+    manifest (notes/logs preserved) and drop the mapping. The teardown half of
+    "herdr lifecycle *is* mycelium lifecycle."""
+    from mycelium.commands.agent import _delete_manifest, _load_manifest
+
+    manifest = _load_manifest(mapping.room, mapping.handle)
+    if manifest is not None:
+        _delete_manifest(config, mapping.room, manifest)
+    bridge.registry.remove(mapping.room, mapping.handle)
+
+
+def _reconcile_workspace(
+    config: MyceliumConfig,
+    bridge: HerdrBridge,
+    workspace: str,
+    room: str,
+    *,
+    name_from: str,
+    prefix: str,
+    kind: str | None,
+) -> tuple[list[str], list[str]]:
+    """Make ``room``'s membership equal the live agents in ``workspace``.
+
+    Enrolls any live agent that isn't a member yet and retires any sync-managed
+    member whose pane has closed. Returns ``(enrolled, retired)`` handles for
+    logging. Hand-mapped (non-``managed``) bindings are never retired here.
+    """
+    agents = [
+        a
+        for a in bridge.list_agents()
+        if a.get("workspace_id") == workspace
+        and a.get("pane_id")
+        and (kind is None or a.get("agent") == kind)
+    ]
+    live_panes = {str(a["pane_id"]) for a in agents}
+    tab_labels = bridge.tab_labels(workspace) if name_from == "tab" else {}
+    sender = config.get_current_identity()
+    # Seed with the room's existing handles so a new pane never collides with one.
+    taken = {m.handle for m in bridge.registry.all() if m.room == room}
+
+    enrolled = [
+        h
+        for a in agents
+        if (
+            h := _enroll_one(
+                config,
+                bridge,
+                room,
+                a,
                 taken=taken,
+                name_from=name_from,
+                prefix=prefix,
+                tab_labels=tab_labels,
+                sender=sender,
             )
-            taken.add(handle)
-            already = _load_manifest(room_name, handle) is not None
-            mapped = bridge.registry.get(room_name, handle) is not None
-            action = "skip (registered+mapped)" if already and mapped else "register + map"
-            planned.append((pane, handle, action))
-            tab_display = tab_label or "[dim]—[/dim]"
-            if dry_run:
-                table.add_row(pane, tab_display, f"@{handle}", f"[dim]{action}[/dim]")
-                continue
-            mapping = HerdrPaneMapping(
-                room=room_name, handle=handle, pane=pane, kind=a.get("agent")
-            )
-            if not (already and mapped):
-                if not already:
-                    impl = get_integration("claude_code", cwd=a.get("cwd"))
-                    manifest = impl.build_manifest(
-                        handle=handle,
-                        opts=AddOptions(room=room_name),
-                        description=f"herdr-enrolled from {pane} ({a.get('agent')})",
-                        allow_from=[],
-                        owner=sender,
-                    )
-                    _write_manifest(config, room_name, manifest, created_by=sender)
-                bridge.registry.set(mapping)
-            woke = ""
-            if wake and not dry_run:
-                result = bridge.wake(
-                    mapping,
-                    build_wake_prompt(room_name, handle),
-                    timeout_ms=config.herdr.wake_timeout_ms,
-                )
-                woke = " + woke" if result.ok else f" + wake failed ({result.detail})"
-            table.add_row(pane, tab_display, f"@{handle}", f"[green]{action}[/green]{woke}")
-
-        console.print(table)
-        if dry_run:
-            console.print("[dim]Dry run — nothing registered. Drop --dry-run to apply.[/dim]")
-        else:
-            console.print(
-                f"[green]Enrolled[/green] {len(planned)} agent(s) into [cyan]{room_name}[/cyan]. "
-                f"Inspect with [dim]mycelium herdr ls --room {room_name}[/dim]"
-            )
-    except typer.Exit:
-        raise
-    except Exception as e:
-        print_error(e, verbose=bool(ctx.obj and ctx.obj.get("verbose")))
-        raise typer.Exit(1) from None
+        )
+        is not None
+    ]
+    retired: list[str] = []
+    for m in bridge.registry.all():
+        if m.room == room and m.managed and m.pane not in live_panes:
+            _retire_one(config, bridge, m)
+            retired.append(m.handle)
+    return enrolled, retired
 
 
 @doc_ref(
@@ -505,29 +511,37 @@ def herdr_wake(
         raise typer.Exit(1) from None
 
 
-def _collect_presence(bridge: HerdrBridge, room_filter: str | None) -> dict[str, dict[str, str]]:
-    """Current herdr liveness for every mapped handle → ``{room: {handle: status}}``.
+def _collect_presence(
+    bridge: HerdrBridge, room_filter: str | None
+) -> dict[str, dict[str, dict[str, str | None]]]:
+    """Current herdr liveness for every mapped handle →
+    ``{room: {handle: {"status": ..., "title": ...}}}``.
 
-    Only mapped handles whose pane currently hosts a live agent are included; an
-    unmapped/dead pane is simply omitted so its backend entry lapses on its TTL.
+    ``title`` is herdr's terminal title (the agent's current task), so the roster
+    can show *what* each agent is doing, not just that it's alive. Only mapped
+    handles whose pane currently hosts a live agent are included; an unmapped/dead
+    pane is omitted so its backend entry lapses on its TTL.
     """
-    live = {
-        str(a["pane_id"]): str(a.get("agent_status") or "unknown")
+    live: dict[str, dict[str, str | None]] = {
+        str(a["pane_id"]): {
+            "status": str(a.get("agent_status") or "unknown"),
+            "title": (a.get("terminal_title_stripped") or a.get("terminal_title") or None),
+        }
         for a in bridge.list_agents()
         if a.get("pane_id")
     }
-    view: dict[str, dict[str, str]] = {}
+    view: dict[str, dict[str, dict[str, str | None]]] = {}
     for m in bridge.registry.all():
         if room_filter and m.room != room_filter:
             continue
-        status = live.get(m.pane)
-        if status is not None:
-            view.setdefault(m.room, {})[m.handle] = status
+        state = live.get(m.pane)
+        if state is not None:
+            view.setdefault(m.room, {})[m.handle] = state
     return view
 
 
 def _push_presence(
-    config: MyceliumConfig, room: str, statuses: dict[str, str], ttl_s: float
+    config: MyceliumConfig, room: str, statuses: dict[str, dict[str, str | None]], ttl_s: float
 ) -> bool:
     """POST one room's herdr liveness to the backend. Best-effort → ``bool`` ok."""
     import httpx
@@ -580,87 +594,129 @@ def _drain_wakes(config: MyceliumConfig, bridge: HerdrBridge, room: str) -> int:
 
 
 @doc_ref(
-    usage="mycelium herdr sync [--room <room>] [--watch] [--interval N]",
-    desc="Push herdr liveness to the backend so the UI can show idle/working/blocked.",
+    usage="mycelium herdr sync [--workspace <id> --room <room>] [--watch] [--interval N]",
+    desc="Bind a herdr workspace to a room and reconcile membership, liveness, and wakes.",
     group="agent",
 )
 @app.command("sync")
 def herdr_sync(
     ctx: typer.Context,
-    room: str | None = typer.Option(None, "--room", "-r", help="Only sync this room."),
-    watch: bool = typer.Option(False, "--watch", help="Keep polling and pushing on change."),
+    workspace: str | None = typer.Option(
+        None, "--workspace", "-w", help="herdr workspace id to bind to --room (e.g. w2)."
+    ),
+    room: str | None = typer.Option(
+        None, "--room", "-r", help="Room to bind/reconcile (scopes to bound workspaces)."
+    ),
+    watch: bool = typer.Option(False, "--watch", help="Keep reconciling on an interval."),
     interval: int = typer.Option(5, "--interval", help="Poll interval seconds (with --watch)."),
+    name_from: str = typer.Option(
+        "tab", "--name-from", help="Handle source for new agents: 'tab' or 'pane'."
+    ),
+    prefix: str = typer.Option(
+        "", "--prefix", help="Handle prefix for new agents (e.g. 'agent-')."
+    ),
+    kind: str | None = typer.Option(None, "--kind", help="Only enroll agents of this herdr kind."),
 ) -> None:
-    """Mirror herdr's live agent states into the backend presence surface.
+    """The one bridge that makes a herdr workspace *be* a mycelium room.
 
-    The backend runs containerized and can't see the host's herdr socket, so this
-    host-side bridge polls ``herdr agent list`` and pushes each mapped handle's
-    state to the backend, which the frontend renders as a liveness badge. This is
-    the honest home for a host-side loop after the cold-spawn daemon's removal: it
-    only mirrors liveness — it never spawns or wakes agents.
+    Pass ``--workspace w2 --room myroom`` once to **bind** them; from then on this
+    reconciles that binding every run (and ``--watch`` every ``interval``):
 
-    One-shot by default; ``--watch`` keeps it running (pushes on change, with a
-    periodic heartbeat so entries don't lapse). Ctrl-C clears the overlay.
+    - **membership** — every live agent in the workspace is enrolled as a room
+      member (manifest + handle↔pane, handle from the tab name); a member whose
+      pane closes leaves the room. The roster tracks the workspace with no manual
+      ``map``/``enroll`` step.
+    - **liveness** — each member's herdr state (idle/working/blocked) is pushed to
+      the backend so the UI badges it (the backend is containerized and can't see
+      the herdr socket; this host-side loop is the only thing that can).
+    - **wakes** — queued ``@``-mention doorbells are drained and delivered to the
+      right pane.
+
+    Bindings persist, so a bare ``mycelium herdr sync --watch`` reconciles every
+    bound workspace. This only *drives* agents you started in herdr; it never
+    spawns panes. Ctrl-C clears the liveness overlay.
     """
     import time
 
     try:
         config = MyceliumConfig.load()
-        room_filter = _resolve_room(config, room) if room else None
         bridge = _bridge()
         if not bridge.available():
             console.print("[yellow]herdr not reachable[/yellow] — nothing to sync.")
             raise typer.Exit(1)
 
+        room_name = _resolve_room(config, room) if room else None
+        if workspace and room_name:
+            bridge.registry.bind(workspace, room_name)
+            console.print(
+                f"[green]Bound[/green] workspace [cyan]{workspace}[/cyan] → "
+                f"room [cyan]{room_name}[/cyan]."
+            )
+        elif workspace or room_name:
+            console.print(
+                "[yellow]Binding needs both[/yellow] --workspace and --room; "
+                "reconciling existing bindings only."
+            )
+
+        # The (workspace, room) pairs this run reconciles: persisted bindings,
+        # filtered by any --workspace/--room the caller scoped to.
+        targets = [
+            (ws, r)
+            for ws, r in bridge.registry.bindings().items()
+            if (workspace is None or ws == workspace) and (room_name is None or r == room_name)
+        ]
+        if not targets:
+            console.print(
+                "[dim]No workspace bindings. Bind one:[/dim] "
+                "[cyan]mycelium herdr sync --workspace <id> --room <room>[/cyan]"
+            )
+            raise typer.Exit(1)
+
         ttl_s = max(90.0, interval * 4.0)
 
-        def push_all(view: dict[str, dict[str, str]]) -> int:
-            ok = 0
+        def reconcile_and_push() -> tuple[int, int, int]:
+            """One pass: reconcile every target, then push liveness + drain wakes
+            for the touched rooms. Returns (enrolled, retired, states-pushed)."""
+            enrolled = retired = 0
+            for ws, r in targets:
+                e, x = _reconcile_workspace(
+                    config, bridge, ws, r, name_from=name_from, prefix=prefix, kind=kind
+                )
+                for h in e:
+                    console.print(f"[green]＋ enrolled[/green] @{h} [dim]({ws} → {r})[/dim]")
+                for h in x:
+                    console.print(
+                        f"[yellow]－ retired[/yellow] @{h} [dim](pane closed in {r})[/dim]"
+                    )
+                enrolled += len(e)
+                retired += len(x)
+            view = _collect_presence(bridge, room_name)
             for r, statuses in view.items():
-                if _push_presence(config, r, statuses, ttl_s):
-                    ok += 1
-            return ok
+                _push_presence(config, r, statuses, ttl_s)
+            for r in {r for _, r in targets} | set(view):
+                _drain_wakes(config, bridge, r)
+            return enrolled, retired, sum(len(v) for v in view.values())
 
-        view = _collect_presence(bridge, room_filter)
-        pushed = push_all(view)
-        total = sum(len(v) for v in view.values())
-        for r in view:
-            _drain_wakes(config, bridge, r)  # handle any tags waiting on the queue
+        enrolled, retired, states = reconcile_and_push()
         console.print(
-            f"[green]Synced[/green] {total} agent state(s) across {pushed} room(s)."
+            f"[green]Synced[/green] {states} live state(s) across {len(targets)} binding(s) "
+            f"[dim](+{enrolled} enrolled, -{retired} retired)[/dim]"
             + ("" if watch else " [dim](one-shot; --watch to keep live)[/dim]")
         )
         if not watch:
             return
 
         console.print(
-            f"[dim]Watching herdr every {interval}s (presence up, wakes down) — "
-            f"Ctrl-C to stop.[/dim]"
+            f"[dim]Watching herdr every {interval}s "
+            f"(membership + presence up, wakes down) — Ctrl-C to stop.[/dim]"
         )
-        last: dict[str, dict[str, str]] = view
-        last_push = time.monotonic()
-        rooms_seen = set(view)
+        rooms_touched = {r for _, r in targets}
         try:
             while True:
                 time.sleep(interval)
-                view = _collect_presence(bridge, room_filter)
-                rooms_seen |= set(view)
-                # Drain wake-on-mention every tick — tags are time-sensitive.
-                for r in rooms_seen:
-                    _drain_wakes(config, bridge, r)
-                # Push presence on change, or heartbeat every ~half-TTL to keep live.
-                changed = view != last
-                if changed or (time.monotonic() - last_push) >= ttl_s / 2:
-                    push_all(view)
-                    # Clear rooms that dropped to empty so their badges disappear.
-                    for r in rooms_seen - set(view):
-                        _push_presence(config, r, {}, ttl_s)
-                    last, last_push = view, time.monotonic()
-                    if changed:
-                        total = sum(len(v) for v in view.values())
-                        console.print(f"[dim]↻ pushed {total} state(s)[/dim]")
+                reconcile_and_push()
         except KeyboardInterrupt:
-            for r in rooms_seen:
+            for r in rooms_touched:
                 _push_presence(config, r, {}, ttl_s)
             console.print("\n[dim]Stopped — cleared herdr overlay.[/dim]")
     except typer.Exit:

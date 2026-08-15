@@ -194,6 +194,77 @@ def test_herdr_status_lookup(
 ) -> None:
     manager.set_herdr_presence("room-a", {"reviewer": "working"})
     assert manager.herdr_status("room-a", "reviewer") == "working"
+
+
+def test_herdr_title_surfaces_on_presence(
+    manager: room_channels.RoomChannelManager,
+) -> None:
+    # A push carrying the terminal title lands as MemberPresence.title — the
+    # roster's "current task" line.
+    manager.set_herdr_presence(
+        "room-a", {"reviewer": {"status": "working", "title": "Review PR 540"}}
+    )
+    p = manager.presence("room-a")["reviewer"]
+    assert p.status == "working"
+    assert p.title == "Review PR 540"
+    # The bare-string form still works (status only, no title).
+    manager.set_herdr_presence("room-b", {"docs": "idle"})
+    d = manager.presence("room-b")["docs"]
+    assert d.status == "idle"
+    assert d.title is None
+
+
+def test_pending_herdr_wakes_peeks_without_draining(
+    manager: room_channels.RoomChannelManager,
+) -> None:
+    # The read-only counterpart to drain: a held wake shows as pending and is NOT
+    # consumed, so the presence surface can badge it repeatedly.
+    manager.set_herdr_presence("room-a", {"reviewer": "working"})
+    manager.enqueue_herdr_wake("room-a", "reviewer")
+    assert manager.pending_herdr_wakes("room-a") == {"reviewer"}
+    # Peeking twice is stable (non-destructive), unlike drain.
+    assert manager.pending_herdr_wakes("room-a") == {"reviewer"}
+    # A stale-expired wake is excluded, matching what drain would drop.
+    assert manager.pending_herdr_wakes("room-a", hold_ttl_s=-1.0) == set()
+
+
+def test_enqueue_wakes_for_mentions_is_the_shared_hook(
+    manager: room_channels.RoomChannelManager,
+) -> None:
+    # The one hook every write path shares: an agent reply that tags @docs enqueues
+    # a wake exactly as a human message would — the agent→agent leg that used to be
+    # missing. A working target is held (surfaces as pending).
+    manager.set_herdr_presence("room-a", {"docs": "working", "reviewer": "idle"})
+    enq = manager.enqueue_herdr_wakes_for_mentions(
+        "room-a", "hey @docs take a look", exclude="reviewer"
+    )
+    assert enq == ["docs"]
+    assert manager.pending_herdr_wakes("room-a") == {"docs"}
+
+
+def test_enqueue_wakes_for_mentions_skips_self_and_non_herdr(
+    manager: room_channels.RoomChannelManager,
+) -> None:
+    # A reply naming its own handle doesn't self-wake; a mention with no herdr
+    # presence isn't ours (normal SLIM/consent path covers it).
+    manager.set_herdr_presence("room-a", {"docs": "idle"})
+    enq = manager.enqueue_herdr_wakes_for_mentions("room-a", "@docs @ghost done", exclude="docs")
+    assert enq == []
+    assert manager.pending_herdr_wakes("room-a") == set()
+
+
+def test_wake_pending_surfaces_on_presence(
+    manager: room_channels.RoomChannelManager,
+) -> None:
+    # A queued-but-held mention lights up wake_pending on the presence surface so
+    # the UI can show "tagged, waking when idle".
+    manager.set_herdr_presence("room-a", {"reviewer": "working"})
+    manager.enqueue_herdr_wake("room-a", "reviewer")
+    presence = manager.presence("room-a")
+    assert presence["reviewer"].wake_pending is True
+    # No wake queued → flag stays False.
+    manager.set_herdr_presence("room-b", {"docs": "idle"})
+    assert manager.presence("room-b")["docs"].wake_pending is False
     assert manager.herdr_status("room-a", "nobody") is None
 
 

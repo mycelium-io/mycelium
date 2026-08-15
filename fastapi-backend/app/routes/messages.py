@@ -11,7 +11,6 @@ HTTP path stays the UI's post/list surface until SSE/``stream.py`` retires.
 """
 
 import logging
-import re
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
@@ -133,27 +132,9 @@ async def send_message(room_name: str, payload: MessageCreate):
     # bridge to run `herdr agent prompt`. This is the "commands down" leg that
     # makes tagging-from-the-UI actually reach a resident-but-idle herdr agent.
     if coord is None and msg.message_type == MessageType.BROADCAST:
-        _enqueue_herdr_wakes(base_room, msg.content or "")
+        room_channels.manager.enqueue_herdr_wakes_for_mentions(base_room, msg.content or "")
 
     return MessageRead.model_validate(msg)
-
-
-_MENTION_RE = re.compile(r"@([a-z0-9][a-z0-9._-]*)", re.IGNORECASE)
-
-
-def _enqueue_herdr_wakes(room: str, content: str) -> None:
-    """Queue a herdr wake for each mentioned handle that is present in herdr.
-
-    Enqueued in *any* herdr state — an ``idle`` agent is woken on the next bridge
-    poll, a ``working``/``blocked`` one has its tag **held** and released once it
-    goes idle (the queue does the gating). herdr's live state is authoritative for
-    a mapped handle, so a stale presence lease that makes it look "joined" doesn't
-    suppress the wake. A handle with no herdr presence isn't ours — the normal
-    SLIM/consent path handles it.
-    """
-    for raw in {m.group(1).lower() for m in _MENTION_RE.finditer(content)}:
-        if room_channels.manager.herdr_status(room, raw) is not None:
-            room_channels.manager.enqueue_herdr_wake(room, raw)
 
 
 def _read_messages(

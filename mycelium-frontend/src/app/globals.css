@@ -184,6 +184,20 @@ body {
   50% { opacity: 0.4; }
 }
 
+/* Avatar presence halo. The whole ring breathes via box-shadow (spread + a soft
+ * outer glow) at full opacity — never a fade — so the row line behind never
+ * bleeds through the way an opacity pulse does. `--halo` is set inline per state. */
+.avatar-halo { box-shadow: 0 0 0 2px var(--halo); }
+.avatar-halo.pulse { animation: halo-breathe 1.8s ease-in-out infinite; }
+@keyframes halo-breathe {
+  0%, 100% { box-shadow: 0 0 0 2px var(--halo); }
+  50% {
+    box-shadow:
+      0 0 0 2.5px var(--halo),
+      0 0 7px 1px color-mix(in srgb, var(--halo) 55%, transparent);
+  }
+}
+
 .tabular { font-variant-numeric: tabular-nums; }
 
 /* ── markdown body ── */

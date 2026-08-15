@@ -57,12 +57,19 @@ class HerdrUnavailableError(HerdrError):
 
 @dataclass(frozen=True)
 class HerdrPaneMapping:
-    """A durable binding of a mycelium ``handle`` (in a ``room``) to a herdr pane."""
+    """A durable binding of a mycelium ``handle`` (in a ``room``) to a herdr pane.
+
+    ``managed`` marks a binding the sync bridge created by reconciling a bound
+    workspace (vs. a hand-run ``herdr map``). Only managed bindings are torn down
+    when their pane closes — so the "herdr lifecycle *is* mycelium lifecycle"
+    reconcile never removes a mapping a human placed by hand.
+    """
 
     room: str
     handle: str
     pane: str
     kind: str | None = None
+    managed: bool = False
 
     @property
     def key(self) -> str:
@@ -130,6 +137,11 @@ class HerdrRegistry:
     def path(self) -> Path:
         return self._path
 
+    @property
+    def _bindings_path(self) -> Path:
+        """Sibling file holding the durable ``workspace -> room`` bindings."""
+        return self._path.parent / "bindings.json"
+
     def _load(self) -> dict[str, dict]:
         try:
             raw = json.loads(self._path.read_text())
@@ -151,7 +163,13 @@ class HerdrRegistry:
             if not pane:
                 continue
             out.append(
-                HerdrPaneMapping(room=room, handle=handle, pane=pane, kind=entry.get("kind"))
+                HerdrPaneMapping(
+                    room=room,
+                    handle=handle,
+                    pane=pane,
+                    kind=entry.get("kind"),
+                    managed=bool(entry.get("managed", False)),
+                )
             )
         return sorted(out, key=lambda m: m.key)
 
@@ -160,11 +178,21 @@ class HerdrRegistry:
         entry = self._load().get(f"{room}/{h}")
         if not isinstance(entry, dict) or not entry.get("pane"):
             return None
-        return HerdrPaneMapping(room=room, handle=h, pane=entry["pane"], kind=entry.get("kind"))
+        return HerdrPaneMapping(
+            room=room,
+            handle=h,
+            pane=entry["pane"],
+            kind=entry.get("kind"),
+            managed=bool(entry.get("managed", False)),
+        )
 
     def set(self, mapping: HerdrPaneMapping) -> None:
         data = self._load()
-        data[mapping.key] = {"pane": mapping.pane, "kind": mapping.kind}
+        data[mapping.key] = {
+            "pane": mapping.pane,
+            "kind": mapping.kind,
+            "managed": mapping.managed,
+        }
         self._save(data)
 
     def remove(self, room: str, handle: str) -> bool:
@@ -173,6 +201,37 @@ class HerdrRegistry:
         if key in data:
             del data[key]
             self._save(data)
+            return True
+        return False
+
+    # ── workspace -> room bindings ────────────────────────────────────────────
+    # The durable unit of the sync bridge: "this herdr workspace's live agents are
+    # this room's members." Kept in a sibling file so a bare `herdr sync` can
+    # reconcile every bound workspace with no arguments.
+
+    def bindings(self) -> dict[str, str]:
+        """All ``workspace -> room`` bindings (empty on a missing/corrupt file)."""
+        try:
+            raw = json.loads(self._bindings_path.read_text())
+        except (FileNotFoundError, ValueError, OSError):
+            return {}
+        if not isinstance(raw, dict):
+            return {}
+        return {str(w): str(r) for w, r in raw.items() if w and isinstance(r, str) and r}
+
+    def bind(self, workspace: str, room: str) -> None:
+        """Bind a herdr ``workspace`` to a mycelium ``room`` (idempotent upsert)."""
+        data = self.bindings()
+        data[workspace] = room
+        self._bindings_path.parent.mkdir(parents=True, exist_ok=True)
+        self._bindings_path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
+
+    def unbind(self, workspace: str) -> bool:
+        """Forget a workspace binding. Returns whether one was present."""
+        data = self.bindings()
+        if workspace in data:
+            del data[workspace]
+            self._bindings_path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
             return True
         return False
 
