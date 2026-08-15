@@ -360,7 +360,13 @@ def read_room_meta(room_name: str) -> dict[str, Any] | None:
 
     created_at = stored.get("created_at")
     if not created_at:
-        created_at = datetime.fromtimestamp(room_dir.stat().st_mtime, tz=UTC).isoformat()
+        # A room dir predating the sidecar. Prefer the sidecar's own mtime (stable
+        # — written once at creation); fall back to the dir mtime only when there's
+        # no sidecar at all. The dir mtime bumps whenever a child file changes (the
+        # search index rewrites on startup), so on its own it drifts to "just now"
+        # on every restart.
+        fallback_path = meta_path if meta_path.exists() else room_dir
+        created_at = datetime.fromtimestamp(fallback_path.stat().st_mtime, tz=UTC).isoformat()
 
     return {
         "id": room_id(room_name),
