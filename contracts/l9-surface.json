@@ -1,0 +1,29 @@
+{
+  "_comment": [
+    "Frozen 'raise-up' whitelist — the L9 / coordination message types promoted",
+    "from the L9 inspector into the primary channel/chat surface, alongside real",
+    "chat (broadcast/direct/announce/delegate). Everything else stays confined",
+    "to the detail view (the frontend's L9 inspector tab; the CLI has no",
+    "separate inspector, so its own richer `room watch` branches — ticks,",
+    "session start, raw memory_changed — are a CLI-native superset, not part",
+    "of this shared list).",
+    "",
+    "Both the frontend (mycelium-frontend/src/components/event-stream.tsx) and",
+    "the CLI (mycelium-cli/src/mycelium/commands/room.py) carry their own copy",
+    "of this list rather than importing this file at runtime: the frontend's",
+    "Docker build context is mycelium-frontend/ only (no repo root), and the",
+    "CLI is a thin `uv tool` install that doesn't ship the monorepo tree. A",
+    "drift between the two copies means one surface silently promotes a",
+    "lifecycle event the other omits (or vice versa).",
+    "",
+    "Tests: mycelium-frontend/src/components/event-stream.contract.test.ts,",
+    "mycelium-cli/tests/test_l9_surface_contract.py"
+  ],
+
+  "raise_up_types": [
+    "coordination_join",
+    "coordination_consensus",
+    "plan_updated",
+    "l9_knowledge"
+  ]
+}

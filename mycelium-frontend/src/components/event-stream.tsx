@@ -40,28 +40,31 @@ interface Event {
 }
 
 const CHAT_TYPES = new Set(["broadcast", "direct", "announce", "delegate"]);
+
+// The L9 "raise-up" whitelist: message types promoted from the L9 inspector
+// into the primary channel/chat surface. This must mirror
+// contracts/l9-surface.json's `raise_up_types` byte-for-byte — the CLI
+// (mycelium-cli/src/mycelium/commands/room.py) carries an independent copy,
+// and event-stream.contract.test.ts asserts both stay in sync with the
+// contract so the two surfaces can't silently drift apart.
+export const L9_RAISE_UP_TYPES = [
+  "coordination_join",
+  "coordination_consensus",
+  "plan_updated",
+  "l9_knowledge",
+];
+
 // Event types that appear in the chat-channel view alongside real chat.
 // Joins + consensus belong here so the room's chat surface narrates the
 // negotiation lifecycle ("alice joined session X", "CONSENSUS in session X
 // → plan/tasks.md", "TIMEOUT in session X, no agreement") instead of
 // burying it all under the EVENTS tab.
-const CHANNEL_VIEW_TYPES = new Set([
-  ...CHAT_TYPES,
-  "coordination_join",
-  "coordination_consensus",
-  "plan_updated",
-  "l9_knowledge",
-]);
+const CHANNEL_VIEW_TYPES = new Set([...CHAT_TYPES, ...L9_RAISE_UP_TYPES]);
 
 // Lifecycle events that render as slim system notices (not chat rows). Used to
 // decide message grouping: a chat message only groups under the sender above it
 // when no system notice interrupts the run.
-const SYSTEM_TYPES = new Set([
-  "coordination_join",
-  "coordination_consensus",
-  "plan_updated",
-  "l9_knowledge",
-]);
+const SYSTEM_TYPES = new Set(L9_RAISE_UP_TYPES);
 
 /** Loading placeholder shaped like a short run of chat rows (avatar + lines). */
 function ChannelSkeleton() {
