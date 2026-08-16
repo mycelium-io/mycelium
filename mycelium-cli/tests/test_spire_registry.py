@@ -117,6 +117,30 @@ def test_registered_handles_none_when_server_down(monkeypatch: pytest.MonkeyPatc
     assert spire_registry.registered_handles() is None
 
 
+def test_mint_join_token_parses_and_targets_agent_node(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[list[str]] = []
+
+    def fake_exec(args, *, timeout=20):
+        calls.append(args)
+        return _completed(0, stdout="Token: abc-123-token\n")
+
+    monkeypatch.setattr(spire_registry, "_compose_exec", fake_exec)
+    token = spire_registry.mint_join_token()
+    assert token == "abc-123-token"
+    generate = calls[0]
+    assert generate[1:3] == ["token", "generate"]
+    assert f"spiffe://{_TD}/agent-node" in generate
+
+
+def test_mint_join_token_none_when_unparseable(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        spire_registry, "_compose_exec", lambda args, **k: _completed(0, stdout="no token here")
+    )
+    assert spire_registry.mint_join_token() is None
+    monkeypatch.setattr(spire_registry, "_compose_exec", lambda args, **k: _completed(1))
+    assert spire_registry.mint_join_token() is None
+
+
 def test_server_healthy(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(spire_registry, "_compose_exec", lambda args, **k: _completed(0))
     assert spire_registry.server_healthy() is True

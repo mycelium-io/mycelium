@@ -227,6 +227,13 @@ services:
   # create`/`rm` register/revoke the workload entries against this server itself
   # (via `docker compose exec`), so there is no hand-typed `spire-server entry
   # create`. See mycelium.spire_registry.
+  #
+  # The SPIRE images are DISTROLESS (no shell) with a fixed
+  # ENTRYPOINT=[".../spire-server","run"], so the bring-up can't self-bootstrap via
+  # an inline shell script. Instead `mycelium up` orchestrates it host-side (the
+  # same seam spire_registry uses): start the server, wait healthy, mint a join
+  # token bound to the fixed `agent-node` SPIFFE ID, then start the agent with
+  # SPIRE_JOIN_TOKEN. `command:` only appends flags to the image entrypoint.
   spire-server:
     image: ghcr.io/spiffe/spire-server:1.9.6
     pull_policy: always
@@ -239,25 +246,7 @@ services:
         target: /opt/spire/conf/server/server.conf
     volumes:
       - spire-server-data:/opt/spire/data/server
-      # Shared with the agent: the server drops a one-time join token here, bound to
-      # a fixed `agent-node` SPIFFE ID so the workload-entry parent is deterministic.
-      - spire-bootstrap:/run/spire/bootstrap
-    # `$$` escapes Compose variable substitution so `$!`/`$SERVER_PID` reach the
-    # shell verbatim (Compose interpolates the whole file, including `command`).
-    command:
-      - /bin/sh
-      - -c
-      - |
-        set -e
-        /opt/spire/bin/spire-server run -config /opt/spire/conf/server/server.conf &
-        SERVER_PID=$$!
-        until /opt/spire/bin/spire-server healthcheck >/dev/null 2>&1; do sleep 1; done
-        if [ ! -s /run/spire/bootstrap/jointoken ]; then
-          /opt/spire/bin/spire-server token generate \
-            -spiffeID spiffe://${MYCELIUM_SLIM_SPIRE_TRUST_DOMAIN:-mycelium.dev}/agent-node \
-            | sed -n 's/^Token: //p' > /run/spire/bootstrap/jointoken
-        fi
-        wait $$SERVER_PID
+    command: ["-config", "/opt/spire/conf/server/server.conf"]
     healthcheck:
       test: ["CMD", "/opt/spire/bin/spire-server", "healthcheck"]
       interval: 10s
@@ -273,6 +262,11 @@ services:
   # two #584 gotchas baked in — cross-namespace or a host-bind socket yields "could
   # not resolve caller information" and a member stuck at "Initializing spire
   # identity manager."
+  #
+  # SPIRE_JOIN_TOKEN is injected by `mycelium up` after minting it against the live
+  # server (distroless images can't hand the token off between two shell-less
+  # containers). The disk KeyManager + persisted data dir let a restart reuse the
+  # stored node SVID rather than re-consuming the spent one-time token.
   spire-agent:
     image: ghcr.io/spiffe/spire-agent:1.9.6
     pull_policy: always
@@ -290,19 +284,11 @@ services:
     volumes:
       - spire-agent-data:/opt/spire/data/agent
       - spire-socket:/run/spire/sockets
-      - spire-bootstrap:/run/spire/bootstrap
-    # Wait for the server's one-time join token, then attest. The disk KeyManager +
-    # persisted data dir let a restart reuse the stored node SVID rather than
-    # re-consuming the (already spent) token.
     command:
-      - /bin/sh
-      - -c
-      - |
-        set -e
-        until [ -s /run/spire/bootstrap/jointoken ]; do sleep 1; done
-        exec /opt/spire/bin/spire-agent run \
-          -config /opt/spire/conf/agent/agent.conf \
-          -joinToken "$$(cat /run/spire/bootstrap/jointoken)"
+      - "-config"
+      - "/opt/spire/conf/agent/agent.conf"
+      - "-joinToken"
+      - "${SPIRE_JOIN_TOKEN:-}"
 
 volumes:
   spire-server-data:
@@ -311,5 +297,3 @@ volumes:
   # requires it for the backend's mount); only populated when the `spire` profile
   # brings the agent up.
   spire-socket:
-  # One-time join-token hand-off, server → agent.
-  spire-bootstrap:

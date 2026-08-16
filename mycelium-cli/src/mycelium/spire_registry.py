@@ -255,3 +255,31 @@ def server_healthy() -> bool:
     except (OSError, subprocess.SubprocessError):
         return False
     return result.returncode == 0
+
+
+def mint_join_token(trust_domain: str | None = None) -> str | None:
+    """Mint a one-time node join token bound to the fixed ``agent-node`` SPIFFE ID.
+
+    The distroless SPIRE images can't hand a token between two shell-less containers,
+    so ``mycelium up`` mints it host-side against the live server and injects it into
+    the agent as ``SPIRE_JOIN_TOKEN`` (see :mod:`mycelium.commands.instance`). The
+    fixed ``spiffe://{td}/agent-node`` node ID is what makes the workload-entry
+    parent deterministic — the same one :func:`register_workload` parents entries to.
+    Returns ``None`` if the server isn't reachable or the output can't be parsed.
+    """
+    td = trust_domain or resolve_spire_trust_domain()
+    try:
+        result = _compose_exec(
+            [_SPIRE_SERVER_BIN, "token", "generate", "-spiffeID", _agent_node_id(td)]
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    # Output is `Token: <uuid>` (possibly among other lines).
+    for line in result.stdout.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("Token:"):
+            _, _, value = stripped.partition(":")
+            return value.strip() or None
+    return None

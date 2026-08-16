@@ -262,6 +262,103 @@ def _spire_enabled() -> bool:
         return False
 
 
+def _spire_trust_domain() -> str:
+    """The SPIFFE trust domain the appliance boots with (default ``mycelium.dev``).
+
+    Read from ``.env`` so the token minted host-side lands under the *same* trust
+    domain the compose server config booted with (both resolve
+    ``MYCELIUM_SLIM_SPIRE_TRUST_DOMAIN`` → ``mycelium.dev``).
+    """
+    env_path = _get_env_path()
+    if env_path and env_path.exists():
+        try:
+            from dotenv import dotenv_values
+
+            val = dotenv_values(env_path).get("MYCELIUM_SLIM_SPIRE_TRUST_DOMAIN", "")
+            if val and val.strip():
+                return val.strip()
+        except Exception:
+            pass
+    return "mycelium.dev"
+
+
+def _container_running(name: str) -> bool:
+    """Return True if the named container is running."""
+    try:
+        result = subprocess.run(
+            ["docker", "inspect", "-f", "{{.State.Running}}", name],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=5,
+        )
+        return result.returncode == 0 and result.stdout.strip().lower() == "true"
+    except Exception:
+        return False
+
+
+def bootstrap_spire_agent(base: list[str]) -> bool:
+    """Mint a join token host-side and start the SPIRE agent (#588).
+
+    The SPIRE images are distroless (no shell), so the one-time node join token
+    can't be handed between the two shell-less containers inline. Instead, once the
+    server is up, we mint the token against it (``spire_registry.mint_join_token``)
+    and inject it into the agent as ``SPIRE_JOIN_TOKEN``. Idempotent: if the agent
+    is already running we leave it (re-minting would churn its attestation).
+
+    *base* is a ``docker compose`` prefix that already carries ``--profile spire``.
+    Returns True on success; every failure is a warning (the rest of the stack is
+    up and usable on the PSK floor).
+    """
+    import os
+    import time
+
+    from mycelium import spire_registry
+
+    if _container_running("mycelium-spire-agent"):
+        typer.echo("  SPIRE agent already running.")
+        return True
+
+    typer.echo("Bootstrapping SPIRE attestation...")
+    deadline = time.time() + 60
+    while time.time() < deadline:
+        if spire_registry.server_healthy():
+            break
+        time.sleep(2)
+    else:
+        typer.secho(
+            "  ⚠ SPIRE server not healthy in time; agent not started. Re-run 'mycelium up'.",
+            fg=typer.colors.YELLOW,
+        )
+        return False
+
+    token = spire_registry.mint_join_token(_spire_trust_domain())
+    if not token:
+        typer.secho(
+            "  ⚠ Could not mint a SPIRE join token; agent not started.",
+            fg=typer.colors.YELLOW,
+        )
+        return False
+
+    env = {**os.environ, "SPIRE_JOIN_TOKEN": token}
+    result = subprocess.run(
+        [*base, "up", "-d", "spire-agent"], env=env, capture_output=True, text=True
+    )
+    if result.returncode != 0:
+        if result.stdout:
+            typer.echo(result.stdout)
+        if result.stderr:
+            typer.echo(result.stderr, err=True)
+        typer.secho("  ⚠ SPIRE agent failed to start.", fg=typer.colors.YELLOW)
+        return False
+
+    typer.secho(
+        "  ✓ SPIRE agent started (run 'mycelium doctor' to confirm attestation).",
+        fg=typer.colors.GREEN,
+    )
+    return True
+
+
 def _collector_container_running() -> bool:
     """Return True if the mycelium-collector container is running."""
     try:
@@ -483,6 +580,18 @@ def start(
         if build:
             up_args.append("--build")
 
+        # SPIRE two-phase (#588): the agent needs a join token minted against the
+        # *live* server, so phase 1 brings up everything *except* the agent by
+        # listing services explicitly; bootstrap_spire_agent starts it afterwards.
+        # (base already carries --profile spire via _compose_base_cmd.)
+        spire = _spire_enabled()
+        if spire:
+            up_args += ["slim", "mycelium-backend", "spire-server"]
+            if ui:
+                up_args.append("mycelium-frontend")
+            if metrics:
+                up_args.append("mycelium-collector")
+
         typer.echo("Starting Mycelium...")
 
         quiet_cmd = base[:2] + ["--progress=plain"] + base[2:] + up_args
@@ -514,6 +623,11 @@ def start(
                 typer.echo(result.stdout)
             if result.stderr:
                 typer.echo(result.stderr, err=True)
+
+        # Phase 2: mint the join token against the now-running server and start the
+        # SPIRE agent (distroless images can't self-bootstrap the token; #588).
+        if spire:
+            bootstrap_spire_agent(base)
 
         # Pull the configured ports from .env so the summary matches reality
         # (MYCELIUM_BACKEND_PORT / MYCELIUM_UI_PORT / MYCELIUM_METRICS_PORT are
