@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: Apache-2.0
+# Stock SLIM data-plane node. NO identity/verifier block on purpose: identity is
+# app-level (per-member SVID), the node forwards only ciphertext (#581 claim #1,
+# vindicated). Matched to slim-bindings==2.1.0 on the client side.
+tracing:
+  log_level: info
+  display_thread_names: true
+
+runtime:
+  n_cores: 0
+  thread_name: "slim-data-plane"
+  drain_timeout: 10s
+
+services:
+  slim/0:
+    pubsub:
+      servers:
+        - endpoint: "0.0.0.0:46357"
+          tls:
+            insecure: true

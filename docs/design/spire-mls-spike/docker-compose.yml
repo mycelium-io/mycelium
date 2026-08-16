@@ -1,0 +1,54 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPIRE server + agent + SLIM node for the #583 spike.
+#
+# The SLIM node is the STOCK image with NO identity config -- identity/verification
+# is app-level (this vindicates #581's claim that no node change is needed). The
+# node only forwards ciphertext.
+#
+#   docker compose up -d
+#   ./register-workloads.sh
+#   # then run spire_mls_spike.py (see README.md)
+#
+# The agent's Workload API socket is bind-mounted to the host at
+# ./spire-agent-socket so the Python members (run on the host) can reach it at
+# /tmp/spire-agent/public/api.sock via SPIRE_SOCKET.
+
+services:
+  spire-server:
+    image: ghcr.io/spiffe/spire-server:1.9.6
+    command: ["-config", "/opt/spire/conf/server/server.conf"]
+    volumes:
+      - ./spire-server.conf:/opt/spire/conf/server/server.conf:ro
+      - spire-server-data:/opt/spire/data
+      - spire-server-sock:/tmp/spire-server/private
+    healthcheck:
+      test: ["CMD", "/opt/spire/bin/spire-server", "healthcheck"]
+      interval: 3s
+      retries: 20
+
+  spire-agent:
+    image: ghcr.io/spiffe/spire-agent:1.9.6
+    # Agent needs a join token; register-workloads.sh mints one and starts it.
+    # Kept `command: sleep` so the script controls the boot order deterministically.
+    command: ["/bin/sh", "-c", "sleep infinity"]
+    pid: "host"
+    depends_on:
+      spire-server:
+        condition: service_healthy
+    volumes:
+      - ./spire-agent.conf:/opt/spire/conf/agent/agent.conf:ro
+      - spire-server-sock:/tmp/spire-server/private:ro
+      - ./spire-agent-socket:/tmp/spire-agent/public
+
+  slim:
+    image: ghcr.io/agntcy/slim:2.1.0
+    ports:
+      - "46357:46357"
+    # Stock config: a data-plane listener only. No identity/verifier block.
+    command: ["/slim", "--config", "/config.yaml"]
+    volumes:
+      - ./slim-node.yaml:/config.yaml:ro
+
+volumes:
+  spire-server-data:
+  spire-server-sock:
