@@ -33,6 +33,9 @@ from mycelium.commands import (
     user,
     wire,
 )
+from mycelium.commands import (
+    login as login_cmd,
+)
 
 app = typer.Typer(
     name="mycelium",
@@ -112,6 +115,8 @@ app.command(name="network")(network.network)
 app.command(name="logs")(instance.logs)
 
 # Top-level shortcuts
+app.command(name="login")(login_cmd.login)
+app.command(name="logout")(login_cmd.logout)
 app.command(name="whoami")(user.whoami)
 app.command(name="iam")(user.iam)
 app.command(name="watch")(room.watch)

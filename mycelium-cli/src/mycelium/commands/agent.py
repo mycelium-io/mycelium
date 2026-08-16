@@ -32,6 +32,8 @@ from pydantic import ValidationError
 from rich.console import Console
 from rich.table import Table
 
+from mycelium.client import hub_client
+from mycelium.client import typed_client as _typed_client
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
 from mycelium.error_handler import print_error
@@ -49,12 +51,6 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 console = Console()
-
-
-def _typed_client(config: MyceliumConfig):
-    from mycelium_backend_client import Client
-
-    return Client(base_url=config.server.api_url, raise_on_unexpected_status=True)
 
 
 def _bail_root_owned(target: Path, blocking: Path, owner_name: str) -> None:
@@ -179,11 +175,9 @@ def _is_resident(config: MyceliumConfig, room_name: str, handle: str) -> bool:
     caller falls back to the honest "not resident — queued" message rather than
     claiming liveness it can't confirm.
     """
-    import httpx
-
     try:
-        url = f"{config.server.api_url}/api/rooms/{room_name}/sessions/members"
-        resp = httpx.get(url, timeout=5.0)
+        with hub_client(config, timeout=5.0) as client:
+            resp = client.get(f"/api/rooms/{room_name}/sessions/members")
         resp.raise_for_status()
         members = resp.json().get("members", [])
     except Exception:

@@ -443,6 +443,7 @@ def _generate_cli_reference() -> tuple[str, list[tuple[str, str]]]:
     import mycelium.commands.hub  # noqa: F401
     import mycelium.commands.install  # noqa: F401
     import mycelium.commands.instance  # noqa: F401
+    import mycelium.commands.login  # noqa: F401
     import mycelium.commands.memory  # noqa: F401
     import mycelium.commands.participate  # noqa: F401
     import mycelium.commands.plan  # noqa: F401
