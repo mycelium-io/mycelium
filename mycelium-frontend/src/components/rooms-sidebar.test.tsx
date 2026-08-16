@@ -120,11 +120,22 @@ describe("<RoomsSidebar /> keyboard navigation", () => {
     expect(push).toHaveBeenLastCalledWith("/room/alpha");
   });
 
-  it("jumps by digit as a fast path for the first nine rooms", async () => {
-    const user = await renderSidebar(["alpha", "beta", "gamma"]);
+  it("badges the first nine rooms while the modifier is held, and jumps on the digit", async () => {
+    const names = Array.from({ length: 11 }, (_, i) => `room-${i}`);
+    const user = await renderSidebar(names);
 
-    await user.keyboard("2");
-    expect(push).toHaveBeenCalledWith("/room/beta");
+    await user.keyboard("{Alt>}");
+    const badges = [...document.querySelectorAll("nav [data-key-badge]")].map(el => el.textContent);
+    expect(badges).toEqual(["1", "2", "3", "4", "5", "6", "7", "8", "9"]);
+    // The brand wears its own key in the same hold.
+    expect(document.querySelector("a[href='/'] [data-key-badge]")).toHaveTextContent("H");
+    // Nine digits don't cover eleven rooms, so the overlay says where the rest are.
+    expect(screen.getByText(/to label them all/)).toBeInTheDocument();
+
+    await user.keyboard("2{/Alt}");
+    expect(push).toHaveBeenCalledWith("/room/room-1");
+    expect(document.querySelector("[data-key-badge]")).toBeNull();
+    expect(screen.queryByText(/to label them all/)).not.toBeInTheDocument();
   });
 
   it("switches among the rooms the filter leaves on screen", async () => {
@@ -136,7 +147,7 @@ describe("<RoomsSidebar /> keyboard navigation", () => {
     expect(push).not.toHaveBeenCalled();
 
     await user.keyboard("{Escape}");
-    await user.keyboard("2");
+    await user.keyboard("{Alt>}2{/Alt}");
     expect(push).toHaveBeenCalledWith("/room/bravo");
   });
 });

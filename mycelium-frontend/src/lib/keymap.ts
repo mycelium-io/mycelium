@@ -3,68 +3,73 @@
 
 /** The app's keyboard vocabulary.
  *
- *  One table, declared once: the keybind dispatcher, the `?` cheatsheet, and
- *  anything else that wants to speak about keys read from here, so a binding
- *  can't exist in one surface and be missing from another. `findConflicts` is
- *  asserted empty by a unit test, so a duplicate or a shadowed prefix is a red
+ *  One table, declared once: the keybind dispatcher, the reveal badges drawn on
+ *  the targets themselves, and the `?` cheatsheet all read from here, so a
+ *  binding can't exist in one surface and be missing from another.
+ *  `findConflicts` is asserted empty by a unit test, so a duplicate is a red
  *  gate rather than a key that silently stops working.
  *
- *  Notation: a binding's `keys` are sequences of chords separated by spaces
- *  ("g c" = press g, then c). A chord is an optional `mod+` (⌘ on macOS, Ctrl
- *  elsewhere) and `alt+` prefix followed by the `KeyboardEvent.key` value —
- *  case-sensitive, so "J" means shift+j. */
+ *  Notation: a chord is an optional `mod+` (⌘ on macOS, Ctrl elsewhere) and
+ *  `alt+` (⌥ on macOS) prefix followed by the key — case-sensitive for bare
+ *  letters, so "J" means shift+j. */
 
 export type KeyScope = "global" | "room";
 
 export interface Binding {
   /** Action id a component registers a handler for. */
   id: string;
-  /** Chord sequences that trigger it; any one of them fires the action. */
+  /** Chords that trigger it; any one of them fires the action. */
   keys: string[];
   label: string;
   /** Cheatsheet section. */
   group: string;
   /** Where the binding is live — "global" everywhere, "room" inside a room. */
   scope: KeyScope;
-  /** Cheatsheet rendering when listing every key would be noise ("1 … 9"). */
-  display?: string;
+  /** List the chords as a first…last range; for runs like ⌥1 through ⌥9. */
+  abbreviate?: boolean;
 }
+
+/** The modifier that, held on its own, reveals every navigation key as a badge
+ *  on the thing it selects. ⌥ rather than ⌘/Ctrl because the obvious mnemonic
+ *  chords there — ⌘C, ⌘L, ⌘P, ⌘S — are all taken by the browser. */
+export const REVEAL_MODIFIER_KEY = "Alt";
 
 /** Home-row characters for the room hint labels, in the order they're handed
  *  out. `hintLabels` widens to 2-char labels once a room list outgrows these. */
 export const HINT_ALPHABET = "asdfghjkl";
 
-const DIGIT_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
+const ROOM_DIGIT_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9"].map(d => `alt+${d}`);
 
 export const KEYMAP: Binding[] = [
   {
+    id: "rooms.digit",
+    keys: ROOM_DIGIT_KEYS,
+    abbreviate: true,
+    label: "Jump to one of the first nine rooms",
+    group: "Rooms",
+    scope: "global",
+  },
+  {
     id: "rooms.hints",
     keys: ["f"],
-    label: "Room hints — hold to peek, press a label to jump",
+    label: "Label every room — press a label to jump (past the first nine)",
     group: "Rooms",
     scope: "global",
   },
   { id: "rooms.next", keys: ["]", "J"], label: "Next room", group: "Rooms", scope: "global" },
   { id: "rooms.prev", keys: ["[", "K"], label: "Previous room", group: "Rooms", scope: "global" },
-  {
-    id: "rooms.digit",
-    keys: DIGIT_KEYS,
-    display: "1 … 9",
-    label: "Jump to one of the first nine rooms",
-    group: "Rooms",
-    scope: "global",
-  },
-  { id: "nav.home", keys: ["g h"], label: "Command center", group: "Rooms", scope: "global" },
+  { id: "nav.home", keys: ["alt+h"], label: "Command center", group: "Rooms", scope: "global" },
 
-  { id: "pane.channel", keys: ["g c"], label: "Channel", group: "Panes", scope: "room" },
-  { id: "pane.negotiate", keys: ["g n"], label: "Negotiate", group: "Panes", scope: "room" },
-  { id: "pane.l9", keys: ["g l"], label: "L9", group: "Panes", scope: "room" },
-  { id: "pane.plan", keys: ["g p"], label: "Plan", group: "Panes", scope: "room" },
-  { id: "pane.slim", keys: ["g s"], label: "SLIM", group: "Panes", scope: "room" },
+  { id: "pane.channel", keys: ["alt+c"], label: "Channel", group: "Panes", scope: "room" },
+  { id: "pane.negotiate", keys: ["alt+n"], label: "Negotiate", group: "Panes", scope: "room" },
+  { id: "pane.l9", keys: ["alt+l"], label: "L9", group: "Panes", scope: "room" },
+  { id: "pane.plan", keys: ["alt+p"], label: "Plan", group: "Panes", scope: "room" },
+  { id: "pane.slim", keys: ["alt+s"], label: "SLIM", group: "Panes", scope: "room" },
 
-  { id: "rail.agents", keys: ["g a"], label: "Members", group: "Inspector", scope: "room" },
-  { id: "rail.episodes", keys: ["g e"], label: "Episodes", group: "Inspector", scope: "room" },
-  { id: "rail.memory", keys: ["g m"], label: "Memory", group: "Inspector", scope: "room" },
+  { id: "rail.agents", keys: ["alt+a"], label: "Members", group: "Inspector", scope: "room" },
+  // Not ⌥E: Alt+E opens the browser menu on Windows and Linux.
+  { id: "rail.episodes", keys: ["alt+i"], label: "Episodes", group: "Inspector", scope: "room" },
+  { id: "rail.memory", keys: ["alt+m"], label: "Memory", group: "Inspector", scope: "room" },
   { id: "rail.toggle", keys: ["\\"], label: "Collapse / expand the rail", group: "Inspector", scope: "room" },
 
   { id: "focus.chat", keys: ["i"], label: "Write a message", group: "Focus", scope: "room" },
@@ -81,8 +86,7 @@ export const KEYMAP: Binding[] = [
 
 const MODIFIER_KEYS = new Set(["Shift", "Control", "Alt", "Meta", "CapsLock", "OS", "AltGraph"]);
 
-/** True for the keydown a modifier fires on its own — pressing ⇧ to reach `J`
- *  must not land in the sequence buffer as a chord of its own. */
+/** True for the keydown a modifier fires on its own. */
 export function isModifierKey(key: string): boolean {
   return MODIFIER_KEYS.has(key);
 }
@@ -90,6 +94,17 @@ export function isModifierKey(key: string): boolean {
 export function isMacPlatform(): boolean {
   if (typeof navigator === "undefined") return false;
   return /Mac|iPhone|iPad|iPod/i.test(navigator.userAgent);
+}
+
+/** The physical key behind an event, for chords where the produced character
+ *  can't be trusted: ⌥C reports "ç" on macOS, and any non-QWERTY layout moves
+ *  the letters around. */
+function physicalKey(code: string, fallback: string): string {
+  const letter = /^Key([A-Z])$/.exec(code);
+  if (letter) return letter[1].toLowerCase();
+  const digit = /^Digit([0-9])$/.exec(code);
+  if (digit) return digit[1];
+  return code || fallback;
 }
 
 /** The chord a key event denotes, in the notation `keys` uses. The platform's
@@ -100,23 +115,32 @@ export function eventToChord(e: KeyboardEvent, mac: boolean): string {
   if (mac ? e.metaKey : e.ctrlKey) parts.push("mod");
   if (mac ? e.ctrlKey : e.metaKey) parts.push("foreign");
   if (e.altKey) parts.push("alt");
-  parts.push(e.key === " " ? "Space" : e.key);
+  if (parts.length > 0) parts.push(physicalKey(e.code, e.key));
+  else parts.push(e.key === " " ? "Space" : e.key);
   return parts.join("+");
 }
 
-const CHORD_LABELS: Record<string, string> = { Escape: "Esc", ArrowUp: "↑", ArrowDown: "↓" };
+const CHORD_LABELS: Record<string, string> = { Escape: "Esc", Backslash: "\\" };
 
-/** Render one chord for display (⌘ vs Ctrl by platform). */
-export function formatChord(chord: string, mac: boolean): string {
-  const parts = chord.split("+");
-  const key = parts.pop() ?? "";
-  const mods = parts.map((m) => (m === "mod" ? (mac ? "⌘" : "Ctrl") : m === "alt" ? (mac ? "⌥" : "Alt") : m));
-  return [...mods, CHORD_LABELS[key] ?? key].join(mac ? "" : "+");
+/** True for a chord the reveal modifier fires — the only kind a badge can
+ *  honestly draw, since a badge is read while that modifier is held. */
+export function isRevealChord(chord: string): boolean {
+  return chord.startsWith("alt+");
 }
 
-/** Render a sequence as one display token per chord, e.g. ["g", "c"]. */
-export function formatSequence(sequence: string, mac: boolean): string[] {
-  return sequence.split(" ").map((chord) => formatChord(chord, mac));
+/** The key half of a chord, as it reads on a badge or a keycap: "alt+c" → "C". */
+export function chordKey(chord: string): string {
+  const key = chord.split("+").pop() ?? "";
+  const label = CHORD_LABELS[key] ?? key;
+  return label.length === 1 ? label.toUpperCase() : label;
+}
+
+/** Render a whole chord for display (⌥⌘ vs Alt/Ctrl by platform). */
+export function formatChord(chord: string, mac: boolean): string {
+  const parts = chord.split("+");
+  parts.pop();
+  const mods = parts.map(m => (m === "mod" ? (mac ? "⌘" : "Ctrl") : mac ? "⌥" : "Alt"));
+  return [...mods, chordKey(chord)].join(mac ? "" : "+");
 }
 
 function inScope(binding: Binding, scopes: readonly KeyScope[]): boolean {
@@ -124,23 +148,21 @@ function inScope(binding: Binding, scopes: readonly KeyScope[]): boolean {
 }
 
 export function bindingsInScope(scopes: readonly KeyScope[]): Binding[] {
-  return KEYMAP.filter((b) => inScope(b, scopes));
+  return KEYMAP.filter(b => inScope(b, scopes));
 }
 
-/** The binding a fully-typed sequence fires, if any. */
-export function matchBinding(sequence: string, scopes: readonly KeyScope[]): Binding | undefined {
-  return KEYMAP.find((b) => inScope(b, scopes) && b.keys.includes(sequence));
+/** The binding a chord fires, if any. */
+export function matchBinding(chord: string, scopes: readonly KeyScope[]): Binding | undefined {
+  return KEYMAP.find(b => inScope(b, scopes) && b.keys.includes(chord));
 }
 
-/** True when the sequence so far is the start of a longer binding — the caller
- *  holds it open (the leader is "pending") instead of discarding the key. */
-export function isSequencePrefix(sequence: string, scopes: readonly KeyScope[]): boolean {
-  const prefix = `${sequence} `;
-  return KEYMAP.some((b) => inScope(b, scopes) && b.keys.some((k) => k.startsWith(prefix)));
+/** The chord a given action answers to — what a target draws on its badge. */
+export function chordFor(id: string): string | undefined {
+  return KEYMAP.find(b => b.id === id)?.keys[0];
 }
 
-/** Every way two bindings can collide: the same sequence twice, a sequence that
- *  shadows a longer one as its prefix, or a reused action id. */
+/** Two bindings collide if they share a chord in overlapping scopes, or reuse
+ *  an action id. */
 export function findConflicts(bindings: readonly Binding[] = KEYMAP): string[] {
   const conflicts: string[] = [];
   const seenIds = new Set<string>();
@@ -154,12 +176,8 @@ export function findConflicts(bindings: readonly Binding[] = KEYMAP): string[] {
       const a = bindings[i];
       const b = bindings[j];
       if (!overlap(a, b)) continue;
-      for (const ka of a.keys) {
-        for (const kb of b.keys) {
-          if (ka === kb) conflicts.push(`${a.id} and ${b.id} both bind "${ka}"`);
-          else if (kb.startsWith(`${ka} `)) conflicts.push(`${a.id} ("${ka}") shadows ${b.id} ("${kb}")`);
-          else if (ka.startsWith(`${kb} `)) conflicts.push(`${b.id} ("${kb}") shadows ${a.id} ("${ka}")`);
-        }
+      for (const chord of a.keys) {
+        if (b.keys.includes(chord)) conflicts.push(`${a.id} and ${b.id} both bind "${chord}"`);
       }
     }
   }

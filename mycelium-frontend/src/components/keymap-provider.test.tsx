@@ -5,13 +5,14 @@ import { useState } from "react";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import { KeyBadge } from "@/components/key-badge";
 import { KeymapProvider, useKeyAction, useKeyScope } from "@/components/keymap-provider";
 
 function Room({ onPane }: { onPane: (id: string) => void }) {
   useKeyScope("room");
   useKeyAction("pane.channel", () => onPane("channel"));
   useKeyAction("pane.plan", () => onPane("plan"));
-  return null;
+  return <KeyBadge action="pane.l9" />;
 }
 
 function Composer() {
@@ -20,7 +21,7 @@ function Composer() {
 }
 
 describe("<KeymapProvider />", () => {
-  it("fires the action a leader sequence names", async () => {
+  it("fires the action a modifier chord names", async () => {
     const onPane = vi.fn();
     const user = userEvent.setup();
     render(
@@ -29,14 +30,14 @@ describe("<KeymapProvider />", () => {
       </KeymapProvider>,
     );
 
-    await user.keyboard("gc");
+    await user.keyboard("{Alt>}c{/Alt}");
     expect(onPane).toHaveBeenCalledWith("channel");
 
-    await user.keyboard("gp");
+    await user.keyboard("{Alt>}p{/Alt}");
     expect(onPane).toHaveBeenLastCalledWith("plan");
   });
 
-  it("drops a sequence whose second chord names nothing", async () => {
+  it("ignores the bare key without its modifier", async () => {
     const onPane = vi.fn();
     const user = userEvent.setup();
     render(
@@ -45,7 +46,6 @@ describe("<KeymapProvider />", () => {
       </KeymapProvider>,
     );
 
-    await user.keyboard("gz");
     await user.keyboard("c");
     expect(onPane).not.toHaveBeenCalled();
   });
@@ -67,11 +67,41 @@ describe("<KeymapProvider />", () => {
       </KeymapProvider>,
     );
 
-    await user.keyboard("gc");
+    await user.keyboard("{Alt>}c{/Alt}");
     expect(fired).not.toHaveBeenCalled();
 
     await user.keyboard("]");
     expect(fired).toHaveBeenCalledWith("next");
+  });
+
+  it("reveals each target's key while the modifier is held, and hides it on release", async () => {
+    const user = userEvent.setup();
+    render(
+      <KeymapProvider>
+        <Room onPane={vi.fn()} />
+      </KeymapProvider>,
+    );
+
+    expect(document.querySelector("[data-key-badge]")).toBeNull();
+    await user.keyboard("{Alt>}");
+    expect(document.querySelector("[data-key-badge]")).toHaveTextContent("L");
+    await user.keyboard("{/Alt}");
+    expect(document.querySelector("[data-key-badge]")).toBeNull();
+  });
+
+  it("keeps the badges off while the composer has focus", async () => {
+    const user = userEvent.setup();
+    render(
+      <KeymapProvider>
+        <Room onPane={vi.fn()} />
+        <Composer />
+      </KeymapProvider>,
+    );
+
+    await user.click(screen.getByLabelText("Message"));
+    await user.keyboard("{Alt>}");
+    expect(document.querySelector("[data-key-badge]")).toBeNull();
+    await user.keyboard("{/Alt}");
   });
 
   it("never fires while a text input has focus, and Esc returns to command mode", async () => {
@@ -86,15 +116,15 @@ describe("<KeymapProvider />", () => {
 
     const box = screen.getByLabelText("Message");
     await user.click(box);
-    await user.keyboard("go camping");
+    await user.keyboard("a chat message");
     expect(onPane).not.toHaveBeenCalled();
-    expect(box).toHaveValue("go camping");
+    expect(box).toHaveValue("a chat message");
     expect(box).toHaveFocus();
 
     await user.keyboard("{Escape}");
     expect(box).not.toHaveFocus();
 
-    await user.keyboard("gc");
+    await user.keyboard("{Alt>}c{/Alt}");
     expect(onPane).toHaveBeenCalledWith("channel");
   });
 
@@ -125,17 +155,28 @@ describe("<KeymapProvider />", () => {
     expect(sheet).not.toHaveTextContent("Write a message");
   });
 
-  it("shows the pending leader while a sequence is half-typed", async () => {
+  it("stays inert behind an open dialog, even once focus has left it", async () => {
+    const onPane = vi.fn();
     const user = userEvent.setup();
     render(
       <KeymapProvider>
-        <Room onPane={vi.fn()} />
+        <Room onPane={onPane} />
+        <div role="dialog" aria-label="Incoming agent request">
+          <button type="button">Accept</button>
+        </div>
       </KeymapProvider>,
     );
 
-    await user.keyboard("g");
-    expect(screen.getByRole("status")).toHaveTextContent("g…");
-    await user.keyboard("c");
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    // Focus is on document.body — a backdrop click, not a dismissal.
+    await user.keyboard("{Alt>}c{/Alt}");
+    expect(onPane).not.toHaveBeenCalled();
+  });
+
+  it("refuses to register outside a provider, rather than silently doing nothing", () => {
+    // The shipping bug this guards: a page registering bindings while sitting
+    // above the provider it registers into.
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(() => render(<Room onPane={vi.fn()} />)).toThrow(/KeymapProvider/);
+    quiet.mockRestore();
   });
 });

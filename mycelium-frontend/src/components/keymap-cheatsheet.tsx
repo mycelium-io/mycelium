@@ -5,7 +5,15 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import { X } from "lucide-react";
-import { bindingsInScope, formatSequence, type Binding, type KeyScope } from "@/lib/keymap";
+import { bindingsInScope, formatChord, type Binding, type KeyScope } from "@/lib/keymap";
+
+function Keycap({ children }: { children: string }) {
+  return (
+    <kbd className="rounded border border-border bg-surface px-1.5 py-0.5 font-mono text-micro text-text">
+      {children}
+    </kbd>
+  );
+}
 
 interface Props {
   open: boolean;
@@ -72,7 +80,9 @@ export function KeymapCheatsheet({ open, onClose, scopes, mac }: Props) {
         <header className="flex items-center gap-3 border-b border-border px-5 py-3.5">
           <h2 className="text-ui font-semibold text-text">Keyboard shortcuts</h2>
           <span className="text-micro text-muted-foreground">
-            Keys are inert while you&apos;re typing — <kbd className="font-sans">Esc</kbd> returns to command mode.
+            Hold <kbd className="font-sans">{mac ? "⌥" : "Alt"}</kbd>{" "}
+            to see each key on the thing it selects. Keys are inert while you&apos;re typing —{" "}
+            <kbd className="font-sans">Esc</kbd> returns to command mode.
           </span>
           <button
             type="button"
@@ -92,24 +102,16 @@ export function KeymapCheatsheet({ open, onClose, scopes, mac }: Props) {
                 {bindings.map((b) => (
                   <div key={b.id} className="flex items-baseline gap-3">
                     <dt className="flex flex-shrink-0 items-baseline gap-1">
-                      {b.display ? (
-                        <kbd className="rounded border border-border bg-surface px-1.5 py-0.5 font-mono text-micro text-text">
-                          {b.display}
-                        </kbd>
+                      <Keycap>{formatChord(b.keys[0], mac)}</Keycap>
+                      {b.abbreviate ? (
+                        <>
+                          <span className="text-micro text-faint">…</span>
+                          <Keycap>{formatChord(b.keys[b.keys.length - 1], mac)}</Keycap>
+                        </>
                       ) : (
-                        formatSequence(b.keys[0], mac).map((chord, i) => (
-                          <kbd
-                            key={i}
-                            className="rounded border border-border bg-surface px-1.5 py-0.5 font-mono text-micro text-text"
-                          >
-                            {chord}
-                          </kbd>
-                        ))
-                      )}
-                      {b.keys.length > 1 && !b.display && (
-                        <span className="text-micro text-faint">
-                          or {formatSequence(b.keys[1], mac).join(" ")}
-                        </span>
+                        b.keys.length > 1 && (
+                          <span className="text-micro text-faint">or {formatChord(b.keys[1], mac)}</span>
+                        )
                       )}
                     </dt>
                     <dd className="min-w-0 text-label text-muted-foreground">{b.label}</dd>

@@ -20,6 +20,7 @@ import { L9Inspector } from "@/components/l9-inspector";
 import { NegotiationView } from "@/components/negotiation-view";
 import { RoomSlimView } from "@/components/room-slim";
 import { EmptyState } from "@/components/empty-state";
+import { KeyBadge } from "@/components/key-badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { initials } from "@/components/ui/monogram";
@@ -490,19 +491,21 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
             { id: "plan" as const,      label: "Plan",      count: null,                          dot: false },
             { id: "slim" as const,      label: "SLIM",      count: null,                          dot: false },
           ]).map(t => {
+            // Hold the reveal modifier and each tab wears the key that selects it.
             const active = view === t.id;
             return (
               <button
                 key={t.id}
                 data-tour={`tab-${t.id}`}
                 onClick={() => setView(t.id)}
-                className={`flex items-center gap-1.5 rounded-md px-3 py-1 text-label font-medium transition-colors ${
+                className={`relative flex items-center gap-1.5 rounded-md px-3 py-1 text-label font-medium transition-colors ${
                   active
                     ? "bg-elevated text-text shadow-sm ring-1 ring-border"
                     : "text-muted-foreground hover:bg-hairline hover:text-text"
                 }`}
               >
                 {t.label}
+                <KeyBadge action={`pane.${t.id}`} />
                 {t.dot && <span className="inline-block size-1.5 rounded-full bg-accent" aria-label="live" />}
                 {t.count !== null && (
                   <span className={`text-micro tabular ${active ? "text-accent" : "text-muted-foreground"}`}>

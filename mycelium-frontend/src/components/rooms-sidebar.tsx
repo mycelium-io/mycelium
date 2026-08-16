@@ -14,8 +14,9 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { NotificationBell } from "@/components/notification-bell";
 import { EmptyState } from "@/components/empty-state";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { useKeyAction, useKeyCapture } from "@/components/keymap-provider";
-import { hintLabels } from "@/lib/keymap";
+import { KeyBadge } from "@/components/key-badge";
+import { useKeyAction, useKeyCapture, useKeyReveal } from "@/components/keymap-provider";
+import { chordFor, hintLabels } from "@/lib/keymap";
 
 // The sidebar lives inside each page's AppShell, so navigation remounts it. A
 // module-level cache lets a fresh mount paint the last-known rooms immediately
@@ -186,22 +187,32 @@ export function RoomsSidebar({ activeRoom = null }: Props) {
 
   useKeyAction("rooms.next", () => cycle(1));
   useKeyAction("rooms.prev", () => cycle(-1));
-  useKeyAction("rooms.digit", (sequence) => go(filtered[Number(sequence) - 1]));
+  useKeyAction("rooms.digit", chord => go(filtered[Number(chord.split("+").pop()) - 1]));
   useKeyAction("nav.home", () => router.push("/"));
+
+  // While the reveal modifier is held the first nine rooms wear their own digit;
+  // `f` labels the whole list, which is the answer past nine.
+  const revealed = useKeyReveal();
+  const hintsChord = chordFor("rooms.hints");
 
   return (
     <aside data-tour="rooms" className="flex w-[236px] flex-shrink-0 flex-col border-r border-border bg-surface/50">
       {/* Brand */}
       <Link
         href="/"
-        className="flex h-[52px] flex-shrink-0 items-center gap-2.5 border-b border-border px-4 transition-colors hover:bg-hairline"
+        className="relative flex h-[52px] flex-shrink-0 items-center gap-2.5 border-b border-border px-4 transition-colors hover:bg-hairline"
       >
         <Image src="/logo.png" alt="Mycelium" width={20} height={20} className="translate-y-[2px] opacity-90" />
-        <span
-          className="text-display leading-none text-text"
-          style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontStyle: "italic", fontWeight: 600 }}
-        >
-          mycelium
+        {/* The badge pins to the wordmark, not the header row, so it has room
+            to sit above the baseline instead of clipping at the top edge. */}
+        <span className="relative">
+          <span
+            className="text-display leading-none text-text"
+            style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontStyle: "italic", fontWeight: 600 }}
+          >
+            mycelium
+          </span>
+          <KeyBadge action="nav.home" />
         </span>
       </Link>
 
@@ -230,10 +241,18 @@ export function RoomsSidebar({ activeRoom = null }: Props) {
         </div>
       </div>
 
-      {hints && (
+      {hints ? (
         <div role="status" aria-live="polite" className="px-3 pb-2 text-micro text-muted-foreground">
           Press a hint label to jump{hints.typed ? ` · ${hints.typed}…` : ""}
         </div>
+      ) : (
+        // Nine digits only go so far; say where the rest are while the badges
+        // are on screen and the question is being asked.
+        revealed && filtered.length > 9 && (
+          <div className="px-3 pb-2 text-micro text-muted-foreground">
+            <kbd className="font-sans">{hintsChord}</kbd> to label them all
+          </div>
+        )
       )}
 
       {/* Rooms list */}
@@ -264,6 +283,7 @@ export function RoomsSidebar({ activeRoom = null }: Props) {
                   aria-hidden
                 >
                   {monogram(room.name)}
+                  {i < 9 && <KeyBadge chord={`alt+${i + 1}`} overlay />}
                   {label && (
                     <span
                       data-hint={label}
