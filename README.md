@@ -4,8 +4,6 @@
   <img src="docs/banner.png?v=2" alt="mycelium" width="800" />
 </div>
 
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/mycelium-io/mycelium)
-
 <p align="center">
   <a href="https://github.com/mycelium-io/mycelium/actions/workflows/ci.yml?branch=main"><img src="https://img.shields.io/github/actions/workflow/status/mycelium-io/mycelium/ci.yml?branch=main&style=for-the-badge" alt="CI status"></a>
   <a href="https://github.com/mycelium-io/mycelium/releases"><img src="https://img.shields.io/github/v/release/mycelium-io/mycelium?include_prereleases&style=for-the-badge" alt="GitHub release"></a>
@@ -211,3 +209,4 @@ Mycelium builds on OSS projects we found invaluable in this space:
 - [IOC L9 protocol models](https://github.com/outshift-open/ioc-protocols-models): the epistemic envelope layer that rides SLIM
 - [NegMAS](https://negmas.readthedocs.io/): multi-issue negotiation, the aligner's engine
 - [FastAPI](https://fastapi.tiangolo.com/) + [fastembed](https://github.com/qdrant/fastembed): the moderator backend and on-device embeddings
+- [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/mycelium-io/mycelium)
