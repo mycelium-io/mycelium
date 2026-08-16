@@ -555,12 +555,18 @@ def agent_create(
     allow_from: str | None = typer.Option(
         None,
         "--allow-from",
-        help="Comma-separated sender handles allowed to invoke (e.g. '@julia,@docs-agent').",
+        help=(
+            "Comma-separated sender handles allowed to invoke this agent, and — under "
+            "an enabled auth gate — to act on its behalf (e.g. '@julia,@docs-agent')."
+        ),
     ),
     owner: str | None = typer.Option(
         None,
         "--owner",
-        help="User (a users/<handle>) this agent belongs to. Self-asserted.",
+        help=(
+            "User (a users/<handle>) this agent belongs to. Self-asserted, and the "
+            "owner may act on the agent's behalf under an enabled auth gate."
+        ),
     ),
     team: str | None = typer.Option(
         None, "--team", help="Team slug this agent is fielded by. Self-asserted."

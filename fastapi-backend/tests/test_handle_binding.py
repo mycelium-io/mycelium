@@ -20,47 +20,12 @@ from typing import Any
 
 import pytest
 import yaml
-from fastapi import Request
 from httpx import AsyncClient
 
-from app.config import PrincipalRole
-from app.main import app
-from app.services.auth import Principal, auth_gate
 from app.services.filesystem import get_room_dir, read_memory_file, write_memory_file
 from app.services.persister import DeliveryLog
 
 ROOM = "bind-room"
-
-
-@pytest.fixture
-def as_principal():
-    """Act as a verified principal for the rest of the test.
-
-    Overrides the gate itself, so the routes see exactly what a validated token
-    leaves behind: a ``Principal`` on ``request.state``. Call with ``None`` to
-    assert the anonymous branch through the same wiring.
-    """
-
-    def _act_as(handle: str | None, *, role: PrincipalRole = "agent") -> None:
-        principal = (
-            None
-            if handle is None
-            else Principal(
-                subject=handle,
-                handle=handle,
-                role=role,
-                issuer="https://idp.test/realms/mycelium",
-            )
-        )
-
-        async def _fake_gate(request: Request) -> Principal | None:
-            request.state.principal = principal
-            return principal
-
-        app.dependency_overrides[auth_gate] = _fake_gate
-
-    yield _act_as
-    app.dependency_overrides.pop(auth_gate, None)
 
 
 async def _make_room(client: AsyncClient, name: str = ROOM) -> None:

@@ -1,7 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Handle binding — the *authoritative* actor behind a write.
+"""Handle binding and handle authorization — who a request may act as.
+
+Two related rules live here. **Binding** answers *who wrote this* on a path whose
+body self-asserts an actor; **authorization** answers *may this principal act as
+that handle* on a path where the handle is a request parameter naming someone
+else's queue or presence slot. Both are inert without a verified token.
+
+Binding — the *authoritative* actor behind a write.
 
 The gate (``services/auth.py``) proves a token is valid and leaves a
 :class:`~app.services.auth.Principal` on ``request.state.principal``. That alone
@@ -27,12 +34,25 @@ A body handle may carry a session qualifier (``alpha#a8f3``). That names the sam
 principal, so it is honoured — the qualifier rides along on the token's handle,
 which keeps per-session attribution without letting the suffix smuggle in a
 different actor.
+
+Authorization — whose queue you may drain, whose presence you may claim.
+
+``await`` and the presence join take the handle from a request *parameter*: it
+names whose coordination stream is being read, not who is writing. Binding is the
+wrong tool there — rewriting the parameter to the token's handle would silently
+serve a different queue than the caller asked for — so the rule is a yes/no on the
+claim instead. A principal may act as its own handle, or as one whose agent
+manifest grants it (``owner``, or an entry in ``allow_from``): the explicit "act on
+behalf of" grant that carries the human-proxy and parent-agent cases. Anything else
+is a 403. Without a principal nothing is checked, so an ungated hub behaves exactly
+as it did.
 """
 
 from __future__ import annotations
 
 from fastapi import HTTPException, Request
 
+from app.services import principals
 from app.services.auth import Principal, normalize_handle
 
 
@@ -69,6 +89,45 @@ def bind_optional_actor(
     if principal is None:
         return claimed
     return _authoritative(principal, claimed, field)
+
+
+def may_act_as(principal: Principal, room: str, handle: str | None) -> bool:
+    """Whether ``principal`` may act as ``handle`` in ``room``.
+
+    Its own handle always, a session qualifier notwithstanding; another handle only
+    when that handle's manifest names the principal as ``owner`` or lists it in
+    ``allow_from``. A claim that normalizes to nothing names no handle at all, so it
+    is refused rather than read as "me" — unlike a *write*, where an omitted actor
+    is an absent claim the token fills in.
+    """
+    normalized = normalize_handle((handle or "").partition("#")[0])
+    if normalized is None:
+        return False
+    return normalized == principal.handle or principals.delegates_to(
+        room, normalized, principal.handle
+    )
+
+
+def authorize_handle(
+    request: Request | None, room: str, claimed: str | None, *, field: str = "handle"
+) -> None:
+    """Refuse a request that claims a handle its token may not act as.
+
+    A guard, not a binding: the claimed handle is left alone, because it names the
+    queue or presence slot the caller is asking about rather than the author of a
+    write.
+    """
+    principal = current_principal(request)
+    if principal is None or may_act_as(principal, room, claimed):
+        return
+    raise HTTPException(
+        status_code=403,
+        detail=(
+            f"{field} '{claimed}' is not the authenticated principal "
+            f"'@{principal.handle}' and has granted it no access; add "
+            f"'{principal.handle}' to that handle's owner or allow_from to act on its behalf."
+        ),
+    )
 
 
 def _authoritative(principal: Principal, claimed: str | None, field: str) -> str:

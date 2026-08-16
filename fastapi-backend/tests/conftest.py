@@ -11,10 +11,13 @@ in-process ``local_state`` shim which we reset per test.
 
 import pytest
 import pytest_asyncio
+from fastapi import Request
 from httpx import ASGITransport, AsyncClient
 
+from app.config import PrincipalRole
 from app.main import app
 from app.services import local_state
+from app.services.auth import Principal, auth_gate
 
 
 @pytest.fixture(autouse=True)
@@ -36,3 +39,35 @@ async def client():
     """AsyncClient wired to the FastAPI app (no database)."""
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         yield ac
+
+
+@pytest.fixture
+def as_principal():
+    """Act as a verified principal for the rest of the test.
+
+    Overrides the gate itself, so the routes see exactly what a validated token
+    leaves behind: a ``Principal`` on ``request.state``. Call with ``None`` to
+    assert the anonymous branch through the same wiring. Signing a real token is
+    ``test_auth_gate``'s subject, not every caller's.
+    """
+
+    def _act_as(handle: str | None, *, role: PrincipalRole = "agent") -> None:
+        principal = (
+            None
+            if handle is None
+            else Principal(
+                subject=handle,
+                handle=handle,
+                role=role,
+                issuer="https://idp.test/realms/mycelium",
+            )
+        )
+
+        async def _fake_gate(request: Request) -> Principal | None:
+            request.state.principal = principal
+            return principal
+
+        app.dependency_overrides[auth_gate] = _fake_gate
+
+    yield _act_as
+    app.dependency_overrides.pop(auth_gate, None)
