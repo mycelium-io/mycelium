@@ -237,3 +237,86 @@ def test_identity_material_dispatch_spire(monkeypatch, tmp_path):
     monkeypatch.setenv("MYCELIUM_SLIM_SPIRE_SOCKET", str(sock))
     material = slim_identity.resolve_identity_material(slim_identity.MODE_SPIRE, "alice")
     assert material is not None
+
+
+# ── handle ↔ channel-identity reconciliation (the identity spine, #589) ──────
+def test_handle_from_jwk_is_the_kid():
+    _, public_pem = slim_identity.generate_es256_keypair()
+    jwk = slim_identity.public_jwk_from_pem("alice", public_pem)
+    assert slim_identity.handle_from_jwk(jwk) == "alice"
+
+
+def test_handle_from_jwk_none_without_kid():
+    assert slim_identity.handle_from_jwk({"kty": "EC"}) is None
+
+
+def test_handle_from_spiffe_id_roundtrips():
+    spiffe_id = slim_identity.spiffe_id_for("alice", "mycelium.dev")
+    assert slim_identity.handle_from_spiffe_id(spiffe_id) == "alice"
+    # Trust-domain-scoped: a matching domain resolves, a mismatched one refuses.
+    assert slim_identity.handle_from_spiffe_id(spiffe_id, "mycelium.dev") == "alice"
+    assert slim_identity.handle_from_spiffe_id(spiffe_id, "other.example") is None
+
+
+@pytest.mark.parametrize(
+    "spiffe_id",
+    [
+        "https://mycelium.dev/agent/alice",  # not a SPIFFE URI
+        "spiffe://mycelium.dev",  # no workload path
+        "spiffe://mycelium.dev/user/alice",  # foreign path prefix
+        "spiffe://mycelium.dev/agent/alice/extra",  # over-deep path
+        "spiffe://mycelium.dev/agent/",  # empty handle
+    ],
+)
+def test_handle_from_spiffe_id_refuses_foreign_or_malformed(spiffe_id):
+    # Faithful interpretation: reconcile to nothing, never a fabricated handle.
+    assert slim_identity.handle_from_spiffe_id(spiffe_id) is None
+
+
+# ── provision_channel_identity: registration-time credential minting (#589) ──
+def test_provision_psk_is_a_noop(tmp_path):
+    result = slim_identity.provision_channel_identity("alice", slim_identity.MODE_PSK, tmp_path)
+    assert result == {"mode": "psk", "handle": "alice", "provisioned": False}
+    # Off by default: nothing written under the data dir.
+    assert not slim_identity.signing_key_path("alice", tmp_path).exists()
+
+
+def test_provision_signerjwt_mints_and_registers(tmp_path):
+    result = slim_identity.provision_channel_identity(
+        "alice", slim_identity.MODE_SIGNERJWT, tmp_path
+    )
+    assert result["mode"] == "signerjwt"
+    assert result["provisioned"] is True
+    assert result["kid"] == "alice"
+    assert slim_identity.signing_key_path("alice", tmp_path).exists()
+    assert slim_identity.public_jwk_path("alice", tmp_path).exists()
+
+
+def test_provision_signerjwt_is_idempotent(tmp_path):
+    first = slim_identity.provision_channel_identity(
+        "alice", slim_identity.MODE_SIGNERJWT, tmp_path
+    )
+    key = slim_identity.signing_key_path("alice", tmp_path).read_text()
+    second = slim_identity.provision_channel_identity(
+        "alice", slim_identity.MODE_SIGNERJWT, tmp_path
+    )
+    # No key churn on re-provision (never regenerated — that would churn identity).
+    assert slim_identity.signing_key_path("alice", tmp_path).read_text() == key
+    assert first == second
+
+
+def test_provision_spire_returns_spiffe_and_operator_step(tmp_path, monkeypatch):
+    monkeypatch.setenv("MYCELIUM_SLIM_SPIRE_TRUST_DOMAIN", "acme.example")
+    result = slim_identity.provision_channel_identity("alice", slim_identity.MODE_SPIRE, tmp_path)
+    assert result["mode"] == "spire"
+    # SVID entry creation is an external operator step, so nothing is provisioned here.
+    assert result["provisioned"] is False
+    assert result["spiffe_id"] == "spiffe://acme.example/agent/alice"
+    assert "spire-server entry create" in result["operator_step"]
+
+
+def test_provision_defaults_to_active_mode(tmp_path, monkeypatch):
+    monkeypatch.setenv("MYCELIUM_SLIM_IDENTITY", "signerjwt")
+    result = slim_identity.provision_channel_identity("alice", data_dir=tmp_path)
+    assert result["mode"] == "signerjwt"
+    assert result["provisioned"] is True

@@ -396,7 +396,45 @@ def _persist_and_describe(
     )
     for line in impl.describe(manifest, room=room_name):
         console.print(line)
+    _provision_channel_identity(manifest)
     _prompt_for_credential(config, manifest)
+
+
+def _provision_channel_identity(manifest: AgentManifest) -> None:
+    """Provision the agent's SLIM channel identity for the active mode (#589).
+
+    Registration is where ``@handle`` becomes a usable channel identity: under
+    ``signerjwt`` this mints+registers the local keypair (``kid = @handle``); under
+    ``spire`` it prints the member's SPIFFE-ID and the operator step to register the
+    SVID entry (entry creation is external to the CLI). Under the ``psk`` default it
+    is a silent no-op (off by default, #567) — the try-it path never sees identity
+    machinery. A provisioning failure is a warning, not a hard error: the manifest
+    is already written and the agent still works on the PSK.
+    """
+    from mycelium.slim import identity as slim_identity
+
+    try:
+        result = slim_identity.provision_channel_identity(manifest.handle)
+    except slim_identity.SlimIdentityError as exc:
+        console.print(f"[yellow]Could not provision channel identity: {exc}[/yellow]")
+        return
+
+    mode = result.get("mode")
+    if mode == slim_identity.MODE_SIGNERJWT:
+        console.print(
+            f"[green]SLIM channel identity ready[/green] "
+            f"[dim](signerjwt · kid {result['kid']})[/dim]"
+        )
+        console.print(f"[dim]Public JWK on the roster: {result['roster_path']}.[/dim]")
+    elif mode == slim_identity.MODE_SPIRE:
+        console.print(
+            f"[green]SLIM channel identity[/green] [dim](spire · {result['spiffe_id']})[/dim]"
+        )
+        console.print(
+            "[dim]Register the SVID entry with your SPIRE server:[/dim]\n"
+            f"[dim]  {result['operator_step']}[/dim]"
+        )
+    # psk: no per-agent identity — stay silent (off by default, #567).
 
 
 def _prompt_for_credential(config: MyceliumConfig, manifest: AgentManifest) -> None:
