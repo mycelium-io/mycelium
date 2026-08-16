@@ -294,13 +294,13 @@ class SynthesizerEngine:
     async def _write_summary(self, room: str, summary: str, created_by: str) -> None:
         """Upsert the summary through the canonical versioned + indexed path."""
         # Lazy import: the route module imports services heavily, so importing it
-        # at module load would risk a cycle. ``create_memories`` is the single
+        # at module load would risk a cycle. ``upsert_memories`` is the single
         # source of truth for a correct (versioned, indexed, NOTIFY-ing) write —
         # reused here rather than re-implementing the upsert.
-        from app.routes.memory import create_memories
+        from app.routes.memory import upsert_memories
         from app.schemas import MemoryBatchCreate, MemoryCreate
 
-        await create_memories(
+        await upsert_memories(
             room,
             MemoryBatchCreate(
                 items=[

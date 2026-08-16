@@ -29,10 +29,10 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from app.services import l9, principals, room_channels
+from app.services import actor, l9, principals, room_channels
 from app.services.filesystem import room_exists
 from app.services.l9_models import Kind
 from app.services.l9_slim import serialize_content
@@ -186,23 +186,27 @@ class ReplyBody(BaseModel):
 
 
 @router.post("/reply")
-async def post_reply(room_name: str, body: ReplyBody):
+async def post_reply(room_name: str, body: ReplyBody, request: Request):
     """Publish ``handle``'s reply as an L9 agent exchange the aligner scores."""
     if not room_exists(room_name):
         raise HTTPException(status_code=404, detail="Room not found")
+    # A verified token names the replier; unauthenticated, the body's handle does.
+    # Either way it is resolved here, so the transcript sender and the L9 actor
+    # below are the same handle the room-membership guard passed.
+    handle = actor.bind_actor(request, body.handle, field="handle")
     # The reply rides as sender_role="agent", so the handle must be a real
     # principal — a registered agent or a known user — and never an engine
     # (engines aren't impersonable). Guard before provisioning a channel.
-    reason = principals.post_rejection_reason(room_name, body.handle, allow_unregistered=False)
+    reason = principals.post_rejection_reason(room_name, handle, allow_unregistered=False)
     if reason:
         raise HTTPException(status_code=403, detail=reason)
     managed = await room_channels.manager.provision(room_name)
-    room_channels.manager.refresh_lease(room_name, body.handle)
+    room_channels.manager.refresh_lease(room_name, handle)
     if managed is None or managed.persister is None:
         raise HTTPException(status_code=503, detail="No live channel for room")
 
     payload_data, clean = _parse_marker(body.text)
-    st = _await_state.get((room_name, body.handle))
+    st = _await_state.get((room_name, handle))
     woke = (st.last_tick if st else None) or {}
     woke_header = (woke.get("l9") or {}).get("header") or {}
     woke_msg = woke_header.get("message") or {}
@@ -217,7 +221,7 @@ async def post_reply(room_name: str, body: ReplyBody):
     envelope = l9.build_envelope(
         kind=Kind.exchange,
         episode=episode,
-        sender=body.handle,
+        sender=handle,
         sender_role="agent",
         recipients=[tick_sender] if tick_sender else [l9.SYSTEM_ACTOR_ID],
         topic=topic,
@@ -238,6 +242,6 @@ async def post_reply(room_name: str, body: ReplyBody):
         pass
     return {
         "room": room_name,
-        "handle": body.handle,
+        "handle": handle,
         "message_id": envelope.header.message.id if envelope.header.message else None,
     }

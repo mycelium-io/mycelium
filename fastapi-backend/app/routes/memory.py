@@ -40,7 +40,7 @@ from app.schemas import (
     SubscriptionCreate,
     SubscriptionRead,
 )
-from app.services import local_state, memory_sync, search_index
+from app.services import actor, local_state, memory_sync, search_index
 from app.services.embedding import embed_text
 from app.services.filesystem import (
     delete_memory_file,
@@ -190,13 +190,25 @@ async def _send_memory_write_knowledge(
 
 
 @router.post("", response_model=list[MemoryRead], status_code=201)
-async def create_memories(room_name: str, payload: MemoryBatchCreate):
+async def create_memories(room_name: str, payload: MemoryBatchCreate, request: Request):
     """Create or upsert one or more memories (batch: 1-100 items).
 
     Writes markdown files to ``.mycelium/rooms/{room_name}/`` and updates the
     JSONL search index. Conflict policy: last-write-wins ordered by the memory's
     incrementing ``version``; a write against a stale ``base_version`` is
     rejected with the current content + who/when last wrote it.
+    """
+    for item in payload.items:
+        item.created_by = actor.bind_actor(request, item.created_by, field="created_by")
+    return await upsert_memories(room_name, payload)
+
+
+async def upsert_memories(room_name: str, payload: MemoryBatchCreate) -> list[MemoryRead]:
+    """The write itself, with ``created_by`` already resolved to its true author.
+
+    Split from the route so backend-owned writers (the synthesizer, an engine
+    manifest) reuse the one correct upsert without routing their actor through a
+    request body they never had.
     """
     _require_room(room_name)
     room_dir = get_room_dir(room_name)
