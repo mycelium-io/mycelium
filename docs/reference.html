@@ -110,6 +110,8 @@
       <a href="#structured-memory" class="nav-link sub">Structured Memory</a>
       <a href="#hub-and-spoke" class="nav-link sub">Hub &amp; Spoke</a>
       <a href="#auth" class="nav-link sub">Authentication</a>
+      <a href="#keycloak-oidc" class="nav-link sub">Keycloak / OIDC Setup</a>
+      <a href="#spire-identity" class="nav-link sub">Attested Identity (SPIRE)</a>
     </div>
     <div class="nav-section">
       <div class="nav-section-label">Help</div>
@@ -524,6 +526,13 @@ cursor-agent login            # one-time, interactive
         <div class="cmd-ref-body">Forget an agent's credential on this machine.</div>
       </div>
 
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium agent credential</span> slim-key <span class="arg">&lt;handle&gt;</span></code>
+        </div>
+        <div class="cmd-ref-body">Mint an agent's SignerJwt SLIM channel identity — a local ES256 keypair (0600) whose public JWK is registered on the room roster. The floor for <code>slim.identity = signerjwt</code> (#476); the PSK default needs none.</div>
+      </div>
+
       <h2 id="cli-memory">memory</h2>
 
       <div class="cmd-ref">
@@ -827,6 +836,9 @@ cursor-agent login            # one-time, interactive
 
 <span class="comment"># SLIM node endpoint (host:port), e.g. http://127.0.0.1:46357</span>
 <span class="arg">node_endpoint</span> = <span class="str">&quot;http://127.0.0.1:46357&quot;</span>
+
+<span class="comment"># SLIM channel identity tier: &#x27;psk&#x27; (default, off-by-default #567) is the shared-secret credential every room member derives — zero infra, no per-agent identity. &#x27;signerjwt&#x27; opts into the SignerJwt floor (#476): each member presents a per-agent self-signed ES256 identity so members are cryptographically distinct, individually revocable MLS participants. &#x27;spire&#x27; opts into SPIRE/SPIFFE (#579): each member presents a SPIRE-attested JWT-SVID from the Workload API — tightest attestation, heaviest deploy (a co-located SPIRE server + node daemon, brought up automatically by &#x27;mycelium up&#x27; via the shipped &#x27;spire&#x27; compose profile; #588). Selecting &#x27;signerjwt&#x27;/&#x27;spire&#x27; with no resolvable material degrades to &#x27;psk&#x27; unless MYCELIUM_SLIM_IDENTITY_REQUIRE=1 fails closed.</span>
+<span class="arg">identity</span> = <span class="str">&quot;psk&quot;</span>
 
 <span class="comment"># First-party Cognition Engine runtime configuration.</span>
 <span class="cmd" id="config-engine">[engine]</span>
@@ -1191,7 +1203,7 @@ role     = &quot;user&quot;</code></pre>
       <p>The access token is renewed automatically when it expires, using the refresh token, on the way into the next call that needs it — you don&#x27;t re-run <code>login</code> on a schedule. Renewal needs a refresh token, which most issuers grant only for the <code>offline_access</code> scope; it is in the default <code>login.scopes</code> for that reason. If renewal fails, the CLI drops the header and tells you to sign in again rather than sending a token the hub will reject.</p>
       <h3 id="auth-who-you-are">Who you are</h3>
       <p><code>mycelium whoami</code> (and <code>mycelium iam</code> with no arguments) reports the handle from your <strong>token</strong> when you&#x27;re signed in, and the self-asserted <code>identity.name</code> when you&#x27;re not:</p>
-      <pre><code>acting as @julia  (julia#a8f3)
+      <pre><code>acting as @avery  (avery#a8f3)
   signed in (https://sso.example.com/realms/mycelium, expires in 42 min)</code></pre>
       <p>Because a gated hub attributes writes to the token (see <em>The token is the author</em> below), a self-asserted handle that names someone else is a 403 in waiting — <code>login</code> and <code>iam</code> both say so when they disagree.</p>
       <h3 id="auth-configuration">Configuration</h3>
@@ -1323,6 +1335,19 @@ role   = &quot;agent&quot;</code></pre>
       </ul>
       <p>as-is. The suffix rides along on the token&#x27;s handle, so per-session attribution survives without letting the suffix name someone else.</p>
       <p>With the gate off there is no principal, so every path keeps the self-asserted actor from the body exactly as before — the try-it path is unchanged.</p>
+      <h2 id="auth-acting-as-another-handle">Acting as another handle</h2>
+      <p>Attribution answers <em>who wrote this</em>. Two calls ask something different: <code>mycelium await</code> names <strong>whose queue to drain</strong>, and joining a room names <strong>whose presence to register</strong>. Both take the handle as a request parameter, and draining a queue consumes it — a turn served to one caller is not served again — so an unchecked handle there means a valid token for <code>@bob</code> could read and swallow <code>@alice</code>&#x27;s coordination stream.</p>
+      <p>A gated hub allows the call when either is true:</p>
+      <ul>
+        <li>the handle <strong>is</strong> the token&#x27;s own (a session qualifier like <code>alice#a8f3</code> still names alice), or</li>
+        <li>the handle&#x27;s agent manifest <strong>grants</strong> the token&#x27;s principal — its <code>owner</code>, or an entry in its <code>allow_from</code>.</li>
+      </ul>
+      <p>Anything else is a <strong>403</strong>. Grants are per-room, because manifests are: owning <code>@bot</code> in one room says nothing about a <code>@bot</code> in another.</p>
+      <p>The grant is what makes &quot;await on behalf of&quot; explicit rather than universal. An agent running with its own credential needs nothing — it awaits itself. A human driving an agent&#x27;s loop from their own session does:</p>
+      <pre><code><span class="cmd">mycelium agent create</span> bot <span class="flag">--owner</span> alice          # alice may now await <span class="flag">--handle</span> bot
+<span class="cmd">mycelium agent create</span> bot <span class="flag">--allow-from</span> ops-lead  # …and so may @ops-lead</code></pre>
+      <p>A resident loop (<code>mycelium await --loop</code>) <strong>stops</strong> on a 401 or 403 rather than retrying: a refused identity is not a blip, and re-polling it would flood the hub for as long as the loop ran.</p>
+      <p>With the gate off nothing is checked here either, so an ungated hub still lets any caller await any handle — which is also why a hub reachable beyond your machine wants the gate on.</p>
       <h2 id="auth-key-rotation">Key rotation</h2>
       <p>The JWKS is fetched from your issuer and cached for <code>auth.jwks_ttl_s</code>. When a token arrives signed by a key ID the backend hasn&#x27;t seen, it re-fetches immediately (rate-limited), so <strong>rotating your signing key does not require restarting Mycelium</strong>.</p>
       <p>If the issuer is briefly unreachable, previously fetched keys keep serving. The keys are still your issuer&#x27;s; only their freshness is in doubt, and failing closed would take the hub down for the length of an IdP blip.</p>
@@ -1356,7 +1381,7 @@ role   = &quot;agent&quot;</code></pre>
             </tr>
             <tr>
               <td><code>403</code></td>
-              <td>A valid token, but the request body claims to act as a different handle.</td>
+              <td>A valid token acting as a handle that is not its own: a body claiming a different author, or an <code>await</code>/join naming a handle that has not granted it.</td>
             </tr>
             <tr>
               <td><code>503</code></td>
@@ -1368,6 +1393,164 @@ role   = &quot;agent&quot;</code></pre>
       <p>Only asymmetric signatures are accepted (<code>RS<em></code>, <code>PS</em></code>, <code>ES<em></code>). The <code>none</code> algorithm and the whole <code>HS</em></code> family are refused before verification, so a public JWKS key can never be replayed as an HMAC secret.</p>
       <h2 id="auth-trying-it-locally">Trying it locally</h2>
       <p>A dev OIDC issuer ships for exactly this, so you can exercise the gate without standing up Keycloak. See <code>docs/design/dev-auth-issuer.md</code>.</p>
+      <p>For the real thing — a Keycloak realm, client, and human <code>mycelium login</code>, wired end-to-end — follow the <a href="#keycloak-oidc">Keycloak / OIDC Setup</a> guide.</p>
+    </section>
+
+    <hr class="divider">
+
+    <section class="doc-section" id="keycloak-oidc">
+      <p>&lt;!-- SPDX-License-Identifier: Apache-2.0 --&gt;</p>
+      <h1>Keycloak / OIDC setup</h1>
+      <p><a href="#auth">Authentication</a> explains the gate in the abstract: the backend trusts an OIDC issuer and validates a bearer token against its JWKS. This guide makes the <strong>human OIDC tier</strong> concrete against real <strong>Keycloak</strong> — realm, client, the claims the gate keys off, and a human <code>mycelium login</code>. Every command here was run against a live Keycloak; the wiring below is confirmed, not aspirational.</p>
+      <p>Keycloak is a <em>supported</em> issuer, not the default. The gate stays <strong>off by default</strong> (the try-it path never touches it) — you turn it on when a team shares a hub over a network. Dex, ZITADEL, Authentik, or your corporate SSO slot in exactly the same way; nothing here is Keycloak-specific except the URLs.</p>
+      <h2 id="keycloak-oidc-stand-up-keycloak">Stand up Keycloak</h2>
+      <p>A ready-to-run Keycloak ships as an <strong>opt-in compose overlay</strong> — off the default stack, added with an extra <code>-f</code> exactly like the dev issuer. It imports a <code>mycelium</code> realm with a public CLI client, an audience mapper, and a demo user, so there is nothing to click in the admin console.</p>
+      <pre><code>cd mycelium-cli/src/mycelium/docker
+docker compose <span class="flag">-f</span> compose.yml <span class="flag">-f</span> compose-dev.yml <span class="flag">-f</span> compose-keycloak.yml \
+  up <span class="flag">-d</span> keycloak</code></pre>
+      <p>The realm is ready when discovery answers:</p>
+      <pre><code>curl <span class="flag">-s</span> http://localhost:8080/realms/mycelium/.well-known/openid-configuration \
+  | python3 <span class="flag">-c</span> &#x27;import json,sys; print(json.load(sys.stdin)[<span class="str">&quot;issuer&quot;</span>])&#x27;
+<span class="comment"># → http://localhost:8080/realms/mycelium</span></code></pre>
+      <div class="callout callout-note">
+        <div class="callout-bar"></div>
+        <div class="callout-body"><strong>Port already in use?</strong> Publish it elsewhere with <code>MYCELIUM_KEYCLOAK_PORT=8085 docker compose … up -d keycloak</code>. The overlay pins Keycloak&#x27;s advertised URL to the same port, so the issuer becomes <code>http://localhost:8085/realms/mycelium</code> — use that everywhere below. The admin console is at <code>/admin</code> (<code>admin</code> / <code>admin</code>, override with <code>MYCELIUM_KEYCLOAK_ADMIN[_PASSWORD]</code>).</div>
+      </div>
+      <h2 id="keycloak-oidc-what-the-realm-ships-and-what-the-gate-expects">What the realm ships (and what the gate expects)</h2>
+      <p>The imported realm (<code>docker/keycloak/mycelium-realm.json</code>) is the whole anatomy the gate needs. Point your own Keycloak at these same four things:</p>
+      <ul>
+        <li><strong>A public client <code>mycelium-cli</code></strong> — this is the client <code>mycelium login</code> uses.</li>
+      </ul>
+      <p>Public (no secret; it authenticates with PKCE), with the loopback redirect <code>http://127.0.0.1:*/callback</code> for the browser flow and the <strong>device grant</strong> enabled for headless login.</p>
+      <ul>
+        <li><strong>An audience mapper</strong> stamping <code>mycelium</code> into the access token&#x27;s <code>aud</code>. This is</li>
+      </ul>
+      <p>what makes <code>auth.audience = &quot;mycelium&quot;</code> meaningful — a token minted for some other app on the same Keycloak is refused.</p>
+      <ul>
+        <li><strong><code>sub</code> is a UUID, so the human handle comes from <code>preferred_username</code>.</strong> Set</li>
+      </ul>
+      <p><code>auth.handle_claim = &quot;preferred_username&quot;</code> for the human tier — otherwise every human arrives as an opaque UUID instead of <code>@demo</code>.</p>
+      <ul>
+        <li><strong>A demo user</strong> (<code>demo</code> / <code>demo</code>) so a human login has someone to sign in as.</li>
+      </ul>
+      <div class="callout callout-note">
+        <div class="callout-bar"></div>
+        <div class="callout-body"><strong>A gotcha worth knowing if you build your own client:</strong> the CLI&#x27;s <em>device</em> flow does not send PKCE parameters, so do <strong>not</strong> set the client to <em>require</em> PKCE (<code>pkce.code.challenge.method</code>) — that rejects the device grant with <code>Missing parameter: code_challenge_method</code>. Leave enforcement off; the CLI still uses PKCE on the browser flow, Keycloak just doesn&#x27;t mandate it on every grant.</div>
+      </div>
+      <h2 id="keycloak-oidc-wire-the-gate">Wire the gate</h2>
+      <p>The one subtlety worth understanding is <strong>which URL goes where</strong>, because the backend runs in a container and the browser/CLI run on the host:</p>
+      <ul>
+        <li>Keycloak stamps the token <code>iss</code> as <code>http://localhost:8080/realms/mycelium</code> for</li>
+      </ul>
+      <p>every caller (the overlay pins its advertised URL). That is what the browser and CLI reach it by, so it is the <code>issuer</code> the gate matches.</p>
+      <ul>
+        <li>The <strong>backend can&#x27;t use <code>localhost</code></strong> — inside the container that is the backend</li>
+      </ul>
+      <p>itself. On the compose network Keycloak is reachable as <code>keycloak:8080</code>, so that is where the backend fetches keys from.</p>
+      <p>The gate matches <code>iss</code> by <strong>exact string</strong> but fetches keys from a <strong>separately configured <code>jwks_url</code></strong>, so you point them at different hostnames on purpose. In <code>~/.mycelium/config.toml</code>:</p>
+      <pre><code>[auth]
+enabled      = true
+audience     = &quot;mycelium&quot;
+handle_claim = &quot;preferred_username&quot;
+
+[[auth.issuers]]
+issuer   = &quot;http://localhost:8080/realms/mycelium&quot;
+jwks_url = &quot;http://keycloak:8080/realms/mycelium/protocol/openid-connect/certs&quot;
+role     = &quot;user&quot;
+
+[login]
+issuer    = &quot;http://localhost:8080/realms/mycelium&quot;
+client_id = &quot;mycelium-cli&quot;
+audience  = &quot;mycelium&quot;</code></pre>
+      <p>Apply it and recreate the backend so it picks up the gate:</p>
+      <pre><code><span class="cmd">mycelium config apply</span>
+docker compose <span class="flag">-f</span> compose.yml <span class="flag">-f</span> compose-dev.yml <span class="flag">-f</span> compose-keycloak.yml \
+  up <span class="flag">-d</span> <span class="flag">--force-recreate</span> mycelium-backend</code></pre>
+      <p><code>/health</code> now reports the gate on and the issuer trusted:</p>
+      <pre><code>curl <span class="flag">-s</span> http://localhost:8000/health | python3 <span class="flag">-m</span> json.tool
+<span class="comment"># &quot;auth&quot;: { &quot;enabled&quot;: true, &quot;issuers&quot;: [&quot;http://localhost:8080/realms/mycelium&quot;],</span>
+<span class="comment">#           &quot;audience&quot;: &quot;mycelium&quot;, &quot;localhost_bypass&quot;: true }</span></code></pre>
+      <div class="callout callout-note">
+        <div class="callout-bar"></div>
+        <div class="callout-body"><strong>The localhost bypass does not save you here</strong> — and that is the point. Traffic from the CLI to the containerized backend arrives from the Docker bridge, not real loopback, so the gate genuinely enforces. See <a href="#auth">Authentication → The localhost bypass</a>.</div>
+      </div>
+      <h2 id="keycloak-oidc-sign-in-with-mycelium-login">Sign in with <code>mycelium login</code></h2>
+      <pre><code><span class="cmd">mycelium login</span>            # opens your browser to Keycloak
+<span class="cmd">mycelium login</span> <span class="flag">--device</span>   # headless: prints a URL + code to approve from any device</code></pre>
+      <p>Sign in as <code>demo</code> / <code>demo</code>. The CLI caches the token (<code>~/.mycelium/token.json</code>, mode <code>0600</code>) and every later command carries it:</p>
+      <pre><code><span class="cmd">mycelium whoami</span>
+<span class="comment"># acting as @demo</span>
+<span class="comment">#   signed in (http://localhost:8080/realms/mycelium, expires in 4 min)</span>
+
+<span class="cmd">mycelium room ls</span>          # now authorized through the Keycloak token</code></pre>
+      <p><code>mycelium logout</code> drops the session and the CLI goes back to sending no token.</p>
+      <h2 id="keycloak-oidc-prove-the-gate-what-validated-means">Prove the gate (what &quot;validated&quot; means)</h2>
+      <p>The same three checks that were run to confirm this guide, against the published backend port:</p>
+      <pre><code><span class="comment"># A real Keycloak token for the demo user</span>
+TOKEN=$(curl <span class="flag">-s</span> <span class="flag">-X</span> POST \
+  http://localhost:8080/realms/mycelium/protocol/openid-connect/token \
+  <span class="flag">-d</span> &#x27;grant_type=password&amp;client_id=mycelium-cli&amp;username=demo&amp;password=demo&amp;scope=openid profile&#x27; \
+  | python3 <span class="flag">-c</span> &#x27;import json,sys; print(json.load(sys.stdin)[<span class="str">&quot;access_token&quot;</span>])&#x27;)
+
+curl <span class="flag">-s</span> <span class="flag">-o</span> /dev/null <span class="flag">-w</span> &#x27;%{http_code}\n&#x27; http://localhost:8000/api/rooms              # 401  (no token)
+curl <span class="flag">-s</span> <span class="flag">-o</span> /dev/null <span class="flag">-w</span> &#x27;%{http_code}\n&#x27; <span class="flag">-H</span> <span class="str">&quot;Authorization: Bearer $TOKEN&quot;</span> \
+  http://localhost:8000/api/rooms                                                     # 200  (valid)
+curl <span class="flag">-s</span> <span class="flag">-o</span> /dev/null <span class="flag">-w</span> &#x27;%{http_code}\n&#x27; <span class="flag">-H</span> &#x27;Authorization: Bearer not.a.jwt&#x27; \
+  http://localhost:8000/api/rooms                                                     # 401  (garbage)</code></pre>
+      <p>An <strong>expired</strong> token is refused the same way — the response is <code>401</code> with <code>token rejected: Signature has expired</code> once it ages past <code>exp</code> plus <code>auth.leeway_s</code> (default 60s).</p>
+      <h2 id="keycloak-oidc-agents-and-more-than-one-issuer">Agents, and more than one issuer</h2>
+      <p>This guide is the <strong>human</strong> tier. Agents authenticate as workloads with the <code>client_credentials</code> grant from their own Keycloak client — see <a href="#auth">Authentication → Agents sign in as themselves</a>. Humans and agents are often separate realms; list each as its own <code>[[auth.issuers]]</code> block (a human root with <code>role = &quot;user&quot;</code>, an agent root with <code>role = &quot;agent&quot;</code>), matched by exact <code>iss</code> and never interchangeable.</p>
+      <p>For the tightest, individually-attested agent identity on the SLIM channel itself, see <a href="#spire-identity">Attested Identity (SPIRE)</a> — a different, heavier tier from this HTTP-API gate.</p>
+      <h2 id="keycloak-oidc-browser-login-the-frontend">Browser login (the frontend)</h2>
+      <p>The Next.js frontend does the same OIDC flow for humans in a browser. With the gate <strong>off</strong> it is unchanged — the localStorage handle-picker, no login. With the gate <strong>on</strong>, the app shows a <strong>Sign in</strong> screen and redirects to Keycloak; after you authenticate it carries your token on every <code>/api/*</code> call (sealed in an httpOnly cookie, injected server-side by the proxy — it never reaches browser JS).</p>
+      <p>The realm import ships a second public client, <strong><code>mycelium-web</code></strong>, with the web redirect <code>http://localhost:3000/api/auth/callback</code> (the CLI&#x27;s <code>mycelium-cli</code> client uses a loopback redirect instead — separate clients, separately revocable).</p>
+      <p>Configure the frontend (server-side env) and bring the UI up:</p>
+      <pre><code>export MYCELIUM_OIDC_ISSUER=http://localhost:8080/realms/mycelium
+export MYCELIUM_OIDC_INTERNAL_ISSUER=http://keycloak:8080/realms/mycelium
+export MYCELIUM_OIDC_CLIENT_ID=mycelium-web
+export MYCELIUM_OIDC_AUDIENCE=mycelium
+export AUTH_SESSION_SECRET=$(openssl rand <span class="flag">-hex</span> 32)
+
+docker compose <span class="flag">-f</span> compose.yml <span class="flag">-f</span> compose-dev.yml <span class="flag">-f</span> compose-keycloak.yml \
+  <span class="flag">--profile</span> ui up <span class="flag">-d</span></code></pre>
+      <p>The <strong>issuer split is the same as the backend&#x27;s</strong>, for the same reason: the browser reaches Keycloak at <code>MYCELIUM_OIDC_ISSUER</code> (<code>localhost:8080</code>) and the token&#x27;s <code>iss</code> matches it, but the containerized frontend server can&#x27;t use <code>localhost</code>, so it runs discovery + token exchange against <code>MYCELIUM_OIDC_INTERNAL_ISSUER</code> (<code>keycloak:8080</code>). Running the frontend on the host with <code>pnpm dev</code> instead? Drop <code>INTERNAL_ISSUER</code> — the two coincide.</p>
+      <div class="callout callout-note">
+        <div class="callout-bar"></div>
+        <div class="callout-body"><strong>Off by default here too.</strong> With <code>MYCELIUM_OIDC_ISSUER</code> / <code>AUTH_SESSION_SECRET</code> unset, the frontend never engages OIDC. And it only shows the sign-in screen when the backend&#x27;s <code>/health</code> reports the gate on — the try-it path is untouched.</div>
+      </div>
+      <h2 id="keycloak-oidc-the-honest-ceiling">The honest ceiling</h2>
+      <p>The shipped overlay is <strong>dev-grade</strong>: Keycloak in <code>start-dev</code> (in-memory H2, HTTP, a demo user with a weak password). It is a real OIDC provider minting real RS256 tokens against a real JWKS — enough to build and prove against — but it is <strong>not</strong> a hardened production Keycloak. For a real deployment, run your own Keycloak over TLS with a persistent datastore and real users, then point the same three config values (<code>issuer</code>, <code>jwks_url</code>, <code>login.issuer</code>) at it. Nothing else changes.</p>
+    </section>
+
+    <hr class="divider">
+
+    <section class="doc-section" id="spire-identity">
+      <p>&lt;!-- SPDX-License-Identifier: Apache-2.0 --&gt;</p>
+      <h1>Attested identity (SPIRE)</h1>
+      <p>Mycelium&#x27;s default channel identity is a shared-secret PSK: zero infrastructure, every room member derives the same group key. That&#x27;s the try-it path, and it never changes. <strong>SPIRE identity</strong> is an optional, off-by-default upgrade: each member presents a SPIRE-attested JWT-SVID as its MLS identity, so members are cryptographically distinct, individually attested, and individually revocable — the tightest attestation tier, and the heaviest to deploy.</p>
+      <p>Turning it on is <strong>one switch</strong>. You never touch a SPIFFE socket path, a trust domain, or type <code>spire-server entry create</code> by hand.</p>
+      <h2 id="spire-identity-turn-it-on">Turn it on</h2>
+      <pre><code><span class="cmd">mycelium config set</span> slim.identity spire
+<span class="cmd">mycelium config apply</span>
+<span class="cmd">mycelium up</span></code></pre>
+      <p><code>mycelium up</code> reads <code>slim.identity</code> and, when it&#x27;s <code>spire</code>, brings a co-located SPIRE <strong>server + node daemon</strong> up alongside the hub automatically — the compose <code>spire</code> profile is an implementation detail the config drives. You do <strong>not</strong> pass <code>--profile spire</code> by hand. On the default (<code>psk</code>) nothing extra starts and the stack is byte-for-byte unchanged.</p>
+      <div class="callout callout-note">
+        <div class="callout-bar"></div>
+        <div class="callout-body">The SPIRE <strong>node daemon</strong> (upstream image <code>spire-agent</code>, container <code>mycelium-spire-noded</code>) is SPIRE&#x27;s per-node identity daemon — it serves the Workload API socket and fetches SVIDs. It is unrelated to mycelium coordination <strong>agents</strong> (<code>@alice</code> etc.); the shared word is an upstream-SPIRE coincidence.</div>
+      </div>
+      <h2 id="spire-identity-registration-is-automatic">Registration is automatic</h2>
+      <pre><code><span class="cmd">mycelium agent create</span> @alice</code></pre>
+      <p>With SPIRE on, <code>agent create</code> registers the SVID entry (<code>spiffe://&lt;trust-domain&gt;/agent/alice</code>) against the running SPIRE server itself — no printed copy-paste operator step. <code>agent rm @alice</code> deletes the entry, revoking the identity. Both go through the normal mycelium CLI.</p>
+      <h2 id="spire-identity-check-it">Check it</h2>
+      <pre><code><span class="cmd">mycelium doctor</span></code></pre>
+      <p>When SPIRE is on, doctor shows a legible line — <code>SPIRE up, @alice attested</code> — so a misconfiguration is a clear message rather than a member silently hanging at &quot;Initializing spire identity manager.&quot;</p>
+      <h2 id="spire-identity-trust-domain">Trust domain</h2>
+      <p>The trust domain defaults to <code>mycelium.dev</code>. Override it (server, agent, backend MLS identity, and registration all read the same value) with:</p>
+      <pre><code>export MYCELIUM_SLIM_SPIRE_TRUST_DOMAIN=corp.example.com</code></pre>
+      <p>Set it in <code>~/.mycelium/.env</code> (or the shell that runs <code>mycelium up</code>) before bringing the stack up.</p>
+      <h2 id="spire-identity-the-honest-ceiling">The honest ceiling</h2>
+      <p>The appliance uses SPIRE&#x27;s <code>unix</code> workload attestor, which identifies a workload by its process credentials. That requires the SPIRE node daemon to share the workload&#x27;s PID namespace — which the shipped compose does for the <strong>backend</strong> (the always-on moderator that holds membership for turn-based agents). A <strong>resident</strong> Claude or Cursor session on a user&#x27;s own machine is <em>not</em> co-located with a SPIRE node daemon, so it cannot be <code>unix</code>-attested; on a spoke, identity degrades to the PSK unless you front it with a non-<code>unix</code> attestor (k8s, docker, x509pop, join-token). This is why SPIRE is off by default and never lands on the default path.</p>
+      <p>The appliance SPIRE profile is <strong>dev-grade</strong> (SQLite datastore, join-token node attestation, short SVID TTLs) — a real product surface for attested identity, not yet a hardened production deployment.</p>
     </section>
 
     <hr class="divider">
@@ -1528,7 +1711,7 @@ grep api_url ~/.mycelium/config.toml  # what the spoke targets</code></pre>
           <tbody>
             <tr>
               <td><code>LLM_MODEL</code></td>
-              <td>LiteLLM model string</td>
+              <td><code>provider/model</code> string, as Pi takes it</td>
               <td><code>anthropic/claude-sonnet-4-6</code></td>
             </tr>
             <tr>

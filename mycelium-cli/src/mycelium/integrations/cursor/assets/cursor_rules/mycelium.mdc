@@ -43,8 +43,8 @@ room chat plus one convention (a confidence marker) and one summon (the aligner)
 # 1. Block until it's your turn (a mediator tick or an @-mention).
 mycelium await --room <room-name> --handle cursor-agent --json
 
-# 2. Reply with your position, ending with a one-line confidence marker so
-#    the aligner can score convergence. The marker is stripped from the posted
+# 2. Reply with your position, ending with a one-line confidence marker
+#    recording how sure you are. The marker is stripped from the posted
 #    prose; only the epistemic signal is kept.
 mycelium respond --room <room-name> --handle cursor-agent \
   "GraphQL primary for authenticated APIs; REST fine for uploads. Hard limit:
@@ -61,17 +61,21 @@ mycelium await --room <room-name> --handle cursor-agent --json
 
 ### Converge
 
-Argue across as many turns as it takes. When the team believes it has agreement
-(or has clearly stalled), summon the judge — the aligner is a registered engine
-(`mycelium engine create aligner --kind aligner --room <room-name>`, once per room):
+Once the opening positions are on the table, summon the mediator — the aligner is
+a registered engine (`mycelium engine create aligner --kind aligner --room
+<room-name>`, once per room):
 
 ```bash
-mycelium engine invoke aligner "assess whether we've converged" --room <room-name>
+mycelium engine invoke aligner "converge on <the open question>" --room <room-name>
 ```
 
-It folds each agent's *latest* position and emits a verdict: **converged** (the
-backend compiles `plan/tasks.md` + syncs it as a `knowledge` memory) or
-**rejected** (a clean "no agreement", not a failure). It's dormant until summoned.
+That opens an episode. The aligner derives the issues in dispute, then addresses
+**one agent at a time** with the offer on the table and waits for that agent's
+`respond`. Keep awaiting and answer in prose when it's your turn; it interprets
+your reply as an accept, a reject, or a counter. It ends **converged** (the
+backend compiles `plan/tasks.md` + syncs it as a `knowledge` memory) the instant
+everyone accepts the same offer, or **rejected** if the mechanism runs out first
+(a clean "no agreement", not a failure). It's dormant until summoned.
 
 ### After consensus: work the plan
 
@@ -89,7 +93,7 @@ For one-shot messages and durable notes (NOT negotiation; see below):
 
 ```bash
 mycelium room send --room <room-name> --handle cursor-agent \
-  "@julia-agent heads up: redis eviction bug in staging"
+  "@avery-agent heads up: redis eviction bug in staging"
 
 mycelium memory set "decision/cache" \
   '{"choice": "Redis", "rationale": "40ms p99 win, simpler ops"}' \

@@ -778,7 +778,7 @@ def send(
     ctx: typer.Context,
     content: str = typer.Argument(
         ...,
-        help='Message content. Use @handle mentions to address specific agents, e.g. "@julia-agent ping".',
+        help='Message content. Use @handle mentions to address specific agents, e.g. "@avery-agent ping".',
     ),
     room: str | None = typer.Option(
         None, "--room", "-r", help="Room to post into (defaults to active room)"
@@ -806,9 +806,9 @@ def send(
     instead.
 
     Examples:
-        mycelium room send "@julia-agent please review the cache config"
-        mycelium room send --room design-review --handle arnold "@selina-agent thoughts on the API proposal?"
-        mycelium room send "@julia-agent @selina-agent sync at 3pm re: sprint priorities"
+        mycelium room send "@avery-agent please review the cache config"
+        mycelium room send --room design-review --handle arnold "@rowan-agent thoughts on the API proposal?"
+        mycelium room send "@avery-agent @rowan-agent sync at 3pm re: sprint priorities"
     """
     try:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False  # noqa: F841

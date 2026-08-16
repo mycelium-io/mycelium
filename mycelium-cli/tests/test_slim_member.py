@@ -30,12 +30,12 @@ async def test_publish_once_announces_then_publishes(fake_httpx: FakeHTTPX) -> N
         api_url="http://localhost:8000",
         node_endpoint="http://127.0.0.1:46357",
         room="demo",
-        handle="julia",
+        handle="avery",
         payload=b"hello wire",
     )
 
     assert fake_httpx.calls == [
-        ("POST", "http://localhost:8000/api/rooms/demo/sessions", {"agent_handle": "julia"})
+        ("POST", "http://localhost:8000/api/rooms/demo/sessions", {"agent_handle": "avery"})
     ]
     assert FakeSlimClient.published == [b"hello wire"]
 
@@ -51,7 +51,7 @@ def test_publish_once_raises_when_node_unreachable(
                 api_url="http://localhost:8000",
                 node_endpoint="http://127.0.0.1:46357",
                 room="demo",
-                handle="julia",
+                handle="avery",
                 payload=b"x",
             )
         )
@@ -73,7 +73,7 @@ def test_publish_once_raises_on_join_timeout(
                 api_url="http://localhost:8000",
                 node_endpoint="http://127.0.0.1:46357",
                 room="demo",
-                handle="julia",
+                handle="avery",
                 payload=b"x",
                 join_timeout_s=0.05,
             )
@@ -83,4 +83,4 @@ def test_publish_once_raises_on_join_timeout(
 async def test_announce_presence_raises_on_http_error(fake_httpx: FakeHTTPX) -> None:
     fake_httpx.respond_with(lambda *_a: FakeResp(boom=True, status_code=500))
     with pytest.raises(RuntimeError):
-        await member.announce_presence("http://localhost:8000", "demo", "julia")
+        await member.announce_presence("http://localhost:8000", "demo", "avery")

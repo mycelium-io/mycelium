@@ -128,7 +128,7 @@ per-deployment opt-in.
    and engine-registration write paths. A body handle carrying a session
    qualifier (`alice#a8f3`) is honoured as the same principal; the reader side —
    which handle's queue an `await` may drain — is authorization rather than
-   attribution and stays with the RBAC step.*
+   attribution and landed separately once agents had identities (step 5).*
 3. **CLI human login** — `mycelium login` obtains a token (Authorization Code +
    PKCE, or device-code for headless), stores + refreshes it; `mycelium iam`
    becomes "who am I per the token," not self-assert. *Landed (#563):
@@ -140,11 +140,21 @@ per-deployment opt-in.
    what it was.*
 4. **Agent identity issuance** — per-agent **OIDC service-account** credentials by
    default; **SPIRE JWT-SVID as an optional upgrade** where workload attestation is
-   wanted.
-5. **SLIM channel identity** — *optionally* move the MLS group off the dev PSK to
+   wanted. *Landed (#564): `mycelium agent credential set …` mints a
+   `client_credentials` token per agent through the same client factory as the human
+   session, so a resident agent writes as itself rather than as whoever started it.*
+5. **Handle authorization (read + presence)** — bind the handle an `await` drains
+   and the handle a join registers, not just the actor of a write. *Landed (#571):
+   `fastapi-backend/app/services/actor.py:authorize_handle`, applied at
+   `GET /rooms/{room}/await` and `POST /rooms/{room}/sessions`. A principal may act
+   as its own handle, or one whose manifest grants it (`owner` / `allow_from`) —
+   which is what turns "await on behalf of" from universal into explicit. Needed
+   step 4 first: before agents had tokens, enforcing it would have broken the
+   resident loop, which is why #562 deferred it.*
+6. **SLIM channel identity** — *optionally* move the MLS group off the dev PSK to
    per-member JWT/SPIRE (#476); the PSK remains the default. Deeper; partly gated on
    slim-bindings wiring.
-6. **Reference IdP wiring** — an optional Keycloak compose profile + an optional
+7. **Reference IdP wiring** — an optional Keycloak compose profile + an optional
    SPIRE quickstart, with issuer-agnostic config documented.
 
 ## Non-goals
@@ -156,7 +166,9 @@ per-deployment opt-in.
   must never land on someone just trying the app.
 - **Baking Keycloak in as a hard dependency.** It is a supported issuer only.
 - **Authorization / RBAC beyond identity + role.** Fine-grained per-room
-  permissions are a later layer; this doc is authentication + attribution.
+  permissions are a later layer; this doc is authentication + attribution, plus the
+  one narrow authorization question attribution can't answer on its own — *may this
+  principal act as that handle* (step 5).
 
 ## Open questions
 

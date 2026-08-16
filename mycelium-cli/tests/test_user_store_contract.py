@@ -59,18 +59,18 @@ def test_serialized_body_matches_contract():
 
 def test_write_applies_tag_and_version(isolated_home):  # noqa: ANN001
     g = _contract()
-    user_cmd._write_user(UserManifest(handle="julia"), created_by="tester")
-    record = user_cmd.read_memory(get_users_dir(), "julia")
+    user_cmd._write_user(UserManifest(handle="avery"), created_by="tester")
+    record = user_cmd.read_memory(get_users_dir(), "avery")
     assert record is not None
     assert record[0]["tags"] == [g["manifest_tag"]]
     assert record[0]["version"] == g["initial_version"]
     # Content-idempotent: re-writing the same record does NOT bump the version.
-    user_cmd._write_user(UserManifest(handle="julia"), created_by="tester")
-    same = user_cmd.read_memory(get_users_dir(), "julia")
+    user_cmd._write_user(UserManifest(handle="avery"), created_by="tester")
+    same = user_cmd.read_memory(get_users_dir(), "avery")
     assert same is not None
     assert same[0]["version"] == g["initial_version"]
     # A real change bumps it.
-    user_cmd._write_user(UserManifest(handle="julia", display_name="Julia"), created_by="tester")
-    bumped = user_cmd.read_memory(get_users_dir(), "julia")
+    user_cmd._write_user(UserManifest(handle="avery", display_name="Avery"), created_by="tester")
+    bumped = user_cmd.read_memory(get_users_dir(), "avery")
     assert bumped is not None
     assert bumped[0]["version"] == g["initial_version"] + 1

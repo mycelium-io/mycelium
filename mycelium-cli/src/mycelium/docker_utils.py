@@ -149,6 +149,13 @@ def generate_env_file(
         f"AUTH_LEEWAY_S={config.auth.leeway_s}",
         f"AUTH_JWKS_TTL_S={config.auth.jwks_ttl_s}",
         "",
+        "# ── SLIM channel identity (off by default, #567) ─────────────────────────",
+        # 'psk' | 'signerjwt' | 'spire'. The backend + CLI both read
+        # MYCELIUM_SLIM_IDENTITY; the shared master secret / require flags and the
+        # SPIRE socket/trust-domain envs stay operator-managed (out of band), same
+        # as today. See slim_identity.py.
+        f"MYCELIUM_SLIM_IDENTITY={config.slim.identity}",
+        "",
     ]
 
     # ── Operator-managed pins (preserved across `mycelium config apply`) ─────

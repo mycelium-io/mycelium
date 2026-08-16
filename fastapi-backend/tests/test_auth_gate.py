@@ -206,8 +206,8 @@ async def test_unsupported_role_claim_is_rejected(auth_on, signing_key):
 @pytest.mark.asyncio
 async def test_configured_handle_claim_is_honoured(monkeypatch, auth_on, signing_key):
     monkeypatch.setattr("app.config.settings.AUTH_HANDLE_CLAIM", "preferred_username")
-    principal = await auth_service.verify_token(_sign(signing_key, preferred_username="julia"))
-    assert principal.handle == "julia"
+    principal = await auth_service.verify_token(_sign(signing_key, preferred_username="avery"))
+    assert principal.handle == "avery"
 
 
 # ── enabled: everything else is 401 ───────────────────────────────────────────
@@ -473,8 +473,8 @@ async def test_each_issuer_carries_its_own_keys_and_role(two_issuers, signing_ke
     agent = await auth_service.verify_token(_sign(signing_key))
     assert agent.role == "agent"
 
-    human = await auth_service.verify_token(_sign(two_issuers, iss=HUMAN_ISSUER, sub="julia"))
-    assert (human.role, human.handle) == ("user", "julia")
+    human = await auth_service.verify_token(_sign(two_issuers, iss=HUMAN_ISSUER, sub="avery"))
+    assert (human.role, human.handle) == ("user", "avery")
 
 
 @pytest.mark.asyncio

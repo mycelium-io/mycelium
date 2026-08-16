@@ -124,7 +124,7 @@ your **token** when you're signed in, and the self-asserted `identity.name` when
 you're not:
 
 ```
-acting as @julia  (julia#a8f3)
+acting as @avery  (avery#a8f3)
   signed in (https://sso.example.com/realms/mycelium, expires in 42 min)
 ```
 
@@ -278,6 +278,40 @@ request body supplies:
 With the gate off there is no principal, so every path keeps the self-asserted
 actor from the body exactly as before — the try-it path is unchanged.
 
+## Acting as another handle
+
+Attribution answers *who wrote this*. Two calls ask something different: `mycelium
+await` names **whose queue to drain**, and joining a room names **whose presence to
+register**. Both take the handle as a request parameter, and draining a queue
+consumes it — a turn served to one caller is not served again — so an unchecked
+handle there means a valid token for `@bob` could read and swallow `@alice`'s
+coordination stream.
+
+A gated hub allows the call when either is true:
+
+- the handle **is** the token's own (a session qualifier like `alice#a8f3` still names alice), or
+- the handle's agent manifest **grants** the token's principal — its `owner`, or an entry in its `allow_from`.
+
+Anything else is a **403**. Grants are per-room, because manifests are: owning
+`@bot` in one room says nothing about a `@bot` in another.
+
+The grant is what makes "await on behalf of" explicit rather than universal. An
+agent running with its own credential needs nothing — it awaits itself. A human
+driving an agent's loop from their own session does:
+
+```bash
+mycelium agent create bot --owner alice          # alice may now await --handle bot
+mycelium agent create bot --allow-from ops-lead  # …and so may @ops-lead
+```
+
+A resident loop (`mycelium await --loop`) **stops** on a 401 or 403 rather than
+retrying: a refused identity is not a blip, and re-polling it would flood the hub
+for as long as the loop ran.
+
+With the gate off nothing is checked here either, so an ungated hub still lets any
+caller await any handle — which is also why a hub reachable beyond your machine
+wants the gate on.
+
 ## Key rotation
 
 The JWKS is fetched from your issuer and cached for `auth.jwks_ttl_s`. When a
@@ -319,7 +353,7 @@ Every other route requires a token.
 | Response | Meaning |
 |----------|---------|
 | `401` + `WWW-Authenticate: Bearer` | Missing, malformed, expired, forged, wrong-audience, or wrong-issuer token. |
-| `403` | A valid token, but the request body claims to act as a different handle. |
+| `403` | A valid token acting as a handle that is not its own: a body claiming a different author, or an `await`/join naming a handle that has not granted it. |
 | `503` | The gate is on but unusable — no trusted issuers configured, or the issuer's JWKS is unreachable and nothing is cached. |
 
 Only asymmetric signatures are accepted (`RS*`, `PS*`, `ES*`). The `none`
@@ -330,3 +364,6 @@ JWKS key can never be replayed as an HMAC secret.
 
 A dev OIDC issuer ships for exactly this, so you can exercise the gate without
 standing up Keycloak. See `docs/design/dev-auth-issuer.md`.
+
+For the real thing — a Keycloak realm, client, and human `mycelium login`, wired
+end-to-end — follow the [Keycloak / OIDC Setup](#keycloak-oidc) guide.

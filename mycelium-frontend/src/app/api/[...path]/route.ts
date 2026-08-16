@@ -2,6 +2,7 @@
 // Copyright 2026 Mycelium Contributors
 
 import { getBackendUrl } from "@/lib/backend";
+import { bearer } from "@/lib/session";
 import { handleMock, isMockMode } from "@/mocks";
 
 /**
@@ -40,6 +41,11 @@ async function proxy(req: Request): Promise<Response> {
   // Ask upstream for plain bytes so we can stream the response straight through
   // without a content-encoding/content-length mismatch.
   headers.delete("accept-encoding");
+  // Attach the signed-in user's bearer (refreshing it if near expiry). Returns
+  // null when there's no session — gate off or signed out — so the header stays
+  // absent and the proxy behaves exactly as it did before OIDC existed.
+  const token = await bearer();
+  if (token) headers.set("authorization", `Bearer ${token}`);
 
   const init: RequestInit = {
     method: req.method,

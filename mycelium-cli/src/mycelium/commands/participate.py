@@ -29,6 +29,7 @@ import json as json_module
 import os
 import subprocess
 
+import httpx
 import typer
 
 from mycelium.client import hub_client
@@ -36,6 +37,10 @@ from mycelium.commands.room import _resolve_room
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
 from mycelium.error_handler import print_error
+
+#: Statuses a resident loop stops on: the hub rejected the caller's identity
+#: (401) or refused it this handle (403). Everything else is treated as a blip.
+_TERMINAL_STATUSES = frozenset({401, 403})
 
 
 def _await_once(config: MyceliumConfig, room_name: str, handle: str, timeout: int) -> dict | None:
@@ -168,7 +173,8 @@ def _await_loop(
     A timeout is not terminal here — it just means "nothing yet," so we re-await
     (keeping the presence lease warm). Ctrl-C is the clean stop. Errors on a single
     poll are surfaced and the loop backs off briefly rather than dying, so a blip in
-    the backend doesn't drop the agent out of the room.
+    the backend doesn't drop the agent out of the room. A rejected identity is the
+    exception: retrying can't earn a credential, so 401/403 ends the loop.
     """
     import time
 
@@ -185,6 +191,15 @@ def _await_loop(
         except KeyboardInterrupt:
             typer.echo("\n  [Stopped]")
             return
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code not in _TERMINAL_STATUSES:
+                typer.secho(f"  ⟫  await error: {e}; retrying…", fg=typer.colors.YELLOW)
+                time.sleep(2.0)
+                continue
+            # A refused identity is not a blip — no amount of re-polling turns a
+            # wrong or ungranted credential into an accepted one, and a resident
+            # loop that kept trying would hammer the hub for as long as it ran.
+            print_error(e)
         except Exception as e:  # noqa: BLE001 - a poll blip must not drop residency
             typer.secho(f"  ⟫  await error: {e}; retrying…", fg=typer.colors.YELLOW)
             time.sleep(2.0)

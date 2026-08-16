@@ -193,14 +193,32 @@ is no litellm dependency.
   try-it path. The localhost bypass reads the request's peer address, so it does
   **not** fire for a containerized backend (published-port traffic looks like LAN
   traffic) — the local tier is served by leaving auth off.
-- **SLIM security is a shared-secret PSK today (D1).** The group key derives from
-  `MYCELIUM_SLIM_MASTER_SECRET` (set the same on every host that shares rooms);
-  `MYCELIUM_SLIM_REQUIRE_SECRET=1` makes a host fail closed rather than fall back to
-  the public dev literal. There is no per-agent identity/revocation yet: **real
-  identity (JWT/SPIRE) is a hard prerequisite before anything hosted / multi-user**.
-- **Adapter capability (be honest).** `claude_code` is proven; `cursor` is untested;
-  `openclaw` and `hermes` are deprecated (they rode the removed SSE/coordination-tick
-  model and have not been migrated to SLIM).
+- **SLIM channel identity is a three-tier ladder, and it starts off.** `slim.identity` /
+  `SLIM_IDENTITY` selects the tier; all three are implemented (`slim_identity.py` + its
+  byte-for-byte CLI mirror), and the constants are frozen in
+  `contracts/slim-l9-wire.json`.
+  - `psk` (**default**, #567) — the group key derives from
+    `MYCELIUM_SLIM_MASTER_SECRET`, set the same on every host that shares rooms. Zero
+    infra, no per-member identity. `MYCELIUM_SLIM_REQUIRE_SECRET=1` makes a host fail
+    closed rather than fall back to the public dev literal.
+  - `signerjwt` (#476) — the floor: each member mints its own self-signed ES256
+    credential and registers its public JWK on the room roster, so members are
+    cryptographically distinct MLS participants with no external infra.
+  - `spire` (#579) — each member presents a SPIRE-attested JWT-SVID from the Workload
+    API. Tightest attestation, heaviest deploy (a co-located SPIRE node daemon). Ships
+    as an optional appliance profile (#588): `slim.identity=spire` brings SPIRE up via
+    `mycelium up`, and `mycelium agent create`/`rm` register/revoke the SVID entry — see
+    the SPIRE identity operator guide.
+
+  Selecting `signerjwt`/`spire` with no resolvable material degrades to `psk` with a
+  one-time warning unless `MYCELIUM_SLIM_IDENTITY_REQUIRE=1` fails closed. Per-member
+  revocation (#590 — drop the JWK / delete the SPIRE entry, no room-wide re-key) and the
+  optional appliance SPIRE profile (#588) both ship. What still gates anything hosted /
+  multi-user is turning identity on at all — not a missing capability.
+- **Adapter capability (be honest).** `claude_code` is proven; `cursor` is untested.
+  `openclaw` and `hermes` are **gone**, not deprecated — they rode the removed
+  SSE/coordination-tick model and their packages were deleted (#503). Don't
+  reintroduce them as adapter options.
 
 ## Local development
 

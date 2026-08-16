@@ -58,7 +58,7 @@ def engine_create(
     allow_from: str | None = typer.Option(
         None,
         "--allow-from",
-        help="Comma-separated sender handles allowed to summon (e.g. '@julia').",
+        help="Comma-separated sender handles allowed to summon (e.g. '@avery').",
     ),
     handle_flag: str = typer.Option(
         "cli-user", "--as", "-H", help="Your own handle (recorded as created_by)."

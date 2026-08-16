@@ -113,9 +113,9 @@ def _write_user(user: UserManifest, created_by: str) -> None:
 @app.command("create")
 def user_create(
     ctx: typer.Context,
-    handle: str = typer.Argument(..., help="User handle (lowercase slug, e.g. 'julia')."),
+    handle: str = typer.Argument(..., help="User handle (lowercase slug, e.g. 'avery')."),
     display_name: str = typer.Option(
-        "", "--name", "-n", help="Human-readable display name, e.g. 'Julia Valenti'."
+        "", "--name", "-n", help="Human-readable display name, e.g. 'Avery Quinn'."
     ),
     team: list[str] | None = typer.Option(
         None, "--team", help="Team slug this person belongs to (repeatable)."
@@ -130,7 +130,7 @@ def user_create(
     """Create (or upsert) a user in the global store.
 
     Examples:
-        mycelium user create julia --name "Julia Valenti" --team core
+        mycelium user create avery --name "Avery Quinn" --team core
     """
     try:
         try:
@@ -269,7 +269,7 @@ def whoami(ctx: typer.Context) -> None:
     """
     try:
         config = MyceliumConfig.load()
-        # The attribution handle can be session-qualified (``julia#a8f3``); the
+        # The attribution handle can be session-qualified (``avery#a8f3``); the
         # principal is the bare name it derives from.
         identity = config.get_current_identity()
         principal = (config.identity.name or identity).split("#", 1)[0].lower()
@@ -342,7 +342,7 @@ def whoami(ctx: typer.Context) -> None:
 def iam(
     ctx: typer.Context,
     handle: str | None = typer.Argument(
-        None, help="Your user handle (lowercase slug, e.g. 'julia'). Omit to report who you are."
+        None, help="Your user handle (lowercase slug, e.g. 'avery'). Omit to report who you are."
     ),
     name: str | None = typer.Option(None, "--name", "-n", help="Display name to set/update."),
     team: list[str] | None = typer.Option(None, "--team", help="Team slug to join (repeatable)."),
@@ -357,7 +357,7 @@ def iam(
     when signed in, the self-asserted one when not.
 
     Examples:
-        mycelium iam julia --name "Julia Valenti" --team core
+        mycelium iam avery --name "Avery Quinn" --team core
         mycelium iam
     """
     if handle is None:

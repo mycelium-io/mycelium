@@ -2,9 +2,9 @@
   "_comment": [
     "Frozen SLIM+L9 wire-compat contract constants — the single source of truth both",
     "the FastAPI backend (fastapi-backend/app/services/{slim_client,l9,l9_slim}.py)",
-    "and the CLI daemon (mycelium-cli/src/mycelium/slim/{naming,client,l9}.py +",
-    "daemon/connector.py) MUST reproduce byte-for-byte. See D2 in",
-    "docs/slim-native-rebuild-bible.md (Part IV, Known debt register).",
+    "and the CLI's own copy (mycelium-cli/src/mycelium/slim/{naming,client,l9,identity}.py)",
+    "MUST reproduce byte-for-byte. The copy exists because the thin uv-tool CLI",
+    "cannot import the backend.",
     "",
     "Both test suites read THIS file and assert their own primitives against it, so",
     "the two copies cannot silently drift apart (a drift -> MLS group-key mismatch ->",
@@ -22,6 +22,27 @@
   "min_secret_len": 32,
   "node_endpoint": "http://127.0.0.1:46357",
   "node_port": 46357,
+
+  "identity": {
+    "_comment": "SignerJwt-floor SLIM channel identity constants (#476), keyed byte-for-byte by both copies: backend app.services.slim_identity, CLI mycelium.slim.identity. issuer/audience/alg/curve MUST agree across members or peer verification fails inside the MLS handshake; jwk_kid_is_handle records that a roster JWK's `kid` is the raw @handle. mode_default=psk is the off-by-default posture (#567).",
+    "mode_env": "MYCELIUM_SLIM_IDENTITY",
+    "require_env": "MYCELIUM_SLIM_IDENTITY_REQUIRE",
+    "mode_default": "psk",
+    "modes": ["psk", "signerjwt", "spire"],
+    "issuer": "mycelium-resident",
+    "audience": "mycelium-slim",
+    "alg": "ES256",
+    "curve": "P-256",
+    "jwk_kid_is_handle": true,
+    "spire": {
+      "_comment": "SPIRE/SPIFFE mode (#579): both copies build IdentityProviderConfig.SPIRE / IdentityVerifierConfig.SPIRE from SpireConfig(socket_path, target_spiffe_id, jwt_audiences, trust_domains). socket_env selects the Workload API socket (falling back to the SPIFFE-standard SPIRE_AGENT_SOCKET); a member's SPIFFE ID is spiffe://{trust_domain}/{workload_path_prefix}/{handle} and the SVID audience is the shared MLS `audience` above. These must agree across members or peer verification fails inside the MLS handshake.",
+      "socket_env": "MYCELIUM_SLIM_SPIRE_SOCKET",
+      "socket_env_fallback": "SPIRE_AGENT_SOCKET",
+      "trust_domain_env": "MYCELIUM_SLIM_SPIRE_TRUST_DOMAIN",
+      "trust_domain_default": "mycelium.dev",
+      "workload_path_prefix": "agent"
+    }
+  },
 
   "valid_subkinds": {
     "_comment": "Kind -> allowed subkinds. Backend: app.services.l9.VALID_SUBKINDS (keyed by the Kind enum). CLI: mycelium.slim.l9.VALID_SUBKINDS (keyed by the plain string, since the hidden `l9 send`/`slim send` plumbing takes a raw --kind string). An empty/None subkind is always valid for any kind.",
@@ -91,7 +112,7 @@
   },
 
   "knowledge": {
-    "_comment": "A frozen serialized L9 'knowledge:distillation' envelope — the memory-sync wire shape (Step 8, bible §11). The backend PRODUCES it via memory_sync.build_knowledge_envelope(room, write, recipients) + KnowledgeWrite.to_payload() (serialized with l9.envelope_to_dict); the CLI daemon PARSES it via slim/l9.payload_data_of and applies it in daemon/connector.apply_knowledge_message. The two must agree byte-for-byte on the payload.data write fields or cross-machine memory sync (Step 9) silently drifts. build_knowledge_envelope mints a fresh random message.id per call, so 'expected_envelope.header.message.id' is the sentinel 'MESSAGE_ID_PLACEHOLDER' — the backend test normalizes the produced id to it before comparing (the id is not part of the shared contract; every other field is).",
+    "_comment": "A frozen serialized L9 'knowledge:distillation' envelope — the memory-sync wire shape. The backend PRODUCES it via memory_sync.build_knowledge_envelope(room, write, recipients) + KnowledgeWrite.to_payload() (serialized with l9.envelope_to_dict); the CLI PARSES it via slim/l9.payload_data_of. The two must agree byte-for-byte on the payload.data write fields or cross-machine memory sync silently drifts. build_knowledge_envelope mints a fresh random message.id per call, so 'expected_envelope.header.message.id' is the sentinel 'MESSAGE_ID_PLACEHOLDER' — the backend test normalizes the produced id to it before comparing (the id is not part of the shared contract; every other field is).",
     "room": "acme",
     "recipients": ["bob"],
     "message_id_placeholder": "MESSAGE_ID_PLACEHOLDER",

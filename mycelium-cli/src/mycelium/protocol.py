@@ -354,9 +354,11 @@ class AgentManifest(BaseModel):
     allow_from: list[str] = Field(
         default_factory=list,
         description=(
-            "Sender handles allowed to invoke this agent (e.g. ['@julia', '@docs-agent']). "
+            "Sender handles allowed to invoke this agent (e.g. ['@avery', '@docs-agent']). "
             "Empty list means anyone in the room can invoke. "
-            "Enforced by the daemon for claude_code / cursor."
+            "Also the 'act on behalf of' grant: with the hub's auth gate enabled, these "
+            "handles (and the owner) may await or join as this agent; an empty list "
+            "grants no one."
         ),
     )
 
@@ -366,8 +368,8 @@ class AgentManifest(BaseModel):
         if not isinstance(data, dict):
             return data
         # Handle and the two principal pointers are all lowercase slugs — an
-        # owner/team is a `users/<handle>` / team slug, so `--owner Julia`
-        # binds to `users/julia`. The handle is required, so an empty result
+        # owner/team is a `users/<handle>` / team slug, so `--owner Avery`
+        # binds to `users/avery`. The handle is required, so an empty result
         # stays a string (and fails the pattern); owner/team collapse to None.
         for field in ("handle", "owner", "team"):
             value = data.get(field)
@@ -420,7 +422,7 @@ class UserManifest(BaseModel):
     """
 
     handle: str = Field(..., min_length=1, pattern=r"^[a-z0-9][a-z0-9._-]*$")
-    display_name: str = Field(default="", description="Human-readable name, e.g. 'Julia Valenti'.")
+    display_name: str = Field(default="", description="Human-readable name, e.g. 'Avery Quinn'.")
     teams: list[str] = Field(
         default_factory=list,
         description="Team slugs this person belongs to. Scopes 'my team' views.",

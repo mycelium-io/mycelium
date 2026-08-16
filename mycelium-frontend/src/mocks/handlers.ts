@@ -62,7 +62,7 @@ export async function handleMock(req: Request): Promise<Response | null> {
             room: "atlas-migration",
             provisioned: true,
             persister_alive: true,
-            members: ["planner", "julia"],
+            members: ["planner", "avery"],
             pending_invites: 1,
             episode_active: true,
             reserves: 3,

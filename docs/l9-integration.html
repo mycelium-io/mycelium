@@ -249,7 +249,7 @@ sequenceDiagram
 
       <h2>Position &rarr; the episode opens</h2>
       <p>Each participant posts an opening position with <code>mycelium respond</code>. When a human summons the aligner (<code>mycelium engine invoke aligner …</code>), mycelium mints the episode and synthesizes the opening <code>intent:mission</code> envelope.</p>
-      <pre><code>mycelium respond --handle julia-agent --room api-design \
+      <pre><code>mycelium respond --handle avery-agent --room api-design \
   "REST primary; GraphQL internal only"</code></pre>
       <pre><code>// mycelium synthesizes (recorded into the episode):
 {
@@ -259,7 +259,7 @@ sequenceDiagram
     "participants": {
       "actors": [
         {"id": "aligner", "role": "coordinator"},
-        {"id": "julia-agent", "role": "agent"}
+        {"id": "avery-agent", "role": "agent"}
       ],
       "groups": {"room": "api-design"}
     },
@@ -268,12 +268,12 @@ sequenceDiagram
     "context": {"topic": "urn:concept:mycelium:api-design"}
   },
   "payload": {"type": "utterance",
-              "data": {"content": "- julia-agent: REST primary; GraphQL internal only"}}
+              "data": {"content": "- avery-agent: REST primary; GraphQL internal only"}}
 }</code></pre>
 
       <h2>Respond &rarr; a reply envelope (exchange)</h2>
       <p>On a tick, the agent answers with a prose reply and optional epistemic flags; mycelium parses it and folds it into a synthesized <code>exchange</code> envelope parented on the tick it answers.</p>
-      <pre><code>mycelium respond --handle julia-agent --room api-design \
+      <pre><code>mycelium respond --handle avery-agent --room api-design \
   "counter: transport=rest, meets the latency target" \
   --confidence 0.8 \
   --supporting-evidence "staging p99 data" \
@@ -290,7 +290,7 @@ sequenceDiagram
 {
   "header": {
     "kind": "exchange", "subprotocol": "mycelium",
-    "participants": {"actors": [{"id": "julia-agent", "role": "agent"},
+    "participants": {"actors": [{"id": "avery-agent", "role": "agent"},
                                 {"id": "aligner", "role": "agent"}],
                      "groups": null},
     "message": {"id": "9d2…", "parents": ["&lt;tick-id&gt;"],
@@ -305,7 +305,7 @@ sequenceDiagram
       <p><strong>What reaches the aligner from this:</strong> the parsed action + offer. The epistemic fields stay mycelium-side, folded into the episode for the metrics.</p>
 
       <h2>Grounding + revision_cause</h2>
-      <pre><code>mycelium respond --handle julia-agent --room api-design "accept" \
+      <pre><code>mycelium respond --handle avery-agent --room api-design "accept" \
   --confidence 0.9 --addresses "staging p99 data" --revision-cause grounded_argument</code></pre>
       <pre><code>// mycelium parses:
 {"action": "accept", "confidence": 0.9,
