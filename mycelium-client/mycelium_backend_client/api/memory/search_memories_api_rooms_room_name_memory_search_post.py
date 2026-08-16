@@ -74,7 +74,7 @@ def sync_detailed(
 
      Semantic vector search over memories in a room.
 
-    Search uses the pgvector index.
+    Brute-force cosine over the room's local JSONL index.
 
     Args:
         room_name (str):
@@ -110,7 +110,7 @@ def sync(
 
      Semantic vector search over memories in a room.
 
-    Search uses the pgvector index.
+    Brute-force cosine over the room's local JSONL index.
 
     Args:
         room_name (str):
@@ -141,7 +141,7 @@ async def asyncio_detailed(
 
      Semantic vector search over memories in a room.
 
-    Search uses the pgvector index.
+    Brute-force cosine over the room's local JSONL index.
 
     Args:
         room_name (str):
@@ -175,7 +175,7 @@ async def asyncio(
 
      Semantic vector search over memories in a room.
 
-    Search uses the pgvector index.
+    Brute-force cosine over the room's local JSONL index.
 
     Args:
         room_name (str):

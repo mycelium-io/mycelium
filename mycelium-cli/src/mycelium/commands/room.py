@@ -821,12 +821,12 @@ def send(
         from mycelium_backend_client.api.messages import (
             send_message_api_rooms_room_name_messages_post as send_api,
         )
-        from mycelium_backend_client.models import MessageCreate
+        from mycelium_backend_client.models import MessageCreate, MessageCreateMessageType
 
         with _typed_client(config) as client:
             body = MessageCreate(
                 sender_handle=sender_handle,
-                message_type="broadcast",
+                message_type=MessageCreateMessageType.BROADCAST,
                 content=content,
             )
             result = send_api.sync(room_name=room_name, client=client, body=body)
@@ -970,11 +970,14 @@ def delegate(
         from mycelium_backend_client.api.messages import (
             send_message_api_rooms_room_name_messages_post as send_api,
         )
-        from mycelium_backend_client.models import MessageCreate
+        from mycelium_backend_client.models import MessageCreate, MessageCreateMessageType
 
         with _typed_client(config) as client:
             body = MessageCreate(
-                sender_handle=sender, message_type="delegate", content=task, recipient_handle=to
+                sender_handle=sender,
+                message_type=MessageCreateMessageType.DELEGATE,
+                content=task,
+                recipient_handle=to,
             )
             result = send_api.sync(room_name=session_id, client=client, body=body)
             data = result.to_dict() if result and hasattr(result, "to_dict") else {}

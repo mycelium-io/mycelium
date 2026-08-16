@@ -67,7 +67,7 @@ def sync_detailed(
 ) -> Response[HTTPValidationError | RoomRead]:
     """Create Room
 
-     Create a new room.
+     Create a new room (directory + metadata sidecar).
 
     Args:
         body (RoomCreate):
@@ -98,7 +98,7 @@ def sync(
 ) -> HTTPValidationError | RoomRead | None:
     """Create Room
 
-     Create a new room.
+     Create a new room (directory + metadata sidecar).
 
     Args:
         body (RoomCreate):
@@ -124,7 +124,7 @@ async def asyncio_detailed(
 ) -> Response[HTTPValidationError | RoomRead]:
     """Create Room
 
-     Create a new room.
+     Create a new room (directory + metadata sidecar).
 
     Args:
         body (RoomCreate):
@@ -153,7 +153,7 @@ async def asyncio(
 ) -> HTTPValidationError | RoomRead | None:
     """Create Room
 
-     Create a new room.
+     Create a new room (directory + metadata sidecar).
 
     Args:
         body (RoomCreate):

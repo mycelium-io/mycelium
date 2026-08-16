@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any, TypeVar, cast
 from attrs import define as _attrs_define
 from attrs import field as _attrs_field
 
+from ..models.message_create_message_type import MessageCreateMessageType
 from ..types import UNSET, Unset
 
 if TYPE_CHECKING:
@@ -20,14 +21,14 @@ class MessageCreate:
     """
     Attributes:
         sender_handle (str): Sender handle (e.g., 'alpha#a8f3')
-        message_type (str): Type: announce, direct, broadcast, delegate, or event
+        message_type (MessageCreateMessageType): Type: announce, direct, broadcast, delegate, or event
         content (str):
         recipient_handle (None | str | Unset): Recipient handle for direct messages; omit for broadcast
         metadata (EventMetadata | None | Unset): Structured event metadata; required when message_type="event"
     """
 
     sender_handle: str
-    message_type: str
+    message_type: MessageCreateMessageType
     content: str
     recipient_handle: None | str | Unset = UNSET
     metadata: EventMetadata | None | Unset = UNSET
@@ -38,7 +39,7 @@ class MessageCreate:
 
         sender_handle = self.sender_handle
 
-        message_type = self.message_type
+        message_type = self.message_type.value
 
         content = self.content
 
@@ -79,7 +80,7 @@ class MessageCreate:
         d = dict(src_dict)
         sender_handle = d.pop("sender_handle")
 
-        message_type = d.pop("message_type")
+        message_type = MessageCreateMessageType(d.pop("message_type"))
 
         content = d.pop("content")
 

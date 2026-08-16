@@ -31,6 +31,7 @@ class MessageRead:
         coordination_session_id (None | Unset | UUID):
         recipient_handle (None | str | Unset):
         metadata (MessageReadMetadataType0 | None | Unset):
+        episode (None | str | Unset): L9 episode URN this message belongs to, if any (for grouping/folding)
     """
 
     id: UUID
@@ -42,6 +43,7 @@ class MessageRead:
     coordination_session_id: None | Unset | UUID = UNSET
     recipient_handle: None | str | Unset = UNSET
     metadata: MessageReadMetadataType0 | None | Unset = UNSET
+    episode: None | str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -85,6 +87,12 @@ class MessageRead:
         else:
             metadata = self.metadata
 
+        episode: None | str | Unset
+        if isinstance(self.episode, Unset):
+            episode = UNSET
+        else:
+            episode = self.episode
+
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update(
@@ -104,6 +112,8 @@ class MessageRead:
             field_dict["recipient_handle"] = recipient_handle
         if metadata is not UNSET:
             field_dict["metadata"] = metadata
+        if episode is not UNSET:
+            field_dict["episode"] = episode
 
         return field_dict
 
@@ -176,6 +186,15 @@ class MessageRead:
 
         metadata = _parse_metadata(d.pop("metadata", UNSET))
 
+        def _parse_episode(data: object) -> None | str | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(None | str | Unset, data)
+
+        episode = _parse_episode(d.pop("episode", UNSET))
+
         message_read = cls(
             id=id,
             sender_handle=sender_handle,
@@ -186,6 +205,7 @@ class MessageRead:
             coordination_session_id=coordination_session_id,
             recipient_handle=recipient_handle,
             metadata=metadata,
+            episode=episode,
         )
 
         message_read.additional_properties = d

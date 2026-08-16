@@ -79,8 +79,10 @@ def sync_detailed(
 
      Create or upsert one or more memories (batch: 1-100 items).
 
-    Writes markdown files to .mycelium/rooms/{room_name}/ and updates
-    the pgvector search index.
+    Writes markdown files to ``.mycelium/rooms/{room_name}/`` and updates the
+    JSONL search index. Conflict policy: last-write-wins ordered by the memory's
+    incrementing ``version``; a write against a stale ``base_version`` is
+    rejected with the current content + who/when last wrote it.
 
     Args:
         room_name (str):
@@ -116,8 +118,10 @@ def sync(
 
      Create or upsert one or more memories (batch: 1-100 items).
 
-    Writes markdown files to .mycelium/rooms/{room_name}/ and updates
-    the pgvector search index.
+    Writes markdown files to ``.mycelium/rooms/{room_name}/`` and updates the
+    JSONL search index. Conflict policy: last-write-wins ordered by the memory's
+    incrementing ``version``; a write against a stale ``base_version`` is
+    rejected with the current content + who/when last wrote it.
 
     Args:
         room_name (str):
@@ -148,8 +152,10 @@ async def asyncio_detailed(
 
      Create or upsert one or more memories (batch: 1-100 items).
 
-    Writes markdown files to .mycelium/rooms/{room_name}/ and updates
-    the pgvector search index.
+    Writes markdown files to ``.mycelium/rooms/{room_name}/`` and updates the
+    JSONL search index. Conflict policy: last-write-wins ordered by the memory's
+    incrementing ``version``; a write against a stale ``base_version`` is
+    rejected with the current content + who/when last wrote it.
 
     Args:
         room_name (str):
@@ -183,8 +189,10 @@ async def asyncio(
 
      Create or upsert one or more memories (batch: 1-100 items).
 
-    Writes markdown files to .mycelium/rooms/{room_name}/ and updates
-    the pgvector search index.
+    Writes markdown files to ``.mycelium/rooms/{room_name}/`` and updates the
+    JSONL search index. Conflict policy: last-write-wins ordered by the memory's
+    incrementing ``version``; a write against a stale ``base_version`` is
+    rejected with the current content + who/when last wrote it.
 
     Args:
         room_name (str):

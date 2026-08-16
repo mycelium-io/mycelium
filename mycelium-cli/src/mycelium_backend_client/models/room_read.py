@@ -22,6 +22,7 @@ class RoomRead:
         is_public (bool):
         created_at (datetime.datetime):
         description (None | str | Unset):
+        last_activity (datetime.datetime | None | Unset):
         is_persistent (bool | Unset):  Default: False.
         mas_id (None | str | Unset):
         workspace_id (None | str | Unset):
@@ -32,6 +33,7 @@ class RoomRead:
     is_public: bool
     created_at: datetime.datetime
     description: None | str | Unset = UNSET
+    last_activity: datetime.datetime | None | Unset = UNSET
     is_persistent: bool | Unset = False
     mas_id: None | str | Unset = UNSET
     workspace_id: None | str | Unset = UNSET
@@ -51,6 +53,14 @@ class RoomRead:
             description = UNSET
         else:
             description = self.description
+
+        last_activity: None | str | Unset
+        if isinstance(self.last_activity, Unset):
+            last_activity = UNSET
+        elif isinstance(self.last_activity, datetime.datetime):
+            last_activity = self.last_activity.isoformat()
+        else:
+            last_activity = self.last_activity
 
         is_persistent = self.is_persistent
 
@@ -78,6 +88,8 @@ class RoomRead:
         )
         if description is not UNSET:
             field_dict["description"] = description
+        if last_activity is not UNSET:
+            field_dict["last_activity"] = last_activity
         if is_persistent is not UNSET:
             field_dict["is_persistent"] = is_persistent
         if mas_id is not UNSET:
@@ -107,6 +119,23 @@ class RoomRead:
 
         description = _parse_description(d.pop("description", UNSET))
 
+        def _parse_last_activity(data: object) -> datetime.datetime | None | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            try:
+                if not isinstance(data, str):
+                    raise TypeError()
+                last_activity_type_0 = isoparse(data)
+
+                return last_activity_type_0
+            except (TypeError, ValueError, AttributeError, KeyError):
+                pass
+            return cast(datetime.datetime | None | Unset, data)
+
+        last_activity = _parse_last_activity(d.pop("last_activity", UNSET))
+
         is_persistent = d.pop("is_persistent", UNSET)
 
         def _parse_mas_id(data: object) -> None | str | Unset:
@@ -133,6 +162,7 @@ class RoomRead:
             is_public=is_public,
             created_at=created_at,
             description=description,
+            last_activity=last_activity,
             is_persistent=is_persistent,
             mas_id=mas_id,
             workspace_id=workspace_id,

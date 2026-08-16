@@ -89,11 +89,7 @@ def sync_detailed(
 ) -> Response[HTTPValidationError | list[RoomRead]]:
     """List Rooms
 
-     List rooms.
-
-    Sessions live in ``coordination_sessions`` and are not surfaced here. The
-    ``include_sessions`` parameter is accepted for backward-compatible URLs
-    but is a no-op.
+     List rooms. ``include_sessions`` is accepted for compat but is a no-op.
 
     Args:
         skip (int | Unset):  Default: 0.
@@ -133,11 +129,7 @@ def sync(
 ) -> HTTPValidationError | list[RoomRead] | None:
     """List Rooms
 
-     List rooms.
-
-    Sessions live in ``coordination_sessions`` and are not surfaced here. The
-    ``include_sessions`` parameter is accepted for backward-compatible URLs
-    but is a no-op.
+     List rooms. ``include_sessions`` is accepted for compat but is a no-op.
 
     Args:
         skip (int | Unset):  Default: 0.
@@ -172,11 +164,7 @@ async def asyncio_detailed(
 ) -> Response[HTTPValidationError | list[RoomRead]]:
     """List Rooms
 
-     List rooms.
-
-    Sessions live in ``coordination_sessions`` and are not surfaced here. The
-    ``include_sessions`` parameter is accepted for backward-compatible URLs
-    but is a no-op.
+     List rooms. ``include_sessions`` is accepted for compat but is a no-op.
 
     Args:
         skip (int | Unset):  Default: 0.
@@ -214,11 +202,7 @@ async def asyncio(
 ) -> HTTPValidationError | list[RoomRead] | None:
     """List Rooms
 
-     List rooms.
-
-    Sessions live in ``coordination_sessions`` and are not surfaced here. The
-    ``include_sessions`` parameter is accepted for backward-compatible URLs
-    but is a no-op.
+     List rooms. ``include_sessions`` is accepted for compat but is a no-op.
 
     Args:
         skip (int | Unset):  Default: 0.

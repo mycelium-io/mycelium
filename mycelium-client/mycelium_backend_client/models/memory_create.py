@@ -9,6 +9,7 @@ from attrs import field as _attrs_field
 from ..types import UNSET, Unset
 
 if TYPE_CHECKING:
+    from ..models.memory_create_meta_type_0 import MemoryCreateMetaType0
     from ..models.memory_create_value_type_0 import MemoryCreateValueType0
 
 
@@ -25,6 +26,13 @@ class MemoryCreate:
         tags (list[str] | None | Unset):
         content_text (None | str | Unset): Text for embedding; auto-generated from value if omitted
         embed (bool | Unset): Generate vector embedding for semantic search Default: True.
+        base_version (int | None | Unset): Optimistic-concurrency guard: the version this write is based on. When set
+            and it doesn't match the current on-disk version, the write is rejected (409) with the current content. Omit for
+            last-write-wins.
+        meta (MemoryCreateMetaType0 | None | Unset): Extra YAML frontmatter merged into the memory file — soft, typed,
+            user-extensible data such as 'expandable: true' or 'supersedes: decisions/db-v1'. Keys the store manages (key,
+            version, timestamps, authorship, tags, value) are ignored here. Frontmatter already on disk is preserved across
+            writes; this overlays it.
     """
 
     key: str
@@ -33,9 +41,12 @@ class MemoryCreate:
     tags: list[str] | None | Unset = UNSET
     content_text: None | str | Unset = UNSET
     embed: bool | Unset = True
+    base_version: int | None | Unset = UNSET
+    meta: MemoryCreateMetaType0 | None | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
+        from ..models.memory_create_meta_type_0 import MemoryCreateMetaType0
         from ..models.memory_create_value_type_0 import MemoryCreateValueType0
 
         key = self.key
@@ -65,6 +76,20 @@ class MemoryCreate:
 
         embed = self.embed
 
+        base_version: int | None | Unset
+        if isinstance(self.base_version, Unset):
+            base_version = UNSET
+        else:
+            base_version = self.base_version
+
+        meta: dict[str, Any] | None | Unset
+        if isinstance(self.meta, Unset):
+            meta = UNSET
+        elif isinstance(self.meta, MemoryCreateMetaType0):
+            meta = self.meta.to_dict()
+        else:
+            meta = self.meta
+
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update(
@@ -80,11 +105,16 @@ class MemoryCreate:
             field_dict["content_text"] = content_text
         if embed is not UNSET:
             field_dict["embed"] = embed
+        if base_version is not UNSET:
+            field_dict["base_version"] = base_version
+        if meta is not UNSET:
+            field_dict["meta"] = meta
 
         return field_dict
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
+        from ..models.memory_create_meta_type_0 import MemoryCreateMetaType0
         from ..models.memory_create_value_type_0 import MemoryCreateValueType0
 
         d = dict(src_dict)
@@ -133,6 +163,32 @@ class MemoryCreate:
 
         embed = d.pop("embed", UNSET)
 
+        def _parse_base_version(data: object) -> int | None | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(int | None | Unset, data)
+
+        base_version = _parse_base_version(d.pop("base_version", UNSET))
+
+        def _parse_meta(data: object) -> MemoryCreateMetaType0 | None | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            try:
+                if not isinstance(data, dict):
+                    raise TypeError()
+                meta_type_0 = MemoryCreateMetaType0.from_dict(data)
+
+                return meta_type_0
+            except (TypeError, ValueError, AttributeError, KeyError):
+                pass
+            return cast(MemoryCreateMetaType0 | None | Unset, data)
+
+        meta = _parse_meta(d.pop("meta", UNSET))
+
         memory_create = cls(
             key=key,
             value=value,
@@ -140,6 +196,8 @@ class MemoryCreate:
             tags=tags,
             content_text=content_text,
             embed=embed,
+            base_version=base_version,
+            meta=meta,
         )
 
         memory_create.additional_properties = d

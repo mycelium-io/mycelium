@@ -62,9 +62,6 @@ def sync_detailed(
 
      Server-Sent Events stream for a room.
 
-    Yields SSE events as messages arrive via Postgres NOTIFY.
-    Connect with: curl -N http://localhost:8000/rooms/{room}/messages/stream
-
     Args:
         room_name (str):
 
@@ -96,9 +93,6 @@ def sync(
 
      Server-Sent Events stream for a room.
 
-    Yields SSE events as messages arrive via Postgres NOTIFY.
-    Connect with: curl -N http://localhost:8000/rooms/{room}/messages/stream
-
     Args:
         room_name (str):
 
@@ -124,9 +118,6 @@ async def asyncio_detailed(
     """Stream Room Messages
 
      Server-Sent Events stream for a room.
-
-    Yields SSE events as messages arrive via Postgres NOTIFY.
-    Connect with: curl -N http://localhost:8000/rooms/{room}/messages/stream
 
     Args:
         room_name (str):
@@ -156,9 +147,6 @@ async def asyncio(
     """Stream Room Messages
 
      Server-Sent Events stream for a room.
-
-    Yields SSE events as messages arrive via Postgres NOTIFY.
-    Connect with: curl -N http://localhost:8000/rooms/{room}/messages/stream
 
     Args:
         room_name (str):
