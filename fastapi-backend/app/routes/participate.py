@@ -143,10 +143,14 @@ def _describe(room: str, handle: str, record: Any) -> dict[str, Any]:
 
 
 @router.get("/await")
-async def await_message(room_name: str, handle: str, timeout: int = 0):
+async def await_message(room_name: str, request: Request, handle: str, timeout: int = 0):
     """Long-poll for the next message addressed to ``handle`` (server-held member)."""
     if not room_exists(room_name):
         raise HTTPException(status_code=404, detail="Room not found")
+    # Draining a queue consumes it: the cursor advances, so a served turn is not
+    # served again. A verified token may therefore only drain its own handle or one
+    # that granted it — otherwise @bob's token could intercept @alice's coordination.
+    actor.authorize_handle(request, room_name, handle)
     managed = await room_channels.manager.provision(room_name)
     room_channels.manager.refresh_lease(room_name, handle)
     if managed is None or managed.persister is None:

@@ -356,7 +356,9 @@ class AgentManifest(BaseModel):
         description=(
             "Sender handles allowed to invoke this agent (e.g. ['@julia', '@docs-agent']). "
             "Empty list means anyone in the room can invoke. "
-            "Enforced by the daemon for claude_code / cursor."
+            "Also the 'act on behalf of' grant: with the hub's auth gate enabled, these "
+            "handles (and the owner) may await or join as this agent; an empty list "
+            "grants no one."
         ),
     )
 

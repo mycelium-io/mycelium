@@ -25,6 +25,7 @@ from app.services.filesystem import (
     list_memory_files,
     list_room_names,
     read_memory_file,
+    room_exists,
     write_memory_file,
 )
 
@@ -44,7 +45,13 @@ def _norm(handle: str | None) -> str | None:
 
 
 def _read_agent_manifest(room: str, handle: str) -> dict[str, Any] | None:
-    """Parse the `agents/<handle>` manifest in a room, or None if absent/unreadable."""
+    """Parse the `agents/<handle>` manifest in a room, or None if absent/unreadable.
+
+    ``get_room_dir`` creates what it resolves, so an unknown room is answered before
+    it is asked for: a read must not bring a room into being.
+    """
+    if not room_exists(room):
+        return None
     result = read_memory_file(get_room_dir(room), f"agents/{handle}")
     if result is None:
         return None
@@ -71,6 +78,28 @@ def classify_sender(room: str, handle: str) -> str:
     if load_user(h) is not None:
         return "user"
     return "unknown"
+
+
+def delegates_to(room: str, handle: str, candidate: str) -> bool:
+    """Whether ``handle`` has granted ``candidate`` the right to act for it.
+
+    The grant is explicit and lives on the target's own manifest — its ``owner``
+    (the user who registered it) or an entry in ``allow_from``. A handle with no
+    manifest grants nothing, so an unregistered or phantom handle is never
+    delegable.
+    """
+    target, actor_handle = _norm(handle), _norm(candidate)
+    if not target or not actor_handle:
+        return False
+    manifest = _read_agent_manifest(room, target)
+    if manifest is None:
+        return False
+    if _norm(manifest.get("owner")) == actor_handle:
+        return True
+    allow_from = manifest.get("allow_from")
+    if not isinstance(allow_from, list):
+        return False
+    return any(_norm(entry) == actor_handle for entry in allow_from)
 
 
 def post_rejection_reason(room: str, handle: str, *, allow_unregistered: bool) -> str | None:

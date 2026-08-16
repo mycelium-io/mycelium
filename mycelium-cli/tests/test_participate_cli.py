@@ -16,8 +16,10 @@ request path relative to the hub's base URL.
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 
+import httpx
 import pytest
 from typer.testing import CliRunner
 
@@ -66,6 +68,43 @@ def test_await_timeout_exits_nonzero(fake_httpx: FakeHTTPX) -> None:
     result = runner.invoke(app, ["await", "--handle", "me", "--timeout", "1", "--json"])
     assert result.exit_code == 1
     assert json.loads(result.stdout)["message"] is None
+
+
+def _http_error(status: int, detail: str) -> httpx.HTTPStatusError:
+    """The error ``raise_for_status`` raises for a hub that refused the call."""
+    request = httpx.Request("GET", "http://hub/api/rooms/demo/await")
+    return httpx.HTTPStatusError(
+        f"HTTP {status}",
+        request=request,
+        response=httpx.Response(status, json={"detail": detail}, request=request),
+    )
+
+
+def test_resident_loop_stops_when_the_hub_refuses_the_handle(
+    fake_httpx: FakeHTTPX, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A 403 ends the loop; a transient failure before it does not.
+
+    Under a gated hub, awaiting a handle the token may not act as is a standing
+    refusal — re-polling it forever would be a self-inflicted request flood.
+    """
+    monkeypatch.setattr(time, "sleep", lambda _s: None)
+    errors = iter(
+        [
+            _http_error(503, "JWKS unavailable"),
+            _http_error(403, "handle 'bot' is not the authenticated principal '@carol'"),
+        ]
+    )
+
+    def _refuse(*_a: object) -> FakeResp:
+        raise next(errors)
+
+    fake_httpx.respond_with(_refuse)
+
+    result = runner.invoke(app, ["await", "--handle", "bot", "--loop", "--json"])
+    assert result.exit_code == 1
+    # Two polls: the blip was retried, the refusal was not.
+    assert len(fake_httpx.calls) == 2
 
 
 def test_respond_posts_reply(fake_httpx: FakeHTTPX) -> None:
