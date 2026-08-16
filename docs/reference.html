@@ -99,12 +99,14 @@
       <a href="#config-rooms" class="nav-link sub">rooms</a>
       <a href="#config-slim" class="nav-link sub">slim</a>
       <a href="#config-engine" class="nav-link sub">engine</a>
+      <a href="#config-auth" class="nav-link sub">auth</a>
       <a href="#config-metrics" class="nav-link sub">metrics</a>
     </div>
     <div class="nav-section">
       <div class="nav-section-label">Guides</div>
       <a href="#structured-memory" class="nav-link sub">Structured Memory</a>
       <a href="#hub-and-spoke" class="nav-link sub">Hub &amp; Spoke</a>
+      <a href="#auth" class="nav-link sub">Authentication</a>
     </div>
     <div class="nav-section">
       <div class="nav-section-label">Help</div>
@@ -750,6 +752,33 @@ cursor-agent login            # one-time, interactive
 <span class="comment"># Where registered engines run their drive (backend-only).</span>
 <span class="arg">runtime</span> = <span class="str">&quot;backend&quot;</span>
 
+<span class="comment"># HTTP-API JWT gate — off by default.</span>
+<span class="cmd" id="config-auth">[auth]</span>
+
+<span class="comment"># Enforce bearer-token auth on the backend HTTP API.</span>
+<span class="arg">enabled</span> = <span class="flag">false</span>
+
+<span class="comment"># Trust roots, as repeatable [[auth.issuers]] blocks.</span>
+<span class="arg">issuers</span> = PydanticUndefined
+
+<span class="comment"># Required `aud` claim for every token. Strongly recommended whenever auth is enabled; unset means the audience is not checked.</span>
+<span class="arg">audience</span> = <span class="str">&quot;&quot;</span>
+
+<span class="comment"># Let loopback callers through without a token, so enabling auth can&#x27;t lock an operator out of the hub machine. Does not apply to a backend in Docker, whose callers arrive from the bridge gateway rather than loopback.</span>
+<span class="arg">localhost_bypass</span> = <span class="flag">true</span>
+
+<span class="comment"># Token claim carrying the canonical @handle.</span>
+<span class="arg">handle_claim</span> = <span class="str">&quot;sub&quot;</span>
+
+<span class="comment"># Token claim distinguishing a user from an agent.</span>
+<span class="arg">role_claim</span> = <span class="str">&quot;mycelium_role&quot;</span>
+
+<span class="comment"># Clock-skew allowance in seconds on exp/nbf/iat.</span>
+<span class="arg">leeway_s</span> = 60.0
+
+<span class="comment"># How long a fetched JWKS is cached before re-fetch. Key rotation is also picked up on an unseen kid.</span>
+<span class="arg">jwks_ttl_s</span> = 300.0
+
 <span class="comment"># Configuration for the metrics collector + display.</span>
 <span class="cmd" id="config-metrics">[metrics]</span>
 
@@ -944,6 +973,155 @@ procedures/  Reusable how-to steps (do this again later)</code></pre>
       <h3 id="hub-and-spoke-doctor-reports-spoke-mode-unexpectedly"><code>doctor</code> reports &quot;spoke mode&quot; unexpectedly</h3>
       <p><code>mycelium doctor</code> infers mode from <code>server.api_url</code>. If it points at a non-local address, doctor assumes spoke mode. If you&#x27;re running the backend locally on a non-default address, set <code>server.api_url</code> to <code>http://localhost:8000</code> in <code>~/.mycelium/config.toml</code>, or force the mode with <code>mycelium doctor --mode hub</code>.</p>
       <p>See <a href="#troubleshooting">Troubleshooting</a> for the full runbook.</p>
+    </section>
+
+    <hr class="divider">
+
+    <section class="doc-section" id="auth">
+      <h1>Authentication</h1>
+      <p>Mycelium&#x27;s backend can require a signed <strong>bearer token</strong> on every HTTP API call, validated against an OIDC issuer you configure. It is <strong>off by default</strong> and nothing about the default install changes until you turn it on.</p>
+      <h2 id="auth-off-by-default-on-purpose">Off by default, on purpose</h2>
+      <p>Auth must never be a wall between someone and trying Mycelium. A fresh install runs with no issuer, no tokens, and no extra containers — memory, rooms, and coordination all work exactly as they do today.</p>
+      <p>Turn it on when a <strong>team shares a hub over a network</strong>. Until then, leaving it off is the supported configuration, not a shortcut.</p>
+      <div class="callout callout-note">
+        <div class="callout-bar"></div>
+        <div class="callout-body">Without the gate, anyone who can reach the backend&#x27;s port can read and write every room and post as any <code>@handle</code>. On a laptop that&#x27;s fine. On a shared network it is not — that is precisely the moment to enable this.</div>
+      </div>
+      <h2 id="auth-turning-it-on">Turning it on</h2>
+      <pre><code><span class="cmd">mycelium config set</span> auth.enabled true
+<span class="cmd">mycelium config set</span> auth.audience mycelium
+<span class="cmd">mycelium config apply</span></code></pre>
+      <p>Then declare at least one trust root in <code>~/.mycelium/config.toml</code>:</p>
+      <pre><code>[auth]
+enabled  = true
+audience = &quot;mycelium&quot;
+
+[[auth.issuers]]
+issuer   = &quot;https://sso.example.com/realms/mycelium&quot;
+jwks_url = &quot;https://sso.example.com/realms/mycelium/protocol/openid-connect/certs&quot;
+role     = &quot;user&quot;</code></pre>
+      <p>Re-run <code>mycelium config apply</code> and recreate the backend so it picks up the new environment.</p>
+      <h3 id="auth-always-set-an-audience">Always set an audience</h3>
+      <p><code>audience</code> is optional but you should always set it when enabling auth. Without one, <strong>any</strong> token your issuer has ever minted is accepted — including a token a user obtained for a completely unrelated application on the same identity provider. That token&#x27;s holder was never authorized against your hub.</p>
+      <p>Setting an audience is what makes &quot;a valid token&quot; mean &quot;a token meant for <em>this</em> hub&quot;. The backend logs a warning at startup and flags it in <code>/health</code> when auth is on without one.</p>
+      <h2 id="auth-configuration">Configuration</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Key</th>
+              <th>Default</th>
+              <th>What it does</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>auth.enabled</code></td>
+              <td><code>false</code></td>
+              <td>Enforce bearer-token auth on the HTTP API.</td>
+            </tr>
+            <tr>
+              <td><code>auth.issuers</code></td>
+              <td><em>(none)</em></td>
+              <td>Trust roots, as repeatable <code>[[auth.issuers]]</code> blocks.</td>
+            </tr>
+            <tr>
+              <td><code>auth.audience</code></td>
+              <td><em>(unset)</em></td>
+              <td>Required <code>aud</code> claim. Set this whenever auth is on.</td>
+            </tr>
+            <tr>
+              <td><code>auth.localhost_bypass</code></td>
+              <td><code>true</code></td>
+              <td>Let loopback callers through without a token.</td>
+            </tr>
+            <tr>
+              <td><code>auth.handle_claim</code></td>
+              <td><code>sub</code></td>
+              <td>Claim carrying the canonical <code>@handle</code>.</td>
+            </tr>
+            <tr>
+              <td><code>auth.role_claim</code></td>
+              <td><code>mycelium_role</code></td>
+              <td>Claim distinguishing a user from an agent.</td>
+            </tr>
+            <tr>
+              <td><code>auth.leeway_s</code></td>
+              <td><code>60</code></td>
+              <td>Clock-skew allowance on <code>exp</code> / <code>nbf</code> / <code>iat</code>.</td>
+            </tr>
+            <tr>
+              <td><code>auth.jwks_ttl_s</code></td>
+              <td><code>300</code></td>
+              <td>How long a fetched JWKS is cached.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Each <code>[[auth.issuers]]</code> block takes <code>issuer</code> (the exact <code>iss</code> to trust), <code>jwks_url</code> (optional — omit to resolve it from the issuer&#x27;s OIDC discovery document), <code>audience</code> (optional per-issuer override), and <code>role</code>.</p>
+      <h2 id="auth-issuer-agnostic-by-design">Issuer-agnostic by design</h2>
+      <p>The backend trusts a configured issuer and its JWKS. It has no idea whether that is Keycloak, Dex, ZITADEL, Authentik, or your existing corporate SSO, and it never needs one particular product installed.</p>
+      <p><strong>More than one trust root is normal.</strong> Humans log in through an interactive OIDC issuer; agents present service-account tokens, possibly from an entirely separate root. List each as its own block:</p>
+      <pre><code>[[auth.issuers]]
+issuer = &quot;https://sso.example.com/realms/people&quot;
+role   = &quot;user&quot;
+
+[[auth.issuers]]
+issuer = &quot;https://sso.example.com/realms/agents&quot;
+role   = &quot;agent&quot;</code></pre>
+      <p>Roots are matched by exact <code>iss</code> and never become interchangeable: a token signed by the agent root but claiming the human root is checked against the human root&#x27;s keys, and fails.</p>
+      <h2 id="auth-handle-and-role">Handle and role</h2>
+      <p>Once a token validates, the request has a <strong>principal</strong>:</p>
+      <ul>
+        <li><strong>handle</strong> — from <code>auth.handle_claim</code> (<code>sub</code> by default), normalized the same</li>
+      </ul>
+      <p>way stored handles are (leading <code>@</code> stripped, lowercased). An OIDC service-account whose client id is <code>release-agent</code> therefore arrives as <code>@release-agent</code>.</p>
+      <ul>
+        <li><strong>role</strong> — from <code>auth.role_claim</code> if the token carries it, otherwise the <code>role</code></li>
+      </ul>
+      <p>on the matched issuer block. Which root signed a token is usually the whole answer to user-vs-agent, so most deployments never set a role claim at all.</p>
+      <p>Today the gate proves the token and records the principal. Using it as the <em>authoritative</em> author of a write — replacing the <code>created_by</code> and <code>sender_handle</code> a request body supplies — is the next step in the identity work.</p>
+      <h2 id="auth-key-rotation">Key rotation</h2>
+      <p>The JWKS is fetched from your issuer and cached for <code>auth.jwks_ttl_s</code>. When a token arrives signed by a key ID the backend hasn&#x27;t seen, it re-fetches immediately (rate-limited), so <strong>rotating your signing key does not require restarting Mycelium</strong>.</p>
+      <p>If the issuer is briefly unreachable, previously fetched keys keep serving. The keys are still your issuer&#x27;s; only their freshness is in doubt, and failing closed would take the hub down for the length of an IdP blip.</p>
+      <h2 id="auth-the-localhost-bypass">The localhost bypass</h2>
+      <p>With <code>auth.localhost_bypass</code> on (the default), requests whose <strong>peer address</strong> is real loopback (<code>127.0.0.0/8</code>, <code>::1</code>) skip the gate, so turning auth on can&#x27;t lock you out of the machine the hub runs on.</p>
+      <p>Two things worth knowing:</p>
+      <ul>
+        <li><code>X-Forwarded-For</code> is deliberately ignored. It is caller-supplied, so honouring</li>
+      </ul>
+      <p>it would let any remote request claim to be local.</p>
+      <ul>
+        <li><strong>It does not fire for a backend running in Docker.</strong> Traffic through a</li>
+      </ul>
+      <p>published port arrives from the bridge gateway, not loopback, and is indistinguishable from LAN traffic — treating that as local would silently open the hub to your whole network. For the containerized local tier, leave <code>auth.enabled</code> off; that is the honest switch for it.</p>
+      <h2 id="auth-what-stays-open">What stays open</h2>
+      <p>Health (<code>/</code>, <code>/health</code>) and the schema/docs routes are served without a token even when the gate is on: orchestrator probes are unauthenticated by nature, and the health payload reveals no room content. <code>/health</code> gains an <code>auth</code> block reporting whether the hub is gated, which issuers it trusts, and any configuration warnings.</p>
+      <p>Every other route requires a token.</p>
+      <h2 id="auth-failure-modes">Failure modes</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Response</th>
+              <th>Meaning</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>401</code> + <code>WWW-Authenticate: Bearer</code></td>
+              <td>Missing, malformed, expired, forged, wrong-audience, or wrong-issuer token.</td>
+            </tr>
+            <tr>
+              <td><code>503</code></td>
+              <td>The gate is on but unusable — no trusted issuers configured, or the issuer&#x27;s JWKS is unreachable and nothing is cached.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Only asymmetric signatures are accepted (<code>RS<em></code>, <code>PS</em></code>, <code>ES<em></code>). The <code>none</code> algorithm and the whole <code>HS</em></code> family are refused before verification, so a public JWKS key can never be replayed as an HMAC secret.</p>
+      <h2 id="auth-trying-it-locally">Trying it locally</h2>
+      <p>A dev OIDC issuer ships for exactly this, so you can exercise the gate without standing up Keycloak. See <code>docs/design/dev-auth-issuer.md</code>.</p>
     </section>
 
     <hr class="divider">

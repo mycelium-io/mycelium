@@ -4,12 +4,42 @@
 from pathlib import Path
 from typing import Literal
 
-from pydantic import field_validator
+from pydantic import BaseModel, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Where a registered engine runs its NEGMAS drive. Paired with the CLI's
 # ``engine.runtime`` — flip both together.
 EngineRuntime = Literal["backend", "host"]
+
+# What a validated token's principal is. Distinguishing the two is what lets
+# handle binding (#562) treat a human and a workload differently.
+PrincipalRole = Literal["user", "agent"]
+
+
+class TrustedIssuer(BaseModel):
+    """One trust root the HTTP-API gate accepts tokens from.
+
+    Trust is a *list* of these, matched by exact ``iss``, because more than one
+    root is the normal case: the human OIDC issuer alongside (later) the SPIRE
+    trust domain. Each entry carries its own keys, audience, and default role,
+    so a new root is config, never issuer-specific code.
+    """
+
+    issuer: str
+    # Omit to resolve the JWKS URI from ``<issuer>/.well-known/openid-configuration``.
+    jwks_url: str | None = None
+    # Overrides AUTH_AUDIENCE for tokens from this issuer.
+    audience: str | None = None
+    # Role for principals from this root when the token carries no role claim —
+    # the load-bearing case, since which root signed a token usually *is* the
+    # answer to user-vs-agent.
+    role: PrincipalRole = "agent"
+
+    @field_validator("issuer", "jwks_url")
+    @classmethod
+    def _strip_trailing_slash(cls, v: str | None) -> str | None:
+        return v.rstrip("/") if isinstance(v, str) else v
+
 
 # Config file search order: local .env first, then global ~/.mycelium/.env
 _env_files = [".env"]
@@ -122,6 +152,40 @@ class Settings(BaseSettings):
     @classmethod
     def _normalize_engine_runtime(cls, v: object) -> object:
         return v.strip().lower() if isinstance(v, str) else v
+
+    # ── HTTP-API JWT gate ────────────────────────────────────────────────────
+    # Off by default, and that is a hard requirement rather than a default worth
+    # revisiting: auth must never stand between someone and trying the app
+    # (docs/design/identity-and-auth.md). With AUTH_ENABLED false the gate is
+    # inert and every request is anonymous — exactly today's behavior.
+    AUTH_ENABLED: bool = False
+    # Trust roots, as JSON over env:
+    #   AUTH_ISSUERS=[{"issuer":"https://idp/realm","jwks_url":"…","role":"user"}]
+    AUTH_ISSUERS: list[TrustedIssuer] = []
+    # Required ``aud`` when set; unset means the claim is not checked. A trusted
+    # issuer entry may override it.
+    AUTH_AUDIENCE: str | None = None
+    # Skip the gate for real loopback callers so an operator who turns auth on
+    # doesn't lock themselves out of the machine the hub runs on. Decided by the
+    # request's client address, never the bind address — see services/auth.py.
+    AUTH_LOCALHOST_BYPASS: bool = True
+    # Which claim carries the canonical @handle, and which carries user-vs-agent.
+    AUTH_HANDLE_CLAIM: str = "sub"
+    AUTH_ROLE_CLAIM: str = "mycelium_role"
+    # Clock-skew allowance (seconds) on exp/nbf/iat.
+    AUTH_LEEWAY_S: float = 60.0
+    # How long a fetched JWKS is served from cache before it is re-fetched.
+    AUTH_JWKS_TTL_S: float = 300.0
+
+    @field_validator("AUTH_AUDIENCE", mode="before")
+    @classmethod
+    def _coerce_audience(cls, v: object) -> object:
+        """Treat an empty string as "don't check aud" — compose renders an unset
+        audience as ``AUTH_AUDIENCE=``, which must not become a literal ""
+        audience that no token can ever match."""
+        if isinstance(v, str) and v.strip() == "":
+            return None
+        return v
 
     model_config = SettingsConfigDict(
         env_file=tuple(_env_files),

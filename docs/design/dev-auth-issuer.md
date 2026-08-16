@@ -59,7 +59,45 @@ the backend, since that is the host the backend reaches and the `iss` it will se
 > in-network one; use the host URLs only for manual token minting. A stable `iss`
 > can be pinned later via the mock's `JSON_CONFIG` if needed.
 
+In `~/.mycelium/config.toml`:
+
+```toml
+[auth]
+enabled  = true
+audience = "mycelium"      # the mock echoes the requested `scope` into `aud`
+
+[[auth.issuers]]
+issuer   = "http://mycelium-auth-dev:8080/default"
+jwks_url = "http://mycelium-auth-dev:8080/default/jwks"
+role     = "agent"
+```
+
+Then `mycelium config apply` and recreate the backend. Mint a token from the host
+(port 9090) and call the API through the published backend port:
+
+```bash
+TOKEN=$(curl -s -X POST http://localhost:9090/default/token \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  -d 'grant_type=client_credentials&client_id=poc-agent&client_secret=dev&scope=mycelium' \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')
+
+curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8000/api/rooms                      # 401
+curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $TOKEN" \
+  http://localhost:8000/api/rooms                                                             # 200
+```
+
+The `iss` wrinkle above is why the token minted on `:9090` carries
+`iss: http://localhost:9090/default` while the backend trusts
+`http://mycelium-auth-dev:8080/default` — they must match, so pin the mock's
+issuer via `JSON_CONFIG` (or trust both by listing a second `[[auth.issuers]]`
+block) when driving the gate from the host.
+
+Operator-facing documentation for the gate itself lives in the docs site under
+**Reference → Guides → Authentication**
+(`mycelium-cli/src/mycelium/docs/guides/auth.md`).
+
 ## Next
 
-- #561 — HTTP-API JWT gate (validate against this issuer's JWKS)
+- ~~#561 — HTTP-API JWT gate (validate against this issuer's JWKS)~~ — landed
+- #562 — verified handle binding (consume the principal this gate resolves)
 - #565 — replace this with the real Keycloak (humans) + SPIRE (agents) wiring

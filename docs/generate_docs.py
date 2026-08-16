@@ -72,6 +72,7 @@ SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
     # CLI + Config blocks injected after architecture, before guides/troubleshooting.
     ("guides/structured-memory.md", "structured-memory",  "reference", "Guides",       "Structured Memory"),
     ("guides/hub-and-spoke.md",     "hub-and-spoke",      "reference", "Guides",       "Hub & Spoke"),
+    ("guides/auth.md",              "auth",               "reference", "Guides",       "Authentication"),
     ("troubleshooting.md",          "troubleshooting",    "reference", "Help",         "Troubleshooting"),
 ]
 

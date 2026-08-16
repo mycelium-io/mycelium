@@ -183,6 +183,16 @@ is no litellm dependency.
   both `fastapi-backend/tests/test_slim_l9_wire.py` and
   `mycelium-cli/tests/test_slim_l9_wire.py` assert against it, so neither copy can
   drift without a red unit gate.
+- **The HTTP-API JWT gate is opt-in and off by default.** `app/services/auth.py`
+  validates a bearer JWT against configured issuers + JWKS (`[auth]` in
+  config.toml → `AUTH_*` env). It's an app-wide FastAPI dependency, so a new route
+  is gated by default; health/docs stay public. Trust is a list of issuers matched
+  by exact `iss`, each with its own keys and default role — that's how the SPIRE
+  trust domain slots in later without issuer-specific code. Off by default is a
+  hard requirement, not a default worth revisiting: auth must never block the
+  try-it path. The localhost bypass reads the request's peer address, so it does
+  **not** fire for a containerized backend (published-port traffic looks like LAN
+  traffic) — the local tier is served by leaving auth off.
 - **SLIM security is a shared-secret PSK today (D1).** The group key derives from
   `MYCELIUM_SLIM_MASTER_SECRET` (set the same on every host that shares rooms);
   `MYCELIUM_SLIM_REQUIRE_SECRET=1` makes a host fail closed rather than fall back to

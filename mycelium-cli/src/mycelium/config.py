@@ -139,6 +139,94 @@ class EngineConfig(BaseModel):
         return v
 
 
+class TrustedIssuer(BaseModel):
+    """One trust root the backend's HTTP-API gate accepts tokens from.
+
+    Configured as a repeatable ``[[auth.issuers]]`` block. More than one root is
+    the normal case — a human OIDC issuer alongside an agent/service-account one
+    — and each carries its own keys, audience, and default role, so adding a root
+    is config rather than code.
+    """
+
+    issuer: str = Field(
+        ...,
+        description="Exact `iss` claim value to trust, e.g. https://idp.example.com/realms/mycelium",
+    )
+    jwks_url: str | None = Field(
+        default=None,
+        description="JWKS URL for this issuer. Omit to resolve it from the issuer's OIDC discovery document.",
+    )
+    audience: str | None = Field(
+        default=None,
+        description="Required `aud` for tokens from this issuer; overrides auth.audience.",
+    )
+    role: str = Field(
+        default="agent",
+        description="Role ('user' or 'agent') for principals from this issuer when the token carries no role claim.",
+    )
+
+    @field_validator("role")
+    @classmethod
+    def _validate_role(cls, v: str) -> str:
+        normalized = v.strip().lower()
+        if normalized not in ("user", "agent"):
+            raise ValueError("role must be 'user' or 'agent'")
+        return normalized
+
+    @field_validator("issuer", "jwks_url")
+    @classmethod
+    def _strip_trailing_slash(cls, v: str | None) -> str | None:
+        return v.rstrip("/") if isinstance(v, str) else v
+
+
+class AuthConfig(BaseModel):
+    """HTTP-API JWT gate — off by default.
+
+    The backend validates a bearer token against a configured issuer + JWKS. It
+    ships **disabled**: auth must never stand between someone and trying
+    Mycelium, so the default stack needs no issuer and no tokens. Turning it on
+    is a per-deployment decision for when a team shares a hub over a network.
+
+    When enabling it, set ``audience`` as well. Without one, *any* token a
+    trusted issuer ever minted is accepted — including tokens a user obtained
+    for an unrelated application on the same IdP. The audience is what makes
+    "valid token" mean "token meant for this hub".
+    """
+
+    enabled: bool = Field(
+        default=False,
+        description="Enforce bearer-token auth on the backend HTTP API.",
+    )
+    issuers: list[TrustedIssuer] = Field(
+        default_factory=list,
+        description="Trust roots, as repeatable [[auth.issuers]] blocks.",
+    )
+    audience: str | None = Field(
+        default=None,
+        description="Required `aud` claim for every token. Strongly recommended whenever auth is enabled; unset means the audience is not checked.",
+    )
+    localhost_bypass: bool = Field(
+        default=True,
+        description="Let loopback callers through without a token, so enabling auth can't lock an operator out of the hub machine. Does not apply to a backend in Docker, whose callers arrive from the bridge gateway rather than loopback.",
+    )
+    handle_claim: str = Field(
+        default="sub",
+        description="Token claim carrying the canonical @handle.",
+    )
+    role_claim: str = Field(
+        default="mycelium_role",
+        description="Token claim distinguishing a user from an agent.",
+    )
+    leeway_s: float = Field(
+        default=60.0,
+        description="Clock-skew allowance in seconds on exp/nbf/iat.",
+    )
+    jwks_ttl_s: float = Field(
+        default=300.0,
+        description="How long a fetched JWKS is cached before re-fetch. Key rotation is also picked up on an unseen kid.",
+    )
+
+
 class RuntimeConfig(BaseModel):
     """Docker runtime / environment configuration."""
 
@@ -241,6 +329,7 @@ class MyceliumConfig(BaseModel):
     slim: SlimConfig = Field(default_factory=SlimConfig)
     llm: LLMConfig = Field(default_factory=LLMConfig)
     engine: EngineConfig = Field(default_factory=EngineConfig)
+    auth: AuthConfig = Field(default_factory=AuthConfig)
     runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
     rooms: RoomConfig = Field(default_factory=RoomConfig)
     metrics: MetricsConfig = Field(default_factory=MetricsConfig)
