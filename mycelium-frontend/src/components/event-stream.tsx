@@ -314,6 +314,9 @@ interface Props {
   onConnectionChange?: (connected: boolean) => void;
   onNegotiationPhaseChange?: (phase: NegotiationPhase) => void;
   planRefreshTrigger?: number;
+  /** Open a memory by key — wired to `[[wikilinks]]` in chat so a message can
+   *  link a room's memory and a reader (or agent author) can jump straight to it. */
+  onOpenMemory?: (key: string) => void;
   /** Optional controlled tab (e.g. driven by the onboarding tour). */
   view?: View;
   onViewChange?: (view: View) => void;
@@ -322,7 +325,7 @@ interface Props {
   suppressInvites?: boolean;
 }
 
-export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onNegotiationPhaseChange, planRefreshTrigger = 0, view: viewProp, onViewChange, suppressInvites = false }: Props) {
+export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onNegotiationPhaseChange, planRefreshTrigger = 0, onOpenMemory, view: viewProp, onViewChange, suppressInvites = false }: Props) {
   const [events, setEvents] = useState<Event[]>([]);
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [connected, setConnected] = useState(false);
@@ -718,7 +721,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
                         <span className="text-micro text-muted-foreground tabular">{ev.time}</span>
                       </div>
                     )}
-                    <MarkdownContent className="contrast text-body leading-relaxed">
+                    <MarkdownContent className="contrast text-body leading-relaxed" onLinkClick={onOpenMemory}>
                       {ev.content}
                     </MarkdownContent>
                   </div>

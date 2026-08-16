@@ -22,6 +22,9 @@ interface Props {
   roomName: string;
   masId?: string | null;
   refreshTrigger: number;
+  /** Select and reveal a memory by key (e.g. a chat `[[wikilink]]` was clicked).
+   *  The nonce lets the same key re-open after the reader has browsed elsewhere. */
+  focusMemory?: { key: string; nonce: number } | null;
 }
 
 function buildTree(memories: Memory[]): TreeNode[] {
@@ -168,7 +171,7 @@ function TreeRows({ nodes, depth, collapsed, onToggle, onSelect, selected }: Tre
   );
 }
 
-export function MemoryPanel({ roomName, refreshTrigger }: Props) {
+export function MemoryPanel({ roomName, refreshTrigger, focusMemory }: Props) {
   const [memories, setMemories] = useState<Memory[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -217,6 +220,13 @@ export function MemoryPanel({ roomName, refreshTrigger }: Props) {
     },
     [memories],
   );
+
+  // A chat `[[wikilink]]` (or any external focus request) selects that memory.
+  // navigateToKey changes with `memories`, so a focus set before the list loads
+  // resolves once it arrives; the nonce re-fires the same key on a repeat click.
+  useEffect(() => {
+    if (focusMemory?.key) navigateToKey(focusMemory.key);
+  }, [focusMemory, navigateToKey]);
 
   const toggleNs = useCallback((path: string) =>
     setCollapsed(prev => {
