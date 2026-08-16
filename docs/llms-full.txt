@@ -2038,6 +2038,42 @@ For the tightest, individually-attested agent identity on the SLIM channel itsel
 see [Attested Identity (SPIRE)](#spire-identity) — a different, heavier tier from
 this HTTP-API gate.
 
+## Browser login (the frontend)
+
+The Next.js frontend does the same OIDC flow for humans in a browser. With the
+gate **off** it is unchanged — the localStorage handle-picker, no login. With the
+gate **on**, the app shows a **Sign in** screen and redirects to Keycloak; after
+you authenticate it carries your token on every `/api/*` call (sealed in an
+httpOnly cookie, injected server-side by the proxy — it never reaches browser JS).
+
+The realm import ships a second public client, **`mycelium-web`**, with the web
+redirect `http://localhost:3000/api/auth/callback` (the CLI's `mycelium-cli`
+client uses a loopback redirect instead — separate clients, separately revocable).
+
+Configure the frontend (server-side env) and bring the UI up:
+
+```bash
+export MYCELIUM_OIDC_ISSUER=http://localhost:8080/realms/mycelium
+export MYCELIUM_OIDC_INTERNAL_ISSUER=http://keycloak:8080/realms/mycelium
+export MYCELIUM_OIDC_CLIENT_ID=mycelium-web
+export MYCELIUM_OIDC_AUDIENCE=mycelium
+export AUTH_SESSION_SECRET=$(openssl rand -hex 32)
+
+docker compose -f compose.yml -f compose-dev.yml -f compose-keycloak.yml \
+  --profile ui up -d
+```
+
+The **issuer split is the same as the backend's**, for the same reason: the
+browser reaches Keycloak at `MYCELIUM_OIDC_ISSUER` (`localhost:8080`) and the
+token's `iss` matches it, but the containerized frontend server can't use
+`localhost`, so it runs discovery + token exchange against
+`MYCELIUM_OIDC_INTERNAL_ISSUER` (`keycloak:8080`). Running the frontend on the
+host with `pnpm dev` instead? Drop `INTERNAL_ISSUER` — the two coincide.
+
+> **Off by default here too.** With `MYCELIUM_OIDC_ISSUER` / `AUTH_SESSION_SECRET`
+> unset, the frontend never engages OIDC. And it only shows the sign-in screen
+> when the backend's `/health` reports the gate on — the try-it path is untouched.
+
 ## The honest ceiling
 
 The shipped overlay is **dev-grade**: Keycloak in `start-dev` (in-memory H2, HTTP,

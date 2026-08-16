@@ -14,6 +14,7 @@ import {
   type User,
 } from "@/lib/api";
 import { useCurrentUser } from "@/components/current-user";
+import { useAuthSession } from "@/components/auth-session";
 import { Monogram } from "@/components/ui/monogram";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -67,6 +68,7 @@ function iamCommand(u: BoundUser): string {
  */
 export function ActingAsPicker() {
   const { principal, setPrincipal } = useCurrentUser();
+  const { signedIn, handle: sessionHandle, logout } = useAuthSession();
   const [open, setOpen] = useState(false);
   const [users, setUsers] = useState<User[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
@@ -165,6 +167,21 @@ export function ActingAsPicker() {
             <DialogHeader>
               <DialogTitle className="text-ui font-semibold text-text">Acting as</DialogTitle>
             </DialogHeader>
+
+            {signedIn && (
+              // Signed in through the hub's identity provider: the handle is the
+              // token's, not a free choice — a gated hub attributes writes to the
+              // token, so switching here would only earn a 403. Offer sign-out.
+              <div className="mt-2 flex items-center justify-between gap-2 rounded-md border border-border bg-surface/40 px-3 py-2">
+                <span className="min-w-0 text-label">
+                  <span className="text-micro text-muted-foreground">Signed in as </span>
+                  <span className="font-mono text-text">@{sessionHandle}</span>
+                </span>
+                <Button variant="ghost" size="xs" onClick={logout}>
+                  Sign out
+                </Button>
+              </div>
+            )}
 
             <div className="mt-2 max-h-64 overflow-y-auto border border-border">
               <button
