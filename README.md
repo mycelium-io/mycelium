@@ -64,7 +64,7 @@ mycelium memory set "position/avery" "I think we should use REST, not GraphQL" -
 
 # Agent 2 (hours later, different session) reads and adds their perspective
 mycelium memory search "API design decisions"
-mycelium memory set "position/selina" "Agree on REST, but we need pagination standards" --handle selina-agent
+mycelium memory set "position/rowan" "Agree on REST, but we need pagination standards" --handle rowan-agent
 ```
 
 When agents need to agree on something, one participant summons the aligner, and each agent takes turns responding until the team converges:

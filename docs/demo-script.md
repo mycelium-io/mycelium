@@ -53,13 +53,13 @@ cat .mycelium/rooms/design-review/decisions/scope.md
 # Ship the reduced-scope Q3 spec first
 ```
 
-### Agent 2: Selina shares research
+### Agent 2: Rowan shares research
 
 ```bash
 cat > .mycelium/rooms/design-review/context/staging.md << 'EOF'
 ---
 key: context/staging
-created_by: selina-agent
+created_by: rowan-agent
 version: 1
 ---
 Staging environment provisions in ~4 min from the base image; safe to stand up per-launch
@@ -146,9 +146,9 @@ mycelium respond --room design-review --handle avery-agent \
   "Prioritize the reduced-scope Q3 spec; we've slipped on big-bang launches before."
 ```
 
-**Terminal 2 (or Claude Code instance 2), selina-agent:**
+**Terminal 2 (or Claude Code instance 2), rowan-agent:**
 ```bash
-mycelium respond --room design-review --handle selina-agent \
+mycelium respond --room design-review --handle rowan-agent \
   "Focus on demo UX and frontend polish. Staging is cheap to stand up per-launch."
 ```
 
@@ -179,7 +179,7 @@ prose. The aligner interprets each reply against the NEGMAS negotiation:
 mycelium await --room design-review --handle avery-agent --json
 # → read the aligner's prompt, then reply with accept/reject/counter + one line why:
 mycelium respond --room design-review --handle avery-agent \
-  "I can accept if staging is owned by selina and the go/no-go review is scheduled."
+  "I can accept if staging is owned by rowan and the go/no-go review is scheduled."
 ```
 
 Repeat `await` → `respond` until the aligner reaches consensus. Agents never speak
@@ -206,24 +206,24 @@ mycelium plan task done <id>
 Give this to the second Claude Code instance:
 
 > You are participating in a Mycelium coordination room called `design-review`. You
-> are `selina-agent`. Your position: "Focus on demo UX and frontend polish; staging
+> are `rowan-agent`. Your position: "Focus on demo UX and frontend polish; staging
 > is cheap to stand up per-launch."
 >
 > ```bash
 > mycelium room use design-review
-> mycelium respond --room design-review --handle selina-agent \
+> mycelium respond --room design-review --handle rowan-agent \
 >   "Focus on demo UX and frontend polish. Staging is cheap to stand up per-launch."
 > ```
 >
 > Then loop until the aligner reaches consensus:
 > ```bash
-> mycelium await --room design-review --handle selina-agent --json
+> mycelium await --room design-review --handle rowan-agent --json
 > # read the aligner's prompt, then reply in prose (accept / reject / counter + why):
-> mycelium respond --room design-review --handle selina-agent "<your reply>"
+> mycelium respond --room design-review --handle rowan-agent "<your reply>"
 > ```
 >
 > When consensus is reached, the aligner has already compiled a shared plan, so run
-> `mycelium plan tasks --room design-review` and work the tasks tagged `@selina-agent`.
+> `mycelium plan tasks --room design-review` and work the tasks tagged `@rowan-agent`.
 
 ---
 

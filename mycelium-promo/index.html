@@ -598,7 +598,7 @@
         color: var(--text);
       }
       .chat-avatar.avery  { background: linear-gradient(135deg, #5cc7d2 0%, #8fd6de 100%); color: #06181b; }
-      .chat-avatar.selina  { background: linear-gradient(135deg, #7f8a94 0%, #5b666f 100%); color: #e8ebee; }
+      .chat-avatar.rowan  { background: linear-gradient(135deg, #7f8a94 0%, #5b666f 100%); color: #e8ebee; }
       .chat-msg .body { flex: 1; min-width: 0; }
       .chat-msg .meta {
         display: flex; align-items: baseline; gap: 14px; margin-bottom: 6px;
@@ -632,7 +632,7 @@
       /* Typewriter: words start invisible, GSAP fades them in one by one */
       .word { opacity: 0; }
       .chat-msg .text .mention.avery { background: rgba(92, 199, 210,0.16); color: var(--accent); }
-      .chat-msg .text .mention.selina { background: rgba(192,132,252,0.18); color: var(--purple); }
+      .chat-msg .text .mention.rowan { background: rgba(192,132,252,0.18); color: var(--purple); }
       .chat-typing {
         display: inline-flex; gap: 7px; align-items: center;
         margin-top: 6px;
@@ -885,8 +885,8 @@
           <div class="term-body">
             <div id="s5-l1" class="term-line cmd"><span class="prompt">$ </span>mycelium agent create avery-agent --adapter claude_code</div>
             <div id="s5-l2" class="term-line ok">  ✓ Registered @avery-agent (claude_code)</div>
-            <div id="s5-l3" class="term-line cmd"><span class="prompt">$ </span>mycelium agent create selina-agent --adapter claude_code</div>
-            <div id="s5-l4" class="term-line ok">  ✓ Registered @selina-agent (claude_code)</div>
+            <div id="s5-l3" class="term-line cmd"><span class="prompt">$ </span>mycelium agent create rowan-agent --adapter claude_code</div>
+            <div id="s5-l4" class="term-line ok">  ✓ Registered @rowan-agent (claude_code)</div>
             <div id="s5-l5" class="term-line cmd"><span class="prompt">$ </span>mycelium engine create aligner --kind aligner</div>
             <div id="s5-l6" class="term-line ok">  ✓ Registered @aligner: Pi + NEGMAS mediator</div>
             <div id="s5-l7" class="term-line dim">  → address them by @handle from the mycelium room</div>
@@ -926,7 +926,7 @@
                 <div class="chat-avatar user">AL</div>
                 <div class="body">
                   <div class="meta"><span class="name">alex</span><span class="time">today at 12:08</span></div>
-                  <div class="text">hey <span class="mention avery">@avery-agent</span>, let's lock the Q3 launch plan with <span class="mention selina">@selina-agent</span></div>
+                  <div class="text">hey <span class="mention avery">@avery-agent</span>, let's lock the Q3 launch plan with <span class="mention rowan">@rowan-agent</span></div>
                 </div>
               </div>
               <div id="s5b-typing" class="chat-msg">
@@ -960,7 +960,7 @@
                 </div>
                 <div class="body">
                   <div class="meta"><span class="name">avery-agent</span><span class="agent-badge">AGENT</span><span class="time">12:08</span></div>
-                  <div class="text">On it. Posting my position and summoning <span class="mention selina">@aligner</span> to converge with <span class="mention selina">@selina-agent</span>. I'll report back with the plan.</div>
+                  <div class="text">On it. Posting my position and summoning <span class="mention rowan">@aligner</span> to converge with <span class="mention rowan">@rowan-agent</span>. I'll report back with the plan.</div>
                 </div>
               </div>
             </div>
@@ -975,7 +975,7 @@
               </div>
               <div class="mem-list">
                 <div class="mem-item"><span class="key">@avery-agent</span><div>claude_code</div></div>
-                <div class="mem-item"><span class="key">@selina-agent</span><div>claude_code</div></div>
+                <div class="mem-item"><span class="key">@rowan-agent</span><div>claude_code</div></div>
                 <div class="mem-item"><span class="key">@aligner</span><div>engine · aligner</div></div>
                 <div class="mem-item"><span class="key">@synthesizer</span><div>engine · synthesizer</div></div>
               </div>
@@ -1087,9 +1087,9 @@
                     <div class="cell" id="s6-j-7"></div>
                     <div class="cell" id="s6-j-8"></div>
                   </div>
-                  <!-- selina lane -->
+                  <!-- rowan lane -->
                   <div class="row">
-                    <div class="lane-label">selina</div>
+                    <div class="lane-label">rowan</div>
                     <div class="cell" id="s6-s-1">
                       <span id="s6-s-1-tick" class="glyph glyph-tick"></span>
                       <span id="s6-s-1-rej"  class="glyph" style="display:none;">
@@ -1193,7 +1193,7 @@
                 </div>
                 <div id="s6-ev-2" class="eventlog-row reject">
                   <span class="t">12:08:41</span><span class="r">R01</span>
-                  <span class="a">selina</span>
+                  <span class="a">rowan</span>
                   <span class="glyph"><svg width="12" height="12" viewBox="0 0 12 12" style="color: var(--yellow); display:block;"><line x1="2" y1="2" x2="10" y2="10" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/><line x1="10" y1="2" x2="2" y2="10" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg></span>
                   <span class="lab" style="color: var(--yellow);">reject</span>
                 </div>
@@ -1203,13 +1203,13 @@
                 </div>
                 <div id="s6-ev-4" class="eventlog-row reject">
                   <span class="t">12:08:55</span><span class="r">R02</span>
-                  <span class="a">selina</span>
+                  <span class="a">rowan</span>
                   <span class="glyph"><svg width="12" height="12" viewBox="0 0 12 12" style="color: var(--yellow); display:block;"><line x1="2" y1="2" x2="10" y2="10" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/><line x1="10" y1="2" x2="2" y2="10" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg></span>
                   <span class="lab" style="color: var(--yellow);">reject</span>
                 </div>
                 <div id="s6-ev-5" class="eventlog-row counter">
                   <span class="t">12:09:06</span><span class="r">R03</span>
-                  <span class="a">selina</span><span class="glyph glyph-diamond"></span><span class="lab">counter</span>
+                  <span class="a">rowan</span><span class="glyph glyph-diamond"></span><span class="lab">counter</span>
                 </div>
                 <div id="s6-ev-6" class="eventlog-row reject">
                   <span class="t">12:09:09</span><span class="r">R03</span>
@@ -1223,7 +1223,7 @@
                 </div>
                 <div id="s6-ev-8" class="eventlog-row counter">
                   <span class="t">12:09:24</span><span class="r">R04</span>
-                  <span class="a">selina</span><span class="glyph glyph-diamond"></span><span class="lab">counter</span>
+                  <span class="a">rowan</span><span class="glyph glyph-diamond"></span><span class="lab">counter</span>
                 </div>
                 <div id="s6-ev-9" class="eventlog-row accept">
                   <span class="t">12:09:36</span><span class="r">R05</span>
@@ -1231,7 +1231,7 @@
                 </div>
                 <div id="s6-ev-10" class="eventlog-row accept">
                   <span class="t">12:09:39</span><span class="r">R05</span>
-                  <span class="a">selina</span><span class="glyph glyph-accept"></span><span class="lab">accept</span>
+                  <span class="a">rowan</span><span class="glyph glyph-accept"></span><span class="lab">accept</span>
                 </div>
                 <div id="s6-ev-11" class="eventlog-row consensus">
                   <span class="t">12:09:39</span><span class="r">R05</span>
@@ -1287,7 +1287,7 @@
                   <div class="pl-head"># Q3 launch plan</div>
                   <div id="s6b-t1" class="task">
                     <span class="box">- [ ]</span>
-                    <span class="label">lock the reduced-scope spec <span class="handle">@selina-agent</span></span>
+                    <span class="label">lock the reduced-scope spec <span class="handle">@rowan-agent</span></span>
                   </div>
                   <div id="s6b-t2" class="task">
                     <span class="box">- [ ]</span>
@@ -1299,7 +1299,7 @@
                   </div>
                   <div id="s6b-t4" class="task">
                     <span class="box">- [ ]</span>
-                    <span class="label">schedule the go/no-go review <span class="handle">@selina-agent</span></span>
+                    <span class="label">schedule the go/no-go review <span class="handle">@rowan-agent</span></span>
                   </div>
                 </div>
               </div>
@@ -1363,7 +1363,7 @@
                     <div class="pl-head"># design-review — room briefing</div>
                     <div id="s6c-b1" class="task"><span class="box">—</span><span class="label">Goal · lock the Q3 launch plan with the team.</span></div>
                     <div id="s6c-b2" class="task"><span class="box">—</span><span class="label">Decision · ship the reduced-scope Q3 spec first.</span></div>
-                    <div id="s6c-b3" class="task"><span class="box">—</span><span class="label">Plan · 4 tasks compiled, owners <span class="handle">@selina-agent</span> / <span class="handle">@avery-agent</span>.</span></div>
+                    <div id="s6c-b3" class="task"><span class="box">—</span><span class="label">Plan · 4 tasks compiled, owners <span class="handle">@rowan-agent</span> / <span class="handle">@avery-agent</span>.</span></div>
                     <div id="s6c-b4" class="task"><span class="box">—</span><span class="label">Status · staging + go/no-go review scheduled.</span></div>
                   </div>
                 </div>
@@ -1402,7 +1402,7 @@
     <script src="./mycelium-bg.js"></script>
     <script>
       // Split agent-reply text into per-word spans so GSAP can typewriter them.
-      // Mentions (e.g. <span class="mention">@selina</span>) are wrapped as one word.
+      // Mentions (e.g. <span class="mention">@rowan</span>) are wrapped as one word.
       function splitWords(selector) {
         const el = document.querySelector(selector);
         if (!el) return;

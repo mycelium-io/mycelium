@@ -92,7 +92,7 @@ def test_l9_send_builds_envelope_and_publishes(monkeypatch: pytest.MonkeyPatch) 
             "--subkind",
             "resolved",
             "--to",
-            "bob, @selina",
+            "bob, @rowan",
             "--parents",
             "p1,p2",
             "--data",
@@ -108,7 +108,7 @@ def test_l9_send_builds_envelope_and_publishes(monkeypatch: pytest.MonkeyPatch) 
     assert l9.kind_of(content) == "commit"
     assert content["l9"]["header"]["subkind"] == "resolved"
     assert content["l9"]["header"]["message"]["parents"] == ["p1", "p2"]
-    assert l9.recipients_of(content) == ["bob", "selina"]
+    assert l9.recipients_of(content) == ["bob", "rowan"]
     assert l9.payload_data_of(content) == {"assignments": {"cap": "30"}}
 
 

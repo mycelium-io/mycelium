@@ -807,8 +807,8 @@ def send(
 
     Examples:
         mycelium room send "@avery-agent please review the cache config"
-        mycelium room send --room design-review --handle arnold "@selina-agent thoughts on the API proposal?"
-        mycelium room send "@avery-agent @selina-agent sync at 3pm re: sprint priorities"
+        mycelium room send --room design-review --handle arnold "@rowan-agent thoughts on the API proposal?"
+        mycelium room send "@avery-agent @rowan-agent sync at 3pm re: sprint priorities"
     """
     try:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False  # noqa: F841
