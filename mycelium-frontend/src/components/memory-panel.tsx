@@ -67,6 +67,16 @@ function formatValue(v: unknown): string {
   return String(v);
 }
 
+// Filename for a memory leaf, with its extension. Keys usually omit it (they're
+// stored as markdown); a structured value with no `text` field is really JSON.
+// A key that already carries an extension is shown as-is.
+function fileName(node: TreeNode): string {
+  if (node.name.includes(".")) return node.name;
+  const v = node.memory?.value;
+  const ext = v && typeof v === "object" && !("text" in (v as Record<string, unknown>)) ? "json" : "md";
+  return `${node.name}.${ext}`;
+}
+
 const ROW_H = 22; // px, matches vscode compact density
 const INDENT = 12; // px per depth level
 
@@ -124,7 +134,7 @@ function TreeRows({ nodes, depth, collapsed, onToggle, onSelect, selected }: Tre
                 </span>
 
                 <span className="font-mono text-[11.5px] leading-none truncate min-w-0">
-                  {node.name}
+                  {isFolder ? node.name : fileName(node)}
                 </span>
 
                 {/* dot indicator when node is both a file and a folder */}
