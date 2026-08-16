@@ -23,6 +23,8 @@ import os
 
 import typer
 
+from mycelium.client import hub_client
+from mycelium.client import typed_client as _typed_client
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
 from mycelium.error_handler import print_error
@@ -45,13 +47,6 @@ L9_RAISE_UP_TYPES = frozenset(
         "l9_knowledge",
     }
 )
-
-
-def _typed_client(config: MyceliumConfig):
-    """Get a typed OpenAPI client."""
-    from mycelium_backend_client import Client
-
-    return Client(base_url=config.server.api_url, raise_on_unexpected_status=True)
 
 
 app = typer.Typer(
@@ -351,8 +346,6 @@ def clone_room(
     """
     import json as _json
 
-    import httpx
-
     from mycelium.filesystem import (
         ensure_room_structure,
         get_mycelium_dir,
@@ -373,7 +366,7 @@ def clone_room(
 
         typer.echo(f"Cloning {room_name} from {api_url}...")
 
-        with httpx.Client(base_url=api_url, timeout=60) as client:
+        with hub_client(config, base_url=api_url, timeout=60) as client:
             resp = client.get(f"/api/rooms/{room_name}/memory", params={"limit": 1000})
             resp.raise_for_status()
             memories = resp.json()
@@ -418,7 +411,7 @@ def clone_room(
         # Reindex local copy against the configured backend
         typer.echo("Re-indexing...")
         try:
-            with httpx.Client(base_url=config.server.api_url, timeout=120) as client:
+            with hub_client(config, timeout=120) as client:
                 resp = client.post(f"/api/rooms/{room_name}/reindex")
                 resp.raise_for_status()
                 data = resp.json()
@@ -525,7 +518,6 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
     """Core SSE watch loop — pretty-renders coordination and memory events."""
     import time
 
-    import httpx
     from rich.console import Console
     from rich.panel import Panel
     from rich.table import Table
@@ -681,10 +673,8 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
     # coordination_join events are NOTIFY-only (not persisted), so we synthesize
     # them from the sessions list to ensure all participants are shown.
     try:
-        sess_resp = httpx.get(
-            f"{config.server.api_url}/api/rooms/{room_name}/sessions",
-            timeout=10,
-        )
+        with hub_client(config, timeout=10) as client:
+            sess_resp = client.get(f"/api/rooms/{room_name}/sessions")
         if sess_resp.status_code == 200:
             sess_body = sess_resp.json()
             participants = sess_body.get("sessions", [])
@@ -707,11 +697,8 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
         pass
 
     try:
-        hist_resp = httpx.get(
-            f"{config.server.api_url}/api/rooms/{room_name}/messages",
-            params={"limit": 50},
-            timeout=10,
-        )
+        with hub_client(config, timeout=10) as client:
+            hist_resp = client.get(f"/api/rooms/{room_name}/messages", params={"limit": 50})
         if hist_resp.status_code == 200:
             body = hist_resp.json()
             msgs = body.get("messages", body) if isinstance(body, dict) else body
@@ -722,10 +709,13 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
     except Exception:
         pass
 
-    url = f"{config.server.api_url}/api/rooms/{room_name}/messages/stream"
+    stream_path = f"/api/rooms/{room_name}/messages/stream"
     start = time.time()
 
-    with httpx.Client(timeout=None) as http, http.stream("GET", url) as response:
+    with (
+        hub_client(config, timeout=None) as http,
+        http.stream("GET", stream_path) as response,
+    ):
         for line in response.iter_lines():
             if timeout > 0 and (time.time() - start) >= timeout:
                 console.print(f"\n  [dim]Timeout after {timeout}s[/]")

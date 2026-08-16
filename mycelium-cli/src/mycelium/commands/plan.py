@@ -14,11 +14,11 @@ from __future__ import annotations
 
 import sys
 
-import httpx
 import typer
 from rich.console import Console
 from rich.table import Table
 
+from mycelium.client import hub_client
 from mycelium.commands.room import _resolve_room
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
@@ -45,7 +45,7 @@ app.add_typer(task_app, name="task")
 def _fetch_plan(room: str | None = None) -> dict:
     cfg = MyceliumConfig.load()
     room_name = _resolve_room(cfg, room)
-    with httpx.Client(base_url=cfg.server.api_url, timeout=30) as client:
+    with hub_client(cfg, timeout=30) as client:
         resp = client.get(f"/api/rooms/{room_name}/plan")
         resp.raise_for_status()
         return resp.json()
@@ -206,7 +206,7 @@ def plan_title(
     """Read or set the room's plan title."""
     cfg = MyceliumConfig.load()
     room_name = _resolve_room(cfg, room)
-    with httpx.Client(base_url=cfg.server.api_url, timeout=30) as client:
+    with hub_client(cfg, timeout=30) as client:
         if text is None:
             data = client.get(f"/api/rooms/{room_name}/plan").json()
             title = data.get("title")
@@ -277,7 +277,7 @@ def task_add(
     """Append a new ``- [ ]`` line to a plan file."""
     cfg = MyceliumConfig.load()
     room_name = _resolve_room(cfg, room)
-    with httpx.Client(base_url=cfg.server.api_url, timeout=30) as client:
+    with hub_client(cfg, timeout=30) as client:
         resp = client.post(
             f"/api/rooms/{room_name}/plan/tasks",
             json={"text": text, "slug": file},
@@ -292,7 +292,7 @@ def task_add(
 def _toggle(task_id: str, *, done: bool, room: str | None) -> dict:
     cfg = MyceliumConfig.load()
     room_name = _resolve_room(cfg, room)
-    with httpx.Client(base_url=cfg.server.api_url, timeout=30) as client:
+    with hub_client(cfg, timeout=30) as client:
         resp = client.post(
             f"/api/rooms/{room_name}/plan/tasks/{task_id}/toggle",
             json={"done": done},

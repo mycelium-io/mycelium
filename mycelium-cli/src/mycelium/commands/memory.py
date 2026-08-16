@@ -22,6 +22,7 @@ from pydantic import ValidationError
 from rich.console import Console
 from rich.table import Table
 
+from mycelium.client import hub_client, typed_client
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
 from mycelium.filesystem import (
@@ -40,11 +41,8 @@ console = Console()
 
 
 def _get_client():
-    """Get a configured OpenAPI client."""
-    from mycelium_backend_client import Client
-
-    cfg = MyceliumConfig.load()
-    return Client(base_url=cfg.server.api_url, raise_on_unexpected_status=True)
+    """The shared authenticated OpenAPI client (see ``mycelium.client``)."""
+    return typed_client()
 
 
 def _hub_url() -> str:
@@ -453,13 +451,11 @@ def memory_reindex(
 
     Run after editing memory files outside the CLI to update search.
     """
-    import httpx
-
     room_name = _get_active_room(room)
     cfg = MyceliumConfig.load()
 
     console.print(f"[dim]Re-indexing {room_name}...[/dim]")
-    with httpx.Client(base_url=cfg.server.api_url, timeout=120) as client:
+    with hub_client(cfg, timeout=120) as client:
         resp = client.post(f"/api/rooms/{room_name}/reindex")
         resp.raise_for_status()
         data = resp.json()
@@ -619,8 +615,6 @@ def memory_sync(
         mycelium sync           # fetch all memories + reindex
         mycelium sync --no-reindex
     """
-    import httpx
-
     room_name = _get_active_room(room)
     cfg = MyceliumConfig.load()
 
@@ -633,8 +627,8 @@ def memory_sync(
 
     console.print(f"[dim]Syncing {room_name} from {cfg.server.api_url}...[/dim]")
 
-    with httpx.Client(base_url=cfg.server.api_url, timeout=60) as client:
-        resp = client.get(f"/api/rooms/{room_name}/memory", params={"limit": 1000}, headers=headers)
+    with hub_client(cfg, timeout=60, headers=headers) as client:
+        resp = client.get(f"/api/rooms/{room_name}/memory", params={"limit": 1000})
 
     if resp.status_code == 304:
         console.print("[dim]Already up to date[/dim]")
@@ -689,7 +683,7 @@ def memory_sync(
 
     if not no_reindex:
         try:
-            with httpx.Client(base_url=cfg.server.api_url, timeout=120) as client:
+            with hub_client(cfg, timeout=120) as client:
                 resp = client.post(f"/api/rooms/{room_name}/reindex")
                 resp.raise_for_status()
                 data = resp.json()

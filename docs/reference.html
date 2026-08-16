@@ -100,6 +100,7 @@
       <a href="#config-slim" class="nav-link sub">slim</a>
       <a href="#config-engine" class="nav-link sub">engine</a>
       <a href="#config-auth" class="nav-link sub">auth</a>
+      <a href="#config-login" class="nav-link sub">login</a>
       <a href="#config-metrics" class="nav-link sub">metrics</a>
     </div>
     <div class="nav-section">
@@ -368,6 +369,20 @@ cursor-agent login            # one-time, interactive
           <code><span class="cmd">mycelium upgrade</span> [<span class="flag">--check</span>] [<span class="flag">--version</span> <span class="arg">&lt;version&gt;</span>]</code>
         </div>
         <div class="cmd-ref-body">Upgrade (or pin) the Mycelium CLI. Pass --version to install a specific release.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium login</span> [<span class="flag">--issuer</span> <span class="arg">URL</span>] [<span class="flag">--device</span>] [<span class="flag">--no-browser</span>] [<span class="flag">--client-id</span> <span class="arg">ID</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Sign in to a gated hub via OIDC (Authorization Code + PKCE, or device code).</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium logout</span></code>
+        </div>
+        <div class="cmd-ref-body">Drop the cached OIDC session; the CLI goes back to sending no token.</div>
       </div>
 
       <div class="cmd-ref">
@@ -779,6 +794,27 @@ cursor-agent login            # one-time, interactive
 <span class="comment"># How long a fetched JWKS is cached before re-fetch. Key rotation is also picked up on an unseen kid.</span>
 <span class="arg">jwks_ttl_s</span> = 300.0
 
+<span class="comment"># Where ``mycelium login`` gets a human&#x27;s token — the client side of auth.</span>
+<span class="cmd" id="config-login">[login]</span>
+
+<span class="comment"># OIDC issuer to log in against, e.g. https://sso.example.com/realms/mycelium</span>
+<span class="arg">issuer</span> = <span class="str">&quot;&quot;</span>
+
+<span class="comment"># OAuth client id registered for the CLI at that issuer.</span>
+<span class="arg">client_id</span> = <span class="str">&quot;mycelium-cli&quot;</span>
+
+<span class="comment"># Client secret, only for issuers that refuse public clients. PKCE means the CLI normally needs none.</span>
+<span class="arg">client_secret</span> = <span class="str">&quot;&quot;</span>
+
+<span class="comment"># Space-separated scopes to request. &#x27;offline_access&#x27; is what gets a refresh token from most issuers.</span>
+<span class="arg">scopes</span> = <span class="str">&quot;openid profile email offline_access&quot;</span>
+
+<span class="comment"># Audience to request for the token; should match the hub&#x27;s auth.audience.</span>
+<span class="arg">audience</span> = <span class="str">&quot;&quot;</span>
+
+<span class="comment"># Fixed loopback port for the browser redirect (0 = pick a free one). Set this when the issuer requires an exact registered redirect URI.</span>
+<span class="arg">redirect_port</span> = 0
+
 <span class="comment"># Configuration for the metrics collector + display.</span>
 <span class="cmd" id="config-metrics">[metrics]</span>
 
@@ -1059,6 +1095,72 @@ role     = &quot;user&quot;</code></pre>
         </table>
       </div>
       <p>Each <code>[[auth.issuers]]</code> block takes <code>issuer</code> (the exact <code>iss</code> to trust), <code>jwks_url</code> (optional — omit to resolve it from the issuer&#x27;s OIDC discovery document), <code>audience</code> (optional per-issuer override), and <code>role</code>.</p>
+      <h2 id="auth-signing-in-from-the-cli">Signing in from the CLI</h2>
+      <p>The gate above is the hub&#x27;s half. <code>mycelium login</code> is yours: it obtains an OIDC token for <strong>you</strong>, caches it, and every later command sends it.</p>
+      <pre><code><span class="cmd">mycelium config set</span> login.issuer https://sso.example.com/realms/mycelium
+<span class="cmd">mycelium config set</span> login.audience mycelium      # match the hub&#x27;s auth.audience
+<span class="cmd">mycelium login</span></code></pre>
+      <p>Your browser opens, you sign in at your identity provider, and the CLI takes it from there — <code>mycelium memory</code>, <code>mycelium room</code>, <code>await</code>, <code>respond</code> and the rest now carry <code>Authorization: Bearer &lt;token&gt;</code>.</p>
+      <p><strong>On a machine with no browser</strong> — SSH, CI, a container — use the device flow. The CLI prints a URL and a short code you enter from any other device:</p>
+      <pre><code><span class="cmd">mycelium login</span> <span class="flag">--device</span></code></pre>
+      <p>The CLI falls back to this automatically when it finds no browser to open, so <code>mycelium login</code> over SSH does the right thing without the flag.</p>
+      <p><code>mycelium logout</code> drops the session, and the CLI goes straight back to sending no token at all.</p>
+      <h3 id="auth-login-is-opt-in-like-the-gate">Login is opt-in, like the gate</h3>
+      <p>Never running <code>mycelium login</code> changes nothing: with no cached session the CLI sends no <code>Authorization</code> header, exactly as before this existed. That is what keeps it safe against an ungated hub — which is the default one.</p>
+      <h3 id="auth-where-the-token-lives">Where the token lives</h3>
+      <p>In <code>~/.mycelium/token.json</code>, created mode <code>0600</code> — <strong>not</strong> in <code>config.toml</code>. Config is printed, copied between machines, and mirrored to <code>config.json</code> for the frontend; a token in there would leak by routine. Set <code>MYCELIUM_TOKEN_FILE</code> to cache it somewhere else (a CI runner with a shared home, say).</p>
+      <p>The access token is renewed automatically when it expires, using the refresh token, on the way into the next call that needs it — you don&#x27;t re-run <code>login</code> on a schedule. Renewal needs a refresh token, which most issuers grant only for the <code>offline_access</code> scope; it is in the default <code>login.scopes</code> for that reason. If renewal fails, the CLI drops the header and tells you to sign in again rather than sending a token the hub will reject.</p>
+      <h3 id="auth-who-you-are">Who you are</h3>
+      <p><code>mycelium whoami</code> (and <code>mycelium iam</code> with no arguments) reports the handle from your <strong>token</strong> when you&#x27;re signed in, and the self-asserted <code>identity.name</code> when you&#x27;re not:</p>
+      <pre><code>acting as @julia  (julia#a8f3)
+  signed in (https://sso.example.com/realms/mycelium, expires in 42 min)</code></pre>
+      <p>Because a gated hub attributes writes to the token (see <em>The token is the author</em> below), a self-asserted handle that names someone else is a 403 in waiting — <code>login</code> and <code>iam</code> both say so when they disagree.</p>
+      <h3 id="auth-configuration">Configuration</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Key</th>
+              <th>Default</th>
+              <th>What it does</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>login.issuer</code></td>
+              <td><em>(unset)</em></td>
+              <td>OIDC issuer to log in against. Unset means no login is configured.</td>
+            </tr>
+            <tr>
+              <td><code>login.client_id</code></td>
+              <td><code>mycelium-cli</code></td>
+              <td>OAuth client id registered for the CLI.</td>
+            </tr>
+            <tr>
+              <td><code>login.client_secret</code></td>
+              <td><em>(unset)</em></td>
+              <td>Only for issuers that refuse public clients; PKCE means the CLI normally needs none.</td>
+            </tr>
+            <tr>
+              <td><code>login.scopes</code></td>
+              <td><code>openid profile email offline_access</code></td>
+              <td>Scopes requested at login.</td>
+            </tr>
+            <tr>
+              <td><code>login.audience</code></td>
+              <td><em>(unset)</em></td>
+              <td>Audience to request; should match the hub&#x27;s <code>auth.audience</code>.</td>
+            </tr>
+            <tr>
+              <td><code>login.redirect_port</code></td>
+              <td><code>0</code></td>
+              <td>Fixed loopback port for the browser redirect (<code>0</code> picks a free one). Set it when your issuer requires an exact registered redirect URI — the URI is <code>http://127.0.0.1:&lt;port&gt;/callback</code>.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p><code>MYCELIUM_LOGIN_ISSUER</code>, <code>MYCELIUM_LOGIN_CLIENT_ID</code>, <code>MYCELIUM_LOGIN_CLIENT_SECRET</code>, <code>MYCELIUM_LOGIN_AUDIENCE</code> and <code>MYCELIUM_LOGIN_SCOPES</code> override the same settings, for a runner that has no config file to edit.</p>
+      <p>The CLI is a <strong>public client</strong>: it authenticates with PKCE (S256) and ships no secret. Register it at your issuer as a public client with <code>http://127.0.0.1:*/callback</code> as an allowed redirect, and enable the device grant if you want <code>--device</code> to work.</p>
       <h2 id="auth-issuer-agnostic-by-design">Issuer-agnostic by design</h2>
       <p>The backend trusts a configured issuer and its JWKS. It has no idea whether that is Keycloak, Dex, ZITADEL, Authentik, or your existing corporate SSO, and it never needs one particular product installed.</p>
       <p><strong>More than one trust root is normal.</strong> Humans log in through an interactive OIDC issuer; agents present service-account tokens, possibly from an entirely separate root. List each as its own block:</p>

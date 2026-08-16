@@ -227,6 +227,48 @@ class AuthConfig(BaseModel):
     )
 
 
+class LoginConfig(BaseModel):
+    """Where ``mycelium login`` gets a human's token — the client side of auth.
+
+    Distinct from :class:`AuthConfig`, which configures the *hub's* gate: this
+    section says which issuer this machine logs in against, that one says which
+    issuers the backend trusts. A spoke needs only this half.
+
+    Unset ``issuer`` means "no login configured", which is the default: the CLI
+    sends no token and behaves exactly as it does with no identity at all.
+    """
+
+    issuer: str | None = Field(
+        default=None,
+        description="OIDC issuer to log in against, e.g. https://sso.example.com/realms/mycelium",
+    )
+    client_id: str = Field(
+        default="mycelium-cli",
+        description="OAuth client id registered for the CLI at that issuer.",
+    )
+    client_secret: str | None = Field(
+        default=None,
+        description="Client secret, only for issuers that refuse public clients. PKCE means the CLI normally needs none.",
+    )
+    scopes: str = Field(
+        default="openid profile email offline_access",
+        description="Space-separated scopes to request. 'offline_access' is what gets a refresh token from most issuers.",
+    )
+    audience: str | None = Field(
+        default=None,
+        description="Audience to request for the token; should match the hub's auth.audience.",
+    )
+    redirect_port: int = Field(
+        default=0,
+        description="Fixed loopback port for the browser redirect (0 = pick a free one). Set this when the issuer requires an exact registered redirect URI.",
+    )
+
+    @field_validator("issuer")
+    @classmethod
+    def _strip_trailing_slash(cls, v: str | None) -> str | None:
+        return v.rstrip("/") if isinstance(v, str) else v
+
+
 class RuntimeConfig(BaseModel):
     """Docker runtime / environment configuration."""
 
@@ -330,6 +372,7 @@ class MyceliumConfig(BaseModel):
     llm: LLMConfig = Field(default_factory=LLMConfig)
     engine: EngineConfig = Field(default_factory=EngineConfig)
     auth: AuthConfig = Field(default_factory=AuthConfig)
+    login: LoginConfig = Field(default_factory=LoginConfig)
     runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
     rooms: RoomConfig = Field(default_factory=RoomConfig)
     metrics: MetricsConfig = Field(default_factory=MetricsConfig)
@@ -440,6 +483,7 @@ class MyceliumConfig(BaseModel):
             "rooms": {},
             "llm": {},
             "engine": {},
+            "login": {},
             "runtime": {},
             "metrics": {},
         }
@@ -461,6 +505,19 @@ class MyceliumConfig(BaseModel):
             env_config["llm"]["api_key"] = llm_api_key
         if llm_base_url := os.getenv("LLM_BASE_URL"):
             env_config["llm"]["base_url"] = llm_base_url
+
+        # Login (OIDC client) overrides — how a CI runner points `mycelium login`
+        # at an issuer without writing a config file.
+        if login_issuer := os.getenv("MYCELIUM_LOGIN_ISSUER"):
+            env_config["login"]["issuer"] = login_issuer
+        if login_client_id := os.getenv("MYCELIUM_LOGIN_CLIENT_ID"):
+            env_config["login"]["client_id"] = login_client_id
+        if login_client_secret := os.getenv("MYCELIUM_LOGIN_CLIENT_SECRET"):
+            env_config["login"]["client_secret"] = login_client_secret
+        if login_audience := os.getenv("MYCELIUM_LOGIN_AUDIENCE"):
+            env_config["login"]["audience"] = login_audience
+        if login_scopes := os.getenv("MYCELIUM_LOGIN_SCOPES"):
+            env_config["login"]["scopes"] = login_scopes
 
         # Metrics overrides
         if collector_url := os.getenv("MYCELIUM_COLLECTOR_URL"):
@@ -512,6 +569,7 @@ class MyceliumConfig(BaseModel):
             "slim",
             "llm",
             "engine",
+            "login",
             "runtime",
             "metrics",
             "adapters",

@@ -131,7 +131,13 @@ per-deployment opt-in.
    attribution and stays with the RBAC step.*
 3. **CLI human login** — `mycelium login` obtains a token (Authorization Code +
    PKCE, or device-code for headless), stores + refreshes it; `mycelium iam`
-   becomes "who am I per the token," not self-assert.
+   becomes "who am I per the token," not self-assert. *Landed (#563):
+   `mycelium-cli/src/mycelium/{oidc,tokens,client}.py` + `commands/login.py`,
+   configured under `[login]`. The token lives in a `0600` cache rather than
+   `config.toml`, and every backend call is built by one authenticated client
+   factory (`mycelium.client`) — the seam agent credentials reuse in step 4.
+   Logged out, that factory attaches nothing, so the ungated path is byte-for-byte
+   what it was.*
 4. **Agent identity issuance** — per-agent **OIDC service-account** credentials by
    default; **SPIRE JWT-SVID as an optional upgrade** where workload attestation is
    wanted.

@@ -24,6 +24,7 @@ from pydantic import ValidationError
 from rich.console import Console
 from rich.table import Table
 
+from mycelium.client import current_token
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
 from mycelium.error_handler import print_error
@@ -259,13 +260,24 @@ def _owned_agents(owner: str) -> list[tuple[str, AgentManifest]]:
     group="user",
 )
 def whoami(ctx: typer.Context) -> None:
-    """Resolve the current identity to a user handle and roll up owned agents."""
+    """Resolve the current identity to a user handle and roll up owned agents.
+
+    Logged in (``mycelium login``), the token is the answer: the principal is the
+    handle it asserts, which is also the handle a gated hub will attribute writes
+    to. Logged out — the default — this is the self-asserted ``identity.name``
+    exactly as before.
+    """
     try:
         config = MyceliumConfig.load()
         # The attribution handle can be session-qualified (``julia#a8f3``); the
         # principal is the bare name it derives from.
         identity = config.get_current_identity()
         principal = (config.identity.name or identity).split("#", 1)[0].lower()
+
+        token = current_token(config)
+        token_handle = token.handle(config.auth.handle_claim) if token else None
+        if token_handle:
+            principal = token_handle
 
         json_output = ctx.obj.get("json", False) if ctx.obj else False
         user = load_user(principal)
@@ -277,6 +289,14 @@ def whoami(ctx: typer.Context) -> None:
                     {
                         "identity": identity,
                         "principal": principal,
+                        "authenticated": token is not None,
+                        "token": {
+                            "handle": token_handle,
+                            "issuer": token.issuer,
+                            "expires_at": token.expires_at,
+                        }
+                        if token
+                        else None,
                         "registered": user is not None,
                         "user": user.model_dump() if user else None,
                         "owns": [{"room": r, "handle": m.handle} for r, m in owned],
@@ -288,6 +308,11 @@ def whoami(ctx: typer.Context) -> None:
             return
 
         console.print(f"[bold]acting as[/bold] [cyan]@{principal}[/cyan]  [dim]({identity})[/dim]")
+        if token is not None:
+            remaining = token.expires_in()
+            expiry = f", expires in {int(remaining // 60)} min" if remaining is not None else ""
+            source = "signed in" if token_handle else "signed in, no handle claim"
+            console.print(f"  [green]{source}[/green] [dim]({token.issuer}{expiry})[/dim]")
         if user is None:
             console.print(
                 f'[dim]Not registered. Claim it with: mycelium iam {principal} --name "…"[/dim]'
@@ -310,13 +335,15 @@ def whoami(ctx: typer.Context) -> None:
 
 
 @doc_ref(
-    usage='mycelium iam <handle> [--name "Display Name"]',
-    desc="Set this machine's identity and ensure the user record exists.",
+    usage='mycelium iam [<handle>] [--name "Display Name"]',
+    desc="Set this machine's identity (or, with no handle, report it) and ensure the user record exists.",
     group="user",
 )
 def iam(
     ctx: typer.Context,
-    handle: str = typer.Argument(..., help="Your user handle (lowercase slug, e.g. 'julia')."),
+    handle: str | None = typer.Argument(
+        None, help="Your user handle (lowercase slug, e.g. 'julia'). Omit to report who you are."
+    ),
     name: str | None = typer.Option(None, "--name", "-n", help="Display name to set/update."),
     team: list[str] | None = typer.Option(None, "--team", help="Team slug to join (repeatable)."),
 ) -> None:
@@ -326,9 +353,17 @@ def iam(
     handle resolve to) and upserts the ``users/<handle>`` record so the principal
     actually exists. The one-liner counterpart to the app's acting-as picker.
 
+    With no handle it reports the current identity instead — the token's handle
+    when signed in, the self-asserted one when not.
+
     Examples:
         mycelium iam julia --name "Julia Valenti" --team core
+        mycelium iam
     """
+    if handle is None:
+        whoami(ctx)
+        return
+
     try:
         try:
             manifest = UserManifest(handle=handle, display_name=name or "", teams=team or [])
@@ -356,6 +391,17 @@ def iam(
             f"{f' ({manifest.display_name})' if manifest.display_name else ''}{team_line}"
         )
         console.print("[dim]Set as this machine's identity. Check with: mycelium whoami[/dim]")
+
+        # A gated hub attributes writes to the token, and refuses a body that
+        # claims a different handle (#562) — so a mismatch is worth saying now
+        # rather than at the first 403.
+        token = current_token(config)
+        token_handle = token.handle(config.auth.handle_claim) if token else None
+        if token_handle and token_handle != manifest.handle:
+            console.print(
+                f"[yellow]Note:[/yellow] you're signed in as [cyan]@{token_handle}[/cyan]; "
+                "a hub with auth enabled will refuse writes claiming a different handle."
+            )
     except typer.Exit:
         raise
     except Exception as e:

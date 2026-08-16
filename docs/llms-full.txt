@@ -1558,6 +1558,89 @@ Each `[[auth.issuers]]` block takes `issuer` (the exact `iss` to trust),
 `jwks_url` (optional — omit to resolve it from the issuer's OIDC discovery
 document), `audience` (optional per-issuer override), and `role`.
 
+## Signing in from the CLI
+
+The gate above is the hub's half. `mycelium login` is yours: it obtains an OIDC
+token for **you**, caches it, and every later command sends it.
+
+```bash
+mycelium config set login.issuer https://sso.example.com/realms/mycelium
+mycelium config set login.audience mycelium      # match the hub's auth.audience
+mycelium login
+```
+
+Your browser opens, you sign in at your identity provider, and the CLI takes it
+from there — `mycelium memory`, `mycelium room`, `await`, `respond` and the rest
+now carry `Authorization: Bearer <token>`.
+
+**On a machine with no browser** — SSH, CI, a container — use the device flow.
+The CLI prints a URL and a short code you enter from any other device:
+
+```bash
+mycelium login --device
+```
+
+The CLI falls back to this automatically when it finds no browser to open, so
+`mycelium login` over SSH does the right thing without the flag.
+
+`mycelium logout` drops the session, and the CLI goes straight back to sending no
+token at all.
+
+### Login is opt-in, like the gate
+
+Never running `mycelium login` changes nothing: with no cached session the CLI
+sends no `Authorization` header, exactly as before this existed. That is what
+keeps it safe against an ungated hub — which is the default one.
+
+### Where the token lives
+
+In `~/.mycelium/token.json`, created mode `0600` — **not** in `config.toml`.
+Config is printed, copied between machines, and mirrored to `config.json` for the
+frontend; a token in there would leak by routine. Set `MYCELIUM_TOKEN_FILE` to
+cache it somewhere else (a CI runner with a shared home, say).
+
+The access token is renewed automatically when it expires, using the refresh
+token, on the way into the next call that needs it — you don't re-run `login` on
+a schedule. Renewal needs a refresh token, which most issuers grant only for the
+`offline_access` scope; it is in the default `login.scopes` for that reason. If
+renewal fails, the CLI drops the header and tells you to sign in again rather
+than sending a token the hub will reject.
+
+### Who you are
+
+`mycelium whoami` (and `mycelium iam` with no arguments) reports the handle from
+your **token** when you're signed in, and the self-asserted `identity.name` when
+you're not:
+
+```
+acting as @julia  (julia#a8f3)
+  signed in (https://sso.example.com/realms/mycelium, expires in 42 min)
+```
+
+Because a gated hub attributes writes to the token (see *The token is the author*
+below), a self-asserted handle that names someone else is a 403 in waiting —
+`login` and `iam` both say so when they disagree.
+
+### Configuration
+
+| Key | Default | What it does |
+|-----|---------|--------------|
+| `login.issuer` | *(unset)* | OIDC issuer to log in against. Unset means no login is configured. |
+| `login.client_id` | `mycelium-cli` | OAuth client id registered for the CLI. |
+| `login.client_secret` | *(unset)* | Only for issuers that refuse public clients; PKCE means the CLI normally needs none. |
+| `login.scopes` | `openid profile email offline_access` | Scopes requested at login. |
+| `login.audience` | *(unset)* | Audience to request; should match the hub's `auth.audience`. |
+| `login.redirect_port` | `0` | Fixed loopback port for the browser redirect (`0` picks a free one). Set it when your issuer requires an exact registered redirect URI — the URI is `http://127.0.0.1:<port>/callback`. |
+
+`MYCELIUM_LOGIN_ISSUER`, `MYCELIUM_LOGIN_CLIENT_ID`, `MYCELIUM_LOGIN_CLIENT_SECRET`,
+`MYCELIUM_LOGIN_AUDIENCE` and `MYCELIUM_LOGIN_SCOPES` override the same settings,
+for a runner that has no config file to edit.
+
+The CLI is a **public client**: it authenticates with PKCE (S256) and ships no
+secret. Register it at your issuer as a public client with
+`http://127.0.0.1:*/callback` as an allowed redirect, and enable the device grant
+if you want `--device` to work.
+
 ## Issuer-agnostic by design
 
 The backend trusts a configured issuer and its JWKS. It has no idea whether that

@@ -29,9 +29,9 @@ import json as json_module
 import os
 import subprocess
 
-import httpx
 import typer
 
+from mycelium.client import hub_client
 from mycelium.commands.room import _resolve_room
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
@@ -40,11 +40,12 @@ from mycelium.error_handler import print_error
 
 def _await_once(config: MyceliumConfig, room_name: str, handle: str, timeout: int) -> dict | None:
     """One long-poll. Returns the turn dict, or ``None`` on timeout."""
-    url = f"{config.server.api_url}/api/rooms/{room_name}/await"
+    path = f"/api/rooms/{room_name}/await"
     # The server blocks up to `timeout`; give the client a little more headroom
     # (or no cap when waiting indefinitely).
     client_timeout = float(timeout) + 15.0 if timeout > 0 else None
-    resp = httpx.get(url, params={"handle": handle, "timeout": timeout}, timeout=client_timeout)
+    with hub_client(config, timeout=client_timeout) as client:
+        resp = client.get(path, params={"handle": handle, "timeout": timeout})
     resp.raise_for_status()
     data = resp.json()
     return data if "prompt" in data else None
@@ -227,8 +228,10 @@ def respond(
     try:
         config = MyceliumConfig.load()
         room_name = _resolve_room(config, room)
-        url = f"{config.server.api_url}/api/rooms/{room_name}/reply"
-        resp = httpx.post(url, json={"handle": handle, "text": text}, timeout=30.0)
+        with hub_client(config, timeout=30.0) as client:
+            resp = client.post(
+                f"/api/rooms/{room_name}/reply", json={"handle": handle, "text": text}
+            )
         resp.raise_for_status()
         data = resp.json()
         if json_output:
