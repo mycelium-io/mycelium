@@ -5,7 +5,13 @@
 
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { Brain, ChevronRight, Folder, FolderOpen, FileText, AlertCircle } from "lucide-react";
-import { fetchMemories, searchMemories, type Memory, type MemorySearchResult } from "@/lib/api";
+import {
+  fetchMemories,
+  fetchMemory,
+  searchMemories,
+  type Memory,
+  type MemorySearchResult,
+} from "@/lib/api";
 import { DetailDrawer } from "@/components/detail-drawer";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -22,6 +28,9 @@ interface Props {
   roomName: string;
   masId?: string | null;
   refreshTrigger: number;
+  /** A memory key to open, arrived at from search. */
+  focusKey?: string | null;
+  onFocusConsumed?: () => void;
 }
 
 function buildTree(memories: Memory[]): TreeNode[] {
@@ -168,7 +177,7 @@ function TreeRows({ nodes, depth, collapsed, onToggle, onSelect, selected }: Tre
   );
 }
 
-export function MemoryPanel({ roomName, refreshTrigger }: Props) {
+export function MemoryPanel({ roomName, refreshTrigger, focusKey = null, onFocusConsumed }: Props) {
   const [memories, setMemories] = useState<Memory[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -191,6 +200,28 @@ export function MemoryPanel({ roomName, refreshTrigger }: Props) {
   );
 
   useEffect(() => { loadData(); }, [loadData, refreshTrigger]);
+
+  // Arriving from search: open the named memory and reveal its folder. The tree
+  // only holds the first page of keys, so the memory is fetched by key rather
+  // than looked up in what happens to be loaded.
+  useEffect(() => {
+    if (!focusKey) return;
+    // Consumed only once the memory is in hand: clearing the request first would
+    // unmount the effect that is still fetching what it asked for.
+    fetchMemory(roomName, focusKey).then(memory => {
+      if (memory) {
+        setSearchResults(null);
+        setSelected(memory);
+        setCollapsed(prev => {
+          const next = new Set(prev);
+          const parts = focusKey.split("/");
+          for (let i = 1; i < parts.length; i++) next.delete(parts.slice(0, i).join("/"));
+          return next;
+        });
+      }
+      onFocusConsumed?.();
+    });
+  }, [roomName, focusKey, onFocusConsumed]);
 
   const handleSearch = async () => {
     if (!searchQuery.trim()) { setSearchResults(null); setSearchError(null); return; }

@@ -6,6 +6,8 @@
 // talks to its own origin: no CORS, no second public port, no build-time
 // URL baking. The internal backend URL is a server-side concern.
 
+import type { SearchResponse } from "@/lib/search";
+
 /**
  * Attach to a fetch `.catch` to surface network failures in the browser
  * console. Replaces the previous `.catch(() => {})` pattern that swallowed
@@ -170,6 +172,17 @@ export async function fetchMemories(roomName: string, prefix?: string): Promise<
   });
 }
 
+/** One memory by key. Returns null when it isn't there (or the read failed), so
+ *  a caller jumping to a since-deleted key lands on the room rather than an
+ *  error. */
+export async function fetchMemory(roomName: string, key: string): Promise<Memory | null> {
+  const path = key.split("/").map(encodeURIComponent).join("/");
+  return apiFetch<Memory | null>(`/api/rooms/${roomName}/memory/${path}`, {
+    cache: "no-store",
+    fallback: null,
+  });
+}
+
 export interface MemorySearchResult {
   memory: Memory;
   similarity: number;
@@ -185,6 +198,17 @@ export async function searchMemories(roomName: string, query: string): Promise<M
     body: JSON.stringify({ query, limit: 10 }),
   });
   return data.results ?? [];
+}
+
+// ── Cross-entity search ──────────────────────────────────────────────────────
+
+/** One ranked query across memories, episodes, messages, rooms and members.
+ *
+ *  Throws (rather than falling back to empty) so the search surface can tell
+ *  "nothing matched" from "the hub is unreachable" and say which. */
+export async function searchEverything(query: string, limit = 20): Promise<SearchResponse> {
+  const params = new URLSearchParams({ q: query, limit: String(limit) });
+  return apiFetch<SearchResponse>(`/api/search?${params}`, { cache: "no-store" });
 }
 
 // ── Plan ─────────────────────────────────────────────────────────────────────

@@ -3,7 +3,7 @@
 
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Users } from "lucide-react";
 import {
   createEngine,
@@ -38,6 +38,10 @@ interface Props {
    *  command palette reaches the invite form from anywhere in the room. */
   engineInvite?: boolean;
   onEngineInviteShown?: () => void;
+  /** A handle to reveal, arrived at from search. The roster has no detail view,
+   *  so the row scrolls into sight and marks itself instead of opening. */
+  focusHandle?: string | null;
+  onFocusConsumed?: () => void;
 }
 
 interface Person {
@@ -86,6 +90,8 @@ export function AgentsPanel({
   refreshKey = 0,
   engineInvite = false,
   onEngineInviteShown,
+  focusHandle = null,
+  onFocusConsumed,
 }: Props) {
   const [agents, setAgents] = useState<AgentSummary[]>([]);
   const [posters, setPosters] = useState<string[]>([]);
@@ -132,6 +138,21 @@ export function AgentsPanel({
     setAddOpen(true);
     onEngineInviteShown?.();
   }, [engineInvite, onEngineInviteShown]);
+
+  // Arriving from search: mark the named row and scroll it into sight. The mark
+  // outlives the request — a highlight that vanished with the URL parameter
+  // would be gone before it was read.
+  const [highlight, setHighlight] = useState<string | null>(null);
+  const highlightRow = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!focusHandle) return;
+    setHighlight(focusHandle);
+    onFocusConsumed?.();
+  }, [focusHandle, onFocusConsumed]);
+  useEffect(() => {
+    if (!highlight) return;
+    highlightRow.current?.scrollIntoView({ block: "center" });
+  }, [highlight, loaded]);
 
   const agentHandles = useMemo(() => new Set(agents.map((a) => a.handle)), [agents]);
 
@@ -327,10 +348,14 @@ export function AgentsPanel({
             <SectionLabel>People</SectionLabel>
             {people.map((p) => {
               const presence = presenceMap.get(p.handle);
+              const marked = highlight === p.handle;
               return (
                 <div
                   key={`person-${p.handle}`}
-                  className="flex items-center gap-2.5 px-3 py-2.5 border-b border-border last:border-b-0"
+                  ref={marked ? highlightRow : undefined}
+                  className={`flex items-center gap-2.5 px-3 py-2.5 border-b border-border last:border-b-0 ${
+                    marked ? "bg-accent/15" : ""
+                  }`}
                 >
                   <Monogram handle={p.handle} color="var(--muted-foreground)" presence={presence?.kind} />
                   <div className="min-w-0 flex-1 leading-tight">
@@ -357,10 +382,14 @@ export function AgentsPanel({
         {visibleAgents.map((a) => {
           const mine = principal !== "" && a.owner === principal;
           const presence = presenceMap.get(a.handle);
+          const marked = highlight === a.handle;
           return (
             <div
               key={`agent-${a.handle}`}
-              className="flex items-center gap-2.5 px-3 py-2.5 border-b border-border last:border-b-0"
+              ref={marked ? highlightRow : undefined}
+              className={`flex items-center gap-2.5 px-3 py-2.5 border-b border-border last:border-b-0 ${
+                marked ? "bg-accent/15" : ""
+              }`}
             >
               <Monogram handle={a.handle} presence={presence?.kind} />
               <div className="min-w-0 flex-1 leading-tight">

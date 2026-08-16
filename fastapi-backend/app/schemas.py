@@ -523,3 +523,51 @@ class EpisodeListResponse(BaseModel):
 
 class EpisodeDetailRead(EpisodeSummaryRead):
     messages: list[L9EnvelopeRead] = Field(default_factory=list)
+
+
+# ── Cross-entity search ───────────────────────────────────────────────────────
+
+
+SearchResultType = Literal["room", "agent", "episode", "memory", "message"]
+
+
+class SearchScopeRead(BaseModel):
+    """How the server read the query's scoping tokens.
+
+    Echoed back so a caller draws its scope chips from the interpretation the
+    search actually ran under, rather than re-parsing the string itself.
+    """
+
+    text: str = ""
+    rooms: list[str] = Field(default_factory=list)
+    actors: list[str] = Field(default_factory=list)
+    types: list[SearchResultType] = Field(default_factory=list)
+    kinds: list[str] = Field(default_factory=list)
+
+
+class SearchHitRead(BaseModel):
+    """One result, flattened to the shape every entity type shares."""
+
+    type: SearchResultType
+    room: str
+    id: str = Field(
+        ...,
+        description="Type-specific identifier to navigate by: memory key, episode "
+        "short id, message uuid, room name, agent handle",
+    )
+    title: str
+    subtitle: str = ""
+    snippet: str = ""
+    kind: str | None = None
+    timestamp: str = ""
+    score: float
+
+
+class SearchResponse(BaseModel):
+    query: str
+    scope: SearchScopeRead
+    results: list[SearchHitRead] = Field(default_factory=list)
+    counts: dict[str, int] = Field(
+        default_factory=dict,
+        description="Matches per type before the result list was trimmed",
+    )
