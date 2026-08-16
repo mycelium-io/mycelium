@@ -5,6 +5,7 @@
 
 import type { ReactNode } from "react";
 import { RoomsSidebar } from "@/components/rooms-sidebar";
+import { KeymapHelpButton } from "@/components/keymap-provider";
 
 interface Props {
   /** The open room (highlights its sidebar row); null on the home view. */
@@ -26,7 +27,10 @@ export function AppShell({ activeRoom = null, statusLeft, statusRight, children 
       </div>
       <footer className="flex h-6 flex-shrink-0 items-center gap-3 border-t border-border bg-surface px-3 text-micro text-muted-foreground">
         {statusLeft}
-        <div className="ml-auto flex items-center gap-3">{statusRight}</div>
+        <div className="ml-auto flex items-center gap-3">
+          {statusRight}
+          <KeymapHelpButton />
+        </div>
       </footer>
     </div>
   );

@@ -524,6 +524,13 @@ cursor-agent login            # one-time, interactive
         <div class="cmd-ref-body">Forget an agent's credential on this machine.</div>
       </div>
 
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium agent credential</span> slim-key <span class="arg">&lt;handle&gt;</span></code>
+        </div>
+        <div class="cmd-ref-body">Mint an agent's SignerJwt SLIM channel identity — a local ES256 keypair (0600) whose public JWK is registered on the room roster. The floor for <code>slim.identity = signerjwt</code> (#476); the PSK default needs none.</div>
+      </div>
+
       <h2 id="cli-memory">memory</h2>
 
       <div class="cmd-ref">
@@ -827,6 +834,9 @@ cursor-agent login            # one-time, interactive
 
 <span class="comment"># SLIM node endpoint (host:port), e.g. http://127.0.0.1:46357</span>
 <span class="arg">node_endpoint</span> = <span class="str">&quot;http://127.0.0.1:46357&quot;</span>
+
+<span class="comment"># SLIM channel identity tier: &#x27;psk&#x27; (default, off-by-default #567) is the shared-secret credential every room member derives — zero infra, no per-agent identity. &#x27;signerjwt&#x27; opts into the SignerJwt floor (#476): each member presents a per-agent self-signed ES256 identity so members are cryptographically distinct, individually revocable MLS participants. Selecting &#x27;signerjwt&#x27; with no registered key degrades to &#x27;psk&#x27; unless MYCELIUM_SLIM_IDENTITY_REQUIRE=1 fails closed.</span>
+<span class="arg">identity</span> = <span class="str">&quot;psk&quot;</span>
 
 <span class="comment"># First-party Cognition Engine runtime configuration.</span>
 <span class="cmd" id="config-engine">[engine]</span>

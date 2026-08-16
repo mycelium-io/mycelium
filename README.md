@@ -209,3 +209,4 @@ Mycelium builds on OSS projects we found invaluable in this space:
 - [IOC L9 protocol models](https://github.com/outshift-open/ioc-protocols-models): the epistemic envelope layer that rides SLIM
 - [NegMAS](https://negmas.readthedocs.io/): multi-issue negotiation, the aligner's engine
 - [FastAPI](https://fastapi.tiangolo.com/) + [fastembed](https://github.com/qdrant/fastembed): the moderator backend and on-device embeddings
+- [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/mycelium-io/mycelium)
