@@ -151,3 +151,89 @@ def test_material_built_when_key_and_roster_present(tmp_path):
     # Constructed slim-bindings identity configs (exact types are binding-internal).
     assert provider is not None
     assert verifier is not None
+
+
+# ── SPIRE mode (#579): socket / trust-domain / SPIFFE-ID resolution ──────────
+def test_spire_mode_selected(monkeypatch):
+    monkeypatch.setenv("MYCELIUM_SLIM_IDENTITY", "SPIRE")
+    assert slim_identity.resolve_identity_mode() == slim_identity.MODE_SPIRE
+
+
+def test_resolve_spire_socket_none_when_unset(monkeypatch):
+    monkeypatch.delenv("MYCELIUM_SLIM_SPIRE_SOCKET", raising=False)
+    monkeypatch.delenv("SPIRE_AGENT_SOCKET", raising=False)
+    assert slim_identity.resolve_spire_socket() is None
+
+
+def test_resolve_spire_socket_prefers_mycelium_env(monkeypatch):
+    monkeypatch.setenv("MYCELIUM_SLIM_SPIRE_SOCKET", "unix:///a.sock")
+    monkeypatch.setenv("SPIRE_AGENT_SOCKET", "unix:///b.sock")
+    assert slim_identity.resolve_spire_socket() == "unix:///a.sock"
+
+
+def test_resolve_spire_socket_falls_back_to_standard_env(monkeypatch):
+    monkeypatch.delenv("MYCELIUM_SLIM_SPIRE_SOCKET", raising=False)
+    monkeypatch.setenv("SPIRE_AGENT_SOCKET", "unix:///b.sock")
+    assert slim_identity.resolve_spire_socket() == "unix:///b.sock"
+
+
+def test_resolve_spire_trust_domain_default_and_override(monkeypatch):
+    monkeypatch.delenv("MYCELIUM_SLIM_SPIRE_TRUST_DOMAIN", raising=False)
+    assert slim_identity.resolve_spire_trust_domain() == slim_identity.SPIRE_DEFAULT_TRUST_DOMAIN
+    monkeypatch.setenv("MYCELIUM_SLIM_SPIRE_TRUST_DOMAIN", "acme.example")
+    assert slim_identity.resolve_spire_trust_domain() == "acme.example"
+
+
+def test_spiffe_id_for_builds_expected_path():
+    assert (
+        slim_identity.spiffe_id_for("alice", "mycelium.dev") == "spiffe://mycelium.dev/agent/alice"
+    )
+
+
+def test_spire_material_none_without_socket(monkeypatch):
+    monkeypatch.delenv("MYCELIUM_SLIM_SPIRE_SOCKET", raising=False)
+    monkeypatch.delenv("SPIRE_AGENT_SOCKET", raising=False)
+    assert slim_identity.resolve_spire_material("alice") is None
+
+
+def test_spire_material_none_when_socket_absent(monkeypatch, tmp_path):
+    # Configured but the socket file does not exist → no agent to mint the SVID.
+    monkeypatch.setenv("MYCELIUM_SLIM_SPIRE_SOCKET", str(tmp_path / "missing.sock"))
+    assert slim_identity.resolve_spire_material("alice") is None
+
+
+def test_spire_material_built_when_socket_present(monkeypatch, tmp_path):
+    pytest.importorskip("slim_bindings")
+    sock = tmp_path / "agent.sock"
+    sock.write_text("")  # _spire_socket_present only checks existence
+    monkeypatch.setenv("MYCELIUM_SLIM_SPIRE_SOCKET", f"unix://{sock}")
+    material = slim_identity.resolve_spire_material("alice")
+    assert material is not None
+    provider, verifier = material
+    assert provider is not None
+    assert verifier is not None
+
+
+# ── resolve_identity_material: the shared connect-seam dispatcher ─────────────
+def test_identity_material_dispatch_psk_is_none(tmp_path):
+    assert (
+        slim_identity.resolve_identity_material(slim_identity.MODE_PSK, "alice", tmp_path) is None
+    )
+
+
+def test_identity_material_dispatch_signerjwt(tmp_path):
+    pytest.importorskip("slim_bindings")
+    slim_identity.ensure_agent_keypair("alice", tmp_path)
+    material = slim_identity.resolve_identity_material(
+        slim_identity.MODE_SIGNERJWT, "alice", tmp_path
+    )
+    assert material is not None
+
+
+def test_identity_material_dispatch_spire(monkeypatch, tmp_path):
+    pytest.importorskip("slim_bindings")
+    sock = tmp_path / "agent.sock"
+    sock.write_text("")
+    monkeypatch.setenv("MYCELIUM_SLIM_SPIRE_SOCKET", str(sock))
+    material = slim_identity.resolve_identity_material(slim_identity.MODE_SPIRE, "alice")
+    assert material is not None
