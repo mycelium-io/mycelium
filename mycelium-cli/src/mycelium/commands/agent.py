@@ -465,6 +465,47 @@ def _register_spire_workload(handle: str, result: dict) -> None:
     )
 
 
+def _revoke_channel_identity(handle: str, mode: str) -> None:
+    """Revoke ``@handle``'s SLIM channel identity on ``agent rm`` (#590).
+
+    The deprovisioning inverse of :func:`_provision_channel_identity`: it removes the
+    per-agent credential so a removed member can't rejoin, *without re-keying the
+    room* — the payoff per-member identity has over the shared-secret PSK (@alice and
+    the rest keep working, no rotation). Dispatches by the effective tier
+    (``config.slim.identity``, the "one switch"), best-effort: a failure warns rather
+    than aborting, since the manifest is already gone.
+
+    * ``signerjwt`` — drop the member's JWK from the roster + delete its local key.
+    * ``spire`` — delete the SVID entry against the appliance SPIRE server
+      (:func:`_revoke_spire_workload`), falling back to the operator step when the
+      server isn't reachable.
+    * ``psk`` — no per-agent credential exists; note that rotating the shared secret
+      is the only (blunt, room-wide) lever this tier has.
+    """
+    from mycelium.slim import identity as slim_identity
+
+    if mode == slim_identity.MODE_SPIRE:
+        _revoke_spire_workload(handle, mode)
+        return
+
+    try:
+        result = slim_identity.revoke_channel_identity(handle, mode=mode)
+    except OSError as exc:
+        console.print(f"[yellow]Could not revoke channel identity: {exc}[/yellow]")
+        return
+
+    if result["mode"] == slim_identity.MODE_SIGNERJWT and result["revoked"]:
+        console.print(
+            f"[dim]Revoked SLIM channel identity (signerjwt · dropped @{handle} from "
+            "the roster). Peers now reject its tokens — no room re-key.[/dim]"
+        )
+    elif result["mode"] == slim_identity.MODE_PSK:
+        console.print(
+            "[dim]psk has no per-agent revocation; to fully exclude a removed member "
+            "you must rotate MYCELIUM_SLIM_MASTER_SECRET (a room-wide re-key).[/dim]"
+        )
+
+
 def _revoke_spire_workload(handle: str, mode: str) -> None:
     """Revoke ``@handle``'s SPIRE SVID entry on ``agent rm`` (spire mode only).
 
@@ -1107,10 +1148,13 @@ def agent_rm(
         if local.exists():
             local.unlink()
 
-        # 3. Revoke the SPIRE SVID entry (spire mode only; #588/#590). No-op under
-        # psk/signerjwt, or when the appliance SPIRE server isn't up — there's
-        # nothing to revoke. Best-effort: a failure is a warning, not a hard error.
-        _revoke_spire_workload(handle, config.slim.identity)
+        # 3. Revoke the agent's per-agent channel credential for the active tier
+        # (#590): signerjwt drops its JWK from the roster + deletes its local key,
+        # spire deletes the SVID entry, psk notes the room-wide-rotation limitation.
+        # The key property: the removed member can't rejoin, and the others keep
+        # working with no re-key. Best-effort: a failure is a warning, not a hard
+        # error (the manifest is already gone).
+        _revoke_channel_identity(handle, config.slim.identity)
 
         verb = "Destroyed" if will_destroy else "Unregistered"
         console.print(f"[green]{verb}:[/green] @{handle} from {room_name}")

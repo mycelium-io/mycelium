@@ -320,3 +320,66 @@ def test_provision_defaults_to_active_mode(tmp_path, monkeypatch):
     result = slim_identity.provision_channel_identity("alice", data_dir=tmp_path)
     assert result["mode"] == "signerjwt"
     assert result["provisioned"] is True
+
+
+# ── revoke_channel_identity: the payoff — per-member revoke, no re-key (#590) ──
+def test_revoke_psk_is_a_noop(tmp_path):
+    result = slim_identity.revoke_channel_identity("alice", slim_identity.MODE_PSK, tmp_path)
+    assert result == {"mode": "psk", "handle": "alice", "revoked": False}
+
+
+def test_revoke_signerjwt_drops_jwk_and_key(tmp_path):
+    slim_identity.provision_channel_identity("bob", slim_identity.MODE_SIGNERJWT, tmp_path)
+    assert slim_identity.public_jwk_path("bob", tmp_path).exists()
+    assert slim_identity.signing_key_path("bob", tmp_path).exists()
+
+    result = slim_identity.revoke_channel_identity("bob", slim_identity.MODE_SIGNERJWT, tmp_path)
+    assert result["mode"] == "signerjwt"
+    assert result["revoked"] is True
+    # Off the roster: peers' static-JWKS verifiers now reject its self-signed tokens.
+    assert not slim_identity.public_jwk_path("bob", tmp_path).exists()
+    assert not slim_identity.signing_key_path("bob", tmp_path).exists()
+
+
+def test_revoke_signerjwt_leaves_other_members_untouched(tmp_path):
+    # The key property the PSK can't offer: revoking @bob leaves @alice's credential
+    # and the rest of the roster intact — no room-wide re-key.
+    slim_identity.provision_channel_identity("alice", slim_identity.MODE_SIGNERJWT, tmp_path)
+    slim_identity.provision_channel_identity("bob", slim_identity.MODE_SIGNERJWT, tmp_path)
+
+    slim_identity.revoke_channel_identity("bob", slim_identity.MODE_SIGNERJWT, tmp_path)
+
+    assert slim_identity.public_jwk_path("alice", tmp_path).exists()
+    assert slim_identity.signing_key_path("alice", tmp_path).exists()
+    roster = slim_identity.load_roster_jwks(tmp_path)
+    assert roster is not None
+    kids = {jwk["kid"] for jwk in json.loads(roster)["keys"]}
+    assert kids == {"alice"}
+
+
+def test_revoke_signerjwt_is_idempotent(tmp_path):
+    slim_identity.provision_channel_identity("bob", slim_identity.MODE_SIGNERJWT, tmp_path)
+    first = slim_identity.revoke_channel_identity("bob", slim_identity.MODE_SIGNERJWT, tmp_path)
+    assert first["revoked"] is True
+    # Revoking an already-absent member is a no-op, not an error.
+    second = slim_identity.revoke_channel_identity("bob", slim_identity.MODE_SIGNERJWT, tmp_path)
+    assert second["revoked"] is False
+    assert second["removed"] == []
+
+
+def test_revoke_spire_returns_spiffe_and_operator_step(tmp_path, monkeypatch):
+    monkeypatch.setenv("MYCELIUM_SLIM_SPIRE_TRUST_DOMAIN", "acme.example")
+    result = slim_identity.revoke_channel_identity("alice", slim_identity.MODE_SPIRE, tmp_path)
+    assert result["mode"] == "spire"
+    # Entry deletion is external (needs the SPIRE server), so nothing is removed here.
+    assert result["revoked"] is False
+    assert result["spiffe_id"] == "spiffe://acme.example/agent/alice"
+    assert "spire-server entry delete" in result["operator_step"]
+
+
+def test_revoke_defaults_to_active_mode(tmp_path, monkeypatch):
+    monkeypatch.setenv("MYCELIUM_SLIM_IDENTITY", "signerjwt")
+    slim_identity.provision_channel_identity("alice", data_dir=tmp_path)
+    result = slim_identity.revoke_channel_identity("alice", data_dir=tmp_path)
+    assert result["mode"] == "signerjwt"
+    assert result["revoked"] is True
