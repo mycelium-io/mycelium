@@ -34,7 +34,7 @@ import logging
 import os
 from pathlib import Path
 from types import ModuleType
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     import slim_bindings
@@ -93,9 +93,9 @@ _SPIRE_TRUST_DOMAIN_ENV = "MYCELIUM_SLIM_SPIRE_TRUST_DOMAIN"
 # with the SignerJwt floor so a mixed room agrees on the ``aud`` claim.
 SPIRE_AUDIENCE = SIGNERJWT_AUDIENCE
 SPIRE_DEFAULT_TRUST_DOMAIN = "mycelium.dev"
-# A member's SPIFFE ID is ``spiffe://{trust_domain}/{prefix}/{handle}`` — a
-# minimal handle↔SPIFFE binding good enough to demo; the full registration
-# surface (SPIFFE-leaf ↔ ``@handle`` reconciliation) is #589.
+# A member's SPIFFE ID is ``spiffe://{trust_domain}/{prefix}/{handle}`` — the
+# handle↔SPIFFE binding that makes ``@handle`` the identity spine (#589):
+# :func:`spiffe_id_for` mints it, :func:`handle_from_spiffe_id` reconciles it back.
 SPIRE_WORKLOAD_PATH_PREFIX = "agent"
 
 
@@ -399,8 +399,9 @@ def resolve_spire_trust_domain() -> str:
 def spiffe_id_for(handle: str, trust_domain: str) -> str:
     """The member's SPIFFE ID: ``spiffe://{trust_domain}/agent/{handle}``.
 
-    A minimal handle↔SPIFFE binding — enough to demo the path; the full
-    registration/reconciliation surface is #589.
+    The handle↔SPIFFE binding on the SLIM plane, where we own the credential:
+    the leaf *is* the ``@handle``. :func:`handle_from_spiffe_id` is the inverse a
+    peer uses to reconcile an observed SVID back to its handle.
     """
     return f"spiffe://{trust_domain}/{SPIRE_WORKLOAD_PATH_PREFIX}/{handle}"
 
@@ -470,6 +471,154 @@ def resolve_spire_material(
     if not socket_path or not _spire_socket_present(socket_path):
         return None
     return build_spire_identity(handle, socket_path, resolve_spire_trust_domain())
+
+
+# ── Handle ↔ channel-identity reconciliation (the identity spine, #589) ───────
+# ``@handle`` is the single logical identity across both planes. On the SLIM plane
+# we own the credential, so the handle binds *directly*: the SignerJwt JWK ``kid``
+# and the SPIFFE-ID leaf both carry the raw ``@handle``, and a peer reconciles an
+# observed credential back to its handle with the two inverses below. (On the HTTP
+# plane the OIDC ``sub`` is opaque, so handle↔sub is a binding table — the token's
+# handle claim plus the actor-authz in ``app.services.actor`` — not this equality.
+# We deliberately do not force the OIDC ``sub`` to equal the handle.)
+def handle_from_jwk(jwk: dict[str, str]) -> str | None:
+    """The ``@handle`` a roster JWK belongs to — its ``kid`` (the direct binding).
+
+    Returns ``None`` for a JWK with no ``kid``: such a key names no handle and so
+    can't be reconciled to a member.
+    """
+    kid = jwk.get("kid")
+    return kid or None
+
+
+def handle_from_spiffe_id(spiffe_id: str, trust_domain: str | None = None) -> str | None:
+    """The ``@handle`` a SPIFFE-ID names, or ``None`` if it isn't one of ours.
+
+    The inverse of :func:`spiffe_id_for`: parse ``spiffe://{td}/agent/{handle}`` and
+    return ``handle`` iff the path prefix is our workload convention (``agent``) and
+    — when ``trust_domain`` is supplied — the ID sits in that trust domain. A foreign
+    or malformed ID reconciles to nothing rather than a fabricated handle (the same
+    faithful-interpretation posture the offer snapper takes), which is what lets a
+    peer trust that a resolved handle is really the credential's handle.
+    """
+    prefix = "spiffe://"
+    if not spiffe_id.startswith(prefix):
+        return None
+    authority, _, path = spiffe_id[len(prefix) :].partition("/")
+    if not authority or not path:
+        return None
+    if trust_domain is not None and authority != trust_domain:
+        return None
+    segments = path.split("/")
+    if len(segments) != 2 or segments[0] != SPIRE_WORKLOAD_PATH_PREFIX:
+        return None
+    return segments[1] or None
+
+
+def provision_channel_identity(
+    handle: str, mode: str | None = None, data_dir: Path | None = None
+) -> dict[str, Any]:
+    """Provision ``@handle``'s SLIM channel identity for the active mode. Idempotent.
+
+    The registration-time counterpart to the connect-time
+    :func:`resolve_identity_material`: ``agent create`` calls this so a handle has a
+    usable channel credential the moment it is registered, for whichever mode is
+    active. Off-by-default is preserved — under ``psk`` nothing is provisioned.
+
+    * ``psk`` — no per-agent credential exists; a no-op.
+    * ``signerjwt`` — mint+register the local ES256 keypair (:func:`ensure_agent_keypair`),
+      whose public JWK's ``kid`` is the ``@handle``. Returns the key/roster paths + ``kid``.
+    * ``spire`` — the SVID is minted by the trust domain, not us: return the member's
+      SPIFFE-ID and the operator step to register it. Entry creation needs the SPIRE
+      server and is out of the CLI's reach, so it stays a documented operator step
+      (``provisioned`` is False).
+
+    Every result carries ``mode``, ``handle``, and ``provisioned``.
+    """
+    resolved = mode or resolve_identity_mode()
+    if resolved == MODE_SIGNERJWT:
+        key_path, jwk = ensure_agent_keypair(handle, data_dir)
+        return {
+            "mode": MODE_SIGNERJWT,
+            "handle": handle,
+            "provisioned": True,
+            "kid": jwk["kid"],
+            "key_path": str(key_path),
+            "roster_path": str(public_jwk_path(handle, data_dir)),
+        }
+    if resolved == MODE_SPIRE:
+        trust_domain = resolve_spire_trust_domain()
+        spiffe_id = spiffe_id_for(handle, trust_domain)
+        return {
+            "mode": MODE_SPIRE,
+            "handle": handle,
+            "provisioned": False,
+            "spiffe_id": spiffe_id,
+            "trust_domain": trust_domain,
+            "operator_step": (
+                f"spire-server entry create -spiffeID {spiffe_id} "
+                "-parentID <agent-node-id> -selector <workload-selector>"
+            ),
+        }
+    return {"mode": MODE_PSK, "handle": handle, "provisioned": False}
+
+
+def revoke_channel_identity(
+    handle: str, mode: str | None = None, data_dir: Path | None = None
+) -> dict[str, Any]:
+    """Revoke ``@handle``'s SLIM channel identity for the active mode. Idempotent.
+
+    The deprovisioning-time inverse of :func:`provision_channel_identity`
+    (``agent rm`` calls it): it removes the per-agent credential so a removed member
+    can no longer authenticate to the room — *without a room-wide re-key*, the
+    property the shared-secret PSK never had (#590). Symmetric and idempotent:
+    revoking an already-absent member is a no-op, not an error.
+
+    * ``psk`` — there is no per-agent credential to revoke; the only lever is
+      rotating ``MYCELIUM_SLIM_MASTER_SECRET`` for the whole room (the blunt
+      instrument this tier is stuck with). A no-op here.
+    * ``signerjwt`` — drop the member's public JWK from the roster (the inverse of
+      :func:`register_public_jwk`) and delete its local signing key. Once its key is
+      off the roster, peers' static-JWKS verifiers reject its self-signed tokens, so
+      it can't rejoin with the old credential — per-agent, no room-wide rotation.
+      Returns the removed paths (empty on a second/idempotent revoke).
+    * ``spire`` — the SVID is minted by the trust domain, so revocation is deleting
+      the SPIRE registration entry (``spire-server entry delete``), external to the
+      CLI's on-disk state. Return the member's SPIFFE-ID + the operator step; the
+      appliance path (``spire_registry.revoke_workload``) runs it when the server is
+      reachable. ``revoked`` is False — there is no local material to remove.
+
+    Every result carries ``mode``, ``handle``, and ``revoked``.
+    """
+    resolved = mode or resolve_identity_mode()
+    if resolved == MODE_SIGNERJWT:
+        jwk_path = public_jwk_path(handle, data_dir)
+        key_path = signing_key_path(handle, data_dir)
+        removed: list[str] = []
+        for path in (jwk_path, key_path):
+            if path.exists():
+                path.unlink()
+                removed.append(str(path))
+        return {
+            "mode": MODE_SIGNERJWT,
+            "handle": handle,
+            "revoked": bool(removed),
+            "removed": removed,
+            "roster_path": str(jwk_path),
+            "key_path": str(key_path),
+        }
+    if resolved == MODE_SPIRE:
+        trust_domain = resolve_spire_trust_domain()
+        spiffe_id = spiffe_id_for(handle, trust_domain)
+        return {
+            "mode": MODE_SPIRE,
+            "handle": handle,
+            "revoked": False,
+            "spiffe_id": spiffe_id,
+            "trust_domain": trust_domain,
+            "operator_step": (f"spire-server entry delete -entryID <entry-id for {spiffe_id}>"),
+        }
+    return {"mode": MODE_PSK, "handle": handle, "revoked": False}
 
 
 def resolve_identity_material(
