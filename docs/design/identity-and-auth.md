@@ -101,7 +101,9 @@ come from the token**, not the request body:
 
 - `sub` (or a configured claim) → the canonical handle.
 - a role/claim distinguishes **user** vs **agent**.
-- `created_by` / `sender_handle` from the body are ignored (or must match the token).
+- `created_by` / `sender_handle` from the body no longer decide the actor: an
+  omitted or matching one is replaced by the token's handle, and one that names a
+  **different** handle is refused with a **403** rather than silently rewritten.
 
 This is what actually kills impersonation and makes attribution trustworthy across
 the whole system (memory authorship, transcript senders, L9 actors).
@@ -121,7 +123,12 @@ per-deployment opt-in.
    the bridge gateway, indistinguishable from LAN traffic) — the containerized
    local tier is served by leaving auth disabled.*
 2. **Verified handle binding** — derive handle + role from claims; stop trusting
-   body-supplied actor fields. Only active when the gate is on.
+   body-supplied actor fields. Only active when the gate is on. *Landed (#562):
+   `fastapi-backend/app/services/actor.py`, applied at the memory, message, reply
+   and engine-registration write paths. A body handle carrying a session
+   qualifier (`alice#a8f3`) is honoured as the same principal; the reader side —
+   which handle's queue an `await` may drain — is authorization rather than
+   attribution and stays with the RBAC step.*
 3. **CLI human login** — `mycelium login` obtains a token (Authorization Code +
    PKCE, or device-code for headless), stores + refreshes it; `mycelium iam`
    becomes "who am I per the token," not self-assert.

@@ -1594,9 +1594,24 @@ Once a token validates, the request has a **principal**:
   on the matched issuer block. Which root signed a token is usually the whole
   answer to user-vs-agent, so most deployments never set a role claim at all.
 
-Today the gate proves the token and records the principal. Using it as the
-*authoritative* author of a write — replacing the `created_by` and
-`sender_handle` a request body supplies — is the next step in the identity work.
+## The token is the author
+
+The principal is not just recorded — it is the **actor of record** for every write
+it makes. Memory authorship (`created_by` / `updated_by`), the transcript sender,
+and L9 actor attribution all come from the token rather than from the handle the
+request body supplies:
+
+- The body **omits** the actor, or names the **same** handle → the token's handle
+  is stored. `@Alice` and `alice` are one principal; the comparison uses the same
+  normalization as the store.
+- The body names a **different** handle → **403**. A caller acting under the wrong
+  identity gets told, rather than having its writes quietly re-attributed.
+- A **session qualifier** (`alice#a8f3` — the same person on one machine) is kept
+  as-is. The suffix rides along on the token's handle, so per-session attribution
+  survives without letting the suffix name someone else.
+
+With the gate off there is no principal, so every path keeps the self-asserted
+actor from the body exactly as before — the try-it path is unchanged.
 
 ## Key rotation
 
@@ -1639,6 +1654,7 @@ Every other route requires a token.
 | Response | Meaning |
 |----------|---------|
 | `401` + `WWW-Authenticate: Bearer` | Missing, malformed, expired, forged, wrong-audience, or wrong-issuer token. |
+| `403` | A valid token, but the request body claims to act as a different handle. |
 | `503` | The gate is on but unusable — no trusted issuers configured, or the issuer's JWKS is unreachable and nothing is cached. |
 
 Only asymmetric signatures are accepted (`RS*`, `PS*`, `ES*`). The `none`

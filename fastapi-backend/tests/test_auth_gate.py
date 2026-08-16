@@ -509,3 +509,35 @@ def test_missing_audience_is_warned_about(monkeypatch, auth_on):
 def test_no_warnings_when_disabled(monkeypatch):
     monkeypatch.setattr("app.config.settings.AUTH_ENABLED", False)
     assert auth_service.config_warnings() == []
+
+
+# ── the gate feeds handle binding ─────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_a_real_token_becomes_the_author_of_a_write(
+    client: AsyncClient, auth_on, signing_key
+):
+    """End-to-end: signature → principal → stored ``created_by``.
+
+    The binding matrix lives in ``test_handle_binding``; this is the one pass
+    that proves the two stages are actually wired to each other, signature and
+    all, rather than each working against a stand-in for the other.
+    """
+    token = _sign(signing_key, sub="poc-agent")
+    await client.post("/api/rooms", json={"name": "gated"}, headers=_bearer(token))
+
+    resp = await client.post(
+        "/api/rooms/gated/memory",
+        json={"items": [{"key": "n", "value": "v", "created_by": "someone-else", "embed": False}]},
+        headers=_bearer(token),
+    )
+    assert resp.status_code == 403
+
+    resp = await client.post(
+        "/api/rooms/gated/memory",
+        json={"items": [{"key": "n", "value": "v", "created_by": "poc-agent", "embed": False}]},
+        headers=_bearer(token),
+    )
+    assert resp.status_code == 201
+    assert resp.json()[0]["created_by"] == "poc-agent"

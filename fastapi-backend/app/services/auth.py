@@ -16,8 +16,8 @@ domain, so adding the agent trust root later (#564/#476) is a config entry.
 
 Scope is authentication only. Resolving a validated token into the *authoritative*
 actor for a write — replacing body-supplied ``created_by`` / ``sender_handle`` —
-is handle binding (#562); this module proves the token and records the principal
-on ``request.state.principal`` for that stage to consume.
+is handle binding, and lives in ``services/actor.py``; this module proves the
+token and records the principal on ``request.state.principal`` for it to consume.
 """
 
 from __future__ import annotations
@@ -265,7 +265,7 @@ def _resolve_role(claims: dict[str, Any], entry: TrustedIssuer) -> PrincipalRole
     return "user" if value == "user" else "agent"
 
 
-def _normalize_handle(raw: object) -> str | None:
+def normalize_handle(raw: object) -> str | None:
     """Match ``principals._norm`` so token and stored handles compare equal."""
     if not isinstance(raw, str):
         return None
@@ -311,7 +311,7 @@ async def verify_token(token: str) -> Principal:
     except jwt.PyJWTError as exc:
         raise AuthError(f"token rejected: {exc}")
 
-    handle = _normalize_handle(claims.get(settings.AUTH_HANDLE_CLAIM))
+    handle = normalize_handle(claims.get(settings.AUTH_HANDLE_CLAIM))
     if handle is None:
         raise AuthError(f"token carries no {settings.AUTH_HANDLE_CLAIM!r} claim")
 

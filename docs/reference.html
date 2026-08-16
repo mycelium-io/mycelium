@@ -1080,7 +1080,21 @@ role   = &quot;agent&quot;</code></pre>
         <li><strong>role</strong> — from <code>auth.role_claim</code> if the token carries it, otherwise the <code>role</code></li>
       </ul>
       <p>on the matched issuer block. Which root signed a token is usually the whole answer to user-vs-agent, so most deployments never set a role claim at all.</p>
-      <p>Today the gate proves the token and records the principal. Using it as the <em>authoritative</em> author of a write — replacing the <code>created_by</code> and <code>sender_handle</code> a request body supplies — is the next step in the identity work.</p>
+      <h2 id="auth-the-token-is-the-author">The token is the author</h2>
+      <p>The principal is not just recorded — it is the <strong>actor of record</strong> for every write it makes. Memory authorship (<code>created_by</code> / <code>updated_by</code>), the transcript sender, and L9 actor attribution all come from the token rather than from the handle the request body supplies:</p>
+      <ul>
+        <li>The body <strong>omits</strong> the actor, or names the <strong>same</strong> handle → the token&#x27;s handle</li>
+      </ul>
+      <p>is stored. <code>@Alice</code> and <code>alice</code> are one principal; the comparison uses the same normalization as the store.</p>
+      <ul>
+        <li>The body names a <strong>different</strong> handle → <strong>403</strong>. A caller acting under the wrong</li>
+      </ul>
+      <p>identity gets told, rather than having its writes quietly re-attributed.</p>
+      <ul>
+        <li>A <strong>session qualifier</strong> (<code>alice#a8f3</code> — the same person on one machine) is kept</li>
+      </ul>
+      <p>as-is. The suffix rides along on the token&#x27;s handle, so per-session attribution survives without letting the suffix name someone else.</p>
+      <p>With the gate off there is no principal, so every path keeps the self-asserted actor from the body exactly as before — the try-it path is unchanged.</p>
       <h2 id="auth-key-rotation">Key rotation</h2>
       <p>The JWKS is fetched from your issuer and cached for <code>auth.jwks_ttl_s</code>. When a token arrives signed by a key ID the backend hasn&#x27;t seen, it re-fetches immediately (rate-limited), so <strong>rotating your signing key does not require restarting Mycelium</strong>.</p>
       <p>If the issuer is briefly unreachable, previously fetched keys keep serving. The keys are still your issuer&#x27;s; only their freshness is in doubt, and failing closed would take the hub down for the length of an IdP blip.</p>
@@ -1111,6 +1125,10 @@ role   = &quot;agent&quot;</code></pre>
             <tr>
               <td><code>401</code> + <code>WWW-Authenticate: Bearer</code></td>
               <td>Missing, malformed, expired, forged, wrong-audience, or wrong-issuer token.</td>
+            </tr>
+            <tr>
+              <td><code>403</code></td>
+              <td>A valid token, but the request body claims to act as a different handle.</td>
             </tr>
             <tr>
               <td><code>503</code></td>

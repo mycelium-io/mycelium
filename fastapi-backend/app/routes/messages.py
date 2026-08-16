@@ -14,7 +14,7 @@ import logging
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 
 from app.bus import bus, room_channel
 from app.schemas import (
@@ -25,7 +25,7 @@ from app.schemas import (
     MessageRead,
     MessageType,
 )
-from app.services import local_state, persister, principals, room_channels
+from app.services import actor, local_state, persister, principals, room_channels
 from app.services.filesystem import room_exists
 
 logger = logging.getLogger(__name__)
@@ -50,23 +50,25 @@ def _resolve_channel(name: str) -> tuple[str, local_state.CoordSessionShim | Non
 
 
 @router.post("", response_model=MessageRead, status_code=201)
-async def send_message(room_name: str, payload: MessageCreate):
+async def send_message(room_name: str, payload: MessageCreate, request: Request):
     """Send a message to a room; publish it to the room's live stream."""
     channel, coord = _resolve_channel(room_name)
+
+    # Whoever a verified token says is calling is the sender; unauthenticated, the
+    # body's handle stands as before.
+    sender_handle = actor.bind_actor(request, payload.sender_handle, field="sender_handle")
 
     # A human posts under a self-asserted handle (may be unregistered), but no
     # one may pose as an engine — engines speak only through their own runtime.
     base_room = channel.split(":session:", 1)[0]
-    reason = principals.post_rejection_reason(
-        base_room, payload.sender_handle, allow_unregistered=True
-    )
+    reason = principals.post_rejection_reason(base_room, sender_handle, allow_unregistered=True)
     if reason:
         raise HTTPException(status_code=403, detail=reason)
 
     msg = local_state.StoredMessage(
         room_name=None if coord else channel,
         coordination_session_id=coord.id if coord else None,
-        sender_handle=payload.sender_handle,
+        sender_handle=sender_handle,
         recipient_handle=payload.recipient_handle,
         message_type=payload.message_type,
         content=payload.content,
