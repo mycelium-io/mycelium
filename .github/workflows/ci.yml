@@ -39,6 +39,22 @@ jobs:
         working-directory: fastapi-backend
         run: uv run ty check .
 
+      # The committed openapi.json is the source of truth the OpenAPI client is
+      # generated from (#613). Fail if it drifts from the live app, so an API
+      # change can't ship a stale spec (which would regenerate a stale client).
+      - name: OpenAPI spec is current
+        working-directory: fastapi-backend
+        run: |
+          uv run python - <<'PY'
+          import json, sys
+          from app.main import app
+          committed = json.load(open("../openapi.json"))
+          if app.openapi() != committed:
+              print("::error file=openapi.json::openapi.json is stale — run scripts/snapshot-openapi.sh and commit it (the OpenAPI client is generated from this spec).")
+              sys.exit(1)
+          print("openapi.json matches the backend.")
+          PY
+
       # Fast gate: the core protocol (room -> engine -> await -> respond ->
       # converge -> plan) over the fake stack — no node, no LLM. Runs first so a
       # broken happy path fails in seconds, ahead of the full suite.
@@ -63,6 +79,12 @@ jobs:
 
       - name: Set up Python
         run: uv python install 3.12
+
+      # The OpenAPI client is a build artifact, not committed (#613). Generate it
+      # from the committed openapi.json (no backend needed) before anything imports
+      # `mycelium_backend_client`.
+      - name: Generate OpenAPI client
+        run: SPEC_FILE=openapi.json bash scripts/gen-mycelium-client.sh
 
       - name: Install dependencies
         working-directory: mycelium-cli

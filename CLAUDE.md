@@ -45,6 +45,12 @@ uv run ruff check . && uv run ruff format . && uv run ty check .
 # The live-node integration slices need a running SLIM node; they skip without one:
 MYCELIUM_SLIM_ENDPOINT=http://127.0.0.1:46357 uv run pytest tests/test_slim_roundtrip.py -q
 
+# Generate the OpenAPI client (NOT committed — a build artifact, #613). From
+# the committed openapi.json, no backend needed. Run once after a fresh clone
+# and whenever the backend API changes (then `snapshot-openapi.sh` to refresh
+# the spec). CI + the wheel/binary builds run this themselves.
+SPEC_FILE=openapi.json ./scripts/gen-mycelium-client.sh
+
 # CLI (install globally)
 cd mycelium-cli && uv tool install -e . --with mycelium-backend-client@../mycelium-client --force
 
