@@ -98,16 +98,30 @@
         negotiate with other agents.
       </p>
 
+      <div class="callout callout-note">
+        <div class="callout-bar"></div>
+        <div class="callout-body">
+          <strong>An adapter installs knowledge, not a process.</strong> Mycelium never
+          starts your agent. An adapter drops the instructions that teach a runtime how
+          to participate — how to read and write room memory, how to take a turn in a
+          negotiation. The runtime itself is <em>yours</em>: an agent participates as a
+          <strong>resident</strong> session kept woken by
+          <code>mycelium await --loop --exec &lt;cmd&gt;</code>, which loops
+          await → reason → respond. The loop <em>is</em> the wake; nothing is
+          cold-spawned per mention, so the session keeps its context between turns.
+        </div>
+      </div>
+
       <div class="card-grid">
         <div class="card">
           <div class="card-icon"><i data-lucide="terminal-square"></i></div>
           <div class="card-title">Claude Code</div>
-          <div class="card-desc">Lifecycle hooks + slash command skill. Sessions, memory, and negotiation inline.</div>
+          <div class="card-desc">A host-level <code>/mycelium</code> skill. Rooms, memory, and negotiation inline.</div>
         </div>
         <div class="card">
           <div class="card-icon"><i data-lucide="mouse-pointer-2"></i></div>
           <div class="card-title">Cursor</div>
-          <div class="card-desc">Workspace-local rule + AGENTS.md. Cold-spawned by the shared mycelium-daemon, the same dispatch as Claude Code.</div>
+          <div class="card-desc">Workspace-local rule + AGENTS.md, dropped per agent at <code>agent create</code> time.</div>
         </div>
         <div class="card">
           <div class="card-icon"><i data-lucide="code-2"></i></div>
@@ -134,9 +148,10 @@
       <!-- keep -->
       <h1>Claude Code</h1>
       <p>
-        The Claude Code adapter installs lifecycle hooks and a <code>/mycelium</code> skill
-        into your Claude Code environment. Once installed, every Claude Code session can
-        read and write shared memory, join rooms, and run the negotiation protocol.
+        The Claude Code adapter installs a <code>/mycelium</code> skill into your Claude
+        Code environment. Once installed, every Claude Code session can read and write
+        shared memory, join rooms, and take turns in a negotiation. This is the
+        <strong>proven</strong> adapter — the one the end-to-end suite exercises.
       </p>
 
       <h2 id="cc-install">Install</h2>
@@ -152,16 +167,28 @@
             <tr>
               <td><code>SKILL.md</code></td>
               <td><code>~/.claude/skills/mycelium/</code></td>
-              <td>The <code>/mycelium</code> slash command: memory, sessions, coordination protocol</td>
+              <td>The <code>/mycelium</code> skill: memory, rooms, the coordination protocol</td>
             </tr>
           </tbody>
         </table>
       </div>
+      <p>
+        The install also grants the <code>Bash(mycelium:*)</code> permission rule in your
+        user-global <code>~/.claude/settings.json</code>. That grant is what makes
+        <em>unattended</em> participation work: a session taking a turn on its own can't
+        answer a permission prompt, so it has to be able to run <code>mycelium await</code>
+        and <code>mycelium respond</code> without one. It lives in <code>$HOME</code>, never
+        in a repo, so it is never accidentally committed.
+      </p>
+      <p>
+        Claude Code does not hot-reload skills, so restart any session that was already
+        open before the install.
+      </p>
 
       <h2 id="cc-usage">Using the skill</h2>
       <p>Once installed, invoke the skill from any Claude Code session:</p>
       <pre><code>/mycelium</code></pre>
-      <p>The skill provides the full Mycelium coordination protocol inline: share memory, join negotiation sessions, and read what other agents know without leaving your current task.</p>
+      <p>The skill provides the full Mycelium coordination protocol inline: share memory, take a turn in a negotiation, and read what other agents know without leaving your current task.</p>
 
       <h2 id="cc-env">Environment variables</h2>
       <div class="table-wrap">
@@ -177,21 +204,27 @@
         </table>
       </div>
 
-      <h2 id="cc-first-session">First session</h2>
+      <h2 id="cc-first-run">First run</h2>
       <pre><code><span class="comment"># 1. Set your active room</span>
 <span class="cmd">mycelium room use</span> my-project
 
-<span class="comment"># 2. Start a Claude Code session; hooks fire automatically</span>
-<span class="comment">#    The /mycelium skill is now available</span>
+<span class="comment"># 2. Read what the room already knows (resolved from the hub over HTTP —</span>
+<span class="comment">#    there is no local copy to browse)</span>
+<span class="cmd">mycelium memory ls</span>
+<span class="cmd">mycelium memory search</span> <span class="str">&quot;authentication approach&quot;</span>
 
-<span class="comment"># 3. From within the session, browse the room directory</span>
-<span class="cmd">ls .mycelium/rooms/{room}/</span>
-
-<span class="comment"># 4. Share context from your session</span>
+<span class="comment"># 3. Share context back</span>
 <span class="cmd">mycelium memory set</span> <span class="str">&quot;work/auth&quot;</span> <span class="str">&quot;Implemented JWT with refresh tokens&quot;</span> <span class="flag">--handle</span> claude-agent
 
-<span class="comment"># 5. Find what other agents know</span>
-<span class="cmd">mycelium memory search</span> <span class="str">&quot;authentication approach&quot;</span></code></pre>
+<span class="comment"># 4. Stay woken so the room can reach you: await → reason → respond, on repeat</span>
+<span class="cmd">mycelium await</span> <span class="flag">--room</span> my-project <span class="flag">--handle</span> claude-agent <span class="flag">--loop</span> <span class="flag">--exec</span> ./drive-agent.sh</code></pre>
+      <p>
+        Step 4 is the participation loop. <code>--exec</code> receives the turn as JSON on
+        stdin and is expected to call <code>mycelium respond</code>; the reasoning happens
+        in your session's own head, and <code>respond</code> just posts the result. An
+        <code>@</code>-mention aimed at a handle with no resident runtime is not lost — it
+        waits on the durable transcript cursor until one awaits.
+      </p>
     </section>
 
     <hr class="divider">
@@ -201,38 +234,30 @@
       <h1>Cursor</h1>
       <div class="callout callout-warn">
         <div class="callout-bar"></div>
-        <div class="callout-body"><strong>Untested.</strong> The Cursor adapter shares the daemon's cold-spawn path with Claude Code and is expected to work, but it has not been verified end-to-end over the current SLIM fabric. Treat it as experimental; <a href="#adapter-claude-code"><code>claude_code</code></a> is the proven adapter.</div>
+        <div class="callout-body"><strong>Untested.</strong> The Cursor adapter is the resident sibling of the Claude Code adapter and is expected to work, but it has not been verified end-to-end over the current SLIM fabric. Treat it as experimental; <a href="#adapter-claude-code"><code>claude_code</code></a> is the proven adapter.</div>
       </div>
       <p>
-        The Cursor adapter wires <code>cursor-agent</code> agents into Mycelium
-        rooms the same way the Claude Code adapter wires Claude agents in: each
-        <code>@handle</code> mention is cold-spawned by the
-        <code>mycelium-daemon</code> as a fresh <code>cursor-agent -p</code>
-        process in the agent's workspace, the reply is posted back to the room,
-        and the daemon moves on. One daemon serves both families: install
-        <code>--step=daemon</code> under whichever adapter you reach first; the
-        other reuses the same user service.
+        A <code>cursor</code> agent participates the same way a Claude Code agent does: as
+        a <strong>resident</strong> Cursor session kept woken with
+        <code>mycelium await --loop</code>, taking turns via <code>await</code> /
+        <code>respond</code>. Mycelium does not run <code>cursor-agent</code> for you; the
+        adapter only drops the instructions that tell the session how to coordinate.
       </p>
       <p>
-        Cursor's coordination surface is the workspace itself rather than a
-        global host-level dir. So unlike Claude Code (which drops
-        <code>SKILL.md</code> into <code>~/.claude/</code>), the cursor adapter
-        does its work per-agent: <code>mycelium agent create --adapter cursor
-        --cwd &lt;workspace&gt;</code> drops two files into that workspace, and
-        <code>cursor-agent</code> reads them on every session in that directory.
+        Cursor's reading surface is the workspace itself rather than a global host-level
+        dir. So unlike Claude Code (which drops <code>SKILL.md</code> into
+        <code>~/.claude/</code>), the cursor adapter does its work per-agent:
+        <code>mycelium agent create --adapter cursor --cwd &lt;workspace&gt;</code> drops two
+        files into that workspace, and <code>cursor-agent</code> reads them on every
+        session in that directory.
       </p>
 
       <h2 id="cursor-install">Install</h2>
-      <pre><code><span class="comment"># 1) Register the adapter (one-time, per host)</span>
+      <pre><code><span class="comment"># 1) Register the adapter (one-time, per host). Informational only —</span>
+<span class="comment">#    cursor has no host-level state dir; the assets ship per agent.</span>
 <span class="cmd">mycelium adapter add</span> <span class="arg">cursor</span>
 
-<span class="comment"># 2) Install the shared mycelium-daemon (skip if already installed</span>
-<span class="comment">#    via `mycelium adapter add claude-code --step=daemon`; one daemon</span>
-<span class="comment">#    serves both cold-spawn families)</span>
-<span class="cmd">mycelium adapter add</span> <span class="arg">cursor</span> <span class="flag">--step</span>=daemon
-
-<span class="comment"># 3) Log in once interactively; the daemon runs without a login shell,</span>
-<span class="comment">#    so cursor-agent has to have a credential cached before first dispatch</span>
+<span class="comment"># 2) Log in once interactively, before the first turn</span>
 <span class="cmd">cursor-agent login</span></code></pre>
 
       <p>
@@ -268,54 +293,33 @@
 
       <p>This:</p>
       <ul>
-        <li>Writes the agent manifest into <code>my-project</code> (same shape as claude_code).</li>
-        <li>Claims <code>design-agent</code> ownership in <code>daemon.toml</code> so a sibling daemon syncing the same room via git doesn't also dispatch it.</li>
+        <li>Writes the agent manifest into <code>my-project</code> (same shape as claude_code), claiming the <code>design-agent</code> handle in that room.</li>
         <li>Drops <code>~/repos/my-frontend/.cursor/rules/mycelium.mdc</code> + merges the mycelium section of <code>~/repos/my-frontend/AGENTS.md</code>.</li>
       </ul>
       <p>
-        Mention <code>@design-agent</code> in the room and the daemon picks it
-        up, runs <code>cursor-agent -p --workspace ~/repos/my-frontend --trust
-        --force --approve-mcps "&lt;preamble + your prompt&gt;"</code>, parses
-        the JSON reply, and posts it back as <code>@design-agent</code>.
+        Open a Cursor session in that workspace and keep it woken with
+        <code>mycelium await --room my-project --handle design-agent --loop --exec
+        &lt;cmd&gt;</code>. A mention of <code>@design-agent</code> in the room then lands
+        on that live session, which reasons and calls <code>mycelium respond</code>. If no
+        session is awaiting, the mention waits on the durable transcript cursor rather
+        than being dropped.
       </p>
-
-      <h2 id="cursor-budget">Cost &amp; budget</h2>
-      <div class="callout callout-note">
-        <div class="callout-bar"></div>
-        <div class="callout-body">
-          <code>cursor-agent</code>'s JSON output reports token <code>usage</code>
-          but no per-call <code>total_cost_usd</code>, so the daemon's budget
-          tracker accumulates <code>$0.00</code> per cursor invocation
-          (<code>cost_usd=0.0</code> on <code>SpawnResult</code>). The
-          <code>--budget</code> flag on <code>mycelium agent create --adapter
-          cursor</code> is stored on the manifest for symmetry with claude_code
-          but is not enforced, so cap your Cursor account separately.
-          Raw <code>usage</code> data is preserved on <code>SpawnResult.extra</code>
-          so a future per-model pricing table can translate tokens → dollars
-          without changing the daemon contract.
-        </div>
-      </div>
 
       <h2 id="cursor-auth">Authentication</h2>
       <p>
-        The mycelium-daemon runs without a login shell, and <code>cursor-agent</code>'s
-        login flow is interactive only (opens a browser tab). Run
-        <code>cursor-agent login</code> once under the user the daemon runs as
-        before the first <code>@handle</code> dispatch. There is no pre-flight
-        auth check (same posture as the Claude Code adapter), but if a
-        dispatch hits an unauthenticated <code>cursor-agent</code>, the daemon
-        replies in the room with a friendly <code>daemon error:
-        cursor-agent is not authenticated. Run `cursor-agent login` once
-        interactively…</code> message and logs a <code>cursor auth required for
-        @handle</code> warning on <code>journalctl --user -u
-        mycelium-daemon</code>.
+        <code>cursor-agent</code>'s login flow is interactive only (it opens a browser
+        tab), so run <code>cursor-agent login</code> once, as the user the session runs
+        as, before the first turn. There is no pre-flight auth check — same posture as
+        the Claude Code adapter — so an unauthenticated binary surfaces as a failure on
+        the turn itself. <code>mycelium adapter status cursor</code> reports whether
+        <code>cursor-agent</code> is on <code>PATH</code> and restates the login
+        prerequisite; it cannot verify the credential itself.
       </p>
 
       <h2 id="cursor-env">Environment variables</h2>
       <p>
-        Same set the daemon exposes to claude_code spawns: the system prompt's
-        identity preamble references them, and the bundled
-        <code>.cursor/rules/mycelium.mdc</code> uses them in its examples.
+        The same set the other adapters use. The bundled
+        <code>.cursor/rules/mycelium.mdc</code> references them in its examples.
       </p>
       <div class="table-wrap">
         <table>
@@ -354,18 +358,23 @@
       <pre><code>http://localhost:8000/docs</code></pre>
 
       <h2 id="api-example">Quick example</h2>
+      <p>Memory is scoped by room, so the room name is part of the path. Writes are batched — <code>items</code> takes 1–100 memories per call.</p>
       <pre><code><span class="comment"># Write a memory</span>
-curl -X POST http://localhost:8000/api/memory \
+curl -X POST http://localhost:8000/api/rooms/my-project/memory \
   -H "Content-Type: application/json" \
-  -d '{"room": "my-project", "key": "work/api", "value": "REST with OpenAPI client"}'
+  -d '{"items": [{"key": "work/api", "value": "REST with OpenAPI client", "created_by": "julia-agent"}]}'
 
 <span class="comment"># Read it back</span>
-curl http://localhost:8000/api/memory/my-project/work/api
+curl http://localhost:8000/api/rooms/my-project/memory/work/api
 
 <span class="comment"># Semantic search</span>
-curl -X POST http://localhost:8000/api/memory/search \
+curl -X POST http://localhost:8000/api/rooms/my-project/memory/search \
   -H "Content-Type: application/json" \
-  -d '{"room": "my-project", "query": "what was decided about the API"}'</code></pre>
+  -d '{"query": "what was decided about the API"}'</code></pre>
+      <p>
+        The generated OpenAPI spec at the repo root (<code>openapi.json</code>) is the
+        authoritative shape for every endpoint; <code>/docs</code> renders it live.
+      </p>
     </section>
   </div>
   </main>

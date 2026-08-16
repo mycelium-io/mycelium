@@ -17,7 +17,7 @@ This file is the maintainer's hint to a [tiny-teams-with-tokens](https://github.
 Mycelium is a multi-component monorepo. When you describe "the architecture" you should mention all of these by their actual roles:
 
 - [`fastapi-backend/`](fastapi-backend/) — the coordination engine (Python 3.12, FastAPI). No database: state is local markdown files + a JSONL search index. Runs the SLIM messaging node's counterpart services: room moderation, the aligner/synthesizer engines, L9 envelope construction, the persister.
-- [`mycelium-cli/`](mycelium-cli/) — the user-facing CLI (typer + Rich) plus the daemon. The primary surface most users touch. Hosts adapter logic for Claude Code (proven), Cursor (untested), OpenClaw and Hermes (both deprecated pending SLIM migration).
+- [`mycelium-cli/`](mycelium-cli/) — the user-facing CLI (typer + Rich). The primary surface most users touch, and the whole agent-side participation surface (`await`/`respond`). Hosts adapter logic for Claude Code (proven) and Cursor (untested).
 - [`mycelium-client/`](mycelium-client/) — auto-generated OpenAPI client. Treat as build output; don't document its internals.
 - [`mycelium-frontend/`](mycelium-frontend/) — Next.js + Tailwind UI shipped via `mycelium up --ui`.
 - [`mycelium-promo/`](mycelium-promo/) — HyperFrames promo video (HTML→MP4). Out of scope for the wiki.
@@ -36,8 +36,8 @@ If you're documenting how Mycelium works, ground every claim against one of thes
 - [`fastapi-backend/app/services/plan_compiler.py`](fastapi-backend/app/services/plan_compiler.py), [`plan_sync.py`](fastapi-backend/app/services/plan_sync.py) — compiles consensus into `plan/tasks.md`, then syncs it as a `knowledge` memory.
 - [`fastapi-backend/app/routes/`](fastapi-backend/app/routes/) — HTTP API surface (rooms, participate/await/respond, memory, plan, engines).
 - [`mycelium-cli/src/mycelium/commands/`](mycelium-cli/src/mycelium/commands/) — every CLI verb (`memory`, `room`, `plan`, `engine`, `adapter`, `install`, `network`, …).
-- [`mycelium-cli/src/mycelium/integrations/`](mycelium-cli/src/mycelium/integrations/) — one package per runtime family (`claude_code/`, `cursor/`, `openclaw/`), each holding its dispatch+install code and an `assets/` bundle.
-- [`mycelium-cli/.../daemon/`](mycelium-cli/src/mycelium/daemon/) — the optional auto-waker for runtimes that can't wake themselves; cold-spawns `claude -p` on a mention, built on the same membership core (`slim/member.py`) as the CLI.
+- [`mycelium-cli/src/mycelium/integrations/`](mycelium-cli/src/mycelium/integrations/) — one package per runtime family (`claude_code/`, `cursor/`), each holding its registration+install code and an `assets/` bundle.
+- [`mycelium-cli/src/mycelium/commands/participate.py`](mycelium-cli/src/mycelium/commands/participate.py) — `await` / `respond`, the entire agent-side participation surface. `await --loop --exec` is the resident runner that keeps a live session woken.
 
 ## What to emphasize
 
@@ -53,7 +53,8 @@ If you're documenting how Mycelium works, ground every claim against one of thes
 - **SLIM is the fabric, not an add-on.** Rooms are SLIM group channels (MLS end-to-end encrypted multicast); the backend is each room's moderator. The node forwards only ciphertext. Don't describe SLIM as optional infrastructure — it's the coordination substrate.
 - **L9 is in-house, not consumed from upstream.** Post-rewrite, Mycelium implements its own minimal L9 envelope semantics rather than depending on an external L9 service. Don't describe L9 as an external dependency.
 - **CFN/KXP/CognitiveEngines are gone.** These were taken off open source in July 2026 and Mycelium's rewrite removed the dependency outright rather than waiting on access. Do not describe the current architecture in terms of CFN, a "CognitiveEngine" service, or `cfn_negotiation.py`-style files — none of that exists anymore.
-- **Adapter capability is uneven — be honest about it.** `claude_code` is proven; `cursor` is untested; `openclaw` and `hermes` are deprecated (they rode the removed SSE/coordination-tick model and have not been migrated to SLIM).
+- **Adapter capability is uneven — be honest about it.** `claude_code` is proven; `cursor` is untested. OpenClaw and Hermes are **gone**, not deprecated — they rode the removed SSE/coordination-tick model and their packages were deleted; don't list them as adapters.
+- **Agents are resident, never cold-spawned.** A runtime participates by looping `mycelium await --loop --exec` in a live session it already owns. The daemon that cold-spawned `claude -p` per mention was removed (it threw away context every turn). Don't describe Mycelium as spawning or hosting agents.
 - **memory set always upserts.** It overwrites existing keys; the row's version increments. Don't describe it as "create-only".
 - **Two compose files.** `compose.yml` (released images, end-user path) and `compose-dev.yml` (builds backend from source, for contributors). End users use the install script + `mycelium install`; only contributors run docker compose by hand.
 - **Merged ≠ released.** PR #418 (the SLIM-native rewrite) merged to main; that is not the same as a cut release. Check the latest GitHub release tag before describing "what a new user gets today."

@@ -60,11 +60,14 @@ The aligner is dormant by default and configured through `~/.mycelium/.env`
 | Env var | Default | Purpose |
 |---|---|---|
 | `ALIGNER_HANDLE` | `aligner` | Reserved handle that a summon is recognised by |
-| `ALIGNER_THRESHOLD` | `0.6` | Consensus confidence at/above which a round converges; below rejects |
-| `ALIGNER_MAX_ROUNDS` | `3` | Hard cap on the driver's rounds so the loop always terminates |
-| `ALIGNER_ROUND_TIMEOUT_S` | `30.0` | Per-round wait for participant replies before scoring what arrived |
+| `ALIGNER_ROUND_TIMEOUT_S` | `30.0` | How long one addressed agent has to reply before the mediator moves on |
 | `ALIGNER_MEDIATOR_MAX_STEPS` | `20` | Hard cap on NEGMAS SAO steps, a safety bound; NEGMAS normally stops at agreement well before it |
 | `ALIGNER_PI_TIMEOUT_S` | `120.0` | Per-turn wall-clock bound on one Pi brain call |
+
+Convergence is **not** a tunable: it is whatever the mechanism decides. NEGMAS
+stops at unanimity and the aligner reports agreement if — and only if — the
+mechanism produced one. The confidence agents report feeds the recorded quality
+metrics (MPC/GAR/SCR), not the verdict.
 
 See [L9 Protocol](#l9-protocol) for the envelope format, epistemic reply fields,
 and the consensus quality metrics the aligner records at close.

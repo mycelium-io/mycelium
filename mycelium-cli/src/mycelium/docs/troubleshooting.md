@@ -256,7 +256,7 @@ Unreachable* above); the backend and the node are separate ports.
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `LLM_MODEL` | LiteLLM model string | `anthropic/claude-sonnet-4-6` |
+| `LLM_MODEL` | `provider/model` string, as Pi takes it | `anthropic/claude-sonnet-4-6` |
 | `LLM_API_KEY` | Provider API key | (none) |
 | `LLM_BASE_URL` | Custom LLM endpoint (Ollama, vLLM) | (none) |
 | `MYCELIUM_DATA_DIR` | Data directory | `~/.mycelium` |

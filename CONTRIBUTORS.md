@@ -8,9 +8,8 @@
 ## Built On
 
 - [Internet of Cognition](https://outshift.cisco.com) — Outshift by Cisco
+- [AGNTCY SLIM](https://github.com/agntcy/slim) — AGNTCY
+- [IOC L9 protocol models](https://github.com/outshift-open/ioc-protocols-models) — Outshift by Cisco
 - [NegMAS](https://negmas.readthedocs.io/) — Yasser Mohammad
-- [AgensGraph](https://github.com/skaiworldwide-oss/agensgraph) — SKAI Worldwide
 - [FastAPI](https://fastapi.tiangolo.com/) — Sebastian Ramirez
-- [litellm](https://github.com/BerriAI/litellm) — BerriAI
-- [sentence-transformers](https://www.sbert.net/) — UKPLab
-- [pgvector](https://github.com/pgvector/pgvector) — Andrew Kane
+- [fastembed](https://github.com/qdrant/fastembed) — Qdrant

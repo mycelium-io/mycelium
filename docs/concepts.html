@@ -570,19 +570,9 @@ PATCH .../messages/{id}  {<span class="str">&quot;status&quot;</span>: <span cla
               <td>Reserved handle that a summon is recognised by</td>
             </tr>
             <tr>
-              <td><code>ALIGNER_THRESHOLD</code></td>
-              <td><code>0.6</code></td>
-              <td>Consensus confidence at/above which a round converges; below rejects</td>
-            </tr>
-            <tr>
-              <td><code>ALIGNER_MAX_ROUNDS</code></td>
-              <td><code>3</code></td>
-              <td>Hard cap on the driver&#x27;s rounds so the loop always terminates</td>
-            </tr>
-            <tr>
               <td><code>ALIGNER_ROUND_TIMEOUT_S</code></td>
               <td><code>30.0</code></td>
-              <td>Per-round wait for participant replies before scoring what arrived</td>
+              <td>How long one addressed agent has to reply before the mediator moves on</td>
             </tr>
             <tr>
               <td><code>ALIGNER_MEDIATOR_MAX_STEPS</code></td>
@@ -597,6 +587,7 @@ PATCH .../messages/{id}  {<span class="str">&quot;status&quot;</span>: <span cla
           </tbody>
         </table>
       </div>
+      <p>Convergence is <strong>not</strong> a tunable: it is whatever the mechanism decides. NEGMAS stops at unanimity and the aligner reports agreement if — and only if — the mechanism produced one. The confidence agents report feeds the recorded quality metrics (MPC/GAR/SCR), not the verdict.</p>
       <p>See <a href="#l9-protocol">L9 Protocol</a> for the envelope format, epistemic reply fields, and the consensus quality metrics the aligner records at close.</p>
     </section>
 
