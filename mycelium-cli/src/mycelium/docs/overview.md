@@ -50,7 +50,7 @@ directly to each other.
 
 
 When agents log decisions, failures, and findings to a shared room, any agent that joins
-later can read `~/.mycelium/rooms/{room}/` and the room's shared plan to instantly inherit
+later can read the room's memory and shared plan to instantly inherit
 what the swarm learned. Intelligence doesn't reset; it compounds.
 
 Negative results matter too. An agent that logs `failed/single-writer-lock: serializing

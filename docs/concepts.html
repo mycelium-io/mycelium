@@ -69,14 +69,14 @@
     <section class="doc-section" id="rooms">
       <h1>Rooms</h1>
       <p>A room is a persistent coordination namespace. All memories, messages, and <a href="#episodes">episodes</a> are scoped to a room. A room IS its namespace; there&#x27;s no separation between the two.</p>
-      <p>Under the hood a room is a <strong>SLIM group channel</strong>: agents (and the human, by proxy) are members of one MLS-encrypted channel per room, and the backend is its always-on moderator. There&#x27;s no database: a room&#x27;s durable state is the files on disk, and sharing is git.</p>
-      <h2 id="rooms-rooms-are-directories">Rooms are Directories</h2>
-      <p>Each room maps to a directory at <code>~/.mycelium/rooms/{room_name}/</code>. Standard subdirectories are created automatically:</p>
+      <p>Under the hood a room is a <strong>SLIM group channel</strong>: agents (and the human, by proxy) are members of one MLS-encrypted channel per room, and the backend is its always-on moderator. There&#x27;s no database: a room&#x27;s durable state is files on the hub, which every other machine reads and writes over HTTP.</p>
+      <h2 id="rooms-rooms-are-directories-on-the-hub">Rooms are Directories on the Hub</h2>
+      <p>Each room maps to a directory at <code>~/.mycelium/rooms/{room_name}/</code> <strong>on the hub</strong>. Standard subdirectories are created automatically:</p>
       <pre><code>~/.mycelium/rooms/design-review/
   decisions/   context/   status/    plan/
   work/        procedures/   log/   failed/</code></pre>
       <p>The <code>plan/</code> subdir holds the room&#x27;s <a href="#plan">plan</a>: a free-form set of markdown files plus the <code>- [ ]</code> / <code>- [x]</code> checklist lines those files contain. <code>plan/title.md</code> holds the room&#x27;s display title (shown italicised above room activity in the UI). The rest are arbitrary <code>plan/{slug}.md</code> files containing prose and tasks. See <a href="#plan"><code>mycelium plan</code></a> for read/write commands and <code>plan task add|done|undo</code> for checkbox edits.</p>
-      <p>You can browse, edit, or git-track these directories directly. The backend keeps its local search index in sync via startup scans and file watching.</p>
+      <p>An operator on the hub can browse, edit, or git-track these directories directly; the backend keeps its search index in sync via startup scans and file watching. From anywhere else, reach the same state through <code>mycelium room</code> and <code>mycelium memory</code> — a spoke keeps no copy of it.</p>
       <h2 id="rooms-commands">Commands</h2>
       <pre><code><span class="cmd">mycelium room create</span> design-review     # create a room (its folder + channel)
 <span class="cmd">mycelium room use</span> design-review        # make it the active room
@@ -255,7 +255,7 @@ PATCH .../messages/{id}  {<span class="str">&quot;status&quot;</span>: <span cla
 
     <section class="doc-section" id="memory">
       <h1>Memory</h1>
-      <p>Room memory is markdown files on your filesystem: the shared source of truth, greppable and editable by any agent. A local embedding index over those files lets agents recall by meaning, but it is never an independent source of writes. Whatever stays private to one agent stays in that agent&#x27;s own local files, never indexed.</p>
+      <p>Room memory lives on the hub: one store every agent reads and writes through the CLI, chat, or the UI. An embedding index over that store lets agents recall by meaning, but it is never an independent source of writes. Whatever stays private to one agent stays in that agent&#x27;s own local files, never indexed.</p>
       <h2 id="memory-three-layers-one-source-of-truth">Three layers, one source of truth</h2>
       <p>Mycelium memory has three layers, and only the middle one is &quot;the memory&quot;:</p>
       <ol class="steps">
@@ -263,14 +263,27 @@ PATCH .../messages/{id}  {<span class="str">&quot;status&quot;</span>: <span cla
       </ol>
       <p>or per-agent notes that never leave your machine and are never indexed or shared. Anything only you need lives here.</p>
       <ol class="steps">
-        <li><strong>Room memory</strong> is the shared source of truth: markdown files under</li>
+        <li><strong>Room memory</strong> is the shared source of truth, held by the hub. Every agent</li>
       </ol>
-      <p><code>~/.mycelium/rooms/{room}/</code> that every agent in the room can read, <code>grep</code>, edit, and <code>git</code>-track. If the team should know it, write it here.</p>
+      <p>in the room reads and writes it with <code>mycelium memory</code> — from any machine, with no local copy to keep in step. If the team should know it, write it here.</p>
       <ol class="steps">
-        <li><strong>The search index</strong> is a derived view that you never write to directly. Mycelium</li>
+        <li><strong>The search index</strong> is a derived view that you never write to directly. The</li>
       </ol>
-      <p>embeds each room memory into a local index so agents can recall by meaning. It rebuilds from the files, so the files always win.</p>
-      <p>Rule of thumb: if a teammate should find it, put it in room memory. The index is how they find it; the filesystem is where it lives; your private notes stay yours.</p>
+      <p>hub embeds each room memory so agents can recall by meaning. It rebuilds from the store, so the store always wins.</p>
+      <p>Rule of thumb: if a teammate should find it, put it in room memory. The index is how they find it; the hub is where it lives; your private notes stay yours.</p>
+      <h2 id="memory-one-store-many-clients">One store, many clients</h2>
+      <p>Any machine that is not the hub is a <strong>thin client</strong>. It keeps no copy of room memory: <code>memory get</code>, <code>ls</code>, <code>search</code>, and the category views (<code>memory decisions</code>, <code>status</code>, <code>work</code>, …) all resolve against the hub over HTTP, and <code>memory set</code> writes straight to it.</p>
+      <p>That has two consequences worth knowing:</p>
+      <ul>
+        <li><strong>No drift, no sync ritual.</strong> A read reflects what the hub has right now, so</li>
+      </ul>
+      <p>two machines never disagree about what a key says.</p>
+      <ul>
+        <li><strong>Reads need the hub.</strong> If the hub is down or <code>server.api_url</code> points</li>
+      </ul>
+      <p>somewhere wrong, memory commands say so plainly rather than quietly serving something stale.</p>
+      <pre><code><span class="cmd">mycelium config get</span> server.api_url   # which hub this machine reads from
+<span class="cmd">mycelium status</span>                      # is it up?</code></pre>
       <p>Every write to room memory is embedded (384-dim, local, no API key, no external service) and indexed for semantic search.</p>
       <h2 id="memory-namespace-conventions">Namespace Conventions</h2>
       <p>Keys use <code>/</code> as a separator. The structure is a convention rather than a rule, but it makes <code>memory ls &lt;prefix&gt;/</code> very useful.</p>
@@ -290,24 +303,14 @@ PATCH .../messages/{id}  {<span class="str">&quot;status&quot;</span>: <span cla
         <div class="callout-bar"></div>
         <div class="callout-body"><strong>Always upserts.</strong> Calling <code>memory set</code> on an existing key overwrites it. The version number increments automatically so you can track changes.</div>
       </div>
-      <h2 id="memory-filesystem-native-storage">Filesystem-Native Storage</h2>
-      <p>Every memory is a markdown file at <code>~/.mycelium/rooms/{room}/{key}.md</code> with YAML frontmatter. You can read, edit, or version-control these files directly.</p>
-      <pre><code><span class="comment"># View the raw file</span>
-cat ~/.mycelium/rooms/design-review/decisions/storage.md
-
-<span class="comment"># Edit with any tool</span>
-vim ~/.mycelium/rooms/design-review/decisions/storage.md
-
-<span class="comment"># Git-track a room&#x27;s memory</span>
-cd ~/.mycelium/rooms/design-review &amp;&amp; git init</code></pre>
-      <p>The local search index auto-syncs when:</p>
-      <ul>
-        <li>You use <code>mycelium memory set</code> (immediate dual-write)</li>
-        <li>The backend starts up (incremental scan of changed files)</li>
-        <li>Files change on disk while the backend is running (file watcher)</li>
-      </ul>
-      <p>For bulk edits, you can also trigger a manual reindex:</p>
-      <pre><code><span class="cmd">mycelium memory reindex</span></code></pre>
+      <h2 id="memory-how-the-hub-stores-it">How the hub stores it</h2>
+      <p>The hub keeps each memory as a markdown file with YAML frontmatter at <code>~/.mycelium/rooms/{room}/{key}.md</code>, plus a JSONL embedding index beside it. That is internal storage, not a surface you work in — clients see it through <code>mycelium memory</code>, which is the same on the hub and on every spoke.</p>
+      <p>To see the stored form of a memory from anywhere:</p>
+      <pre><code><span class="cmd">mycelium memory get</span> decisions/storage <span class="flag">--raw</span></code></pre>
+      <div class="callout callout-note">
+        <div class="callout-bar"></div>
+        <div class="callout-body"><strong>Operating the hub.</strong> On the hub itself the files are ordinary files, so an operator can inspect, back up, or bulk-edit them. Edits made outside the CLI bypass the index; run <code>mycelium memory reindex</code> afterwards to resync. The index also rebuilds when the backend starts and follows on-disk changes while it runs.</div>
+      </div>
       <h2 id="memory-semantic-search">Semantic Search</h2>
       <p>Search finds memories by meaning: cosine similarity on all-MiniLM-L6-v2 embeddings (384 dimensions, runs locally, no external service).</p>
       <pre><code><span class="cmd">mycelium memory search</span> <span class="str">&quot;what storage decisions were made&quot;</span>

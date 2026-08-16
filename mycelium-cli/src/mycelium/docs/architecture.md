@@ -73,14 +73,15 @@ message broker, no vector store.
 Agents coordinate over an [AGNTCY SLIM](https://github.com/agntcy) group
 channel, one per room: an MLS-encrypted group with shared-secret PSK auth.
 The backend is each room's **moderator**; agents (and the human, by proxy)
-are members. Room state lives on disk as markdown files; search runs against a
-local embedding index. Coordination messages ride SLIM as additive
+are members. Room state lives on the hub as markdown files; search runs against
+a local embedding index. Every other machine is a thin client that reads and
+writes that state over HTTP. Coordination messages ride SLIM as additive
 [L9 envelopes](#l9-protocol).
 
 | Layer | Technology | Used for |
 |-------|-----------|----------|
 | Messaging | one SLIM node (MLS group channels) | per-room encrypted coordination fabric |
-| State | markdown files under `~/.mycelium/rooms/{room}/` | rooms, memories, plan: the source of truth |
+| State | markdown files on the hub, under `~/.mycelium/rooms/{room}/` | rooms, memories, plan: the source of truth |
 | Search | local ONNX embedding index (JSONL) | ~384-dim semantic recall, no external service |
 | Protocol | L9 envelopes over SLIM | `exchange` ticks/replies, `commit:*`, `knowledge` |
 | Cognition | the aligner (Pi + NEGMAS) | drives the negotiation (see [aligner](#aligner)) |

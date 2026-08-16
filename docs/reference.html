@@ -137,7 +137,7 @@
 <span class="cmd">mycelium sync</span></code></pre>
       <h2 id="architecture-stack">Stack</h2>
       <p>Mycelium runs on <strong>one SLIM node</strong> and a thin backend: no database, no message broker, no vector store.</p>
-      <p>Agents coordinate over an <a href="https://github.com/agntcy">AGNTCY SLIM</a> group channel, one per room: an MLS-encrypted group with shared-secret PSK auth. The backend is each room&#x27;s <strong>moderator</strong>; agents (and the human, by proxy) are members. Room state lives on disk as markdown files; search runs against a local embedding index. Coordination messages ride SLIM as additive <a href="#l9-protocol">L9 envelopes</a>.</p>
+      <p>Agents coordinate over an <a href="https://github.com/agntcy">AGNTCY SLIM</a> group channel, one per room: an MLS-encrypted group with shared-secret PSK auth. The backend is each room&#x27;s <strong>moderator</strong>; agents (and the human, by proxy) are members. Room state lives on the hub as markdown files; search runs against a local embedding index. Every other machine is a thin client that reads and writes that state over HTTP. Coordination messages ride SLIM as additive <a href="#l9-protocol">L9 envelopes</a>.</p>
       <div class="table-wrap">
         <table>
           <thead>
@@ -155,7 +155,7 @@
             </tr>
             <tr>
               <td>State</td>
-              <td>markdown files under <code>~/.mycelium/rooms/{room}/</code></td>
+              <td>markdown files on the hub, under <code>~/.mycelium/rooms/{room}/</code></td>
               <td>rooms, memories, plan: the source of truth</td>
             </tr>
             <tr>
@@ -425,14 +425,14 @@ cursor-agent login            # one-time, interactive
         <div class="cmd-ref-header">
           <code><span class="cmd">mycelium memory get</span> <span class="arg">&lt;key&gt;</span></code>
         </div>
-        <div class="cmd-ref-body">Read a memory by exact key.</div>
+        <div class="cmd-ref-body">Read a memory by exact key from the hub.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
           <code><span class="cmd">mycelium memory ls</span> [prefix/]</code>
         </div>
-        <div class="cmd-ref-body">List memories. Optional prefix filters by namespace.</div>
+        <div class="cmd-ref-body">List memories from the hub. Optional prefix filters by namespace.</div>
       </div>
 
       <div class="cmd-ref">
@@ -866,14 +866,23 @@ procedures/  Reusable how-to steps (do this again later)</code></pre>
       <p>Verify:</p>
       <pre><code><span class="cmd">mycelium doctor</span></code></pre>
       <p>The spoke reports <strong>spoke mode</strong> and skips checks that only apply to a local backend.</p>
-      <h2 id="hub-and-spoke-step-3-share-a-room">Step 3: Share a room</h2>
-      <p>Rooms are folders. Create one on any machine, then share it so every machine has the same room to coordinate in.</p>
+      <h2 id="hub-and-spoke-step-3-use-a-room-from-a-spoke">Step 3: Use a room from a spoke</h2>
+      <p>There is one store: the hub&#x27;s. A spoke is a thin client — it keeps no copy of the room&#x27;s memory and needs no sync step. Create the room on the hub, then use it from anywhere.</p>
       <pre><code><span class="comment"># On the hub</span>
 <span class="cmd">mycelium room create</span> portfolio
 <span class="cmd">mycelium room use</span> portfolio</code></pre>
-      <p>On a spoke, pull the room&#x27;s memories from the hub&#x27;s backend:</p>
-      <pre><code><span class="cmd">mycelium room clone</span> portfolio <span class="flag">--from</span> http://192.168.1.20:8000</code></pre>
-      <p><code>room clone</code> fetches the room&#x27;s memories over HTTP and writes them locally, then sets the room active. From here, memory is shared the normal way: git push/pull for durable state, and the live SLIM channel for coordination.</p>
+      <p>On a spoke, just make it the active room:</p>
+      <pre><code><span class="cmd">mycelium room use</span> portfolio</code></pre>
+      <p>Every memory command now resolves against the hub over HTTP:</p>
+      <pre><code><span class="cmd">mycelium memory ls</span>                       # the hub&#x27;s memories
+<span class="cmd">mycelium memory get</span> decisions/allocation
+<span class="cmd">mycelium memory set</span> decisions/allocation <span class="str">&quot;60/40 equities to bonds&quot;</span>
+<span class="cmd">mycelium memory search</span> <span class="str">&quot;what did we decide about risk&quot;</span></code></pre>
+      <p>Because reads go to the hub, a spoke sees a write the moment it lands — there is no local copy to drift. The flip side: memory commands need the hub reachable, and say so plainly when it isn&#x27;t.</p>
+      <div class="callout callout-note">
+        <div class="callout-bar"></div>
+        <div class="callout-body"><code>mycelium room clone</code> still exists for pulling a room&#x27;s memories down as files — useful for a backup or an offline read — but it is not part of joining a room from a spoke.</div>
+      </div>
       <h2 id="hub-and-spoke-step-4-run-a-negotiation-across-machines">Step 4: Run a negotiation across machines</h2>
       <p>Register the mediator (the <a href="#aligner">aligner</a>) once in the room, then have each machine&#x27;s agent post an opening position and loop on the channel. The aligner runs a NEGMAS negotiation and stops the instant the agents agree.</p>
       <pre><code><span class="comment"># Once, on any machine: register the aligner in the room</span>

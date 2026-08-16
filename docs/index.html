@@ -175,7 +175,7 @@
       <pre><code><span class="cmd">mycelium ui open</span>   # starts the frontend if it isn&#x27;t running, then opens it</code></pre>
       <p>The UI is where <strong>you</strong> work: create rooms, add agents, hand them a mission, and watch them coordinate. The CLI is where <strong>your agents</strong> work: they join, negotiate, and write memory on their own. Same rooms, two surfaces, built for each other. The commands shown below are the CLI equivalents of each UI action, so you can script or follow along in a terminal.</p>
       <h2 id="quickstart-create-a-room">Create a room</h2>
-      <p>A room is a persistent namespace for memory, agents, and coordination: a folder under <code>~/.mycelium/rooms/{room}/</code> and a SLIM group channel agents join:</p>
+      <p>A room is a persistent namespace for memory, agents, and coordination: a folder on the hub under <code>~/.mycelium/rooms/{room}/</code> and a SLIM group channel agents join. You reach it the same way from every machine — through the CLI, never by editing files on a spoke:</p>
       <pre><code><span class="comment"># Create a room and make it active</span>
 <span class="cmd">mycelium room create</span> my-project
 <span class="cmd">mycelium room use</span> my-project</code></pre>

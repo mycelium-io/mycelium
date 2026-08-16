@@ -1,10 +1,9 @@
 # Memory
 
-Room memory is markdown files on your filesystem: the shared source of truth,
-greppable and editable by any agent. A local embedding index over those files
-lets agents recall by meaning, but it is never an independent source of writes.
-Whatever stays private to one agent stays in that agent's own local files, never
-indexed.
+Room memory lives on the hub: one store every agent reads and writes through the
+CLI, chat, or the UI. An embedding index over that store lets agents recall by
+meaning, but it is never an independent source of writes. Whatever stays private
+to one agent stays in that agent's own local files, never indexed.
 
 ## Three layers, one source of truth
 
@@ -13,16 +12,35 @@ Mycelium memory has three layers, and only the middle one is "the memory":
 1. **Your private context** is yours alone: agent-native files like `SOUL.md`
    or per-agent notes that never leave your machine and are never indexed or
    shared. Anything only you need lives here.
-2. **Room memory** is the shared source of truth: markdown files under
-   `~/.mycelium/rooms/{room}/` that every agent in the room can read, `grep`,
-   edit, and `git`-track. If the team should know it, write it here.
-3. **The search index** is a derived view that you never write to directly. Mycelium
-   embeds each room memory into a local index so agents can recall by meaning.
-   It rebuilds from the files, so the files always win.
+2. **Room memory** is the shared source of truth, held by the hub. Every agent
+   in the room reads and writes it with `mycelium memory` — from any machine,
+   with no local copy to keep in step. If the team should know it, write it here.
+3. **The search index** is a derived view that you never write to directly. The
+   hub embeds each room memory so agents can recall by meaning. It rebuilds from
+   the store, so the store always wins.
 
-Rule of thumb: if a teammate should find it, put it in room memory. The index
-is how they find it; the filesystem is where it lives; your private notes stay
-yours.
+Rule of thumb: if a teammate should find it, put it in room memory. The index is
+how they find it; the hub is where it lives; your private notes stay yours.
+
+## One store, many clients
+
+Any machine that is not the hub is a **thin client**. It keeps no copy of room
+memory: `memory get`, `ls`, `search`, and the category views (`memory decisions`,
+`status`, `work`, …) all resolve against the hub over HTTP, and `memory set`
+writes straight to it.
+
+That has two consequences worth knowing:
+
+- **No drift, no sync ritual.** A read reflects what the hub has right now, so
+  two machines never disagree about what a key says.
+- **Reads need the hub.** If the hub is down or `server.api_url` points
+  somewhere wrong, memory commands say so plainly rather than quietly serving
+  something stale.
+
+```bash
+mycelium config get server.api_url   # which hub this machine reads from
+mycelium status                      # is it up?
+```
 
 Every write to room memory is embedded (384-dim, local, no API key, no external
 service) and indexed for semantic search.
@@ -50,31 +68,24 @@ mycelium memory ls failed/
 > **Always upserts.** Calling `memory set` on an existing key overwrites it.
 > The version number increments automatically so you can track changes.
 
-## Filesystem-Native Storage
+## How the hub stores it
 
-Every memory is a markdown file at `~/.mycelium/rooms/{room}/{key}.md` with YAML
-frontmatter. You can read, edit, or version-control these files directly.
+The hub keeps each memory as a markdown file with YAML frontmatter at
+`~/.mycelium/rooms/{room}/{key}.md`, plus a JSONL embedding index beside it.
+That is internal storage, not a surface you work in — clients see it through
+`mycelium memory`, which is the same on the hub and on every spoke.
+
+To see the stored form of a memory from anywhere:
 
 ```bash
-# View the raw file
-cat ~/.mycelium/rooms/design-review/decisions/storage.md
-
-# Edit with any tool
-vim ~/.mycelium/rooms/design-review/decisions/storage.md
-
-# Git-track a room's memory
-cd ~/.mycelium/rooms/design-review && git init
+mycelium memory get decisions/storage --raw
 ```
 
-The local search index auto-syncs when:
-- You use `mycelium memory set` (immediate dual-write)
-- The backend starts up (incremental scan of changed files)
-- Files change on disk while the backend is running (file watcher)
-
-For bulk edits, you can also trigger a manual reindex:
-```bash
-mycelium memory reindex
-```
+> **Operating the hub.** On the hub itself the files are ordinary files, so an
+> operator can inspect, back up, or bulk-edit them. Edits made outside the CLI
+> bypass the index; run `mycelium memory reindex` afterwards to resync. The
+> index also rebuilds when the backend starts and follows on-disk changes while
+> it runs.
 
 ## Semantic Search
 
