@@ -563,6 +563,64 @@ def provision_channel_identity(
     return {"mode": MODE_PSK, "handle": handle, "provisioned": False}
 
 
+def revoke_channel_identity(
+    handle: str, mode: str | None = None, data_dir: Path | None = None
+) -> dict[str, Any]:
+    """Revoke ``@handle``'s SLIM channel identity for the active mode. Idempotent.
+
+    The deprovisioning-time inverse of :func:`provision_channel_identity`
+    (``agent rm`` calls it): it removes the per-agent credential so a removed member
+    can no longer authenticate to the room — *without a room-wide re-key*, the
+    property the shared-secret PSK never had (#590). Symmetric and idempotent:
+    revoking an already-absent member is a no-op, not an error.
+
+    * ``psk`` — there is no per-agent credential to revoke; the only lever is
+      rotating ``MYCELIUM_SLIM_MASTER_SECRET`` for the whole room (the blunt
+      instrument this tier is stuck with). A no-op here.
+    * ``signerjwt`` — drop the member's public JWK from the roster (the inverse of
+      :func:`register_public_jwk`) and delete its local signing key. Once its key is
+      off the roster, peers' static-JWKS verifiers reject its self-signed tokens, so
+      it can't rejoin with the old credential — per-agent, no room-wide rotation.
+      Returns the removed paths (empty on a second/idempotent revoke).
+    * ``spire`` — the SVID is minted by the trust domain, so revocation is deleting
+      the SPIRE registration entry (``spire-server entry delete``), external to the
+      CLI's on-disk state. Return the member's SPIFFE-ID + the operator step; the
+      appliance path (``spire_registry.revoke_workload``) runs it when the server is
+      reachable. ``revoked`` is False — there is no local material to remove.
+
+    Every result carries ``mode``, ``handle``, and ``revoked``.
+    """
+    resolved = mode or resolve_identity_mode()
+    if resolved == MODE_SIGNERJWT:
+        jwk_path = public_jwk_path(handle, data_dir)
+        key_path = signing_key_path(handle, data_dir)
+        removed: list[str] = []
+        for path in (jwk_path, key_path):
+            if path.exists():
+                path.unlink()
+                removed.append(str(path))
+        return {
+            "mode": MODE_SIGNERJWT,
+            "handle": handle,
+            "revoked": bool(removed),
+            "removed": removed,
+            "roster_path": str(jwk_path),
+            "key_path": str(key_path),
+        }
+    if resolved == MODE_SPIRE:
+        trust_domain = resolve_spire_trust_domain()
+        spiffe_id = spiffe_id_for(handle, trust_domain)
+        return {
+            "mode": MODE_SPIRE,
+            "handle": handle,
+            "revoked": False,
+            "spiffe_id": spiffe_id,
+            "trust_domain": trust_domain,
+            "operator_step": (f"spire-server entry delete -entryID <entry-id for {spiffe_id}>"),
+        }
+    return {"mode": MODE_PSK, "handle": handle, "revoked": False}
+
+
 def resolve_identity_material(
     mode: str,
     handle: str,
