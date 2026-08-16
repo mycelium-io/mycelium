@@ -285,15 +285,6 @@ body {
   transform: translateY(0.5px);
 }
 
-/* ── Keyboard focus ──────────────────────────────────────────────────────
- * The app is meant to be driven from the keyboard, so where focus sits has to
- * be visible everywhere by default — pointer clicks stay unringed. */
-:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-  border-radius: 4px;
-}
-
 /* ── Onboarding tour (driver.js popover, themed to the app tokens) ── */
 .driver-popover.mycelium-tour {
   background: var(--elevated);
