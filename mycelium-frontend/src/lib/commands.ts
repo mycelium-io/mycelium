@@ -41,6 +41,13 @@ export interface PaletteSection {
 export const RECENT_LIMIT = 24;
 export const RECENT_SHOWN = 5;
 
+/** How many rooms the Rooms group shows at rest. A hub accrues many rooms; the
+ *  standing palette shouldn't be a wall of them, so it lists the most-recent few
+ *  (room commands arrive in recency order) and leaves the rest to the search —
+ *  typing a query drops this cap and cmdk scores every room. Only `room:*`
+ *  commands count; the Rooms *actions* (Next room, Create a room…) always show. */
+export const ROOMS_SHOWN = 8;
+
 export const RECENT_HEADING = "Recent";
 
 /** Ceiling on the recency bonus. cmdk's scores run 0…1, so a fraction this size
@@ -110,11 +117,28 @@ function byGroup(commands: readonly PaletteCommand[]): PaletteSection[] {
     .sort((a, b) => rank(a.heading) - rank(b.heading));
 }
 
+/** At rest, keep the Rooms group to the recent few — room commands (`room:*`)
+ *  past the cap wait behind the search. Room *actions* and every other group are
+ *  untouched. */
+function capRooms(sections: PaletteSection[]): PaletteSection[] {
+  return sections.map(section => {
+    if (section.heading !== "Rooms") return section;
+    let shown = 0;
+    const commands = section.commands.filter(c => {
+      if (!c.id.startsWith("room:")) return true;
+      shown += 1;
+      return shown <= ROOMS_SHOWN;
+    });
+    return { ...section, commands };
+  });
+}
+
 /** The palette's sections, in render order.
  *
  *  With nothing typed the list is a standing menu, so the few commands actually
- *  used lead it. Once there's a query cmdk is sorting by score across the whole
- *  list, and a Recent section would only duplicate rows out of that order. */
+ *  used lead it and the Rooms group shows only its recent head. Once there's a
+ *  query cmdk is sorting by score across the whole list (every room included),
+ *  and a Recent section would only duplicate rows out of that order. */
 export function paletteSections(
   commands: readonly PaletteCommand[],
   recent: readonly string[],
@@ -128,11 +152,11 @@ export function paletteSections(
     .filter((c): c is PaletteCommand => c !== undefined)
     .slice(0, RECENT_SHOWN);
 
-  if (recentCommands.length === 0) return byGroup(commands);
+  if (recentCommands.length === 0) return capRooms(byGroup(commands));
 
   const promoted = new Set(recentCommands.map(c => c.id));
   return [
     { heading: RECENT_HEADING, commands: recentCommands },
-    ...byGroup(commands.filter(c => !promoted.has(c.id))),
+    ...capRooms(byGroup(commands.filter(c => !promoted.has(c.id)))),
   ];
 }

@@ -196,13 +196,19 @@ export function RoomsSidebar({ activeRoom = null }: Props) {
   // and a sidebar filter left set would silently hide rooms from it.
   const commands = useMemo<PaletteCommand[]>(
     () => [
-      ...rooms.map(room => ({
-        id: `room:${room.name}`,
-        title: room.name,
-        group: "Rooms",
-        keywords: ["room", "switch", "open"],
-        run: () => go(room),
-      })),
+      // Recency order (last_activity, falling back to created_at) so the palette,
+      // which shows only the recent head at rest, leads with the rooms you're in.
+      ...[...rooms]
+        .sort((a, b) =>
+          (b.last_activity ?? b.created_at ?? "").localeCompare(a.last_activity ?? a.created_at ?? ""),
+        )
+        .map(room => ({
+          id: `room:${room.name}`,
+          title: room.name,
+          group: "Rooms",
+          keywords: ["room", "switch", "open"],
+          run: () => go(room),
+        })),
       {
         id: "room.create",
         title: "Create a room",

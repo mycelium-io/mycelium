@@ -10,6 +10,7 @@ import {
   RECENT_HEADING,
   RECENT_LIMIT,
   RECENT_SHOWN,
+  ROOMS_SHOWN,
   type PaletteCommand,
 } from "@/lib/commands";
 
@@ -115,5 +116,19 @@ describe("paletteSections", () => {
   it("drops the recent section once there's a query, so scoring owns the order", () => {
     const sections = paletteSections(COMMANDS, ["pane.plan"], "pl");
     expect(sections.map(s => s.heading)).toEqual(["Rooms", "Panes"]);
+  });
+
+  it("caps the standing Rooms list to the recent head, but never the actions", () => {
+    const rooms = Array.from({ length: ROOMS_SHOWN + 4 }, (_, i) => command(`room:r${i}`, `r${i}`, "Rooms"));
+    const withAction = [...rooms, command("room.create", "Create a room", "Rooms")];
+    const [section] = paletteSections(withAction, [], "");
+    expect(section.commands.filter(c => c.id.startsWith("room:"))).toHaveLength(ROOMS_SHOWN);
+    expect(section.commands.some(c => c.id === "room.create")).toBe(true);
+  });
+
+  it("drops the Rooms cap once there's a query, so every room is searchable", () => {
+    const rooms = Array.from({ length: ROOMS_SHOWN + 4 }, (_, i) => command(`room:r${i}`, `r${i}`, "Rooms"));
+    const [section] = paletteSections(rooms, [], "r");
+    expect(section.commands.filter(c => c.id.startsWith("room:"))).toHaveLength(ROOMS_SHOWN + 4);
   });
 });
