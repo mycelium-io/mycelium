@@ -211,13 +211,9 @@ def create(
             result = create_api.sync(client=client, body=body)
             room_data = result.to_dict() if result and hasattr(result, "to_dict") else {}
 
-        # The backend now creates the directory, but also create locally
-        # in case the CLI is running on a different machine
-        from mycelium.filesystem import ensure_room_structure, get_room_dir
-
-        room_dir = get_room_dir(name)
-        ensure_room_structure(room_dir)
-
+        # The hub owns the room dir + store; a spoke keeps no local copy. Any
+        # local dir an agent needs (e.g. agents/ for a manifest) is created
+        # lazily on write, so nothing to pre-create here.
         if json_output:
             typer.echo(json_module.dumps(room_data, indent=2, default=str))
         else:
@@ -227,7 +223,6 @@ def create(
             )
             typer.echo(f"  ID:      {room_data.get('id')}")
             typer.echo(f"  Created: {str(room_data.get('created_at', ''))[:10]}")
-            typer.echo(f"  Path:    {room_dir}")
             typer.echo("")
             typer.echo(f"  Run 'mycelium room use {name}' to make it your active room")
 
