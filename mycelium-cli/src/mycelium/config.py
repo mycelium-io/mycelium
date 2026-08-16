@@ -95,18 +95,22 @@ class SlimConfig(BaseModel):
             "per-agent identity. 'signerjwt' opts into the SignerJwt floor (#476): "
             "each member presents a per-agent self-signed ES256 identity so members "
             "are cryptographically distinct, individually revocable MLS "
-            "participants. Selecting 'signerjwt' with no registered key degrades to "
-            "'psk' unless MYCELIUM_SLIM_IDENTITY_REQUIRE=1 fails closed."
+            "participants. 'spire' opts into SPIRE/SPIFFE (#579): each member "
+            "presents a SPIRE-attested JWT-SVID from the Workload API — tightest "
+            "attestation, heaviest deploy (a co-located SPIRE agent; see "
+            "docs/design/spire-quickstart/). Selecting 'signerjwt'/'spire' with no "
+            "resolvable material degrades to 'psk' unless "
+            "MYCELIUM_SLIM_IDENTITY_REQUIRE=1 fails closed."
         ),
     )
 
     @field_validator("identity")
     @classmethod
     def _validate_identity(cls, v: str) -> str:
-        """Only ``psk`` / ``signerjwt`` are valid identity tiers."""
+        """Only ``psk`` / ``signerjwt`` / ``spire`` are valid identity tiers."""
         normalized = v.strip().lower()
-        if normalized not in ("psk", "signerjwt"):
-            raise ValueError(f"slim.identity must be 'psk' or 'signerjwt', got {v!r}")
+        if normalized not in ("psk", "signerjwt", "spire"):
+            raise ValueError(f"slim.identity must be 'psk', 'signerjwt', or 'spire', got {v!r}")
         return normalized
 
     @field_validator("node_endpoint")

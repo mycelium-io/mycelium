@@ -38,25 +38,38 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("mycelium.slim")
 
-# Warn only once per handle when signerjwt identity degrades to the PSK.
-_signerjwt_degraded_warned: set[str] = set()
+# Warn only once per (mode, handle) when a selected identity degrades to the PSK.
+_identity_degraded_warned: set[tuple[str, str]] = set()
+
+# Per-mode hint for the degrade warning / fail-closed error: what material is
+# missing and how to provision it.
+_IDENTITY_MISSING_HINT = {
+    slim_identity.MODE_SIGNERJWT: (
+        "no signing key/roster resolved — register the agent's key (ensure_agent_keypair)"
+    ),
+    slim_identity.MODE_SPIRE: (
+        "no SPIRE Workload API socket present — start the co-located SPIRE agent "
+        "and set MYCELIUM_SLIM_SPIRE_SOCKET"
+    ),
+}
 
 
-def _warn_signerjwt_degraded(handle: str) -> None:
-    """One-time warning that ``signerjwt`` fell back to the shared-secret PSK.
+def _warn_identity_degraded(mode: str, handle: str) -> None:
+    """One-time warning that a selected identity mode fell back to the PSK.
 
     A silent downgrade is a security smell, so the fallback is announced even
     though it is the specified off-by-default behavior (#567). Set
     ``MYCELIUM_SLIM_IDENTITY_REQUIRE=1`` to refuse the fallback instead.
     """
-    if handle in _signerjwt_degraded_warned:
+    if (mode, handle) in _identity_degraded_warned:
         return
-    _signerjwt_degraded_warned.add(handle)
+    _identity_degraded_warned.add((mode, handle))
+    hint = _IDENTITY_MISSING_HINT.get(mode, "no identity material resolved")
     logger.warning(
-        "MYCELIUM_SLIM_IDENTITY=signerjwt but no signing key/roster resolved for "
-        "%r — falling back to the shared-secret PSK. Register the agent's key "
-        "(ensure_agent_keypair) or set MYCELIUM_SLIM_IDENTITY_REQUIRE=1 to fail "
-        "closed.",
+        "MYCELIUM_SLIM_IDENTITY=%s but %s for %r — falling back to the shared-secret "
+        "PSK. Set MYCELIUM_SLIM_IDENTITY_REQUIRE=1 to fail closed.",
+        mode,
+        hint,
         handle,
     )
 
@@ -187,26 +200,28 @@ class SlimClient:
         """Register the local app, selecting the identity tier (PSK default).
 
         Twin of the backend seam: ``psk`` (default, #567) is the shared-secret
-        credential — the try-it path, untouched. ``signerjwt`` presents this
-        member's per-agent self-signed ES256 identity (the floor, #476) when its
-        signing key + the room roster resolve; absent that material it degrades to
-        PSK with a one-time warning unless ``MYCELIUM_SLIM_IDENTITY_REQUIRE=1``
-        makes it fail closed.
+        credential — the try-it path, untouched. ``signerjwt`` (the floor, #476)
+        presents this member's per-agent self-signed ES256 identity; ``spire``
+        (#579) presents a SPIRE-attested JWT-SVID. Both resolve to a
+        provider/verifier pair through one dispatcher and share one
+        degrade/fail-closed path: absent the mode's material it degrades to PSK with
+        a one-time warning unless ``MYCELIUM_SLIM_IDENTITY_REQUIRE=1`` fails closed.
         """
         assert self._local_name is not None
-        if slim_identity.resolve_identity_mode() == slim_identity.MODE_SIGNERJWT:
-            material = slim_identity.resolve_signerjwt_material(self.identity.agent)
+        mode = slim_identity.resolve_identity_mode()
+        if mode != slim_identity.MODE_PSK:
+            material = slim_identity.resolve_identity_material(mode, self.identity.agent)
             if material is not None:
                 provider, verifier = material
                 return service.create_app(self._local_name, provider, verifier)
             if slim_identity.identity_required():
+                hint = _IDENTITY_MISSING_HINT.get(mode, "no identity material resolved")
                 raise SlimError(
-                    "MYCELIUM_SLIM_IDENTITY=signerjwt but no signing key/roster "
-                    f"resolved for {self.identity.agent!r}, and "
-                    "MYCELIUM_SLIM_IDENTITY_REQUIRE is set: refusing to fall back to "
-                    "the shared-secret PSK. Register the agent's key first."
+                    f"MYCELIUM_SLIM_IDENTITY={mode} but {hint} for "
+                    f"{self.identity.agent!r}, and MYCELIUM_SLIM_IDENTITY_REQUIRE is "
+                    "set: refusing to fall back to the shared-secret PSK."
                 )
-            _warn_signerjwt_degraded(self.identity.agent)
+            _warn_identity_degraded(mode, self.identity.agent)
         return service.create_app_with_secret(self._local_name, self._secret)
 
     @property

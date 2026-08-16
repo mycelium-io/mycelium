@@ -835,7 +835,7 @@ cursor-agent login            # one-time, interactive
 <span class="comment"># SLIM node endpoint (host:port), e.g. http://127.0.0.1:46357</span>
 <span class="arg">node_endpoint</span> = <span class="str">&quot;http://127.0.0.1:46357&quot;</span>
 
-<span class="comment"># SLIM channel identity tier: &#x27;psk&#x27; (default, off-by-default #567) is the shared-secret credential every room member derives — zero infra, no per-agent identity. &#x27;signerjwt&#x27; opts into the SignerJwt floor (#476): each member presents a per-agent self-signed ES256 identity so members are cryptographically distinct, individually revocable MLS participants. Selecting &#x27;signerjwt&#x27; with no registered key degrades to &#x27;psk&#x27; unless MYCELIUM_SLIM_IDENTITY_REQUIRE=1 fails closed.</span>
+<span class="comment"># SLIM channel identity tier: &#x27;psk&#x27; (default, off-by-default #567) is the shared-secret credential every room member derives — zero infra, no per-agent identity. &#x27;signerjwt&#x27; opts into the SignerJwt floor (#476): each member presents a per-agent self-signed ES256 identity so members are cryptographically distinct, individually revocable MLS participants. &#x27;spire&#x27; opts into SPIRE/SPIFFE (#579): each member presents a SPIRE-attested JWT-SVID from the Workload API — tightest attestation, heaviest deploy (a co-located SPIRE agent; see docs/design/spire-quickstart/). Selecting &#x27;signerjwt&#x27;/&#x27;spire&#x27; with no resolvable material degrades to &#x27;psk&#x27; unless MYCELIUM_SLIM_IDENTITY_REQUIRE=1 fails closed.</span>
 <span class="arg">identity</span> = <span class="str">&quot;psk&quot;</span>
 
 <span class="comment"># First-party Cognition Engine runtime configuration.</span>
