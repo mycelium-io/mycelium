@@ -11,6 +11,7 @@ that reaches consensus compiles into a shared plan and syncs to memory.
 ```
 .mycelium/              Memory storage (rooms are folders, memories are markdown files)
 ├── rooms/{name}/       Room directories with standard namespace subdirs
+├── skills/{name}.md    Global, reusable skills (SKILL.md-style markdown + frontmatter)
 └── config.toml         Project-local configuration
 
 fastapi-backend/    FastAPI backend, room moderator + persister (Python 3.12).
@@ -173,6 +174,21 @@ is no litellm dependency.
   inside it stays literal — cycles are structurally impossible and expansion size is
   bounded, with no depth cap to tune. A marker that can't expand is left exactly as
   written and reported, so a refused embed never reads as an empty definition.
+- **Skills are a global store, not a room namespace.** Reusable, invokable skills
+  (SKILL.md-style markdown + frontmatter) live at `.mycelium/skills/{name}.md` — a
+  sibling of `rooms/` and `users/`, reached via `mycelium skill …`, `/api/skills`,
+  and the frontend Skills rail. Global (not room-scoped) because a skill is reusable
+  across rooms, and because the memory index/listing walks a room's markdown
+  wholesale — a skill nested in a room would leak into memory results
+  (`app/services/skills.py`). The store keeps prose; it does not execute skills —
+  that's the participation/engine layer's concern.
+- **Three composer sigils, one mechanism.** The chat composer
+  (`room-chat-box.tsx`) autocompletes `@` → agents, `[[` → room memories (inserts
+  `[[key]]`, which resolves to `myc://` and is clickable in chat), and `/` →
+  global skills (inserts `/name`). One cursor-prefix detector feeds one candidate
+  popover; `[[` is matched before `/` and `@` since a memory key can contain
+  slashes. Skills insert a reference token — the resident agent/engine interprets
+  it; the composer never runs the skill.
 - **Consensus compiles into the plan.** On convergence the aligner hands the agreed
   `{issue: value}` map to `plan_compiler.py`, an LLM stage that materializes
   `plan/tasks.md` (one shared `- [ ]` checklist with `@handle` owners) *before* the

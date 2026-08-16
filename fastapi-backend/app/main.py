@@ -42,6 +42,7 @@ from app.routes.plan import router as plan_router
 from app.routes.rooms import router as rooms_router
 from app.routes.search import router as search_router
 from app.routes.sessions import router as sessions_router
+from app.routes.skills import router as skills_router
 from app.routes.stream import router as stream_router
 from app.routes.users import router as users_router
 from app.services.auth import auth_gate
@@ -231,6 +232,7 @@ app.include_router(plan_router, prefix="/api")
 app.include_router(agent_context_router, prefix="/api")
 app.include_router(users_router, prefix="/api")
 app.include_router(search_router, prefix="/api")
+app.include_router(skills_router, prefix="/api")
 
 
 @app.get("/", tags=["health"])

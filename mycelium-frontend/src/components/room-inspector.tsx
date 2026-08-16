@@ -4,19 +4,21 @@
 "use client";
 
 import { useState } from "react";
-import { Activity, Brain, PanelRightClose, PanelRightOpen, Users, type LucideIcon } from "lucide-react";
+import { Activity, Brain, PanelRightClose, PanelRightOpen, Sparkles, Users, type LucideIcon } from "lucide-react";
 import { AgentsPanel } from "@/components/agents-panel";
 import { EpisodesRail } from "@/components/episodes-rail";
 import { KeyBadge } from "@/components/key-badge";
 import { MemoryPanel } from "@/components/memory-panel";
+import { SkillsPanel } from "@/components/skills-panel";
 import type { FocusTarget } from "@/lib/search";
 
-export type Tab = "agents" | "episodes" | "memory";
+export type Tab = "agents" | "episodes" | "memory" | "skills";
 
 const TABS: { id: Tab; label: string; icon: LucideIcon }[] = [
   { id: "agents", label: "Members", icon: Users },
   { id: "episodes", label: "Episodes", icon: Activity },
   { id: "memory", label: "Memory", icon: Brain },
+  { id: "skills", label: "Skills", icon: Sparkles },
 ];
 
 interface Props {
@@ -152,6 +154,7 @@ export function RoomInspector({
             focusMemory={focusMemory}
           />
         )}
+        {tab === "skills" && <SkillsPanel />}
       </div>
     </aside>
   );

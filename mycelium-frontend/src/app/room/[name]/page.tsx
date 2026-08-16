@@ -136,6 +136,7 @@ function RoomWorkspace() {
   useKeyAction("rail.agents", () => openTab("agents"));
   useKeyAction("rail.episodes", () => openTab("episodes"));
   useKeyAction("rail.memory", () => openTab("memory"));
+  useKeyAction("rail.skills", () => openTab("skills"));
   useKeyAction("rail.toggle", () => setInspectorOpen(open => !open));
   useKeyAction("focus.chat", () => setEditorView("channel"));
 

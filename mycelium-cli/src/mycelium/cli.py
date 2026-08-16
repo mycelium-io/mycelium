@@ -5,9 +5,6 @@
 Mycelium CLI — Multi-agent coordination + persistent memory.
 """
 
-from importlib import resources
-from pathlib import Path
-
 import typer
 
 from mycelium import __version__
@@ -29,6 +26,7 @@ from mycelium.commands import (
     participate,
     plan,
     room,
+    skill,
     ui,
     user,
     wire,
@@ -76,31 +74,6 @@ def main(
     ctx.obj["json"] = json_output
 
 
-@app.command(name="skill")
-def skill() -> None:
-    """Print the Mycelium SKILL.md (Claude Code adapter skill definition)."""
-    rel = "integrations/claude_code/assets/skills/mycelium/SKILL.md"
-    fallback_parts = (
-        "integrations",
-        "claude_code",
-        "assets",
-        "skills",
-        "mycelium",
-        "SKILL.md",
-    )
-
-    try:
-        with resources.as_file(resources.files("mycelium").joinpath(rel)) as p:
-            typer.echo(p.read_text())
-    except (TypeError, FileNotFoundError):
-        fallback = Path(__file__).parent.joinpath(*fallback_parts)
-        if fallback.exists():
-            typer.echo(fallback.read_text())
-        else:
-            typer.secho("SKILL.md not found", fg=typer.colors.RED)
-            raise typer.Exit(1)
-
-
 # Top-level instance commands
 app.command(name="init")(instance.init)
 app.command(name="install")(install.install)
@@ -134,6 +107,7 @@ app.command(name="ls")(room.list_rooms)
 # Command groups
 app.add_typer(room.app, name="room")
 app.add_typer(memory.app, name="memory")
+app.add_typer(skill.app, name="skill")
 app.add_typer(plan.app, name="plan")
 app.add_typer(config.app, name="config")
 app.add_typer(adapter.app, name="adapter")

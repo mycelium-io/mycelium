@@ -246,6 +246,65 @@ export async function fetchMemoryLinks(roomName: string, key: string): Promise<M
   return { key, outbound: data.outbound ?? [], backlinks: data.backlinks ?? [] };
 }
 
+// ── Skills ───────────────────────────────────────────────────────────────────
+// A global (project-level) store of reusable, invokable skills — SKILL.md-style
+// markdown. Distinct from memory (which is room-scoped): a skill is reusable
+// across rooms. Backs the chat composer's `/` trigger. See #617.
+
+export interface Skill {
+  name: string;
+  description: string;
+  body: string;
+  tags?: string[] | null;
+  created_by: string;
+  updated_by?: string | null;
+  version: number;
+  created_at: string;
+  updated_at: string;
+}
+
+/** List all skills in the global store. Drives the composer's `/` autocomplete
+ *  and the skills panel. Degrades to empty on failure. */
+export async function fetchSkills(): Promise<Skill[]> {
+  const data = await apiFetch<{ skills?: Skill[] }>(`/api/skills`, {
+    cache: "no-store",
+    fallback: { skills: [] },
+  });
+  return data.skills ?? [];
+}
+
+/** One skill by name, or null when it isn't there (or the read failed). */
+export async function fetchSkill(name: string): Promise<Skill | null> {
+  return apiFetch<Skill | null>(`/api/skills/${encodeURIComponent(name)}`, {
+    cache: "no-store",
+    fallback: null,
+  });
+}
+
+/** Create or upsert a skill. User-initiated — throws on failure so the form
+ *  can surface it. */
+export async function saveSkill(data: {
+  name: string;
+  description?: string;
+  body?: string;
+  tags?: string[] | null;
+  created_by: string;
+}): Promise<Skill> {
+  return apiFetch<Skill>(`/api/skills`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+/** Delete a skill by name. User-initiated — throws on failure. */
+export async function deleteSkill(name: string): Promise<void> {
+  await apiFetch<null>(`/api/skills/${encodeURIComponent(name)}`, {
+    method: "DELETE",
+    fallback: null,
+  });
+}
+
 // ── Plan ─────────────────────────────────────────────────────────────────────
 
 export interface PlanTask {

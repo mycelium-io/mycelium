@@ -98,6 +98,7 @@ export const KEYMAP: Binding[] = [
   // Not ⌥E: Alt+E opens the browser menu on Windows and Linux.
   { id: "rail.episodes", keys: ["alt+i"], label: "Episodes", group: "Inspector", scope: "room" },
   { id: "rail.memory", keys: ["alt+m"], label: "Memory", group: "Inspector", scope: "room" },
+  { id: "rail.skills", keys: ["alt+k"], label: "Skills", group: "Inspector", scope: "room" },
   { id: "rail.toggle", keys: ["\\"], label: "Collapse / expand the rail", group: "Inspector", scope: "room" },
 
   { id: "focus.chat", keys: ["i"], label: "Write a message", group: "Focus", scope: "room" },
