@@ -348,6 +348,48 @@ def _backend_container_running() -> bool:
     return "mycelium-backend" in r.stdout.split()
 
 
+def _check_spire_identity() -> CheckResult | None:
+    """Legible SPIRE status when ``slim.identity=spire`` (#588); ``None`` otherwise.
+
+    Returns ``None`` under the default psk/signerjwt tiers so the check is invisible
+    unless attested identity is on. When on, it renders "SPIRE up, @alice attested"
+    — so a misconfig (server down, no entries) is a clear line, not a member
+    silently hanging at "Initializing spire identity manager."
+    """
+    from mycelium.commands.instance import _spire_enabled
+
+    if not _spire_enabled():
+        return None
+
+    from mycelium import spire_registry
+
+    if not spire_registry.server_healthy():
+        return CheckResult(
+            name="SPIRE identity",
+            status="error",
+            message="slim.identity=spire but the SPIRE server is unreachable",
+            details=[
+                "start the appliance SPIRE with: mycelium up  (the spire profile is",
+                "config-driven — no --profile flag needed), then re-run doctor.",
+            ],
+        )
+
+    handles = spire_registry.registered_handles()
+    if not handles:
+        return CheckResult(
+            name="SPIRE identity",
+            status="warning",
+            message="SPIRE up, no members attested yet",
+            details=["register one with: mycelium agent create <handle>"],
+        )
+    attested = ", ".join(f"@{h}" for h in handles)
+    return CheckResult(
+        name="SPIRE identity",
+        status="ok",
+        message=f"SPIRE up, {attested} attested",
+    )
+
+
 def _check_mediator_pi_binary() -> CheckResult:
     """The aligner's SAO mediator runs on Pi — warn if it's unreachable on a
     host-run backend.
@@ -913,6 +955,9 @@ def doctor(
         service_checks.append(_check_llm_connectivity())
         if local:
             service_checks.append(_check_mediator_pi_binary())
+            spire_check = _check_spire_identity()
+            if spire_check is not None:
+                service_checks.append(spire_check)
 
         sections: list[tuple[str, list[CheckResult]]] = [
             ("Configuration", config_checks),

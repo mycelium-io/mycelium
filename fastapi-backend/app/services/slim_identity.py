@@ -32,8 +32,11 @@ domain attests the workload and signs the SVID, so peers verify against the SPIR
 bundle (``IdentityProviderConfig.SPIRE`` / ``IdentityVerifierConfig.SPIRE``) — same
 MLS mechanics, tightest attestation, heaviest deploy. It drops into the same connect
 seam as the floor; :func:`resolve_identity_material` dispatches by mode. Proven on
-the 2.1.0 stack by the #583/#584 spike (``docs/design/spire-mls-spike/``); the dev
-quickstart is ``docs/design/spire-quickstart/``.
+the 2.1.0 stack by the #583/#584 spike (``docs/design/spire-mls-spike/``). The
+appliance ships it as an optional, config-driven ``spire`` compose profile (#588):
+``mycelium config set slim.identity spire`` + ``mycelium up`` stands up a co-located
+SPIRE server+agent, and ``mycelium agent create``/``rm`` register/revoke the SVID
+entries against it (see the CLI's ``spire_registry`` + the Attested Identity guide).
 
 **Off by default (#567).** The identity mode is ``psk`` unless
 ``MYCELIUM_SLIM_IDENTITY=signerjwt`` selects the floor or ``=spire`` selects SPIRE.
