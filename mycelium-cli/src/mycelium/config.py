@@ -87,6 +87,28 @@ class SlimConfig(BaseModel):
         description="SLIM node endpoint (host:port), e.g. http://127.0.0.1:46357",
     )
 
+    identity: str = Field(
+        default="psk",
+        description=(
+            "SLIM channel identity tier: 'psk' (default, off-by-default #567) is the "
+            "shared-secret credential every room member derives — zero infra, no "
+            "per-agent identity. 'signerjwt' opts into the SignerJwt floor (#476): "
+            "each member presents a per-agent self-signed ES256 identity so members "
+            "are cryptographically distinct, individually revocable MLS "
+            "participants. Selecting 'signerjwt' with no registered key degrades to "
+            "'psk' unless MYCELIUM_SLIM_IDENTITY_REQUIRE=1 fails closed."
+        ),
+    )
+
+    @field_validator("identity")
+    @classmethod
+    def _validate_identity(cls, v: str) -> str:
+        """Only ``psk`` / ``signerjwt`` are valid identity tiers."""
+        normalized = v.strip().lower()
+        if normalized not in ("psk", "signerjwt"):
+            raise ValueError(f"slim.identity must be 'psk' or 'signerjwt', got {v!r}")
+        return normalized
+
     @field_validator("node_endpoint")
     @classmethod
     def normalize_endpoint(cls, v: str) -> str:

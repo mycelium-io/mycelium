@@ -21,9 +21,11 @@ from __future__ import annotations
 
 import asyncio
 import datetime
+import logging
 from types import ModuleType
 from typing import TYPE_CHECKING
 
+from mycelium.slim import identity as slim_identity
 from mycelium.slim.naming import (
     DEFAULT_NODE_ENDPOINT,
     SlimIdentity,
@@ -33,6 +35,30 @@ from mycelium.slim.naming import (
 
 if TYPE_CHECKING:
     import slim_bindings
+
+logger = logging.getLogger("mycelium.slim")
+
+# Warn only once per handle when signerjwt identity degrades to the PSK.
+_signerjwt_degraded_warned: set[str] = set()
+
+
+def _warn_signerjwt_degraded(handle: str) -> None:
+    """One-time warning that ``signerjwt`` fell back to the shared-secret PSK.
+
+    A silent downgrade is a security smell, so the fallback is announced even
+    though it is the specified off-by-default behavior (#567). Set
+    ``MYCELIUM_SLIM_IDENTITY_REQUIRE=1`` to refuse the fallback instead.
+    """
+    if handle in _signerjwt_degraded_warned:
+        return
+    _signerjwt_degraded_warned.add(handle)
+    logger.warning(
+        "MYCELIUM_SLIM_IDENTITY=signerjwt but no signing key/roster resolved for "
+        "%r — falling back to the shared-secret PSK. Register the agent's key "
+        "(ensure_agent_keypair) or set MYCELIUM_SLIM_IDENTITY_REQUIRE=1 to fail "
+        "closed.",
+        handle,
+    )
 
 
 class SlimError(RuntimeError):
@@ -153,9 +179,35 @@ class SlimClient:
         self._sb = sb
         self._local_name = to_slim_name(*self.identity.as_tuple())
         self._conn_id = await _shared_connection(service, sb, endpoint)
-        self._app = service.create_app_with_secret(self._local_name, self._secret)
+        self._app = self._create_app(service)
         await self._app.subscribe_async(self._local_name, self._conn_id)
         return self
+
+    def _create_app(self, service: slim_bindings.Service) -> slim_bindings.App:
+        """Register the local app, selecting the identity tier (PSK default).
+
+        Twin of the backend seam: ``psk`` (default, #567) is the shared-secret
+        credential — the try-it path, untouched. ``signerjwt`` presents this
+        member's per-agent self-signed ES256 identity (the floor, #476) when its
+        signing key + the room roster resolve; absent that material it degrades to
+        PSK with a one-time warning unless ``MYCELIUM_SLIM_IDENTITY_REQUIRE=1``
+        makes it fail closed.
+        """
+        assert self._local_name is not None
+        if slim_identity.resolve_identity_mode() == slim_identity.MODE_SIGNERJWT:
+            material = slim_identity.resolve_signerjwt_material(self.identity.agent)
+            if material is not None:
+                provider, verifier = material
+                return service.create_app(self._local_name, provider, verifier)
+            if slim_identity.identity_required():
+                raise SlimError(
+                    "MYCELIUM_SLIM_IDENTITY=signerjwt but no signing key/roster "
+                    f"resolved for {self.identity.agent!r}, and "
+                    "MYCELIUM_SLIM_IDENTITY_REQUIRE is set: refusing to fall back to "
+                    "the shared-secret PSK. Register the agent's key first."
+                )
+            _warn_signerjwt_degraded(self.identity.agent)
+        return service.create_app_with_secret(self._local_name, self._secret)
 
     @property
     def app(self) -> slim_bindings.App:

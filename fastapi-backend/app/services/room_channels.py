@@ -37,7 +37,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from app.config import settings
-from app.services import l9
+from app.services import l9, slim_identity
 from app.services.invites import ACCEPTED, DECLINED, QUEUED, PendingInvite, PendingInviteRegistry
 from app.services.l9_models import Kind
 from app.services.l9_slim import (
@@ -384,6 +384,13 @@ class RoomChannelManager:
             ws = workspace or self._default_workspace
             try:
                 identity = SlimIdentity(ws, room, BACKEND_AGENT)
+                if slim_identity.resolve_identity_mode() == slim_identity.MODE_SIGNERJWT:
+                    # The moderator is a first-class identity (#476): self-register
+                    # its own signing key + roster entry before presenting a
+                    # SignerJwt identity. Agents register explicitly via
+                    # `mycelium agent credential slim-key`; the backend registers
+                    # itself. No-op under the PSK default.
+                    slim_identity.ensure_agent_keypair(BACKEND_AGENT)
                 client = await SlimClient(identity).connect(self._endpoint)
                 session = await client.create_group(to_channel_name(ws, room))
             except Exception as exc:

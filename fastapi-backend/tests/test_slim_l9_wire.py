@@ -23,7 +23,7 @@ from pathlib import Path
 
 import pytest
 
-from app.services import l9
+from app.services import l9, slim_identity
 from app.services.l9_models import Kind
 from app.services.memory_sync import KnowledgeWrite, build_knowledge_envelope
 from app.services.slim_client import (
@@ -62,6 +62,19 @@ def test_mint_shared_secret_matches_contract_digest():
     g = _contract()["shared_secret"]
     identity = SlimIdentity(g["workspace"], g["room"], g["agent"])
     assert mint_shared_secret(identity) == g["expected_digest"]
+
+
+def test_signerjwt_identity_constants_match_contract():
+    """The SignerJwt-floor labels both members must agree on are frozen."""
+    g = _contract()["identity"]
+    assert g["mode_env"] == slim_identity._MODE_ENV
+    assert g["require_env"] == slim_identity._REQUIRE_ENV
+    assert g["mode_default"] == slim_identity.MODE_PSK
+    assert list(slim_identity.VALID_MODES) == g["modes"]
+    assert g["issuer"] == slim_identity.SIGNERJWT_ISSUER
+    assert g["audience"] == slim_identity.SIGNERJWT_AUDIENCE
+    assert g["alg"] == slim_identity.SIGNERJWT_ALG
+    assert g["curve"] == slim_identity.SIGNERJWT_CURVE
 
 
 def test_episode_and_topic_urns_match_contract():
