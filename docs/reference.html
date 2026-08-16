@@ -110,6 +110,7 @@
       <a href="#structured-memory" class="nav-link sub">Structured Memory</a>
       <a href="#hub-and-spoke" class="nav-link sub">Hub &amp; Spoke</a>
       <a href="#auth" class="nav-link sub">Authentication</a>
+      <a href="#keycloak-oidc" class="nav-link sub">Keycloak / OIDC Setup</a>
       <a href="#spire-identity" class="nav-link sub">Attested Identity (SPIRE)</a>
     </div>
     <div class="nav-section">
@@ -1392,6 +1393,116 @@ role   = &quot;agent&quot;</code></pre>
       <p>Only asymmetric signatures are accepted (<code>RS<em></code>, <code>PS</em></code>, <code>ES<em></code>). The <code>none</code> algorithm and the whole <code>HS</em></code> family are refused before verification, so a public JWKS key can never be replayed as an HMAC secret.</p>
       <h2 id="auth-trying-it-locally">Trying it locally</h2>
       <p>A dev OIDC issuer ships for exactly this, so you can exercise the gate without standing up Keycloak. See <code>docs/design/dev-auth-issuer.md</code>.</p>
+      <p>For the real thing — a Keycloak realm, client, and human <code>mycelium login</code>, wired end-to-end — follow the <a href="#keycloak-oidc">Keycloak / OIDC Setup</a> guide.</p>
+    </section>
+
+    <hr class="divider">
+
+    <section class="doc-section" id="keycloak-oidc">
+      <p>&lt;!-- SPDX-License-Identifier: Apache-2.0 --&gt;</p>
+      <h1>Keycloak / OIDC setup</h1>
+      <p><a href="#auth">Authentication</a> explains the gate in the abstract: the backend trusts an OIDC issuer and validates a bearer token against its JWKS. This guide makes the <strong>human OIDC tier</strong> concrete against real <strong>Keycloak</strong> — realm, client, the claims the gate keys off, and a human <code>mycelium login</code>. Every command here was run against a live Keycloak; the wiring below is confirmed, not aspirational.</p>
+      <p>Keycloak is a <em>supported</em> issuer, not the default. The gate stays <strong>off by default</strong> (the try-it path never touches it) — you turn it on when a team shares a hub over a network. Dex, ZITADEL, Authentik, or your corporate SSO slot in exactly the same way; nothing here is Keycloak-specific except the URLs.</p>
+      <h2 id="keycloak-oidc-stand-up-keycloak">Stand up Keycloak</h2>
+      <p>A ready-to-run Keycloak ships as an <strong>opt-in compose overlay</strong> — off the default stack, added with an extra <code>-f</code> exactly like the dev issuer. It imports a <code>mycelium</code> realm with a public CLI client, an audience mapper, and a demo user, so there is nothing to click in the admin console.</p>
+      <pre><code>cd mycelium-cli/src/mycelium/docker
+docker compose <span class="flag">-f</span> compose.yml <span class="flag">-f</span> compose-dev.yml <span class="flag">-f</span> compose-keycloak.yml \
+  up <span class="flag">-d</span> keycloak</code></pre>
+      <p>The realm is ready when discovery answers:</p>
+      <pre><code>curl <span class="flag">-s</span> http://localhost:8080/realms/mycelium/.well-known/openid-configuration \
+  | python3 <span class="flag">-c</span> &#x27;import json,sys; print(json.load(sys.stdin)[<span class="str">&quot;issuer&quot;</span>])&#x27;
+<span class="comment"># → http://localhost:8080/realms/mycelium</span></code></pre>
+      <div class="callout callout-note">
+        <div class="callout-bar"></div>
+        <div class="callout-body"><strong>Port already in use?</strong> Publish it elsewhere with <code>MYCELIUM_KEYCLOAK_PORT=8085 docker compose … up -d keycloak</code>. The overlay pins Keycloak&#x27;s advertised URL to the same port, so the issuer becomes <code>http://localhost:8085/realms/mycelium</code> — use that everywhere below. The admin console is at <code>/admin</code> (<code>admin</code> / <code>admin</code>, override with <code>MYCELIUM_KEYCLOAK_ADMIN[_PASSWORD]</code>).</div>
+      </div>
+      <h2 id="keycloak-oidc-what-the-realm-ships-and-what-the-gate-expects">What the realm ships (and what the gate expects)</h2>
+      <p>The imported realm (<code>docker/keycloak/mycelium-realm.json</code>) is the whole anatomy the gate needs. Point your own Keycloak at these same four things:</p>
+      <ul>
+        <li><strong>A public client <code>mycelium-cli</code></strong> — this is the client <code>mycelium login</code> uses.</li>
+      </ul>
+      <p>Public (no secret; it authenticates with PKCE), with the loopback redirect <code>http://127.0.0.1:*/callback</code> for the browser flow and the <strong>device grant</strong> enabled for headless login.</p>
+      <ul>
+        <li><strong>An audience mapper</strong> stamping <code>mycelium</code> into the access token&#x27;s <code>aud</code>. This is</li>
+      </ul>
+      <p>what makes <code>auth.audience = &quot;mycelium&quot;</code> meaningful — a token minted for some other app on the same Keycloak is refused.</p>
+      <ul>
+        <li><strong><code>sub</code> is a UUID, so the human handle comes from <code>preferred_username</code>.</strong> Set</li>
+      </ul>
+      <p><code>auth.handle_claim = &quot;preferred_username&quot;</code> for the human tier — otherwise every human arrives as an opaque UUID instead of <code>@demo</code>.</p>
+      <ul>
+        <li><strong>A demo user</strong> (<code>demo</code> / <code>demo</code>) so a human login has someone to sign in as.</li>
+      </ul>
+      <div class="callout callout-note">
+        <div class="callout-bar"></div>
+        <div class="callout-body"><strong>A gotcha worth knowing if you build your own client:</strong> the CLI&#x27;s <em>device</em> flow does not send PKCE parameters, so do <strong>not</strong> set the client to <em>require</em> PKCE (<code>pkce.code.challenge.method</code>) — that rejects the device grant with <code>Missing parameter: code_challenge_method</code>. Leave enforcement off; the CLI still uses PKCE on the browser flow, Keycloak just doesn&#x27;t mandate it on every grant.</div>
+      </div>
+      <h2 id="keycloak-oidc-wire-the-gate">Wire the gate</h2>
+      <p>The one subtlety worth understanding is <strong>which URL goes where</strong>, because the backend runs in a container and the browser/CLI run on the host:</p>
+      <ul>
+        <li>Keycloak stamps the token <code>iss</code> as <code>http://localhost:8080/realms/mycelium</code> for</li>
+      </ul>
+      <p>every caller (the overlay pins its advertised URL). That is what the browser and CLI reach it by, so it is the <code>issuer</code> the gate matches.</p>
+      <ul>
+        <li>The <strong>backend can&#x27;t use <code>localhost</code></strong> — inside the container that is the backend</li>
+      </ul>
+      <p>itself. On the compose network Keycloak is reachable as <code>keycloak:8080</code>, so that is where the backend fetches keys from.</p>
+      <p>The gate matches <code>iss</code> by <strong>exact string</strong> but fetches keys from a <strong>separately configured <code>jwks_url</code></strong>, so you point them at different hostnames on purpose. In <code>~/.mycelium/config.toml</code>:</p>
+      <pre><code>[auth]
+enabled      = true
+audience     = &quot;mycelium&quot;
+handle_claim = &quot;preferred_username&quot;
+
+[[auth.issuers]]
+issuer   = &quot;http://localhost:8080/realms/mycelium&quot;
+jwks_url = &quot;http://keycloak:8080/realms/mycelium/protocol/openid-connect/certs&quot;
+role     = &quot;user&quot;
+
+[login]
+issuer    = &quot;http://localhost:8080/realms/mycelium&quot;
+client_id = &quot;mycelium-cli&quot;
+audience  = &quot;mycelium&quot;</code></pre>
+      <p>Apply it and recreate the backend so it picks up the gate:</p>
+      <pre><code><span class="cmd">mycelium config apply</span>
+docker compose <span class="flag">-f</span> compose.yml <span class="flag">-f</span> compose-dev.yml <span class="flag">-f</span> compose-keycloak.yml \
+  up <span class="flag">-d</span> <span class="flag">--force-recreate</span> mycelium-backend</code></pre>
+      <p><code>/health</code> now reports the gate on and the issuer trusted:</p>
+      <pre><code>curl <span class="flag">-s</span> http://localhost:8000/health | python3 <span class="flag">-m</span> json.tool
+<span class="comment"># &quot;auth&quot;: { &quot;enabled&quot;: true, &quot;issuers&quot;: [&quot;http://localhost:8080/realms/mycelium&quot;],</span>
+<span class="comment">#           &quot;audience&quot;: &quot;mycelium&quot;, &quot;localhost_bypass&quot;: true }</span></code></pre>
+      <div class="callout callout-note">
+        <div class="callout-bar"></div>
+        <div class="callout-body"><strong>The localhost bypass does not save you here</strong> — and that is the point. Traffic from the CLI to the containerized backend arrives from the Docker bridge, not real loopback, so the gate genuinely enforces. See <a href="#auth">Authentication → The localhost bypass</a>.</div>
+      </div>
+      <h2 id="keycloak-oidc-sign-in-with-mycelium-login">Sign in with <code>mycelium login</code></h2>
+      <pre><code><span class="cmd">mycelium login</span>            # opens your browser to Keycloak
+<span class="cmd">mycelium login</span> <span class="flag">--device</span>   # headless: prints a URL + code to approve from any device</code></pre>
+      <p>Sign in as <code>demo</code> / <code>demo</code>. The CLI caches the token (<code>~/.mycelium/token.json</code>, mode <code>0600</code>) and every later command carries it:</p>
+      <pre><code><span class="cmd">mycelium whoami</span>
+<span class="comment"># acting as @demo</span>
+<span class="comment">#   signed in (http://localhost:8080/realms/mycelium, expires in 4 min)</span>
+
+<span class="cmd">mycelium room ls</span>          # now authorized through the Keycloak token</code></pre>
+      <p><code>mycelium logout</code> drops the session and the CLI goes back to sending no token.</p>
+      <h2 id="keycloak-oidc-prove-the-gate-what-validated-means">Prove the gate (what &quot;validated&quot; means)</h2>
+      <p>The same three checks that were run to confirm this guide, against the published backend port:</p>
+      <pre><code><span class="comment"># A real Keycloak token for the demo user</span>
+TOKEN=$(curl <span class="flag">-s</span> <span class="flag">-X</span> POST \
+  http://localhost:8080/realms/mycelium/protocol/openid-connect/token \
+  <span class="flag">-d</span> &#x27;grant_type=password&amp;client_id=mycelium-cli&amp;username=demo&amp;password=demo&amp;scope=openid profile&#x27; \
+  | python3 <span class="flag">-c</span> &#x27;import json,sys; print(json.load(sys.stdin)[<span class="str">&quot;access_token&quot;</span>])&#x27;)
+
+curl <span class="flag">-s</span> <span class="flag">-o</span> /dev/null <span class="flag">-w</span> &#x27;%{http_code}\n&#x27; http://localhost:8000/api/rooms              # 401  (no token)
+curl <span class="flag">-s</span> <span class="flag">-o</span> /dev/null <span class="flag">-w</span> &#x27;%{http_code}\n&#x27; <span class="flag">-H</span> <span class="str">&quot;Authorization: Bearer $TOKEN&quot;</span> \
+  http://localhost:8000/api/rooms                                                     # 200  (valid)
+curl <span class="flag">-s</span> <span class="flag">-o</span> /dev/null <span class="flag">-w</span> &#x27;%{http_code}\n&#x27; <span class="flag">-H</span> &#x27;Authorization: Bearer not.a.jwt&#x27; \
+  http://localhost:8000/api/rooms                                                     # 401  (garbage)</code></pre>
+      <p>An <strong>expired</strong> token is refused the same way — the response is <code>401</code> with <code>token rejected: Signature has expired</code> once it ages past <code>exp</code> plus <code>auth.leeway_s</code> (default 60s).</p>
+      <h2 id="keycloak-oidc-agents-and-more-than-one-issuer">Agents, and more than one issuer</h2>
+      <p>This guide is the <strong>human</strong> tier. Agents authenticate as workloads with the <code>client_credentials</code> grant from their own Keycloak client — see <a href="#auth">Authentication → Agents sign in as themselves</a>. Humans and agents are often separate realms; list each as its own <code>[[auth.issuers]]</code> block (a human root with <code>role = &quot;user&quot;</code>, an agent root with <code>role = &quot;agent&quot;</code>), matched by exact <code>iss</code> and never interchangeable.</p>
+      <p>For the tightest, individually-attested agent identity on the SLIM channel itself, see <a href="#spire-identity">Attested Identity (SPIRE)</a> — a different, heavier tier from this HTTP-API gate.</p>
+      <h2 id="keycloak-oidc-the-honest-ceiling">The honest ceiling</h2>
+      <p>The shipped overlay is <strong>dev-grade</strong>: Keycloak in <code>start-dev</code> (in-memory H2, HTTP, a demo user with a weak password). It is a real OIDC provider minting real RS256 tokens against a real JWKS — enough to build and prove against — but it is <strong>not</strong> a hardened production Keycloak. For a real deployment, run your own Keycloak over TLS with a persistent datastore and real users, then point the same three config values (<code>issuer</code>, <code>jwks_url</code>, <code>login.issuer</code>) at it. Nothing else changes.</p>
     </section>
 
     <hr class="divider">
