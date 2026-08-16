@@ -20,7 +20,7 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
-from app.services import search_index
+from app.services import links, search_index
 from app.services.embedding import embed_text
 from app.services.filesystem import get_data_dir, list_memory_files, parse_memory
 
@@ -116,6 +116,10 @@ async def index_room(room_name: str, *, force: bool = False) -> dict:
     stats["pruned"] = sum(1 for k in existing if k not in file_keys)
     search_index.write_index(room_name, records)
 
+    # The link index is cheap to rebuild wholesale (a parse, no embeddings), and
+    # a full rebuild is the only way stale edges from a since-deleted file go away.
+    links.rebuild(room_name)
+
     from app.services.metrics import record_index_run
 
     record_index_run(
@@ -160,6 +164,7 @@ async def index_single_file(room_name: str, key: str) -> bool:
 
     if not file_path.exists():
         pruned = search_index.remove(room_name, key)
+        links.remove(room_name, key)
         record_index_run(
             target="watcher",
             pruned=1 if pruned else 0,
@@ -171,6 +176,7 @@ async def index_single_file(room_name: str, key: str) -> bool:
         meta, content = parse_memory(file_path.read_text(encoding="utf-8"))
         record = await asyncio.to_thread(_build_record, room_name, key, content, meta)
         search_index.upsert(room_name, record)
+        links.upsert(room_name, key, meta, content)
         record_index_run(target="watcher", indexed=1, duration_ms=(time.monotonic() - t0) * 1000)
         return True
     except Exception:

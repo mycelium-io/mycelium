@@ -565,6 +565,13 @@ cursor-agent login            # one-time, interactive
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium memory links</span> <span class="arg">&lt;key&gt;</span> [<span class="flag">--check</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Show a memory's links: what it points at and what points back at it. Links are <code>myc://key</code> or <code>[[key]]</code> in the body, plus typed frontmatter relations (<code>supersedes</code>, <code>depends-on</code>, <code>part-of</code>, <code>relates-to</code>). <code>--check</code> reports broken links and orphans across the whole room.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
           <code><span class="cmd">mycelium memory rm</span> <span class="arg">&lt;key&gt;</span> [<span class="flag">--force</span>]</code>
         </div>
         <div class="cmd-ref-body">Delete a memory: removes the markdown file and search index entry.</div>

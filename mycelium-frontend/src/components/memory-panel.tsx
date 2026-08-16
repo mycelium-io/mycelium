@@ -208,6 +208,16 @@ export function MemoryPanel({ roomName, refreshTrigger }: Props) {
 
   const tree = useMemo(() => buildTree(memories), [memories]);
 
+  // Following a link keeps the drawer open on the target, so a reader can walk
+  // the graph without going back through the tree.
+  const navigateToKey = useCallback(
+    (key: string) => {
+      const target = memories.find(m => m.key === key);
+      if (target) setSelected(target);
+    },
+    [memories],
+  );
+
   const toggleNs = useCallback((path: string) =>
     setCollapsed(prev => {
       const next = new Set(prev);
@@ -338,7 +348,9 @@ export function MemoryPanel({ roomName, refreshTrigger }: Props) {
         title={selected?.key}
         subtitle={selected ? `v${selected.version} · ${selected.created_by}` : undefined}
       >
-        {selected && <MemoryDetail memory={selected} />}
+        {selected && (
+          <MemoryDetail memory={selected} roomName={roomName} onNavigate={navigateToKey} />
+        )}
       </DetailDrawer>
     </div>
   );
