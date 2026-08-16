@@ -5,9 +5,9 @@
 Generate .env files from config.toml — makes .env a derived artifact.
 
 The canonical configuration lives in ~/.mycelium/config.toml.  This module
-renders a Docker-compatible .env from the [llm], [runtime], and [server]
-sections so that ``docker compose`` picks up the same values without users
-having to maintain two files.
+renders a Docker-compatible .env from the [llm], [runtime], [server], [engine],
+and [auth] sections so that ``docker compose`` picks up the same values without
+users having to maintain two files.
 
 One field deliberately *isn't* in config.toml: ``MYCELIUM_IMAGE_TAG``.  It's
 operational state — set as a side effect of ``mycelium pull --version`` and
@@ -18,6 +18,7 @@ We round-trip it through the existing .env on regeneration so that
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -71,6 +72,21 @@ def read_pinned_image_tag(env_path: Path | None) -> str | None:
     return _read_operator_managed_keys(env_path).get("MYCELIUM_IMAGE_TAG")
 
 
+def _render_auth_issuers(config: MyceliumConfig) -> str:
+    """Trust roots as a single-line JSON array for ``AUTH_ISSUERS``.
+
+    Emitted empty when none are configured, so compose substitution and the
+    backend's ``env_ignore_empty`` both fall through to "no trusted issuers"
+    rather than to a literal ``[]`` string.
+    """
+    if not config.auth.issuers:
+        return ""
+    return json.dumps(
+        [entry.model_dump(exclude_none=True) for entry in config.auth.issuers],
+        separators=(",", ":"),
+    )
+
+
 def generate_env_file(
     config: MyceliumConfig,
     *,
@@ -119,6 +135,19 @@ def generate_env_file(
         # (the host runtime rode the removed daemon). Emitted for the backend to
         # read; always `backend`.
         f"ENGINE_RUNTIME={config.engine.runtime}",
+        "",
+        "# ── Auth (HTTP-API JWT gate; off unless auth.enabled is set) ─────────────",
+        f"AUTH_ENABLED={str(config.auth.enabled).lower()}",
+        # Trust roots travel as one JSON array because env is the only transport
+        # into the container — the repeatable [[auth.issuers]] blocks in
+        # config.toml are the authored form.
+        f"AUTH_ISSUERS={_render_auth_issuers(config)}",
+        f"AUTH_AUDIENCE={config.auth.audience or ''}",
+        f"AUTH_LOCALHOST_BYPASS={str(config.auth.localhost_bypass).lower()}",
+        f"AUTH_HANDLE_CLAIM={config.auth.handle_claim}",
+        f"AUTH_ROLE_CLAIM={config.auth.role_claim}",
+        f"AUTH_LEEWAY_S={config.auth.leeway_s}",
+        f"AUTH_JWKS_TTL_S={config.auth.jwks_ttl_s}",
         "",
     ]
 

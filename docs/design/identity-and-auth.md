@@ -113,7 +113,13 @@ per-deployment opt-in.
 
 1. **HTTP-API JWT gate** — FastAPI dependency validating a bearer JWT against a
    configured JWKS/issuer; reject unauthenticated. **Disabled by default** (and
-   auto-off on localhost) so the try-it path is untouched.
+   auto-off on localhost) so the try-it path is untouched. *Landed (#561):
+   `fastapi-backend/app/services/auth.py`, configured under `[auth]`; operator
+   docs in `mycelium-cli/src/mycelium/docs/guides/auth.md`. One caveat found in
+   implementation: the localhost bypass keys off the request's peer address, so
+   it does not fire for a backend in Docker (published-port traffic arrives from
+   the bridge gateway, indistinguishable from LAN traffic) — the containerized
+   local tier is served by leaving auth disabled.*
 2. **Verified handle binding** — derive handle + role from claims; stop trusting
    body-supplied actor fields. Only active when the gate is on.
 3. **CLI human login** — `mycelium login` obtains a token (Authorization Code +

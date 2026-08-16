@@ -26,7 +26,7 @@ from typing import Any
 os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
 os.environ.setdefault("HF_HUB_OFFLINE", "1")
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.routes.agents import router as agents_router
@@ -42,6 +42,7 @@ from app.routes.rooms import router as rooms_router
 from app.routes.sessions import router as sessions_router
 from app.routes.stream import router as stream_router
 from app.routes.users import router as users_router
+from app.services.auth import auth_gate
 
 from .config import settings
 
@@ -64,6 +65,20 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Mycelium backend starting up")
+    # Say plainly whether the HTTP surface is gated — "is this hub open?" should
+    # never require reading config to answer.
+    from app.services import auth as auth_service
+
+    if settings.AUTH_ENABLED:
+        logger.info(
+            "HTTP-API JWT gate ENABLED (issuers=%s, localhost_bypass=%s)",
+            [e.issuer for e in settings.AUTH_ISSUERS] or "<none>",
+            settings.AUTH_LOCALHOST_BYPASS,
+        )
+        for warning in auth_service.config_warnings():
+            logger.warning("auth: %s", warning)
+    else:
+        logger.info("HTTP-API JWT gate disabled — requests are unauthenticated")
     # Incremental scan of filesystem → JSONL search index
     from app.services.reindex import start_watcher, startup_scan, stop_watcher
 
@@ -182,6 +197,10 @@ app = FastAPI(
     version=_read_pkg_version(),
     openapi_url=settings.OPENAPI_URL,
     lifespan=lifespan,
+    # The JWT gate rides every route rather than a hand-picked list, so a route
+    # added later is protected without anyone remembering to opt it in. It is
+    # inert unless AUTH_ENABLED is on, and exempts health/docs itself.
+    dependencies=[Depends(auth_gate)],
 )
 
 # CORS — starlette types CORSMiddleware as a class but typeshed expects a factory.
@@ -235,6 +254,11 @@ async def root(
 
     # Storage — markdown + local JSONL, no database.
     result["storage"] = _check_storage()
+
+    # HTTP-API JWT gate — whether this hub is gated, and how.
+    from app.services import auth as auth_service
+
+    result["auth"] = auth_service.status()
 
     # Embedding model
     result["embedding"] = _check_embedding()
