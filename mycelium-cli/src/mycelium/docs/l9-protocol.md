@@ -32,7 +32,7 @@ mycelium respond --room design --handle me \
 # Accepting just to move on? Say so plainly in prose, and the aligner records
 # the deference:
 mycelium respond --room design --handle me \
-  "I'm not persuaded, but I'll defer to @julia-agent. [[mycelium: confidence=0.4 stance=accept]]"
+  "I'm not persuaded, but I'll defer to @avery-agent. [[mycelium: confidence=0.4 stance=accept]]"
 ```
 
 The `[[mycelium: …]]` marker is lifted onto the L9 envelope and stripped from

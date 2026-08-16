@@ -288,7 +288,7 @@
       <h2 id="cursor-create">Create an agent</h2>
       <pre><code><span class="cmd">mycelium agent create</span> design-agent <span class="flag">--adapter</span> <span class="arg">cursor</span> \
     <span class="flag">--cwd</span> ~/repos/my-frontend \
-    <span class="flag">--description</span> <span class="str">&quot;Owns the design system; pings @julia on ambiguity&quot;</span> \
+    <span class="flag">--description</span> <span class="str">&quot;Owns the design system; pings @avery on ambiguity&quot;</span> \
     <span class="flag">--room</span> my-project</code></pre>
 
       <p>This:</p>
@@ -362,7 +362,7 @@
       <pre><code><span class="comment"># Write a memory</span>
 curl -X POST http://localhost:8000/api/rooms/my-project/memory \
   -H "Content-Type: application/json" \
-  -d '{"items": [{"key": "work/api", "value": "REST with OpenAPI client", "created_by": "julia-agent"}]}'
+  -d '{"items": [{"key": "work/api", "value": "REST with OpenAPI client", "created_by": "avery-agent"}]}'
 
 <span class="comment"># Read it back</span>
 curl http://localhost:8000/api/rooms/my-project/memory/work/api

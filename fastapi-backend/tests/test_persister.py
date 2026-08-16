@@ -409,13 +409,13 @@ def test_list_store_human_and_agent_each_appear_once_in_order():
     #    with the envelope id), and ingested by the persister with list_write=False
     #    so it is NOT double-written to the list store.
     human_env, human_content = _msg_content(
-        "h-1", sender="julia", text="@smoke-agent hello", payload_type="message"
+        "h-1", sender="avery", text="@smoke-agent hello", payload_type="message"
     )
     local_state.add_message(
         room,
         local_state.StoredMessage(
             room_name=room,
-            sender_handle="julia",
+            sender_handle="avery",
             message_type="broadcast",
             content="hello",
             message_id="h-1",
@@ -434,7 +434,7 @@ def test_list_store_human_and_agent_each_appear_once_in_order():
 
     stored = local_state.list_messages(room)
     assert [(m.sender_handle, m.content) for m in stored] == [
-        ("julia", "hello"),
+        ("avery", "hello"),
         ("smoke-agent", "hi back"),
     ]
 
@@ -464,7 +464,7 @@ def test_conversational_messages_project_from_the_durable_transcript():
     get_room_dir(room)
 
     for mid, sender, ptype in [
-        ("h-1", "julia", "message"),
+        ("h-1", "avery", "message"),
         ("a-1", "growth", "reply"),
         ("p-1", "growth", "presence"),
     ]:
@@ -475,7 +475,7 @@ def test_conversational_messages_project_from_the_durable_transcript():
 
     projected = persister.conversational_messages(room)
     assert [(m.sender_handle, m.message_id) for m in projected] == [
-        ("julia", "h-1"),
+        ("avery", "h-1"),
         ("growth", "a-1"),
     ]
     assert projected[1].episode == "urn:ioc:mycelium:episode:r:s"
@@ -522,11 +522,11 @@ def test_addressed_absent_recipient_holds_the_triggering_message():
     """
     log = persister.DeliveryLog()
     # An @-mention broadcast while agent-x is absent (not present, not tracked).
-    log.record(_record("m1", sender="julia"), delivered_to=set(), recipients=["agent-x"])
+    log.record(_record("m1", sender="avery"), delivered_to=set(), recipients=["agent-x"])
     assert [r.message_id for r in log.undelivered("agent-x")] == ["m1"]
 
     # A later unrelated message it also misses stays in the tail, in order.
-    log.record(_record("m2", sender="julia"), delivered_to=set(), recipients=[])
+    log.record(_record("m2", sender="avery"), delivered_to=set(), recipients=[])
     assert [r.message_id for r in log.undelivered("agent-x")] == ["m1", "m2"]
 
     # A genuinely fresh join (not addressed) starts caught-up: nothing to replay.

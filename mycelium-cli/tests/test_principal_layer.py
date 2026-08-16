@@ -22,8 +22,8 @@ def test_manifest_owner_team_default_none() -> None:
 
 def test_manifest_normalizes_owner_and_team() -> None:
     """Owner/team are slug pointers — lowercased, @-stripped, like the handle."""
-    m = AgentManifest(handle="Bot", cwd="/tmp", owner="@Julia", team="Core")
-    assert m.owner == "julia"
+    m = AgentManifest(handle="Bot", cwd="/tmp", owner="@Avery", team="Core")
+    assert m.owner == "avery"
     assert m.team == "core"
 
 
@@ -33,22 +33,22 @@ def test_manifest_blank_owner_becomes_none() -> None:
 
 
 def test_user_manifest_normalizes() -> None:
-    u = UserManifest(handle="@Julia", display_name="Julia Valenti", teams=["@Core", "Infra"])
-    assert u.handle == "julia"
+    u = UserManifest(handle="@Avery", display_name="Avery Quinn", teams=["@Core", "Infra"])
+    assert u.handle == "avery"
     assert u.teams == ["core", "infra"]
 
 
 def test_user_store_roundtrip(isolated_home) -> None:  # noqa: ANN001
     """A user written to the global store loads back as a validated model."""
     user_cmd._write_user(
-        UserManifest(handle="julia", display_name="Julia", teams=["core"]),
+        UserManifest(handle="avery", display_name="Avery", teams=["core"]),
         created_by="tester",
     )
-    loaded = user_cmd.load_user("@Julia")  # normalization on read too
+    loaded = user_cmd.load_user("@Avery")  # normalization on read too
     assert loaded is not None
-    assert loaded.display_name == "Julia"
+    assert loaded.display_name == "Avery"
     assert loaded.teams == ["core"]
-    assert [u.handle for u in user_cmd.list_users()] == ["julia"]
+    assert [u.handle for u in user_cmd.list_users()] == ["avery"]
 
 
 def _seed_agent(room: str, handle: str, *, owner: str | None) -> None:
@@ -59,10 +59,10 @@ def _seed_agent(room: str, handle: str, *, owner: str | None) -> None:
 
 def test_load_owned_agents_collects_across_rooms(isolated_home) -> None:  # noqa: ANN001
     """Owned agents are collected across every local room."""
-    _seed_agent("alpha", "a1", owner="julia")
-    _seed_agent("beta", "a2", owner="julia")
+    _seed_agent("alpha", "a1", owner="avery")
+    _seed_agent("beta", "a2", owner="avery")
     _seed_agent("beta", "a3", owner="sam")
 
-    owned = load_owned_agents(owner="@Julia")
+    owned = load_owned_agents(owner="@Avery")
     handles = sorted(m.handle for _room, m in owned)
     assert handles == ["a1", "a2"]

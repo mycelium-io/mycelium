@@ -81,7 +81,7 @@ class TestSetTitleFromBody:
 
     def test_does_not_clobber_existing_title(self, tmp_path, monkeypatch):
         monkeypatch.setattr("app.config.settings.MYCELIUM_DATA_DIR", str(tmp_path))
-        plan_service.set_title("room-b", "Human Picked", updated_by="julia")
+        plan_service.set_title("room-b", "Human Picked", updated_by="avery")
         result = plan_service.set_title_from_body_if_absent("room-b", "# LLM Pick\n\n- [ ] x\n")
         assert result is None
         assert plan_service.get_title("room-b") == "Human Picked"
@@ -269,7 +269,7 @@ class TestPlanRoutes:
 
         # 3. set_title → plan_updated/title_set
         await client.put(
-            f"/api/rooms/{room}/plan/title", json={"text": "Q3 Sprint", "updated_by": "julia"}
+            f"/api/rooms/{room}/plan/title", json={"text": "Q3 Sprint", "updated_by": "avery"}
         )
 
         rows = [m for m in local_state.list_messages(room) if m.message_type == "plan_updated"]
@@ -286,7 +286,7 @@ class TestPlanRoutes:
         assert toggled["text"] == "wire up CI"
         title_set = json.loads(rows[2].content)
         assert title_set["title"] == "Q3 Sprint"
-        assert title_set["updated_by"] == "julia"
+        assert title_set["updated_by"] == "avery"
 
     async def test_room_creation_includes_plan_dir(self, client: AsyncClient):
         await client.post("/api/rooms", json={"name": "with-plan"})

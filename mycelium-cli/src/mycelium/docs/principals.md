@@ -1,7 +1,7 @@
 # Users & teams
 
 Mycelium models *whom an agent belongs to*. Without it, every agent on the fabric
-is anonymous: presence says "agent-y is live," never "julia's agent-y is live."
+is anonymous: presence says "agent-y is live," never "avery's agent-y is live."
 Ownership gives scoping ("my agents" vs another team's), attribution (whose agent
 edited that?), and routing (escalate back to an agent's owner).
 
@@ -15,7 +15,7 @@ Two entities, symmetric on disk:
 ## Self-asserted, for now
 
 At this tier trust is exactly today's handles: **consistent, not cryptographic**.
-`owner: julia` is a claim, not a verified identity; anyone can assert it. That's
+`owner: avery` is a claim, not a verified identity; anyone can assert it. That's
 deliberate: it shapes the model right so scoping, attribution, and routing have
 real slots to read, ahead of verified identity (per-member SLIM binding / JWT /
 SPIRE) filling those slots with signed claims. Don't rely on it for access control.
@@ -27,17 +27,17 @@ with no owner is unowned.
 
 ```bash
 # Register a human, once, globally
-mycelium user create julia --name "Julia Valenti" --team core
+mycelium user create avery --name "Avery Quinn" --team core
 mycelium user ls
-mycelium user show julia          # record + the agents she owns
+mycelium user show avery          # record + the agents she owns
 
 # Bind an agent to its owner
-mycelium agent create release-agent --cwd ~/repo --owner julia --team core
-mycelium agent ls --owner julia   # "my agents"
+mycelium agent create release-agent --cwd ~/repo --owner avery --team core
+mycelium agent ls --owner avery   # "my agents"
 mycelium agent ls --team core     # "my team"
 
 # Declare who you are on this machine (sets identity + upserts the user record)
-mycelium iam julia --name "Julia Valenti" --team core
+mycelium iam avery --name "Avery Quinn" --team core
 
 # Who am I acting as?
 mycelium whoami

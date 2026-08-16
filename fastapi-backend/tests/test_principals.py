@@ -36,16 +36,16 @@ async def _register_agent(client: AsyncClient, room: str, handle: str, manifest:
 async def test_create_and_get_user(client: AsyncClient):
     resp = await client.post(
         "/api/users",
-        json={"handle": "julia", "display_name": "Julia Valenti", "teams": ["Core"]},
+        json={"handle": "avery", "display_name": "Avery Quinn", "teams": ["Core"]},
     )
     assert resp.status_code == 201
     body = resp.json()
-    assert body["handle"] == "julia"
+    assert body["handle"] == "avery"
     assert body["teams"] == ["core"]  # normalized
 
-    got = await client.get("/api/users/@Julia")
+    got = await client.get("/api/users/@Avery")
     assert got.status_code == 200
-    assert got.json()["display_name"] == "Julia Valenti"
+    assert got.json()["display_name"] == "Avery Quinn"
 
 
 @pytest.mark.asyncio
@@ -55,18 +55,18 @@ async def test_unknown_user_404(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_user_rollup_lists_owned_agents(client: AsyncClient):
-    await client.post("/api/users", json={"handle": "julia", "teams": ["core"]})
+    await client.post("/api/users", json={"handle": "avery", "teams": ["core"]})
     await _register_agent(
         client,
         "alpha",
         "a1",
-        {"adapter": "claude_code", "cwd": "/tmp", "owner": "julia"},
+        {"adapter": "claude_code", "cwd": "/tmp", "owner": "avery"},
     )
     await _register_agent(
         client,
         "beta",
         "a2",
-        {"adapter": "claude_code", "cwd": "/tmp", "owner": "julia", "team": "core"},
+        {"adapter": "claude_code", "cwd": "/tmp", "owner": "avery", "team": "core"},
     )
     await _register_agent(
         client,
@@ -75,21 +75,21 @@ async def test_user_rollup_lists_owned_agents(client: AsyncClient):
         {"adapter": "claude_code", "cwd": "/tmp", "owner": "sam"},
     )
 
-    user = (await client.get("/api/users/julia")).json()
+    user = (await client.get("/api/users/avery")).json()
     assert {o["handle"] for o in user["owns"]} == {"a1", "a2"}
 
 
 @pytest.mark.asyncio
 async def test_teams_rollup(client: AsyncClient):
-    await client.post("/api/users", json={"handle": "julia", "teams": ["core"]})
+    await client.post("/api/users", json={"handle": "avery", "teams": ["core"]})
     await _register_agent(
         client,
         "beta",
         "a2",
-        {"adapter": "claude_code", "cwd": "/tmp", "owner": "julia", "team": "core"},
+        {"adapter": "claude_code", "cwd": "/tmp", "owner": "avery", "team": "core"},
     )
 
     teams = {t["team"]: t for t in (await client.get("/api/teams")).json()["teams"]}
     assert "core" in teams
     assert teams["core"]["agent_count"] == 1
-    assert "julia" in teams["core"]["members"]
+    assert "avery" in teams["core"]["members"]

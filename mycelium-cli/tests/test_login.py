@@ -95,7 +95,7 @@ class _Resp:
 
 def _token(**overrides: Any) -> StoredToken:
     base = StoredToken(
-        access_token=_jwt({"sub": "julia", "exp": time.time() + 3600}),
+        access_token=_jwt({"sub": "avery", "exp": time.time() + 3600}),
         issuer=_META.issuer,
         client_id="mycelium-cli",
         refresh_token="refresh-1",
@@ -152,10 +152,10 @@ def test_expiry_uses_a_leeway_so_a_token_never_dies_in_flight() -> None:
 
 
 def test_handle_comes_from_the_configured_claim() -> None:
-    token = _token(access_token=_jwt({"sub": "@Julia", "email": "julia@example.com"}))
+    token = _token(access_token=_jwt({"sub": "@Avery", "email": "avery@example.com"}))
 
-    assert token.handle() == "julia"
-    assert token.handle("email") == "julia@example.com"
+    assert token.handle() == "avery"
+    assert token.handle("email") == "avery@example.com"
     # An opaque (non-JWT) access token has no readable claims, which is not an error.
     assert _token(access_token="opaque").handle() is None
 
@@ -395,7 +395,7 @@ def test_login_caches_the_session_and_remembers_the_issuer(
         login_cmd,
         "authorization_code_login",
         lambda *_a, **_k: oidc.TokenResponse(
-            access_token=_jwt({"sub": "julia"}),
+            access_token=_jwt({"sub": "avery"}),
             refresh_token="rt-1",
             expires_at=time.time() + 3600,
         ),
@@ -404,7 +404,7 @@ def test_login_caches_the_session_and_remembers_the_issuer(
     result = runner.invoke(app, ["login", "--issuer", "https://idp.test/realms/mycelium"])
 
     assert result.exit_code == 0
-    assert "Signed in as @julia" in _flat(result.stdout)
+    assert "Signed in as @avery" in _flat(result.stdout)
 
     cached = load_token()
     assert cached is not None
@@ -426,7 +426,7 @@ def test_login_device_flag_takes_the_device_path(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr(
         login_cmd,
         "device_code_login",
-        lambda *_a, **_k: oidc.TokenResponse(access_token=_jwt({"sub": "julia"})),
+        lambda *_a, **_k: oidc.TokenResponse(access_token=_jwt({"sub": "avery"})),
     )
 
     result = runner.invoke(
@@ -453,7 +453,7 @@ def test_login_falls_back_to_device_code_when_there_is_no_browser(
     monkeypatch.setattr(
         login_cmd,
         "device_code_login",
-        lambda *_a, **_k: oidc.TokenResponse(access_token=_jwt({"sub": "julia"})),
+        lambda *_a, **_k: oidc.TokenResponse(access_token=_jwt({"sub": "avery"})),
     )
 
     result = runner.invoke(app, ["login", "--issuer", "https://idp.test/realms/mycelium"])
@@ -495,20 +495,20 @@ def test_logout_drops_the_session() -> None:
 
 
 def test_whoami_reports_the_token_identity_when_signed_in() -> None:
-    save_token(_token(access_token=_jwt({"sub": "julia", "exp": time.time() + 3600})))
+    save_token(_token(access_token=_jwt({"sub": "avery", "exp": time.time() + 3600})))
 
     result = runner.invoke(app, ["--json", "whoami"])
 
     assert result.exit_code == 0
     payload = json.loads(result.stdout)
     assert payload["authenticated"] is True
-    assert payload["principal"] == "julia"
+    assert payload["principal"] == "avery"
     assert payload["token"]["issuer"] == _META.issuer
 
 
 def test_whoami_is_unchanged_when_logged_out() -> None:
     config = MyceliumConfig.load()
-    config.identity.name = "julia"
+    config.identity.name = "avery"
     config.save()
 
     result = runner.invoke(app, ["--json", "whoami"])
@@ -517,25 +517,25 @@ def test_whoami_is_unchanged_when_logged_out() -> None:
     payload = json.loads(result.stdout)
     assert payload["authenticated"] is False
     assert payload["token"] is None
-    assert payload["principal"] == "julia"
+    assert payload["principal"] == "avery"
 
 
 def test_iam_with_no_handle_reports_rather_than_asserting() -> None:
-    save_token(_token(access_token=_jwt({"sub": "julia", "exp": time.time() + 3600})))
+    save_token(_token(access_token=_jwt({"sub": "avery", "exp": time.time() + 3600})))
 
     result = runner.invoke(app, ["--json", "iam"])
 
     assert result.exit_code == 0
-    assert json.loads(result.stdout)["principal"] == "julia"
+    assert json.loads(result.stdout)["principal"] == "avery"
     # Reporting is read-only: nothing was written to identity.name.
     assert MyceliumConfig.load().identity.name is None
 
 
 def test_iam_flags_a_handle_the_token_will_not_back() -> None:
-    save_token(_token(access_token=_jwt({"sub": "julia", "exp": time.time() + 3600})))
+    save_token(_token(access_token=_jwt({"sub": "avery", "exp": time.time() + 3600})))
 
     result = runner.invoke(app, ["iam", "bob"])
 
     assert result.exit_code == 0
-    assert "you're signed in as @julia" in _flat(result.stdout)
+    assert "you're signed in as @avery" in _flat(result.stdout)
     assert "refuse writes claiming a different handle" in _flat(result.stdout)

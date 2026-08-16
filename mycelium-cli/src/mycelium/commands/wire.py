@@ -102,7 +102,7 @@ def l9_send(
     anything touches the wire.
 
     Example:
-        mycelium l9 send --room design --as @julia --kind commit --subkind resolved \\
+        mycelium l9 send --room design --as @avery --kind commit --subkind resolved \\
             --data '{"assignments": {"cap": "30"}}'
     """
     try:
@@ -167,7 +167,7 @@ def slim_send(
     how/whether it surfaces.
 
     Example:
-        mycelium slim send --room design --as @julia --text "hello channel"
+        mycelium slim send --room design --as @avery --text "hello channel"
     """
     if (text is None) == (json_payload is None):
         typer.secho("  ⟫  pass exactly one of --text or --json", fg=typer.colors.RED)

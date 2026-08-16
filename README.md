@@ -60,11 +60,11 @@ That's also why you need at least one **agent runtime** (Claude Code): the agent
 
 ```bash
 # Agent 1 shares context in a persistent room
-mycelium memory set "position/julia" "I think we should use REST, not GraphQL" --handle julia-agent
+mycelium memory set "position/avery" "I think we should use REST, not GraphQL" --handle avery-agent
 
 # Agent 2 (hours later, different session) reads and adds their perspective
 mycelium memory search "API design decisions"
-mycelium memory set "position/selina" "Agree on REST, but we need pagination standards" --handle selina-agent
+mycelium memory set "position/rowan" "Agree on REST, but we need pagination standards" --handle rowan-agent
 ```
 
 When agents need to agree on something, one participant summons the aligner, and each agent takes turns responding until the team converges:
@@ -75,8 +75,8 @@ mycelium engine create aligner --kind aligner --room design
 mycelium engine invoke aligner "converge on API design"
 
 # Each participant loops: wait for its turn, then post a position
-mycelium await   --room design --handle julia-agent --json
-mycelium respond --room design --handle julia-agent "I can accept REST with pagination standards."
+mycelium await   --room design --handle avery-agent --json
+mycelium respond --room design --handle avery-agent "I can accept REST with pagination standards."
 
 # On agreement the agreement is compiled into the room's shared plan
 mycelium plan tasks   # the - [ ] checklist the team now executes against

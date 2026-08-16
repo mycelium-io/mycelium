@@ -40,8 +40,8 @@ def test_classify_engine():
 
 
 def test_classify_user_normalized():
-    principals.write_user({"handle": "julia"})
-    assert principals.classify_sender("r", "@Julia") == "user"
+    principals.write_user({"handle": "avery"})
+    assert principals.classify_sender("r", "@Avery") == "user"
 
 
 def test_classify_unknown_is_phantom():
@@ -54,7 +54,7 @@ def test_classify_unknown_is_phantom():
 def test_agent_path_rejects_engine_and_phantom_allows_real():
     _seed_agent("r", "aligner", adapter="engine", kind="aligner")
     _seed_agent("r", "bot", adapter="claude_code", cwd="/tmp")
-    principals.write_user({"handle": "julia"})
+    principals.write_user({"handle": "avery"})
 
     # engine: never impersonable
     assert principals.post_rejection_reason("r", "aligner", allow_unregistered=False)
@@ -62,7 +62,7 @@ def test_agent_path_rejects_engine_and_phantom_allows_real():
     assert principals.post_rejection_reason("r", "foobar", allow_unregistered=False)
     # real agent + known user: allowed
     assert principals.post_rejection_reason("r", "bot", allow_unregistered=False) is None
-    assert principals.post_rejection_reason("r", "julia", allow_unregistered=False) is None
+    assert principals.post_rejection_reason("r", "avery", allow_unregistered=False) is None
 
 
 def test_human_path_tolerates_unregistered_but_not_engine():

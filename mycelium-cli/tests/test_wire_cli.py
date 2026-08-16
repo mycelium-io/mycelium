@@ -48,7 +48,7 @@ def test_l9_send_rejects_invalid_kind_before_publishing(monkeypatch: pytest.Monk
 
     monkeypatch.setattr(wire, "publish_once", _fake_publish)
 
-    result = runner.invoke(app, ["l9", "send", "--as", "julia", "--kind", "not-a-kind"])
+    result = runner.invoke(app, ["l9", "send", "--as", "avery", "--kind", "not-a-kind"])
     assert result.exit_code == 2
     assert not called
 
@@ -66,7 +66,7 @@ def test_l9_send_rejects_mismatched_subkind_before_publishing(
 
     result = runner.invoke(
         app,
-        ["l9", "send", "--as", "julia", "--kind", "exchange", "--subkind", "converged"],
+        ["l9", "send", "--as", "avery", "--kind", "exchange", "--subkind", "converged"],
     )
     assert result.exit_code == 2
     assert not called
@@ -86,13 +86,13 @@ def test_l9_send_builds_envelope_and_publishes(monkeypatch: pytest.MonkeyPatch) 
             "l9",
             "send",
             "--as",
-            "@julia",
+            "@avery",
             "--kind",
             "commit",
             "--subkind",
             "resolved",
             "--to",
-            "bob, @selina",
+            "bob, @rowan",
             "--parents",
             "p1,p2",
             "--data",
@@ -101,14 +101,14 @@ def test_l9_send_builds_envelope_and_publishes(monkeypatch: pytest.MonkeyPatch) 
     )
     assert result.exit_code == 0, result.output
     assert captured["room"] == "demo"
-    assert captured["handle"] == "julia"
+    assert captured["handle"] == "avery"
 
     content = l9.parse(captured["payload"])
     assert content is not None
     assert l9.kind_of(content) == "commit"
     assert content["l9"]["header"]["subkind"] == "resolved"
     assert content["l9"]["header"]["message"]["parents"] == ["p1", "p2"]
-    assert l9.recipients_of(content) == ["bob", "selina"]
+    assert l9.recipients_of(content) == ["bob", "rowan"]
     assert l9.payload_data_of(content) == {"assignments": {"cap": "30"}}
 
 
@@ -116,7 +116,7 @@ def test_l9_send_rejects_non_object_data(monkeypatch: pytest.MonkeyPatch) -> Non
     monkeypatch.setattr(wire, "publish_once", lambda **_k: None)
     result = runner.invoke(
         app,
-        ["l9", "send", "--as", "julia", "--kind", "exchange", "--data", "[1, 2, 3]"],
+        ["l9", "send", "--as", "avery", "--kind", "exchange", "--data", "[1, 2, 3]"],
     )
     assert result.exit_code == 2
 
@@ -126,16 +126,16 @@ def test_l9_send_surfaces_slim_send_error(monkeypatch: pytest.MonkeyPatch) -> No
         raise SlimSendError("SLIM node unreachable at http://x")
 
     monkeypatch.setattr(wire, "publish_once", _boom)
-    result = runner.invoke(app, ["l9", "send", "--as", "julia", "--kind", "exchange"])
+    result = runner.invoke(app, ["l9", "send", "--as", "avery", "--kind", "exchange"])
     assert result.exit_code == 1
     assert "unreachable" in result.output
 
 
 def test_slim_send_requires_exactly_one_of_text_or_json() -> None:
-    result = runner.invoke(app, ["slim", "send", "--as", "julia"])
+    result = runner.invoke(app, ["slim", "send", "--as", "avery"])
     assert result.exit_code == 2
 
-    result = runner.invoke(app, ["slim", "send", "--as", "julia", "--text", "hi", "--json", "{}"])
+    result = runner.invoke(app, ["slim", "send", "--as", "avery", "--text", "hi", "--json", "{}"])
     assert result.exit_code == 2
 
 
@@ -147,9 +147,9 @@ def test_slim_send_publishes_raw_text(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(wire, "publish_once", _fake_publish)
 
-    result = runner.invoke(app, ["slim", "send", "--as", "@julia", "--text", "hello channel"])
+    result = runner.invoke(app, ["slim", "send", "--as", "@avery", "--text", "hello channel"])
     assert result.exit_code == 0, result.output
-    assert captured["handle"] == "julia"
+    assert captured["handle"] == "avery"
     assert captured["room"] == "demo"
     assert captured["payload"] == b"hello channel"
 
@@ -162,11 +162,11 @@ def test_slim_send_publishes_raw_json(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(wire, "publish_once", _fake_publish)
 
-    result = runner.invoke(app, ["slim", "send", "--as", "julia", "--json", '{"anything": true}'])
+    result = runner.invoke(app, ["slim", "send", "--as", "avery", "--json", '{"anything": true}'])
     assert result.exit_code == 0, result.output
     assert json.loads(captured["payload"]) == {"anything": True}
 
 
 def test_slim_send_rejects_invalid_json() -> None:
-    result = runner.invoke(app, ["slim", "send", "--as", "julia", "--json", "{not json"])
+    result = runner.invoke(app, ["slim", "send", "--as", "avery", "--json", "{not json"])
     assert result.exit_code == 2
