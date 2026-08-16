@@ -101,7 +101,7 @@ export function RoomChatBox({ roomName, onSent, className }: Props) {
     });
     // Memory keys drive `[[` autocomplete; skills drive `/`. Both degrade to [].
     fetchMemories(roomName).then(setMemories).catch(logFetchError("fetchMemories"));
-    fetchSkills().then(setSkills).catch(logFetchError("fetchSkills"));
+    fetchSkills(roomName).then(setSkills).catch(logFetchError("fetchSkills"));
   }, [roomName]);
 
   useEffect(() => {

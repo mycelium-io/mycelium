@@ -3,8 +3,8 @@
 
 """Unit tests for ``mycelium skill`` (set / get / ls / rm).
 
-Node-free and file-free: the skills store lives on the hub, so the API ``.sync``
-functions are stubbed. Skills are global (not room-scoped).
+Node-free and file-free: skills live on the hub (the room's skills/ namespace),
+so the API ``.sync`` functions are stubbed. Room-scoped, like memory.
 """
 
 from __future__ import annotations
@@ -61,35 +61,49 @@ def _skill_read(name: str, **overrides: Any):
 def test_skill_set(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: list = []
 
-    def _sync(*, client, body):
-        captured.append(body)
+    def _sync(*, room_name, client, body):
+        captured.append((room_name, body))
         return _skill_read(body.name, version=1)
 
     monkeypatch.setattr(
-        "mycelium_backend_client.api.skills.create_skill_api_skills_post.sync", _sync
+        "mycelium_backend_client.api.skills.create_skill_api_rooms_room_name_skills_post.sync",
+        _sync,
     )
     result = runner.invoke(
         skill_cmd.app,
-        ["set", "summarize-room", "Read decisions/ and brief.", "--desc", "A brief"],
+        [
+            "set",
+            "summarize-room",
+            "Read decisions/ and brief.",
+            "--desc",
+            "A brief",
+            "--room",
+            "demo",
+        ],
     )
     assert result.exit_code == 0, result.output
-    assert captured[0].name == "summarize-room"
-    assert captured[0].body == "Read decisions/ and brief."
-    assert captured[0].description == "A brief"
+    room_name, body = captured[0]
+    assert room_name == "demo"
+    assert body.name == "summarize-room"
+    assert body.body == "Read decisions/ and brief."
+    assert body.description == "A brief"
     assert "Skill set" in result.output
 
 
 def test_skill_set_from_stdin(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: list = []
 
-    def _sync(*, client, body):
+    def _sync(*, room_name, client, body):
         captured.append(body)
         return _skill_read(body.name)
 
     monkeypatch.setattr(
-        "mycelium_backend_client.api.skills.create_skill_api_skills_post.sync", _sync
+        "mycelium_backend_client.api.skills.create_skill_api_rooms_room_name_skills_post.sync",
+        _sync,
     )
-    result = runner.invoke(skill_cmd.app, ["set", "s", "--file", "-"], input="from stdin")
+    result = runner.invoke(
+        skill_cmd.app, ["set", "s", "--file", "-", "--room", "demo"], input="from stdin"
+    )
     assert result.exit_code == 0, result.output
     assert captured[0].body == "from stdin"
 
@@ -97,13 +111,15 @@ def test_skill_set_from_stdin(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_skill_ls(monkeypatch: pytest.MonkeyPatch) -> None:
     from mycelium_backend_client.models import SkillListResponse
 
-    def _sync(*, client):
+    def _sync(*, room_name, client):
         return SkillListResponse(
             skills=[_skill_read("alpha", description="the alpha skill")], total=1
         )
 
-    monkeypatch.setattr("mycelium_backend_client.api.skills.list_skills_api_skills_get.sync", _sync)
-    result = runner.invoke(skill_cmd.app, ["ls"])
+    monkeypatch.setattr(
+        "mycelium_backend_client.api.skills.list_skills_api_rooms_room_name_skills_get.sync", _sync
+    )
+    result = runner.invoke(skill_cmd.app, ["ls", "--room", "demo"])
     assert result.exit_code == 0, result.output
     assert "/alpha" in result.output
     assert "the alpha skill" in result.output
@@ -113,33 +129,34 @@ def test_skill_ls_empty(monkeypatch: pytest.MonkeyPatch) -> None:
     from mycelium_backend_client.models import SkillListResponse
 
     monkeypatch.setattr(
-        "mycelium_backend_client.api.skills.list_skills_api_skills_get.sync",
-        lambda *, client: SkillListResponse(skills=[], total=0),
+        "mycelium_backend_client.api.skills.list_skills_api_rooms_room_name_skills_get.sync",
+        lambda *, room_name, client: SkillListResponse(skills=[], total=0),
     )
-    result = runner.invoke(skill_cmd.app, ["ls"])
+    result = runner.invoke(skill_cmd.app, ["ls", "--room", "demo"])
     assert result.exit_code == 0
     assert "No skills found" in result.output
 
 
 def test_skill_get(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        "mycelium_backend_client.api.skills.get_skill_api_skills_name_get.sync",
-        lambda *, name, client: _skill_read(name, body="the body", description="d"),
+        "mycelium_backend_client.api.skills.get_skill_api_rooms_room_name_skills_name_get.sync",
+        lambda *, room_name, name, client: _skill_read(name, body="the body", description="d"),
     )
-    result = runner.invoke(skill_cmd.app, ["get", "alpha"])
+    result = runner.invoke(skill_cmd.app, ["get", "alpha", "--room", "demo"])
     assert result.exit_code == 0, result.output
     assert "/alpha" in result.output
     assert "the body" in result.output
 
 
 def test_skill_get_missing(monkeypatch: pytest.MonkeyPatch) -> None:
-    def _sync(*, name, client):
+    def _sync(*, room_name, name, client):
         raise UnexpectedStatus(404, b"")
 
     monkeypatch.setattr(
-        "mycelium_backend_client.api.skills.get_skill_api_skills_name_get.sync", _sync
+        "mycelium_backend_client.api.skills.get_skill_api_rooms_room_name_skills_name_get.sync",
+        _sync,
     )
-    result = runner.invoke(skill_cmd.app, ["get", "nope"])
+    result = runner.invoke(skill_cmd.app, ["get", "nope", "--room", "demo"])
     assert result.exit_code == 1
     assert "Not found" in result.output
 
@@ -149,10 +166,10 @@ def test_skill_rm(monkeypatch: pytest.MonkeyPatch) -> None:
         status_code = 204
 
     monkeypatch.setattr(
-        "mycelium_backend_client.api.skills.delete_skill_api_skills_name_delete.sync_detailed",
-        lambda *, name, client: _Resp(),
+        "mycelium_backend_client.api.skills.delete_skill_api_rooms_room_name_skills_name_delete.sync_detailed",
+        lambda *, room_name, name, client: _Resp(),
     )
-    result = runner.invoke(skill_cmd.app, ["rm", "alpha"])
+    result = runner.invoke(skill_cmd.app, ["rm", "alpha", "--room", "demo"])
     assert result.exit_code == 0, result.output
     assert "Skill removed" in result.output
 
@@ -162,9 +179,9 @@ def test_skill_rm_missing(monkeypatch: pytest.MonkeyPatch) -> None:
         status_code = 404
 
     monkeypatch.setattr(
-        "mycelium_backend_client.api.skills.delete_skill_api_skills_name_delete.sync_detailed",
-        lambda *, name, client: _Resp(),
+        "mycelium_backend_client.api.skills.delete_skill_api_rooms_room_name_skills_name_delete.sync_detailed",
+        lambda *, room_name, name, client: _Resp(),
     )
-    result = runner.invoke(skill_cmd.app, ["rm", "nope"])
+    result = runner.invoke(skill_cmd.app, ["rm", "nope", "--room", "demo"])
     assert result.exit_code == 1
     assert "Not found" in result.output

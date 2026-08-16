@@ -247,9 +247,9 @@ export async function fetchMemoryLinks(roomName: string, key: string): Promise<M
 }
 
 // ── Skills ───────────────────────────────────────────────────────────────────
-// A global (project-level) store of reusable, invokable skills — SKILL.md-style
-// markdown. Distinct from memory (which is room-scoped): a skill is reusable
-// across rooms. Backs the chat composer's `/` trigger. See #617.
+// A skill is a memory under the room's `skills/` namespace, promoted into its
+// own surface (like `agents/` → the members panel). Room-scoped, like memory.
+// Backs the chat composer's `/` trigger and the Skills rail. See #617.
 
 export interface Skill {
   name: string;
@@ -263,10 +263,10 @@ export interface Skill {
   updated_at: string;
 }
 
-/** List all skills in the global store. Drives the composer's `/` autocomplete
- *  and the skills panel. Degrades to empty on failure. */
-export async function fetchSkills(): Promise<Skill[]> {
-  const data = await apiFetch<{ skills?: Skill[] }>(`/api/skills`, {
+/** List a room's skills. Drives the composer's `/` autocomplete and the skills
+ *  panel. Degrades to empty on failure. */
+export async function fetchSkills(roomName: string): Promise<Skill[]> {
+  const data = await apiFetch<{ skills?: Skill[] }>(`/api/rooms/${roomName}/skills`, {
     cache: "no-store",
     fallback: { skills: [] },
   });
@@ -274,32 +274,35 @@ export async function fetchSkills(): Promise<Skill[]> {
 }
 
 /** One skill by name, or null when it isn't there (or the read failed). */
-export async function fetchSkill(name: string): Promise<Skill | null> {
-  return apiFetch<Skill | null>(`/api/skills/${encodeURIComponent(name)}`, {
+export async function fetchSkill(roomName: string, name: string): Promise<Skill | null> {
+  return apiFetch<Skill | null>(`/api/rooms/${roomName}/skills/${encodeURIComponent(name)}`, {
     cache: "no-store",
     fallback: null,
   });
 }
 
-/** Create or upsert a skill. User-initiated — throws on failure so the form
- *  can surface it. */
-export async function saveSkill(data: {
-  name: string;
-  description?: string;
-  body?: string;
-  tags?: string[] | null;
-  created_by: string;
-}): Promise<Skill> {
-  return apiFetch<Skill>(`/api/skills`, {
+/** Create or upsert a skill in a room. User-initiated — throws on failure so the
+ *  form can surface it. */
+export async function saveSkill(
+  roomName: string,
+  data: {
+    name: string;
+    description?: string;
+    body?: string;
+    tags?: string[] | null;
+    created_by: string;
+  },
+): Promise<Skill> {
+  return apiFetch<Skill>(`/api/rooms/${roomName}/skills`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
 }
 
-/** Delete a skill by name. User-initiated — throws on failure. */
-export async function deleteSkill(name: string): Promise<void> {
-  await apiFetch<null>(`/api/skills/${encodeURIComponent(name)}`, {
+/** Delete a skill by name from a room. User-initiated — throws on failure. */
+export async function deleteSkill(roomName: string, name: string): Promise<void> {
+  await apiFetch<null>(`/api/rooms/${roomName}/skills/${encodeURIComponent(name)}`, {
     method: "DELETE",
     fallback: null,
   });

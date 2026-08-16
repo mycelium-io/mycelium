@@ -4953,6 +4953,195 @@
         ]
       }
     },
+    "/api/rooms/{room_name}/skills": {
+      "get": {
+        "description": "List a room's skills, newest-updated first.",
+        "operationId": "list_skills_api_rooms__room_name__skills_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "room_name",
+            "required": true,
+            "schema": {
+              "title": "Room Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Skills",
+        "tags": [
+          "skills"
+        ]
+      },
+      "post": {
+        "description": "Create or upsert a skill. Writes a ``skills/{name}`` memory (version bumps).",
+        "operationId": "create_skill_api_rooms__room_name__skills_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "room_name",
+            "required": true,
+            "schema": {
+              "title": "Room Name",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SkillCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Skill",
+        "tags": [
+          "skills"
+        ]
+      }
+    },
+    "/api/rooms/{room_name}/skills/{name}": {
+      "delete": {
+        "description": "Delete a skill by name. Removes the memory file and its index/link entries.",
+        "operationId": "delete_skill_api_rooms__room_name__skills__name__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "room_name",
+            "required": true,
+            "schema": {
+              "title": "Room Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Skill",
+        "tags": [
+          "skills"
+        ]
+      },
+      "get": {
+        "description": "Get a specific skill by name.",
+        "operationId": "get_skill_api_rooms__room_name__skills__name__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "room_name",
+            "required": true,
+            "schema": {
+              "title": "Room Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Skill",
+        "tags": [
+          "skills"
+        ]
+      }
+    },
     "/api/search": {
       "get": {
         "description": "Search every entity type in scope and return them on one ranked list.\n\nAn empty query is a valid request with no results \u2014 a typeahead calls this\non the first keystroke and shouldn't have to special-case a 422.",
@@ -5008,145 +5197,6 @@
         "summary": "Search Everything",
         "tags": [
           "search"
-        ]
-      }
-    },
-    "/api/skills": {
-      "get": {
-        "description": "List all skills, newest-updated first.",
-        "operationId": "list_skills_api_skills_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SkillListResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "List Skills",
-        "tags": [
-          "skills"
-        ]
-      },
-      "post": {
-        "description": "Create or upsert a skill. Upsert bumps ``version`` (last-write-wins).",
-        "operationId": "create_skill_api_skills_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SkillCreate"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SkillRead"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Create Skill",
-        "tags": [
-          "skills"
-        ]
-      }
-    },
-    "/api/skills/{name}": {
-      "delete": {
-        "description": "Delete a skill by name.",
-        "operationId": "delete_skill_api_skills__name__delete",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "name",
-            "required": true,
-            "schema": {
-              "title": "Name",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Delete Skill",
-        "tags": [
-          "skills"
-        ]
-      },
-      "get": {
-        "description": "Get a specific skill by name.",
-        "operationId": "get_skill_api_skills__name__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "name",
-            "required": true,
-            "schema": {
-              "title": "Name",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SkillRead"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Skill",
-        "tags": [
-          "skills"
         ]
       }
     },

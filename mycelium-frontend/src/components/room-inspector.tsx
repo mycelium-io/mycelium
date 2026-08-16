@@ -154,7 +154,7 @@ export function RoomInspector({
             focusMemory={focusMemory}
           />
         )}
-        {tab === "skills" && <SkillsPanel />}
+        {tab === "skills" && <SkillsPanel roomName={roomName} />}
       </div>
     </aside>
   );

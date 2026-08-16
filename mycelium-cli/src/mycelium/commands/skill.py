@@ -2,13 +2,14 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-Skill commands — the global, folder-based skills store (#617).
+Skill commands — the ``skills/`` memory namespace, promoted (#617).
 
-Skills are reusable, invokable units of prose (SKILL.md-style markdown +
-frontmatter), stored on the hub at ``.mycelium/skills/<name>.md``. Unlike
-memory, the store is *global* (project-level), not room-scoped: a skill is
-reusable across rooms. Reads and writes resolve against the hub over HTTP; a
-spoke keeps no local replica.
+A skill is just a memory: SKILL.md-style markdown + frontmatter at
+``.mycelium/rooms/{room}/skills/<name>.md``. The same way ``decisions/`` memories
+get a category view and ``agents/`` a members panel, the ``skills/`` namespace is
+promoted into a skills surface. So skills are room-scoped, like memory, and a
+skill is reachable as a memory too. Reads and writes resolve against the hub over
+HTTP; a spoke keeps no local replica.
 """
 
 import sys
@@ -28,7 +29,7 @@ from mycelium.doc_ref import doc_ref
 from mycelium_backend_client.errors import UnexpectedStatus
 
 app = typer.Typer(
-    help="Create and browse reusable skills — SKILL.md-style markdown stored globally on the hub. Skills back the chat composer's / trigger.",
+    help="Create and browse a room's skills — SKILL.md-style markdown in the room's skills/ namespace. Skills back the chat composer's / trigger.",
     no_args_is_help=True,
 )
 console = Console()
@@ -84,9 +85,24 @@ def _resolve_body(body: str | None, file: str | None) -> str:
     return body
 
 
+def _get_active_room(room: str | None) -> str:
+    """Resolve the room from the arg or the active config, like `mycelium memory`."""
+    if room:
+        return room
+    cfg = MyceliumConfig.load()
+    active = getattr(cfg.rooms, "active", None) if hasattr(cfg, "rooms") else None
+    if active:
+        return active
+    console.print(
+        "[red]Error:[/red] no room specified and no active room set. Use --room or "
+        "'mycelium config set rooms.active <name>'."
+    )
+    raise typer.Exit(1)
+
+
 @doc_ref(
     usage="mycelium skill set <name> [<body>] [--file <path>] [--desc <text>]",
-    desc="Create or update a skill (upsert). The body comes from the positional argument or <code>--file</code> (<code>-</code> reads stdin). Skills are global — reusable across rooms.",
+    desc="Create or update a skill (upsert) in a room's skills/ namespace. The body comes from the positional argument or <code>--file</code> (<code>-</code> reads stdin).",
     group="skill",
 )
 @app.command(name="set")
@@ -96,19 +112,23 @@ def skill_set(
     file: str | None = typer.Option(
         None, "--file", "-f", help="Read the body from a file ('-' for stdin)"
     ),
+    room: str | None = typer.Option(
+        None, "--room", "-r", help="Room name (defaults to active room)"
+    ),
     description: str = typer.Option(
         "", "--desc", "-d", help="One-line summary shown in listings and the composer"
     ),
     handle: str = typer.Option("cli-user", "--handle", "-H", help="Author handle"),
     tags: str | None = typer.Option(None, "--tags", "-t", help="Comma-separated tags"),
 ) -> None:
-    """Create or upsert a skill in the global store. Always upserts; version bumps."""
+    """Create or upsert a skill in a room's skills/ namespace. Always upserts; version bumps."""
     from mycelium_backend_client.api.skills import (
-        create_skill_api_skills_post as create_api,
+        create_skill_api_rooms_room_name_skills_post as create_api,
     )
     from mycelium_backend_client.models import SkillCreate
 
     body_text = _resolve_body(body, file)
+    room_name = _get_active_room(room)
     tag_list = [t.strip() for t in tags.split(",")] if tags else None
 
     item = SkillCreate(
@@ -119,25 +139,28 @@ def skill_set(
         tags=tag_list,
     )
     with _hub_session() as client:
-        skill = create_api.sync(client=client, body=item)
+        skill = create_api.sync(room_name=room_name, client=client, body=item)
         version = f"v{skill.version}" if hasattr(skill, "version") else ""
-        console.print(f"[green]Skill set:[/green] {name} ({version})")
+        console.print(f"[green]Skill set:[/green] {room_name}/{name} ({version})")
 
 
 @doc_ref(
     usage="mycelium skill ls",
-    desc="List all skills in the global store, newest-updated first.",
+    desc="List a room's skills, newest-updated first.",
     group="skill",
 )
 @app.command(name="ls")
-def skill_ls() -> None:
-    """List skills from the hub."""
+def skill_ls(
+    room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
+) -> None:
+    """List a room's skills from the hub."""
     from mycelium_backend_client.api.skills import (
-        list_skills_api_skills_get as list_api,
+        list_skills_api_rooms_room_name_skills_get as list_api,
     )
 
+    room_name = _get_active_room(room)
     with _hub_session() as client:
-        resp = list_api.sync(client=client)
+        resp = list_api.sync(room_name=room_name, client=client)
 
     skills = getattr(resp, "skills", None) or []
     if not skills:
@@ -156,22 +179,24 @@ def skill_ls() -> None:
 
 @doc_ref(
     usage="mycelium skill get <name>",
-    desc="Read a skill by name from the hub.",
+    desc="Read a skill by name from a room.",
     group="skill",
 )
 @app.command(name="get")
 def skill_get(
     name: str = typer.Argument(..., help="Skill name"),
+    room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
 ) -> None:
     """Read a skill by name (from the hub)."""
     from mycelium_backend_client.api.skills import (
-        get_skill_api_skills_name_get as get_api,
+        get_skill_api_rooms_room_name_skills_name_get as get_api,
     )
     from mycelium_backend_client.models import SkillRead
 
+    room_name = _get_active_room(room)
     with _hub_session() as client:
         try:
-            skill = get_api.sync(name=name, client=client)
+            skill = get_api.sync(room_name=room_name, name=name, client=client)
         except UnexpectedStatus as exc:
             if exc.status_code == 404:
                 console.print(f"[red]Not found:[/red] {name}")
@@ -191,24 +216,26 @@ def skill_get(
 
 @doc_ref(
     usage="mycelium skill rm <name>",
-    desc="Delete a skill from the hub.",
+    desc="Delete a skill from a room.",
     group="skill",
 )
 @app.command(name="rm")
 def skill_rm(
     name: str = typer.Argument(..., help="Skill name"),
+    room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
 ) -> None:
     """Delete a skill by name."""
     from mycelium_backend_client.api.skills import (
-        delete_skill_api_skills_name_delete as delete_api,
+        delete_skill_api_rooms_room_name_skills_name_delete as delete_api,
     )
 
+    room_name = _get_active_room(room)
     with _hub_session() as client:
-        resp = delete_api.sync_detailed(name=name, client=client)
+        resp = delete_api.sync_detailed(room_name=room_name, name=name, client=client)
         if resp.status_code == 404:
             console.print(f"[red]Not found:[/red] {name}")
             raise typer.Exit(1)
-    console.print(f"[green]Skill removed:[/green] {name}")
+    console.print(f"[green]Skill removed:[/green] {room_name}/{name}")
 
 
 @doc_ref(

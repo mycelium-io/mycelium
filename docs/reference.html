@@ -633,28 +633,28 @@ cursor-agent login            # one-time, interactive
         <div class="cmd-ref-header">
           <code><span class="cmd">mycelium skill set</span> <span class="arg">&lt;name&gt;</span> [<span class="arg">&lt;body&gt;</span>] [<span class="flag">--file</span> <span class="arg">&lt;path&gt;</span>] [<span class="flag">--desc</span> <span class="arg">&lt;text&gt;</span>]</code>
         </div>
-        <div class="cmd-ref-body">Create or update a skill (upsert). The body comes from the positional argument or <code>--file</code> (<code>-</code> reads stdin). Skills are global — reusable across rooms.</div>
+        <div class="cmd-ref-body">Create or update a skill (upsert) in a room's skills/ namespace. The body comes from the positional argument or <code>--file</code> (<code>-</code> reads stdin).</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
           <code><span class="cmd">mycelium skill ls</span></code>
         </div>
-        <div class="cmd-ref-body">List all skills in the global store, newest-updated first.</div>
+        <div class="cmd-ref-body">List a room's skills, newest-updated first.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
           <code><span class="cmd">mycelium skill get</span> <span class="arg">&lt;name&gt;</span></code>
         </div>
-        <div class="cmd-ref-body">Read a skill by name from the hub.</div>
+        <div class="cmd-ref-body">Read a skill by name from a room.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
           <code><span class="cmd">mycelium skill rm</span> <span class="arg">&lt;name&gt;</span></code>
         </div>
-        <div class="cmd-ref-body">Delete a skill from the hub.</div>
+        <div class="cmd-ref-body">Delete a skill from a room.</div>
       </div>
 
       <div class="cmd-ref">

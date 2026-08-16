@@ -12,20 +12,21 @@ import { EmptyState } from "@/components/empty-state";
 import { MarkdownContent } from "@/components/markdown-content";
 import { Skeleton } from "@/components/ui/skeleton";
 
-// The frontend surface of the global skills store (#617). Skills are project-
-// level (reusable across rooms), so this panel isn't scoped to a room — it lists
-// every skill and lets you read, add, or remove one. The composer's `/` trigger
-// (#619) sources its autocomplete from the same store.
+// The frontend surface of a room's skills (#617). A skill is a memory under the
+// room's `skills/` namespace, promoted here into a list you can read, add, or
+// remove. The composer's `/` trigger (#619) sources autocomplete from the same
+// namespace.
 
 const SLUG_RE = /^[a-z0-9][a-z0-9._-]*$/;
 
 interface CreateFormProps {
+  roomName: string;
   onCancel: () => void;
   onCreated: () => void;
   author: string;
 }
 
-function CreateForm({ onCancel, onCreated, author }: CreateFormProps) {
+function CreateForm({ roomName, onCancel, onCreated, author }: CreateFormProps) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [body, setBody] = useState("");
@@ -39,7 +40,7 @@ function CreateForm({ onCancel, onCreated, author }: CreateFormProps) {
     setSaving(true);
     setError(null);
     try {
-      await saveSkill({ name, description, body, created_by: author });
+      await saveSkill(roomName, { name, description, body, created_by: author });
       onCreated();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -94,15 +95,19 @@ function CreateForm({ onCancel, onCreated, author }: CreateFormProps) {
   );
 }
 
-export function SkillsPanel() {
+interface Props {
+  roomName: string;
+}
+
+export function SkillsPanel({ roomName }: Props) {
   const { principal } = useCurrentUser();
   const [skills, setSkills] = useState<Skill[] | null>(null);
   const [selected, setSelected] = useState<Skill | null>(null);
   const [creating, setCreating] = useState(false);
 
   const load = useCallback(() => {
-    fetchSkills().then(setSkills).catch(() => setSkills([]));
-  }, []);
+    fetchSkills(roomName).then(setSkills).catch(() => setSkills([]));
+  }, [roomName]);
 
   useEffect(() => {
     load();
@@ -114,7 +119,7 @@ export function SkillsPanel() {
   };
 
   const remove = async (name: string) => {
-    await deleteSkill(name);
+    await deleteSkill(roomName, name);
     setSelected(null);
     load();
   };
@@ -137,7 +142,7 @@ export function SkillsPanel() {
 
       {creating && (
         <div className="border-b border-border">
-          <CreateForm author={principal.trim() || "user"} onCancel={() => setCreating(false)} onCreated={onCreated} />
+          <CreateForm roomName={roomName} author={principal.trim() || "user"} onCancel={() => setCreating(false)} onCreated={onCreated} />
         </div>
       )}
 
