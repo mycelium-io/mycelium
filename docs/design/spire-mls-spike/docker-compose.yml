@@ -5,13 +5,10 @@
 # is app-level (this vindicates #581's claim that no node change is needed). The
 # node only forwards ciphertext.
 #
-#   docker compose up -d
-#   ./register-workloads.sh
-#   # then run spire_mls_spike.py (see README.md)
-#
-# The agent's Workload API socket is bind-mounted to the host at
-# ./spire-agent-socket so the Python members (run on the host) can reach it at
-# /tmp/spire-agent/public/api.sock via SPIRE_SOCKET.
+# Drive it with `./run.sh` (mints the join token, registers workloads, runs the
+# two-member exchange). The Workload API socket is shared to the runner over a
+# NAMED VOLUME (not a host bind), and the runner shares the agent's PID namespace
+# so the `unix` attestor can resolve it -- see README.md "Gotchas".
 
 services:
   spire-server:
@@ -28,27 +25,65 @@ services:
 
   spire-agent:
     image: ghcr.io/spiffe/spire-agent:1.9.6
-    # Agent needs a join token; register-workloads.sh mints one and starts it.
-    # Kept `command: sleep` so the script controls the boot order deterministically.
-    command: ["/bin/sh", "-c", "sleep infinity"]
-    pid: "host"
+    # The image ENTRYPOINT is the agent binary. It needs a one-time join token
+    # minted from the server after it is up, so run.sh mints the token and
+    # brings this service up with JOIN_TOKEN set (Compose interpolates
+    # it into the command below). The image is distroless (no shell), so this
+    # env-interpolation path is the clean way in.
+    # NOTE: the image ENTRYPOINT already includes `run`, so command starts at
+    # `-config` (a leading `run` here would double it and swallow -joinToken).
+    command:
+      - "-config"
+      - "/opt/spire/conf/agent/agent.conf"
+      - "-joinToken"
+      - "${JOIN_TOKEN:-}"
     depends_on:
       spire-server:
         condition: service_healthy
     volumes:
       - ./spire-agent.conf:/opt/spire/conf/agent/agent.conf:ro
       - spire-server-sock:/tmp/spire-server/private:ro
-      - ./spire-agent-socket:/tmp/spire-agent/public
+      # Workload API socket on a NAMED VOLUME, not a host bind-mount. A host
+      # bind-mount on Docker Desktop routes the socket through the file-sharing
+      # layer, which drops SO_PEERCRED -> the `unix` attestor fails with "could
+      # not resolve caller information". A named volume stays inside the Linux VM
+      # and preserves peer credentials.
+      - spire-agent-sock:/tmp/spire-agent/public
 
   slim:
     image: ghcr.io/agntcy/slim:2.1.0
     ports:
-      - "46357:46357"
+      # Host 46358 avoids clashing with a dev `mycelium-slim` on 46357; the
+      # runner points SLIM_ENDPOINT at 46358. Container port stays 46357.
+      - "46358:46357"
     # Stock config: a data-plane listener only. No identity/verifier block.
     command: ["/slim", "--config", "/config.yaml"]
     volumes:
       - ./slim-node.yaml:/config.yaml:ro
 
+  # The two MLS members run here, as root, on the compose network so the SPIRE
+  # `unix` workload attestor sees a real Linux uid (0) rather than a macOS host
+  # uid remapped by Docker Desktop's socket forwarding. Idle by default; the
+  # README execs the spike into it after workloads are registered.
+  runner:
+    image: python:3.12-slim
+    entrypoint: ["/bin/sleep", "infinity"]
+    # Share the SPIRE agent's PID namespace. The `unix` workload attestor
+    # resolves the caller by reading /proc/<pid> for the PID it gets from
+    # SO_PEERCRED; across separate PID namespaces that PID is meaningless to the
+    # agent, so attestation fails with "could not resolve caller information".
+    # (On k8s the agent runs hostPID for the same reason.)
+    pid: "service:spire-agent"
+    working_dir: /spike
+    environment:
+      SPIRE_SOCKET: /tmp/spire-agent/public/api.sock
+      SLIM_ENDPOINT: http://slim:46357
+    volumes:
+      - ./:/spike:ro
+      # Same named volume as the agent (see the SO_PEERCRED note above).
+      - spire-agent-sock:/tmp/spire-agent/public
+
 volumes:
   spire-server-data:
   spire-server-sock:
+  spire-agent-sock:

@@ -11,11 +11,10 @@ This is the SPIRE leg of that same per-member signing identity. It is deliberate
 NOT production code: it is the reproducible artifact behind the spike report
 (README.md), so the finding can be re-run rather than taken on faith.
 
-Run (see README.md for the full stack):
-    # after `docker compose up -d` and `./register-workloads.sh`
-    SPIRE_SOCKET=/tmp/spire-agent/public/api.sock \
-    SLIM_ENDPOINT=http://127.0.0.1:46357 \
-        uv run --with 'slim-bindings==2.1.0' python spire_mls_spike.py
+Run: `./run.sh` (stands up the stack and execs this inside the runner container).
+Env in that container: SPIRE_SOCKET=/tmp/spire-agent/public/api.sock,
+SLIM_ENDPOINT=http://slim:46357. See README.md for why it must run in-container
+(the `unix` attestor needs the agent to share the workload's PID namespace).
 
 Matched stack (proven): slim-bindings==2.1.0 (PyPI) + ghcr.io/agntcy/slim:2.1.0.
 There is NO PyPI 2.2.x Python binding yet (the node ships 2.2.0) -- pin 2.1.0 on

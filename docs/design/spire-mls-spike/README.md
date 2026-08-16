@@ -1,11 +1,29 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # Spike report: SPIRE JWT-SVID → SLIM MLS member (#583)
 
-**Status:** Harness complete + proven facts recorded; the SPIRE two-member
-exchange is **reproducible but not yet executed in CI** (needs a Docker host to
-stand up SPIRE + a SLIM node — see [How to run](#how-to-run)).
+**Status:** ✅ **PASS — executed 2026-08-16.** Two SPIRE-attested members
+established a GROUP/MLS session, peer-verified, and exchanged a message both ways.
+Reproduce with `./run.sh` (Docker required). Verbatim output below.
 **Feeds:** #476 (SignerJwt floor), #579 (SPIRE recommended), #560 (epic).
 **Do not:** use `STATIC_JWT` — proven `MlsNotSupported` for MLS (#581).
+
+## Result
+
+```
+[moderator] creating GROUP/MLS session ...
+[moderator] MLS session established (no MlsNotSupported).
+[moderator] inviting participant ...
+[moderator] participant joined + peer-verified.
+[participant] received: 'alice: hello over MLS'
+[moderator] received: 'bob: ack -- peer verified'
+PASS: two SPIRE-identified MLS members exchanged a verified message.
+```
+
+Stack that produced it: `slim-bindings==2.1.0` (PyPI) + `ghcr.io/agntcy/slim:2.1.0`
+node (stock, no identity block) + SPIRE server/agent `1.9.6`. `IdentityProviderConfig.SPIRE`
+drove the MLS moderated session — the `session_moderator.rs` path that panicked in
+#581 under `STATIC_JWT` — with **real peer verification and no node change**. This
+confirms the flagship channel-identity direction for #476/#579.
 
 ## What this spike answers
 
@@ -90,44 +108,57 @@ binding (`docs/design/identity-and-auth.md` §"Verified handle binding").
 
 ## How to run
 
-Requires Docker + a POSIX host. From this directory:
+Requires Docker. From this directory:
 
 ```bash
-# 1. SPIRE server + agent + stock SLIM node (2.1.0)
-docker compose up -d
-
-# 2. Register the two member workloads and boot the agent
-./register-workloads.sh
-
-# 3. Two SPIRE-identified MLS members join, verify, exchange a message
-SPIRE_SOCKET=$PWD/spire-agent-socket/api.sock \
-SLIM_ENDPOINT=http://127.0.0.1:46357 \
-    uv run --with 'slim-bindings==2.1.0' python spire_mls_spike.py
+./run.sh
 ```
 
-### Expected PASS output
+That is the whole thing: it stands up SPIRE server + agent + a stock SLIM 2.1.0
+node, registers the two workloads, runs the two members inside a Linux `runner`
+container, and exits non-zero unless it prints `PASS`. Reaching "MLS session
+established" alone already clears the #581 bar (the path `STATIC_JWT` panicked on);
+the `bob: ack` round-trip additionally proves peer verification of a second
+member's SVID. Tear down with `docker compose down -v`.
 
-```
-[moderator] creating GROUP/MLS session ...
-[moderator] MLS session established (no MlsNotSupported).
-[moderator] inviting participant ...
-[moderator] participant joined + peer-verified.
-[moderator] received: 'bob: ack -- peer verified'
-PASS: two SPIRE-identified MLS members exchanged a verified message.
-```
+The members run **inside a container**, not on the host — that is load-bearing, see
+the gotchas below.
 
-Reaching "MLS session established" alone already clears the #581 bar (it's the path
-`STATIC_JWT` panicked on). The `bob: ack` round-trip additionally proves peer
-verification of a second member's SVID.
+## Gotchas hit while getting to PASS (record for the #476/#579 rework)
+
+1. **The `unix` workload attestor needs the agent to share the workload's PID
+   namespace.** SPIRE resolves the caller by reading `/proc/<pid>` for the PID it
+   gets from `SO_PEERCRED`; across separate PID namespaces that PID is meaningless
+   to the agent and it fails every fetch with **`could not resolve caller
+   information`** (the member then hangs at "Initializing spire identity manager").
+   The runner joins the agent's namespace via `pid: "service:spire-agent"` — the
+   Compose analogue of the agent's `hostPID` on Kubernetes. **Implication for
+   mycelium:** an agent authenticating to SLIM via SPIRE must obtain its SVID from
+   a Workload API the SPIRE agent can introspect (same node / shared PID ns), or
+   use a non-`unix` attestor (`docker`, `k8s`, `x509pop`). A host-side process
+   talking to a containerized SPIRE agent over a **bind-mounted** socket does *not*
+   work on Docker Desktop — the file-sharing layer also drops `SO_PEERCRED`; the
+   socket must live on a **named volume**.
+2. **SLIM 2.1.0 node config uses `dataplane:`, not `pubsub:`.** Under
+   `services.<id>` the server list is `dataplane.servers[].endpoint` (+ `clients:
+   []`). A `pubsub:` block fails with `unknown field 'pubsub'`. See `slim-node.yaml`.
+3. **The `spire-agent` image ENTRYPOINT already includes `run`.** Pass only the
+   flags as `command` (`-config … -joinToken …`); a leading `run` doubles it and
+   the agent silently drops `-joinToken` → `join token was not provided`. See the
+   `spire-agent` service in `docker-compose.yml`.
+
+The earlier-known SEC1-vs-PKCS#8 signing-key gotcha does **not** recur here: SPIRE
+mints and manages its own keys via the Workload API, so no manual key conversion.
 
 ## Acceptance checklist (#583)
 
 - [x] Proven-working SignerJwt+MLS pattern captured and adapted to SPIRE (inline + `spire_mls_spike.py`).
 - [x] Matched stack + no-node-change + PKCS#8 gotcha + 2.2.x-bindings gap recorded.
 - [x] SPIFFE-ID → `@handle` mapping documented.
-- [x] Reproducible harness (SPIRE server/agent + stock SLIM node + runner).
-- [ ] **Two SPIRE-identified MLS members exchange a verified message** — harness
-      ready; run on a Docker host and paste the PASS output here to close.
+- [x] Reproducible harness (SPIRE server/agent + stock SLIM node + runner), one-command `./run.sh`.
+- [x] **Two SPIRE-identified MLS members exchange a verified message** — PASS,
+      executed 2026-08-16 (output above). No `MlsNotSupported`, real peer verification.
+- [x] Node change needed? **No** — the stock SLIM node forwards ciphertext; identity is app-level.
 
 ## Constraints honored
 
