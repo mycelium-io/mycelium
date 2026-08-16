@@ -828,6 +828,30 @@ cursor-agent login            # one-time, interactive
 <span class="comment"># SLIM node endpoint (host:port), e.g. http://127.0.0.1:46357</span>
 <span class="arg">node_endpoint</span> = <span class="str">&quot;http://127.0.0.1:46357&quot;</span>
 
+<span class="comment"># Channel identity tier: &#x27;psk&#x27; (default — the deterministic shared secret every member of a room derives, zero infrastructure) or &#x27;jwt&#x27; (each member presents its own OIDC token, so members are distinct and individually revocable).</span>
+<span class="arg">identity</span> = <span class="str">&quot;psk&quot;</span>
+
+<span class="comment"># Issuer a peer&#x27;s channel token must carry to be accepted. Unset falls back to agent_auth.issuer, then login.issuer — the same trust root as the HTTP API.</span>
+<span class="arg">identity_issuer</span> = <span class="str">&quot;&quot;</span>
+
+<span class="comment"># Audience a peer&#x27;s channel token must carry. Unset falls back to agent_auth.audience, then login.audience.</span>
+<span class="arg">identity_audience</span> = <span class="str">&quot;&quot;</span>
+
+<span class="comment"># Inline JWKS JSON used to verify peers. Unset resolves keys from the issuer.</span>
+<span class="arg">identity_jwks</span> = <span class="str">&quot;&quot;</span>
+
+<span class="comment"># Path to a JWKS file used to verify peers, for a key set too large for env.</span>
+<span class="arg">identity_jwks_file</span> = <span class="str">&quot;&quot;</span>
+
+<span class="comment"># Path to a file holding this member&#x27;s raw channel token, used as-is — a SPIRE sidecar&#x27;s JWT-SVID, or a CI-provided token. Unset resolves the token from the same credential the HTTP API uses (mycelium login, or the agent&#x27;s own).</span>
+<span class="arg">identity_token_file</span> = <span class="str">&quot;&quot;</span>
+
+<span class="comment"># Signing algorithm of the issuer&#x27;s keys (RS256, ES256, EdDSA, ...).</span>
+<span class="arg">identity_algorithm</span> = <span class="str">&quot;RS256&quot;</span>
+
+<span class="comment"># How long a presented channel identity is treated as good for, in seconds.</span>
+<span class="arg">identity_duration_s</span> = 3600.0
+
 <span class="comment"># First-party Cognition Engine runtime configuration.</span>
 <span class="cmd" id="config-engine">[engine]</span>
 
@@ -1287,6 +1311,80 @@ role     = &quot;user&quot;</code></pre>
           </tbody>
         </table>
       </div>
+      <h2 id="auth-the-same-token-joins-the-slim-channel">The same token joins the SLIM channel</h2>
+      <p>Everything above gates the <strong>HTTP API</strong>. Rooms have a second plane — the SLIM group channel that coordination messages ride — and it authenticates members separately.</p>
+      <p>By default that plane uses a <strong>shared secret</strong>: a per-room key every member derives offline from <code>MYCELIUM_SLIM_MASTER_SECRET</code>. It needs no infrastructure, which is why it ships on, but it is scoped to the room, not to you. Every member of a room derives the same value, so members are cryptographically indistinguishable, and removing one means rotating the secret for everyone.</p>
+      <p>Switch the plane to per-member identity and each member instead presents <strong>the token it already has</strong> — the same one this guide has been about:</p>
+      <pre><code><span class="cmd">mycelium config set</span> slim.identity jwt
+<span class="cmd">mycelium config apply</span></code></pre>
+      <p>That is the whole client-side change. One <code>mycelium login</code>, or one agent service-account credential, now authenticates the API <em>and</em> joins the channel; identity on the channel is the token&#x27;s <code>sub</code>, which is the handle. Two agents in a room are distinct MLS participants, and revoking one agent&#x27;s client leaves every other member untouched.</p>
+      <h3 id="auth-what-the-moderator-presents">What the moderator presents</h3>
+      <p>The always-on backend is every room&#x27;s moderator, and it is a member like any other. It has no <code>mycelium login</code> to draw on, so give it its own token out of band:</p>
+      <pre><code><span class="comment"># In ~/.mycelium/.env, or the backend&#x27;s environment</span>
+MYCELIUM_SLIM_IDENTITY_TOKEN=&lt;the backend service account&#x27;s token&gt;
+<span class="comment"># or, for a token some other process writes and renews:</span>
+MYCELIUM_SLIM_IDENTITY_TOKEN_FILE=/run/secrets/moderator.jwt</code></pre>
+      <p>A bearer token is deliberately not read from <code>config.toml</code> — that file is printed, copied between machines, and mirrored to <code>config.json</code>.</p>
+      <h3 id="auth-it-degrades-rather-than-locking-you-out">It degrades rather than locking you out</h3>
+      <p>With <code>slim.identity = jwt</code> and no token to present, a member joins on the shared secret and logs a warning. That is deliberate: an install that turned the switch on before wiring an issuer keeps working. Set <code>MYCELIUM_SLIM_IDENTITY_REQUIRE=1</code> on hosts that mean it, and they refuse to fall back instead — the twin of <code>MYCELIUM_SLIM_REQUIRE_SECRET</code> for the shared secret itself.</p>
+      <h3 id="auth-configuration">Configuration</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Key</th>
+              <th>Default</th>
+              <th>What it does</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>slim.identity</code></td>
+              <td><code>psk</code></td>
+              <td><code>psk</code> (shared secret) or <code>jwt</code> (each member presents its own token).</td>
+            </tr>
+            <tr>
+              <td><code>slim.identity_issuer</code></td>
+              <td><em>(from <code>agent_auth</code> / <code>login</code>)</em></td>
+              <td>Issuer a peer&#x27;s channel token must carry.</td>
+            </tr>
+            <tr>
+              <td><code>slim.identity_audience</code></td>
+              <td><em>(from <code>agent_auth</code> / <code>login</code>)</em></td>
+              <td>Audience a peer&#x27;s channel token must carry.</td>
+            </tr>
+            <tr>
+              <td><code>slim.identity_jwks</code></td>
+              <td><em>(unset)</em></td>
+              <td>Inline JWKS JSON for verifying peers. Unset resolves keys from the issuer.</td>
+            </tr>
+            <tr>
+              <td><code>slim.identity_jwks_file</code></td>
+              <td><em>(unset)</em></td>
+              <td>Path to a JWKS file, for a key set too large for the environment.</td>
+            </tr>
+            <tr>
+              <td><code>slim.identity_token_file</code></td>
+              <td><em>(unset)</em></td>
+              <td>A file holding this member&#x27;s token, used as-is — a SPIRE JWT-SVID, or CI&#x27;s.</td>
+            </tr>
+            <tr>
+              <td><code>slim.identity_algorithm</code></td>
+              <td><code>RS256</code></td>
+              <td>Signing algorithm of the issuer&#x27;s keys.</td>
+            </tr>
+            <tr>
+              <td><code>slim.identity_duration_s</code></td>
+              <td><code>3600</code></td>
+              <td>How long a presented channel identity is treated as good for.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>The issuer and audience default to the ones the HTTP plane already uses, so the common case configures neither: one credential, one trust root, both planes.</p>
+      <h3 id="auth-the-node-needs-no-change-for-this">The node needs no change for this</h3>
+      <p>Members prove who they are <strong>to each other</strong>. The node routes ciphertext and never inspects it, so per-member channel identity works against the stock node with no node configuration at all.</p>
+      <p>A node <em>can</em> additionally require a token to open a dataplane connection at all — a separate, transport-level gate. Members present the same token there too, and <code>docker/compose-slim-jwt.yml</code> sketches the node side of it.</p>
       <h2 id="auth-issuer-agnostic-by-design">Issuer-agnostic by design</h2>
       <p>The backend trusts a configured issuer and its JWKS. It has no idea whether that is Keycloak, Dex, ZITADEL, Authentik, or your existing corporate SSO, and it never needs one particular product installed.</p>
       <p><strong>More than one trust root is normal.</strong> Humans log in through an interactive OIDC issuer; agents present service-account tokens, possibly from an entirely separate root. List each as its own block:</p>

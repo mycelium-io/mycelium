@@ -8,6 +8,8 @@ This module provides two things:
 1. **Naming / identity** — map a mycelium ``workspace/room/agent`` triple to a
    SLIM :class:`Name` (``org/namespace/app``, with org = workspace/tenant,
    namespace = room, app = agent id) and back, plus a dev shared-secret minter.
+   Which credential an app actually presents — that shared secret, or the
+   member's own JWT — is chosen in ``slim_identity.py``.
 2. **A small client** (:class:`SlimClient`) that stands up a SLIM app, connects
    to a node, creates/joins a **group** channel, and exchanges broadcasts. It
    carries membership (invite/remove) and a close/teardown path for the
@@ -41,6 +43,8 @@ from types import ModuleType
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
+from app.services import slim_identity
+
 if TYPE_CHECKING:
     import slim_bindings
 
@@ -61,11 +65,11 @@ DEFAULT_CHANNEL_TOPIC = "room"
 # Master secret from which per-channel shared secrets are *deterministically*
 # derived, so every agent on a room's channel and the always-on backend
 # independently reconstruct the same credential (which seeds the group key)
-# without a key-exchange round-trip. The shared secret is the MVP identity tier;
-# JWT/SPIRE is the production path (debt D1) and is out of scope here.
+# without a key-exchange round-trip. This is the default identity tier; the
+# per-member JWT tier lives behind the same seam in ``slim_identity.py``.
 #
 # The built-in literal below is a **public dev default** — anyone with the repo
-# can derive it, so it protects nothing on its own (debt D1). A real deployment
+# can derive it, so it protects nothing on its own. A real deployment
 # sets ``MYCELIUM_SLIM_MASTER_SECRET`` to a private value; every host that shares
 # rooms must set the *same* value (it's a shared secret, not per-host). Set
 # ``MYCELIUM_SLIM_REQUIRE_SECRET=1`` to hard-refuse the dev default (fail closed
@@ -264,15 +268,29 @@ def _ensure_service_initialized(sb: ModuleType) -> None:
 _connections: dict[str, int] = {}
 
 
-async def _shared_connection(service: slim_bindings.Service, sb: ModuleType, endpoint: str) -> int:
+async def _shared_connection(
+    service: slim_bindings.Service,
+    sb: ModuleType,
+    endpoint: str,
+    *,
+    auth: slim_bindings.ClientAuthenticationConfig | None = None,
+) -> int:
     """Return the process-wide conn_id for ``endpoint``, connecting once.
 
     Callers connect sequentially (there is no first-connect race in the
     moderator→member handshake), so no lock is needed here.
+
+    ``auth`` is the credential presented to the *node* when it gates connections.
+    It applies to the first app that opens the connection: the cache is per
+    endpoint, and every later app in the process rides the same one. Each app
+    still carries its own identity to its MLS peers, which is the identity that
+    decides who a message is from.
     """
     conn_id = _connections.get(endpoint)
     if conn_id is None:
         client_config = sb.new_insecure_client_config(endpoint)
+        if auth is not None:
+            client_config.auth = auth
         # Enable idle keepalive. ``new_insecure_client_config`` leaves
         # ``keepalive=None`` → the binding's ``keep_alive_while_idle`` defaults to
         # False, so the node drops a connection after ~30s of silence (its
@@ -328,9 +346,15 @@ class SlimClient:
     connectors).
     """
 
-    def __init__(self, identity: SlimIdentity, *, secret: str | None = None) -> None:
+    def __init__(
+        self, identity: SlimIdentity, *, secret: str | None = None, token: str | None = None
+    ) -> None:
         self.identity = identity
         self._secret = secret or mint_shared_secret(identity)
+        # The bearer token this app presents as its channel identity when JWT
+        # identity is on. ``None`` resolves from the environment, which is how
+        # the always-on moderator gets its own service-account token.
+        self._token = token
         self._sb: ModuleType | None = None
         self._app: slim_bindings.App | None = None
         self._conn_id: int | None = None
@@ -347,8 +371,17 @@ class SlimClient:
 
         self._sb = sb
         self._local_name = to_slim_name(*self.identity.as_tuple())
-        self._conn_id = await _shared_connection(service, sb, endpoint)
-        self._app = service.create_app_with_secret(self._local_name, self._secret)
+        # JWT identity when it is configured *and* this member has a token;
+        # otherwise the shared-secret PSK, which is the shipped default.
+        channel_identity = slim_identity.build_configs(sb, self.identity, token=self._token)
+        auth = channel_identity.connection_auth if channel_identity else None
+        self._conn_id = await _shared_connection(service, sb, endpoint, auth=auth)
+        if channel_identity is None:
+            self._app = service.create_app_with_secret(self._local_name, self._secret)
+        else:
+            self._app = service.create_app(
+                self._local_name, channel_identity.provider, channel_identity.verifier
+            )
         await self._app.subscribe_async(self._local_name, self._conn_id)
         return self
 

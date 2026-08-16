@@ -86,6 +86,61 @@ class SlimConfig(BaseModel):
         default="http://127.0.0.1:46357",
         description="SLIM node endpoint (host:port), e.g. http://127.0.0.1:46357",
     )
+    identity: str = Field(
+        default="psk",
+        description=(
+            "Channel identity tier: 'psk' (default — the deterministic shared secret every "
+            "member of a room derives, zero infrastructure) or 'jwt' (each member presents "
+            "its own OIDC token, so members are distinct and individually revocable)."
+        ),
+    )
+    identity_issuer: str | None = Field(
+        default=None,
+        description=(
+            "Issuer a peer's channel token must carry to be accepted. Unset falls back to "
+            "agent_auth.issuer, then login.issuer — the same trust root as the HTTP API."
+        ),
+    )
+    identity_audience: str | None = Field(
+        default=None,
+        description=(
+            "Audience a peer's channel token must carry. Unset falls back to "
+            "agent_auth.audience, then login.audience."
+        ),
+    )
+    identity_jwks: str | None = Field(
+        default=None,
+        description="Inline JWKS JSON used to verify peers. Unset resolves keys from the issuer.",
+    )
+    identity_jwks_file: str | None = Field(
+        default=None,
+        description="Path to a JWKS file used to verify peers, for a key set too large for env.",
+    )
+    identity_token_file: str | None = Field(
+        default=None,
+        description=(
+            "Path to a file holding this member's raw channel token, used as-is — a SPIRE "
+            "sidecar's JWT-SVID, or a CI-provided token. Unset resolves the token from the "
+            "same credential the HTTP API uses (mycelium login, or the agent's own)."
+        ),
+    )
+    identity_algorithm: str = Field(
+        default="RS256",
+        description="Signing algorithm of the issuer's keys (RS256, ES256, EdDSA, ...).",
+    )
+    identity_duration_s: float = Field(
+        default=3600.0,
+        description="How long a presented channel identity is treated as good for, in seconds.",
+    )
+
+    @field_validator("identity")
+    @classmethod
+    def validate_identity(cls, v: str) -> str:
+        """Only the two tiers exist; a typo must not silently mean 'psk'."""
+        normalized = v.strip().lower()
+        if normalized not in ("psk", "jwt"):
+            raise ValueError(f"slim.identity must be 'psk' or 'jwt', got {v!r}")
+        return normalized
 
     @field_validator("node_endpoint")
     @classmethod

@@ -24,6 +24,7 @@ import datetime
 from types import ModuleType
 from typing import TYPE_CHECKING
 
+from mycelium.slim import identity as slim_identity
 from mycelium.slim.naming import (
     DEFAULT_NODE_ENDPOINT,
     SlimIdentity,
@@ -86,10 +87,25 @@ def _ensure_service_initialized(sb: ModuleType) -> None:
 _connections: dict[str, int] = {}
 
 
-async def _shared_connection(service: slim_bindings.Service, sb: ModuleType, endpoint: str) -> int:
+async def _shared_connection(
+    service: slim_bindings.Service,
+    sb: ModuleType,
+    endpoint: str,
+    *,
+    auth: slim_bindings.ClientAuthenticationConfig | None = None,
+) -> int:
+    """Return the process-wide conn_id for ``endpoint``, connecting once.
+
+    ``auth`` is the credential presented to the *node* when it gates connections;
+    it belongs to the first app that opens the connection, which every later app
+    in the process then shares. Each app still carries its own identity to its
+    MLS peers.
+    """
     conn_id = _connections.get(endpoint)
     if conn_id is None:
         client_config = sb.new_insecure_client_config(endpoint)
+        if auth is not None:
+            client_config.auth = auth
         # Enable idle keepalive. ``new_insecure_client_config`` leaves
         # ``keepalive=None`` → the binding's ``keep_alive_while_idle`` defaults to
         # False, so the node drops a connection after ~30s of silence (its
@@ -135,9 +151,14 @@ class SlimClient:
         message = await SlimClient.receive_message(session)
     """
 
-    def __init__(self, identity: SlimIdentity, *, secret: str | None = None) -> None:
+    def __init__(
+        self, identity: SlimIdentity, *, secret: str | None = None, token: str | None = None
+    ) -> None:
         self.identity = identity
         self._secret = secret or mint_shared_secret(identity)
+        # The bearer token this member presents as its channel identity when JWT
+        # identity is on — the same one it sends to the hub's HTTP API.
+        self._token = token
         self._sb: ModuleType | None = None
         self._app: slim_bindings.App | None = None
         self._conn_id: int | None = None
@@ -152,8 +173,17 @@ class SlimClient:
 
         self._sb = sb
         self._local_name = to_slim_name(*self.identity.as_tuple())
-        self._conn_id = await _shared_connection(service, sb, endpoint)
-        self._app = service.create_app_with_secret(self._local_name, self._secret)
+        # JWT identity when it is configured *and* this member has a token;
+        # otherwise the shared-secret PSK, which is the shipped default.
+        channel_identity = slim_identity.build_configs(sb, self.identity, token=self._token)
+        auth = channel_identity.connection_auth if channel_identity else None
+        self._conn_id = await _shared_connection(service, sb, endpoint, auth=auth)
+        if channel_identity is None:
+            self._app = service.create_app_with_secret(self._local_name, self._secret)
+        else:
+            self._app = service.create_app(
+                self._local_name, channel_identity.provider, channel_identity.verifier
+            )
         await self._app.subscribe_async(self._local_name, self._conn_id)
         return self
 

@@ -23,7 +23,7 @@ from pathlib import Path
 
 import pytest
 
-from app.services import l9
+from app.services import l9, slim_identity
 from app.services.l9_models import Kind
 from app.services.memory_sync import KnowledgeWrite, build_knowledge_envelope
 from app.services.slim_client import (
@@ -143,3 +143,30 @@ def test_channel_name_topic_matches_contract():
     g = _contract()
     name = to_channel_name("acme", "planning")
     assert name.components() == ["acme", "planning", g["channel_topic"]]
+
+
+def test_identity_env_names_match_contract():
+    """The identity tier is selected from the same env names on both sides."""
+    g = _contract()["identity"]
+    assert list(g["modes"]) == list(slim_identity.IDENTITY_MODES)
+    assert g["default_mode"] == slim_identity.IDENTITY_MODE_PSK
+    assert g["default_algorithm"] == slim_identity.DEFAULT_ALGORITHM
+    assert g["default_duration_s"] == slim_identity.DEFAULT_DURATION_S
+    assert g["token_dir_name"] == slim_identity.TOKEN_DIR_NAME
+    env = g["env"]
+    assert env["mode"] == slim_identity.IDENTITY_ENV
+    assert env["token"] == slim_identity.TOKEN_ENV
+    assert env["token_file"] == slim_identity.TOKEN_FILE_ENV
+    assert env["issuer"] == slim_identity.ISSUER_ENV
+    assert env["audience"] == slim_identity.AUDIENCE_ENV
+    assert env["jwks"] == slim_identity.JWKS_ENV
+    assert env["jwks_file"] == slim_identity.JWKS_FILE_ENV
+    assert env["algorithm"] == slim_identity.ALGORITHM_ENV
+    assert env["duration_s"] == slim_identity.DURATION_ENV
+    assert env["require"] == slim_identity.REQUIRE_ENV
+
+
+def test_identity_defaults_to_the_shared_secret_tier(monkeypatch):
+    """An install that configures nothing stays on the PSK."""
+    monkeypatch.delenv(slim_identity.IDENTITY_ENV, raising=False)
+    assert slim_identity.resolve_mode() == _contract()["identity"]["default_mode"]

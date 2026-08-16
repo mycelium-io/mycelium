@@ -1712,6 +1712,82 @@ Nothing about it is required, and nothing about it is on by default.
 | `agent_auth.scopes` | *(unset)* | Scopes requested for an agent token. Most issuers want none for `client_credentials`. |
 | `agent_auth.audience` | *(unset)* | Audience to request; should match the hub's `auth.audience`. |
 
+## The same token joins the SLIM channel
+
+Everything above gates the **HTTP API**. Rooms have a second plane — the SLIM
+group channel that coordination messages ride — and it authenticates members
+separately.
+
+By default that plane uses a **shared secret**: a per-room key every member
+derives offline from `MYCELIUM_SLIM_MASTER_SECRET`. It needs no infrastructure,
+which is why it ships on, but it is scoped to the room, not to you. Every member
+of a room derives the same value, so members are cryptographically
+indistinguishable, and removing one means rotating the secret for everyone.
+
+Switch the plane to per-member identity and each member instead presents **the
+token it already has** — the same one this guide has been about:
+
+```bash
+mycelium config set slim.identity jwt
+mycelium config apply
+```
+
+That is the whole client-side change. One `mycelium login`, or one agent
+service-account credential, now authenticates the API *and* joins the channel;
+identity on the channel is the token's `sub`, which is the handle. Two agents in
+a room are distinct MLS participants, and revoking one agent's client leaves
+every other member untouched.
+
+### What the moderator presents
+
+The always-on backend is every room's moderator, and it is a member like any
+other. It has no `mycelium login` to draw on, so give it its own token
+out of band:
+
+```bash
+# In ~/.mycelium/.env, or the backend's environment
+MYCELIUM_SLIM_IDENTITY_TOKEN=<the backend service account's token>
+# or, for a token some other process writes and renews:
+MYCELIUM_SLIM_IDENTITY_TOKEN_FILE=/run/secrets/moderator.jwt
+```
+
+A bearer token is deliberately not read from `config.toml` — that file is printed,
+copied between machines, and mirrored to `config.json`.
+
+### It degrades rather than locking you out
+
+With `slim.identity = jwt` and no token to present, a member joins on the shared
+secret and logs a warning. That is deliberate: an install that turned the switch on
+before wiring an issuer keeps working. Set `MYCELIUM_SLIM_IDENTITY_REQUIRE=1` on
+hosts that mean it, and they refuse to fall back instead — the twin of
+`MYCELIUM_SLIM_REQUIRE_SECRET` for the shared secret itself.
+
+### Configuration
+
+| Key | Default | What it does |
+|-----|---------|--------------|
+| `slim.identity` | `psk` | `psk` (shared secret) or `jwt` (each member presents its own token). |
+| `slim.identity_issuer` | *(from `agent_auth` / `login`)* | Issuer a peer's channel token must carry. |
+| `slim.identity_audience` | *(from `agent_auth` / `login`)* | Audience a peer's channel token must carry. |
+| `slim.identity_jwks` | *(unset)* | Inline JWKS JSON for verifying peers. Unset resolves keys from the issuer. |
+| `slim.identity_jwks_file` | *(unset)* | Path to a JWKS file, for a key set too large for the environment. |
+| `slim.identity_token_file` | *(unset)* | A file holding this member's token, used as-is — a SPIRE JWT-SVID, or CI's. |
+| `slim.identity_algorithm` | `RS256` | Signing algorithm of the issuer's keys. |
+| `slim.identity_duration_s` | `3600` | How long a presented channel identity is treated as good for. |
+
+The issuer and audience default to the ones the HTTP plane already uses, so the
+common case configures neither: one credential, one trust root, both planes.
+
+### The node needs no change for this
+
+Members prove who they are **to each other**. The node routes ciphertext and never
+inspects it, so per-member channel identity works against the stock node with no
+node configuration at all.
+
+A node *can* additionally require a token to open a dataplane connection at all —
+a separate, transport-level gate. Members present the same token there too, and
+`docker/compose-slim-jwt.yml` sketches the node side of it.
+
 ## Issuer-agnostic by design
 
 The backend trusts a configured issuer and its JWKS. It has no idea whether that

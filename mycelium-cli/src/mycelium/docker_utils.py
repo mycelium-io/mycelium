@@ -6,8 +6,8 @@ Generate .env files from config.toml — makes .env a derived artifact.
 
 The canonical configuration lives in ~/.mycelium/config.toml.  This module
 renders a Docker-compatible .env from the [llm], [runtime], [server], [engine],
-and [auth] sections so that ``docker compose`` picks up the same values without
-users having to maintain two files.
+[auth], and [slim] sections so that ``docker compose`` picks up the same values
+without users having to maintain two files.
 
 One field deliberately *isn't* in config.toml: ``MYCELIUM_IMAGE_TAG``.  It's
 operational state — set as a side effect of ``mycelium pull --version`` and
@@ -21,6 +21,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+from mycelium.slim import settings as slim_settings
 
 if TYPE_CHECKING:
     from mycelium.config import MyceliumConfig
@@ -148,6 +150,13 @@ def generate_env_file(
         f"AUTH_ROLE_CLAIM={config.auth.role_claim}",
         f"AUTH_LEEWAY_S={config.auth.leeway_s}",
         f"AUTH_JWKS_TTL_S={config.auth.jwks_ttl_s}",
+        "",
+        "# ── SLIM channel identity (shared-secret PSK unless slim.identity = jwt) ─",
+        # The backend moderator's own token is deliberately NOT rendered here:
+        # config.toml is routinely printed and copied between machines, so a
+        # bearer token is set as MYCELIUM_SLIM_IDENTITY_TOKEN out of band (or
+        # written to slim.identity_token_file) rather than derived from it.
+        *(f"{key}={value}" for key, value in slim_settings.identity_env(config).items()),
         "",
     ]
 

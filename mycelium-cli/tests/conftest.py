@@ -59,7 +59,9 @@ class FakeSlimClient:
     inbox: list[bytes] = []  # noqa: RUF012 — intentionally class-level scripted queue
     published: list[bytes] = []  # noqa: RUF012
 
-    def __init__(self, _identity: Any, *, secret: str | None = None) -> None:
+    def __init__(
+        self, _identity: Any, *, secret: str | None = None, token: str | None = None
+    ) -> None:
         pass
 
     @classmethod

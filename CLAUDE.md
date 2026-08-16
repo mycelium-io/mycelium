@@ -193,11 +193,19 @@ is no litellm dependency.
   try-it path. The localhost bypass reads the request's peer address, so it does
   **not** fire for a containerized backend (published-port traffic looks like LAN
   traffic) — the local tier is served by leaving auth off.
-- **SLIM security is a shared-secret PSK today (D1).** The group key derives from
-  `MYCELIUM_SLIM_MASTER_SECRET` (set the same on every host that shares rooms);
-  `MYCELIUM_SLIM_REQUIRE_SECRET=1` makes a host fail closed rather than fall back to
-  the public dev literal. There is no per-agent identity/revocation yet: **real
-  identity (JWT/SPIRE) is a hard prerequisite before anything hosted / multi-user**.
+- **SLIM security is a shared-secret PSK by default, per-member JWT opt-in.** The
+  default group credential derives from `MYCELIUM_SLIM_MASTER_SECRET` (set the same
+  on every host that shares rooms); `MYCELIUM_SLIM_REQUIRE_SECRET=1` makes a host
+  fail closed rather than fall back to the public dev literal. It is scoped to
+  `workspace/room`, so members are indistinguishable and revocation means rotating
+  for everyone. `slim.identity = jwt` switches the plane to per-member identity:
+  each member presents **the token it already sends to the HTTP API**
+  (`app/services/slim_identity.py` + the CLI mirror `mycelium/slim/identity.py`,
+  frozen together in `contracts/slim-l9-wire.json`). Identity is the token's `sub`,
+  so members are distinct and individually revocable. Per-member identity is
+  client-side only — the node forwards ciphertext and needs no configuration;
+  the node's own `auth.jwt` is a separate transport gate. SPIRE JWT-SVIDs drop
+  into the same seam (#579).
 - **Adapter capability (be honest).** `claude_code` is proven; `cursor` is untested;
   `openclaw` and `hermes` are deprecated (they rode the removed SSE/coordination-tick
   model and have not been migrated to SLIM).

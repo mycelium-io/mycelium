@@ -85,7 +85,10 @@ mycelium plan tasks --room planning        # the shared @handle checklist
   `MYCELIUM_SLIM_MASTER_SECRET` to a private value **identical on every host that shares
   rooms** (a mismatch means invites silently never land, so suspect the secret before the
   network), and set `MYCELIUM_SLIM_REQUIRE_SECRET=1` to make a host refuse to start with
-  the dev default.
+  the dev default. Hosts that share an OIDC issuer can sidestep the parity problem
+  entirely with `mycelium config set slim.identity jwt` — each member then presents its
+  own token instead of a value every host has to be told out of band (see the
+  Authentication guide).
 - **Version parity.** The `slim` node image and the `slim-bindings` wheel are a matched
   pair on **both** hosts; a skew across machines is a new failure mode.
 

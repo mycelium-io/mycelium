@@ -60,6 +60,12 @@ def _parse_json_object(raw: str | None, *, label: str) -> dict:
 def _run_publish(
     config: MyceliumConfig, room: str, handle: str, payload: bytes, workspace: str | None
 ) -> None:
+    from mycelium import client as hub_client_factory
+    from mycelium.slim import settings as slim_settings
+
+    # The identity layer reads the environment (it is mirrored byte-for-byte
+    # with the backend's), so the authored [slim] block has to reach it first.
+    slim_settings.apply_identity_env(config)
     asyncio.run(
         publish_once(
             api_url=config.server.api_url,
@@ -68,6 +74,9 @@ def _run_publish(
             handle=handle,
             payload=payload,
             workspace=workspace or DEFAULT_WORKSPACE,
+            # The same credential the hub's HTTP API would get — the sender
+            # publishes as itself on the channel too, when JWT identity is on.
+            token=hub_client_factory.access_token(config, handle=handle),
         )
     )
 

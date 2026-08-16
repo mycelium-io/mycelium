@@ -126,23 +126,33 @@ def _refresh(stored: StoredToken, config: MyceliumConfig) -> StoredToken | None:
     return renewed
 
 
-def auth_headers(
-    config: MyceliumConfig | None = None, *, handle: str | None = None
-) -> dict[str, str]:
-    """``{"Authorization": "Bearer …"}`` when there's a credential, ``{}`` when not.
+def access_token(config: MyceliumConfig | None = None, *, handle: str | None = None) -> str | None:
+    """The bearer token this caller presents, or ``None`` when it has none.
 
     ``handle`` names the agent the call is being made *as*. Its own credential
     wins over the human session when it has one: a resident agent driven from a
     developer's logged-in shell must still write as itself, not as the developer.
+
+    The token is the caller's identity rather than a property of one transport,
+    so the SLIM plane resolves its channel identity through this same function
+    (``mycelium.slim.identity``) — one credential, both planes.
     """
     from mycelium import agent_credentials
 
     cfg = _resolve_config(config)
     agent_token = agent_credentials.access_token(cfg, handle)
     if agent_token:
-        return {"Authorization": f"Bearer {agent_token}"}
+        return agent_token
     token = current_token(cfg)
-    return {"Authorization": f"Bearer {token.access_token}"} if token else {}
+    return token.access_token if token else None
+
+
+def auth_headers(
+    config: MyceliumConfig | None = None, *, handle: str | None = None
+) -> dict[str, str]:
+    """``{"Authorization": "Bearer …"}`` when there's a credential, ``{}`` when not."""
+    token = access_token(config, handle=handle)
+    return {"Authorization": f"Bearer {token}"} if token else {}
 
 
 def typed_client(config: MyceliumConfig | None = None, *, handle: str | None = None) -> Client:

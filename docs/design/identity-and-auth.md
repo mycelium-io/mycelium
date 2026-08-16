@@ -142,8 +142,18 @@ per-deployment opt-in.
    default; **SPIRE JWT-SVID as an optional upgrade** where workload attestation is
    wanted.
 5. **SLIM channel identity** — *optionally* move the MLS group off the dev PSK to
-   per-member JWT/SPIRE (#476); the PSK remains the default. Deeper; partly gated on
-   slim-bindings wiring.
+   per-member JWT/SPIRE (#476); the PSK remains the default. *JWT slice landed:
+   `fastapi-backend/app/services/slim_identity.py` and its CLI mirror
+   `mycelium/slim/identity.py`, selected by `slim.identity = psk|jwt`. A member
+   presents the token step 3/4 already resolved — one credential authenticates the
+   API and joins the channel — via slim-bindings'
+   `IdentityProviderConfig.STATIC_JWT`, and verifies peers against the same trust
+   root the HTTP gate uses. Two findings worth carrying forward: per-member
+   identity is **entirely client-side** (the node forwards ciphertext and never
+   inspects the MLS identity, so the stock node needs no configuration), and the
+   node's own `auth.jwt` is a separate transport-level gate that members satisfy
+   with the same token. SPIRE drops into the same seam — `SpireConfig` is the
+   provider variant beside `STATIC_JWT` — as #579.*
 6. **Reference IdP wiring** — an optional Keycloak compose profile + an optional
    SPIRE quickstart, with issuer-agnostic config documented.
 
@@ -160,9 +170,11 @@ per-deployment opt-in.
 
 ## Open questions
 
-- Do agents present their SPIRE JWT-SVID **directly to the HTTP API** (one token,
-  both planes), or hold separate credentials per plane? One token is simpler if the
-  API can be configured to trust the SPIRE trust domain as an issuer.
+- ~~Do agents present their SPIRE JWT-SVID **directly to the HTTP API** (one token,
+  both planes), or hold separate credentials per plane?~~ — **resolved: one token.**
+  Step 5 presents the credential the HTTP plane already resolved as the channel
+  identity too, and takes a caller-owned token file (a SPIRE sidecar's JWT-SVID)
+  as-is, so the SPIRE case is the same shape.
 - Handle namespace: is the canonical handle the raw `sub`, or a claim mapped to the
   existing `name#session` shape? Migration of existing self-asserted handles.
 - ~~Localhost auth posture~~ — **resolved:** off by default everywhere, opt-in per

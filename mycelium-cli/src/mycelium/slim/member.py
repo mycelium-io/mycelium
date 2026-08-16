@@ -67,12 +67,15 @@ async def publish_once(
     payload: bytes,
     workspace: str = DEFAULT_WORKSPACE,
     join_timeout_s: float = DEFAULT_JOIN_TIMEOUT_S,
+    token: str | None = None,
 ) -> None:
     """Join ``room`` as ``handle`` over a live SLIM connection, publish once, leave.
 
     Connects a new SLIM app under ``workspace/room/handle``, asks the backend to
     invite it in, waits to be admitted into the moderator's encrypted group,
-    publishes ``payload`` verbatim, and disconnects. Raises :class:`SlimSendError`
+    publishes ``payload`` verbatim, and disconnects. ``token`` is the caller's
+    bearer token, presented as its channel identity when JWT identity is on and
+    ignored on the default PSK path. Raises :class:`SlimSendError`
     if the node is unreachable or the invite never lands within
     ``join_timeout_s``; raises :class:`~mycelium.slim.client.SlimUnavailableError`
     (via ``SlimClient.connect``) if ``slim_bindings`` has no wheel for this
@@ -85,7 +88,7 @@ async def publish_once(
         )
 
     identity = SlimIdentity(workspace, room, handle)
-    client = await SlimClient(identity).connect(node_endpoint)
+    client = await SlimClient(identity, token=token).connect(node_endpoint)
     try:
         await announce_presence(api_url, room, handle)
         try:

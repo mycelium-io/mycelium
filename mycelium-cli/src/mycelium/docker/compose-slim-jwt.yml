@@ -1,0 +1,76 @@
+# Opt-in: gate the SLIM node's dataplane connection on a JWT (#476).
+#
+# ⚠️  PROPOSED, NOT YET VERIFIED AGAINST A LIVE NODE. The node's YAML schema is
+# derived from slim-bindings' `ServerConfig.auth: ServerAuthenticationConfig`
+# (variants BASIC | JWT, the JWT one carrying a `JwtAuth` with key/audience/
+# issuer/subject/duration). The Python record names below are a faithful
+# transcription of that struct, but the node is a separate Rust binary and its
+# serde field/tag spelling has not been confirmed here. Verify against a running
+# `ghcr.io/agntcy/slim:2.0.0` before relying on it, and correct this file in
+# place if the node names things differently.
+#
+# WHAT THIS IS NOT: per-member channel identity does **not** need this. Members
+# prove who they are to *each other* through the app-level identity provider /
+# verifier that `mycelium.slim.identity` builds — the node forwards ciphertext
+# and never inspects it. That works against the stock node with no config change
+# at all. This overlay is the separate, additional question of whether the node
+# lets an unauthenticated client open a dataplane connection in the first place.
+#
+# Bring it up alongside the dev stack and the dev issuer (from the repo root):
+#   docker compose \
+#     -f mycelium-cli/src/mycelium/docker/compose.yml \
+#     -f mycelium-cli/src/mycelium/docker/compose-dev.yml \
+#     -f mycelium-cli/src/mycelium/docker/compose-auth-dev.yml \
+#     -f mycelium-cli/src/mycelium/docker/compose-slim-jwt.yml \
+#     up -d
+#
+# The clients' half is config, not a compose change:
+#   mycelium config set slim.identity jwt
+#   mycelium config set slim.identity_issuer http://mycelium-auth-dev:8080/default
+#   mycelium config apply
+# plus MYCELIUM_SLIM_IDENTITY_TOKEN for the backend moderator's own service
+# account (see the Authentication guide).
+
+configs:
+  slim-node-config-jwt:
+    content: |
+      tracing:
+        log_level: info
+      runtime:
+        n_cores: 0
+        thread_name: "slim-data-plane"
+        drain_timeout: 10s
+      services:
+        slim/0:
+          node_id: mycelium-slim
+          dataplane:
+            servers:
+              - endpoint: "0.0.0.0:46357"
+                tls:
+                  insecure: true
+                auth:
+                  jwt:
+                    issuer: "${MYCELIUM_SLIM_IDENTITY_ISSUER:-http://mycelium-auth-dev:8080/default}"
+                    audience:
+                      - "${MYCELIUM_SLIM_IDENTITY_AUDIENCE:-mycelium}"
+                    duration: 3600s
+                    key:
+                      decoding:
+                        algorithm: RS256
+                        format: jwks
+                        key:
+                          file: /etc/slim/jwks.json
+            clients: []
+
+services:
+
+  slim:
+    configs:
+      - source: slim-node-config-jwt
+        target: /slim-config.yaml
+    volumes:
+      # The issuer's key set, fetched once from <issuer>/jwks. A node that can
+      # reach the issuer over the network can autoresolve instead; a file keeps
+      # the node's trust root explicit and independent of issuer availability
+      # at connect time.
+      - ${MYCELIUM_SLIM_JWKS_FILE:-~/.mycelium/slim-jwks.json}:/etc/slim/jwks.json:ro

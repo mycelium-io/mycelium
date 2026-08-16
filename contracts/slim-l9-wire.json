@@ -32,6 +32,27 @@
     "contingency": ["negotiation"]
   },
 
+  "identity": {
+    "_comment": "Channel-identity tier selection, resolved from the environment on BOTH sides (app.services.slim_identity / mycelium.slim.identity). The two copies must agree on the variable names, the mode strings and the defaults, or a member reads a different tier than the moderator and its app presents a credential the group can't verify — a silent join failure, exactly like a diverging shared secret. Env-only for the same reason the master secret is: the backend has no config.toml and the CLI must not import the backend's Settings. `mycelium config apply` renders the authored [slim] block into these names.",
+    "modes": ["psk", "jwt"],
+    "default_mode": "psk",
+    "default_algorithm": "RS256",
+    "default_duration_s": 3600.0,
+    "token_dir_name": "slim-identity",
+    "env": {
+      "mode": "MYCELIUM_SLIM_IDENTITY",
+      "token": "MYCELIUM_SLIM_IDENTITY_TOKEN",
+      "token_file": "MYCELIUM_SLIM_IDENTITY_TOKEN_FILE",
+      "issuer": "MYCELIUM_SLIM_IDENTITY_ISSUER",
+      "audience": "MYCELIUM_SLIM_IDENTITY_AUDIENCE",
+      "jwks": "MYCELIUM_SLIM_IDENTITY_JWKS",
+      "jwks_file": "MYCELIUM_SLIM_IDENTITY_JWKS_FILE",
+      "algorithm": "MYCELIUM_SLIM_IDENTITY_ALGORITHM",
+      "duration_s": "MYCELIUM_SLIM_IDENTITY_DURATION_S",
+      "require": "MYCELIUM_SLIM_IDENTITY_REQUIRE"
+    }
+  },
+
   "shared_secret": {
     "_comment": "mint_shared_secret is keyed on workspace/room only (agent ignored). HMAC-SHA256(master_secret, 'workspace/room').hexdigest().",
     "workspace": "acme",
