@@ -44,7 +44,7 @@ def _await_once(config: MyceliumConfig, room_name: str, handle: str, timeout: in
     # The server blocks up to `timeout`; give the client a little more headroom
     # (or no cap when waiting indefinitely).
     client_timeout = float(timeout) + 15.0 if timeout > 0 else None
-    with hub_client(config, timeout=client_timeout) as client:
+    with hub_client(config, timeout=client_timeout, handle=handle) as client:
         resp = client.get(path, params={"handle": handle, "timeout": timeout})
     resp.raise_for_status()
     data = resp.json()
@@ -228,7 +228,7 @@ def respond(
     try:
         config = MyceliumConfig.load()
         room_name = _resolve_room(config, room)
-        with hub_client(config, timeout=30.0) as client:
+        with hub_client(config, timeout=30.0, handle=handle) as client:
             resp = client.post(
                 f"/api/rooms/{room_name}/reply", json={"handle": handle, "text": text}
             )

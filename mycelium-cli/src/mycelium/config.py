@@ -269,6 +269,42 @@ class LoginConfig(BaseModel):
         return v.rstrip("/") if isinstance(v, str) else v
 
 
+class AgentAuthConfig(BaseModel):
+    """Where an *agent* gets its own token — the workload half of the client side.
+
+    An agent is not a human: no browser, no consent screen, and nobody to run
+    ``mycelium login`` on its behalf. Its credential is its own OIDC client
+    (``client_credentials``), so the token's ``sub`` is the client id, which is
+    the agent's handle — the same handle the hub binds its writes to.
+
+    This section holds only what is *shared* by every agent on the machine (the
+    issuer and the audience to ask for). The per-agent half — which client id an
+    agent is, and its secret — is a secret, so it lives in the ``0600`` store
+    behind ``mycelium agent credential set``, never in ``config.toml``.
+
+    Unset ``issuer`` means "no agent credentials configured", which is the
+    default: agents send no token, exactly as before.
+    """
+
+    issuer: str | None = Field(
+        default=None,
+        description="OIDC issuer agents mint their service-account tokens from. Unset (default) means agents send no token.",
+    )
+    scopes: str | None = Field(
+        default=None,
+        description="Space-separated scopes to request for an agent token. Unset sends none, which is what most issuers want for client_credentials.",
+    )
+    audience: str | None = Field(
+        default=None,
+        description="Audience to request for agent tokens; should match the hub's auth.audience.",
+    )
+
+    @field_validator("issuer")
+    @classmethod
+    def _strip_trailing_slash(cls, v: str | None) -> str | None:
+        return v.rstrip("/") if isinstance(v, str) else v
+
+
 class RuntimeConfig(BaseModel):
     """Docker runtime / environment configuration."""
 
@@ -373,6 +409,7 @@ class MyceliumConfig(BaseModel):
     engine: EngineConfig = Field(default_factory=EngineConfig)
     auth: AuthConfig = Field(default_factory=AuthConfig)
     login: LoginConfig = Field(default_factory=LoginConfig)
+    agent_auth: AgentAuthConfig = Field(default_factory=AgentAuthConfig)
     runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
     rooms: RoomConfig = Field(default_factory=RoomConfig)
     metrics: MetricsConfig = Field(default_factory=MetricsConfig)
@@ -484,6 +521,7 @@ class MyceliumConfig(BaseModel):
             "llm": {},
             "engine": {},
             "login": {},
+            "agent_auth": {},
             "runtime": {},
             "metrics": {},
         }
@@ -518,6 +556,16 @@ class MyceliumConfig(BaseModel):
             env_config["login"]["audience"] = login_audience
         if login_scopes := os.getenv("MYCELIUM_LOGIN_SCOPES"):
             env_config["login"]["scopes"] = login_scopes
+
+        # Agent (service-account) overrides — how a container hands its agent an
+        # issuer without a config file. The per-agent client id and secret are
+        # secrets and stay out of config; see `mycelium.agent_credentials`.
+        if agent_issuer := os.getenv("MYCELIUM_AGENT_AUTH_ISSUER"):
+            env_config["agent_auth"]["issuer"] = agent_issuer
+        if agent_scopes := os.getenv("MYCELIUM_AGENT_AUTH_SCOPES"):
+            env_config["agent_auth"]["scopes"] = agent_scopes
+        if agent_audience := os.getenv("MYCELIUM_AGENT_AUTH_AUDIENCE"):
+            env_config["agent_auth"]["audience"] = agent_audience
 
         # Metrics overrides
         if collector_url := os.getenv("MYCELIUM_COLLECTOR_URL"):

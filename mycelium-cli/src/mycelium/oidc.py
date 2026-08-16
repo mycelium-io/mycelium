@@ -361,6 +361,29 @@ def device_code_login(
     raise OidcError(f"timed out after {limit:.0f}s waiting for you to approve the device code")
 
 
+def client_credentials_grant(
+    token_endpoint: str,
+    client_id: str,
+    client_secret: str | None,
+    *,
+    scope: str | None = None,
+    audience: str | None = None,
+) -> TokenResponse:
+    """Mint a token for a workload's own OIDC client (RFC 6749 §4.4).
+
+    The agent path: no human, no browser, no refresh token — the client *is* the
+    identity, so an expired token is re-minted rather than renewed.
+    """
+    form = {"grant_type": "client_credentials", "client_id": client_id}
+    if client_secret:
+        form["client_secret"] = client_secret
+    if scope:
+        form["scope"] = scope
+    if audience:
+        form["audience"] = audience
+    return _as_token_response(_token_request(token_endpoint, form))
+
+
 def refresh_grant(
     token_endpoint: str,
     client_id: str,

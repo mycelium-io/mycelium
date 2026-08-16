@@ -131,14 +131,17 @@ class StoredToken:
         )
 
 
-def load_token() -> StoredToken | None:
+def load_token(path: Path | None = None) -> StoredToken | None:
     """The cached session, or ``None`` when logged out.
 
     A corrupt cache reads as logged out rather than raising: every command in the
     CLI consults this, and none of them should die because a token file got
     truncated.
+
+    ``path`` selects a cache other than the human session's — an agent's minted
+    token lives in its own file (``mycelium.agent_credentials``).
     """
-    path = token_path()
+    path = path or token_path()
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -148,9 +151,9 @@ def load_token() -> StoredToken | None:
     return StoredToken.from_dict(data)
 
 
-def save_token(token: StoredToken) -> Path:
+def save_token(token: StoredToken, path: Path | None = None) -> Path:
     """Write the session to the cache, owner-readable only."""
-    path = token_path()
+    path = path or token_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     # os.open with 0600 rather than write_text + chmod: the file must never
     # exist, even momentarily, with the default mode.
@@ -163,9 +166,9 @@ def save_token(token: StoredToken) -> Path:
     return path
 
 
-def clear_token() -> bool:
+def clear_token(path: Path | None = None) -> bool:
     """Delete the cached session. Returns whether there was one."""
-    path = token_path()
+    path = path or token_path()
     try:
         path.unlink()
     except FileNotFoundError:
