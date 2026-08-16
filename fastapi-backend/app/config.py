@@ -96,6 +96,15 @@ class Settings(BaseSettings):
     SLIM_WORKSPACE: str = "mycelium"
     # Master toggle: set false to disable SLIM room provisioning outright.
     SLIM_ENABLED: bool = True
+    # SLIM channel identity tier (off by default, #567). "psk" is the
+    # shared-secret credential every room member derives (zero infra, no
+    # per-agent identity). "signerjwt" opts into the SignerJwt floor (#476):
+    # the moderator + each agent present a per-member self-signed ES256 identity
+    # so members are cryptographically distinct, individually revocable MLS
+    # participants. Surfaced here for discoverability; the slim_identity module
+    # resolves it from MYCELIUM_SLIM_IDENTITY (env-only, like the master secret)
+    # so the CLI mirror agrees without config coupling.
+    SLIM_IDENTITY: str = "psk"
 
     # SIEP aligner — the first cognition engine. Dormant by default:
     # nothing runs until the reserved handle is @-summoned on a room channel.

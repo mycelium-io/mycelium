@@ -1256,6 +1256,72 @@ def credential_rm(
         raise typer.Exit(1) from None
 
 
+@doc_ref(
+    usage="mycelium agent credential slim-key <handle>",
+    desc=(
+        "Mint an agent's SignerJwt SLIM channel identity — a local ES256 keypair "
+        "(0600) whose public JWK is registered on the room roster. The floor for "
+        "<code>slim.identity = signerjwt</code> (#476); the PSK default needs none."
+    ),
+    group="agent",
+)
+@credential_app.command("slim-key")
+def credential_slim_key(
+    ctx: typer.Context,
+    handle: str = typer.Argument(..., help="Agent handle the signing key belongs to"),
+) -> None:
+    """Generate + register the agent's SignerJwt-floor SLIM channel identity.
+
+    The SignerJwt analogue of ``credential set``: the private ES256 key stays
+    local (0600), and only the **public** JWK is registered — keyed by
+    ``kid = @handle`` — into the roster the moderator assembles so peers can
+    verify this agent's self-signed tokens. Idempotent: an existing key is reused.
+    Only meaningful when the channel identity tier is ``signerjwt``; the PSK
+    default (off by default, #567) uses no per-agent key. Revoke by dropping the
+    roster JWK (per-agent, no room-wide rotation).
+    """
+    from mycelium.slim import identity as slim_identity
+
+    try:
+        json_output = ctx.obj.get("json", False) if ctx.obj else False
+        key_path, jwk = slim_identity.ensure_agent_keypair(handle)
+        roster_path = slim_identity.public_jwk_path(handle)
+        mode = slim_identity.resolve_identity_mode()
+
+        if json_output:
+            typer.echo(
+                json_module.dumps(
+                    {
+                        "handle": handle,
+                        "key": str(key_path),
+                        "jwk": str(roster_path),
+                        "kid": jwk["kid"],
+                    },
+                    indent=2,
+                )
+            )
+            return
+
+        console.print(
+            f"[green]SLIM signing key ready[/green] for [cyan]@{handle}[/cyan] "
+            f"[dim](kid: {jwk['kid']})[/dim]"
+        )
+        console.print(f"[dim]Private key: {key_path} (mode 0600).[/dim]")
+        console.print(f"[dim]Public JWK registered on the roster: {roster_path}.[/dim]")
+        if mode != slim_identity.MODE_SIGNERJWT:
+            console.print(
+                "\n[yellow]Channel identity is still 'psk'[/yellow] — this key is unused "
+                "until you set [cyan]slim.identity = signerjwt[/cyan] "
+                "(or MYCELIUM_SLIM_IDENTITY=signerjwt)."
+            )
+    except typer.Exit:
+        raise
+    except Exception as e:
+        verbose = ctx.obj.get("verbose", False) if ctx.obj else False
+        print_error(e, verbose=verbose)
+        raise typer.Exit(1) from None
+
+
 # Re-export for completeness — doctor and other commands reuse these.
 __all__ = [
     "_load_manifest",
