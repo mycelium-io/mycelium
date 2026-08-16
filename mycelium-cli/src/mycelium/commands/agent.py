@@ -396,37 +396,41 @@ def _persist_and_describe(
     )
     for line in impl.describe(manifest, room=room_name):
         console.print(line)
-    _provision_channel_identity(manifest)
+    _provision_channel_identity(manifest, config.slim.identity)
     _prompt_for_credential(config, manifest)
 
 
-def _provision_channel_identity(manifest: AgentManifest) -> None:
+def _provision_channel_identity(manifest: AgentManifest, mode: str) -> None:
     """Provision the agent's SLIM channel identity for the active mode (#589).
 
     Registration is where ``@handle`` becomes a usable channel identity: under
     ``signerjwt`` this mints+registers the local keypair (``kid = @handle``); under
-    ``spire`` it prints the member's SPIFFE-ID and the operator step to register the
-    SVID entry (entry creation is external to the CLI). Under the ``psk`` default it
-    is a silent no-op (off by default, #567) — the try-it path never sees identity
-    machinery. A provisioning failure is a warning, not a hard error: the manifest
-    is already written and the agent still works on the PSK.
+    ``spire`` it registers the SVID entry against the appliance SPIRE server. Under
+    the ``psk`` default it is a silent no-op (off by default, #567) — the try-it
+    path never sees identity machinery. A provisioning failure is a warning, not a
+    hard error: the manifest is already written and the agent still works on the PSK.
+
+    *mode* is the effective tier from ``config.slim.identity`` — the "one switch"
+    (#588). The runtime resolves the mode from ``MYCELIUM_SLIM_IDENTITY`` (env-only),
+    but a fresh CLI process doesn't inherit that env, so registration must read the
+    config the user actually set, not just the environment.
     """
     from mycelium.slim import identity as slim_identity
 
     try:
-        result = slim_identity.provision_channel_identity(manifest.handle)
+        result = slim_identity.provision_channel_identity(manifest.handle, mode=mode)
     except slim_identity.SlimIdentityError as exc:
         console.print(f"[yellow]Could not provision channel identity: {exc}[/yellow]")
         return
 
-    mode = result.get("mode")
-    if mode == slim_identity.MODE_SIGNERJWT:
+    result_mode = result.get("mode")
+    if result_mode == slim_identity.MODE_SIGNERJWT:
         console.print(
             f"[green]SLIM channel identity ready[/green] "
             f"[dim](signerjwt · kid {result['kid']})[/dim]"
         )
         console.print(f"[dim]Public JWK on the roster: {result['roster_path']}.[/dim]")
-    elif mode == slim_identity.MODE_SPIRE:
+    elif result_mode == slim_identity.MODE_SPIRE:
         _register_spire_workload(manifest.handle, result)
     # psk: no per-agent identity — stay silent (off by default, #567).
 
@@ -461,17 +465,20 @@ def _register_spire_workload(handle: str, result: dict) -> None:
     )
 
 
-def _revoke_spire_workload(handle: str) -> None:
+def _revoke_spire_workload(handle: str, mode: str) -> None:
     """Revoke ``@handle``'s SPIRE SVID entry on ``agent rm`` (spire mode only).
 
-    Silent unless ``slim.identity=spire``: under psk/signerjwt there is no SPIRE
-    entry, so this must not print or shell out. When spire is active but the server
-    isn't reachable, the registry treats it as a no-op (nothing to revoke).
+    Silent unless *mode* is ``spire``: under psk/signerjwt there is no SPIRE entry,
+    so this must not print or shell out. When spire is active but the server isn't
+    reachable, the registry treats it as a no-op (nothing to revoke). *mode* is the
+    effective tier from ``config.slim.identity`` (the "one switch", #588) — read
+    from config, not env, since a fresh CLI process doesn't inherit
+    ``MYCELIUM_SLIM_IDENTITY``.
     """
     from mycelium import spire_registry
     from mycelium.slim import identity as slim_identity
 
-    if slim_identity.resolve_identity_mode() != slim_identity.MODE_SPIRE:
+    if mode != slim_identity.MODE_SPIRE:
         return
     outcome = spire_registry.revoke_workload(handle)
     if outcome.ok:
@@ -1103,7 +1110,7 @@ def agent_rm(
         # 3. Revoke the SPIRE SVID entry (spire mode only; #588/#590). No-op under
         # psk/signerjwt, or when the appliance SPIRE server isn't up — there's
         # nothing to revoke. Best-effort: a failure is a warning, not a hard error.
-        _revoke_spire_workload(handle)
+        _revoke_spire_workload(handle, config.slim.identity)
 
         verb = "Destroyed" if will_destroy else "Unregistered"
         console.print(f"[green]{verb}:[/green] @{handle} from {room_name}")
