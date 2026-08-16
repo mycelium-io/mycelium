@@ -127,6 +127,10 @@ app.command(name="connect")(hub.connect)
 app.command(name="await")(participate.await_room)
 app.command(name="respond")(participate.respond)
 
+# Convenience alias: `mycelium ls` is `mycelium room ls` — rooms are the entry
+# point, so listing them shouldn't need the `room` prefix.
+app.command(name="ls")(room.list_rooms)
+
 # Command groups
 app.add_typer(room.app, name="room")
 app.add_typer(memory.app, name="memory")
