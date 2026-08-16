@@ -83,10 +83,10 @@ def host(ctx: typer.Context) -> None:
         # When attested identity is on (slim.identity=spire), bring the SPIRE server
         # up alongside the node — one control, config-driven (#588). The agent is
         # co-located with the backend (shared PID namespace), so it pulls the backend
-        # in too; that's intended, SPIRE needs a workload to attest. The agent itself
-        # starts in a second phase (it needs a join token minted against the live
-        # server). On the default psk this is a no-op and only `slim` starts.
-        from mycelium.commands.instance import _spire_enabled, bootstrap_spire_agent
+        # in too; that's intended, SPIRE needs a workload to attest. The node daemon
+        # itself starts in a second phase (it needs a join token minted against the
+        # live server). On the default psk this is a no-op and only `slim` starts.
+        from mycelium.commands.instance import _spire_enabled, bootstrap_spire_node
 
         spire = _spire_enabled()
         if spire:
@@ -110,7 +110,7 @@ def host(ctx: typer.Context) -> None:
             if env_path:
                 base += ["--env-file", str(env_path)]
             base += ["--profile", "spire"]
-            bootstrap_spire_agent(base)
+            bootstrap_spire_node(base)
 
         port = _slim_port()
         local_endpoint = f"http://127.0.0.1:{port}"

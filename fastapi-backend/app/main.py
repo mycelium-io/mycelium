@@ -262,7 +262,7 @@ async def root(
 
     # SLIM channel identity tier — psk (default) / signerjwt / spire (#588). For
     # spire, report whether the Workload API socket is actually present, so a
-    # member stuck at "Initializing spire identity manager" (no co-located agent)
+    # member stuck at "Initializing spire identity manager" (no co-located daemon)
     # is legible from /health, not just from the logs.
     result["identity"] = _check_slim_identity()
 

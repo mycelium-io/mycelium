@@ -51,13 +51,16 @@ configs:
         }
       }
 
-  # ── SPIRE agent config (only mounted by the `spire` profile) ─────────────────
-  # The `unix` workload attestor identifies a caller by its SO_PEERCRED PID, so the
-  # agent shares the backend's PID namespace (see `spire-agent` below) and serves the
-  # Workload API over a NAMED VOLUME — a host bind-mount drops peer creds on Docker
-  # Desktop (#584). Disk KeyManager + a persisted data dir let the agent reuse its
-  # node SVID across restarts instead of re-consuming the one-time join token.
-  spire-agent-config:
+  # ── SPIRE node-daemon config (only mounted by the `spire` profile) ───────────
+  # "Node daemon" is SPIRE's per-node identity daemon (upstream image `spire-agent`)
+  # — it has nothing to do with mycelium coordination agents (@alice); it serves the
+  # Workload API socket and fetches SVIDs. The `unix` workload attestor identifies a
+  # caller by its SO_PEERCRED PID, so the daemon shares the backend's PID namespace
+  # (see `spire-node` below) and serves the Workload API over a NAMED VOLUME — a host
+  # bind-mount drops peer creds on Docker Desktop (#584). Disk KeyManager + a
+  # persisted data dir let it reuse its node SVID across restarts instead of
+  # re-consuming the one-time join token.
+  spire-node-config:
     content: |
       agent {
         data_dir       = "/opt/spire/data/agent"
@@ -136,7 +139,7 @@ services:
       # SPIRE Workload API socket + trust domain. Inert on the default `psk` path:
       # slim_identity only consults these when MYCELIUM_SLIM_IDENTITY=spire *and* the
       # socket exists on disk, and the socket only appears once the `spire` profile's
-      # co-located agent is up (which shares this container's PID namespace). Setting
+      # co-located node daemon is up (shares this container's PID namespace). Setting
       # them unconditionally keeps the backend service structurally identical across
       # profiles — the `spire` profile adds services, it never rewrites the backend.
       MYCELIUM_SLIM_SPIRE_SOCKET: unix:///run/spire/sockets/agent.sock
@@ -222,8 +225,8 @@ services:
   # `slim.identity=spire` — the user never passes `--profile spire` by hand. On the
   # default (`psk`) nothing here is created; the stack is byte-for-byte as before.
   #
-  # SPIRE (server + agent + attestation) is the heaviest identity tier: it mints
-  # per-member JWT-SVIDs the backend presents as MLS identity. `mycelium agent
+  # SPIRE (server + node daemon + attestation) is the heaviest identity tier: it
+  # mints per-member JWT-SVIDs the backend presents as MLS identity. `mycelium agent
   # create`/`rm` register/revoke the workload entries against this server itself
   # (via `docker compose exec`), so there is no hand-typed `spire-server entry
   # create`. See mycelium.spire_registry.
@@ -232,7 +235,7 @@ services:
   # ENTRYPOINT=[".../spire-server","run"], so the bring-up can't self-bootstrap via
   # an inline shell script. Instead `mycelium up` orchestrates it host-side (the
   # same seam spire_registry uses): start the server, wait healthy, mint a join
-  # token bound to the fixed `agent-node` SPIFFE ID, then start the agent with
+  # token bound to the fixed `agent-node` SPIFFE ID, then start the node daemon with
   # SPIRE_JOIN_TOKEN. `command:` only appends flags to the image entrypoint.
   spire-server:
     image: ghcr.io/spiffe/spire-server:1.9.6
@@ -254,23 +257,24 @@ services:
       retries: 6
       start_period: 10s
 
-  # ── SPIRE agent (profile: spire) ─────────────────────────────────────────────
+  # ── SPIRE node daemon (profile: spire) ───────────────────────────────────────
   #
-  # Co-located with the backend: shares the backend's PID namespace so the `unix`
-  # workload attestor can read the backend's SO_PEERCRED, and serves the Workload
-  # API on the shared `spire-socket` named volume the backend mounts. These are the
-  # two #584 gotchas baked in — cross-namespace or a host-bind socket yields "could
-  # not resolve caller information" and a member stuck at "Initializing spire
-  # identity manager."
+  # SPIRE's per-node identity daemon (upstream image `spire-agent`) — NOT a mycelium
+  # coordination agent. Co-located with the backend: shares the backend's PID
+  # namespace so the `unix` workload attestor can read the backend's SO_PEERCRED, and
+  # serves the Workload API on the shared `spire-socket` named volume the backend
+  # mounts. These are the two #584 gotchas baked in — cross-namespace or a host-bind
+  # socket yields "could not resolve caller information" and a member stuck at
+  # "Initializing spire identity manager."
   #
   # SPIRE_JOIN_TOKEN is injected by `mycelium up` after minting it against the live
   # server (distroless images can't hand the token off between two shell-less
   # containers). The disk KeyManager + persisted data dir let a restart reuse the
   # stored node SVID rather than re-consuming the spent one-time token.
-  spire-agent:
+  spire-node:
     image: ghcr.io/spiffe/spire-agent:1.9.6
     pull_policy: always
-    container_name: mycelium-spire-agent
+    container_name: mycelium-spire-noded
     restart: unless-stopped
     profiles: [spire]
     depends_on:
@@ -279,10 +283,10 @@ services:
     # Join the backend's PID namespace so the unix attestor can introspect it.
     pid: "service:mycelium-backend"
     configs:
-      - source: spire-agent-config
+      - source: spire-node-config
         target: /opt/spire/conf/agent/agent.conf
     volumes:
-      - spire-agent-data:/opt/spire/data/agent
+      - spire-node-data:/opt/spire/data/agent
       - spire-socket:/run/spire/sockets
     command:
       - "-config"
@@ -292,8 +296,8 @@ services:
 
 volumes:
   spire-server-data:
-  spire-agent-data:
-  # The Workload API socket dir, shared backend ⇄ agent. Always declared (compose
-  # requires it for the backend's mount); only populated when the `spire` profile
+  spire-node-data:
+  # The Workload API socket dir, shared backend ⇄ node daemon. Always declared
+  # (compose requires it for the backend's mount); populated when the `spire` profile
   # brings the agent up.
   spire-socket:

@@ -20,10 +20,15 @@ mycelium up
 ```
 
 `mycelium up` reads `slim.identity` and, when it's `spire`, brings a co-located
-SPIRE **server + agent** up alongside the hub automatically — the compose `spire`
-profile is an implementation detail the config drives. You do **not** pass
+SPIRE **server + node daemon** up alongside the hub automatically — the compose
+`spire` profile is an implementation detail the config drives. You do **not** pass
 `--profile spire` by hand. On the default (`psk`) nothing extra starts and the
 stack is byte-for-byte unchanged.
+
+> The SPIRE **node daemon** (upstream image `spire-agent`, container
+> `mycelium-spire-noded`) is SPIRE's per-node identity daemon — it serves the
+> Workload API socket and fetches SVIDs. It is unrelated to mycelium coordination
+> **agents** (`@alice` etc.); the shared word is an upstream-SPIRE coincidence.
 
 ## Registration is automatic
 
@@ -61,11 +66,11 @@ the stack up.
 ## The honest ceiling
 
 The appliance uses SPIRE's `unix` workload attestor, which identifies a workload by
-its process credentials. That requires the SPIRE agent to share the workload's PID
-namespace — which the shipped compose does for the **backend** (the always-on
+its process credentials. That requires the SPIRE node daemon to share the workload's
+PID namespace — which the shipped compose does for the **backend** (the always-on
 moderator that holds membership for turn-based agents). A **resident** Claude or
-Cursor session on a user's own machine is *not* co-located with a SPIRE agent, so
-it cannot be `unix`-attested; on a spoke, identity degrades to the PSK unless you
+Cursor session on a user's own machine is *not* co-located with a SPIRE node daemon,
+so it cannot be `unix`-attested; on a spoke, identity degrades to the PSK unless you
 front it with a non-`unix` attestor (k8s, docker, x509pop, join-token). This is why
 SPIRE is off by default and never lands on the default path.
 

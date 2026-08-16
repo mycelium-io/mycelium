@@ -124,7 +124,7 @@ def _compose_base_cmd(
 
     When *include_spire_profile* is True (the default) and ``slim.identity=spire``
     is set in the user's .env, ``--profile spire`` is appended so the SPIRE
-    server+agent come up with the stack (#588). This is the one control: the
+    server + node daemon come up with the stack (#588). This is the one control: the
     config drives the profile, the user never passes ``--profile spire`` by hand.
     On the default ``psk`` it's a silent no-op — the try-it stack is unchanged.
     """
@@ -297,14 +297,16 @@ def _container_running(name: str) -> bool:
         return False
 
 
-def bootstrap_spire_agent(base: list[str]) -> bool:
-    """Mint a join token host-side and start the SPIRE agent (#588).
+def bootstrap_spire_node(base: list[str]) -> bool:
+    """Mint a join token host-side and start the SPIRE node daemon (#588).
 
-    The SPIRE images are distroless (no shell), so the one-time node join token
-    can't be handed between the two shell-less containers inline. Instead, once the
-    server is up, we mint the token against it (``spire_registry.mint_join_token``)
-    and inject it into the agent as ``SPIRE_JOIN_TOKEN``. Idempotent: if the agent
-    is already running we leave it (re-minting would churn its attestation).
+    The "node daemon" is SPIRE's per-node identity daemon (upstream `spire-agent`),
+    not a mycelium coordination agent. The SPIRE images are distroless (no shell), so
+    the one-time node join token can't be handed between the two shell-less
+    containers inline. Instead, once the server is up, we mint the token against it
+    (``spire_registry.mint_join_token``) and inject it as ``SPIRE_JOIN_TOKEN``.
+    Idempotent: if the node daemon is already running we leave it (re-minting would
+    churn its attestation).
 
     *base* is a ``docker compose`` prefix that already carries ``--profile spire``.
     Returns True on success; every failure is a warning (the rest of the stack is
@@ -315,8 +317,8 @@ def bootstrap_spire_agent(base: list[str]) -> bool:
 
     from mycelium import spire_registry
 
-    if _container_running("mycelium-spire-agent"):
-        typer.echo("  SPIRE agent already running.")
+    if _container_running("mycelium-spire-noded"):
+        typer.echo("  SPIRE node daemon already running.")
         return True
 
     typer.echo("Bootstrapping SPIRE attestation...")
@@ -327,7 +329,7 @@ def bootstrap_spire_agent(base: list[str]) -> bool:
         time.sleep(2)
     else:
         typer.secho(
-            "  ⚠ SPIRE server not healthy in time; agent not started. Re-run 'mycelium up'.",
+            "  ⚠ SPIRE server not healthy in time; node daemon not started. Re-run 'mycelium up'.",
             fg=typer.colors.YELLOW,
         )
         return False
@@ -335,25 +337,25 @@ def bootstrap_spire_agent(base: list[str]) -> bool:
     token = spire_registry.mint_join_token(_spire_trust_domain())
     if not token:
         typer.secho(
-            "  ⚠ Could not mint a SPIRE join token; agent not started.",
+            "  ⚠ Could not mint a SPIRE join token; node daemon not started.",
             fg=typer.colors.YELLOW,
         )
         return False
 
     env = {**os.environ, "SPIRE_JOIN_TOKEN": token}
     result = subprocess.run(
-        [*base, "up", "-d", "spire-agent"], env=env, capture_output=True, text=True
+        [*base, "up", "-d", "spire-node"], env=env, capture_output=True, text=True
     )
     if result.returncode != 0:
         if result.stdout:
             typer.echo(result.stdout)
         if result.stderr:
             typer.echo(result.stderr, err=True)
-        typer.secho("  ⚠ SPIRE agent failed to start.", fg=typer.colors.YELLOW)
+        typer.secho("  ⚠ SPIRE node daemon failed to start.", fg=typer.colors.YELLOW)
         return False
 
     typer.secho(
-        "  ✓ SPIRE agent started (run 'mycelium doctor' to confirm attestation).",
+        "  ✓ SPIRE node daemon started (run 'mycelium doctor' to confirm attestation).",
         fg=typer.colors.GREEN,
     )
     return True
@@ -580,9 +582,9 @@ def start(
         if build:
             up_args.append("--build")
 
-        # SPIRE two-phase (#588): the agent needs a join token minted against the
-        # *live* server, so phase 1 brings up everything *except* the agent by
-        # listing services explicitly; bootstrap_spire_agent starts it afterwards.
+        # SPIRE two-phase (#588): the node daemon needs a join token minted against
+        # the *live* server, so phase 1 brings up everything *except* it by listing
+        # services explicitly; bootstrap_spire_node starts it afterwards.
         # (base already carries --profile spire via _compose_base_cmd.)
         spire = _spire_enabled()
         if spire:
@@ -625,9 +627,9 @@ def start(
                 typer.echo(result.stderr, err=True)
 
         # Phase 2: mint the join token against the now-running server and start the
-        # SPIRE agent (distroless images can't self-bootstrap the token; #588).
+        # SPIRE node daemon (distroless images can't self-bootstrap the token; #588).
         if spire:
-            bootstrap_spire_agent(base)
+            bootstrap_spire_node(base)
 
         # Pull the configured ports from .env so the summary matches reality
         # (MYCELIUM_BACKEND_PORT / MYCELIUM_UI_PORT / MYCELIUM_METRICS_PORT are
@@ -654,7 +656,7 @@ def start(
         if _spire_enabled():
             # SPIRE is config-driven, not a flag — surface it so the extra weight
             # on the stack is legible (#588). Registration happens on agent create.
-            typer.echo("  spire-server/agent  → attested identity (slim.identity=spire)")
+            typer.echo("  spire-server/node   → attested identity (slim.identity=spire)")
 
     except typer.Exit:
         raise

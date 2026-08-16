@@ -3,8 +3,8 @@
 
 """CLI-driven SPIRE workload registration for the appliance profile (#588).
 
-When ``slim.identity=spire`` the shipped compose runs a co-located SPIRE
-server+agent (see ``docker/compose.yml``). This module is the seam that makes
+When ``slim.identity=spire`` the shipped compose runs a co-located SPIRE server +
+node daemon (see ``docker/compose.yml``). This module is the seam that makes
 turning on attested identity *one switch*: ``mycelium agent create @alice``
 registers the SVID entry against the running server, and ``mycelium agent rm
 @alice`` revokes it — no hand-typed ``spire-server entry create``.
@@ -262,7 +262,7 @@ def mint_join_token(trust_domain: str | None = None) -> str | None:
 
     The distroless SPIRE images can't hand a token between two shell-less containers,
     so ``mycelium up`` mints it host-side against the live server and injects it into
-    the agent as ``SPIRE_JOIN_TOKEN`` (see :mod:`mycelium.commands.instance`). The
+    the node daemon as ``SPIRE_JOIN_TOKEN`` (see :mod:`mycelium.commands.instance`). The
     fixed ``spiffe://{td}/agent-node`` node ID is what makes the workload-entry
     parent deterministic — the same one :func:`register_workload` parents entries to.
     Returns ``None`` if the server isn't reachable or the output can't be parsed.
