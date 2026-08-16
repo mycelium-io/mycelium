@@ -4,15 +4,19 @@
 """
 Memory commands — persistent namespaced memory operations.
 
-CRUD operations read/write markdown files in .mycelium/rooms/{room}/.
-Search and subscribe use the backend API (local JSONL index).
+Reads and writes resolve against the hub over HTTP; the hub owns the one store
+(markdown files + the JSONL search index). A spoke needs no local replica.
 """
 
 import json
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any, cast
 
+import httpx
 import typer
 from pydantic import ValidationError
 from rich.console import Console
@@ -22,11 +26,11 @@ from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
 from mycelium.filesystem import (
     get_room_dir,
-    list_memories,
-    read_memory,
+    serialize_memory,
     write_memory,
 )
 from mycelium.protocol import MEMORY_CATEGORIES, MemoryLogEntry
+from mycelium_backend_client.errors import UnexpectedStatus
 
 app = typer.Typer(
     help="Read and write persistent memories scoped to rooms. Memories are markdown files in .mycelium/rooms/. Supports semantic vector search via a local JSONL index.",
@@ -43,39 +47,53 @@ def _get_client():
     return Client(base_url=cfg.server.api_url, raise_on_unexpected_status=True)
 
 
-def _write_local_copy(room_name: str, mem) -> None:
-    """Write a local copy of a memory file from the API response.
+def _hub_url() -> str:
+    """The hub API URL this client resolves memory against."""
+    return MyceliumConfig.load().server.api_url
 
-    This ensures the agent has a local file for reads and git sync,
-    even when the backend is remote.
+
+@contextmanager
+def _hub_session() -> Iterator[Any]:
+    """Yield a hub client, reporting an unreachable hub instead of raising.
+
+    Memory lives on the hub, so a hub that is down or misconfigured is an
+    ordinary outcome to state plainly rather than a traceback.
     """
+    with _get_client() as client:
+        try:
+            yield client
+        except httpx.HTTPError as exc:
+            console.print(f"[red]Error:[/red] can't reach the hub at {_hub_url()}: {exc}")
+            console.print(
+                "[dim]Check the hub is running ('mycelium status'), or point "
+                "server.api_url at it.[/dim]"
+            )
+            raise typer.Exit(1) from exc
+        except UnexpectedStatus as exc:
+            console.print(f"[red]Error:[/red] hub at {_hub_url()} returned HTTP {exc.status_code}.")
+            raise typer.Exit(1) from exc
+
+
+def _unset_to_none(field: Any) -> Any:
+    """Normalize a generated-client UNSET field to None."""
     from mycelium_backend_client.types import UNSET
 
-    room_dir = get_room_dir(room_name)
+    return None if isinstance(field, type(UNSET)) else field
 
-    # Extract content from the value field
-    value = mem.value
+
+def _value_text(value: Any) -> str:
+    """Flatten a memory value to display text.
+
+    A value is either a plain string or a structured dict (category keys carry
+    ``text``/``logged_at``/``category``; a JSON memory carries its own shape).
+    Structured values with no ``text`` render as pretty JSON.
+    """
     if hasattr(value, "to_dict"):
         value = value.to_dict()
     if isinstance(value, dict):
-        content = value.get("text", str(value))
-    else:
-        content = str(value)
-
-    tags = mem.tags if not isinstance(mem.tags, type(UNSET)) else None
-    updated_by = mem.updated_by if not isinstance(mem.updated_by, type(UNSET)) else None
-
-    write_memory(
-        room_dir,
-        mem.key,
-        content,
-        created_by=mem.created_by,
-        updated_by=updated_by,
-        version=mem.version,
-        tags=tags,
-        created_at=mem.created_at,
-        updated_at=mem.updated_at,
-    )
+        text = value.get("text")
+        return text if text is not None else json.dumps(value, indent=2, default=str)
+    return "" if value is None else str(value)
 
 
 def _resolve_value(value: str | None, file: str | None) -> str:
@@ -220,71 +238,101 @@ def memory_set(
 
     batch = MemoryBatchCreate(items=[item])
 
-    # The backend API writes the file on the server and updates the search index.
-    # We also write the file locally so the agent has a local copy for reads and git sync.
-    with _get_client() as client:
+    # The write goes to the hub, which owns the store (files + index). A spoke
+    # keeps no local copy — reads resolve against the hub (see memory_get/ls).
+    with _hub_session() as client:
         result = create_api.sync(room_name=room_name, client=client, body=batch)
         if result and isinstance(result, list) and len(result) > 0:
             mem = result[0]
-
-            # Write the file locally using the response metadata
-            _write_local_copy(room_name, mem)
-
-            # Invalidate cached ETag — room has changed
-            from mycelium.filesystem import get_mycelium_dir
-
-            etag_file = get_mycelium_dir() / "rooms" / room_name / ".sync-etag"
-            if etag_file.exists():
-                etag_file.unlink()
-
-            file_path = getattr(mem, "file_path", None)
             version_info = f"v{mem.version}" if hasattr(mem, "version") else ""
-            path_info = f"  [{file_path}]" if file_path else ""
-            console.print(
-                f"[green]Memory set:[/green] {room_name}/{key} ({version_info}){path_info}"
-            )
+            console.print(f"[green]Memory set:[/green] {room_name}/{key} ({version_info})")
         else:
             console.print(f"[green]Memory set:[/green] {room_name}/{key}")
 
 
 @doc_ref(
     usage="mycelium memory get <key>",
-    desc="Read a memory by exact key.",
+    desc="Read a memory by exact key from the hub.",
     group="memory",
 )
 @app.command(name="get")
 def memory_get(
     key: str = typer.Argument(..., help="Memory key"),
     room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
-    raw: bool = typer.Option(False, "--raw", help="Show raw markdown file content"),
+    raw: bool = typer.Option(False, "--raw", help="Show the markdown form (frontmatter + body)"),
 ) -> None:
-    """Read a memory by key (reads directly from the filesystem)."""
-    room_name = _get_active_room(room)
-    room_dir = get_room_dir(room_name)
+    """Read a memory by key (from the hub)."""
+    from mycelium_backend_client.api.memory import (
+        get_memory_api_rooms_room_name_memory_key_get as get_api,
+    )
+    from mycelium_backend_client.models import MemoryRead
 
-    result = read_memory(room_dir, key)
-    if result is None:
+    room_name = _get_active_room(room)
+
+    with _hub_session() as client:
+        try:
+            mem = get_api.sync(room_name=room_name, key=key, client=client)
+        except UnexpectedStatus as exc:
+            if exc.status_code == 404:
+                console.print(f"[red]Not found:[/red] {key}")
+                raise typer.Exit(1) from exc
+            raise
+
+    if not isinstance(mem, MemoryRead):
         console.print(f"[red]Not found:[/red] {key}")
         raise typer.Exit(1)
 
-    meta, content = result
+    content = _value_text(mem.value)
 
     if raw:
-        # Show the raw file
-        file_path = room_dir / f"{key}.md"
-        if file_path.exists():
-            console.print(file_path.read_text(encoding="utf-8"))
+        console.print(
+            serialize_memory(
+                content,
+                key=mem.key,
+                created_by=mem.created_by,
+                updated_by=_unset_to_none(mem.updated_by),
+                version=mem.version,
+                tags=_unset_to_none(mem.tags),
+                created_at=mem.created_at,
+                updated_at=mem.updated_at,
+            )
+        )
         return
 
-    version = meta.get("version", "?")
-    created_by = meta.get("created_by", "?")
-    console.print(f"[cyan]{key}[/cyan]  [dim]v{version}  {created_by}[/dim]")
+    console.print(f"[cyan]{mem.key}[/cyan]  [dim]v{mem.version}  {mem.created_by}[/dim]")
     console.print(content)
+
+
+def _fetch_memories(room_name: str, prefix: str | None, limit: int) -> list[dict[str, Any]]:
+    """Fetch a room's memories from the hub, newest-first as the hub orders them.
+
+    Returns the raw JSON records (the list endpoint is untyped in the generated
+    client), or exits with a clear message when the room is unknown.
+    """
+    from mycelium_backend_client.api.memory import (
+        list_memories_api_rooms_room_name_memory_get as list_api,
+    )
+
+    with _hub_session() as client:
+        try:
+            entries = list_api.sync(room_name=room_name, client=client, prefix=prefix, limit=limit)
+        except UnexpectedStatus as exc:
+            if exc.status_code == 404:
+                console.print(
+                    f"[red]Not found:[/red] room '{room_name}' does not exist on the hub "
+                    f"at {_hub_url()}"
+                )
+                raise typer.Exit(1) from exc
+            raise
+
+    if not isinstance(entries, list):
+        return []
+    return cast("list[dict[str, Any]]", [r for r in entries if isinstance(r, dict)])
 
 
 @doc_ref(
     usage="mycelium memory ls [prefix/]",
-    desc="List memories. Optional prefix filters by namespace.",
+    desc="List memories from the hub. Optional prefix filters by namespace.",
     group="memory",
 )
 @app.command(name="ls")
@@ -298,24 +346,26 @@ def memory_ls(
     ),
     limit: int = typer.Option(20, "--limit", "-n", help="Max results"),
 ) -> None:
-    """List memories in a room (reads directly from the filesystem)."""
+    """List memories in a room (from the hub)."""
     prefix = namespace or prefix
     room_name = _get_active_room(room)
-    room_dir = get_room_dir(room_name)
 
-    entries = list_memories(room_dir, prefix=prefix, limit=limit)
+    entries = _fetch_memories(room_name, prefix, limit)
     if not entries:
         console.print("[dim]No memories found[/dim]")
         return
 
     console.print(f"[bold]{room_name}[/bold] ({len(entries)} memories)\n")
 
-    for key, meta, content in entries:
-        ts = str(meta.get("updated_at", ""))[:16].replace("T", " ")
-        version = meta.get("version", "?")
-        created_by = meta.get("created_by", "?")
-        console.print(f"[cyan]{key}[/cyan]  [dim]v{version}  {created_by}  {ts}[/dim]")
-        display = content[:120] if content else ""
+    for mem in entries:
+        ts = str(mem.get("updated_at", ""))[:16].replace("T", " ")
+        version = mem.get("version", "?")
+        created_by = mem.get("created_by", "?")
+        console.print(
+            f"[cyan]{mem.get('key', '?')}[/cyan]  [dim]v{version}  {created_by}  {ts}[/dim]"
+        )
+        content = _value_text(mem.get("value"))
+        display = content[:120]
         if display:
             console.print(f"  {display}{'...' if len(content) > 120 else ''}")
         console.print()
@@ -340,7 +390,7 @@ def memory_search(
 
     room_name = _get_active_room(room)
 
-    with _get_client() as client:
+    with _hub_session() as client:
         body = MemorySearchRequest(query=query, limit=limit)
         from mycelium_backend_client.models import MemorySearchResponse
 
@@ -384,8 +434,8 @@ def memory_rm(
         if not confirm:
             raise typer.Exit(0)
 
-    # Delete via backend (handles both file + DB)
-    with _get_client() as client:
+    # Delete on the hub, which owns the store (file + index). No local copy exists.
+    with _hub_session() as client:
         delete_api.sync_detailed(room_name=room_name, key=key, client=client)
         console.print(f"[green]Deleted:[/green] {key}")
 
@@ -452,12 +502,11 @@ def memory_subscribe(
 
 
 def _list_by_category(category: str, room: str | None, limit: int) -> None:
-    """Shared implementation for category-filtered listing — reads from filesystem."""
+    """Shared implementation for category-filtered listing — reads from the hub."""
     room_name = _get_active_room(room)
-    room_dir = get_room_dir(room_name)
     prefix = f"{category}/"
 
-    entries = list_memories(room_dir, prefix=prefix, limit=limit)
+    entries = _fetch_memories(room_name, prefix, limit)
     if not entries:
         console.print(f"[dim]No {category} memories found[/dim]")
         return
@@ -468,11 +517,11 @@ def _list_by_category(category: str, room: str | None, limit: int) -> None:
     table.add_column("By", style="dim")
     table.add_column("Updated", style="dim")
 
-    for key, meta, content in entries:
-        short_key = key.removeprefix(prefix)
-        display = content[:80] if content else ""
-        ts = str(meta.get("updated_at", ""))[:16].replace("T", " ")
-        created_by = meta.get("created_by", "?")
+    for mem in entries:
+        short_key = str(mem.get("key", "?")).removeprefix(prefix)
+        display = _value_text(mem.get("value"))[:80]
+        ts = str(mem.get("updated_at", ""))[:16].replace("T", " ")
+        created_by = mem.get("created_by", "?")
         table.add_row(short_key, display, created_by, ts)
 
     console.print(table)

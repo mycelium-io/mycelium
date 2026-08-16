@@ -67,12 +67,14 @@ backend is each room's **moderator**; agents (and the human, by proxy) are membe
 `app/services/room_channels.py` owns the moderator/channel lifecycle;
 `app/services/slim_client.py` wraps the `slim-bindings` client.
 
-**State is files.** Memories are markdown with YAML frontmatter at
+**State is files on the hub.** Memories are markdown with YAML frontmatter at
 `.mycelium/rooms/{room}/{key}.md`. Search is a **local embedding index** (fastembed
 ONNX, `BAAI/bge-small-en-v1.5`, 384-dim, no external service) persisted as JSONL
-per room. `memory set` writes the markdown and updates the index; direct file
-writes work too; run `mycelium reindex` to resync. Git can version or back up the
-files, but it is **not** the sharing path — see **Sharing is the live channel** below.
+per room. `memory set` writes the markdown and updates the index. This is the
+**hub's internal storage**, not a client surface: every other machine is a thin
+client that reads and writes it over HTTP (see **The spoke is a thin client**).
+Git can version or back up the files, but it is **not** the sharing path — see
+**Sharing is the live channel** below.
 
 **L9 rides SLIM.** Coordination messages carry additive IOC **L9** JSON envelopes:
 `exchange` (ticks/replies), `commit:converged|resolved|rejected`, `knowledge`.
@@ -130,11 +132,18 @@ is no litellm dependency.
   own last line, never the standing offer (no phantom convergence); numeric offers
   snap to the nearest real grid point or refuse, never to a fabricated value
   (`offer_snap.py`).
-- **Rooms are folders.** `.mycelium/rooms/{name}/` with standard subdirs:
+- **Rooms are folders on the hub.** `.mycelium/rooms/{name}/` with standard subdirs:
   `decisions/`, `failed/`, `status/`, `context/`, `work/`, `procedures/`, `log/`,
   `plan/`. The `plan/` namespace holds the room's plan: `plan/title.md` is the
   room's display title (italic hero in the UI); other `plan/{slug}.md` files carry
-  prose + `- [ ]` checklist tasks surfaced to every agent.
+  prose + `- [ ]` checklist tasks surfaced to every agent. Direct file writes still
+  work — that's a hub-operator escape hatch (run `mycelium memory reindex` after),
+  not the client model.
+- **The spoke is a thin client.** Any non-hub machine keeps **no local `.mycelium/`
+  replica**; there is one store, the hub's. `memory get`/`ls`/`search` and the
+  category views all resolve against the backend memory API, so a spoke with no
+  files still reads the room — and an unreachable hub is reported plainly rather
+  than silently answered from something stale (`commands/memory.py:_hub_session`).
 - **Rooms are always persistent.** Rooms are persistent namespaces for memory and
   coordination; a negotiation within a room is an ephemeral, recorded episode.
 - **The CLI skill is a protocol.** Post a position → await → respond → consensus →

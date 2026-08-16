@@ -56,7 +56,7 @@ directly to each other.
 
 
 When agents log decisions, failures, and findings to a shared room, any agent that joins
-later can read `~/.mycelium/rooms/{room}/` and the room's shared plan to instantly inherit
+later can read the room's memory and shared plan to instantly inherit
 what the swarm learned. Intelligence doesn't reset; it compounds.
 
 Negative results matter too. An agent that logs `failed/single-writer-lock: serializing
@@ -158,7 +158,9 @@ so you can script or follow along in a terminal.
 ## Create a room
 
 A room is a persistent namespace for memory, agents, and coordination: a folder
-under `~/.mycelium/rooms/{room}/` and a SLIM group channel agents join:
+on the hub under `~/.mycelium/rooms/{room}/` and a SLIM group channel agents join.
+You reach it the same way from every machine — through the CLI, never by
+editing files on a spoke:
 
 ```bash
 # Create a room and make it active
@@ -259,13 +261,13 @@ separation between the two.
 
 Under the hood a room is a **SLIM group channel**: agents (and the human, by
 proxy) are members of one MLS-encrypted channel per room, and the backend is
-its always-on moderator. There's no database: a room's durable state is the
-files on disk, and sharing is git.
+its always-on moderator. There's no database: a room's durable state is files
+on the hub, which every other machine reads and writes over HTTP.
 
-## Rooms are Directories
+## Rooms are Directories on the Hub
 
-Each room maps to a directory at `~/.mycelium/rooms/{room_name}/`. Standard
-subdirectories are created automatically:
+Each room maps to a directory at `~/.mycelium/rooms/{room_name}/` **on the hub**.
+Standard subdirectories are created automatically:
 
 ```
 ~/.mycelium/rooms/design-review/
@@ -280,8 +282,10 @@ activity in the UI). The rest are arbitrary `plan/{slug}.md` files containing
 prose and tasks. See [`mycelium plan`](#plan) for read/write commands and
 `plan task add|done|undo` for checkbox edits.
 
-You can browse, edit, or git-track these directories directly. The backend
-keeps its local search index in sync via startup scans and file watching.
+An operator on the hub can browse, edit, or git-track these directories
+directly; the backend keeps its search index in sync via startup scans and file
+watching. From anywhere else, reach the same state through `mycelium room` and
+`mycelium memory` — a spoke keeps no copy of it.
 
 ## Commands
 
@@ -492,11 +496,10 @@ mycelium engine invoke aligner "converge on the API layer scope" -r sprint-plan
 
 # Memory
 
-Room memory is markdown files on your filesystem: the shared source of truth,
-greppable and editable by any agent. A local embedding index over those files
-lets agents recall by meaning, but it is never an independent source of writes.
-Whatever stays private to one agent stays in that agent's own local files, never
-indexed.
+Room memory lives on the hub: one store every agent reads and writes through the
+CLI, chat, or the UI. An embedding index over that store lets agents recall by
+meaning, but it is never an independent source of writes. Whatever stays private
+to one agent stays in that agent's own local files, never indexed.
 
 ## Three layers, one source of truth
 
@@ -505,16 +508,35 @@ Mycelium memory has three layers, and only the middle one is "the memory":
 1. **Your private context** is yours alone: agent-native files like `SOUL.md`
    or per-agent notes that never leave your machine and are never indexed or
    shared. Anything only you need lives here.
-2. **Room memory** is the shared source of truth: markdown files under
-   `~/.mycelium/rooms/{room}/` that every agent in the room can read, `grep`,
-   edit, and `git`-track. If the team should know it, write it here.
-3. **The search index** is a derived view that you never write to directly. Mycelium
-   embeds each room memory into a local index so agents can recall by meaning.
-   It rebuilds from the files, so the files always win.
+2. **Room memory** is the shared source of truth, held by the hub. Every agent
+   in the room reads and writes it with `mycelium memory` — from any machine,
+   with no local copy to keep in step. If the team should know it, write it here.
+3. **The search index** is a derived view that you never write to directly. The
+   hub embeds each room memory so agents can recall by meaning. It rebuilds from
+   the store, so the store always wins.
 
-Rule of thumb: if a teammate should find it, put it in room memory. The index
-is how they find it; the filesystem is where it lives; your private notes stay
-yours.
+Rule of thumb: if a teammate should find it, put it in room memory. The index is
+how they find it; the hub is where it lives; your private notes stay yours.
+
+## One store, many clients
+
+Any machine that is not the hub is a **thin client**. It keeps no copy of room
+memory: `memory get`, `ls`, `search`, and the category views (`memory decisions`,
+`status`, `work`, …) all resolve against the hub over HTTP, and `memory set`
+writes straight to it.
+
+That has two consequences worth knowing:
+
+- **No drift, no sync ritual.** A read reflects what the hub has right now, so
+  two machines never disagree about what a key says.
+- **Reads need the hub.** If the hub is down or `server.api_url` points
+  somewhere wrong, memory commands say so plainly rather than quietly serving
+  something stale.
+
+```bash
+mycelium config get server.api_url   # which hub this machine reads from
+mycelium status                      # is it up?
+```
 
 Every write to room memory is embedded (384-dim, local, no API key, no external
 service) and indexed for semantic search.
@@ -542,31 +564,24 @@ mycelium memory ls failed/
 > **Always upserts.** Calling `memory set` on an existing key overwrites it.
 > The version number increments automatically so you can track changes.
 
-## Filesystem-Native Storage
+## How the hub stores it
 
-Every memory is a markdown file at `~/.mycelium/rooms/{room}/{key}.md` with YAML
-frontmatter. You can read, edit, or version-control these files directly.
+The hub keeps each memory as a markdown file with YAML frontmatter at
+`~/.mycelium/rooms/{room}/{key}.md`, plus a JSONL embedding index beside it.
+That is internal storage, not a surface you work in — clients see it through
+`mycelium memory`, which is the same on the hub and on every spoke.
+
+To see the stored form of a memory from anywhere:
 
 ```bash
-# View the raw file
-cat ~/.mycelium/rooms/design-review/decisions/storage.md
-
-# Edit with any tool
-vim ~/.mycelium/rooms/design-review/decisions/storage.md
-
-# Git-track a room's memory
-cd ~/.mycelium/rooms/design-review && git init
+mycelium memory get decisions/storage --raw
 ```
 
-The local search index auto-syncs when:
-- You use `mycelium memory set` (immediate dual-write)
-- The backend starts up (incremental scan of changed files)
-- Files change on disk while the backend is running (file watcher)
-
-For bulk edits, you can also trigger a manual reindex:
-```bash
-mycelium memory reindex
-```
+> **Operating the hub.** On the hub itself the files are ordinary files, so an
+> operator can inspect, back up, or bulk-edit them. Edits made outside the CLI
+> bypass the index; run `mycelium memory reindex` afterwards to resync. The
+> index also rebuilds when the backend starts and follows on-disk changes while
+> it runs.
 
 ## Semantic Search
 
@@ -1027,14 +1042,15 @@ message broker, no vector store.
 Agents coordinate over an [AGNTCY SLIM](https://github.com/agntcy) group
 channel, one per room: an MLS-encrypted group with shared-secret PSK auth.
 The backend is each room's **moderator**; agents (and the human, by proxy)
-are members. Room state lives on disk as markdown files; search runs against a
-local embedding index. Coordination messages ride SLIM as additive
+are members. Room state lives on the hub as markdown files; search runs against
+a local embedding index. Every other machine is a thin client that reads and
+writes that state over HTTP. Coordination messages ride SLIM as additive
 [L9 envelopes](#l9-protocol).
 
 | Layer | Technology | Used for |
 |-------|-----------|----------|
 | Messaging | one SLIM node (MLS group channels) | per-room encrypted coordination fabric |
-| State | markdown files under `~/.mycelium/rooms/{room}/` | rooms, memories, plan: the source of truth |
+| State | markdown files on the hub, under `~/.mycelium/rooms/{room}/` | rooms, memories, plan: the source of truth |
 | Search | local ONNX embedding index (JSONL) | ~384-dim semantic recall, no external service |
 | Protocol | L9 envelopes over SLIM | `exchange` ticks/replies, `commit:*`, `knowledge` |
 | Cognition | the aligner (Pi + NEGMAS) | drives the negotiation (see [aligner](#aligner)) |
@@ -1353,10 +1369,11 @@ mycelium doctor
 The spoke reports **spoke mode** and skips checks that only apply to a
 local backend.
 
-## Step 3: Share a room
+## Step 3: Use a room from a spoke
 
-Rooms are folders. Create one on any machine, then share it so every
-machine has the same room to coordinate in.
+There is one store: the hub's. A spoke is a thin client — it keeps no
+copy of the room's memory and needs no sync step. Create the room on the
+hub, then use it from anywhere.
 
 ```bash
 # On the hub
@@ -1364,16 +1381,28 @@ mycelium room create portfolio
 mycelium room use portfolio
 ```
 
-On a spoke, pull the room's memories from the hub's backend:
+On a spoke, just make it the active room:
 
 ```bash
-mycelium room clone portfolio --from http://192.168.1.20:8000
+mycelium room use portfolio
 ```
 
-`room clone` fetches the room's memories over HTTP and writes them
-locally, then sets the room active. From here, memory is shared the
-normal way: git push/pull for durable state, and the live SLIM channel
-for coordination.
+Every memory command now resolves against the hub over HTTP:
+
+```bash
+mycelium memory ls                       # the hub's memories
+mycelium memory get decisions/allocation
+mycelium memory set decisions/allocation "60/40 equities to bonds"
+mycelium memory search "what did we decide about risk"
+```
+
+Because reads go to the hub, a spoke sees a write the moment it lands —
+there is no local copy to drift. The flip side: memory commands need the
+hub reachable, and say so plainly when it isn't.
+
+> `mycelium room clone` still exists for pulling a room's memories down
+> as files — useful for a backup or an offline read — but it is not part
+> of joining a room from a spoke.
 
 ## Step 4: Run a negotiation across machines
 

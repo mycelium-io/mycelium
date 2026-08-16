@@ -86,9 +86,9 @@ mycelium plan tasks   # the - [ ] checklist the team now executes against
 
 **1. Alignment.** When agents need to agree, one participant summons the **aligner**, a first-party mediator that runs a real NEGMAS Stacked Alternating Offers negotiation. It discovers the issues from the agents' opening positions, brokers each round, addresses one agent at a time, interprets each reply, and stops the instant the agents agree. Every agent has a voice, and the result is one shared answer, not parallel outputs a human has to reconcile. From that consensus Mycelium compiles a **shared plan**: a `- [ ]` checklist at `plan/tasks.md` with `@handle` owners the whole team executes against. The arc is one line: summon → negotiate → **plan** → work. The negotiation decides *what*; the plan is *how the team carries it out*.
 
-**2. Room Memory.** Rooms are folders. Memories are markdown files at `~/.mycelium/rooms/{room}/{namespace}/{key}.md`. Any agent with file I/O can read and write room memory directly. The CLI is sugar. Memories accumulate across agents and turns, and are searchable by meaning via a local embedding index, with no external service and no database.
+**2. Room Memory.** A room's memory is one store, held by the hub. Any agent reads and writes it with `mycelium memory set` / `get` / `ls` / `search` — from any machine, with nothing to sync and no copy to drift. Memories accumulate across agents and turns, and are searchable by meaning via an embedding index that runs on the hub, with no external service and no database.
 
-**3. Peer Collaboration Environment.** Any agent joining a room reads from `~/.mycelium/rooms/{room}/` and instantly inherits everything the swarm has learned: decisions made, what failed, open questions, the room's shared plan. No repeated context-setting. Intelligence compounds instead of resetting.
+**3. Peer Collaboration Environment.** Any agent joining a room reads that memory and instantly inherits everything the swarm has learned: decisions made, what failed, open questions, the room's shared plan. No repeated context-setting. Intelligence compounds instead of resetting.
 
 ## Quick Start
 
@@ -140,7 +140,7 @@ mycelium plan tasks   # the shared - [ ] checklist the team executes against
 
 ## Architecture
 
-**Memories live on the filesystem.** Rooms are folders, memories are markdown files with YAML frontmatter at `~/.mycelium/rooms/{room}/{key}.md`. This is the source of truth. Direct writes (cat, editor, agent file I/O) always work; run `mycelium memory reindex` to refresh the search index after bypassing the CLI. Search runs against a **local embedding index** (~384-dim, on-device), with no external vector service and no database.
+**The hub holds the memory; everything else is a thin client.** On the hub, rooms are folders and memories are markdown files with YAML frontmatter at `~/.mycelium/rooms/{room}/{key}.md` — the source of truth, with search running against a **local embedding index** (~384-dim, on-device), no external vector service and no database. Every other machine keeps no replica: `mycelium memory` resolves against the hub over HTTP, so a read always reflects what the room actually says. (Operating the hub, direct file writes still work; run `mycelium memory reindex` to refresh the index after bypassing the CLI.)
 
 **One SLIM node coordinates the room.** Agents coordinate over an [AGNTCY SLIM](https://github.com/agntcy/slim) group channel per room: MLS-encrypted, shared-secret PSK auth. An always-on thin FastAPI backend is each room's **moderator**; the agents (and you, by proxy) are members. There's no database, no message broker, no separate realtime service.
 

@@ -116,10 +116,11 @@ mycelium doctor
 The spoke reports **spoke mode** and skips checks that only apply to a
 local backend.
 
-## Step 3: Share a room
+## Step 3: Use a room from a spoke
 
-Rooms are folders. Create one on any machine, then share it so every
-machine has the same room to coordinate in.
+There is one store: the hub's. A spoke is a thin client — it keeps no
+copy of the room's memory and needs no sync step. Create the room on the
+hub, then use it from anywhere.
 
 ```bash
 # On the hub
@@ -127,16 +128,28 @@ mycelium room create portfolio
 mycelium room use portfolio
 ```
 
-On a spoke, pull the room's memories from the hub's backend:
+On a spoke, just make it the active room:
 
 ```bash
-mycelium room clone portfolio --from http://192.168.1.20:8000
+mycelium room use portfolio
 ```
 
-`room clone` fetches the room's memories over HTTP and writes them
-locally, then sets the room active. From here, memory is shared the
-normal way: git push/pull for durable state, and the live SLIM channel
-for coordination.
+Every memory command now resolves against the hub over HTTP:
+
+```bash
+mycelium memory ls                       # the hub's memories
+mycelium memory get decisions/allocation
+mycelium memory set decisions/allocation "60/40 equities to bonds"
+mycelium memory search "what did we decide about risk"
+```
+
+Because reads go to the hub, a spoke sees a write the moment it lands —
+there is no local copy to drift. The flip side: memory commands need the
+hub reachable, and say so plainly when it isn't.
+
+> `mycelium room clone` still exists for pulling a room's memories down
+> as files — useful for a backup or an offline read — but it is not part
+> of joining a room from a spoke.
 
 ## Step 4: Run a negotiation across machines
 

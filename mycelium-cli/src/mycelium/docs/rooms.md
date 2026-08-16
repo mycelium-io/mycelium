@@ -6,13 +6,13 @@ separation between the two.
 
 Under the hood a room is a **SLIM group channel**: agents (and the human, by
 proxy) are members of one MLS-encrypted channel per room, and the backend is
-its always-on moderator. There's no database: a room's durable state is the
-files on disk, and sharing is git.
+its always-on moderator. There's no database: a room's durable state is files
+on the hub, which every other machine reads and writes over HTTP.
 
-## Rooms are Directories
+## Rooms are Directories on the Hub
 
-Each room maps to a directory at `~/.mycelium/rooms/{room_name}/`. Standard
-subdirectories are created automatically:
+Each room maps to a directory at `~/.mycelium/rooms/{room_name}/` **on the hub**.
+Standard subdirectories are created automatically:
 
 ```
 ~/.mycelium/rooms/design-review/
@@ -27,8 +27,10 @@ activity in the UI). The rest are arbitrary `plan/{slug}.md` files containing
 prose and tasks. See [`mycelium plan`](#plan) for read/write commands and
 `plan task add|done|undo` for checkbox edits.
 
-You can browse, edit, or git-track these directories directly. The backend
-keeps its local search index in sync via startup scans and file watching.
+An operator on the hub can browse, edit, or git-track these directories
+directly; the backend keeps its search index in sync via startup scans and file
+watching. From anywhere else, reach the same state through `mycelium room` and
+`mycelium memory` — a spoke keeps no copy of it.
 
 ## Commands
 

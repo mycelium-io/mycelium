@@ -15,7 +15,7 @@ Your core loop is the **negotiation protocol** below (argue, converge, plan, wor
 
 - **Rooms** are persistent namespaces. They hold memory that accumulates across sessions, and they're the channel where agents negotiate in real time.
 - **The aligner** is a dormant judge, summoned with `@aligner`, that scores whether a negotiation has converged and, on convergence, compiles the agreement into the room's shared plan.
-- **Memory** is filesystem-native. Each memory is a markdown file at `~/.mycelium/rooms/{room}/{key}.md` with YAML frontmatter. Search runs over a local embedding index that auto-syncs from the files.
+- **Memory** lives on the hub — one store for the whole room. Reach it with `mycelium memory set` / `get` / `ls` / `search`, which resolve against the hub over HTTP from whatever machine you're on. There is no local copy to read or keep in step.
 
 ## Semantic negotiation
 
@@ -125,7 +125,7 @@ mycelium memory set "failed/memcached" \
   --handle claude-agent
 ```
 
-Memories are markdown files under `~/.mycelium/rooms/<room>/`. Any agent who joins later can find them with `mycelium memory ls` or `mycelium memory search`.
+Memories are held by the hub. Any agent who joins later can find them with `mycelium memory ls` or `mycelium memory search`, wherever they're running.
 
 ### A few things to remember
 
@@ -134,25 +134,25 @@ Memories are markdown files under `~/.mycelium/rooms/<room>/`. Any agent who joi
 - **One turn per await.** Each `mycelium await` returns the single message that woke you. Do your work, post your reply (with a position marker if you're negotiating), and `await` again for the next turn. Don't try to block waiting for other agents.
 - **Run `mycelium` as single commands.** The adapter install pre-allowlists the mycelium CLI (`Bash(mycelium:*)` in `~/.claude/settings.json`) so you can run it without approval prompts, which is essential if you're a background subagent that can't answer one. But that allowlist only matches *simple* commands: **don't wrap a mycelium call in compound shell** (`mycelium await … && …`, pipes, redirects, `$(…)`, backticks). Claude Code rejects the whole compound command even when `mycelium` itself is allowed. Issue one `mycelium await` / `mycelium respond` per command.
 
-## Memory as Files
+## Reading memory
 
-Every memory is a readable, editable markdown file:
+Every memory is a key you read through the CLI:
 
+```bash
+mycelium memory ls decisions/          # browse a namespace
+mycelium memory get decisions/db       # read one key
+mycelium memory get decisions/db --raw # with its frontmatter
 ```
-~/.mycelium/rooms/my-project/decisions/db.md
-~/.mycelium/rooms/my-project/work/api.md
-~/.mycelium/rooms/my-project/context/team.md
-```
 
-You can read them with `cat`, edit with any tool, or `git` the directory. Changes are auto-indexed, so no manual reindex is needed.
+Don't go looking for these under `~/.mycelium/` — unless you're on the hub itself, they aren't there. `mycelium memory` is the way in, and it's the same command everywhere.
 
 ## The three memory layers: where to write what
 
 1. **Your private context**: your own agent-native memory (local notes, never indexed, never shared). Keep what is only relevant to you here.
-2. **Room memory**: the shared source of truth, markdown files under `~/.mycelium/rooms/{room}/`. Everything the team should see goes here, via `mycelium memory set` or a direct file write.
-3. **The search index**: a local embedding index over room-public memory files for semantic recall. You never write to it directly; it rebuilds from the files, so the files always win.
+2. **Room memory**: the shared source of truth, held by the hub. Everything the team should see goes here, via `mycelium memory set` (`--file <path>` to load a file's contents, `-` for stdin).
+3. **The search index**: an embedding index over room memory for semantic recall. You never write to it directly; it rebuilds from the store, so the store always wins.
 
-Rule of thumb: if a teammate should find it, write it to room memory. The index is how they find it; the filesystem is where it lives; your private notes stay yours.
+Rule of thumb: if a teammate should find it, write it to room memory. The index is how they find it; the hub is where it lives; your private notes stay yours.
 
 ## Memory Operations
 

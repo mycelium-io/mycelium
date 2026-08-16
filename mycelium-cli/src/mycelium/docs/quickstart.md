@@ -90,7 +90,9 @@ so you can script or follow along in a terminal.
 ## Create a room
 
 A room is a persistent namespace for memory, agents, and coordination: a folder
-under `~/.mycelium/rooms/{room}/` and a SLIM group channel agents join:
+on the hub under `~/.mycelium/rooms/{room}/` and a SLIM group channel agents join.
+You reach it the same way from every machine — through the CLI, never by
+editing files on a spoke:
 
 ```bash
 # Create a room and make it active
