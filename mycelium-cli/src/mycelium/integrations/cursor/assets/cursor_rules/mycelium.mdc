@@ -93,7 +93,7 @@ For one-shot messages and durable notes (NOT negotiation; see below):
 
 ```bash
 mycelium room send --room <room-name> --handle cursor-agent \
-  "@julia-agent heads up: redis eviction bug in staging"
+  "@avery-agent heads up: redis eviction bug in staging"
 
 mycelium memory set "decision/cache" \
   '{"choice": "Redis", "rationale": "40ms p99 win, simpler ops"}' \

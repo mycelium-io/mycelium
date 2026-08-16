@@ -1203,7 +1203,7 @@ role     = &quot;user&quot;</code></pre>
       <p>The access token is renewed automatically when it expires, using the refresh token, on the way into the next call that needs it — you don&#x27;t re-run <code>login</code> on a schedule. Renewal needs a refresh token, which most issuers grant only for the <code>offline_access</code> scope; it is in the default <code>login.scopes</code> for that reason. If renewal fails, the CLI drops the header and tells you to sign in again rather than sending a token the hub will reject.</p>
       <h3 id="auth-who-you-are">Who you are</h3>
       <p><code>mycelium whoami</code> (and <code>mycelium iam</code> with no arguments) reports the handle from your <strong>token</strong> when you&#x27;re signed in, and the self-asserted <code>identity.name</code> when you&#x27;re not:</p>
-      <pre><code>acting as @julia  (julia#a8f3)
+      <pre><code>acting as @avery  (avery#a8f3)
   signed in (https://sso.example.com/realms/mycelium, expires in 42 min)</code></pre>
       <p>Because a gated hub attributes writes to the token (see <em>The token is the author</em> below), a self-asserted handle that names someone else is a 403 in waiting — <code>login</code> and <code>iam</code> both say so when they disagree.</p>
       <h3 id="auth-configuration">Configuration</h3>

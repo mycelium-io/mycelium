@@ -45,7 +45,7 @@ def _l9_record(message_id: str, sender: str, kind: str, text: str, data: dict) -
 @pytest.mark.asyncio
 async def test_l9_history_replays_frames_with_envelope(client) -> None:
     await _create_room(client, "wire")
-    append_transcript("wire", _l9_record("m1", "julia", "exchange", "cap at 30%", {"round": 1}))
+    append_transcript("wire", _l9_record("m1", "avery", "exchange", "cap at 30%", {"round": 1}))
 
     resp = await client.get("/api/rooms/wire/messages/l9")
     assert resp.status_code == 200
@@ -55,7 +55,7 @@ async def test_l9_history_replays_frames_with_envelope(client) -> None:
     frame = rows[0]
     # The bus frame shape the inspector reads: l9_<kind> + the full envelope in content.
     assert frame["message_type"] == "l9_exchange"
-    assert frame["sender_handle"] == "julia"
+    assert frame["sender_handle"] == "avery"
     content = json.loads(frame["content"])
     assert content["l9"]["header"]["kind"] == "exchange"
     assert content["l9"]["payload"]["data"] == {"round": 1}

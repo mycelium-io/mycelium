@@ -49,12 +49,12 @@ def test_build_manifest_returns_cursor_adapter_with_cwd(tmp_path: Path) -> None:
         handle="design-agent",
         opts=AddOptions(room="r1"),
         description="d",
-        allow_from=["@julia"],
+        allow_from=["@avery"],
     )
     assert manifest.adapter == "cursor"
     assert manifest.handle == "design-agent"
     assert manifest.cwd == str(tmp_path)
-    assert manifest.allow_from == ["@julia"]
+    assert manifest.allow_from == ["@avery"]
 
 
 def test_build_manifest_allows_no_cwd_for_cursor() -> None:

@@ -853,7 +853,7 @@
 
           <!-- header -->
           <div style="display:grid; grid-template-columns:1fr 56px 1fr; gap:6px; margin-bottom:2px;">
-            <div class="tick-col-label tcl-ce" style="text-align:center;">julia-agent</div>
+            <div class="tick-col-label tcl-ce" style="text-align:center;">avery-agent</div>
             <div style="text-align:center; font-size:11px; color:var(--dim); font-family:'Geist Mono', 'SF Mono',monospace; padding-top:4px;">aligner</div>
             <div class="tick-col-label tcl-ag" style="text-align:center;">selina-agent</div>
           </div>
@@ -866,11 +866,11 @@
           <!-- round label -->
           <div style="font-size:11px; letter-spacing:0.15em; text-transform:uppercase; font-family:'Geist Mono', 'SF Mono',monospace; color:var(--dim); text-align:center;">· round 1 ·</div>
 
-          <!-- CE → julia: propose -->
+          <!-- CE → avery: propose -->
           <div style="display:grid; grid-template-columns:1fr 56px 1fr; gap:6px; align-items:center;">
             <div style="background:rgba(0,0,0,0.4); border:1px solid rgba(92,199,210,0.22); border-radius:7px; padding:8px 10px; font-family:'Geist Mono', 'SF Mono',monospace; font-size:11px; line-height:1.7;">
-              <div style="font-size:10px; color:var(--muted); margin-bottom:5px;">← await: tick addressed to julia-agent</div>
-              <span style="color:var(--yellow);">the aligner</span> <span style="color:var(--dim);">→</span> <span style="color:var(--accent);">julia-agent</span> &nbsp;<span style="color:var(--blue);">round 1</span>, your offer on:<br>
+              <div style="font-size:10px; color:var(--muted); margin-bottom:5px;">← await: tick addressed to avery-agent</div>
+              <span style="color:var(--yellow);">the aligner</span> <span style="color:var(--dim);">→</span> <span style="color:var(--accent);">avery-agent</span> &nbsp;<span style="color:var(--blue);">round 1</span>, your offer on:<br>
               <span style="color:var(--text); padding-left:8px; display:inline-block; margin-top:3px;">price</span><br>
               <span style="color:var(--muted); padding-left:16px;">1. at listing &nbsp;2. 5–10% below &nbsp;3. comps-based</span><br>
               <span style="color:var(--text); padding-left:8px; display:inline-block;">deck with city views</span><br>
@@ -895,12 +895,12 @@
           <!-- ellipsis -->
           <div style="font-size:11px; letter-spacing:0.15em; text-transform:uppercase; font-family:'Geist Mono', 'SF Mono',monospace; color:var(--dim); text-align:center;">· rounds alternate (SAO) ·</div>
 
-          <!-- final: julia accepts -->
+          <!-- final: avery accepts -->
           <div style="display:grid; grid-template-columns:1fr 56px 1fr; gap:6px; align-items:center;">
             <div style="background:rgba(0,0,0,0.4); border:1px solid rgba(79,194,150,0.3); border-radius:7px; padding:8px 10px; font-family:'Geist Mono', 'SF Mono',monospace; font-size:11px; line-height:1.65;">
-              <div style="font-size:10px; color:var(--muted); margin-bottom:4px;">← await: tick addressed to julia-agent</div>
+              <div style="font-size:10px; color:var(--muted); margin-bottom:4px;">← await: tick addressed to avery-agent</div>
               <span style="color:var(--green);">$</span> <span style="color:var(--text);">mycelium respond</span><br>
-              <span style="color:var(--green);">"accept: fair comps"</span> <span style="color:var(--blue);">-r</span> <span style="color:var(--purple);">testing-thursday-10</span> <span style="color:var(--blue);">-H</span> <span style="color:var(--accent);">julia-agent</span>
+              <span style="color:var(--green);">"accept: fair comps"</span> <span style="color:var(--blue);">-r</span> <span style="color:var(--purple);">testing-thursday-10</span> <span style="color:var(--blue);">-H</span> <span style="color:var(--accent);">avery-agent</span>
             </div>
             <div style="text-align:center; font-size:14.5px; color:var(--green);">&#8592;</div>
             <div style="background:rgba(79,194,150,0.03); border:1px solid rgba(79,194,150,0.12); border-radius:7px; padding:6px 10px; font-size:11px; font-family:'Geist Mono', 'SF Mono',monospace; color:var(--muted); text-align:center;">offer sent</div>
@@ -919,14 +919,14 @@
         <div style="width:100%; display:flex; flex-direction:column; gap:10px;">
           <div style="font-size:12px; font-weight:700; letter-spacing:0.15em; text-transform:uppercase; font-family:'Geist Mono', 'SF Mono',monospace; color:var(--muted); margin-bottom:4px;">Filesystem-Native Memory</div>
           <div class="term-block">
-            <span class="prompt">$</span> <span class="cmd">mycelium memory set</span> <span class="val">"decisions/api"</span> <span class="val">"REST chosen over GraphQL"</span> <span class="flag">--handle julia-agent</span><br>
+            <span class="prompt">$</span> <span class="cmd">mycelium memory set</span> <span class="val">"decisions/api"</span> <span class="val">"REST chosen over GraphQL"</span> <span class="flag">--handle avery-agent</span><br>
             <span class="output">Memory set: design-review/decisions/api (v1)  [rooms/design-review/decisions/api.md]</span>
           </div>
           <div class="term-block">
             <span class="prompt">$</span> <span class="cmd">cat</span> <span class="val">.mycelium/rooms/design-review/decisions/api.md</span><br>
             <span class="tdim">---</span><br>
             <span class="key">key:</span> <span class="output">decisions/api</span><br>
-            <span class="key">created_by:</span> <span class="output">julia-agent</span><br>
+            <span class="key">created_by:</span> <span class="output">avery-agent</span><br>
             <span class="key">version:</span> <span class="output">1</span><br>
             <span class="tdim">---</span><br>
             <span class="output">REST chosen over GraphQL</span>

@@ -687,7 +687,7 @@ def agent_create(
         "--allow-from",
         help=(
             "Comma-separated sender handles allowed to invoke this agent, and — under "
-            "an enabled auth gate — to act on its behalf (e.g. '@julia,@docs-agent')."
+            "an enabled auth gate — to act on its behalf (e.g. '@avery,@docs-agent')."
         ),
     ),
     owner: str | None = typer.Option(
@@ -714,7 +714,7 @@ def agent_create(
         # cursor (resident Cursor session; drops workspace rules)
         mycelium agent create design-agent --adapter cursor \\
             --cwd ~/repos/my-frontend \\
-            --description "Owns the design system; pings @julia on ambiguity"
+            --description "Owns the design system; pings @avery on ambiguity"
     """
     try:
         config = MyceliumConfig.load()

@@ -58,14 +58,14 @@ def test_serialized_body_and_frontmatter_match_contract():
 
 def test_upsert_is_content_idempotent():
     g = _contract()
-    principals.write_user({"handle": "julia"})
+    principals.write_user({"handle": "avery"})
     # Same content: no version bump.
-    principals.write_user({"handle": "julia"})
-    record = read_memory_file(get_users_dir(), "julia")
+    principals.write_user({"handle": "avery"})
+    record = read_memory_file(get_users_dir(), "avery")
     assert record is not None
     assert record[0]["version"] == g["initial_version"]
     # A real change bumps it.
-    principals.write_user({"handle": "julia", "display_name": "Julia"})
-    record = read_memory_file(get_users_dir(), "julia")
+    principals.write_user({"handle": "avery", "display_name": "Avery"})
+    record = read_memory_file(get_users_dir(), "avery")
     assert record is not None
     assert record[0]["version"] == g["initial_version"] + 1

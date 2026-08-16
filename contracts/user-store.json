@@ -24,18 +24,18 @@
   "normalize": {
     "_comment": "handle + team slugs are @-stripped, trimmed, lower-cased; blank teams dropped.",
     "input": {
-      "handle": "@Julia",
-      "display_name": "Julia Valenti",
+      "handle": "@Avery",
+      "display_name": "Avery Quinn",
       "teams": ["@Core", "Infra", "  "],
       "notify": null
     },
     "expected": {
-      "handle": "julia",
-      "display_name": "Julia Valenti",
+      "handle": "avery",
+      "display_name": "Avery Quinn",
       "teams": ["core", "infra"],
       "notify": null
     }
   },
 
-  "serialized_body": "display_name: Julia Valenti\nteams:\n- core\n- infra\nnotify: null"
+  "serialized_body": "display_name: Avery Quinn\nteams:\n- core\n- infra\nnotify: null"
 }

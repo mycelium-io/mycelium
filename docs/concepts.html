@@ -157,7 +157,7 @@ PATCH .../messages/{id}  {<span class="str">&quot;status&quot;</span>: <span cla
 
     <section class="doc-section" id="users">
       <h1>Users &amp; teams</h1>
-      <p>Mycelium models <em>whom an agent belongs to</em>. Without it, every agent on the fabric is anonymous: presence says &quot;agent-y is live,&quot; never &quot;julia&#x27;s agent-y is live.&quot; Ownership gives scoping (&quot;my agents&quot; vs another team&#x27;s), attribution (whose agent edited that?), and routing (escalate back to an agent&#x27;s owner).</p>
+      <p>Mycelium models <em>whom an agent belongs to</em>. Without it, every agent on the fabric is anonymous: presence says &quot;agent-y is live,&quot; never &quot;avery&#x27;s agent-y is live.&quot; Ownership gives scoping (&quot;my agents&quot; vs another team&#x27;s), attribution (whose agent edited that?), and routing (escalate back to an agent&#x27;s owner).</p>
       <p>Two entities, symmetric on disk:</p>
       <ul>
         <li><strong>Agents</strong> are room-scoped (<code>rooms/{room}/agents/{handle}</code>). A manifest can name</li>
@@ -168,21 +168,21 @@ PATCH .../messages/{id}  {<span class="str">&quot;status&quot;</span>: <span cla
       </ul>
       <p>what an <code>owner</code> points at.</p>
       <h2 id="users-self-asserted-for-now">Self-asserted, for now</h2>
-      <p>At this tier trust is exactly today&#x27;s handles: <strong>consistent, not cryptographic</strong>. <code>owner: julia</code> is a claim, not a verified identity; anyone can assert it. That&#x27;s deliberate: it shapes the model right so scoping, attribution, and routing have real slots to read, ahead of verified identity (per-member SLIM binding / JWT / SPIRE) filling those slots with signed claims. Don&#x27;t rely on it for access control.</p>
+      <p>At this tier trust is exactly today&#x27;s handles: <strong>consistent, not cryptographic</strong>. <code>owner: avery</code> is a claim, not a verified identity; anyone can assert it. That&#x27;s deliberate: it shapes the model right so scoping, attribution, and routing have real slots to read, ahead of verified identity (per-member SLIM binding / JWT / SPIRE) filling those slots with signed claims. Don&#x27;t rely on it for access control.</p>
       <p>Both fields default to empty, so nothing about existing agents changes: an agent with no owner is unowned.</p>
       <h2 id="users-commands">Commands</h2>
       <pre><code><span class="comment"># Register a human, once, globally</span>
-<span class="cmd">mycelium user create</span> julia <span class="flag">--name</span> <span class="str">&quot;Julia Valenti&quot;</span> <span class="flag">--team</span> core
+<span class="cmd">mycelium user create</span> avery <span class="flag">--name</span> <span class="str">&quot;Avery Quinn&quot;</span> <span class="flag">--team</span> core
 <span class="cmd">mycelium user ls</span>
-<span class="cmd">mycelium user show</span> julia          # record + the agents she owns
+<span class="cmd">mycelium user show</span> avery          # record + the agents she owns
 
 <span class="comment"># Bind an agent to its owner</span>
-<span class="cmd">mycelium agent create</span> release-agent <span class="flag">--cwd</span> ~/repo <span class="flag">--owner</span> julia <span class="flag">--team</span> core
-<span class="cmd">mycelium agent ls</span> <span class="flag">--owner</span> julia   # <span class="str">&quot;my agents&quot;</span>
+<span class="cmd">mycelium agent create</span> release-agent <span class="flag">--cwd</span> ~/repo <span class="flag">--owner</span> avery <span class="flag">--team</span> core
+<span class="cmd">mycelium agent ls</span> <span class="flag">--owner</span> avery   # <span class="str">&quot;my agents&quot;</span>
 <span class="cmd">mycelium agent ls</span> <span class="flag">--team</span> core     # <span class="str">&quot;my team&quot;</span>
 
 <span class="comment"># Declare who you are on this machine (sets identity + upserts the user record)</span>
-<span class="cmd">mycelium iam julia</span> <span class="flag">--name</span> <span class="str">&quot;Julia Valenti&quot;</span> <span class="flag">--team</span> core
+<span class="cmd">mycelium iam avery</span> <span class="flag">--name</span> <span class="str">&quot;Avery Quinn&quot;</span> <span class="flag">--team</span> core
 
 <span class="comment"># Who am I acting as?</span>
 <span class="cmd">mycelium whoami</span></code></pre>
@@ -405,7 +405,7 @@ PATCH .../messages/{id}  {<span class="str">&quot;status&quot;</span>: <span cla
 <span class="comment"># Accepting just to move on? Say so plainly in prose, and the aligner records</span>
 <span class="comment"># the deference:</span>
 <span class="cmd">mycelium respond</span> <span class="flag">--room</span> design <span class="flag">--handle</span> me \
-  &quot;I&#x27;m not persuaded, but I&#x27;ll defer to @julia-agent. [[mycelium: confidence=0.4 stance=accept]]&quot;</code></pre>
+  &quot;I&#x27;m not persuaded, but I&#x27;ll defer to @avery-agent. [[mycelium: confidence=0.4 stance=accept]]&quot;</code></pre>
       <p>The <code>[[mycelium: …]]</code> marker is lifted onto the L9 envelope and stripped from the prose. The aligner reads your reply and folds in the richer epistemic signals it can infer: the evidence you engaged, whether your position moved, and why:</p>
       <ul>
         <li><code>confidence</code> (0–1): how sure you are of your position</li>

@@ -124,7 +124,7 @@ your **token** when you're signed in, and the self-asserted `identity.name` when
 you're not:
 
 ```
-acting as @julia  (julia#a8f3)
+acting as @avery  (avery#a8f3)
   signed in (https://sso.example.com/realms/mycelium, expires in 42 min)
 ```
 

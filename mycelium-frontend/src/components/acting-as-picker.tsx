@@ -252,7 +252,7 @@ export function ActingAsPicker() {
               <label className="block space-y-1">
                 <span className="text-micro text-muted-foreground">Handle</span>
                 <Input
-                  placeholder="e.g. julia"
+                  placeholder="e.g. avery"
                   value={form.handle}
                   disabled={!form.isNew}
                   onChange={(e) => {
@@ -278,7 +278,7 @@ export function ActingAsPicker() {
               <label className="block space-y-1">
                 <span className="text-micro text-muted-foreground">Display name</span>
                 <Input
-                  placeholder="e.g. Julia Valenti"
+                  placeholder="e.g. Avery Quinn"
                   value={form.displayName}
                   onChange={(e) => setForm((f) => ({ ...f, displayName: e.target.value }))}
                 />
