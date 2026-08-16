@@ -96,41 +96,6 @@ def _value_text(value: Any) -> str:
     return "" if value is None else str(value)
 
 
-def _write_local_copy(room_name: str, mem) -> None:
-    """Write a local copy of a memory file from the API response.
-
-    This ensures the agent has a local file for reads and git sync,
-    even when the backend is remote.
-    """
-    from mycelium_backend_client.types import UNSET
-
-    room_dir = get_room_dir(room_name)
-
-    # Extract content from the value field
-    value = mem.value
-    if hasattr(value, "to_dict"):
-        value = value.to_dict()
-    if isinstance(value, dict):
-        content = value.get("text", str(value))
-    else:
-        content = str(value)
-
-    tags = mem.tags if not isinstance(mem.tags, type(UNSET)) else None
-    updated_by = mem.updated_by if not isinstance(mem.updated_by, type(UNSET)) else None
-
-    write_memory(
-        room_dir,
-        mem.key,
-        content,
-        created_by=mem.created_by,
-        updated_by=updated_by,
-        version=mem.version,
-        tags=tags,
-        created_at=mem.created_at,
-        updated_at=mem.updated_at,
-    )
-
-
 def _resolve_value(value: str | None, file: str | None) -> str:
     """Resolve the memory value from the positional arg or a file.
 
@@ -273,29 +238,14 @@ def memory_set(
 
     batch = MemoryBatchCreate(items=[item])
 
-    # The backend API writes the file on the server and updates the search index.
-    # We also write the file locally so the agent has a local copy for reads and git sync.
-    with _get_client() as client:
+    # The write goes to the hub, which owns the store (files + index). A spoke
+    # keeps no local copy — reads resolve against the hub (see memory_get/ls).
+    with _hub_session() as client:
         result = create_api.sync(room_name=room_name, client=client, body=batch)
         if result and isinstance(result, list) and len(result) > 0:
             mem = result[0]
-
-            # Write the file locally using the response metadata
-            _write_local_copy(room_name, mem)
-
-            # Invalidate cached ETag — room has changed
-            from mycelium.filesystem import get_mycelium_dir
-
-            etag_file = get_mycelium_dir() / "rooms" / room_name / ".sync-etag"
-            if etag_file.exists():
-                etag_file.unlink()
-
-            file_path = getattr(mem, "file_path", None)
             version_info = f"v{mem.version}" if hasattr(mem, "version") else ""
-            path_info = f"  [{file_path}]" if file_path else ""
-            console.print(
-                f"[green]Memory set:[/green] {room_name}/{key} ({version_info}){path_info}"
-            )
+            console.print(f"[green]Memory set:[/green] {room_name}/{key} ({version_info})")
         else:
             console.print(f"[green]Memory set:[/green] {room_name}/{key}")
 
@@ -484,8 +434,8 @@ def memory_rm(
         if not confirm:
             raise typer.Exit(0)
 
-    # Delete via backend (handles both file + DB)
-    with _get_client() as client:
+    # Delete on the hub, which owns the store (file + index). No local copy exists.
+    with _hub_session() as client:
         delete_api.sync_detailed(room_name=room_name, key=key, client=client)
         console.print(f"[green]Deleted:[/green] {key}")
 
