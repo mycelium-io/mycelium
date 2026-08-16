@@ -4,7 +4,7 @@
 "use client";
 
 import { AppShell } from "@/components/app-shell";
-import { CommandCenter } from "@/components/command-center";
+import { HomeDashboard } from "@/components/home-dashboard";
 import { GlobalStatusItems } from "@/components/status-items";
 
 export default function Home() {
@@ -14,7 +14,7 @@ export default function Home() {
       statusLeft={<span>Command center</span>}
       statusRight={<GlobalStatusItems />}
     >
-      <CommandCenter />
+      <HomeDashboard />
     </AppShell>
   );
 }

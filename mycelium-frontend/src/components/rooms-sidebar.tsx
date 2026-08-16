@@ -15,8 +15,9 @@ import { NotificationBell } from "@/components/notification-bell";
 import { EmptyState } from "@/components/empty-state";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { KeyBadge } from "@/components/key-badge";
-import { useKeyAction, useKeyCapture, useKeyReveal } from "@/components/keymap-provider";
+import { useCommands, useKeyAction, useKeyCapture, useKeyReveal } from "@/components/keymap-provider";
 import { chordFor, hintLabels } from "@/lib/keymap";
+import type { PaletteCommand } from "@/lib/commands";
 
 // The sidebar lives inside each page's AppShell, so navigation remounts it. A
 // module-level cache lets a fresh mount paint the last-known rooms immediately
@@ -189,6 +190,37 @@ export function RoomsSidebar({ activeRoom = null }: Props) {
   useKeyAction("rooms.prev", () => cycle(-1));
   useKeyAction("rooms.digit", chord => go(filtered[Number(chord.split("+").pop()) - 1]));
   useKeyAction("nav.home", () => router.push("/"));
+
+  // Every room by name, plus the two things this rail can do. Rooms come from
+  // the full list, not the filtered one: the palette has a query of its own,
+  // and a sidebar filter left set would silently hide rooms from it.
+  const commands = useMemo<PaletteCommand[]>(
+    () => [
+      // Recency order (last_activity, falling back to created_at) so the palette,
+      // which shows only the recent head at rest, leads with the rooms you're in.
+      ...[...rooms]
+        .sort((a, b) =>
+          (b.last_activity ?? b.created_at ?? "").localeCompare(a.last_activity ?? a.created_at ?? ""),
+        )
+        .map(room => ({
+          id: `room:${room.name}`,
+          title: room.name,
+          group: "Rooms",
+          keywords: ["room", "switch", "open"],
+          run: () => go(room),
+        })),
+      {
+        id: "room.create",
+        title: "Create a room",
+        group: "Rooms",
+        keywords: ["new", "add"],
+        run: () => setShowCreate(true),
+      },
+      { id: "nav.metrics", title: "Metrics", group: "Navigate", run: () => router.push("/metrics") },
+    ],
+    [rooms, go, router],
+  );
+  useCommands(commands);
 
   // While the reveal modifier is held the first nine rooms wear their own digit;
   // `f` labels the whole list, which is the answer past nine.

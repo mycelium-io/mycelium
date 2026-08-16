@@ -50,7 +50,7 @@ describe("keymap", () => {
   });
 
   it("keeps every navigation key on one modifier so a single hold reveals them", () => {
-    const revealable = KEYMAP.filter(b => ["Rooms", "Panes", "Inspector"].includes(b.group))
+    const revealable = KEYMAP.filter(b => ["Navigate", "Rooms", "Panes", "Inspector"].includes(b.group))
       .flatMap(b => b.keys)
       .filter(isRevealChord);
     expect(revealable.length).toBeGreaterThan(0);
@@ -59,8 +59,10 @@ describe("keymap", () => {
 
   it("keeps the pane and rail keys clear of the browser's own chords", () => {
     // ⌘/Ctrl + C, L, N, P, S are copy / address bar / new window / print /
-    // save — a page can't have them, so the reveal modifier is ⌥ alone.
-    const taken = KEYMAP.flatMap(b => b.keys).filter(c => c.startsWith("mod+"));
+    // save — a page can't have them, so the reveal modifier is ⌥ alone. ⌘K is
+    // not among them, and is the chord everyone already tries for a palette.
+    const reserved = ["c", "l", "n", "p", "s"].map(k => `mod+${k}`);
+    const taken = KEYMAP.flatMap(b => b.keys).filter(c => reserved.includes(c));
     expect(taken).toEqual([]);
   });
 

@@ -62,7 +62,10 @@ function episodeState(ep: EpisodeSummary): { label: string; color: string; live:
   return { label: "live", color: "var(--accent)", live: true };
 }
 
-export function CommandCenter() {
+/** The landing view: every room as a card. Named for where it sits, not for the
+ *  heading it wears — "command palette" and "command center" are two different
+ *  things, and only one of them is a command surface. */
+export function HomeDashboard() {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [showCreate, setShowCreate] = useState(false);

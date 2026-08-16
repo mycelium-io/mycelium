@@ -27,6 +27,9 @@ export interface Binding {
   scope: KeyScope;
   /** List the chords as a first…last range; for runs like ⌥1 through ⌥9. */
   abbreviate?: boolean;
+  /** Set false to keep the binding out of the command palette: a key that holds
+   *  an overlay open, or one the palette itself answers better. */
+  palette?: boolean;
 }
 
 /** The modifier that, held on its own, reveals every navigation key as a badge
@@ -42,12 +45,24 @@ const ROOM_DIGIT_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9"].map(d => `
 
 export const KEYMAP: Binding[] = [
   {
+    id: "palette.open",
+    keys: ["mod+k"],
+    label: "Command palette",
+    group: "Help",
+    scope: "global",
+    // The palette can't offer itself a way in.
+    palette: false,
+  },
+
+  {
     id: "rooms.digit",
     keys: ROOM_DIGIT_KEYS,
     abbreviate: true,
     label: "Jump to one of the first nine rooms",
     group: "Rooms",
     scope: "global",
+    // The palette lists the rooms themselves, by name and past the ninth.
+    palette: false,
   },
   {
     id: "rooms.hints",
@@ -55,10 +70,12 @@ export const KEYMAP: Binding[] = [
     label: "Label every room — press a label to jump (past the first nine)",
     group: "Rooms",
     scope: "global",
+    // A hold-to-read overlay: there's nothing for a list row to invoke.
+    palette: false,
   },
   { id: "rooms.next", keys: ["]", "J"], label: "Next room", group: "Rooms", scope: "global" },
   { id: "rooms.prev", keys: ["[", "K"], label: "Previous room", group: "Rooms", scope: "global" },
-  { id: "nav.home", keys: ["alt+h"], label: "Command center", group: "Rooms", scope: "global" },
+  { id: "nav.home", keys: ["alt+h"], label: "Command center", group: "Navigate", scope: "global" },
 
   { id: "pane.channel", keys: ["alt+c"], label: "Channel", group: "Panes", scope: "room" },
   { id: "pane.negotiate", keys: ["alt+n"], label: "Negotiate", group: "Panes", scope: "room" },
@@ -79,6 +96,8 @@ export const KEYMAP: Binding[] = [
     label: "Leave the input — back to command mode",
     group: "Focus",
     scope: "global",
+    // Nothing to run: it's what leaving the palette already does.
+    palette: false,
   },
 
   { id: "help.keys", keys: ["?"], label: "Keyboard shortcuts", group: "Help", scope: "global" },
@@ -128,6 +147,13 @@ export function isRevealChord(chord: string): boolean {
   return chord.startsWith("alt+");
 }
 
+/** True for a ⌘/Ctrl chord. These are the bindings that stay live while a text
+ *  input has focus: holding ⌘ is not typing, where a bare letter is and ⌥ is
+ *  composing a character. It's why ⌘K reaches the palette from the composer. */
+export function isCommandChord(chord: string): boolean {
+  return chord.startsWith("mod+");
+}
+
 /** The key half of a chord, as it reads on a badge or a keycap: "alt+c" → "C". */
 export function chordKey(chord: string): string {
   const key = chord.split("+").pop() ?? "";
@@ -149,6 +175,11 @@ function inScope(binding: Binding, scopes: readonly KeyScope[]): boolean {
 
 export function bindingsInScope(scopes: readonly KeyScope[]): Binding[] {
   return KEYMAP.filter(b => inScope(b, scopes));
+}
+
+/** Bindings a command palette row can stand for: live here, and not opted out. */
+export function paletteBindings(scopes: readonly KeyScope[]): Binding[] {
+  return bindingsInScope(scopes).filter(b => b.palette !== false);
 }
 
 /** The binding a chord fires, if any. */

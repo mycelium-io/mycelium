@@ -3,7 +3,7 @@
 
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronLeft, Pencil, Plus, UserRound } from "lucide-react";
 import {
   createUser,
@@ -14,6 +14,8 @@ import {
   type User,
 } from "@/lib/api";
 import { useCurrentUser } from "@/components/current-user";
+import { useCommands } from "@/components/keymap-provider";
+import type { PaletteCommand } from "@/lib/commands";
 import { useAuthSession } from "@/components/auth-session";
 import { Monogram } from "@/components/ui/monogram";
 import { Button } from "@/components/ui/button";
@@ -139,6 +141,20 @@ export function ActingAsPicker() {
       setError(err instanceof Error ? err.message : String(err));
     }
   };
+
+  const commands = useMemo<PaletteCommand[]>(
+    () => [
+      {
+        id: "identity.switch",
+        title: "Switch who you're acting as",
+        group: "Preferences",
+        keywords: ["user", "identity", "principal", "handle", "acting as"],
+        run: () => setOpen(true),
+      },
+    ],
+    [],
+  );
+  useCommands(commands);
 
   // A new handle that matches an existing user would upsert (overwrite) it —
   // offer to edit that record instead of silently clobbering it.

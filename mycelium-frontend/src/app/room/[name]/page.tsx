@@ -13,7 +13,8 @@ import { RoomInspector, type Tab } from "@/components/room-inspector";
 import { RoomTour } from "@/components/room-tour";
 import { GlobalStatusItems, StatusButton } from "@/components/status-items";
 import { ActingAsPicker } from "@/components/acting-as-picker";
-import { useKeyAction, useKeyScope } from "@/components/keymap-provider";
+import { useCommands, useKeyAction, useKeyScope } from "@/components/keymap-provider";
+import type { PaletteCommand } from "@/lib/commands";
 import { useRoomStatus } from "@/lib/use-status";
 
 function episodeSummaryLabel(episodes: EpisodeSummary[] | null): { text: string; color: string } | null {
@@ -41,6 +42,7 @@ export default function RoomPage() {
   const [editorView, setEditorView] = useState<View>("channel");
   const [negPhase, setNegPhase] = useState<NegotiationPhase>("idle");
   const [tourActive, setTourActive] = useState(false);
+  const [inviteEngine, setInviteEngine] = useState(false);
 
   // Start the coached tour when arriving via "Run a sample coordination".
   useEffect(() => {
@@ -74,6 +76,8 @@ export default function RoomPage() {
     setInspectorOpen(true);
   }, []);
 
+  const handleEngineInviteShown = useCallback(() => setInviteEngine(false), []);
+
   // Room-scoped keybinds: the panes, the inspector rails, and the composer are
   // all reachable without a pointer. The chat box focuses the textarea itself;
   // this only makes sure the pane holding it is the one on screen.
@@ -88,6 +92,26 @@ export default function RoomPage() {
   useKeyAction("rail.memory", () => openTab("memory"));
   useKeyAction("rail.toggle", () => setInspectorOpen(open => !open));
   useKeyAction("focus.chat", () => setEditorView("channel"));
+
+  // The palette reaches the invite form wherever you are in the room: open the
+  // rail it lives behind, and ask it to show itself. A one-shot request the
+  // panel clears once consumed, so returning to the rail later doesn't reopen it.
+  const commands = useMemo<PaletteCommand[]>(
+    () => [
+      {
+        id: "engine.invite",
+        title: "Invite an engine",
+        group: "Inspector",
+        keywords: ["aligner", "synthesizer", "member", "add"],
+        run: () => {
+          openTab("agents");
+          setInviteEngine(true);
+        },
+      },
+    ],
+    [openTab],
+  );
+  useCommands(commands);
 
   const episodeLabel = useMemo(() => episodeSummaryLabel(episodes), [episodes]);
 
@@ -164,6 +188,8 @@ export default function RoomPage() {
           onTabChange={setInspectorTab}
           open={inspectorOpen}
           onOpenChange={setInspectorOpen}
+          engineInvite={inviteEngine}
+          onEngineInviteShown={handleEngineInviteShown}
         />
       </div>
 
