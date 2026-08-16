@@ -128,13 +128,11 @@
       <pre><code><span class="cmd">mycelium doctor</span> <span class="flag">--mode</span> hub     # force hub checks
 <span class="cmd">mycelium doctor</span> <span class="flag">--mode</span> spoke   # force spoke checks (skip local-only)
 <span class="cmd">mycelium doctor</span> <span class="flag">--mode</span> auto    # default; detect from api_url</code></pre>
-      <h3 id="architecture-syncing-room-files-remote-backend">Syncing room files (remote backend)</h3>
-      <p>When the backend runs on a remote server (EC2, Raspberry Pi, a hub), room files sync via the HTTP API. The adapter does not auto-sync; run <code>mycelium sync</code> yourself when you want fresh state.</p>
-      <pre><code><span class="comment"># Clone a room from a remote backend</span>
-<span class="cmd">mycelium room clone</span> my-project <span class="flag">--from</span> http://ec2-host:8000
-
-<span class="comment"># Fetch all memories from the backend and write local files</span>
-<span class="cmd">mycelium sync</span></code></pre>
+      <h3 id="architecture-reading-a-remote-room-spoke">Reading a remote room (spoke)</h3>
+      <p>When the backend runs on a remote server (EC2, Raspberry Pi, a hub), a spoke is a <strong>thin client</strong>: <code>mycelium memory</code> and <code>mycelium room</code> resolve against the hub over HTTP, so reads are always fresh and there is <strong>no sync step</strong> — nothing is mirrored locally to fall out of date.</p>
+      <p><code>room clone</code> / <code>mycelium sync</code> remain only as an explicit <strong>export</strong>: a point-in-time local snapshot for backup or offline reference, not part of the normal flow.</p>
+      <pre><code><span class="comment"># Optional: export a point-in-time snapshot of a room to local files</span>
+<span class="cmd">mycelium room clone</span> my-project <span class="flag">--from</span> http://ec2-host:8000</code></pre>
       <h2 id="architecture-stack">Stack</h2>
       <p>Mycelium runs on <strong>one SLIM node</strong> and a thin backend: no database, no message broker, no vector store.</p>
       <p>Agents coordinate over an <a href="https://github.com/agntcy">AGNTCY SLIM</a> group channel, one per room: an MLS-encrypted group with shared-secret PSK auth. The backend is each room&#x27;s <strong>moderator</strong>; agents (and the human, by proxy) are members. Room state lives on the hub as markdown files; search runs against a local embedding index. Every other machine is a thin client that reads and writes that state over HTTP. Coordination messages ride SLIM as additive <a href="#l9-protocol">L9 envelopes</a>.</p>

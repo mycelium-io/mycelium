@@ -1020,18 +1020,20 @@ mycelium doctor --mode spoke   # force spoke checks (skip local-only)
 mycelium doctor --mode auto    # default; detect from api_url
 ```
 
-### Syncing room files (remote backend)
+### Reading a remote room (spoke)
 
-When the backend runs on a remote server (EC2, Raspberry Pi, a hub), room files
-sync via the HTTP API. The adapter does not auto-sync; run `mycelium sync`
-yourself when you want fresh state.
+When the backend runs on a remote server (EC2, Raspberry Pi, a hub), a spoke is
+a **thin client**: `mycelium memory` and `mycelium room` resolve against the hub
+over HTTP, so reads are always fresh and there is **no sync step** — nothing is
+mirrored locally to fall out of date.
+
+`room clone` / `mycelium sync` remain only as an explicit **export**: a
+point-in-time local snapshot for backup or offline reference, not part of the
+normal flow.
 
 ```bash
-# Clone a room from a remote backend
+# Optional: export a point-in-time snapshot of a room to local files
 mycelium room clone my-project --from http://ec2-host:8000
-
-# Fetch all memories from the backend and write local files
-mycelium sync
 ```
 
 ## Stack
