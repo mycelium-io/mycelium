@@ -30,6 +30,16 @@ services:
       MYCELIUM_STUB_EMBEDDINGS: "1"
       LOG_LEVEL: DEBUG
 
+  # Build the frontend from local source instead of pulling the released image.
+  # compose.yml pins `pull_policy: always`, which would otherwise replace a local
+  # `--build` on the next `up` — so pin it to the dev tag and never pull here.
+  mycelium-frontend:
+    build:
+      context: ../../../../mycelium-frontend
+      dockerfile: Dockerfile
+    pull_policy: never
+    image: mycelium-frontend:dev
+
   mycelium-collector:
     build:
       context: ../../../

@@ -78,6 +78,12 @@ async function apiFetch<T = unknown>(path: string, opts: ApiFetchOptions<T> = {}
   }
 
   if (!res.ok) {
+    // A gated hub answering 401 means the session lapsed (or never existed).
+    // Signal the auth provider to re-check rather than letting a `fallback`
+    // caller degrade to a silently-empty view. See components/auth-session.tsx.
+    if (res.status === 401 && typeof window !== "undefined") {
+      window.dispatchEvent(new Event("mycelium:auth-required"));
+    }
     const message = await errorDetail(res);
     if (hasFallback) {
       logFetchError(path)(new Error(message));

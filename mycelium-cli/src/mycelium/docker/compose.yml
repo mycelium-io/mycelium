@@ -179,6 +179,17 @@ services:
         required: false
     environment:
       MYCELIUM_INTERNAL_API_URL: http://mycelium-backend:8000
+      # Browser OIDC login (#606) — off by default. Empty issuer/secret leaves the
+      # frontend on the localStorage handle-picker tier, unchanged. Set these (and
+      # turn the backend gate on) to require a real sign-in. MYCELIUM_OIDC_ISSUER is
+      # the public issuer the browser reaches; MYCELIUM_OIDC_INTERNAL_ISSUER is the
+      # in-network base the frontend server uses for discovery/token exchange (e.g.
+      # http://keycloak:8080/realms/mycelium) — see docs/guides/keycloak-oidc.md.
+      MYCELIUM_OIDC_ISSUER: ${MYCELIUM_OIDC_ISSUER:-}
+      MYCELIUM_OIDC_INTERNAL_ISSUER: ${MYCELIUM_OIDC_INTERNAL_ISSUER:-}
+      MYCELIUM_OIDC_CLIENT_ID: ${MYCELIUM_OIDC_CLIENT_ID:-mycelium-web}
+      MYCELIUM_OIDC_AUDIENCE: ${MYCELIUM_OIDC_AUDIENCE:-}
+      AUTH_SESSION_SECRET: ${AUTH_SESSION_SECRET:-}
     depends_on:
       mycelium-backend:
         condition: service_healthy

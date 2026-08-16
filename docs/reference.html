@@ -1501,6 +1501,23 @@ curl <span class="flag">-s</span> <span class="flag">-o</span> /dev/null <span c
       <h2 id="keycloak-oidc-agents-and-more-than-one-issuer">Agents, and more than one issuer</h2>
       <p>This guide is the <strong>human</strong> tier. Agents authenticate as workloads with the <code>client_credentials</code> grant from their own Keycloak client — see <a href="#auth">Authentication → Agents sign in as themselves</a>. Humans and agents are often separate realms; list each as its own <code>[[auth.issuers]]</code> block (a human root with <code>role = &quot;user&quot;</code>, an agent root with <code>role = &quot;agent&quot;</code>), matched by exact <code>iss</code> and never interchangeable.</p>
       <p>For the tightest, individually-attested agent identity on the SLIM channel itself, see <a href="#spire-identity">Attested Identity (SPIRE)</a> — a different, heavier tier from this HTTP-API gate.</p>
+      <h2 id="keycloak-oidc-browser-login-the-frontend">Browser login (the frontend)</h2>
+      <p>The Next.js frontend does the same OIDC flow for humans in a browser. With the gate <strong>off</strong> it is unchanged — the localStorage handle-picker, no login. With the gate <strong>on</strong>, the app shows a <strong>Sign in</strong> screen and redirects to Keycloak; after you authenticate it carries your token on every <code>/api/*</code> call (sealed in an httpOnly cookie, injected server-side by the proxy — it never reaches browser JS).</p>
+      <p>The realm import ships a second public client, <strong><code>mycelium-web</code></strong>, with the web redirect <code>http://localhost:3000/api/auth/callback</code> (the CLI&#x27;s <code>mycelium-cli</code> client uses a loopback redirect instead — separate clients, separately revocable).</p>
+      <p>Configure the frontend (server-side env) and bring the UI up:</p>
+      <pre><code>export MYCELIUM_OIDC_ISSUER=http://localhost:8080/realms/mycelium
+export MYCELIUM_OIDC_INTERNAL_ISSUER=http://keycloak:8080/realms/mycelium
+export MYCELIUM_OIDC_CLIENT_ID=mycelium-web
+export MYCELIUM_OIDC_AUDIENCE=mycelium
+export AUTH_SESSION_SECRET=$(openssl rand <span class="flag">-hex</span> 32)
+
+docker compose <span class="flag">-f</span> compose.yml <span class="flag">-f</span> compose-dev.yml <span class="flag">-f</span> compose-keycloak.yml \
+  <span class="flag">--profile</span> ui up <span class="flag">-d</span></code></pre>
+      <p>The <strong>issuer split is the same as the backend&#x27;s</strong>, for the same reason: the browser reaches Keycloak at <code>MYCELIUM_OIDC_ISSUER</code> (<code>localhost:8080</code>) and the token&#x27;s <code>iss</code> matches it, but the containerized frontend server can&#x27;t use <code>localhost</code>, so it runs discovery + token exchange against <code>MYCELIUM_OIDC_INTERNAL_ISSUER</code> (<code>keycloak:8080</code>). Running the frontend on the host with <code>pnpm dev</code> instead? Drop <code>INTERNAL_ISSUER</code> — the two coincide.</p>
+      <div class="callout callout-note">
+        <div class="callout-bar"></div>
+        <div class="callout-body"><strong>Off by default here too.</strong> With <code>MYCELIUM_OIDC_ISSUER</code> / <code>AUTH_SESSION_SECRET</code> unset, the frontend never engages OIDC. And it only shows the sign-in screen when the backend&#x27;s <code>/health</code> reports the gate on — the try-it path is untouched.</div>
+      </div>
       <h2 id="keycloak-oidc-the-honest-ceiling">The honest ceiling</h2>
       <p>The shipped overlay is <strong>dev-grade</strong>: Keycloak in <code>start-dev</code> (in-memory H2, HTTP, a demo user with a weak password). It is a real OIDC provider minting real RS256 tokens against a real JWKS — enough to build and prove against — but it is <strong>not</strong> a hardened production Keycloak. For a real deployment, run your own Keycloak over TLS with a persistent datastore and real users, then point the same three config values (<code>issuer</code>, <code>jwks_url</code>, <code>login.issuer</code>) at it. Nothing else changes.</p>
     </section>
