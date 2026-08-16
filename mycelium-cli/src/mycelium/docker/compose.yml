@@ -30,13 +30,16 @@ services:
   # nothing is wired to it. `mycelium hub host` brings up this service alone.
 
   slim:
-    # Pinned to 2.0.x: the node's link-negotiation handshake must match the
-    # `slim-bindings` wheel the backend/daemon use (`>=2,<3` in both pyprojects).
-    # Mixing majors fails the handshake with "public key length is invalid", so
-    # node + bindings move in lockstep. 2.0 is also where idle group members
-    # survive on app traffic (liveness resets on any message) and evicted members
-    # cleanly rejoin — the behavior the connector keepalive + self-rejoin rely on.
-    image: ghcr.io/agntcy/slim:${SLIM_IMAGE_TAG:-2.0.0}
+    # Pinned to 2.1.x: the node's link-negotiation handshake must match the
+    # `slim-bindings` wheel the backend/daemon use (`>=2.1,<2.2` in both
+    # pyprojects). Mixing versions fails the handshake with "public key length
+    # is invalid", so node + bindings move in lockstep. 2.1.x is the first
+    # MLS-with-external-identity-capable stack (the SPIRE JWT-SVID -> MLS spike
+    # in docs/design/spire-mls-spike proved it), the prereq for #476/#579.
+    # Node 2.2.0 exists but has no matching PyPI bindings yet — stay on 2.1.x
+    # until 2.2.x bindings publish, then bump both in lockstep and re-run the
+    # spike run.sh.
+    image: ghcr.io/agntcy/slim:${SLIM_IMAGE_TAG:-2.1.0}
     pull_policy: always
     container_name: mycelium-slim
     restart: unless-stopped
