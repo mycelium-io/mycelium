@@ -76,7 +76,7 @@ def sync_detailed(
 ]:
     """Spawn Session
 
-     Explicitly spawn a negotiation session within a room.
+     Return the room's presence session (a no-op shim spawn).
 
     Args:
         room_name (str):
@@ -111,7 +111,7 @@ def sync(
 ):
     """Spawn Session
 
-     Explicitly spawn a negotiation session within a room.
+     Return the room's presence session (a no-op shim spawn).
 
     Args:
         room_name (str):
@@ -140,7 +140,7 @@ async def asyncio_detailed(
 ]:
     """Spawn Session
 
-     Explicitly spawn a negotiation session within a room.
+     Return the room's presence session (a no-op shim spawn).
 
     Args:
         room_name (str):
@@ -173,7 +173,7 @@ async def asyncio(
 ):
     """Spawn Session
 
-     Explicitly spawn a negotiation session within a room.
+     Return the room's presence session (a no-op shim spawn).
 
     Args:
         room_name (str):

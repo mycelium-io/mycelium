@@ -72,7 +72,7 @@ def sync_detailed(
 ) -> Response[HTTPValidationError | ParticipantRead]:
     """Join Room
 
-     Join a room. Auto-spawns a coordination session if one doesn't exist.
+     Join a room — record the agent's presence. Idempotent per handle.
 
     Args:
         room_name (str):
@@ -106,7 +106,7 @@ def sync(
 ) -> HTTPValidationError | ParticipantRead | None:
     """Join Room
 
-     Join a room. Auto-spawns a coordination session if one doesn't exist.
+     Join a room — record the agent's presence. Idempotent per handle.
 
     Args:
         room_name (str):
@@ -135,7 +135,7 @@ async def asyncio_detailed(
 ) -> Response[HTTPValidationError | ParticipantRead]:
     """Join Room
 
-     Join a room. Auto-spawns a coordination session if one doesn't exist.
+     Join a room — record the agent's presence. Idempotent per handle.
 
     Args:
         room_name (str):
@@ -167,7 +167,7 @@ async def asyncio(
 ) -> HTTPValidationError | ParticipantRead | None:
     """Join Room
 
-     Join a room. Auto-spawns a coordination session if one doesn't exist.
+     Join a room — record the agent's presence. Idempotent per handle.
 
     Args:
         room_name (str):

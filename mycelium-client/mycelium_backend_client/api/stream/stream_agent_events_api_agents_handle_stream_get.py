@@ -62,10 +62,6 @@ def sync_detailed(
 
      Server-Sent Events stream for a specific agent handle.
 
-    Delivers coordination_tick and coordination_consensus events addressed to
-    this agent across all rooms — no room configuration required on the client.
-    Connect with: curl -N http://localhost:8000/agents/{handle}/stream
-
     Args:
         handle (str):
 
@@ -97,10 +93,6 @@ def sync(
 
      Server-Sent Events stream for a specific agent handle.
 
-    Delivers coordination_tick and coordination_consensus events addressed to
-    this agent across all rooms — no room configuration required on the client.
-    Connect with: curl -N http://localhost:8000/agents/{handle}/stream
-
     Args:
         handle (str):
 
@@ -126,10 +118,6 @@ async def asyncio_detailed(
     """Stream Agent Events
 
      Server-Sent Events stream for a specific agent handle.
-
-    Delivers coordination_tick and coordination_consensus events addressed to
-    this agent across all rooms — no room configuration required on the client.
-    Connect with: curl -N http://localhost:8000/agents/{handle}/stream
 
     Args:
         handle (str):
@@ -159,10 +147,6 @@ async def asyncio(
     """Stream Agent Events
 
      Server-Sent Events stream for a specific agent handle.
-
-    Delivers coordination_tick and coordination_consensus events addressed to
-    this agent across all rooms — no room configuration required on the client.
-    Connect with: curl -N http://localhost:8000/agents/{handle}/stream
 
     Args:
         handle (str):

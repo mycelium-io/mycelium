@@ -22,6 +22,7 @@ def _get_kwargs(
     kind: None | str | Unset = UNSET,
     status: None | str | Unset = UNSET,
     since: datetime.datetime | None | Unset = UNSET,
+    episode: None | str | Unset = UNSET,
 ) -> dict[str, Any]:
 
     params: dict[str, Any] = {}
@@ -66,6 +67,13 @@ def _get_kwargs(
     else:
         json_since = since
     params["since"] = json_since
+
+    json_episode: None | str | Unset
+    if isinstance(episode, Unset):
+        json_episode = UNSET
+    else:
+        json_episode = episode
+    params["episode"] = json_episode
 
     params = {k: v for k, v in params.items() if v is not UNSET and v is not None}
 
@@ -121,15 +129,11 @@ def sync_detailed(
     kind: None | str | Unset = UNSET,
     status: None | str | Unset = UNSET,
     since: datetime.datetime | None | Unset = UNSET,
+    episode: None | str | Unset = UNSET,
 ) -> Response[HTTPValidationError | MessageListResponse]:
     """List Messages
 
      List messages in a room (or coordination session), newest first.
-
-    ``kind``/``status``/``since`` make the source-activity feed and the
-    action/concern ledger server-side filters over the room (#392). Expired
-    events (past their ``ttl_seconds``) are excluded even if the sweep
-    hasn't collected them yet.
 
     Args:
         room_name (str):
@@ -140,6 +144,8 @@ def sync_detailed(
         kind (None | str | Unset): Filter events by metadata.kind
         status (None | str | Unset): Filter events by ledger status
         since (datetime.datetime | None | Unset): Only messages created at/after this time
+        episode (None | str | Unset): Only messages belonging to this L9 episode URN (one
+            negotiation/session)
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -158,6 +164,7 @@ def sync_detailed(
         kind=kind,
         status=status,
         since=since,
+        episode=episode,
     )
 
     response = client.get_httpx_client().request(
@@ -178,15 +185,11 @@ def sync(
     kind: None | str | Unset = UNSET,
     status: None | str | Unset = UNSET,
     since: datetime.datetime | None | Unset = UNSET,
+    episode: None | str | Unset = UNSET,
 ) -> HTTPValidationError | MessageListResponse | None:
     """List Messages
 
      List messages in a room (or coordination session), newest first.
-
-    ``kind``/``status``/``since`` make the source-activity feed and the
-    action/concern ledger server-side filters over the room (#392). Expired
-    events (past their ``ttl_seconds``) are excluded even if the sweep
-    hasn't collected them yet.
 
     Args:
         room_name (str):
@@ -197,6 +200,8 @@ def sync(
         kind (None | str | Unset): Filter events by metadata.kind
         status (None | str | Unset): Filter events by ledger status
         since (datetime.datetime | None | Unset): Only messages created at/after this time
+        episode (None | str | Unset): Only messages belonging to this L9 episode URN (one
+            negotiation/session)
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -216,6 +221,7 @@ def sync(
         kind=kind,
         status=status,
         since=since,
+        episode=episode,
     ).parsed
 
 
@@ -230,15 +236,11 @@ async def asyncio_detailed(
     kind: None | str | Unset = UNSET,
     status: None | str | Unset = UNSET,
     since: datetime.datetime | None | Unset = UNSET,
+    episode: None | str | Unset = UNSET,
 ) -> Response[HTTPValidationError | MessageListResponse]:
     """List Messages
 
      List messages in a room (or coordination session), newest first.
-
-    ``kind``/``status``/``since`` make the source-activity feed and the
-    action/concern ledger server-side filters over the room (#392). Expired
-    events (past their ``ttl_seconds``) are excluded even if the sweep
-    hasn't collected them yet.
 
     Args:
         room_name (str):
@@ -249,6 +251,8 @@ async def asyncio_detailed(
         kind (None | str | Unset): Filter events by metadata.kind
         status (None | str | Unset): Filter events by ledger status
         since (datetime.datetime | None | Unset): Only messages created at/after this time
+        episode (None | str | Unset): Only messages belonging to this L9 episode URN (one
+            negotiation/session)
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -267,6 +271,7 @@ async def asyncio_detailed(
         kind=kind,
         status=status,
         since=since,
+        episode=episode,
     )
 
     response = await client.get_async_httpx_client().request(**kwargs)
@@ -285,15 +290,11 @@ async def asyncio(
     kind: None | str | Unset = UNSET,
     status: None | str | Unset = UNSET,
     since: datetime.datetime | None | Unset = UNSET,
+    episode: None | str | Unset = UNSET,
 ) -> HTTPValidationError | MessageListResponse | None:
     """List Messages
 
      List messages in a room (or coordination session), newest first.
-
-    ``kind``/``status``/``since`` make the source-activity feed and the
-    action/concern ledger server-side filters over the room (#392). Expired
-    events (past their ``ttl_seconds``) are excluded even if the sweep
-    hasn't collected them yet.
 
     Args:
         room_name (str):
@@ -304,6 +305,8 @@ async def asyncio(
         kind (None | str | Unset): Filter events by metadata.kind
         status (None | str | Unset): Filter events by ledger status
         since (datetime.datetime | None | Unset): Only messages created at/after this time
+        episode (None | str | Unset): Only messages belonging to this L9 episode URN (one
+            negotiation/session)
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -324,5 +327,6 @@ async def asyncio(
             kind=kind,
             status=status,
             since=since,
+            episode=episode,
         )
     ).parsed

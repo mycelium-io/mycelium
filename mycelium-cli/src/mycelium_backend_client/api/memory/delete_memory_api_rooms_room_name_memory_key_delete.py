@@ -63,9 +63,7 @@ def sync_detailed(
 ) -> Response[Any | HTTPValidationError]:
     """Delete Memory
 
-     Delete a memory by key. Removes the file and the DB search index entry.
-
-    Either the file or the DB entry (or both) must exist — 404 only if neither is found.
+     Delete a memory by key. Removes the file and its search-index entry.
 
     Args:
         room_name (str):
@@ -99,9 +97,7 @@ def sync(
 ) -> Any | HTTPValidationError | None:
     """Delete Memory
 
-     Delete a memory by key. Removes the file and the DB search index entry.
-
-    Either the file or the DB entry (or both) must exist — 404 only if neither is found.
+     Delete a memory by key. Removes the file and its search-index entry.
 
     Args:
         room_name (str):
@@ -130,9 +126,7 @@ async def asyncio_detailed(
 ) -> Response[Any | HTTPValidationError]:
     """Delete Memory
 
-     Delete a memory by key. Removes the file and the DB search index entry.
-
-    Either the file or the DB entry (or both) must exist — 404 only if neither is found.
+     Delete a memory by key. Removes the file and its search-index entry.
 
     Args:
         room_name (str):
@@ -164,9 +158,7 @@ async def asyncio(
 ) -> Any | HTTPValidationError | None:
     """Delete Memory
 
-     Delete a memory by key. Removes the file and the DB search index entry.
-
-    Either the file or the DB entry (or both) must exist — 404 only if neither is found.
+     Delete a memory by key. Removes the file and its search-index entry.
 
     Args:
         room_name (str):

@@ -60,10 +60,7 @@ def sync_detailed(
 ) -> Response[Any | HTTPValidationError]:
     """Reindex Room
 
-     Re-index a room's filesystem into the pgvector search index.
-
-    Scans .mycelium/rooms/{room_name}/ and upserts all markdown files
-    into the memories table with fresh embeddings.
+     Re-index a room's filesystem into the JSONL search index.
 
     Args:
         room_name (str):
@@ -94,10 +91,7 @@ def sync(
 ) -> Any | HTTPValidationError | None:
     """Reindex Room
 
-     Re-index a room's filesystem into the pgvector search index.
-
-    Scans .mycelium/rooms/{room_name}/ and upserts all markdown files
-    into the memories table with fresh embeddings.
+     Re-index a room's filesystem into the JSONL search index.
 
     Args:
         room_name (str):
@@ -123,10 +117,7 @@ async def asyncio_detailed(
 ) -> Response[Any | HTTPValidationError]:
     """Reindex Room
 
-     Re-index a room's filesystem into the pgvector search index.
-
-    Scans .mycelium/rooms/{room_name}/ and upserts all markdown files
-    into the memories table with fresh embeddings.
+     Re-index a room's filesystem into the JSONL search index.
 
     Args:
         room_name (str):
@@ -155,10 +146,7 @@ async def asyncio(
 ) -> Any | HTTPValidationError | None:
     """Reindex Room
 
-     Re-index a room's filesystem into the pgvector search index.
-
-    Scans .mycelium/rooms/{room_name}/ and upserts all markdown files
-    into the memories table with fresh embeddings.
+     Re-index a room's filesystem into the JSONL search index.
 
     Args:
         room_name (str):

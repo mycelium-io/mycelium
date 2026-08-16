@@ -40,7 +40,7 @@ from app.schemas import (
     SubscriptionCreate,
     SubscriptionRead,
 )
-from app.services import actor, local_state, memory_sync, search_index
+from app.services import actor, links, local_state, memory_sync, search_index
 from app.services.embedding import embed_text
 from app.services.filesystem import (
     delete_memory_file,
@@ -56,6 +56,12 @@ from app.services.search_index import stable_memory_id
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/rooms/{room_name}/memory", tags=["memory"])
+
+# Frontmatter the store owns. Everything else in a memory's frontmatter is user
+# data: it survives a rewrite, and a caller can set it via ``MemoryCreate.meta``.
+MANAGED_META = frozenset(
+    {"key", "created_by", "updated_by", "version", "created_at", "updated_at", "tags", "value"}
+)
 
 
 def _require_room(room_name: str) -> None:
@@ -255,10 +261,19 @@ async def upsert_memories(room_name: str, payload: MemoryBatchCreate) -> list[Me
             created_by = item.created_by
             created_at = now
 
+        # Frontmatter the store doesn't manage is user data — carry it forward so
+        # a content update doesn't silently drop a page's `expandable: true` or
+        # its typed relations — then overlay whatever this write supplies.
+        extra_meta: dict[str, Any] = {
+            k: v for k, v in existing_meta.items() if k not in MANAGED_META
+        }
+        if item.meta:
+            extra_meta.update({k: v for k, v in item.meta.items() if k not in MANAGED_META})
+
         # Persist structured values into frontmatter so non-text keys survive
         # the round-trip (the markdown body only carries the ``text``/rendering).
-        extra_meta: dict[str, Any] = {}
-        if set(value.keys()) != {"text"}:
+        structured = set(value.keys()) != {"text"}
+        if structured:
             extra_meta["value"] = value
 
         write_memory_file(
@@ -286,7 +301,7 @@ async def upsert_memories(room_name: str, payload: MemoryBatchCreate) -> list[Me
                 "room_name": room_name,
                 "content_text": content_text,
                 "embedding": embedding,
-                "value": value if extra_meta else None,
+                "value": value if structured else None,
                 "created_by": created_by,
                 "updated_by": item.created_by,
                 "version": new_version,
@@ -298,6 +313,7 @@ async def upsert_memories(room_name: str, payload: MemoryBatchCreate) -> list[Me
                 "file_path": f"rooms/{room_name}/{item.key}.md",
             },
         )
+        links.upsert(room_name, item.key, extra_meta, body)
 
         results.append(
             MemoryRead(
@@ -467,5 +483,6 @@ async def delete_memory(room_name: str, key: str):
     room_dir = get_room_dir(room_name)
     file_deleted = delete_memory_file(room_dir, key)
     index_deleted = search_index.remove(room_name, key)
+    links.remove(room_name, key)
     if not file_deleted and not index_deleted:
         raise HTTPException(status_code=404, detail="Memory not found")

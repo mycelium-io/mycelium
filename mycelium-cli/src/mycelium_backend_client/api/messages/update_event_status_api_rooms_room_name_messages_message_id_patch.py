@@ -78,12 +78,6 @@ def sync_detailed(
 
      Transition a stateful event's status (open -> in_progress -> resolved).
 
-    Design choice (#392 left it open): the status lives on the original event
-    row and is updated in place, rather than appending follow-up events —
-    the current status must be cheaply queryable, and a follow-up-event model
-    forces a latest-per-correlation aggregation on every ledger query. The
-    transition is broadcast over SSE so subscribers see the change live.
-
     Args:
         room_name (str):
         message_id (UUID):
@@ -122,12 +116,6 @@ def sync(
 
      Transition a stateful event's status (open -> in_progress -> resolved).
 
-    Design choice (#392 left it open): the status lives on the original event
-    row and is updated in place, rather than appending follow-up events —
-    the current status must be cheaply queryable, and a follow-up-event model
-    forces a latest-per-correlation aggregation on every ledger query. The
-    transition is broadcast over SSE so subscribers see the change live.
-
     Args:
         room_name (str):
         message_id (UUID):
@@ -160,12 +148,6 @@ async def asyncio_detailed(
     """Update Event Status
 
      Transition a stateful event's status (open -> in_progress -> resolved).
-
-    Design choice (#392 left it open): the status lives on the original event
-    row and is updated in place, rather than appending follow-up events —
-    the current status must be cheaply queryable, and a follow-up-event model
-    forces a latest-per-correlation aggregation on every ledger query. The
-    transition is broadcast over SSE so subscribers see the change live.
 
     Args:
         room_name (str):
@@ -202,12 +184,6 @@ async def asyncio(
     """Update Event Status
 
      Transition a stateful event's status (open -> in_progress -> resolved).
-
-    Design choice (#392 left it open): the status lives on the original event
-    row and is updated in place, rather than appending follow-up events —
-    the current status must be cheaply queryable, and a follow-up-event model
-    forces a latest-per-correlation aggregation on every ledger query. The
-    transition is broadcast over SSE so subscribers see the change live.
 
     Args:
         room_name (str):

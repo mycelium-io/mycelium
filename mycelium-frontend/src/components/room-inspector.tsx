@@ -30,6 +30,8 @@ interface Props {
   /** One-shot request to show the engine invite form (from the palette). */
   engineInvite?: boolean;
   onEngineInviteShown?: () => void;
+  /** Reveal a memory by key in the Memory tab (e.g. a clicked chat wikilink). */
+  focusMemory?: { key: string; nonce: number } | null;
 }
 
 /** The room's context, consolidated: agents, episodes, and memory behind one
@@ -44,6 +46,7 @@ export function RoomInspector({
   onOpenChange,
   engineInvite = false,
   onEngineInviteShown,
+  focusMemory,
 }: Props) {
   const [tabInternal, setTabInternal] = useState<Tab>("agents");
   const [openInternal, setOpenInternal] = useState(true);
@@ -124,7 +127,7 @@ export function RoomInspector({
         )}
         {tab === "episodes" && <EpisodesRail roomName={roomName} />}
         {tab === "memory" && (
-          <MemoryPanel roomName={roomName} masId={masId ?? null} refreshTrigger={memoryRefresh} />
+          <MemoryPanel roomName={roomName} masId={masId ?? null} refreshTrigger={memoryRefresh} focusMemory={focusMemory} />
         )}
       </div>
     </aside>

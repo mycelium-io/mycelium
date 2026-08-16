@@ -87,6 +87,103 @@ mycelium memory get decisions/storage --raw
 > index also rebuilds when the backend starts and follows on-disk changes while
 > it runs.
 
+## Linking memories
+
+Memories can point at each other, which turns a room's flat set of files into an
+interlinked wiki. Two syntaxes, one meaning:
+
+```markdown
+We chose Postgres because of [[context/stack]].
+We chose Postgres because of myc://context/stack.
+```
+
+`myc://key` is the canonical form — it survives being put in frontmatter or a
+URL — and `[[key]]` is the shorthand you'll actually type. Both resolve to the
+same memory. A link can name a section and carry its own text:
+
+```markdown
+[[context/stack#vector-store|how retrieval works]]
+```
+
+### Backlinks
+
+The point of linking is knowing what depends on what. Before you change a
+memory, its backlinks tell you exactly which others lean on what it says:
+
+```bash
+mycelium memory links context/stack
+```
+
+```
+context/stack
+
+→ links to
+  ✓ procedures/deploy    wikilink
+
+← referenced by (2)
+  decisions/db           wikilink
+  work/api-server        wikilink
+```
+
+Broken links are reported rather than hidden, and `--check` sweeps the whole
+room for them along with orphans — memories nothing links to:
+
+```bash
+mycelium memory links --check
+```
+
+### Typed relations
+
+Frontmatter relations are edges with meaning, not just navigation. Set them on a
+write with `--meta`:
+
+```bash
+mycelium memory set decisions/db "Postgres" -m supersedes=decisions/db-v1
+```
+
+Recognized relations: `supersedes`, `superseded-by`, `depends-on`, `part-of`,
+`relates-to`. They show up in `memory links` alongside body links.
+
+### Transclusion
+
+A link asks the reader to go look. A **transclusion** pulls the text in, so
+there's only ever one copy of a fact. Mark the source memory expandable:
+
+```bash
+mycelium memory set glossary/vector-store \
+  "fastembed ONNX, bge-small-en-v1.5, 384-dim, no external service." --expandable
+```
+
+Then embed it anywhere with `![[…]]`:
+
+```markdown
+Our retrieval layer is fixed:
+
+![[glossary/vector-store]]
+```
+
+```bash
+mycelium memory get decisions/db --expand
+```
+
+Update the source and every page that embeds it is correct — nothing to
+re-copy, nothing to go stale.
+
+Three rules keep this from getting unwieldy:
+
+- **Opt-in on the target.** Only a memory with `expandable: true` can be pulled
+  in. Pointing `![[…]]` at anything else is reported as a broken link, not
+  silently included — so pages become embeddable deliberately.
+- **Depth 1.** Text pulled in is inserted verbatim, so a `![[…]]` inside it
+  stays literal. Cycles can't form and an expanded page can't balloon.
+- **Never fabricated.** A marker that can't be expanded is left exactly as
+  written and called out, so a refused embed never reads as an empty definition.
+
+Links are room-local: `myc://rooms/{other}/{key}` parses but does not resolve.
+
+Everything here is additive. A room whose memories carry no links behaves
+exactly as it did before.
+
 ## Semantic Search
 
 Search finds memories by meaning: cosine similarity on all-MiniLM-L6-v2

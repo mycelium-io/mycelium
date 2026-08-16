@@ -72,10 +72,7 @@ def sync_detailed(
 ) -> Response[HTTPValidationError | MessageRead]:
     """Send Message
 
-     Send a message to a room.
-
-    After persisting, fires NOTIFY on `room:{room_name}` so SSE subscribers
-    receive it without polling.
+     Send a message to a room; publish it to the room's live stream.
 
     Args:
         room_name (str):
@@ -109,10 +106,7 @@ def sync(
 ) -> HTTPValidationError | MessageRead | None:
     """Send Message
 
-     Send a message to a room.
-
-    After persisting, fires NOTIFY on `room:{room_name}` so SSE subscribers
-    receive it without polling.
+     Send a message to a room; publish it to the room's live stream.
 
     Args:
         room_name (str):
@@ -141,10 +135,7 @@ async def asyncio_detailed(
 ) -> Response[HTTPValidationError | MessageRead]:
     """Send Message
 
-     Send a message to a room.
-
-    After persisting, fires NOTIFY on `room:{room_name}` so SSE subscribers
-    receive it without polling.
+     Send a message to a room; publish it to the room's live stream.
 
     Args:
         room_name (str):
@@ -176,10 +167,7 @@ async def asyncio(
 ) -> HTTPValidationError | MessageRead | None:
     """Send Message
 
-     Send a message to a room.
-
-    After persisting, fires NOTIFY on `room:{room_name}` so SSE subscribers
-    receive it without polling.
+     Send a message to a room; publish it to the room's live stream.
 
     Args:
         room_name (str):

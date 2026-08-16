@@ -43,6 +43,7 @@ export default function RoomPage() {
   const [negPhase, setNegPhase] = useState<NegotiationPhase>("idle");
   const [tourActive, setTourActive] = useState(false);
   const [inviteEngine, setInviteEngine] = useState(false);
+  const [focusMemory, setFocusMemory] = useState<{ key: string; nonce: number } | null>(null);
 
   // Start the coached tour when arriving via "Run a sample coordination".
   useEffect(() => {
@@ -74,6 +75,13 @@ export default function RoomPage() {
   const openTab = useCallback((tab: Tab) => {
     setInspectorTab(tab);
     setInspectorOpen(true);
+  }, []);
+
+  // A `[[wikilink]]` clicked in chat opens the Memory rail on that key.
+  const openMemory = useCallback((key: string) => {
+    setInspectorTab("memory");
+    setInspectorOpen(true);
+    setFocusMemory(prev => ({ key, nonce: (prev?.nonce ?? 0) + 1 }));
   }, []);
 
   const handleEngineInviteShown = useCallback(() => setInviteEngine(false), []);
@@ -172,6 +180,7 @@ export default function RoomPage() {
               onConnectionChange={setConnected}
               onNegotiationPhaseChange={setNegPhase}
               planRefreshTrigger={memoryRefresh}
+              onOpenMemory={openMemory}
               view={editorView}
               onViewChange={setEditorView}
               suppressInvites={tourActive}
@@ -190,6 +199,7 @@ export default function RoomPage() {
           onOpenChange={setInspectorOpen}
           engineInvite={inviteEngine}
           onEngineInviteShown={handleEngineInviteShown}
+          focusMemory={focusMemory}
         />
       </div>
 

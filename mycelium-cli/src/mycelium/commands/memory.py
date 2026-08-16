@@ -123,6 +123,26 @@ def _resolve_value(value: str | None, file: str | None) -> str:
     return value
 
 
+def _parse_meta_pairs(pairs: list[str] | None) -> dict[str, Any]:
+    """Parse repeated ``--meta key=value`` into frontmatter.
+
+    Values are read as JSON when they parse (so ``true``, ``3``, and
+    ``[a, b]`` land as their real types) and as plain strings otherwise, which
+    is what a key like ``supersedes=decisions/db-v1`` wants.
+    """
+    frontmatter: dict[str, Any] = {}
+    for pair in pairs or []:
+        if "=" not in pair:
+            console.print(f"[red]Error:[/red] --meta expects key=value, got '{pair}'.")
+            raise typer.Exit(1)
+        name, _, raw = pair.partition("=")
+        try:
+            frontmatter[name.strip()] = json.loads(raw)
+        except json.JSONDecodeError:
+            frontmatter[name.strip()] = raw
+    return frontmatter
+
+
 def _get_active_room(room: str | None) -> str:
     """Get room name from arg or active config."""
     if room:
@@ -155,6 +175,15 @@ def memory_set(
     handle: str = typer.Option("cli-user", "--handle", "-H", help="Agent handle"),
     no_embed: bool = typer.Option(False, "--no-embed", help="Skip vector embedding"),
     tags: str | None = typer.Option(None, "--tags", "-t", help="Comma-separated tags"),
+    expandable: bool = typer.Option(
+        False, "--expandable", help="Let other memories pull this one inline with ![[key]]"
+    ),
+    meta: list[str] | None = typer.Option(
+        None,
+        "--meta",
+        "-m",
+        help="Extra frontmatter as key=value (repeatable), e.g. -m supersedes=decisions/db-v1",
+    ),
 ) -> None:
     """Write a memory to a room's persistent namespace (upsert).
 
@@ -172,6 +201,8 @@ def memory_set(
         mycelium memory set work/api-server "Built 12 endpoints with auth"
         mycelium memory set reference/spec --file spec.md
         cat notes.md | mycelium memory set context/notes -f -
+        mycelium memory set glossary/slim "SLIM is the messaging fabric." --expandable
+        mycelium memory set decisions/db "Postgres" -m supersedes=decisions/db-v1
     """
     from mycelium_backend_client.api.memory import (
         create_memories_api_rooms_room_name_memory_post as create_api,
@@ -234,6 +265,14 @@ def memory_set(
             tags=tag_list,
         )
 
+    # Extra frontmatter rides as an additional property: the generated client
+    # passes unknown fields straight through, so this needs no client regen.
+    frontmatter = _parse_meta_pairs(meta)
+    if expandable:
+        frontmatter["expandable"] = True
+    if frontmatter:
+        item["meta"] = frontmatter
+
     batch = MemoryBatchCreate(items=[item])
 
     # The write goes to the hub, which owns the store (files + index). A spoke
@@ -258,6 +297,9 @@ def memory_get(
     key: str = typer.Argument(..., help="Memory key"),
     room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
     raw: bool = typer.Option(False, "--raw", help="Show the markdown form (frontmatter + body)"),
+    expand: bool = typer.Option(
+        False, "--expand", help="Expand ![[key]] transclusions inline from their source"
+    ),
 ) -> None:
     """Read a memory by key (from the hub)."""
     from mycelium_backend_client.api.memory import (
@@ -266,6 +308,10 @@ def memory_get(
     from mycelium_backend_client.models import MemoryRead
 
     room_name = _get_active_room(room)
+
+    if expand:
+        _print_expanded(room_name, key)
+        return
 
     with _hub_session() as client:
         try:
@@ -407,6 +453,163 @@ def memory_search(
             if mem.content_text:
                 console.print(f"  {mem.content_text[:200]}")
             console.print()
+
+
+# How a link failed to resolve, in words. The backend reports codes; only the
+# CLI has to phrase them.
+_LINK_ERRORS = {
+    "not_found": "no such memory",
+    "no_anchor": "no such section",
+    "not_expandable": "target is not expandable",
+    "cross_room": "cross-room links are not supported",
+}
+
+
+def _link_label(link: dict[str, Any]) -> str:
+    """The kind of edge a link is, for the right-hand column."""
+    return link.get("relation") or link.get("kind") or "link"
+
+
+def _link_target(link: dict[str, Any]) -> str:
+    """The link's target, with its section anchor when it has one."""
+    target = str(link.get("target", "?"))
+    anchor = link.get("anchor")
+    return f"{target}#{anchor}" if anchor else target
+
+
+def _fetch_links(room_name: str, path: str, params: dict[str, str] | None = None) -> dict[str, Any]:
+    """GET a link endpoint on the hub, reporting an unreachable hub plainly."""
+    cfg = MyceliumConfig.load()
+    try:
+        with hub_client(cfg, timeout=30) as client:
+            resp = client.get(f"/api/rooms/{room_name}/links{path}", params=params)
+            if resp.status_code == 404:
+                console.print(f"[red]Not found:[/red] room '{room_name}' or key on {_hub_url()}")
+                raise typer.Exit(1)
+            resp.raise_for_status()
+            return cast("dict[str, Any]", resp.json())
+    except httpx.HTTPError as exc:
+        console.print(f"[red]Error:[/red] can't reach the hub at {_hub_url()}: {exc}")
+        raise typer.Exit(1) from exc
+
+
+def _print_expanded(room_name: str, key: str) -> None:
+    """Print a memory's body with its transclusions pulled in.
+
+    A marker that couldn't be expanded is left exactly as written and called out
+    below the body, so a refused embed never reads as an empty definition.
+    """
+    data = _fetch_links(room_name, "/expand", {"key": key})
+    console.print(f"[cyan]{key}[/cyan]  [dim]expanded[/dim]")
+    console.print(data.get("rendered", ""))
+
+    failed = [e for e in (data.get("expansions") or []) if not e.get("expanded")]
+    if failed:
+        console.print()
+        for exp in failed:
+            reason = _LINK_ERRORS.get(str(exp.get("error")), str(exp.get("error")))
+            console.print(
+                f"[yellow]Not expanded:[/yellow] [cyan]{_link_target(exp)}[/cyan] — {reason}"
+            )
+
+
+def _print_integrity(room_name: str) -> None:
+    """Room-wide link health: what's broken, and what nothing points at."""
+    report = _fetch_links(room_name, "/integrity")
+    broken = report.get("broken") or []
+    orphans = report.get("orphans") or []
+
+    console.print(
+        f"[bold]{room_name}[/bold]  [dim]{report.get('total_memories', 0)} memories, "
+        f"{report.get('total_links', 0)} links[/dim]\n"
+    )
+
+    if broken:
+        console.print(f"[yellow]Broken links ({len(broken)})[/yellow]")
+        for link in broken:
+            reason = _LINK_ERRORS.get(str(link.get("error")), str(link.get("error")))
+            console.print(
+                f"  [dim]{link.get('source', '?')}[/dim] → [cyan]{_link_target(link)}[/cyan]"
+                f"  [red]{reason}[/red]"
+            )
+        console.print()
+    else:
+        console.print("[green]No broken links[/green]\n")
+
+    if orphans:
+        console.print(f"[dim]Orphans ({len(orphans)}) — nothing links here[/dim]")
+        for key in orphans:
+            console.print(f"  [cyan]{key}[/cyan]")
+
+
+@doc_ref(
+    usage="mycelium memory links <key> [--check]",
+    desc="Show a memory's links: what it points at and what points back at it. Links are <code>myc://key</code> or <code>[[key]]</code> in the body, plus typed frontmatter relations (<code>supersedes</code>, <code>depends-on</code>, <code>part-of</code>, <code>relates-to</code>). <code>--check</code> reports broken links and orphans across the whole room.",
+    group="memory",
+)
+@app.command(name="links")
+def memory_links(
+    key: str | None = typer.Argument(None, help="Memory key to inspect"),
+    room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
+    check: bool = typer.Option(
+        False, "--check", help="Report broken links and orphans across the room"
+    ),
+    as_json: bool = typer.Option(False, "--json", help="Emit raw JSON"),
+) -> None:
+    """Show what a memory links to, and what links back to it.
+
+    Backlinks are the point: before you change a memory, they tell you exactly
+    which other memories depend on what it says.
+
+    Examples:
+        mycelium memory links decisions/db
+        mycelium memory links --check
+    """
+    room_name = _get_active_room(room)
+
+    if check:
+        if as_json:
+            console.print_json(data=_fetch_links(room_name, "/integrity"))
+            return
+        _print_integrity(room_name)
+        return
+
+    if not key:
+        console.print("[red]Error:[/red] provide a memory key, or --check for the whole room.")
+        raise typer.Exit(1)
+
+    data = _fetch_links(room_name, "", {"key": key})
+    if as_json:
+        console.print_json(data=data)
+        return
+
+    outbound = data.get("outbound") or []
+    backlinks = data.get("backlinks") or []
+
+    console.print(f"[bold cyan]{key}[/bold cyan]\n")
+
+    if outbound:
+        console.print("[dim]→ links to[/dim]")
+        for link in outbound:
+            ok = link.get("resolved")
+            mark = "[green]✓[/green]" if ok else "[red]✗[/red]"
+            reason = "" if ok else f"  [red]{_LINK_ERRORS.get(str(link.get('error')), '?')}[/red]"
+            console.print(
+                f"  {mark} [cyan]{_link_target(link)}[/cyan]"
+                f"  [dim]{_link_label(link)}[/dim]{reason}"
+            )
+        console.print()
+    else:
+        console.print("[dim]→ links to nothing[/dim]\n")
+
+    if backlinks:
+        console.print(f"[dim]← referenced by ({len(backlinks)})[/dim]")
+        for link in backlinks:
+            console.print(
+                f"  [cyan]{link.get('source', '?')}[/cyan]  [dim]{_link_label(link)}[/dim]"
+            )
+    else:
+        console.print("[dim]← referenced by nothing[/dim]")
 
 
 @doc_ref(

@@ -67,9 +67,7 @@ def sync_detailed(
 ) -> Response[HTTPValidationError | list[CoordinationSessionRead]]:
     """List Coordination Sessions
 
-     List negotiation sessions in a room.
-
-    Returns first-class CoordinationSession entities scoped to ``room_name``.
+     List coordination sessions in a room (at most the one presence shim).
 
     Args:
         room_name (str):
@@ -100,9 +98,7 @@ def sync(
 ) -> HTTPValidationError | list[CoordinationSessionRead] | None:
     """List Coordination Sessions
 
-     List negotiation sessions in a room.
-
-    Returns first-class CoordinationSession entities scoped to ``room_name``.
+     List coordination sessions in a room (at most the one presence shim).
 
     Args:
         room_name (str):
@@ -128,9 +124,7 @@ async def asyncio_detailed(
 ) -> Response[HTTPValidationError | list[CoordinationSessionRead]]:
     """List Coordination Sessions
 
-     List negotiation sessions in a room.
-
-    Returns first-class CoordinationSession entities scoped to ``room_name``.
+     List coordination sessions in a room (at most the one presence shim).
 
     Args:
         room_name (str):
@@ -159,9 +153,7 @@ async def asyncio(
 ) -> HTTPValidationError | list[CoordinationSessionRead] | None:
     """List Coordination Sessions
 
-     List negotiation sessions in a room.
-
-    Returns first-class CoordinationSession entities scoped to ``room_name``.
+     List coordination sessions in a room (at most the one presence shim).
 
     Args:
         room_name (str):

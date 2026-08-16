@@ -65,9 +65,7 @@ def sync_detailed(
 ) -> Response[HTTPValidationError | MemoryRead]:
     """Get Memory
 
-     Get a specific memory by key.
-
-    Reads from the filesystem first, falls back to DB index.
+     Get a specific memory by key (from the filesystem).
 
     Args:
         room_name (str):
@@ -101,9 +99,7 @@ def sync(
 ) -> HTTPValidationError | MemoryRead | None:
     """Get Memory
 
-     Get a specific memory by key.
-
-    Reads from the filesystem first, falls back to DB index.
+     Get a specific memory by key (from the filesystem).
 
     Args:
         room_name (str):
@@ -132,9 +128,7 @@ async def asyncio_detailed(
 ) -> Response[HTTPValidationError | MemoryRead]:
     """Get Memory
 
-     Get a specific memory by key.
-
-    Reads from the filesystem first, falls back to DB index.
+     Get a specific memory by key (from the filesystem).
 
     Args:
         room_name (str):
@@ -166,9 +160,7 @@ async def asyncio(
 ) -> HTTPValidationError | MemoryRead | None:
     """Get Memory
 
-     Get a specific memory by key.
-
-    Reads from the filesystem first, falls back to DB index.
+     Get a specific memory by key (from the filesystem).
 
     Args:
         room_name (str):

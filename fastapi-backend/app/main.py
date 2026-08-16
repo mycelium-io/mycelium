@@ -33,6 +33,7 @@ from app.routes.agents import router as agents_router
 from app.routes.engines import router as engines_router
 from app.routes.episodes import router as episodes_router
 from app.routes.invites import router as invites_router
+from app.routes.links import router as links_router
 from app.routes.memory import router as memory_router
 from app.routes.messages import router as messages_router
 from app.routes.participate import router as participate_router
@@ -224,6 +225,7 @@ app.include_router(participate_router, prefix="/api")
 app.include_router(sessions_router, prefix="/api")
 app.include_router(stream_router, prefix="/api")
 app.include_router(memory_router, prefix="/api")
+app.include_router(links_router, prefix="/api")
 app.include_router(plan_router, prefix="/api")
 app.include_router(agent_context_router, prefix="/api")
 app.include_router(users_router, prefix="/api")

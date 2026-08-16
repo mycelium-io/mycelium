@@ -341,6 +341,54 @@ PATCH .../messages/{id}  {<span class="str">&quot;status&quot;</span>: <span cla
         <div class="callout-bar"></div>
         <div class="callout-body"><strong>Operating the hub.</strong> On the hub itself the files are ordinary files, so an operator can inspect, back up, or bulk-edit them. Edits made outside the CLI bypass the index; run <code>mycelium memory reindex</code> afterwards to resync. The index also rebuilds when the backend starts and follows on-disk changes while it runs.</div>
       </div>
+      <h2 id="memory-linking-memories">Linking memories</h2>
+      <p>Memories can point at each other, which turns a room&#x27;s flat set of files into an interlinked wiki. Two syntaxes, one meaning:</p>
+      <pre><code>We chose Postgres because of [[context/stack]].
+We chose Postgres because of myc://context/stack.</code></pre>
+      <p><code>myc://key</code> is the canonical form — it survives being put in frontmatter or a URL — and <code>[[key]]</code> is the shorthand you&#x27;ll actually type. Both resolve to the same memory. A link can name a section and carry its own text:</p>
+      <pre><code>[[context/stack#vector-store|how retrieval works]]</code></pre>
+      <h3 id="memory-backlinks">Backlinks</h3>
+      <p>The point of linking is knowing what depends on what. Before you change a memory, its backlinks tell you exactly which others lean on what it says:</p>
+      <pre><code><span class="cmd">mycelium memory links</span> context/stack</code></pre>
+      <pre><code>context/stack
+
+→ links to
+  ✓ procedures/deploy    wikilink
+
+← referenced by (2)
+  decisions/db           wikilink
+  work/api-server        wikilink</code></pre>
+      <p>Broken links are reported rather than hidden, and <code>--check</code> sweeps the whole room for them along with orphans — memories nothing links to:</p>
+      <pre><code><span class="cmd">mycelium memory links</span> <span class="flag">--check</span></code></pre>
+      <h3 id="memory-typed-relations">Typed relations</h3>
+      <p>Frontmatter relations are edges with meaning, not just navigation. Set them on a write with <code>--meta</code>:</p>
+      <pre><code><span class="cmd">mycelium memory set</span> decisions/db <span class="str">&quot;Postgres&quot;</span> <span class="flag">-m</span> supersedes=decisions/db-v1</code></pre>
+      <p>Recognized relations: <code>supersedes</code>, <code>superseded-by</code>, <code>depends-on</code>, <code>part-of</code>, <code>relates-to</code>. They show up in <code>memory links</code> alongside body links.</p>
+      <h3 id="memory-transclusion">Transclusion</h3>
+      <p>A link asks the reader to go look. A <strong>transclusion</strong> pulls the text in, so there&#x27;s only ever one copy of a fact. Mark the source memory expandable:</p>
+      <pre><code><span class="cmd">mycelium memory set</span> glossary/vector-store \
+  <span class="str">&quot;fastembed ONNX, bge-small-en-v1.5, 384-dim, no external service.&quot;</span> <span class="flag">--expandable</span></code></pre>
+      <p>Then embed it anywhere with <code>![[…]]</code>:</p>
+      <pre><code>Our retrieval layer is fixed:
+
+![[glossary/vector-store]]</code></pre>
+      <pre><code><span class="cmd">mycelium memory get</span> decisions/db <span class="flag">--expand</span></code></pre>
+      <p>Update the source and every page that embeds it is correct — nothing to re-copy, nothing to go stale.</p>
+      <p>Three rules keep this from getting unwieldy:</p>
+      <ul>
+        <li><strong>Opt-in on the target.</strong> Only a memory with <code>expandable: true</code> can be pulled</li>
+      </ul>
+      <p>in. Pointing <code>![[…]]</code> at anything else is reported as a broken link, not silently included — so pages become embeddable deliberately.</p>
+      <ul>
+        <li><strong>Depth 1.</strong> Text pulled in is inserted verbatim, so a <code>![[…]]</code> inside it</li>
+      </ul>
+      <p>stays literal. Cycles can&#x27;t form and an expanded page can&#x27;t balloon.</p>
+      <ul>
+        <li><strong>Never fabricated.</strong> A marker that can&#x27;t be expanded is left exactly as</li>
+      </ul>
+      <p>written and called out, so a refused embed never reads as an empty definition.</p>
+      <p>Links are room-local: <code>myc://rooms/{other}/{key}</code> parses but does not resolve.</p>
+      <p>Everything here is additive. A room whose memories carry no links behaves exactly as it did before.</p>
       <h2 id="memory-semantic-search">Semantic Search</h2>
       <p>Search finds memories by meaning: cosine similarity on all-MiniLM-L6-v2 embeddings (384 dimensions, runs locally, no external service).</p>
       <pre><code><span class="cmd">mycelium memory search</span> <span class="str">&quot;what storage decisions were made&quot;</span>

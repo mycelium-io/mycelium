@@ -149,7 +149,24 @@ is no litellm dependency.
 - **The CLI skill is a protocol.** Post a position → await → respond → consensus →
   plan → work. This is the value add; don't change it to an augmentation layer.
 - **memory set always upserts.** `memory set` overwrites existing keys automatically
-  (version increments).
+  (version increments). Frontmatter the store doesn't manage is user data: it
+  survives a rewrite rather than being dropped, and `MemoryCreate.meta` (CLI:
+  `--meta k=v`, `--expandable`) writes it.
+- **Memories interlink; the link index is derived.** `myc://key` (canonical) and
+  `[[key]]` (shorthand) are the same edge, plus `![[key]]` transclusions and typed
+  frontmatter relations (`supersedes`, `depends-on`, `part-of`, `relates-to`).
+  `app/services/links.py` parses them into `.link-index.jsonl` beside the embedding
+  index — same contract: derived from the markdown, rebuildable, upserted on every
+  write. It's persisted rather than derived-on-read because backlinks are the whole
+  point (the blast radius of changing a leaf) and deriving them means reparsing every
+  file on every memory open. Links are room-local; `myc://rooms/{other}/{key}` parses
+  but resolves to a `cross_room` error.
+- **Transclusion is opt-in on the target, and depth 1.** `![[key]]` embeds a memory
+  only when its frontmatter says `expandable: true`; anything else is an integrity
+  error, never a silent inclusion. Expanded text is inserted verbatim, so a marker
+  inside it stays literal — cycles are structurally impossible and expansion size is
+  bounded, with no depth cap to tune. A marker that can't expand is left exactly as
+  written and reported, so a refused embed never reads as an empty definition.
 - **Consensus compiles into the plan.** On convergence the aligner hands the agreed
   `{issue: value}` map to `plan_compiler.py`, an LLM stage that materializes
   `plan/tasks.md` (one shared `- [ ]` checklist with `@handle` owners) *before* the

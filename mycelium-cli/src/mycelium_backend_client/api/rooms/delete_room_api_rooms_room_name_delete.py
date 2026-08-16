@@ -60,18 +60,7 @@ def sync_detailed(
 ) -> Response[Any | HTTPValidationError]:
     """Delete Room
 
-     Delete a room and cascade to its child session rooms.
-
-    Cleanup order:
-
-      1. Resolve all coordination sessions for this room (display names + IDs).
-      2. Tear down in-memory CFN coordination state. Doing this before DB
-         deletes prevents in-flight ticks from firing against half-deleted
-         state.
-      3. Delete the room row — coordination_sessions, participants, and
-         messages cascade automatically via FK ON DELETE CASCADE.
-      4. Remove the filesystem directory.
-      5. Delete the MAS in the CFN mgmt plane (non-fatal, last).
+     Delete a room and its filesystem directory.
 
     Args:
         room_name (str):
@@ -102,18 +91,7 @@ def sync(
 ) -> Any | HTTPValidationError | None:
     """Delete Room
 
-     Delete a room and cascade to its child session rooms.
-
-    Cleanup order:
-
-      1. Resolve all coordination sessions for this room (display names + IDs).
-      2. Tear down in-memory CFN coordination state. Doing this before DB
-         deletes prevents in-flight ticks from firing against half-deleted
-         state.
-      3. Delete the room row — coordination_sessions, participants, and
-         messages cascade automatically via FK ON DELETE CASCADE.
-      4. Remove the filesystem directory.
-      5. Delete the MAS in the CFN mgmt plane (non-fatal, last).
+     Delete a room and its filesystem directory.
 
     Args:
         room_name (str):
@@ -139,18 +117,7 @@ async def asyncio_detailed(
 ) -> Response[Any | HTTPValidationError]:
     """Delete Room
 
-     Delete a room and cascade to its child session rooms.
-
-    Cleanup order:
-
-      1. Resolve all coordination sessions for this room (display names + IDs).
-      2. Tear down in-memory CFN coordination state. Doing this before DB
-         deletes prevents in-flight ticks from firing against half-deleted
-         state.
-      3. Delete the room row — coordination_sessions, participants, and
-         messages cascade automatically via FK ON DELETE CASCADE.
-      4. Remove the filesystem directory.
-      5. Delete the MAS in the CFN mgmt plane (non-fatal, last).
+     Delete a room and its filesystem directory.
 
     Args:
         room_name (str):
@@ -179,18 +146,7 @@ async def asyncio(
 ) -> Any | HTTPValidationError | None:
     """Delete Room
 
-     Delete a room and cascade to its child session rooms.
-
-    Cleanup order:
-
-      1. Resolve all coordination sessions for this room (display names + IDs).
-      2. Tear down in-memory CFN coordination state. Doing this before DB
-         deletes prevents in-flight ticks from firing against half-deleted
-         state.
-      3. Delete the room row — coordination_sessions, participants, and
-         messages cascade automatically via FK ON DELETE CASCADE.
-      4. Remove the filesystem directory.
-      5. Delete the MAS in the CFN mgmt plane (non-fatal, last).
+     Delete a room and its filesystem directory.
 
     Args:
         room_name (str):

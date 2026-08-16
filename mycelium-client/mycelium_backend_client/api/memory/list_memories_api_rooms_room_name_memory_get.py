@@ -83,10 +83,10 @@ def sync_detailed(
 ) -> Response[Any | HTTPValidationError]:
     """List Memories
 
-     List memories in a room.
+     List memories in a room (from the filesystem).
 
-    Reads from the filesystem, falls back to DB index.
-    Supports ETag / If-None-Match for efficient sync — returns 304 if nothing changed.
+    Supports ETag / If-None-Match for efficient sync — returns 304 if nothing
+    changed.
 
     Args:
         room_name (str):
@@ -126,10 +126,10 @@ def sync(
 ) -> Any | HTTPValidationError | None:
     """List Memories
 
-     List memories in a room.
+     List memories in a room (from the filesystem).
 
-    Reads from the filesystem, falls back to DB index.
-    Supports ETag / If-None-Match for efficient sync — returns 304 if nothing changed.
+    Supports ETag / If-None-Match for efficient sync — returns 304 if nothing
+    changed.
 
     Args:
         room_name (str):
@@ -164,10 +164,10 @@ async def asyncio_detailed(
 ) -> Response[Any | HTTPValidationError]:
     """List Memories
 
-     List memories in a room.
+     List memories in a room (from the filesystem).
 
-    Reads from the filesystem, falls back to DB index.
-    Supports ETag / If-None-Match for efficient sync — returns 304 if nothing changed.
+    Supports ETag / If-None-Match for efficient sync — returns 304 if nothing
+    changed.
 
     Args:
         room_name (str):
@@ -205,10 +205,10 @@ async def asyncio(
 ) -> Any | HTTPValidationError | None:
     """List Memories
 
-     List memories in a room.
+     List memories in a room (from the filesystem).
 
-    Reads from the filesystem, falls back to DB index.
-    Supports ETag / If-None-Match for efficient sync — returns 304 if nothing changed.
+    Supports ETag / If-None-Match for efficient sync — returns 304 if nothing
+    changed.
 
     Args:
         room_name (str):
