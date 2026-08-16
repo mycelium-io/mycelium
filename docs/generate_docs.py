@@ -87,6 +87,7 @@ GROUP_CONFIG: list[tuple[str, str, str]] = [
     ("setup", "setup", "setup"),
     ("room", "room", "room"),
     ("session", "session", "session"),
+    ("agent", "agent", "agent"),
     ("memory", "memory", "memory"),
     ("plan", "plan", "plan"),
     ("negotiate", "negotiate", "negotiate"),

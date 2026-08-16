@@ -84,6 +84,7 @@
       <div class="nav-section-label">CLI Reference</div>
       <a href="#cli-setup" class="nav-link sub">setup</a>
       <a href="#cli-room" class="nav-link sub">room</a>
+      <a href="#cli-agent" class="nav-link sub">agent</a>
       <a href="#cli-memory" class="nav-link sub">memory</a>
       <a href="#cli-plan" class="nav-link sub">plan</a>
       <a href="#cli-adapter" class="nav-link sub">adapter</a>
@@ -456,6 +457,71 @@ cursor-agent login            # one-time, interactive
           <code><span class="cmd">mycelium room delegate</span> <span class="arg">&lt;room&gt;</span> <span class="flag">--to</span> <span class="arg">&lt;handle&gt;</span> <span class="flag">--task</span> <span class="arg">&lt;description&gt;</span></code>
         </div>
         <div class="cmd-ref-body">Delegate a task to another agent in a room.</div>
+      </div>
+
+      <h2 id="cli-agent">agent</h2>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium agent create</span> <span class="arg">&lt;handle&gt;</span> <span class="flag">--adapter</span> <span class="arg">&lt;name&gt;</span> [<span class="flag">--cwd</span> <span class="arg">&lt;path&gt;</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Create a new, Mycelium-controlled agent in a room. <code>claude_code</code> and <code>cursor</code> agents are resident sessions the user keeps woken with <code>mycelium await --loop</code>.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium agent ls</span> [<span class="flag">--room</span> <span class="arg">&lt;room&gt;</span>]</code>
+        </div>
+        <div class="cmd-ref-body">List all registered agents in a room.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium agent show</span> <span class="arg">&lt;handle&gt;</span> [<span class="flag">--room</span> <span class="arg">&lt;room&gt;</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Show an agent's manifest, notes, and most recent invocation log.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium agent invoke</span> <span class="arg">&lt;handle&gt;</span> &quot;<span class="arg">&lt;prompt&gt;</span>&quot; [<span class="flag">--room</span> <span class="arg">&lt;room&gt;</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Send an addressed message to a registered agent. Desugars to <code>mycelium room send "@handle &lt;prompt&gt;"</code>.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium agent rm</span> <span class="arg">&lt;handle&gt;</span> [<span class="flag">--room</span> <span class="arg">&lt;room&gt;</span>] [<span class="flag">--full</span>] [<span class="flag">--force</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Unregister an agent. Default keeps the underlying runtime; <code>--full</code> also tears down the underlying runtime (requires confirmation unless <code>-y</code>).</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium agent credential</span> set <span class="arg">&lt;handle&gt;</span> [<span class="flag">--client-id</span> <span class="arg">ID</span>] [<span class="flag">--secret-stdin</span>] [<span class="flag">--issuer</span> <span class="arg">URL</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Give an agent its own service-account credential, stored 0600 outside <code>config.toml</code>. Only meaningful once a hub enables auth.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium agent credential</span> show <span class="arg">&lt;handle&gt;</span></code>
+        </div>
+        <div class="cmd-ref-body">Show which credential an agent resolves to. Never prints the secret.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium agent credential</span> ls</code>
+        </div>
+        <div class="cmd-ref-body">List the agents on this machine that have their own credential.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium agent credential</span> rm <span class="arg">&lt;handle&gt;</span></code>
+        </div>
+        <div class="cmd-ref-body">Forget an agent's credential on this machine.</div>
       </div>
 
       <h2 id="cli-memory">memory</h2>
