@@ -20,8 +20,12 @@ first call that needs it. A refresh that fails degrades to "no header" rather
 than failing the command: against an ungated hub the call still works, and
 against a gated one the 401 says what a fabricated error never could.
 
-Agent credentials (#564) attach at this same seam — a different credential
-source, the same one factory.
+An agent attaches here too, through the same one factory: when the caller is
+acting as an agent — ``await``/``respond`` naming a handle, or a resident runtime
+that says which handle it runs as — the credential resolved for *that agent*
+(``mycelium.agent_credentials``) is preferred over the human session, so an
+agent's writes carry the agent's own identity rather than whoever last logged in
+on the machine.
 """
 
 from __future__ import annotations
@@ -122,19 +126,32 @@ def _refresh(stored: StoredToken, config: MyceliumConfig) -> StoredToken | None:
     return renewed
 
 
-def auth_headers(config: MyceliumConfig | None = None) -> dict[str, str]:
-    """``{"Authorization": "Bearer …"}`` when logged in, ``{}`` when not."""
-    token = current_token(config)
+def auth_headers(
+    config: MyceliumConfig | None = None, *, handle: str | None = None
+) -> dict[str, str]:
+    """``{"Authorization": "Bearer …"}`` when there's a credential, ``{}`` when not.
+
+    ``handle`` names the agent the call is being made *as*. Its own credential
+    wins over the human session when it has one: a resident agent driven from a
+    developer's logged-in shell must still write as itself, not as the developer.
+    """
+    from mycelium import agent_credentials
+
+    cfg = _resolve_config(config)
+    agent_token = agent_credentials.access_token(cfg, handle)
+    if agent_token:
+        return {"Authorization": f"Bearer {agent_token}"}
+    token = current_token(cfg)
     return {"Authorization": f"Bearer {token.access_token}"} if token else {}
 
 
-def typed_client(config: MyceliumConfig | None = None) -> Client:
-    """The generated OpenAPI client, authenticated when there's a session."""
+def typed_client(config: MyceliumConfig | None = None, *, handle: str | None = None) -> Client:
+    """The generated OpenAPI client, authenticated when there's a credential."""
     from mycelium_backend_client import Client
 
     cfg = _resolve_config(config)
     client = Client(base_url=cfg.server.api_url, raise_on_unexpected_status=True)
-    headers = auth_headers(cfg)
+    headers = auth_headers(cfg, handle=handle)
     return client.with_headers(headers) if headers else client
 
 
@@ -144,16 +161,17 @@ def hub_client(
     base_url: str | None = None,
     timeout: float | None = _DEFAULT_TIMEOUT_S,
     headers: dict[str, str] | None = None,
+    handle: str | None = None,
     **kwargs: Any,
 ) -> httpx.Client:
-    """A raw ``httpx`` client against the hub, authenticated when there's a session.
+    """A raw ``httpx`` client against the hub, authenticated when there's a credential.
 
     ``base_url`` overrides the configured hub — ``room clone`` reads from a
-    *remote* hub — and the session still applies, since the token is the caller's
-    identity rather than a property of one address.
+    *remote* hub — and the credential still applies, since the token is the
+    caller's identity rather than a property of one address.
     """
     cfg = _resolve_config(config)
-    merged = {**auth_headers(cfg), **(headers or {})}
+    merged = {**auth_headers(cfg, handle=handle), **(headers or {})}
     return httpx.Client(
         base_url=base_url or cfg.server.api_url,
         timeout=timeout,

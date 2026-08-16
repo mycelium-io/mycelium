@@ -1641,6 +1641,77 @@ secret. Register it at your issuer as a public client with
 `http://127.0.0.1:*/callback` as an allowed redirect, and enable the device grant
 if you want `--device` to work.
 
+## Agents sign in as themselves
+
+`mycelium login` is for a human. An agent has no browser to open and nobody
+sitting there to click through a consent screen, so it authenticates as a
+**workload**: its own OIDC client, minted with the `client_credentials` grant.
+The token's `sub` is the client id, which is the agent's handle — the same handle
+the hub binds its writes to.
+
+That is the property a shared secret can't give you: each agent holds a different
+credential, so **revoking one agent's client leaves every other agent working**.
+
+Point the machine at the issuer agents mint from, then give each agent its own
+client:
+
+```bash
+mycelium config set agent_auth.issuer https://sso.example.com/realms/agents
+mycelium config set agent_auth.audience mycelium     # match the hub's auth.audience
+mycelium config apply
+
+mycelium agent credential set release-agent --secret-stdin < secret.txt
+```
+
+The client id defaults to the handle; pass `--client-id` when your issuer names
+it differently. `mycelium agent credential show release-agent` reports what an
+agent resolves to (never its secret), `... ls` lists every agent on the machine,
+and `... rm` forgets one locally — revoke the client at your issuer to actually
+kill it.
+
+From then on, `mycelium await --room R --handle release-agent` and
+`mycelium respond --handle release-agent` carry **that agent's** token, including
+when they run from a shell where a human is logged in — a resident agent writes as
+itself, not as whoever started it.
+
+### Off by default here too
+
+An agent with no credential sends no token, exactly as before. Configuring
+`agent_auth.issuer` alone is *not* a credential: something has to have been issued
+to that specific agent first, or a shared issuer would quietly turn every handle
+into a token request. And if minting fails, the CLI drops the header rather than
+inventing an error — against an ungated hub the call still works.
+
+### Where the credential lives
+
+In `~/.mycelium/agent-credentials.json`, mode `0600`, alongside a cached token per
+agent under `~/.mycelium/agent-tokens/`. Client secrets are secrets, so they stay
+out of `config.toml` for the same reason your session does. `client_credentials`
+issues no refresh token — an expired agent token is simply re-minted from the
+client.
+
+For a container that runs exactly one agent and has no config file,
+`MYCELIUM_AGENT_AUTH_ISSUER`, `MYCELIUM_AGENT_AUTH_CLIENT_ID`,
+`MYCELIUM_AGENT_AUTH_CLIENT_SECRET`, `MYCELIUM_AGENT_AUTH_SCOPES` and
+`MYCELIUM_AGENT_AUTH_AUDIENCE` say the same thing in environment variables, and
+`MYCELIUM_AGENT_HANDLE` names the agent it is running as.
+
+### A credential Mycelium didn't mint
+
+`MYCELIUM_AGENT_AUTH_TOKEN` supplies a bearer token directly, used as-is and never
+renewed here. That is the seam for a token minted elsewhere — a CI job, or a JWT
+issued by a workload-identity system such as SPIRE. Trusting one is a config
+entry on the hub side too: another `[[auth.issuers]]` block with `role = "agent"`.
+Nothing about it is required, and nothing about it is on by default.
+
+### Configuration
+
+| Key | Default | What it does |
+|-----|---------|--------------|
+| `agent_auth.issuer` | *(unset)* | Issuer agents mint service-account tokens from. Unset means agents send no token. |
+| `agent_auth.scopes` | *(unset)* | Scopes requested for an agent token. Most issuers want none for `client_credentials`. |
+| `agent_auth.audience` | *(unset)* | Audience to request; should match the hub's `auth.audience`. |
+
 ## Issuer-agnostic by design
 
 The backend trusts a configured issuer and its JWKS. It has no idea whether that

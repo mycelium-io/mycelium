@@ -84,6 +84,7 @@
       <div class="nav-section-label">CLI Reference</div>
       <a href="#cli-setup" class="nav-link sub">setup</a>
       <a href="#cli-room" class="nav-link sub">room</a>
+      <a href="#cli-agent" class="nav-link sub">agent</a>
       <a href="#cli-memory" class="nav-link sub">memory</a>
       <a href="#cli-plan" class="nav-link sub">plan</a>
       <a href="#cli-adapter" class="nav-link sub">adapter</a>
@@ -101,6 +102,7 @@
       <a href="#config-engine" class="nav-link sub">engine</a>
       <a href="#config-auth" class="nav-link sub">auth</a>
       <a href="#config-login" class="nav-link sub">login</a>
+      <a href="#config-agent-auth" class="nav-link sub">agent_auth</a>
       <a href="#config-metrics" class="nav-link sub">metrics</a>
     </div>
     <div class="nav-section">
@@ -455,6 +457,71 @@ cursor-agent login            # one-time, interactive
           <code><span class="cmd">mycelium room delegate</span> <span class="arg">&lt;room&gt;</span> <span class="flag">--to</span> <span class="arg">&lt;handle&gt;</span> <span class="flag">--task</span> <span class="arg">&lt;description&gt;</span></code>
         </div>
         <div class="cmd-ref-body">Delegate a task to another agent in a room.</div>
+      </div>
+
+      <h2 id="cli-agent">agent</h2>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium agent create</span> <span class="arg">&lt;handle&gt;</span> <span class="flag">--adapter</span> <span class="arg">&lt;name&gt;</span> [<span class="flag">--cwd</span> <span class="arg">&lt;path&gt;</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Create a new, Mycelium-controlled agent in a room. <code>claude_code</code> and <code>cursor</code> agents are resident sessions the user keeps woken with <code>mycelium await --loop</code>.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium agent ls</span> [<span class="flag">--room</span> <span class="arg">&lt;room&gt;</span>]</code>
+        </div>
+        <div class="cmd-ref-body">List all registered agents in a room.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium agent show</span> <span class="arg">&lt;handle&gt;</span> [<span class="flag">--room</span> <span class="arg">&lt;room&gt;</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Show an agent's manifest, notes, and most recent invocation log.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium agent invoke</span> <span class="arg">&lt;handle&gt;</span> &quot;<span class="arg">&lt;prompt&gt;</span>&quot; [<span class="flag">--room</span> <span class="arg">&lt;room&gt;</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Send an addressed message to a registered agent. Desugars to <code>mycelium room send "@handle &lt;prompt&gt;"</code>.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium agent rm</span> <span class="arg">&lt;handle&gt;</span> [<span class="flag">--room</span> <span class="arg">&lt;room&gt;</span>] [<span class="flag">--full</span>] [<span class="flag">--force</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Unregister an agent. Default keeps the underlying runtime; <code>--full</code> also tears down the underlying runtime (requires confirmation unless <code>-y</code>).</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium agent credential</span> set <span class="arg">&lt;handle&gt;</span> [<span class="flag">--client-id</span> <span class="arg">ID</span>] [<span class="flag">--secret-stdin</span>] [<span class="flag">--issuer</span> <span class="arg">URL</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Give an agent its own service-account credential, stored 0600 outside <code>config.toml</code>. Only meaningful once a hub enables auth.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium agent credential</span> show <span class="arg">&lt;handle&gt;</span></code>
+        </div>
+        <div class="cmd-ref-body">Show which credential an agent resolves to. Never prints the secret.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium agent credential</span> ls</code>
+        </div>
+        <div class="cmd-ref-body">List the agents on this machine that have their own credential.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium agent credential</span> rm <span class="arg">&lt;handle&gt;</span></code>
+        </div>
+        <div class="cmd-ref-body">Forget an agent's credential on this machine.</div>
       </div>
 
       <h2 id="cli-memory">memory</h2>
@@ -815,6 +882,18 @@ cursor-agent login            # one-time, interactive
 <span class="comment"># Fixed loopback port for the browser redirect (0 = pick a free one). Set this when the issuer requires an exact registered redirect URI.</span>
 <span class="arg">redirect_port</span> = 0
 
+<span class="comment"># Where an *agent* gets its own token — the workload half of the client side.</span>
+<span class="cmd" id="config-agent-auth">[agent_auth]</span>
+
+<span class="comment"># OIDC issuer agents mint their service-account tokens from. Unset (default) means agents send no token.</span>
+<span class="arg">issuer</span> = <span class="str">&quot;&quot;</span>
+
+<span class="comment"># Space-separated scopes to request for an agent token. Unset sends none, which is what most issuers want for client_credentials.</span>
+<span class="arg">scopes</span> = <span class="str">&quot;&quot;</span>
+
+<span class="comment"># Audience to request for agent tokens; should match the hub&#x27;s auth.audience.</span>
+<span class="arg">audience</span> = <span class="str">&quot;&quot;</span>
+
 <span class="comment"># Configuration for the metrics collector + display.</span>
 <span class="cmd" id="config-metrics">[metrics]</span>
 
@@ -1161,6 +1240,53 @@ role     = &quot;user&quot;</code></pre>
       </div>
       <p><code>MYCELIUM_LOGIN_ISSUER</code>, <code>MYCELIUM_LOGIN_CLIENT_ID</code>, <code>MYCELIUM_LOGIN_CLIENT_SECRET</code>, <code>MYCELIUM_LOGIN_AUDIENCE</code> and <code>MYCELIUM_LOGIN_SCOPES</code> override the same settings, for a runner that has no config file to edit.</p>
       <p>The CLI is a <strong>public client</strong>: it authenticates with PKCE (S256) and ships no secret. Register it at your issuer as a public client with <code>http://127.0.0.1:*/callback</code> as an allowed redirect, and enable the device grant if you want <code>--device</code> to work.</p>
+      <h2 id="auth-agents-sign-in-as-themselves">Agents sign in as themselves</h2>
+      <p><code>mycelium login</code> is for a human. An agent has no browser to open and nobody sitting there to click through a consent screen, so it authenticates as a <strong>workload</strong>: its own OIDC client, minted with the <code>client_credentials</code> grant. The token&#x27;s <code>sub</code> is the client id, which is the agent&#x27;s handle — the same handle the hub binds its writes to.</p>
+      <p>That is the property a shared secret can&#x27;t give you: each agent holds a different credential, so <strong>revoking one agent&#x27;s client leaves every other agent working</strong>.</p>
+      <p>Point the machine at the issuer agents mint from, then give each agent its own client:</p>
+      <pre><code><span class="cmd">mycelium config set</span> agent_auth.issuer https://sso.example.com/realms/agents
+<span class="cmd">mycelium config set</span> agent_auth.audience mycelium     # match the hub&#x27;s auth.audience
+<span class="cmd">mycelium config apply</span>
+
+<span class="cmd">mycelium agent credential</span> set release-agent <span class="flag">--secret-stdin</span> &lt; secret.txt</code></pre>
+      <p>The client id defaults to the handle; pass <code>--client-id</code> when your issuer names it differently. <code>mycelium agent credential show release-agent</code> reports what an agent resolves to (never its secret), <code>... ls</code> lists every agent on the machine, and <code>... rm</code> forgets one locally — revoke the client at your issuer to actually kill it.</p>
+      <p>From then on, <code>mycelium await --room R --handle release-agent</code> and <code>mycelium respond --handle release-agent</code> carry <strong>that agent&#x27;s</strong> token, including when they run from a shell where a human is logged in — a resident agent writes as itself, not as whoever started it.</p>
+      <h3 id="auth-off-by-default-here-too">Off by default here too</h3>
+      <p>An agent with no credential sends no token, exactly as before. Configuring <code>agent_auth.issuer</code> alone is <em>not</em> a credential: something has to have been issued to that specific agent first, or a shared issuer would quietly turn every handle into a token request. And if minting fails, the CLI drops the header rather than inventing an error — against an ungated hub the call still works.</p>
+      <h3 id="auth-where-the-credential-lives">Where the credential lives</h3>
+      <p>In <code>~/.mycelium/agent-credentials.json</code>, mode <code>0600</code>, alongside a cached token per agent under <code>~/.mycelium/agent-tokens/</code>. Client secrets are secrets, so they stay out of <code>config.toml</code> for the same reason your session does. <code>client_credentials</code> issues no refresh token — an expired agent token is simply re-minted from the client.</p>
+      <p>For a container that runs exactly one agent and has no config file, <code>MYCELIUM_AGENT_AUTH_ISSUER</code>, <code>MYCELIUM_AGENT_AUTH_CLIENT_ID</code>, <code>MYCELIUM_AGENT_AUTH_CLIENT_SECRET</code>, <code>MYCELIUM_AGENT_AUTH_SCOPES</code> and <code>MYCELIUM_AGENT_AUTH_AUDIENCE</code> say the same thing in environment variables, and <code>MYCELIUM_AGENT_HANDLE</code> names the agent it is running as.</p>
+      <h3 id="auth-a-credential-mycelium-didnt-mint">A credential Mycelium didn&#x27;t mint</h3>
+      <p><code>MYCELIUM_AGENT_AUTH_TOKEN</code> supplies a bearer token directly, used as-is and never renewed here. That is the seam for a token minted elsewhere — a CI job, or a JWT issued by a workload-identity system such as SPIRE. Trusting one is a config entry on the hub side too: another <code>[[auth.issuers]]</code> block with <code>role = &quot;agent&quot;</code>. Nothing about it is required, and nothing about it is on by default.</p>
+      <h3 id="auth-configuration">Configuration</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Key</th>
+              <th>Default</th>
+              <th>What it does</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>agent_auth.issuer</code></td>
+              <td><em>(unset)</em></td>
+              <td>Issuer agents mint service-account tokens from. Unset means agents send no token.</td>
+            </tr>
+            <tr>
+              <td><code>agent_auth.scopes</code></td>
+              <td><em>(unset)</em></td>
+              <td>Scopes requested for an agent token. Most issuers want none for <code>client_credentials</code>.</td>
+            </tr>
+            <tr>
+              <td><code>agent_auth.audience</code></td>
+              <td><em>(unset)</em></td>
+              <td>Audience to request; should match the hub&#x27;s <code>auth.audience</code>.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
       <h2 id="auth-issuer-agnostic-by-design">Issuer-agnostic by design</h2>
       <p>The backend trusts a configured issuer and its JWKS. It has no idea whether that is Keycloak, Dex, ZITADEL, Authentik, or your existing corporate SSO, and it never needs one particular product installed.</p>
       <p><strong>More than one trust root is normal.</strong> Humans log in through an interactive OIDC issuer; agents present service-account tokens, possibly from an entirely separate root. List each as its own block:</p>

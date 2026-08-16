@@ -396,6 +396,31 @@ def _persist_and_describe(
     )
     for line in impl.describe(manifest, room=room_name):
         console.print(line)
+    _prompt_for_credential(config, manifest)
+
+
+def _prompt_for_credential(config: MyceliumConfig, manifest: AgentManifest) -> None:
+    """Point at the credential step, but only where it means something.
+
+    A hub with its gate off needs no credential, and saying otherwise on every
+    ``agent create`` would make identity look mandatory when it is the opposite.
+    So this speaks only once an issuer is configured — i.e. once this machine has
+    somewhere to mint agent tokens from — and stays silent otherwise.
+    """
+    from mycelium import agent_credentials
+
+    if not config.agent_auth.issuer:
+        return
+    if agent_credentials.resolve(config, manifest.handle) is not None:
+        return
+    console.print(
+        f"\n[dim]@{manifest.handle} has no credential of its own yet — it would "
+        f"authenticate as whoever runs it.[/dim]"
+    )
+    console.print(
+        f"[dim]Give it one with: mycelium agent credential set {manifest.handle} "
+        f"--secret-stdin[/dim]"
+    )
 
 
 #: CLI label per adapter for the wizard's cwd prompt. ``cwd`` is optional now
@@ -991,6 +1016,240 @@ def agent_rm(
         console.print(f"[green]{verb}:[/green] @{handle} from {room_name}")
     except typer.Exit:
         raise
+    except Exception as e:
+        verbose = ctx.obj.get("verbose", False) if ctx.obj else False
+        print_error(e, verbose=verbose)
+        raise typer.Exit(1) from None
+
+
+# ── credential ───────────────────────────────────────────────────────────────
+#
+# An agent's own credential, so its writes carry *its* identity rather than
+# whoever happens to be logged in on the machine it runs on. Client-side only:
+# nothing here is stored in the room, because a manifest is shared state and a
+# client secret is not. See `mycelium.agent_credentials`.
+
+credential_app = typer.Typer(
+    help=(
+        "Manage an agent's own credential — the service-account client it "
+        "authenticates to a gated hub as. Not needed while the hub's gate is off."
+    ),
+    no_args_is_help=True,
+)
+app.add_typer(credential_app, name="credential")
+
+
+@doc_ref(
+    usage="mycelium agent credential set <handle> [--client-id ID] [--secret-stdin] [--issuer URL]",
+    desc=(
+        "Give an agent its own service-account credential, stored 0600 outside "
+        "<code>config.toml</code>. Only meaningful once a hub enables auth."
+    ),
+    group="agent",
+)
+@credential_app.command("set")
+def credential_set(
+    ctx: typer.Context,
+    handle: str = typer.Argument(..., help="Agent handle the credential belongs to"),
+    client_id: str | None = typer.Option(
+        None, "--client-id", help="OAuth client id (default: the handle itself)."
+    ),
+    secret: str | None = typer.Option(
+        None, "--secret", help="Client secret. Prefer --secret-stdin; this lands in shell history."
+    ),
+    secret_stdin: bool = typer.Option(
+        False, "--secret-stdin", help="Read the client secret from stdin."
+    ),
+    issuer: str | None = typer.Option(
+        None, "--issuer", help="Issuer for this agent (default: agent_auth.issuer)."
+    ),
+    scopes: str | None = typer.Option(None, "--scopes", help="Scopes to request for this agent."),
+    audience: str | None = typer.Option(
+        None, "--audience", help="Audience to request; should match the hub's auth.audience."
+    ),
+) -> None:
+    """Record the credential an agent presents to a gated hub.
+
+    The token minted from it carries the agent's handle as its `sub`, which is
+    what the hub binds the agent's writes to. Each agent gets its own client, so
+    revoking one agent's credential leaves every other agent working.
+
+    Examples:
+        mycelium agent credential set release-agent --secret-stdin < secret.txt
+        mycelium agent credential set release-agent --client-id svc-release --secret-stdin
+    """
+    from mycelium import agent_credentials
+
+    try:
+        config = MyceliumConfig.load()
+        json_output = ctx.obj.get("json", False) if ctx.obj else False
+
+        if secret_stdin:
+            secret = sys.stdin.read().strip() or None
+        elif secret is None and sys.stdin.isatty():
+            secret = (
+                typer.prompt(
+                    "Client secret (blank if the issuer needs none)", default="", hide_input=True
+                )
+                or None
+            )
+
+        path = agent_credentials.save_credential(
+            handle,
+            client_id=client_id,
+            client_secret=secret,
+            issuer=issuer,
+            scopes=scopes,
+            audience=audience,
+        )
+        resolved = agent_credentials.describe(config, handle)
+
+        if json_output:
+            typer.echo(json_module.dumps({"stored": str(path), **resolved}, indent=2))
+            return
+
+        console.print(
+            f"[green]Credential stored[/green] for [cyan]@{resolved['handle']}[/cyan] "
+            f"[dim](client_id: {resolved['client_id']})[/dim]"
+        )
+        console.print(f"[dim]Saved to {path} (mode 0600).[/dim]")
+        if not resolved.get("issuer"):
+            console.print(
+                "\n[yellow]No issuer resolved[/yellow] — the credential can't be minted yet."
+            )
+            console.print("[dim]Set one with: mycelium config set agent_auth.issuer <url>[/dim]")
+    except typer.Exit:
+        raise
+    except Exception as e:
+        verbose = ctx.obj.get("verbose", False) if ctx.obj else False
+        print_error(e, verbose=verbose)
+        raise typer.Exit(1) from None
+
+
+@doc_ref(
+    usage="mycelium agent credential show <handle>",
+    desc="Show which credential an agent resolves to. Never prints the secret.",
+    group="agent",
+)
+@credential_app.command("show")
+def credential_show(
+    ctx: typer.Context,
+    handle: str = typer.Argument(..., help="Agent handle"),
+) -> None:
+    """Report an agent's resolved credential and the state of its cached token."""
+    from mycelium import agent_credentials
+
+    try:
+        config = MyceliumConfig.load()
+        json_output = ctx.obj.get("json", False) if ctx.obj else False
+        resolved = agent_credentials.describe(config, handle)
+
+        if json_output:
+            typer.echo(json_module.dumps(resolved, indent=2))
+            return
+
+        if not resolved.get("configured"):
+            console.print(
+                f"[dim]@{resolved['handle']} has no credential — it sends no token "
+                f"(which is all an ungated hub needs).[/dim]"
+            )
+            return
+
+        table = Table(show_header=False, box=None)
+        table.add_row("handle", f"@{resolved['handle']}")
+        table.add_row("client_id", resolved["client_id"] or "—")
+        table.add_row("issuer", resolved["issuer"] or "[yellow]none[/yellow]")
+        table.add_row("audience", resolved["audience"] or "—")
+        table.add_row("scopes", resolved["scopes"] or "—")
+        table.add_row("secret", "set" if resolved["has_secret"] else "—")
+        if resolved["static_token"]:
+            table.add_row("token", f"supplied via {agent_credentials.STATIC_TOKEN_ENV}")
+        cached = resolved.get("cached_token")
+        if cached:
+            state = "expired" if cached["expired"] else f"{int(cached['expires_in_s'] or 0)}s left"
+            table.add_row("cached token", state)
+        console.print(table)
+    except typer.Exit:
+        raise
+    except Exception as e:
+        verbose = ctx.obj.get("verbose", False) if ctx.obj else False
+        print_error(e, verbose=verbose)
+        raise typer.Exit(1) from None
+
+
+@doc_ref(
+    usage="mycelium agent credential ls",
+    desc="List the agents on this machine that have their own credential.",
+    group="agent",
+)
+@credential_app.command("ls")
+def credential_ls(ctx: typer.Context) -> None:
+    """List stored per-agent credentials (never their secrets)."""
+    from mycelium import agent_credentials
+
+    try:
+        stored = agent_credentials.list_credentials()
+        json_output = ctx.obj.get("json", False) if ctx.obj else False
+
+        if json_output:
+            typer.echo(
+                json_module.dumps([c.redacted() for c in stored.values()], indent=2, sort_keys=True)
+            )
+            return
+
+        if not stored:
+            console.print("[dim]No agent credentials on this machine.[/dim]")
+            return
+
+        table = Table(title="Agent credentials")
+        table.add_column("handle", style="cyan")
+        table.add_column("client_id")
+        table.add_column("issuer")
+        table.add_column("secret")
+        for cred in sorted(stored.values(), key=lambda c: c.handle):
+            table.add_row(
+                f"@{cred.handle}",
+                cred.client_id,
+                cred.issuer or "[dim]agent_auth.issuer[/dim]",
+                "set" if cred.client_secret else "—",
+            )
+        console.print(table)
+    except Exception as e:
+        verbose = ctx.obj.get("verbose", False) if ctx.obj else False
+        print_error(e, verbose=verbose)
+        raise typer.Exit(1) from None
+
+
+@doc_ref(
+    usage="mycelium agent credential rm <handle>",
+    desc="Forget an agent's credential on this machine.",
+    group="agent",
+)
+@credential_app.command("rm")
+def credential_rm(
+    ctx: typer.Context,
+    handle: str = typer.Argument(..., help="Agent handle"),
+) -> None:
+    """Drop an agent's stored credential and any token minted from it.
+
+    This is local forgetting, not revocation: the client still exists at the
+    issuer until it is revoked there.
+    """
+    from mycelium import agent_credentials
+
+    try:
+        existed = agent_credentials.remove_credential(handle)
+        json_output = ctx.obj.get("json", False) if ctx.obj else False
+        if json_output:
+            typer.echo(json_module.dumps({"removed": existed}))
+            return
+        if existed:
+            console.print(f"[green]Removed[/green] the credential for @{handle}.")
+            console.print(
+                "[dim]Revoke the client at the issuer too — this only forgot it here.[/dim]"
+            )
+        else:
+            console.print(f"[dim]@{handle} had no credential here — nothing to do.[/dim]")
     except Exception as e:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
         print_error(e, verbose=verbose)
