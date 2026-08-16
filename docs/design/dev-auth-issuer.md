@@ -100,4 +100,6 @@ Operator-facing documentation for the gate itself lives in the docs site under
 
 - ~~#561 — HTTP-API JWT gate (validate against this issuer's JWKS)~~ — landed
 - #562 — verified handle binding (consume the principal this gate resolves)
-- #565 — replace this with the real Keycloak (humans) + SPIRE (agents) wiring
+- ~~#565 — real Keycloak (humans) wiring~~ — landed: a validated operator guide
+  (`docs/guides/keycloak-oidc.md`) + an opt-in `compose-keycloak.yml` overlay. SPIRE
+  (agents) shipped separately in #588.
