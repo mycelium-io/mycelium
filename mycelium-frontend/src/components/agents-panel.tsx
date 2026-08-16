@@ -34,6 +34,10 @@ interface Props {
   roomName: string;
   /** Bumped by the room page on pushed presence/memory events to refetch now. */
   refreshKey?: number;
+  /** One-shot request to open the Add dialog on its engines tab — how the
+   *  command palette reaches the invite form from anywhere in the room. */
+  engineInvite?: boolean;
+  onEngineInviteShown?: () => void;
 }
 
 interface Person {
@@ -77,7 +81,12 @@ function presenceLabel(member?: PresenceMember): string | null {
  * teardown stay CLI-only: those have spoke-local side effects (resident session,
  * workspace assets) the hub can't perform. Use `mycelium agent create` / `rm`.
  */
-export function AgentsPanel({ roomName, refreshKey = 0 }: Props) {
+export function AgentsPanel({
+  roomName,
+  refreshKey = 0,
+  engineInvite = false,
+  onEngineInviteShown,
+}: Props) {
   const [agents, setAgents] = useState<AgentSummary[]>([]);
   const [posters, setPosters] = useState<string[]>([]);
   const [liveMembers, setLiveMembers] = useState<PresenceMember[]>([]);
@@ -116,6 +125,13 @@ export function AgentsPanel({ roomName, refreshKey = 0 }: Props) {
     const t = setInterval(refresh, 30_000);
     return () => clearInterval(t);
   }, [refresh, refreshKey]);
+
+  useEffect(() => {
+    if (!engineInvite) return;
+    setAddTab("engines");
+    setAddOpen(true);
+    onEngineInviteShown?.();
+  }, [engineInvite, onEngineInviteShown]);
 
   const agentHandles = useMemo(() => new Set(agents.map((a) => a.handle)), [agents]);
 

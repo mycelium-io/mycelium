@@ -27,6 +27,9 @@ interface Props {
   onTabChange?: (tab: Tab) => void;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  /** One-shot request to show the engine invite form (from the palette). */
+  engineInvite?: boolean;
+  onEngineInviteShown?: () => void;
 }
 
 /** The room's context, consolidated: agents, episodes, and memory behind one
@@ -39,6 +42,8 @@ export function RoomInspector({
   onTabChange,
   open: openProp,
   onOpenChange,
+  engineInvite = false,
+  onEngineInviteShown,
 }: Props) {
   const [tabInternal, setTabInternal] = useState<Tab>("agents");
   const [openInternal, setOpenInternal] = useState(true);
@@ -109,7 +114,14 @@ export function RoomInspector({
       </div>
 
       <div className="min-h-0 flex-1 overflow-hidden">
-        {tab === "agents" && <AgentsPanel roomName={roomName} refreshKey={memoryRefresh} />}
+        {tab === "agents" && (
+          <AgentsPanel
+            roomName={roomName}
+            refreshKey={memoryRefresh}
+            engineInvite={engineInvite}
+            onEngineInviteShown={onEngineInviteShown}
+          />
+        )}
         {tab === "episodes" && <EpisodesRail roomName={roomName} />}
         {tab === "memory" && (
           <MemoryPanel roomName={roomName} masId={masId ?? null} refreshTrigger={memoryRefresh} />
