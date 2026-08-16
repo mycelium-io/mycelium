@@ -35,6 +35,8 @@ interface Props {
    *  kind of row sees it; the others are handed null. */
   focus?: FocusTarget | null;
   onFocusConsumed?: () => void;
+  /** Reveal a memory by key in the Memory tab (e.g. a clicked chat wikilink). */
+  focusMemory?: { key: string; nonce: number } | null;
 }
 
 /** The room's context, consolidated: agents, episodes, and memory behind one
@@ -51,6 +53,7 @@ export function RoomInspector({
   onEngineInviteShown,
   focus = null,
   onFocusConsumed,
+  focusMemory,
 }: Props) {
   const focused = (type: FocusTarget["type"]) => (focus?.type === type ? focus.id : null);
   const [tabInternal, setTabInternal] = useState<Tab>("agents");
@@ -146,6 +149,7 @@ export function RoomInspector({
             refreshTrigger={memoryRefresh}
             focusKey={focused("memory")}
             onFocusConsumed={onFocusConsumed}
+            focusMemory={focusMemory}
           />
         )}
       </div>

@@ -185,6 +185,11 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           sed -i.bak "s/^version = .*/version = \"$VERSION\"/" pyproject.toml && rm -f pyproject.toml.bak
 
+      # The OpenAPI client isn't committed (#613); generate both copies from the
+      # committed openapi.json before building the client wheel and the binary.
+      - name: Generate OpenAPI client
+        run: SPEC_FILE=openapi.json SKIP_FORMAT=1 bash scripts/gen-mycelium-client.sh
+
       - name: Build mycelium-client wheel
         working-directory: mycelium-client
         run: uv build --wheel
@@ -237,6 +242,11 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           sed -i "s/^version = .*/version = \"$VERSION\"/" pyproject.toml
+
+      # The OpenAPI client isn't committed (#613); generate it into src/ so the
+      # wheel includes it (setuptools packages.find picks it up).
+      - name: Generate OpenAPI client
+        run: SPEC_FILE=openapi.json SKIP_FORMAT=1 bash scripts/gen-mycelium-client.sh
 
       - name: Build wheel
         working-directory: mycelium-cli

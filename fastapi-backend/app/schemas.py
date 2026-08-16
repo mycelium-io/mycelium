@@ -7,7 +7,7 @@ Minimal schemas for Mycelium's core models.
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
@@ -313,6 +313,16 @@ class MemoryCreate(BaseModel):
             "Optimistic-concurrency guard: the version this write is based on. "
             "When set and it doesn't match the current on-disk version, the write "
             "is rejected (409) with the current content. Omit for last-write-wins."
+        ),
+    )
+    meta: dict[str, Any] | None = Field(
+        None,
+        description=(
+            "Extra YAML frontmatter merged into the memory file — soft, typed, "
+            "user-extensible data such as 'expandable: true' or "
+            "'supersedes: decisions/db-v1'. Keys the store manages (key, version, "
+            "timestamps, authorship, tags, value) are ignored here. Frontmatter "
+            "already on disk is preserved across writes; this overlays it."
         ),
     )
 

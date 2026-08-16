@@ -211,6 +211,41 @@ export async function searchEverything(query: string, limit = 20): Promise<Searc
   return apiFetch<SearchResponse>(`/api/search?${params}`, { cache: "no-store" });
 }
 
+// ── Memory links ─────────────────────────────────────────────────────────────
+
+/** One edge between two memories, plus what it resolves to right now. */
+export interface MemoryLink {
+  target: string;
+  kind: "wikilink" | "uri" | "transclusion" | "relation";
+  anchor?: string | null;
+  label?: string | null;
+  relation?: string | null;
+  raw: string;
+  /** Set on a backlink: the memory the edge came from. */
+  source?: string | null;
+  resolved: boolean;
+  error?: string | null;
+}
+
+export interface MemoryLinks {
+  key: string;
+  outbound: MemoryLink[];
+  backlinks: MemoryLink[];
+}
+
+const EMPTY_LINKS = { outbound: [], backlinks: [] };
+
+/** A memory's links in both directions. Degrades to empty — a room with no
+ *  link index yet is the normal unlinked case, not an error worth surfacing. */
+export async function fetchMemoryLinks(roomName: string, key: string): Promise<MemoryLinks> {
+  const params = new URLSearchParams({ key });
+  const data = await apiFetch<Omit<MemoryLinks, "key">>(
+    `/api/rooms/${roomName}/links?${params}`,
+    { cache: "no-store", fallback: EMPTY_LINKS },
+  );
+  return { key, outbound: data.outbound ?? [], backlinks: data.backlinks ?? [] };
+}
+
 // ── Plan ─────────────────────────────────────────────────────────────────────
 
 export interface PlanTask {
