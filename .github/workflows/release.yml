@@ -185,6 +185,11 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           sed -i.bak "s/^version = .*/version = \"$VERSION\"/" pyproject.toml && rm -f pyproject.toml.bak
 
+      # Both client trees are build artifacts generated from the committed
+      # openapi.json — nothing to check out, so generate before packaging.
+      - name: Generate OpenAPI client
+        run: scripts/gen-mycelium-client.sh
+
       - name: Build mycelium-client wheel
         working-directory: mycelium-client
         run: uv build --wheel
@@ -238,9 +243,28 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           sed -i "s/^version = .*/version = \"$VERSION\"/" pyproject.toml
 
+      - name: Generate OpenAPI client
+        run: scripts/gen-mycelium-client.sh
+
       - name: Build wheel
         working-directory: mycelium-cli
         run: uv build --wheel
+
+      # The client is generated, so a build that quietly skipped codegen would
+      # publish a CLI that can't talk to the backend at all. Assert it shipped.
+      - name: Wheel carries the generated client
+        working-directory: mycelium-cli
+        run: |
+          uv run --no-project python - <<'PY'
+          import glob
+          import zipfile
+
+          wheel = sorted(glob.glob("dist/*.whl"))[-1]
+          names = zipfile.ZipFile(wheel).namelist()
+          if "mycelium_backend_client/client.py" not in names:
+              raise SystemExit(f"✗ {wheel} has no mycelium_backend_client — codegen was skipped")
+          print(f"✓ {wheel} carries mycelium_backend_client")
+          PY
 
       - name: Get version from tag
         id: version

@@ -84,18 +84,19 @@ Tests use SQLite in-memory (see `tests/conftest.py`) — no Postgres needed for 
 
 ## Installing the CLI Globally
 
-The CLI has a dependency on the generated OpenAPI client (`mycelium-client/`). When installing globally via `uv tool`:
+The CLI imports the generated OpenAPI client, which its build hook materializes
+from the repo's `openapi.json` — no sibling package to wire in:
 
 ```bash
 cd mycelium-cli
-uv tool install -e . --with mycelium-backend-client@../mycelium-client --force
+uv tool install -e . --force
 ```
 
-The `--with` flag adds the sibling package. Use `--force` to reinstall after code changes.
+Use `--force` to reinstall after code changes.
 
 For local dev (just running from the repo):
 ```bash
-pip install -e ../mycelium-client -e .
+uv sync --group dev --extra engine
 ```
 
 ## Key Patterns

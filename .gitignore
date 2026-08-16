@@ -16,8 +16,13 @@ logs/
 .DS_Store
 .mycelium/
 
-# Generated OpenAPI client (regenerated from spec)
+# Generated OpenAPI clients. Build artifacts, not source: both trees are
+# generated from the committed openapi.json snapshot by
+# scripts/gen-mycelium-client.sh (also run from the CLI's build hook), so a
+# backend API change can't ship a stale committed client.
 fastapi-backend/mycelium-client/
+mycelium-client/mycelium_backend_client/
+mycelium-cli/src/mycelium_backend_client/
 
 # Frontend
 node_modules/

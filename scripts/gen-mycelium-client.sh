@@ -1,56 +1,57 @@
 #!/usr/bin/env bash
-# Regenerate the Mycelium backend OpenAPI client.
+# Generate the Mycelium backend OpenAPI clients from the committed spec.
 #
-# Pulls /openapi.json from a running backend and runs openapi-python-client,
-# replacing the committed copies in:
-#   - mycelium-client/                     (standalone package, has pyproject.toml)
-#   - mycelium-cli/src/mycelium_backend_client/  (vendored copy the CLI imports)
+# The clients are build artifacts, not source: both trees are gitignored and
+# regenerated from openapi.json (the snapshot scripts/snapshot-openapi.sh
+# writes). Generating needs no running backend.
+#
+#   - mycelium-client/mycelium_backend_client/          standalone package
+#   - mycelium-cli/src/mycelium_backend_client/         the copy the CLI imports
 #
 # Usage:
 #   scripts/gen-mycelium-client.sh
-#       Boots the backend via docker compose if BACKEND_URL is unset.
-#   BACKEND_URL=http://localhost:8000 scripts/gen-mycelium-client.sh
-#       Uses an already-running backend.
-#
-# Exit codes:
-#   0 — regenerated; check `git diff` to see drift.
-#   non-zero — generation failed; committed clients unchanged.
+#       Generate both trees from openapi.json.
+#   SPEC=/path/to/openapi.json scripts/gen-mycelium-client.sh
+#       Generate from a spec elsewhere.
 
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 ROOT="$(pwd)"
 
-BACKEND_URL="${BACKEND_URL:-http://localhost:8000}"
-SPEC=/tmp/mycelium-openapi.json
-OUT=/tmp/gen-mycelium-client
+SPEC="${SPEC:-$ROOT/openapi.json}"
+# Keep in step with the build-system pin in mycelium-cli/pyproject.toml, so the
+# script and the CLI's build hook emit the same client.
+GENERATOR_VERSION=0.28.3
+OUT=$(mktemp -d)
+trap 'rm -rf "$OUT"' EXIT
 
-echo "→ Fetching openapi.json from $BACKEND_URL"
-if ! curl -sfL "$BACKEND_URL/openapi.json" -o "$SPEC"; then
-  echo "✗ Could not reach $BACKEND_URL/openapi.json" >&2
-  echo "  Start the backend first: docker compose -f mycelium-cli/src/mycelium/docker/compose.yml up -d mycelium-backend" >&2
+if [ ! -f "$SPEC" ]; then
+  echo "✗ No spec at $SPEC" >&2
+  echo "  Write one with: scripts/snapshot-openapi.sh" >&2
   exit 1
 fi
 
-echo "→ Generating client at $OUT"
-rm -rf "$OUT"
-uv run --with 'openapi-python-client==0.28.3' openapi-python-client generate \
-  --path "$SPEC" --output-path "$OUT" >/dev/null
+echo "→ Generating client from $SPEC"
+uv run --no-project --with "openapi-python-client==$GENERATOR_VERSION" openapi-python-client generate \
+  --path "$SPEC" --output-path "$OUT/gen" --overwrite >/dev/null
 
-echo "→ Copying to mycelium-client/"
-rm -rf "$ROOT/mycelium-client/mycelium_backend_client"
-cp -R "$OUT/mycelium_backend_client" "$ROOT/mycelium-client/"
+for dest in "$ROOT/mycelium-client" "$ROOT/mycelium-cli/src"; do
+  echo "→ Copying to ${dest#"$ROOT"/}/mycelium_backend_client/"
+  rm -rf "${dest:?}/mycelium_backend_client"
+  cp -R "$OUT/gen/mycelium_backend_client" "$dest/"
+done
 
-echo "→ Copying to mycelium-cli/src/mycelium_backend_client/"
-rm -rf "$ROOT/mycelium-cli/src/mycelium_backend_client"
-cp -R "$OUT/mycelium_backend_client" "$ROOT/mycelium-cli/src/"
+# Stamp the CLI copy with the spec hash. mycelium-cli/setup.py reads this to
+# decide whether a build has to regenerate, so running this script means the
+# next build is a no-op instead of a second generation.
+uv run --no-project python -c '
+import hashlib
+import pathlib
+import sys
 
-# Format with the project's ruff config so committed output matches what
-# `ruff format --check` will accept in CI.
-echo "→ Running ruff format on generated files"
-(cd "$ROOT/mycelium-cli" && uv run ruff format src/mycelium_backend_client >/dev/null) || true
-# mycelium-client/ is a poetry standalone package; format from the cli env
-# (its ruff config is what we ship under).
-(cd "$ROOT/mycelium-cli" && uv run ruff format ../mycelium-client/mycelium_backend_client >/dev/null) || true
+spec, stamp = sys.argv[1:]
+pathlib.Path(stamp).write_text(hashlib.sha256(pathlib.Path(spec).read_bytes()).hexdigest() + "\n")
+' "$SPEC" "$ROOT/mycelium-cli/src/mycelium_backend_client/.openapi-sha256"
 
-echo "✓ Done. Run \`git diff\` to see drift."
+echo "✓ Done."

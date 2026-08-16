@@ -5,7 +5,7 @@
 # binary, no live LLM, no backend server. See fastapi-backend/tests/README.md and
 # mycelium-cli/tests/README.md for how the fakes work.
 
-.PHONY: help test test-backend test-cli test-frontend smoke lint
+.PHONY: help test test-backend test-cli test-frontend smoke lint client openapi
 
 help:
 	@echo "Targets:"
@@ -15,6 +15,8 @@ help:
 	@echo "  make test-frontend  Frontend unit tests (mycelium-frontend, vitest)"
 	@echo "  make smoke          Fast end-to-end happy-path over the fake stack"
 	@echo "  make lint           Ruff + ty gate for backend and CLI"
+	@echo "  make openapi        Refresh the openapi.json snapshot from the backend app"
+	@echo "  make client         Regenerate the typed clients from openapi.json"
 
 # The fast gate an agent runs before pushing: both Python unit suites.
 test: test-backend test-cli
@@ -35,3 +37,12 @@ smoke:
 lint:
 	cd fastapi-backend && uv run ruff check . && uv run ruff format --check . && uv run ty check .
 	cd mycelium-cli && uv run ruff check . && uv run ruff format --check . && uv run ty check .
+
+# The typed clients are build artifacts, not source: openapi.json is the
+# committed spec, and both client trees are generated from it. Run `openapi`
+# after changing a route or schema, then `client` to pick the change up.
+openapi:
+	scripts/snapshot-openapi.sh
+
+client:
+	scripts/gen-mycelium-client.sh

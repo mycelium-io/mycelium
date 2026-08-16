@@ -1,5 +1,8 @@
 [build-system]
-requires = ["setuptools>=68.0", "wheel"]
+# openapi-python-client is a build-time dep: setup.py generates the vendored
+# `mycelium_backend_client` from the repo's openapi.json snapshot. Pin it so
+# every build emits the same client.
+requires = ["setuptools>=68.0", "wheel", "openapi-python-client==0.28.3"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -122,6 +125,9 @@ python-version = "3.12"
 line-length = 100
 target-version = "py312"
 src = ["src", "tests"]
+# Generated client: a build artifact regenerated from openapi.json, so linting
+# or formatting it would only gate the generator's output style.
+extend-exclude = ["src/mycelium_backend_client"]
 
 [tool.ruff.lint]
 select = ["E", "W", "F", "I", "B", "C4", "UP", "ARG", "SIM"]
@@ -143,4 +149,3 @@ ignore = [
 # ignores opts because the manifest IS the registration).
 "src/mycelium/integrations/**/*.py" = ["ARG002"]
 "tests/**/*.py" = ["ARG001", "ARG002", "ARG005"]
-"src/mycelium_backend_client/**/*.py" = ["UP", "E", "W", "F", "B", "C4", "I", "ARG", "SIM"]

@@ -17,7 +17,9 @@ RUN uv pip install --system --no-cache \
     && pip uninstall -y uv
 
 COPY src/ src/
-RUN pip install --no-cache-dir --no-deps .
+# The collector never touches the backend client, and openapi.json isn't in
+# this build context — skip setup.py's codegen instead of warning through it.
+RUN MYCELIUM_SKIP_CLIENT_GEN=1 pip install --no-cache-dir --no-deps .
 
 RUN useradd --create-home --shell /bin/false collector
 USER collector

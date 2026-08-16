@@ -45,8 +45,8 @@ uv run ruff check . && uv run ruff format . && uv run ty check .
 # The live-node integration slices need a running SLIM node; they skip without one:
 MYCELIUM_SLIM_ENDPOINT=http://127.0.0.1:46357 uv run pytest tests/test_slim_roundtrip.py -q
 
-# CLI (install globally)
-cd mycelium-cli && uv tool install -e . --with mycelium-backend-client@../mycelium-client --force
+# CLI (install globally; the build hook generates the typed client from openapi.json)
+cd mycelium-cli && uv tool install -e . --force
 
 # CLI quality gate (matches CI); run before pushing
 cd mycelium-cli && uv run ruff check . && uv run ruff format --check . \
@@ -54,6 +54,9 @@ cd mycelium-cli && uv run ruff check . && uv run ruff format --check . \
 
 # Frontend
 cd mycelium-frontend && pnpm install && pnpm dev
+
+# After changing a backend route or schema: refresh the spec, regenerate clients
+make openapi && make client
 ```
 
 ## Architecture
@@ -200,6 +203,16 @@ is no litellm dependency.
   both `fastapi-backend/tests/test_slim_l9_wire.py` and
   `mycelium-cli/tests/test_slim_l9_wire.py` assert against it, so neither copy can
   drift without a red unit gate.
+- **The typed client is a build artifact; the spec is the source.** `openapi.json`
+  at the repo root is committed; both generated trees
+  (`mycelium-client/mycelium_backend_client/`,
+  `mycelium-cli/src/mycelium_backend_client/`) are gitignored and regenerated from
+  it — by `scripts/gen-mycelium-client.sh`, by the CLI's `setup.py` build hook
+  (fresh clone, editable install, release wheel), and by CI. Committing the client
+  is what let it drift silently from the backend, so a route change now fails CI at
+  the snapshot check (`scripts/snapshot-openapi.sh --check`) rather than surfacing
+  as a CLI 404. `ty` resolves the CLI's imports into the generated tree, so the
+  CLI's typecheck is the contract test against the freshly generated client.
 - **The HTTP-API JWT gate is opt-in and off by default.** `app/services/auth.py`
   validates a bearer JWT against configured issuers + JWKS (`[auth]` in
   config.toml → `AUTH_*` env). It's an app-wide FastAPI dependency, so a new route

@@ -39,6 +39,12 @@ jobs:
         working-directory: fastapi-backend
         run: uv run ty check .
 
+      # The committed openapi.json is the single source of truth the typed
+      # clients are generated from. A route or schema change that skips the
+      # snapshot would ship a client calling the old surface, so gate it here.
+      - name: OpenAPI snapshot is current
+        run: scripts/snapshot-openapi.sh --check
+
       # Fast gate: the core protocol (room -> engine -> await -> respond ->
       # converge -> plan) over the fake stack — no node, no LLM. Runs first so a
       # broken happy path fails in seconds, ahead of the full suite.
@@ -63,6 +69,22 @@ jobs:
 
       - name: Set up Python
         run: uv python install 3.12
+
+      # The typed client is a build artifact generated from openapi.json, not
+      # committed source. Generating it here means the lint/typecheck/test
+      # steps below run against the client the backend's current API implies —
+      # `ty` resolves the CLI's imports into it, so a drifted API is red.
+      - name: Generate OpenAPI client
+        run: scripts/gen-mycelium-client.sh
+
+      - name: Generated client stays untracked
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            git status --porcelain
+            echo "✗ Generating the client dirtied the tree." >&2
+            echo "  The generated client must stay gitignored — see .gitignore." >&2
+            exit 1
+          fi
 
       - name: Install dependencies
         working-directory: mycelium-cli

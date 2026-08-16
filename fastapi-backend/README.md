@@ -31,6 +31,11 @@ instead.
 ## Working in it
 
 Setup, the test command, and the lint/typecheck gate are in the repo root
-`CLAUDE.md`. When the backend is running, the API documents itself at
-`/docs`, and `openapi.json` at the repo root is the snapshot the typed client is
-generated from — regenerate it rather than hand-editing.
+`CLAUDE.md`. When the backend is running, the API documents itself at `/docs`.
+
+`openapi.json` at the repo root is the committed snapshot of that API, and the
+typed clients are generated from it rather than committed. Change a route or a
+schema and you owe the snapshot a refresh — `make openapi` (equivalently
+`scripts/snapshot-openapi.sh`, which reads the spec straight off the app object,
+no server needed). CI runs the same dump and fails if it disagrees with the
+committed file.

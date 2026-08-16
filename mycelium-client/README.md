@@ -1,6 +1,10 @@
 # mycelium-backend-client
 A client library for accessing Mycelium Backend
 
+> `mycelium_backend_client/` is generated, not committed: run
+> `make client` (or `scripts/gen-mycelium-client.sh`) to materialize it from the
+> repo's `openapi.json` before building or installing this package.
+
 ## Usage
 First, create a client:
 
