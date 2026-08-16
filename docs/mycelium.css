@@ -1,25 +1,146 @@
-/* ── mycelium design system ── */
+/* ── mycelium docs — design system ──
+ *
+ * The webapp is the source of truth. This file mirrors
+ * mycelium-frontend/src/app/globals.css: same token contract, same type scale,
+ * same radii, same register discipline. When the app's palette moves, move this
+ * with it rather than inventing a docs-only variant.
+ */
 
-@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@1,600&family=IBM+Plex+Sans:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@1,600&family=Geist+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
+
+/* ── Palette ─────────────────────────────────────────────────────────────
+ * Two themes, one contract. Raw values live in :root (light) and .dark.
+ *
+ * TEXT vs BACKGROUND is kept honest (the shadcn contract the app adopted): a
+ * token is either a surface you sit ON, or a foreground you paint WITH —
+ * never both.
+ *
+ *   TEXT (foreground)                     BACKGROUND (surface / fill)
+ *   ───────────────────────────────       ───────────────────────────────
+ *   --text                 primary        --bg         app canvas
+ *   --muted-foreground     secondary      --surface    rails, inputs
+ *                          — the legible  --paper      reading pane, cards
+ *                            FLOOR for    --elevated   popovers, active rows
+ *                            any text     --muted-bg   quiet fill (hover)
+ *   --faint     DECORATION ONLY —         --accent-soft  tinted accent wash
+ *               rules, disabled glyphs.
+ *               NEVER body copy.
+ *
+ * One accent, one job: primary action + active state. Green/yellow/red are
+ * reserved for true semantic state, never general emphasis.
+ * ──────────────────────────────────────────────────────────────────────── */
+:root {
+  /* surfaces */
+  --bg: #ffffff;
+  --surface: #f2f4f6;
+  --paper: #ffffff;
+  --elevated: #ffffff;
+  --muted-bg: #eceef1;
+  --hairline: rgba(17, 20, 24, 0.035);
+  /* text (audited legible on #fff, #f2f4f6 and #eceef1) */
+  --text: #14171b;
+  --muted-foreground: #545c65;
+  --faint: #9198a0;
+  /* lines */
+  --border: rgba(17, 20, 24, 0.10);
+  --border2: rgba(17, 20, 24, 0.17);
+  /* accent (one job) */
+  --accent: #0c7d8f;
+  --accent-fg: #ffffff;
+  --accent-soft: rgba(12, 125, 143, 0.10);
+  /* semantic state */
+  --green: #0d8a63;
+  --yellow: #8a6410;
+  --red: #bd3f3a;
+
+  /* Code is the system register — the one place a syntax ramp earns its keep.
+   * Tuned to sit on --paper without competing with prose. */
+  --code-comment: #6b7480;
+  --code-cmd: #0c7d8f;
+  --code-flag: #3f6ea8;
+  --code-str: #0d8a63;
+  --code-arg: #7a4fa3;
+  --code-kw: #a33f6e;
+
+  /* Diagram ramp. Reserved for the dataflow/story plates, where distinct hues
+   * carry real meaning (different subsystems). Never used in chrome or prose. */
+  --viz-1: #0c7d8f;
+  --viz-2: #3f6ea8;
+  --viz-3: #7a4fa3;
+  --viz-4: #0d8a63;
+  --viz-5: #8a6410;
+
+  /* Mycelial background canvas reads these (see site.js). */
+  --canvas-bg: #ffffff;
+  --canvas-ink: 12, 125, 143;
+  /* Dark ink on a light ground reads heavier at equal alpha, so light runs
+   * quieter than dark rather than matching it. */
+  --canvas-alpha: 0.72;
+}
+
+.dark {
+  /* surfaces */
+  --bg: #0c0e11;
+  --surface: #14171c;
+  --paper: #191d22;
+  --elevated: #21262d;
+  --muted-bg: #21262d;
+  --hairline: rgba(255, 255, 255, 0.035);
+  /* text (audited legible on #0c0e11, #14171c and #21262d) */
+  --text: #e8ebee;
+  --muted-foreground: #a7adb5;
+  --faint: #565d65;
+  /* lines */
+  --border: rgba(255, 255, 255, 0.08);
+  --border2: rgba(255, 255, 255, 0.16);
+  /* accent (one job) */
+  --accent: #5cc7d2;
+  --accent-fg: #06181b;
+  --accent-soft: rgba(92, 199, 210, 0.13);
+  /* semantic state */
+  --green: #4fc296;
+  --yellow: #d9a94e;
+  --red: #e6746f;
+
+  --code-comment: #7c848d;
+  --code-cmd: #5cc7d2;
+  --code-flag: #8fb8e8;
+  --code-str: #4fc296;
+  --code-arg: #c3a2e0;
+  --code-kw: #e08fb0;
+
+  --viz-1: #5cc7d2;
+  --viz-2: #8fb8e8;
+  --viz-3: #c3a2e0;
+  --viz-4: #4fc296;
+  --viz-5: #d9a94e;
+
+  --canvas-bg: #0c0e11;
+  --canvas-ink: 92, 199, 210;
+  --canvas-alpha: 1;
+}
+
+/* Back-compat aliases. Legacy docs markup and the standalone plate pages
+ * reference these names inline; var() resolves lazily, so aliasing once here
+ * tracks whichever theme is active. Each points at a legible on-palette value,
+ * so no surface can regress while call sites migrate. */
+:root, .dark {
+  --text2: var(--muted-foreground);
+  --muted: var(--muted-foreground);
+  --dim: var(--faint);
+  --fg: var(--text);
+  --card: var(--paper);
+  --accent2: var(--accent);
+  /* The old saturated categoricals now resolve to the diagram ramp. */
+  --blue: var(--viz-2);
+  --purple: var(--viz-3);
+  --cyan: var(--viz-1);
+}
 
 :root {
-  --bg: #0c0d10;             /* warm near-black, no blue cast */
-  --surface: #111216;        /* lifted "paper" surface */
-  --card: #14161b;
-  --border: rgba(234, 234, 234, 0.10);
-  --border2: rgba(234, 234, 234, 0.22);
-  --accent: #5dd4e0;         /* pale cyan (Onyx) */
-  --accent2: #7dd3fc;        /* lighter sibling cyan */
-  --blue: #818cf8;
-  --green: #34d399;
-  --purple: #c084fc;
-  --cyan: #67e8f9;
-  --yellow: #67e8f9; /* alias for cyan — used in dataflow */
-  --text: #eaeaea;           /* chalk-white primary */
-  --text2: #a8a6a0;          /* softer chalk (lead, secondary copy) */
-  --muted: #898781;          /* dimmed warm gray (labels, captions) */
-  --dim: rgba(234, 234, 234, 0.22);
-  --sidebar-width: 240px;
+  --sidebar-width: 236px;
+  --topbar-height: 52px;
+  --statusbar-height: 26px;
 
   /* spacing scale */
   --space-1: 4px;
@@ -31,10 +152,34 @@
   --space-7: 48px;
   --space-8: 64px;
 
-  /* mono type scale (collapsed from 7 ad-hoc sizes to 3) */
-  --mono-cap: 11px;     /* eyebrows, captions, labels */
-  --mono-code: 13px;    /* code blocks + inline code */
-  --mono-inline: 14px;  /* emphasized inline mono */
+  /* ── font-size scale (the app's five roles) ──
+   *   --text-micro   counts, timestamps, tabular nums, decorations
+   *   --text-label   secondary copy, dense labels, buttons
+   *   --text-body    default UI copy + table cells
+   *   --text-ui      subheads, prominent identifiers
+   *   --text-display serif brand wordmark
+   * Docs add one role the app has no surface for: long-form reading. */
+  --text-micro: 12px;
+  --text-label: 13px;
+  --text-body: 14px;
+  --text-ui: 16px;
+  --text-display: 25px;
+  --text-prose: 15px;
+
+  /* legacy mono-scale aliases */
+  --mono-cap: var(--text-micro);
+  --mono-code: var(--text-label);
+  --mono-inline: var(--text-body);
+
+  /* radii (app: --radius-sm/md/lg/xl) */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+
+  --font-mono: 'Geist Mono', 'SF Mono', 'JetBrains Mono', Menlo, monospace;
+  --font-sans: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-serif: 'Cormorant Garamond', Georgia, serif;
 
   /* reading measure for prose (code/tables stay wider) */
   --measure: 72ch;
@@ -46,13 +191,22 @@ html { scroll-behavior: smooth; }
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-  font-size: 1rem;
+  font-family: var(--font-sans);
+  font-size: var(--text-prose);
   line-height: 1.65;
   min-height: 100vh;
 }
 
-/* ── MYCELIUM CANVAS BG ── */
+::selection { background: var(--accent-soft); color: var(--text); }
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: var(--faint); }
+
+/* ── MYCELIUM CANVAS BG ──
+ * Kept, and now theme-aware (site.js repaints it off --canvas-*). It shows
+ * through the workspace gutters; the reading pane sits on near-solid paper. */
 #mycelium-bg {
   position: fixed;
   inset: 0;
@@ -61,50 +215,158 @@ body {
   height: 100%;
 }
 
-/* ── TOP NAV (instrument-panel cells) ── */
+/* ── SHELL ──
+ * Mirrors the app's AppShell: brand + rail on the left, workspace to the
+ * right, an editor status bar pinned at the bottom. */
+
+/* ── TOP BAR ── */
+/* The rails run slightly translucent over the canvas, the way the app's
+ * headers sit at bg-surface/50 — the network stays present through the chrome
+ * instead of being boxed into the gutters. */
 .topnav {
   position: fixed;
   top: 0; left: 0; right: 0;
-  height: 62px;
-  background: rgba(12, 13, 16, 0.92);
-  backdrop-filter: blur(12px);
+  height: var(--topbar-height);
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: stretch;
-  padding: 0;
-  gap: 0;
   z-index: 100;
 }
 .topnav-cell {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 0 22px;
-  border-right: 1px solid var(--border);
+  gap: 10px;
+  padding: 0 16px;
   text-decoration: none;
   color: var(--text);
 }
+/* The brand cell is exactly sidebar-wide, so the rail reads as one column. */
 .topnav-brand {
-  font-family: 'Cormorant Garamond', Georgia, serif;
+  width: var(--sidebar-width);
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
+  font-family: var(--font-serif);
   font-weight: 600;
   font-style: italic;
-  font-size: 24px;
+  font-size: var(--text-display);
+  line-height: 1;
   letter-spacing: -0.01em;
+  transition: background 0.15s;
 }
+.topnav-brand:hover { background: var(--hairline); text-decoration: none; }
 .topnav-brand img {
-  width: 31px;
-  height: 31px;
+  width: 20px;
+  height: 20px;
   object-fit: contain;
+  opacity: 0.9;
+  transform: translateY(2px);
 }
+/* Breadcrumb context cell, used by the standalone plate pages. */
 .topnav-page-cell {
-  gap: 9px;
-  color: var(--muted);
-  border-right: none;
-  padding-left: 14px;
+  gap: 8px;
+  color: var(--muted-foreground);
+  font-size: var(--text-label);
 }
+.topnav-page-cell .square-dot { border-color: var(--accent); }
+.topnav-sep { color: var(--faint); align-self: center; }
+.topnav-page { color: var(--muted-foreground); font-size: var(--text-label); align-self: center; }
+a.topnav-page:hover { color: var(--text); text-decoration: none; }
+.topnav-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+}
+.topnav-right a {
+  color: var(--muted-foreground);
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  border-radius: var(--radius-md);
+  padding: 6px;
+  transition: color 0.15s, background 0.15s;
+}
+.topnav-right a:hover { color: var(--text); background: var(--hairline); text-decoration: none; }
+
+/* Human register: sentence-case sans labels, modest radius, quiet neutrals.
+ * One primary accent exists in the app; docs chrome has no primary action, so
+ * every button here is the quiet variant. */
+.copy-page-btn,
+.copy-docs-btn,
+.resources-btn,
+.install-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--muted-foreground);
+  font-family: var(--font-sans);
+  font-size: var(--text-label);
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+.copy-page-btn svg,
+.copy-docs-btn svg,
+.install-tab svg { width: 13px; height: 13px; stroke: currentColor; flex-shrink: 0; }
+.copy-page-btn:hover,
+.copy-docs-btn:hover,
+.resources-btn:hover,
+.install-tab:hover { color: var(--text); background: var(--surface); border-color: var(--border2); }
+.copy-page-btn.copied,
+.copy-docs-btn.copied { color: var(--green); border-color: var(--green); }
+
+/* ── PAGE TABS (the app's segmented control) ── */
+.sectionnav {
+  display: flex;
+  align-items: center;
+  margin-left: 12px;
+}
+.sectionnav-inner {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg);
+}
+.sectionnav a {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 10px;
+  border-radius: var(--radius-md);
+  color: var(--muted-foreground);
+  text-decoration: none;
+  font-family: var(--font-sans);
+  font-size: var(--text-label);
+  font-weight: 500;
+  transition: color 0.15s, background 0.15s;
+}
+.sectionnav a:hover { color: var(--text); text-decoration: none; }
+.sectionnav a.active {
+  background: var(--elevated);
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--border), 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+.sectionnav a .square-dot { display: none; }
+/* The external link sits outside the segmented control. */
+.sectionnav-right { display: flex; align-items: center; margin-left: 8px; }
+.sectionnav-right a { color: var(--muted-foreground); }
+
 .caps-mono {
-  font-family: 'SF Mono', 'JetBrains Mono', 'Fira Mono', monospace;
-  font-size: 11px;
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
   font-weight: 600;
   letter-spacing: 0.18em;
   text-transform: uppercase;
@@ -114,281 +376,205 @@ body {
   width: 8px;
   height: 8px;
   background: transparent;
-  border: 1.5px solid var(--muted);
+  border: 1.5px solid currentColor;
   flex-shrink: 0;
 }
-.topnav-page-cell .square-dot { border-color: var(--accent); }
-.topnav-right {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 0 22px 0 22px;
-  border-left: 1px solid var(--border);
-}
-.topnav-right a {
-  color: var(--muted);
-  text-decoration: none;
-  font-size: 15px;
-  font-family: 'SF Mono', monospace;
-  transition: color 0.2s;
-}
-.topnav-right a:hover { color: var(--accent); }
-.copy-page-btn {
-  background: none;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  color: var(--muted);
-  font-size: 12px;
-  font-family: 'SF Mono', monospace;
-  padding: 5px 12px;
-  cursor: pointer;
-  transition: border-color 0.2s, color 0.2s;
-}
-.copy-page-btn:hover { border-color: var(--accent); color: var(--accent); }
-.copy-page-btn.copied { border-color: var(--green); color: var(--green); }
+.tabular { font-variant-numeric: tabular-nums; }
 
-/* ── SECTION NAV (horizontal, below topnav) ── */
-.sectionnav {
+/* ── STATUS BAR ── */
+.docs-footer {
   position: fixed;
-  top: 62px;
-  left: 0;
-  right: 0;
-  height: 44px;
-  background: rgba(12, 13, 16, 0.92);
-  backdrop-filter: blur(12px);
-  border-bottom: 1px solid var(--border);
-  z-index: 99;
-  overflow-x: auto;
-  overflow-y: hidden;
-}
-.sectionnav-inner {
+  left: 0; right: 0; bottom: 0;
+  height: var(--statusbar-height);
   display: flex;
-  align-items: stretch;
-  height: 100%;
-  padding: 0;
-  gap: 0;
-  white-space: nowrap;
-}
-.sectionnav a {
-  display: inline-flex;
   align-items: center;
   gap: 10px;
-  height: 100%;
-  padding: 0 20px;
-  color: var(--muted);
-  text-decoration: none;
-  font-family: 'SF Mono', 'JetBrains Mono', monospace;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.16em;
-  border-right: 1px solid var(--border);
-  border-bottom: 2px solid transparent;
-  transition: color 0.15s, border-color 0.15s, background 0.15s;
-}
-.sectionnav a .square-dot { width: 7px; height: 7px; }
-.sectionnav a:hover { color: var(--text); background: rgba(255,255,255,0.02); }
-.sectionnav a:hover .square-dot { border-color: var(--text); }
-.sectionnav a.active {
-  color: var(--accent);
-  border-bottom-color: var(--accent);
-  background: rgba(56,189,248,0.04);
-}
-.sectionnav a.active .square-dot {
-  background: var(--accent);
-  border-color: var(--accent);
-}
-.sectionnav-right {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-.sectionnav-right a {
-  font-size: 11px;
-  letter-spacing: 0.14em;
-  border-left: 1px solid var(--border);
-  border-right: none;
-}
-
-/* ── DOCS FOOTER ── */
-.docs-footer {
-  margin-top: 48px;
-  padding-top: 16px;
+  padding: 0 12px;
   border-top: 1px solid var(--border);
-  font-family: 'SF Mono', monospace;
-  font-size: 12px;
-  color: var(--muted);
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 12px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  font-size: var(--text-micro);
+  color: var(--muted-foreground);
+  z-index: 100;
 }
-.docs-footer a { color: var(--muted); text-decoration: none; }
-.docs-footer a:hover { color: var(--accent); }
-.docs-footer .sep { color: var(--border2); }
+.docs-footer a { color: var(--muted-foreground); text-decoration: none; border-radius: 4px; padding: 1px 5px; }
+.docs-footer a:hover { color: var(--text); background: var(--hairline); text-decoration: none; }
+.docs-footer .sep { color: var(--faint); }
+.docs-footer .tagline { margin-left: auto; color: var(--faint); }
+/* The sheet number is catalogue metadata — system register, so mono. */
+.docs-footer .sheet-no {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--faint);
+}
 
 /* ── LAYOUT ── */
 .layout {
   display: flex;
-  padding-top: 106px;
+  padding-top: var(--topbar-height);
   min-height: 100vh;
 }
 
-/* ── SIDEBAR ── */
+/* ── SIDEBAR (the app's Explorer rail) ── */
 .sidebar {
   width: var(--sidebar-width);
   flex-shrink: 0;
   position: fixed;
-  top: 106px;
-  bottom: 0;
+  top: var(--topbar-height);
+  bottom: var(--statusbar-height);
   overflow-y: auto;
-  padding: 28px 0 40px;
+  padding: 12px 0 24px;
   border-right: 1px solid var(--border);
-  background: rgba(12, 13, 16, 0.85);
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
 }
-.sidebar::-webkit-scrollbar { width: 4px; }
-.sidebar::-webkit-scrollbar-track { background: transparent; }
-.sidebar::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+.sidebar::-webkit-scrollbar { width: 6px; }
 
-.nav-section {
-  margin-bottom: 28px;
-  padding: 0 20px;
-}
+.nav-section { margin-bottom: 18px; padding: 0 8px; }
+/* Sans, not mono: a group label is human register (matches the app's "Rooms"). */
 .nav-section-label {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.15em;
+  font-size: var(--text-micro);
+  font-weight: 600;
+  letter-spacing: 0.025em;
   text-transform: uppercase;
-  color: var(--muted);
-  font-family: 'SF Mono', monospace;
-  margin-bottom: 8px;
-  padding-left: 8px;
+  color: var(--muted-foreground);
+  margin-bottom: 4px;
+  padding: 0 8px;
 }
+/* Rows mirror the app's room rows: rounded-lg, elevated + ring when active. */
 .nav-link {
   display: block;
   padding: 5px 8px;
-  border-radius: 6px;
-  color: var(--muted);
+  border-radius: var(--radius-lg);
+  color: var(--muted-foreground);
   text-decoration: none;
-  font-size: 0.8125rem;
+  font-size: var(--text-label);
+  line-height: 1.45;
   transition: color 0.15s, background 0.15s;
-  line-height: 1.4;
 }
-.nav-link:hover { color: var(--text); background: var(--card); }
-.nav-link.active { color: var(--accent); background: rgba(56,189,248,0.08); }
-.nav-link.sub {
-  padding-left: 20px;
-  font-size: 0.8125rem;
-}
-.nav-link.page {
-  font-weight: 600;
+.nav-link:hover { color: var(--text); background: var(--hairline); text-decoration: none; }
+.nav-link.active {
   color: var(--text);
-  margin-top: 6px;
+  font-weight: 500;
+  background: var(--elevated);
+  box-shadow: inset 0 0 0 1px var(--border);
 }
+.nav-link.sub { padding-left: 8px; }
+.nav-link.page { font-weight: 500; color: var(--text); margin-top: 6px; }
 .nav-link.page:first-of-type { margin-top: 0; }
-.nav-link.page.active { color: var(--accent); }
 
-/* ── MAIN CONTENT ── */
+/* ── WORKSPACE ── */
 .main {
   margin-left: var(--sidebar-width);
   flex: 1;
-  padding: 56px 64px 80px 72px;
+  padding: 28px 32px calc(var(--statusbar-height) + 40px);
   min-width: 0;
-  background: rgba(12, 13, 16, 0.25);
 }
+/* The reading pane. Near-solid so prose stays crisp; the mycelial network
+ * reads as faint texture beneath it and runs free in the gutters. */
 .main-inner {
-  max-width: 90ch;
+  max-width: 92ch;
   margin: 0 auto;
-  background: rgba(12, 13, 16, 0.6);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  background: color-mix(in srgb, var(--paper) 93%, transparent);
+  backdrop-filter: blur(20px) saturate(115%);
+  -webkit-backdrop-filter: blur(20px) saturate(115%);
   border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 48px 48px 56px;
+  border-radius: var(--radius-xl);
+  padding: 44px 48px 52px;
 }
 
 /* ── SECTIONS ── */
 .doc-section {
-  margin-bottom: 88px;
-  padding-top: 8px;
-  scroll-margin-top: 122px;
+  margin-bottom: 60px;
+  scroll-margin-top: calc(var(--topbar-height) + 16px);
 }
 :target,
 h1[id], h2[id], h3[id], h4[id], section[id] {
-  scroll-margin-top: 122px;
+  scroll-margin-top: calc(var(--topbar-height) + 16px);
 }
 
-
+/* Sans caps, muted — an eyebrow is a label, not an accent moment. */
 .section-eyebrow {
-  font-size: var(--mono-cap);
-  font-weight: 700;
-  letter-spacing: 0.2em;
+  font-size: var(--text-micro);
+  font-weight: 600;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--accent);
-  font-family: 'SF Mono', monospace;
+  color: var(--muted-foreground);
   margin-bottom: var(--space-3);
 }
 
+/* The serif italic hero matches the app's room title (room-plan-header). */
+/* Headings step down gently — the app is a dense 14px UI, so docs stay closer
+ * to body size than a marketing page would. Hierarchy comes from weight and
+ * space, not scale. */
 h1 {
-  font-size: 2.5rem;
+  font-size: 1.95rem;
   font-weight: 600;
   font-style: italic;
   letter-spacing: -0.02em;
-  line-height: 1.12;
-  font-family: 'Cormorant Garamond', Georgia, serif;
-  margin-bottom: var(--space-4);
+  line-height: 1.18;
+  font-family: var(--font-serif);
+  margin-bottom: var(--space-3);
 }
 
 h2 {
-  font-size: 1.6875rem;
-  font-weight: 700;
+  font-size: 1.3125rem;
+  font-weight: 600;
   letter-spacing: -0.01em;
-  line-height: 1.25;
-  margin-bottom: var(--space-4);
-  margin-top: var(--space-8);
+  line-height: 1.3;
+  margin-bottom: var(--space-3);
+  margin-top: var(--space-7);
   color: var(--text);
 }
 
+/* Was mono + a second cyan. Subheads are human register: sans, one text color. */
 h3 {
-  font-size: 1.25rem;
-  font-weight: 700;
-  margin-bottom: var(--space-3);
-  margin-top: var(--space-6);
-  color: var(--accent2);
-  font-family: 'SF Mono', monospace;
-  letter-spacing: 0.02em;
+  font-size: 1.0625rem;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  margin-bottom: var(--space-2);
+  margin-top: var(--space-5);
+  color: var(--text);
+}
+
+h4 {
+  font-size: var(--text-prose);
+  font-weight: 600;
+  margin-bottom: var(--space-2);
+  margin-top: var(--space-4);
+  color: var(--text);
 }
 
 p {
   color: var(--text);
   margin-bottom: var(--space-4);
-  line-height: 1.8;
+  line-height: 1.75;
   max-width: var(--measure);
 }
 
 .main ul,
 .main ol {
-  line-height: 1.8;
+  line-height: 1.75;
   max-width: var(--measure);
+  padding-left: 1.35em;
 }
-.main li {
-  margin-bottom: 6px;
-}
-.main li:last-child {
-  margin-bottom: 0;
-}
+.main li { margin-bottom: 6px; }
+.main li:last-child { margin-bottom: 0; }
+.main li::marker { color: var(--faint); }
 
 a { color: var(--accent); text-decoration: none; }
-a:hover { text-decoration: underline; }
+a:hover { text-decoration: underline; text-underline-offset: 2px; }
 
 strong { color: var(--text); font-weight: 600; }
 
 .lead {
-  font-size: 1.1875rem;
-  color: var(--text2);
-  line-height: 1.6;
-  margin-bottom: var(--space-6);
+  font-size: 1.0625rem;
+  color: var(--muted-foreground);
+  line-height: 1.62;
+  margin-bottom: var(--space-5);
   max-width: var(--measure);
 }
 
@@ -396,29 +582,29 @@ strong { color: var(--text); font-weight: 600; }
 .divider {
   border: none;
   border-top: 1px solid var(--border);
-  margin: 48px 0;
+  margin: 40px 0;
 }
 
 /* ── CODE ── */
 code {
-  font-family: 'SF Mono', 'Fira Mono', 'Menlo', monospace;
-  font-size: var(--mono-code);
-  background: var(--card);
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 2px 6px;
-  color: var(--accent2);
+  border-radius: var(--radius-sm);
+  padding: 1px 5px;
+  color: var(--accent);
 }
 
 pre {
-  background: var(--card);
+  background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 20px 24px;
+  border-radius: var(--radius-lg);
+  padding: 16px 20px;
   overflow-x: auto;
   margin: 16px 0 24px;
   position: relative;
-  line-height: 1.4;
+  line-height: 1.55;
 }
 pre code {
   background: none;
@@ -428,112 +614,86 @@ pre code {
   color: var(--text);
 }
 .pre-label {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.15em;
+  font-size: var(--text-micro);
+  font-weight: 600;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--muted);
-  font-family: 'SF Mono', monospace;
+  color: var(--muted-foreground);
   margin-bottom: 8px;
 }
 
-.install-block {
-  position: relative;
-}
+.install-block { position: relative; }
 .install-copy-btn {
   position: absolute;
   top: 50%;
   right: 10px;
   transform: translateY(-50%);
-  background: rgba(12, 21, 36, 0.5);
+  background: var(--paper);
   border: 1px solid var(--border);
-  border-radius: 5px;
-  color: var(--muted);
-  padding: 5px;
+  border-radius: var(--radius-sm);
+  color: var(--muted-foreground);
   width: 28px;
   height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: border-color 0.2s, color 0.2s;
+  transition: border-color 0.15s, color 0.15s;
 }
-.install-copy-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--card); }
+.install-copy-btn:hover { border-color: var(--border2); color: var(--text); }
 .install-copy-btn.copied { border-color: var(--green); color: var(--green); }
 .install-copy-btn svg { width: 13px; height: 13px; stroke: currentColor; }
-.install-tabs {
-  display: flex;
-  gap: 4px;
-  margin-bottom: 8px;
+.install-tabs { display: flex; gap: 4px; margin-bottom: 8px; }
+.install-tab { height: 26px; font-size: var(--text-micro); }
+.install-tab.active {
+  color: var(--text);
+  background: var(--elevated);
+  border-color: var(--border2);
 }
-.install-tab {
-  background: none;
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  color: var(--muted);
-  font-size: 11px;
-  font-family: 'SF Mono', monospace;
-  padding: 4px 10px;
-  cursor: pointer;
-  transition: border-color 0.2s, color 0.2s, background 0.2s;
-}
-.install-tab:hover { border-color: var(--accent); color: var(--accent); }
-.install-tab.active { border-color: var(--accent); color: var(--accent); background: rgba(56,189,248,0.08); }
 
-/* ── SYNTAX HIGHLIGHTING ── */
-.comment { color: var(--muted); }
-.kw { color: var(--purple); }
-.str { color: var(--green); }
-.flag { color: var(--cyan); }
-.cmd { color: var(--accent); }
-.arg { color: var(--purple); font-style: italic; }
+/* ── SYNTAX ──
+ * Code is the system register, so a syntax ramp is honest here. It is the one
+ * place in the docs that spends more than the single accent. */
+.comment { color: var(--code-comment); }
+.kw { color: var(--code-kw); }
+.str { color: var(--code-str); }
+.flag { color: var(--code-flag); }
+.cmd { color: var(--code-cmd); }
+.arg { color: var(--code-arg); font-style: italic; }
 
 /* ── CALLOUTS ── */
 .callout {
-  border-radius: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
   margin: 20px 0;
-  font-size: 14px;
-  line-height: 1.6;
+  font-size: var(--text-body);
+  line-height: 1.65;
   overflow: hidden;
   display: flex;
+  max-width: var(--measure);
 }
-.callout-bar {
-  width: 4px;
-  flex-shrink: 0;
-  border-radius: 10px 0 0 10px;
-}
-.callout-body {
-  padding: 14px 18px;
-  border-radius: 0 10px 10px 0;
-  flex: 1;
-}
+.callout-bar { width: 3px; flex-shrink: 0; }
+.callout-body { padding: 12px 16px; flex: 1; color: var(--text); }
+.callout-body p { margin-bottom: 0; font-size: inherit; }
 .callout-info .callout-bar { background: var(--accent); }
-.callout-info .callout-body {
-  background: rgba(56,189,248,0.06);
-  color: var(--accent2);
-}
-.callout-note .callout-bar { background: var(--purple); }
-.callout-note .callout-body {
-  background: rgba(192,132,252,0.06);
-  color: #d8b4fe;
-}
-.callout-warn .callout-bar { background: #d98a4a; }
-.callout-warn .callout-body {
-  background: rgba(217,138,74,0.07);
-  color: #e6b483;
-}
-.callout strong { color: inherit; }
+.callout-info .callout-body { background: var(--accent-soft); }
+/* A "note" is an aside, not a state — neutral, no third hue. */
+.callout-note .callout-bar { background: var(--border2); }
+.callout-note .callout-body { background: var(--hairline); }
+.callout-warn .callout-bar { background: var(--yellow); }
+.callout-warn .callout-body { background: color-mix(in srgb, var(--yellow) 9%, transparent); }
+.callout strong { color: var(--text); }
 
-/* ── SCOPE BOX — "applies to / not for" audience note ── */
+/* ── SCOPE BOX ── */
 .scope-box {
   margin: 20px 0;
-  padding: 14px 18px;
+  padding: 14px 16px;
   border: 1px solid var(--border);
-  border-left: 2px solid var(--muted);
-  border-radius: 6px;
-  font-size: 13.5px;
-  line-height: 1.55;
-  background: rgba(255,255,255,0.015);
+  border-radius: var(--radius-lg);
+  font-size: var(--text-body);
+  line-height: 1.6;
+  background: var(--hairline);
+  max-width: var(--measure);
 }
 .scope-box dl {
   margin: 0;
@@ -542,145 +702,151 @@ pre code {
   gap: 8px 18px;
 }
 .scope-box dt {
-  font-family: 'SF Mono', monospace;
-  font-size: 10.5px;
+  font-size: var(--text-micro);
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--muted);
-  padding-top: 3px;
+  letter-spacing: 0.05em;
+  color: var(--muted-foreground);
+  padding-top: 2px;
   white-space: nowrap;
 }
 .scope-box dd { margin: 0; color: var(--text); }
-.scope-box dd strong { color: var(--accent2); }
-.scope-box dd a { color: var(--accent); }
+.scope-box dd strong { color: var(--text); }
 
 /* ── TABLE ── */
-.table-wrap { overflow-x: auto; margin: 20px 0; }
+.table-wrap {
+  overflow-x: auto;
+  margin: 20px 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
 table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 14px;
+  font-size: var(--text-body);
 }
+/* Column headers are tabular metadata — mono is correct here. */
 th {
   text-align: left;
-  padding: 10px 16px;
-  border-bottom: 1px solid var(--border2);
-  font-size: 11px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--muted);
-  font-family: 'SF Mono', monospace;
+  padding: 9px 14px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
   font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
 }
 td {
-  padding: 12px 16px;
+  padding: 10px 14px;
   border-bottom: 1px solid var(--border);
   vertical-align: top;
-  line-height: 1.5;
+  line-height: 1.55;
+  color: var(--text);
 }
 tr:last-child td { border-bottom: none; }
-td:first-child { color: var(--accent2); font-family: 'SF Mono', monospace; font-size: 13px; }
-tr:hover td { background: rgba(255,255,255,0.02); }
+/* First column is usually an identifier: mono earns it, a second hue does not. */
+td:first-child { font-family: var(--font-mono); font-size: var(--mono-code); color: var(--text); }
+tr:hover td { background: var(--hairline); }
 
-/* Config table — type column reads worse when wrapped on union types like "str | None" */
-.config-table td:nth-child(2) { white-space: nowrap; }
+.config-table td:nth-child(2) { white-space: nowrap; color: var(--muted-foreground); }
 
 /* ── CARDS ── */
 .card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr));
-  gap: 16px;
+  gap: 12px;
   margin: 24px 0;
 }
 .card {
-  background: var(--card);
+  background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 20px;
-  transition: border-color 0.2s;
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  transition: border-color 0.15s, background 0.15s;
 }
-.card:hover { border-color: var(--border2); }
-.card-icon {
-  margin-bottom: 10px;
-  color: var(--accent);
-}
-.card-icon svg {
-  width: 20px;
-  height: 20px;
-  stroke: currentColor;
-}
-.card-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text);
-  margin-bottom: 6px;
-}
-.card-desc {
-  font-size: 13px;
-  color: var(--muted);
-  line-height: 1.5;
-}
+.card:hover { border-color: var(--border2); background: var(--muted-bg); }
+.card-icon { margin-bottom: 10px; color: var(--muted-foreground); }
+.card-icon svg { width: 18px; height: 18px; stroke: currentColor; }
+.card-title { font-size: var(--text-body); font-weight: 600; color: var(--text); margin-bottom: 4px; }
+.card-desc { font-size: var(--text-label); color: var(--muted-foreground); line-height: 1.5; }
 
-/* ── BADGE ── */
+/* ── BADGES ── */
 .badge {
   display: inline-block;
-  font-size: 11px;
-  font-family: 'SF Mono', monospace;
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
   font-weight: 600;
-  padding: 2px 8px;
-  border-radius: 4px;
-  letter-spacing: 0.05em;
+  padding: 1px 7px;
+  border-radius: var(--radius-sm);
+  letter-spacing: 0.03em;
   vertical-align: middle;
+  background: var(--muted-bg);
+  color: var(--muted-foreground);
+  border: 1px solid var(--border);
 }
-.badge-blue   { background: rgba(129,140,248,0.15); color: var(--blue);   border: 1px solid rgba(129,140,248,0.25); }
-.badge-green  { background: rgba(52,211,153,0.12);  color: var(--green);  border: 1px solid rgba(52,211,153,0.2); }
-.badge-purple { background: rgba(192,132,252,0.12); color: var(--purple); border: 1px solid rgba(192,132,252,0.2); }
+/* Only true state gets a hue. blue/purple were emphasis, so they go neutral. */
+.badge-blue,
+.badge-purple { background: var(--muted-bg); color: var(--muted-foreground); border-color: var(--border); }
+.badge-green {
+  background: color-mix(in srgb, var(--green) 12%, transparent);
+  color: var(--green);
+  border-color: color-mix(in srgb, var(--green) 28%, transparent);
+}
 
-/* ── CHIPS (used in dataflow) ── */
+/* ── CHIPS ──
+ * Two variants in the app (neutral + accent). The plate pages additionally use
+ * the diagram ramp, where hue is information rather than decoration. */
 .chip {
-  display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 11px;
-  font-weight: 600; letter-spacing: 0.05em; font-family: 'SF Mono', monospace;
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: var(--text-label);
+  font-weight: 500;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted-foreground);
 }
-.chip-o { background: rgba(56,189,248,0.1);   color: var(--accent2); border: 1px solid rgba(56,189,248,0.25); }
-.chip-b { background: rgba(129,140,248,0.1);  color: var(--blue);    border: 1px solid rgba(129,140,248,0.25); }
-.chip-g { background: rgba(52,211,153,0.08);  color: var(--green);   border: 1px solid rgba(52,211,153,0.2); }
-.chip-p { background: rgba(192,132,252,0.1);  color: var(--purple);  border: 1px solid rgba(192,132,252,0.22); }
-.chip-y { background: rgba(103,232,249,0.08); color: var(--yellow);  border: 1px solid rgba(103,232,249,0.2); }
+.chip-o { color: var(--viz-1); border-color: color-mix(in srgb, var(--viz-1) 30%, transparent); }
+.chip-b { color: var(--viz-2); border-color: color-mix(in srgb, var(--viz-2) 30%, transparent); }
+.chip-g { color: var(--viz-4); border-color: color-mix(in srgb, var(--viz-4) 30%, transparent); }
+.chip-p { color: var(--viz-3); border-color: color-mix(in srgb, var(--viz-3) 30%, transparent); }
+.chip-y { color: var(--viz-5); border-color: color-mix(in srgb, var(--viz-5) 30%, transparent); }
 
 /* ── CMD REF ── */
 .cmd-ref {
   border: 1px solid var(--border);
-  border-radius: 10px;
-  margin: 12px 0;
+  border-radius: var(--radius-lg);
+  margin: 10px 0;
   overflow: hidden;
+  background: var(--paper);
 }
 .cmd-ref-header {
   display: flex;
   align-items: baseline;
   gap: 12px;
-  padding: 14px 20px;
-  background: var(--card);
-  border-bottom: 1px solid var(--border);
+  padding: 11px 16px;
+  background: var(--surface);
   cursor: pointer;
+  transition: background 0.15s;
 }
+.cmd-ref-header:hover { background: var(--muted-bg); }
 .cmd-ref-header code {
   background: none;
   border: none;
   padding: 0;
-  font-size: 14px;
-  color: var(--accent);
+  font-size: var(--text-body);
+  color: var(--text);
   font-weight: 600;
 }
-.cmd-ref-desc {
-  font-size: 13px;
-  color: var(--muted);
-}
+.cmd-ref-desc { font-size: var(--text-label); color: var(--muted-foreground); }
 .cmd-ref-body {
-  padding: 16px 20px;
-  font-size: 0.8125rem;
-  line-height: 1.6;
-  color: var(--text);
-  opacity: 0.85;
+  padding: 14px 16px;
+  border-top: 1px solid var(--border);
+  font-size: var(--text-label);
+  line-height: 1.65;
+  color: var(--muted-foreground);
 }
 
 /* ── STEP LIST ── */
@@ -688,36 +854,36 @@ tr:hover td { background: rgba(255,255,255,0.02); }
   counter-reset: step;
   list-style: none;
   margin: 20px 0;
+  padding-left: 0;
 }
 .steps li {
   counter-increment: step;
   position: relative;
-  padding-left: 44px;
-  margin-bottom: 20px;
+  padding-left: 38px;
+  margin-bottom: 18px;
 }
 .steps li::before {
   content: counter(step);
   position: absolute;
   left: 0;
-  top: 0;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: rgba(56,189,248,0.1);
-  border: 1px solid rgba(56,189,248,0.25);
-  color: var(--accent);
-  font-size: 12px;
-  font-weight: 700;
-  font-family: 'SF Mono', monospace;
+  top: 1px;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--muted-foreground);
+  font-family: var(--font-mono);
+  font-size: var(--text-micro);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-/* ── HEADER ANCHOR LINKS ── */
-h2[id], h3[id] {
-  position: relative;
-}
+/* ── HEADER ANCHORS ── */
+h2[id], h3[id] { position: relative; }
 .header-anchor {
   display: inline-flex;
   align-items: center;
@@ -725,92 +891,118 @@ h2[id], h3[id] {
   opacity: 0;
   transition: opacity 0.15s;
   vertical-align: middle;
-  color: var(--muted);
+  color: var(--faint);
   text-decoration: none;
 }
 .header-anchor:hover { color: var(--accent); text-decoration: none; }
-.header-anchor svg { width: 16px; height: 16px; stroke: currentColor; }
+.header-anchor svg { width: 15px; height: 15px; stroke: currentColor; }
 h2:hover .header-anchor,
 h3:hover .header-anchor,
 .header-anchor:focus { opacity: 1; }
 
-/* ── COPY DOCS CMD BUTTON ── */
-.copy-docs-btn {
+/* ── THEME TOGGLE (mirrors the app's light / dark / system menu) ── */
+.theme-toggle { position: relative; display: flex; }
+.theme-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
   background: none;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  color: var(--muted);
-  font-size: 12px;
-  font-family: 'SF Mono', monospace;
-  padding: 5px 12px;
+  border: none;
+  border-radius: var(--radius-md);
+  color: var(--muted-foreground);
   cursor: pointer;
-  transition: border-color 0.2s, color 0.2s;
+  transition: color 0.15s, background 0.15s;
 }
-.copy-docs-btn:hover { border-color: var(--accent); color: var(--accent); }
-.copy-docs-btn.copied { border-color: var(--green); color: var(--green); }
-
-/* ── RESOURCES DROPDOWN ── */
-.resources-dropdown {
-  position: relative;
+.theme-btn:hover { color: var(--text); background: var(--hairline); }
+.theme-btn svg { width: 16px; height: 16px; stroke: currentColor; }
+.theme-menu {
   display: none;
-}
-.resources-btn {
-  background: none;
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 144px;
+  background: var(--elevated);
   border: 1px solid var(--border);
-  border-radius: 6px;
-  color: var(--muted);
-  font-size: 12px;
-  font-family: 'SF Mono', monospace;
-  padding: 5px 10px;
-  cursor: pointer;
-  transition: border-color 0.2s, color 0.2s;
-  white-space: nowrap;
+  border-radius: var(--radius-xl);
+  padding: 4px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.18);
+  z-index: 120;
 }
-.resources-btn:hover { border-color: var(--accent); color: var(--accent); }
+.theme-menu.open { display: block; }
+.theme-menu button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 6px 10px;
+  background: none;
+  border: none;
+  border-radius: var(--radius-lg);
+  color: var(--muted-foreground);
+  font-family: var(--font-sans);
+  font-size: var(--text-label);
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+.theme-menu button:hover { background: var(--surface); color: var(--text); }
+.theme-menu button.active { color: var(--accent); }
+.theme-menu svg { width: 16px; height: 16px; stroke: currentColor; flex-shrink: 0; }
+
+/* ── RESOURCES DROPDOWN (mobile) ── */
+.resources-dropdown { position: relative; display: none; }
 .resources-menu {
   display: none;
   position: absolute;
-  top: calc(100% + 8px);
+  top: calc(100% + 6px);
   right: 0;
-  background: var(--card);
+  background: var(--elevated);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 6px;
+  border-radius: var(--radius-xl);
+  padding: 4px;
   min-width: 180px;
-  z-index: 100;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.18);
+  z-index: 120;
 }
 .resources-menu.open { display: block; }
 .resources-menu a {
   display: block;
-  padding: 8px 12px;
-  color: var(--muted);
+  padding: 7px 10px;
+  color: var(--muted-foreground);
   text-decoration: none;
-  font-size: 13px;
-  font-family: 'SF Mono', monospace;
-  border-radius: 5px;
+  font-size: var(--text-label);
+  border-radius: var(--radius-lg);
   transition: background 0.15s, color 0.15s;
 }
-.resources-menu a:hover { background: rgba(56,189,248,0.08); color: var(--accent); }
+.resources-menu a:hover { background: var(--surface); color: var(--text); text-decoration: none; }
 
 /* ── RESPONSIVE ── */
+@media (max-width: 1080px) {
+  .sectionnav a span:not(.square-dot) { font-size: var(--text-micro); }
+  .main { padding: 24px 20px calc(var(--statusbar-height) + 32px); }
+}
 @media (max-width: 860px) {
   .sidebar { display: none; }
-  .main { margin-left: 0; padding: 32px 24px 60px; }
+  .main { margin-left: 0; }
+  .topnav-brand { width: auto; }
   .resources-dropdown { display: block; }
-  .copy-page-btn { display: none; }
-  .copy-docs-btn { display: none; }
+  .copy-page-btn, .copy-docs-btn { display: none; }
+  .docs-footer .tagline { display: none; }
 }
-@media (max-width: 600px) {
+@media (max-width: 640px) {
   body { overflow-x: hidden; }
-  .topnav-page-cell, .host-indicator { display: none; }
-  .topnav-cell { padding: 0 14px; }
-  .topnav-right { gap: 12px; padding: 0 14px; }
-  .sectionnav-right { display: none; }
-  .sectionnav a { padding: 0 14px; gap: 8px; }
-  .main { padding: 24px 16px 60px; }
-  h1 { font-size: 1.75rem; }
-  h2 { font-size: 1.25rem; }
-  .main-inner { padding: 24px 16px 32px; }
-  pre { font-size: 0.75rem; overflow-x: auto; }
-  .cmd-ref-header code { font-size: 0.75rem; word-break: break-all; }
+  .sectionnav { display: none; }
+  .topnav-cell { padding: 0 12px; }
+  .main { padding: 20px 14px calc(var(--statusbar-height) + 28px); }
+  .main-inner { padding: 24px 18px 32px; border-radius: var(--radius-lg); }
+  h1 { font-size: 1.6rem; }
+  h2 { font-size: 1.2rem; }
+  pre { padding: 14px; }
+  .cmd-ref-header code { font-size: var(--text-label); word-break: break-all; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  * { transition: none !important; }
 }
