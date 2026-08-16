@@ -3,7 +3,8 @@
 
 **Status:** Decided (default path demonstrated; #579 SPIRE impl to follow)
 **Related:** #587 (this decision), #476 (SignerJwt floor impl), #579 (SPIRE impl),
-#581 (`STATIC_JWT` → `MlsNotSupported`), #560 (epic),
+#581 (`STATIC_JWT` → `MlsNotSupported`), #585 (SLIM-channel epic),
+#560 (umbrella identity epic),
 [`identity-and-auth.md`](./identity-and-auth.md) (the umbrella identity design)
 **Proven by:** [`signerjwt-floor-spike/`](./signerjwt-floor-spike/) (default path,
 PASS 2026-08-16) and [`spire-mls-spike/`](./spire-mls-spike/) (hardened path, #583)
