@@ -13,10 +13,12 @@ provision/revoke helpers must key off the passed-in (config) mode.
 from __future__ import annotations
 
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
 
 from mycelium.commands import agent as agent_cmd
+from mycelium.protocol import AgentManifest
 
 
 def test_provision_threads_config_mode_not_env(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -38,7 +40,9 @@ def test_provision_threads_config_mode_not_env(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setattr(slim_identity, "provision_channel_identity", fake_provision)
     monkeypatch.setattr(agent_cmd, "_register_spire_workload", lambda h, r: registered.append(h))
 
-    agent_cmd._provision_channel_identity(SimpleNamespace(handle="alice"), "spire")
+    # Stub manifest — the helper only reads ``.handle``; cast satisfies the type gate.
+    manifest = cast("AgentManifest", SimpleNamespace(handle="alice"))
+    agent_cmd._provision_channel_identity(manifest, "spire")
 
     assert seen["mode"] == "spire"  # config value flowed through, not env
     assert registered == ["alice"]  # spire branch fired
