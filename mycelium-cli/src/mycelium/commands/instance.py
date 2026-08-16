@@ -105,6 +105,7 @@ def _compose_base_cmd(
     include_cfn_profile: bool = True,
     include_metrics_profile: bool = True,
     include_ui_profile: bool = True,
+    include_spire_profile: bool = True,
 ) -> list[str]:
     """Build the docker compose prefix with consistent project name.
 
@@ -120,6 +121,12 @@ def _compose_base_cmd(
     is running, ``--profile ui`` is appended so stop/logs/down/status include
     it too — otherwise the profile-gated frontend is invisible to those
     commands (its logs don't show up, and it's left running on ``down``).
+
+    When *include_spire_profile* is True (the default) and ``slim.identity=spire``
+    is set in the user's .env, ``--profile spire`` is appended so the SPIRE
+    server+agent come up with the stack (#588). This is the one control: the
+    config drives the profile, the user never passes ``--profile spire`` by hand.
+    On the default ``psk`` it's a silent no-op — the try-it stack is unchanged.
     """
     if compose_path is None:
         compose_path = _get_compose_path()
@@ -134,6 +141,8 @@ def _compose_base_cmd(
         cmd += ["--profile", "metrics"]
     if include_ui_profile and _frontend_container_running():
         cmd += ["--profile", "ui"]
+    if include_spire_profile and _spire_enabled():
+        cmd += ["--profile", "spire"]
     return cmd
 
 
@@ -229,6 +238,26 @@ def _cfn_enabled() -> bool:
 
         val = dotenv_values(env_path).get("CFN_MGMT_URL", "")
         return bool(val and val.strip())
+    except Exception:
+        return False
+
+
+def _spire_enabled() -> bool:
+    """Return True if ``slim.identity=spire`` in ~/.mycelium/.env (#588).
+
+    Reads the same ``MYCELIUM_SLIM_IDENTITY`` key that ``config apply`` writes,
+    so the config is the single source of truth for whether the ``spire`` compose
+    profile comes up — the user never toggles the profile separately. Any other
+    value (``psk``/``signerjwt``/unset) leaves SPIRE out of the stack.
+    """
+    env_path = _get_env_path()
+    if not env_path or not env_path.exists():
+        return False
+    try:
+        from dotenv import dotenv_values
+
+        val = dotenv_values(env_path).get("MYCELIUM_SLIM_IDENTITY", "")
+        return (val or "").strip().lower() == "spire"
     except Exception:
         return False
 
@@ -508,6 +537,10 @@ def start(
             typer.echo(f"  mycelium-frontend   → http://localhost:{ui_port}")
         if metrics:
             typer.echo(f"  mycelium-collector  → http://localhost:{metrics_port}")
+        if _spire_enabled():
+            # SPIRE is config-driven, not a flag — surface it so the extra weight
+            # on the stack is legible (#588). Registration happens on agent create.
+            typer.echo("  spire-server/agent  → attested identity (slim.identity=spire)")
 
     except typer.Exit:
         raise

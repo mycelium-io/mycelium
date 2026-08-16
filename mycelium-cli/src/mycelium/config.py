@@ -97,8 +97,9 @@ class SlimConfig(BaseModel):
             "are cryptographically distinct, individually revocable MLS "
             "participants. 'spire' opts into SPIRE/SPIFFE (#579): each member "
             "presents a SPIRE-attested JWT-SVID from the Workload API — tightest "
-            "attestation, heaviest deploy (a co-located SPIRE agent; see "
-            "docs/design/spire-quickstart/). Selecting 'signerjwt'/'spire' with no "
+            "attestation, heaviest deploy (a co-located SPIRE server+agent, brought "
+            "up automatically by 'mycelium up' via the shipped 'spire' compose "
+            "profile; #588). Selecting 'signerjwt'/'spire' with no "
             "resolvable material degrades to 'psk' unless "
             "MYCELIUM_SLIM_IDENTITY_REQUIRE=1 fails closed."
         ),

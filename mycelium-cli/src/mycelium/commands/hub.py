@@ -79,7 +79,18 @@ def host(ctx: typer.Context) -> None:
         env_path = _get_env_path()
         if env_path:
             cmd += ["--env-file", str(env_path)]
-        cmd += ["up", "-d", "slim"]
+        services = ["slim"]
+        # When attested identity is on (slim.identity=spire), bring the SPIRE
+        # server+agent up alongside the node — one control, config-driven (#588).
+        # The agent is co-located with the backend (shared PID namespace), so it
+        # pulls the backend in too; that's intended, SPIRE needs a workload to
+        # attest. On the default psk this is a no-op and only `slim` starts.
+        from mycelium.commands.instance import _spire_enabled
+
+        if _spire_enabled():
+            cmd += ["--profile", "spire"]
+            services += ["spire-server", "spire-agent"]
+        cmd += ["up", "-d", *services]
 
         typer.echo("Starting SLIM node...")
         result = subprocess.run(cmd, capture_output=True, text=True)
