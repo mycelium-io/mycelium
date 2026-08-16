@@ -205,14 +205,16 @@ is no litellm dependency.
     credential and registers its public JWK on the room roster, so members are
     cryptographically distinct MLS participants with no external infra.
   - `spire` (#579) — each member presents a SPIRE-attested JWT-SVID from the Workload
-    API. Tightest attestation, heaviest deploy (a co-located SPIRE agent; see
-    `docs/design/spire-quickstart/`).
+    API. Tightest attestation, heaviest deploy (a co-located SPIRE node daemon). Ships
+    as an optional appliance profile (#588): `slim.identity=spire` brings SPIRE up via
+    `mycelium up`, and `mycelium agent create`/`rm` register/revoke the SVID entry — see
+    the SPIRE identity operator guide.
 
   Selecting `signerjwt`/`spire` with no resolvable material degrades to `psk` with a
-  one-time warning unless `MYCELIUM_SLIM_IDENTITY_REQUIRE=1` fails closed. What still
-  gates anything hosted / multi-user is **not** a missing mode: it's turning identity on
-  at all, revocation/deprovisioning (#590), and the appliance SPIRE deploy profile
-  (#588).
+  one-time warning unless `MYCELIUM_SLIM_IDENTITY_REQUIRE=1` fails closed. Per-member
+  revocation (#590 — drop the JWK / delete the SPIRE entry, no room-wide re-key) and the
+  optional appliance SPIRE profile (#588) both ship. What still gates anything hosted /
+  multi-user is turning identity on at all — not a missing capability.
 - **Adapter capability (be honest).** `claude_code` is proven; `cursor` is untested.
   `openclaw` and `hermes` are **gone**, not deprecated — they rode the removed
   SSE/coordination-tick model and their packages were deleted (#503). Don't
