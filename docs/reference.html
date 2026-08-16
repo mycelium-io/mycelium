@@ -14,33 +14,63 @@
 <meta name="twitter:image" content="https://mycelium-io.github.io/mycelium/og.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="mycelium.css">
+<script>
+// Resolve the theme before first paint so the page never flashes the wrong one.
+(function () {
+  try {
+    var t = localStorage.getItem('mycelium-theme') || 'system';
+    var dark = t === 'dark'
+      || (t === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    document.documentElement.classList.toggle('dark', dark);
+  } catch (e) {
+    document.documentElement.classList.add('dark');
+  }
+})();
+</script>
 </head>
 <body>
 <canvas id="mycelium-bg"></canvas>
-<!-- TOP NAV -->
+<!-- TOP BAR -->
 <nav class="topnav">
   <a href="https://mycelium-io.github.io" class="topnav-cell topnav-brand">
     <img src="logo.png" alt="Mycelium">
     <span class="brand-word">mycelium</span>
   </a>
-  <span class="topnav-cell topnav-page-cell">
-    <span class="caps-mono">DOCS</span>
-  </span>
-  <div class="topnav-right">
-    <button class="copy-docs-btn" onclick="copyDocsCmd()"><i data-lucide="terminal" style="width:13px;height:13px;stroke:currentColor;vertical-align:-2px;margin-right:6px;"></i>copy docs cmd</button>
-    <button class="copy-page-btn" onclick="copyPage()"><i data-lucide="copy" style="width:13px;height:13px;stroke:currentColor;vertical-align:-2px;margin-right:6px;"></i>copy this page</button>
-    <a href="https://github.com/mycelium-io/mycelium" aria-label="GitHub" style="display:flex;align-items:center;"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style="display:block;"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg></a>
-  </div>
-</nav>
-<nav class="sectionnav">
-  <div class="sectionnav-inner">
-    <a href="index.html" class=""><span class="square-dot"></span>GET STARTED</a>
-    <a href="concepts.html" class=""><span class="square-dot"></span>CONCEPTS</a>
-    <a href="adapters.html" class=""><span class="square-dot"></span>ADAPTERS</a>
-    <a href="reference.html" class="active"><span class="square-dot"></span>REFERENCE</a>
-    <div class="sectionnav-right">
-    <a href="https://raw.githubusercontent.com/mycelium-io/mycelium/main/mycelium-cli/src/mycelium/integrations/claude_code/assets/skills/mycelium/SKILL.md" target="_blank">SKILL.md ↗</a>
+  <nav class="sectionnav">
+    <div class="sectionnav-inner">
+      <a href="index.html" class="">Get Started</a>
+      <a href="concepts.html" class="">Concepts</a>
+      <a href="adapters.html" class="">Adapters</a>
+      <a href="reference.html" class="active">Reference</a>
     </div>
+    <div class="sectionnav-right">
+      <a href="https://raw.githubusercontent.com/mycelium-io/mycelium/main/mycelium-cli/src/mycelium/integrations/claude_code/assets/skills/mycelium/SKILL.md" target="_blank" rel="noopener">SKILL.md ↗</a>
+    </div>
+  </nav>
+  <div class="topnav-right">
+    <div class="resources-dropdown">
+      <button class="resources-btn" onclick="toggleResources(event)">Resources</button>
+      <div class="resources-menu" id="resources-menu">
+        <a href="index.html">Get Started</a>
+        <a href="concepts.html">Concepts</a>
+        <a href="adapters.html">Adapters</a>
+        <a href="reference.html">Reference</a>
+        <a href="https://raw.githubusercontent.com/mycelium-io/mycelium/main/mycelium-cli/src/mycelium/integrations/claude_code/assets/skills/mycelium/SKILL.md" target="_blank" rel="noopener">SKILL.md ↗</a>
+      </div>
+    </div>
+    <button class="copy-docs-btn" onclick="copyDocsCmd()"><i data-lucide="terminal"></i>Copy docs cmd</button>
+    <button class="copy-page-btn" onclick="copyPage()"><i data-lucide="copy"></i>Copy page</button>
+    <div class="theme-toggle">
+      <button class="theme-btn" id="theme-btn" aria-label="Theme" onclick="toggleThemeMenu(event)">
+        <i data-lucide="sun"></i>
+      </button>
+      <div class="theme-menu" id="theme-menu">
+      <button data-theme-set="light"><i data-lucide="sun"></i>Light</button>
+      <button data-theme-set="dark"><i data-lucide="moon"></i>Dark</button>
+      <button data-theme-set="system"><i data-lucide="monitor"></i>System</button>
+      </div>
+    </div>
+    <a href="https://github.com/mycelium-io/mycelium" aria-label="GitHub"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style="display:block;"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg></a>
   </div>
 </nav>
 <div class="layout">
@@ -1153,18 +1183,18 @@ rm <span class="flag">-rf</span> ~/.mycelium        # remove all config and room
       <h2 id="troubleshooting-getting-help">Getting Help</h2>
       <p>Report issues at <strong>https://github.com/mycelium-io/mycelium/issues</strong></p>
     </section>
-    <!-- FOOTER -->
-    <div class="docs-footer">
-      <a href="https://github.com/mycelium-io/mycelium">mycelium-io/mycelium</a>
-      <span class="sep">·</span>
-      <span>Apache 2.0</span>
-      <span class="sep">·</span>
-      <span class="tagline">Shared Intent &middot; Shared Memory &middot; Shared Context</span>
-    </div>
-
   </div>
   </main>
 </div>
+
+<!-- STATUS BAR -->
+<footer class="docs-footer">
+  <span class="sheet-no">REF-001</span>
+  <a href="https://github.com/mycelium-io/mycelium">mycelium-io/mycelium</a>
+  <span class="sep">·</span>
+  <span>Apache 2.0</span>
+  <span class="tagline">Shared Intent &middot; Shared Memory &middot; Shared Context</span>
+</footer>
 
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 <script src="site.js"></script>

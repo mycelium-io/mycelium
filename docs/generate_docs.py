@@ -642,52 +642,89 @@ def _head(title: str, description: str, file_name: str) -> str:
 <meta name="twitter:image" content="https://mycelium-io.github.io/mycelium/og.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="mycelium.css">
+<script>
+// Resolve the theme before first paint so the page never flashes the wrong one.
+(function () {{
+  try {{
+    var t = localStorage.getItem('mycelium-theme') || 'system';
+    var dark = t === 'dark'
+      || (t === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    document.documentElement.classList.toggle('dark', dark);
+  }} catch (e) {{
+    document.documentElement.classList.add('dark');
+  }}
+}})();
+</script>
 </head>
 <body>
 <canvas id="mycelium-bg"></canvas>
 """
 
 
-def _topnav() -> str:
-    return f"""<!-- TOP NAV -->
+def _theme_toggle() -> str:
+    """Light / dark / system menu, mirroring the app's ThemeToggle."""
+    opts = [
+        ("light", "Light", "sun"),
+        ("dark", "Dark", "moon"),
+        ("system", "System", "monitor"),
+    ]
+    items = "\n".join(
+        f'      <button data-theme-set="{value}">'
+        f'<i data-lucide="{icon}"></i>{label}</button>'
+        for value, label, icon in opts
+    )
+    return f"""    <div class="theme-toggle">
+      <button class="theme-btn" id="theme-btn" aria-label="Theme" onclick="toggleThemeMenu(event)">
+        <i data-lucide="sun"></i>
+      </button>
+      <div class="theme-menu" id="theme-menu">
+{items}
+      </div>
+    </div>"""
+
+
+def _topnav(active_page_id: str) -> str:
+    """The app's shell header: brand over the rail, page tabs, right-hand actions.
+
+    The brand cell is sidebar-width so the rail reads as one column, matching
+    RoomsSidebar sitting under the workspace header in the app.
+    """
+    tabs = []
+    for page_id, file_name, _, label, *_ in PAGES:
+        cls = "active" if page_id == active_page_id else ""
+        tabs.append(f'      <a href="{file_name}" class="{cls}">{html.escape(label)}</a>')
+    return f"""<!-- TOP BAR -->
 <nav class="topnav">
   <a href="https://mycelium-io.github.io" class="topnav-cell topnav-brand">
     <img src="logo.png" alt="Mycelium">
     <span class="brand-word">mycelium</span>
   </a>
-  <span class="topnav-cell topnav-page-cell">
-    <span class="caps-mono">DOCS</span>
-  </span>
+  <nav class="sectionnav">
+    <div class="sectionnav-inner">
+{chr(10).join(tabs)}
+    </div>
+    <div class="sectionnav-right">
+      <a href="{SKILL_MD_URL}" target="_blank" rel="noopener">SKILL.md ↗</a>
+    </div>
+  </nav>
   <div class="topnav-right">
-    <button class="copy-docs-btn" onclick="copyDocsCmd()"><i data-lucide="terminal" style="width:13px;height:13px;stroke:currentColor;vertical-align:-2px;margin-right:6px;"></i>copy docs cmd</button>
-    <button class="copy-page-btn" onclick="copyPage()"><i data-lucide="copy" style="width:13px;height:13px;stroke:currentColor;vertical-align:-2px;margin-right:6px;"></i>copy this page</button>
-    <a href="https://github.com/mycelium-io/mycelium" aria-label="GitHub" style="display:flex;align-items:center;">{GITHUB_SVG}</a>
+    <div class="resources-dropdown">
+      <button class="resources-btn" onclick="toggleResources(event)">Resources</button>
+      <div class="resources-menu" id="resources-menu">
+        <a href="index.html">Get Started</a>
+        <a href="concepts.html">Concepts</a>
+        <a href="adapters.html">Adapters</a>
+        <a href="reference.html">Reference</a>
+        <a href="{SKILL_MD_URL}" target="_blank" rel="noopener">SKILL.md ↗</a>
+      </div>
+    </div>
+    <button class="copy-docs-btn" onclick="copyDocsCmd()"><i data-lucide="terminal"></i>Copy docs cmd</button>
+    <button class="copy-page-btn" onclick="copyPage()"><i data-lucide="copy"></i>Copy page</button>
+{_theme_toggle()}
+    <a href="https://github.com/mycelium-io/mycelium" aria-label="GitHub">{GITHUB_SVG}</a>
   </div>
 </nav>
 """
-
-
-def _sectionnav(active_page_id: str) -> str:
-    links = []
-    for page_id, file_name, _, label, *_ in PAGES:
-        cls = "active" if page_id == active_page_id else ""
-        links.append(
-            f'    <a href="{file_name}" class="{cls}">'
-            f'<span class="square-dot"></span>{html.escape(label).upper()}</a>'
-        )
-    right_links = [
-        f'    <a href="{SKILL_MD_URL}" target="_blank">SKILL.md ↗</a>',
-    ]
-    return (
-        '<nav class="sectionnav">\n'
-        '  <div class="sectionnav-inner">\n'
-        + "\n".join(links)
-        + '\n    <div class="sectionnav-right">\n'
-        + "\n".join(right_links)
-        + "\n    </div>\n"
-        "  </div>\n"
-        "</nav>\n"
-    )
 
 
 def _sidebar(groups: list[tuple[str, list[tuple[str, str]]]]) -> str:
@@ -720,18 +757,19 @@ def _layout_open(sidebar_html: str) -> str:
 
 
 def _layout_close(sheet_no: str, plate_title: str) -> str:
-    return """    <!-- FOOTER -->
-    <div class="docs-footer">
-      <a href="https://github.com/mycelium-io/mycelium">mycelium-io/mycelium</a>
-      <span class="sep">·</span>
-      <span>Apache 2.0</span>
-      <span class="sep">·</span>
-      <span class="tagline">Shared Intent &middot; Shared Memory &middot; Shared Context</span>
-    </div>
-
-  </div>
+    """Close the workspace and pin the editor-style status bar beneath it."""
+    return f"""  </div>
   </main>
 </div>
+
+<!-- STATUS BAR -->
+<footer class="docs-footer">
+  <span class="sheet-no">{html.escape(sheet_no)}</span>
+  <a href="https://github.com/mycelium-io/mycelium">mycelium-io/mycelium</a>
+  <span class="sep">·</span>
+  <span>Apache 2.0</span>
+  <span class="tagline">Shared Intent &middot; Shared Memory &middot; Shared Context</span>
+</footer>
 
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 <script src="site.js"></script>
@@ -754,8 +792,7 @@ def _render_page(
     sidebar_html = _sidebar(sidebar_groups)
     return (
         _head(title, description, file_name)
-        + _topnav()
-        + _sectionnav(page_id)
+        + _topnav(page_id)
         + _layout_open(sidebar_html)
         + content_html
         + "\n"
