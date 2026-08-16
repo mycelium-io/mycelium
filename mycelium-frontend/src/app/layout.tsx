@@ -5,6 +5,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { CurrentUserProvider } from "@/components/current-user";
+import { KeymapProvider } from "@/components/keymap-provider";
 import { NotificationsProvider } from "@/components/notifications-provider";
 
 export const metadata: Metadata = {
@@ -25,7 +26,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="min-h-screen bg-bg text-text antialiased">
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange>
           <CurrentUserProvider>
-            <NotificationsProvider>{children}</NotificationsProvider>
+            <NotificationsProvider>
+              {/* Above the pages, not inside a page's shell: a page registers
+                  its own bindings, so it has to sit under the provider. */}
+              <KeymapProvider>{children}</KeymapProvider>
+            </NotificationsProvider>
           </CurrentUserProvider>
         </ThemeProvider>
       </body>

@@ -7,6 +7,7 @@ import { useState } from "react";
 import { Activity, Brain, PanelRightClose, PanelRightOpen, Users, type LucideIcon } from "lucide-react";
 import { AgentsPanel } from "@/components/agents-panel";
 import { EpisodesRail } from "@/components/episodes-rail";
+import { KeyBadge } from "@/components/key-badge";
 import { MemoryPanel } from "@/components/memory-panel";
 
 export type Tab = "agents" | "episodes" | "memory";
@@ -64,11 +65,12 @@ export function RoomInspector({
             onClick={() => { setTab(id); setOpen(true); }}
             aria-label={label}
             title={label}
-            className={`flex size-9 items-center justify-center rounded-lg transition-colors hover:bg-surface hover:text-text ${
+            className={`relative flex size-9 items-center justify-center rounded-lg transition-colors hover:bg-surface hover:text-text ${
               tab === id ? "text-accent" : "text-muted-foreground"
             }`}
           >
             <Icon className="size-[18px]" />
+            <KeyBadge action={`rail.${id}`} overlay />
           </button>
         ))}
       </aside>
@@ -86,12 +88,13 @@ export function RoomInspector({
                 key={id}
                 data-tour={`inspector-${id}`}
                 onClick={() => setTab(id)}
-                className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-label font-medium transition-colors ${
+                className={`relative flex items-center gap-1.5 rounded-md px-2.5 py-1 text-label font-medium transition-colors ${
                   active ? "bg-elevated text-text shadow-sm ring-1 ring-border" : "text-muted-foreground hover:text-text"
                 }`}
               >
                 <Icon className="size-3.5" />
                 {label}
+                <KeyBadge action={`rail.${id}`} />
               </button>
             );
           })}
