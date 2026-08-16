@@ -8,6 +8,7 @@ import TextareaAutosize from "react-textarea-autosize";
 import { ArrowUp } from "lucide-react";
 import { fetchRoomAgents, logFetchError, sendRoomMessage, type AgentSummary } from "@/lib/api";
 import { useCurrentUser } from "@/components/current-user";
+import { useKeyAction } from "@/components/keymap-provider";
 
 interface Props {
   roomName: string;
@@ -41,6 +42,13 @@ export function RoomChatBox({ roomName, onSent, className }: Props) {
     const t = setInterval(refreshAgents, 30_000);
     return () => clearInterval(t);
   }, [refreshAgents]);
+
+  // The composer is a keybind target. Focus lands on the next frame because the
+  // same keypress may be switching the channel pane back into view, and a
+  // hidden textarea can't take focus.
+  useKeyAction("focus.chat", () => {
+    requestAnimationFrame(() => inputRef.current?.focus());
+  });
 
   // Detect an in-flight @-mention by looking at the cursor's prefix.
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -197,7 +205,8 @@ export function RoomChatBox({ roomName, onSent, className }: Props) {
           </div>
         </div>
         <div className="mt-1.5 px-1 text-micro text-muted-foreground">
-          <kbd className="font-sans">Enter</kbd> to send · <kbd className="font-sans">Shift+Enter</kbd> for newline
+          <kbd className="font-sans">Enter</kbd> to send · <kbd className="font-sans">Shift+Enter</kbd> for newline ·{" "}
+          <kbd className="font-sans">Esc</kbd> for command mode
         </div>
       </div>
     </div>

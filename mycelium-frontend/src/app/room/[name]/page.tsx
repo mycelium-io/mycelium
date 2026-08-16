@@ -13,6 +13,7 @@ import { RoomInspector, type Tab } from "@/components/room-inspector";
 import { RoomTour } from "@/components/room-tour";
 import { GlobalStatusItems, StatusButton } from "@/components/status-items";
 import { ActingAsPicker } from "@/components/acting-as-picker";
+import { useKeyAction, useKeyScope } from "@/components/keymap-provider";
 import { useRoomStatus } from "@/lib/use-status";
 
 function episodeSummaryLabel(episodes: EpisodeSummary[] | null): { text: string; color: string } | null {
@@ -72,6 +73,21 @@ export default function RoomPage() {
     setInspectorTab(tab);
     setInspectorOpen(true);
   }, []);
+
+  // Room-scoped keybinds: the panes, the inspector rails, and the composer are
+  // all reachable without a pointer. The chat box focuses the textarea itself;
+  // this only makes sure the pane holding it is the one on screen.
+  useKeyScope("room");
+  useKeyAction("pane.channel", () => setEditorView("channel"));
+  useKeyAction("pane.negotiate", () => setEditorView("negotiate"));
+  useKeyAction("pane.l9", () => setEditorView("l9"));
+  useKeyAction("pane.plan", () => setEditorView("plan"));
+  useKeyAction("pane.slim", () => setEditorView("slim"));
+  useKeyAction("rail.agents", () => openTab("agents"));
+  useKeyAction("rail.episodes", () => openTab("episodes"));
+  useKeyAction("rail.memory", () => openTab("memory"));
+  useKeyAction("rail.toggle", () => setInspectorOpen(open => !open));
+  useKeyAction("focus.chat", () => setEditorView("channel"));
 
   const episodeLabel = useMemo(() => episodeSummaryLabel(episodes), [episodes]);
 

@@ -5,6 +5,7 @@
 
 import type { ReactNode } from "react";
 import { RoomsSidebar } from "@/components/rooms-sidebar";
+import { KeymapHelpButton, KeymapProvider } from "@/components/keymap-provider";
 
 interface Props {
   /** The open room (highlights its sidebar row); null on the home view. */
@@ -16,18 +17,24 @@ interface Props {
 }
 
 /** The app frame: a persistent rooms sidebar (global nav), the workspace, and a
- *  bottom status bar — an editor-style shell (Explorer / editor / status bar). */
+ *  bottom status bar — an editor-style shell (Explorer / editor / status bar).
+ *  It also hosts the keymap, so every surface inside it is keyboard-operable. */
 export function AppShell({ activeRoom = null, statusLeft, statusRight, children }: Props) {
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-bg text-text">
-      <div className="flex min-h-0 flex-1">
-        <RoomsSidebar activeRoom={activeRoom} />
-        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">{children}</div>
+    <KeymapProvider>
+      <div className="flex h-screen flex-col overflow-hidden bg-bg text-text">
+        <div className="flex min-h-0 flex-1">
+          <RoomsSidebar activeRoom={activeRoom} />
+          <div className="flex min-w-0 flex-1 flex-col overflow-hidden">{children}</div>
+        </div>
+        <footer className="flex h-6 flex-shrink-0 items-center gap-3 border-t border-border bg-surface px-3 text-micro text-muted-foreground">
+          {statusLeft}
+          <div className="ml-auto flex items-center gap-3">
+            {statusRight}
+            <KeymapHelpButton />
+          </div>
+        </footer>
       </div>
-      <footer className="flex h-6 flex-shrink-0 items-center gap-3 border-t border-border bg-surface px-3 text-micro text-muted-foreground">
-        {statusLeft}
-        <div className="ml-auto flex items-center gap-3">{statusRight}</div>
-      </footer>
-    </div>
+    </KeymapProvider>
   );
 }
