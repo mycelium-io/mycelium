@@ -193,14 +193,20 @@ is no litellm dependency.
   try-it path. The localhost bypass reads the request's peer address, so it does
   **not** fire for a containerized backend (published-port traffic looks like LAN
   traffic) — the local tier is served by leaving auth off.
-- **SLIM security is a shared-secret PSK today (D1).** The group key derives from
-  `MYCELIUM_SLIM_MASTER_SECRET` (set the same on every host that shares rooms);
-  `MYCELIUM_SLIM_REQUIRE_SECRET=1` makes a host fail closed rather than fall back to
-  the public dev literal. There is no per-agent identity/revocation yet: **real
-  identity (JWT/SPIRE) is a hard prerequisite before anything hosted / multi-user**.
-- **Adapter capability (be honest).** `claude_code` is proven; `cursor` is untested;
-  `openclaw` and `hermes` are deprecated (they rode the removed SSE/coordination-tick
-  model and have not been migrated to SLIM).
+- **SLIM security defaults to a shared-secret PSK (D1); per-member identity is opt-in.**
+  By default the group key derives from `MYCELIUM_SLIM_MASTER_SECRET` (set the same on
+  every host that shares rooms); `MYCELIUM_SLIM_REQUIRE_SECRET=1` makes a host fail
+  closed rather than fall back to the public dev literal. `slim.identity` /
+  `SLIM_IDENTITY` switches to the **SignerJwt floor** (`slim_identity.py` + its CLI
+  mirror): each member presents its own self-signed ES256 credential, keyed per
+  participant. It degrades to PSK with a one-time warning unless
+  `MYCELIUM_SLIM_IDENTITY_REQUIRE=1` fails closed. Still no revocation story, and
+  identity stays **off by default** (#567) — full identity (SPIRE/SVID) remains a hard
+  prerequisite before anything hosted / multi-user.
+- **Adapter capability (be honest).** `claude_code` is proven; `cursor` is untested.
+  `openclaw` and `hermes` are **gone**, not deprecated — they rode the removed
+  SSE/coordination-tick model and their packages were deleted (#503). Don't
+  reintroduce them as adapter options.
 
 ## Local development
 

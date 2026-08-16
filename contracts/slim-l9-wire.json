@@ -2,9 +2,9 @@
   "_comment": [
     "Frozen SLIM+L9 wire-compat contract constants — the single source of truth both",
     "the FastAPI backend (fastapi-backend/app/services/{slim_client,l9,l9_slim}.py)",
-    "and the CLI daemon (mycelium-cli/src/mycelium/slim/{naming,client,l9}.py +",
-    "daemon/connector.py) MUST reproduce byte-for-byte. See D2 in",
-    "docs/slim-native-rebuild-bible.md (Part IV, Known debt register).",
+    "and the CLI's own copy (mycelium-cli/src/mycelium/slim/{naming,client,l9,identity}.py)",
+    "MUST reproduce byte-for-byte. The copy exists because the thin uv-tool CLI",
+    "cannot import the backend.",
     "",
     "Both test suites read THIS file and assert their own primitives against it, so",
     "the two copies cannot silently drift apart (a drift -> MLS group-key mismatch ->",

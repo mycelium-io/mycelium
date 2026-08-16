@@ -14,12 +14,12 @@ Your core loop is the **negotiation protocol** below (argue, converge, plan, wor
 ## Core Concepts
 
 - **Rooms** are persistent namespaces. They hold memory that accumulates across sessions, and they're the channel where agents negotiate in real time.
-- **The aligner** is a dormant judge, summoned with `@aligner`, that scores whether a negotiation has converged and, on convergence, compiles the agreement into the room's shared plan.
+- **The aligner** is a dormant mediator, summoned with `@aligner`, that runs the negotiation: it addresses one agent at a time, brokers offers until the team agrees, and on agreement compiles the outcome into the room's shared plan.
 - **Memory** lives on the hub — one store for the whole room. Reach it with `mycelium memory set` / `get` / `ls` / `search`, which resolve against the hub over HTTP from whatever machine you're on. There is no local copy to read or keep in step.
 
 ## Semantic negotiation
 
-When two or more agents need to agree on a multi-issue trade-off (REST vs GraphQL, who owns what task, what budget/timeline/scope to ship), Mycelium runs a **structured negotiation**. Agents argue their positions in the room; a dormant judge called the **aligner** scores whether the team has genuinely converged. It's a chat-native bargaining loop with a clear outcome: either consensus (a compiled plan) or a clean "no agreement". Both are valid endings.
+When two or more agents need to agree on a multi-issue trade-off (REST vs GraphQL, who owns what task, what budget/timeline/scope to ship), Mycelium runs a **structured negotiation**. Agents argue their positions in the room; a mediator called the **aligner** brokers them toward one shared answer, running a real alternating-offers mechanism underneath. It's a chat-native bargaining loop with a clear outcome: either consensus (a compiled plan) or a clean "no agreement". Both are valid endings.
 
 On consensus, Mycelium compiles the agreement into the room's **shared plan**: a `- [ ]` checklist at `plan/tasks.md` the whole team executes against. The full arc is: argue → converge → plan → work. The negotiation decides *what*; the plan is *how the team carries it out*. See **After consensus: work the plan** below.
 
@@ -29,7 +29,7 @@ Use it when "let's just chat about it" would spiral. Skip it for one-issue quest
 
 Negotiation is chat, not a separate command set. You receive a teammate's `@`-mention by sitting in `mycelium await` (see **Agent Mode** below); you reply in the room, arguing your position. The whole flow is ordinary room messages plus one convention (a confidence marker) and one summon (the aligner).
 
-**1. State your position, and mark your confidence.** Reply normally, making your case. When you're taking a *negotiation position*, end your reply with a one-line marker so the aligner can score convergence:
+**1. State your position, and mark your confidence.** Reply normally, making your case. When you're taking a *negotiation position*, end your reply with a one-line marker recording how sure you are:
 
 ```
 I can accept a 30% tech cap if we keep portfolio beta under 1.1. That's my
@@ -41,27 +41,29 @@ hard line, everything else is negotiable.
 - `confidence` (0.0–1.0): how sure you are of the position you just argued.
 - `stance`: `accept` if you can live with the offer on the table, `reject` if you can't. Omit `stance` when you're only making an opening offer.
 
-The marker is **stripped from your posted message**: the room sees clean prose; only the epistemic signal is kept. State it honestly: it's how the team distinguishes a real agreement from polite yielding. A reply with no marker is just a plain reply (an observation, not a scored position).
+The marker is **stripped from your posted message**: the room sees clean prose; only the epistemic signal is kept. State it honestly: it's how the team distinguishes a real agreement from polite yielding. A reply with no marker is just a plain reply (an observation, not a stated position).
 
-**2. Converge.** Argue across as many turns as it takes. When the team believes it has agreement (or has clearly stalled), summon the judge. The aligner is a registered engine (`mycelium engine create aligner --kind aligner --room <room-name>`, done once per room); summon it with:
+**2. Converge.** Once the open positions are on the table, summon the mediator. The aligner is a registered engine (`mycelium engine create aligner --kind aligner --room <room-name>`, done once per room); summon it with:
 
 ```bash
-mycelium engine invoke aligner "assess whether we've converged" --room <room-name>
+mycelium engine invoke aligner "converge on <the open question>" --room <room-name>
 ```
 
-The aligner reads the transcript, folds each agent's *latest* position, and emits a verdict onto the channel:
+That opens an **episode**. The aligner reads everyone's opening positions, derives the issues actually in dispute, then works the negotiation round by round: it `@`-addresses **one agent at a time** with the offer currently on the table and waits for that agent's `mycelium respond` reply. So your job during an episode is to keep awaiting and answer when addressed — in prose. You never speak the protocol; the aligner interprets your reply as an accept, a reject, or a counter-offer.
 
-- **Converged**: mean confidence cleared the bar. The backend compiles the agreement into `plan/tasks.md` and syncs it as a shared `knowledge` memory. See **After consensus** below.
-- **Rejected**: confidence too low or too few agents took a scored position. That's a clean "no agreement", not a failure.
+It ends one of two ways:
 
-The aligner is dormant until summoned (zero idle cost), so nothing scores until an `@aligner` mention arrives.
+- **Converged**: everyone accepted the same offer. The backend compiles the agreement into `plan/tasks.md` and syncs it as a shared `knowledge` memory. See **After consensus** below.
+- **Rejected**: the mechanism ran out without unanimous agreement. That's a clean "no agreement", not a failure.
+
+Termination belongs to the mechanism, not to a vibe check: it stops the instant the team genuinely agrees, and it will not keep re-stating an agreement that already happened. The aligner is dormant until summoned (zero idle cost), so nothing runs until an `@aligner` mention arrives.
 
 ### Behavior
 
 - **Narrate your reasoning in the reply itself.** The room is the record, so say *why* you accept or reject ("beta guardrail holds, so I can concede the sector cap"). This makes the negotiation legible to the user watching, and it's what the aligner and future agents read back.
 - **Walking away is legitimate.** If you and another agent keep flip-flopping the same issue, you're not converging, so hold your `reject` and low confidence. A rejected verdict is a clean "couldn't agree" signal, not a failure.
 - **Strong opening positions matter.** Be specific: stake, top concession, hard limit. "I want GraphQL" is weak. "GraphQL primary for authenticated APIs; REST fine for uploads/webhooks; hard limit: no public GraphQL without persisted queries" is strong.
-- **Mark confidence honestly.** `confidence` is how the team distinguishes an informed position from a guess, and it drives the convergence metrics (mean confidence must clear the threshold to converge). Don't inflate it to force a plan; don't deflate it to stall.
+- **Mark confidence honestly.** `confidence` is how the team distinguishes an informed position from a guess, and it feeds the quality metrics recorded when the episode closes. It does not decide the outcome — accepting an offer is what agrees to it — so there's nothing to game by inflating it.
 - **Yield honestly.** If you `stance=accept` an offer you weren't actually persuaded by (just to move things along), keep your `confidence` low to reflect that. Genuine agreement (high confidence that moved toward the outcome) reads differently from social compliance (accepting while unconvinced) in the quality metrics, and dishonest agreement corrupts the team's shared memory.
 
 ### Checking status
