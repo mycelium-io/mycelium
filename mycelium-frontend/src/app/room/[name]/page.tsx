@@ -3,9 +3,10 @@
 
 "use client";
 
-import { useParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchRoom, logFetchError, type EpisodeSummary, type Room } from "@/lib/api";
+import { parseFocus, type FocusTarget } from "@/lib/search";
 import { AppShell } from "@/components/app-shell";
 import { EventStream, type View, type NegotiationPhase } from "@/components/event-stream";
 import { RoomChatBox } from "@/components/room-chat-box";
@@ -31,7 +32,17 @@ function episodeSummaryLabel(episodes: EpisodeSummary[] | null): { text: string;
   return { text: "converged", color: "var(--green)" };
 }
 
+/** `useSearchParams` suspends on the static prerender pass, so the room's body
+ *  sits under a boundary rather than making the whole route dynamic. */
 export default function RoomPage() {
+  return (
+    <Suspense fallback={null}>
+      <RoomWorkspace />
+    </Suspense>
+  );
+}
+
+function RoomWorkspace() {
   const params = useParams();
   const roomName = params.name as string;
   const [room, setRoom] = useState<Room | null>(null);
@@ -85,6 +96,33 @@ export default function RoomPage() {
   }, []);
 
   const handleEngineInviteShown = useCallback(() => setInviteEngine(false), []);
+
+  // Arriving from search: `?focus=<type>:<id>` names one item in this room.
+  // Reveal the surface it lives on, then hand the id to the panel that owns the
+  // row — a result opens the item, not just the room it is in. The parameter is
+  // consumed on arrival so returning to a rail later doesn't re-select, and so
+  // jumping to the same item twice is a change the panel sees both times.
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const focusParam = searchParams.get("focus");
+  const [focus, setFocus] = useState<FocusTarget | null>(null);
+  const clearFocus = useCallback(() => setFocus(null), []);
+  // Acted on once per value: the request is a one-shot, and a re-run over the
+  // same parameter would drag you back to the item you had just dismissed.
+  const applied = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (applied.current === focusParam) return;
+    applied.current = focusParam;
+    const target = parseFocus(focusParam);
+    if (!target) return;
+    setFocus(target);
+    if (target.type === "memory") openTab("memory");
+    else if (target.type === "episode") openTab("episodes");
+    else if (target.type === "agent") openTab("agents");
+    else if (target.type === "message") setEditorView("channel");
+    router.replace(`/room/${encodeURIComponent(roomName)}`, { scroll: false });
+  }, [focusParam, openTab, roomName, router]);
 
   // Room-scoped keybinds: the panes, the inspector rails, and the composer are
   // all reachable without a pointer. The chat box focuses the textarea itself;
@@ -184,6 +222,8 @@ export default function RoomPage() {
               view={editorView}
               onViewChange={setEditorView}
               suppressInvites={tourActive}
+              focusMessageId={focus?.type === "message" ? focus.id : null}
+              onFocusConsumed={clearFocus}
             />
           </div>
           <RoomChatBox roomName={roomName} className={editorView !== "channel" ? "hidden" : undefined} />
@@ -199,6 +239,8 @@ export default function RoomPage() {
           onOpenChange={setInspectorOpen}
           engineInvite={inviteEngine}
           onEngineInviteShown={handleEngineInviteShown}
+          focus={focus}
+          onFocusConsumed={clearFocus}
           focusMemory={focusMemory}
         />
       </div>

@@ -9,6 +9,7 @@ import { AgentsPanel } from "@/components/agents-panel";
 import { EpisodesRail } from "@/components/episodes-rail";
 import { KeyBadge } from "@/components/key-badge";
 import { MemoryPanel } from "@/components/memory-panel";
+import type { FocusTarget } from "@/lib/search";
 
 export type Tab = "agents" | "episodes" | "memory";
 
@@ -30,6 +31,10 @@ interface Props {
   /** One-shot request to show the engine invite form (from the palette). */
   engineInvite?: boolean;
   onEngineInviteShown?: () => void;
+  /** One item to select, arrived at from search. Only the rail that owns that
+   *  kind of row sees it; the others are handed null. */
+  focus?: FocusTarget | null;
+  onFocusConsumed?: () => void;
   /** Reveal a memory by key in the Memory tab (e.g. a clicked chat wikilink). */
   focusMemory?: { key: string; nonce: number } | null;
 }
@@ -46,8 +51,11 @@ export function RoomInspector({
   onOpenChange,
   engineInvite = false,
   onEngineInviteShown,
+  focus = null,
+  onFocusConsumed,
   focusMemory,
 }: Props) {
+  const focused = (type: FocusTarget["type"]) => (focus?.type === type ? focus.id : null);
   const [tabInternal, setTabInternal] = useState<Tab>("agents");
   const [openInternal, setOpenInternal] = useState(true);
   const tab = tabProp ?? tabInternal;
@@ -123,11 +131,26 @@ export function RoomInspector({
             refreshKey={memoryRefresh}
             engineInvite={engineInvite}
             onEngineInviteShown={onEngineInviteShown}
+            focusHandle={focused("agent")}
+            onFocusConsumed={onFocusConsumed}
           />
         )}
-        {tab === "episodes" && <EpisodesRail roomName={roomName} />}
+        {tab === "episodes" && (
+          <EpisodesRail
+            roomName={roomName}
+            focusShortId={focused("episode")}
+            onFocusConsumed={onFocusConsumed}
+          />
+        )}
         {tab === "memory" && (
-          <MemoryPanel roomName={roomName} masId={masId ?? null} refreshTrigger={memoryRefresh} focusMemory={focusMemory} />
+          <MemoryPanel
+            roomName={roomName}
+            masId={masId ?? null}
+            refreshTrigger={memoryRefresh}
+            focusKey={focused("memory")}
+            onFocusConsumed={onFocusConsumed}
+            focusMemory={focusMemory}
+          />
         )}
       </div>
     </aside>

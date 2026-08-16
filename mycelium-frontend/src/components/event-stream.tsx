@@ -27,7 +27,13 @@ import { initials } from "@/components/ui/monogram";
 import { MessagesSquare } from "lucide-react";
 
 interface Event {
+  /** Render key only — synthesized, so a message republished by a status
+   *  transition can't collide with the row it updates. */
   id: string;
+  /** The backend's id for this message, where it has one. Stable across reads
+   *  (the transcript derives it from the envelope id), which is what a search
+   *  result points at. */
+  messageId: string | null;
   type: string;
   content: string;
   sender: string;
@@ -256,6 +262,7 @@ function parseEvent(msg: Record<string, unknown>): Event {
 
   return {
     id: `${Date.now()}-${Math.random()}`,
+    messageId: typeof msg.id === "string" ? msg.id : null,
     type: mtype,
     content,
     sender,
@@ -323,9 +330,12 @@ interface Props {
   /** Hold back the consent-request modal (e.g. during the onboarding tour, so
    *  its backdrop doesn't cover the coached highlights). */
   suppressInvites?: boolean;
+  /** A message to reveal in the channel, arrived at from search. */
+  focusMessageId?: string | null;
+  onFocusConsumed?: () => void;
 }
 
-export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onNegotiationPhaseChange, planRefreshTrigger = 0, onOpenMemory, view: viewProp, onViewChange, suppressInvites = false }: Props) {
+export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onNegotiationPhaseChange, planRefreshTrigger = 0, onOpenMemory, view: viewProp, onViewChange, suppressInvites = false, focusMessageId = null, onFocusConsumed }: Props) {
   const [events, setEvents] = useState<Event[]>([]);
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [connected, setConnected] = useState(false);
@@ -444,10 +454,28 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
     [events],
   );
 
-  // Auto-scroll when new events arrive
+  // Arriving from search: mark the named message and scroll it into sight once
+  // history has landed. The mark outlives the request that carried it — a
+  // highlight cleared with the URL parameter would be gone before it was read.
+  const [highlight, setHighlight] = useState<string | null>(null);
+  const highlightRow = useRef<HTMLDivElement>(null);
   useEffect(() => {
+    if (!focusMessageId) return;
+    setHighlight(focusMessageId);
+    onFocusConsumed?.();
+  }, [focusMessageId, onFocusConsumed]);
+
+  // Auto-scroll when new events arrive — but not over a message the user was
+  // just sent to, which is the one place in the feed they're looking.
+  useEffect(() => {
+    if (highlight) return;
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [visible]);
+  }, [visible, highlight]);
+
+  useEffect(() => {
+    if (!highlight) return;
+    highlightRow.current?.scrollIntoView({ block: "center" });
+  }, [highlight, historyLoaded, visible]);
 
   const channelCount = useMemo(
     () => events.filter(e => CHANNEL_VIEW_TYPES.has(e.type)).length,
@@ -676,10 +704,14 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
               // Agents wear the accent; humans stay neutral. Consistent with the
               // agents panel so one agent isn't two colors in two places.
               const color = isAgent ? "var(--accent)" : "var(--muted-foreground)";
+              const marked = highlight !== null && ev.messageId === highlight;
               return (
                 <div
                   key={ev.id}
-                  className={`group flex gap-3 px-5 hover:bg-hairline ${grouped ? "py-0.5" : "mt-3 pt-1 first:mt-0"}`}
+                  ref={marked ? highlightRow : undefined}
+                  className={`group flex gap-3 px-5 hover:bg-hairline ${grouped ? "py-0.5" : "mt-3 pt-1 first:mt-0"} ${
+                    marked ? "bg-accent/15" : ""
+                  }`}
                 >
                   <div className="w-8 flex-shrink-0">
                     {grouped ? (

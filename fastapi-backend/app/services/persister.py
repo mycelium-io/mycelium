@@ -427,6 +427,24 @@ def conversational_messages(room: str) -> list[StoredMessage]:
     return list(messages)
 
 
+def room_conversation(room: str) -> list[StoredMessage]:
+    """A room's full conversational view: durable transcript + live in-memory rows.
+
+    The transcript survives restarts and both post paths converge on it; the
+    in-memory ``local_state`` rows are the live lens and carry the ledger fields
+    (ttl/status) plus the ids clients already hold. Where a message is in both,
+    the ``local_state`` row wins and the transcript only fills what memory lost.
+    Dedup is by envelope ``message_id`` — a distinct id space from
+    ``StoredMessage.id``.
+    """
+    from app.services import local_state
+
+    mem = local_state.list_messages(room)
+    live_ids = {m.message_id for m in mem if m.message_id}
+    disk = [m for m in conversational_messages(room) if m.message_id not in live_ids]
+    return disk + mem
+
+
 def l9_bus_frame(room: str, record: TranscriptRecord) -> dict[str, Any]:
     """Project a transcript record into the L9 wire frame the SSE bus carries.
 

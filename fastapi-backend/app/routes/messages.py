@@ -136,21 +136,12 @@ def _read_messages(
 ) -> list[local_state.StoredMessage]:
     """The room view: durable conversational history + in-memory event-ledger rows.
 
-    A real room's durable conversational history lives in the transcript (survives
-    restarts; both ``respond`` and ``room send`` converge there). The in-memory
-    ``local_state`` is the live lens and holds the ledger fields (ttl/status) plus
-    the ids clients already hold, so where a message is in both stores the
-    ``local_state`` row wins; the transcript only fills what memory lost (a message
-    from before a restart). Dedup is by envelope ``message_id`` (a distinct id space
-    from ``StoredMessage.id``). A coordination session has no transcript.
+    A coordination session has no transcript, so it is the in-memory rows alone;
+    a real room is the merged view ``persister.room_conversation`` builds.
     """
     if coord is not None:
         return local_state.list_messages(channel)
-
-    mem = local_state.list_messages(channel)
-    live_ids = {m.message_id for m in mem if m.message_id}
-    disk = [m for m in persister.conversational_messages(channel) if m.message_id not in live_ids]
-    return disk + mem
+    return persister.room_conversation(channel)
 
 
 @router.get("", response_model=MessageListResponse)

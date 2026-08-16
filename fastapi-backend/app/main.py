@@ -40,6 +40,7 @@ from app.routes.participate import router as participate_router
 from app.routes.plan import agent_router as agent_context_router
 from app.routes.plan import router as plan_router
 from app.routes.rooms import router as rooms_router
+from app.routes.search import router as search_router
 from app.routes.sessions import router as sessions_router
 from app.routes.stream import router as stream_router
 from app.routes.users import router as users_router
@@ -229,6 +230,7 @@ app.include_router(links_router, prefix="/api")
 app.include_router(plan_router, prefix="/api")
 app.include_router(agent_context_router, prefix="/api")
 app.include_router(users_router, prefix="/api")
+app.include_router(search_router, prefix="/api")
 
 
 @app.get("/", tags=["health"])

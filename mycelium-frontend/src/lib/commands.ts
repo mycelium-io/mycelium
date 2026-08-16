@@ -99,7 +99,7 @@ export function paletteFilter(recent: readonly string[]) {
 /** Sections in this order, whoever registered first — the palette opens on the
  *  rooms, not on whichever component's effect happened to run earliest. Groups
  *  not listed here follow, in the order they turned up. */
-const GROUP_ORDER = ["Rooms", "Navigate", "Panes", "Inspector", "Focus", "Preferences", "Help"];
+const GROUP_ORDER = ["Rooms", "Navigate", "Search", "Panes", "Inspector", "Focus", "Preferences", "Help"];
 
 function byGroup(commands: readonly PaletteCommand[]): PaletteSection[] {
   const sections = new Map<string, PaletteCommand[]>();

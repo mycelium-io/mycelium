@@ -53,6 +53,17 @@ export const KEYMAP: Binding[] = [
     // The palette can't offer itself a way in.
     palette: false,
   },
+  // The other half of the pair: ⌘K runs actions, `/` finds content. A bare key
+  // because that is what `/` means everywhere else, and the palette carries a
+  // row for it — which is how it stays reachable from inside the composer,
+  // where bare keys are inert.
+  {
+    id: "search.open",
+    keys: ["/"],
+    label: "Search everything",
+    group: "Search",
+    scope: "global",
+  },
 
   {
     id: "rooms.digit",

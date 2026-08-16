@@ -5,6 +5,7 @@
 
 import type { ReactNode } from "react";
 import { RoomsSidebar } from "@/components/rooms-sidebar";
+import { GlobalSearch, GlobalSearchButton } from "@/components/global-search";
 import { CommandPaletteButton, KeymapHelpButton } from "@/components/keymap-provider";
 
 interface Props {
@@ -20,19 +21,22 @@ interface Props {
  *  bottom status bar — an editor-style shell (Explorer / editor / status bar). */
 export function AppShell({ activeRoom = null, statusLeft, statusRight, children }: Props) {
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-bg text-text">
-      <div className="flex min-h-0 flex-1">
-        <RoomsSidebar activeRoom={activeRoom} />
-        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">{children}</div>
-      </div>
-      <footer className="flex h-6 flex-shrink-0 items-center gap-3 border-t border-border bg-surface px-3 text-micro text-muted-foreground">
-        {statusLeft}
-        <div className="ml-auto flex items-center gap-3">
-          {statusRight}
-          <CommandPaletteButton />
-          <KeymapHelpButton />
+    <GlobalSearch>
+      <div className="flex h-screen flex-col overflow-hidden bg-bg text-text">
+        <div className="flex min-h-0 flex-1">
+          <RoomsSidebar activeRoom={activeRoom} />
+          <div className="flex min-w-0 flex-1 flex-col overflow-hidden">{children}</div>
         </div>
-      </footer>
-    </div>
+        <footer className="flex h-6 flex-shrink-0 items-center gap-3 border-t border-border bg-surface px-3 text-micro text-muted-foreground">
+          {statusLeft}
+          <div className="ml-auto flex items-center gap-3">
+            {statusRight}
+            <GlobalSearchButton />
+            <CommandPaletteButton />
+            <KeymapHelpButton />
+          </div>
+        </footer>
+      </div>
+    </GlobalSearch>
   );
 }

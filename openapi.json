@@ -1818,6 +1818,153 @@
         "title": "RoomRead",
         "type": "object"
       },
+      "SearchHitRead": {
+        "description": "One result, flattened to the shape every entity type shares.",
+        "properties": {
+          "id": {
+            "description": "Type-specific identifier to navigate by: memory key, episode short id, message uuid, room name, agent handle",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
+          "room": {
+            "title": "Room",
+            "type": "string"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          },
+          "snippet": {
+            "default": "",
+            "title": "Snippet",
+            "type": "string"
+          },
+          "subtitle": {
+            "default": "",
+            "title": "Subtitle",
+            "type": "string"
+          },
+          "timestamp": {
+            "default": "",
+            "title": "Timestamp",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "room",
+              "agent",
+              "episode",
+              "memory",
+              "message"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "room",
+          "id",
+          "title",
+          "score"
+        ],
+        "title": "SearchHitRead",
+        "type": "object"
+      },
+      "SearchResponse": {
+        "properties": {
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "Matches per type before the result list was trimmed",
+            "title": "Counts",
+            "type": "object"
+          },
+          "query": {
+            "title": "Query",
+            "type": "string"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/SearchHitRead"
+            },
+            "title": "Results",
+            "type": "array"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/SearchScopeRead"
+          }
+        },
+        "required": [
+          "query",
+          "scope"
+        ],
+        "title": "SearchResponse",
+        "type": "object"
+      },
+      "SearchScopeRead": {
+        "description": "How the server read the query's scoping tokens.\n\nEchoed back so a caller draws its scope chips from the interpretation the\nsearch actually ran under, rather than re-parsing the string itself.",
+        "properties": {
+          "actors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Actors",
+            "type": "array"
+          },
+          "kinds": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Kinds",
+            "type": "array"
+          },
+          "rooms": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Rooms",
+            "type": "array"
+          },
+          "text": {
+            "default": "",
+            "title": "Text",
+            "type": "string"
+          },
+          "types": {
+            "items": {
+              "enum": [
+                "room",
+                "agent",
+                "episode",
+                "memory",
+                "message"
+              ],
+              "type": "string"
+            },
+            "title": "Types",
+            "type": "array"
+          }
+        },
+        "title": "SearchScopeRead",
+        "type": "object"
+      },
       "SubscriptionCreate": {
         "properties": {
           "key_pattern": {
@@ -2666,7 +2813,7 @@
     },
     "/api/rooms/{room_name}/agents": {
       "get": {
-        "description": "Return every agent registered in the room as structured JSON.\n\nReads ``agents/<handle>`` memory entries, parses the YAML body through\nthe manifest fields, and returns a typed list. Sub-keys like\n``agents/<handle>/notes`` are skipped.",
+        "description": "Return every agent registered in the room as structured JSON.",
         "operationId": "list_agents_api_rooms__room_name__agents_get",
         "parameters": [
           {
@@ -4649,6 +4796,64 @@
         "summary": "Leave Room",
         "tags": [
           "sessions"
+        ]
+      }
+    },
+    "/api/search": {
+      "get": {
+        "description": "Search every entity type in scope and return them on one ranked list.\n\nAn empty query is a valid request with no results \u2014 a typeahead calls this\non the first keystroke and shouldn't have to special-case a 422.",
+        "operationId": "search_everything_api_search_get",
+        "parameters": [
+          {
+            "description": "Query text with optional #room / @agent / type: tokens",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "default": "",
+              "description": "Query text with optional #room / @agent / type: tokens",
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Search Everything",
+        "tags": [
+          "search"
         ]
       }
     },
