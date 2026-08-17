@@ -4,7 +4,18 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ChevronRight, Radio } from "lucide-react";
+import {
+  ArrowLeftRight,
+  BookOpen,
+  ChevronRight,
+  Circle,
+  CircleCheck,
+  CircleX,
+  Radio,
+  Target,
+  TriangleAlert,
+  type LucideIcon,
+} from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -221,10 +232,39 @@ function kindTone(kind: string): string {
   return KIND_TONE[kind] ?? "var(--muted-foreground)";
 }
 
+/** Row tone, refined by subkind: a rejected commit reads red, not the green of a
+ *  converged one. Everything else follows its kind. */
+function frameTone(kind: string, subkind?: string | null): string {
+  if (kind === "commit") return subkind === "rejected" ? "var(--red)" : "var(--green)";
+  return kindTone(kind);
+}
+
+/** One glyph per kind — the scannable anchor at the start of every row. Commit
+ *  splits on outcome (✓ converged/resolved, ✕ rejected). */
+function frameIcon(kind: string, subkind?: string | null): LucideIcon {
+  switch (kind) {
+    case "exchange":
+      return ArrowLeftRight;
+    case "commit":
+      return subkind === "rejected" ? CircleX : CircleCheck;
+    case "knowledge":
+      return BookOpen;
+    case "contingency":
+      return TriangleAlert;
+    case "intent":
+      return Target;
+    default:
+      return Circle;
+  }
+}
+
 export function KindBadge({ kind, subkind }: { kind: string; subkind?: string | null }) {
-  const tone = kindTone(kind);
   return (
-    <span className="caps-mono-sm flex-shrink-0" style={{ color: tone }}>
+    <span
+      className="block min-w-0 truncate font-mono text-label font-semibold uppercase tracking-[0.02em]"
+      style={{ color: frameTone(kind, subkind) }}
+      title={`${kind}${subkind ? ":" + subkind : ""}`}
+    >
       {kind.toUpperCase()}
       {subkind ? <span className="text-muted-foreground">:{subkind}</span> : null}
     </span>
@@ -267,6 +307,9 @@ function FrameRow({
     return () => onExpandedChange(-1);
   }, [expanded, onExpandedChange]);
 
+  const Icon = frameIcon(frame.kind, frame.subkind);
+  const tone = frameTone(frame.kind, frame.subkind);
+
   return (
     <div className="border-b border-border last:border-b-0">
       <button
@@ -274,27 +317,32 @@ function FrameRow({
         aria-expanded={expanded}
         onClick={() => setExpanded((prev) => !prev)}
         title={expanded ? "Collapse envelope" : "Expand full envelope JSON"}
-        className="group flex items-baseline gap-2 px-4 py-2 w-full text-left cursor-pointer text-body transition-colors hover:bg-hairline"
+        // Fixed columns so kind / actor / summary line up down the feed, one text
+        // size throughout; timestamp + metrics ride a right-aligned meta cluster.
+        className="group grid w-full cursor-pointer grid-cols-[14px_16px_176px_120px_minmax(0,1fr)_auto] items-center gap-x-2.5 px-4 py-1.5 text-left text-label transition-colors hover:bg-hairline"
       >
         <ChevronRight
           aria-hidden
-          className={`size-3.5 flex-shrink-0 self-center text-faint transition-transform group-hover:text-muted-foreground ${expanded ? "rotate-90" : ""}`}
+          className={`size-3.5 text-faint transition-transform group-hover:text-muted-foreground ${expanded ? "rotate-90" : ""}`}
         />
+        <Icon aria-hidden className="size-3.5" style={{ color: tone }} />
         <KindBadge kind={frame.kind} subkind={frame.subkind} />
-        {frame.episode ? (
-          <span className="font-mono text-micro text-accent" title={frame.episode}>
-            {shortEpisode(frame.episode)}
-          </span>
-        ) : null}
-        <span className="font-mono text-label text-muted-foreground truncate">{frame.sender}</span>
-        <span className="text-muted-foreground truncate">{frame.summary}</span>
-        {frame.metrics ? <MetricsRow metrics={frame.metrics} /> : null}
-        {frame.parents.length > 0 ? (
-          <span className="text-micro text-muted-foreground font-mono" title={frame.parents.join("\n")}>
-            ←{frame.parents.length}
-          </span>
-        ) : null}
-        <span className="ml-auto text-micro text-muted-foreground font-mono tabular flex-shrink-0">{frame.time}</span>
+        <span className="truncate font-mono text-muted-foreground">{frame.sender}</span>
+        <span className="min-w-0 truncate text-text">{frame.summary}</span>
+        <span className="flex items-center justify-end gap-2.5 text-micro text-muted-foreground">
+          {frame.metrics ? <MetricsRow metrics={frame.metrics} /> : null}
+          {frame.parents.length > 0 ? (
+            <span className="font-mono tabular" title={frame.parents.join("\n")}>
+              ←{frame.parents.length}
+            </span>
+          ) : null}
+          {frame.episode ? (
+            <span className="font-mono text-accent" title={frame.episode}>
+              {shortEpisode(frame.episode)}
+            </span>
+          ) : null}
+          <span className="font-mono tabular">{frame.time}</span>
+        </span>
       </button>
       {expanded ? (
         <ScrollArea className="mx-4 mb-2 h-64 border border-border bg-surface">
