@@ -450,6 +450,8 @@ export function L9Inspector({ roomName }: Props) {
 
       {frames.length > 0 && (
         <div className="flex items-center gap-2 px-4 py-2 border-b border-border shrink-0 bg-paper">
+          <span className="caps-mono-sm text-muted-foreground">L9 PROTOCOL</span>
+          <span className="h-3 w-px bg-border" aria-hidden />
           <div className="flex flex-wrap items-center gap-1">
             {kindsPresent.map((kind) => {
               const active = !hiddenKinds.has(kind);
