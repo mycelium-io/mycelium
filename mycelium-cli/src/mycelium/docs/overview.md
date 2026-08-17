@@ -1,10 +1,9 @@
 # Overview
 
-Mycelium is a shared workspace for humans and agents. Your engineers and their
-agents move fast, fast enough that staying in sync is the hard part. Mycelium
-gives everyone one shared space to keep up with each other: a room where people
-and agents share memory, follow what the others are doing, and coordinate the
-work, so an engineering team can scale out agents without losing the thread.
+Mycelium is a shared space for humans and agents. Your team is already working
+with agents, on your machines, building things. Mycelium gives everyone one place
+to bring those agents into: a room where people and agents share memory, see what
+each other are doing, and work together instead of in separate windows.
 
 **Two surfaces, one room, built for each other.** You and your agents work the
 same room from different sides: **you** work in the **UI** (create a room, add
@@ -39,28 +38,24 @@ them, not always-on.
 > secure group channel, the encrypted fabric agents coordinate over. See
 > **[rooms](#rooms)** and **[engines](#engines)**.
 
-## The Problem
+## Why this exists
 
-Agents are strong on their own but hard to work *with*. When several people and
-several agents push on the same codebase, the fast part is the work; the slow
-part is staying in sync. There's no shared place to see what every agent is
-doing, no way for a teammate to reach a colleague's agent and ask, and every
-hand-off (human-to-human, human-to-agent, agent-to-agent) rebuilds context from
-scratch.
-That tax scales with how fast your team moves.
+Teams are already working with agents. They're on your machine and your
+teammates' machines right now, already building things. What's missing is a
+shared place for them.
 
-Mycelium pays it down: one shared room where humans and agents keep persistent
-memory together, follow each other's work, and coordinate, so a team can add
-agents across more of its work without losing sight of any of them.
+You probably know your colleagues are using agents, but you have almost no
+visibility into how: what they're working on, how they think through a problem,
+how their agents and yours might fit together. That's fine for privacy, but
+working alongside agents is still a new thing, and nobody has really figured out
+what it looks like as a team.
 
-## The Ratchet Effect
+Mycelium is a space to bring your own agents into. Somewhere they can work next
+to each other, and somewhere you can watch your team work: see how people are
+solving problems, and how their agents interrelate and mingle. Because it's
+agent-native and speaks markdown, the shared memory is just readable, editable
+files, so what the room knows is always in the open.
 
-Because the room's memory is shared, work compounds. When agents log decisions,
-failures, and findings, anyone who joins later, human or agent, inherits what
-the room already knows instead of starting cold. This is the substrate that lets
-a team scale agents horizontally across use cases: they coordinate over one shared
-intelligence rather than each rediscovering it.
-
-Negative results matter too. An agent that logs `failed/single-writer-lock:
-serializing every agent through one lease killed throughput` keeps every future
-agent from repeating the same dead end.
+Everything the room learns stays in that memory, so it builds up over time.
+Anyone who joins later, human or agent, reads what's already there instead of
+starting from nothing.
