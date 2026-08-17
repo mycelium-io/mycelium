@@ -30,11 +30,8 @@ from pathlib import Path
 # (page_id, file_name, page_title, top_nav_label, sheet_no, plate_title, meta_description)
 PAGES: list[tuple[str, str, str, str, str, str, str]] = [
     ("start", "index.html", "mycelium Docs", "Get Started",
-     "GET-001", "OVERVIEW · INSTALL · FIRST ROOM · COORDINATE",
-     "Coordination layer for multi-agent systems. Install and run your first multi-agent coordination flow: room, agents, negotiation, plan."),
-    ("concepts", "concepts.html", "Concepts · mycelium", "Concepts",
-     "CON-001", "CONCEPTS · ROOMS · EPISODES · MEMORY · PLAN",
-     "The core concepts behind Mycelium: rooms, episodes, memory, plan, engines (the aligner and synthesizer), and the L9 protocol."),
+     "GET-001", "OVERVIEW · QUICK START · CONCEPTS · ENGINES",
+     "A shared space for humans and agents. Install Mycelium and learn the core concepts: rooms, memory, plan, engines (the aligner and synthesizer), and the L9 protocol."),
     ("adapters", "adapters.html", "Adapters · mycelium", "Adapters",
      "ADP-001", "ADAPTERS · CLAUDE CODE · CURSOR · REST API",
      "Connect Claude Code, Cursor, or any HTTP client to the Mycelium coordination layer."),
@@ -51,17 +48,17 @@ SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
     # ── start (index.html) — overview + quickstart ──
     ("overview.md",                 "overview",           "start",       "Get Started",  "Overview"),
     ("quickstart.md",               "quickstart",         "start",       "Get Started",  "Quick Start"),
-    # ── concepts (concepts.html) ──
-    ("rooms.md",                    "rooms",              "concepts",    "Concepts",     "Rooms"),
-    ("principals.md",               "users",              "concepts",    "Concepts",     "Users & Teams"),
-    ("episodes.md",                 "episodes",           "concepts",    "Concepts",     "Episodes"),
-    ("memory.md",                   "memory",             "concepts",    "Concepts",     "Memory"),
-    ("plan.md",                     "plan",               "concepts",    "Concepts",     "Plan"),
-    ("l9-protocol.md",              "l9-protocol",        "concepts",    "Concepts",     "L9 Protocol"),
+    # ── concepts (now on the start page, grouped in the sidebar) ──
+    ("rooms.md",                    "rooms",              "start",       "Concepts",     "Rooms"),
+    ("principals.md",               "users",              "start",       "Concepts",     "Users & Teams"),
+    ("episodes.md",                 "episodes",           "start",       "Concepts",     "Episodes"),
+    ("memory.md",                   "memory",             "start",       "Concepts",     "Memory"),
+    ("plan.md",                     "plan",               "start",       "Concepts",     "Plan"),
+    ("l9-protocol.md",              "l9-protocol",        "start",       "Concepts",     "L9 Protocol"),
     # Engines are a nested group: the overview, then one page per kind.
-    ("engines.md",                  "engines",            "concepts",    "Engines",      "Overview"),
-    ("aligner.md",                  "aligner",            "concepts",    "Engines",      "Aligner"),
-    ("synthesizer.md",              "synthesizer",        "concepts",    "Engines",      "Synthesizer"),
+    ("engines.md",                  "engines",            "start",       "Engines",      "Overview"),
+    ("aligner.md",                  "aligner",            "start",       "Engines",      "Aligner"),
+    ("synthesizer.md",              "synthesizer",        "start",       "Engines",      "Synthesizer"),
     # ── adapters (adapters.html) — all hand-coded ──
     (None,                          "adapters",           "adapters",  "Adapters",     "Overview"),
     (None,                          "adapter-claude-code","adapters",  "Adapters",     "Claude Code"),
@@ -719,7 +716,6 @@ def _topnav(active_page_id: str) -> str:
       <button class="resources-btn" onclick="toggleResources(event)">Resources</button>
       <div class="resources-menu" id="resources-menu">
         <a href="index.html">Get Started</a>
-        <a href="concepts.html">Concepts</a>
         <a href="adapters.html">Adapters</a>
         <a href="reference.html">Reference</a>
         <a href="{SKILL_MD_URL}" target="_blank" rel="noopener">SKILL.md ↗</a>
