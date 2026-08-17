@@ -190,6 +190,11 @@ services:
       MYCELIUM_OIDC_CLIENT_ID: ${MYCELIUM_OIDC_CLIENT_ID:-mycelium-web}
       MYCELIUM_OIDC_AUDIENCE: ${MYCELIUM_OIDC_AUDIENCE:-}
       AUTH_SESSION_SECRET: ${AUTH_SESSION_SECRET:-}
+      # Auth cookies default to Secure. Set to "false" for a plain-HTTP appliance
+      # deployment with no TLS termination in front (e.g. a bare public IP) —
+      # otherwise the browser silently drops them and login fails with "missing
+      # code or state". Leave unset/true whenever TLS actually terminates.
+      MYCELIUM_COOKIE_SECURE: ${MYCELIUM_COOKIE_SECURE:-}
     depends_on:
       mycelium-backend:
         condition: service_healthy
