@@ -138,8 +138,8 @@
 }
 
 :root {
-  --sidebar-width: 236px;
-  --topbar-height: 52px;
+  --sidebar-width: 260px;
+  --topbar-height: 60px;
   --statusbar-height: 26px;
 
   /* spacing scale */
@@ -344,12 +344,12 @@ a.topnav-page:hover { color: var(--text); text-decoration: none; }
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  padding: 4px 10px;
+  padding: 6px 14px;
   border-radius: var(--radius-md);
   color: var(--muted-foreground);
   text-decoration: none;
   font-family: var(--font-sans);
-  font-size: var(--text-label);
+  font-size: var(--text-body);
   font-weight: 500;
   transition: color 0.15s, background 0.15s;
 }
@@ -425,7 +425,7 @@ a.topnav-page:hover { color: var(--text); text-decoration: none; }
   top: var(--topbar-height);
   bottom: var(--statusbar-height);
   overflow-y: auto;
-  padding: 12px 0 24px;
+  padding: 18px 0 28px;
   border-right: 1px solid var(--border);
   background: color-mix(in srgb, var(--surface) 88%, transparent);
   backdrop-filter: blur(14px);
@@ -433,26 +433,26 @@ a.topnav-page:hover { color: var(--text); text-decoration: none; }
 }
 .sidebar::-webkit-scrollbar { width: 6px; }
 
-.nav-section { margin-bottom: 18px; padding: 0 8px; }
+.nav-section { margin-bottom: 22px; padding: 0 10px; }
 /* Sans, not mono: a group label is human register (matches the app's "Rooms"). */
 .nav-section-label {
-  font-size: var(--text-micro);
+  font-size: var(--text-label);
   font-weight: 600;
-  letter-spacing: 0.025em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--muted-foreground);
-  margin-bottom: 4px;
+  margin-bottom: 6px;
   padding: 0 8px;
 }
 /* Rows mirror the app's room rows: rounded-lg, elevated + ring when active. */
 .nav-link {
   display: block;
-  padding: 5px 8px;
+  padding: 7px 10px;
   border-radius: var(--radius-lg);
   color: var(--muted-foreground);
   text-decoration: none;
-  font-size: var(--text-label);
-  line-height: 1.45;
+  font-size: var(--text-body);
+  line-height: 1.5;
   transition: color 0.15s, background 0.15s;
 }
 .nav-link:hover { color: var(--text); background: var(--hairline); text-decoration: none; }
@@ -521,13 +521,17 @@ h1 {
 }
 
 h2 {
-  font-size: 1.3125rem;
+  font-size: 1.55rem;
   font-weight: 600;
+  font-style: italic;
+  font-family: var(--font-serif);
   letter-spacing: -0.01em;
-  line-height: 1.3;
+  line-height: 1.25;
   margin-bottom: var(--space-3);
   margin-top: var(--space-7);
+  padding-bottom: var(--space-2);
   color: var(--text);
+  border-bottom: 1px solid var(--border);
 }
 
 /* Was mono + a second cyan. Subheads are human register: sans, one text color. */
@@ -666,11 +670,10 @@ pre code {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   margin: 20px 0;
-  font-size: var(--text-body);
+  font-size: var(--text-prose);
   line-height: 1.65;
   overflow: hidden;
   display: flex;
-  max-width: var(--measure);
 }
 .callout-bar { width: 3px; flex-shrink: 0; }
 .callout-body { padding: 12px 16px; flex: 1; color: var(--text); }

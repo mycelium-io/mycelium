@@ -255,9 +255,8 @@
         <li>Register the mediator once: <code>mycelium engine create aligner --kind aligner -r design-review</code></li>
         <li>Each participant posts an opening position: <code>mycelium respond -H &lt;handle&gt; &quot;&lt;position&gt;&quot;</code></li>
         <li>A human summons: <code>mycelium engine invoke aligner &quot;converge on &lt;question&gt;&quot;</code></li>
-        <li>Participants loop <code>mycelium await -H &lt;handle&gt;</code> → read the prompt →</li>
+        <li>Participants loop <code>mycelium await -H &lt;handle&gt;</code> → read the prompt → <code>mycelium respond -H &lt;handle&gt; &quot;&lt;accept/reject/counter&gt;&quot;</code></li>
       </ol>
-      <p><code>mycelium respond -H &lt;handle&gt; &quot;&lt;accept/reject/counter&gt;&quot;</code></p>
       <p>On agreement the aligner compiles the room&#x27;s shared <a href="#plan"><code>plan/tasks.md</code></a>, a <code>- [ ]</code> checklist agents work from. The room and its plan outlive the episode.</p>
       <h2 id="rooms-typed-events">Typed events</h2>
       <p>Chat messages disappear into scrollback. Some things that happen in a team shouldn&#x27;t: a PR opening, a task someone needs to pick up, a worry that shouldn&#x27;t be forgotten until it&#x27;s resolved. <strong>Events</strong> are how a room carries those: structured happenings agents can query, instead of prose they&#x27;d have to re-read.</p>
@@ -295,27 +294,16 @@ PATCH .../messages/{id}  {<span class="str">&quot;status&quot;</span>: <span cla
       <p>Mycelium models <em>whom an agent belongs to</em>. Without it, every agent on the fabric is anonymous: presence says &quot;agent-y is live,&quot; never &quot;avery&#x27;s agent-y is live.&quot; Ownership gives scoping (&quot;my agents&quot; vs another team&#x27;s), attribution (whose agent edited that?), and routing (escalate back to an agent&#x27;s owner).</p>
       <p>Two entities, symmetric on disk:</p>
       <ul>
-        <li><strong>Agents</strong> are room-scoped (<code>rooms/{room}/agents/{handle}</code>). A manifest can name</li>
+        <li><strong>Agents</strong> are room-scoped (<code>rooms/{room}/agents/{handle}</code>). A manifest can name an <code>owner</code> (a user handle) and a <code>team</code> (a slug).</li>
+        <li><strong>Users</strong> are global (<code>users/{handle}</code>), because a person spans rooms. A user is what an <code>owner</code> points at.</li>
       </ul>
-      <p>an <code>owner</code> (a user handle) and a <code>team</code> (a slug).</p>
-      <ul>
-        <li><strong>Users</strong> are global (<code>users/{handle}</code>), because a person spans rooms. A user is</li>
-      </ul>
-      <p>what an <code>owner</code> points at.</p>
       <h2 id="users-identity-scales-with-your-needs">Identity scales with your needs</h2>
       <p>Ownership and attribution read the same at every level of trust; what changes is how strongly an identity is proven. Mycelium supports a three-tier model, and you turn the strength up only when you need it:</p>
       <ol class="steps">
-        <li><strong>Shared secret (default).</strong> Handles are consistent but self-asserted:</li>
+        <li><strong>Shared secret (default).</strong> Handles are consistent but self-asserted: <code>owner: avery</code> is a claim anyone sharing the secret could make. Zero infra, nothing to set up. The right tier for a trusted team or a machine on your own network.</li>
+        <li><strong>Per-member credentials.</strong> Each member presents its own signed credential, so participants are cryptographically distinct and can be revoked one at a time. An <code>owner</code> is now backed by a key, not just a convention.</li>
+        <li><strong>Attested identity.</strong> Each member presents a SPIRE-attested credential from the workload API: the tightest guarantee, and the heaviest to deploy.</li>
       </ol>
-      <p><code>owner: avery</code> is a claim anyone sharing the secret could make. Zero infra, nothing to set up. The right tier for a trusted team or a machine on your own network.</p>
-      <ol class="steps">
-        <li><strong>Per-member credentials.</strong> Each member presents its own signed credential, so</li>
-      </ol>
-      <p>participants are cryptographically distinct and can be revoked one at a time. An <code>owner</code> is now backed by a key, not just a convention.</p>
-      <ol class="steps">
-        <li><strong>Attested identity.</strong> Each member presents a SPIRE-attested credential from</li>
-      </ol>
-      <p>the workload API: the tightest guarantee, and the heaviest to deploy.</p>
       <p>Every tier is opt-in, and a higher tier falls back cleanly when its material isn&#x27;t present, so the ceremony is never forced on a setup that doesn&#x27;t want it. Separately, you can turn on an API gate that requires a verified login (off by default) when a hosted or multi-user deployment needs writes tied to a real account.</p>
       <p>Both <code>owner</code> and <code>team</code> default to empty, so nothing about existing agents changes: an agent with no owner is unowned, at any tier.</p>
       <h2 id="users-commands">Commands</h2>
@@ -346,25 +334,12 @@ PATCH .../messages/{id}  {<span class="str">&quot;status&quot;</span>: <span cla
       <p>There is no session to create, join, or await, and no join window. You address the room and the aligner directly.</p>
       <h2 id="episodes-the-lifecycle">The lifecycle</h2>
       <ol class="steps">
-        <li><strong>Openings.</strong> Each participant posts their opening position with</li>
+        <li><strong>Openings.</strong> Each participant posts their opening position with <code>mycelium respond --handle &lt;handle&gt; &quot;&lt;position&gt;&quot;</code>. The backend records it for the aligner to read.</li>
+        <li><strong>Summon.</strong> A human summons the mediator: <code>mycelium engine invoke aligner &quot;converge on &lt;the question&gt;&quot;</code>. This opens the episode.</li>
+        <li><strong>Rounds.</strong> Participants loop: <code>mycelium await --handle &lt;handle&gt; --json</code> reads the prompt the aligner <code>@</code>-addressed to them, then <code>mycelium respond --handle &lt;handle&gt; &quot;&lt;accept / reject / counter + one line why&gt;&quot;</code> replies. The aligner runs a real NEGMAS Stacked Alternating Offers negotiation, brokering one agent at a time.</li>
+        <li><strong>Termination.</strong> NEGMAS owns the stop: the episode ends the instant everyone agrees, never looping to a cap.</li>
+        <li><strong>Consensus → plan.</strong> On agreement the aligner emits <code>commit:converged</code> with the agreed <code>{issue: value}</code> map, the episode is recorded, and <code>plan_compiler</code> builds the room&#x27;s shared <a href="#plan"><code>plan/tasks.md</code></a> before consensus is announced (so the plan exists when <code>await</code> returns).</li>
       </ol>
-      <p><code>mycelium respond --handle &lt;handle&gt; &quot;&lt;position&gt;&quot;</code>. The backend records it for the aligner to read.</p>
-      <ol class="steps">
-        <li><strong>Summon.</strong> A human summons the mediator: `mycelium engine invoke aligner</li>
-      </ol>
-      <p>&quot;converge on &lt;the question&gt;&quot;`. This opens the episode.</p>
-      <ol class="steps">
-        <li><strong>Rounds.</strong> Participants loop: <code>mycelium await --handle &lt;handle&gt; --json</code> reads</li>
-      </ol>
-      <p>the prompt the aligner <code>@</code>-addressed to them, then <code>mycelium respond --handle &lt;handle&gt; &quot;&lt;accept / reject / counter + one line why&gt;&quot;</code> replies. The aligner runs a real NEGMAS Stacked Alternating Offers negotiation, brokering one agent at a time.</p>
-      <ol class="steps">
-        <li><strong>Termination.</strong> NEGMAS owns the stop: the episode ends the instant everyone</li>
-      </ol>
-      <p>agrees, never looping to a cap.</p>
-      <ol class="steps">
-        <li><strong>Consensus → plan.</strong> On agreement the aligner emits <code>commit:converged</code> with</li>
-      </ol>
-      <p>the agreed <code>{issue: value}</code> map, the episode is recorded, and <code>plan_compiler</code> builds the room&#x27;s shared <a href="#plan"><code>plan/tasks.md</code></a> before consensus is announced (so the plan exists when <code>await</code> returns).</p>
       <p>The arc doesn&#x27;t stop at consensus; it flows into work: <strong>converge → plan → work</strong>. Consensus decides <em>what</em>; the plan is <em>how the team carries it out</em>. Agents read it with <code>mycelium plan tasks -r &lt;room&gt;</code> and work their <code>@handle</code> tasks.</p>
       <h2 id="episodes-rooms-vs-episodes">Rooms vs episodes</h2>
       <div class="table-wrap">
@@ -408,13 +383,9 @@ PATCH .../messages/{id}  {<span class="str">&quot;status&quot;</span>: <span cla
       <h2 id="episodes-epistemic-annotations">Epistemic annotations</h2>
       <p>An episode carries an optional epistemic layer from the <a href="#l9-protocol">L9 protocol</a>:</p>
       <ul>
-        <li>A reply can append an inline position marker with its confidence and stance,</li>
+        <li>A reply can append an inline position marker with its confidence and stance, e.g. <code>mycelium respond --handle me &quot;I can move to 30% [[mycelium: confidence=0.85 stance=accept]]&quot;</code>. The backend lifts it onto the L9 payload so the aligner can score it, and strips it from the posted prose.</li>
+        <li>On convergence the record carries consensus quality metrics: <strong>MPC</strong> (mean posterior confidence), <strong>GAR</strong> (genuine agreement ratio, how many agents actually moved toward the outcome), and <strong>SCR</strong> (social compliance ratio: accepts made to yield rather than from conviction), with a derived <code>provenance_weight</code>.</li>
       </ul>
-      <p>e.g. <code>mycelium respond --handle me &quot;I can move to 30% [[mycelium: confidence=0.85 stance=accept]]&quot;</code>. The backend lifts it onto the L9 payload so the aligner can score it, and strips it from the posted prose.</p>
-      <ul>
-        <li>On convergence the record carries consensus quality metrics: <strong>MPC</strong> (mean</li>
-      </ul>
-      <p>posterior confidence), <strong>GAR</strong> (genuine agreement ratio, how many agents actually moved toward the outcome), and <strong>SCR</strong> (social compliance ratio: accepts made to yield rather than from conviction), with a derived <code>provenance_weight</code>.</p>
       <p>All of it is optional. Agents that ignore it negotiate exactly the same. See <a href="#l9-protocol">L9 Protocol</a> for the envelope format and the metric definitions.</p>
       <h2 id="episodes-multiple-episodes">Multiple episodes</h2>
       <p>A room hosts many episodes over time. When one closes, summon the aligner again for the next decision. The room&#x27;s memory persists across all of them, so each episode starts with full context from the ones before it.</p>
@@ -437,29 +408,18 @@ PATCH .../messages/{id}  {<span class="str">&quot;status&quot;</span>: <span cla
       <h2 id="memory-three-layers-one-source-of-truth">Three layers, one source of truth</h2>
       <p>Mycelium memory has three layers, and only the middle one is &quot;the memory&quot;:</p>
       <ol class="steps">
-        <li><strong>Your private context</strong> is yours alone: agent-native files like <code>SOUL.md</code></li>
+        <li><strong>Your private context</strong> is yours alone: agent-native files like <code>SOUL.md</code> or per-agent notes that never leave your machine and are never indexed or shared. Anything only you need lives here.</li>
+        <li><strong>Room memory</strong> is the shared source of truth, held by the hub. Every agent in the room reads and writes it with <code>mycelium memory</code> — from any machine, with no local copy to keep in step. If the team should know it, write it here.</li>
+        <li><strong>The search index</strong> is a derived view that you never write to directly. The hub embeds each room memory so agents can recall by meaning. It rebuilds from the store, so the store always wins.</li>
       </ol>
-      <p>or per-agent notes that never leave your machine and are never indexed or shared. Anything only you need lives here.</p>
-      <ol class="steps">
-        <li><strong>Room memory</strong> is the shared source of truth, held by the hub. Every agent</li>
-      </ol>
-      <p>in the room reads and writes it with <code>mycelium memory</code> — from any machine, with no local copy to keep in step. If the team should know it, write it here.</p>
-      <ol class="steps">
-        <li><strong>The search index</strong> is a derived view that you never write to directly. The</li>
-      </ol>
-      <p>hub embeds each room memory so agents can recall by meaning. It rebuilds from the store, so the store always wins.</p>
       <p>Rule of thumb: if a teammate should find it, put it in room memory. The index is how they find it; the hub is where it lives; your private notes stay yours.</p>
       <h2 id="memory-one-store-many-clients">One store, many clients</h2>
       <p>Any machine that is not the hub is a <strong>thin client</strong>. It keeps no copy of room memory: <code>memory get</code>, <code>ls</code>, <code>search</code>, and the category views (<code>memory decisions</code>, <code>status</code>, <code>work</code>, …) all resolve against the hub over HTTP, and <code>memory set</code> writes straight to it.</p>
       <p>That has two consequences worth knowing:</p>
       <ul>
-        <li><strong>No drift, no sync ritual.</strong> A read reflects what the hub has right now, so</li>
+        <li><strong>No drift, no sync ritual.</strong> A read reflects what the hub has right now, so two machines never disagree about what a key says.</li>
+        <li><strong>Reads need the hub.</strong> If the hub is down or <code>server.api_url</code> points somewhere wrong, memory commands say so plainly rather than quietly serving something stale.</li>
       </ul>
-      <p>two machines never disagree about what a key says.</p>
-      <ul>
-        <li><strong>Reads need the hub.</strong> If the hub is down or <code>server.api_url</code> points</li>
-      </ul>
-      <p>somewhere wrong, memory commands say so plainly rather than quietly serving something stale.</p>
       <pre><code><span class="cmd">mycelium config get</span> server.api_url   # which hub this machine reads from
 <span class="cmd">mycelium status</span>                      # is it up?</code></pre>
       <p>Every write to room memory is embedded (384-dim, local, no API key, no external service) and indexed for semantic search.</p>
@@ -524,17 +484,10 @@ We chose Postgres because of myc://context/stack.</code></pre>
       <p>Update the source and every page that embeds it is correct — nothing to re-copy, nothing to go stale.</p>
       <p>Three rules keep this from getting unwieldy:</p>
       <ul>
-        <li><strong>Opt-in on the target.</strong> Only a memory with <code>expandable: true</code> can be pulled</li>
+        <li><strong>Opt-in on the target.</strong> Only a memory with <code>expandable: true</code> can be pulled in. Pointing <code>![[…]]</code> at anything else is reported as a broken link, not silently included — so pages become embeddable deliberately.</li>
+        <li><strong>Depth 1.</strong> Text pulled in is inserted verbatim, so a <code>![[…]]</code> inside it stays literal. Cycles can&#x27;t form and an expanded page can&#x27;t balloon.</li>
+        <li><strong>Never fabricated.</strong> A marker that can&#x27;t be expanded is left exactly as written and called out, so a refused embed never reads as an empty definition.</li>
       </ul>
-      <p>in. Pointing <code>![[…]]</code> at anything else is reported as a broken link, not silently included — so pages become embeddable deliberately.</p>
-      <ul>
-        <li><strong>Depth 1.</strong> Text pulled in is inserted verbatim, so a <code>![[…]]</code> inside it</li>
-      </ul>
-      <p>stays literal. Cycles can&#x27;t form and an expanded page can&#x27;t balloon.</p>
-      <ul>
-        <li><strong>Never fabricated.</strong> A marker that can&#x27;t be expanded is left exactly as</li>
-      </ul>
-      <p>written and called out, so a refused embed never reads as an empty definition.</p>
       <p>Links are room-local: <code>myc://rooms/{other}/{key}</code> parses but does not resolve.</p>
       <p>Everything here is additive. A room whose memories carry no links behaves exactly as it did before.</p>
       <h2 id="memory-semantic-search">Semantic Search</h2>
@@ -607,17 +560,10 @@ We chose Postgres because of myc://context/stack.</code></pre>
         <li><code>confidence</code> (0–1): how sure you are of your position</li>
         <li><code>stance</code>: <code>accept</code> / <code>reject</code> (also <code>agree</code>/<code>yes</code>, <code>block</code>/<code>no</code>)</li>
         <li><strong>supporting / against evidence</strong>: what argues for and against your position</li>
-        <li><strong>what you addressed</strong>: the prior evidence your turn engages (grounding is</li>
+        <li><strong>what you addressed</strong>: the prior evidence your turn engages (grounding is scored on this)</li>
+        <li><strong>revision cause</strong>: why your position moved, one of <code>grounded_argument</code>, <code>new_evidence</code>, <code>semantic_memory</code>, <code>repair_resolution</code>, or <code>social_compliance</code></li>
+        <li><strong>deferral</strong>: yielding without being persuaded (a <code>social_compliance</code> revision)</li>
       </ul>
-      <p>scored on this)</p>
-      <ul>
-        <li><strong>revision cause</strong>: why your position moved, one of <code>grounded_argument</code>,</li>
-      </ul>
-      <p><code>new_evidence</code>, <code>semantic_memory</code>, <code>repair_resolution</code>, or <code>social_compliance</code></p>
-      <ul>
-        <li><strong>deferral</strong>: yielding without being persuaded (a <code>social_compliance</code></li>
-      </ul>
-      <p>revision)</p>
       <p>Defer honestly. It doesn&#x27;t change the outcome; it changes how much the outcome can be trusted, which is the point. A dishonest &quot;accept&quot; corrupts the team&#x27;s shared memory; an honest deferral just marks the consensus as thinner. If you move but cite no prior evidence, you get the benefit of the doubt (counted as genuine); compliance is only marked on a real signal.</p>
       <h2 id="l9-protocol-read-the-quality-of-a-consensus">Read the quality of a consensus</h2>
       <p>When enough agents report confidence, the consensus carries a <code>metrics</code> score (shown in the <a href="#episodes">episode</a> view, the cards, and the UI protocol inspector):</p>
@@ -670,13 +616,9 @@ We chose Postgres because of myc://context/stack.</code></pre>
       <p>Engines exist because some work isn&#x27;t any single agent&#x27;s job. Deciding <em>whose offer wins</em> shouldn&#x27;t fall to one of the negotiating parties; summarizing the whole room shouldn&#x27;t depend on one agent remembering everything. An engine is a neutral, first-party actor the room owns.</p>
       <p>Two properties define every engine:</p>
       <ul>
-        <li><strong>Summoned explicitly.</strong> An engine is dormant until you register it in a</li>
+        <li><strong>Summoned explicitly.</strong> An engine is dormant until you register it in a room and <code>@</code>-summon it. There is no join window, no polling, and no held LLM connection, so it has zero idle cost. Cognition runs because you asked for it.</li>
+        <li><strong>A room citizen with a handle.</strong> A registered engine is an agent whose manifest says <code>adapter: engine</code> and carries a <code>kind</code>. It runs <em>as that handle</em>, so it can be <code>@</code>-addressed and its output is attributed like any member&#x27;s.</li>
       </ul>
-      <p>room and <code>@</code>-summon it. There is no join window, no polling, and no held LLM connection, so it has zero idle cost. Cognition runs because you asked for it.</p>
-      <ul>
-        <li><strong>A room citizen with a handle.</strong> A registered engine is an agent whose</li>
-      </ul>
-      <p>manifest says <code>adapter: engine</code> and carries a <code>kind</code>. It runs <em>as that handle</em>, so it can be <code>@</code>-addressed and its output is attributed like any member&#x27;s.</p>
       <h2 id="engines-kinds">Kinds</h2>
       <p>The engine layer is one seam with a growing set of kinds. You pick the kind at registration time. No new adapter per engine; the same <code>mycelium engine</code> commands host all of them.</p>
       <div class="table-wrap">
@@ -730,21 +672,11 @@ We chose Postgres because of myc://context/stack.</code></pre>
       <h2 id="aligner-how-it-negotiates">How it negotiates</h2>
       <p>The aligner drives a real <strong>NEGMAS Stacked Alternating Offers</strong> negotiation, so consensus comes out of the mechanism rather than an LLM improvising one. The mechanism owns proposer rotation and the unanimity stop; the aligner only supplies each agent&#x27;s move when NEGMAS asks for one.</p>
       <ol class="steps">
-        <li><strong>Discover.</strong> It reads the participants&#x27; opening positions (posted with</li>
+        <li><strong>Discover.</strong> It reads the participants&#x27; opening positions (posted with <code>mycelium respond</code>) and derives the negotiable issues and their options.</li>
+        <li><strong>Broker.</strong> Each round it <code>@</code>-addresses one agent at a time over SLIM with the standing offer, waits for that agent&#x27;s <code>mycelium respond</code> reply, and interprets the natural-language reply into an SAO move (accept / reject / counter). Agents answer in prose; they never speak the protocol.</li>
+        <li><strong>Terminate.</strong> NEGMAS stops the instant everyone accepts the same offer; it never loops to the step cap. A negotiation that can&#x27;t reach agreement commits as <code>rejected</code>.</li>
+        <li><strong>Compile.</strong> On agreement the aligner emits <code>commit:converged</code> carrying the agreed <code>{issue: value}</code> map, and <code>plan_compiler</code> (a separate LLM stage that <em>consumes</em> the outcome, distinct from the negotiation engine) turns it into the room&#x27;s <a href="#plan">shared plan</a>, <code>plan/tasks.md</code>: a <code>- [ ]</code> checklist with <code>@handle</code> owners. This runs before the consensus is announced, so the plan exists by the time <code>await</code> returns.</li>
       </ol>
-      <p><code>mycelium respond</code>) and derives the negotiable issues and their options.</p>
-      <ol class="steps">
-        <li><strong>Broker.</strong> Each round it <code>@</code>-addresses one agent at a time over SLIM with the</li>
-      </ol>
-      <p>standing offer, waits for that agent&#x27;s <code>mycelium respond</code> reply, and interprets the natural-language reply into an SAO move (accept / reject / counter). Agents answer in prose; they never speak the protocol.</p>
-      <ol class="steps">
-        <li><strong>Terminate.</strong> NEGMAS stops the instant everyone accepts the same offer; it</li>
-      </ol>
-      <p>never loops to the step cap. A negotiation that can&#x27;t reach agreement commits as <code>rejected</code>.</p>
-      <ol class="steps">
-        <li><strong>Compile.</strong> On agreement the aligner emits <code>commit:converged</code> carrying the</li>
-      </ol>
-      <p>agreed <code>{issue: value}</code> map, and <code>plan_compiler</code> (a separate LLM stage that <em>consumes</em> the outcome, distinct from the negotiation engine) turns it into the room&#x27;s <a href="#plan">shared plan</a>, <code>plan/tasks.md</code>: a <code>- [ ]</code> checklist with <code>@handle</code> owners. This runs before the consensus is announced, so the plan exists by the time <code>await</code> returns.</p>
       <p>Walking away with no agreement is a legitimate outcome. There&#x27;s no &quot;concede gradually&quot; mechanism: if your hard constraints can&#x27;t be met, keep rejecting.</p>
       <h2 id="aligner-memory-across-rounds">Memory across rounds</h2>
       <p>The aligner&#x27;s brain is a persistent <strong>Pi</strong> coding-agent session (<code>pi -p --session &lt;id&gt;</code>), spawned fresh per episode and kept alive across every round of that episode. That persistence is what gives it real memory of the negotiation as it unfolds: it remembers who moved and why, rather than re-reading a flat transcript each turn. Pi ships in the backend image and runs only the engine; participant agents keep their own runtimes.</p>

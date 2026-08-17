@@ -1133,9 +1133,8 @@ procedures/  Reusable how-to steps (do this again later)</code></pre>
       <ol class="steps">
         <li><code>identity.name</code> in <code>~/.mycelium/config.toml</code></li>
         <li>The <code>MYCELIUM_AGENT_HANDLE</code> environment variable</li>
-        <li>The <code>--handle</code> flag on <code>await</code> / <code>respond</code> (or <code>--as</code> when summoning</li>
+        <li>The <code>--handle</code> flag on <code>await</code> / <code>respond</code> (or <code>--as</code> when summoning an engine)</li>
       </ol>
-      <p>an engine)</p>
       <h2 id="hub-and-spoke-troubleshooting">Troubleshooting</h2>
       <h3 id="hub-and-spoke-spoke-cant-reach-the-hub">Spoke can&#x27;t reach the hub</h3>
       <pre><code>curl http://192.168.1.20:46357</code></pre>
@@ -1356,27 +1355,16 @@ role   = &quot;agent&quot;</code></pre>
       <h2 id="auth-handle-and-role">Handle and role</h2>
       <p>Once a token validates, the request has a <strong>principal</strong>:</p>
       <ul>
-        <li><strong>handle</strong> — from <code>auth.handle_claim</code> (<code>sub</code> by default), normalized the same</li>
+        <li><strong>handle</strong> — from <code>auth.handle_claim</code> (<code>sub</code> by default), normalized the same way stored handles are (leading <code>@</code> stripped, lowercased). An OIDC service-account whose client id is <code>release-agent</code> therefore arrives as <code>@release-agent</code>.</li>
+        <li><strong>role</strong> — from <code>auth.role_claim</code> if the token carries it, otherwise the <code>role</code> on the matched issuer block. Which root signed a token is usually the whole answer to user-vs-agent, so most deployments never set a role claim at all.</li>
       </ul>
-      <p>way stored handles are (leading <code>@</code> stripped, lowercased). An OIDC service-account whose client id is <code>release-agent</code> therefore arrives as <code>@release-agent</code>.</p>
-      <ul>
-        <li><strong>role</strong> — from <code>auth.role_claim</code> if the token carries it, otherwise the <code>role</code></li>
-      </ul>
-      <p>on the matched issuer block. Which root signed a token is usually the whole answer to user-vs-agent, so most deployments never set a role claim at all.</p>
       <h2 id="auth-the-token-is-the-author">The token is the author</h2>
       <p>The principal is not just recorded — it is the <strong>actor of record</strong> for every write it makes. Memory authorship (<code>created_by</code> / <code>updated_by</code>), the transcript sender, and L9 actor attribution all come from the token rather than from the handle the request body supplies:</p>
       <ul>
-        <li>The body <strong>omits</strong> the actor, or names the <strong>same</strong> handle → the token&#x27;s handle</li>
+        <li>The body <strong>omits</strong> the actor, or names the <strong>same</strong> handle → the token&#x27;s handle is stored. <code>@Alice</code> and <code>alice</code> are one principal; the comparison uses the same normalization as the store.</li>
+        <li>The body names a <strong>different</strong> handle → <strong>403</strong>. A caller acting under the wrong identity gets told, rather than having its writes quietly re-attributed.</li>
+        <li>A <strong>session qualifier</strong> (<code>alice#a8f3</code> — the same person on one machine) is kept as-is. The suffix rides along on the token&#x27;s handle, so per-session attribution survives without letting the suffix name someone else.</li>
       </ul>
-      <p>is stored. <code>@Alice</code> and <code>alice</code> are one principal; the comparison uses the same normalization as the store.</p>
-      <ul>
-        <li>The body names a <strong>different</strong> handle → <strong>403</strong>. A caller acting under the wrong</li>
-      </ul>
-      <p>identity gets told, rather than having its writes quietly re-attributed.</p>
-      <ul>
-        <li>A <strong>session qualifier</strong> (<code>alice#a8f3</code> — the same person on one machine) is kept</li>
-      </ul>
-      <p>as-is. The suffix rides along on the token&#x27;s handle, so per-session attribution survives without letting the suffix name someone else.</p>
       <p>With the gate off there is no principal, so every path keeps the self-asserted actor from the body exactly as before — the try-it path is unchanged.</p>
       <h2 id="auth-acting-as-another-handle">Acting as another handle</h2>
       <p>Attribution answers <em>who wrote this</em>. Two calls ask something different: <code>mycelium await</code> names <strong>whose queue to drain</strong>, and joining a room names <strong>whose presence to register</strong>. Both take the handle as a request parameter, and draining a queue consumes it — a turn served to one caller is not served again — so an unchecked handle there means a valid token for <code>@bob</code> could read and swallow <code>@alice</code>&#x27;s coordination stream.</p>
@@ -1398,13 +1386,9 @@ role   = &quot;agent&quot;</code></pre>
       <p>With <code>auth.localhost_bypass</code> on (the default), requests whose <strong>peer address</strong> is real loopback (<code>127.0.0.0/8</code>, <code>::1</code>) skip the gate, so turning auth on can&#x27;t lock you out of the machine the hub runs on.</p>
       <p>Two things worth knowing:</p>
       <ul>
-        <li><code>X-Forwarded-For</code> is deliberately ignored. It is caller-supplied, so honouring</li>
+        <li><code>X-Forwarded-For</code> is deliberately ignored. It is caller-supplied, so honouring it would let any remote request claim to be local.</li>
+        <li><strong>It does not fire for a backend running in Docker.</strong> Traffic through a published port arrives from the bridge gateway, not loopback, and is indistinguishable from LAN traffic — treating that as local would silently open the hub to your whole network. For the containerized local tier, leave <code>auth.enabled</code> off; that is the honest switch for it.</li>
       </ul>
-      <p>it would let any remote request claim to be local.</p>
-      <ul>
-        <li><strong>It does not fire for a backend running in Docker.</strong> Traffic through a</li>
-      </ul>
-      <p>published port arrives from the bridge gateway, not loopback, and is indistinguishable from LAN traffic — treating that as local would silently open the hub to your whole network. For the containerized local tier, leave <code>auth.enabled</code> off; that is the honest switch for it.</p>
       <h2 id="auth-what-stays-open">What stays open</h2>
       <p>Health (<code>/</code>, <code>/health</code>) and the schema/docs routes are served without a token even when the gate is on: orchestrator probes are unauthenticated by nature, and the health payload reveals no room content. <code>/health</code> gains an <code>auth</code> block reporting whether the hub is gated, which issuers it trusts, and any configuration warnings.</p>
       <p>Every other route requires a token.</p>
@@ -1462,18 +1446,9 @@ docker compose <span class="flag">-f</span> compose.yml <span class="flag">-f</s
       <h2 id="keycloak-oidc-what-the-realm-ships-and-what-the-gate-expects">What the realm ships (and what the gate expects)</h2>
       <p>The imported realm (<code>docker/keycloak/mycelium-realm.json</code>) is the whole anatomy the gate needs. Point your own Keycloak at these same four things:</p>
       <ul>
-        <li><strong>A public client <code>mycelium-cli</code></strong> — this is the client <code>mycelium login</code> uses.</li>
-      </ul>
-      <p>Public (no secret; it authenticates with PKCE), with the loopback redirect <code>http://127.0.0.1:*/callback</code> for the browser flow and the <strong>device grant</strong> enabled for headless login.</p>
-      <ul>
-        <li><strong>An audience mapper</strong> stamping <code>mycelium</code> into the access token&#x27;s <code>aud</code>. This is</li>
-      </ul>
-      <p>what makes <code>auth.audience = &quot;mycelium&quot;</code> meaningful — a token minted for some other app on the same Keycloak is refused.</p>
-      <ul>
-        <li><strong><code>sub</code> is a UUID, so the human handle comes from <code>preferred_username</code>.</strong> Set</li>
-      </ul>
-      <p><code>auth.handle_claim = &quot;preferred_username&quot;</code> for the human tier — otherwise every human arrives as an opaque UUID instead of <code>@demo</code>.</p>
-      <ul>
+        <li><strong>A public client <code>mycelium-cli</code></strong> — this is the client <code>mycelium login</code> uses. Public (no secret; it authenticates with PKCE), with the loopback redirect <code>http://127.0.0.1:*/callback</code> for the browser flow and the <strong>device grant</strong> enabled for headless login.</li>
+        <li><strong>An audience mapper</strong> stamping <code>mycelium</code> into the access token&#x27;s <code>aud</code>. This is what makes <code>auth.audience = &quot;mycelium&quot;</code> meaningful — a token minted for some other app on the same Keycloak is refused.</li>
+        <li><strong><code>sub</code> is a UUID, so the human handle comes from <code>preferred_username</code>.</strong> Set <code>auth.handle_claim = &quot;preferred_username&quot;</code> for the human tier — otherwise every human arrives as an opaque UUID instead of <code>@demo</code>.</li>
         <li><strong>A demo user</strong> (<code>demo</code> / <code>demo</code>) so a human login has someone to sign in as.</li>
       </ul>
       <div class="callout callout-note">
@@ -1483,13 +1458,9 @@ docker compose <span class="flag">-f</span> compose.yml <span class="flag">-f</s
       <h2 id="keycloak-oidc-wire-the-gate">Wire the gate</h2>
       <p>The one subtlety worth understanding is <strong>which URL goes where</strong>, because the backend runs in a container and the browser/CLI run on the host:</p>
       <ul>
-        <li>Keycloak stamps the token <code>iss</code> as <code>http://localhost:8080/realms/mycelium</code> for</li>
+        <li>Keycloak stamps the token <code>iss</code> as <code>http://localhost:8080/realms/mycelium</code> for every caller (the overlay pins its advertised URL). That is what the browser and CLI reach it by, so it is the <code>issuer</code> the gate matches.</li>
+        <li>The <strong>backend can&#x27;t use <code>localhost</code></strong> — inside the container that is the backend itself. On the compose network Keycloak is reachable as <code>keycloak:8080</code>, so that is where the backend fetches keys from.</li>
       </ul>
-      <p>every caller (the overlay pins its advertised URL). That is what the browser and CLI reach it by, so it is the <code>issuer</code> the gate matches.</p>
-      <ul>
-        <li>The <strong>backend can&#x27;t use <code>localhost</code></strong> — inside the container that is the backend</li>
-      </ul>
-      <p>itself. On the compose network Keycloak is reachable as <code>keycloak:8080</code>, so that is where the backend fetches keys from.</p>
       <p>The gate matches <code>iss</code> by <strong>exact string</strong> but fetches keys from a <strong>separately configured <code>jwks_url</code></strong>, so you point them at different hostnames on purpose. In <code>~/.mycelium/config.toml</code>:</p>
       <pre><code>[auth]
 enabled      = true

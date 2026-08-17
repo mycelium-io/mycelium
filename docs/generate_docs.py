@@ -228,18 +228,27 @@ def _md_to_html(md: str, section_id: str) -> str:
         if re.match(r"^\d+\.\s", line):
             out.append('      <ol class="steps">')
             while i < len(lines) and re.match(r"^\d+\.\s", lines[i]):
-                item_text = re.sub(r"^\d+\.\s+", "", lines[i])
-                out.append(f"        <li>{_inline(item_text)}</li>")
+                item_text = re.sub(r"^\d+\.\s+", "", lines[i]).rstrip()
                 i += 1
+                # Fold indented continuation lines (wrapped prose) into this item
+                # so a multi-line item stays one <li> instead of splitting into a
+                # fresh single-item <ol> that restarts numbering at 1.
+                while i < len(lines) and lines[i].strip() and lines[i][0].isspace():
+                    item_text += " " + lines[i].strip()
+                    i += 1
+                out.append(f"        <li>{_inline(item_text)}</li>")
             out.append("      </ol>")
             continue
 
         if line.startswith("- "):
             out.append("      <ul>")
             while i < len(lines) and lines[i].startswith("- "):
-                item_text = lines[i][2:]
-                out.append(f"        <li>{_inline(item_text)}</li>")
+                item_text = lines[i][2:].rstrip()
                 i += 1
+                while i < len(lines) and lines[i].strip() and lines[i][0].isspace():
+                    item_text += " " + lines[i].strip()
+                    i += 1
+                out.append(f"        <li>{_inline(item_text)}</li>")
             out.append("      </ul>")
             continue
 
