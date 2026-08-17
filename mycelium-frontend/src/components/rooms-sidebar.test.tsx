@@ -2,7 +2,7 @@
 // Copyright 2026 Mycelium Contributors
 
 import { act } from "react";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeEventSource } from "@/test/fake-event-source";
@@ -149,5 +149,39 @@ describe("<RoomsSidebar /> keyboard navigation", () => {
     await user.keyboard("{Escape}");
     await user.keyboard("{Alt>}2{/Alt}");
     expect(push).toHaveBeenCalledWith("/room/bravo");
+  });
+});
+
+describe("<RoomsSidebar /> unread badges", () => {
+  beforeEach(() => {
+    FakeEventSource.reset();
+    vi.stubGlobal("EventSource", FakeEventSource);
+    window.localStorage.clear();
+  });
+
+  const seed = (list: { room: string; read: boolean }[]) =>
+    window.localStorage.setItem("mycelium.notifications", JSON.stringify(list));
+
+  it("badges a room that has unread activity, and leaves others clean", async () => {
+    seed([
+      { room: "beta", read: false },
+      { room: "beta", read: false },
+      { room: "alpha", read: true },
+    ]);
+    await renderSidebar(["alpha", "beta"]);
+
+    const beta = screen.getByRole("link", { name: /beta/ });
+    expect(within(beta).getByLabelText("2 unread")).toBeInTheDocument();
+    const alpha = screen.getByRole("link", { name: /alpha/ });
+    expect(within(alpha).queryByLabelText(/unread/)).toBeNull();
+  });
+
+  it("does not badge the room you're already viewing", async () => {
+    seed([{ room: "beta", read: false }]);
+    await renderSidebar(["alpha", "beta"], "beta");
+    // Scoped to the row: beta's unread still counts globally (the footer bell),
+    // it just shouldn't badge the room you're currently reading.
+    const beta = screen.getByRole("link", { name: /beta/ });
+    expect(within(beta).queryByLabelText(/unread/)).toBeNull();
   });
 });

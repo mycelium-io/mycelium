@@ -12,6 +12,7 @@ import { fetchRooms, getAppEventsSSEUrl, type Room } from "@/lib/api";
 import { CreateRoomDialog } from "@/components/create-room-dialog";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { NotificationBell } from "@/components/notification-bell";
+import { useNotifications } from "@/components/notifications-provider";
 import { EmptyState } from "@/components/empty-state";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { KeyBadge } from "@/components/key-badge";
@@ -78,9 +79,25 @@ export function RoomsSidebar({ activeRoom = null }: Props) {
     return () => { clearInterval(t); es?.close(); clearTimeout(retry); };
   }, []);
 
+  // Unread activity per room, from the same client-side notification store the
+  // bell reads — muted rooms don't count, so a muted room never wears a badge.
+  const { notifications, settings } = useNotifications();
+  const unreadByRoom = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const n of notifications) {
+      if (n.read || settings.mutedRooms.includes(n.room)) continue;
+      m.set(n.room, (m.get(n.room) ?? 0) + 1);
+    }
+    return m;
+  }, [notifications, settings.mutedRooms]);
+
+  // Filter by the query, then order by recency (last active first) so rooms with
+  // fresh activity float up — the same ordering the command palette uses.
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return q ? rooms.filter(r => r.name.toLowerCase().includes(q)) : rooms;
+    const base = q ? rooms.filter(r => r.name.toLowerCase().includes(q)) : rooms;
+    const recency = (r: Room) => r.last_activity ?? r.created_at ?? "";
+    return [...base].sort((a, b) => recency(b).localeCompare(recency(a)));
   }, [rooms, query]);
 
   // ---- Keyboard navigation -------------------------------------------------
@@ -251,7 +268,7 @@ export function RoomsSidebar({ activeRoom = null }: Props) {
       {/* Rooms header + search */}
       <div className="flex items-center gap-2 px-3 pt-3 pb-2">
         <span className="text-micro font-semibold uppercase tracking-wide text-muted-foreground">Rooms</span>
-        <span className="text-micro tabular text-faint">{rooms.length}</span>
+        <span className="text-micro tabular text-muted-foreground">{rooms.length}</span>
         <button
           onClick={() => setShowCreate(true)}
           aria-label="New room"
@@ -300,6 +317,9 @@ export function RoomsSidebar({ activeRoom = null }: Props) {
           filtered.map((room, i) => {
             const active = room.name === activeRoom;
             const label = hints?.labels[i];
+            // Don't badge the room you're already looking at — being here is
+            // reading it. Elsewhere, unread activity draws the name brighter too.
+            const unread = active ? 0 : unreadByRoom.get(room.name) ?? 0;
             return (
               <Link
                 key={room.name}
@@ -329,9 +349,23 @@ export function RoomsSidebar({ activeRoom = null }: Props) {
                     </span>
                   )}
                 </span>
-                <span className={`truncate text-label ${active ? "font-medium text-text" : "text-muted-foreground group-hover:text-text"}`}>
+                <span
+                  className={`min-w-0 flex-1 truncate text-label ${
+                    active || unread > 0
+                      ? "font-medium text-text"
+                      : "text-muted-foreground group-hover:text-text"
+                  }`}
+                >
                   {room.name}
                 </span>
+                {unread > 0 && (
+                  <span
+                    aria-label={`${unread} unread`}
+                    className="flex h-4 min-w-4 flex-shrink-0 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-semibold tabular leading-none text-accent-fg"
+                  >
+                    {unread > 9 ? "9+" : unread}
+                  </span>
+                )}
               </Link>
             );
           })
