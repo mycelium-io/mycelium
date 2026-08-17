@@ -156,6 +156,16 @@ def generate_env_file(
         # as today. See slim_identity.py.
         f"MYCELIUM_SLIM_IDENTITY={config.slim.identity}",
         "",
+        "# ── Frontend dev-mode cross-origin allowlist ─────────────────────────────",
+        # Next.js dev server blocks cross-origin requests by default. When running
+        # the UI behind a public IP or NAT (e.g. an EC2 instance accessed from a
+        # laptop) the browser's origin differs from localhost and the dev server
+        # returns 403 on internal endpoints. Set runtime.allowed_dev_origins in
+        # config.toml (or `mycelium config set runtime.allowed_dev_origins IP`)
+        # to allowlist those origins. Comma-separated list; empty = no extra origins.
+        # Production builds don't need this — browsers always hit their own origin.
+        f"MYCELIUM_ALLOWED_DEV_ORIGINS={config.runtime.allowed_dev_origins}",
+        "",
     ]
 
     # ── Operator-managed pins (preserved across `mycelium config apply`) ─────

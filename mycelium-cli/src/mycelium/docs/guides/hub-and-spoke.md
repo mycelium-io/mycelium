@@ -89,6 +89,29 @@ The node forwards only MLS ciphertext, but restrict access anyway with a
 VPN, Tailscale, or firewall rules; access to a channel is gated by its
 shared-secret PSK.
 
+### Accessing the UI from a public IP or NAT
+
+If you run `mycelium up --ui` and access the frontend from a browser
+whose origin differs from `localhost` (common on cloud VMs accessed over
+a public IP), Next.js dev mode returns 403 on internal endpoints. Fix it
+by allowlisting the browser's origin:
+
+```bash
+mycelium config set runtime.allowed_dev_origins "203.0.113.42"
+mycelium config apply
+```
+
+`mycelium config apply` writes the value to `~/.mycelium/.env` as
+`MYCELIUM_ALLOWED_DEV_ORIGINS`, which the frontend container and `pnpm dev`
+both read. Comma-separate multiple origins:
+
+```bash
+mycelium config set runtime.allowed_dev_origins "203.0.113.42,10.0.0.5"
+```
+
+This is a dev-mode concern only. Production builds serve the browser from
+the same origin, so no allowlist is needed.
+
 ## Step 2: Connect each spoke
 
 On each spoke, install the CLI:
