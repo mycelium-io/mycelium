@@ -63,9 +63,6 @@ jobs:
           # to every existing user on their next `mycelium pull`.
           if [ "$IS_PRERELEASE" = "true" ]; then
             {
-              echo "db<<EOF"
-              echo "ghcr.io/$OWNER/mycelium-db:$VERSION"
-              echo "EOF"
               echo "backend<<EOF"
               echo "ghcr.io/$OWNER/mycelium-backend:$VERSION"
               echo "EOF"
@@ -78,10 +75,6 @@ jobs:
             } >> "$GITHUB_OUTPUT"
           else
             {
-              echo "db<<EOF"
-              echo "ghcr.io/$OWNER/mycelium-db:latest"
-              echo "ghcr.io/$OWNER/mycelium-db:$VERSION"
-              echo "EOF"
               echo "backend<<EOF"
               echo "ghcr.io/$OWNER/mycelium-backend:latest"
               echo "ghcr.io/$OWNER/mycelium-backend:$VERSION"
@@ -96,17 +89,6 @@ jobs:
               echo "EOF"
             } >> "$GITHUB_OUTPUT"
           fi
-
-      - name: Build and push mycelium-db
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
-        with:
-          context: fastapi-backend
-          file: fastapi-backend/docker/Dockerfile.agensgraph
-          platforms: linux/amd64
-          push: true
-          tags: ${{ steps.tags.outputs.db }}
-          cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/mycelium-db:cache
-          cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/mycelium-db:cache,mode=max
 
       - name: Bump backend pyproject version to match tag
         # FastAPI reads `version=` from this file at startup (see app/main.py
