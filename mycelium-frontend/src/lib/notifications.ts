@@ -235,11 +235,26 @@ export function openCrossTabChannel(onMessage: (msg: CrossTabMessage) => void): 
   if (typeof window === "undefined" || typeof window.BroadcastChannel === "undefined") {
     return { post: () => {}, close: () => {} };
   }
+  let closed = false;
   const bc = new BroadcastChannel(CHANNEL_NAME);
   bc.onmessage = (e) => onMessage(e.data as CrossTabMessage);
   return {
-    post: (msg) => bc.postMessage(msg),
-    close: () => bc.close(),
+    // Posting on a closed channel throws InvalidStateError. React Strict Mode
+    // double-mounts the provider (close → reopen), and an effect can fire a post
+    // against the just-closed channel in that window — so a post after close is a
+    // no-op, not a crash.
+    post: (msg) => {
+      if (closed) return;
+      try {
+        bc.postMessage(msg);
+      } catch {
+        // Channel closed between the guard and the post — ignore.
+      }
+    },
+    close: () => {
+      closed = true;
+      bc.close();
+    },
   };
 }
 
