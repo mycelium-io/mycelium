@@ -285,8 +285,14 @@ def isolated_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Point ``Path.home()`` (and thus ``get_mycelium_dir``) at a temp dir.
 
     ``filesystem.get_mycelium_dir`` resolves to ``~/.mycelium``; setting ``HOME``
-    keeps a test from ever touching the developer's real data dir. Returns the
+    keeps a test from ever touching the developer's real data dir. Also chdirs
+    into the temp dir: ``MyceliumConfig.load()`` additionally discovers a
+    *project-local* ``./.mycelium/config.toml`` by walking up from the cwd
+    (independent of ``$HOME``), so a contributor with local scratch state in
+    their checkout (e.g. from manual e2e testing) would otherwise leak into
+    "isolated" tests just by running them from within the repo. Returns the
     temp home so a test can seed ``.mycelium`` under it.
     """
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.chdir(tmp_path)
     return tmp_path
