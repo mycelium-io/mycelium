@@ -63,13 +63,18 @@ function relativeTime(iso: string): string | null {
   return `${Math.floor(mins / 60)}h ago`;
 }
 
-/** Subtext for a present member: live socket vs. a polling lease + last-seen age.
- *  Returns null when the handle isn't currently present (caller falls back). */
-function presenceLabel(member?: PresenceMember): string | null {
-  if (!member) return null;
-  if (member.kind === "slim") return "connected";
+/** A presence *note* to append after the role — only the part the avatar badge
+ *  can't convey. A live SLIM socket is already the solid badge, so it adds
+ *  nothing here (null); a polling lease adds "awaiting" + last-seen age. */
+function presenceNote(member?: PresenceMember): string | null {
+  if (!member || member.kind === "slim") return null;
   const age = member.last_seen ? relativeTime(member.last_seen) : null;
   return age ? `awaiting · seen ${age}` : "awaiting";
+}
+
+/** Join the non-empty parts of a row's subtext with a middot separator. */
+function subtext(...parts: (string | null | undefined | false)[]): string {
+  return parts.filter(Boolean).join(" · ");
 }
 
 /**
@@ -321,7 +326,7 @@ export function AgentsPanel({
       <div className="flex-1 overflow-y-auto">
         {!loaded &&
           ["w-20", "w-28", "w-16"].map((w, i) => (
-            <div key={i} className="flex items-center gap-2.5 border-b border-border px-3 py-2.5 last:border-b-0">
+            <div key={i} className="flex items-center gap-2.5 px-3 py-2.5">
               <Skeleton className="size-8 flex-shrink-0 rounded-full" />
               <div className="min-w-0 flex-1">
                 <Skeleton className={`h-3 ${w}`} />
@@ -345,7 +350,7 @@ export function AgentsPanel({
 
         {people.length > 0 && (
           <>
-            <SectionLabel>People</SectionLabel>
+            <SectionLabel count={people.length}>People</SectionLabel>
             {people.map((p) => {
               const presence = presenceMap.get(p.handle);
               const marked = highlight === p.handle;
@@ -353,23 +358,24 @@ export function AgentsPanel({
                 <div
                   key={`person-${p.handle}`}
                   ref={marked ? highlightRow : undefined}
-                  className={`flex items-center gap-2.5 px-3 py-2.5 border-b border-border last:border-b-0 ${
+                  className={`flex items-center gap-2.5 px-3 py-2 transition-colors hover:bg-hairline ${
                     marked ? "bg-accent/15" : ""
                   }`}
                 >
                   <Monogram handle={p.handle} color="var(--muted-foreground)" presence={presence?.kind} />
-                  <div className="min-w-0 flex-1 leading-tight">
+                  <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5">
-                      <span className="font-mono text-label text-text font-semibold truncate leading-tight">
+                      <span className="truncate font-mono text-label font-semibold text-text">
                         @{p.handle}
                       </span>
-                      {p.you && (
-                        <span className="text-micro text-accent font-medium">you</span>
-                      )}
+                      {p.you && <span className="text-micro font-medium text-accent">you</span>}
                     </div>
-                    <div className="text-micro text-muted-foreground truncate leading-tight">
-                      {presenceLabel(presence) ?? (p.owns ? "owner" : "posted here")}
-                      {p.teams.length > 0 ? ` · ${p.teams.join(", ")}` : ""}
+                    <div className="mt-0.5 truncate text-micro text-muted-foreground">
+                      {subtext(
+                        p.owns ? "owner" : "posted here",
+                        presenceNote(presence),
+                        p.teams.length > 0 && p.teams.join(", "),
+                      )}
                     </div>
                   </div>
                 </div>
@@ -378,7 +384,7 @@ export function AgentsPanel({
           </>
         )}
 
-        {agents.length > 0 && <SectionLabel>Agents</SectionLabel>}
+        {agents.length > 0 && <SectionLabel count={visibleAgents.length}>Agents</SectionLabel>}
         {visibleAgents.map((a) => {
           const mine = principal !== "" && a.owner === principal;
           const presence = presenceMap.get(a.handle);
@@ -387,19 +393,19 @@ export function AgentsPanel({
             <div
               key={`agent-${a.handle}`}
               ref={marked ? highlightRow : undefined}
-              className={`flex items-center gap-2.5 px-3 py-2.5 border-b border-border last:border-b-0 ${
+              className={`flex items-center gap-2.5 px-3 py-2 transition-colors hover:bg-hairline ${
                 marked ? "bg-accent/15" : ""
               }`}
             >
               <Monogram handle={a.handle} presence={presence?.kind} />
-              <div className="min-w-0 flex-1 leading-tight">
+              <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5">
-                  <span className="font-mono text-label text-text font-semibold truncate leading-tight">
+                  <span className="truncate font-mono text-label font-semibold text-text">
                     {a.handle}
                   </span>
                   {a.owner && (
                     <span
-                      className="font-mono text-micro truncate"
+                      className="truncate font-mono text-micro"
                       style={{ color: mine ? "var(--accent)" : "var(--muted-foreground)" }}
                       title={`owner: @${a.owner}`}
                     >
@@ -407,15 +413,17 @@ export function AgentsPanel({
                     </span>
                   )}
                   {a.team && (
-                    <span className="text-micro text-muted-foreground truncate" title={`team: ${a.team}`}>
+                    <span className="truncate text-micro text-muted-foreground" title={`team: ${a.team}`}>
                       · {a.team}
                     </span>
                   )}
                 </div>
-                <div className="text-micro text-muted-foreground truncate leading-tight">
-                  {presenceLabel(presence) ??
-                    (a.adapter === "engine" && a.kind ? `engine · ${a.kind}` : a.adapter)}
-                  {presenceLabel(presence) ? "" : a.description ? ` · ${a.description}` : ""}
+                <div className="mt-0.5 truncate text-micro text-muted-foreground">
+                  {subtext(
+                    a.adapter === "engine" && a.kind ? `engine · ${a.kind}` : a.adapter,
+                    presenceNote(presence),
+                    a.description,
+                  )}
                 </div>
               </div>
             </div>
@@ -426,11 +434,12 @@ export function AgentsPanel({
   );
 }
 
-/** Small uppercase divider between the People and Agents groups. */
-function SectionLabel({ children }: { children: React.ReactNode }) {
+/** Small uppercase divider between the People and Agents groups, with a count. */
+function SectionLabel({ children, count }: { children: React.ReactNode; count?: number }) {
   return (
-    <div className="px-3 pt-3 pb-1 text-micro font-semibold uppercase tracking-wide text-faint">
-      {children}
+    <div className="flex items-center gap-2 px-3 pt-4 pb-1 text-micro font-semibold uppercase tracking-wide text-faint">
+      <span>{children}</span>
+      {count !== undefined && <span className="font-normal tabular">{count}</span>}
     </div>
   );
 }
