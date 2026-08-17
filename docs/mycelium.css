@@ -509,6 +509,15 @@ h1[id], h2[id], h3[id], h4[id], section[id] {
   margin-bottom: var(--space-3);
 }
 
+/* Dictionary-style hero: the mycelium wordmark read as a scientific definition. */
+.pronunciation {
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  color: var(--muted-foreground);
+  margin: 2px 0 18px;
+}
+.pronunciation .pos { font-style: italic; }
+
 /* The serif italic hero matches the app's room title (room-plan-header). */
 /* Headings stay close to body size (this mirrors a dense 14px UI); hierarchy
  * comes from weight and space, not scale. */
