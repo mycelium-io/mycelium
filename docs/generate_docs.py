@@ -729,6 +729,7 @@ def _topnav(active_page_id: str) -> str:
         tabs.append(f'      <a href="{file_name}" class="{cls}">{html.escape(label)}</a>')
     return f"""<!-- TOP BAR -->
 <nav class="topnav">
+  <button class="nav-toggle" aria-label="Menu" onclick="toggleDrawer(event)"><i data-lucide="menu"></i></button>
   <a href="https://mycelium-io.github.io" class="topnav-cell topnav-brand">
     <img src="logo.png" alt="Mycelium">
     <span class="brand-word">mycelium</span>
@@ -742,15 +743,6 @@ def _topnav(active_page_id: str) -> str:
     </div>
   </nav>
   <div class="topnav-right">
-    <div class="resources-dropdown">
-      <button class="resources-btn" onclick="toggleResources(event)">Resources</button>
-      <div class="resources-menu" id="resources-menu">
-        <a href="index.html">Guide</a>
-        <a href="adapters.html">Adapters</a>
-        <a href="reference.html">Reference</a>
-        <a href="{SKILL_MD_URL}" target="_blank" rel="noopener">SKILL.md ↗</a>
-      </div>
-    </div>
     <button class="copy-docs-btn" onclick="copyDocsCmd()"><i data-lucide="terminal"></i>Copy docs cmd</button>
     <button class="copy-page-btn" onclick="copyPage()"><i data-lucide="copy"></i>Copy page</button>
 {_theme_toggle()}
@@ -760,9 +752,23 @@ def _topnav(active_page_id: str) -> str:
 """
 
 
-def _sidebar(groups: list[tuple[str, list[tuple[str, str]]]]) -> str:
+def _sidebar(
+    groups: list[tuple[str, list[tuple[str, str]]]],
+    active_page_id: str = "",
+) -> str:
     """Render a grouped sidebar: [(group_label, [(anchor, label), ...]), ...]."""
-    out = ['  <nav class="sidebar">']
+    out = ['  <nav class="sidebar" id="sidebar">']
+    # Mobile-only page links, so the drawer doubles as the full menu on phones.
+    out.append('    <div class="nav-section nav-pages">')
+    out.append('      <div class="nav-section-label">Pages</div>')
+    for page_id, file_name, _t, label, *_ in PAGES:
+        cls = "nav-link page" + (" active" if page_id == active_page_id else "")
+        out.append(f'      <a href="{file_name}" class="{cls}">{html.escape(label)}</a>')
+    out.append(
+        f'      <a href="{SKILL_MD_URL}" class="nav-link page" '
+        f'target="_blank" rel="noopener">SKILL.md ↗</a>'
+    )
+    out.append("    </div>")
     for group_label, items in groups:
         out.append('    <div class="nav-section">')
         out.append(
@@ -782,6 +788,7 @@ def _layout_open(sidebar_html: str) -> str:
     return f"""<div class="layout">
 
 {sidebar_html}
+  <div class="nav-backdrop" id="nav-backdrop" onclick="closeDrawer()"></div>
 
   <!-- MAIN -->
   <main class="main">
@@ -821,7 +828,7 @@ def _render_page(
     sheet_no: str,
     plate_title: str,
 ) -> str:
-    sidebar_html = _sidebar(sidebar_groups)
+    sidebar_html = _sidebar(sidebar_groups, page_id)
     return (
         _head(title, description, file_name)
         + _topnav(page_id)

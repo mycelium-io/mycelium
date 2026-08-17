@@ -1051,18 +1051,61 @@ h3:hover .header-anchor,
 }
 .resources-menu a:hover { background: var(--surface); color: var(--text); text-decoration: none; }
 
+/* Hamburger + off-canvas drawer (mobile only). */
+.nav-toggle {
+  display: none;
+  align-self: center;
+  margin-left: 12px;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--muted-foreground);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.nav-toggle:hover { color: var(--text); border-color: var(--border2); }
+.nav-toggle svg { width: 18px; height: 18px; stroke: currentColor; }
+.nav-pages { display: none; }
+.nav-backdrop {
+  display: none;
+  position: fixed;
+  inset: var(--topbar-height) 0 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 40;
+}
+.nav-backdrop.open { display: block; }
+
 /* ── RESPONSIVE ── */
 @media (max-width: 1080px) {
   .sectionnav a span:not(.square-dot) { font-size: var(--text-micro); }
   .main { padding: 24px 20px calc(var(--statusbar-height) + 32px); }
 }
 @media (max-width: 860px) {
-  .sidebar { display: none; }
   .main { margin-left: 0; }
   .topnav-brand { width: auto; }
-  .resources-dropdown { display: block; }
   .copy-page-btn, .copy-docs-btn { display: none; }
   .docs-footer .tagline { display: none; }
+  .nav-toggle { display: inline-flex; }
+  .nav-pages { display: block; }
+  /* Sidebar becomes a slide-in drawer. */
+  .sidebar {
+    display: block;
+    position: fixed;
+    top: var(--topbar-height);
+    bottom: 0;
+    left: 0;
+    width: min(82vw, 300px);
+    transform: translateX(-100%);
+    transition: transform 0.22s ease;
+    z-index: 50;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.28);
+    border-right: 1px solid var(--border);
+  }
+  .sidebar.open { transform: translateX(0); }
 }
 @media (max-width: 640px) {
   body { overflow-x: hidden; }

@@ -32,6 +32,7 @@
 <canvas id="mycelium-bg"></canvas>
 <!-- TOP BAR -->
 <nav class="topnav">
+  <button class="nav-toggle" aria-label="Menu" onclick="toggleDrawer(event)"><i data-lucide="menu"></i></button>
   <a href="https://mycelium-io.github.io" class="topnav-cell topnav-brand">
     <img src="logo.png" alt="Mycelium">
     <span class="brand-word">mycelium</span>
@@ -47,15 +48,6 @@
     </div>
   </nav>
   <div class="topnav-right">
-    <div class="resources-dropdown">
-      <button class="resources-btn" onclick="toggleResources(event)">Resources</button>
-      <div class="resources-menu" id="resources-menu">
-        <a href="index.html">Guide</a>
-        <a href="adapters.html">Adapters</a>
-        <a href="reference.html">Reference</a>
-        <a href="https://raw.githubusercontent.com/mycelium-io/mycelium/main/mycelium-cli/src/mycelium/integrations/claude_code/assets/skills/mycelium/SKILL.md" target="_blank" rel="noopener">SKILL.md ↗</a>
-      </div>
-    </div>
     <button class="copy-docs-btn" onclick="copyDocsCmd()"><i data-lucide="terminal"></i>Copy docs cmd</button>
     <button class="copy-page-btn" onclick="copyPage()"><i data-lucide="copy"></i>Copy page</button>
     <div class="theme-toggle">
@@ -73,7 +65,14 @@
 </nav>
 <div class="layout">
 
-  <nav class="sidebar">
+  <nav class="sidebar" id="sidebar">
+    <div class="nav-section nav-pages">
+      <div class="nav-section-label">Pages</div>
+      <a href="index.html" class="nav-link page">Guide</a>
+      <a href="adapters.html" class="nav-link page">Adapters</a>
+      <a href="reference.html" class="nav-link page active">Reference</a>
+      <a href="https://raw.githubusercontent.com/mycelium-io/mycelium/main/mycelium-cli/src/mycelium/integrations/claude_code/assets/skills/mycelium/SKILL.md" class="nav-link page" target="_blank" rel="noopener">SKILL.md ↗</a>
+    </div>
     <div class="nav-section">
       <div class="nav-section-label">Architecture</div>
       <a href="#architecture" class="nav-link sub">Architecture</a>
@@ -117,6 +116,7 @@
       <a href="#troubleshooting" class="nav-link sub">Troubleshooting</a>
     </div>
   </nav>
+  <div class="nav-backdrop" id="nav-backdrop" onclick="closeDrawer()"></div>
 
   <!-- MAIN -->
   <main class="main">

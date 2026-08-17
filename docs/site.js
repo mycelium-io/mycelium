@@ -55,15 +55,29 @@
   });
   applyTheme(storedTheme());
 
-  function toggleResources(e) {
-    e.stopPropagation();
-    const menu = document.getElementById('resources-menu');
-    if (menu) menu.classList.toggle('open');
+  // ── Mobile nav drawer (hamburger) ──
+  function toggleDrawer(e) {
+    if (e) e.stopPropagation();
+    const sb = document.getElementById('sidebar');
+    const bd = document.getElementById('nav-backdrop');
+    const open = sb && sb.classList.toggle('open');
+    if (bd) bd.classList.toggle('open', !!open);
   }
-  document.addEventListener('click', () => {
-    const menu = document.getElementById('resources-menu');
-    if (menu) menu.classList.remove('open');
+  function closeDrawer() {
+    const sb = document.getElementById('sidebar');
+    const bd = document.getElementById('nav-backdrop');
+    if (sb) sb.classList.remove('open');
+    if (bd) bd.classList.remove('open');
+  }
+  // Close on link tap inside the drawer, on Escape, or when it grows to desktop.
+  document.addEventListener('click', (e) => {
+    const sb = document.getElementById('sidebar');
+    if (sb && sb.classList.contains('open') && sb.contains(e.target) && e.target.closest('a')) {
+      closeDrawer();
+    }
   });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDrawer(); });
+  window.addEventListener('resize', () => { if (window.innerWidth > 860) closeDrawer(); });
 
   function copyPage() {
     const text = document.querySelector('.main').innerText;
