@@ -74,7 +74,7 @@ dev = [
     "ruff>=0.15.10",
     "mypy>=1.8.0",
     "types-toml>=0.10.8",
-    "ty>=0.0.33",
+    "ty>=0.0.71",
 ]
 
 [project.scripts]
