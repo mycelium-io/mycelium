@@ -48,6 +48,8 @@
   --accent: #0c7d8f;
   --accent-fg: #ffffff;
   --accent-soft: rgba(12, 125, 143, 0.10);
+  /* secondary accent — decoration/labels only, never a link signal */
+  --accent2: #7a4fd0;
   /* semantic state */
   --green: #0d8a63;
   --yellow: #8a6410;
@@ -97,6 +99,8 @@
   --accent: #5cc7d2;
   --accent-fg: #06181b;
   --accent-soft: rgba(92, 199, 210, 0.13);
+  /* secondary accent — decoration/labels only, never a link signal */
+  --accent2: #b295ec;
   /* semantic state */
   --green: #4fc296;
   --yellow: #d9a94e;
@@ -130,7 +134,6 @@
   --dim: var(--faint);
   --fg: var(--text);
   --card: var(--paper);
-  --accent2: var(--accent);
   /* The old saturated categoricals now resolve to the diagram ramp. */
   --blue: var(--viz-2);
   --purple: var(--viz-3);
@@ -502,7 +505,7 @@ h1[id], h2[id], h3[id], h4[id], section[id] {
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--muted-foreground);
+  color: var(--accent2);
   margin-bottom: var(--space-3);
 }
 
@@ -567,7 +570,7 @@ p {
 }
 .main li { margin-bottom: 6px; }
 .main li:last-child { margin-bottom: 0; }
-.main li::marker { color: var(--faint); }
+.main li::marker { color: var(--accent2); }
 
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; text-underline-offset: 2px; }
@@ -622,7 +625,7 @@ pre code {
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--muted-foreground);
+  color: var(--accent2);
   margin-bottom: 8px;
 }
 
@@ -664,6 +667,8 @@ pre code {
 .flag { color: var(--code-flag); }
 .cmd { color: var(--code-cmd); }
 .arg { color: var(--code-arg); font-style: italic; }
+.url { color: var(--accent2); }
+.bin { color: var(--accent2); font-weight: 600; }
 
 /* ── CALLOUTS ── */
 .callout {

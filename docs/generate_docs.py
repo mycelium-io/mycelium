@@ -312,30 +312,49 @@ def _highlight_code(code: str, lang: str) -> str:
     for line in lines:
         if line.strip().startswith("#"):
             out.append(f'<span class="comment">{html.escape(line)}</span>')
-        else:
-            highlighted = html.escape(line)
-            highlighted = re.sub(
-                r"(\s)(--?\w[\w-]*)",
-                r'\1<span class="flag">\2</span>',
-                highlighted,
-            )
-            highlighted = re.sub(
-                r"(&quot;[^&]*&quot;)",
-                r'<span class="str">\1</span>',
-                highlighted,
-            )
-            highlighted = re.sub(
-                r"(mycelium\s+\w+(?:\s+\w+)?)",
-                r'<span class="cmd">\1</span>',
-                highlighted,
-            )
-            out.append(highlighted)
+            continue
+        highlighted = html.escape(line)
+        # URLs carry the warm secondary tone.
+        highlighted = re.sub(
+            r"(https?://[^\s&|]+)",
+            r'<span class="url">\1</span>',
+            highlighted,
+        )
+        highlighted = re.sub(
+            r"(\s)(--?\w[\w-]*)",
+            r'\1<span class="flag">\2</span>',
+            highlighted,
+        )
+        highlighted = re.sub(
+            r"(&quot;[^&]*&quot;)",
+            r'<span class="str">\1</span>',
+            highlighted,
+        )
+        # The mycelium binary is its own token; its subcommands stay cmd-toned.
+        highlighted = re.sub(
+            r"\bmycelium((?:\s+[\w-]+){0,2})",
+            lambda m: '<span class="bin">mycelium</span>'
+            + re.sub(r"[\w-]+", r'<span class="cmd">\g<0></span>', m.group(1)),
+            highlighted,
+        )
+        # Other leading shell commands that would otherwise render plain.
+        highlighted = re.sub(
+            r"^(\s*)(curl|docker|bash|cd|uv|ssh|git|open|cursor-agent|command)\b",
+            r'\1<span class="cmd">\2</span>',
+            highlighted,
+        )
+        out.append(highlighted)
     return "\n".join(out)
 
 
 def _highlight_usage(usage: str) -> str:
     s = html.escape(usage)
-    s = re.sub(r"^(mycelium(?:\s+\w+){1,2})", r'<span class="cmd">\1</span>', s)
+    s = re.sub(
+        r"^mycelium((?:\s+[\w-]+){1,2})",
+        lambda m: '<span class="bin">mycelium</span>'
+        + re.sub(r"[\w-]+", r'<span class="cmd">\g<0></span>', m.group(1)),
+        s,
+    )
     s = re.sub(r"(&quot;[^&]*&quot;)", r'<span class="str">\1</span>', s)
     s = re.sub(r"([\s\[])(-{1,2}\w[\w-]*)", r'\1<span class="flag">\2</span>', s)
     s = re.sub(r"(&lt;\w+&gt;)", r'<span class="arg">\1</span>', s)

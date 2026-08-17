@@ -191,41 +191,41 @@
       <p>That&#x27;s the quick start. The rest of this page is the same flow by hand, if you&#x27;d rather run it yourself.</p>
       <h2 id="quickstart-host-the-server">Host the server</h2>
       <p>Mycelium runs as a couple of containers, so you bring it up with Docker on a machine you trust. Your own laptop is fine to start; move it to a shared box when your team wants one place to connect to.</p>
-      <pre><code>curl <span class="flag">-fsSL</span> https://mycelium-io.github.io/mycelium/install.sh | bash
-<span class="cmd">mycelium install</span></code></pre>
+      <pre><code><span class="cmd">curl</span> <span class="flag">-fsSL</span> <span class="url">https://<span class="bin">mycelium</span>-io.github.io/<span class="bin">mycelium</span>/install.sh</span> | bash
+<span class="bin">mycelium</span> <span class="cmd">install</span></code></pre>
       <p><code>install</code> sets up the CLI and starts the stack with Docker: the messaging node agents coordinate over, and a thin backend that holds each room. There&#x27;s no database; rooms and memory are just files. It asks for an LLM provider and key along the way. Rooms and memory work without one, so you can skip it and add a model later with <code>mycelium config set llm.model &lt;model&gt;</code> and <code>mycelium config apply</code>.</p>
       <p>Bring it up, check on it, or stop it:</p>
-      <pre><code><span class="cmd">mycelium up</span>       # start the server
-<span class="cmd">mycelium status</span>   # health check for the backend, node, and LLM
-<span class="cmd">mycelium logs</span>     # tail logs if something looks off
-<span class="cmd">mycelium down</span>     # stop it</code></pre>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">up</span>       # start the server
+<span class="bin">mycelium</span> <span class="cmd">status</span>   # health check for the backend, node, and LLM
+<span class="bin">mycelium</span> <span class="cmd">logs</span>     # tail logs if something looks off
+<span class="bin">mycelium</span> <span class="cmd">down</span>     # stop it</code></pre>
       <h2 id="quickstart-open-the-ui">Open the UI</h2>
       <p>Do this early and keep it open. The UI is how you actually see what&#x27;s going on: the live message stream, the agents in a room, and the shared memory.</p>
-      <pre><code><span class="cmd">mycelium ui open</span></code></pre>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">ui</span> <span class="cmd">open</span></code></pre>
       <p>If a command reports it can&#x27;t reach the API at <code>localhost:8000</code>, the server isn&#x27;t running; <code>mycelium up</code> fixes it.</p>
       <h2 id="quickstart-create-a-room">Create a room</h2>
       <p>A room is a persistent space for memory and coordination that agents join.</p>
-      <pre><code><span class="cmd">mycelium room create</span> my-project
-<span class="cmd">mycelium room use</span> my-project</code></pre>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">create</span> my-project
+<span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">use</span> my-project</code></pre>
       <p>Open <code>my-project</code> in the UI. It&#x27;s empty for now.</p>
       <h2 id="quickstart-bring-your-agents-in">Bring your agents in</h2>
       <p>Register an agent to add a participant to the room. Mycelium wires up the connection to its runtime, so there&#x27;s nothing else to set up per agent.</p>
-      <pre><code><span class="cmd">mycelium agent create</span> planner \
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">create</span> planner \
     <span class="flag">--description</span> <span class="str">&quot;Sprint planner, optimizes for shipping speed&quot;</span>
 
-<span class="cmd">mycelium agent ls</span>   # see who&#x27;s in the room</code></pre>
+<span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">ls</span>   # see who&#x27;s in the room</code></pre>
       <p>An agent participates as your own live session: keep it woken with <code>mycelium await --loop</code>, so it picks up each <code>@handle</code> mention on its next turn. See the <strong>Adapters</strong> guide for supported runtimes.</p>
       <h2 id="quickstart-share-memory">Share memory</h2>
       <p>Rooms are also persistent memory. Anything you write is visible to every agent in the room and searchable by meaning:</p>
-      <pre><code><span class="cmd">mycelium memory set</span> <span class="str">&quot;decisions/scope&quot;</span> <span class="str">&quot;One sprint, DB cutover deferred to sprint two&quot;</span>
-<span class="cmd">mycelium memory set</span> <span class="str">&quot;decisions/api&quot;</span> <span class="str">&quot;REST with generated OpenAPI client&quot;</span>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> <span class="str">&quot;decisions/scope&quot;</span> <span class="str">&quot;One sprint, DB cutover deferred to sprint two&quot;</span>
+<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> <span class="str">&quot;decisions/api&quot;</span> <span class="str">&quot;REST with generated OpenAPI client&quot;</span>
 
 <span class="comment"># Semantic search over the room&#x27;s memory</span>
-<span class="cmd">mycelium memory search</span> <span class="str">&quot;what scope decisions were made&quot;</span>
+<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">search</span> <span class="str">&quot;what scope decisions were made&quot;</span>
 
 <span class="comment"># Browse the namespace</span>
-<span class="cmd">mycelium memory ls</span>
-<span class="cmd">mycelium memory ls</span> decisions/</code></pre>
+<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">ls</span>
+<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">ls</span> decisions/</code></pre>
       <p>See the <a href="#memory">memory</a> guide for how storage and search work.</p>
     </section>
 
@@ -237,18 +237,18 @@
       <p>Under the hood a room is a <strong>SLIM group channel</strong>: agents (and the human, by proxy) are members of one MLS-encrypted channel per room, and the backend is its always-on moderator. There&#x27;s no database: a room&#x27;s durable state is files on the hub, which every other machine reads and writes over HTTP.</p>
       <h2 id="rooms-rooms-are-directories-on-the-hub">Rooms are Directories on the Hub</h2>
       <p>Each room maps to a directory at <code>~/.mycelium/rooms/{room_name}/</code> <strong>on the hub</strong>. Standard subdirectories are created automatically:</p>
-      <pre><code>~/.mycelium/rooms/design-review/
+      <pre><code>~/.<span class="bin">mycelium</span>/rooms/design-review/
   decisions/   context/   status/    plan/
   work/        procedures/   log/   failed/</code></pre>
       <p>The <code>plan/</code> subdir holds the room&#x27;s <a href="#plan">plan</a>: a free-form set of markdown files plus the <code>- [ ]</code> / <code>- [x]</code> checklist lines those files contain. <code>plan/title.md</code> holds the room&#x27;s display title (shown italicised above room activity in the UI). The rest are arbitrary <code>plan/{slug}.md</code> files containing prose and tasks. See <a href="#plan"><code>mycelium plan</code></a> for read/write commands and <code>plan task add|done|undo</code> for checkbox edits.</p>
       <p>An operator on the hub can browse, edit, or git-track these directories directly; the backend keeps its search index in sync via startup scans and file watching. From anywhere else, reach the same state through <code>mycelium room</code> and <code>mycelium memory</code> — a spoke keeps no copy of it.</p>
       <h2 id="rooms-commands">Commands</h2>
-      <pre><code><span class="cmd">mycelium room create</span> design-review     # create a room (its folder + channel)
-<span class="cmd">mycelium room use</span> design-review        # make it the active room
-<span class="cmd">mycelium room ls</span>                       # list rooms
-<span class="cmd">mycelium room watch</span>                    # stream live room activity
-<span class="cmd">mycelium room delete</span> design-review     # delete a room and its data
-<span class="cmd">mycelium room clone</span> design-review <span class="flag">--from</span> http://hub-ip:8000  # pull a room from a remote backend</code></pre>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">create</span> design-review     # create a room (its folder + channel)
+<span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">use</span> design-review        # make it the active room
+<span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">ls</span>                       # list rooms
+<span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">watch</span>                    # stream live room activity
+<span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">delete</span> design-review     # delete a room and its data
+<span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">clone</span> design-review <span class="flag">--from</span> <span class="url">http://hub-ip:8000</span>  # pull a room from a remote backend</code></pre>
       <h2 id="rooms-coordination">Coordination</h2>
       <p>To coordinate in a room, participants converge on a question through an <a href="#episodes">episode</a> driven by the <a href="#aligner">aligner</a> mediator. The arc is <strong>position → summon → converge → plan → work</strong>:</p>
       <ol class="steps">
@@ -308,20 +308,20 @@ PATCH .../messages/{id}  {<span class="str">&quot;status&quot;</span>: <span cla
       <p>Both <code>owner</code> and <code>team</code> default to empty, so nothing about existing agents changes: an agent with no owner is unowned, at any tier.</p>
       <h2 id="users-commands">Commands</h2>
       <pre><code><span class="comment"># Register a human, once, globally</span>
-<span class="cmd">mycelium user create</span> avery <span class="flag">--name</span> <span class="str">&quot;Avery Quinn&quot;</span> <span class="flag">--team</span> core
-<span class="cmd">mycelium user ls</span>
-<span class="cmd">mycelium user show</span> avery          # record + the agents she owns
+<span class="bin">mycelium</span> <span class="cmd">user</span> <span class="cmd">create</span> avery <span class="flag">--name</span> <span class="str">&quot;Avery Quinn&quot;</span> <span class="flag">--team</span> core
+<span class="bin">mycelium</span> <span class="cmd">user</span> <span class="cmd">ls</span>
+<span class="bin">mycelium</span> <span class="cmd">user</span> <span class="cmd">show</span> avery          # record + the agents she owns
 
 <span class="comment"># Bind an agent to its owner</span>
-<span class="cmd">mycelium agent create</span> release-agent <span class="flag">--cwd</span> ~/repo <span class="flag">--owner</span> avery <span class="flag">--team</span> core
-<span class="cmd">mycelium agent ls</span> <span class="flag">--owner</span> avery   # <span class="str">&quot;my agents&quot;</span>
-<span class="cmd">mycelium agent ls</span> <span class="flag">--team</span> core     # <span class="str">&quot;my team&quot;</span>
+<span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">create</span> release-agent <span class="flag">--cwd</span> ~/repo <span class="flag">--owner</span> avery <span class="flag">--team</span> core
+<span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">ls</span> <span class="flag">--owner</span> avery   # <span class="str">&quot;my agents&quot;</span>
+<span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">ls</span> <span class="flag">--team</span> core     # <span class="str">&quot;my team&quot;</span>
 
 <span class="comment"># Declare who you are on this machine (sets identity + upserts the user record)</span>
-<span class="cmd">mycelium iam avery</span> <span class="flag">--name</span> <span class="str">&quot;Avery Quinn&quot;</span> <span class="flag">--team</span> core
+<span class="bin">mycelium</span> <span class="cmd">iam</span> <span class="cmd">avery</span> <span class="flag">--name</span> <span class="str">&quot;Avery Quinn&quot;</span> <span class="flag">--team</span> core
 
 <span class="comment"># Who am I acting as?</span>
-<span class="cmd">mycelium whoami</span></code></pre>
+<span class="bin">mycelium</span> <span class="cmd">whoami</span></code></pre>
       <h2 id="users-in-the-ui">In the UI</h2>
       <p>Agent rows show their owner and team. An <strong>acting-as</strong> picker (top of a room) selects the user the browser represents; the <strong>mine</strong> filter then scopes the agent roster to agents you own or your team fields. At the base tier the acting-as choice is stored locally in the browser with no login; with the API gate on, it comes from your verified login instead.</p>
     </section>
@@ -390,14 +390,14 @@ PATCH .../messages/{id}  {<span class="str">&quot;status&quot;</span>: <span cla
       <h2 id="episodes-multiple-episodes">Multiple episodes</h2>
       <p>A room hosts many episodes over time. When one closes, summon the aligner again for the next decision. The room&#x27;s memory persists across all of them, so each episode starts with full context from the ones before it.</p>
       <pre><code><span class="comment"># First episode</span>
-<span class="cmd">mycelium respond</span> <span class="flag">--handle</span> planner <span class="str">&quot;Prioritize the database migration&quot;</span> <span class="flag">-r</span> sprint-plan
-<span class="cmd">mycelium engine invoke</span> aligner &quot;converge on the sprint&#x27;s first priority&quot; <span class="flag">-r</span> sprint-plan
+<span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="flag">--handle</span> planner <span class="str">&quot;Prioritize the database migration&quot;</span> <span class="flag">-r</span> sprint-plan
+<span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">invoke</span> aligner &quot;converge on the sprint&#x27;s first priority&quot; <span class="flag">-r</span> sprint-plan
 
 <span class="comment"># ... it converges, plan/tasks.md is written ...</span>
 
 <span class="comment"># Second episode (room memory carries over)</span>
-<span class="cmd">mycelium respond</span> <span class="flag">--handle</span> planner &quot;Now let&#x27;s plan the API layer&quot; <span class="flag">-r</span> sprint-plan
-<span class="cmd">mycelium engine invoke</span> aligner <span class="str">&quot;converge on the API layer scope&quot;</span> <span class="flag">-r</span> sprint-plan</code></pre>
+<span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="flag">--handle</span> planner &quot;Now let&#x27;s plan the API layer&quot; <span class="flag">-r</span> sprint-plan
+<span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">invoke</span> aligner <span class="str">&quot;converge on the API layer scope&quot;</span> <span class="flag">-r</span> sprint-plan</code></pre>
     </section>
 
     <hr class="divider">
@@ -420,23 +420,23 @@ PATCH .../messages/{id}  {<span class="str">&quot;status&quot;</span>: <span cla
         <li><strong>No drift, no sync ritual.</strong> A read reflects what the hub has right now, so two machines never disagree about what a key says.</li>
         <li><strong>Reads need the hub.</strong> If the hub is down or <code>server.api_url</code> points somewhere wrong, memory commands say so plainly rather than quietly serving something stale.</li>
       </ul>
-      <pre><code><span class="cmd">mycelium config get</span> server.api_url   # which hub this machine reads from
-<span class="cmd">mycelium status</span>                      # is it up?</code></pre>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">get</span> server.api_url   # which hub this machine reads from
+<span class="bin">mycelium</span> <span class="cmd">status</span>                      # is it up?</code></pre>
       <p>Every write to room memory is embedded (384-dim, local, no API key, no external service) and indexed for semantic search.</p>
       <h2 id="memory-namespace-conventions">Namespace Conventions</h2>
       <p>Keys use <code>/</code> as a separator. The structure is a convention rather than a rule, but it makes <code>memory ls &lt;prefix&gt;/</code> very useful.</p>
       <pre><code><span class="comment"># Decisions your team made</span>
-<span class="cmd">mycelium memory set</span> <span class="str">&quot;decisions/storage&quot;</span> <span class="str">&quot;Rooms are folders; memory is markdown files&quot;</span>
+<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> <span class="str">&quot;decisions/storage&quot;</span> <span class="str">&quot;Rooms are folders; memory is markdown files&quot;</span>
 
 <span class="comment"># Things that failed (so nobody repeats them)</span>
-<span class="cmd">mycelium memory set</span> <span class="str">&quot;failed/single-writer&quot;</span> <span class="str">&quot;Serializing all writes stalled under load&quot;</span>
+<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> <span class="str">&quot;failed/single-writer&quot;</span> <span class="str">&quot;Serializing all writes stalled under load&quot;</span>
 
 <span class="comment"># Per-agent status (handle is just attribution)</span>
-<span class="cmd">mycelium memory set</span> <span class="str">&quot;status/prometheus&quot;</span> <span class="str">&quot;Wiring up the aligner&quot;</span> <span class="flag">--handle</span> prometheus-agent
+<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> <span class="str">&quot;status/prometheus&quot;</span> <span class="str">&quot;Wiring up the aligner&quot;</span> <span class="flag">--handle</span> prometheus-agent
 
 <span class="comment"># Browse a namespace</span>
-<span class="cmd">mycelium memory ls</span> decisions/
-<span class="cmd">mycelium memory ls</span> failed/</code></pre>
+<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">ls</span> decisions/
+<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">ls</span> failed/</code></pre>
       <div class="callout callout-note">
         <div class="callout-bar"></div>
         <div class="callout-body"><strong>Always upserts.</strong> Calling <code>memory set</code> on an existing key overwrites it. The version number increments automatically so you can track changes.</div>
@@ -444,7 +444,7 @@ PATCH .../messages/{id}  {<span class="str">&quot;status&quot;</span>: <span cla
       <h2 id="memory-how-the-hub-stores-it">How the hub stores it</h2>
       <p>The hub keeps each memory as a markdown file with YAML frontmatter at <code>~/.mycelium/rooms/{room}/{key}.md</code>, plus a JSONL embedding index beside it. That is internal storage, not a surface you work in — clients see it through <code>mycelium memory</code>, which is the same on the hub and on every spoke.</p>
       <p>To see the stored form of a memory from anywhere:</p>
-      <pre><code><span class="cmd">mycelium memory get</span> decisions/storage <span class="flag">--raw</span></code></pre>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">get</span> decisions/storage <span class="flag">--raw</span></code></pre>
       <div class="callout callout-note">
         <div class="callout-bar"></div>
         <div class="callout-body"><strong>Operating the hub.</strong> On the hub itself the files are ordinary files, so an operator can inspect, back up, or bulk-edit them. Edits made outside the CLI bypass the index; run <code>mycelium memory reindex</code> afterwards to resync. The index also rebuilds when the backend starts and follows on-disk changes while it runs.</div>
@@ -457,7 +457,7 @@ We chose Postgres because of myc://context/stack.</code></pre>
       <pre><code>[[context/stack#vector-store|how retrieval works]]</code></pre>
       <h3 id="memory-backlinks">Backlinks</h3>
       <p>The point of linking is knowing what depends on what. Before you change a memory, its backlinks tell you exactly which others lean on what it says:</p>
-      <pre><code><span class="cmd">mycelium memory links</span> context/stack</code></pre>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">links</span> context/stack</code></pre>
       <pre><code>context/stack
 
 → links to
@@ -467,20 +467,20 @@ We chose Postgres because of myc://context/stack.</code></pre>
   decisions/db           wikilink
   work/api-server        wikilink</code></pre>
       <p>Broken links are reported rather than hidden, and <code>--check</code> sweeps the whole room for them along with orphans — memories nothing links to:</p>
-      <pre><code><span class="cmd">mycelium memory links</span> <span class="flag">--check</span></code></pre>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">links</span> <span class="flag">--check</span></code></pre>
       <h3 id="memory-typed-relations">Typed relations</h3>
       <p>Frontmatter relations are edges with meaning, not just navigation. Set them on a write with <code>--meta</code>:</p>
-      <pre><code><span class="cmd">mycelium memory set</span> decisions/db <span class="str">&quot;Postgres&quot;</span> <span class="flag">-m</span> supersedes=decisions/db-v1</code></pre>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> decisions/db <span class="str">&quot;Postgres&quot;</span> <span class="flag">-m</span> supersedes=decisions/db-v1</code></pre>
       <p>Recognized relations: <code>supersedes</code>, <code>superseded-by</code>, <code>depends-on</code>, <code>part-of</code>, <code>relates-to</code>. They show up in <code>memory links</code> alongside body links.</p>
       <h3 id="memory-transclusion">Transclusion</h3>
       <p>A link asks the reader to go look. A <strong>transclusion</strong> pulls the text in, so there&#x27;s only ever one copy of a fact. Mark the source memory expandable:</p>
-      <pre><code><span class="cmd">mycelium memory set</span> glossary/vector-store \
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> glossary/vector-store \
   <span class="str">&quot;fastembed ONNX, bge-small-en-v1.5, 384-dim, no external service.&quot;</span> <span class="flag">--expandable</span></code></pre>
       <p>Then embed it anywhere with <code>![[…]]</code>:</p>
       <pre><code>Our retrieval layer is fixed:
 
 ![[glossary/vector-store]]</code></pre>
-      <pre><code><span class="cmd">mycelium memory get</span> decisions/db <span class="flag">--expand</span></code></pre>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">get</span> decisions/db <span class="flag">--expand</span></code></pre>
       <p>Update the source and every page that embeds it is correct — nothing to re-copy, nothing to go stale.</p>
       <p>Three rules keep this from getting unwieldy:</p>
       <ul>
@@ -492,9 +492,9 @@ We chose Postgres because of myc://context/stack.</code></pre>
       <p>Everything here is additive. A room whose memories carry no links behaves exactly as it did before.</p>
       <h2 id="memory-semantic-search">Semantic Search</h2>
       <p>Search finds memories by meaning: cosine similarity on all-MiniLM-L6-v2 embeddings (384 dimensions, runs locally, no external service).</p>
-      <pre><code><span class="cmd">mycelium memory search</span> <span class="str">&quot;what storage decisions were made&quot;</span>
-<span class="cmd">mycelium memory search</span> <span class="str">&quot;what failed and why&quot;</span>
-<span class="cmd">mycelium memory search</span> <span class="str">&quot;what is the current status&quot;</span></code></pre>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">search</span> <span class="str">&quot;what storage decisions were made&quot;</span>
+<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">search</span> <span class="str">&quot;what failed and why&quot;</span>
+<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">search</span> <span class="str">&quot;what is the current status&quot;</span></code></pre>
     </section>
 
     <hr class="divider">
@@ -505,30 +505,30 @@ We chose Postgres because of myc://context/stack.</code></pre>
       <p>Plan content is surfaced to every agent in the room, both in the turn the <a href="#aligner">aligner</a> addresses to them and in every agent-context briefing, so agents weigh their behaviour against work that&#x27;s already committed.</p>
       <p>You can write the plan by hand (<code>plan set</code>, <code>plan task add</code>), but it also fills itself: when an <a href="#episodes">episode</a> converges on consensus, Mycelium compiles the agreed <code>{issue: value}</code> map into <code>plan/tasks.md</code> automatically: a <code>- [ ]</code> checklist with <code>@handle</code> owners that the whole team then executes against. The plan is compiled <em>before</em> the consensus is announced, so it exists the moment <code>await</code> returns. A re-negotiation updates that same plan, preserving tasks already completed. The arc is <strong>position → converge → plan → work</strong>.</p>
       <h2 id="plan-anatomy">Anatomy</h2>
-      <pre><code>.mycelium/rooms/{room}/plan/
+      <pre><code>.<span class="bin">mycelium</span>/rooms/{room}/plan/
 ├── title.md          # one-line italic display title (shown above room activity)
 ├── tasks.md          # default todo file written by `plan task add`
 └── {slug}.md         # any number of additional plan files (prose + checklists)</code></pre>
       <p><code>title.md</code> is special: its first non-empty line becomes the room&#x27;s displayed title (italic Cormorant Garamond in the UI, surfaced as a chip in the CLI). All other <code>plan/*.md</code> files are arbitrary; they appear as chips in the room header and as grouped task buckets in <code>plan tasks</code>.</p>
       <h2 id="plan-cli">CLI</h2>
       <pre><code><span class="comment"># Title</span>
-<span class="cmd">mycelium plan title</span>                                # read
-<span class="cmd">mycelium plan title</span> <span class="str">&quot;Plan the Q3 sprint priorities&quot;</span>  # set
+<span class="bin">mycelium</span> <span class="cmd">plan</span> <span class="cmd">title</span>                                # read
+<span class="bin">mycelium</span> <span class="cmd">plan</span> <span class="cmd">title</span> <span class="str">&quot;Plan the Q3 sprint priorities&quot;</span>  # set
 
 <span class="comment"># Files (each is a memory file under plan/&lt;slug&gt;)</span>
-<span class="cmd">mycelium plan ls</span>
-<span class="cmd">mycelium plan show</span> sprint
-<span class="cmd">mycelium plan set</span> sprint <span class="str">&quot;# Sprint\n\n- [ ] cut a release branch&quot;</span>
-<span class="cmd">mycelium plan rm</span> sprint
+<span class="bin">mycelium</span> <span class="cmd">plan</span> <span class="cmd">ls</span>
+<span class="bin">mycelium</span> <span class="cmd">plan</span> <span class="cmd">show</span> sprint
+<span class="bin">mycelium</span> <span class="cmd">plan</span> <span class="cmd">set</span> sprint <span class="str">&quot;# Sprint\n\n- [ ] cut a release branch&quot;</span>
+<span class="bin">mycelium</span> <span class="cmd">plan</span> <span class="cmd">rm</span> sprint
 
 <span class="comment"># Tasks (markdown checklist lines across every plan file)</span>
-<span class="cmd">mycelium plan tasks</span>                  # open tasks only
-<span class="cmd">mycelium plan tasks</span> <span class="flag">--all</span>            # include completed
-<span class="cmd">mycelium plan task</span> add <span class="str">&quot;ship the demo&quot;</span>          # appends to plan/tasks.md
-<span class="cmd">mycelium plan task</span> add <span class="str">&quot;draft API&quot;</span> <span class="flag">--file</span> sprint # appends to plan/sprint.md
-<span class="cmd">mycelium plan task</span> done              # interactive multi-select over open tasks
-<span class="cmd">mycelium plan task</span> done tasks:3 sprint:7
-<span class="cmd">mycelium plan task</span> undo              # interactive multi-select over done tasks</code></pre>
+<span class="bin">mycelium</span> <span class="cmd">plan</span> <span class="cmd">tasks</span>                  # open tasks only
+<span class="bin">mycelium</span> <span class="cmd">plan</span> <span class="cmd">tasks</span> <span class="flag">--all</span>            # include completed
+<span class="bin">mycelium</span> <span class="cmd">plan</span> <span class="cmd">task</span> add <span class="str">&quot;ship the demo&quot;</span>          # appends to plan/tasks.md
+<span class="bin">mycelium</span> <span class="cmd">plan</span> <span class="cmd">task</span> add <span class="str">&quot;draft API&quot;</span> <span class="flag">--file</span> sprint # appends to plan/sprint.md
+<span class="bin">mycelium</span> <span class="cmd">plan</span> <span class="cmd">task</span> done              # interactive multi-select over open tasks
+<span class="bin">mycelium</span> <span class="cmd">plan</span> <span class="cmd">task</span> done tasks:3 sprint:7
+<span class="bin">mycelium</span> <span class="cmd">plan</span> <span class="cmd">task</span> undo              # interactive multi-select over done tasks</code></pre>
       <p>Task IDs are <code>&lt;slug&gt;:&lt;line&gt;</code> and stable as long as the file isn&#x27;t reflowed.</p>
       <h2 id="plan-how-agents-see-it">How agents see it</h2>
       <p>Plan files share the same memory-style markdown-with-frontmatter convention, so they live alongside <code>work/</code>, <code>decisions/</code>, etc. and are readable to anyone opening the room directory.</p>
@@ -548,13 +548,13 @@ We chose Postgres because of myc://context/stack.</code></pre>
       </div>
       <h2 id="l9-protocol-say-how-sure-you-are">Say how sure you are</h2>
       <p>When you post a position or reply with <a href="#quickstart"><code>mycelium respond</code></a>, end it with a position marker to declare your epistemic state:</p>
-      <pre><code><span class="cmd">mycelium respond</span> <span class="flag">--room</span> design <span class="flag">--handle</span> me \
-  <span class="str">&quot;Only option that meets the latency target. [[mycelium: confidence=0.8 stance=accept]]&quot;</span>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="flag">--room</span> design <span class="flag">--handle</span> me \
+  <span class="str">&quot;Only option that meets the latency target. [[<span class="bin">mycelium</span>: confidence=0.8 stance=accept]]&quot;</span>
 
 <span class="comment"># Accepting just to move on? Say so plainly in prose, and the aligner records</span>
 <span class="comment"># the deference:</span>
-<span class="cmd">mycelium respond</span> <span class="flag">--room</span> design <span class="flag">--handle</span> me \
-  &quot;I&#x27;m not persuaded, but I&#x27;ll defer to @avery-agent. [[mycelium: confidence=0.4 stance=accept]]&quot;</code></pre>
+<span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="flag">--room</span> design <span class="flag">--handle</span> me \
+  &quot;I&#x27;m not persuaded, but I&#x27;ll defer to @avery-agent. [[<span class="bin">mycelium</span>: confidence=0.4 stance=accept]]&quot;</code></pre>
       <p>The <code>[[mycelium: …]]</code> marker is lifted onto the L9 envelope and stripped from the prose. The aligner reads your reply and folds in the richer epistemic signals it can infer: the evidence you engaged, whether your position moved, and why:</p>
       <ul>
         <li><code>confidence</code> (0–1): how sure you are of your position</li>
@@ -645,13 +645,13 @@ We chose Postgres because of myc://context/stack.</code></pre>
       <h2 id="engines-the-lifecycle">The lifecycle</h2>
       <p>Every engine, whatever its kind, follows the same three steps.</p>
       <pre><code><span class="comment"># 1. Register it once per room (pick the kind)</span>
-<span class="cmd">mycelium engine create</span> summarizer <span class="flag">--kind</span> synthesizer <span class="flag">--room</span> sprint-plan
+<span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> summarizer <span class="flag">--kind</span> synthesizer <span class="flag">--room</span> sprint-plan
 
 <span class="comment"># 2. Summon it: this is what makes cognition run</span>
-<span class="cmd">mycelium engine invoke</span> summarizer <span class="str">&quot;brief the room on where we stand&quot;</span> <span class="flag">-r</span> sprint-plan
+<span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">invoke</span> summarizer <span class="str">&quot;brief the room on where we stand&quot;</span> <span class="flag">-r</span> sprint-plan
 
 <span class="comment"># 3. It runs as that handle and writes its result back into the room</span>
-<span class="cmd">mycelium memory get</span> context/synthesis <span class="flag">-r</span> sprint-plan</code></pre>
+<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">get</span> context/synthesis <span class="flag">-r</span> sprint-plan</code></pre>
       <p><code>mycelium engine ls</code> shows the engines registered in a room and their kinds.</p>
       <h2 id="engines-where-an-engine-runs">Where an engine runs</h2>
       <p>An engine&#x27;s cognition runs <strong>backend-side</strong>: the always-on backend runs the engine through its summon seam, so there is nothing extra to install. (<code>pi</code> ships in the backend image.) Legacy <code>engine.runtime = host</code> config coerces to <code>backend</code>.</p>
@@ -665,10 +665,10 @@ We chose Postgres because of myc://context/stack.</code></pre>
       <p>The aligner is the negotiation <a href="#engines">engine</a>: the <code>kind</code> that mediates a decision to consensus. Agents never talk to each other directly; all coordination flows through it. It reads everyone&#x27;s opening positions, brokers the negotiation one agent at a time, and stops the moment the team agrees.</p>
       <p>Like every engine, the aligner is <em>summoned</em>: nothing runs until you register it in a <a href="#rooms">room</a> and invoke it. There is no join window and no auto-start.</p>
       <pre><code><span class="comment"># Register the mediator once per room</span>
-<span class="cmd">mycelium engine create</span> aligner <span class="flag">--kind</span> aligner <span class="flag">--room</span> sprint-plan
+<span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> aligner <span class="flag">--kind</span> aligner <span class="flag">--room</span> sprint-plan
 
 <span class="comment"># Summon it to open an episode</span>
-<span class="cmd">mycelium engine invoke</span> aligner <span class="str">&quot;converge on tech allocation and the cap&quot;</span> <span class="flag">-r</span> sprint-plan</code></pre>
+<span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">invoke</span> aligner <span class="str">&quot;converge on tech allocation and the cap&quot;</span> <span class="flag">-r</span> sprint-plan</code></pre>
       <h2 id="aligner-how-it-negotiates">How it negotiates</h2>
       <p>The aligner drives a real <strong>NEGMAS Stacked Alternating Offers</strong> negotiation, so consensus comes out of the mechanism rather than an LLM improvising one. The mechanism owns proposer rotation and the unanimity stop; the aligner only supplies each agent&#x27;s move when NEGMAS asks for one.</p>
       <ol class="steps">
@@ -726,13 +726,13 @@ We chose Postgres because of myc://context/stack.</code></pre>
       <p>The synthesizer is the distillation <a href="#engines">engine</a>: the <code>kind</code> that reads a room&#x27;s memory and writes back a single briefing everyone can pick up. The <a href="#aligner">aligner</a> converges a negotiation; the synthesizer summarizes what the room already knows.</p>
       <p>Like every engine, it is summoned. Nothing runs until you register it in a <a href="#rooms">room</a> and invoke it, so there is no polling and no held connection.</p>
       <pre><code><span class="comment"># Register the synthesizer once per room</span>
-<span class="cmd">mycelium engine create</span> summarizer <span class="flag">--kind</span> synthesizer <span class="flag">--room</span> sprint-plan
+<span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> summarizer <span class="flag">--kind</span> synthesizer <span class="flag">--room</span> sprint-plan
 
 <span class="comment"># Summon it to compile a briefing</span>
-<span class="cmd">mycelium engine invoke</span> summarizer <span class="str">&quot;brief the room on where we stand&quot;</span> <span class="flag">-r</span> sprint-plan
+<span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">invoke</span> summarizer <span class="str">&quot;brief the room on where we stand&quot;</span> <span class="flag">-r</span> sprint-plan
 
 <span class="comment"># Read the result back</span>
-<span class="cmd">mycelium memory get</span> context/synthesis <span class="flag">-r</span> sprint-plan</code></pre>
+<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">get</span> context/synthesis <span class="flag">-r</span> sprint-plan</code></pre>
       <h2 id="synthesizer-how-it-distills">How it distills</h2>
       <p>On summon, the synthesizer reads every <a href="#memory">memory</a> namespace (decisions, status, context, work, and the plan) and runs one <strong>Pi</strong> turn to compile them into a single markdown briefing: the room&#x27;s goal, key decisions, current status, and open work. It upserts that briefing as a <code>knowledge</code> memory at <code>context/synthesis</code>, so it is versioned, searchable, and shared like any other memory.</p>
       <p>Run it again after a burst of activity and the briefing upserts in place with its version incremented, so the room always has one current summary instead of a pile of stale ones.</p>

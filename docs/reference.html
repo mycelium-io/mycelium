@@ -155,20 +155,20 @@
       </div>
       <p>Stand a hub up and point spokes at it:</p>
       <pre><code><span class="comment"># On the hub: starts the SLIM node + backend, prints the connect address</span>
-<span class="cmd">mycelium hub host</span>
+<span class="bin">mycelium</span> <span class="cmd">hub</span> <span class="cmd">host</span>
 
 <span class="comment"># On each spoke: point this machine at the hub&#x27;s channel</span>
-<span class="cmd">mycelium hub connect</span> http://&lt;hub-ip&gt;:46357</code></pre>
+<span class="bin">mycelium</span> <span class="cmd">hub</span> <span class="cmd">connect</span> http://&lt;hub-ip&gt;:46357</code></pre>
       <p>See the <a href="#hub-and-spoke">Hub &amp; Spoke Setup guide</a> for step-by-step instructions.</p>
       <p><code>mycelium doctor</code> auto-detects which mode you&#x27;re in by looking at <code>server.api_url</code> in <code>~/.mycelium/config.toml</code>: if it points to <code>localhost</code>/<code>127.0.0.1</code>, you&#x27;re a hub; otherwise a spoke. Override the auto-detection with:</p>
-      <pre><code><span class="cmd">mycelium doctor</span> <span class="flag">--mode</span> hub     # force hub checks
-<span class="cmd">mycelium doctor</span> <span class="flag">--mode</span> spoke   # force spoke checks (skip local-only)
-<span class="cmd">mycelium doctor</span> <span class="flag">--mode</span> auto    # default; detect from api_url</code></pre>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">doctor</span> <span class="flag">--mode</span> hub     # force hub checks
+<span class="bin">mycelium</span> <span class="cmd">doctor</span> <span class="flag">--mode</span> spoke   # force spoke checks (skip local-only)
+<span class="bin">mycelium</span> <span class="cmd">doctor</span> <span class="flag">--mode</span> auto    # default; detect from api_url</code></pre>
       <h3 id="architecture-reading-a-remote-room-spoke">Reading a remote room (spoke)</h3>
       <p>When the backend runs on a remote server (EC2, Raspberry Pi, a hub), a spoke is a <strong>thin client</strong>: <code>mycelium memory</code> and <code>mycelium room</code> resolve against the hub over HTTP, so reads are always fresh and there is <strong>no sync step</strong> — nothing is mirrored locally to fall out of date.</p>
       <p><code>room clone</code> / <code>mycelium sync</code> remain only as an explicit <strong>export</strong>: a point-in-time local snapshot for backup or offline reference, not part of the normal flow.</p>
       <pre><code><span class="comment"># Optional: export a point-in-time snapshot of a room to local files</span>
-<span class="cmd">mycelium room clone</span> my-project <span class="flag">--from</span> http://ec2-host:8000</code></pre>
+<span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">clone</span> my-project <span class="flag">--from</span> <span class="url">http://ec2-host:8000</span></code></pre>
       <h2 id="architecture-stack">Stack</h2>
       <p>Mycelium runs on <strong>one SLIM node</strong> and a thin backend: no database, no message broker, no vector store.</p>
       <p>Agents coordinate over an <a href="https://github.com/agntcy">AGNTCY SLIM</a> group channel, one per room: an MLS-encrypted group with shared-secret PSK auth. The backend is each room&#x27;s <strong>moderator</strong>; agents (and the human, by proxy) are members. Room state lives on the hub as markdown files; search runs against a local embedding index. Every other machine is a thin client that reads and writes that state over HTTP. Coordination messages ride SLIM as additive <a href="#l9-protocol">L9 envelopes</a>.</p>
@@ -237,14 +237,14 @@
       </div>
       <p><strong>Participation is a CLI primitive.</strong> Any already-awake caller joins a room and coordinates with two stateless HTTP calls. The backend holds membership via a presence lease and a durable transcript cursor, so ticks are never missed between turns:</p>
       <pre><code><span class="comment"># Long-poll until a message is addressed to the handle</span>
-<span class="cmd">mycelium await</span> <span class="flag">--room</span> my-project <span class="flag">--handle</span> me <span class="flag">--json</span>
+<span class="bin">mycelium</span> <span class="cmd">await</span> <span class="flag">--room</span> my-project <span class="flag">--handle</span> me <span class="flag">--json</span>
 
 <span class="comment"># Post a reply or opening position</span>
-<span class="cmd">mycelium respond</span> <span class="flag">--room</span> my-project <span class="flag">--handle</span> me <span class="str">&quot;moving toward 30% …&quot;</span></code></pre>
+<span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="flag">--room</span> my-project <span class="flag">--handle</span> me <span class="str">&quot;moving toward 30% …&quot;</span></code></pre>
       <p><strong>An agent is a resident runtime.</strong> A participant is your own live Claude Code or Cursor session. It just loops the participation calls itself — no wrapper, no separate process, no shelling out:</p>
-      <pre><code><span class="cmd">mycelium await</span> <span class="flag">--room</span> my-project <span class="flag">--handle</span> me     # blocks until you&#x27;re addressed
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">await</span> <span class="flag">--room</span> my-project <span class="flag">--handle</span> me     # blocks until you&#x27;re addressed
 <span class="comment"># …you reason, in your own context…</span>
-<span class="cmd">mycelium respond</span> <span class="flag">--room</span> my-project <span class="flag">--handle</span> me <span class="str">&quot;moving toward 30% …&quot;</span>
+<span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="flag">--room</span> my-project <span class="flag">--handle</span> me <span class="str">&quot;moving toward 30% …&quot;</span>
 <span class="comment"># …then await again</span></code></pre>
       <p>The loop <em>is</em> the wake: await → reason → respond → await. The session does the reasoning <strong>in its own head</strong>; <code>respond</code> just posts it. There is no daemon and no cold-spawn; agents never speak SLIM or L9 directly.</p>
       <p>For a <strong>headless</strong> agent — no interactive session sitting there to hold the loop — <code>mycelium await --loop --exec &lt;cmd&gt;</code> runs the loop for you and hands each turn to <code>&lt;cmd&gt;</code> (turn JSON on stdin); <code>&lt;cmd&gt;</code> is your reasoning runtime and calls <code>respond</code>. Point it at a <strong>persistent</strong> runtime (e.g. an Agent-SDK session) so context accumulates across turns — a throwaway one-shot per turn would just rebuild the amnesiac cold-spawn this design replaced.</p>
@@ -276,15 +276,15 @@
       <p>The Mycelium skill installs as a Claude Code skill (<code>~/.claude/skills/mycelium/SKILL.md</code>), invoked via the <code>/mycelium</code> slash command for memory and coordination commands. The adapter is skill-only.</p>
       <pre><code><span class="comment"># The skill is invoked automatically in Claude Code sessions</span>
 <span class="comment"># or explicitly via the slash command</span>
-/mycelium</code></pre>
+/<span class="bin">mycelium</span></code></pre>
       <p>A Claude Code session participates as a resident runtime: it loops <code>mycelium await</code> → reason → <code>mycelium respond</code>, picking up each <code>@handle</code> mention on its next turn and answering in its own context. (For a headless, unattended agent, <code>mycelium await --loop --exec &lt;cmd&gt;</code> runs that loop for you — see above.)</p>
       <h3 id="architecture-cursor">Cursor</h3>
       <p>Same resident model as Claude Code: a Cursor session loops <code>await</code> → reason → <code>respond</code>.</p>
-      <pre><code><span class="cmd">mycelium adapter add</span> cursor   # installs the workspace rule + AGENTS.md assets
-cursor-agent login            # one-time, interactive
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">adapter</span> <span class="cmd">add</span> cursor   # installs the workspace rule + AGENTS.md assets
+<span class="cmd">cursor-agent</span> login            # one-time, interactive
 
 <span class="comment"># Per agent: --cwd is the session&#x27;s workspace root (optional)</span>
-<span class="cmd">mycelium agent create</span> design-agent <span class="flag">--adapter</span> cursor \
+<span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">create</span> design-agent <span class="flag">--adapter</span> cursor \
     <span class="flag">--cwd</span> ~/repos/my-frontend <span class="flag">--room</span> my-project</code></pre>
       <h3 id="architecture-backend-api">Backend API</h3>
       <p>Any agent that can make HTTP requests can use the REST API directly. Interactive API docs are available at <code>http://localhost:8000/docs</code> when the backend is running.</p>
@@ -299,105 +299,105 @@ cursor-agent login            # one-time, interactive
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium doctor</span> [<span class="flag">--fix</span>] [<span class="flag">--json</span>] [<span class="flag">--mode</span> auto|hub|spoke]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">doctor</span> [<span class="flag">--fix</span>] [<span class="flag">--json</span>] [<span class="flag">--mode</span> auto|hub|spoke]</code>
         </div>
         <div class="cmd-ref-body">Diagnose and fix common configuration issues (workspace sync, LLM, containers).</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium init</span> [<span class="flag">--api-url</span> <span class="arg">&lt;url&gt;</span>] [<span class="flag">--force</span>]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">init</span> [<span class="flag">--api-url</span> <span class="arg">&lt;url&gt;</span>] [<span class="flag">--force</span>]</code>
         </div>
         <div class="cmd-ref-body">Initialize CLI configuration. Creates <code>~/.mycelium/config.toml</code>.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium up</span> [<span class="flag">--build</span>] [<span class="flag">--ui</span>] [<span class="flag">--metrics</span>]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">up</span> [<span class="flag">--build</span>] [<span class="flag">--ui</span>] [<span class="flag">--metrics</span>]</code>
         </div>
         <div class="cmd-ref-body">Start the Mycelium stack via <code>docker compose up</code>.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium down</span> [<span class="flag">--volumes</span>]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">down</span> [<span class="flag">--volumes</span>]</code>
         </div>
         <div class="cmd-ref-body">Stop the Mycelium stack. Pass <code>--volumes</code> to also delete data.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium status</span></code>
+          <code><span class="bin">mycelium</span> <span class="cmd">status</span></code>
         </div>
         <div class="cmd-ref-body">Show running service health (backend connectivity, room count).</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium logs</span> [service] [<span class="flag">--follow</span>] [<span class="flag">--tail</span> N]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">logs</span> [service] [<span class="flag">--follow</span>] [<span class="flag">--tail</span> N]</code>
         </div>
         <div class="cmd-ref-body">Tail container logs via <code>docker compose logs</code>.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium pull</span> [<span class="flag">--version</span> <span class="arg">&lt;tag&gt;</span>] [<span class="flag">--no-restart</span>]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">pull</span> [<span class="flag">--version</span> <span class="arg">&lt;tag&gt;</span>] [<span class="flag">--no-restart</span>]</code>
         </div>
         <div class="cmd-ref-body">Pull Mycelium Docker images and restart services. Pass --version to pin a preview/specific build.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium hub host</span></code>
+          <code><span class="bin">mycelium</span> <span class="cmd">hub</span> <span class="cmd">host</span></code>
         </div>
         <div class="cmd-ref-body">Start the SLIM node and print the address peers connect to.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium connect</span> <span class="arg">&lt;address&gt;</span></code>
+          <code><span class="bin">mycelium</span> <span class="cmd">connect</span> <span class="arg">&lt;address&gt;</span></code>
         </div>
         <div class="cmd-ref-body">Store the SLIM node endpoint to connect to (self- or mycelium-hosted).</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium install</span> [<span class="flag">--yes</span>] [<span class="flag">--non-interactive</span>] [<span class="flag">--force</span>]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">install</span> [<span class="flag">--yes</span>] [<span class="flag">--non-interactive</span>] [<span class="flag">--force</span>]</code>
         </div>
         <div class="cmd-ref-body">Interactive installer: Docker check, LLM config, <code>docker compose up</code>, provision workspace.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium upgrade</span> [<span class="flag">--check</span>] [<span class="flag">--version</span> <span class="arg">&lt;version&gt;</span>]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">upgrade</span> [<span class="flag">--check</span>] [<span class="flag">--version</span> <span class="arg">&lt;version&gt;</span>]</code>
         </div>
         <div class="cmd-ref-body">Upgrade (or pin) the Mycelium CLI. Pass --version to install a specific release.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium login</span> [<span class="flag">--issuer</span> <span class="arg">URL</span>] [<span class="flag">--device</span>] [<span class="flag">--no-browser</span>] [<span class="flag">--client-id</span> <span class="arg">ID</span>]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">login</span> [<span class="flag">--issuer</span> <span class="arg">URL</span>] [<span class="flag">--device</span>] [<span class="flag">--no-browser</span>] [<span class="flag">--client-id</span> <span class="arg">ID</span>]</code>
         </div>
         <div class="cmd-ref-body">Sign in to a gated hub via OIDC (Authorization Code + PKCE, or device code).</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium logout</span></code>
+          <code><span class="bin">mycelium</span> <span class="cmd">logout</span></code>
         </div>
         <div class="cmd-ref-body">Drop the cached OIDC session; the CLI goes back to sending no token.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium ui open</span> [<span class="flag">-y</span>]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">ui</span> <span class="cmd">open</span> [<span class="flag">-y</span>]</code>
         </div>
         <div class="cmd-ref-body">Open the frontend in your default browser.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium ui status</span></code>
+          <code><span class="bin">mycelium</span> <span class="cmd">ui</span> <span class="cmd">status</span></code>
         </div>
         <div class="cmd-ref-body">Show whether the frontend container is running.</div>
       </div>
@@ -406,56 +406,56 @@ cursor-agent login            # one-time, interactive
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium room ls</span></code>
+          <code><span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">ls</span></code>
         </div>
         <div class="cmd-ref-body">List all rooms with state and member count.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium room create</span> <span class="arg">&lt;name&gt;</span></code>
+          <code><span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">create</span> <span class="arg">&lt;name&gt;</span></code>
         </div>
         <div class="cmd-ref-body">Create a new persistent coordination room.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium room use</span> <span class="arg">&lt;name&gt;</span></code>
+          <code><span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">use</span> <span class="arg">&lt;name&gt;</span></code>
         </div>
         <div class="cmd-ref-body">Switch active room. Subsequent <code>memory</code> and <code>message</code> commands use this room by default.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium room delete</span> <span class="arg">&lt;name&gt;</span> [<span class="arg">&lt;name&gt;</span> ...] [<span class="flag">--force</span>]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">delete</span> <span class="arg">&lt;name&gt;</span> [<span class="arg">&lt;name&gt;</span> ...] [<span class="flag">--force</span>]</code>
         </div>
         <div class="cmd-ref-body">Delete one or more rooms and all their data (memories, sessions, messages).</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium room clone</span> &lt;room-name&gt; [<span class="flag">--from</span> &lt;api-url&gt;]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">clone</span> &lt;room-name&gt; [<span class="flag">--from</span> &lt;api-url&gt;]</code>
         </div>
         <div class="cmd-ref-body">Clone a room from a remote backend: fetches all memories via HTTP and writes them locally.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium room send</span> &quot;<span class="arg">&lt;content&gt;</span>&quot; [<span class="flag">--room</span> <span class="arg">&lt;room&gt;</span>] [<span class="flag">--handle</span> <span class="arg">&lt;handle&gt;</span>]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">send</span> &quot;<span class="arg">&lt;content&gt;</span>&quot; [<span class="flag">--room</span> <span class="arg">&lt;room&gt;</span>] [<span class="flag">--handle</span> <span class="arg">&lt;handle&gt;</span>]</code>
         </div>
         <div class="cmd-ref-body">Send an addressed chat message into a room. Use <code>@handle</code> mentions to direct it to specific agents.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium room messages</span> [<span class="arg">&lt;room&gt;</span>] [<span class="flag">--limit</span> N] [<span class="flag">--sender</span> <span class="arg">&lt;handle&gt;</span>] [<span class="flag">--type</span> <span class="arg">&lt;type&gt;</span>]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">messages</span> [<span class="arg">&lt;room&gt;</span>] [<span class="flag">--limit</span> N] [<span class="flag">--sender</span> <span class="arg">&lt;handle&gt;</span>] [<span class="flag">--type</span> <span class="arg">&lt;type&gt;</span>]</code>
         </div>
         <div class="cmd-ref-body">Read recent messages in a room (point-in-time, newest first). Filter with <code>--sender</code> / <code>--type</code>.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium room delegate</span> <span class="arg">&lt;room&gt;</span> <span class="flag">--to</span> <span class="arg">&lt;handle&gt;</span> <span class="flag">--task</span> <span class="arg">&lt;description&gt;</span></code>
+          <code><span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">delegate</span> <span class="arg">&lt;room&gt;</span> <span class="flag">--to</span> <span class="arg">&lt;handle&gt;</span> <span class="flag">--task</span> <span class="arg">&lt;description&gt;</span></code>
         </div>
         <div class="cmd-ref-body">Delegate a task to another agent in a room.</div>
       </div>
@@ -464,70 +464,70 @@ cursor-agent login            # one-time, interactive
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium agent create</span> <span class="arg">&lt;handle&gt;</span> <span class="flag">--adapter</span> <span class="arg">&lt;name&gt;</span> [<span class="flag">--cwd</span> <span class="arg">&lt;path&gt;</span>]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">create</span> <span class="arg">&lt;handle&gt;</span> <span class="flag">--adapter</span> <span class="arg">&lt;name&gt;</span> [<span class="flag">--cwd</span> <span class="arg">&lt;path&gt;</span>]</code>
         </div>
         <div class="cmd-ref-body">Create a new, Mycelium-controlled agent in a room. <code>claude_code</code> and <code>cursor</code> agents are resident sessions the user keeps woken with <code>mycelium await --loop</code>.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium agent ls</span> [<span class="flag">--room</span> <span class="arg">&lt;room&gt;</span>]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">ls</span> [<span class="flag">--room</span> <span class="arg">&lt;room&gt;</span>]</code>
         </div>
         <div class="cmd-ref-body">List all registered agents in a room.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium agent show</span> <span class="arg">&lt;handle&gt;</span> [<span class="flag">--room</span> <span class="arg">&lt;room&gt;</span>]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">show</span> <span class="arg">&lt;handle&gt;</span> [<span class="flag">--room</span> <span class="arg">&lt;room&gt;</span>]</code>
         </div>
         <div class="cmd-ref-body">Show an agent's manifest, notes, and most recent invocation log.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium agent invoke</span> <span class="arg">&lt;handle&gt;</span> &quot;<span class="arg">&lt;prompt&gt;</span>&quot; [<span class="flag">--room</span> <span class="arg">&lt;room&gt;</span>]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">invoke</span> <span class="arg">&lt;handle&gt;</span> &quot;<span class="arg">&lt;prompt&gt;</span>&quot; [<span class="flag">--room</span> <span class="arg">&lt;room&gt;</span>]</code>
         </div>
         <div class="cmd-ref-body">Send an addressed message to a registered agent. Desugars to <code>mycelium room send "@handle &lt;prompt&gt;"</code>.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium agent rm</span> <span class="arg">&lt;handle&gt;</span> [<span class="flag">--room</span> <span class="arg">&lt;room&gt;</span>] [<span class="flag">--full</span>] [<span class="flag">--force</span>]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">rm</span> <span class="arg">&lt;handle&gt;</span> [<span class="flag">--room</span> <span class="arg">&lt;room&gt;</span>] [<span class="flag">--full</span>] [<span class="flag">--force</span>]</code>
         </div>
         <div class="cmd-ref-body">Unregister an agent. Default keeps the underlying runtime; <code>--full</code> also tears down the underlying runtime (requires confirmation unless <code>-y</code>).</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium agent credential</span> set <span class="arg">&lt;handle&gt;</span> [<span class="flag">--client-id</span> <span class="arg">ID</span>] [<span class="flag">--secret-stdin</span>] [<span class="flag">--issuer</span> <span class="arg">URL</span>]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">credential</span> set <span class="arg">&lt;handle&gt;</span> [<span class="flag">--client-id</span> <span class="arg">ID</span>] [<span class="flag">--secret-stdin</span>] [<span class="flag">--issuer</span> <span class="arg">URL</span>]</code>
         </div>
         <div class="cmd-ref-body">Give an agent its own service-account credential, stored 0600 outside <code>config.toml</code>. Only meaningful once a hub enables auth.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium agent credential</span> show <span class="arg">&lt;handle&gt;</span></code>
+          <code><span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">credential</span> show <span class="arg">&lt;handle&gt;</span></code>
         </div>
         <div class="cmd-ref-body">Show which credential an agent resolves to. Never prints the secret.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium agent credential</span> ls</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">credential</span> ls</code>
         </div>
         <div class="cmd-ref-body">List the agents on this machine that have their own credential.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium agent credential</span> rm <span class="arg">&lt;handle&gt;</span></code>
+          <code><span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">credential</span> rm <span class="arg">&lt;handle&gt;</span></code>
         </div>
         <div class="cmd-ref-body">Forget an agent's credential on this machine.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium agent credential</span> slim-key <span class="arg">&lt;handle&gt;</span></code>
+          <code><span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">credential</span> slim-key <span class="arg">&lt;handle&gt;</span></code>
         </div>
         <div class="cmd-ref-body">Mint an agent's SignerJwt SLIM channel identity — a local ES256 keypair (0600) whose public JWK is registered on the room roster. The floor for <code>slim.identity = signerjwt</code> (#476); the PSK default needs none.</div>
       </div>
@@ -536,91 +536,91 @@ cursor-agent login            # one-time, interactive
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium memory set</span> <span class="arg">&lt;key&gt;</span> [<span class="arg">&lt;value&gt;</span>] [<span class="flag">--file</span> <span class="arg">&lt;path&gt;</span>] [<span class="flag">--handle</span> <span class="arg">&lt;handle&gt;</span>]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> <span class="arg">&lt;key&gt;</span> [<span class="arg">&lt;value&gt;</span>] [<span class="flag">--file</span> <span class="arg">&lt;path&gt;</span>] [<span class="flag">--handle</span> <span class="arg">&lt;handle&gt;</span>]</code>
         </div>
         <div class="cmd-ref-body">Write a memory (upsert). The value comes from the positional argument or <code>--file</code> (<code>-</code> reads stdin) — one or the other, not both. Structured category keys (<code>work/</code>, <code>decisions/</code>, <code>status/</code>, <code>context/</code>) are auto-validated. Always upserts; the backend handles versioning.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium memory get</span> <span class="arg">&lt;key&gt;</span></code>
+          <code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">get</span> <span class="arg">&lt;key&gt;</span></code>
         </div>
         <div class="cmd-ref-body">Read a memory by exact key from the hub.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium memory ls</span> [prefix/]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">ls</span> [prefix/]</code>
         </div>
         <div class="cmd-ref-body">List memories from the hub. Optional prefix filters by namespace.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium memory search</span> <span class="arg">&lt;query&gt;</span></code>
+          <code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">search</span> <span class="arg">&lt;query&gt;</span></code>
         </div>
         <div class="cmd-ref-body">Semantic search: finds memories by meaning using cosine similarity on local embeddings. Requires the backend API.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium memory links</span> <span class="arg">&lt;key&gt;</span> [<span class="flag">--check</span>]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">links</span> <span class="arg">&lt;key&gt;</span> [<span class="flag">--check</span>]</code>
         </div>
         <div class="cmd-ref-body">Show a memory's links: what it points at and what points back at it. Links are <code>myc://key</code> or <code>[[key]]</code> in the body, plus typed frontmatter relations (<code>supersedes</code>, <code>depends-on</code>, <code>part-of</code>, <code>relates-to</code>). <code>--check</code> reports broken links and orphans across the whole room.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium memory rm</span> <span class="arg">&lt;key&gt;</span> [<span class="flag">--force</span>]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">rm</span> <span class="arg">&lt;key&gt;</span> [<span class="flag">--force</span>]</code>
         </div>
         <div class="cmd-ref-body">Delete a memory: removes the markdown file and search index entry.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium memory reindex</span></code>
+          <code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">reindex</span></code>
         </div>
         <div class="cmd-ref-body">Re-index the room into the local JSONL search index. Run after editing memory files outside the CLI.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium memory subscribe</span> <span class="arg">&lt;pattern&gt;</span> [<span class="flag">-H</span> <span class="arg">&lt;handle&gt;</span>]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">subscribe</span> <span class="arg">&lt;pattern&gt;</span> [<span class="flag">-H</span> <span class="arg">&lt;handle&gt;</span>]</code>
         </div>
         <div class="cmd-ref-body">Subscribe to memory change notifications matching a glob pattern.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium memory status</span></code>
+          <code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">status</span></code>
         </div>
         <div class="cmd-ref-body">Show current status: filters to <code>status/*</code> memories as a table.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium memory work</span></code>
+          <code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">work</span></code>
         </div>
         <div class="cmd-ref-body">Show what's been built: filters to <code>work/*</code> memories as a table.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium memory decisions</span></code>
+          <code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">decisions</span></code>
         </div>
         <div class="cmd-ref-body">Show why choices were made: filters to <code>decisions/*</code> memories as a table.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium memory context</span></code>
+          <code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">context</span></code>
         </div>
         <div class="cmd-ref-body">Show background and preferences: filters to <code>context/*</code> memories as a table.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium memory procedures</span></code>
+          <code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">procedures</span></code>
         </div>
         <div class="cmd-ref-body">Show reusable how-to steps: filters to <code>procedures/*</code> memories as a table.</div>
       </div>
@@ -629,35 +629,35 @@ cursor-agent login            # one-time, interactive
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium skill set</span> <span class="arg">&lt;name&gt;</span> [<span class="arg">&lt;body&gt;</span>] [<span class="flag">--file</span> <span class="arg">&lt;path&gt;</span>] [<span class="flag">--desc</span> <span class="arg">&lt;text&gt;</span>]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">skill</span> <span class="cmd">set</span> <span class="arg">&lt;name&gt;</span> [<span class="arg">&lt;body&gt;</span>] [<span class="flag">--file</span> <span class="arg">&lt;path&gt;</span>] [<span class="flag">--desc</span> <span class="arg">&lt;text&gt;</span>]</code>
         </div>
         <div class="cmd-ref-body">Create or update a skill (upsert) in a room's skills/ namespace. The body comes from the positional argument or <code>--file</code> (<code>-</code> reads stdin).</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium skill ls</span></code>
+          <code><span class="bin">mycelium</span> <span class="cmd">skill</span> <span class="cmd">ls</span></code>
         </div>
         <div class="cmd-ref-body">List a room's skills, newest-updated first.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium skill get</span> <span class="arg">&lt;name&gt;</span></code>
+          <code><span class="bin">mycelium</span> <span class="cmd">skill</span> <span class="cmd">get</span> <span class="arg">&lt;name&gt;</span></code>
         </div>
         <div class="cmd-ref-body">Read a skill by name from a room.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium skill rm</span> <span class="arg">&lt;name&gt;</span></code>
+          <code><span class="bin">mycelium</span> <span class="cmd">skill</span> <span class="cmd">rm</span> <span class="arg">&lt;name&gt;</span></code>
         </div>
         <div class="cmd-ref-body">Delete a skill from a room.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium skill adapter</span>-def</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">skill</span> <span class="cmd">adapter-def</span></code>
         </div>
         <div class="cmd-ref-body">Print the Mycelium SKILL.md — the Claude Code adapter's skill definition (the participation protocol the resident agent follows).</div>
       </div>
@@ -666,63 +666,63 @@ cursor-agent login            # one-time, interactive
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium plan ls</span></code>
+          <code><span class="bin">mycelium</span> <span class="cmd">plan</span> <span class="cmd">ls</span></code>
         </div>
         <div class="cmd-ref-body">List plan files in the active room.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium plan show</span> <span class="arg">&lt;slug&gt;</span></code>
+          <code><span class="bin">mycelium</span> <span class="cmd">plan</span> <span class="cmd">show</span> <span class="arg">&lt;slug&gt;</span></code>
         </div>
         <div class="cmd-ref-body">Print a plan file's body.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium plan set</span> <span class="arg">&lt;slug&gt;</span> <span class="arg">&lt;body&gt;</span></code>
+          <code><span class="bin">mycelium</span> <span class="cmd">plan</span> <span class="cmd">set</span> <span class="arg">&lt;slug&gt;</span> <span class="arg">&lt;body&gt;</span></code>
         </div>
         <div class="cmd-ref-body">Create or overwrite a plan file. Body is the full markdown.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium plan rm</span> <span class="arg">&lt;slug&gt;</span></code>
+          <code><span class="bin">mycelium</span> <span class="cmd">plan</span> <span class="cmd">rm</span> <span class="arg">&lt;slug&gt;</span></code>
         </div>
         <div class="cmd-ref-body">Delete a plan file.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium plan title</span> [<span class="arg">&lt;text&gt;</span>]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">plan</span> <span class="cmd">title</span> [<span class="arg">&lt;text&gt;</span>]</code>
         </div>
         <div class="cmd-ref-body">Read or set the room's plan title: the italic display line shown above room activity. Pass no text to print the current title.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium plan tasks</span></code>
+          <code><span class="bin">mycelium</span> <span class="cmd">plan</span> <span class="cmd">tasks</span></code>
         </div>
         <div class="cmd-ref-body">List every checkbox task across plan files. Open first, done last.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium plan task</span> add <span class="arg">&lt;text&gt;</span> [<span class="flag">--file</span> <span class="arg">&lt;slug&gt;</span>]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">plan</span> <span class="cmd">task</span> add <span class="arg">&lt;text&gt;</span> [<span class="flag">--file</span> <span class="arg">&lt;slug&gt;</span>]</code>
         </div>
         <div class="cmd-ref-body">Append a new <code>- [ ]</code> line to a plan file (defaults to <code>tasks</code>).</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium plan task</span> done [<span class="arg">&lt;id&gt;</span>...]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">plan</span> <span class="cmd">task</span> done [<span class="arg">&lt;id&gt;</span>...]</code>
         </div>
         <div class="cmd-ref-body">Mark task(s) complete. Run without IDs to pick from open tasks interactively.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium plan task</span> undo [<span class="arg">&lt;id&gt;</span>...]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">plan</span> <span class="cmd">task</span> undo [<span class="arg">&lt;id&gt;</span>...]</code>
         </div>
         <div class="cmd-ref-body">Reopen completed task(s). Run without IDs to pick interactively.</div>
       </div>
@@ -731,28 +731,28 @@ cursor-agent login            # one-time, interactive
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium adapter add</span> <span class="arg">&lt;type&gt;</span> [<span class="flag">--dry-run</span>]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">adapter</span> <span class="cmd">add</span> <span class="arg">&lt;type&gt;</span> [<span class="flag">--dry-run</span>]</code>
         </div>
         <div class="cmd-ref-body">Install an agent framework adapter (claude-code, cursor).</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium adapter remove</span> <span class="arg">&lt;type&gt;</span> [<span class="flag">--force</span>]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">adapter</span> <span class="cmd">remove</span> <span class="arg">&lt;type&gt;</span> [<span class="flag">--force</span>]</code>
         </div>
         <div class="cmd-ref-body">Unregister and uninstall an adapter.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium adapter ls</span></code>
+          <code><span class="bin">mycelium</span> <span class="cmd">adapter</span> <span class="cmd">ls</span></code>
         </div>
         <div class="cmd-ref-body">List available and registered adapters.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium adapter status</span> [type]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">adapter</span> <span class="cmd">status</span> [type]</code>
         </div>
         <div class="cmd-ref-body">Check adapter health and installation status.</div>
       </div>
@@ -761,28 +761,28 @@ cursor-agent login            # one-time, interactive
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium config show</span></code>
+          <code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">show</span></code>
         </div>
         <div class="cmd-ref-body">Print current configuration (API URL, identity, active room).</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium config set</span> <span class="arg">&lt;key&gt;</span> <span class="arg">&lt;value&gt;</span> [<span class="flag">--env</span> <span class="arg">&lt;preset&gt;</span>]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> <span class="arg">&lt;key&gt;</span> <span class="arg">&lt;value&gt;</span> [<span class="flag">--env</span> <span class="arg">&lt;preset&gt;</span>]</code>
         </div>
         <div class="cmd-ref-body">Set a configuration value or switch environment preset.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium config get</span> <span class="arg">&lt;key&gt;</span></code>
+          <code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">get</span> <span class="arg">&lt;key&gt;</span></code>
         </div>
         <div class="cmd-ref-body">Read a configuration value.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium config apply</span> [<span class="flag">--restart</span>] [<span class="flag">--migrate-env</span>]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">apply</span> [<span class="flag">--restart</span>] [<span class="flag">--migrate-env</span>]</code>
         </div>
         <div class="cmd-ref-body">Regenerate .env from config.toml and optionally restart containers.</div>
       </div>
@@ -791,28 +791,28 @@ cursor-agent login            # one-time, interactive
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium sync</span> [<span class="flag">--no-reindex</span>]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">sync</span> [<span class="flag">--no-reindex</span>]</code>
         </div>
         <div class="cmd-ref-body">Sync the active room with the backend: fetch all memories from the API and write them locally.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium watch</span> [room]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">watch</span> [room]</code>
         </div>
         <div class="cmd-ref-body">Stream live room activity via SSE. Messages appear in real time as other agents write.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium await</span> <span class="flag">--room</span> <span class="arg">&lt;room&gt;</span> <span class="flag">--handle</span> <span class="arg">&lt;handle&gt;</span> [<span class="flag">--loop</span>] [<span class="flag">--exec</span> <span class="arg">CMD</span>] [<span class="flag">--timeout</span> N] [<span class="flag">--json</span>]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">await</span> <span class="cmd">--room</span> <span class="arg">&lt;room&gt;</span> <span class="flag">--handle</span> <span class="arg">&lt;handle&gt;</span> [<span class="flag">--loop</span>] [<span class="flag">--exec</span> <span class="arg">CMD</span>] [<span class="flag">--timeout</span> N] [<span class="flag">--json</span>]</code>
         </div>
         <div class="cmd-ref-body">Long-poll a room as a server-held member until a message is addressed to the handle.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="cmd">mycelium respond</span> <span class="flag">--room</span> <span class="arg">&lt;room&gt;</span> <span class="flag">--handle</span> <span class="arg">&lt;handle&gt;</span> &quot;<span class="arg">&lt;text&gt;</span>&quot;</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="cmd">--room</span> <span class="arg">&lt;room&gt;</span> <span class="flag">--handle</span> <span class="arg">&lt;handle&gt;</span> &quot;<span class="arg">&lt;text&gt;</span>&quot;</code>
         </div>
         <div class="cmd-ref-body">Publish a reply as the handle; the backend records it as a position for the aligner.</div>
       </div>
@@ -976,36 +976,36 @@ procedures/  Reusable how-to steps (do this again later)</code></pre>
       <p><code>memory set</code> validates these automatically: when the key starts with a known category prefix, it checks the slug format and auto-timestamps the content.</p>
       <h2 id="structured-memory-workflow">Workflow</h2>
       <h3 id="structured-memory-1-set-up-a-room">1. Set up a room</h3>
-      <pre><code><span class="cmd">mycelium room create</span> project-x
-<span class="cmd">mycelium room use</span> project-x</code></pre>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">create</span> project-x
+<span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">use</span> project-x</code></pre>
       <h3 id="structured-memory-2-write-structured-memories-as-you-work">2. Write structured memories as you work</h3>
       <pre><code><span class="comment"># Record what you built</span>
-<span class="cmd">mycelium memory set</span> work/api-server <span class="str">&quot;Set up FastAPI with auth endpoints&quot;</span>
-<span class="cmd">mycelium memory set</span> work/database <span class="str">&quot;Created PostgreSQL schema, 3 tables&quot;</span>
+<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> work/api-server <span class="str">&quot;Set up FastAPI with auth endpoints&quot;</span>
+<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> work/database <span class="str">&quot;Created PostgreSQL schema, 3 tables&quot;</span>
 
 <span class="comment"># Record why you made choices</span>
-<span class="cmd">mycelium memory set</span> decisions/framework <span class="str">&quot;FastAPI over Flask: async + type hints&quot;</span>
-<span class="cmd">mycelium memory set</span> decisions/auth <span class="str">&quot;JWT tokens, 1hr expiry, refresh via cookie&quot;</span>
+<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> decisions/framework <span class="str">&quot;FastAPI over Flask: async + type hints&quot;</span>
+<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> decisions/auth <span class="str">&quot;JWT tokens, 1hr expiry, refresh via cookie&quot;</span>
 
 <span class="comment"># Record user context</span>
-<span class="cmd">mycelium memory set</span> context/goal <span class="str">&quot;Build MVP for investor demo by Friday&quot;</span>
-<span class="cmd">mycelium memory set</span> context/constraints <span class="str">&quot;Must run on single $20/mo VPS&quot;</span>
+<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> context/goal <span class="str">&quot;Build MVP for investor demo by Friday&quot;</span>
+<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> context/constraints <span class="str">&quot;Must run on single $20/mo VPS&quot;</span>
 
 <span class="comment"># Track current state</span>
-<span class="cmd">mycelium memory set</span> status/api <span class="str">&quot;PASSING: all 12 endpoints tested&quot;</span>
-<span class="cmd">mycelium memory set</span> status/deploy <span class="str">&quot;BLOCKED: waiting on DNS propagation&quot;</span>
+<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> status/api <span class="str">&quot;PASSING: all 12 endpoints tested&quot;</span>
+<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> status/deploy <span class="str">&quot;BLOCKED: waiting on DNS propagation&quot;</span>
 
 <span class="comment"># Save reusable procedures</span>
-<span class="cmd">mycelium memory set</span> procedures/deploy-vps &quot;1. ssh vps  2. cd /app &amp;&amp; git pull  3. systemctl restart app  4. curl healthcheck&quot;
-<span class="cmd">mycelium memory set</span> procedures/db-migrate &quot;1. uv run alembic upgrade head  2. Verify with psql <span class="flag">-c</span> &#x27;SELECT version()&#x27;&quot;</code></pre>
+<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> procedures/deploy-vps &quot;1. ssh vps  2. cd /app &amp;&amp; git pull  3. systemctl restart app  4. curl healthcheck&quot;
+<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> procedures/db-migrate &quot;1. uv run alembic upgrade head  2. Verify with psql <span class="flag">-c</span> &#x27;SELECT version()&#x27;&quot;</code></pre>
       <h3 id="structured-memory-3-check-status-at-a-glance">3. Check status at a glance</h3>
-      <pre><code><span class="cmd">mycelium memory status</span>     # Table of all status/* memories
-<span class="cmd">mycelium memory work</span>       # What&#x27;s been built
-<span class="cmd">mycelium memory decisions</span>  # Why things are the way they are
-<span class="cmd">mycelium memory procedures</span> # How to do things again</code></pre>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">status</span>     # Table of all status/* memories
+<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">work</span>       # What&#x27;s been built
+<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">decisions</span>  # Why things are the way they are
+<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">procedures</span> # How to do things again</code></pre>
       <h3 id="structured-memory-4-update-status-as-things-change">4. Update status as things change</h3>
       <pre><code><span class="comment"># memory set always upserts, so just set the new value</span>
-<span class="cmd">mycelium memory set</span> status/deploy <span class="str">&quot;ACTIVE: deployed to vps.example.com&quot;</span></code></pre>
+<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> status/deploy <span class="str">&quot;ACTIVE: deployed to vps.example.com&quot;</span></code></pre>
       <h2 id="structured-memory-type-safety">Type Safety</h2>
       <p><code>memory set</code> validates category keys against the <code>MemoryLogEntry</code> type (defined in <code>mycelium.protocol</code>). This is the same pattern used for the negotiation reply payload (<code>RespondReply</code>): Pydantic validation before the API call, so malformed slugs fail fast on the client side.</p>
       <p>Valid slugs: lowercase alphanumeric, hyphens, dots, underscores.</p>
@@ -1033,8 +1033,8 @@ procedures/  Reusable how-to steps (do this again later)</code></pre>
       <pre><code>┌──────────────────────────────────┐
 │  Hub  (one machine)              │
 │                                  │
-│  <span class="cmd">mycelium install</span>                │
-│  <span class="cmd">mycelium hub host</span>               │
+│  <span class="bin">mycelium</span> <span class="cmd">install</span>                │
+│  <span class="bin">mycelium</span> <span class="cmd">hub</span> <span class="cmd">host</span>               │
 │  ├─ SLIM node   :46357           │
 │  └─ FastAPI backend (moderator)  │
 └────────────┬─────────────────────┘
@@ -1044,24 +1044,24 @@ procedures/  Reusable how-to steps (do this again later)</code></pre>
 ┌────┴─────┐   ┌─────┴────┐
 │ Spoke A  │   │ Spoke B  │
 │          │   │          │
-│ mycelium │   │ mycelium │
+│ <span class="bin">mycelium</span> │   │ <span class="bin">mycelium</span> │
 │ connect  │   │ connect  │
 │ + agents │   │ + agents │
 └──────────┘   └──────────┘</code></pre>
       <p>Spokes run only the CLI and their agents. They connect to the hub&#x27;s node address and coordinate over the shared channel.</p>
       <h2 id="hub-and-spoke-step-1-stand-up-the-hub">Step 1: Stand up the hub</h2>
       <p>On the hub machine, install the stack and start the SLIM node:</p>
-      <pre><code><span class="cmd">mycelium install</span>
-<span class="cmd">mycelium hub host</span></code></pre>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">install</span>
+<span class="bin">mycelium</span> <span class="cmd">hub</span> <span class="cmd">host</span></code></pre>
       <p><code>mycelium hub host</code> starts the <code>slim</code> node container and prints the address peers connect to:</p>
       <pre><code>SLIM node running.
-  local     → http://127.0.0.1:46357  (this machine, saved to config)
-  for peers → http://192.168.1.20:46357
+  local     → <span class="url">http://127.0.0.1:46357</span>  (this machine, saved to config)
+  for peers → <span class="url">http://192.168.1.20:46357</span>
 
-  Peers connect with:  <span class="cmd">mycelium connect http</span>://192.168.1.20:46357</code></pre>
+  Peers connect with:  <span class="bin">mycelium</span> <span class="cmd">connect</span> <span class="url">http://192.168.1.20:46357</span></code></pre>
       <p>It also wires this machine to its own node, so the hub is ready to host rooms immediately. Note the <code>for peers</code> LAN address; that&#x27;s what spokes connect to.</p>
       <p>Verify with:</p>
-      <pre><code><span class="cmd">mycelium doctor</span></code></pre>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">doctor</span></code></pre>
       <p><code>doctor</code> auto-detects hub vs spoke mode from <code>server.api_url</code> (a local backend means hub) and runs the checks that apply. Override with <code>--mode hub|spoke</code> if needed.</p>
       <h3 id="hub-and-spoke-open-ports">Open ports</h3>
       <p>Spokes need to reach the hub&#x27;s SLIM node:</p>
@@ -1086,25 +1086,25 @@ procedures/  Reusable how-to steps (do this again later)</code></pre>
       <p>The node forwards only MLS ciphertext, but restrict access anyway with a VPN, Tailscale, or firewall rules; access to a channel is gated by its shared-secret PSK.</p>
       <h2 id="hub-and-spoke-step-2-connect-each-spoke">Step 2: Connect each spoke</h2>
       <p>On each spoke, install the CLI:</p>
-      <pre><code>curl <span class="flag">-fsSL</span> https://mycelium-io.github.io/mycelium/install.sh | bash</code></pre>
+      <pre><code><span class="cmd">curl</span> <span class="flag">-fsSL</span> <span class="url">https://<span class="bin">mycelium</span>-io.github.io/<span class="bin">mycelium</span>/install.sh</span> | bash</code></pre>
       <p>Point it at the hub&#x27;s node address (the <code>for peers</code> line from Step 1):</p>
-      <pre><code><span class="cmd">mycelium connect http</span>://192.168.1.20:46357</code></pre>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">connect</span> <span class="url">http://192.168.1.20:46357</span></code></pre>
       <p>This stores the node endpoint in <code>~/.mycelium/config.toml</code>. The command is identical whether the hub is self-hosted on your LAN or a shared mycelium-hosted rendezvous; only the address changes.</p>
       <p>Verify:</p>
-      <pre><code><span class="cmd">mycelium doctor</span></code></pre>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">doctor</span></code></pre>
       <p>The spoke reports <strong>spoke mode</strong> and skips checks that only apply to a local backend.</p>
       <h2 id="hub-and-spoke-step-3-use-a-room-from-a-spoke">Step 3: Use a room from a spoke</h2>
       <p>There is one store: the hub&#x27;s. A spoke is a thin client — it keeps no copy of the room&#x27;s memory and needs no sync step. Create the room on the hub, then use it from anywhere.</p>
       <pre><code><span class="comment"># On the hub</span>
-<span class="cmd">mycelium room create</span> portfolio
-<span class="cmd">mycelium room use</span> portfolio</code></pre>
+<span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">create</span> portfolio
+<span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">use</span> portfolio</code></pre>
       <p>On a spoke, just make it the active room:</p>
-      <pre><code><span class="cmd">mycelium room use</span> portfolio</code></pre>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">use</span> portfolio</code></pre>
       <p>Every memory command now resolves against the hub over HTTP:</p>
-      <pre><code><span class="cmd">mycelium memory ls</span>                       # the hub&#x27;s memories
-<span class="cmd">mycelium memory get</span> decisions/allocation
-<span class="cmd">mycelium memory set</span> decisions/allocation <span class="str">&quot;60/40 equities to bonds&quot;</span>
-<span class="cmd">mycelium memory search</span> <span class="str">&quot;what did we decide about risk&quot;</span></code></pre>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">ls</span>                       # the hub&#x27;s memories
+<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">get</span> decisions/allocation
+<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> decisions/allocation <span class="str">&quot;60/40 equities to bonds&quot;</span>
+<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">search</span> <span class="str">&quot;what did we decide about risk&quot;</span></code></pre>
       <p>Because reads go to the hub, a spoke sees a write the moment it lands — there is no local copy to drift. The flip side: memory commands need the hub reachable, and say so plainly when it isn&#x27;t.</p>
       <div class="callout callout-note">
         <div class="callout-bar"></div>
@@ -1113,20 +1113,20 @@ procedures/  Reusable how-to steps (do this again later)</code></pre>
       <h2 id="hub-and-spoke-step-4-run-a-negotiation-across-machines">Step 4: Run a negotiation across machines</h2>
       <p>Register the mediator (the <a href="#aligner">aligner</a>) once in the room, then have each machine&#x27;s agent post an opening position and loop on the channel. The aligner runs a NEGMAS negotiation and stops the instant the agents agree.</p>
       <pre><code><span class="comment"># Once, on any machine: register the aligner in the room</span>
-<span class="cmd">mycelium engine create</span> aligner <span class="flag">--kind</span> aligner <span class="flag">--room</span> portfolio</code></pre>
+<span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> aligner <span class="flag">--kind</span> aligner <span class="flag">--room</span> portfolio</code></pre>
       <p>Each participant posts an opening position:</p>
       <pre><code><span class="comment"># Spoke A&#x27;s agent</span>
-<span class="cmd">mycelium respond</span> <span class="flag">--room</span> portfolio <span class="flag">--handle</span> alice <span class="str">&quot;I want 60% equities.&quot;</span>
+<span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="flag">--room</span> portfolio <span class="flag">--handle</span> alice <span class="str">&quot;I want 60% equities.&quot;</span>
 
 <span class="comment"># Spoke B&#x27;s agent</span>
-<span class="cmd">mycelium respond</span> <span class="flag">--room</span> portfolio <span class="flag">--handle</span> bob <span class="str">&quot;No more than 40% equities.&quot;</span></code></pre>
+<span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="flag">--room</span> portfolio <span class="flag">--handle</span> bob <span class="str">&quot;No more than 40% equities.&quot;</span></code></pre>
       <p>A human summons the aligner to converge:</p>
-      <pre><code><span class="cmd">mycelium engine invoke</span> aligner <span class="str">&quot;converge on the equities allocation&quot;</span></code></pre>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">invoke</span> aligner <span class="str">&quot;converge on the equities allocation&quot;</span></code></pre>
       <p>Each participant then loops: wait for a prompt addressed to their handle, read it, and reply:</p>
-      <pre><code><span class="cmd">mycelium await</span> <span class="flag">--room</span> portfolio <span class="flag">--handle</span> alice <span class="flag">--json</span>
-<span class="cmd">mycelium respond</span> <span class="flag">--room</span> portfolio <span class="flag">--handle</span> alice <span class="str">&quot;accept 50%, meets my floor&quot;</span></code></pre>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">await</span> <span class="flag">--room</span> portfolio <span class="flag">--handle</span> alice <span class="flag">--json</span>
+<span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="flag">--room</span> portfolio <span class="flag">--handle</span> alice <span class="str">&quot;accept 50%, meets my floor&quot;</span></code></pre>
       <p>On agreement the aligner records the <a href="#episodes">episode</a> and compiles the room&#x27;s shared <code>plan/tasks.md</code>. Read it on any machine:</p>
-      <pre><code><span class="cmd">mycelium plan tasks</span></code></pre>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">plan</span> <span class="cmd">tasks</span></code></pre>
       <p>Agents work the <code>@handle</code> tasks assigned to them. The plan and any new memories sync across machines the same way the room did.</p>
       <h2 id="hub-and-spoke-agent-identity">Agent identity</h2>
       <p>Each agent needs a unique handle across the whole deployment; it&#x27;s the agent&#x27;s identity in every room. The handle is resolved from, in order:</p>
@@ -1137,7 +1137,7 @@ procedures/  Reusable how-to steps (do this again later)</code></pre>
       </ol>
       <h2 id="hub-and-spoke-troubleshooting">Troubleshooting</h2>
       <h3 id="hub-and-spoke-spoke-cant-reach-the-hub">Spoke can&#x27;t reach the hub</h3>
-      <pre><code>curl http://192.168.1.20:46357</code></pre>
+      <pre><code><span class="cmd">curl</span> <span class="url">http://192.168.1.20:46357</span></code></pre>
       <p>If this fails, check firewall rules, VPN connectivity, or security groups. The node binds inside Docker; the host firewall may block external access.</p>
       <h3 id="hub-and-spoke-doctor-reports-spoke-mode-unexpectedly"><code>doctor</code> reports &quot;spoke mode&quot; unexpectedly</h3>
       <p><code>mycelium doctor</code> infers mode from <code>server.api_url</code>. If it points at a non-local address, doctor assumes spoke mode. If you&#x27;re running the backend locally on a non-default address, set <code>server.api_url</code> to <code>http://localhost:8000</code> in <code>~/.mycelium/config.toml</code>, or force the mode with <code>mycelium doctor --mode hub</code>.</p>
@@ -1157,9 +1157,9 @@ procedures/  Reusable how-to steps (do this again later)</code></pre>
         <div class="callout-body">Without the gate, anyone who can reach the backend&#x27;s port can read and write every room and post as any <code>@handle</code>. On a laptop that&#x27;s fine. On a shared network it is not — that is precisely the moment to enable this.</div>
       </div>
       <h2 id="auth-turning-it-on">Turning it on</h2>
-      <pre><code><span class="cmd">mycelium config set</span> auth.enabled true
-<span class="cmd">mycelium config set</span> auth.audience mycelium
-<span class="cmd">mycelium config apply</span></code></pre>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> auth.enabled true
+<span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> auth.audience <span class="bin">mycelium</span>
+<span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">apply</span></code></pre>
       <p>Then declare at least one trust root in <code>~/.mycelium/config.toml</code>:</p>
       <pre><code>[auth]
 enabled  = true
@@ -1230,12 +1230,12 @@ role     = &quot;user&quot;</code></pre>
       <p>Each <code>[[auth.issuers]]</code> block takes <code>issuer</code> (the exact <code>iss</code> to trust), <code>jwks_url</code> (optional — omit to resolve it from the issuer&#x27;s OIDC discovery document), <code>audience</code> (optional per-issuer override), and <code>role</code>.</p>
       <h2 id="auth-signing-in-from-the-cli">Signing in from the CLI</h2>
       <p>The gate above is the hub&#x27;s half. <code>mycelium login</code> is yours: it obtains an OIDC token for <strong>you</strong>, caches it, and every later command sends it.</p>
-      <pre><code><span class="cmd">mycelium config set</span> login.issuer https://sso.example.com/realms/mycelium
-<span class="cmd">mycelium config set</span> login.audience mycelium      # match the hub&#x27;s auth.audience
-<span class="cmd">mycelium login</span></code></pre>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> login.issuer <span class="url">https://sso.example.com/realms/<span class="bin">mycelium</span></span>
+<span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> login.audience <span class="bin">mycelium</span>      # match the hub&#x27;s auth.audience
+<span class="bin">mycelium</span> <span class="cmd">login</span></code></pre>
       <p>Your browser opens, you sign in at your identity provider, and the CLI takes it from there — <code>mycelium memory</code>, <code>mycelium room</code>, <code>await</code>, <code>respond</code> and the rest now carry <code>Authorization: Bearer &lt;token&gt;</code>.</p>
       <p><strong>On a machine with no browser</strong> — SSH, CI, a container — use the device flow. The CLI prints a URL and a short code you enter from any other device:</p>
-      <pre><code><span class="cmd">mycelium login</span> <span class="flag">--device</span></code></pre>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">login</span> <span class="flag">--device</span></code></pre>
       <p>The CLI falls back to this automatically when it finds no browser to open, so <code>mycelium login</code> over SSH does the right thing without the flag.</p>
       <p><code>mycelium logout</code> drops the session, and the CLI goes straight back to sending no token at all.</p>
       <h3 id="auth-login-is-opt-in-like-the-gate">Login is opt-in, like the gate</h3>
@@ -1246,7 +1246,7 @@ role     = &quot;user&quot;</code></pre>
       <h3 id="auth-who-you-are">Who you are</h3>
       <p><code>mycelium whoami</code> (and <code>mycelium iam</code> with no arguments) reports the handle from your <strong>token</strong> when you&#x27;re signed in, and the self-asserted <code>identity.name</code> when you&#x27;re not:</p>
       <pre><code>acting as @avery  (avery#a8f3)
-  signed in (https://sso.example.com/realms/mycelium, expires in 42 min)</code></pre>
+  signed in (<span class="url">https://sso.example.com/realms/<span class="bin">mycelium</span>,</span> expires in 42 min)</code></pre>
       <p>Because a gated hub attributes writes to the token (see <em>The token is the author</em> below), a self-asserted handle that names someone else is a 403 in waiting — <code>login</code> and <code>iam</code> both say so when they disagree.</p>
       <h3 id="auth-configuration">Configuration</h3>
       <div class="table-wrap">
@@ -1298,11 +1298,11 @@ role     = &quot;user&quot;</code></pre>
       <p><code>mycelium login</code> is for a human. An agent has no browser to open and nobody sitting there to click through a consent screen, so it authenticates as a <strong>workload</strong>: its own OIDC client, minted with the <code>client_credentials</code> grant. The token&#x27;s <code>sub</code> is the client id, which is the agent&#x27;s handle — the same handle the hub binds its writes to.</p>
       <p>That is the property a shared secret can&#x27;t give you: each agent holds a different credential, so <strong>revoking one agent&#x27;s client leaves every other agent working</strong>.</p>
       <p>Point the machine at the issuer agents mint from, then give each agent its own client:</p>
-      <pre><code><span class="cmd">mycelium config set</span> agent_auth.issuer https://sso.example.com/realms/agents
-<span class="cmd">mycelium config set</span> agent_auth.audience mycelium     # match the hub&#x27;s auth.audience
-<span class="cmd">mycelium config apply</span>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> agent_auth.issuer <span class="url">https://sso.example.com/realms/agents</span>
+<span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> agent_auth.audience <span class="bin">mycelium</span>     # match the hub&#x27;s auth.audience
+<span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">apply</span>
 
-<span class="cmd">mycelium agent credential</span> set release-agent <span class="flag">--secret-stdin</span> &lt; secret.txt</code></pre>
+<span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">credential</span> set release-agent <span class="flag">--secret-stdin</span> &lt; secret.txt</code></pre>
       <p>The client id defaults to the handle; pass <code>--client-id</code> when your issuer names it differently. <code>mycelium agent credential show release-agent</code> reports what an agent resolves to (never its secret), <code>... ls</code> lists every agent on the machine, and <code>... rm</code> forgets one locally — revoke the client at your issuer to actually kill it.</p>
       <p>From then on, <code>mycelium await --room R --handle release-agent</code> and <code>mycelium respond --handle release-agent</code> carry <strong>that agent&#x27;s</strong> token, including when they run from a shell where a human is logged in — a resident agent writes as itself, not as whoever started it.</p>
       <h3 id="auth-off-by-default-here-too">Off by default here too</h3>
@@ -1375,8 +1375,8 @@ role   = &quot;agent&quot;</code></pre>
       </ul>
       <p>Anything else is a <strong>403</strong>. Grants are per-room, because manifests are: owning <code>@bot</code> in one room says nothing about a <code>@bot</code> in another.</p>
       <p>The grant is what makes &quot;await on behalf of&quot; explicit rather than universal. An agent running with its own credential needs nothing — it awaits itself. A human driving an agent&#x27;s loop from their own session does:</p>
-      <pre><code><span class="cmd">mycelium agent create</span> bot <span class="flag">--owner</span> alice          # alice may now await <span class="flag">--handle</span> bot
-<span class="cmd">mycelium agent create</span> bot <span class="flag">--allow-from</span> ops-lead  # …and so may @ops-lead</code></pre>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">create</span> bot <span class="flag">--owner</span> alice          # alice may now await <span class="flag">--handle</span> bot
+<span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">create</span> bot <span class="flag">--allow-from</span> ops-lead  # …and so may @ops-lead</code></pre>
       <p>A resident loop (<code>mycelium await --loop</code>) <strong>stops</strong> on a 401 or 403 rather than retrying: a refused identity is not a blip, and re-polling it would flood the hub for as long as the loop ran.</p>
       <p>With the gate off nothing is checked here either, so an ungated hub still lets any caller await any handle — which is also why a hub reachable beyond your machine wants the gate on.</p>
       <h2 id="auth-key-rotation">Key rotation</h2>
@@ -1432,11 +1432,11 @@ role   = &quot;agent&quot;</code></pre>
       <p>Keycloak is a <em>supported</em> issuer, not the default. The gate stays <strong>off by default</strong> (the try-it path never touches it) — you turn it on when a team shares a hub over a network. Dex, ZITADEL, Authentik, or your corporate SSO slot in exactly the same way; nothing here is Keycloak-specific except the URLs.</p>
       <h2 id="keycloak-oidc-stand-up-keycloak">Stand up Keycloak</h2>
       <p>A ready-to-run Keycloak ships as an <strong>opt-in compose overlay</strong> — off the default stack, added with an extra <code>-f</code> exactly like the dev issuer. It imports a <code>mycelium</code> realm with a public CLI client, an audience mapper, and a demo user, so there is nothing to click in the admin console.</p>
-      <pre><code>cd mycelium-cli/src/mycelium/docker
-docker compose <span class="flag">-f</span> compose.yml <span class="flag">-f</span> compose-dev.yml <span class="flag">-f</span> compose-keycloak.yml \
+      <pre><code><span class="cmd">cd</span> <span class="bin">mycelium</span>-cli/src/<span class="bin">mycelium</span>/docker
+<span class="cmd">docker</span> compose <span class="flag">-f</span> compose.yml <span class="flag">-f</span> compose-dev.yml <span class="flag">-f</span> compose-keycloak.yml \
   up <span class="flag">-d</span> keycloak</code></pre>
       <p>The realm is ready when discovery answers:</p>
-      <pre><code>curl <span class="flag">-s</span> http://localhost:8080/realms/mycelium/.well-known/openid-configuration \
+      <pre><code><span class="cmd">curl</span> <span class="flag">-s</span> <span class="url">http://localhost:8080/realms/<span class="bin">mycelium</span>/.well-known/openid-configuration</span> \
   | python3 <span class="flag">-c</span> &#x27;import json,sys; print(json.load(sys.stdin)[<span class="str">&quot;issuer&quot;</span>])&#x27;
 <span class="comment"># → http://localhost:8080/realms/mycelium</span></code></pre>
       <div class="callout callout-note">
@@ -1477,11 +1477,11 @@ issuer    = &quot;http://localhost:8080/realms/mycelium&quot;
 client_id = &quot;mycelium-cli&quot;
 audience  = &quot;mycelium&quot;</code></pre>
       <p>Apply it and recreate the backend so it picks up the gate:</p>
-      <pre><code><span class="cmd">mycelium config apply</span>
-docker compose <span class="flag">-f</span> compose.yml <span class="flag">-f</span> compose-dev.yml <span class="flag">-f</span> compose-keycloak.yml \
-  up <span class="flag">-d</span> <span class="flag">--force-recreate</span> mycelium-backend</code></pre>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">apply</span>
+<span class="cmd">docker</span> compose <span class="flag">-f</span> compose.yml <span class="flag">-f</span> compose-dev.yml <span class="flag">-f</span> compose-keycloak.yml \
+  up <span class="flag">-d</span> <span class="flag">--force-recreate</span> <span class="bin">mycelium</span>-backend</code></pre>
       <p><code>/health</code> now reports the gate on and the issuer trusted:</p>
-      <pre><code>curl <span class="flag">-s</span> http://localhost:8000/health | python3 <span class="flag">-m</span> json.tool
+      <pre><code><span class="cmd">curl</span> <span class="flag">-s</span> <span class="url">http://localhost:8000/health</span> | python3 <span class="flag">-m</span> json.tool
 <span class="comment"># &quot;auth&quot;: { &quot;enabled&quot;: true, &quot;issuers&quot;: [&quot;http://localhost:8080/realms/mycelium&quot;],</span>
 <span class="comment">#           &quot;audience&quot;: &quot;mycelium&quot;, &quot;localhost_bypass&quot;: true }</span></code></pre>
       <div class="callout callout-note">
@@ -1489,28 +1489,28 @@ docker compose <span class="flag">-f</span> compose.yml <span class="flag">-f</s
         <div class="callout-body"><strong>The localhost bypass does not save you here</strong> — and that is the point. Traffic from the CLI to the containerized backend arrives from the Docker bridge, not real loopback, so the gate genuinely enforces. See <a href="#auth">Authentication → The localhost bypass</a>.</div>
       </div>
       <h2 id="keycloak-oidc-sign-in-with-mycelium-login">Sign in with <code>mycelium login</code></h2>
-      <pre><code><span class="cmd">mycelium login</span>            # opens your browser to Keycloak
-<span class="cmd">mycelium login</span> <span class="flag">--device</span>   # headless: prints a URL + code to approve from any device</code></pre>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">login</span>            # opens your browser to Keycloak
+<span class="bin">mycelium</span> <span class="cmd">login</span> <span class="flag">--device</span>   # headless: prints a URL + code to approve from any device</code></pre>
       <p>Sign in as <code>demo</code> / <code>demo</code>. The CLI caches the token (<code>~/.mycelium/token.json</code>, mode <code>0600</code>) and every later command carries it:</p>
-      <pre><code><span class="cmd">mycelium whoami</span>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">whoami</span>
 <span class="comment"># acting as @demo</span>
 <span class="comment">#   signed in (http://localhost:8080/realms/mycelium, expires in 4 min)</span>
 
-<span class="cmd">mycelium room ls</span>          # now authorized through the Keycloak token</code></pre>
+<span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">ls</span>          # now authorized through the Keycloak token</code></pre>
       <p><code>mycelium logout</code> drops the session and the CLI goes back to sending no token.</p>
       <h2 id="keycloak-oidc-prove-the-gate-what-validated-means">Prove the gate (what &quot;validated&quot; means)</h2>
       <p>The same three checks that were run to confirm this guide, against the published backend port:</p>
       <pre><code><span class="comment"># A real Keycloak token for the demo user</span>
 TOKEN=$(curl <span class="flag">-s</span> <span class="flag">-X</span> POST \
-  http://localhost:8080/realms/mycelium/protocol/openid-connect/token \
-  <span class="flag">-d</span> &#x27;grant_type=password&amp;client_id=mycelium-cli&amp;username=demo&amp;password=demo&amp;scope=openid profile&#x27; \
+  <span class="url">http://localhost:8080/realms/<span class="bin">mycelium</span>/protocol/openid-connect/token</span> \
+  <span class="flag">-d</span> &#x27;grant_type=password&amp;client_id=<span class="bin">mycelium</span>-cli&amp;username=demo&amp;password=demo&amp;scope=openid profile&#x27; \
   | python3 <span class="flag">-c</span> &#x27;import json,sys; print(json.load(sys.stdin)[<span class="str">&quot;access_token&quot;</span>])&#x27;)
 
-curl <span class="flag">-s</span> <span class="flag">-o</span> /dev/null <span class="flag">-w</span> &#x27;%{http_code}\n&#x27; http://localhost:8000/api/rooms              # 401  (no token)
-curl <span class="flag">-s</span> <span class="flag">-o</span> /dev/null <span class="flag">-w</span> &#x27;%{http_code}\n&#x27; <span class="flag">-H</span> <span class="str">&quot;Authorization: Bearer $TOKEN&quot;</span> \
-  http://localhost:8000/api/rooms                                                     # 200  (valid)
-curl <span class="flag">-s</span> <span class="flag">-o</span> /dev/null <span class="flag">-w</span> &#x27;%{http_code}\n&#x27; <span class="flag">-H</span> &#x27;Authorization: Bearer not.a.jwt&#x27; \
-  http://localhost:8000/api/rooms                                                     # 401  (garbage)</code></pre>
+<span class="cmd">curl</span> <span class="flag">-s</span> <span class="flag">-o</span> /dev/null <span class="flag">-w</span> &#x27;%{http_code}\n&#x27; <span class="url">http://localhost:8000/api/rooms</span>              # 401  (no token)
+<span class="cmd">curl</span> <span class="flag">-s</span> <span class="flag">-o</span> /dev/null <span class="flag">-w</span> &#x27;%{http_code}\n&#x27; <span class="flag">-H</span> <span class="str">&quot;Authorization: Bearer $TOKEN&quot;</span> \
+  <span class="url">http://localhost:8000/api/rooms</span>                                                     # 200  (valid)
+<span class="cmd">curl</span> <span class="flag">-s</span> <span class="flag">-o</span> /dev/null <span class="flag">-w</span> &#x27;%{http_code}\n&#x27; <span class="flag">-H</span> &#x27;Authorization: Bearer not.a.jwt&#x27; \
+  <span class="url">http://localhost:8000/api/rooms</span>                                                     # 401  (garbage)</code></pre>
       <p>An <strong>expired</strong> token is refused the same way — the response is <code>401</code> with <code>token rejected: Signature has expired</code> once it ages past <code>exp</code> plus <code>auth.leeway_s</code> (default 60s).</p>
       <h2 id="keycloak-oidc-agents-and-more-than-one-issuer">Agents, and more than one issuer</h2>
       <p>This guide is the <strong>human</strong> tier. Agents authenticate as workloads with the <code>client_credentials</code> grant from their own Keycloak client — see <a href="#auth">Authentication → Agents sign in as themselves</a>. Humans and agents are often separate realms; list each as its own <code>[[auth.issuers]]</code> block (a human root with <code>role = &quot;user&quot;</code>, an agent root with <code>role = &quot;agent&quot;</code>), matched by exact <code>iss</code> and never interchangeable.</p>
@@ -1519,13 +1519,13 @@ curl <span class="flag">-s</span> <span class="flag">-o</span> /dev/null <span c
       <p>The Next.js frontend does the same OIDC flow for humans in a browser. With the gate <strong>off</strong> it is unchanged — the localStorage handle-picker, no login. With the gate <strong>on</strong>, the app shows a <strong>Sign in</strong> screen and redirects to Keycloak; after you authenticate it carries your token on every <code>/api/*</code> call (sealed in an httpOnly cookie, injected server-side by the proxy — it never reaches browser JS).</p>
       <p>The realm import ships a second public client, <strong><code>mycelium-web</code></strong>, with the web redirect <code>http://localhost:3000/api/auth/callback</code> (the CLI&#x27;s <code>mycelium-cli</code> client uses a loopback redirect instead — separate clients, separately revocable).</p>
       <p>Configure the frontend (server-side env) and bring the UI up:</p>
-      <pre><code>export MYCELIUM_OIDC_ISSUER=http://localhost:8080/realms/mycelium
-export MYCELIUM_OIDC_INTERNAL_ISSUER=http://keycloak:8080/realms/mycelium
-export MYCELIUM_OIDC_CLIENT_ID=mycelium-web
-export MYCELIUM_OIDC_AUDIENCE=mycelium
+      <pre><code>export MYCELIUM_OIDC_ISSUER=<span class="url">http://localhost:8080/realms/<span class="bin">mycelium</span></span>
+export MYCELIUM_OIDC_INTERNAL_ISSUER=<span class="url">http://keycloak:8080/realms/<span class="bin">mycelium</span></span>
+export MYCELIUM_OIDC_CLIENT_ID=<span class="bin">mycelium</span>-web
+export MYCELIUM_OIDC_AUDIENCE=<span class="bin">mycelium</span>
 export AUTH_SESSION_SECRET=$(openssl rand <span class="flag">-hex</span> 32)
 
-docker compose <span class="flag">-f</span> compose.yml <span class="flag">-f</span> compose-dev.yml <span class="flag">-f</span> compose-keycloak.yml \
+<span class="cmd">docker</span> compose <span class="flag">-f</span> compose.yml <span class="flag">-f</span> compose-dev.yml <span class="flag">-f</span> compose-keycloak.yml \
   <span class="flag">--profile</span> ui up <span class="flag">-d</span></code></pre>
       <p>The <strong>issuer split is the same as the backend&#x27;s</strong>, for the same reason: the browser reaches Keycloak at <code>MYCELIUM_OIDC_ISSUER</code> (<code>localhost:8080</code>) and the token&#x27;s <code>iss</code> matches it, but the containerized frontend server can&#x27;t use <code>localhost</code>, so it runs discovery + token exchange against <code>MYCELIUM_OIDC_INTERNAL_ISSUER</code> (<code>keycloak:8080</code>). Running the frontend on the host with <code>pnpm dev</code> instead? Drop <code>INTERNAL_ISSUER</code> — the two coincide.</p>
       <div class="callout callout-note">
@@ -1544,19 +1544,19 @@ docker compose <span class="flag">-f</span> compose.yml <span class="flag">-f</s
       <p>Mycelium&#x27;s default channel identity is a shared-secret PSK: zero infrastructure, every room member derives the same group key. That&#x27;s the try-it path, and it never changes. <strong>SPIRE identity</strong> is an optional, off-by-default upgrade: each member presents a SPIRE-attested JWT-SVID as its MLS identity, so members are cryptographically distinct, individually attested, and individually revocable — the tightest attestation tier, and the heaviest to deploy.</p>
       <p>Turning it on is <strong>one switch</strong>. You never touch a SPIFFE socket path, a trust domain, or type <code>spire-server entry create</code> by hand.</p>
       <h2 id="spire-identity-turn-it-on">Turn it on</h2>
-      <pre><code><span class="cmd">mycelium config set</span> slim.identity spire
-<span class="cmd">mycelium config apply</span>
-<span class="cmd">mycelium up</span></code></pre>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> slim.identity spire
+<span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">apply</span>
+<span class="bin">mycelium</span> <span class="cmd">up</span></code></pre>
       <p><code>mycelium up</code> reads <code>slim.identity</code> and, when it&#x27;s <code>spire</code>, brings a co-located SPIRE <strong>server + node daemon</strong> up alongside the hub automatically — the compose <code>spire</code> profile is an implementation detail the config drives. You do <strong>not</strong> pass <code>--profile spire</code> by hand. On the default (<code>psk</code>) nothing extra starts and the stack is byte-for-byte unchanged.</p>
       <div class="callout callout-note">
         <div class="callout-bar"></div>
         <div class="callout-body">The SPIRE <strong>node daemon</strong> (upstream image <code>spire-agent</code>, container <code>mycelium-spire-noded</code>) is SPIRE&#x27;s per-node identity daemon — it serves the Workload API socket and fetches SVIDs. It is unrelated to mycelium coordination <strong>agents</strong> (<code>@alice</code> etc.); the shared word is an upstream-SPIRE coincidence.</div>
       </div>
       <h2 id="spire-identity-registration-is-automatic">Registration is automatic</h2>
-      <pre><code><span class="cmd">mycelium agent create</span> @alice</code></pre>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">create</span> @alice</code></pre>
       <p>With SPIRE on, <code>agent create</code> registers the SVID entry (<code>spiffe://&lt;trust-domain&gt;/agent/alice</code>) against the running SPIRE server itself — no printed copy-paste operator step. <code>agent rm @alice</code> deletes the entry, revoking the identity. Both go through the normal mycelium CLI.</p>
       <h2 id="spire-identity-check-it">Check it</h2>
-      <pre><code><span class="cmd">mycelium doctor</span></code></pre>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">doctor</span></code></pre>
       <p>When SPIRE is on, doctor shows a legible line — <code>SPIRE up, @alice attested</code> — so a misconfiguration is a clear message rather than a member silently hanging at &quot;Initializing spire identity manager.&quot;</p>
       <h2 id="spire-identity-trust-domain">Trust domain</h2>
       <p>The trust domain defaults to <code>mycelium.dev</code>. Override it (server, agent, backend MLS identity, and registration all read the same value) with:</p>
@@ -1572,43 +1572,43 @@ docker compose <span class="flag">-f</span> compose.yml <span class="flag">-f</s
     <section class="doc-section" id="troubleshooting">
       <h1>Troubleshooting</h1>
       <h2 id="troubleshooting-quick-diagnostics">Quick Diagnostics</h2>
-      <pre><code><span class="cmd">mycelium doctor</span>          # full diagnostic: config, backend, LLM, SLIM, adapters
-<span class="cmd">mycelium doctor</span> <span class="flag">--fix</span>    # auto-fix everything it can
-<span class="cmd">mycelium status</span>          # quick service health (backend, LLM, disk)
-<span class="cmd">mycelium logs</span> <span class="flag">--tail</span> 50  # recent service logs</code></pre>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">doctor</span>          # full diagnostic: config, backend, LLM, SLIM, adapters
+<span class="bin">mycelium</span> <span class="cmd">doctor</span> <span class="flag">--fix</span>    # auto-fix everything it can
+<span class="bin">mycelium</span> <span class="cmd">status</span>          # quick service health (backend, LLM, disk)
+<span class="bin">mycelium</span> <span class="cmd">logs</span> <span class="flag">--tail</span> 50  # recent service logs</code></pre>
       <p><code>mycelium doctor</code> is the first thing to run for almost any problem. It auto-detects whether this machine is a <strong>hub</strong> (runs the backend + SLIM node locally) or a <strong>spoke</strong> (points at a remote hub), and skips the checks that don&#x27;t apply. Force it with <code>--mode hub</code> or <code>--mode spoke</code>.</p>
       <hr class="divider">
       <h2 id="troubleshooting-common-issues">Common Issues</h2>
       <h3 id="troubleshooting-1-command-not-found">1. Command Not Found</h3>
       <p><strong>Symptom</strong>: <code>mycelium: command not found</code></p>
-      <pre><code>curl <span class="flag">-fsSL</span> https://mycelium-io.github.io/mycelium/install.sh | bash</code></pre>
+      <pre><code><span class="cmd">curl</span> <span class="flag">-fsSL</span> <span class="url">https://<span class="bin">mycelium</span>-io.github.io/<span class="bin">mycelium</span>/install.sh</span> | bash</code></pre>
       <p>Or add to PATH if the binary exists:</p>
       <pre><code>export PATH=<span class="str">&quot;$HOME/.local/bin:$PATH&quot;</span></code></pre>
       <hr class="divider">
       <h3 id="troubleshooting-2-backend-not-running">2. Backend Not Running</h3>
       <p><strong>Symptom</strong>: <code>Cannot connect to Mycelium API at http://localhost:8000</code></p>
       <p>The backend is the room moderator; nothing coordinates without it.</p>
-      <pre><code><span class="cmd">mycelium status</span>                     # quick check
-docker ps | grep mycelium-backend   # container status
-<span class="cmd">mycelium up</span>                         # start services
-<span class="cmd">mycelium logs mycelium</span>-backend <span class="flag">--tail</span> 50</code></pre>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">status</span>                     # quick check
+<span class="cmd">docker</span> ps | grep <span class="bin">mycelium</span>-backend   # container status
+<span class="bin">mycelium</span> <span class="cmd">up</span>                         # start services
+<span class="bin">mycelium</span> <span class="cmd">logs</span> <span class="cmd">mycelium-backend</span> <span class="flag">--tail</span> 50</code></pre>
       <hr class="divider">
       <h3 id="troubleshooting-3-config-not-found">3. Config Not Found</h3>
       <p><strong>Symptom</strong>: <code>Configuration file not found: ~/.mycelium/config.toml</code></p>
-      <pre><code><span class="cmd">mycelium init</span>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">init</span>
 <span class="comment"># or point at a remote hub:</span>
-<span class="cmd">mycelium init</span> <span class="flag">--api-url</span> http://your-hub:8000</code></pre>
+<span class="bin">mycelium</span> <span class="cmd">init</span> <span class="flag">--api-url</span> <span class="url">http://your-hub:8000</span></code></pre>
       <hr class="divider">
       <h3 id="troubleshooting-4-slim-node-unreachable">4. SLIM Node Unreachable</h3>
       <p><strong>Symptom</strong>: agents join a room but never exchange anything; <code>mycelium await</code> hangs; <code>mycelium doctor</code> flags the backend or a spoke can&#x27;t reach the hub.</p>
       <p>Agents coordinate over a <strong>SLIM group channel</strong> served by the hub&#x27;s SLIM node (default port <strong>46357</strong>). If that node is down or unreachable, no messages flow.</p>
-      <pre><code><span class="cmd">mycelium doctor</span>                     # detects hub vs spoke, checks reachability
-docker ps | grep slim               # is the SLIM node up on the hub?
-<span class="cmd">mycelium hub host</span>                   # (re)start the SLIM node and print its address</code></pre>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">doctor</span>                     # detects hub vs spoke, checks reachability
+<span class="cmd">docker</span> ps | grep slim               # is the SLIM node up on the hub?
+<span class="bin">mycelium</span> <span class="cmd">hub</span> <span class="cmd">host</span>                   # (re)start the SLIM node and print its address</code></pre>
       <p>On a spoke, confirm it points at the right node and the port is open:</p>
-      <pre><code>grep node_endpoint ~/.mycelium/config.toml
-curl http://&lt;hub-ip&gt;:46357            # raw reachability from the spoke
-<span class="cmd">mycelium connect http</span>://&lt;hub-ip&gt;:46357  # re-point at the hub node</code></pre>
+      <pre><code>grep node_endpoint ~/.<span class="bin">mycelium</span>/config.toml
+<span class="cmd">curl</span> http://&lt;hub-ip&gt;:46357            # raw reachability from the spoke
+<span class="bin">mycelium</span> <span class="cmd">connect</span> <span class="cmd">http</span>://&lt;hub-ip&gt;:46357  # re-point at the hub node</code></pre>
       <p>Common causes: firewall/security group blocks 46357, VPN/Tailscale not connected, or a stale endpoint in <code>config.toml</code>.</p>
       <hr class="divider">
       <h3 id="troubleshooting-5-port-already-in-use">5. Port Already in Use</h3>
@@ -1616,23 +1616,23 @@ curl http://&lt;hub-ip&gt;:46357            # raw reachability from the spoke
       <pre><code>lsof <span class="flag">-i</span> :8000    # backend
 lsof <span class="flag">-i</span> :46357   # SLIM node</code></pre>
       <p>Remap published host ports through config rather than hand-editing <code>.env</code>:</p>
-      <pre><code><span class="cmd">mycelium config set</span> runtime.backend_port 8001     # MYCELIUM_BACKEND_PORT
-<span class="cmd">mycelium config set</span> runtime.frontend_port 3001    # MYCELIUM_UI_PORT
-<span class="cmd">mycelium config set</span> runtime.collector_port 4319   # MYCELIUM_METRICS_PORT
-<span class="cmd">mycelium config apply</span>
-<span class="cmd">mycelium down</span> &amp;&amp; <span class="cmd">mycelium up</span>                      # restart to pick up new ports</code></pre>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> runtime.backend_port 8001     # MYCELIUM_BACKEND_PORT
+<span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> runtime.frontend_port 3001    # MYCELIUM_UI_PORT
+<span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> runtime.collector_port 4319   # MYCELIUM_METRICS_PORT
+<span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">apply</span>
+<span class="bin">mycelium</span> <span class="cmd">down</span> &amp;&amp; <span class="bin">mycelium</span> <span class="cmd">up</span>                      # restart to pick up new ports</code></pre>
       <hr class="divider">
       <h3 id="troubleshooting-6-llm-not-configured">6. LLM Not Configured</h3>
       <p><strong>Symptom</strong>: <code>LLM unavailable, no API key configured</code>, or <code>mycelium doctor</code> reports the LLM connectivity check as <em>not configured</em> / <em>auth failed</em>.</p>
       <p>The LLM powers the <a href="#aligner">aligner</a> mediator and memory embedding-adjacent work. Set it through config, not by hand-editing <code>.env</code>:</p>
-      <pre><code><span class="cmd">mycelium config set</span> llm.model <span class="str">&quot;anthropic/claude-sonnet-4-6&quot;</span>
-<span class="cmd">mycelium config set</span> llm.api_key <span class="str">&quot;sk-ant-...&quot;</span>
-<span class="cmd">mycelium config apply</span>
-<span class="cmd">mycelium up</span>                         # recreate the backend with the new env</code></pre>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> llm.model <span class="str">&quot;anthropic/claude-sonnet-4-6&quot;</span>
+<span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> llm.api_key <span class="str">&quot;sk-ant-...&quot;</span>
+<span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">apply</span>
+<span class="bin">mycelium</span> <span class="cmd">up</span>                         # recreate the backend with the new env</code></pre>
       <p>For local Ollama:</p>
-      <pre><code><span class="cmd">mycelium config set</span> llm.model <span class="str">&quot;ollama/llama3&quot;</span>
-<span class="cmd">mycelium config set</span> llm.base_url <span class="str">&quot;http://localhost:11434&quot;</span>
-<span class="cmd">mycelium config apply</span> &amp;&amp; <span class="cmd">mycelium up</span></code></pre>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> llm.model <span class="str">&quot;ollama/llama3&quot;</span>
+<span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> llm.base_url <span class="str">&quot;<span class="url">http://localhost:11434</span>&quot;</span>
+<span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">apply</span> &amp;&amp; <span class="bin">mycelium</span> <span class="cmd">up</span></code></pre>
       <p><code>mycelium doctor</code> runs a real completion probe inside the backend, so it catches missing provider SDKs (e.g. boto3 for Bedrock) and bad model strings, not just a missing key.</p>
       <hr class="divider">
       <h3 id="troubleshooting-7-aligner-negotiation-fails-pi-not-found">7. Aligner Negotiation Fails (&quot;pi not found&quot;)</h3>
@@ -1645,36 +1645,36 @@ lsof <span class="flag">-i</span> :46357   # SLIM node</code></pre>
       <h3 id="troubleshooting-8-memory-search-returns-nothing">8. Memory Search Returns Nothing</h3>
       <p><strong>Symptom</strong>: <code>mycelium memory search</code> is empty despite memories existing.</p>
       <p>Search runs against a <strong>local embedding index</strong> (no external service). Direct file writes (cat, editor, agent file I/O) don&#x27;t update it until you reindex.</p>
-      <pre><code><span class="cmd">mycelium memory ls</span>          # do memories exist?
-ls ~/.mycelium/rooms/       # files present?
-<span class="cmd">mycelium reindex</span>            # rebuild the index after direct file writes
-<span class="cmd">mycelium room ls</span>            # wrong active room?</code></pre>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">ls</span>          # do memories exist?
+ls ~/.<span class="bin">mycelium</span>/rooms/       # files present?
+<span class="bin">mycelium</span> <span class="cmd">reindex</span>            # rebuild the index after direct file writes
+<span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">ls</span>            # wrong active room?</code></pre>
       <hr class="divider">
       <h3 id="troubleshooting-9-no-active-room">9. No Active Room</h3>
       <p><strong>Symptom</strong>: <code>No active room. Use &#x27;mycelium room use &lt;name&gt;&#x27;</code></p>
-      <pre><code><span class="cmd">mycelium room ls</span>
-<span class="cmd">mycelium room use</span> &lt;name&gt;
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">ls</span>
+<span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">use</span> &lt;name&gt;
 <span class="comment"># or pass room explicitly:</span>
-<span class="cmd">mycelium memory ls</span> <span class="flag">--room</span> &lt;name&gt;</code></pre>
+<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">ls</span> <span class="flag">--room</span> &lt;name&gt;</code></pre>
       <hr class="divider">
       <h3 id="troubleshooting-10-config-drift-edited-one-file-not-the-other">10. Config Drift (edited one file, not the other)</h3>
       <p><strong>Symptom</strong>: config changes seem to have no effect; <code>mycelium doctor</code> flags <em>Config file drift</em> or <em>Runtime config drift</em>.</p>
       <p><code>mycelium config apply</code> regenerates <code>~/.mycelium/.env</code> from <code>config.toml</code>, which is the source of truth. If you hand-edit <code>.env</code>, the next <code>apply</code> overwrites it. And if you change config but don&#x27;t recreate the backend, it keeps running the old env.</p>
-      <pre><code><span class="cmd">mycelium config apply</span>       # rewrite .env from config.toml
-<span class="cmd">mycelium up</span>                 # recreate the backend with current env
-<span class="cmd">mycelium doctor</span>             # confirm drift cleared</code></pre>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">apply</span>       # rewrite .env from config.toml
+<span class="bin">mycelium</span> <span class="cmd">up</span>                 # recreate the backend with current env
+<span class="bin">mycelium</span> <span class="cmd">doctor</span>             # confirm drift cleared</code></pre>
       <hr class="divider">
       <h3 id="troubleshooting-11-permission-errors-under-mycelium">11. Permission Errors Under ~/.mycelium</h3>
       <p><strong>Symptom</strong>: opaque <code>PermissionError</code> on memory or agent writes; <code>mycelium doctor</code> flags <em>~/.mycelium ownership</em> with root-owned files.</p>
       <p>Usually a sudo install paired with a non-sudo agent add (or a containerized gateway running as root bind-mounting your home). One <code>chown</code> fixes it:</p>
-      <pre><code>sudo chown <span class="flag">-R</span> $USER ~/.mycelium</code></pre>
+      <pre><code>sudo chown <span class="flag">-R</span> $USER ~/.<span class="bin">mycelium</span></code></pre>
       <hr class="divider">
       <h3 id="troubleshooting-12-spoke-cannot-reach-hub-backend">12. Spoke Cannot Reach Hub Backend</h3>
       <p><strong>Symptom</strong>: <code>mycelium status</code> / <code>mycelium room ls</code> from a spoke returns a connection error pointing at the hub&#x27;s URL.</p>
-      <pre><code>curl http://&lt;hub-ip&gt;:8000/health      # raw backend reachability
-grep api_url ~/.mycelium/config.toml  # what the spoke targets</code></pre>
+      <pre><code><span class="cmd">curl</span> http://&lt;hub-ip&gt;:8000/health      # raw backend reachability
+grep api_url ~/.<span class="bin">mycelium</span>/config.toml  # what the spoke targets</code></pre>
       <p>Common causes: firewall blocks port 8000, hub backend isn&#x27;t running (<code>mycelium up</code> on the hub), VPN/Tailscale not connected, or the wrong URL in <code>config.toml</code>. Re-point if needed:</p>
-      <pre><code><span class="cmd">mycelium init</span> <span class="flag">--api-url</span> http://&lt;correct-hub-ip&gt;:8000</code></pre>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">init</span> <span class="flag">--api-url</span> http://&lt;correct-hub-ip&gt;:8000</code></pre>
       <p>Note the spoke must also reach the hub&#x27;s <strong>SLIM node</strong> on 46357 (see <em>SLIM Node Unreachable</em> above); the backend and the node are separate ports.</p>
       <hr class="divider">
       <h2 id="troubleshooting-configuration-reference">Configuration Reference</h2>
@@ -1790,14 +1790,14 @@ grep api_url ~/.mycelium/config.toml  # what the spoke targets</code></pre>
       </div>
       <hr class="divider">
       <h2 id="troubleshooting-log-locations">Log Locations</h2>
-      <pre><code><span class="cmd">mycelium logs</span>                       # all services
-<span class="cmd">mycelium logs mycelium</span>-backend      # backend only
-mycelium <span class="flag">--verbose</span> status           # CLI debug output</code></pre>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">logs</span>                       # all services
+<span class="bin">mycelium</span> <span class="cmd">logs</span> <span class="cmd">mycelium-backend</span>      # backend only
+<span class="bin">mycelium</span> <span class="flag">--verbose</span> status           # CLI debug output</code></pre>
       <hr class="divider">
       <h2 id="troubleshooting-reset-everything">Reset Everything</h2>
-      <pre><code><span class="cmd">mycelium down</span> <span class="flag">--volumes</span>   # stop and delete all data
-rm <span class="flag">-rf</span> ~/.mycelium        # remove all config and room files
-<span class="cmd">mycelium install</span>          # fresh install</code></pre>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">down</span> <span class="flag">--volumes</span>   # stop and delete all data
+rm <span class="flag">-rf</span> ~/.<span class="bin">mycelium</span>        # remove all config and room files
+<span class="bin">mycelium</span> <span class="cmd">install</span>          # fresh install</code></pre>
       <hr class="divider">
       <h2 id="troubleshooting-getting-help">Getting Help</h2>
       <p>Report issues at <strong>https://github.com/mycelium-io/mycelium/issues</strong></p>
