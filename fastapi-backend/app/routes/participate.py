@@ -26,7 +26,6 @@ from __future__ import annotations
 
 import asyncio
 import re
-from dataclasses import dataclass
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
@@ -40,20 +39,13 @@ from app.services.l9_slim import serialize_content
 router = APIRouter(prefix="/rooms/{room_name}", tags=["participate"])
 
 
-@dataclass
-class _AwaitState:
-    """Per-(room, handle) long-poll cursor over the durable transcript.
-
-    ``cursor`` is how far the handle has consumed; ``last_tick`` is the content of
-    the last tick it was served, so a following reply parents onto it.
-    """
-
-    cursor: int
-    last_tick: dict[str, Any] | None = None
-
-
-# Process-local — a fresh backend starts every handle at the current transcript end.
-_await_state: dict[tuple[str, str], _AwaitState] = {}
+# The delivery cursor itself lives on the durable inbox (``persister.log``), so it
+# survives a restart and starts a brand-new handle at its ``agent create`` /
+# first-mention anchor rather than "now". Only the last served tick is kept
+# process-local here: it's a best-effort convenience so a following ``reply``
+# parents onto the tick that woke the caller, and losing it on restart just drops
+# that one parent edge — never a message.
+_last_tick: dict[tuple[str, str], dict[str, Any]] = {}
 
 _POLL_INTERVAL_S = 0.4
 _MAX_WAIT_S = 3600.0
@@ -157,27 +149,27 @@ async def await_message(room_name: str, request: Request, handle: str, timeout: 
         return {"room": room_name, "handle": handle, "message": None}
     persister = managed.persister
     key = (room_name, handle)
-    state = _await_state.get(key)
-    if state is None:
-        # First await for this handle: start at the current end so it only sees
-        # turns addressed to it from when it began participating.
-        state = _AwaitState(cursor=len(persister.log.records))
-        _await_state[key] = state
-
+    # The cursor rides the durable inbox: its first read is the handle's persisted
+    # delivery position — anchored at the mention that summoned it (``record()``
+    # holds an @-addressed turn for an untracked recipient) and preserved across a
+    # backend restart. So a message sitting in the transcript before this handle's
+    # first ``await`` is delivered, not skipped.
     loop = asyncio.get_event_loop()
     deadline = loop.time() + (timeout if timeout > 0 else _MAX_WAIT_S)
     while True:
         records = persister.log.records
-        i = state.cursor
+        i = persister.log.position(handle)
         while i < len(records):
             record = records[i]
             i += 1
             if _addressed_to(record.content, handle):
-                state.cursor = i
-                state.last_tick = record.content
+                persister.advance_cursor(handle, i)
+                _last_tick[key] = record.content
                 room_channels.manager.refresh_lease(room_name, handle)
                 return _describe(room_name, handle, record)
-        state.cursor = len(records)
+        # Nothing addressed in the scanned range: consume it (advance past the
+        # observer/broadcast turns this handle doesn't await) and keep polling.
+        persister.advance_cursor(handle, len(records))
         if loop.time() >= deadline:
             return {"room": room_name, "handle": handle, "message": None}
         room_channels.manager.refresh_lease(room_name, handle)
@@ -210,8 +202,7 @@ async def post_reply(room_name: str, body: ReplyBody, request: Request):
         raise HTTPException(status_code=503, detail="No live channel for room")
 
     payload_data, clean = _parse_marker(body.text)
-    st = _await_state.get((room_name, handle))
-    woke = (st.last_tick if st else None) or {}
+    woke = _last_tick.get((room_name, handle)) or {}
     woke_header = (woke.get("l9") or {}).get("header") or {}
     woke_msg = woke_header.get("message") or {}
     woke_actors = (woke_header.get("participants") or {}).get("actors") or []

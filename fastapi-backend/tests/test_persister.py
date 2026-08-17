@@ -177,6 +177,62 @@ def test_loaded_cursors_are_clamped_to_the_transcript_length():
     assert [r.message_id for r in log.undelivered("behind")] == ["m1"]  # clamped to 0
 
 
+def test_position_of_an_untracked_handle_is_the_transcript_end():
+    """A handle no one has addressed sits at "now": nothing prior is its business."""
+    log = persister.DeliveryLog([_record("m1"), _record("m2")])
+    assert log.position("stranger") == 2
+
+
+def test_position_of_an_addressed_untracked_handle_is_its_anchor():
+    """The mention that summoned an absent handle anchors its cursor at itself, so
+    ``position`` reports the mention — not the end — for its first await."""
+    log = persister.DeliveryLog()
+    log.record(_record("m0", sender="avery"), delivered_to=set(), recipients=[])
+    log.record(_record("m1", sender="avery"), delivered_to=set(), recipients=["agent-x"])
+    assert log.position("agent-x") == 1  # anchored at the mention, not the end (2)
+
+
+def test_advance_moves_the_cursor_forward_and_registers_a_new_handle():
+    log = persister.DeliveryLog([_record("m1"), _record("m2"), _record("m3")])
+    log.advance("agent-x", 2)
+    assert log.knows("agent-x")
+    assert [r.message_id for r in log.undelivered("agent-x")] == ["m3"]
+
+
+def test_advance_never_rewinds_a_cursor():
+    """A drain can't un-deliver a tail an earlier live send already advanced past."""
+    log = persister.DeliveryLog([_record("m1"), _record("m2"), _record("m3")])
+    log.advance("agent-x", 3)
+    log.advance("agent-x", 1)  # a stale/lower position is ignored
+    assert log.position("agent-x") == 3
+
+
+def test_advance_clamps_beyond_the_transcript_end():
+    log = persister.DeliveryLog([_record("m1")])
+    log.advance("agent-x", 99)
+    assert log.position("agent-x") == 1
+
+
+def test_an_await_advanced_cursor_survives_a_restart(tmp_path, monkeypatch):
+    """The consume side of the durable inbox persists: a message drained by an
+    ``await`` on one process is not re-served after a restart (#649)."""
+    monkeypatch.setattr("app.config.settings.MYCELIUM_DATA_DIR", str(tmp_path / ".mycelium"))
+    room = "await-restart"
+    records = [_record("m1"), _record("m2")]
+    for r in records:
+        persister.append_transcript(room, r)
+
+    log = persister.DeliveryLog(records, cursors=persister.load_cursors(room))
+    log.advance("agent-x", 2)  # await drained both
+    persister.write_cursors(room, log.cursors)
+
+    resumed = persister.DeliveryLog(
+        persister.load_transcript(room), cursors=persister.load_cursors(room)
+    )
+    assert resumed.undelivered("agent-x") == []  # not re-served after the "restart"
+    assert resumed.position("agent-x") == 2
+
+
 def test_transcript_does_not_clobber_episode_records():
     """The transcript is a distinct file from log/episodes/*."""
     room = "coexist-room"

@@ -265,6 +265,29 @@ class DeliveryLog:
         pos = self._cursors.get(handle, len(self._records))
         return self._records[pos:]
 
+    def position(self, handle: str) -> int:
+        """``handle``'s delivery cursor — the transcript end if never tracked.
+
+        The same cursor the durable inbox re-serves from, so server-held
+        ``await`` (a pull) and reconnect re-serve (a push) share one persisted
+        delivery position instead of the process-local one ``await`` used to keep.
+        """
+        return self._cursors.get(handle, len(self._records))
+
+    def advance(self, handle: str, pos: int) -> None:
+        """Move ``handle``'s cursor forward to ``pos`` (clamped, never backward).
+
+        Registers the handle if new, so a first ``await`` that consumes to the
+        transcript end is remembered across a restart instead of re-initializing
+        to "now" each process. Never rewinds: a lower ``pos`` is ignored, so a
+        drain can't un-deliver a tail an earlier live send already advanced past.
+        """
+        end = len(self._records)
+        clamped = max(0, min(int(pos), end))
+        current = self._cursors.get(handle)
+        if current is None or clamped > current:
+            self._cursors[handle] = clamped
+
     def mark_caught_up(self, handle: str) -> None:
         """Advance ``handle`` to the transcript end (after a re-serve)."""
         self._cursors[handle] = len(self._records)
@@ -674,6 +697,17 @@ class RoomPersister:
     def _persist_cursors(self) -> None:
         """Snapshot the delivery cursors to disk (best-effort, per mutation)."""
         write_cursors(self.room, self.log.cursors)
+
+    def advance_cursor(self, handle: str, pos: int) -> None:
+        """Advance ``handle``'s durable delivery cursor to ``pos`` and persist it.
+
+        The consume side of the durable inbox for a server-held ``await`` caller:
+        as ``await`` drains the transcript it commits the new position here so it
+        survives a backend restart, rather than the process-local cursor that
+        silently reset every handle to "now" on restart.
+        """
+        self.log.advance(handle, pos)
+        self._persist_cursors()
 
     # -- membership signals (driven by RoomChannelManager) --
 
