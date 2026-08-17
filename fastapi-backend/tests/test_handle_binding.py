@@ -39,11 +39,16 @@ async def _write(client: AsyncClient, *, key: str, created_by: str, room: str = 
     )
 
 
-def _seed_agent(room: str, handle: str, *, adapter: str = "claude_code") -> None:
+def _seed_agent(
+    room: str, handle: str, *, adapter: str = "claude_code", owner: str | None = None
+) -> None:
+    manifest: dict[str, Any] = {"adapter": adapter}
+    if owner is not None:
+        manifest["owner"] = owner
     write_memory_file(
         get_room_dir(room),
         f"agents/{handle}",
-        yaml.safe_dump({"adapter": adapter}, sort_keys=False),
+        yaml.safe_dump(manifest, sort_keys=False),
         created_by="tester",
     )
 
@@ -208,6 +213,54 @@ async def test_reply_claiming_another_handle_is_refused(client: AsyncClient, as_
     as_principal("alice")
     resp = await client.post(f"/api/rooms/{ROOM}/reply", json={"handle": "mallory", "text": "hi"})
     assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_reply_as_an_owned_agent_is_allowed(client: AsyncClient, as_principal, monkeypatch):
+    """Regression (#657): await_message already honored owner/allow_from
+    delegation via authorize_handle; post_reply used the stricter, delegation-
+    blind bind_actor instead, so an agent's owner could watch for its turns but
+    never actually post the reply as it. mallory owns the agent here, so replying
+    as it must succeed even though mallory isn't the agent's own literal handle.
+    """
+    from app.services import room_channels
+
+    class _Persister:
+        def __init__(self) -> None:
+            self.log = DeliveryLog([])
+            self.ingested: list[Any] = []
+
+        def ingest_local(self, envelope: Any, content: dict, list_write: bool = False) -> None:
+            self.ingested.append(envelope)
+
+    class _Channel:
+        async def send(self, envelope: Any, *, extra: dict | None = None) -> None:
+            return None
+
+    class _Managed:
+        def __init__(self) -> None:
+            self.channel = _Channel()
+            self.persister = _Persister()
+
+    managed = _Managed()
+
+    class _Manager:
+        async def provision(self, room: str, **_kw: Any) -> _Managed:
+            return managed
+
+        def refresh_lease(self, room: str, handle: str) -> None:
+            return None
+
+    monkeypatch.setattr(room_channels, "manager", _Manager())
+
+    await _make_room(client)
+    _seed_agent(ROOM, "owned-agent", owner="mallory")
+    as_principal("mallory")
+    resp = await client.post(
+        f"/api/rooms/{ROOM}/reply", json={"handle": "owned-agent", "text": "hi"}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["handle"] == "owned-agent"
 
 
 @pytest.mark.asyncio

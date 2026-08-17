@@ -196,8 +196,10 @@ async def post_reply(room_name: str, body: ReplyBody, request: Request):
         raise HTTPException(status_code=404, detail="Room not found")
     # A verified token names the replier; unauthenticated, the body's handle does.
     # Either way it is resolved here, so the transcript sender and the L9 actor
-    # below are the same handle the room-membership guard passed.
-    handle = actor.bind_actor(request, body.handle, field="handle")
+    # below are the same handle the room-membership guard passed. Delegation-aware
+    # (owner/allow_from), matching await_message's authorize_handle just below —
+    # an agent's owner can reply on its behalf, not just watch for its turns.
+    handle = actor.bind_delegated_actor(request, room_name, body.handle, field="handle")
     # The reply rides as sender_role="agent", so the handle must be a real
     # principal — a registered agent or a known user — and never an engine
     # (engines aren't impersonable). Guard before provisioning a channel.
