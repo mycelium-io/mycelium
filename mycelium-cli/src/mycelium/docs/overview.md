@@ -1,58 +1,64 @@
 # Overview
 
-Mycelium is a coordination layer for teams of autonomous AI agents. Give
-several agents a shared mission and Mycelium gets them to one agreed answer,
-and a shared plan they execute together, instead of talking over each other or
-redoing each other's work.
+Mycelium is a shared workspace for humans and agents. Your engineers and their
+agents move fast — fast enough that staying in sync is the hard part. Mycelium
+gives everyone one shared space to keep up with each other: a room where people
+and agents share memory, follow what the others are doing, and coordinate the
+work — so an engineering team can scale out agents without losing the thread.
 
-**Two surfaces, one room, built for each other.** You and your agents
-coordinate *together*: **you** work in the **UI** (create a room, add agents,
-hand them a mission, watch them decide and plan, live), and **your agents** work
-through the **CLI** (they join, negotiate, and write to shared memory on their
-own; that's what the `mycelium` skill teaches them). That's why you need at
-least one **agent runtime** (Claude Code is the proven one today): the agents
+**Two surfaces, one room, built for each other.** You and your agents work the
+same room from different sides: **you** work in the **UI** (create a room, add
+agents, hand them a mission, watch what they're doing, live), and **your agents**
+work through the **CLI** (they join, read and write shared memory, and coordinate
+on their own; that's what the `mycelium` skill teaches them). That's why you need
+at least one **agent runtime** (Claude Code is the proven one today): the agents
 aren't an optional add-on, they're half the system.
 
 ## What you get
 
-**Rooms** are persistent coordination spaces. Agents join a room to share context,
-and when they need to agree on something they open an [episode](#episodes): a
-scoped, recorded negotiation on the room's channel. Each room is one secure
-[AGNTCY SLIM](https://github.com/agntcy/slim) group channel, the encrypted fabric
-agents coordinate over.
+**Rooms** are persistent spaces where humans and agents coordinate. Everyone in a
+room shares the same memory and can see what the others are up to — including
+reaching across to a teammate's agent to ask what it's doing or get its take.
 
-**Persistent Memory** means markdown files on your filesystem are the shared source
-of truth, greppable and editable by any agent, and a local semantic index makes
-them recallable by meaning. Every agent that joins inherits what the others
-already know, so intelligence compounds across sessions instead of resetting.
+**Memory is just markdown.** The shared source of truth is plain markdown files
+on the hub — no database, no complicated data structures. That makes memory easy
+to read, audit, and edit by hand, and it's still recallable by meaning: a local
+semantic index makes any memory findable without you naming the exact key.
+Because it's *shared*, every agent that joins inherits what the others already
+know. Memory holds more than one-off notes — decisions, findings, and long-lived
+docs (design notes, session write-ups) all live here as durable, shareable prose.
 
-**Structured negotiation**: when agents need to agree on a multi-issue
-trade-off, Mycelium runs a real structured negotiation that ends in one shared
-answer, then compiles it into a `- [ ]` checklist the whole team executes
-against.
+**Engines** are first-party cognition you summon into a room to run repeatable
+workflows and agentic patterns. The [aligner](#aligner) is one: when agents need
+to agree on a multi-issue trade-off, it mediates a real structured negotiation to
+one shared answer (agents never talk directly). Engines are invoked when you want
+them, not always-on.
 
-> Under the hood, negotiation is driven by the **aligner** (agents never talk
-> directly; a first-party mediator runs the negotiation for them), and the
-> agreed plan syncs back into shared memory. See **[aligner](#aligner)** and
-> **[episodes](#episodes)**.
+> Rooms ride [AGNTCY SLIM](https://github.com/agntcy/slim): each room is one
+> secure group channel, the encrypted fabric agents coordinate over. See
+> **[rooms](#rooms)** and **[engines](#engines)**.
 
 ## The Problem
 
-AI agents are powerful individually, but they can't think together. When multiple agents work
-on the same problem there's no shared memory, no way to negotiate trade-offs, and no context
-that persists across sessions. Every conversation starts from zero.
+Agents are strong on their own but hard to work *with*. When several people and
+several agents push on the same codebase, the fast part is the work — the slow
+part is staying in sync. There's no shared place to see what every agent is
+doing, no way for a teammate to reach a colleague's agent and ask, and every
+hand-off (human↔human, human↔agent, agent↔agent) rebuilds context from scratch.
+That tax scales with how fast your team moves.
 
-Mycelium gives agents rooms to coordinate in, persistent memory that accumulates across
-sessions, and an [aligner](#aligner) that mediates negotiation so agents never have to talk
-directly to each other.
+Mycelium pays it down: one shared room where humans and agents keep persistent
+memory together, follow each other's work, and coordinate — so a team can add
+agents across more of its work without losing sight of any of them.
 
 ## The Ratchet Effect
 
+Because the room's memory is shared, work compounds. When agents log decisions,
+failures, and findings, anyone who joins later — human or agent — inherits what
+the room already knows instead of starting cold. This is the substrate that lets
+a team scale agents horizontally across use cases: they coordinate over one shared
+intelligence rather than each rediscovering it.
 
-When agents log decisions, failures, and findings to a shared room, any agent that joins
-later can read the room's memory and shared plan to instantly inherit
-what the swarm learned. Intelligence doesn't reset; it compounds.
-
-Negative results matter too. An agent that logs `failed/single-writer-lock: serializing
-every agent through one lease killed throughput` prevents every future agent from repeating
-the same dead end.
+Negative results matter too. An agent that logs `failed/single-writer-lock:
+serializing every agent through one lease killed throughput` keeps every future
+agent from repeating the same dead end.
