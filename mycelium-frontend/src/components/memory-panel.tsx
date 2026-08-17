@@ -155,6 +155,13 @@ function TreeRows({ nodes, depth, collapsed, onToggle, onSelect, selected }: Tre
                 )}
               </button>
 
+              {/* skill tag — a skill is just a skills/… memory, flagged here */}
+              {node.memory && !isFolder && node.memory.key.startsWith("skills/") && (
+                <span className="flex-shrink-0 rounded-sm border border-accent/30 bg-accent/10 px-1 text-[9px] font-medium leading-tight text-accent">
+                  skill
+                </span>
+              )}
+
               {/* version badge — files only */}
               {node.memory && !isFolder && (
                 <span className="flex-shrink-0 font-mono text-[10px] tabular text-faint">
