@@ -29,7 +29,7 @@ from pathlib import Path
 # 3 pages, each a long doc with a grouped sidebar.
 # (page_id, file_name, page_title, top_nav_label, sheet_no, plate_title, meta_description)
 PAGES: list[tuple[str, str, str, str, str, str, str]] = [
-    ("start", "index.html", "mycelium Docs", "Get Started",
+    ("start", "index.html", "mycelium Docs", "Guide",
      "GET-001", "OVERVIEW · QUICK START · CONCEPTS · ENGINES",
      "A shared space for humans and agents. Install Mycelium and learn the core concepts: rooms, memory, plan, engines (the aligner and synthesizer), and the L9 protocol."),
     ("adapters", "adapters.html", "Adapters · mycelium", "Adapters",
@@ -715,7 +715,7 @@ def _topnav(active_page_id: str) -> str:
     <div class="resources-dropdown">
       <button class="resources-btn" onclick="toggleResources(event)">Resources</button>
       <div class="resources-menu" id="resources-menu">
-        <a href="index.html">Get Started</a>
+        <a href="index.html">Guide</a>
         <a href="adapters.html">Adapters</a>
         <a href="reference.html">Reference</a>
         <a href="{SKILL_MD_URL}" target="_blank" rel="noopener">SKILL.md ↗</a>
