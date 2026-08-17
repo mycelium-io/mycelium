@@ -297,9 +297,22 @@ PATCH .../messages/{id}  {<span class="str">&quot;status&quot;</span>: <span cla
         <li><strong>Users</strong> are global (<code>users/{handle}</code>), because a person spans rooms. A user is</li>
       </ul>
       <p>what an <code>owner</code> points at.</p>
-      <h2 id="users-self-asserted-for-now">Self-asserted, for now</h2>
-      <p>At this tier trust is exactly today&#x27;s handles: <strong>consistent, not cryptographic</strong>. <code>owner: avery</code> is a claim, not a verified identity; anyone can assert it. That&#x27;s deliberate: it shapes the model right so scoping, attribution, and routing have real slots to read, ahead of verified identity (per-member SLIM binding / JWT / SPIRE) filling those slots with signed claims. Don&#x27;t rely on it for access control.</p>
-      <p>Both fields default to empty, so nothing about existing agents changes: an agent with no owner is unowned.</p>
+      <h2 id="users-identity-scales-with-your-needs">Identity scales with your needs</h2>
+      <p>Ownership and attribution read the same at every level of trust; what changes is how strongly an identity is proven. Mycelium supports a three-tier model, and you turn the strength up only when you need it:</p>
+      <ol class="steps">
+        <li><strong>Shared secret (default).</strong> Handles are consistent but self-asserted:</li>
+      </ol>
+      <p><code>owner: avery</code> is a claim anyone sharing the secret could make. Zero infra, nothing to set up. The right tier for a trusted team or a machine on your own network.</p>
+      <ol class="steps">
+        <li><strong>Per-member credentials.</strong> Each member presents its own signed credential, so</li>
+      </ol>
+      <p>participants are cryptographically distinct and can be revoked one at a time. An <code>owner</code> is now backed by a key, not just a convention.</p>
+      <ol class="steps">
+        <li><strong>Attested identity.</strong> Each member presents a SPIRE-attested credential from</li>
+      </ol>
+      <p>the workload API: the tightest guarantee, and the heaviest to deploy.</p>
+      <p>Every tier is opt-in, and a higher tier falls back cleanly when its material isn&#x27;t present, so the ceremony is never forced on a setup that doesn&#x27;t want it. Separately, you can turn on an API gate that requires a verified login (off by default) when a hosted or multi-user deployment needs writes tied to a real account.</p>
+      <p>Both <code>owner</code> and <code>team</code> default to empty, so nothing about existing agents changes: an agent with no owner is unowned, at any tier.</p>
       <h2 id="users-commands">Commands</h2>
       <pre><code><span class="comment"># Register a human, once, globally</span>
 <span class="cmd">mycelium user create</span> avery <span class="flag">--name</span> <span class="str">&quot;Avery Quinn&quot;</span> <span class="flag">--team</span> core
@@ -317,7 +330,7 @@ PATCH .../messages/{id}  {<span class="str">&quot;status&quot;</span>: <span cla
 <span class="comment"># Who am I acting as?</span>
 <span class="cmd">mycelium whoami</span></code></pre>
       <h2 id="users-in-the-ui">In the UI</h2>
-      <p>Agent rows show their owner and team. An <strong>acting-as</strong> picker (top of a room) selects the user the browser represents; the <strong>mine</strong> filter then scopes the agent roster to agents you own or your team fields. The acting-as choice is stored locally in the browser: the same self-asserted handle, no login.</p>
+      <p>Agent rows show their owner and team. An <strong>acting-as</strong> picker (top of a room) selects the user the browser represents; the <strong>mine</strong> filter then scopes the agent roster to agents you own or your team fields. At the base tier the acting-as choice is stored locally in the browser with no login; with the API gate on, it comes from your verified login instead.</p>
     </section>
 
     <hr class="divider">
