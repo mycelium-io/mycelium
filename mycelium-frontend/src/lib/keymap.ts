@@ -75,15 +75,6 @@ export const KEYMAP: Binding[] = [
     // The palette lists the rooms themselves, by name and past the ninth.
     palette: false,
   },
-  {
-    id: "rooms.hints",
-    keys: ["f"],
-    label: "Label every room — press a label to jump (past the first nine)",
-    group: "Rooms",
-    scope: "global",
-    // A hold-to-read overlay: there's nothing for a list row to invoke.
-    palette: false,
-  },
   { id: "rooms.next", keys: ["]", "J"], label: "Next room", group: "Rooms", scope: "global" },
   { id: "rooms.prev", keys: ["[", "K"], label: "Previous room", group: "Rooms", scope: "global" },
   { id: "nav.home", keys: ["alt+h"], label: "Command center", group: "Navigate", scope: "global" },
