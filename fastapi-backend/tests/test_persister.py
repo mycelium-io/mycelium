@@ -515,6 +515,60 @@ def test_conversational_projection_is_stable_and_dedups_against_the_list_store()
     assert disk[0].message_id == mem[0].message_id == "a-1"  # one correlation key, dedupable
 
 
+def test_raise_up_l9_frames_project_into_the_conversational_view():
+    """A ``knowledge`` push and a ``commit`` consensus are promoted into the chat
+    feed on the cold read, carrying the whole envelope as their ``l9_<kind>`` frame
+    — the exact shape the live SSE bus pushes. Without this the frontend promotes
+    them live but a refresh drops them (the "temporary" raise-up rows bug).
+    """
+    import json
+
+    from app.services.l9_slim import serialize_content
+
+    room = "raise-up-room"
+    get_room_dir(room)
+
+    know_env = l9.build_envelope(
+        kind=Kind.knowledge,
+        subkind="extraction",
+        episode="urn:ioc:mycelium:episode:raise-up-room:knowledge",
+        topic="urn:concept:mycelium:raise-up-room",
+        message_id="k-1",
+        payload_type="extraction",
+        payload_data={"key": "agents/x", "version": 1},
+    )
+    know_content = serialize_content(know_env, extra={"content": "memory updated → agents/x"})
+    persister.append_transcript(room, persister.record_from(know_env, know_content))
+
+    commit_env = l9.build_envelope(
+        kind=Kind.commit,
+        subkind="converged",
+        episode="urn:ioc:mycelium:episode:raise-up-room:neg",
+        topic="urn:concept:mycelium:raise-up-room",
+        message_id="c-1",
+        payload_type="data",
+        payload_data={"assignments": {"alice": "build"}},
+    )
+    commit_content = serialize_content(commit_env, extra={"content": "CONSENSUS"})
+    persister.append_transcript(room, persister.record_from(commit_env, commit_content))
+
+    # A control frame (presence) still stays out — only the raise-up kinds promote.
+    pres_env, pres_content = _msg_content(
+        "p-1", sender="alice", text="here", payload_type="presence"
+    )
+    persister.append_transcript(room, persister.record_from(pres_env, pres_content))
+
+    projected = persister.conversational_messages(room)
+    assert [(m.message_type, m.message_id) for m in projected] == [
+        ("l9_knowledge", "k-1"),
+        ("l9_commit", "c-1"),
+    ]
+    # The content is the full envelope JSON, so the frontend decodes a refresh
+    # identically to the live frame it pushes over SSE.
+    assert json.loads(projected[0].content)["l9"]["header"]["kind"] == "knowledge"
+    assert projected[0].episode == "urn:ioc:mycelium:episode:raise-up-room:knowledge"
+
+
 def test_addressed_absent_recipient_holds_the_triggering_message():
     """§E: a message @-addressed to an absent, untracked agent is held in its
     undelivered tail, so its first wake replays the mention that invited it —
