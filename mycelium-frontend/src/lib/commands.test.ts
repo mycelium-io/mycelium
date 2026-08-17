@@ -25,7 +25,7 @@ const COMMANDS = [
   command("room:pricing", "pricing-model", "Rooms"),
   command("room:ops", "ops", "Rooms"),
   command("pane.plan", "Plan", "Panes"),
-  command("pane.l9", "L9", "Panes"),
+  command("pane.network", "Network", "Panes"),
 ];
 
 describe("recent commands", () => {
@@ -62,9 +62,9 @@ describe("paletteFilter", () => {
   });
 
   it("does not let recency outrank a decisively better match", () => {
-    const filter = paletteFilter(["pane.l9"]);
+    const filter = paletteFilter(["pane.network"]);
     expect(filter("room:pricing", "pricing", ["pricing-model"])).toBeGreaterThan(
-      filter("pane.l9", "pricing", ["L9"]),
+      filter("pane.network", "pricing", ["Network"]),
     );
   });
 });

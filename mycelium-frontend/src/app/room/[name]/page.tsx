@@ -130,9 +130,8 @@ function RoomWorkspace() {
   useKeyScope("room");
   useKeyAction("pane.channel", () => setEditorView("channel"));
   useKeyAction("pane.negotiate", () => setEditorView("negotiate"));
-  useKeyAction("pane.l9", () => setEditorView("l9"));
   useKeyAction("pane.plan", () => setEditorView("plan"));
-  useKeyAction("pane.slim", () => setEditorView("slim"));
+  useKeyAction("pane.network", () => setEditorView("network"));
   useKeyAction("rail.agents", () => openTab("agents"));
   useKeyAction("rail.episodes", () => openTab("episodes"));
   useKeyAction("rail.memory", () => openTab("memory"));

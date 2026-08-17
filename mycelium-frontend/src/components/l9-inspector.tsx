@@ -438,15 +438,15 @@ export function L9Inspector({ roomName }: Props) {
 
   return (
     <div className="flex flex-col h-full" data-testid="l9-inspector">
-      <div className="flex items-center gap-2 px-4 border-b border-border shrink-0 h-[48px] bg-paper">
-        <span className="caps-mono-sm text-muted-foreground">L9 PROTOCOL</span>
-        {!connected && (
-          <span className="caps-mono-sm text-yellow flex items-center gap-1.5">
-            <span aria-hidden className="inline-block size-1.5 rounded-full bg-yellow" />
-            RECONNECTING
-          </span>
-        )}
-      </div>
+      {/* No "L9 PROTOCOL" title bar: the pane tab already reads "Network" and the
+          SLIM diagnostics rail sits right above. Only the transient reconnecting
+          state needs a strip of its own. */}
+      {!connected && (
+        <div className="flex items-center gap-1.5 px-4 shrink-0 h-[28px] border-b border-border bg-paper caps-mono-sm text-yellow">
+          <span aria-hidden className="inline-block size-1.5 rounded-full bg-yellow" />
+          RECONNECTING
+        </div>
+      )}
 
       {frames.length > 0 && (
         <div className="flex items-center gap-2 px-4 py-2 border-b border-border shrink-0 bg-paper">
