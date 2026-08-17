@@ -31,19 +31,19 @@
  * ──────────────────────────────────────────────────────────────────────── */
 :root {
   /* surfaces */
-  --bg: #ffffff;
-  --surface: #f2f4f6;
-  --paper: #ffffff;
-  --elevated: #ffffff;
-  --muted-bg: #eceef1;
-  --hairline: rgba(17, 20, 24, 0.035);
-  /* text (audited legible on #fff, #f2f4f6 and #eceef1) */
-  --text: #14171b;
-  --muted-foreground: #545c65;
-  --faint: #9198a0;
+  --bg: #f4ecda;
+  --surface: #eee4cd;
+  --paper: #fbf5e6;
+  --elevated: #fdf9ed;
+  --muted-bg: #e9dfc8;
+  --hairline: rgba(58, 46, 22, 0.05);
+  /* text (warm ink, legible on the cream surfaces) */
+  --text: #2a2419;
+  --muted-foreground: #6a6250;
+  --faint: #a99f88;
   /* lines */
-  --border: rgba(17, 20, 24, 0.10);
-  --border2: rgba(17, 20, 24, 0.17);
+  --border: rgba(58, 46, 22, 0.12);
+  --border2: rgba(58, 46, 22, 0.20);
   /* accent (one job) */
   --accent: #0c7d8f;
   --accent-fg: #ffffff;
@@ -73,7 +73,7 @@
   --viz-5: #8a6410;
 
   /* Mycelial background canvas reads these (see site.js). */
-  --canvas-bg: #ffffff;
+  --canvas-bg: #f4ecda;
   --canvas-ink: 12, 125, 143;
   /* Dark ink on a light ground reads heavier at equal alpha, so light runs
    * quieter than dark rather than matching it. */
