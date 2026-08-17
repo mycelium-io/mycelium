@@ -8,12 +8,15 @@ import TextareaAutosize from "react-textarea-autosize";
 import { ArrowUp } from "lucide-react";
 import {
   fetchMemories,
+  fetchMessages,
   fetchRoomAgents,
+  fetchRoomMembers,
   fetchSkills,
   logFetchError,
   sendRoomMessage,
   type AgentSummary,
   type Memory,
+  type PresenceMember,
   type Skill,
 } from "@/lib/api";
 import { useCurrentUser } from "@/components/current-user";
@@ -88,6 +91,8 @@ export function RoomChatBox({ roomName, onSent, className }: Props) {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [agents, setAgents] = useState<AgentSummary[]>([]);
+  const [members, setMembers] = useState<PresenceMember[]>([]);
+  const [posters, setPosters] = useState<string[]>([]);
   const [memories, setMemories] = useState<Memory[]>([]);
   const [skills, setSkills] = useState<Skill[]>([]);
   const [trigger, setTrigger] = useState<Trigger | null>(null);
@@ -95,10 +100,24 @@ export function RoomChatBox({ roomName, onSent, className }: Props) {
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
   const refreshSources = useCallback(() => {
+    // `@` mentions anyone in the room — agents plus the present people (and you).
     fetchRoomAgents(roomName).then(setAgents).catch((err) => {
       logFetchError("fetchRoomAgents")(err);
       setAgents([]);
     });
+    fetchRoomMembers(roomName).then(setMembers).catch(logFetchError("fetchRoomMembers"));
+    // Human posters from the transcript — a broadcast from a non-agent handle —
+    // so `@` reaches people who've spoken even if they aren't present right now.
+    fetchMessages(roomName, 200)
+      .then(({ messages }) =>
+        setPosters(
+          messages
+            .filter((m) => m.message_type === "broadcast")
+            .map((m) => m.sender_handle ?? "")
+            .filter(Boolean),
+        ),
+      )
+      .catch(logFetchError("fetchMessages"));
     // Memory keys drive `[[` autocomplete; skills drive `/`. Both degrade to [].
     fetchMemories(roomName).then(setMemories).catch(logFetchError("fetchMemories"));
     fetchSkills(roomName).then(setSkills).catch(logFetchError("fetchSkills"));
@@ -126,18 +145,54 @@ export function RoomChatBox({ roomName, onSent, className }: Props) {
     if (found) setHighlight(0);
   };
 
+  // Everyone `@` can address, at parity with the Members panel: agents first,
+  // then people — agent owners ∪ posters ∪ present members ∪ you (minus agents),
+  // deduped by handle. `present` marks a live SLIM member.
+  const mentionRoster = useMemo(() => {
+    const agentHandles = new Set(agents.map((a) => a.handle.toLowerCase()));
+    const agentItems = agents.map((a) => ({
+      handle: a.handle,
+      secondary: a.adapter === "engine" && a.kind ? `engine · ${a.kind}` : a.adapter,
+      tertiary: a.description as string | undefined,
+    }));
+
+    const me = principal.trim().toLowerCase();
+    const peopleByHandle = new Map<string, { handle: string; present: boolean }>();
+    const addPerson = (raw: string, present: boolean) => {
+      const h = raw.replace(/^@/, "").toLowerCase();
+      if (!h || agentHandles.has(h)) return;
+      const existing = peopleByHandle.get(h);
+      if (existing) existing.present = existing.present || present;
+      else peopleByHandle.set(h, { handle: h, present });
+    };
+    for (const a of agents) if (a.owner) addPerson(a.owner, false);
+    for (const p of posters) addPerson(p, false);
+    for (const m of members) addPerson(m.handle, m.kind === "slim");
+    if (me) addPerson(me, false);
+
+    const peopleItems = [...peopleByHandle.values()]
+      .sort((a, b) => a.handle.localeCompare(b.handle))
+      .map((p) => ({
+        handle: p.handle,
+        secondary: p.handle === me ? "you" : p.present ? "person · here" : "person",
+        tertiary: undefined as string | undefined,
+      }));
+
+    return [...agentItems, ...peopleItems];
+  }, [agents, members, posters, principal]);
+
   const candidates = useMemo<Candidate[]>(() => {
     if (trigger === null) return [];
     if (trigger.kind === "agent") {
       const pool = trigger.query
-        ? agents.filter((a) => a.handle.toLowerCase().startsWith(trigger.query))
-        : agents;
-      return pool.slice(0, 6).map((a) => ({
-        id: a.handle,
-        insert: `@${a.handle}`,
-        primary: `@${a.handle}`,
-        secondary: a.adapter === "engine" && a.kind ? `engine · ${a.kind}` : a.adapter,
-        tertiary: a.description || undefined,
+        ? mentionRoster.filter((r) => r.handle.toLowerCase().startsWith(trigger.query))
+        : mentionRoster;
+      return pool.slice(0, 8).map((r) => ({
+        id: r.handle,
+        insert: `@${r.handle}`,
+        primary: `@${r.handle}`,
+        secondary: r.secondary,
+        tertiary: r.tertiary,
       }));
     }
     if (trigger.kind === "memory") {
@@ -163,7 +218,7 @@ export function RoomChatBox({ roomName, onSent, className }: Props) {
       secondary: "skill",
       tertiary: s.description || undefined,
     }));
-  }, [agents, memories, skills, trigger]);
+  }, [mentionRoster, memories, skills, trigger]);
 
   const accept = useCallback(
     (candidate: Candidate) => {
@@ -277,7 +332,7 @@ export function RoomChatBox({ roomName, onSent, className }: Props) {
             value={content}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
-            placeholder="Message the room…  @ agent · [[ memory · / skill"
+            placeholder="Message the room…  @ mention · [[ memory · / skill"
             minRows={1}
             maxRows={10}
             className="w-full resize-none bg-transparent px-4 pt-3 pb-1.5 text-body text-text leading-relaxed focus:outline-none placeholder:text-muted-foreground"
