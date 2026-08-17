@@ -289,11 +289,13 @@ def whoami(ctx: typer.Context) -> None:
                     {
                         "identity": identity,
                         "principal": principal,
+                        "api_url": config.server.api_url,
                         "authenticated": token is not None,
                         "token": {
                             "handle": token_handle,
                             "issuer": token.issuer,
                             "expires_at": token.expires_at,
+                            "refreshable": token.refresh_token is not None,
                         }
                         if token
                         else None,
@@ -308,11 +310,18 @@ def whoami(ctx: typer.Context) -> None:
             return
 
         console.print(f"[bold]acting as[/bold] [cyan]@{principal}[/cyan]  [dim]({identity})[/dim]")
+        console.print(f"  [dim]hub: {config.server.api_url}[/dim]")
         if token is not None:
             remaining = token.expires_in()
             expiry = f", expires in {int(remaining // 60)} min" if remaining is not None else ""
             source = "signed in" if token_handle else "signed in, no handle claim"
             console.print(f"  [green]{source}[/green] [dim]({token.issuer}{expiry})[/dim]")
+            # No issuer-side expiry for the refresh token itself (it's opaque),
+            # so this reports whether one exists at all, not a countdown.
+            if token.refresh_token:
+                console.print("  [dim]refreshes automatically on expiry[/dim]")
+            else:
+                console.print("  [dim]no refresh token — re-login required after expiry[/dim]")
         if user is None:
             console.print(
                 f'[dim]Not registered. Claim it with: mycelium iam {principal} --name "…"[/dim]'
@@ -390,6 +399,7 @@ def iam(
             f"[green]You are[/green] [cyan]@{manifest.handle}[/cyan]"
             f"{f' ({manifest.display_name})' if manifest.display_name else ''}{team_line}"
         )
+        console.print(f"[dim]hub: {config.server.api_url}[/dim]")
         console.print("[dim]Set as this machine's identity. Check with: mycelium whoami[/dim]")
 
         # A gated hub attributes writes to the token, and refuses a body that
