@@ -213,6 +213,20 @@ def load_owned_agents(*, owner: str) -> list[tuple[str, AgentManifest]]:
     return owned
 
 
+def _default_owner(owner: str | None, handle_flag: str) -> str | None:
+    """Owner to persist: explicit --owner wins, else the caller's own --as handle.
+
+    The creator owns what they create unless told otherwise, so the handle that
+    just ran ``agent create`` can immediately act on the agent it made (#650).
+    The ``cli-user`` sentinel names no real principal, so it stamps no ownership.
+    """
+    if owner is not None:
+        return owner
+    if handle_flag and handle_flag != "cli-user":
+        return handle_flag
+    return None
+
+
 def _warn_unknown_principal(manifest: AgentManifest) -> None:
     """Warn (never fail) when an agent's owner has no user record.
 
@@ -621,6 +635,7 @@ def _create_wizard(
     description = questionary.text("Description (what does this agent do?):").ask() or ""
 
     owner = (questionary.text("Owner (a users/<handle>, optional):").ask() or "").strip() or None
+    owner = _default_owner(owner, handle_flag)  # creator owns what they create (#650)
     team = (questionary.text("Team slug (optional):").ask() or "").strip() or None
 
     room_name = room_opt or _pick_room(config)
@@ -702,7 +717,13 @@ def agent_create(
         None, "--team", help="Team slug this agent is fielded by. Self-asserted."
     ),
     handle_flag: str = typer.Option(
-        "cli-user", "--as", "-H", help="Your own handle (recorded as created_by)."
+        "cli-user",
+        "--as",
+        "-H",
+        help=(
+            "Your own handle (recorded as created_by, and made --owner by default "
+            "so you can act on the agent you just created; pass --owner to override)."
+        ),
     ),
 ) -> None:
     """Create a new, Mycelium-controlled agent in a room.
@@ -749,6 +770,8 @@ def agent_create(
             allow_list = [a.strip() for a in allow_from.split(",") if a.strip()]
 
         room_name = _resolve_room(config, room)
+
+        owner = _default_owner(owner, handle_flag)
 
         impl = get_adapter(adapter, cwd=cwd)
 
