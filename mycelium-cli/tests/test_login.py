@@ -55,8 +55,16 @@ _META = ProviderMetadata(
 
 @pytest.fixture(autouse=True)
 def _isolate(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Keep every test off the developer's real ``~/.mycelium`` and token cache."""
+    """Keep every test off the developer's real ``~/.mycelium`` and token cache.
+
+    Also chdirs into ``tmp_path``: ``MyceliumConfig.load()`` additionally
+    discovers a project-local ``./.mycelium/config.toml`` by walking up from
+    the cwd (independent of ``$HOME``), so a contributor with local scratch
+    state in their checkout (e.g. from manual e2e testing) would otherwise leak
+    into these "isolated" tests just by running them from within the repo.
+    """
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.chdir(tmp_path)
     monkeypatch.delenv(tokens.TOKEN_FILE_ENV, raising=False)
     # The "session expired" notice fires once per process; reset the latch so
     # each test observes its own behavior.

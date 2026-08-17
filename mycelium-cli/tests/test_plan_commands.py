@@ -10,6 +10,8 @@ to pin the HTTP wiring. No backend server.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from typer.testing import CliRunner
 
@@ -85,9 +87,18 @@ def test_plan_tasks_all_includes_done(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_fetch_plan_hits_room_scoped_endpoint(
-    fake_httpx: FakeHTTPX, monkeypatch: pytest.MonkeyPatch
+    fake_httpx: FakeHTTPX, monkeypatch: pytest.MonkeyPatch, isolated_home: Path
 ) -> None:
-    """The real ``_fetch_plan`` GETs the room-scoped plan endpoint."""
+    """The real ``_fetch_plan`` GETs the room-scoped plan endpoint.
+
+    Needs ``isolated_home``: without it, ``current_token()`` picks up whatever
+    real session happens to be cached at the developer's actual
+    ``~/.mycelium/token.json`` and tries to refresh it against the bare
+    ``SimpleNamespace`` config stubbed below (which has no ``login`` section),
+    crashing with an unrelated ``AttributeError`` instead of exercising what
+    this test actually checks: the HTTP wiring.
+    """
+    del isolated_home  # only needed for its patching side effect
     from types import SimpleNamespace
 
     monkeypatch.setattr(
