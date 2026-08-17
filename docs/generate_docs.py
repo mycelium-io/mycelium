@@ -767,7 +767,6 @@ def _layout_close(sheet_no: str, plate_title: str) -> str:
 
 <!-- STATUS BAR -->
 <footer class="docs-footer">
-  <span class="sheet-no">{html.escape(sheet_no)}</span>
   <a href="https://github.com/mycelium-io/mycelium">mycelium-io/mycelium</a>
   <span class="sep">·</span>
   <span>Apache 2.0</span>
