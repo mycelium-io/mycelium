@@ -18,6 +18,8 @@ const KIND_LABEL: Record<NotificationKind, string> = {
   consensus: "Consensus",
   knowledge: "Knowledge",
   join: "Join",
+  // Badge-only, filtered out of the bell — present for exhaustiveness.
+  message: "Message",
 };
 
 const KIND_TONE: Record<NotificationKind, string> = {
@@ -26,6 +28,7 @@ const KIND_TONE: Record<NotificationKind, string> = {
   consensus: "var(--green)",
   knowledge: "var(--yellow)",
   join: "var(--muted-foreground)",
+  message: "var(--muted-foreground)",
 };
 
 function timeAgo(iso: string): string {
@@ -46,7 +49,10 @@ export function NotificationBell() {
   const [open, setOpen] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
 
-  const items = [...notifications].reverse();
+  // The bell is the "loud" inbox: only alert items (mentions, directs, consensus,
+  // knowledge). Badge-only room activity badges the sidebar, never lands here.
+  const loud = notifications.filter((n) => n.alert !== false);
+  const items = [...loud].reverse();
 
   return (
     <>
@@ -73,9 +79,9 @@ export function NotificationBell() {
         <PopoverContent className="flex max-h-[28rem] w-80 flex-col p-0">
           <div className="flex items-center gap-2 border-b border-border px-3 py-2.5">
             <span className="text-label font-semibold text-text">Notifications</span>
-            <span className="text-micro tabular text-faint">{notifications.length}</span>
+            <span className="text-micro tabular text-faint">{loud.length}</span>
             <div className="ml-auto flex items-center gap-1">
-              {notifications.length > 0 && (
+              {loud.length > 0 && (
                 <button
                   onClick={markAllRead}
                   title="Mark all read"
@@ -161,7 +167,7 @@ export function NotificationBell() {
               ))
             )}
           </div>
-          {notifications.length > 0 && (
+          {loud.length > 0 && (
             <div className="border-t border-border px-3 py-1.5">
               <button onClick={clearAll} className="text-micro text-muted-foreground hover:text-text">
                 Clear all

@@ -7,8 +7,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { BarChart3, Boxes, Plus, Search, SearchX } from "lucide-react";
+import { AtSign, BarChart3, Bell, BellOff, Boxes, Check, Plus, Search, SearchX, type LucideIcon } from "lucide-react";
 import { fetchRooms, getAppEventsSSEUrl, type Room } from "@/lib/api";
+import { roomLevel, type RoomLevel } from "@/lib/notifications";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CreateRoomDialog } from "@/components/create-room-dialog";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { NotificationBell } from "@/components/notification-bell";
@@ -80,16 +82,22 @@ export function RoomsSidebar({ activeRoom = null }: Props) {
   }, []);
 
   // Unread activity per room, from the same client-side notification store the
-  // bell reads — muted rooms don't count, so a muted room never wears a badge.
-  const { notifications, settings } = useNotifications();
+  // bell reads. Any non-muted message counts (broadcasts badge here even though
+  // they never ring the bell); a muted room never wears a badge.
+  const { notifications, settings, setRoomLevel, markRoomRead } = useNotifications();
   const unreadByRoom = useMemo(() => {
     const m = new Map<string, number>();
     for (const n of notifications) {
-      if (n.read || settings.mutedRooms.includes(n.room)) continue;
+      if (n.read || roomLevel(settings, n.room) === "muted") continue;
       m.set(n.room, (m.get(n.room) ?? 0) + 1);
     }
     return m;
-  }, [notifications, settings.mutedRooms]);
+  }, [notifications, settings]);
+
+  // Opening a room reads it — clear its badge (and its bell entries) on arrival.
+  useEffect(() => {
+    if (activeRoom) markRoomRead(activeRoom);
+  }, [activeRoom, markRoomRead]);
 
   // Filter by the query, then order by recency (last active first) so rooms with
   // fresh activity float up — the same ordering the command palette uses.
@@ -320,9 +328,10 @@ export function RoomsSidebar({ activeRoom = null }: Props) {
             // Don't badge the room you're already looking at — being here is
             // reading it. Elsewhere, unread activity draws the name brighter too.
             const unread = active ? 0 : unreadByRoom.get(room.name) ?? 0;
+            const level = roomLevel(settings, room.name);
             return (
+              <div key={room.name} className="group/room relative">
               <Link
-                key={room.name}
                 href={`/room/${encodeURIComponent(room.name)}`}
                 className={`group flex items-center gap-2.5 rounded-lg px-2 py-1.5 transition-colors ${
                   active ? "bg-elevated ring-1 ring-border" : "hover:bg-hairline"
@@ -361,12 +370,21 @@ export function RoomsSidebar({ activeRoom = null }: Props) {
                 {unread > 0 && (
                   <span
                     aria-label={`${unread} unread`}
-                    className="flex h-4 min-w-4 flex-shrink-0 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-semibold tabular leading-none text-accent-fg"
+                    className="flex h-4 min-w-4 flex-shrink-0 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-semibold tabular leading-none text-accent-fg transition-opacity group-hover/room:opacity-0"
                   >
                     {unread > 9 ? "9+" : unread}
                   </span>
                 )}
+                {unread === 0 && level === "muted" && (
+                  <BellOff aria-label="muted" className="size-3 flex-shrink-0 text-faint transition-opacity group-hover/room:opacity-0" />
+                )}
               </Link>
+              {/* Discord-style per-room control, revealed on hover, overlaying the
+                  badge slot. Outside the Link so it never navigates. */}
+              <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 opacity-0 transition-opacity group-hover/room:pointer-events-auto group-hover/room:opacity-100">
+                <RoomLevelMenu room={room.name} level={level} onSet={setRoomLevel} />
+              </div>
+              </div>
             );
           })
         )}
@@ -390,5 +408,57 @@ export function RoomsSidebar({ activeRoom = null }: Props) {
 
       <CreateRoomDialog open={showCreate} onClose={() => setShowCreate(false)} onCreated={load} />
     </aside>
+  );
+}
+
+const LEVEL_OPTIONS: { level: RoomLevel; label: string; hint: string; Icon: LucideIcon }[] = [
+  { level: "all", label: "All messages", hint: "badge + bell + sound", Icon: Bell },
+  { level: "mentions", label: "Only mentions", hint: "badge; bell on @you", Icon: AtSign },
+  { level: "muted", label: "Muted", hint: "nothing", Icon: BellOff },
+];
+
+/** Discord-style notification level picker for one room. The trigger wears the
+ *  current level's glyph; the menu sets it. */
+function RoomLevelMenu({
+  room,
+  level,
+  onSet,
+}: {
+  room: string;
+  level: RoomLevel;
+  onSet: (room: string, level: RoomLevel) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const Current = LEVEL_OPTIONS.find((o) => o.level === level)?.Icon ?? Bell;
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
+        aria-label={`Notifications for ${room}: ${level}`}
+        onClick={(e) => e.preventDefault()}
+        className="flex size-5 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-surface hover:text-text"
+      >
+        <Current className="size-3.5" />
+      </PopoverTrigger>
+      <PopoverContent className="w-48 p-1">
+        {LEVEL_OPTIONS.map(({ level: l, label, hint, Icon }) => (
+          <button
+            key={l}
+            type="button"
+            onClick={() => {
+              onSet(room, l);
+              setOpen(false);
+            }}
+            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-hairline"
+          >
+            <Icon className="size-3.5 flex-shrink-0 text-muted-foreground" />
+            <span className="min-w-0 flex-1">
+              <span className="block text-label text-text">{label}</span>
+              <span className="block text-micro text-muted-foreground">{hint}</span>
+            </span>
+            {level === l && <Check className="size-3.5 flex-shrink-0 text-accent" />}
+          </button>
+        ))}
+      </PopoverContent>
+    </Popover>
   );
 }

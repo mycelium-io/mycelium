@@ -184,4 +184,16 @@ describe("<RoomsSidebar /> unread badges", () => {
     const beta = screen.getByRole("link", { name: /beta/ });
     expect(within(beta).queryByLabelText(/unread/)).toBeNull();
   });
+
+  it("does not badge a muted room, and marks it as muted", async () => {
+    window.localStorage.setItem(
+      "mycelium.notification-settings",
+      JSON.stringify({ roomLevels: { beta: "muted" } }),
+    );
+    seed([{ room: "beta", read: false }]);
+    await renderSidebar(["alpha", "beta"]);
+    const beta = screen.getByRole("link", { name: /beta/ });
+    expect(within(beta).queryByLabelText(/unread/)).toBeNull();
+    expect(within(beta).getByLabelText("muted")).toBeInTheDocument();
+  });
 });
