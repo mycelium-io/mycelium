@@ -1,174 +1,96 @@
 # Quick Start
 
-## Install
+Mycelium runs on a server your team connects to. You don't have to stand that up
+by hand, though: the easiest way in is to let an agent do it for you.
 
-**Onboard your agent.** Mycelium is built for agents, so the fastest setup is
-to let one do it: paste this prompt into your agent (Claude Code, Cursor, any
-runtime with a shell):
+## Start with a prompt
+
+Paste this into your coding agent (Claude Code, Cursor, anything with a shell):
 
 ```text
 Use curl to read https://mycelium-io.github.io/mycelium/agents.md and perform the setup to install Mycelium
 ```
 
-The agent fetches [agents.md](agents.md), a setup runbook written for agents,
-and walks it end to end: install the CLI, bring up the stack, connect its own
-runtime as an adapter, and offer a first coordination run.
+It fetches [agents.md](agents.md), a setup runbook written for agents, and walks
+the whole thing end to end: bring up the server with Docker, configure your LLM,
+create a room, and drop the agent into it. When it finishes, open the UI to watch
+what's happening.
 
-Prefer to install by hand? The same flow, step by step:
+That's the quick start. The rest of this page is the same flow by hand, if you'd
+rather run it yourself.
+
+## Host the server
+
+Mycelium runs as a couple of containers, so you bring it up with Docker on a
+machine you trust. Your own laptop is fine to start; move it to a shared box when
+your team wants one place to connect to.
 
 ```bash
 curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
-```
-
-The installer sets up the CLI, prompts for your LLM provider, then brings up
-the stack via `docker compose`: a **SLIM node** (the encrypted messaging fabric
-agents coordinate over) and a thin **backend** that moderates each room. There
-is no database: rooms and memory are files on disk.
-
-Run `mycelium --help` after install to verify.
-
-> **An LLM key powers the aligner.** Memory works without one, but the
-> [aligner](#aligner) needs an LLM to run a negotiation to consensus; if you
-> pick "Skip" at the prompt, agents can post positions but never converge. Add
-> it later with `mycelium config set llm.model <model>` and
-> `mycelium config apply`.
-
-The install command is interactive: it checks Docker, prompts for your LLM
-config, then starts the stack and provisions a default workspace. No manual
-backend setup required.
-
-```bash
-# What mycelium install does:
-#  1. Check Docker + disk space
-#  2. Prompt for LLM provider (Anthropic, OpenAI, Ollama, OpenRouter, ...)
-#  3. docker compose up -d  (SLIM node + backend)
-#  4. Health-poll until services are ready
-#  5. Provision a default workspace
-#  6. Write ~/.mycelium/config.toml
-
 mycelium install
 ```
 
-Already installed? Use these commands instead:
+`install` sets up the CLI and starts the stack with Docker: the messaging node
+agents coordinate over, and a thin backend that holds each room. There's no
+database; rooms and memory are just files. It asks for an LLM provider and key
+along the way. Rooms and memory work without one, so you can skip it and add a
+model later with `mycelium config set llm.model <model>` and
+`mycelium config apply`.
+
+Bring it up, check on it, or stop it:
 
 ```bash
-mycelium upgrade   # update the CLI binary
-mycelium pull      # pull latest images and restart services
-mycelium doctor    # diagnose and fix configuration issues
+mycelium up       # start the server
+mycelium status   # health check for the backend, node, and LLM
+mycelium logs     # tail logs if something looks off
+mycelium down     # stop it
 ```
-
-## Running the stack
-
-`mycelium install` leaves the stack running, but it won't survive a reboot or a
-Docker restart. Use these to bring it back up or check on it:
-
-```bash
-mycelium up       # start the SLIM node + backend
-mycelium status   # health check for backend, SLIM node, LLM
-mycelium logs     # tail service logs if something looks off
-mycelium down     # stop the stack
-```
-
-If `mycelium ui open` or any command reports it can't reach the API at
-`localhost:8000`, the stack isn't running; `mycelium up` fixes it.
 
 ## Open the UI
 
-The Mycelium room view is where you do everything from here: watch the live
-message stream, add agents, chat with them, and track the shared plan. Open it:
+Do this early and keep it open. The UI is how you actually see what's going on:
+the live message stream, the agents in a room, and the shared memory.
 
 ```bash
-mycelium ui open   # starts the frontend if it isn't running, then opens it
+mycelium ui open
 ```
 
-The UI is where **you** work: create rooms, add agents, hand them a mission,
-and watch them coordinate. The CLI is where **your agents** work: they join,
-negotiate, and write memory on their own. Same rooms, two surfaces, built for
-each other. The commands shown below are the CLI equivalents of each UI action,
-so you can script or follow along in a terminal.
+If a command reports it can't reach the API at `localhost:8000`, the server
+isn't running; `mycelium up` fixes it.
 
 ## Create a room
 
-A room is a persistent namespace for memory, agents, and coordination: a folder
-on the hub under `~/.mycelium/rooms/{room}/` and a SLIM group channel agents join.
-You reach it the same way from every machine — through the CLI, never by
-editing files on a spoke:
+A room is a persistent space for memory and coordination that agents join.
 
 ```bash
-# Create a room and make it active
 mycelium room create my-project
 mycelium room use my-project
 ```
 
-Open `my-project` in the UI; it's empty for now. Next we'll register the
-aligner and walk a negotiation.
+Open `my-project` in the UI. It's empty for now.
 
-## Register the aligner
+## Bring your agents in
 
-The [aligner](#aligner) is the first-party mediator that drives a negotiation.
-Register it once per room; it joins as a room citizen and runs a real NEGMAS
-negotiation when summoned:
-
-```bash
-mycelium engine create aligner --kind aligner --room my-project
-```
-
-## Add agents
-
-The **agent primitive** registers an addressable participant in the room.
-Mycelium wires up the underlying adapter for you; agents coordinate through the
-room's own message stream, so there's nothing else to set up per agent.
+Register an agent to add a participant to the room. Mycelium wires up the
+connection to its runtime, so there's nothing else to set up per agent.
 
 ```bash
 mycelium agent create planner \
     --description "Sprint planner, optimizes for shipping speed"
 
-# See who's in the room
-mycelium agent ls
+mycelium agent ls   # see who's in the room
 ```
 
-A `claude_code` (or `cursor`) agent participates as a resident runtime: keep the
-session woken with `mycelium await --loop`, so it picks up each `@handle` mention
-on its next turn. See the **Adapters** guide for the full list and their support
-status.
-
-## Coordinate
-
-The negotiation flow is the same from the UI or the CLI:
-
-```bash
-# 1. Each participant posts an opening position
-mycelium respond --room my-project --handle planner \
-    "Ship the migration in one sprint; cut scope before we cut quality."
-
-# 2. Summon the aligner to converge on the question
-mycelium engine invoke aligner "converge on the Q3 migration scope"
-
-# 3. Participants loop: wait to be addressed, then reply
-mycelium await   --room my-project --handle planner --json
-mycelium respond --room my-project --handle planner \
-    "I can accept a two-sprint plan if the DB cutover slips to sprint two."
-```
-
-The aligner `@`-addresses one agent at a time, interprets each reply, and stops
-the instant the agents agree, since [NEGMAS owns termination](#aligner). On
-agreement it records the [episode](#episodes) and compiles the consensus into
-the room's shared plan, visible in the **PLAN** tab in the UI or from the CLI:
-
-```bash
-mycelium plan tasks       # the room's shared task list, with @handle owners
-```
-
-The result lands back in the same room stream, with no need to go hunting for it
-in a separate chat.
+An agent participates as your own live session: keep it woken with
+`mycelium await --loop`, so it picks up each `@handle` mention on its next turn.
+See the **Adapters** guide for supported runtimes.
 
 ## Share memory
 
-Rooms are also persistent memory. Anything you write is searchable by meaning
-and visible to every agent in the room:
+Rooms are also persistent memory. Anything you write is visible to every agent in
+the room and searchable by meaning:
 
 ```bash
-# Share context
 mycelium memory set "decisions/scope" "One sprint, DB cutover deferred to sprint two"
 mycelium memory set "decisions/api" "REST with generated OpenAPI client"
 
