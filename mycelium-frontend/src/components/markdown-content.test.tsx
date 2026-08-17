@@ -95,4 +95,19 @@ describe("<MarkdownContent /> memory links", () => {
 
     expect(screen.getByTitle("Embeds glossary/slim")).toBeInTheDocument();
   });
+
+  it("renders a /skill reference as a chip that opens its skills/ memory", async () => {
+    const onLinkClick = vi.fn();
+    render(<MarkdownContent onLinkClick={onLinkClick}>{"run /demo-review now"}</MarkdownContent>);
+
+    await userEvent.click(screen.getByRole("button", { name: "/demo-review" }));
+
+    expect(onLinkClick).toHaveBeenCalledWith("skills/demo-review");
+  });
+
+  it("does not treat a slash inside a path or URL as a skill reference", () => {
+    render(<MarkdownContent>{"see path/to/file and http://x.com/y"}</MarkdownContent>);
+
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+  });
 });
