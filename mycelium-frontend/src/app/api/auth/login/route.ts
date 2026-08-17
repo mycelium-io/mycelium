@@ -37,7 +37,7 @@ export async function GET(req: Request): Promise<Response> {
   jar.set(TX_COOKIE, tx, {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: process.env.MYCELIUM_COOKIE_SECURE !== "false",
     path: "/",
     maxAge: 600,
   });

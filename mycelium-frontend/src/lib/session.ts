@@ -30,7 +30,12 @@ function key(secret: string): Uint8Array {
   return new Uint8Array(createHash("sha256").update(secret).digest());
 }
 
-const secure = process.env.NODE_ENV === "production";
+// Secure by default; self-hosted deployments with no TLS in front (the
+// appliance path — see docs/guides/keycloak-oidc.md) opt out explicitly. Tying
+// this to NODE_ENV instead would break every non-TLS deployment, since the
+// built Docker image always runs with NODE_ENV=production regardless of
+// whether the operator terminates TLS.
+const secure = process.env.MYCELIUM_COOKIE_SECURE !== "false";
 const cookieOpts = { httpOnly: true, sameSite: "lax" as const, secure, path: "/" };
 
 export async function seal(payload: Record<string, unknown>, secret: string, ttlSec: number): Promise<string> {
