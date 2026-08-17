@@ -11,6 +11,8 @@ import { KeyBadge } from "@/components/key-badge";
 import { MemoryPanel } from "@/components/memory-panel";
 import type { FocusTarget } from "@/lib/search";
 
+// Skills aren't a rail: a skill is just a `skills/…` memory, so it shows up in
+// the Memory list like any other. No dedicated tab or panel.
 export type Tab = "agents" | "episodes" | "memory";
 
 const TABS: { id: Tab; label: string; icon: LucideIcon }[] = [

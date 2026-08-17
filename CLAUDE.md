@@ -11,6 +11,7 @@ that reaches consensus compiles into a shared plan and syncs to memory.
 ```
 .mycelium/              Memory storage (rooms are folders, memories are markdown files)
 ├── rooms/{name}/       Room directories with standard namespace subdirs
+│   └── skills/         Skills = memories in this namespace, promoted (SKILL.md-style)
 └── config.toml         Project-local configuration
 
 fastapi-backend/    FastAPI backend, room moderator + persister (Python 3.12).
@@ -173,6 +174,26 @@ is no litellm dependency.
   inside it stays literal — cycles are structurally impossible and expansion size is
   bounded, with no depth cap to tune. A marker that can't expand is left exactly as
   written and reported, so a refused embed never reads as an empty definition.
+- **Skills are memories, promoted.** A skill is just a memory under a room's
+  `skills/` namespace (SKILL.md-style markdown + frontmatter, with the one-line
+  `description` in frontmatter). The same way `agents/<handle>` memories are
+  promoted into a members panel and `decisions/` into a category view, `skills/` is
+  promoted into a thin skills surface — `mycelium skill …` and
+  `/api/rooms/{room}/skills` (`app/services/skills.py`, `app/routes/skills.py`).
+  Room-scoped, like memory; no separate store, and a skill is reachable as a memory
+  too (writes go through the memory upsert path, so they're indexed/linked/broadcast
+  like any memory). **In the GUI there is deliberately no dedicated skills rail** —
+  a skill shows up in the Memory list like any `skills/…` memory, with a small
+  "skill" tag in the detail view (`memory-detail.tsx`); the frontend's only
+  skill-specific call is the composer's `/` autocomplete. The surface keeps prose;
+  it does not execute skills — that's the participation/engine layer's concern.
+- **Three composer sigils, one mechanism.** The chat composer
+  (`room-chat-box.tsx`) autocompletes `@` → agents, `[[` → room memories (inserts
+  `[[key]]`, which resolves to `myc://` and is clickable in chat), and `/` → the
+  room's skills (inserts `/name`). One cursor-prefix detector feeds one candidate
+  popover; `[[` is matched before `/` and `@` since a memory key can contain
+  slashes. Skills insert a reference token — the resident agent/engine interprets
+  it; the composer never runs the skill.
 - **Consensus compiles into the plan.** On convergence the aligner hands the agreed
   `{issue: value}` map to `plan_compiler.py`, an LLM stage that materializes
   `plan/tasks.md` (one shared `- [ ]` checklist with `@handle` owners) *before* the

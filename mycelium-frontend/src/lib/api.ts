@@ -246,6 +246,34 @@ export async function fetchMemoryLinks(roomName: string, key: string): Promise<M
   return { key, outbound: data.outbound ?? [], backlinks: data.backlinks ?? [] };
 }
 
+// ── Skills ───────────────────────────────────────────────────────────────────
+// A skill is a memory under the room's `skills/` namespace, promoted into its
+// own surface (like `agents/` → the members panel). Room-scoped, like memory.
+// Backs the chat composer's `/` trigger and the Skills rail. See #617.
+
+export interface Skill {
+  name: string;
+  description: string;
+  body: string;
+  tags?: string[] | null;
+  created_by: string;
+  updated_by?: string | null;
+  version: number;
+  created_at: string;
+  updated_at: string;
+}
+
+/** List a room's skills, for the composer's `/` autocomplete. Skills are just
+ *  `skills/…` memories; in the GUI they surface as memories (with a tag), so this
+ *  read is the only skill-specific frontend call. Degrades to empty on failure. */
+export async function fetchSkills(roomName: string): Promise<Skill[]> {
+  const data = await apiFetch<{ skills?: Skill[] }>(`/api/rooms/${roomName}/skills`, {
+    cache: "no-store",
+    fallback: { skills: [] },
+  });
+  return data.skills ?? [];
+}
+
 // ── Plan ─────────────────────────────────────────────────────────────────────
 
 export interface PlanTask {

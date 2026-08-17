@@ -86,6 +86,7 @@
       <a href="#cli-room" class="nav-link sub">room</a>
       <a href="#cli-agent" class="nav-link sub">agent</a>
       <a href="#cli-memory" class="nav-link sub">memory</a>
+      <a href="#cli-skill" class="nav-link sub">skill</a>
       <a href="#cli-plan" class="nav-link sub">plan</a>
       <a href="#cli-adapter" class="nav-link sub">adapter</a>
       <a href="#cli-config" class="nav-link sub">config</a>
@@ -624,6 +625,43 @@ cursor-agent login            # one-time, interactive
           <code><span class="cmd">mycelium memory procedures</span></code>
         </div>
         <div class="cmd-ref-body">Show reusable how-to steps: filters to <code>procedures/*</code> memories as a table.</div>
+      </div>
+
+      <h2 id="cli-skill">skill</h2>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium skill set</span> <span class="arg">&lt;name&gt;</span> [<span class="arg">&lt;body&gt;</span>] [<span class="flag">--file</span> <span class="arg">&lt;path&gt;</span>] [<span class="flag">--desc</span> <span class="arg">&lt;text&gt;</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Create or update a skill (upsert) in a room's skills/ namespace. The body comes from the positional argument or <code>--file</code> (<code>-</code> reads stdin).</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium skill ls</span></code>
+        </div>
+        <div class="cmd-ref-body">List a room's skills, newest-updated first.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium skill get</span> <span class="arg">&lt;name&gt;</span></code>
+        </div>
+        <div class="cmd-ref-body">Read a skill by name from a room.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium skill rm</span> <span class="arg">&lt;name&gt;</span></code>
+        </div>
+        <div class="cmd-ref-body">Delete a skill from a room.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="cmd">mycelium skill adapter</span>-def</code>
+        </div>
+        <div class="cmd-ref-body">Print the Mycelium SKILL.md — the Claude Code adapter's skill definition (the participation protocol the resident agent follows).</div>
       </div>
 
       <h2 id="cli-plan">plan</h2>

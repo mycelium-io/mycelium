@@ -7,10 +7,13 @@ import React from "react";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-// Mentions, memory links, and transclusions, in one pass so a body is split
-// once. `![[…]]` is listed before `[[…]]` so the transclusion form wins.
+// Mentions, memory links, transclusions, and skill references, in one pass so a
+// body is split once. `![[…]]` is listed before `[[…]]` so the transclusion form
+// wins. A skill reference `/name` (from the composer's `/` trigger) is only a
+// token at a word boundary — `(?<![^\s])` requires it be preceded by whitespace
+// or the start — so a path, URL, or `and/or` never lights up.
 const TOKEN_RE =
-  /(!?\[\[[^\]\n]+\]\]|myc:\/\/[^\s)\]>"'`]*[^\s)\]>"'`.,;:!?]|@[\w-]+)/g;
+  /(!?\[\[[^\]\n]+\]\]|myc:\/\/[^\s)\]>"'`]*[^\s)\]>"'`.,;:!?]|@[\w-]+|(?<![^\s])\/[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?)/g;
 
 // `[[mycelium: confidence=0.85 stance=accept]]` is the agent skill's directive
 // syntax, not a link. A word followed by a colon *and whitespace* is a
@@ -136,6 +139,19 @@ export function MarkdownContent({ children, className, onLinkClick, brokenLinks 
             <span key={i} className="text-accent font-semibold">
               {part}
             </span>
+          );
+        }
+        // A `/name` skill reference. A skill is a `skills/name` memory, so render
+        // it as a chip that opens that memory — the label stays `/name`.
+        if (part.startsWith("/")) {
+          const target = `skills/${part.slice(1)}`;
+          return (
+            <MemoryLinkChip
+              key={i}
+              link={{ target, anchor: null, label: part, transclusion: false }}
+              broken={brokenLinks?.has(target) ?? false}
+              onClick={onLinkClick}
+            />
           );
         }
         const link = parseLink(part);

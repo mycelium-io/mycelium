@@ -365,6 +365,51 @@ class MemorySearchResponse(BaseModel):
     total: int
 
 
+# ── Skills (global, reusable invokable skills) ────────────────────────────────
+# Same grain as memory (markdown + frontmatter) but a distinct, project-level
+# store — skills are reusable across rooms. See app/services/skills.py.
+
+
+class SkillCreate(BaseModel):
+    name: str = Field(
+        ...,
+        min_length=1,
+        max_length=128,
+        pattern=r"^[a-z0-9][a-z0-9._-]*$",
+        description="Skill slug (kebab-case); the filename and the composer's /trigger token",
+    )
+    description: str = Field("", max_length=512, description="One-line summary shown in listings")
+    body: str = Field("", description="The skill's prose (SKILL.md-style instructions)")
+    tags: list[str] | None = None
+    created_by: str = Field(..., description="Handle creating this skill")
+    meta: dict[str, Any] | None = Field(
+        None,
+        description=(
+            "Extra YAML frontmatter merged into the skill file. Managed keys "
+            "(name, description, version, timestamps, authorship, tags) are ignored."
+        ),
+    )
+
+
+class SkillRead(BaseModel):
+    name: str
+    description: str = ""
+    body: str = ""
+    tags: list[str] | None = None
+    created_by: str
+    updated_by: str | None = None
+    version: int
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class SkillListResponse(BaseModel):
+    skills: list[SkillRead]
+    total: int
+
+
 # ── Principal (self-asserted user store) ──────────────────────────────────────
 # The human made first-class, symmetric with agents/<handle>. An agent's owner
 # points at a users/<handle>; a team groups these handles. Trust is self-asserted
