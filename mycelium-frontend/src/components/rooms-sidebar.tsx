@@ -18,8 +18,7 @@ import { useNotifications } from "@/components/notifications-provider";
 import { EmptyState } from "@/components/empty-state";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { KeyBadge } from "@/components/key-badge";
-import { useCommands, useKeyAction, useKeyCapture, useKeyReveal } from "@/components/keymap-provider";
-import { chordFor, hintLabels } from "@/lib/keymap";
+import { useCommands, useKeyAction } from "@/components/keymap-provider";
 import type { PaletteCommand } from "@/lib/commands";
 
 // The sidebar lives inside each page's AppShell, so navigation remounts it. A
@@ -34,19 +33,9 @@ function monogram(name: string): string {
   return s.toUpperCase();
 }
 
-/** Below this, a hint keypress reads as a tap that latches the overlay open;
- *  above it, as a hold that peeks and closes on release. */
-const HOLD_TO_PEEK_MS = 250;
-
 interface Props {
   /** The room currently open, so its row is highlighted. Null on the home view. */
   activeRoom?: string | null;
-}
-
-/** Hint mode: labels for the rooms on screen, plus what's been typed so far. */
-interface Hints {
-  labels: string[];
-  typed: string;
 }
 
 export function RoomsSidebar({ activeRoom = null }: Props) {
@@ -109,21 +98,11 @@ export function RoomsSidebar({ activeRoom = null }: Props) {
   }, [rooms, query]);
 
   // ---- Keyboard navigation -------------------------------------------------
-  // The rooms on screen are the switchable set, in the order they're listed: a
-  // filtered sidebar switches among what it shows, so hint labels, the digit
-  // fast path and next/prev all agree with what the user is looking at.
+  // The rooms on screen are the switchable set, in the order they're listed, so
+  // the digit fast path and next/prev agree with what the user is looking at.
   const router = useRouter();
-  const captureKeys = useKeyCapture();
-  const [hints, setHints] = useState<Hints | null>(null);
-  const hintsRef = useRef<Hints | null>(null);
   const roomsRef = useRef(filtered);
-  const releaseKeys = useRef<(() => void) | null>(null);
-  const hintKey = useRef<string>("");
-  const hintOpenedAt = useRef(0);
-  // The capture handler is installed once but reads live state; mirror it so it
-  // never acts on the list or the typed prefix from an earlier render.
   useEffect(() => {
-    hintsRef.current = hints;
     roomsRef.current = filtered;
   });
 
@@ -133,72 +112,6 @@ export function RoomsSidebar({ activeRoom = null }: Props) {
     },
     [router],
   );
-
-  const exitHints = useCallback(() => {
-    releaseKeys.current?.();
-    releaseKeys.current = null;
-    setHints(null);
-  }, []);
-
-  // Hint mode owns the keyboard while it's up, so a label char is read as a
-  // label and never as the binding it would otherwise fire.
-  const onHintKey = useCallback(
-    (e: KeyboardEvent) => {
-      const current = hintsRef.current;
-      if (!current) return;
-      e.preventDefault();
-      if (e.key === "Escape") {
-        exitHints();
-        return;
-      }
-      if (e.key === "Backspace") {
-        setHints({ ...current, typed: current.typed.slice(0, -1) });
-        return;
-      }
-      if (/^[1-9]$/.test(e.key)) {
-        const room = roomsRef.current[Number(e.key) - 1];
-        exitHints();
-        go(room);
-        return;
-      }
-      if (e.key.length !== 1) return;
-      const typed = (current.typed + e.key).toLowerCase();
-      const exact = current.labels.indexOf(typed);
-      if (exact >= 0) {
-        exitHints();
-        go(roomsRef.current[exact]);
-        return;
-      }
-      // A char that starts no label is a typo, not a jump: swallow it and
-      // leave the overlay as it was.
-      if (current.labels.some(l => l.startsWith(typed))) setHints({ ...current, typed });
-    },
-    [exitHints, go],
-  );
-
-  useKeyAction("rooms.hints", (sequence) => {
-    if (filtered.length === 0) return;
-    hintKey.current = sequence;
-    hintOpenedAt.current = Date.now();
-    setHints({ labels: hintLabels(filtered.length), typed: "" });
-    releaseKeys.current = captureKeys(onHintKey);
-  });
-
-  // Hold-to-peek: releasing the hint key closes the overlay again, unless it
-  // was a quick tap (latched open) or a label is already part-typed.
-  useEffect(() => {
-    if (!hints) return;
-    const onKeyUp = (e: KeyboardEvent) => {
-      if (e.key !== hintKey.current) return;
-      if (Date.now() - hintOpenedAt.current < HOLD_TO_PEEK_MS) return;
-      if (hintsRef.current?.typed) return;
-      exitHints();
-    };
-    window.addEventListener("keyup", onKeyUp);
-    return () => window.removeEventListener("keyup", onKeyUp);
-  }, [hints, exitHints]);
-
-  useEffect(() => () => releaseKeys.current?.(), []);
 
   const cycle = useCallback(
     (delta: number) => {
@@ -247,11 +160,6 @@ export function RoomsSidebar({ activeRoom = null }: Props) {
   );
   useCommands(commands);
 
-  // While the reveal modifier is held the first nine rooms wear their own digit;
-  // `f` labels the whole list, which is the answer past nine.
-  const revealed = useKeyReveal();
-  const hintsChord = chordFor("rooms.hints");
-
   return (
     <aside data-tour="rooms" className="flex w-[236px] flex-shrink-0 flex-col border-r border-border bg-surface/50">
       {/* Brand */}
@@ -298,20 +206,6 @@ export function RoomsSidebar({ activeRoom = null }: Props) {
         </div>
       </div>
 
-      {hints ? (
-        <div role="status" aria-live="polite" className="px-3 pb-2 text-micro text-muted-foreground">
-          Press a hint label to jump{hints.typed ? ` · ${hints.typed}…` : ""}
-        </div>
-      ) : (
-        // Nine digits only go so far; say where the rest are while the badges
-        // are on screen and the question is being asked.
-        revealed && filtered.length > 9 && (
-          <div className="px-3 pb-2 text-micro text-muted-foreground">
-            <kbd className="font-sans">{hintsChord}</kbd> to label them all
-          </div>
-        )
-      )}
-
       {/* Rooms list */}
       <ScrollArea className="min-h-0 flex-1">
         <nav className="px-2 pb-2">
@@ -324,7 +218,6 @@ export function RoomsSidebar({ activeRoom = null }: Props) {
         ) : (
           filtered.map((room, i) => {
             const active = room.name === activeRoom;
-            const label = hints?.labels[i];
             // Don't badge the room you're already looking at — being here is
             // reading it. Elsewhere, unread activity draws the name brighter too.
             const unread = active ? 0 : unreadByRoom.get(room.name) ?? 0;
@@ -345,18 +238,6 @@ export function RoomsSidebar({ activeRoom = null }: Props) {
                 >
                   {monogram(room.name)}
                   {i < 9 && <KeyBadge chord={`alt+${i + 1}`} overlay />}
-                  {label && (
-                    <span
-                      data-hint={label}
-                      className="absolute inset-0 flex items-center justify-center rounded-md bg-yellow font-mono text-micro font-bold text-bg motion-safe:animate-in motion-safe:fade-in-0"
-                    >
-                      {[...label].map((c, ci) => (
-                        <span key={ci} className={ci < (hints?.typed.length ?? 0) ? "opacity-40" : undefined}>
-                          {c}
-                        </span>
-                      ))}
-                    </span>
-                  )}
                 </span>
                 <span
                   className={`min-w-0 flex-1 truncate text-label ${
