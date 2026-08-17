@@ -5,7 +5,7 @@
 """
 Generate the CLI Reference HTML section for docs/index.html.
 
-This is a backward-compatible wrapper — the full generator is now
+This is a backward-compatible wrapper, the full generator is now
 generate_docs.py which also handles markdown content sections.
 
 Run from repo root:

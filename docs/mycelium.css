@@ -1,4 +1,4 @@
-/* ── mycelium docs — design system ──
+/* ── mycelium docs · design system ──
  *
  * The webapp is the source of truth. This file mirrors
  * mycelium-frontend/src/app/globals.css: same token contract, same type scale,
@@ -12,17 +12,17 @@
  * Two themes, one contract. Raw values live in :root (light) and .dark.
  *
  * TEXT vs BACKGROUND is kept honest (the shadcn contract the app adopted): a
- * token is either a surface you sit ON, or a foreground you paint WITH —
+ * token is either a surface you sit ON, or a foreground you paint WITH,
  * never both.
  *
  *   TEXT (foreground)                     BACKGROUND (surface / fill)
  *   ───────────────────────────────       ───────────────────────────────
  *   --text                 primary        --bg         app canvas
  *   --muted-foreground     secondary      --surface    rails, inputs
- *                          — the legible  --paper      reading pane, cards
+ *                            the legible  --paper      reading pane, cards
  *                            FLOOR for    --elevated   popovers, active rows
  *                            any text     --muted-bg   quiet fill (hover)
- *   --faint     DECORATION ONLY —         --accent-soft  tinted accent wash
+ *   --faint     DECORATION ONLY           --accent-soft  tinted accent wash
  *               rules, disabled glyphs.
  *               NEVER body copy.
  *
@@ -48,14 +48,14 @@
   --accent: #0c7d8f;
   --accent-fg: #ffffff;
   --accent-soft: rgba(12, 125, 143, 0.10);
-  /* secondary accent — decoration/labels only, never a link signal */
+  /* secondary accent: decoration/labels only, never a link signal */
   --accent2: #7a4fd0;
   /* semantic state */
   --green: #0d8a63;
   --yellow: #8a6410;
   --red: #bd3f3a;
 
-  /* Code is the system register — the one place a syntax ramp earns its keep.
+  /* Code blocks are the one place worth using several syntax colors.
    * Tuned to sit on --paper without competing with prose. */
   --code-comment: #6b7480;
   --code-cmd: #0c7d8f;
@@ -99,7 +99,7 @@
   --accent: #5cc7d2;
   --accent-fg: #06181b;
   --accent-soft: rgba(92, 199, 210, 0.13);
-  /* secondary accent — decoration/labels only, never a link signal */
+  /* secondary accent: decoration/labels only, never a link signal */
   --accent2: #b295ec;
   /* semantic state */
   --green: #4fc296;
@@ -224,7 +224,7 @@ body {
 
 /* ── TOP BAR ── */
 /* The rails run slightly translucent over the canvas, the way the app's
- * headers sit at bg-surface/50 — the network stays present through the chrome
+ * headers sit at bg-surface/50 so the animated background shows through the chrome
  * instead of being boxed into the gutters. */
 .topnav {
   position: fixed;
@@ -405,7 +405,7 @@ a.topnav-page:hover { color: var(--text); text-decoration: none; }
 .docs-footer a:hover { color: var(--text); background: var(--hairline); text-decoration: none; }
 .docs-footer .sep { color: var(--faint); }
 .docs-footer .tagline { margin-left: auto; color: var(--faint); }
-/* The sheet number is catalogue metadata — system register, so mono. */
+/* Sheet number: mono, muted metadata. */
 .docs-footer .sheet-no {
   font-family: var(--font-mono);
   font-size: 11px;
@@ -499,7 +499,7 @@ h1[id], h2[id], h3[id], h4[id], section[id] {
   scroll-margin-top: calc(var(--topbar-height) + 16px);
 }
 
-/* Sans caps, muted — an eyebrow is a label, not an accent moment. */
+/* Eyebrow label: small uppercase, muted. */
 .section-eyebrow {
   font-size: var(--text-micro);
   font-weight: 600;
@@ -510,9 +510,8 @@ h1[id], h2[id], h3[id], h4[id], section[id] {
 }
 
 /* The serif italic hero matches the app's room title (room-plan-header). */
-/* Headings step down gently — the app is a dense 14px UI, so docs stay closer
- * to body size than a marketing page would. Hierarchy comes from weight and
- * space, not scale. */
+/* Headings stay close to body size (this mirrors a dense 14px UI); hierarchy
+ * comes from weight and space, not scale. */
 h1 {
   font-size: 1.95rem;
   font-weight: 600;
@@ -685,7 +684,7 @@ pre code {
 .callout-body p { margin-bottom: 0; font-size: inherit; }
 .callout-info .callout-bar { background: var(--accent); }
 .callout-info .callout-body { background: var(--accent-soft); }
-/* A "note" is an aside, not a state — neutral, no third hue. */
+/* Note callout: a neutral aside, no extra color. */
 .callout-note .callout-bar { background: var(--border2); }
 .callout-note .callout-body { background: var(--hairline); }
 .callout-warn .callout-bar { background: var(--yellow); }
@@ -733,7 +732,7 @@ table {
   border-collapse: collapse;
   font-size: var(--text-body);
 }
-/* Column headers are tabular metadata — mono is correct here. */
+/* Table column headers: mono. */
 th {
   text-align: left;
   padding: 9px 14px;

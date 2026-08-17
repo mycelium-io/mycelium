@@ -45,7 +45,7 @@ PAGES: list[tuple[str, str, str, str, str, str, str]] = [
 # md_file=None means the section is hand-coded (kept verbatim from source HTML).
 # If md_file is set AND a kept section with the same id exists, the kept HTML wins.
 SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
-    # ── start (index.html) — overview + quickstart ──
+    # ── start (index.html), overview + quickstart ──
     ("overview.md",                 "overview",           "start",       "Get Started",  "Overview"),
     ("quickstart.md",               "quickstart",         "start",       "Get Started",  "Quick Start"),
     # ── concepts (now on the start page, grouped in the sidebar) ──
@@ -59,7 +59,7 @@ SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
     ("engines.md",                  "engines",            "start",       "Engines",      "Overview"),
     ("aligner.md",                  "aligner",            "start",       "Engines",      "Aligner"),
     ("synthesizer.md",              "synthesizer",        "start",       "Engines",      "Synthesizer"),
-    # ── adapters (adapters.html) — all hand-coded ──
+    # ── adapters (adapters.html), all hand-coded ──
     (None,                          "adapters",           "adapters",  "Adapters",     "Overview"),
     (None,                          "adapter-claude-code","adapters",  "Adapters",     "Claude Code"),
     (None,                          "adapter-cursor",     "adapters",  "Adapters",     "Cursor"),
@@ -278,7 +278,7 @@ def _md_to_html(md: str, section_id: str) -> str:
         if i == progress_i:
             print(
                 f"WARNING: unhandled markdown line in section '{section_id}' "
-                f"(line {i + 1}): {lines[i]!r} — skipping",
+                f"(line {i + 1}): {lines[i]!r}, skipping",
                 file=sys.stderr,
             )
             i += 1
@@ -331,7 +331,7 @@ def _highlight_code(code: str, lang: str) -> str:
             highlighted,
         )
         # The mycelium binary is its own token; its subcommands stay cmd-toned.
-        # Only when it's a standalone command — not inside a path (.mycelium/,
+        # Only when it's a standalone command, not inside a path (.mycelium/,
         # ~/.mycelium) or a hyphenated name (mycelium-io).
         highlighted = re.sub(
             r"(?<![\w./~-])mycelium(?=\s)((?:\s+[\w-]+){0,2})",

@@ -1,5 +1,5 @@
   // Icons come from a third-party CDN. If it fails to load, the page must still
-  // work — a bare lucide.createIcons() here would throw and abort this whole
+  // work, a bare lucide.createIcons() here would throw and abort this whole
   // file, taking the nav, theme toggle and background canvas down with it.
   function icons() {
     if (window.lucide && window.lucide.createIcons) window.lucide.createIcons();
@@ -257,7 +257,7 @@
   resize();
 
   // ══════════════════════════════════════════════════════════════════
-  // LAYER 1: Tip-growth (Meškauskas et al.) — builds the network
+  // LAYER 1: Tip-growth (Meškauskas et al.), builds the network
   // ══════════════════════════════════════════════════════════════════
 
   const TIP_SPEED = 0.25;
@@ -355,7 +355,7 @@
   }
 
   // ══════════════════════════════════════════════════════════════════
-  // LAYER 2: Nutrient agents (Physarum-style) — flow through network
+  // LAYER 2: Nutrient agents (Physarum-style), flow through network
   // ══════════════════════════════════════════════════════════════════
   // These agents are constrained to the established network.
   // They follow trails and re-deposit, creating organic pulsing.
@@ -387,7 +387,7 @@
     var sx = Math.floor(ax + Math.cos(angle + offset) * SENSOR_DIST);
     var sy = Math.floor(ay + Math.sin(angle + offset) * SENSOR_DIST);
     if (sx < 0 || sx >= cols || sy < 0 || sy >= rows) return 0;
-    // Sense both structure and flow trail — prefer flowing along the network
+    // Sense both structure and flow trail, prefer flowing along the network
     return structure[sy * cols + sx] * 0.5 + trail[sy * cols + sx];
   }
 
@@ -463,13 +463,13 @@
       seedColony(cx, cy, Math.floor(Math.random() * COLORS.length), 2 + Math.floor(Math.random() * 2));
     }
 
-    // Decay flow trail — faster than structure, creates the pulsing effect
+    // Decay flow trail, faster than structure, creates the pulsing effect
     for (var i = 0; i < trail.length; i++) {
       trail[i] *= 0.99;
       if (trail[i] < 0.005) trail[i] = 0;
     }
 
-    // Update nutrient agents — Physarum sensing on the combined field
+    // Update nutrient agents, Physarum sensing on the combined field
     for (var i = 0; i < agents.length; i++) {
       var a = agents[i];
 
@@ -496,7 +496,7 @@
       // If agent drifted off the network, teleport back onto it
       var gx = Math.floor(a.x), gy = Math.floor(a.y);
       if (gx >= 0 && gx < cols && gy >= 0 && gy < rows && structure[gy * cols + gx] < 0.05) {
-        // Off-network — find a random network cell to respawn on
+        // Off-network, find a random network cell to respawn on
         for (var att = 0; att < 30; att++) {
           var rx = Math.floor(Math.random() * viewCols);
           var ry = Math.floor(Math.random() * viewRows);
