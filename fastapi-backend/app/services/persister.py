@@ -346,6 +346,17 @@ def write_transcript(room: str, records: list[TranscriptRecord]) -> None:
         logger.exception("transcript write failed for room %s", room)
 
 
+# L9 record kinds promoted into the room chat view on a cold read, mirroring the
+# frontend's ``L9_RAISE_UP_TYPES`` (contracts/l9-surface.json): ``knowledge`` (a
+# memory push, e.g. a distilled extraction or the synced plan) and ``commit`` (an
+# aligner consensus). Chat itself (an ``exchange`` with a ``message``/``reply``
+# payload) is projected as a plain broadcast above; these ride as their
+# ``l9_<kind>`` frame instead — the exact shape the live SSE bus pushes
+# (:func:`l9_bus_frame`), so the frontend decodes a refresh identically to the
+# live stream instead of dropping the row (the "temporary" raise-up rows bug).
+_RAISE_UP_KINDS = frozenset({"knowledge", "commit"})
+
+
 def _conversational_text(content: dict[str, Any]) -> str | None:
     """The human-facing chat text of a record, or None if it isn't chat.
 
@@ -362,22 +373,33 @@ def _conversational_text(content: dict[str, Any]) -> str | None:
 def stored_message_from_record(room: str, record: TranscriptRecord) -> StoredMessage | None:
     """Project a transcript record into the ``StoredMessage`` the list/UI reads.
 
-    Returns None for a non-conversational record. The synthetic id is derived from
-    the envelope id so it's stable across reads, and ``message_id`` carries that
-    envelope id as the cross-store correlation key (dedup against ``local_state``).
+    Returns None for a non-conversational, non-raise-up record. The synthetic id is
+    derived from the envelope id so it's stable across reads, and ``message_id``
+    carries that envelope id as the cross-store correlation key (dedup against
+    ``local_state``).
     """
     from app.services.local_state import StoredMessage
 
     text = _conversational_text(record.content)
-    if text is None:
+    if text is not None:
+        # Chat: a plain broadcast row carrying the prose.
+        message_type: str = MessageType.BROADCAST
+        content = text
+    elif record.kind in _RAISE_UP_KINDS:
+        # A promoted L9 system frame (memory push / consensus): carry the whole
+        # envelope as the ``l9_<kind>`` frame the live stream uses, so the cold
+        # read reproduces the live view instead of dropping it on refresh.
+        message_type = f"l9_{record.kind}"
+        content = json.dumps(record.content)
+    else:
         return None
     episode = record.content.get("l9", {}).get("header", {}).get("message", {}).get("episode")
     seed = record.message_id or f"{record.recorded_at}:{record.sender}"
     msg = StoredMessage(
         room_name=room,
-        sender_handle=record.sender,
-        message_type=MessageType.BROADCAST,
-        content=text,
+        sender_handle=record.sender or l9.SYSTEM_ACTOR_ID,
+        message_type=message_type,
+        content=content,
         episode=episode if isinstance(episode, str) else None,
         message_id=record.message_id or None,
         id=uuid.uuid5(_MESSAGE_ID_NS, seed),
