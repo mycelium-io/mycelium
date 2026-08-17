@@ -13,6 +13,10 @@ vi.mock("@/lib/api", () => ({
   fetchRoomAgents: vi.fn().mockResolvedValue([
     { handle: "aligner", adapter: "engine", kind: "aligner", description: "mediator", cwd: null, owner: null, team: null, allow_from: [] },
   ]),
+  fetchRoomMembers: vi.fn().mockResolvedValue([
+    { handle: "watcher", kind: "lease", last_seen: null },
+    { handle: "aligner", kind: "slim", last_seen: null },
+  ]),
   fetchMemories: vi.fn().mockResolvedValue([
     { key: "decisions/db", value: "", version: 2, created_by: "julia", updated_at: "" },
     { key: "context/goals", value: "", version: 1, created_by: "sam", updated_at: "" },
@@ -76,6 +80,18 @@ describe("<RoomChatBox /> composer triggers", () => {
     await userEvent.click(option);
 
     expect((box as HTMLTextAreaElement).value).toContain("@aligner ");
+  });
+
+  it("also autocompletes a person (present member), not just agents", async () => {
+    render(<RoomChatBox roomName="demo" />);
+    const box = await textarea();
+    await userEvent.click(box);
+    await userEvent.type(box, "@wat");
+
+    const option = await screen.findByRole("button", { name: /@watcher/ });
+    await userEvent.click(option);
+
+    expect((box as HTMLTextAreaElement).value).toContain("@watcher ");
   });
 
   it("does not open a skill popover for a slash inside a word (e.g. a path)", async () => {

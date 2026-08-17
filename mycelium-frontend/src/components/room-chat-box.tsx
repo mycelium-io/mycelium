@@ -9,11 +9,13 @@ import { ArrowUp } from "lucide-react";
 import {
   fetchMemories,
   fetchRoomAgents,
+  fetchRoomMembers,
   fetchSkills,
   logFetchError,
   sendRoomMessage,
   type AgentSummary,
   type Memory,
+  type PresenceMember,
   type Skill,
 } from "@/lib/api";
 import { useCurrentUser } from "@/components/current-user";
@@ -88,6 +90,7 @@ export function RoomChatBox({ roomName, onSent, className }: Props) {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [agents, setAgents] = useState<AgentSummary[]>([]);
+  const [members, setMembers] = useState<PresenceMember[]>([]);
   const [memories, setMemories] = useState<Memory[]>([]);
   const [skills, setSkills] = useState<Skill[]>([]);
   const [trigger, setTrigger] = useState<Trigger | null>(null);
@@ -95,10 +98,12 @@ export function RoomChatBox({ roomName, onSent, className }: Props) {
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
   const refreshSources = useCallback(() => {
+    // `@` mentions anyone in the room — agents plus the present people (and you).
     fetchRoomAgents(roomName).then(setAgents).catch((err) => {
       logFetchError("fetchRoomAgents")(err);
       setAgents([]);
     });
+    fetchRoomMembers(roomName).then(setMembers).catch(logFetchError("fetchRoomMembers"));
     // Memory keys drive `[[` autocomplete; skills drive `/`. Both degrade to [].
     fetchMemories(roomName).then(setMemories).catch(logFetchError("fetchMemories"));
     fetchSkills(roomName).then(setSkills).catch(logFetchError("fetchSkills"));
@@ -126,18 +131,40 @@ export function RoomChatBox({ roomName, onSent, className }: Props) {
     if (found) setHighlight(0);
   };
 
+  // Everyone `@` can address: agents first, then the present people (SLIM/lease
+  // members that aren't agents), then you — deduped by handle.
+  const mentionRoster = useMemo(() => {
+    const seen = new Set(agents.map((a) => a.handle.toLowerCase()));
+    const agentItems = agents.map((a) => ({
+      handle: a.handle,
+      secondary: a.adapter === "engine" && a.kind ? `engine · ${a.kind}` : a.adapter,
+      tertiary: a.description || undefined,
+    }));
+    const people: { handle: string; secondary: string; tertiary?: string }[] = [];
+    for (const m of members) {
+      const key = m.handle.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      people.push({ handle: m.handle, secondary: m.kind === "slim" ? "person · here" : "person" });
+    }
+    const me = principal.trim();
+    if (me && !seen.has(me.toLowerCase())) people.push({ handle: me, secondary: "you" });
+    people.sort((a, b) => a.handle.localeCompare(b.handle));
+    return [...agentItems, ...people];
+  }, [agents, members, principal]);
+
   const candidates = useMemo<Candidate[]>(() => {
     if (trigger === null) return [];
     if (trigger.kind === "agent") {
       const pool = trigger.query
-        ? agents.filter((a) => a.handle.toLowerCase().startsWith(trigger.query))
-        : agents;
-      return pool.slice(0, 6).map((a) => ({
-        id: a.handle,
-        insert: `@${a.handle}`,
-        primary: `@${a.handle}`,
-        secondary: a.adapter === "engine" && a.kind ? `engine · ${a.kind}` : a.adapter,
-        tertiary: a.description || undefined,
+        ? mentionRoster.filter((r) => r.handle.toLowerCase().startsWith(trigger.query))
+        : mentionRoster;
+      return pool.slice(0, 8).map((r) => ({
+        id: r.handle,
+        insert: `@${r.handle}`,
+        primary: `@${r.handle}`,
+        secondary: r.secondary,
+        tertiary: r.tertiary,
       }));
     }
     if (trigger.kind === "memory") {
@@ -163,7 +190,7 @@ export function RoomChatBox({ roomName, onSent, className }: Props) {
       secondary: "skill",
       tertiary: s.description || undefined,
     }));
-  }, [agents, memories, skills, trigger]);
+  }, [mentionRoster, memories, skills, trigger]);
 
   const accept = useCallback(
     (candidate: Candidate) => {
@@ -277,7 +304,7 @@ export function RoomChatBox({ roomName, onSent, className }: Props) {
             value={content}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
-            placeholder="Message the room…  @ agent · [[ memory · / skill"
+            placeholder="Message the room…  @ mention · [[ memory · / skill"
             minRows={1}
             maxRows={10}
             className="w-full resize-none bg-transparent px-4 pt-3 pb-1.5 text-body text-text leading-relaxed focus:outline-none placeholder:text-muted-foreground"
