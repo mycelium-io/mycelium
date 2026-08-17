@@ -12,11 +12,16 @@ cursor is the durable inbox's, not a process-local one.
 from __future__ import annotations
 
 import pytest
+from starlette.requests import Request
 
 from app.routes import participate
 from app.services import l9, persister
 from app.services.l9_models import Kind
 from app.services.l9_slim import serialize_content
+
+# A bare ASGI request — ``authorize_handle`` is stubbed out, so the route never
+# reads it; it exists only to satisfy the ``Request`` parameter type.
+_REQUEST = Request({"type": "http", "method": "GET", "path": "/await", "headers": []})
 
 
 def _addressed_record(message_id: str, *, to: str, sender: str = "avery"):
@@ -87,7 +92,7 @@ async def test_first_await_replays_a_mention_sent_before_it(wired):
     )
 
     wired(log)
-    result = await participate.await_message("r", object(), handle="claude-code-agent", timeout=0)
+    result = await participate.await_message("r", _REQUEST, handle="claude-code-agent", timeout=0)
     assert result["message_id"] == "m1"
     assert result["prompt"] == "@claude-code-agent hello"
 
@@ -103,10 +108,10 @@ async def test_await_consumes_the_message_it_serves(wired):
     )
 
     wired(log)
-    first = await participate.await_message("r", object(), handle="claude-code-agent", timeout=0)
+    first = await participate.await_message("r", _REQUEST, handle="claude-code-agent", timeout=0)
     assert first["message_id"] == "m1"
 
-    second = await participate.await_message("r", object(), handle="claude-code-agent", timeout=1)
+    second = await participate.await_message("r", _REQUEST, handle="claude-code-agent", timeout=1)
     assert second["message"] is None  # consumed, nothing left
 
 
@@ -122,5 +127,5 @@ async def test_await_ignores_turns_addressed_to_others(wired):
     )
 
     wired(log)
-    result = await participate.await_message("r", object(), handle="claude-code-agent", timeout=1)
+    result = await participate.await_message("r", _REQUEST, handle="claude-code-agent", timeout=1)
     assert result["message"] is None
