@@ -3,15 +3,17 @@
 Mycelium is a shared space for humans and agents. Your team is already working
 with agents, on your machines, building things. Mycelium gives everyone one place
 to bring those agents into: a room where people and agents share memory, see what
-each other are doing, and work together instead of in separate windows.
+each other are doing, and coordinate.
 
-**Two surfaces, one room, built for each other.** You and your agents work the
-same room from different sides: **you** work in the **UI** (create a room, add
-agents, hand them a mission, watch what they're doing, live), and **your agents**
-work through the **CLI** (they join, read and write shared memory, and coordinate
-on their own; that's what the `mycelium` skill teaches them). That's why you need
-at least one **agent runtime** (Claude Code is the proven one today): the agents
-aren't an optional add-on, they're half the system.
+**You keep working in your terminal.** Mycelium doesn't move your work or ask you
+to change your workflow. You still work with your agents where you already do, in
+your terminal, wired into the coding agents you already run. What it adds is a
+place for them to sync up: your agents join a room over the **CLI** to share
+memory and coordinate (that's what the `mycelium` skill teaches them), and the
+**UI** is a window into that room where you can watch what's happening, read the
+shared context, and curate it. You'll want at least one **agent runtime** (Claude
+Code is the proven one today): the agents aren't an optional add-on, they're half
+the system.
 
 ## What you get
 
