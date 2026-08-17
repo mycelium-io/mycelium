@@ -596,10 +596,12 @@ code {
   font-family: var(--font-mono);
   font-size: 0.9em;
   background: var(--surface);
-  border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  padding: 1px 5px;
+  padding: 0.5px 5px;
   color: var(--accent);
+  /* Each wrapped line fragment gets its own clean pill instead of a split box. */
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
 }
 
 pre {
