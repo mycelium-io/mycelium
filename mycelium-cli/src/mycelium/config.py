@@ -347,6 +347,18 @@ class RuntimeConfig(BaseModel):
         default=3000,
         description="Host port for the frontend UI",
     )
+    allowed_dev_origins: str = Field(
+        default="",
+        description=(
+            "Comma-separated origins the Next.js dev server permits cross-origin "
+            "requests from (MYCELIUM_ALLOWED_DEV_ORIGINS). Add your public IP or "
+            "hostname when running `mycelium up --ui` (or pnpm dev) behind a reverse "
+            "proxy or NAT and accessing the UI from a browser on a different host. "
+            "Production Docker builds do not use this — the browser always hits its "
+            "own origin. Example: mycelium config set runtime.allowed_dev_origins "
+            "'3.139.30.16' or '3.139.30.16,10.0.0.5'"
+        ),
+    )
     data_dir: str | None = Field(
         default=None,
         description="Root directory for .mycelium/ data (defaults to ~/.mycelium)",
