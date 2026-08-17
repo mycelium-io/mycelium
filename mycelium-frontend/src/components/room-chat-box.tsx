@@ -8,6 +8,7 @@ import TextareaAutosize from "react-textarea-autosize";
 import { ArrowUp } from "lucide-react";
 import {
   fetchMemories,
+  fetchMessages,
   fetchRoomAgents,
   fetchRoomMembers,
   fetchSkills,
@@ -91,6 +92,7 @@ export function RoomChatBox({ roomName, onSent, className }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [agents, setAgents] = useState<AgentSummary[]>([]);
   const [members, setMembers] = useState<PresenceMember[]>([]);
+  const [posters, setPosters] = useState<string[]>([]);
   const [memories, setMemories] = useState<Memory[]>([]);
   const [skills, setSkills] = useState<Skill[]>([]);
   const [trigger, setTrigger] = useState<Trigger | null>(null);
@@ -104,6 +106,18 @@ export function RoomChatBox({ roomName, onSent, className }: Props) {
       setAgents([]);
     });
     fetchRoomMembers(roomName).then(setMembers).catch(logFetchError("fetchRoomMembers"));
+    // Human posters from the transcript — a broadcast from a non-agent handle —
+    // so `@` reaches people who've spoken even if they aren't present right now.
+    fetchMessages(roomName, 200)
+      .then(({ messages }) =>
+        setPosters(
+          messages
+            .filter((m) => m.message_type === "broadcast")
+            .map((m) => m.sender_handle ?? "")
+            .filter(Boolean),
+        ),
+      )
+      .catch(logFetchError("fetchMessages"));
     // Memory keys drive `[[` autocomplete; skills drive `/`. Both degrade to [].
     fetchMemories(roomName).then(setMemories).catch(logFetchError("fetchMemories"));
     fetchSkills(roomName).then(setSkills).catch(logFetchError("fetchSkills"));
@@ -131,27 +145,41 @@ export function RoomChatBox({ roomName, onSent, className }: Props) {
     if (found) setHighlight(0);
   };
 
-  // Everyone `@` can address: agents first, then the present people (SLIM/lease
-  // members that aren't agents), then you — deduped by handle.
+  // Everyone `@` can address, at parity with the Members panel: agents first,
+  // then people — agent owners ∪ posters ∪ present members ∪ you (minus agents),
+  // deduped by handle. `present` marks a live SLIM member.
   const mentionRoster = useMemo(() => {
-    const seen = new Set(agents.map((a) => a.handle.toLowerCase()));
+    const agentHandles = new Set(agents.map((a) => a.handle.toLowerCase()));
     const agentItems = agents.map((a) => ({
       handle: a.handle,
       secondary: a.adapter === "engine" && a.kind ? `engine · ${a.kind}` : a.adapter,
-      tertiary: a.description || undefined,
+      tertiary: a.description as string | undefined,
     }));
-    const people: { handle: string; secondary: string; tertiary?: string }[] = [];
-    for (const m of members) {
-      const key = m.handle.toLowerCase();
-      if (seen.has(key)) continue;
-      seen.add(key);
-      people.push({ handle: m.handle, secondary: m.kind === "slim" ? "person · here" : "person" });
-    }
-    const me = principal.trim();
-    if (me && !seen.has(me.toLowerCase())) people.push({ handle: me, secondary: "you" });
-    people.sort((a, b) => a.handle.localeCompare(b.handle));
-    return [...agentItems, ...people];
-  }, [agents, members, principal]);
+
+    const me = principal.trim().toLowerCase();
+    const peopleByHandle = new Map<string, { handle: string; present: boolean }>();
+    const addPerson = (raw: string, present: boolean) => {
+      const h = raw.replace(/^@/, "").toLowerCase();
+      if (!h || agentHandles.has(h)) return;
+      const existing = peopleByHandle.get(h);
+      if (existing) existing.present = existing.present || present;
+      else peopleByHandle.set(h, { handle: h, present });
+    };
+    for (const a of agents) if (a.owner) addPerson(a.owner, false);
+    for (const p of posters) addPerson(p, false);
+    for (const m of members) addPerson(m.handle, m.kind === "slim");
+    if (me) addPerson(me, false);
+
+    const peopleItems = [...peopleByHandle.values()]
+      .sort((a, b) => a.handle.localeCompare(b.handle))
+      .map((p) => ({
+        handle: p.handle,
+        secondary: p.handle === me ? "you" : p.present ? "person · here" : "person",
+        tertiary: undefined as string | undefined,
+      }));
+
+    return [...agentItems, ...peopleItems];
+  }, [agents, members, posters, principal]);
 
   const candidates = useMemo<Candidate[]>(() => {
     if (trigger === null) return [];
