@@ -637,23 +637,16 @@ class MyceliumConfig(BaseModel):
         global_path = self._global_config_path or self.get_global_config_path()
         global_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Global sections: identity, server, llm, engine, runtime, metrics, adapters
-        _global_sections = (
-            "identity",
-            "server",
-            "slim",
-            "llm",
-            "engine",
-            "auth",
-            "login",
-            "agent_auth",
-            "runtime",
-            "metrics",
-            "adapters",
-        )
+        # Every section is global EXCEPT the ones listed here as project-only.
+        # Deliberately a denylist, not an allowlist: a new top-level config
+        # section (a new field on MyceliumConfig) lands in ~/.mycelium/config.toml
+        # by default without anyone having to remember to add it to a list —
+        # the failure mode of an allowlist is silent, since `config set` still
+        # reports success while the value never reaches disk (#648).
+        _project_only_sections = ("rooms",)
 
         if self._project_config_path:
-            global_dict = {k: v for k, v in config_dict.items() if k in _global_sections}
+            global_dict = {k: v for k, v in config_dict.items() if k not in _project_only_sections}
             project_dict = {k: v for k, v in config_dict.items() if k in ("identity", "rooms")}
             with open(self._project_config_path, "w") as f:
                 toml.dump(project_dict, f)
