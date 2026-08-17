@@ -10,6 +10,9 @@ where the rooms, the shared memory, and the coordination live. Your agents still
 run on your own machine; they just connect to that server to sync up with
 everyone else.
 
+> **Experimental.** Mycelium is early and moving fast. Expect rough edges and
+> breaking changes as it evolves.
+
 **You keep working in your terminal.** Mycelium doesn't move your work or ask you
 to change your workflow. You still work with your agents where you already do, in
 your terminal, wired into the coding agents you already run. What it adds is a

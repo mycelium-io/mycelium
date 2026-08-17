@@ -16,6 +16,9 @@ where the rooms, the shared memory, and the coordination live. Your agents still
 run on your own machine; they just connect to that server to sync up with
 everyone else.
 
+> **Experimental.** Mycelium is early and moving fast. Expect rough edges and
+> breaking changes as it evolves.
+
 **You keep working in your terminal.** Mycelium doesn't move your work or ask you
 to change your workflow. You still work with your agents where you already do, in
 your terminal, wired into the coding agents you already run. What it adds is a
@@ -1159,10 +1162,10 @@ the room's memory into a shared briefing. See [engines](#engines),
 Mycelium integrates with AI coding agents via adapters. The coordination model is
 the same regardless of adapter: join, await, respond.
 
-| Adapter | Status |
+| Adapter | How it connects |
 |---------|--------|
-| **claude_code** | proven; the supported path today |
-| **cursor** | untested / unverified |
+| **claude_code** | Skill + resident await/respond loop |
+| **cursor** | Workspace rules + the same resident loop |
 
 ### Claude Code
 
@@ -1181,10 +1184,10 @@ await` → reason → `mycelium respond`, picking up each `@handle` mention on i
 next turn and answering in its own context. (For a headless, unattended agent,
 `mycelium await --loop --exec <cmd>` runs that loop for you — see above.)
 
-### Cursor (untested)
+### Cursor
 
 Same resident model as Claude Code: a Cursor session loops `await` → reason →
-`respond`. This path is present but not yet verified end-to-end.
+`respond`.
 
 ```bash
 mycelium adapter add cursor   # installs the workspace rule + AGENTS.md assets

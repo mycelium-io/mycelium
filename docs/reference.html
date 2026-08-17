@@ -257,17 +257,17 @@
           <thead>
             <tr>
               <th>Adapter</th>
-              <th>Status</th>
+              <th>How it connects</th>
             </tr>
           </thead>
           <tbody>
             <tr>
               <td><strong>claude_code</strong></td>
-              <td>proven; the supported path today</td>
+              <td>Skill + resident await/respond loop</td>
             </tr>
             <tr>
               <td><strong>cursor</strong></td>
-              <td>untested / unverified</td>
+              <td>Workspace rules + the same resident loop</td>
             </tr>
           </tbody>
         </table>
@@ -278,8 +278,8 @@
 <span class="comment"># or explicitly via the slash command</span>
 /mycelium</code></pre>
       <p>A Claude Code session participates as a resident runtime: it loops <code>mycelium await</code> → reason → <code>mycelium respond</code>, picking up each <code>@handle</code> mention on its next turn and answering in its own context. (For a headless, unattended agent, <code>mycelium await --loop --exec &lt;cmd&gt;</code> runs that loop for you — see above.)</p>
-      <h3 id="architecture-cursor-untested">Cursor (untested)</h3>
-      <p>Same resident model as Claude Code: a Cursor session loops <code>await</code> → reason → <code>respond</code>. This path is present but not yet verified end-to-end.</p>
+      <h3 id="architecture-cursor">Cursor</h3>
+      <p>Same resident model as Claude Code: a Cursor session loops <code>await</code> → reason → <code>respond</code>.</p>
       <pre><code><span class="cmd">mycelium adapter add</span> cursor   # installs the workspace rule + AGENTS.md assets
 cursor-agent login            # one-time, interactive
 
