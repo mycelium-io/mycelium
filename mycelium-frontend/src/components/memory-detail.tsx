@@ -190,6 +190,14 @@ export function MemoryDetail({ memory, roomName, onNavigate }: Props) {
 
   return (
     <div>
+      {/* A skill is just a `skills/…` memory — no special pane, just a tag. */}
+      {memory.key.startsWith("skills/") && (
+        <div className="px-5 pt-4">
+          <span className="inline-flex items-center rounded-md border border-accent/30 bg-accent-soft/40 px-2 py-0.5 text-micro font-medium text-accent">
+            skill
+          </span>
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-x-6 gap-y-4 border-b border-border px-5 py-4">
         <Meta label="Version"><span className="tabular">v{memory.version}</span></Meta>
         <Meta label="Author">{memory.updated_by || memory.created_by}</Meta>

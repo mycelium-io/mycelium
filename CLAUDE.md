@@ -178,12 +178,15 @@ is no litellm dependency.
   `skills/` namespace (SKILL.md-style markdown + frontmatter, with the one-line
   `description` in frontmatter). The same way `agents/<handle>` memories are
   promoted into a members panel and `decisions/` into a category view, `skills/` is
-  promoted into a skills surface — `mycelium skill …`, `/api/rooms/{room}/skills`,
-  and the frontend Skills rail (`app/services/skills.py`, `app/routes/skills.py`).
+  promoted into a thin skills surface — `mycelium skill …` and
+  `/api/rooms/{room}/skills` (`app/services/skills.py`, `app/routes/skills.py`).
   Room-scoped, like memory; no separate store, and a skill is reachable as a memory
   too (writes go through the memory upsert path, so they're indexed/linked/broadcast
-  like any memory). The surface keeps prose; it does not execute skills — that's the
-  participation/engine layer's concern.
+  like any memory). **In the GUI there is deliberately no dedicated skills rail** —
+  a skill shows up in the Memory list like any `skills/…` memory, with a small
+  "skill" tag in the detail view (`memory-detail.tsx`); the frontend's only
+  skill-specific call is the composer's `/` autocomplete. The surface keeps prose;
+  it does not execute skills — that's the participation/engine layer's concern.
 - **Three composer sigils, one mechanism.** The chat composer
   (`room-chat-box.tsx`) autocompletes `@` → agents, `[[` → room memories (inserts
   `[[key]]`, which resolves to `myc://` and is clickable in chat), and `/` → the

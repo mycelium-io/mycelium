@@ -4,21 +4,21 @@
 "use client";
 
 import { useState } from "react";
-import { Activity, Brain, PanelRightClose, PanelRightOpen, Sparkles, Users, type LucideIcon } from "lucide-react";
+import { Activity, Brain, PanelRightClose, PanelRightOpen, Users, type LucideIcon } from "lucide-react";
 import { AgentsPanel } from "@/components/agents-panel";
 import { EpisodesRail } from "@/components/episodes-rail";
 import { KeyBadge } from "@/components/key-badge";
 import { MemoryPanel } from "@/components/memory-panel";
-import { SkillsPanel } from "@/components/skills-panel";
 import type { FocusTarget } from "@/lib/search";
 
-export type Tab = "agents" | "episodes" | "memory" | "skills";
+// Skills aren't a rail: a skill is just a `skills/…` memory, so it shows up in
+// the Memory list like any other. No dedicated tab or panel.
+export type Tab = "agents" | "episodes" | "memory";
 
 const TABS: { id: Tab; label: string; icon: LucideIcon }[] = [
   { id: "agents", label: "Members", icon: Users },
   { id: "episodes", label: "Episodes", icon: Activity },
   { id: "memory", label: "Memory", icon: Brain },
-  { id: "skills", label: "Skills", icon: Sparkles },
 ];
 
 interface Props {
@@ -154,7 +154,6 @@ export function RoomInspector({
             focusMemory={focusMemory}
           />
         )}
-        {tab === "skills" && <SkillsPanel roomName={roomName} />}
       </div>
     </aside>
   );
