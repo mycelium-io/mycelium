@@ -5,7 +5,7 @@ Mycelium's default channel identity is a shared-secret PSK: zero infrastructure,
 every room member derives the same group key. That's the try-it path, and it never
 changes. **SPIRE identity** is an optional, off-by-default upgrade: each member
 presents a SPIRE-attested JWT-SVID as its MLS identity, so members are
-cryptographically distinct, individually attested, and individually revocable —
+cryptographically distinct, individually attested, and individually revocable:
 the tightest attestation tier, and the heaviest to deploy.
 
 Turning it on is **one switch**. You never touch a SPIFFE socket path, a trust
@@ -20,13 +20,13 @@ mycelium up
 ```
 
 `mycelium up` reads `slim.identity` and, when it's `spire`, brings a co-located
-SPIRE **server + node daemon** up alongside the hub automatically — the compose
+SPIRE **server + node daemon** up alongside the hub automatically; the compose
 `spire` profile is an implementation detail the config drives. You do **not** pass
 `--profile spire` by hand. On the default (`psk`) nothing extra starts and the
 stack is byte-for-byte unchanged.
 
 > The SPIRE **node daemon** (upstream image `spire-agent`, container
-> `mycelium-spire-noded`) is SPIRE's per-node identity daemon — it serves the
+> `mycelium-spire-noded`) is SPIRE's per-node identity daemon: it serves the
 > Workload API socket and fetches SVIDs. It is unrelated to mycelium coordination
 > **agents** (`@alice` etc.); the shared word is an upstream-SPIRE coincidence.
 
@@ -37,8 +37,8 @@ mycelium agent create @alice
 ```
 
 With SPIRE on, `agent create` registers the SVID entry
-(`spiffe://<trust-domain>/agent/alice`) against the running SPIRE server itself —
-no printed copy-paste operator step. `agent rm @alice` deletes the entry, revoking
+(`spiffe://<trust-domain>/agent/alice`) against the running SPIRE server itself,
+with no printed copy-paste operator step. `agent rm @alice` deletes the entry, revoking
 the identity. Both go through the normal mycelium CLI.
 
 ## Check it
@@ -47,7 +47,7 @@ the identity. Both go through the normal mycelium CLI.
 mycelium doctor
 ```
 
-When SPIRE is on, doctor shows a legible line — `SPIRE up, @alice attested` — so a
+When SPIRE is on, doctor shows a legible line (`SPIRE up, @alice attested`) so a
 misconfiguration is a clear message rather than a member silently hanging at
 "Initializing spire identity manager."
 
@@ -67,7 +67,7 @@ the stack up.
 
 The appliance uses SPIRE's `unix` workload attestor, which identifies a workload by
 its process credentials. That requires the SPIRE node daemon to share the workload's
-PID namespace — which the shipped compose does for the **backend** (the always-on
+PID namespace, which the shipped compose does for the **backend** (the always-on
 moderator that holds membership for turn-based agents). A **resident** Claude or
 Cursor session on a user's own machine is *not* co-located with a SPIRE node daemon,
 so it cannot be `unix`-attested; on a spoke, identity degrades to the PSK unless you
@@ -75,5 +75,5 @@ front it with a non-`unix` attestor (k8s, docker, x509pop, join-token). This is 
 SPIRE is off by default and never lands on the default path.
 
 The appliance SPIRE profile is **dev-grade** (SQLite datastore, join-token node
-attestation, short SVID TTLs) — a real product surface for attested identity, not
+attestation, short SVID TTLs): a real product surface for attested identity, not
 yet a hardened production deployment.

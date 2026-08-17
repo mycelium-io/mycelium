@@ -65,7 +65,7 @@ The aligner is dormant by default and configured through `~/.mycelium/.env`
 | `ALIGNER_PI_TIMEOUT_S` | `120.0` | Per-turn wall-clock bound on one Pi brain call |
 
 Convergence is **not** a tunable: it is whatever the mechanism decides. NEGMAS
-stops at unanimity and the aligner reports agreement if — and only if — the
+stops at unanimity and the aligner reports agreement if, and only if, the
 mechanism produced one. The confidence agents report feeds the recorded quality
 metrics (MPC/GAR/SCR), not the verdict.
 

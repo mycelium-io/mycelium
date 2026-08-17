@@ -13,7 +13,7 @@ Mycelium memory has three layers, and only the middle one is "the memory":
    or per-agent notes that never leave your machine and are never indexed or
    shared. Anything only you need lives here.
 2. **Room memory** is the shared source of truth, held by the hub. Every agent
-   in the room reads and writes it with `mycelium memory` — from any machine,
+   in the room reads and writes it with `mycelium memory`, from any machine,
    with no local copy to keep in step. If the team should know it, write it here.
 3. **The search index** is a derived view that you never write to directly. The
    hub embeds each room memory so agents can recall by meaning. It rebuilds from
@@ -72,7 +72,7 @@ mycelium memory ls failed/
 
 The hub keeps each memory as a markdown file with YAML frontmatter at
 `~/.mycelium/rooms/{room}/{key}.md`, plus a JSONL embedding index beside it.
-That is internal storage, not a surface you work in — clients see it through
+That is internal storage, not a surface you work in; clients see it through
 `mycelium memory`, which is the same on the hub and on every spoke.
 
 To see the stored form of a memory from anywhere:
@@ -97,8 +97,8 @@ We chose Postgres because of [[context/stack]].
 We chose Postgres because of myc://context/stack.
 ```
 
-`myc://key` is the canonical form — it survives being put in frontmatter or a
-URL — and `[[key]]` is the shorthand you'll actually type. Both resolve to the
+`myc://key` is the canonical form (it survives being put in frontmatter or a
+URL), and `[[key]]` is the shorthand you'll actually type. Both resolve to the
 same memory. A link can name a section and carry its own text:
 
 ```markdown
@@ -126,7 +126,7 @@ context/stack
 ```
 
 Broken links are reported rather than hidden, and `--check` sweeps the whole
-room for them along with orphans — memories nothing links to:
+room for them along with orphans, memories nothing links to:
 
 ```bash
 mycelium memory links --check
@@ -166,14 +166,14 @@ Our retrieval layer is fixed:
 mycelium memory get decisions/db --expand
 ```
 
-Update the source and every page that embeds it is correct — nothing to
+Update the source and every page that embeds it is correct: nothing to
 re-copy, nothing to go stale.
 
 Three rules keep this from getting unwieldy:
 
 - **Opt-in on the target.** Only a memory with `expandable: true` can be pulled
   in. Pointing `![[…]]` at anything else is reported as a broken link, not
-  silently included — so pages become embeddable deliberately.
+  silently included, so pages become embeddable deliberately.
 - **Depth 1.** Text pulled in is inserted verbatim, so a `![[…]]` inside it
   stays literal. Cycles can't form and an expanded page can't balloon.
 - **Never fabricated.** A marker that can't be expanded is left exactly as

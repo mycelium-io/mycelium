@@ -30,7 +30,7 @@ prose and tasks. See [`mycelium plan`](#plan) for read/write commands and
 An operator on the hub can browse, edit, or git-track these directories
 directly; the backend keeps its search index in sync via startup scans and file
 watching. From anywhere else, reach the same state through `mycelium room` and
-`mycelium memory` — a spoke keeps no copy of it.
+`mycelium memory`; a spoke keeps no copy of it.
 
 ## Commands
 

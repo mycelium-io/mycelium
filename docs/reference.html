@@ -165,7 +165,7 @@
 <span class="bin">mycelium</span> <span class="cmd">doctor</span> <span class="flag">--mode</span> spoke   # force spoke checks (skip local-only)
 <span class="bin">mycelium</span> <span class="cmd">doctor</span> <span class="flag">--mode</span> auto    # default; detect from api_url</code></pre>
       <h3 id="architecture-reading-a-remote-room-spoke">Reading a remote room (spoke)</h3>
-      <p>When the backend runs on a remote server (EC2, Raspberry Pi, a hub), a spoke is a <strong>thin client</strong>: <code>mycelium memory</code> and <code>mycelium room</code> resolve against the hub over HTTP, so reads are always fresh and there is <strong>no sync step</strong> — nothing is mirrored locally to fall out of date.</p>
+      <p>When the backend runs on a remote server (EC2, Raspberry Pi, a hub), a spoke is a <strong>thin client</strong>: <code>mycelium memory</code> and <code>mycelium room</code> resolve against the hub over HTTP, so reads are always fresh and there is <strong>no sync step</strong>: nothing is mirrored locally to fall out of date.</p>
       <p><code>room clone</code> / <code>mycelium sync</code> remain only as an explicit <strong>export</strong>: a point-in-time local snapshot for backup or offline reference, not part of the normal flow.</p>
       <pre><code><span class="comment"># Optional: export a point-in-time snapshot of a room to local files</span>
 <span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">clone</span> my-project <span class="flag">--from</span> <span class="url">http://ec2-host:8000</span></code></pre>
@@ -241,13 +241,13 @@
 
 <span class="comment"># Post a reply or opening position</span>
 <span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="flag">--room</span> my-project <span class="flag">--handle</span> me <span class="str">&quot;moving toward 30% …&quot;</span></code></pre>
-      <p><strong>An agent is a resident runtime.</strong> A participant is your own live Claude Code or Cursor session. It just loops the participation calls itself — no wrapper, no separate process, no shelling out:</p>
+      <p><strong>An agent is a resident runtime.</strong> A participant is your own live Claude Code or Cursor session. It just loops the participation calls itself: no wrapper, no separate process, no shelling out:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">await</span> <span class="flag">--room</span> my-project <span class="flag">--handle</span> me     # blocks until you&#x27;re addressed
 <span class="comment"># …you reason, in your own context…</span>
 <span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="flag">--room</span> my-project <span class="flag">--handle</span> me <span class="str">&quot;moving toward 30% …&quot;</span>
 <span class="comment"># …then await again</span></code></pre>
-      <p>The loop <em>is</em> the wake: await → reason → respond → await. The session does the reasoning <strong>in its own head</strong>; <code>respond</code> just posts it. There is no daemon and no cold-spawn; agents never speak SLIM or L9 directly.</p>
-      <p>For a <strong>headless</strong> agent — no interactive session sitting there to hold the loop — <code>mycelium await --loop --exec &lt;cmd&gt;</code> runs the loop for you and hands each turn to <code>&lt;cmd&gt;</code> (turn JSON on stdin); <code>&lt;cmd&gt;</code> is your reasoning runtime and calls <code>respond</code>. Point it at a <strong>persistent</strong> runtime (e.g. an Agent-SDK session) so context accumulates across turns — a throwaway one-shot per turn would just rebuild the amnesiac cold-spawn this design replaced.</p>
+      <p>The loop <em>is</em> the wake: await → reason → respond → await. The session does the reasoning <strong>in its own head</strong>; <code>respond</code> just posts it. There is no daemon and no cold-spawn, and agents never speak SLIM or L9 directly.</p>
+      <p>For a <strong>headless</strong> agent (no interactive session sitting there to hold the loop), <code>mycelium await --loop --exec &lt;cmd&gt;</code> runs the loop for you and hands each turn to <code>&lt;cmd&gt;</code> (turn JSON on stdin); <code>&lt;cmd&gt;</code> is your reasoning runtime and calls <code>respond</code>. Point it at a <strong>persistent</strong> runtime (e.g. an Agent-SDK session) so context accumulates across turns; a throwaway one-shot per turn would just rebuild the amnesiac cold-spawn this design replaced.</p>
       <p>An <code>@</code>-mention to a handle with no resident runtime simply waits on the durable transcript cursor until one awaits. (Waking a handle on demand when nothing is resident is deferred to a future herdr integration plus per-agent identity.)</p>
       <p><strong>Cognition rides on engines.</strong> First-party <a href="#engines">engines</a> are registered in a room and summoned by <code>@</code>-mention; each <code>kind</code> is a distinct unit of reasoning. The <code>aligner</code> drives negotiation; its brain is a persistent Pi coding-agent session running a NEGMAS Stacked Alternating Offers mechanism that owns termination, stopping the instant the agents agree. The <code>synthesizer</code> distills the room&#x27;s memory into a shared briefing. See <a href="#engines">engines</a>, <a href="#aligner">aligner</a>, and <a href="#episodes">episodes</a>.</p>
       <h2 id="architecture-adapters">Adapters</h2>
@@ -277,7 +277,7 @@
       <pre><code><span class="comment"># The skill is invoked automatically in Claude Code sessions</span>
 <span class="comment"># or explicitly via the slash command</span>
 /mycelium</code></pre>
-      <p>A Claude Code session participates as a resident runtime: it loops <code>mycelium await</code> → reason → <code>mycelium respond</code>, picking up each <code>@handle</code> mention on its next turn and answering in its own context. (For a headless, unattended agent, <code>mycelium await --loop --exec &lt;cmd&gt;</code> runs that loop for you — see above.)</p>
+      <p>A Claude Code session participates as a resident runtime: it loops <code>mycelium await</code> → reason → <code>mycelium respond</code>, picking up each <code>@handle</code> mention on its next turn and answering in its own context. (For a headless, unattended agent, <code>mycelium await --loop --exec &lt;cmd&gt;</code> runs that loop for you; see above.)</p>
       <h3 id="architecture-cursor">Cursor</h3>
       <p>Same resident model as Claude Code: a Cursor session loops <code>await</code> → reason → <code>respond</code>.</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">adapter</span> <span class="cmd">add</span> cursor   # installs the workspace rule + AGENTS.md assets
@@ -1094,7 +1094,7 @@ procedures/  Reusable how-to steps (do this again later)</code></pre>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">doctor</span></code></pre>
       <p>The spoke reports <strong>spoke mode</strong> and skips checks that only apply to a local backend.</p>
       <h2 id="hub-and-spoke-step-3-use-a-room-from-a-spoke">Step 3: Use a room from a spoke</h2>
-      <p>There is one store: the hub&#x27;s. A spoke is a thin client — it keeps no copy of the room&#x27;s memory and needs no sync step. Create the room on the hub, then use it from anywhere.</p>
+      <p>There is one store: the hub&#x27;s. A spoke is a thin client; it keeps no copy of the room&#x27;s memory and needs no sync step. Create the room on the hub, then use it from anywhere.</p>
       <pre><code><span class="comment"># On the hub</span>
 <span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">create</span> portfolio
 <span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">use</span> portfolio</code></pre>
@@ -1105,10 +1105,10 @@ procedures/  Reusable how-to steps (do this again later)</code></pre>
 <span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">get</span> decisions/allocation
 <span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> decisions/allocation <span class="str">&quot;60/40 equities to bonds&quot;</span>
 <span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">search</span> <span class="str">&quot;what did we decide about risk&quot;</span></code></pre>
-      <p>Because reads go to the hub, a spoke sees a write the moment it lands — there is no local copy to drift. The flip side: memory commands need the hub reachable, and say so plainly when it isn&#x27;t.</p>
+      <p>Because reads go to the hub, a spoke sees a write the moment it lands; there is no local copy to drift. The flip side: memory commands need the hub reachable, and say so plainly when it isn&#x27;t.</p>
       <div class="callout callout-note">
         <div class="callout-bar"></div>
-        <div class="callout-body"><code>mycelium room clone</code> still exists for pulling a room&#x27;s memories down as files — useful for a backup or an offline read — but it is not part of joining a room from a spoke.</div>
+        <div class="callout-body"><code>mycelium room clone</code> still exists for pulling a room&#x27;s memories down as files (useful for a backup or an offline read) but it is not part of joining a room from a spoke.</div>
       </div>
       <h2 id="hub-and-spoke-step-4-run-a-negotiation-across-machines">Step 4: Run a negotiation across machines</h2>
       <p>Register the mediator (the <a href="#aligner">aligner</a>) once in the room, then have each machine&#x27;s agent post an opening position and loop on the channel. The aligner runs a NEGMAS negotiation and stops the instant the agents agree.</p>
@@ -1150,11 +1150,11 @@ procedures/  Reusable how-to steps (do this again later)</code></pre>
       <h1>Authentication</h1>
       <p>Mycelium&#x27;s backend can require a signed <strong>bearer token</strong> on every HTTP API call, validated against an OIDC issuer you configure. It is <strong>off by default</strong> and nothing about the default install changes until you turn it on.</p>
       <h2 id="auth-off-by-default-on-purpose">Off by default, on purpose</h2>
-      <p>Auth must never be a wall between someone and trying Mycelium. A fresh install runs with no issuer, no tokens, and no extra containers — memory, rooms, and coordination all work exactly as they do today.</p>
+      <p>Auth must never be a wall between someone and trying Mycelium. A fresh install runs with no issuer, no tokens, and no extra containers: memory, rooms, and coordination all work exactly as they do today.</p>
       <p>Turn it on when a <strong>team shares a hub over a network</strong>. Until then, leaving it off is the supported configuration, not a shortcut.</p>
       <div class="callout callout-note">
         <div class="callout-bar"></div>
-        <div class="callout-body">Without the gate, anyone who can reach the backend&#x27;s port can read and write every room and post as any <code>@handle</code>. On a laptop that&#x27;s fine. On a shared network it is not — that is precisely the moment to enable this.</div>
+        <div class="callout-body">Without the gate, anyone who can reach the backend&#x27;s port can read and write every room and post as any <code>@handle</code>. On a laptop that&#x27;s fine. On a shared network it is not; that is precisely the moment to enable this.</div>
       </div>
       <h2 id="auth-turning-it-on">Turning it on</h2>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> auth.enabled true
@@ -1171,7 +1171,7 @@ jwks_url = &quot;https://sso.example.com/realms/mycelium/protocol/openid-connect
 role     = &quot;user&quot;</code></pre>
       <p>Re-run <code>mycelium config apply</code> and recreate the backend so it picks up the new environment.</p>
       <h3 id="auth-always-set-an-audience">Always set an audience</h3>
-      <p><code>audience</code> is optional but you should always set it when enabling auth. Without one, <strong>any</strong> token your issuer has ever minted is accepted — including a token a user obtained for a completely unrelated application on the same identity provider. That token&#x27;s holder was never authorized against your hub.</p>
+      <p><code>audience</code> is optional but you should always set it when enabling auth. Without one, <strong>any</strong> token your issuer has ever minted is accepted, including a token a user obtained for a completely unrelated application on the same identity provider. That token&#x27;s holder was never authorized against your hub.</p>
       <p>Setting an audience is what makes &quot;a valid token&quot; mean &quot;a token meant for <em>this</em> hub&quot;. The backend logs a warning at startup and flags it in <code>/health</code> when auth is on without one.</p>
       <h2 id="auth-configuration">Configuration</h2>
       <div class="table-wrap">
@@ -1227,27 +1227,27 @@ role     = &quot;user&quot;</code></pre>
           </tbody>
         </table>
       </div>
-      <p>Each <code>[[auth.issuers]]</code> block takes <code>issuer</code> (the exact <code>iss</code> to trust), <code>jwks_url</code> (optional — omit to resolve it from the issuer&#x27;s OIDC discovery document), <code>audience</code> (optional per-issuer override), and <code>role</code>.</p>
+      <p>Each <code>[[auth.issuers]]</code> block takes <code>issuer</code> (the exact <code>iss</code> to trust), <code>jwks_url</code> (optional; omit to resolve it from the issuer&#x27;s OIDC discovery document), <code>audience</code> (optional per-issuer override), and <code>role</code>.</p>
       <h2 id="auth-signing-in-from-the-cli">Signing in from the CLI</h2>
       <p>The gate above is the hub&#x27;s half. <code>mycelium login</code> is yours: it obtains an OIDC token for <strong>you</strong>, caches it, and every later command sends it.</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> login.issuer <span class="url">https://sso.example.com/realms/mycelium</span>
 <span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> login.audience <span class="bin">mycelium</span>      # match the hub&#x27;s auth.audience
 <span class="bin">mycelium</span> <span class="cmd">login</span></code></pre>
-      <p>Your browser opens, you sign in at your identity provider, and the CLI takes it from there — <code>mycelium memory</code>, <code>mycelium room</code>, <code>await</code>, <code>respond</code> and the rest now carry <code>Authorization: Bearer &lt;token&gt;</code>.</p>
-      <p><strong>On a machine with no browser</strong> — SSH, CI, a container — use the device flow. The CLI prints a URL and a short code you enter from any other device:</p>
+      <p>Your browser opens, you sign in at your identity provider, and the CLI takes it from there: <code>mycelium memory</code>, <code>mycelium room</code>, <code>await</code>, <code>respond</code> and the rest now carry <code>Authorization: Bearer &lt;token&gt;</code>.</p>
+      <p><strong>On a machine with no browser</strong> (SSH, CI, a container) use the device flow. The CLI prints a URL and a short code you enter from any other device:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">login</span> <span class="flag">--device</span></code></pre>
       <p>The CLI falls back to this automatically when it finds no browser to open, so <code>mycelium login</code> over SSH does the right thing without the flag.</p>
       <p><code>mycelium logout</code> drops the session, and the CLI goes straight back to sending no token at all.</p>
       <h3 id="auth-login-is-opt-in-like-the-gate">Login is opt-in, like the gate</h3>
-      <p>Never running <code>mycelium login</code> changes nothing: with no cached session the CLI sends no <code>Authorization</code> header, exactly as before this existed. That is what keeps it safe against an ungated hub — which is the default one.</p>
+      <p>Never running <code>mycelium login</code> changes nothing: with no cached session the CLI sends no <code>Authorization</code> header, exactly as before this existed. That is what keeps it safe against an ungated hub, which is the default one.</p>
       <h3 id="auth-where-the-token-lives">Where the token lives</h3>
-      <p>In <code>~/.mycelium/token.json</code>, created mode <code>0600</code> — <strong>not</strong> in <code>config.toml</code>. Config is printed, copied between machines, and mirrored to <code>config.json</code> for the frontend; a token in there would leak by routine. Set <code>MYCELIUM_TOKEN_FILE</code> to cache it somewhere else (a CI runner with a shared home, say).</p>
-      <p>The access token is renewed automatically when it expires, using the refresh token, on the way into the next call that needs it — you don&#x27;t re-run <code>login</code> on a schedule. Renewal needs a refresh token, which most issuers grant only for the <code>offline_access</code> scope; it is in the default <code>login.scopes</code> for that reason. If renewal fails, the CLI drops the header and tells you to sign in again rather than sending a token the hub will reject.</p>
+      <p>In <code>~/.mycelium/token.json</code>, created mode <code>0600</code>, <strong>not</strong> in <code>config.toml</code>. Config is printed, copied between machines, and mirrored to <code>config.json</code> for the frontend; a token in there would leak by routine. Set <code>MYCELIUM_TOKEN_FILE</code> to cache it somewhere else (a CI runner with a shared home, say).</p>
+      <p>The access token is renewed automatically when it expires, using the refresh token, on the way into the next call that needs it; you don&#x27;t re-run <code>login</code> on a schedule. Renewal needs a refresh token, which most issuers grant only for the <code>offline_access</code> scope; it is in the default <code>login.scopes</code> for that reason. If renewal fails, the CLI drops the header and tells you to sign in again rather than sending a token the hub will reject.</p>
       <h3 id="auth-who-you-are">Who you are</h3>
       <p><code>mycelium whoami</code> (and <code>mycelium iam</code> with no arguments) reports the handle from your <strong>token</strong> when you&#x27;re signed in, and the self-asserted <code>identity.name</code> when you&#x27;re not:</p>
       <pre><code>acting as @avery  (avery#a8f3)
   signed in (<span class="url">https://sso.example.com/realms/mycelium,</span> expires in 42 min)</code></pre>
-      <p>Because a gated hub attributes writes to the token (see <em>The token is the author</em> below), a self-asserted handle that names someone else is a 403 in waiting — <code>login</code> and <code>iam</code> both say so when they disagree.</p>
+      <p>Because a gated hub attributes writes to the token (see <em>The token is the author</em> below), a self-asserted handle that names someone else is a 403 in waiting; <code>login</code> and <code>iam</code> both say so when they disagree.</p>
       <h3 id="auth-configuration">Configuration</h3>
       <div class="table-wrap">
         <table>
@@ -1287,7 +1287,7 @@ role     = &quot;user&quot;</code></pre>
             <tr>
               <td><code>login.redirect_port</code></td>
               <td><code>0</code></td>
-              <td>Fixed loopback port for the browser redirect (<code>0</code> picks a free one). Set it when your issuer requires an exact registered redirect URI — the URI is <code>http://127.0.0.1:&lt;port&gt;/callback</code>.</td>
+              <td>Fixed loopback port for the browser redirect (<code>0</code> picks a free one). Set it when your issuer requires an exact registered redirect URI: the URI is <code>http://127.0.0.1:&lt;port&gt;/callback</code>.</td>
             </tr>
           </tbody>
         </table>
@@ -1295,7 +1295,7 @@ role     = &quot;user&quot;</code></pre>
       <p><code>MYCELIUM_LOGIN_ISSUER</code>, <code>MYCELIUM_LOGIN_CLIENT_ID</code>, <code>MYCELIUM_LOGIN_CLIENT_SECRET</code>, <code>MYCELIUM_LOGIN_AUDIENCE</code> and <code>MYCELIUM_LOGIN_SCOPES</code> override the same settings, for a runner that has no config file to edit.</p>
       <p>The CLI is a <strong>public client</strong>: it authenticates with PKCE (S256) and ships no secret. Register it at your issuer as a public client with <code>http://127.0.0.1:*/callback</code> as an allowed redirect, and enable the device grant if you want <code>--device</code> to work.</p>
       <h2 id="auth-agents-sign-in-as-themselves">Agents sign in as themselves</h2>
-      <p><code>mycelium login</code> is for a human. An agent has no browser to open and nobody sitting there to click through a consent screen, so it authenticates as a <strong>workload</strong>: its own OIDC client, minted with the <code>client_credentials</code> grant. The token&#x27;s <code>sub</code> is the client id, which is the agent&#x27;s handle — the same handle the hub binds its writes to.</p>
+      <p><code>mycelium login</code> is for a human. An agent has no browser to open and nobody sitting there to click through a consent screen, so it authenticates as a <strong>workload</strong>: its own OIDC client, minted with the <code>client_credentials</code> grant. The token&#x27;s <code>sub</code> is the client id, which is the agent&#x27;s handle: the same handle the hub binds its writes to.</p>
       <p>That is the property a shared secret can&#x27;t give you: each agent holds a different credential, so <strong>revoking one agent&#x27;s client leaves every other agent working</strong>.</p>
       <p>Point the machine at the issuer agents mint from, then give each agent its own client:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> agent_auth.issuer <span class="url">https://sso.example.com/realms/agents</span>
@@ -1303,15 +1303,15 @@ role     = &quot;user&quot;</code></pre>
 <span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">apply</span>
 
 <span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">credential</span> set release-agent <span class="flag">--secret-stdin</span> &lt; secret.txt</code></pre>
-      <p>The client id defaults to the handle; pass <code>--client-id</code> when your issuer names it differently. <code>mycelium agent credential show release-agent</code> reports what an agent resolves to (never its secret), <code>... ls</code> lists every agent on the machine, and <code>... rm</code> forgets one locally — revoke the client at your issuer to actually kill it.</p>
-      <p>From then on, <code>mycelium await --room R --handle release-agent</code> and <code>mycelium respond --handle release-agent</code> carry <strong>that agent&#x27;s</strong> token, including when they run from a shell where a human is logged in — a resident agent writes as itself, not as whoever started it.</p>
+      <p>The client id defaults to the handle; pass <code>--client-id</code> when your issuer names it differently. <code>mycelium agent credential show release-agent</code> reports what an agent resolves to (never its secret), <code>... ls</code> lists every agent on the machine, and <code>... rm</code> forgets one locally; revoke the client at your issuer to actually kill it.</p>
+      <p>From then on, <code>mycelium await --room R --handle release-agent</code> and <code>mycelium respond --handle release-agent</code> carry <strong>that agent&#x27;s</strong> token, including when they run from a shell where a human is logged in: a resident agent writes as itself, not as whoever started it.</p>
       <h3 id="auth-off-by-default-here-too">Off by default here too</h3>
-      <p>An agent with no credential sends no token, exactly as before. Configuring <code>agent_auth.issuer</code> alone is <em>not</em> a credential: something has to have been issued to that specific agent first, or a shared issuer would quietly turn every handle into a token request. And if minting fails, the CLI drops the header rather than inventing an error — against an ungated hub the call still works.</p>
+      <p>An agent with no credential sends no token, exactly as before. Configuring <code>agent_auth.issuer</code> alone is <em>not</em> a credential: something has to have been issued to that specific agent first, or a shared issuer would quietly turn every handle into a token request. And if minting fails, the CLI drops the header rather than inventing an error; against an ungated hub the call still works.</p>
       <h3 id="auth-where-the-credential-lives">Where the credential lives</h3>
-      <p>In <code>~/.mycelium/agent-credentials.json</code>, mode <code>0600</code>, alongside a cached token per agent under <code>~/.mycelium/agent-tokens/</code>. Client secrets are secrets, so they stay out of <code>config.toml</code> for the same reason your session does. <code>client_credentials</code> issues no refresh token — an expired agent token is simply re-minted from the client.</p>
+      <p>In <code>~/.mycelium/agent-credentials.json</code>, mode <code>0600</code>, alongside a cached token per agent under <code>~/.mycelium/agent-tokens/</code>. Client secrets are secrets, so they stay out of <code>config.toml</code> for the same reason your session does. <code>client_credentials</code> issues no refresh token; an expired agent token is simply re-minted from the client.</p>
       <p>For a container that runs exactly one agent and has no config file, <code>MYCELIUM_AGENT_AUTH_ISSUER</code>, <code>MYCELIUM_AGENT_AUTH_CLIENT_ID</code>, <code>MYCELIUM_AGENT_AUTH_CLIENT_SECRET</code>, <code>MYCELIUM_AGENT_AUTH_SCOPES</code> and <code>MYCELIUM_AGENT_AUTH_AUDIENCE</code> say the same thing in environment variables, and <code>MYCELIUM_AGENT_HANDLE</code> names the agent it is running as.</p>
       <h3 id="auth-a-credential-mycelium-didnt-mint">A credential Mycelium didn&#x27;t mint</h3>
-      <p><code>MYCELIUM_AGENT_AUTH_TOKEN</code> supplies a bearer token directly, used as-is and never renewed here. That is the seam for a token minted elsewhere — a CI job, or a JWT issued by a workload-identity system such as SPIRE. Trusting one is a config entry on the hub side too: another <code>[[auth.issuers]]</code> block with <code>role = &quot;agent&quot;</code>. Nothing about it is required, and nothing about it is on by default.</p>
+      <p><code>MYCELIUM_AGENT_AUTH_TOKEN</code> supplies a bearer token directly, used as-is and never renewed here. That is the seam for a token minted elsewhere: a CI job, or a JWT issued by a workload-identity system such as SPIRE. Trusting one is a config entry on the hub side too: another <code>[[auth.issuers]]</code> block with <code>role = &quot;agent&quot;</code>. Nothing about it is required, and nothing about it is on by default.</p>
       <h3 id="auth-configuration">Configuration</h3>
       <div class="table-wrap">
         <table>
@@ -1355,30 +1355,30 @@ role   = &quot;agent&quot;</code></pre>
       <h2 id="auth-handle-and-role">Handle and role</h2>
       <p>Once a token validates, the request has a <strong>principal</strong>:</p>
       <ul>
-        <li><strong>handle</strong> — from <code>auth.handle_claim</code> (<code>sub</code> by default), normalized the same way stored handles are (leading <code>@</code> stripped, lowercased). An OIDC service-account whose client id is <code>release-agent</code> therefore arrives as <code>@release-agent</code>.</li>
-        <li><strong>role</strong> — from <code>auth.role_claim</code> if the token carries it, otherwise the <code>role</code> on the matched issuer block. Which root signed a token is usually the whole answer to user-vs-agent, so most deployments never set a role claim at all.</li>
+        <li><strong>handle</strong>, from <code>auth.handle_claim</code> (<code>sub</code> by default), normalized the same way stored handles are (leading <code>@</code> stripped, lowercased). An OIDC service-account whose client id is <code>release-agent</code> therefore arrives as <code>@release-agent</code>.</li>
+        <li><strong>role</strong>, from <code>auth.role_claim</code> if the token carries it, otherwise the <code>role</code> on the matched issuer block. Which root signed a token is usually the whole answer to user-vs-agent, so most deployments never set a role claim at all.</li>
       </ul>
       <h2 id="auth-the-token-is-the-author">The token is the author</h2>
-      <p>The principal is not just recorded — it is the <strong>actor of record</strong> for every write it makes. Memory authorship (<code>created_by</code> / <code>updated_by</code>), the transcript sender, and L9 actor attribution all come from the token rather than from the handle the request body supplies:</p>
+      <p>The principal is not just recorded; it is the <strong>actor of record</strong> for every write it makes. Memory authorship (<code>created_by</code> / <code>updated_by</code>), the transcript sender, and L9 actor attribution all come from the token rather than from the handle the request body supplies:</p>
       <ul>
-        <li>The body <strong>omits</strong> the actor, or names the <strong>same</strong> handle → the token&#x27;s handle is stored. <code>@Alice</code> and <code>alice</code> are one principal; the comparison uses the same normalization as the store.</li>
+        <li>The body <strong>omits</strong> the actor, or names the <strong>same</strong> handle, and the token&#x27;s handle is stored. <code>@Alice</code> and <code>alice</code> are one principal; the comparison uses the same normalization as the store.</li>
         <li>The body names a <strong>different</strong> handle → <strong>403</strong>. A caller acting under the wrong identity gets told, rather than having its writes quietly re-attributed.</li>
-        <li>A <strong>session qualifier</strong> (<code>alice#a8f3</code> — the same person on one machine) is kept as-is. The suffix rides along on the token&#x27;s handle, so per-session attribution survives without letting the suffix name someone else.</li>
+        <li>A <strong>session qualifier</strong> (<code>alice#a8f3</code>, the same person on one machine) is kept as-is. The suffix rides along on the token&#x27;s handle, so per-session attribution survives without letting the suffix name someone else.</li>
       </ul>
-      <p>With the gate off there is no principal, so every path keeps the self-asserted actor from the body exactly as before — the try-it path is unchanged.</p>
+      <p>With the gate off there is no principal, so every path keeps the self-asserted actor from the body exactly as before; the try-it path is unchanged.</p>
       <h2 id="auth-acting-as-another-handle">Acting as another handle</h2>
-      <p>Attribution answers <em>who wrote this</em>. Two calls ask something different: <code>mycelium await</code> names <strong>whose queue to drain</strong>, and joining a room names <strong>whose presence to register</strong>. Both take the handle as a request parameter, and draining a queue consumes it — a turn served to one caller is not served again — so an unchecked handle there means a valid token for <code>@bob</code> could read and swallow <code>@alice</code>&#x27;s coordination stream.</p>
+      <p>Attribution answers <em>who wrote this</em>. Two calls ask something different: <code>mycelium await</code> names <strong>whose queue to drain</strong>, and joining a room names <strong>whose presence to register</strong>. Both take the handle as a request parameter, and draining a queue consumes it (a turn served to one caller is not served again) so an unchecked handle there means a valid token for <code>@bob</code> could read and swallow <code>@alice</code>&#x27;s coordination stream.</p>
       <p>A gated hub allows the call when either is true:</p>
       <ul>
         <li>the handle <strong>is</strong> the token&#x27;s own (a session qualifier like <code>alice#a8f3</code> still names alice), or</li>
-        <li>the handle&#x27;s agent manifest <strong>grants</strong> the token&#x27;s principal — its <code>owner</code>, or an entry in its <code>allow_from</code>.</li>
+        <li>the handle&#x27;s agent manifest <strong>grants</strong> the token&#x27;s principal: its <code>owner</code>, or an entry in its <code>allow_from</code>.</li>
       </ul>
       <p>Anything else is a <strong>403</strong>. Grants are per-room, because manifests are: owning <code>@bot</code> in one room says nothing about a <code>@bot</code> in another.</p>
-      <p>The grant is what makes &quot;await on behalf of&quot; explicit rather than universal. An agent running with its own credential needs nothing — it awaits itself. A human driving an agent&#x27;s loop from their own session does:</p>
+      <p>The grant is what makes &quot;await on behalf of&quot; explicit rather than universal. An agent running with its own credential needs nothing: it awaits itself. A human driving an agent&#x27;s loop from their own session does:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">create</span> bot <span class="flag">--owner</span> alice          # alice may now await <span class="flag">--handle</span> bot
 <span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">create</span> bot <span class="flag">--allow-from</span> ops-lead  # …and so may @ops-lead</code></pre>
-      <p>A resident loop (<code>mycelium await --loop</code>) <strong>stops</strong> on a 401 or 403 rather than retrying: a refused identity is not a blip, and re-polling it would flood the hub for as long as the loop ran.</p>
-      <p>With the gate off nothing is checked here either, so an ungated hub still lets any caller await any handle — which is also why a hub reachable beyond your machine wants the gate on.</p>
+      <p>A resident loop (<code>mycelium await --loop</code>) <strong>stops</strong> on a 401 or 403 rather than retrying. A refused identity is not a blip, and re-polling it would flood the hub for as long as the loop ran.</p>
+      <p>With the gate off nothing is checked here either, so an ungated hub still lets any caller await any handle, which is also why a hub reachable beyond your machine wants the gate on.</p>
       <h2 id="auth-key-rotation">Key rotation</h2>
       <p>The JWKS is fetched from your issuer and cached for <code>auth.jwks_ttl_s</code>. When a token arrives signed by a key ID the backend hasn&#x27;t seen, it re-fetches immediately (rate-limited), so <strong>rotating your signing key does not require restarting Mycelium</strong>.</p>
       <p>If the issuer is briefly unreachable, previously fetched keys keep serving. The keys are still your issuer&#x27;s; only their freshness is in doubt, and failing closed would take the hub down for the length of an IdP blip.</p>
@@ -1387,7 +1387,7 @@ role   = &quot;agent&quot;</code></pre>
       <p>Two things worth knowing:</p>
       <ul>
         <li><code>X-Forwarded-For</code> is deliberately ignored. It is caller-supplied, so honouring it would let any remote request claim to be local.</li>
-        <li><strong>It does not fire for a backend running in Docker.</strong> Traffic through a published port arrives from the bridge gateway, not loopback, and is indistinguishable from LAN traffic — treating that as local would silently open the hub to your whole network. For the containerized local tier, leave <code>auth.enabled</code> off; that is the honest switch for it.</li>
+        <li><strong>It does not fire for a backend running in Docker.</strong> Traffic through a published port arrives from the bridge gateway, not loopback, and is indistinguishable from LAN traffic; treating that as local would silently open the hub to your whole network. For the containerized local tier, leave <code>auth.enabled</code> off; that is the honest switch for it.</li>
       </ul>
       <h2 id="auth-what-stays-open">What stays open</h2>
       <p>Health (<code>/</code>, <code>/health</code>) and the schema/docs routes are served without a token even when the gate is on: orchestrator probes are unauthenticated by nature, and the health payload reveals no room content. <code>/health</code> gains an <code>auth</code> block reporting whether the hub is gated, which issuers it trusts, and any configuration warnings.</p>
@@ -1412,7 +1412,7 @@ role   = &quot;agent&quot;</code></pre>
             </tr>
             <tr>
               <td><code>503</code></td>
-              <td>The gate is on but unusable — no trusted issuers configured, or the issuer&#x27;s JWKS is unreachable and nothing is cached.</td>
+              <td>The gate is on but unusable: no trusted issuers configured, or the issuer&#x27;s JWKS is unreachable and nothing is cached.</td>
             </tr>
           </tbody>
         </table>
@@ -1420,7 +1420,7 @@ role   = &quot;agent&quot;</code></pre>
       <p>Only asymmetric signatures are accepted (<code>RS<em></code>, <code>PS</em></code>, <code>ES<em></code>). The <code>none</code> algorithm and the whole <code>HS</em></code> family are refused before verification, so a public JWKS key can never be replayed as an HMAC secret.</p>
       <h2 id="auth-trying-it-locally">Trying it locally</h2>
       <p>A dev OIDC issuer ships for exactly this, so you can exercise the gate without standing up Keycloak. See <code>docs/design/dev-auth-issuer.md</code>.</p>
-      <p>For the real thing — a Keycloak realm, client, and human <code>mycelium login</code>, wired end-to-end — follow the <a href="#keycloak-oidc">Keycloak / OIDC Setup</a> guide.</p>
+      <p>For the real thing (a Keycloak realm, client, and human <code>mycelium login</code>, wired end-to-end) follow the <a href="#keycloak-oidc">Keycloak / OIDC Setup</a> guide.</p>
     </section>
 
     <hr class="divider">
@@ -1428,10 +1428,10 @@ role   = &quot;agent&quot;</code></pre>
     <section class="doc-section" id="keycloak-oidc">
       <p>&lt;!-- SPDX-License-Identifier: Apache-2.0 --&gt;</p>
       <h1>Keycloak / OIDC setup</h1>
-      <p><a href="#auth">Authentication</a> explains the gate in the abstract: the backend trusts an OIDC issuer and validates a bearer token against its JWKS. This guide makes the <strong>human OIDC tier</strong> concrete against real <strong>Keycloak</strong> — realm, client, the claims the gate keys off, and a human <code>mycelium login</code>. Every command here was run against a live Keycloak; the wiring below is confirmed, not aspirational.</p>
-      <p>Keycloak is a <em>supported</em> issuer, not the default. The gate stays <strong>off by default</strong> (the try-it path never touches it) — you turn it on when a team shares a hub over a network. Dex, ZITADEL, Authentik, or your corporate SSO slot in exactly the same way; nothing here is Keycloak-specific except the URLs.</p>
+      <p><a href="#auth">Authentication</a> explains the gate in the abstract: the backend trusts an OIDC issuer and validates a bearer token against its JWKS. This guide makes the <strong>human OIDC tier</strong> concrete against real <strong>Keycloak</strong>: realm, client, the claims the gate keys off, and a human <code>mycelium login</code>. Every command here was run against a live Keycloak: the wiring below is confirmed, not aspirational.</p>
+      <p>Keycloak is a <em>supported</em> issuer, not the default. The gate stays <strong>off by default</strong> (the try-it path never touches it); you turn it on when a team shares a hub over a network. Dex, ZITADEL, Authentik, or your corporate SSO slot in exactly the same way; nothing here is Keycloak-specific except the URLs.</p>
       <h2 id="keycloak-oidc-stand-up-keycloak">Stand up Keycloak</h2>
-      <p>A ready-to-run Keycloak ships as an <strong>opt-in compose overlay</strong> — off the default stack, added with an extra <code>-f</code> exactly like the dev issuer. It imports a <code>mycelium</code> realm with a public CLI client, an audience mapper, and a demo user, so there is nothing to click in the admin console.</p>
+      <p>A ready-to-run Keycloak ships as an <strong>opt-in compose overlay</strong>, off the default stack, added with an extra <code>-f</code> exactly like the dev issuer. It imports a <code>mycelium</code> realm with a public CLI client, an audience mapper, and a demo user, so there is nothing to click in the admin console.</p>
       <pre><code><span class="cmd">cd</span> mycelium-cli/src/mycelium/docker
 <span class="cmd">docker</span> compose <span class="flag">-f</span> compose.yml <span class="flag">-f</span> compose-dev.yml <span class="flag">-f</span> compose-keycloak.yml \
   up <span class="flag">-d</span> keycloak</code></pre>
@@ -1441,25 +1441,25 @@ role   = &quot;agent&quot;</code></pre>
 <span class="comment"># → http://localhost:8080/realms/mycelium</span></code></pre>
       <div class="callout callout-note">
         <div class="callout-bar"></div>
-        <div class="callout-body"><strong>Port already in use?</strong> Publish it elsewhere with <code>MYCELIUM_KEYCLOAK_PORT=8085 docker compose … up -d keycloak</code>. The overlay pins Keycloak&#x27;s advertised URL to the same port, so the issuer becomes <code>http://localhost:8085/realms/mycelium</code> — use that everywhere below. The admin console is at <code>/admin</code> (<code>admin</code> / <code>admin</code>, override with <code>MYCELIUM_KEYCLOAK_ADMIN[_PASSWORD]</code>).</div>
+        <div class="callout-body"><strong>Port already in use?</strong> Publish it elsewhere with <code>MYCELIUM_KEYCLOAK_PORT=8085 docker compose … up -d keycloak</code>. The overlay pins Keycloak&#x27;s advertised URL to the same port, so the issuer becomes <code>http://localhost:8085/realms/mycelium</code>; use that everywhere below. The admin console is at <code>/admin</code> (<code>admin</code> / <code>admin</code>, override with <code>MYCELIUM_KEYCLOAK_ADMIN[_PASSWORD]</code>).</div>
       </div>
       <h2 id="keycloak-oidc-what-the-realm-ships-and-what-the-gate-expects">What the realm ships (and what the gate expects)</h2>
       <p>The imported realm (<code>docker/keycloak/mycelium-realm.json</code>) is the whole anatomy the gate needs. Point your own Keycloak at these same four things:</p>
       <ul>
-        <li><strong>A public client <code>mycelium-cli</code></strong> — this is the client <code>mycelium login</code> uses. Public (no secret; it authenticates with PKCE), with the loopback redirect <code>http://127.0.0.1:*/callback</code> for the browser flow and the <strong>device grant</strong> enabled for headless login.</li>
-        <li><strong>An audience mapper</strong> stamping <code>mycelium</code> into the access token&#x27;s <code>aud</code>. This is what makes <code>auth.audience = &quot;mycelium&quot;</code> meaningful — a token minted for some other app on the same Keycloak is refused.</li>
-        <li><strong><code>sub</code> is a UUID, so the human handle comes from <code>preferred_username</code>.</strong> Set <code>auth.handle_claim = &quot;preferred_username&quot;</code> for the human tier — otherwise every human arrives as an opaque UUID instead of <code>@demo</code>.</li>
+        <li><strong>A public client <code>mycelium-cli</code></strong>: this is the client <code>mycelium login</code> uses. Public (no secret; it authenticates with PKCE), with the loopback redirect <code>http://127.0.0.1:*/callback</code> for the browser flow and the <strong>device grant</strong> enabled for headless login.</li>
+        <li><strong>An audience mapper</strong> stamping <code>mycelium</code> into the access token&#x27;s <code>aud</code>. This is what makes <code>auth.audience = &quot;mycelium&quot;</code> meaningful: a token minted for some other app on the same Keycloak is refused.</li>
+        <li><strong><code>sub</code> is a UUID, so the human handle comes from <code>preferred_username</code>.</strong> Set <code>auth.handle_claim = &quot;preferred_username&quot;</code> for the human tier; otherwise every human arrives as an opaque UUID instead of <code>@demo</code>.</li>
         <li><strong>A demo user</strong> (<code>demo</code> / <code>demo</code>) so a human login has someone to sign in as.</li>
       </ul>
       <div class="callout callout-note">
         <div class="callout-bar"></div>
-        <div class="callout-body"><strong>A gotcha worth knowing if you build your own client:</strong> the CLI&#x27;s <em>device</em> flow does not send PKCE parameters, so do <strong>not</strong> set the client to <em>require</em> PKCE (<code>pkce.code.challenge.method</code>) — that rejects the device grant with <code>Missing parameter: code_challenge_method</code>. Leave enforcement off; the CLI still uses PKCE on the browser flow, Keycloak just doesn&#x27;t mandate it on every grant.</div>
+        <div class="callout-body"><strong>A gotcha worth knowing if you build your own client:</strong> the CLI&#x27;s <em>device</em> flow does not send PKCE parameters, so do <strong>not</strong> set the client to <em>require</em> PKCE (<code>pkce.code.challenge.method</code>); that rejects the device grant with <code>Missing parameter: code_challenge_method</code>. Leave enforcement off; the CLI still uses PKCE on the browser flow, Keycloak just doesn&#x27;t mandate it on every grant.</div>
       </div>
       <h2 id="keycloak-oidc-wire-the-gate">Wire the gate</h2>
       <p>The one subtlety worth understanding is <strong>which URL goes where</strong>, because the backend runs in a container and the browser/CLI run on the host:</p>
       <ul>
         <li>Keycloak stamps the token <code>iss</code> as <code>http://localhost:8080/realms/mycelium</code> for every caller (the overlay pins its advertised URL). That is what the browser and CLI reach it by, so it is the <code>issuer</code> the gate matches.</li>
-        <li>The <strong>backend can&#x27;t use <code>localhost</code></strong> — inside the container that is the backend itself. On the compose network Keycloak is reachable as <code>keycloak:8080</code>, so that is where the backend fetches keys from.</li>
+        <li>The <strong>backend can&#x27;t use <code>localhost</code></strong>: inside the container that is the backend itself. On the compose network Keycloak is reachable as <code>keycloak:8080</code>, so that is where the backend fetches keys from.</li>
       </ul>
       <p>The gate matches <code>iss</code> by <strong>exact string</strong> but fetches keys from a <strong>separately configured <code>jwks_url</code></strong>, so you point them at different hostnames on purpose. In <code>~/.mycelium/config.toml</code>:</p>
       <pre><code>[auth]
@@ -1486,7 +1486,7 @@ audience  = &quot;mycelium&quot;</code></pre>
 <span class="comment">#           &quot;audience&quot;: &quot;mycelium&quot;, &quot;localhost_bypass&quot;: true }</span></code></pre>
       <div class="callout callout-note">
         <div class="callout-bar"></div>
-        <div class="callout-body"><strong>The localhost bypass does not save you here</strong> — and that is the point. Traffic from the CLI to the containerized backend arrives from the Docker bridge, not real loopback, so the gate genuinely enforces. See <a href="#auth">Authentication → The localhost bypass</a>.</div>
+        <div class="callout-body"><strong>The localhost bypass does not save you here</strong>, and that is the point. Traffic from the CLI to the containerized backend arrives from the Docker bridge, not real loopback, so the gate genuinely enforces. See <a href="#auth">Authentication → The localhost bypass</a>.</div>
       </div>
       <h2 id="keycloak-oidc-sign-in-with-mycelium-login">Sign in with <code>mycelium login</code></h2>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">login</span>            # opens your browser to Keycloak
@@ -1511,13 +1511,13 @@ TOKEN=$(curl <span class="flag">-s</span> <span class="flag">-X</span> POST \
   <span class="url">http://localhost:8000/api/rooms</span>                                                     # 200  (valid)
 <span class="cmd">curl</span> <span class="flag">-s</span> <span class="flag">-o</span> /dev/null <span class="flag">-w</span> &#x27;%{http_code}\n&#x27; <span class="flag">-H</span> &#x27;Authorization: Bearer not.a.jwt&#x27; \
   <span class="url">http://localhost:8000/api/rooms</span>                                                     # 401  (garbage)</code></pre>
-      <p>An <strong>expired</strong> token is refused the same way — the response is <code>401</code> with <code>token rejected: Signature has expired</code> once it ages past <code>exp</code> plus <code>auth.leeway_s</code> (default 60s).</p>
+      <p>An <strong>expired</strong> token is refused the same way: the response is <code>401</code> with <code>token rejected: Signature has expired</code> once it ages past <code>exp</code> plus <code>auth.leeway_s</code> (default 60s).</p>
       <h2 id="keycloak-oidc-agents-and-more-than-one-issuer">Agents, and more than one issuer</h2>
-      <p>This guide is the <strong>human</strong> tier. Agents authenticate as workloads with the <code>client_credentials</code> grant from their own Keycloak client — see <a href="#auth">Authentication → Agents sign in as themselves</a>. Humans and agents are often separate realms; list each as its own <code>[[auth.issuers]]</code> block (a human root with <code>role = &quot;user&quot;</code>, an agent root with <code>role = &quot;agent&quot;</code>), matched by exact <code>iss</code> and never interchangeable.</p>
-      <p>For the tightest, individually-attested agent identity on the SLIM channel itself, see <a href="#spire-identity">Attested Identity (SPIRE)</a> — a different, heavier tier from this HTTP-API gate.</p>
+      <p>This guide is the <strong>human</strong> tier. Agents authenticate as workloads with the <code>client_credentials</code> grant from their own Keycloak client; see <a href="#auth">Authentication → Agents sign in as themselves</a>. Humans and agents are often separate realms; list each as its own <code>[[auth.issuers]]</code> block (a human root with <code>role = &quot;user&quot;</code>, an agent root with <code>role = &quot;agent&quot;</code>), matched by exact <code>iss</code> and never interchangeable.</p>
+      <p>For the tightest, individually-attested agent identity on the SLIM channel itself, see <a href="#spire-identity">Attested Identity (SPIRE)</a>, a different, heavier tier from this HTTP-API gate.</p>
       <h2 id="keycloak-oidc-browser-login-the-frontend">Browser login (the frontend)</h2>
-      <p>The Next.js frontend does the same OIDC flow for humans in a browser. With the gate <strong>off</strong> it is unchanged — the localStorage handle-picker, no login. With the gate <strong>on</strong>, the app shows a <strong>Sign in</strong> screen and redirects to Keycloak; after you authenticate it carries your token on every <code>/api/*</code> call (sealed in an httpOnly cookie, injected server-side by the proxy — it never reaches browser JS).</p>
-      <p>The realm import ships a second public client, <strong><code>mycelium-web</code></strong>, with the web redirect <code>http://localhost:3000/api/auth/callback</code> (the CLI&#x27;s <code>mycelium-cli</code> client uses a loopback redirect instead — separate clients, separately revocable).</p>
+      <p>The Next.js frontend does the same OIDC flow for humans in a browser. With the gate <strong>off</strong> it is unchanged: the localStorage handle-picker, no login. With the gate <strong>on</strong>, the app shows a <strong>Sign in</strong> screen and redirects to Keycloak; after you authenticate it carries your token on every <code>/api/*</code> call (sealed in an httpOnly cookie, injected server-side by the proxy; it never reaches browser JS).</p>
+      <p>The realm import ships a second public client, <strong><code>mycelium-web</code></strong>, with the web redirect <code>http://localhost:3000/api/auth/callback</code> (the CLI&#x27;s <code>mycelium-cli</code> client uses a loopback redirect instead: separate clients, separately revocable).</p>
       <p>Configure the frontend (server-side env) and bring the UI up:</p>
       <pre><code>export MYCELIUM_OIDC_ISSUER=<span class="url">http://localhost:8080/realms/mycelium</span>
 export MYCELIUM_OIDC_INTERNAL_ISSUER=<span class="url">http://keycloak:8080/realms/mycelium</span>
@@ -1527,13 +1527,13 @@ export AUTH_SESSION_SECRET=$(openssl rand <span class="flag">-hex</span> 32)
 
 <span class="cmd">docker</span> compose <span class="flag">-f</span> compose.yml <span class="flag">-f</span> compose-dev.yml <span class="flag">-f</span> compose-keycloak.yml \
   <span class="flag">--profile</span> ui up <span class="flag">-d</span></code></pre>
-      <p>The <strong>issuer split is the same as the backend&#x27;s</strong>, for the same reason: the browser reaches Keycloak at <code>MYCELIUM_OIDC_ISSUER</code> (<code>localhost:8080</code>) and the token&#x27;s <code>iss</code> matches it, but the containerized frontend server can&#x27;t use <code>localhost</code>, so it runs discovery + token exchange against <code>MYCELIUM_OIDC_INTERNAL_ISSUER</code> (<code>keycloak:8080</code>). Running the frontend on the host with <code>pnpm dev</code> instead? Drop <code>INTERNAL_ISSUER</code> — the two coincide.</p>
+      <p>The <strong>issuer split is the same as the backend&#x27;s</strong>, for the same reason: the browser reaches Keycloak at <code>MYCELIUM_OIDC_ISSUER</code> (<code>localhost:8080</code>) and the token&#x27;s <code>iss</code> matches it, but the containerized frontend server can&#x27;t use <code>localhost</code>, so it runs discovery + token exchange against <code>MYCELIUM_OIDC_INTERNAL_ISSUER</code> (<code>keycloak:8080</code>). Running the frontend on the host with <code>pnpm dev</code> instead? Drop <code>INTERNAL_ISSUER</code>; the two coincide.</p>
       <div class="callout callout-note">
         <div class="callout-bar"></div>
-        <div class="callout-body"><strong>Off by default here too.</strong> With <code>MYCELIUM_OIDC_ISSUER</code> / <code>AUTH_SESSION_SECRET</code> unset, the frontend never engages OIDC. And it only shows the sign-in screen when the backend&#x27;s <code>/health</code> reports the gate on — the try-it path is untouched.</div>
+        <div class="callout-body"><strong>Off by default here too.</strong> With <code>MYCELIUM_OIDC_ISSUER</code> / <code>AUTH_SESSION_SECRET</code> unset, the frontend never engages OIDC. And it only shows the sign-in screen when the backend&#x27;s <code>/health</code> reports the gate on; the try-it path is untouched.</div>
       </div>
       <h2 id="keycloak-oidc-the-honest-ceiling">The honest ceiling</h2>
-      <p>The shipped overlay is <strong>dev-grade</strong>: Keycloak in <code>start-dev</code> (in-memory H2, HTTP, a demo user with a weak password). It is a real OIDC provider minting real RS256 tokens against a real JWKS — enough to build and prove against — but it is <strong>not</strong> a hardened production Keycloak. For a real deployment, run your own Keycloak over TLS with a persistent datastore and real users, then point the same three config values (<code>issuer</code>, <code>jwks_url</code>, <code>login.issuer</code>) at it. Nothing else changes.</p>
+      <p>The shipped overlay is <strong>dev-grade</strong>: Keycloak in <code>start-dev</code> (in-memory H2, HTTP, a demo user with a weak password). It is a real OIDC provider minting real RS256 tokens against a real JWKS (enough to build and prove against) but it is <strong>not</strong> a hardened production Keycloak. For a real deployment, run your own Keycloak over TLS with a persistent datastore and real users, then point the same three config values (<code>issuer</code>, <code>jwks_url</code>, <code>login.issuer</code>) at it. Nothing else changes.</p>
     </section>
 
     <hr class="divider">
@@ -1541,30 +1541,30 @@ export AUTH_SESSION_SECRET=$(openssl rand <span class="flag">-hex</span> 32)
     <section class="doc-section" id="spire-identity">
       <p>&lt;!-- SPDX-License-Identifier: Apache-2.0 --&gt;</p>
       <h1>Attested identity (SPIRE)</h1>
-      <p>Mycelium&#x27;s default channel identity is a shared-secret PSK: zero infrastructure, every room member derives the same group key. That&#x27;s the try-it path, and it never changes. <strong>SPIRE identity</strong> is an optional, off-by-default upgrade: each member presents a SPIRE-attested JWT-SVID as its MLS identity, so members are cryptographically distinct, individually attested, and individually revocable — the tightest attestation tier, and the heaviest to deploy.</p>
+      <p>Mycelium&#x27;s default channel identity is a shared-secret PSK: zero infrastructure, every room member derives the same group key. That&#x27;s the try-it path, and it never changes. <strong>SPIRE identity</strong> is an optional, off-by-default upgrade: each member presents a SPIRE-attested JWT-SVID as its MLS identity, so members are cryptographically distinct, individually attested, and individually revocable: the tightest attestation tier, and the heaviest to deploy.</p>
       <p>Turning it on is <strong>one switch</strong>. You never touch a SPIFFE socket path, a trust domain, or type <code>spire-server entry create</code> by hand.</p>
       <h2 id="spire-identity-turn-it-on">Turn it on</h2>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> slim.identity spire
 <span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">apply</span>
 <span class="bin">mycelium</span> <span class="cmd">up</span></code></pre>
-      <p><code>mycelium up</code> reads <code>slim.identity</code> and, when it&#x27;s <code>spire</code>, brings a co-located SPIRE <strong>server + node daemon</strong> up alongside the hub automatically — the compose <code>spire</code> profile is an implementation detail the config drives. You do <strong>not</strong> pass <code>--profile spire</code> by hand. On the default (<code>psk</code>) nothing extra starts and the stack is byte-for-byte unchanged.</p>
+      <p><code>mycelium up</code> reads <code>slim.identity</code> and, when it&#x27;s <code>spire</code>, brings a co-located SPIRE <strong>server + node daemon</strong> up alongside the hub automatically; the compose <code>spire</code> profile is an implementation detail the config drives. You do <strong>not</strong> pass <code>--profile spire</code> by hand. On the default (<code>psk</code>) nothing extra starts and the stack is byte-for-byte unchanged.</p>
       <div class="callout callout-note">
         <div class="callout-bar"></div>
-        <div class="callout-body">The SPIRE <strong>node daemon</strong> (upstream image <code>spire-agent</code>, container <code>mycelium-spire-noded</code>) is SPIRE&#x27;s per-node identity daemon — it serves the Workload API socket and fetches SVIDs. It is unrelated to mycelium coordination <strong>agents</strong> (<code>@alice</code> etc.); the shared word is an upstream-SPIRE coincidence.</div>
+        <div class="callout-body">The SPIRE <strong>node daemon</strong> (upstream image <code>spire-agent</code>, container <code>mycelium-spire-noded</code>) is SPIRE&#x27;s per-node identity daemon: it serves the Workload API socket and fetches SVIDs. It is unrelated to mycelium coordination <strong>agents</strong> (<code>@alice</code> etc.); the shared word is an upstream-SPIRE coincidence.</div>
       </div>
       <h2 id="spire-identity-registration-is-automatic">Registration is automatic</h2>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">create</span> @alice</code></pre>
-      <p>With SPIRE on, <code>agent create</code> registers the SVID entry (<code>spiffe://&lt;trust-domain&gt;/agent/alice</code>) against the running SPIRE server itself — no printed copy-paste operator step. <code>agent rm @alice</code> deletes the entry, revoking the identity. Both go through the normal mycelium CLI.</p>
+      <p>With SPIRE on, <code>agent create</code> registers the SVID entry (<code>spiffe://&lt;trust-domain&gt;/agent/alice</code>) against the running SPIRE server itself, with no printed copy-paste operator step. <code>agent rm @alice</code> deletes the entry, revoking the identity. Both go through the normal mycelium CLI.</p>
       <h2 id="spire-identity-check-it">Check it</h2>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">doctor</span></code></pre>
-      <p>When SPIRE is on, doctor shows a legible line — <code>SPIRE up, @alice attested</code> — so a misconfiguration is a clear message rather than a member silently hanging at &quot;Initializing spire identity manager.&quot;</p>
+      <p>When SPIRE is on, doctor shows a legible line (<code>SPIRE up, @alice attested</code>) so a misconfiguration is a clear message rather than a member silently hanging at &quot;Initializing spire identity manager.&quot;</p>
       <h2 id="spire-identity-trust-domain">Trust domain</h2>
       <p>The trust domain defaults to <code>mycelium.dev</code>. Override it (server, agent, backend MLS identity, and registration all read the same value) with:</p>
       <pre><code>export MYCELIUM_SLIM_SPIRE_TRUST_DOMAIN=corp.example.com</code></pre>
       <p>Set it in <code>~/.mycelium/.env</code> (or the shell that runs <code>mycelium up</code>) before bringing the stack up.</p>
       <h2 id="spire-identity-the-honest-ceiling">The honest ceiling</h2>
-      <p>The appliance uses SPIRE&#x27;s <code>unix</code> workload attestor, which identifies a workload by its process credentials. That requires the SPIRE node daemon to share the workload&#x27;s PID namespace — which the shipped compose does for the <strong>backend</strong> (the always-on moderator that holds membership for turn-based agents). A <strong>resident</strong> Claude or Cursor session on a user&#x27;s own machine is <em>not</em> co-located with a SPIRE node daemon, so it cannot be <code>unix</code>-attested; on a spoke, identity degrades to the PSK unless you front it with a non-<code>unix</code> attestor (k8s, docker, x509pop, join-token). This is why SPIRE is off by default and never lands on the default path.</p>
-      <p>The appliance SPIRE profile is <strong>dev-grade</strong> (SQLite datastore, join-token node attestation, short SVID TTLs) — a real product surface for attested identity, not yet a hardened production deployment.</p>
+      <p>The appliance uses SPIRE&#x27;s <code>unix</code> workload attestor, which identifies a workload by its process credentials. That requires the SPIRE node daemon to share the workload&#x27;s PID namespace, which the shipped compose does for the <strong>backend</strong> (the always-on moderator that holds membership for turn-based agents). A <strong>resident</strong> Claude or Cursor session on a user&#x27;s own machine is <em>not</em> co-located with a SPIRE node daemon, so it cannot be <code>unix</code>-attested; on a spoke, identity degrades to the PSK unless you front it with a non-<code>unix</code> attestor (k8s, docker, x509pop, join-token). This is why SPIRE is off by default and never lands on the default path.</p>
+      <p>The appliance SPIRE profile is <strong>dev-grade</strong> (SQLite datastore, join-token node attestation, short SVID TTLs): a real product surface for attested identity, not yet a hardened production deployment.</p>
     </section>
 
     <hr class="divider">

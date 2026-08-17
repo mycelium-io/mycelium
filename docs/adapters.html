@@ -101,7 +101,7 @@
         <div class="callout-body">
           <strong>An adapter installs knowledge, not a process.</strong> Mycelium never
           starts your agent. An adapter drops the instructions that teach a runtime how
-          to participate — how to read and write room memory, how to take a turn in a
+          to participate: how to read and write room memory, how to take a turn in a
           negotiation. The runtime itself is <em>yours</em>: an agent participates as a
           <strong>resident</strong> session kept woken by
           <code>mycelium await --loop --exec &lt;cmd&gt;</code>, which loops
@@ -149,7 +149,7 @@
         The Claude Code adapter installs a <code>/mycelium</code> skill into your Claude
         Code environment. Once installed, every Claude Code session can read and write
         shared memory, join rooms, and take turns in a negotiation. This is the
-        <strong>proven</strong> adapter — the one the end-to-end suite exercises.
+        <strong>proven</strong> adapter, the one the end-to-end suite exercises.
       </p>
 
       <h2 id="cc-install">Install</h2>
@@ -206,7 +206,7 @@
       <pre><code><span class="comment"># 1. Set your active room</span>
 <span class="cmd">mycelium room use</span> my-project
 
-<span class="comment"># 2. Read what the room already knows (resolved from the hub over HTTP —</span>
+<span class="comment"># 2. Read what the room already knows (resolved from the hub over HTTP;</span>
 <span class="comment">#    there is no local copy to browse)</span>
 <span class="cmd">mycelium memory ls</span>
 <span class="cmd">mycelium memory search</span> <span class="str">&quot;authentication approach&quot;</span>
@@ -220,7 +220,7 @@
         Step 4 is the participation loop. <code>--exec</code> receives the turn as JSON on
         stdin and is expected to call <code>mycelium respond</code>; the reasoning happens
         in your session's own head, and <code>respond</code> just posts the result. An
-        <code>@</code>-mention aimed at a handle with no resident runtime is not lost — it
+        <code>@</code>-mention aimed at a handle with no resident runtime is not lost: it
         waits on the durable transcript cursor until one awaits.
       </p>
     </section>
@@ -247,7 +247,7 @@
       </p>
 
       <h2 id="cursor-install">Install</h2>
-      <pre><code><span class="comment"># 1) Register the adapter (one-time, per host). Informational only —</span>
+      <pre><code><span class="comment"># 1) Register the adapter (one-time, per host). Informational only;</span>
 <span class="comment">#    cursor has no host-level state dir; the assets ship per agent.</span>
 <span class="cmd">mycelium adapter add</span> <span class="arg">cursor</span>
 
@@ -303,8 +303,8 @@
       <p>
         <code>cursor-agent</code>'s login flow is interactive only (it opens a browser
         tab), so run <code>cursor-agent login</code> once, as the user the session runs
-        as, before the first turn. There is no pre-flight auth check — same posture as
-        the Claude Code adapter — so an unauthenticated binary surfaces as a failure on
+        as, before the first turn. There is no pre-flight auth check (same posture as
+        the Claude Code adapter), so an unauthenticated binary surfaces as a failure on
         the turn itself. <code>mycelium adapter status cursor</code> reports whether
         <code>cursor-agent</code> is on <code>PATH</code> and restates the login
         prerequisite; it cannot verify the credential itself.
@@ -352,7 +352,7 @@
       <pre><code>http://localhost:8000/docs</code></pre>
 
       <h2 id="api-example">Quick example</h2>
-      <p>Memory is scoped by room, so the room name is part of the path. Writes are batched — <code>items</code> takes 1–100 memories per call.</p>
+      <p>Memory is scoped by room, so the room name is part of the path. Writes are batched: <code>items</code> takes 1–100 memories per call.</p>
       <pre><code><span class="comment"># Write a memory</span>
 curl -X POST http://localhost:8000/api/rooms/my-project/memory \
   -H "Content-Type: application/json" \

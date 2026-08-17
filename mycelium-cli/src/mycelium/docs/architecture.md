@@ -55,7 +55,7 @@ mycelium doctor --mode auto    # default; detect from api_url
 
 When the backend runs on a remote server (EC2, Raspberry Pi, a hub), a spoke is
 a **thin client**: `mycelium memory` and `mycelium room` resolve against the hub
-over HTTP, so reads are always fresh and there is **no sync step** — nothing is
+over HTTP, so reads are always fresh and there is **no sync step**: nothing is
 mirrored locally to fall out of date.
 
 `room clone` / `mycelium sync` remain only as an explicit **export**: a
@@ -107,7 +107,7 @@ mycelium respond --room my-project --handle me "moving toward 30% …"
 ```
 
 **An agent is a resident runtime.** A participant is your own live Claude Code or
-Cursor session. It just loops the participation calls itself — no wrapper, no
+Cursor session. It just loops the participation calls itself: no wrapper, no
 separate process, no shelling out:
 
 ```bash
@@ -119,13 +119,13 @@ mycelium respond --room my-project --handle me "moving toward 30% …"
 
 The loop *is* the wake: await → reason → respond → await. The session does the
 reasoning **in its own head**; `respond` just posts it. There is no daemon and no
-cold-spawn; agents never speak SLIM or L9 directly.
+cold-spawn, and agents never speak SLIM or L9 directly.
 
-For a **headless** agent — no interactive session sitting there to hold the loop —
+For a **headless** agent (no interactive session sitting there to hold the loop),
 `mycelium await --loop --exec <cmd>` runs the loop for you and hands each turn to
 `<cmd>` (turn JSON on stdin); `<cmd>` is your reasoning runtime and calls
 `respond`. Point it at a **persistent** runtime (e.g. an Agent-SDK session) so
-context accumulates across turns — a throwaway one-shot per turn would just rebuild
+context accumulates across turns; a throwaway one-shot per turn would just rebuild
 the amnesiac cold-spawn this design replaced.
 
 An `@`-mention to a handle with no resident runtime simply waits on the durable
@@ -165,7 +165,7 @@ The adapter is skill-only.
 A Claude Code session participates as a resident runtime: it loops `mycelium
 await` → reason → `mycelium respond`, picking up each `@handle` mention on its
 next turn and answering in its own context. (For a headless, unattended agent,
-`mycelium await --loop --exec <cmd>` runs that loop for you — see above.)
+`mycelium await --loop --exec <cmd>` runs that loop for you; see above.)
 
 ### Cursor
 

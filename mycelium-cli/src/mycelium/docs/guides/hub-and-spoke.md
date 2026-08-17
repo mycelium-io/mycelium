@@ -118,7 +118,7 @@ local backend.
 
 ## Step 3: Use a room from a spoke
 
-There is one store: the hub's. A spoke is a thin client — it keeps no
+There is one store: the hub's. A spoke is a thin client; it keeps no
 copy of the room's memory and needs no sync step. Create the room on the
 hub, then use it from anywhere.
 
@@ -143,12 +143,12 @@ mycelium memory set decisions/allocation "60/40 equities to bonds"
 mycelium memory search "what did we decide about risk"
 ```
 
-Because reads go to the hub, a spoke sees a write the moment it lands —
+Because reads go to the hub, a spoke sees a write the moment it lands;
 there is no local copy to drift. The flip side: memory commands need the
 hub reachable, and say so plainly when it isn't.
 
 > `mycelium room clone` still exists for pulling a room's memories down
-> as files — useful for a backup or an offline read — but it is not part
+> as files (useful for a backup or an offline read) but it is not part
 > of joining a room from a spoke.
 
 ## Step 4: Run a negotiation across machines

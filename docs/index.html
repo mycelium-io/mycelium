@@ -241,7 +241,7 @@
   decisions/   context/   status/    plan/
   work/        procedures/   log/   failed/</code></pre>
       <p>The <code>plan/</code> subdir holds the room&#x27;s <a href="#plan">plan</a>: a free-form set of markdown files plus the <code>- [ ]</code> / <code>- [x]</code> checklist lines those files contain. <code>plan/title.md</code> holds the room&#x27;s display title (shown italicised above room activity in the UI). The rest are arbitrary <code>plan/{slug}.md</code> files containing prose and tasks. See <a href="#plan"><code>mycelium plan</code></a> for read/write commands and <code>plan task add|done|undo</code> for checkbox edits.</p>
-      <p>An operator on the hub can browse, edit, or git-track these directories directly; the backend keeps its search index in sync via startup scans and file watching. From anywhere else, reach the same state through <code>mycelium room</code> and <code>mycelium memory</code> — a spoke keeps no copy of it.</p>
+      <p>An operator on the hub can browse, edit, or git-track these directories directly; the backend keeps its search index in sync via startup scans and file watching. From anywhere else, reach the same state through <code>mycelium room</code> and <code>mycelium memory</code>; a spoke keeps no copy of it.</p>
       <h2 id="rooms-commands">Commands</h2>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">create</span> design-review     # create a room (its folder + channel)
 <span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">use</span> design-review        # make it the active room
@@ -409,7 +409,7 @@ PATCH .../messages/{id}  {<span class="str">&quot;status&quot;</span>: <span cla
       <p>Mycelium memory has three layers, and only the middle one is &quot;the memory&quot;:</p>
       <ol class="steps">
         <li><strong>Your private context</strong> is yours alone: agent-native files like <code>SOUL.md</code> or per-agent notes that never leave your machine and are never indexed or shared. Anything only you need lives here.</li>
-        <li><strong>Room memory</strong> is the shared source of truth, held by the hub. Every agent in the room reads and writes it with <code>mycelium memory</code> — from any machine, with no local copy to keep in step. If the team should know it, write it here.</li>
+        <li><strong>Room memory</strong> is the shared source of truth, held by the hub. Every agent in the room reads and writes it with <code>mycelium memory</code>, from any machine, with no local copy to keep in step. If the team should know it, write it here.</li>
         <li><strong>The search index</strong> is a derived view that you never write to directly. The hub embeds each room memory so agents can recall by meaning. It rebuilds from the store, so the store always wins.</li>
       </ol>
       <p>Rule of thumb: if a teammate should find it, put it in room memory. The index is how they find it; the hub is where it lives; your private notes stay yours.</p>
@@ -442,7 +442,7 @@ PATCH .../messages/{id}  {<span class="str">&quot;status&quot;</span>: <span cla
         <div class="callout-body"><strong>Always upserts.</strong> Calling <code>memory set</code> on an existing key overwrites it. The version number increments automatically so you can track changes.</div>
       </div>
       <h2 id="memory-how-the-hub-stores-it">How the hub stores it</h2>
-      <p>The hub keeps each memory as a markdown file with YAML frontmatter at <code>~/.mycelium/rooms/{room}/{key}.md</code>, plus a JSONL embedding index beside it. That is internal storage, not a surface you work in — clients see it through <code>mycelium memory</code>, which is the same on the hub and on every spoke.</p>
+      <p>The hub keeps each memory as a markdown file with YAML frontmatter at <code>~/.mycelium/rooms/{room}/{key}.md</code>, plus a JSONL embedding index beside it. That is internal storage, not a surface you work in; clients see it through <code>mycelium memory</code>, which is the same on the hub and on every spoke.</p>
       <p>To see the stored form of a memory from anywhere:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">get</span> decisions/storage <span class="flag">--raw</span></code></pre>
       <div class="callout callout-note">
@@ -453,7 +453,7 @@ PATCH .../messages/{id}  {<span class="str">&quot;status&quot;</span>: <span cla
       <p>Memories can point at each other, which turns a room&#x27;s flat set of files into an interlinked wiki. Two syntaxes, one meaning:</p>
       <pre><code>We chose Postgres because of [[context/stack]].
 We chose Postgres because of myc://context/stack.</code></pre>
-      <p><code>myc://key</code> is the canonical form — it survives being put in frontmatter or a URL — and <code>[[key]]</code> is the shorthand you&#x27;ll actually type. Both resolve to the same memory. A link can name a section and carry its own text:</p>
+      <p><code>myc://key</code> is the canonical form (it survives being put in frontmatter or a URL), and <code>[[key]]</code> is the shorthand you&#x27;ll actually type. Both resolve to the same memory. A link can name a section and carry its own text:</p>
       <pre><code>[[context/stack#vector-store|how retrieval works]]</code></pre>
       <h3 id="memory-backlinks">Backlinks</h3>
       <p>The point of linking is knowing what depends on what. Before you change a memory, its backlinks tell you exactly which others lean on what it says:</p>
@@ -466,7 +466,7 @@ We chose Postgres because of myc://context/stack.</code></pre>
 ← referenced by (2)
   decisions/db           wikilink
   work/api-server        wikilink</code></pre>
-      <p>Broken links are reported rather than hidden, and <code>--check</code> sweeps the whole room for them along with orphans — memories nothing links to:</p>
+      <p>Broken links are reported rather than hidden, and <code>--check</code> sweeps the whole room for them along with orphans, memories nothing links to:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">links</span> <span class="flag">--check</span></code></pre>
       <h3 id="memory-typed-relations">Typed relations</h3>
       <p>Frontmatter relations are edges with meaning, not just navigation. Set them on a write with <code>--meta</code>:</p>
@@ -481,10 +481,10 @@ We chose Postgres because of myc://context/stack.</code></pre>
 
 ![[glossary/vector-store]]</code></pre>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">get</span> decisions/db <span class="flag">--expand</span></code></pre>
-      <p>Update the source and every page that embeds it is correct — nothing to re-copy, nothing to go stale.</p>
+      <p>Update the source and every page that embeds it is correct: nothing to re-copy, nothing to go stale.</p>
       <p>Three rules keep this from getting unwieldy:</p>
       <ul>
-        <li><strong>Opt-in on the target.</strong> Only a memory with <code>expandable: true</code> can be pulled in. Pointing <code>![[…]]</code> at anything else is reported as a broken link, not silently included — so pages become embeddable deliberately.</li>
+        <li><strong>Opt-in on the target.</strong> Only a memory with <code>expandable: true</code> can be pulled in. Pointing <code>![[…]]</code> at anything else is reported as a broken link, not silently included, so pages become embeddable deliberately.</li>
         <li><strong>Depth 1.</strong> Text pulled in is inserted verbatim, so a <code>![[…]]</code> inside it stays literal. Cycles can&#x27;t form and an expanded page can&#x27;t balloon.</li>
         <li><strong>Never fabricated.</strong> A marker that can&#x27;t be expanded is left exactly as written and called out, so a refused embed never reads as an empty definition.</li>
       </ul>
@@ -715,7 +715,7 @@ We chose Postgres because of myc://context/stack.</code></pre>
           </tbody>
         </table>
       </div>
-      <p>Convergence is <strong>not</strong> a tunable: it is whatever the mechanism decides. NEGMAS stops at unanimity and the aligner reports agreement if — and only if — the mechanism produced one. The confidence agents report feeds the recorded quality metrics (MPC/GAR/SCR), not the verdict.</p>
+      <p>Convergence is <strong>not</strong> a tunable: it is whatever the mechanism decides. NEGMAS stops at unanimity and the aligner reports agreement if, and only if, the mechanism produced one. The confidence agents report feeds the recorded quality metrics (MPC/GAR/SCR), not the verdict.</p>
       <p>See <a href="#l9-protocol">L9 Protocol</a> for the envelope format, epistemic reply fields, and the consensus quality metrics the aligner records at close.</p>
     </section>
 
