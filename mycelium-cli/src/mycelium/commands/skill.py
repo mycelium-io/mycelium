@@ -2,7 +2,7 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-Skill commands — the ``skills/`` memory namespace, promoted (#617).
+Skill commands: the ``skills/`` memory namespace, promoted (#617).
 
 A skill is just a memory: SKILL.md-style markdown + frontmatter at
 ``.mycelium/rooms/{room}/skills/<name>.md``. The same way ``decisions/`` memories
@@ -29,7 +29,7 @@ from mycelium.doc_ref import doc_ref
 from mycelium_backend_client.errors import UnexpectedStatus
 
 app = typer.Typer(
-    help="Create and browse a room's skills — SKILL.md-style markdown in the room's skills/ namespace. Skills back the chat composer's / trigger.",
+    help="Create and browse a room's skills: SKILL.md-style markdown in the room's skills/ namespace. Skills back the chat composer's / trigger.",
     no_args_is_help=True,
 )
 console = Console()
@@ -240,15 +240,15 @@ def skill_rm(
 
 @doc_ref(
     usage="mycelium skill adapter-def",
-    desc="Print the Mycelium SKILL.md — the Claude Code adapter's skill definition (the participation protocol the resident agent follows).",
+    desc="Print the Mycelium SKILL.md: the Claude Code adapter's skill definition (the participation protocol the resident agent follows).",
     group="skill",
 )
 @app.command(name="adapter-def")
 def skill_adapter_def() -> None:
     """Print the Mycelium SKILL.md (Claude Code adapter skill definition).
 
-    This is the adapter's *own* SKILL.md asset — the participation protocol the
-    resident agent runs — not an entry in the skills store above.
+    This is the adapter's *own* SKILL.md asset (the participation protocol the
+    resident agent runs), not an entry in the skills store above.
     """
     rel = "integrations/claude_code/assets/skills/mycelium/SKILL.md"
     fallback_parts = (

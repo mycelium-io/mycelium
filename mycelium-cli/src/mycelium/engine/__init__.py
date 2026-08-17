@@ -8,7 +8,7 @@ The first-party SAO mediator: the NEGMAS core (``mediator``), the Pi brain
 (``runtime``). The heavy dep (negmas) comes from the ``mycelium[engine]`` extra.
 
 This core was driven host-side by the daemon's engine connector, which has been
-removed — engines now run backend-side only. The mediation core is retained,
+removed; engines now run backend-side only. The mediation core is retained,
 dormant, to be re-homed on the ``await``/``respond`` resident model rather than
 resurrected from a deletion; nothing wires it to a runtime entry point today.
 """

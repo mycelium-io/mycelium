@@ -2,19 +2,19 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-Agent commands — name an addressable, durable agent inside a room.
+Agent commands: name an addressable, durable agent inside a room.
 
 An agent is just two memory entries:
 
     <room>/agents/<handle>            ← manifest (this command writes it)
     <room>/agents/<handle>/notes      ← persistent brain, agent-curated
 
-The agent's *runtime* is the user's own resident session — a Claude Code or
+The agent's *runtime* is the user's own resident session, a Claude Code or
 Cursor session kept woken with ``mycelium await --loop``, which participates via
 ``await``/``respond``. Mycelium names the agent and installs its skill; it does
 not run the process.
 
-These commands are typing comfort on top of ``memory`` and ``room send``:
+These commands are typing comfort on top of ``memory`` and ``room send``.
 ``agent create`` writes ``memory set agents/<handle>`` with validation,
 ``agent invoke`` is ``room send "@handle ..."``. The primitives don't change.
 """
@@ -59,7 +59,7 @@ def _bail_root_owned(target: Path, blocking: Path, owner_name: str) -> None:
     Used when writing under ``~/.mycelium/`` would fail because some ancestor
     of *target* is owned by a different user (typically root, from an earlier
     sudo step or a containerized side-process). The previous symptom was a
-    raw ``PermissionError`` with no hint about what to do — this surfaces the
+    raw ``PermissionError`` with no hint about what to do. This surfaces the
     one-line fix every time it would have happened.
     """
     typer.secho(f"\n  ✗ Cannot write to {target}", fg=typer.colors.RED, err=True)
@@ -140,7 +140,7 @@ def _load_manifest(room_name: str, handle: str) -> AgentManifest | None:
     """Read the manifest off the local filesystem and rehydrate the model.
 
     Returns ``None`` for both "file missing" and "file present but unreadable"
-    — callers can't tell the difference from the return value, but a corrupt
+    (callers can't tell the difference from the return value), but a corrupt
     manifest is logged at WARNING so it never fails silently. Without this,
     a bad YAML or schema mismatch looks identical to "agent not registered"
     and the user re-runs ``agent create`` over their own broken file.
@@ -154,7 +154,7 @@ def _load_manifest(room_name: str, handle: str) -> AgentManifest | None:
     try:
         data = yaml.safe_load(content) or {}
     except yaml.YAMLError as exc:
-        _log.warning("manifest %s: invalid YAML — %s", path, exc)
+        _log.warning("manifest %s: invalid YAML: %s", path, exc)
         return None
     if not isinstance(data, dict):
         _log.warning("manifest %s: expected a YAML mapping, got %s", path, type(data).__name__)
@@ -163,7 +163,7 @@ def _load_manifest(room_name: str, handle: str) -> AgentManifest | None:
     try:
         return AgentManifest(**data)
     except ValidationError as exc:
-        _log.warning("manifest %s: schema validation failed — %s", path, exc)
+        _log.warning("manifest %s: schema validation failed: %s", path, exc)
         return None
 
 
@@ -172,7 +172,7 @@ def _is_resident(config: MyceliumConfig, room_name: str, handle: str) -> bool:
 
     Best-effort: queries the backend's live presence set (SLIM sockets + server-
     held ``await`` leases). A network/parse failure returns ``False`` so the
-    caller falls back to the honest "not resident — queued" message rather than
+    caller falls back to the honest "not resident, queued" message rather than
     claiming liveness it can't confirm.
     """
     try:
@@ -217,7 +217,7 @@ def _warn_unknown_principal(manifest: AgentManifest) -> None:
     """Warn (never fail) when an agent's owner has no user record.
 
     The binding is self-asserted, so a dangling owner is a soft signal, not an
-    error — it just nudges the user to register the principal so 'my agents'
+    error; it just nudges the user to register the principal so 'my agents'
     has something to resolve.
     """
     if not manifest.owner:
@@ -234,7 +234,7 @@ def _warn_unknown_principal(manifest: AgentManifest) -> None:
 def _load_manifest_remote(client, room_name: str, handle: str) -> AgentManifest | None:
     """Fetch a manifest from the backend memory API and rehydrate the model.
 
-    Used as a fall-through when the local mirror doesn't have it — typically
+    Used as a fall-through when the local mirror doesn't have it: typically
     a hub→spoke (or spoke→hub) cross-host invocation, where the agent was
     registered on a different machine and this host hasn't materialized
     the manifest into its local room directory yet.
@@ -242,7 +242,7 @@ def _load_manifest_remote(client, room_name: str, handle: str) -> AgentManifest 
     The manifest is stored at ``agents/<handle>`` as a YAML body (see
     ``_write_manifest``), so we just need to download the memory entry and
     re-parse it. Returns ``None`` for "not on the backend either" or any
-    transient error — the caller re-uses the same friendly "no agent named
+    transient error; the caller re-uses the same friendly "no agent named
     …" message that fires for a true missing agent.
     """
     from mycelium_backend_client.api.memory import (
@@ -255,7 +255,7 @@ def _load_manifest_remote(client, room_name: str, handle: str) -> AgentManifest 
             key=f"agents/{handle}",
             client=client,
         )
-    except Exception as exc:  # noqa: BLE001 — log and treat as "not found"
+    except Exception as exc:  # noqa: BLE001 (log and treat as "not found")
         _log.warning("backend manifest fetch failed for %s/%s: %s", room_name, handle, exc)
         return None
 
@@ -282,7 +282,7 @@ def _load_manifest_remote(client, room_name: str, handle: str) -> AgentManifest 
             try:
                 # MemoryReadValueType0 is dict-like (__contains__/__getitem__)
                 # via attrs ``additional_properties`` but doesn't implement
-                # ``.get()`` — so we can't use the SIM401 form here.
+                # ``.get()``, so we can't use the SIM401 form here.
                 inner = value["text"] if "text" in value else None  # noqa: SIM401
             except Exception:  # noqa: BLE001
                 inner = None
@@ -294,7 +294,7 @@ def _load_manifest_remote(client, room_name: str, handle: str) -> AgentManifest 
     try:
         data = yaml.safe_load(yaml_body) or {}
     except yaml.YAMLError as exc:
-        _log.warning("remote manifest agents/%s: invalid YAML — %s", handle, exc)
+        _log.warning("remote manifest agents/%s: invalid YAML: %s", handle, exc)
         return None
     if not isinstance(data, dict):
         _log.warning(
@@ -307,7 +307,7 @@ def _load_manifest_remote(client, room_name: str, handle: str) -> AgentManifest 
     try:
         return AgentManifest(**data)
     except ValidationError as exc:
-        _log.warning("remote manifest agents/%s: schema validation failed — %s", handle, exc)
+        _log.warning("remote manifest agents/%s: schema validation failed: %s", handle, exc)
         return None
 
 
@@ -317,7 +317,7 @@ def _write_manifest(
     """Upsert the manifest into the backend AND mirror it to the local filesystem.
 
     ``agent ls/show/invoke`` resolve manifests by reading the local filesystem, so
-    the backend write alone isn't enough — we mirror via the same
+    the backend write alone isn't enough; we mirror via the same
     ``filesystem.write_memory`` helper that the rest of the CLI uses for local
     copies of API-written memories.
     """
@@ -380,13 +380,13 @@ def _persist_and_describe(
 ) -> None:
     """Shared tail: run runtime side effects, persist the manifest, print."""
     opts = AddOptions(room=room_name)
-    # Permission pre-check BEFORE any side effects — bailing here means we
+    # Permission pre-check BEFORE any side effects; bailing here means we
     # never allowlist or restart the gateway only to fail at the manifest
     # write. Closes #13 from the v1.1.0 tracking bug (#326).
     room_dir = get_room_dir(room_name)
     manifest_path = room_dir / f"{manifest.memory_key}.md"
     _check_writable_or_bail(manifest_path)
-    # Runtime side effects FIRST — a failure here aborts without leaving a
+    # Runtime side effects FIRST; a failure here aborts without leaving a
     # dangling manifest.
     impl.register(manifest=manifest, config=config, opts=opts)
     _write_manifest(config, room_name, manifest, created_by=handle_flag)
@@ -406,11 +406,11 @@ def _provision_channel_identity(manifest: AgentManifest, mode: str) -> None:
     Registration is where ``@handle`` becomes a usable channel identity: under
     ``signerjwt`` this mints+registers the local keypair (``kid = @handle``); under
     ``spire`` it registers the SVID entry against the appliance SPIRE server. Under
-    the ``psk`` default it is a silent no-op (off by default, #567) — the try-it
+    the ``psk`` default it is a silent no-op (off by default, #567); the try-it
     path never sees identity machinery. A provisioning failure is a warning, not a
     hard error: the manifest is already written and the agent still works on the PSK.
 
-    *mode* is the effective tier from ``config.slim.identity`` — the "one switch"
+    *mode* is the effective tier from ``config.slim.identity``, the "one switch"
     (#588). The runtime resolves the mode from ``MYCELIUM_SLIM_IDENTITY`` (env-only),
     but a fresh CLI process doesn't inherit that env, so registration must read the
     config the user actually set, not just the environment.
@@ -432,7 +432,7 @@ def _provision_channel_identity(manifest: AgentManifest, mode: str) -> None:
         console.print(f"[dim]Public JWK on the roster: {result['roster_path']}.[/dim]")
     elif result_mode == slim_identity.MODE_SPIRE:
         _register_spire_workload(manifest.handle, result)
-    # psk: no per-agent identity — stay silent (off by default, #567).
+    # psk: no per-agent identity, stay silent (off by default, #567).
 
 
 def _register_spire_workload(handle: str, result: dict) -> None:
@@ -442,7 +442,7 @@ def _register_spire_workload(handle: str, result: dict) -> None:
     compose profile is up, ``agent create`` registers the entry itself, so the user
     types zero SPIRE commands. If the server isn't reachable (spire selected but the
     stack isn't up, or a bespoke external SPIRE), we fall back to printing the
-    operator step — the honest interim, never a silent failure.
+    operator step, the honest interim, never a silent failure.
     """
     from mycelium import spire_registry
 
@@ -470,16 +470,16 @@ def _revoke_channel_identity(handle: str, mode: str) -> None:
 
     The deprovisioning inverse of :func:`_provision_channel_identity`: it removes the
     per-agent credential so a removed member can't rejoin, *without re-keying the
-    room* — the payoff per-member identity has over the shared-secret PSK (@alice and
+    room* (the payoff per-member identity has over the shared-secret PSK: @alice and
     the rest keep working, no rotation). Dispatches by the effective tier
     (``config.slim.identity``, the "one switch"), best-effort: a failure warns rather
     than aborting, since the manifest is already gone.
 
-    * ``signerjwt`` — drop the member's JWK from the roster + delete its local key.
-    * ``spire`` — delete the SVID entry against the appliance SPIRE server
+    * ``signerjwt``: drop the member's JWK from the roster + delete its local key.
+    * ``spire``: delete the SVID entry against the appliance SPIRE server
       (:func:`_revoke_spire_workload`), falling back to the operator step when the
       server isn't reachable.
-    * ``psk`` — no per-agent credential exists; note that rotating the shared secret
+    * ``psk``: no per-agent credential exists; note that rotating the shared secret
       is the only (blunt, room-wide) lever this tier has.
     """
     from mycelium.slim import identity as slim_identity
@@ -497,7 +497,7 @@ def _revoke_channel_identity(handle: str, mode: str) -> None:
     if result["mode"] == slim_identity.MODE_SIGNERJWT and result["revoked"]:
         console.print(
             f"[dim]Revoked SLIM channel identity (signerjwt · dropped @{handle} from "
-            "the roster). Peers now reject its tokens — no room re-key.[/dim]"
+            "the roster). Peers now reject its tokens (no room re-key).[/dim]"
         )
     elif result["mode"] == slim_identity.MODE_PSK:
         console.print(
@@ -512,7 +512,7 @@ def _revoke_spire_workload(handle: str, mode: str) -> None:
     Silent unless *mode* is ``spire``: under psk/signerjwt there is no SPIRE entry,
     so this must not print or shell out. When spire is active but the server isn't
     reachable, the registry treats it as a no-op (nothing to revoke). *mode* is the
-    effective tier from ``config.slim.identity`` (the "one switch", #588) — read
+    effective tier from ``config.slim.identity`` (the "one switch", #588), read
     from config, not env, since a fresh CLI process doesn't inherit
     ``MYCELIUM_SLIM_IDENTITY``.
     """
@@ -534,8 +534,8 @@ def _prompt_for_credential(config: MyceliumConfig, manifest: AgentManifest) -> N
 
     A hub with its gate off needs no credential, and saying otherwise on every
     ``agent create`` would make identity look mandatory when it is the opposite.
-    So this speaks only once an issuer is configured — i.e. once this machine has
-    somewhere to mint agent tokens from — and stays silent otherwise.
+    So this speaks only once an issuer is configured (i.e. once this machine has
+    somewhere to mint agent tokens from) and stays silent otherwise.
     """
     from mycelium import agent_credentials
 
@@ -544,7 +544,7 @@ def _prompt_for_credential(config: MyceliumConfig, manifest: AgentManifest) -> N
     if agent_credentials.resolve(config, manifest.handle) is not None:
         return
     console.print(
-        f"\n[dim]@{manifest.handle} has no credential of its own yet — it would "
+        f"\n[dim]@{manifest.handle} has no credential of its own yet; it would "
         f"authenticate as whoever runs it.[/dim]"
     )
     console.print(
@@ -579,10 +579,10 @@ def _create_wizard(
     room_opt: str | None,
     handle_flag: str,
 ) -> None:
-    """Interactive `agent create` — prompt for the fields, then build +
+    """Interactive `agent create`: prompt for the fields, then build +
     persist. Greenfield counterpart to `agent add`'s adopt picker.
 
-    The per-adapter prompt (cwd) is a UI flow, not dispatch logic — the
+    The per-adapter prompt (cwd) is a UI flow, not dispatch logic; the
     wizard simply asks for what the chosen adapter's manifest needs.
     """
     import os
@@ -686,8 +686,8 @@ def agent_create(
         None,
         "--allow-from",
         help=(
-            "Comma-separated sender handles allowed to invoke this agent, and — under "
-            "an enabled auth gate — to act on its behalf (e.g. '@avery,@docs-agent')."
+            "Comma-separated sender handles allowed to invoke this agent, and (under "
+            "an enabled auth gate) to act on its behalf (e.g. '@avery,@docs-agent')."
         ),
     ),
     owner: str | None = typer.Option(
@@ -789,7 +789,7 @@ def _pick_room(config: MyceliumConfig) -> str | None:
 
     Doing this before any side effects also closes the half-applied footgun:
     the manifest write 404s on a missing room, but only *after* the channel
-    config + gateway restart — guaranteeing existence here avoids that.
+    config + gateway restart; guaranteeing existence here avoids that.
     """
     import questionary
 
@@ -815,7 +815,7 @@ def _pick_room(config: MyceliumConfig) -> str | None:
                 if nm and nm not in seen:
                     seen.add(nm)
                     rooms.append(nm)
-    except Exception as exc:  # noqa: BLE001 — backend optional/unreachable
+    except Exception as exc:  # noqa: BLE001 (backend optional/unreachable)
         console.print(f"[yellow]Could not list rooms ({exc}).[/yellow]")
 
     active = getattr(config.rooms, "active", None)
@@ -824,9 +824,7 @@ def _pick_room(config: MyceliumConfig) -> str | None:
     new_sentinel = "\x00new"
 
     if not rooms:
-        name = questionary.text(
-            "No rooms yet — name a new room to create:", default="default"
-        ).ask()
+        name = questionary.text("No rooms yet; name a new room to create:", default="default").ask()
     else:
         room_choices: list = [
             questionary.Choice(title=rn + ("  (active)" if rn == active else ""), value=rn)
@@ -905,7 +903,7 @@ def agent_ls(
             )
             return
 
-        table = Table(title=f"{room_name} — agents", show_lines=False)
+        table = Table(title=f"{room_name} agents", show_lines=False)
         table.add_column("Handle", style="cyan", no_wrap=True)
         table.add_column("Adapter", style="magenta")
         table.add_column("Owner", style="green")
@@ -915,8 +913,8 @@ def agent_ls(
             table.add_row(
                 f"@{m.handle}",
                 m.adapter,
-                f"@{m.owner}" if m.owner else "[dim]—[/dim]",
-                m.team or "[dim]—[/dim]",
+                f"@{m.owner}" if m.owner else "[dim]-[/dim]",
+                m.team or "[dim]-[/dim]",
                 (m.description or "")[:60],
             )
         console.print(table)
@@ -942,7 +940,7 @@ def agent_show(
     handle: str = typer.Argument(..., help="Agent handle"),
     room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
 ) -> None:
-    """Inspect a registered agent — manifest + notes + last invocation."""
+    """Inspect a registered agent: manifest + notes + last invocation."""
     try:
         config = MyceliumConfig.load()
         room_name = _resolve_room(config, room)
@@ -1059,12 +1057,12 @@ def agent_invoke(
         # this handle right now, or whether the message waits on the cursor.
         if _is_resident(config, room_name, manifest.handle):
             console.print(
-                f"\n[dim]@{manifest.handle} is resident — it'll pick this up on its "
+                f"\n[dim]@{manifest.handle} is resident; it'll pick this up on its "
                 f"next await.[/dim]"
             )
         else:
             console.print(
-                f"\n[dim]@{manifest.handle} is not resident — queued on the transcript "
+                f"\n[dim]@{manifest.handle} is not resident; queued on the transcript "
                 f"until a runtime awaits (start one with `mycelium await --loop "
                 f"--room {room_name} --handle {manifest.handle}`).[/dim]"
             )
@@ -1175,7 +1173,7 @@ def agent_rm(
 
 credential_app = typer.Typer(
     help=(
-        "Manage an agent's own credential — the service-account client it "
+        "Manage an agent's own credential: the service-account client it "
         "authenticates to a gated hub as. Not needed while the hub's gate is off."
     ),
     no_args_is_help=True,
@@ -1259,7 +1257,7 @@ def credential_set(
         console.print(f"[dim]Saved to {path} (mode 0600).[/dim]")
         if not resolved.get("issuer"):
             console.print(
-                "\n[yellow]No issuer resolved[/yellow] — the credential can't be minted yet."
+                "\n[yellow]No issuer resolved[/yellow]; the credential can't be minted yet."
             )
             console.print("[dim]Set one with: mycelium config set agent_auth.issuer <url>[/dim]")
     except typer.Exit:
@@ -1294,18 +1292,18 @@ def credential_show(
 
         if not resolved.get("configured"):
             console.print(
-                f"[dim]@{resolved['handle']} has no credential — it sends no token "
+                f"[dim]@{resolved['handle']} has no credential; it sends no token "
                 f"(which is all an ungated hub needs).[/dim]"
             )
             return
 
         table = Table(show_header=False, box=None)
         table.add_row("handle", f"@{resolved['handle']}")
-        table.add_row("client_id", resolved["client_id"] or "—")
+        table.add_row("client_id", resolved["client_id"] or "-")
         table.add_row("issuer", resolved["issuer"] or "[yellow]none[/yellow]")
-        table.add_row("audience", resolved["audience"] or "—")
-        table.add_row("scopes", resolved["scopes"] or "—")
-        table.add_row("secret", "set" if resolved["has_secret"] else "—")
+        table.add_row("audience", resolved["audience"] or "-")
+        table.add_row("scopes", resolved["scopes"] or "-")
+        table.add_row("secret", "set" if resolved["has_secret"] else "-")
         if resolved["static_token"]:
             table.add_row("token", f"supplied via {agent_credentials.STATIC_TOKEN_ENV}")
         cached = resolved.get("cached_token")
@@ -1355,7 +1353,7 @@ def credential_ls(ctx: typer.Context) -> None:
                 f"@{cred.handle}",
                 cred.client_id,
                 cred.issuer or "[dim]agent_auth.issuer[/dim]",
-                "set" if cred.client_secret else "—",
+                "set" if cred.client_secret else "-",
             )
         console.print(table)
     except Exception as e:
@@ -1390,10 +1388,10 @@ def credential_rm(
         if existed:
             console.print(f"[green]Removed[/green] the credential for @{handle}.")
             console.print(
-                "[dim]Revoke the client at the issuer too — this only forgot it here.[/dim]"
+                "[dim]Revoke the client at the issuer too; this only forgot it here.[/dim]"
             )
         else:
-            console.print(f"[dim]@{handle} had no credential here — nothing to do.[/dim]")
+            console.print(f"[dim]@{handle} had no credential here; nothing to do.[/dim]")
     except Exception as e:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
         print_error(e, verbose=verbose)
@@ -1403,7 +1401,7 @@ def credential_rm(
 @doc_ref(
     usage="mycelium agent credential slim-key <handle>",
     desc=(
-        "Mint an agent's SignerJwt SLIM channel identity — a local ES256 keypair "
+        "Mint an agent's SignerJwt SLIM channel identity: a local ES256 keypair "
         "(0600) whose public JWK is registered on the room roster. The floor for "
         "<code>slim.identity = signerjwt</code> (#476); the PSK default needs none."
     ),
@@ -1417,8 +1415,8 @@ def credential_slim_key(
     """Generate + register the agent's SignerJwt-floor SLIM channel identity.
 
     The SignerJwt analogue of ``credential set``: the private ES256 key stays
-    local (0600), and only the **public** JWK is registered — keyed by
-    ``kid = @handle`` — into the roster the moderator assembles so peers can
+    local (0600), and only the **public** JWK is registered (keyed by
+    ``kid = @handle``) into the roster the moderator assembles so peers can
     verify this agent's self-signed tokens. Idempotent: an existing key is reused.
     Only meaningful when the channel identity tier is ``signerjwt``; the PSK
     default (off by default, #567) uses no per-agent key. Revoke by dropping the
@@ -1454,7 +1452,7 @@ def credential_slim_key(
         console.print(f"[dim]Public JWK registered on the roster: {roster_path}.[/dim]")
         if mode != slim_identity.MODE_SIGNERJWT:
             console.print(
-                "\n[yellow]Channel identity is still 'psk'[/yellow] — this key is unused "
+                "\n[yellow]Channel identity is still 'psk'[/yellow]; this key is unused "
                 "until you set [cyan]slim.identity = signerjwt[/cyan] "
                 "(or MYCELIUM_SLIM_IDENTITY=signerjwt)."
             )
@@ -1466,7 +1464,7 @@ def credential_slim_key(
         raise typer.Exit(1) from None
 
 
-# Re-export for completeness — doctor and other commands reuse these.
+# Re-export for completeness; doctor and other commands reuse these.
 __all__ = [
     "_load_manifest",
     "_load_manifest_remote",

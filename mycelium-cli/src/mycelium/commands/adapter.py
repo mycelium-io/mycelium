@@ -2,12 +2,12 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-Adapter commands — connect agent frameworks to Mycelium.
+Adapter commands: connect agent frameworks to Mycelium.
 
 Thin typer layer. All per-family install/uninstall/step/status behaviour
 lives behind the single ``Integration`` contract
 (``mycelium.integrations``); this module just parses arguments and dispatches
-via ``get_integration(...)`` — there is no ``if adapter_type ==`` branching
+via ``get_integration(...)``; there is no ``if adapter_type ==`` branching
 left.
 
 Supported families: ``claude-code``, ``cursor``.
@@ -144,7 +144,7 @@ def add(
             )
             raise typer.Exit(0)
 
-        # Confirm before a destructive reinstall — any local edits or stale
+        # Confirm before a destructive reinstall; any local edits or stale
         # files from a prior version get wiped.
         if reinstall and not dry_run and not yes:
             targets = (
@@ -325,7 +325,7 @@ def status(
         def _status_one(name: str, info: dict) -> dict:
             integ = _resolve_integration(name)
             if integ is None:
-                # Unknown/planned family registered in config — preserve the
+                # Unknown/planned family registered in config; preserve the
                 # old _check_adapter_status fallback (ok, just the api_url).
                 return {"ok": True, "details": [f"api_url: {info.get('api_url', '')}"]}
             return integ.status_check(name=name, info=info)

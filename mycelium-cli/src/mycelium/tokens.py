@@ -9,7 +9,7 @@ that file is routinely printed, copied between machines, and mirrored into
 ``config.json`` for JS consumers. The session lands in its own file,
 ``~/.mycelium/token.json``, created ``0600`` so it is readable only by its owner.
 
-The CLI reads a token's claims but never *verifies* them — verification is the
+The CLI reads a token's claims but never *verifies* them; verification is the
 hub's job (``app/services/auth.py`` validates the signature against the issuer's
 JWKS). Claims are decoded here only to show who you are logged in as and when the
 session expires; nothing the CLI decides on their basis grants access to
@@ -49,7 +49,7 @@ def token_path() -> Path:
 def decode_claims(jwt: str) -> dict[str, Any]:
     """Decode a JWT's payload **without verifying it**.
 
-    Returns ``{}`` for anything that isn't a readable JWT — an opaque access
+    Returns ``{}`` for anything that isn't a readable JWT; an opaque access
     token is a legitimate thing for an issuer to hand out, and the CLI treats it
     as "a token I can't read claims from", not as an error.
     """
@@ -74,7 +74,7 @@ class StoredToken:
     issuer: str
     client_id: str
     refresh_token: str | None = None
-    #: Absolute epoch seconds, not a duration — a cached ``expires_in`` would
+    #: Absolute epoch seconds, not a duration: a cached ``expires_in`` would
     #: silently mean something different every time the file is read.
     expires_at: float | None = None
     token_endpoint: str | None = None
@@ -138,7 +138,7 @@ def load_token(path: Path | None = None) -> StoredToken | None:
     CLI consults this, and none of them should die because a token file got
     truncated.
 
-    ``path`` selects a cache other than the human session's — an agent's minted
+    ``path`` selects a cache other than the human session's: an agent's minted
     token lives in its own file (``mycelium.agent_credentials``).
     """
     path = path or token_path()

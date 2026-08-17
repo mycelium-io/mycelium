@@ -1,18 +1,18 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""``l9 send`` / ``slim send`` — hidden dev/testing plumbing.
+"""``l9 send`` / ``slim send``: hidden dev/testing plumbing.
 
 There's no way to put **L9 wire traffic** (or arbitrary SLIM messages) into a
 room without running a full aligner-mediated negotiation. These two commands
 are ``git cat-file``-style escape hatches for exercising the real path (SLIM
-channel -> backend persister -> bus -> SSE) directly — QA'ing the frontend L9
+channel -> backend persister -> bus -> SSE) directly, QA'ing the frontend L9
 Inspector, demoing the AOP layer, reproducing protocol edge cases (odd
 subkinds, deep ``parents`` chains, missing metrics).
 
 Deliberately **undocumented**: registered ``hidden=True`` and never
 ``@doc_ref``'d, so they never show up in ``mycelium --help`` or the generated
-docs site. They bypass the aligner entirely and are for testing/demo only —
+docs site. They bypass the aligner entirely and are for testing/demo only,
 never a coordination shortcut.
 """
 
@@ -31,7 +31,7 @@ from mycelium.slim.client import SlimError
 from mycelium.slim.member import DEFAULT_WORKSPACE, publish_once
 
 _BANNER = (
-    "bypasses the aligner — real SLIM wire traffic for testing/demo only, "
+    "bypasses the aligner: real SLIM wire traffic for testing/demo only, "
     "never a coordination shortcut"
 )
 
@@ -162,7 +162,7 @@ def slim_send(
 ) -> None:
     """Publish an arbitrary raw message onto a room's SLIM channel as ``--as``.
 
-    No L9 semantics — the lowest-level escape hatch. Exercises the real channel:
+    No L9 semantics; the lowest-level escape hatch. Exercises the real channel:
     other SLIM members and the moderator see it, and the persister decides
     how/whether it surfaces.
 

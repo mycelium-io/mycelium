@@ -7,16 +7,16 @@ The connector only needs to do two L9 things, so this is a small, dependency-fre
 counterpart to ``fastapi-backend/app/services/l9.py`` rather than a copy of its
 pydantic model tree:
 
-1. **Read** an inbound message — pull the sender, recipients, message id, kind,
+1. **Read** an inbound message: pull the sender, recipients, message id, kind,
    and the human-facing text a spawned turn should see.
-2. **Build a reply** — an ``exchange`` envelope parented on the message that woke
+2. **Build a reply**: an ``exchange`` envelope parented on the message that woke
    the agent, wrapped in a content dict under the additive ``l9`` key.
 
 The reply is emitted in the **exact shape** the backend's
 ``l9.envelope_to_dict(l9.build_envelope(kind=exchange, ...))`` produces, so the
 backend persister's ``l9.parse_envelope`` (pydantic-validating) accepts it
 unchanged. Keep this shape in sync with the backend if the L9 binding version
-moves — the source of truth for the shape is ``app.services.l9`` /
+moves; the source of truth for the shape is ``app.services.l9`` /
 ``app.services.l9_models``.
 """
 
@@ -47,7 +47,7 @@ EXCHANGE_KIND = "exchange"
 
 # ``knowledge`` is the memory-sync kind: a ``knowledge`` message
 # carries markdown content the connector writes into its local store + reindexes
-# (push-with-content). It never wakes a turn — it updates the working set.
+# (push-with-content). It never wakes a turn; it updates the working set.
 KNOWLEDGE_KIND = "knowledge"
 
 
@@ -56,7 +56,7 @@ class L9ValidationError(ValueError):
 
 
 # Kind -> allowed subkinds. Mirrors the backend's authoritative table
-# (``app.services.l9.VALID_SUBKINDS``) byte-for-byte — see
+# (``app.services.l9.VALID_SUBKINDS``) byte-for-byte; see
 # ``contracts/slim-l9-wire.json`` for the drift guard both suites assert
 # against. An empty/None subkind is always valid, whatever the kind.
 VALID_SUBKINDS: dict[str, frozenset[str]] = {
@@ -88,12 +88,12 @@ def validate_subkind(kind: str, subkind: str | None) -> None:
 
 
 def room_episode(room: str) -> str:
-    """The room's live-episode URN — must match the backend's ``l9.episode_urn``."""
+    """The room's live-episode URN; must match the backend's ``l9.episode_urn``."""
     return f"urn:ioc:mycelium:episode:{room}:live"
 
 
 def room_topic(room: str) -> str:
-    """The room's topic URN — must match the backend's ``l9.topic_urn``."""
+    """The room's topic URN; must match the backend's ``l9.topic_urn``."""
     return f"urn:concept:mycelium:{room}"
 
 
@@ -115,7 +115,7 @@ def build_envelope_content(
 
     The general form: :func:`build_reply_content` is the ``exchange``-reply
     specialization every connector uses; this is the escape hatch for crafting
-    anything else (a ``commit``, a ``knowledge`` push, an odd subkind) — the CLI's
+    anything else (a ``commit``, a ``knowledge`` push, an odd subkind): the CLI's
     ``mycelium l9 send`` plumbing. Raises :class:`L9ValidationError` before
     touching the wire if ``subkind`` isn't valid for ``kind``.
     """
@@ -165,7 +165,7 @@ def build_reply_content(
 ) -> dict[str, Any]:
     """Build a full content dict for an agent reply: ``{content, l9: <envelope>}``.
 
-    The envelope is an ``exchange`` (no subkind — always valid), with ``sender``
+    The envelope is an ``exchange`` (no subkind, always valid), with ``sender``
     as the first actor and ``recipients`` after it, parented on ``parents`` (the
     message that woke the agent) so the backend's causal ordering + transcript
     stay correct.

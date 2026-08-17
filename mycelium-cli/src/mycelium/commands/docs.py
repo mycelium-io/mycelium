@@ -5,7 +5,7 @@
 Documentation commands for Mycelium CLI.
 
 Provides built-in, agent-friendly documentation accessible from the command line.
-Section files mirror the GUI docs at mycelium-io.github.io/mycelium/ — markdown
+Section files mirror the GUI docs at mycelium-io.github.io/mycelium/; markdown
 is the single source of truth for both.
 """
 

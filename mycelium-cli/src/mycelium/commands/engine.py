@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""``mycelium engine`` — manage first-party Cognition Engines as room citizens.
+"""``mycelium engine``: manage first-party Cognition Engines as room citizens.
 
 An engine is *not* an external-runtime agent (claude_code/cursor/…). It's a
-first-party mycelium Cognition Engine — our NEGMAS loop, our brain — registered
+first-party mycelium Cognition Engine (our NEGMAS loop, our brain) registered
 as a real room participant so it's visible, routable, and invokable like anyone
 else. ``--kind`` selects the CE (``aligner`` today; more later).
 

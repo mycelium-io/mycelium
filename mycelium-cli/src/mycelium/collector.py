@@ -42,7 +42,7 @@ def _ts_to_epoch_ms(ts: str) -> float:
 # the volume without permission errors.
 _SHARED_DIR_MODE = 0o2775
 # Mode for shared regular files (e.g. traces.db): rw-rw-r--. Group write
-# is the important bit — it lets the same group rotate between the host
+# is the important bit; it lets the same group rotate between the host
 # user and the in-container collector user without root-owned leftovers
 # blocking writes.
 _SHARED_FILE_MODE = 0o664
@@ -106,7 +106,7 @@ CREATE TABLE IF NOT EXISTS spans (
     status_message TEXT NOT NULL DEFAULT '',
     attributes   TEXT NOT NULL DEFAULT '{}',
     -- JSON list of OTel span events (timestamped log-like records the
-    -- gateway / instrumentation attached mid-span — exceptions, prompt
+    -- gateway / instrumentation attached mid-span: exceptions, prompt
     -- build steps, tool I/O snapshots, etc.). Each entry is
     -- {"time": iso8601, "name": str, "attributes": {...}}.
     events       TEXT NOT NULL DEFAULT '[]',
@@ -145,7 +145,7 @@ class TraceStore:
         cursor = conn.execute("PRAGMA table_info(spans)")
         columns = {row[1] for row in cursor.fetchall()}
         if not columns:
-            return  # fresh DB, table doesn't exist yet — schema script will create it
+            return  # fresh DB, table doesn't exist yet; schema script will create it
         if "host" not in columns:
             conn.execute("ALTER TABLE spans ADD COLUMN host TEXT NOT NULL DEFAULT ''")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_spans_host ON spans(host)")
@@ -226,7 +226,7 @@ class TraceStore:
         status_code = span.status.code if span.status else 0
         status_msg = span.status.message if span.status else ""
 
-        # Capture OTel span events — these are the closest thing the
+        # Capture OTel span events; these are the closest thing the
         # protocol has to "log lines attached to a span" and are what
         # gives users a chance to see *what happened* mid-span. We
         # deliberately keep the same shape exporters use over the wire so
@@ -465,7 +465,7 @@ class MetricsStore:
     def __init__(self) -> None:
         self.lock = threading.Lock()
         # Per-host raw counter buckets. Each host pushes its own cumulative
-        # values via OTLP — overwriting per host is correct, but the
+        # values via OTLP (overwriting per host is correct), but the
         # cross-host rollup exposed as ``counters`` in ``to_dict()`` MUST be
         # a sum across hosts (otherwise the host that pushed last clobbers
         # everyone else's contribution). See ``_aggregate_counters_locked``.
@@ -542,7 +542,7 @@ class MetricsStore:
         the correct cross-host value is the SUM of each host's latest
         reported value. The previous implementation kept a single shared
         bucket and simply overwrote on every push, which meant whichever
-        host pushed last clobbered everyone else's contribution — making
+        host pushed last clobbered everyone else's contribution, making
         the headline ``Tokens by Channel`` and ``Cost Estimates`` panels
         report the value from a single (essentially random) host instead
         of the cluster total.
@@ -619,7 +619,7 @@ class MetricsStore:
         """Record the latest scrape result for a Prometheus target by name.
 
         ``data`` is the rolled-up dict from
-        ``prom_scrape.aggregate_http_red(...)`` — see that helper for shape.
+        ``prom_scrape.aggregate_http_red(...)``; see that helper for shape.
         Passing None records that the target was unreachable on the last
         attempt; this is preserved (rather than dropped) so the panel can
         surface "target degraded" rather than silently disappear.
@@ -695,7 +695,7 @@ class MetricsStore:
         """Process model.usage spans for session aggregation.
 
         The raw request_bytes are also forwarded to a TraceStore (if set)
-        for full trace capture — see ``trace_store`` attribute.
+        for full trace capture; see ``trace_store`` attribute.
         """
         from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
             ExportTraceServiceRequest,
@@ -1329,7 +1329,7 @@ def run(
     Targets are polled on the same 30-second interval as the backend.
 
     When ``no_backend`` is True the collector skips backend polling and
-    Prometheus scraping entirely — it only accepts OTLP pushes.  This is
+    Prometheus scraping entirely; it only accepts OTLP pushes.  This is
     the mode used on spoke nodes that run a lightweight local collector
     for OpenClaw telemetry only.
 
@@ -1361,7 +1361,7 @@ def run(
             # snapshots). Each host's bucket holds its own cumulative
             # values, so reloading them as-is keeps the rollup honest
             # even as live hosts push their next sample. Older snapshots
-            # only have the aggregated ``counters`` field — fall back to
+            # only have the aggregated ``counters`` field; fall back to
             # bucketing those under a synthetic ``"persisted"`` key so
             # we don't lose data outright. This may cause a one-time
             # over-count for hosts that immediately push again, but it
@@ -1453,7 +1453,7 @@ def run(
         server = _DualStackHTTPServer(("::", port), handler)
     except OSError as exc:
         if exc.errno == 98:  # EADDRINUSE
-            log.error("Port %d is already in use — is another collector running?", port)
+            log.error("Port %d is already in use; is another collector running?", port)
             raise SystemExit(1) from exc
         server = HTTPServer(("", port), handler)
     log.info("OTLP receiver listening on :%d", port)

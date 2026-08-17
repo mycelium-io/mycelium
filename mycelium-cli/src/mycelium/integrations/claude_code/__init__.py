@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Claude Code integration — daemon dispatch + (Stage 2) host install."""
+"""Claude Code integration: daemon dispatch + (Stage 2) host install."""
 
 from __future__ import annotations
 

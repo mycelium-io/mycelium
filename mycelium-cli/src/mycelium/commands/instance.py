@@ -56,7 +56,7 @@ def _get_compose_path() -> Path:
     Priority:
       1. MYCELIUM_COMPOSE_FILE env var
       2. Walk up from package location to find repo's services/docker-compose.yml
-         (editable installs — keeps relative build contexts correct)
+         (editable installs; keeps relative build contexts correct)
       3. ~/.mycelium/docker/compose.yml  (extracted by mycelium install)
       4. Bundled in CLI package          (extracted on demand; build contexts broken)
     """
@@ -119,14 +119,14 @@ def _compose_base_cmd(
 
     When *include_ui_profile* is True (the default) and the frontend container
     is running, ``--profile ui`` is appended so stop/logs/down/status include
-    it too — otherwise the profile-gated frontend is invisible to those
+    it too; otherwise the profile-gated frontend is invisible to those
     commands (its logs don't show up, and it's left running on ``down``).
 
     When *include_spire_profile* is True (the default) and ``slim.identity=spire``
     is set in the user's .env, ``--profile spire`` is appended so the SPIRE
     server + node daemon come up with the stack (#588). This is the one control: the
     config drives the profile, the user never passes ``--profile spire`` by hand.
-    On the default ``psk`` it's a silent no-op — the try-it stack is unchanged.
+    On the default ``psk`` it's a silent no-op; the try-it stack is unchanged.
     """
     if compose_path is None:
         compose_path = _get_compose_path()
@@ -205,7 +205,7 @@ def _announce_image_tag() -> None:
     """Print the effective ``MYCELIUM_IMAGE_TAG`` after ``mycelium up``.
 
     Compose silently falls back to ``:latest`` when the pin is absent, which
-    is a UX trap — users assume the version they last pulled is still running.
+    is a UX trap: users assume the version they last pulled is still running.
     Surface the resolved tag (and a hint when unpinned) so the next person
     triaging an image-mismatch bug doesn't have to dig through .env.
     """
@@ -247,7 +247,7 @@ def _spire_enabled() -> bool:
 
     Reads the same ``MYCELIUM_SLIM_IDENTITY`` key that ``config apply`` writes,
     so the config is the single source of truth for whether the ``spire`` compose
-    profile comes up — the user never toggles the profile separately. Any other
+    profile comes up; the user never toggles the profile separately. Any other
     value (``psk``/``signerjwt``/unset) leaves SPIRE out of the stack.
     """
     env_path = _get_env_path()
@@ -380,7 +380,7 @@ def _frontend_container_running() -> bool:
     """Return True if the mycelium-frontend container is running.
 
     The frontend lives behind the ``ui`` compose profile, so logs/down/stop/
-    status must enable that profile to see it — otherwise compose treats the
+    status must enable that profile to see it; otherwise compose treats the
     service as out of scope and silently skips it.
     """
     try:
@@ -654,7 +654,7 @@ def start(
         if metrics:
             typer.echo(f"  mycelium-collector  → http://localhost:{metrics_port}")
         if _spire_enabled():
-            # SPIRE is config-driven, not a flag — surface it so the extra weight
+            # SPIRE is config-driven, not a flag; surface it so the extra weight
             # on the stack is legible (#588). Registration happens on agent create.
             typer.echo("  spire-server/node   → attested identity (slim.identity=spire)")
 
@@ -935,7 +935,7 @@ def status(ctx: typer.Context) -> None:
             )
 
             # ── Configuration ─────────────────────────────────────────
-            # Informational block (no checks) — path + active room.
+            # Informational block (no checks): path + active room.
             print_section("Configuration")
             print_kv("Path", str(config_path))
             active_room = config.get_active_room()
@@ -967,7 +967,7 @@ def status(ctx: typer.Context) -> None:
         print_error(e, verbose=verbose)
 
 
-# -- End of status helpers — see mycelium.ui_status for shared presentation -----
+# -- End of status helpers; see mycelium.ui_status for shared presentation -----
 
 
 # -- Client-side health checks -----------------------------------------------

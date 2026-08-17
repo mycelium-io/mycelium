@@ -2,12 +2,12 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-Per-agent credentials — an agent's *own* token, resolved at the one client seam.
+Per-agent credentials: an agent's *own* token, resolved at the one client seam.
 
 A human runs ``mycelium login`` and gets a session. An agent can't: there is no
 browser to open, no consent screen to click, and nobody sitting there to do it.
 So an agent authenticates as a **workload**: its own OIDC client, minted with the
-``client_credentials`` grant, whose ``sub`` is the client id — which is the
+``client_credentials`` grant, whose ``sub`` is the client id, which is the
 agent's handle, the same handle the hub binds its writes to
 (``app/services/actor.py``). Two agents on one machine therefore hold two
 different credentials, and revoking one client leaves the other untouched.
@@ -15,14 +15,14 @@ different credentials, and revoking one client leaves the other untouched.
 Three sources, most specific first:
 
 * **A pre-minted token** (``MYCELIUM_AGENT_AUTH_TOKEN``). The seam for a
-  credential this CLI didn't obtain — a token from CI, or a JWT-SVID a SPIRE
+  credential this CLI didn't obtain: a token from CI, or a JWT-SVID a SPIRE
   sidecar wrote out. Nothing here mints or renews it; the writer owns its
   lifetime.
 * **The environment** (``MYCELIUM_AGENT_AUTH_CLIENT_ID`` / ``…_CLIENT_SECRET``),
   for a container that runs exactly one agent and has no config file.
 * **The credential store**, ``~/.mycelium/agent-credentials.json``, written by
   ``mycelium agent credential set``. A secret, so it is ``0600`` and lives
-  outside ``config.toml`` — the same reason the human session does
+  outside ``config.toml`` (the same reason the human session does
   (``mycelium.tokens``).
 
 The issuer itself is not a secret and is shared by every agent on the machine,
@@ -63,7 +63,7 @@ CLIENT_SECRET_ENV = "MYCELIUM_AGENT_AUTH_CLIENT_SECRET"
 
 _stderr = Console(stderr=True)
 
-#: One warning per handle per process — every command builds several clients and
+#: One warning per handle per process: every command builds several clients and
 #: each would otherwise repeat the same failure.
 _warned: set[str] = set()
 
@@ -148,7 +148,7 @@ def _read_store() -> dict[str, dict[str, Any]]:
 
 
 def _write_store(agents: dict[str, dict[str, Any]]) -> Path:
-    """Persist the store owner-readable only — it holds client secrets."""
+    """Persist the store owner-readable only; it holds client secrets."""
     path = store_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     # os.open with 0600 rather than write_text + chmod: the file must never exist,
@@ -312,7 +312,7 @@ def _mint(handle: str, credential: AgentCredential) -> str | None:
             access_token=grant.access_token,
             issuer=meta.issuer,
             client_id=credential.client_id,
-            # client_credentials issues no refresh token — an expired agent token
+            # client_credentials issues no refresh token; an expired agent token
             # is re-minted from the client itself, which is the whole point.
             expires_at=grant.expires_at,
             token_endpoint=meta.token_endpoint,

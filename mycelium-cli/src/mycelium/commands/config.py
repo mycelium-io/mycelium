@@ -249,7 +249,7 @@ def apply_config(
 
 
 def _find_compose_path() -> Path | None:
-    """Find the compose file — same logic as install.py but simplified."""
+    """Find the compose file: same logic as install.py but simplified."""
     import importlib.resources
 
     bundled = Path.home() / ".mycelium" / "docker" / "compose.yml"
@@ -301,7 +301,7 @@ def _parse_env_file(env_path: Path) -> dict[str, str]:
 def _migrate_env_to_config(config: "MyceliumConfig") -> None:
     """Import LLM and runtime settings from the existing .env into config.
 
-    Only fills in fields that are empty/default in config.toml — never
+    Only fills in fields that are empty/default in config.toml, never
     overwrites values the user already set in TOML.
     """
     env_path = config.get_global_config_dir() / ".env"
@@ -324,7 +324,7 @@ def _migrate_env_to_config(config: "MyceliumConfig") -> None:
         config.llm.base_url = base_url
         changed = True
 
-    # Runtime — ports
+    # Runtime: ports
     env_backend_port = env.get("MYCELIUM_BACKEND_PORT")
     if env_backend_port and config.runtime.backend_port == 8000:  # still default
         try:
@@ -340,7 +340,7 @@ def _migrate_env_to_config(config: "MyceliumConfig") -> None:
         except ValueError:
             pass
 
-    # Runtime — data dir
+    # Runtime: data dir
     if not config.runtime.data_dir and env.get("MYCELIUM_DATA_DIR"):
         config.runtime.data_dir = env["MYCELIUM_DATA_DIR"]
         changed = True

@@ -32,12 +32,12 @@ from mycelium.exceptions import ConfigNotFoundError, MyceliumError
 
 # The L9 "raise-up" whitelist: message types promoted onto the primary channel
 # surface (here, `room watch`'s live stream) rather than staying inspector-only.
-# Must mirror contracts/l9-surface.json's `raise_up_types` byte-for-byte — the
+# Must mirror contracts/l9-surface.json's `raise_up_types` byte-for-byte; the
 # frontend (mycelium-frontend/src/components/event-stream.tsx) carries an
 # independent copy, and tests/test_l9_surface_contract.py asserts both stay in
 # sync with the contract so the two surfaces can't silently drift apart.
-# (`room watch` also renders CLI-native detail — ticks, session start, raw
-# memory_changed — that has no frontend-inspector equivalent to hide behind;
+# (`room watch` also renders CLI-native detail: ticks, session start, raw
+# memory_changed; that has no frontend-inspector equivalent to hide behind;
 # that detail is intentionally outside this shared list.)
 L9_RAISE_UP_TYPES = frozenset(
     {
@@ -510,12 +510,12 @@ def _agent_owner_map(room_name: str) -> dict[str, str]:
         from mycelium.commands.agent import _room_manifests
 
         return {m.handle: m.owner for m in _room_manifests(room_name) if m.owner}
-    except Exception:  # noqa: BLE001 — attribution is best-effort, never fatal
+    except Exception:  # noqa: BLE001, attribution is best-effort, never fatal
         return {}
 
 
 def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
-    """Core SSE watch loop — pretty-renders coordination and memory events."""
+    """Core SSE watch loop: pretty-renders coordination and memory events."""
     import time
 
     from rich.console import Console
@@ -922,7 +922,7 @@ def messages(
         typer.secho(f"({len(msgs)} {plural}, newest first)\n", fg=typer.colors.BRIGHT_BLACK)
         for m in msgs:
             stamp = m.created_at.strftime("%H:%M:%S")
-            # Show the full message — this is the read-the-transcript command, so
+            # Show the full message; this is the read-the-transcript command, so
             # never truncate. Keep multi-line content readable by indenting any
             # continuation lines under the first.
             first, *rest = (m.content or "").split("\n")

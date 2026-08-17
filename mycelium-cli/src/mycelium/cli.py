@@ -2,7 +2,7 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-Mycelium CLI — Multi-agent coordination + persistent memory.
+Mycelium CLI: Multi-agent coordination + persistent memory.
 """
 
 import typer
@@ -37,7 +37,7 @@ from mycelium.commands import (
 
 app = typer.Typer(
     name="mycelium",
-    help="[bold]Mycelium[/bold] — Multi-agent coordination + persistent memory",
+    help="[bold]Mycelium[/bold]: Multi-agent coordination + persistent memory",
     add_completion=True,
     no_args_is_help=True,
     pretty_exceptions_show_locals=False,
@@ -67,7 +67,7 @@ def main(
     quiet: bool = typer.Option(False, "--quiet", "-q", help="Suppress non-essential output"),
     json_output: bool = typer.Option(False, "--json", help="Output in JSON format"),
 ) -> None:
-    """[bold]Mycelium[/bold] — Multi-agent coordination + persistent memory."""
+    """[bold]Mycelium[/bold]: Multi-agent coordination + persistent memory."""
     ctx.ensure_object(dict)
     ctx.obj["verbose"] = verbose
     ctx.obj["quiet"] = quiet
@@ -96,11 +96,11 @@ app.command(name="watch")(room.watch)
 app.command(name="sync")(memory.memory_sync)
 app.command(name="connect")(hub.connect)
 
-# Participation primitives — join a room's SLIM channel and reply, no daemon.
+# Participation primitives: join a room's SLIM channel and reply, no daemon.
 app.command(name="await")(participate.await_room)
 app.command(name="respond")(participate.respond)
 
-# Convenience alias: `mycelium ls` is `mycelium room ls` — rooms are the entry
+# Convenience alias: `mycelium ls` is `mycelium room ls`; rooms are the entry
 # point, so listing them shouldn't need the `room` prefix.
 app.command(name="ls")(room.list_rooms)
 
@@ -121,7 +121,7 @@ app.add_typer(openshell.app, name="openshell")
 app.add_typer(demo.app, name="demo")
 app.add_typer(hub.app, name="hub")
 
-# Hidden dev/testing plumbing — inject raw L9/SLIM traffic (see commands/wire.py).
+# Hidden dev/testing plumbing: inject raw L9/SLIM traffic (see commands/wire.py).
 app.add_typer(wire.l9_app, name="l9", hidden=True)
 app.add_typer(wire.slim_app, name="slim", hidden=True)
 

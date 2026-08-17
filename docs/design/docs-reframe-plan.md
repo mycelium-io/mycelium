@@ -40,9 +40,10 @@ Suggested: **Rooms → Memory → Coordination (events + plan merged) → Engine
 
 ## Task list
 
-- [ ] **1. Mechanical sweep** — em dashes (in progress), "primitive",
-      hub/spoke/thin-client, the structured-memory "Problem" line, across all
-      concept docs + guides.
+- [ ] **1. Mechanical sweep** — em dashes DONE (docs site + entire CLI source +
+      SKILL.md/cursor rules; only deploy-config YAML comments left, not docs);
+      "primitive" DONE. Still: hub/spoke/thin-client, the structured-memory
+      "Problem" line, across all concept docs + guides.
 - [ ] **2. rooms.md + plan.md + events reconciliation** (coordination-surface
       reframe; biggest conceptual win).
 - [ ] **3. Demote negotiation** — fold `episodes.md` into `aligner.md`, move L9 to

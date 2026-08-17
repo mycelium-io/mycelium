@@ -2,11 +2,11 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-Plan commands — read and edit the room's plan/ namespace.
+Plan commands: read and edit the room's plan/ namespace.
 
 A plan is a set of markdown files in ``.mycelium/rooms/{room}/plan/`` plus the
 ``- [ ]`` / ``- [x]`` checklist lines those files contain.  Plan files are
-ordinary memory files with the ``plan/`` key prefix — file CRUD piggybacks on
+ordinary memory files with the ``plan/`` key prefix; file CRUD piggybacks on
 ``mycelium memory set/rm``.  This module adds the task-aware verbs on top.
 """
 

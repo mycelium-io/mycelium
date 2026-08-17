@@ -23,7 +23,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-# Global registry — collected at import time, read by the generator.
+# Global registry, collected at import time, read by the generator.
 _registry: list[DocEntry] = []
 
 
@@ -57,7 +57,7 @@ def doc_ref(
 def get_registry() -> list[DocEntry]:
     """All registered CLI doc entries, collected at import time.
 
-    Read by ``docs/generate_docs.py`` to build the CLI-reference page — importing
+    Read by ``docs/generate_docs.py`` to build the CLI-reference page. Importing
     each command module runs its ``@doc_ref`` decorators, which append here.
     """
     return _registry

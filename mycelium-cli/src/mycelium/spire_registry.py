@@ -7,11 +7,11 @@ When ``slim.identity=spire`` the shipped compose runs a co-located SPIRE server 
 node daemon (see ``docker/compose.yml``). This module is the seam that makes
 turning on attested identity *one switch*: ``mycelium agent create @alice``
 registers the SVID entry against the running server, and ``mycelium agent rm
-@alice`` revokes it — no hand-typed ``spire-server entry create``.
+@alice`` revokes it, no hand-typed ``spire-server entry create``.
 
 Every call shells out to ``docker compose exec`` against the compose project's
 ``spire-server`` service, reusing the same project/compose/env resolution the
-rest of the lifecycle commands use. Nothing here mints keys — SPIRE owns the key
+rest of the lifecycle commands use. Nothing here mints keys; SPIRE owns the key
 material; we only manage the *registration entry* that binds a workload selector
 to ``spiffe://{trust_domain}/agent/{handle}`` (the same SPIFFE ID
 ``slim_identity.spiffe_id_for`` builds, so the backend's MLS provider and the
@@ -19,7 +19,7 @@ server's entry agree on the leaf).
 
 The selector is the **backend container's** uid: in the server-held-membership
 model the always-on backend is the co-located workload that fetches each
-member's SVID (a resident spoke session can't be co-located — the #584 gotcha),
+member's SVID (a resident spoke session can't be co-located, the #584 gotcha),
 so an entry attested to the backend's uid is what lets the backend present
 ``@alice``'s identity. Every SPIRE call is best-effort: a failure is surfaced as
 a warning, never a hard error, because the manifest is already written and the
@@ -35,7 +35,7 @@ from mycelium.slim.identity import resolve_spire_trust_domain, spiffe_id_for
 
 # The node SPIFFE ID the compose bootstrap binds the one-time join token to
 # (``spiffe://{td}/agent-node``). Fixed on both sides so the workload-entry parent
-# is deterministic — the registry never has to discover the attested agent node.
+# is deterministic; the registry never has to discover the attested agent node.
 _AGENT_NODE_PATH = "agent-node"
 
 # JWT-SVID TTL (seconds) for a member entry. Matches the server's short default;
@@ -76,7 +76,7 @@ def _compose_exec(args: list[str], *, timeout: int = 20) -> subprocess.Completed
 
 
 def _backend_uid() -> str | None:
-    """The uid the backend container runs as — the workload-attestor selector.
+    """The uid the backend container runs as: the workload-attestor selector.
 
     Returns ``None`` if the backend isn't reachable; callers fall back to a
     documented warning rather than registering an entry with a wrong selector.
@@ -142,7 +142,7 @@ def register_workload(handle: str, trust_domain: str | None = None) -> SpireResu
         return SpireResult(
             ok=False,
             message=(
-                "could not read the backend container's uid — is the stack up "
+                "could not read the backend container's uid: is the stack up "
                 "(mycelium up) with slim.identity=spire?"
             ),
             spiffe_id=spiffe_id,
@@ -185,7 +185,7 @@ def revoke_workload(handle: str, trust_domain: str | None = None) -> SpireResult
 
     The inverse of :func:`register_workload`, wired into ``agent rm`` so removing
     an agent revokes its attested identity (ties to #590). Absent the server (spire
-    off, or the stack down) this is a silent no-op — there is nothing to revoke.
+    off, or the stack down) this is a silent no-op; there is nothing to revoke.
     """
     td = trust_domain or resolve_spire_trust_domain()
     spiffe_id = spiffe_id_for(handle, td)
@@ -264,7 +264,7 @@ def mint_join_token(trust_domain: str | None = None) -> str | None:
     so ``mycelium up`` mints it host-side against the live server and injects it into
     the node daemon as ``SPIRE_JOIN_TOKEN`` (see :mod:`mycelium.commands.instance`). The
     fixed ``spiffe://{td}/agent-node`` node ID is what makes the workload-entry
-    parent deterministic — the same one :func:`register_workload` parents entries to.
+    parent deterministic, the same one :func:`register_workload` parents entries to.
     Returns ``None`` if the server isn't reachable or the output can't be parsed.
     """
     td = trust_domain or resolve_spire_trust_domain()

@@ -31,10 +31,10 @@ from mycelium.protocol import EngineRuntime
 # file (they look up known sections by name: server / llm / runtime /
 # etc). The key leads so it's the first thing a user sees on `cat`. Long
 # term we plan to delete this file entirely and have JS hooks parse
-# config.toml directly — see #146 — so this is interim.
+# config.toml directly (see #146), so this is interim.
 _JSON_HEADER_KEY = "//"
 _JSON_HEADER_VALUE = (
-    "DO NOT EDIT — auto-generated from ~/.mycelium/config.toml on every save. "
+    "DO NOT EDIT: auto-generated from ~/.mycelium/config.toml on every save. "
     "Edit config.toml instead, or use `mycelium config set`. "
     "Any edits here are silently overwritten on the next save."
 )
@@ -77,7 +77,7 @@ class SlimConfig(BaseModel):
 
     ``node_endpoint`` is the address of the ``slim`` node this agent connects
     to. It's the same value whether the node is self-hosted (``mycelium hub
-    host``) or a shared mycelium-hosted rendezvous — set it with ``mycelium
+    host``) or a shared mycelium-hosted rendezvous; set it with ``mycelium
     connect <address>``. MLS makes the node a blind ciphertext forwarder, so the
     host is untrusted either way.
     """
@@ -91,15 +91,15 @@ class SlimConfig(BaseModel):
         default="psk",
         description=(
             "SLIM channel identity tier: 'psk' (default, off-by-default #567) is the "
-            "shared-secret credential every room member derives — zero infra, no "
-            "per-agent identity. 'signerjwt' opts into the SignerJwt floor (#476): "
+            "shared-secret credential every room member derives (zero infra, no "
+            "per-agent identity). 'signerjwt' opts into the SignerJwt floor (#476): "
             "each member presents a per-agent self-signed ES256 identity so members "
             "are cryptographically distinct, individually revocable MLS "
             "participants. 'spire' opts into SPIRE/SPIFFE (#579): each member "
-            "presents a SPIRE-attested JWT-SVID from the Workload API — tightest "
-            "attestation, heaviest deploy (a co-located SPIRE server + node daemon, "
+            "presents a SPIRE-attested JWT-SVID from the Workload API (tightest "
+            "attestation, heaviest deploy: a co-located SPIRE server + node daemon, "
             "brought up automatically by 'mycelium up' via the shipped 'spire' compose "
-            "profile; #588). Selecting 'signerjwt'/'spire' with no "
+            "profile; #588. Selecting 'signerjwt'/'spire' with no "
             "resolvable material degrades to 'psk' unless "
             "MYCELIUM_SLIM_IDENTITY_REQUIRE=1 fails closed."
         ),
@@ -170,8 +170,8 @@ class TrustedIssuer(BaseModel):
     """One trust root the backend's HTTP-API gate accepts tokens from.
 
     Configured as a repeatable ``[[auth.issuers]]`` block. More than one root is
-    the normal case — a human OIDC issuer alongside an agent/service-account one
-    — and each carries its own keys, audience, and default role, so adding a root
+    the normal case (a human OIDC issuer alongside an agent/service-account one),
+    and each carries its own keys, audience, and default role, so adding a root
     is config rather than code.
     """
 
@@ -207,7 +207,7 @@ class TrustedIssuer(BaseModel):
 
 
 class AuthConfig(BaseModel):
-    """HTTP-API JWT gate — off by default.
+    """HTTP-API JWT gate, off by default.
 
     The backend validates a bearer token against a configured issuer + JWKS. It
     ships **disabled**: auth must never stand between someone and trying
@@ -215,7 +215,7 @@ class AuthConfig(BaseModel):
     is a per-deployment decision for when a team shares a hub over a network.
 
     When enabling it, set ``audience`` as well. Without one, *any* token a
-    trusted issuer ever minted is accepted — including tokens a user obtained
+    trusted issuer ever minted is accepted, including tokens a user obtained
     for an unrelated application on the same IdP. The audience is what makes
     "valid token" mean "token meant for this hub".
     """
@@ -255,7 +255,7 @@ class AuthConfig(BaseModel):
 
 
 class LoginConfig(BaseModel):
-    """Where ``mycelium login`` gets a human's token — the client side of auth.
+    """Where ``mycelium login`` gets a human's token: the client side of auth.
 
     Distinct from :class:`AuthConfig`, which configures the *hub's* gate: this
     section says which issuer this machine logs in against, that one says which
@@ -297,16 +297,16 @@ class LoginConfig(BaseModel):
 
 
 class AgentAuthConfig(BaseModel):
-    """Where an *agent* gets its own token — the workload half of the client side.
+    """Where an *agent* gets its own token: the workload half of the client side.
 
     An agent is not a human: no browser, no consent screen, and nobody to run
     ``mycelium login`` on its behalf. Its credential is its own OIDC client
     (``client_credentials``), so the token's ``sub`` is the client id, which is
-    the agent's handle — the same handle the hub binds its writes to.
+    the agent's handle, the same handle the hub binds its writes to.
 
     This section holds only what is *shared* by every agent on the machine (the
-    issuer and the audience to ask for). The per-agent half — which client id an
-    agent is, and its secret — is a secret, so it lives in the ``0600`` store
+    issuer and the audience to ask for). The per-agent half (which client id an
+    agent is, and its secret) is a secret, so it lives in the ``0600`` store
     behind ``mycelium agent credential set``, never in ``config.toml``.
 
     Unset ``issuer`` means "no agent credentials configured", which is the
@@ -408,7 +408,7 @@ class MetricsConfig(BaseModel):
     On spoke nodes, set ``collector_url`` to the hub's collector address
     (e.g. ``http://hub-ip:4318``). This makes ``mycelium metrics show``
     fetch data from the hub and sets the default OTLP endpoint for
-    adapter plugins — no local collector needed.
+    adapter plugins; no local collector needed.
     """
 
     collector_url: str | None = Field(
@@ -571,7 +571,7 @@ class MyceliumConfig(BaseModel):
         if llm_base_url := os.getenv("LLM_BASE_URL"):
             env_config["llm"]["base_url"] = llm_base_url
 
-        # Login (OIDC client) overrides — how a CI runner points `mycelium login`
+        # Login (OIDC client) overrides: how a CI runner points `mycelium login`
         # at an issuer without writing a config file.
         if login_issuer := os.getenv("MYCELIUM_LOGIN_ISSUER"):
             env_config["login"]["issuer"] = login_issuer
@@ -584,7 +584,7 @@ class MyceliumConfig(BaseModel):
         if login_scopes := os.getenv("MYCELIUM_LOGIN_SCOPES"):
             env_config["login"]["scopes"] = login_scopes
 
-        # Agent (service-account) overrides — how a container hands its agent an
+        # Agent (service-account) overrides: how a container hands its agent an
         # issuer without a config file. The per-agent client id and secret are
         # secrets and stay out of config; see `mycelium.agent_credentials`.
         if agent_issuer := os.getenv("MYCELIUM_AGENT_AUTH_ISSUER"):
@@ -665,7 +665,7 @@ class MyceliumConfig(BaseModel):
     def _write_json_snapshot(self, config_dir: Path) -> None:
         """Write a config.json snapshot for JS/TS consumers.
 
-        Regenerated from config.toml on every save — edits to config.json are
+        Regenerated from config.toml on every save; edits to config.json are
         silently discarded. We prepend a ``"//"`` header key (the npm/
         package.json convention for in-JSON comments) so anyone opening the
         file sees the warning at the top. See _JSON_HEADER_* for why this

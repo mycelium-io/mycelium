@@ -1,11 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""The SAO mediator — the aligner as a *driver* of a real negotiation.
+"""The SAO mediator: the aligner as a *driver* of a real negotiation.
 
 A real-time negotiator over SLIM: an LLM mediator reads natural-language agent
 positions, maps them onto a NEGMAS **Stacked Alternating Offers** mechanism, and
-**NEGMAS owns termination** — the mechanism stops the instant everyone accepts
+**NEGMAS owns termination**: the mechanism stops the instant everyone accepts
 the standing offer. Bare-offer relaying to stateless agents deadlocks;
 convergence needs **memory + a brokering mediator + BATNA** (the "camp
 counselor"), which NEGMAS provides. The loop runs *live over SLIM* against real
@@ -49,10 +49,10 @@ logger = logging.getLogger(__name__)
 # Deterministic interpretation; brokering keeps the Pi brain's own default.
 _DISCOVER_TEMPERATURE = 0.0
 
-# No-deal framing — the BATNA that turns a hardliner into a negotiator (the one
+# No-deal framing: the BATNA that turns a hardliner into a negotiator (the one
 # thing the v1 spike lacked). Appended to every agent-facing prompt.
 _BATNA = (
-    "If the team reaches NO agreement there is NO change at all — the worst outcome for "
+    "If the team reaches NO agreement there is NO change at all, the worst outcome for "
     "everyone, you included. A compromise you can live with beats no deal. Protect your one "
     "genuine hard line; concede everything secondary."
 )
@@ -64,7 +64,7 @@ def _extract_json(text: str) -> dict[str, Any]:
     Robust to the ways a chat model wraps JSON: a ```` ```json ```` code fence,
     a sentence of preamble, or trailing commentary. We scan for each ``{`` and
     let :meth:`json.JSONDecoder.raw_decode` consume the longest valid object
-    starting there — unlike a greedy ``\\{.*\\}`` regex, which spans from the
+    starting there; unlike a greedy ``\\{.*\\}`` regex, which spans from the
     first brace to the *last* brace anywhere in the text and so is broken by any
     stray brace in prose. The first ``{`` that yields a dict wins.
     """
@@ -82,12 +82,12 @@ def _extract_json(text: str) -> dict[str, Any]:
 def discover_issues(
     task: str, positions: dict[str, str], *, llm: Callable[..., str]
 ) -> list[dict[str, Any]]:
-    """Mediator stage 1 — read opening prose into negotiable issues + options.
+    """Mediator stage 1: read opening prose into negotiable issues + options.
 
     Ported from the spike's ``discover_issues``. Returns a list of
     ``{"name": snake_case, "options": [token, ...]}``. An empty/degenerate result
     (fewer than one issue) is a signal to the caller to bail to a rejected
-    verdict rather than build an empty mechanism. ``llm`` is required — the host
+    verdict rather than build an empty mechanism. ``llm`` is required; the host
     runtime always injects a Pi brain; there is no global fallback.
     """
     opening = "\n".join(f"@{handle}: {prose}" for handle, prose in positions.items())
@@ -95,7 +95,7 @@ def discover_issues(
         llm(
             "You are a negotiation mediator. From the task and each agent's opening position, "
             "identify the negotiable ISSUES and their discrete OPTIONS.\n"
-            "Only include issues an agent actually raised — do NOT invent extra dimensions.\n"
+            "Only include issues an agent actually raised; do NOT invent extra dimensions.\n"
             "For a NUMERIC/quantity issue, the options MUST be an evenly-spaced grid that "
             "spans BOTH agents' stated values AND the space between them, so any middle "
             "compromise is representable (e.g. positions 20 and 40 → options 20,25,30,35,40). "
@@ -157,7 +157,7 @@ class MediatedNegotiation:
         return "\n".join(self.history[-12:]) if self.history else "(negotiation just started)"
 
     def broker(self, offer: tuple[Any, ...] | None, round_n: int) -> str:
-        """The mediator's per-turn framing — where everyone stands + a nudge."""
+        """The mediator's per-turn framing: where everyone stands + a nudge."""
         order = ", ".join(self._names)
         try:
             return self._llm(
@@ -165,7 +165,7 @@ class MediatedNegotiation:
                 f"{round_n} of {self._cap}. Issue order: {order}. Offer on the table: {offer}.\n\n"
                 f"History so far:\n{self._history_block()}\n\nWrite 2 sentences to the group: "
                 "summarize where each agent stands, name who has hit a genuine hard limit, and "
-                "nudge the holdout toward closing — remind them a near-deal beats no change. Be "
+                "nudge the holdout toward closing; remind them a near-deal beats no change. Be "
                 "concrete and fair, not preachy.",
                 system="You are a fair mediator who wants a durable agreement, not to favor anyone.",
             )
@@ -178,7 +178,7 @@ class MediatedNegotiation:
 
         **Fail closed on silence.** An empty ``prose`` means the agent never
         replied within the round window (``_slim_turn`` timeout). Feeding ``""``
-        to the interpreter LLM makes it *hallucinate* a full offer — so a
+        to the interpreter LLM makes it *hallucinate* a full offer, so a
         negotiation could "converge" with no real agent input (a degenerate
         convergence). Instead, empty prose is a
         deterministic no-op: an empty reading that ``respond`` reads as a reject and ``propose`` folds into the standing
@@ -186,7 +186,7 @@ class MediatedNegotiation:
         """
         if not prose.strip():
             logger.info(
-                "mediator: @%s gave no reply within the round window — "
+                "mediator: @%s gave no reply within the round window; "
                 "treating as reject/hold (not interpreting)",
                 handle,
             )
@@ -235,7 +235,7 @@ class MediatedNegotiation:
             "it, with one line of why."
         )
         return (
-            f"@{handle} — step {round_n}. Issue space: {space}.\n\n"
+            f"@{handle}, step {round_n}. Issue space: {space}.\n\n"
             f"MEDIATOR: {note}\n\n{role} (2 sentences max.)\n\n{_BATNA}"
         )
 
@@ -264,7 +264,7 @@ class MediatedNegotiation:
         The interpreter LLM is asked to use canonical option tokens, but often
         returns near-misses (``"30%"`` for ``"30"``, ``"Tech"`` for the issue
         key). ``snap_offer`` rescues those before we'd otherwise reject the whole
-        move — a spurious reject is what cascades into timeouts and misreported
+        move; a spurious reject is what cascades into timeouts and misreported
         agreements live. A value with no near-match still yields ``None`` (snap
         refuses to force it), so a genuinely out-of-grid offer is not fabricated.
         """
@@ -287,7 +287,7 @@ class MediatedNegotiation:
 class LiveNegotiator(SAONegotiator):
     """A NEGMAS SAO negotiator backed by a real agent's replies over SLIM.
 
-    ``propose``/``respond`` mirror the proven spike's ``MediatedAgent`` — the only
+    ``propose``/``respond`` mirror the proven spike's ``MediatedAgent``; the only
     change is the source of the prose: a real worker agent instead of a simulated
     persona. NEGMAS calls these synchronously on the ``mech.run()`` thread.
     """

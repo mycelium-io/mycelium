@@ -1,12 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Hub commands — run and connect to a SLIM node (the messaging fabric).
+"""Hub commands: run and connect to a SLIM node (the messaging fabric).
 
 ``mycelium hub host`` spins up the ``slim`` node container and prints the
 address peers connect to. ``mycelium connect <address>`` stores a node endpoint
 in config. The connect address is the same whether the node is self-hosted or a
-shared mycelium-hosted rendezvous — MLS makes the node a blind ciphertext
+shared mycelium-hosted rendezvous; MLS makes the node a blind ciphertext
 forwarder, so there's no separate command per host.
 """
 
@@ -81,7 +81,7 @@ def host(ctx: typer.Context) -> None:
             cmd += ["--env-file", str(env_path)]
         services = ["slim"]
         # When attested identity is on (slim.identity=spire), bring the SPIRE server
-        # up alongside the node — one control, config-driven (#588). The agent is
+        # up alongside the node, one control, config-driven (#588). The agent is
         # co-located with the backend (shared PID namespace), so it pulls the backend
         # in too; that's intended, SPIRE needs a workload to attest. The node daemon
         # itself starts in a second phase (it needs a join token minted against the

@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Claude Code install facet — skill/hooks install.
+"""Claude Code install facet: skill/hooks install.
 
 The single ``Integration`` contract (see ``integrations/base.py``) owns both
 the dispatch and install facets per runtime family. The typer command layer is
@@ -26,10 +26,10 @@ _CLAUDE_CODE_HOOKS: list[str] = []
 # per-command approval prompt. This is what makes *unattended* participation work:
 # a background subagent (which can't answer a permission prompt) must be able to
 # issue `mycelium await` / `mycelium respond` on its own. Written to the user-global
-# `~/.claude/settings.json` — which lives in $HOME, never inside a repo, so the
+# `~/.claude/settings.json`, which lives in $HOME, never inside a repo, so the
 # grant stays personal and is never accidentally committed. The rule is a prefix
 # match: `Bash(mycelium:*)` covers `mycelium await …`, `mycelium respond …`, etc.,
-# but only simple single commands — Claude Code still rejects compound shell
+# but only simple single commands; Claude Code still rejects compound shell
 # (`mycelium … && …`, pipes, redirects), which is why await/respond are single
 # commands by design.
 _MYCELIUM_ALLOW_RULE = "Bash(mycelium:*)"
@@ -63,14 +63,14 @@ def _install_claude_code(verbose: bool = False) -> None:
     """
     Install the bundled Claude Code adapter assets into ~/.claude/.
 
-    Installs three files total — the adapter is deliberately minimal:
+    Installs three files total; the adapter is deliberately minimal:
 
-    - ``skills/mycelium/SKILL.md`` — the mycelium skill the agent invokes
+    - ``skills/mycelium/SKILL.md``: the mycelium skill the agent invokes
       via ``/mycelium``.
-    - ``hooks/mycelium-stop.sh`` + ``hooks/mycelium-session-end.sh`` — thin
+    - ``hooks/mycelium-stop.sh`` + ``hooks/mycelium-session-end.sh``: thin
       shell wrappers that pipe hook stdin into the knowledge extractor as a
       background process.
-    - ``hooks/mycelium-knowledge-extract.py`` — the actual work: reads the
+    - ``hooks/mycelium-knowledge-extract.py``: the actual work: reads the
       Claude Code transcript, ships the last turn to the backend if
       (and only if) both opt-in gates are on.
 
@@ -91,7 +91,7 @@ def _install_claude_code(verbose: bool = False) -> None:
             typer.echo(f"  skill: {dest}")
 
     # Hooks
-    # When the live hook list is empty (the current state — earlier
+    # When the live hook list is empty (the current state; earlier
     # ``settings.json`` hook wiring was pulled out for privacy/clarity),
     # the bundled ``assets/hooks/`` directory is intentionally absent. Bail
     # out *before* calling :func:`_resolve_asset`, which would otherwise
@@ -146,7 +146,7 @@ def _register_claude_code_hooks(claude_dir: Path, verbose: bool = False) -> None
 
     Claude Code only invokes hooks that are registered under the matching
     event key in ``~/.claude/settings.json``. Dropping the scripts into
-    ``~/.claude/hooks/`` isn't enough — without this registration the
+    ``~/.claude/hooks/`` isn't enough: without this registration the
     events never fire and the whole adapter is dead weight. Idempotent:
     skips events that already point at the same command.
     """
@@ -204,7 +204,7 @@ def _register_claude_code_mycelium_permission(claude_dir: Path, verbose: bool = 
     """Add the ``Bash(mycelium:*)`` allow-rule to ``~/.claude/settings.json``.
 
     Without this, every ``mycelium`` command an agent runs raises a permission
-    prompt — fatal for a *background* subagent, which has no way to answer one and
+    prompt, fatal for a *background* subagent, which has no way to answer one and
     so simply can't participate (``await``/``respond``). Adding the grant on
     install is what makes unattended, prompt-less participation work out of the box.
 
@@ -241,12 +241,12 @@ def _register_claude_code_mycelium_permission(claude_dir: Path, verbose: bool = 
 def _backup_claude_settings(claude_dir: Path) -> Path | None:
     """Snapshot ``~/.claude/settings.json`` to an incrementally-numbered backup.
 
-    Written adjacent to the original so users find it easily —
+    Written adjacent to the original so users find it easily,
     ``~/.claude/settings.json.mycelium-backup.<N>``. ``N`` starts at 1 and
     increments until we find an unused slot; we never overwrite an
     existing backup. Returns the backup path, or ``None`` if there was
-    nothing to back up or the write failed. Safe to call on every install
-    — if settings.json didn't change since the last backup, the newest
+    nothing to back up or the write failed. Safe to call on every install:
+    if settings.json didn't change since the last backup, the newest
     backup is still an exact duplicate, which is the safest failure mode.
     """
     settings_path = claude_dir / "settings.json"
@@ -273,10 +273,10 @@ def _cleanup_stale_claude_code_assets(claude_dir: Path, verbose: bool = False) -
     pipeline. Those are no longer installed. If we don't actively clean
     them up, upgraders end up with stale hook files on disk and stale
     settings.json entries pointing at scripts that still exist but no
-    longer match the current design — at best confusing, at worst they
+    longer match the current design: at best confusing, at worst they
     keep running old behavior the user doesn't want.
 
-    Safe to run repeatedly — missing files / entries are ignored.
+    Safe to run repeatedly; missing files / entries are ignored.
     """
     # 1) Stale hook files under ~/.claude/hooks/
     hooks_dir = claude_dir / "hooks"
@@ -332,7 +332,7 @@ def _cleanup_stale_claude_code_assets(claude_dir: Path, verbose: bool = False) -
             inner = entry.get("hooks") or []
             filtered = [h for h in inner if h.get("command", "") != stale_command]
             if not filtered:
-                # Entry had only the stale command — drop the whole entry.
+                # Entry had only the stale command; drop the whole entry.
                 changed = True
                 continue
             if len(filtered) != len(inner):
@@ -342,7 +342,7 @@ def _cleanup_stale_claude_code_assets(claude_dir: Path, verbose: bool = False) -
         if kept:
             hooks[event] = kept
         else:
-            # No entries remain for this event — drop the key so we don't
+            # No entries remain for this event; drop the key so we don't
             # leave a dangling empty array in settings.json.
             hooks.pop(event, None)
             changed = True

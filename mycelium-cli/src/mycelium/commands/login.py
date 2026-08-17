@@ -2,10 +2,10 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-``mycelium login`` / ``mycelium logout`` — obtain and drop a human's OIDC session.
+``mycelium login`` / ``mycelium logout``: obtain and drop a human's OIDC session.
 
 The browser flow (Authorization Code + PKCE) is the default; ``--device`` is the
-fallback for a shell whose browser can't reach this machine's loopback address —
+fallback for a shell whose browser can't reach this machine's loopback address:
 SSH, CI, a container. Both end the same way: the session lands in the ``0600``
 token cache (``mycelium.tokens``) and every subsequent backend call carries it,
 because they all build their client through ``mycelium.client``.
@@ -107,7 +107,7 @@ def _report(token: StoredToken, config: MyceliumConfig, *, json_output: bool) ->
         console.print(f"[dim]Access token valid for {int(remaining // 60)} min[/dim]")
     if not token.refresh_token:
         console.print(
-            "[dim]No refresh token was issued — add the 'offline_access' scope "
+            "[dim]No refresh token was issued; add the 'offline_access' scope "
             "if you want the session renewed automatically.[/dim]"
         )
     console.print(f"[dim]Session cached at {token_path()} (mode 0600).[/dim]")
@@ -185,9 +185,7 @@ def login(
 
     use_device = device
     if not use_device and not _browser_available() and meta.device_authorization_endpoint:
-        console.print(
-            "[dim]No browser available here — falling back to the device-code flow.[/dim]"
-        )
+        console.print("[dim]No browser available here; falling back to the device-code flow.[/dim]")
         use_device = True
 
     try:
@@ -255,4 +253,4 @@ def logout(ctx: typer.Context) -> None:
     if existed:
         console.print("[green]Signed out.[/green] [dim]Cached session removed.[/dim]")
     else:
-        console.print("[dim]Not signed in — nothing to do.[/dim]")
+        console.print("[dim]Not signed in; nothing to do.[/dim]")

@@ -20,7 +20,7 @@ import yaml
 def get_mycelium_dir() -> Path:
     """Get the .mycelium data directory.
 
-    Uses ~/.mycelium/ — the same location the backend defaults to,
+    Uses ~/.mycelium/, the same location the backend defaults to,
     so CLI and backend always share the same filesystem.
     """
     data_dir = Path.home() / ".mycelium"
@@ -153,7 +153,7 @@ def read_memory(base_dir: Path, key: str) -> tuple[dict[str, Any], str] | None:
 # ── Knowledge sync ───────────────────────────────────────────────────────────
 # The receiver half of the L9 ``knowledge`` write path: a connector applies a
 # carried memory write into its local store. Mirrors the backend's
-# ``app.services.memory_sync.apply_knowledge_to_dir`` — kept as a tiny local copy
+# ``app.services.memory_sync.apply_knowledge_to_dir``, kept as a tiny local copy
 # because the CLI does not import the backend package. Conflict policy:
 # last-write-wins by ``version``; a write on a stale base fails with
 # details, no merge.
@@ -185,7 +185,7 @@ def apply_knowledge(
     Idempotent when the local file is already at ``version`` (the same-machine
     loopback of a write the backend just made). A write whose ``version`` is
     behind the local file is a **stale base**: kept out, current state returned
-    in ``current`` — never merged.
+    in ``current``, never merged.
     """
     existing = read_memory(base_dir, key)
     if existing is not None:

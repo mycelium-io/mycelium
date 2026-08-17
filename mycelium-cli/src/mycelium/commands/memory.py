@@ -2,7 +2,7 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-Memory commands — persistent namespaced memory operations.
+Memory commands: persistent namespaced memory operations.
 
 Reads and writes resolve against the hub over HTTP; the hub owns the one store
 (markdown files + the JSONL search index). A spoke needs no local replica.
@@ -159,7 +159,7 @@ def _get_active_room(room: str | None) -> str:
 
 @doc_ref(
     usage="mycelium memory set <key> [<value>] [--file <path>] [--handle <handle>]",
-    desc="Write a memory (upsert). The value comes from the positional argument or <code>--file</code> (<code>-</code> reads stdin) — one or the other, not both. Structured category keys (<code>work/</code>, <code>decisions/</code>, <code>status/</code>, <code>context/</code>) are auto-validated. Always upserts; the backend handles versioning.",
+    desc="Write a memory (upsert). The value comes from the positional argument or <code>--file</code> (<code>-</code> reads stdin): one or the other, not both. Structured category keys (<code>work/</code>, <code>decisions/</code>, <code>status/</code>, <code>context/</code>) are auto-validated. Always upserts; the backend handles versioning.",
     group="memory",
 )
 @app.command(name="set")
@@ -234,7 +234,7 @@ def memory_set(
     tag_list = [t.strip() for t in tags.split(",")] if tags else None
 
     if entry is not None:
-        # Structured category key — auto-timestamp and structured value
+        # Structured category key: auto-timestamp and structured value
         from mycelium_backend_client.models import MemoryCreateValueType0
 
         timestamp = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -251,7 +251,7 @@ def memory_set(
             tags=tag_list,
         )
     else:
-        # Freeform key — pass value through as-is
+        # Freeform key: pass value through as-is
         try:
             parsed_value = json.loads(value)
         except json.JSONDecodeError:
@@ -276,7 +276,7 @@ def memory_set(
     batch = MemoryBatchCreate(items=[item])
 
     # The write goes to the hub, which owns the store (files + index). A spoke
-    # keeps no local copy — reads resolve against the hub (see memory_get/ls).
+    # keeps no local copy; reads resolve against the hub (see memory_get/ls).
     with _hub_session() as client:
         result = create_api.sync(room_name=room_name, client=client, body=batch)
         if result and isinstance(result, list) and len(result) > 0:
@@ -509,7 +509,7 @@ def _print_expanded(room_name: str, key: str) -> None:
         for exp in failed:
             reason = _LINK_ERRORS.get(str(exp.get("error")), str(exp.get("error")))
             console.print(
-                f"[yellow]Not expanded:[/yellow] [cyan]{_link_target(exp)}[/cyan] — {reason}"
+                f"[yellow]Not expanded:[/yellow] [cyan]{_link_target(exp)}[/cyan]: {reason}"
             )
 
 
@@ -537,7 +537,7 @@ def _print_integrity(room_name: str) -> None:
         console.print("[green]No broken links[/green]\n")
 
     if orphans:
-        console.print(f"[dim]Orphans ({len(orphans)}) — nothing links here[/dim]")
+        console.print(f"[dim]Orphans ({len(orphans)}): nothing links here[/dim]")
         for key in orphans:
             console.print(f"  [cyan]{key}[/cyan]")
 
@@ -701,7 +701,7 @@ def memory_subscribe(
 
 
 def _list_by_category(category: str, room: str | None, limit: int) -> None:
-    """Shared implementation for category-filtered listing — reads from the hub."""
+    """Shared implementation for category-filtered listing; reads from the hub."""
     room_name = _get_active_room(room)
     prefix = f"{category}/"
 

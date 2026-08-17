@@ -2,7 +2,7 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-Generate .env files from config.toml — makes .env a derived artifact.
+Generate .env files from config.toml, making .env a derived artifact.
 
 The canonical configuration lives in ~/.mycelium/config.toml.  This module
 renders a Docker-compatible .env from the [llm], [runtime], [server], [engine],
@@ -10,7 +10,7 @@ and [auth] sections so that ``docker compose`` picks up the same values without
 users having to maintain two files.
 
 One field deliberately *isn't* in config.toml: ``MYCELIUM_IMAGE_TAG``.  It's
-operational state — set as a side effect of ``mycelium pull --version`` and
+operational state, set as a side effect of ``mycelium pull --version`` and
 consumed only by compose's ``${MYCELIUM_IMAGE_TAG:-latest}`` substitution.
 We round-trip it through the existing .env on regeneration so that
 ``mycelium config apply`` doesn't silently roll users back to ``:latest``.
@@ -97,13 +97,13 @@ def generate_env_file(
     Parameters
     ----------
     config
-        Canonical mycelium config — drives every key in the rendered file
+        Canonical mycelium config; drives every key in the rendered file
         except the operator-managed pins below.
     image_tag
         Optional ``MYCELIUM_IMAGE_TAG`` value to emit verbatim.  Passed in by
         ``write_env_file`` after round-tripping the previous .env so that
         ``mycelium pull --version``'s pin survives ``mycelium config apply``.
-        Pass ``None`` to omit the line entirely — compose then falls through
+        Pass ``None`` to omit the line entirely; compose then falls through
         to its ``${MYCELIUM_IMAGE_TAG:-latest}`` default.
 
     The output is suitable for ``docker compose --env-file``.  Keys that have
@@ -111,7 +111,7 @@ def generate_env_file(
     compose variable substitution falls through to its defaults.
     """
     lines: list[str] = [
-        "# Auto-generated from ~/.mycelium/config.toml — do not edit manually.",
+        "# Auto-generated from ~/.mycelium/config.toml. Do not edit manually.",
         "# Regenerate with: mycelium config apply",
         "",
         "# ── Backend ──────────────────────────────────────────────────────────────",
@@ -123,15 +123,15 @@ def generate_env_file(
         "# ── LLM ──────────────────────────────────────────────────────────────────",
         f"LLM_MODEL={config.llm.model or ''}",
         f"LLM_API_KEY={config.llm.api_key or ''}",
-        # Only emit LLM_BASE_URL when actually set — an empty value causes the
+        # Only emit LLM_BASE_URL when actually set; an empty value causes the
         # OpenAI SDK to reject it as UnsupportedProtocol in downstream
         # services that don't have the backend's validator.
         f"LLM_BASE_URL={config.llm.base_url}"
         if config.llm.base_url
-        else "# LLM_BASE_URL not set — using provider default",
+        else "# LLM_BASE_URL not set, using provider default",
         "",
         "# ── Engine ───────────────────────────────────────────────────────────────",
-        # Where a registered `engine` runs its NEGMAS/Pi drive — backend-only now
+        # Where a registered `engine` runs its NEGMAS/Pi drive; backend-only now
         # (the host runtime rode the removed daemon). Emitted for the backend to
         # read; always `backend`.
         f"ENGINE_RUNTIME={config.engine.runtime}",
@@ -139,7 +139,7 @@ def generate_env_file(
         "# ── Auth (HTTP-API JWT gate; off unless auth.enabled is set) ─────────────",
         f"AUTH_ENABLED={str(config.auth.enabled).lower()}",
         # Trust roots travel as one JSON array because env is the only transport
-        # into the container — the repeatable [[auth.issuers]] blocks in
+        # into the container; the repeatable [[auth.issuers]] blocks in
         # config.toml are the authored form.
         f"AUTH_ISSUERS={_render_auth_issuers(config)}",
         f"AUTH_AUDIENCE={config.auth.audience or ''}",

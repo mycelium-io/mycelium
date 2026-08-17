@@ -1,11 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Agent registry reads — enumerate handles and load manifests/notes from a room.
+"""Agent registry reads: enumerate handles and load manifests/notes from a room.
 
 Agents are markdown manifests at ``agents/<handle>.md`` in a room dir (notes at
 ``agents/<handle>/notes.md``). These are pure filesystem reads over the room's
-memory namespace, used by any consumer that needs to know who's registered —
+memory namespace, used by any consumer that needs to know who's registered:
 agent commands, engine registration, and tests. Kept free of any runtime/dispatch
 coupling so it survives independent of how agents are actually run.
 """
@@ -40,7 +40,7 @@ def load_manifest(room_name: str, handle: str) -> AgentManifest | None:
     """Return the agent's manifest, or None if missing / unreadable.
 
     "Unreadable" (bad YAML, wrong shape, schema violation) is logged at WARNING
-    so a corrupt manifest doesn't masquerade as "agent not registered" — a
+    so a corrupt manifest doesn't masquerade as "agent not registered": a
     consumer would otherwise silently ignore every @handle with no clue why.
     """
     room_dir = get_room_dir(room_name)
@@ -52,7 +52,7 @@ def load_manifest(room_name: str, handle: str) -> AgentManifest | None:
     try:
         data = yaml.safe_load(content) or {}
     except yaml.YAMLError as exc:
-        log.warning("manifest %s: invalid YAML — %s", path, exc)
+        log.warning("manifest %s: invalid YAML: %s", path, exc)
         return None
     if not isinstance(data, dict):
         log.warning("manifest %s: expected a YAML mapping, got %s", path, type(data).__name__)
@@ -61,7 +61,7 @@ def load_manifest(room_name: str, handle: str) -> AgentManifest | None:
     try:
         return AgentManifest(**data)
     except ValidationError as exc:
-        log.warning("manifest %s: schema validation failed — %s", path, exc)
+        log.warning("manifest %s: schema validation failed: %s", path, exc)
         return None
 
 

@@ -1,13 +1,13 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""ClaudeCode dispatch facet — the manifest IS the registration.
+"""ClaudeCode dispatch facet: the manifest IS the registration.
 
 A ``claude_code`` agent is a **resident** runtime: a Claude Code session (kept
 woken with ``mycelium await --loop``) that participates via ``await``/``respond``.
 Mycelium names the agent (the ``agents/<handle>`` manifest) and installs the
 skill; it does not run the process. So register/destroy have no runtime side
-effects — this exists so the command layer has a uniform contract.
+effects; this exists so the command layer has a uniform contract.
 """
 
 from __future__ import annotations
@@ -70,7 +70,7 @@ class ClaudeCodeIntegration(Integration):
     def destroy(
         self, *, manifest: AgentManifest, config: MyceliumConfig, room: str, full: bool
     ) -> None:
-        # No external runtime to tear down. `full` is meaningless here — the only
+        # No external runtime to tear down. `full` is meaningless here; the only
         # artifacts are the manifest (deleted by the command layer) and notes/logs
         # (deliberately preserved).
         return
@@ -111,7 +111,7 @@ class ClaudeCodeIntegration(Integration):
         _install_claude_code(verbose=verbose)
 
     def uninstall(self, *, record: dict, profile: str | None, container: str | None) -> None:
-        # claude-code has no external runtime to tear down — `remove` just
+        # claude-code has no external runtime to tear down; `remove` just
         # drops the config entry (handled by the command layer).
         return
 

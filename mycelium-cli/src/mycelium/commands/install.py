@@ -213,7 +213,7 @@ def _write_env_file(env_path: Path, llm_config: dict[str, str]) -> None:
     import importlib.resources
 
     # On re-install, preserve existing .env and only update/append changed keys.
-    # Remove LLM_BASE_URL when the new config doesn't include it — avoids
+    # Remove LLM_BASE_URL when the new config doesn't include it: avoids
     # leaving a stale empty value that breaks the LLM client (see #97).
     if env_path.exists():
         _patch_env_vars(env_path, llm_config)
@@ -284,7 +284,7 @@ def _refresh_compose_templates(*, backup: bool = True) -> list[Path]:
 
     Refreshes ``compose.yml``. When *backup* is True (the default), the
     previous ``compose.yml`` is renamed to ``compose.yml.prev`` before
-    overwrite — a single rolling backup that covers anyone who has hand-edited
+    overwrite: a single rolling backup that covers anyone who has hand-edited
     the file.
 
     The currently-running Python process loads ``importlib.resources`` from
@@ -317,7 +317,7 @@ def _get_compose_path() -> Path:
     Resolve the canonical compose file path.
 
     For editable installs (dev), walk up from the package source to find the
-    repo's services/docker-compose.yml — this keeps build context relative
+    repo's services/docker-compose.yml; this keeps build context relative
     paths (../fastapi-backend) correct.
 
     For non-editable installs, extract the bundled compose to ~/.mycelium/docker/.
@@ -329,7 +329,7 @@ def _get_compose_path() -> Path:
     if env_path := os.getenv("MYCELIUM_COMPOSE_FILE"):
         return Path(env_path)
 
-    # Check cwd — covers running `mycelium install` from the repo root
+    # Check cwd: covers running `mycelium install` from the repo root
     cwd_candidate = Path.cwd() / "services" / "docker-compose.yml"
     if cwd_candidate.exists():
         return cwd_candidate
@@ -344,7 +344,7 @@ def _get_compose_path() -> Path:
     except Exception:
         pass
 
-    # Fallback: extract bundled compose. No backup here — first-time install,
+    # Fallback: extract bundled compose. No backup here (first-time install,
     # nothing to preserve.
     refreshed = _refresh_compose_templates(backup=False)
     return refreshed[0]  # compose.yml is always first
@@ -386,7 +386,7 @@ def _compose_up(
 ) -> tuple[bool, bool]:
     """Bring the stack up.  Returns (success, needs_build)."""
     # Build context exists when running from a repo checkout. Packaged installs
-    # extract compose to ~/.mycelium/docker/ where ../fastapi-backend is absent —
+    # extract compose to ~/.mycelium/docker/ where ../fastapi-backend is absent;
     # those installs pull pre-built GHCR images instead.
     build_context = compose_path.parent.parent / "fastapi-backend"
     can_build = build_context.exists()
@@ -463,7 +463,7 @@ def _probe_llm_via_backend(api_url: str) -> tuple[str, str, str, str]:
 
     Uses ``check_llm=true&llm_probe=completion`` so the backend runs a real
     one-shot ``pi`` turn.  This catches a missing/broken ``pi`` binary, bad model
-    strings, and auth errors — all of which would otherwise only surface at first
+    strings, and auth errors, all of which would otherwise only surface at first
     inference.
 
     Returns ``(status, model, message, remediation)``.  Status is one of the
@@ -512,7 +512,7 @@ def _report_llm_probe_result(
     """Pretty-print an install-time LLM probe result.
 
     Returns True if the user should be allowed to continue, False if the caller
-    should abort.  We never hard-fail the install on a probe failure — the user
+    should abort.  We never hard-fail the install on a probe failure; the user
     may legitimately want to fix things after install, or be running in an
     environment where the probe is wrong (e.g. proxy, network blocked during
     install).
@@ -522,7 +522,7 @@ def _report_llm_probe_result(
         return True
 
     if status == "unchecked":
-        # We couldn't verify — don't nag the user about it.
+        # We couldn't verify, so don't nag the user about it.
         typer.secho(
             f"  ~ LLM configured  {model}  (probe unsupported for this provider)",
             fg=typer.colors.YELLOW,
@@ -557,7 +557,7 @@ def _report_llm_probe_result(
         typer.secho(f"      fix: {remediation}", fg=typer.colors.CYAN)
     typer.echo("      Run `mycelium doctor` any time to re-check.")
 
-    # backend_down is not a hard LLM failure — the probe just couldn't run.
+    # backend_down is not a hard LLM failure; the probe just couldn't run.
     # The user probably already knows the backend is having trouble.
     if status == "backend_down":
         return True
@@ -732,7 +732,7 @@ def install(
             if enable_ui:
                 compose_profiles.append("ui")
 
-            # Resolve ports — use explicit flags, or auto-detect conflicts
+            # Resolve ports: use explicit flags, or auto-detect conflicts
             default_ports: dict[str, int] = {
                 "backend": backend_port or 8000,
             }
@@ -787,7 +787,7 @@ def install(
                 custom_ports=custom_ports,
             )
 
-            # LLM probe — real completion call inside the backend container.
+            # LLM probe: real completion call inside the backend container.
             # Non-interactive mode only warns; it never blocks the install.
             if llm_config.get("LLM_MODEL"):
                 typer.echo("  Probing LLM...")
@@ -822,7 +822,7 @@ def install(
         compose_ok, compose_ver = _check_compose()
         disk_ok, disk_info = _check_disk()
 
-        # Fail fast — no point running the animation if Docker isn't available
+        # Fail fast: no point running the animation if Docker isn't available
         if not docker_ok:
             typer.secho(f"\n  ✗ Docker: {docker_ver}", fg=typer.colors.RED)
             typer.echo("  Install Docker Desktop: https://docs.docker.com/get-docker/")
@@ -848,7 +848,7 @@ def install(
             "  \x1b[1mPulling base images\x1b[0m",
             "",
         ]
-        # One slot per image — updated in-place by the pull thread.
+        # One slot per image, updated in-place by the pull thread.
         image_lines: list[str] = [f"    {spin} {label}" for _, label in _PUBLIC_IMAGES]
         # Sliding window of recent pull output lines.
         log_window: list[str] = []
@@ -953,7 +953,7 @@ def install(
 
         compose_profiles: list[str] = []
 
-        # Frontend prompt — default to the --ui flag value (True unless --no-ui).
+        # Frontend prompt: default to the --ui flag value (True unless --no-ui).
         enable_ui = ui and typer.confirm(
             "  Bring up the frontend (browser at http://localhost:3000)?",
             default=True,
@@ -961,7 +961,7 @@ def install(
         if enable_ui:
             compose_profiles.append("ui")
 
-        # Port check — allow user to pick alternatives
+        # Port check: allow user to pick alternatives
         default_ports: dict[str, int] = {"backend": 8000}
         if enable_ui:
             default_ports["ui"] = 3000
@@ -996,7 +996,7 @@ def install(
         env_dir.mkdir(parents=True, exist_ok=True)
         env_path = env_dir / ".env"
 
-        # Merge LLM keys into .env (create or patch — never skip merge when .env exists).
+        # Merge LLM keys into .env (create or patch; never skip merge when .env exists).
         if not env_path.exists():
             typer.echo(f"  ✓ Creating {env_path}")
         else:
@@ -1035,7 +1035,7 @@ def install(
         # Real one-shot pi turn inside the backend. Catches a missing/broken pi
         # binary, bad model strings, and auth errors that would otherwise only
         # surface at first inference.
-        # On failure we ask the user whether to continue — never hard-fail,
+        # On failure we ask the user whether to continue; never hard-fail,
         # since the user may be installing with a known-bad LLM config on purpose.
         if llm_config.get("LLM_MODEL"):
             print()
@@ -1137,7 +1137,7 @@ def upgrade(
     ``mycelium pull`` if containers also need updating.
 
     With ``--version``, the resolved version is installed directly without
-    any "is this newer?" gate — so the same flag works for upgrade,
+    any "is this newer?" gate, so the same flag works for upgrade,
     downgrade, or pinning to the current release.
 
     \b
@@ -1234,7 +1234,7 @@ def upgrade(
 
         # Refresh ~/.mycelium/docker/compose.yml + initdb/ to match the new
         # wheel. The currently-running process still has the OLD package
-        # loaded, so we shell out to the freshly-installed binary — it'll
+        # loaded, so we shell out to the freshly-installed binary; it'll
         # importlib.resources from the NEW site-packages. Previous
         # compose.yml is preserved as compose.yml.prev.
         typer.echo("")
@@ -1277,7 +1277,7 @@ def upgrade(
 def refresh_templates(ctx: typer.Context) -> None:
     """Overwrite ~/.mycelium/docker/ templates with the bundled versions.
 
-    Hidden subcommand — invoked by ``mycelium upgrade`` after the new wheel
+    Hidden subcommand, invoked by ``mycelium upgrade`` after the new wheel
     is installed, so the bundled compose.yml + initdb/ scripts on disk match
     the running CLI. The previous compose.yml is preserved as compose.yml.prev.
 

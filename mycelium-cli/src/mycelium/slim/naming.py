@@ -5,7 +5,7 @@
 
 A byte-for-byte mirror of the naming half of
 ``fastapi-backend/app/services/slim_client.py``. **Keep the constants and the
-derivation in sync with the backend** — the shared secret is the channel's
+derivation in sync with the backend**: the shared secret is the channel's
 authentication PSK, so a connector that derives a different value fails identity
 verification and cannot join the moderator's group. The values below are the same
 ones the backend defaults to
@@ -34,7 +34,7 @@ DEFAULT_NODE_ENDPOINT = "http://127.0.0.1:46357"
 DEFAULT_NODE_PORT = 46357
 
 # The org segment (workspace/tenant) a room channel lives under. Matches the
-# backend's ``settings.SLIM_WORKSPACE`` default — a member must share it with the
+# backend's ``settings.SLIM_WORKSPACE`` default; a member must share it with the
 # moderator to resolve the same channel Name.
 DEFAULT_WORKSPACE = "mycelium"
 
@@ -46,7 +46,7 @@ MIN_SECRET_LEN = 32
 DEFAULT_CHANNEL_TOPIC = "room"
 
 # Master secret from which per-channel shared secrets are derived. The built-in
-# literal is a **public dev default** (debt D1) — anyone with the repo can derive
+# literal is a **public dev default** (debt D1); anyone with the repo can derive
 # it, so it protects nothing on its own. A real deployment sets
 # ``MYCELIUM_SLIM_MASTER_SECRET`` to a private value; every host that shares rooms
 # must set the **same** value (it's shared, not per-host). Both the env var name
@@ -89,7 +89,7 @@ def resolve_master_secret() -> str:
     if not _dev_secret_warned:
         _dev_secret_warned = True
         logger.warning(
-            "SLIM channel keys are derived from the built-in public dev secret — "
+            "SLIM channel keys are derived from the built-in public dev secret; "
             "anyone with the repo can join. Set %s to a private value (the same on "
             "every host that shares rooms) before any hosted/multi-user use.",
             _MASTER_SECRET_ENV,
@@ -172,8 +172,8 @@ def to_channel_name(
 def mint_shared_secret(identity: SlimIdentity, *, master_secret: str | None = None) -> str:
     """Mint the shared secret for a channel (``workspace/room``), ≥32 chars.
 
-    Keyed on the channel scope (``workspace/room``) — the ``agent`` field is
-    intentionally ignored — so every member of a room derives the *same* value
+    Keyed on the channel scope (``workspace/room``); the ``agent`` field is
+    intentionally ignored, so every member of a room derives the *same* value
     (the channel's authentication PSK; a different value fails identity
     verification, so MLS handles the group key agreement separately). HMAC-SHA256
     hex digest, matching the backend so moderator and members agree offline.

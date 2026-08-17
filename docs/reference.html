@@ -529,7 +529,7 @@
         <div class="cmd-ref-header">
           <code><span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">credential</span> slim-key <span class="arg">&lt;handle&gt;</span></code>
         </div>
-        <div class="cmd-ref-body">Mint an agent's SignerJwt SLIM channel identity — a local ES256 keypair (0600) whose public JWK is registered on the room roster. The floor for <code>slim.identity = signerjwt</code> (#476); the PSK default needs none.</div>
+        <div class="cmd-ref-body">Mint an agent's SignerJwt SLIM channel identity: a local ES256 keypair (0600) whose public JWK is registered on the room roster. The floor for <code>slim.identity = signerjwt</code> (#476); the PSK default needs none.</div>
       </div>
 
       <h2 id="cli-memory">memory</h2>
@@ -538,7 +538,7 @@
         <div class="cmd-ref-header">
           <code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> <span class="arg">&lt;key&gt;</span> [<span class="arg">&lt;value&gt;</span>] [<span class="flag">--file</span> <span class="arg">&lt;path&gt;</span>] [<span class="flag">--handle</span> <span class="arg">&lt;handle&gt;</span>]</code>
         </div>
-        <div class="cmd-ref-body">Write a memory (upsert). The value comes from the positional argument or <code>--file</code> (<code>-</code> reads stdin) — one or the other, not both. Structured category keys (<code>work/</code>, <code>decisions/</code>, <code>status/</code>, <code>context/</code>) are auto-validated. Always upserts; the backend handles versioning.</div>
+        <div class="cmd-ref-body">Write a memory (upsert). The value comes from the positional argument or <code>--file</code> (<code>-</code> reads stdin): one or the other, not both. Structured category keys (<code>work/</code>, <code>decisions/</code>, <code>status/</code>, <code>context/</code>) are auto-validated. Always upserts; the backend handles versioning.</div>
       </div>
 
       <div class="cmd-ref">
@@ -659,7 +659,7 @@
         <div class="cmd-ref-header">
           <code><span class="bin">mycelium</span> <span class="cmd">skill</span> <span class="cmd">adapter-def</span></code>
         </div>
-        <div class="cmd-ref-body">Print the Mycelium SKILL.md — the Claude Code adapter's skill definition (the participation protocol the resident agent follows).</div>
+        <div class="cmd-ref-body">Print the Mycelium SKILL.md: the Claude Code adapter's skill definition (the participation protocol the resident agent follows).</div>
       </div>
 
       <h2 id="cli-plan">plan</h2>
@@ -880,7 +880,7 @@
 <span class="comment"># SLIM node endpoint (host:port), e.g. http://127.0.0.1:46357</span>
 <span class="arg">node_endpoint</span> = <span class="str">&quot;http://127.0.0.1:46357&quot;</span>
 
-<span class="comment"># SLIM channel identity tier: &#x27;psk&#x27; (default, off-by-default #567) is the shared-secret credential every room member derives — zero infra, no per-agent identity. &#x27;signerjwt&#x27; opts into the SignerJwt floor (#476): each member presents a per-agent self-signed ES256 identity so members are cryptographically distinct, individually revocable MLS participants. &#x27;spire&#x27; opts into SPIRE/SPIFFE (#579): each member presents a SPIRE-attested JWT-SVID from the Workload API — tightest attestation, heaviest deploy (a co-located SPIRE server + node daemon, brought up automatically by &#x27;mycelium up&#x27; via the shipped &#x27;spire&#x27; compose profile; #588). Selecting &#x27;signerjwt&#x27;/&#x27;spire&#x27; with no resolvable material degrades to &#x27;psk&#x27; unless MYCELIUM_SLIM_IDENTITY_REQUIRE=1 fails closed.</span>
+<span class="comment"># SLIM channel identity tier: &#x27;psk&#x27; (default, off-by-default #567) is the shared-secret credential every room member derives (zero infra, no per-agent identity). &#x27;signerjwt&#x27; opts into the SignerJwt floor (#476): each member presents a per-agent self-signed ES256 identity so members are cryptographically distinct, individually revocable MLS participants. &#x27;spire&#x27; opts into SPIRE/SPIFFE (#579): each member presents a SPIRE-attested JWT-SVID from the Workload API (tightest attestation, heaviest deploy: a co-located SPIRE server + node daemon, brought up automatically by &#x27;mycelium up&#x27; via the shipped &#x27;spire&#x27; compose profile; #588. Selecting &#x27;signerjwt&#x27;/&#x27;spire&#x27; with no resolvable material degrades to &#x27;psk&#x27; unless MYCELIUM_SLIM_IDENTITY_REQUIRE=1 fails closed.</span>
 <span class="arg">identity</span> = <span class="str">&quot;psk&quot;</span>
 
 <span class="comment"># First-party Cognition Engine runtime configuration.</span>
@@ -889,7 +889,7 @@
 <span class="comment"># Where registered engines run their drive (backend-only).</span>
 <span class="arg">runtime</span> = <span class="str">&quot;backend&quot;</span>
 
-<span class="comment"># HTTP-API JWT gate — off by default.</span>
+<span class="comment"># HTTP-API JWT gate, off by default.</span>
 <span class="cmd" id="config-auth">[auth]</span>
 
 <span class="comment"># Enforce bearer-token auth on the backend HTTP API.</span>
@@ -916,7 +916,7 @@
 <span class="comment"># How long a fetched JWKS is cached before re-fetch. Key rotation is also picked up on an unseen kid.</span>
 <span class="arg">jwks_ttl_s</span> = 300.0
 
-<span class="comment"># Where ``mycelium login`` gets a human&#x27;s token — the client side of auth.</span>
+<span class="comment"># Where ``mycelium login`` gets a human&#x27;s token: the client side of auth.</span>
 <span class="cmd" id="config-login">[login]</span>
 
 <span class="comment"># OIDC issuer to log in against, e.g. https://sso.example.com/realms/mycelium</span>
@@ -937,7 +937,7 @@
 <span class="comment"># Fixed loopback port for the browser redirect (0 = pick a free one). Set this when the issuer requires an exact registered redirect URI.</span>
 <span class="arg">redirect_port</span> = 0
 
-<span class="comment"># Where an *agent* gets its own token — the workload half of the client side.</span>
+<span class="comment"># Where an *agent* gets its own token: the workload half of the client side.</span>
 <span class="cmd" id="config-agent-auth">[agent_auth]</span>
 
 <span class="comment"># OIDC issuer agents mint their service-account tokens from. Unset (default) means agents send no token.</span>

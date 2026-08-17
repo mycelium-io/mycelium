@@ -62,7 +62,7 @@ def _format_http_status_error(error: httpx.HTTPStatusError, verbose: bool) -> st
             lines.append("\nSuggestion: Server error. Try again later.")
 
     if verbose:
-        lines.append(f"\nHTTP {status_code} — {error.request.url}")
+        lines.append(f"\nHTTP {status_code}: {error.request.url}")
         try:
             response_text = error.response.text
             if response_text:

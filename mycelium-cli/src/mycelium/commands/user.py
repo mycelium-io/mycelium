@@ -2,7 +2,7 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-User commands — the human as a first-class, room-spanning principal.
+User commands: the human as a first-class, room-spanning principal.
 
 A user is one global record at ``~/.mycelium/users/<handle>`` (markdown +
 frontmatter, same format as any memory). An agent's ``owner`` points at one of
@@ -56,7 +56,7 @@ def load_user(handle: str) -> UserManifest | None:
     try:
         data = yaml.safe_load(content) or {}
     except yaml.YAMLError as exc:
-        _log.warning("user %s: invalid YAML — %s", handle, exc)
+        _log.warning("user %s: invalid YAML: %s", handle, exc)
         return None
     if not isinstance(data, dict):
         return None
@@ -64,7 +64,7 @@ def load_user(handle: str) -> UserManifest | None:
     try:
         return UserManifest(**data)
     except ValidationError as exc:
-        _log.warning("user %s: schema validation failed — %s", handle, exc)
+        _log.warning("user %s: schema validation failed: %s", handle, exc)
         return None
 
 
@@ -72,7 +72,7 @@ def list_users() -> list[UserManifest]:
     """All user records in the global store, newest first."""
     out: list[UserManifest] = []
     for key, _meta, _content in list_memories(get_users_dir(), limit=500):
-        # The store is flat — one record per handle, no nested keys.
+        # The store is flat: one record per handle, no nested keys.
         if "/" in key:
             continue
         user = load_user(key)
@@ -264,7 +264,7 @@ def whoami(ctx: typer.Context) -> None:
 
     Logged in (``mycelium login``), the token is the answer: the principal is the
     handle it asserts, which is also the handle a gated hub will attribute writes
-    to. Logged out — the default — this is the self-asserted ``identity.name``
+    to. Logged out (the default), this is the self-asserted ``identity.name``
     exactly as before.
     """
     try:
@@ -353,7 +353,7 @@ def iam(
     handle resolve to) and upserts the ``users/<handle>`` record so the principal
     actually exists. The one-liner counterpart to the app's acting-as picker.
 
-    With no handle it reports the current identity instead — the token's handle
+    With no handle it reports the current identity instead: the token's handle
     when signed in, the self-asserted one when not.
 
     Examples:
@@ -393,7 +393,7 @@ def iam(
         console.print("[dim]Set as this machine's identity. Check with: mycelium whoami[/dim]")
 
         # A gated hub attributes writes to the token, and refuses a body that
-        # claims a different handle (#562) — so a mismatch is worth saying now
+        # claims a different handle (#562), so a mismatch is worth saying now
         # rather than at the first 403.
         token = current_token(config)
         token_handle = token.handle(config.auth.handle_claim) if token else None

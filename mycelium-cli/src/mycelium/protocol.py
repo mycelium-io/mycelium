@@ -222,7 +222,7 @@ class InboundTick(BaseModel):
 
 
 class MemoryCategory(StrEnum):
-    """Structured memory categories — key prefix conventions for room memories.
+    """Structured memory categories: key prefix conventions for room memories.
 
     These are the recommended top-level namespaces for persistent memories.
     Using typed categories instead of raw strings gives CLI validation, tab
@@ -240,7 +240,7 @@ class MemoryCategory(StrEnum):
 MEMORY_CATEGORIES: frozenset[str] = frozenset(c.value for c in MemoryCategory)
 
 # Labels used by both CLI (category commands) and backend (synthesis grouping).
-# Single source of truth — backend imports this dict.
+# Single source of truth; backend imports this dict.
 STRUCTURED_CATEGORY_LABELS: dict[str, str] = {
     "work": "Work Done",
     "decisions": "Decisions Made",
@@ -295,7 +295,7 @@ AGENT_ADAPTERS: frozenset[str] = frozenset({"claude_code", "cursor", "engine"})
 #: Cognition-engine kinds hosted by the first-party ``engine`` runtime family.
 #: The extensibility axis: ``aligner`` (SIEP converge) and ``synthesizer`` (room
 #: memory → structured summary) today; ``bargainer`` (SAB), ``team_former`` (TFP),
-#: a drift evaluator, etc. later — no new adapter per CE.
+#: a drift evaluator, etc. later; no new adapter per CE.
 ENGINE_KINDS: frozenset[str] = frozenset({"aligner", "synthesizer"})
 
 
@@ -304,16 +304,16 @@ class AgentManifest(BaseModel):
 
     Each Mycelium agent is just a memory entry under ``agents/<handle>`` plus a
     notes blob under ``agents/<handle>/notes``. This model validates the
-    manifest body — the bare minimum a dispatcher needs to route an
+    manifest body, the bare minimum a dispatcher needs to route an
     ``@handle`` mention to the agent's runtime.
 
     Adapters:
 
-    - ``claude_code`` — a resident Claude Code session (kept woken with
+    - ``claude_code``: a resident Claude Code session (kept woken with
       ``mycelium await --loop``). Optional ``cwd`` (the session's working dir).
-    - ``cursor`` — a resident Cursor session. Optional ``cwd`` (Cursor's workspace
+    - ``cursor``: a resident Cursor session. Optional ``cwd`` (Cursor's workspace
       root; also where workspace assets drop when set).
-    - ``engine`` — a first-party cognition engine (e.g. ``aligner``), run by the
+    - ``engine``: a first-party cognition engine (e.g. ``aligner``), run by the
       backend. Requires ``kind``.
 
     The handle slug doubles as the mention target (``@release-agent``), so it
@@ -367,7 +367,7 @@ class AgentManifest(BaseModel):
     def lowercase_handle(cls, data: dict) -> dict:
         if not isinstance(data, dict):
             return data
-        # Handle and the two principal pointers are all lowercase slugs — an
+        # Handle and the two principal pointers are all lowercase slugs; an
         # owner/team is a `users/<handle>` / team slug, so `--owner Avery`
         # binds to `users/avery`. The handle is required, so an empty result
         # stays a string (and fails the pattern); owner/team collapse to None.
@@ -417,7 +417,7 @@ class UserManifest(BaseModel):
     The human, made first-class and symmetric with ``agents/<handle>``. An
     agent's ``owner`` points here; a ``team`` groups these handles. People span
     rooms, so this store is global (``~/.mycelium/users/<handle>``), not
-    room-scoped. Trust is self-asserted — the handle is consistent, not
+    room-scoped. Trust is self-asserted; the handle is consistent, not
     cryptographic.
     """
 

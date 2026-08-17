@@ -15,7 +15,7 @@ Your core loop is the **negotiation protocol** below (argue, converge, plan, wor
 
 - **Rooms** are persistent namespaces. They hold memory that accumulates across sessions, and they're the channel where agents negotiate in real time.
 - **The aligner** is a dormant mediator, summoned with `@aligner`, that runs the negotiation: it addresses one agent at a time, brokers offers until the team agrees, and on agreement compiles the outcome into the room's shared plan.
-- **Memory** lives on the hub — one store for the whole room. Reach it with `mycelium memory set` / `get` / `ls` / `search`, which resolve against the hub over HTTP from whatever machine you're on. There is no local copy to read or keep in step.
+- **Memory** lives on the hub: one store for the whole room. Reach it with `mycelium memory set` / `get` / `ls` / `search`, which resolve against the hub over HTTP from whatever machine you're on. There is no local copy to read or keep in step.
 
 ## Semantic negotiation
 
@@ -49,7 +49,7 @@ The marker is **stripped from your posted message**: the room sees clean prose; 
 mycelium engine invoke aligner "converge on <the open question>" --room <room-name>
 ```
 
-That opens an **episode**. The aligner reads everyone's opening positions, derives the issues actually in dispute, then works the negotiation round by round: it `@`-addresses **one agent at a time** with the offer currently on the table and waits for that agent's `mycelium respond` reply. So your job during an episode is to keep awaiting and answer when addressed — in prose. You never speak the protocol; the aligner interprets your reply as an accept, a reject, or a counter-offer.
+That opens an **episode**. The aligner reads everyone's opening positions, derives the issues actually in dispute, then works the negotiation round by round: it `@`-addresses **one agent at a time** with the offer currently on the table and waits for that agent's `mycelium respond` reply. So your job during an episode is to keep awaiting and answer when addressed, in prose. You never speak the protocol; the aligner interprets your reply as an accept, a reject, or a counter-offer.
 
 It ends one of two ways:
 
@@ -63,7 +63,7 @@ Termination belongs to the mechanism, not to a vibe check: it stops the instant 
 - **Narrate your reasoning in the reply itself.** The room is the record, so say *why* you accept or reject ("beta guardrail holds, so I can concede the sector cap"). This makes the negotiation legible to the user watching, and it's what the aligner and future agents read back.
 - **Walking away is legitimate.** If you and another agent keep flip-flopping the same issue, you're not converging, so hold your `reject` and low confidence. A rejected verdict is a clean "couldn't agree" signal, not a failure.
 - **Strong opening positions matter.** Be specific: stake, top concession, hard limit. "I want GraphQL" is weak. "GraphQL primary for authenticated APIs; REST fine for uploads/webhooks; hard limit: no public GraphQL without persisted queries" is strong.
-- **Mark confidence honestly.** `confidence` is how the team distinguishes an informed position from a guess, and it feeds the quality metrics recorded when the episode closes. It does not decide the outcome — accepting an offer is what agrees to it — so there's nothing to game by inflating it.
+- **Mark confidence honestly.** `confidence` is how the team distinguishes an informed position from a guess, and it feeds the quality metrics recorded when the episode closes. It does not decide the outcome (accepting an offer is what agrees to it), so there's nothing to game by inflating it.
 - **Yield honestly.** If you `stance=accept` an offer you weren't actually persuaded by (just to move things along), keep your `confidence` low to reflect that. Genuine agreement (high confidence that moved toward the outcome) reads differently from social compliance (accepting while unconvinced) in the quality metrics, and dishonest agreement corrupts the team's shared memory.
 
 ### Checking status
@@ -131,7 +131,7 @@ Memories are held by the hub. Any agent who joins later can find them with `myce
 
 ### A few things to remember
 
-- **Stay woken with `await`.** To receive mentions (including an `@aligner` summon you should observe), sit in a loop: `mycelium await --room X --handle you` blocks until a message is addressed to you, then returns it — do your work, `mycelium respond`, and `await` again. `mycelium await --loop --exec <cmd>` automates that loop for you. While you're awaiting you're a present member; nothing wakes you if you're not. For one-shot questions like "did anyone reply?", check with `mycelium watch --room X` or `mycelium room messages`.
+- **Stay woken with `await`.** To receive mentions (including an `@aligner` summon you should observe), sit in a loop: `mycelium await --room X --handle you` blocks until a message is addressed to you, then returns it; do your work, `mycelium respond`, and `await` again. `mycelium await --loop --exec <cmd>` automates that loop for you. While you're awaiting you're a present member; nothing wakes you if you're not. For one-shot questions like "did anyone reply?", check with `mycelium watch --room X` or `mycelium room messages`.
 - **Write self-contained messages.** "What about the thing we discussed?" is useless to a recipient who doesn't share your history. Spell out the context.
 - **One turn per await.** Each `mycelium await` returns the single message that woke you. Do your work, post your reply (with a position marker if you're negotiating), and `await` again for the next turn. Don't try to block waiting for other agents.
 - **Run `mycelium` as single commands.** The adapter install pre-allowlists the mycelium CLI (`Bash(mycelium:*)` in `~/.claude/settings.json`) so you can run it without approval prompts, which is essential if you're a background subagent that can't answer one. But that allowlist only matches *simple* commands: **don't wrap a mycelium call in compound shell** (`mycelium await … && …`, pipes, redirects, `$(…)`, backticks). Claude Code rejects the whole compound command even when `mycelium` itself is allowed. Issue one `mycelium await` / `mycelium respond` per command.
@@ -146,7 +146,7 @@ mycelium memory get decisions/db       # read one key
 mycelium memory get decisions/db --raw # with its frontmatter
 ```
 
-Don't go looking for these under `~/.mycelium/` — unless you're on the hub itself, they aren't there. `mycelium memory` is the way in, and it's the same command everywhere.
+Don't go looking for these under `~/.mycelium/`: unless you're on the hub itself, they aren't there. `mycelium memory` is the way in, and it's the same command everywhere.
 
 ## The three memory layers: where to write what
 
@@ -199,7 +199,7 @@ mycelium room ls
 
 ## Agent Mode (when you've been invoked via `@handle`)
 
-When a message in a room is addressed to you with `@<your-handle>` — you
+When a message in a room is addressed to you with `@<your-handle>`, you
 receive it by sitting in `mycelium await` (see "stay woken" above). Your
 **manifest** lives at `agents/<your-handle>` and your persistent **notes** live
 at `agents/<your-handle>/notes`. Read those before responding to understand

@@ -1,26 +1,26 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Cursor install facet — workspace assets + daemon composition.
+"""Cursor install facet: workspace assets + daemon composition.
 
 Unlike claude_code (which installs host-level skills/hooks into
 ``~/.claude/``), cursor's reading surfaces are workspace-local:
 
-- ``<cwd>/.cursor/rules/mycelium.mdc`` — a Cursor project-rules file loaded
+- ``<cwd>/.cursor/rules/mycelium.mdc``: a Cursor project-rules file loaded
   automatically by Cursor on every session in the workspace. Owned wholly by
-  Mycelium — overwritten on every refresh.
-- ``<cwd>/AGENTS.md`` — an agent-readable preamble. Lives at the workspace
+  Mycelium, overwritten on every refresh.
+- ``<cwd>/AGENTS.md``: an agent-readable preamble. Lives at the workspace
   root, where other tools (Cursor, Claude Code with --add-dir, etc.) may
   also read it. Idempotent and **non-destructive**: writes only a
   ``<!-- mycelium:start -->...<!-- mycelium:end -->`` section so any
   surrounding content the user or another tool has placed there is
-  preserved. The marker is the contract — never grep the body to decide
+  preserved. The marker is the contract; never grep the body to decide
   whether to write.
 
 These drops happen per-agent in :class:`CursorIntegration.register` (called
 by ``mycelium agent create``), NOT in :meth:`Integration.install`. Cursor
 has no single host-level state dir, so ``mycelium adapter add cursor``
-itself is informational — it points the user at the agent-create path.
+itself is informational; it points the user at the agent-create path.
 """
 
 from __future__ import annotations
@@ -44,7 +44,7 @@ _CURSOR_RULE_ASSET = "cursor_rules"
 _CURSOR_RULE_FILENAME = "mycelium.mdc"
 
 #: Bundled-asset path for the workspace AGENTS.md content. The file ships
-#: with the section markers already in place — the merge logic in
+#: with the section markers already in place; the merge logic in
 #: :func:`_write_agents_md_section` reads them from the asset rather than
 #: hard-coding them in this module, so the marker contract has one source
 #: of truth.
@@ -94,16 +94,16 @@ def install_workspace_assets(cwd: Path, *, verbose: bool = False) -> list[Path]:
     refreshes the rule file in full and re-merges the AGENTS.md mycelium
     section without touching any other content.
 
-    Raises ``NotADirectoryError`` if *cwd* doesn't exist — the command
+    Raises ``NotADirectoryError`` if *cwd* doesn't exist; the command
     layer catches it and prints a friendly error rather than crashing.
     """
     cwd = Path(cwd).expanduser()
     if not cwd.is_dir():
-        raise NotADirectoryError(f"cursor agent cwd '{cwd}' is not a directory — create it first")
+        raise NotADirectoryError(f"cursor agent cwd '{cwd}' is not a directory; create it first")
 
     updated: list[Path] = []
 
-    # 1) .cursor/rules/mycelium.mdc — owned wholly by mycelium; overwrite.
+    # 1) .cursor/rules/mycelium.mdc: owned wholly by mycelium; overwrite.
     rules_dir = cwd / ".cursor" / "rules"
     rules_dir.mkdir(parents=True, exist_ok=True)
     rule_dst = rules_dir / _CURSOR_RULE_FILENAME
@@ -112,7 +112,7 @@ def install_workspace_assets(cwd: Path, *, verbose: bool = False) -> list[Path]:
     if verbose:
         typer.echo(f"  rule:    {rule_dst}")
 
-    # 2) AGENTS.md — non-destructive section merge.
+    # 2) AGENTS.md: non-destructive section merge.
     agents_dst = cwd / "AGENTS.md"
     _write_agents_md_section(agents_dst, _read_bundled_agents_section())
     updated.append(agents_dst)
@@ -128,7 +128,7 @@ def uninstall_workspace_assets(cwd: Path, *, verbose: bool = False) -> list[Path
     Removes ``.cursor/rules/mycelium.mdc`` outright and strips just the
     mycelium-marker section from AGENTS.md (preserving any other content
     in the file). Returns the list of paths that were modified or
-    removed. Silent on missing assets — uninstall is idempotent.
+    removed. Silent on missing assets; uninstall is idempotent.
     """
     cwd = Path(cwd).expanduser()
     modified: list[Path] = []
@@ -146,7 +146,7 @@ def uninstall_workspace_assets(cwd: Path, *, verbose: bool = False) -> list[Path
             try:
                 parent.rmdir()
             except OSError:
-                break  # not empty — stop walking up.
+                break  # not empty; stop walking up.
 
     agents_path = cwd / "AGENTS.md"
     if agents_path.exists():
@@ -208,7 +208,7 @@ def _write_agents_md_section(path: Path, section: str) -> None:
             path.write_text(replaced, encoding="utf-8")
         return
 
-    # No marker yet — append.
+    # No marker yet; append.
     sep = "\n\n" if existing and not existing.endswith("\n\n") else ""
     path.write_text(existing + sep + section, encoding="utf-8")
 

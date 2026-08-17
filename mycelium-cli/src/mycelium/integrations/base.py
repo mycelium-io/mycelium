@@ -2,7 +2,7 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-Integration — the single contract for a runtime family Mycelium integrates with.
+Integration: the single contract for a runtime family Mycelium integrates with.
 
 Every runtime family is one ``Integration`` subclass exposing the same
 facets, giving a unified dispatch/install contract. Adding a capability to one
@@ -20,7 +20,7 @@ An integration has two facets, sliced by lifetime:
 The command layer (``commands/agent.py``, ``commands/adapter.py``) stays thin:
 resolve the integration via :func:`mycelium.integrations.get_integration`, then
 call the relevant facet. Add a runtime by adding one subclass + registering it
-in ``integrations.__init__.INTEGRATIONS`` — no churn in the command layer.
+in ``integrations.__init__.INTEGRATIONS``, no churn in the command layer.
 """
 
 from __future__ import annotations
@@ -34,11 +34,11 @@ if TYPE_CHECKING:
     from mycelium.protocol import AgentManifest
 
 
-#: Discriminator for *where* this family's agents run — the liveness distinction
+#: Discriminator for *where* this family's agents run: the liveness distinction
 #: the UI/tooling surface (backend-hosted vs. user/herdr runtime).
 #:
 #: - ``resident``: the agent runs in a user-owned (or herdr-managed) runtime that
-#:   participates via ``mycelium await``/``respond`` — e.g. a Claude Code or Cursor
+#:   participates via ``mycelium await``/``respond``, e.g. a Claude Code or Cursor
 #:   session, typically kept woken with ``mycelium await --loop``. Mycelium names
 #:   and installs the skill; it does not run the process.
 #: - ``backend_engine``: a first-party cognition engine (``adapter="engine"``)
@@ -53,7 +53,7 @@ class AddOptions:
 
     Only fields that are meaningful to *every* integration live here. Family-
     specific options (cwd, …) are NOT
-    here — they're passed straight to the concrete integration's constructor
+    here; they're passed straight to the concrete integration's constructor
     via ``get_integration(...)`` and stored on the instance. That keeps this
     base type from accreting one field per family as runtimes are added.
     """
@@ -62,20 +62,20 @@ class AddOptions:
 
 
 class Integration(ABC):
-    """Lifecycle for one agent runtime family. Stateless — safe to instantiate.
+    """Lifecycle for one agent runtime family. Stateless, safe to instantiate.
 
     Subclasses currently implement the **dispatch facet** (below). The
     **install facet** is added in the install relocation; see the module
     docstring and ``integrations/<family>/install.py``.
     """
 
-    #: Canonical family id — must match the ``AgentManifest.adapter`` literals,
+    #: Canonical family id: must match the ``AgentManifest.adapter`` literals,
     #: ``sstp.AGENT_ADAPTERS``, and the ``integrations.INTEGRATIONS`` registry
     #: key. Always the underscore spelling (``claude_code``), since that is the
     #: value persisted in ``agents/<handle>`` manifests.
     name: str
 
-    #: Where this family's agents run (``resident`` vs ``backend_engine``) — the
+    #: Where this family's agents run (``resident`` vs ``backend_engine``): the
     #: liveness distinction surfaced to tooling/UI. Every subclass MUST declare a
     #: value; ``tests/test_integration_contract`` enforces this.
     lifecycle: ClassVar[LifecycleModel]
@@ -88,7 +88,7 @@ class Integration(ABC):
     #
     # The host-level install/uninstall/step/status surface. The typer command
     # (`commands/adapter.py`) is a thin dispatcher: it resolves the integration
-    # via ``get_integration`` and calls these — there is no ``if family ==``
+    # via ``get_integration`` and calls these; there is no ``if family ==``
     # branching left. ``profile`` / ``container`` are legacy gateway knobs
     # carried on the signature for uniformity; families that ignore them just
     # don't read them.
@@ -117,7 +117,7 @@ class Integration(ABC):
 
     @abstractmethod
     def reinstall_targets(self, *, profile: str | None, container: str | None) -> list[str]:
-        """Paths a ``--reinstall`` would overwrite — drives the confirm prompt."""
+        """Paths a ``--reinstall`` would overwrite; drives the confirm prompt."""
 
     @abstractmethod
     def dry_run_lines(
@@ -172,7 +172,7 @@ class Integration(ABC):
         ``users/<handle>`` this agent belongs to and the team it's fielded by.
         Both default to ``None`` (principal-anonymous).
 
-        Raises pydantic ValidationError on bad input — the command layer
+        Raises pydantic ValidationError on bad input; the command layer
         catches it and prints a friendly message.
         """
 
@@ -205,11 +205,11 @@ class Integration(ABC):
 
     def will_destroy_runtime(self, manifest: AgentManifest, *, full: bool) -> bool:
         """True if ``destroy(full=...)`` will irreversibly destroy a runtime
-        resource — drives the command layer's confirmation wording."""
+        resource; drives the command layer's confirmation wording."""
         return False
 
 
-#: Readability alias — the contract reads naturally as an "adapter" at some
+#: Readability alias: the contract reads naturally as an "adapter" at some
 #: call sites. (The historical ``mycelium.agent_adapters`` package has been
 #: removed; this is the one concept now.)
 AgentAdapter = Integration

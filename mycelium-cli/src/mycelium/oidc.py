@@ -2,7 +2,7 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-OIDC login flows for ``mycelium login`` — Authorization Code + PKCE, device code,
+OIDC login flows for ``mycelium login``: Authorization Code + PKCE, device code,
 and the refresh-token grant.
 
 Issuer-agnostic on purpose: everything here is driven off the issuer's discovery
@@ -11,11 +11,11 @@ issuer (``docs/design/dev-auth-issuer.md``) with nothing but a different URL.
 
 Two flows, because humans sit in two different places:
 
-* **Authorization Code + PKCE** — the primary path. The browser does the login;
+* **Authorization Code + PKCE**, the primary path. The browser does the login;
   the code comes back to a loopback listener the CLI opens for the occasion. PKCE
   (RFC 7636) is what lets the CLI be a *public* client: no client secret to ship,
   and an intercepted code is useless without the verifier.
-* **Device code** (RFC 8628) — for a shell with no browser it can reach: SSH, CI,
+* **Device code** (RFC 8628), for a shell with no browser it can reach: SSH, CI,
   a container. The CLI prints a URL and a short code, and polls.
 
 Nothing here touches the token cache; the caller decides what to persist.
@@ -102,7 +102,7 @@ def discover(issuer: str, *, timeout_s: float = _HTTP_TIMEOUT_S) -> ProviderMeta
         raise OidcError(f"issuer at {issuer} advertises no token_endpoint")
 
     return ProviderMetadata(
-        # The document's own `issuer` is authoritative — it is the `iss` the hub
+        # The document's own `issuer` is authoritative: it is the `iss` the hub
         # will see in the token, which may differ from the URL used to reach it.
         issuer=str(doc.get("issuer") or issuer).rstrip("/"),
         token_endpoint=str(token_endpoint),
@@ -174,7 +174,7 @@ class _CallbackServer(http.server.HTTPServer):
 
 
 class _CallbackHandler(http.server.BaseHTTPRequestHandler):
-    def do_GET(self) -> None:  # noqa: N802 — BaseHTTPRequestHandler's interface
+    def do_GET(self) -> None:  # noqa: N802 (BaseHTTPRequestHandler's interface)
         parsed = urllib.parse.urlparse(self.path)
         params = {k: v[0] for k, v in urllib.parse.parse_qs(parsed.query).items()}
 
@@ -201,8 +201,8 @@ class _CallbackHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def log_message(self, format: str, *args: Any) -> None:  # noqa: A002 — base signature
-        """Silence the default stderr access log — this is a CLI, not a server."""
+    def log_message(self, format: str, *args: Any) -> None:  # noqa: A002 (base signature)
+        """Silence the default stderr access log: this is a CLI, not a server."""
 
 
 def authorization_code_login(
@@ -220,7 +220,7 @@ def authorization_code_login(
     """Log in through the browser with Authorization Code + PKCE.
 
     ``announce`` is called with the authorization URL before the wait begins, so
-    the caller can print it — the browser may fail to open, and the URL is then
+    the caller can print it; the browser may fail to open, and the URL is then
     the whole recovery path.
     """
     if not meta.authorization_endpoint:
@@ -275,7 +275,7 @@ def authorization_code_login(
         raise OidcError(f"{params['error']}: {detail}" if detail else params["error"])
     if not secrets.compare_digest(params.get("state", ""), state):
         # A mismatched state means the redirect didn't come from the request we
-        # made — the CSRF case RFC 6749 §10.12 describes. Refuse the code.
+        # made: the CSRF case RFC 6749 §10.12 describes. Refuse the code.
         raise OidcError("state mismatch on the redirect; login aborted")
 
     form = {
@@ -302,8 +302,8 @@ def device_code_login(
 ) -> TokenResponse:
     """Log in without a browser on this machine (RFC 8628).
 
-    ``announce`` is called with a :class:`DevicePrompt` — the code and URL the
-    user has to visit — before polling starts.
+    ``announce`` is called with a :class:`DevicePrompt` (the code and URL the
+    user has to visit) before polling starts.
     """
     if not meta.device_authorization_endpoint:
         raise OidcError(f"issuer {meta.issuer} does not support the device-code flow")
@@ -371,7 +371,7 @@ def client_credentials_grant(
 ) -> TokenResponse:
     """Mint a token for a workload's own OIDC client (RFC 6749 §4.4).
 
-    The agent path: no human, no browser, no refresh token — the client *is* the
+    The agent path: no human, no browser, no refresh token; the client *is* the
     identity, so an expired token is re-minted rather than renewed.
     """
     form = {"grant_type": "client_credentials", "client_id": client_id}

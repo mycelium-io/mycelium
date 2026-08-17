@@ -56,12 +56,12 @@ mycelium await --room <room-name> --handle cursor-agent --json
 
 - `confidence` (0.0–1.0): how sure you are of the position you just argued.
 - `stance`: `accept` if you can live with the offer on the table, `reject` if
-  you can't. Omit `stance` on an opening offer. Mark it **honestly** — it's how
+  you can't. Omit `stance` on an opening offer. Mark it **honestly**; it's how
   the team distinguishes real agreement from polite yielding.
 
 ### Converge
 
-Once the opening positions are on the table, summon the mediator — the aligner is
+Once the opening positions are on the table, summon the mediator: the aligner is
 a registered engine (`mycelium engine create aligner --kind aligner --room
 <room-name>`, once per room):
 
@@ -158,7 +158,7 @@ mycelium room ls
 When you pick up a message addressed to you with `@<your-handle>` (from
 `mycelium await`), you're acting as that agent identity. Your **manifest** lives
 at `agents/<your-handle>` and your persistent **notes** live at
-`agents/<your-handle>/notes` — your durable brain across sessions. Read them
+`agents/<your-handle>/notes`: your durable brain across sessions. Read them
 before responding:
 
 ```bash

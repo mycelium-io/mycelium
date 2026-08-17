@@ -8,7 +8,7 @@ connector is a SLIM **member**: it registers an app, waits to be invited into
 the room's group by the always-on backend moderator, then pulls broadcasts and
 publishes its replies. The moderator methods (:meth:`create_group`,
 :meth:`invite`) are included too so tests can stand up a fake backend against a
-live node, but a connector never creates a group — one moderator per room, and
+live node, but a connector never creates a group: one moderator per room, and
 it's the backend.
 
 ``slim_bindings`` is imported **lazily** (native Rust wheel, per-platform): the
@@ -45,10 +45,10 @@ _identity_degraded_warned: set[tuple[str, str]] = set()
 # missing and how to provision it.
 _IDENTITY_MISSING_HINT = {
     slim_identity.MODE_SIGNERJWT: (
-        "no signing key/roster resolved — register the agent's key (ensure_agent_keypair)"
+        "no signing key/roster resolved; register the agent's key (ensure_agent_keypair)"
     ),
     slim_identity.MODE_SPIRE: (
-        "no SPIRE Workload API socket present — start the co-located SPIRE agent "
+        "no SPIRE Workload API socket present; start the co-located SPIRE agent "
         "and set MYCELIUM_SLIM_SPIRE_SOCKET"
     ),
 }
@@ -66,7 +66,7 @@ def _warn_identity_degraded(mode: str, handle: str) -> None:
     _identity_degraded_warned.add((mode, handle))
     hint = _IDENTITY_MISSING_HINT.get(mode, "no identity material resolved")
     logger.warning(
-        "MYCELIUM_SLIM_IDENTITY=%s but %s for %r — falling back to the shared-secret "
+        "MYCELIUM_SLIM_IDENTITY=%s but %s for %r; falling back to the shared-secret "
         "PSK. Set MYCELIUM_SLIM_IDENTITY_REQUIRE=1 to fail closed.",
         mode,
         hint,
@@ -83,7 +83,7 @@ class SlimUnavailableError(SlimError):
 
 
 class SlimReceiveTimeout(SlimError):
-    """A receive timed out with no message — a benign idle tick, not a fault.
+    """A receive timed out with no message: a benign idle tick, not a fault.
 
     The binding raises a generic ``SessionError`` for both a real transport
     fault and a plain "no message within the window" timeout. On an idle channel
@@ -120,7 +120,7 @@ def _ensure_service_initialized(sb: ModuleType) -> None:
 
 # The global SLIM service permits only ONE dataplane connection per endpoint per
 # process. A daemon hosting several owned handles multiplexes its per-handle apps
-# over that one connection — cache the conn_id per endpoint. (Callers connect
+# over that one connection; cache the conn_id per endpoint. (Callers connect
 # sequentially, so no lock is needed here.)
 _connections: dict[str, int] = {}
 
@@ -132,7 +132,7 @@ async def _shared_connection(service: slim_bindings.Service, sb: ModuleType, end
         # Enable idle keepalive. ``new_insecure_client_config`` leaves
         # ``keepalive=None`` → the binding's ``keep_alive_while_idle`` defaults to
         # False, so the node drops a connection after ~30s of silence (its
-        # RecoveryTable TTL) — which silently kills a waiting connector's route
+        # RecoveryTable TTL), which silently kills a waiting connector's route
         # and the moderator's session on any quiet room. Keep idle connections
         # alive so long-lived members survive gaps between messages.
         client_config.keepalive = sb.KeepaliveConfig(
@@ -200,7 +200,7 @@ class SlimClient:
         """Register the local app, selecting the identity tier (PSK default).
 
         Twin of the backend seam: ``psk`` (default, #567) is the shared-secret
-        credential — the try-it path, untouched. ``signerjwt`` (the floor, #476)
+        credential, the try-it path, untouched. ``signerjwt`` (the floor, #476)
         presents this member's per-agent self-signed ES256 identity; ``spire``
         (#579) presents a SPIRE-attested JWT-SVID. Both resolve to a
         provider/verifier pair through one dispatcher and share one
@@ -233,7 +233,7 @@ class SlimClient:
     def _group_session_config(self) -> slim_bindings.SessionConfig:
         sb = self._sb
         assert sb is not None
-        # MLS ON — the member authenticates into the moderator's encrypted group
+        # MLS ON: the member authenticates into the moderator's encrypted group
         # with the shared-secret identity PSK it derives (create_app_with_secret);
         # MLS itself does the group key agreement. Matched pair with the backend;
         # do not diverge.
@@ -242,7 +242,7 @@ class SlimClient:
             # SLIM 2.0 replaced the ``enable_mls`` bool with ``mls_settings``:
             # MLS is on iff settings are present. 100% header-integrity validation
             # matches the old always-on posture. Matched pair with the backend
-            # moderator's config — do not diverge.
+            # moderator's config; do not diverge.
             mls_settings=sb.MlsSettings(
                 header_integrity_validation_percent=100,
                 max_seen_control_message_ids_size=None,  # None → SLIM core default
@@ -253,7 +253,7 @@ class SlimClient:
         )
 
     async def create_group(self, channel: slim_bindings.Name) -> slim_bindings.Session:
-        """Create (and become moderator of) a group session — **tests only**.
+        """Create (and become moderator of) a group session (**tests only**).
 
         A connector never calls this; the backend is the sole moderator. It
         exists so a test can play the backend against a live node.
@@ -265,7 +265,7 @@ class SlimClient:
         return session
 
     async def invite(self, session: slim_bindings.Session, member: slim_bindings.Name) -> None:
-        """Route to and invite ``member`` into a moderated group — **tests only**."""
+        """Route to and invite ``member`` into a moderated group (**tests only**)."""
         assert self._conn_id is not None
         await self.app.set_route_async(member, self._conn_id)
         handle = await session.invite_async(member)
@@ -280,7 +280,7 @@ class SlimClient:
     async def close(self) -> None:
         """Leave every session this app holds. Best-effort; never raises.
 
-        Does **not** drop the shared dataplane connection — sibling apps (other
+        Does **not** drop the shared dataplane connection; sibling apps (other
         owned handles) in the process may still use it. Use
         :func:`close_connection` for that.
         """
