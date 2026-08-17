@@ -51,3 +51,24 @@ def test_save_roundtrips_engine_even_with_project_config(tmp_path) -> None:
     cfg.save()
 
     assert MyceliumConfig.load(config_path=global_path).engine.runtime == "backend"
+
+
+def test_save_roundtrips_auth_even_with_project_config(tmp_path) -> None:
+    """Regression: ``auth`` (and ``agent_auth``) were missing from the section
+    allowlist, so ``mycelium config set auth.handle_claim ...`` reported success
+    but the value never reached the global config.toml when a project-local
+    config existed alongside it (e.g. running from inside a cloned repo)."""
+    global_path = tmp_path / "global.toml"
+    project_path = tmp_path / "project.toml"
+    project_path.write_text("[identity]\n", encoding="utf-8")
+
+    cfg = MyceliumConfig.load(config_path=global_path)
+    cfg._global_config_path = global_path
+    cfg._project_config_path = project_path
+    cfg.auth.handle_claim = "preferred_username"
+    cfg.agent_auth.issuer = "https://issuer.example.com"
+    cfg.save()
+
+    reloaded = MyceliumConfig.load(config_path=global_path)
+    assert reloaded.auth.handle_claim == "preferred_username"
+    assert reloaded.agent_auth.issuer == "https://issuer.example.com"
