@@ -331,8 +331,10 @@ def _highlight_code(code: str, lang: str) -> str:
             highlighted,
         )
         # The mycelium binary is its own token; its subcommands stay cmd-toned.
+        # Only when it's a standalone command — not inside a path (.mycelium/,
+        # ~/.mycelium) or a hyphenated name (mycelium-io).
         highlighted = re.sub(
-            r"\bmycelium((?:\s+[\w-]+){0,2})",
+            r"(?<![\w./~-])mycelium(?=\s)((?:\s+[\w-]+){0,2})",
             lambda m: '<span class="bin">mycelium</span>'
             + re.sub(r"[\w-]+", r'<span class="cmd">\g<0></span>', m.group(1)),
             highlighted,

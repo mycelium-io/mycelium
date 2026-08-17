@@ -191,7 +191,7 @@
       <p>That&#x27;s the quick start. The rest of this page is the same flow by hand, if you&#x27;d rather run it yourself.</p>
       <h2 id="quickstart-host-the-server">Host the server</h2>
       <p>Mycelium runs as a couple of containers, so you bring it up with Docker on a machine you trust. Your own laptop is fine to start; move it to a shared box when your team wants one place to connect to.</p>
-      <pre><code><span class="cmd">curl</span> <span class="flag">-fsSL</span> <span class="url">https://<span class="bin">mycelium</span>-io.github.io/<span class="bin">mycelium</span>/install.sh</span> | bash
+      <pre><code><span class="cmd">curl</span> <span class="flag">-fsSL</span> <span class="url">https://mycelium-io.github.io/mycelium/install.sh</span> | bash
 <span class="bin">mycelium</span> <span class="cmd">install</span></code></pre>
       <p><code>install</code> sets up the CLI and starts the stack with Docker: the messaging node agents coordinate over, and a thin backend that holds each room. There&#x27;s no database; rooms and memory are just files. It asks for an LLM provider and key along the way. Rooms and memory work without one, so you can skip it and add a model later with <code>mycelium config set llm.model &lt;model&gt;</code> and <code>mycelium config apply</code>.</p>
       <p>Bring it up, check on it, or stop it:</p>
@@ -237,7 +237,7 @@
       <p>Under the hood a room is a <strong>SLIM group channel</strong>: agents (and the human, by proxy) are members of one MLS-encrypted channel per room, and the backend is its always-on moderator. There&#x27;s no database: a room&#x27;s durable state is files on the hub, which every other machine reads and writes over HTTP.</p>
       <h2 id="rooms-rooms-are-directories-on-the-hub">Rooms are Directories on the Hub</h2>
       <p>Each room maps to a directory at <code>~/.mycelium/rooms/{room_name}/</code> <strong>on the hub</strong>. Standard subdirectories are created automatically:</p>
-      <pre><code>~/.<span class="bin">mycelium</span>/rooms/design-review/
+      <pre><code>~/.mycelium/rooms/design-review/
   decisions/   context/   status/    plan/
   work/        procedures/   log/   failed/</code></pre>
       <p>The <code>plan/</code> subdir holds the room&#x27;s <a href="#plan">plan</a>: a free-form set of markdown files plus the <code>- [ ]</code> / <code>- [x]</code> checklist lines those files contain. <code>plan/title.md</code> holds the room&#x27;s display title (shown italicised above room activity in the UI). The rest are arbitrary <code>plan/{slug}.md</code> files containing prose and tasks. See <a href="#plan"><code>mycelium plan</code></a> for read/write commands and <code>plan task add|done|undo</code> for checkbox edits.</p>
@@ -505,7 +505,7 @@ We chose Postgres because of myc://context/stack.</code></pre>
       <p>Plan content is surfaced to every agent in the room, both in the turn the <a href="#aligner">aligner</a> addresses to them and in every agent-context briefing, so agents weigh their behaviour against work that&#x27;s already committed.</p>
       <p>You can write the plan by hand (<code>plan set</code>, <code>plan task add</code>), but it also fills itself: when an <a href="#episodes">episode</a> converges on consensus, Mycelium compiles the agreed <code>{issue: value}</code> map into <code>plan/tasks.md</code> automatically: a <code>- [ ]</code> checklist with <code>@handle</code> owners that the whole team then executes against. The plan is compiled <em>before</em> the consensus is announced, so it exists the moment <code>await</code> returns. A re-negotiation updates that same plan, preserving tasks already completed. The arc is <strong>position → converge → plan → work</strong>.</p>
       <h2 id="plan-anatomy">Anatomy</h2>
-      <pre><code>.<span class="bin">mycelium</span>/rooms/{room}/plan/
+      <pre><code>.mycelium/rooms/{room}/plan/
 ├── title.md          # one-line italic display title (shown above room activity)
 ├── tasks.md          # default todo file written by `plan task add`
 └── {slug}.md         # any number of additional plan files (prose + checklists)</code></pre>
@@ -549,12 +549,12 @@ We chose Postgres because of myc://context/stack.</code></pre>
       <h2 id="l9-protocol-say-how-sure-you-are">Say how sure you are</h2>
       <p>When you post a position or reply with <a href="#quickstart"><code>mycelium respond</code></a>, end it with a position marker to declare your epistemic state:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="flag">--room</span> design <span class="flag">--handle</span> me \
-  <span class="str">&quot;Only option that meets the latency target. [[<span class="bin">mycelium</span>: confidence=0.8 stance=accept]]&quot;</span>
+  <span class="str">&quot;Only option that meets the latency target. [[mycelium: confidence=0.8 stance=accept]]&quot;</span>
 
 <span class="comment"># Accepting just to move on? Say so plainly in prose, and the aligner records</span>
 <span class="comment"># the deference:</span>
 <span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="flag">--room</span> design <span class="flag">--handle</span> me \
-  &quot;I&#x27;m not persuaded, but I&#x27;ll defer to @avery-agent. [[<span class="bin">mycelium</span>: confidence=0.4 stance=accept]]&quot;</code></pre>
+  &quot;I&#x27;m not persuaded, but I&#x27;ll defer to @avery-agent. [[mycelium: confidence=0.4 stance=accept]]&quot;</code></pre>
       <p>The <code>[[mycelium: …]]</code> marker is lifted onto the L9 envelope and stripped from the prose. The aligner reads your reply and folds in the richer epistemic signals it can infer: the evidence you engaged, whether your position moved, and why:</p>
       <ul>
         <li><code>confidence</code> (0–1): how sure you are of your position</li>

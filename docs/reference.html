@@ -276,7 +276,7 @@
       <p>The Mycelium skill installs as a Claude Code skill (<code>~/.claude/skills/mycelium/SKILL.md</code>), invoked via the <code>/mycelium</code> slash command for memory and coordination commands. The adapter is skill-only.</p>
       <pre><code><span class="comment"># The skill is invoked automatically in Claude Code sessions</span>
 <span class="comment"># or explicitly via the slash command</span>
-/<span class="bin">mycelium</span></code></pre>
+/mycelium</code></pre>
       <p>A Claude Code session participates as a resident runtime: it loops <code>mycelium await</code> → reason → <code>mycelium respond</code>, picking up each <code>@handle</code> mention on its next turn and answering in its own context. (For a headless, unattended agent, <code>mycelium await --loop --exec &lt;cmd&gt;</code> runs that loop for you — see above.)</p>
       <h3 id="architecture-cursor">Cursor</h3>
       <p>Same resident model as Claude Code: a Cursor session loops <code>await</code> → reason → <code>respond</code>.</p>
@@ -1086,7 +1086,7 @@ procedures/  Reusable how-to steps (do this again later)</code></pre>
       <p>The node forwards only MLS ciphertext, but restrict access anyway with a VPN, Tailscale, or firewall rules; access to a channel is gated by its shared-secret PSK.</p>
       <h2 id="hub-and-spoke-step-2-connect-each-spoke">Step 2: Connect each spoke</h2>
       <p>On each spoke, install the CLI:</p>
-      <pre><code><span class="cmd">curl</span> <span class="flag">-fsSL</span> <span class="url">https://<span class="bin">mycelium</span>-io.github.io/<span class="bin">mycelium</span>/install.sh</span> | bash</code></pre>
+      <pre><code><span class="cmd">curl</span> <span class="flag">-fsSL</span> <span class="url">https://mycelium-io.github.io/mycelium/install.sh</span> | bash</code></pre>
       <p>Point it at the hub&#x27;s node address (the <code>for peers</code> line from Step 1):</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">connect</span> <span class="url">http://192.168.1.20:46357</span></code></pre>
       <p>This stores the node endpoint in <code>~/.mycelium/config.toml</code>. The command is identical whether the hub is self-hosted on your LAN or a shared mycelium-hosted rendezvous; only the address changes.</p>
@@ -1158,7 +1158,7 @@ procedures/  Reusable how-to steps (do this again later)</code></pre>
       </div>
       <h2 id="auth-turning-it-on">Turning it on</h2>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> auth.enabled true
-<span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> auth.audience <span class="bin">mycelium</span>
+<span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> auth.audience mycelium
 <span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">apply</span></code></pre>
       <p>Then declare at least one trust root in <code>~/.mycelium/config.toml</code>:</p>
       <pre><code>[auth]
@@ -1230,7 +1230,7 @@ role     = &quot;user&quot;</code></pre>
       <p>Each <code>[[auth.issuers]]</code> block takes <code>issuer</code> (the exact <code>iss</code> to trust), <code>jwks_url</code> (optional — omit to resolve it from the issuer&#x27;s OIDC discovery document), <code>audience</code> (optional per-issuer override), and <code>role</code>.</p>
       <h2 id="auth-signing-in-from-the-cli">Signing in from the CLI</h2>
       <p>The gate above is the hub&#x27;s half. <code>mycelium login</code> is yours: it obtains an OIDC token for <strong>you</strong>, caches it, and every later command sends it.</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> login.issuer <span class="url">https://sso.example.com/realms/<span class="bin">mycelium</span></span>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> login.issuer <span class="url">https://sso.example.com/realms/mycelium</span>
 <span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> login.audience <span class="bin">mycelium</span>      # match the hub&#x27;s auth.audience
 <span class="bin">mycelium</span> <span class="cmd">login</span></code></pre>
       <p>Your browser opens, you sign in at your identity provider, and the CLI takes it from there — <code>mycelium memory</code>, <code>mycelium room</code>, <code>await</code>, <code>respond</code> and the rest now carry <code>Authorization: Bearer &lt;token&gt;</code>.</p>
@@ -1246,7 +1246,7 @@ role     = &quot;user&quot;</code></pre>
       <h3 id="auth-who-you-are">Who you are</h3>
       <p><code>mycelium whoami</code> (and <code>mycelium iam</code> with no arguments) reports the handle from your <strong>token</strong> when you&#x27;re signed in, and the self-asserted <code>identity.name</code> when you&#x27;re not:</p>
       <pre><code>acting as @avery  (avery#a8f3)
-  signed in (<span class="url">https://sso.example.com/realms/<span class="bin">mycelium</span>,</span> expires in 42 min)</code></pre>
+  signed in (<span class="url">https://sso.example.com/realms/mycelium,</span> expires in 42 min)</code></pre>
       <p>Because a gated hub attributes writes to the token (see <em>The token is the author</em> below), a self-asserted handle that names someone else is a 403 in waiting — <code>login</code> and <code>iam</code> both say so when they disagree.</p>
       <h3 id="auth-configuration">Configuration</h3>
       <div class="table-wrap">
@@ -1432,11 +1432,11 @@ role   = &quot;agent&quot;</code></pre>
       <p>Keycloak is a <em>supported</em> issuer, not the default. The gate stays <strong>off by default</strong> (the try-it path never touches it) — you turn it on when a team shares a hub over a network. Dex, ZITADEL, Authentik, or your corporate SSO slot in exactly the same way; nothing here is Keycloak-specific except the URLs.</p>
       <h2 id="keycloak-oidc-stand-up-keycloak">Stand up Keycloak</h2>
       <p>A ready-to-run Keycloak ships as an <strong>opt-in compose overlay</strong> — off the default stack, added with an extra <code>-f</code> exactly like the dev issuer. It imports a <code>mycelium</code> realm with a public CLI client, an audience mapper, and a demo user, so there is nothing to click in the admin console.</p>
-      <pre><code><span class="cmd">cd</span> <span class="bin">mycelium</span>-cli/src/<span class="bin">mycelium</span>/docker
+      <pre><code><span class="cmd">cd</span> mycelium-cli/src/mycelium/docker
 <span class="cmd">docker</span> compose <span class="flag">-f</span> compose.yml <span class="flag">-f</span> compose-dev.yml <span class="flag">-f</span> compose-keycloak.yml \
   up <span class="flag">-d</span> keycloak</code></pre>
       <p>The realm is ready when discovery answers:</p>
-      <pre><code><span class="cmd">curl</span> <span class="flag">-s</span> <span class="url">http://localhost:8080/realms/<span class="bin">mycelium</span>/.well-known/openid-configuration</span> \
+      <pre><code><span class="cmd">curl</span> <span class="flag">-s</span> <span class="url">http://localhost:8080/realms/mycelium/.well-known/openid-configuration</span> \
   | python3 <span class="flag">-c</span> &#x27;import json,sys; print(json.load(sys.stdin)[<span class="str">&quot;issuer&quot;</span>])&#x27;
 <span class="comment"># → http://localhost:8080/realms/mycelium</span></code></pre>
       <div class="callout callout-note">
@@ -1479,7 +1479,7 @@ audience  = &quot;mycelium&quot;</code></pre>
       <p>Apply it and recreate the backend so it picks up the gate:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">apply</span>
 <span class="cmd">docker</span> compose <span class="flag">-f</span> compose.yml <span class="flag">-f</span> compose-dev.yml <span class="flag">-f</span> compose-keycloak.yml \
-  up <span class="flag">-d</span> <span class="flag">--force-recreate</span> <span class="bin">mycelium</span>-backend</code></pre>
+  up <span class="flag">-d</span> <span class="flag">--force-recreate</span> mycelium-backend</code></pre>
       <p><code>/health</code> now reports the gate on and the issuer trusted:</p>
       <pre><code><span class="cmd">curl</span> <span class="flag">-s</span> <span class="url">http://localhost:8000/health</span> | python3 <span class="flag">-m</span> json.tool
 <span class="comment"># &quot;auth&quot;: { &quot;enabled&quot;: true, &quot;issuers&quot;: [&quot;http://localhost:8080/realms/mycelium&quot;],</span>
@@ -1502,8 +1502,8 @@ audience  = &quot;mycelium&quot;</code></pre>
       <p>The same three checks that were run to confirm this guide, against the published backend port:</p>
       <pre><code><span class="comment"># A real Keycloak token for the demo user</span>
 TOKEN=$(curl <span class="flag">-s</span> <span class="flag">-X</span> POST \
-  <span class="url">http://localhost:8080/realms/<span class="bin">mycelium</span>/protocol/openid-connect/token</span> \
-  <span class="flag">-d</span> &#x27;grant_type=password&amp;client_id=<span class="bin">mycelium</span>-cli&amp;username=demo&amp;password=demo&amp;scope=openid profile&#x27; \
+  <span class="url">http://localhost:8080/realms/mycelium/protocol/openid-connect/token</span> \
+  <span class="flag">-d</span> &#x27;grant_type=password&amp;client_id=mycelium-cli&amp;username=demo&amp;password=demo&amp;scope=openid profile&#x27; \
   | python3 <span class="flag">-c</span> &#x27;import json,sys; print(json.load(sys.stdin)[<span class="str">&quot;access_token&quot;</span>])&#x27;)
 
 <span class="cmd">curl</span> <span class="flag">-s</span> <span class="flag">-o</span> /dev/null <span class="flag">-w</span> &#x27;%{http_code}\n&#x27; <span class="url">http://localhost:8000/api/rooms</span>              # 401  (no token)
@@ -1519,10 +1519,10 @@ TOKEN=$(curl <span class="flag">-s</span> <span class="flag">-X</span> POST \
       <p>The Next.js frontend does the same OIDC flow for humans in a browser. With the gate <strong>off</strong> it is unchanged — the localStorage handle-picker, no login. With the gate <strong>on</strong>, the app shows a <strong>Sign in</strong> screen and redirects to Keycloak; after you authenticate it carries your token on every <code>/api/*</code> call (sealed in an httpOnly cookie, injected server-side by the proxy — it never reaches browser JS).</p>
       <p>The realm import ships a second public client, <strong><code>mycelium-web</code></strong>, with the web redirect <code>http://localhost:3000/api/auth/callback</code> (the CLI&#x27;s <code>mycelium-cli</code> client uses a loopback redirect instead — separate clients, separately revocable).</p>
       <p>Configure the frontend (server-side env) and bring the UI up:</p>
-      <pre><code>export MYCELIUM_OIDC_ISSUER=<span class="url">http://localhost:8080/realms/<span class="bin">mycelium</span></span>
-export MYCELIUM_OIDC_INTERNAL_ISSUER=<span class="url">http://keycloak:8080/realms/<span class="bin">mycelium</span></span>
-export MYCELIUM_OIDC_CLIENT_ID=<span class="bin">mycelium</span>-web
-export MYCELIUM_OIDC_AUDIENCE=<span class="bin">mycelium</span>
+      <pre><code>export MYCELIUM_OIDC_ISSUER=<span class="url">http://localhost:8080/realms/mycelium</span>
+export MYCELIUM_OIDC_INTERNAL_ISSUER=<span class="url">http://keycloak:8080/realms/mycelium</span>
+export MYCELIUM_OIDC_CLIENT_ID=mycelium-web
+export MYCELIUM_OIDC_AUDIENCE=mycelium
 export AUTH_SESSION_SECRET=$(openssl rand <span class="flag">-hex</span> 32)
 
 <span class="cmd">docker</span> compose <span class="flag">-f</span> compose.yml <span class="flag">-f</span> compose-dev.yml <span class="flag">-f</span> compose-keycloak.yml \
@@ -1581,7 +1581,7 @@ export AUTH_SESSION_SECRET=$(openssl rand <span class="flag">-hex</span> 32)
       <h2 id="troubleshooting-common-issues">Common Issues</h2>
       <h3 id="troubleshooting-1-command-not-found">1. Command Not Found</h3>
       <p><strong>Symptom</strong>: <code>mycelium: command not found</code></p>
-      <pre><code><span class="cmd">curl</span> <span class="flag">-fsSL</span> <span class="url">https://<span class="bin">mycelium</span>-io.github.io/<span class="bin">mycelium</span>/install.sh</span> | bash</code></pre>
+      <pre><code><span class="cmd">curl</span> <span class="flag">-fsSL</span> <span class="url">https://mycelium-io.github.io/mycelium/install.sh</span> | bash</code></pre>
       <p>Or add to PATH if the binary exists:</p>
       <pre><code>export PATH=<span class="str">&quot;$HOME/.local/bin:$PATH&quot;</span></code></pre>
       <hr class="divider">
@@ -1589,7 +1589,7 @@ export AUTH_SESSION_SECRET=$(openssl rand <span class="flag">-hex</span> 32)
       <p><strong>Symptom</strong>: <code>Cannot connect to Mycelium API at http://localhost:8000</code></p>
       <p>The backend is the room moderator; nothing coordinates without it.</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">status</span>                     # quick check
-<span class="cmd">docker</span> ps | grep <span class="bin">mycelium</span>-backend   # container status
+<span class="cmd">docker</span> ps | grep mycelium-backend   # container status
 <span class="bin">mycelium</span> <span class="cmd">up</span>                         # start services
 <span class="bin">mycelium</span> <span class="cmd">logs</span> <span class="cmd">mycelium-backend</span> <span class="flag">--tail</span> 50</code></pre>
       <hr class="divider">
@@ -1606,7 +1606,7 @@ export AUTH_SESSION_SECRET=$(openssl rand <span class="flag">-hex</span> 32)
 <span class="cmd">docker</span> ps | grep slim               # is the SLIM node up on the hub?
 <span class="bin">mycelium</span> <span class="cmd">hub</span> <span class="cmd">host</span>                   # (re)start the SLIM node and print its address</code></pre>
       <p>On a spoke, confirm it points at the right node and the port is open:</p>
-      <pre><code>grep node_endpoint ~/.<span class="bin">mycelium</span>/config.toml
+      <pre><code>grep node_endpoint ~/.mycelium/config.toml
 <span class="cmd">curl</span> http://&lt;hub-ip&gt;:46357            # raw reachability from the spoke
 <span class="bin">mycelium</span> <span class="cmd">connect</span> <span class="cmd">http</span>://&lt;hub-ip&gt;:46357  # re-point at the hub node</code></pre>
       <p>Common causes: firewall/security group blocks 46357, VPN/Tailscale not connected, or a stale endpoint in <code>config.toml</code>.</p>
@@ -1646,7 +1646,7 @@ lsof <span class="flag">-i</span> :46357   # SLIM node</code></pre>
       <p><strong>Symptom</strong>: <code>mycelium memory search</code> is empty despite memories existing.</p>
       <p>Search runs against a <strong>local embedding index</strong> (no external service). Direct file writes (cat, editor, agent file I/O) don&#x27;t update it until you reindex.</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">ls</span>          # do memories exist?
-ls ~/.<span class="bin">mycelium</span>/rooms/       # files present?
+ls ~/.mycelium/rooms/       # files present?
 <span class="bin">mycelium</span> <span class="cmd">reindex</span>            # rebuild the index after direct file writes
 <span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">ls</span>            # wrong active room?</code></pre>
       <hr class="divider">
@@ -1667,12 +1667,12 @@ ls ~/.<span class="bin">mycelium</span>/rooms/       # files present?
       <h3 id="troubleshooting-11-permission-errors-under-mycelium">11. Permission Errors Under ~/.mycelium</h3>
       <p><strong>Symptom</strong>: opaque <code>PermissionError</code> on memory or agent writes; <code>mycelium doctor</code> flags <em>~/.mycelium ownership</em> with root-owned files.</p>
       <p>Usually a sudo install paired with a non-sudo agent add (or a containerized gateway running as root bind-mounting your home). One <code>chown</code> fixes it:</p>
-      <pre><code>sudo chown <span class="flag">-R</span> $USER ~/.<span class="bin">mycelium</span></code></pre>
+      <pre><code>sudo chown <span class="flag">-R</span> $USER ~/.mycelium</code></pre>
       <hr class="divider">
       <h3 id="troubleshooting-12-spoke-cannot-reach-hub-backend">12. Spoke Cannot Reach Hub Backend</h3>
       <p><strong>Symptom</strong>: <code>mycelium status</code> / <code>mycelium room ls</code> from a spoke returns a connection error pointing at the hub&#x27;s URL.</p>
       <pre><code><span class="cmd">curl</span> http://&lt;hub-ip&gt;:8000/health      # raw backend reachability
-grep api_url ~/.<span class="bin">mycelium</span>/config.toml  # what the spoke targets</code></pre>
+grep api_url ~/.mycelium/config.toml  # what the spoke targets</code></pre>
       <p>Common causes: firewall blocks port 8000, hub backend isn&#x27;t running (<code>mycelium up</code> on the hub), VPN/Tailscale not connected, or the wrong URL in <code>config.toml</code>. Re-point if needed:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">init</span> <span class="flag">--api-url</span> http://&lt;correct-hub-ip&gt;:8000</code></pre>
       <p>Note the spoke must also reach the hub&#x27;s <strong>SLIM node</strong> on 46357 (see <em>SLIM Node Unreachable</em> above); the backend and the node are separate ports.</p>
@@ -1796,7 +1796,7 @@ grep api_url ~/.<span class="bin">mycelium</span>/config.toml  # what the spoke 
       <hr class="divider">
       <h2 id="troubleshooting-reset-everything">Reset Everything</h2>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">down</span> <span class="flag">--volumes</span>   # stop and delete all data
-rm <span class="flag">-rf</span> ~/.<span class="bin">mycelium</span>        # remove all config and room files
+rm <span class="flag">-rf</span> ~/.mycelium        # remove all config and room files
 <span class="bin">mycelium</span> <span class="cmd">install</span>          # fresh install</code></pre>
       <hr class="divider">
       <h2 id="troubleshooting-getting-help">Getting Help</h2>
