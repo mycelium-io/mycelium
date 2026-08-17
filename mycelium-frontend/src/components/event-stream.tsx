@@ -23,8 +23,8 @@ import { EmptyState } from "@/components/empty-state";
 import { KeyBadge } from "@/components/key-badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { initials } from "@/components/ui/monogram";
-import { MessagesSquare } from "lucide-react";
+import { Monogram } from "@/components/ui/monogram";
+import { Bot, MessagesSquare } from "lucide-react";
 
 interface Event {
   /** Render key only — synthesized, so a message republished by a status
@@ -707,52 +707,42 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
               // agents panel so one agent isn't two colors in two places.
               const color = isAgent ? "var(--accent)" : "var(--muted-foreground)";
               const marked = highlight !== null && ev.messageId === highlight;
+              const owner = isAgent ? agentOwners.get(ev.sender) : undefined;
               return (
                 <div
                   key={ev.id}
                   ref={marked ? highlightRow : undefined}
-                  className={`group flex gap-3 px-5 hover:bg-hairline ${grouped ? "py-0.5" : "mt-3 pt-1 first:mt-0"} ${
+                  className={`group relative flex gap-3 px-5 hover:bg-hairline ${grouped ? "py-0.5" : "mt-5 pt-1 first:mt-0"} ${
                     marked ? "bg-accent/15" : ""
                   }`}
                 >
-                  <div className="w-8 flex-shrink-0">
-                    {grouped ? (
-                      <span className="block pt-1 text-right text-micro tabular text-muted-foreground opacity-0 group-hover:opacity-100">
-                        {ev.time.slice(0, 5)}
+                  {/* Timestamp is low-signal: keep it out of the way in the right
+                      gutter, revealed on hover, faint. */}
+                  <span className="pointer-events-none absolute right-5 top-1.5 text-micro tabular text-faint opacity-0 transition-opacity group-hover:opacity-100">
+                    {ev.time.slice(0, 5)}
+                  </span>
+
+                  <div className="w-7 flex-shrink-0">
+                    {!grouped && (
+                      <span title={owner ? `@${ev.sender} · owned by @${owner}` : ev.sender}>
+                        <Monogram handle={ev.sender} color={color} className="size-7 text-micro" />
                       </span>
-                    ) : (
-                      <div
-                        className="flex size-8 items-center justify-center rounded-full text-micro font-semibold"
-                        style={{ background: `color-mix(in srgb, ${color} 16%, transparent)`, color }}
-                        aria-hidden
-                      >
-                        {initials(ev.sender)}
-                      </div>
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
                     {!grouped && (
-                      <div className="flex items-baseline gap-2">
+                      <div className="flex items-center gap-1.5 pr-12">
                         <span className="text-label font-semibold text-text truncate">
                           {ev.sender}
                         </span>
                         {isAgent && (
-                          <span
-                            className="rounded px-1.5 py-px text-micro font-medium"
-                            style={{ color: "var(--accent)", background: "color-mix(in srgb, var(--accent) 14%, transparent)" }}
-                          >
-                            agent
-                          </span>
-                        )}
-                        {isAgent && agentOwners.get(ev.sender) && (
-                          <span className="text-micro text-muted-foreground truncate">
-                            owned by @{agentOwners.get(ev.sender)}
-                          </span>
+                          <Bot aria-label="agent" className="size-3 flex-shrink-0 text-accent" />
                         )}
                         {ev.recipient && (
-                          <span className="text-micro text-muted-foreground">→ {ev.recipient}</span>
+                          <span className="rounded bg-hairline px-1.5 py-px font-mono text-micro text-muted-foreground">
+                            → {ev.recipient}
+                          </span>
                         )}
-                        <span className="text-micro text-muted-foreground tabular">{ev.time}</span>
                       </div>
                     )}
                     <MarkdownContent className="contrast text-body leading-relaxed" onLinkClick={onOpenMemory}>
