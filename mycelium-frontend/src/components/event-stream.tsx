@@ -108,7 +108,7 @@ function SystemNotice({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center gap-2 px-5 py-1.5 text-micro text-muted-foreground">
+    <div className="group mt-4 flex items-center gap-2 px-5 py-1 text-micro text-muted-foreground first:mt-0">
       <span aria-hidden className="inline-block size-1.5 flex-shrink-0 rounded-full" style={{ background: dot }} />
       {label && (
         <span className={strong ? "font-semibold" : "font-medium"} style={{ color: labelColor ?? "var(--muted-foreground)" }}>
@@ -116,7 +116,9 @@ function SystemNotice({
         </span>
       )}
       <span className="flex min-w-0 items-center gap-1.5 truncate">{children}</span>
-      <span className="ml-auto flex-shrink-0 tabular">{time}</span>
+      <span className="ml-auto flex-shrink-0 tabular text-faint opacity-0 transition-opacity group-hover:opacity-100">
+        {time.slice(0, 5)}
+      </span>
     </div>
   );
 }
