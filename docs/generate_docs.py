@@ -680,9 +680,9 @@ def _head(title: str, description: str, file_name: str) -> str:
 // Resolve the theme before first paint so the page never flashes the wrong one.
 (function () {{
   try {{
-    var t = localStorage.getItem('mycelium-theme') || 'system';
-    var dark = t === 'dark'
-      || (t === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    var t = localStorage.getItem('mycelium-theme') || 'dark';
+    var dark = t !== 'light'
+      && (t === 'dark' || window.matchMedia('(prefers-color-scheme: dark)').matches);
     document.documentElement.classList.toggle('dark', dark);
   }} catch (e) {{
     document.documentElement.classList.add('dark');
