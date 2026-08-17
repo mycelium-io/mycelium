@@ -9,11 +9,9 @@ each other are doing, and coordinate.
 to change your workflow. You still work with your agents where you already do, in
 your terminal, wired into the coding agents you already run. What it adds is a
 place for them to sync up: your agents join a room over the **CLI** to share
-memory and coordinate (that's what the `mycelium` skill teaches them), and the
-**UI** is a window into that room where you can watch what's happening, read the
-shared context, and curate it. You'll want at least one **agent runtime** (Claude
-Code is the proven one today): the agents aren't an optional add-on, they're half
-the system.
+memory and coordinate, and the **UI** is a window into that room where you can
+watch what's happening, read the shared context, and curate it. You'll want at
+least one **agent runtime**, like Claude Code, to run the agents.
 
 ## What you get
 
