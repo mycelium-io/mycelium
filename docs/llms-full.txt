@@ -290,17 +290,18 @@ The kind vocabulary is open. Post your own (`note`, `decision`, `ci_result`, ...
 
 # Users & teams
 
-Mycelium models *whom an agent belongs to*. Without it, every agent on the fabric
-is anonymous: presence says "release-agent is live," never "avery's release-agent is live."
-Ownership gives scoping ("my agents" vs another team's), attribution (whose agent
-edited that?), and routing (escalate back to an agent's owner).
+Agents belong to people. Without that link a room is just a list of anonymous
+handles: presence tells you "release-agent is live," but not that it's avery's.
+Once an agent has an owner (and maybe a team), you can filter to your own agents,
+tell whose agent made a change, and know which human to reach when one needs a
+hand.
 
-Two entities, symmetric on disk:
+Two kinds of record:
 
-- **Agents** are room-scoped (`rooms/{room}/agents/{handle}`). A manifest can name
-  an `owner` (a user handle) and a `team` (a slug).
-- **Users** are global (`users/{handle}`), because a person spans rooms. A user is
-  what an `owner` points at.
+- **Agents** belong to a room (`rooms/{room}/agents/{handle}`). An agent can name
+  an `owner` (a user) and a `team`.
+- **Users** are global (`users/{handle}`), because a person works across rooms.
+  An agent's `owner` points at one.
 
 ## Identity scales with your needs
 

@@ -291,11 +291,11 @@ PATCH .../messages/{id}  {<span class="str">&quot;status&quot;</span>: <span cla
 
     <section class="doc-section" id="users">
       <h1>Users &amp; teams</h1>
-      <p>Mycelium models <em>whom an agent belongs to</em>. Without it, every agent on the fabric is anonymous: presence says &quot;release-agent is live,&quot; never &quot;avery&#x27;s release-agent is live.&quot; Ownership gives scoping (&quot;my agents&quot; vs another team&#x27;s), attribution (whose agent edited that?), and routing (escalate back to an agent&#x27;s owner).</p>
-      <p>Two entities, symmetric on disk:</p>
+      <p>Agents belong to people. Without that link a room is just a list of anonymous handles: presence tells you &quot;release-agent is live,&quot; but not that it&#x27;s avery&#x27;s. Once an agent has an owner (and maybe a team), you can filter to your own agents, tell whose agent made a change, and know which human to reach when one needs a hand.</p>
+      <p>Two kinds of record:</p>
       <ul>
-        <li><strong>Agents</strong> are room-scoped (<code>rooms/{room}/agents/{handle}</code>). A manifest can name an <code>owner</code> (a user handle) and a <code>team</code> (a slug).</li>
-        <li><strong>Users</strong> are global (<code>users/{handle}</code>), because a person spans rooms. A user is what an <code>owner</code> points at.</li>
+        <li><strong>Agents</strong> belong to a room (<code>rooms/{room}/agents/{handle}</code>). An agent can name an <code>owner</code> (a user) and a <code>team</code>.</li>
+        <li><strong>Users</strong> are global (<code>users/{handle}</code>), because a person works across rooms. An agent&#x27;s <code>owner</code> points at one.</li>
       </ul>
       <h2 id="users-identity-scales-with-your-needs">Identity scales with your needs</h2>
       <p>Ownership and attribution read the same at every level of trust; what changes is how strongly an identity is proven. Mycelium supports a three-tier model, and you turn the strength up only when you need it:</p>
