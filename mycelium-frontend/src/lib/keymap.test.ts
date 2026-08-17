@@ -75,7 +75,7 @@ describe("keymap", () => {
   });
 
   it("resolves an action to the chord its badge draws", () => {
-    expect(chordFor("pane.l9")).toBe("alt+l");
+    expect(chordFor("pane.network")).toBe("alt+w");
     expect(chordFor("nope")).toBeUndefined();
   });
 

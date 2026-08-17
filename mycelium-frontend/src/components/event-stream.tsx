@@ -312,7 +312,7 @@ function renderWithMentions(text: string): React.ReactNode {
   );
 }
 
-export type View = "channel" | "negotiate" | "plan" | "l9" | "slim";
+export type View = "channel" | "negotiate" | "plan" | "network";
 export type NegotiationPhase = "idle" | "negotiating" | "converged" | "rejected";
 
 interface Props {
@@ -518,9 +518,8 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
           {([
             { id: "channel" as const,   label: "Channel",   count: channelCount as number | null, dot: false },
             { id: "negotiate" as const, label: "Negotiate", count: null,                          dot: negotiating },
-            { id: "l9" as const,        label: "L9",        count: null,                          dot: false },
             { id: "plan" as const,      label: "Plan",      count: null,                          dot: false },
-            { id: "slim" as const,      label: "SLIM",      count: null,                          dot: false },
+            { id: "network" as const,   label: "Network",   count: null,                          dot: false },
           ]).map(t => {
             // Hold the reveal modifier and each tab wears the key that selects it.
             const active = view === t.id;
@@ -548,18 +547,21 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
           })}
         </div>
       </div>
-      {view === "l9" ? (
-        <div className="flex-1 min-h-0">
-          <L9Inspector roomName={roomName} />
+      {view === "network" ? (
+        // Unified Network pane: SLIM channel diagnostics as a rail on top, the
+        // live L9 protocol feed filling the rest.
+        <div className="flex flex-1 min-h-0 flex-col">
+          <div className="shrink-0 border-b border-border bg-surface/40">
+            <RoomSlimView roomName={roomName} layout="rail" />
+          </div>
+          <div className="flex-1 min-h-0">
+            <L9Inspector roomName={roomName} />
+          </div>
         </div>
       ) : view === "negotiate" ? (
         <div className="flex-1 min-h-0">
           <NegotiationView events={events} />
         </div>
-      ) : view === "slim" ? (
-        <ScrollArea className="flex-1 min-h-0">
-          <RoomSlimView roomName={roomName} />
-        </ScrollArea>
       ) : (
       <ScrollArea className="flex-1 min-h-0" viewportRef={scrollRef}>
         {view === "plan" ? (

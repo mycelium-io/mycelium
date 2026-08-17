@@ -90,9 +90,10 @@ export const KEYMAP: Binding[] = [
 
   { id: "pane.channel", keys: ["alt+c"], label: "Channel", group: "Panes", scope: "room" },
   { id: "pane.negotiate", keys: ["alt+n"], label: "Negotiate", group: "Panes", scope: "room" },
-  { id: "pane.l9", keys: ["alt+l"], label: "L9", group: "Panes", scope: "room" },
   { id: "pane.plan", keys: ["alt+p"], label: "Plan", group: "Panes", scope: "room" },
-  { id: "pane.slim", keys: ["alt+s"], label: "SLIM", group: "Panes", scope: "room" },
+  // Network = the merged SLIM diagnostics rail + L9 protocol feed. ⌥W (netWork);
+  // ⌥N is taken by Negotiate.
+  { id: "pane.network", keys: ["alt+w"], label: "Network", group: "Panes", scope: "room" },
 
   { id: "rail.agents", keys: ["alt+a"], label: "Members", group: "Inspector", scope: "room" },
   // Not ⌥E: Alt+E opens the browser menu on Windows and Linux.
