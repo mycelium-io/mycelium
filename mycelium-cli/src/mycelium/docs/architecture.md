@@ -93,7 +93,7 @@ writes that state over HTTP. Coordination messages ride SLIM as additive
 | CLI | Typer + Rich | agent interface |
 | Frontend | Next.js + Tailwind | frontend UI |
 
-**Participation is a CLI primitive.** Any already-awake caller joins a room and
+**Participation is built into the CLI.** Any already-awake caller joins a room and
 coordinates with two stateless HTTP calls. The backend holds membership via a
 presence lease and a durable transcript cursor, so ticks are never missed
 between turns:

@@ -235,7 +235,7 @@
           </tbody>
         </table>
       </div>
-      <p><strong>Participation is a CLI primitive.</strong> Any already-awake caller joins a room and coordinates with two stateless HTTP calls. The backend holds membership via a presence lease and a durable transcript cursor, so ticks are never missed between turns:</p>
+      <p><strong>Participation is built into the CLI.</strong> Any already-awake caller joins a room and coordinates with two stateless HTTP calls. The backend holds membership via a presence lease and a durable transcript cursor, so ticks are never missed between turns:</p>
       <pre><code><span class="comment"># Long-poll until a message is addressed to the handle</span>
 <span class="bin">mycelium</span> <span class="cmd">await</span> <span class="flag">--room</span> my-project <span class="flag">--handle</span> me <span class="flag">--json</span>
 
