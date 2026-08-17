@@ -202,6 +202,19 @@ body {
 
 ::selection { background: var(--accent-soft); color: var(--text); }
 
+/* Themed scrollbars (Firefox + Chrome 121+ via the standard props, WebKit via
+   the pseudo-elements). Tracks the active theme through the tokens. */
+html { scrollbar-color: var(--border2) transparent; scrollbar-width: thin; }
+::-webkit-scrollbar { width: 12px; height: 12px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--border2);
+  border-radius: 8px;
+  border: 3px solid var(--bg);
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--faint); }
+
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 8px; }
@@ -771,23 +784,43 @@ tr:hover td { background: var(--hairline); }
 .config-table td:nth-child(2) { white-space: nowrap; color: var(--muted-foreground); }
 
 /* ── CARDS ── */
-/* Locked 3-up so it never orphans a card onto a second row; stacks to one
-   column on narrow screens. */
 .card-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr));
+  gap: 12px;
   margin: 24px 0;
 }
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  overflow: hidden;
+  padding: 16px;
   transition: border-color 0.15s, background 0.15s;
 }
 .card:hover { border-color: var(--border2); background: var(--muted-bg); }
-.card-media {
+.card-icon { margin-bottom: 10px; color: var(--muted-foreground); }
+.card-icon svg { width: 18px; height: 18px; stroke: currentColor; }
+.card-title { font-size: var(--text-body); font-weight: 600; color: var(--text); margin-bottom: 4px; }
+.card-desc { font-size: var(--text-label); color: var(--muted-foreground); line-height: 1.5; }
+
+/* Image-hero concept cards: a separate component from .card so the icon cards
+   (adapters) are untouched. Locked 3-up so it never orphans a card onto a second
+   row; stacks to one column on narrow screens. */
+.concept-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  margin: 24px 0;
+}
+.concept-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  transition: border-color 0.15s, background 0.15s;
+}
+.concept-card:hover { border-color: var(--border2); background: var(--muted-bg); }
+.concept-media {
   display: block;
   width: 100%;
   aspect-ratio: 1 / 1;
@@ -795,12 +828,22 @@ tr:hover td { background: var(--hairline); }
   object-position: center;
   border-bottom: 1px solid var(--border);
 }
-.card-body { padding: 14px 16px 16px; }
-.card-title { font-size: var(--text-body); font-weight: 600; color: var(--text); margin-bottom: 4px; }
-.card-desc { font-size: var(--text-label); color: var(--muted-foreground); line-height: 1.5; }
-
+.concept-body { padding: 14px 16px 16px; }
 @media (max-width: 640px) {
-  .card-grid { grid-template-columns: 1fr; }
+  .concept-grid { grid-template-columns: 1fr; }
+  /* Stacked: go horizontal (image left, text right) so the square render
+     doesn't blow up to full width. Image stretches to the card's full height. */
+  .concept-card { display: flex; align-items: stretch; }
+  .concept-media {
+    width: 104px;
+    aspect-ratio: auto;
+    align-self: stretch;
+    object-fit: cover;
+    flex-shrink: 0;
+    border-bottom: none;
+    border-right: 1px solid var(--border);
+  }
+  .concept-body { flex: 1; }
 }
 
 /* ── BADGES ── */
