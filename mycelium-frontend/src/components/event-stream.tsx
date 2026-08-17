@@ -108,7 +108,7 @@ function SystemNotice({
   children: React.ReactNode;
 }) {
   return (
-    <div className="group mt-4 flex items-center gap-2 px-5 py-1 text-micro text-muted-foreground first:mt-0">
+    <div className="group mt-3 flex items-center gap-2 px-5 py-1 text-micro text-muted-foreground first:mt-0">
       <span aria-hidden className="inline-block size-1.5 flex-shrink-0 rounded-full" style={{ background: dot }} />
       {label && (
         <span className={strong ? "font-semibold" : "font-medium"} style={{ color: labelColor ?? "var(--muted-foreground)" }}>
@@ -714,7 +714,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
                 <div
                   key={ev.id}
                   ref={marked ? highlightRow : undefined}
-                  className={`group relative flex gap-3 px-5 hover:bg-hairline ${grouped ? "py-0.5" : "mt-5 pt-1 first:mt-0"} ${
+                  className={`group relative flex gap-3 px-5 hover:bg-hairline ${grouped ? "py-0.5" : "mt-3 pt-1 first:mt-0"} ${
                     marked ? "bg-accent/15" : ""
                   }`}
                 >
