@@ -762,24 +762,37 @@ tr:hover td { background: var(--hairline); }
 .config-table td:nth-child(2) { white-space: nowrap; color: var(--muted-foreground); }
 
 /* ── CARDS ── */
+/* Locked 3-up so it never orphans a card onto a second row; stacks to one
+   column on narrow screens. */
 .card-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
   margin: 24px 0;
 }
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 16px;
+  overflow: hidden;
   transition: border-color 0.15s, background 0.15s;
 }
 .card:hover { border-color: var(--border2); background: var(--muted-bg); }
-.card-icon { margin-bottom: 10px; color: var(--muted-foreground); }
-.card-icon svg { width: 18px; height: 18px; stroke: currentColor; }
+.card-media {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  object-position: center;
+  border-bottom: 1px solid var(--border);
+}
+.card-body { padding: 14px 16px 16px; }
 .card-title { font-size: var(--text-body); font-weight: 600; color: var(--text); margin-bottom: 4px; }
 .card-desc { font-size: var(--text-label); color: var(--muted-foreground); line-height: 1.5; }
+
+@media (max-width: 640px) {
+  .card-grid { grid-template-columns: 1fr; }
+}
 
 /* ── BADGES ── */
 .badge {
