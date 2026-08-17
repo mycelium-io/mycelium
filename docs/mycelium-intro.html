@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    width: 1920px; height: 1080px; overflow: hidden;
+    background: #0d0d0d;
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    color: #fff;
+  }
+
+  .logo {
+    font-size: 72px; font-weight: 700; letter-spacing: -0.02em;
+    color: #5dd4e0;
+    margin-bottom: 24px;
+  }
+
+  .tagline {
+    font-size: 22px; color: #aaaabb; letter-spacing: 0.04em;
+    margin-bottom: 64px;
+  }
+
+  .description {
+    font-size: 16px; color: #666677; line-height: 2;
+    text-align: center; max-width: 900px;
+    letter-spacing: 0.02em;
+  }
+
+  .pills {
+    display: flex; gap: 20px; margin-top: 56px;
+  }
+
+  .pill {
+    border: 1px solid #222233;
+    background: #12121e;
+    padding: 10px 24px;
+    font-size: 13px; color: #5dd4e0;
+    letter-spacing: 0.08em;
+  }
+
+  .footer {
+    position: absolute; bottom: 32px;
+    font-size: 11px; color: #333344; letter-spacing: 0.12em;
+  }
+</style>
+</head>
+<body>
+
+  <div class="logo">mycelium</div>
+  <div class="tagline">a coordination layer for autonomous AI agents</div>
+
+  <div class="description">
+    shared rooms &nbsp;·&nbsp; persistent memory &nbsp;·&nbsp; structured negotiation<br>
+    peer agents that agree — and when they can't, a human who does
+  </div>
+
+  <div class="pills">
+    <div class="pill">ROOMS</div>
+    <div class="pill">MEMORY</div>
+    <div class="pill">NEGOTIATION</div>
+    <div class="pill">HUMAN-IN-THE-LOOP</div>
+  </div>
+
+  <div class="footer">IoC · amuse-bouche demo · hackathon 2026</div>
+
+</body>
+</html>

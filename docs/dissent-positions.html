@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    width: 1920px; height: 1080px; overflow: hidden;
+    background: #0d0d0d;
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    color: #fff;
+  }
+  .slide { position: relative; width: 1920px; height: 1080px; }
+
+  .label-top {
+    position: absolute; top: 14px; left: 0; right: 0;
+    text-align: center; font-size: 13px; color: #555566;
+    letter-spacing: 0.15em; text-transform: uppercase;
+  }
+
+  /* Agent boxes */
+  .agent {
+    position: absolute; width: 560px; height: 318px;
+    background: #12121e;
+    border: 1.5px solid var(--color);
+    display: flex; flex-direction: column;
+  }
+  .agent .badge {
+    background: var(--color); color: #0d0d0d;
+    font-size: 12px; font-weight: 700; letter-spacing: 0.12em;
+    text-align: center; padding: 8px 0; text-transform: uppercase;
+  }
+  .agent .body { padding: 14px 18px; }
+  .agent .handle { font-size: 14px; font-weight: 700; color: var(--color); margin-bottom: 3px; }
+  .agent .role { font-size: 11px; color: #aaaabb; margin-bottom: 12px; }
+  .agent .constraint { font-size: 12px; color: #ddddee; line-height: 1.6; }
+
+  /* Positions */
+  .top-left     { top: 48px;  left: 38px;  }
+  .top-right    { top: 48px;  right: 38px; }
+  .bottom-left  { bottom: 48px; left: 38px;  }
+  .bottom-right { bottom: 48px; right: 38px; }
+
+  /* Center box */
+  .center {
+    position: absolute;
+    left: 606px; top: 346px; width: 708px; height: 386px;
+    background: #10101c;
+    border: 1px solid #5dd4e0;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 28px 36px;
+  }
+  .center .title {
+    font-size: 17px; font-weight: 700; color: #5dd4e0;
+    letter-spacing: 0.08em; text-align: center; margin-bottom: 16px;
+  }
+  .center .divider {
+    width: 80%; height: 1px; background: #333344; margin-bottom: 20px;
+  }
+  .center .scenario {
+    font-size: 13px; color: #aaaabb; line-height: 1.8;
+    text-align: center;
+  }
+  .center .footer {
+    position: absolute; bottom: 16px;
+    font-size: 10px; color: #333344; letter-spacing: 0.1em;
+  }
+
+  /* Connector lines (SVG overlay) */
+  svg.connectors {
+    position: absolute; top: 0; left: 0;
+    width: 1920px; height: 1080px;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<div class="slide">
+
+  <div class="label-top">OPENING POSITIONS</div>
+
+  <!-- SVG connector lines from corners to center -->
+  <svg class="connectors">
+    <line x1="598"  y1="207" x2="606"  y2="539" stroke="#222233" stroke-width="1" stroke-dasharray="6,4"/>
+    <line x1="1322" y1="207" x2="1314" y2="539" stroke="#222233" stroke-width="1" stroke-dasharray="6,4"/>
+    <line x1="598"  y1="874" x2="606"  y2="732" stroke="#222233" stroke-width="1" stroke-dasharray="6,4"/>
+    <line x1="1322" y1="874" x2="1314" y2="732" stroke="#222233" stroke-width="1" stroke-dasharray="6,4"/>
+  </svg>
+
+  <!-- pm-agent: top-left -->
+  <div class="agent top-left" style="--color: #fbbf24">
+    <div class="badge">SHIP FRIDAY</div>
+    <div class="body">
+      <div class="handle">@pm-agent</div>
+      <div class="role">Product Manager</div>
+      <div class="constraint">Friday launch is committed.<br>
+        Slipping cancels a paid marketing campaign<br>
+        and triggers the enterprise SLA penalty.</div>
+    </div>
+  </div>
+
+  <!-- eng-lead: top-right -->
+  <div class="agent top-right" style="--color: #34d399">
+    <div class="badge">FIX FIRST</div>
+    <div class="body">
+      <div class="handle">@eng-lead</div>
+      <div class="role">Engineering Lead</div>
+      <div class="constraint">Will not ship known data corruption.<br>
+        Bug corrupts order metadata in ~3%<br>
+        of discount-code orders.</div>
+    </div>
+  </div>
+
+  <!-- sre-agent: bottom-left -->
+  <div class="agent bottom-left" style="--color: #60a5fa">
+    <div class="badge">KILL SWITCH</div>
+    <div class="body">
+      <div class="handle">@sre-agent</div>
+      <div class="role">Site Reliability</div>
+      <div class="constraint">Ship only with a kill switch on checkout.<br>
+        Must be reversible in under 2 minutes<br>
+        or bad orders will compound.</div>
+    </div>
+  </div>
+
+  <!-- secops-agent: bottom-right -->
+  <div class="agent bottom-right" style="--color: #f87171">
+    <div class="badge">REVIEW FIRST</div>
+    <div class="body">
+      <div class="handle">@secops-agent</div>
+      <div class="role">Security Ops</div>
+      <div class="constraint">Cannot sign off until exploitability<br>
+        is confirmed. Discount-code bugs are<br>
+        a known attack surface.</div>
+    </div>
+  </div>
+
+  <!-- Center -->
+  <div class="center">
+    <div class="title">FRIDAY LAUNCH — SHIP OR SLIP?</div>
+    <div class="divider"></div>
+    <div class="scenario">
+      A checkout bug is found 24 hours before a major Friday launch.<br><br>
+      Four autonomous agents. Four hard constraints.<br>
+      No central authority. One decision required.
+    </div>
+    <div class="footer">mycelium &nbsp;·&nbsp; IoC dissent-map demo</div>
+  </div>
+
+</div>
+</body>
+</html>

@@ -817,7 +817,7 @@ function ConsensusBanner({ derived, parentRoom }: { derived: DerivedState; paren
               <textarea
                 className="w-full font-mono text-label text-text bg-surface border border-border rounded p-2 resize-y"
                 style={{ minHeight: 72, borderColor: color }}
-                placeholder="e.g. Ship Friday behind a feature flag; run exploitability review in parallel; pull the flag if error rate exceeds 1%."
+                placeholder="Enter your ruling…"
                 value={rulingText}
                 onChange={e => setRulingText(e.target.value)}
                 disabled={submitting}
