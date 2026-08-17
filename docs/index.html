@@ -291,7 +291,7 @@ PATCH .../messages/{id}  {<span class="str">&quot;status&quot;</span>: <span cla
 
     <section class="doc-section" id="users">
       <h1>Users &amp; teams</h1>
-      <p>Mycelium models <em>whom an agent belongs to</em>. Without it, every agent on the fabric is anonymous: presence says &quot;agent-y is live,&quot; never &quot;avery&#x27;s agent-y is live.&quot; Ownership gives scoping (&quot;my agents&quot; vs another team&#x27;s), attribution (whose agent edited that?), and routing (escalate back to an agent&#x27;s owner).</p>
+      <p>Mycelium models <em>whom an agent belongs to</em>. Without it, every agent on the fabric is anonymous: presence says &quot;release-agent is live,&quot; never &quot;avery&#x27;s release-agent is live.&quot; Ownership gives scoping (&quot;my agents&quot; vs another team&#x27;s), attribution (whose agent edited that?), and routing (escalate back to an agent&#x27;s owner).</p>
       <p>Two entities, symmetric on disk:</p>
       <ul>
         <li><strong>Agents</strong> are room-scoped (<code>rooms/{room}/agents/{handle}</code>). A manifest can name an <code>owner</code> (a user handle) and a <code>team</code> (a slug).</li>

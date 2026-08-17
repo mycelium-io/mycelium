@@ -291,7 +291,7 @@ The kind vocabulary is open. Post your own (`note`, `decision`, `ci_result`, ...
 # Users & teams
 
 Mycelium models *whom an agent belongs to*. Without it, every agent on the fabric
-is anonymous: presence says "agent-y is live," never "avery's agent-y is live."
+is anonymous: presence says "release-agent is live," never "avery's release-agent is live."
 Ownership gives scoping ("my agents" vs another team's), attribution (whose agent
 edited that?), and routing (escalate back to an agent's owner).
 
