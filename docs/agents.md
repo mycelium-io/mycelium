@@ -11,13 +11,13 @@ metadata:
 
 Set up or maintain Mycelium with minimal friction. If you are running this
 prompt, you are an agent: your goal is to follow the steps below and stand up
-Mycelium for the user — CLI, stack, and the adapter that connects your own
-runtime to it — so the user can put you (and other agents) in a shared room to
-coordinate.
+Mycelium for the user (CLI, stack, and the adapter that connects your own runtime
+to it) so the user can put you and other agents in a shared room to coordinate.
 
-Mycelium is a coordination layer for teams of autonomous agents: persistent
-rooms, shared markdown memory, and mediated negotiation over an encrypted SLIM
-channel. Full docs: <https://mycelium-io.github.io/mycelium/> (LLM-friendly
+Mycelium is a shared space for humans and agents: persistent rooms, shared
+markdown memory, and a place for agents to coordinate over an encrypted SLIM
+channel. It runs on a server the user's team connects to, brought up with Docker.
+Full docs: <https://mycelium-io.github.io/mycelium/> (LLM-friendly
 single file: <https://mycelium-io.github.io/mycelium/llms-full.txt>).
 
 ## Step 1: Install or upgrade the CLI
@@ -55,8 +55,8 @@ docker info --format '{{.ServerVersion}}'
 docker compose version
 ```
 
-If either fails, stop and tell the user to install or start Docker first —
-do not attempt to install Docker yourself.
+If either fails, stop and tell the user to install or start Docker first. Do
+not attempt to install Docker yourself.
 
 ## Step 3: Bring up the stack
 
@@ -74,10 +74,10 @@ mycelium up        # start the SLIM node + backend
 mycelium doctor    # diagnose and fix configuration issues
 ```
 
-For a fresh install, you need the user's LLM configuration: negotiation is
-mediated by an LLM, so ask the user which provider/model to use and for an API
-key. Never invent or reuse a key without asking. Then run the non-interactive
-installer:
+For a fresh install, you need the user's LLM configuration: some of Mycelium's
+coordination features use an LLM, so ask the user which provider/model to use and
+for an API key. Never invent or reuse a key without asking. Then run the
+non-interactive installer:
 
 ```bash
 mycelium install -n \
@@ -89,8 +89,7 @@ mycelium install -n \
   `openai/gpt-4o`, `ollama/llama3`).
 - Add `--llm-base-url <url>` for Ollama or other local/custom endpoints.
 - If the user wants to defer the LLM decision, run `mycelium install -n` with
-  no LLM flags: memory and rooms work immediately, but agents cannot converge
-  in negotiation until a model is configured
+  no LLM flags: memory and rooms work immediately, and a model can be added later
   (`mycelium config set llm.model <model>` + `mycelium config apply`).
 
 If instead you are running in a real interactive terminal alongside the user,
@@ -122,27 +121,29 @@ hot-reload skills (Claude Code doesn't).
 
 An agent participates as a **resident runtime**: your own live session, kept
 woken by looping the participation calls with
-`mycelium await --loop --exec <cmd>` (await → reason → respond → await). An
+`mycelium await --loop --exec <cmd>` (await, reason, respond, await). An
 `@`-mention to a handle with no resident runtime waits on the durable transcript
 cursor until a runtime awaits.
 
-## Step 6: Suggest a first run
+## Step 6: Create a room and open the UI
 
-Setup is done. Tell the user the human surface is the UI — `mycelium ui open`
-— where they create rooms, add agents, and watch a negotiation live. Offer to
-walk the CLI equivalent right now:
+Setup is done. Finish by putting the user in a room and getting them into the UI,
+which is where they actually watch what's happening.
+
+Create a room, make it active, and post an opening message so it isn't empty:
 
 ```bash
 mycelium room create my-project && mycelium room use my-project
-mycelium engine create aligner --kind aligner --room my-project
-
-# Post an opening position, then summon the mediator
-mycelium respond --room my-project --handle <your-handle> "…your opening position…"
-mycelium engine invoke aligner "converge on <the open question>"
-
-# Loop: wait to be addressed, then reply — until the room converges
-mycelium await   --room my-project --handle <your-handle> --json
-mycelium respond --room my-project --handle <your-handle> "…your reply…"
-
-mycelium plan tasks   # the shared checklist the consensus compiled into
+mycelium respond --room my-project --handle <your-handle> \
+  "Setup complete. Ready to coordinate on my-project."
 ```
+
+Then tell the user to open the UI and keep it open. This is not optional: the UI
+is how they see the room, the agents in it, and the shared memory.
+
+```bash
+mycelium ui open
+```
+
+From here they can bring in more agents (`mycelium agent create`) and share
+memory (`mycelium memory set`). Point them at the quick start for the rest.
