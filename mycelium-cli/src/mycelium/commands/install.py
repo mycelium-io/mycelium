@@ -611,8 +611,10 @@ def _write_mycelium_config(
     config.save(config_path)
 
     # Derive .env from the canonical config.toml
-    env_path = write_env_file(config)
+    env_path, secret_assigned = write_env_file(config)
     typer.echo(f"  ✓ Regenerated {env_path} from config.toml")
+    if secret_assigned:
+        typer.echo("  ✓ Generated [slim].master_secret (hub SLIM PSK)")
 
 
 # ── Animation helper ──────────────────────────────────────────────────────────

@@ -20,25 +20,28 @@ machine) owns the whole agent workflow.
 A second, optional mode for small teams that want to share memory, rooms,
 and coordination across machines. One machine runs the SLIM node and
 backend (the **hub**); other machines run only the CLI + agents (**spokes**)
-and connect to the hub's channel.
+as **thin HTTP clients** to the hub API.
 
 | Role  | What runs locally | When to use |
 |-------|-------------------|-------------|
 | **Hub**   | The SLIM node + the thin FastAPI backend (room moderator). | The team's shared coordination server. One per team. |
-| **Spoke** | CLI + agents only. Points at the hub's SLIM address. | Each teammate's laptop. Agents on the spoke participate in shared rooms hosted by the hub. |
+| **Spoke** | CLI + agents only. Points `server.api_url` at the hub backend. | Each teammate's laptop. Memory and participation go over HTTP `:8000`. |
 
-Stand a hub up and point spokes at it:
+Stand a hub up and point spokes at the **backend** (required):
 
 ```bash
-# On the hub: starts the SLIM node + backend, prints the connect address
+# On the hub: starts the SLIM node + backend
 mycelium hub host
+mycelium up
 
-# On each spoke: point this machine at the hub's channel
-mycelium hub connect http://<hub-ip>:46357
+# On each spoke: point at the hub's HTTP API
+mycelium config set server.api_url http://<hub-ip>:8000
 ```
 
-See the [Hub & Spoke Setup guide](#hub-and-spoke) for step-by-step
-instructions.
+Spokes do not need `MYCELIUM_SLIM_MASTER_SECRET` for the default path. The
+SLIM/MLS fabric is hub-side; spokes use `await`/`respond` over HTTP. See
+[Security Planes](#security-planes) and the [Hub & Spoke Setup guide](#hub-and-spoke)
+for step-by-step instructions.
 
 `mycelium doctor` auto-detects which mode you're in by looking at
 `server.api_url` in `~/.mycelium/config.toml`: if it points to
@@ -72,13 +75,13 @@ mycelium room clone my-project --from http://ec2-host:8000
 Mycelium runs on **one SLIM node** and a thin backend: no database, no
 message broker, no vector store.
 
-Agents coordinate over an [AGNTCY SLIM](https://github.com/agntcy) group
-channel, one per room: an MLS-encrypted group with shared-secret PSK auth.
-The backend is each room's **moderator**; agents (and the human, by proxy)
-are members. Room state lives on the hub as markdown files; search runs against
-a local embedding index. Every other machine is a thin client that reads and
-writes that state over HTTP. Coordination messages ride SLIM as additive
-[L9 envelopes](#l9-protocol).
+The hub backend moderates an [AGNTCY SLIM](https://github.com/agntcy) group
+channel per room (MLS-encrypted; PSK or SignerJwt/SPIRE on the **SLIM plane**).
+Turn-based agents on spokes (and humans by proxy) participate over **HTTP** —
+the backend holds server-side presence and serves turns from the durable
+transcript. Room state lives on the hub as markdown files; search runs against
+a local embedding index. Every spoke reads and writes that state over HTTP.
+Coordination messages on the fabric ride SLIM as additive [L9 envelopes](#l9-protocol).
 
 | Layer | Technology | Used for |
 |-------|-----------|----------|

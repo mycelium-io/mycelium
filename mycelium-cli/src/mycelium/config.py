@@ -105,6 +105,29 @@ class SlimConfig(BaseModel):
         ),
     )
 
+    master_secret: str | None = Field(
+        default=None,
+        description=(
+            "Hub-only SLIM PSK master secret. Auto-generated on first "
+            "``mycelium config apply`` / install when unset; rendered to "
+            "``MYCELIUM_SLIM_MASTER_SECRET`` in ~/.mycelium/.env for the backend "
+            "container. Spokes do not need this. Override with "
+            "``mycelium config set slim.master_secret …`` to rotate."
+        ),
+    )
+
+    @field_validator("master_secret")
+    @classmethod
+    def _validate_master_secret(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        stripped = v.strip()
+        if not stripped:
+            return None
+        if len(stripped) < 32:
+            raise ValueError("slim.master_secret must be at least 32 characters")
+        return stripped
+
     @field_validator("identity")
     @classmethod
     def _validate_identity(cls, v: str) -> str:
@@ -572,6 +595,10 @@ class MyceliumConfig(BaseModel):
             env_config["server"]["api_url"] = api_url
         if slim_endpoint := os.getenv("MYCELIUM_SLIM_ENDPOINT"):
             env_config["slim"]["node_endpoint"] = slim_endpoint
+        if slim_master := os.getenv("MYCELIUM_SLIM_MASTER_SECRET"):
+            env_config["slim"]["master_secret"] = slim_master
+        if slim_identity := os.getenv("MYCELIUM_SLIM_IDENTITY"):
+            env_config["slim"]["identity"] = slim_identity
         if active_room := os.getenv("MYCELIUM_ACTIVE_ROOM"):
             env_config["rooms"]["active"] = active_room
 
