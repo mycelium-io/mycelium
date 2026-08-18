@@ -36,8 +36,8 @@ EOF
 ```
 
 Notes are load-bearing; update them only when you've learned something
-the next cold spawn needs to know. One-off facts about the current task
-belong in the conversation; speculation belongs nowhere.
+future turns need to know. One-off facts about the current task belong in
+the conversation; speculation belongs nowhere.
 
 ## More
 
