@@ -22,6 +22,7 @@ import uuid
 
 from pyats import aetest
 
+from jobs._common import keep_rooms, no_cleanup
 from libs.mycelium_cli import CLIResult
 
 log = logging.getLogger(__name__)
@@ -158,6 +159,12 @@ class IocCfn(aetest.Testcase):
     @aetest.cleanup
     def cleanup_alt_room(self, api, room_name):
         """Remove the alt room created during the test."""
+        if no_cleanup():
+            self.skipped("MYCELIUM_E2E_NO_CLEANUP is set — teardown skipped")
+            return
+        if keep_rooms():
+            self.skipped("MYCELIUM_E2E_KEEP_ROOMS is set — room preserved")
+            return
         st, data = api.list_rooms()
         if st != 200:
             return
@@ -298,4 +305,10 @@ class IocNegotiationPath(aetest.Testcase):
 
     @aetest.cleanup
     def cleanup(self, api, room_name):
+        if no_cleanup():
+            self.skipped("MYCELIUM_E2E_NO_CLEANUP is set — teardown skipped")
+            return
+        if keep_rooms():
+            self.skipped("MYCELIUM_E2E_KEEP_ROOMS is set — room preserved")
+            return
         api.delete_room(f"{room_name}-cfn-neg")

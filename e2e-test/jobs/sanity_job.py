@@ -13,19 +13,16 @@ Usage:
 
 import logging
 
-from pyats.easypy import run
-
 import jobs._common as common
 
 log = logging.getLogger(__name__)
 
 
 def main(runtime):
-    log.info("=== Mycelium Sanity Test ===")
-
-    datafile = common.get_datafile(default="sanity_datafile.yaml")
-    suite = common.get_suite_path("sanity_suite.py")
-    max_failures = common.get_max_failures(datafile)
-
-    log.info("Max failures: %s", max_failures or "unlimited")
-    run(testscript=suite, datafile=datafile, max_failures=max_failures)
+    common.simple_job_main(
+        runtime,
+        log,
+        title="Mycelium Sanity Test",
+        suite_name="sanity_suite.py",
+        datafile_name="sanity_datafile.yaml",
+    )

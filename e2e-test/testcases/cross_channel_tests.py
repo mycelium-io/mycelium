@@ -10,6 +10,8 @@ import uuid
 
 from pyats import aetest
 
+from jobs._common import keep_rooms, no_cleanup
+
 log = logging.getLogger(__name__)
 
 
@@ -66,5 +68,11 @@ class CrossChannelMemoryIsolation(aetest.Testcase):
 
     @aetest.cleanup
     def cleanup(self, api, room_name):
+        if no_cleanup():
+            self.skipped("MYCELIUM_E2E_NO_CLEANUP is set — teardown skipped")
+            return
+        if keep_rooms():
+            self.skipped("MYCELIUM_E2E_KEEP_ROOMS is set — rooms preserved")
+            return
         for suffix in ("-chan-a", "-chan-b"):
             api.delete_room(f"{room_name}{suffix}")

@@ -37,10 +37,8 @@ Usage:
 import logging
 import os
 
-from pyats.datastructures.logic import Or
 from pyats.easypy import run
 
-# Ensure project root on path
 import jobs._common as common
 
 log = logging.getLogger(__name__)
@@ -48,15 +46,9 @@ log = logging.getLogger(__name__)
 _DEFAULT_RUNTIME = common.RUNTIME_LAB
 _ALLOWED_RUNTIMES = common.RUNTIMES_ALL
 
-testcases_filter = os.getenv("TESTCASES")
-if testcases_filter:
-    tcs = [t.strip() for t in testcases_filter.split(",")]
-    uids = Or("common_setup", *tcs, "common_cleanup")
-else:
-    uids = None
-
 
 def main(runtime):
+    uids = common.uids_filter_from_env()
     testbed, active_runtime, _source = common.prepare_job_testbed(
         runtime,
         log,
@@ -83,10 +75,30 @@ def main(runtime):
     kwargs = {"testscript": suite, "datafile": datafile}
     if uids:
         kwargs["uids"] = uids
-        log.info("Filtering to testcases: %s", testcases_filter)
+        log.info("Filtering to testcases: %s", os.environ.get("TESTCASES", ""))
     if max_failures:
         kwargs["max_failures"] = max_failures
     if testbed is not None:
         kwargs["testbed"] = testbed
 
     run(**kwargs)
+
+    # ── Hermes adapter suites ─────────────────────────────────────────
+    # hermes_he_suite (hermes↔hermes) and hermes_cross_suite (hermes↔openclaw/cursor)
+    # are gated behind MYCELIUM_E2E_SKIP_HERMES to allow a fast skip
+    # when the spoke containers aren't started with SPOKE_ADAPTERS=…,hermes.
+    if os.environ.get("MYCELIUM_E2E_SKIP_HERMES", "").lower() not in {"1", "true", "yes"}:
+        if testbed is None:
+            raise common.JobRuntimeMismatchError(
+                "hermes suites require a testbed but none was resolved — "
+                "check that testbeds/compose.yaml or testbeds/lab.yaml exists "
+                "and MYCELIUM_E2E_RUNTIME is set correctly"
+            )
+        hermes_datafile = common.get_datafile(default="hermes_datafile.yaml")
+        scenarios_datafile = common.get_datafile(default="scenarios_datafile.yaml")
+
+        for suite_name in ("hermes_he_suite.py", "hermes_cross_suite.py"):
+            log.info("Running %s...", suite_name)
+            run(testscript=common.get_suite_path(suite_name), datafile=scenarios_datafile, testbed=testbed)
+    else:
+        log.info("Hermes adapter suites skipped via MYCELIUM_E2E_SKIP_HERMES")

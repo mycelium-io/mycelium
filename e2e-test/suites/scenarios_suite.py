@@ -33,7 +33,7 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-from jobs._common import RUNTIME_COMPOSE, TESTBED_NAME_COMPOSE, get_agent_idle_wait  # noqa: E402
+from jobs._common import RUNTIME_COMPOSE, TESTBED_NAME_COMPOSE, get_agent_idle_wait, keep_rooms, no_cleanup  # noqa: E402
 from libs import host_exec  # noqa: E402 - sys.path tweak first
 from libs.agent_pools import (  # noqa: E402 - sys.path tweak first
     ensure_pool_slots,
@@ -477,6 +477,12 @@ class MatrixCommonCleanup(aetest.CommonCleanup):
 
     @aetest.subsection
     def teardown_suite_room(self, testscript, testbed=None):
+        if no_cleanup():
+            self.skipped("MYCELIUM_E2E_NO_CLEANUP is set — teardown skipped")
+            return
+        if keep_rooms():
+            self.skipped("MYCELIUM_E2E_KEEP_ROOMS is set — suite room preserved")
+            return
         if testbed is None:
             return
         backend_url = os.environ.get("MYCELIUM_BACKEND_URL")
@@ -484,6 +490,9 @@ class MatrixCommonCleanup(aetest.CommonCleanup):
 
     @aetest.subsection
     def teardown_matrix_agents(self, testscript, testbed=None):
+        if no_cleanup():
+            self.skipped("MYCELIUM_E2E_NO_CLEANUP is set — teardown skipped")
+            return
         if os.environ.get("MYCELIUM_E2E_KEEP_AGENTS", "").lower() in {
             "1",
             "true",

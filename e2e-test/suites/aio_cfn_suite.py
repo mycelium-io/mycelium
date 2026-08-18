@@ -26,22 +26,18 @@ from __future__ import annotations
 
 import logging
 import os
-import sys
 
 from pyats import aetest
 
-_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if _ROOT not in sys.path:
-    sys.path.insert(0, _ROOT)
-
-from libs import host_exec  # noqa: E402
-from libs.host_exec import HostExecError  # noqa: E402
-from libs.agent_pools import load_agent_pools, resolve_role_handle  # noqa: E402
-from libs.provisioners import AgentRef, PrereqMissing, get_provisioner  # noqa: E402
-from libs.scenario_row import agent_role  # noqa: E402
-from libs.suite_lifecycle import setup_shared_suite_room, teardown_shared_suite_room  # noqa: E402
-from libs.sessions import SessionError  # noqa: E402
-from testcases.scenarios import (  # noqa: E402
+from jobs._common import keep_rooms, no_cleanup
+from libs.suite_lifecycle import (
+    ProvisionSkipped,
+    SessionError,
+    provision_agents,
+    teardown_provisioned_agents,
+    teardown_shared_suite_room,
+)
+from testcases.scenarios import (
     active_tiers,
     filter_by_tier,
     load_rows,
@@ -49,6 +45,8 @@ from testcases.scenarios import (  # noqa: E402
 )
 
 log = logging.getLogger(__name__)
+
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 _SCENARIOS_FILE = os.environ.get(
     "MYCELIUM_E2E_SCENARIOS_FILE",
@@ -102,89 +100,25 @@ class CommonSetup(aetest.CommonSetup):
     @aetest.subsection
     def provision_agents(self, testscript, testbed=None):
         """Ensure every hub agent the active rows need exists."""
-        if os.environ.get("MYCELIUM_E2E_SKIP_AGENT_PROVISIONING", "").lower() in {
-            "1", "true", "yes",
-        }:
-            testscript.parameters["provisioned_agents"] = {}
-            self.skipped("MYCELIUM_E2E_SKIP_AGENT_PROVISIONING set")
-
-        if not _AIO_ROWS:
-            testscript.parameters["provisioned_agents"] = {}
-            return
-
-        if testbed is None:
-            testscript.parameters["provisioned_agents"] = {}
-            log.warning("aio_cfn_suite: no testbed — skipping agent provisioning")
-            return
-
-        wants: set[tuple[str, str, str]] = set()
-        for row in _AIO_ROWS:
-            for ag in row.get("agents", []):
-                wants.add((ag["adapter"], agent_role(ag), ag["host"]))
-
-        device = testbed.devices.get("hub")
-        if device is not None:
-            try:
-                host_exec.execute(
-                    device,
-                    'if [ -d "$HOME/.mycelium" ]; then '
-                    'sudo chown -R "$USER:$USER" "$HOME/.mycelium" '
-                    "2>/dev/null || true; fi",
-                    shell=True,
-                    timeout=20.0,
-                )
-            except HostExecError as exc:
-                log.warning("chown pre-flight failed on hub (continuing): %s", exc)
-
-        # Load agent pools from datafile parameters so roles resolve to the
-        # correct pre-existing handles (e.g. role=alpha → handle=agent-alpha).
-        pools = testscript.parameters.get("agent_pools") or {}
-        if not pools:
-            pools = load_agent_pools(testscript.parameters)
-        testscript.parameters["agent_pools"] = pools
-
-        provisioned: dict[tuple[str, str, str], AgentRef] = {}
-        failures: list[str] = []
-        for adapter, role, host in sorted(wants):
-            dev = testbed.devices.get(host)
-            if dev is None:
-                failures.append(f"{role}@{host}: no such device in testbed")
-                continue
-            try:
-                # Resolve role → actual handle via pool (reuses pre-existing
-                # agents like agent-alpha instead of creating a fresh alpha).
-                try:
-                    handle = resolve_role_handle(role, adapter, host, pools)
-                except KeyError:
-                    handle = role  # no pool mapping — use role as handle
-                provisioner = get_provisioner(adapter)
-                provisioner.check_prereqs(dev)
-                ref = provisioner.ensure_runtime(dev, handle)
-                provisioned[(adapter, role, host)] = ref
-            except (PrereqMissing, HostExecError) as exc:
-                failures.append(f"{role}@{host} ({adapter}): {exc}")
-
-        testscript.parameters["provisioned_agents"] = provisioned
-        if failures:
-            self.failed(
-                f"provision_agents: {len(failures)} agent(s) failed:\n  "
-                + "\n  ".join(failures)
-            )
-
         try:
-            setup_shared_suite_room(
-                testscript,
-                testbed,
-                wants,
-                room_prefix="scn-aio",
-            )
+            provision_agents(_AIO_ROWS, testscript, testbed, room_prefix="scn-aio")
+        except ProvisionSkipped as exc:
+            self.skipped(str(exc))
         except SessionError as exc:
             self.failed(f"setup_shared_suite_room: {exc}")
+        except RuntimeError as exc:
+            self.failed(str(exc))
 
 
 class CommonCleanup(aetest.CommonCleanup):
     @aetest.subsection
     def teardown_suite_room(self, testscript, testbed=None):
+        if no_cleanup():
+            self.skipped("MYCELIUM_E2E_NO_CLEANUP is set — teardown skipped")
+            return
+        if keep_rooms():
+            self.skipped("MYCELIUM_E2E_KEEP_ROOMS is set — suite room preserved")
+            return
         if testbed is None:
             return
         backend_url = os.environ.get("MYCELIUM_BACKEND_URL")
@@ -193,25 +127,10 @@ class CommonCleanup(aetest.CommonCleanup):
     @aetest.subsection
     def teardown_agents(self, testscript, testbed=None):
         """Remove agents created this run (hermes and cursor are ephemeral)."""
-        if os.environ.get("MYCELIUM_E2E_KEEP_AGENTS", "").lower() in {"1", "true", "yes"}:
-            log.info("teardown_agents: skipped via MYCELIUM_E2E_KEEP_AGENTS")
+        if no_cleanup():
+            self.skipped("MYCELIUM_E2E_NO_CLEANUP is set — teardown skipped")
             return
-
-        provisioned: dict[tuple[str, str, str], AgentRef] = (
-            testscript.parameters.get("provisioned_agents") or {}
-        )
-        if not provisioned or testbed is None:
-            return
-
-        for (adapter, role, host), ref in provisioned.items():
-            dev = testbed.devices.get(host)
-            if dev is None:
-                continue
-            try:
-                provisioner = get_provisioner(adapter)
-                provisioner.teardown_runtime(dev, ref)
-            except Exception as exc:  # noqa: BLE001
-                log.warning("teardown failed for %s@%s (%s): %s", role, host, adapter, exc)
+        teardown_provisioned_agents(testscript, testbed)
 
 
 globals().update(_CLASSES)

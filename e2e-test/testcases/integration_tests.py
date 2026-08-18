@@ -19,6 +19,7 @@ from pathlib import Path
 
 from pyats import aetest
 
+from jobs._common import no_cleanup
 from libs.mycelium_cli import MyceliumCLI
 
 log = logging.getLogger(__name__)
@@ -209,6 +210,9 @@ class ClaudeCodeAgentLifecycle(aetest.Testcase):
 
     @aetest.cleanup
     def cleanup(self):
+        if no_cleanup():
+            self.skipped("MYCELIUM_E2E_NO_CLEANUP is set — teardown skipped")
+            return
         cwd = getattr(self, "_agent_cwd", None)
         if cwd and os.path.isdir(cwd):
             shutil.rmtree(cwd, ignore_errors=True)

@@ -1,17 +1,17 @@
 """Minimal job to test pyATS task subprocess."""
 
 import logging
-import os
 
 from pyats.easypy import run
 
-log = logging.getLogger(__name__)
+import jobs._common as common
 
-SCRIPT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "suites", "minimal_test.py")
-DATAFILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "minimal_datafile.yaml")
+log = logging.getLogger(__name__)
 
 
 def main(runtime):
-    log.info("script=%s exists=%s", SCRIPT, os.path.isfile(SCRIPT))
-    log.info("datafile=%s exists=%s", DATAFILE, os.path.isfile(DATAFILE))
-    run(testscript=SCRIPT, datafile=DATAFILE)
+    suite = common.get_suite_path("minimal_test.py")
+    datafile = common.get_datafile(default="minimal_datafile.yaml")
+    log.info("script=%s", suite)
+    log.info("datafile=%s", datafile)
+    run(testscript=suite, datafile=datafile)

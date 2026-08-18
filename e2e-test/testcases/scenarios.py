@@ -45,7 +45,7 @@ from typing import Any, ClassVar
 
 from pyats import aetest
 
-from jobs._common import get_agent_idle_wait
+from jobs._common import get_agent_idle_wait, no_cleanup
 from libs import sessions
 from libs.agent_pools import reset_openclaw_pools_for_wants
 from libs.host_exec import HostExecError
@@ -688,6 +688,9 @@ class _ScenarioCore(aetest.Testcase):
         when MYCELIUM_E2E_KEEP_ROOMS=1 so the room data survives for
         post-test inspection, but the SSE subscriptions are still torn down.
         """
+        if no_cleanup():
+            self.skipped("MYCELIUM_E2E_NO_CLEANUP is set — teardown skipped")
+            return
         keep_rooms = os.environ.get("MYCELIUM_E2E_KEEP_ROOMS", "").lower() in {"1", "true", "yes"}
 
         # Suite-shared rooms: drain the session, reset gateway context,

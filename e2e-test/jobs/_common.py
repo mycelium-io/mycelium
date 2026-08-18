@@ -38,6 +38,33 @@ RUNTIME_ENV_VAR = "MYCELIUM_E2E_RUNTIME"
 RUNTIME_COMPOSE = "compose"
 RUNTIME_LAB = "lab"
 
+
+def no_cleanup() -> bool:
+    """Return True when MYCELIUM_E2E_NO_CLEANUP=1 is set.
+
+    When True, every testcase ``@aetest.cleanup`` section and every
+    ``CommonCleanup`` subsection should call ``self.skipped()`` and return
+    without performing any teardown.  Room deletion defined in CommonCleanup
+    is left in place — it simply won't run.  Use this during development to
+    preserve the full room/session/DB state for post-test inspection.
+
+    The presuite hygiene stale-room sweep in ``CommonSetup`` is also skipped
+    when this flag is set, so rooms from a previous no-cleanup run are not
+    silently deleted at the start of the next one.
+    """
+    return os.environ.get("MYCELIUM_E2E_NO_CLEANUP", "").lower() in {"1", "true", "yes"}
+
+
+def keep_rooms() -> bool:
+    """Return True when MYCELIUM_E2E_KEEP_ROOMS=1 is set.
+
+    When True, room deletion in both testcase ``@aetest.cleanup`` sections
+    and suite ``CommonCleanup`` subsections is skipped.  Agents and other
+    non-room teardown still run.  Use this to preserve room/session state
+    for post-test inspection without suppressing the full cleanup cycle.
+    """
+    return os.environ.get("MYCELIUM_E2E_KEEP_ROOMS", "").lower() in {"1", "true", "yes"}
+
 RUNTIMES_ALL = frozenset({RUNTIME_COMPOSE, RUNTIME_LAB})
 RUNTIME_LAB_ONLY = frozenset({RUNTIME_LAB})
 
@@ -83,6 +110,22 @@ def active_e2e_runtime(job_default: str) -> str:
         return RUNTIME_COMPOSE
 
     return job_default
+
+
+def is_lab_runtime() -> bool:
+    """Return True when the active runtime uses SSH to physical lab hardware.
+
+    Suites use this to skip SSH-only prereq checks (SSH keys, remote hermes
+    provisioning) that don't apply in compose where adapters run in-container.
+
+    Resolution: explicit ``MYCELIUM_E2E_RUNTIME`` env var beats everything;
+    ``GITHUB_ACTIONS`` auto-selects compose; otherwise assumes lab (conservative
+    default — compose always sets the env var or runs in CI).
+    """
+    explicit = os.environ.get(RUNTIME_ENV_VAR, "").strip().lower()
+    if explicit:
+        return explicit == RUNTIME_LAB
+    return os.environ.get("GITHUB_ACTIONS", "").lower() not in ("1", "true", "yes")
 
 
 def runtime_resolution_source(job_default: str) -> str:
@@ -335,6 +378,26 @@ def groups_filter_from_env() -> Or | None:
     return Or(*names)
 
 
+def uids_filter_from_env(env_var: str = "TESTCASES") -> "Or | None":
+    """Build a pyATS UIDs filter that wraps named testcases with setup/cleanup.
+
+    Reads a comma-separated list of testcase UIDs from the env var and
+    returns ``Or('common_setup', <tcs...>, 'common_cleanup')`` so pyATS
+    runs setup + cleanup even when filtering to a subset.  Returns ``None``
+    when the env var is not set (run all testcases).
+
+        TESTCASES="test_01_room_lifecycle, test_02_multi_agent_memory" \\
+            pyats run job …
+    """
+    raw = os.environ.get(env_var, "").strip()
+    if not raw:
+        return None
+    tcs = [t.strip() for t in raw.split(",") if t.strip()]
+    if not tcs:
+        return None
+    return Or("common_setup", *tcs, "common_cleanup")
+
+
 # Back-compat alias for callers/tests written during the string-return bug.
 groups_logic_from_env = groups_filter_from_env
 
@@ -425,6 +488,53 @@ def install_job_sigint_cleanup(
     logging.getLogger(__name__).info(
         "Installed SIGINT cleanup handler (backend=%s prefixes=%s)", backend_url, prefixes
     )
+
+
+def simple_job_main(
+    runtime: Any,
+    logger: logging.Logger,
+    *,
+    title: str,
+    suite_name: str,
+    datafile_name: str,
+    default_runtime: str = RUNTIME_COMPOSE,
+    allowed_runtimes: frozenset[str] | None = None,
+) -> None:
+    """Standard main() for simple jobs: testbed, SIGINT handler, single run().
+
+    Covers the pattern used by most jobs: resolve testbed, log context,
+    load datafile, install SIGINT cleanup, and call run(). Jobs that need
+    unusual control flow (tiers filter, multi-suite, uids) should expand
+    main() manually.
+    """
+    from pyats.easypy import run
+
+    _allowed = allowed_runtimes if allowed_runtimes is not None else RUNTIMES_ALL
+    testbed, active_runtime, _ = prepare_job_testbed(
+        runtime,
+        logger,
+        job_default_runtime=default_runtime,
+        allowed_runtimes=_allowed,
+    )
+    datafile = get_datafile(default=datafile_name)
+    log_job_context(
+        logger,
+        title=title,
+        runtime=active_runtime,
+        default_testbed=testbed_path_for_runtime(active_runtime),
+        active_testbed=testbed,
+        datafile=datafile,
+    )
+    install_job_sigint_cleanup(resolve_backend_url(datafile))
+    max_failures = get_max_failures(datafile)
+    suite = get_suite_path(suite_name)
+    logger.info("Max failures: %s", max_failures or "unlimited")
+    kwargs: dict[str, Any] = {"testscript": suite, "datafile": datafile}
+    if max_failures:
+        kwargs["max_failures"] = max_failures
+    if testbed is not None:
+        kwargs["testbed"] = testbed
+    run(**kwargs)
 
 
 def get_agent_idle_wait(datafile_path: str | None = None) -> int:

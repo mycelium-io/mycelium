@@ -1,12 +1,17 @@
 """Job file for the Cursor adapter E2E suite (tests 75-80)."""
 
-from pyats.easypy import run
+import logging
 
 import jobs._common as common
 
+log = logging.getLogger(__name__)
+
 
 def main(runtime):
-    datafile = common.get_datafile(default="cursor_datafile.yaml")
-    suite = common.get_suite_path("cursor_suite.py")
-    max_failures = common.get_max_failures(datafile)
-    run(testscript=suite, datafile=datafile, max_failures=max_failures)
+    common.simple_job_main(
+        runtime,
+        log,
+        title="Mycelium Cursor Adapter Tests",
+        suite_name="cursor_suite.py",
+        datafile_name="cursor_datafile.yaml",
+    )

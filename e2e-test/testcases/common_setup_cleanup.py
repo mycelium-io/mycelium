@@ -277,6 +277,10 @@ class MyceliumCommonSetup(aetest.CommonSetup):
 
         Must run before create_test_room so we don't delete our own room.
         """
+        from jobs._common import no_cleanup
+        if no_cleanup():
+            log.info("presuite_hygiene: skipped (MYCELIUM_E2E_NO_CLEANUP)")
+            return
         api: MyceliumAPI = testscript.parameters["api"]
         owned = testscript.parameters.get("owned_rooms", set())
 
@@ -494,7 +498,8 @@ class MyceliumCommonSetup(aetest.CommonSetup):
 
 
 def _keep_rooms() -> bool:
-    return os.environ.get("MYCELIUM_E2E_KEEP_ROOMS", "").lower() in {"1", "true", "yes"}
+    from jobs._common import keep_rooms
+    return keep_rooms()
 
 
 class MyceliumCommonCleanup(aetest.CommonCleanup):
@@ -508,6 +513,10 @@ class MyceliumCommonCleanup(aetest.CommonCleanup):
         ``owned_rooms.add(name)``; the primary ``room_name`` from
         ``create_test_room`` is always included.
         """
+        from jobs._common import no_cleanup
+        if no_cleanup():
+            self.skipped("MYCELIUM_E2E_NO_CLEANUP is set — teardown skipped")
+            return
         if _keep_rooms():
             log.info(
                 "cleanup: skipping room deletion (MYCELIUM_E2E_KEEP_ROOMS) — owned=%s",
@@ -538,6 +547,10 @@ class MyceliumCommonCleanup(aetest.CommonCleanup):
         register themselves in ``owned_rooms``, or for rooms left behind
         when a test was interrupted mid-setup before teardown ran.
         """
+        from jobs._common import no_cleanup
+        if no_cleanup():
+            self.skipped("MYCELIUM_E2E_NO_CLEANUP is set — teardown skipped")
+            return
         if _keep_rooms():
             return
         api: MyceliumAPI = testscript.parameters.get("api")

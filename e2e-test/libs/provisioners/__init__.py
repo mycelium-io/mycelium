@@ -1,8 +1,6 @@
 """Adapter-agnostic agent provisioning for scenario testcases.
 
-Stage 1 ships only the openclaw provisioner; cursor and hermes land in
-stage 2 (see plan: e2e three-axis matrix). The factory is structured so
-new adapters drop in as another ``_REGISTRY`` entry plus a module.
+New adapters drop in as another ``_REGISTRY`` entry plus a module.
 """
 
 from __future__ import annotations
@@ -47,6 +45,12 @@ _REGISTRY: dict[str, Callable[[], Provisioner]] = {
     "hermes": _load_hermes,
 }
 
+# One instance per adapter for the lifetime of the process.
+# Safe only because all current provisioners are stateless (no mutable
+# per-device instance attributes).  If a future provisioner caches
+# per-device state, remove the cache or scope it per-device.
+_INSTANCES: dict[str, Provisioner] = {}
+
 
 def registered_adapters() -> list[str]:
     """Return the sorted list of adapter names with a provisioner."""
@@ -61,8 +65,12 @@ def get_provisioner(name: str) -> Provisioner:
             error message lists the registered names so a typo in the
             matrix datafile is easy to spot.
     """
+    if name in _INSTANCES:
+        return _INSTANCES[name]
     try:
         loader = _REGISTRY[name]
     except KeyError as exc:
         raise KeyError(f"no provisioner registered for {name!r}; known adapters: {registered_adapters()}") from exc
-    return loader()
+    inst = loader()
+    _INSTANCES[name] = inst
+    return inst
