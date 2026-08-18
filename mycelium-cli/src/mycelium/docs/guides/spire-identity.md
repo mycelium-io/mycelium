@@ -11,6 +11,25 @@ the tightest attestation tier, and the heaviest to deploy.
 Turning it on is **one switch**. You never touch a SPIFFE socket path, a trust
 domain, or type `spire-server entry create` by hand.
 
+## What "distinct members" actually means
+
+With any channel-identity tier on (`signerjwt` or `spire`), each actor participates
+as its **own MLS member** — a *custodial session* the hub holds on the actor's
+behalf, server-side. A message is then cryptographically attributable to the actor
+on the wire (not stamped by the backend after the fact), and room access is enforced
+by **MLS group membership**, not application logic. These sessions survive a backend
+restart — they're revived from encrypted local state with no re-invite. Under the
+`psk` default there are no custodial sessions; the backend is the single member and
+nothing here applies.
+
+**Honest boundary — this is not E2E from the hub.** Custodial sessions live *in the
+hub process*, so the hub still holds every actor's key and reads all plaintext —
+that's what lets the aligner, plan compiler, and memory sync work at all. Turning on
+identity hardens **attribution and access** and makes per-agent identity real at the
+MLS layer; it does **not** mean the hub can no longer read your messages. It means
+the hub represents each actor as a distinct, verifiable member — not that the room is
+end-to-end encrypted away from the hub.
+
 ## Turn it on
 
 ```bash
