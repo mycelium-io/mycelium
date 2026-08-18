@@ -259,6 +259,23 @@ is no litellm dependency.
   revocation (#590 — drop the JWK / delete the SPIRE entry, no room-wide re-key) and the
   optional appliance SPIRE profile (#588) both ship. What still gates anything hosted /
   multi-user is turning identity on at all — not a missing capability.
+- **Twins are server-side, and off by default (#666).** Under an identity tier
+  (`signerjwt`/`spire`) the backend stops impersonating actors and becomes a
+  **custodian of N per-actor twin Apps** — one genuine MLS member per `(room,
+  actor)`, keyed by handle (`app/services/twins.py`). `respond(@alice, …)` sends
+  through @alice's twin, so attribution is cryptographic on the wire (not a
+  backend-stamped L9 field) and room access is MLS group membership, not app logic.
+  All twins live in the backend process, so the moderator App + aligner/plan/memory/L9
+  still read plaintext — cognition is preserved. **Under the PSK default nothing
+  changes** (byte-for-byte; `MYCELIUM_TWINS_DISABLE=1` forces the single-moderator
+  path even under identity), and persistence structurally requires the identity
+  provider/verifier pair anyway (a twin cannot run on PSK). Per-twin MLS state
+  persists in an encrypted SQLite store (passphrase = `HMAC(MYCELIUM_TWIN_STORE_SECRET,
+  ws/room/handle)`); on restart `restore_sessions` revives every twin with **no
+  re-invite** (proven across a real two-process kill/restart). **Honest scope
+  boundary (keep it in code + docs):** twins are server-side, so the hub still holds
+  every key + plaintext — this hardens the wire + attribution + access-by-membership,
+  it is **NOT** E2E-from-the-hub. See `docs/design/twin-sessions.md`.
 - **Adapter capability (be honest).** `claude_code` is proven; `cursor` is untested.
   `openclaw` and `hermes` are **gone**, not deprecated — they rode the removed
   SSE/coordination-tick model and their packages were deleted (#503). Don't

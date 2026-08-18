@@ -37,7 +37,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from app.config import settings
-from app.services import l9, slim_identity
+from app.services import l9, slim_identity, twins
 from app.services.invites import ACCEPTED, DECLINED, QUEUED, PendingInvite, PendingInviteRegistry
 from app.services.l9_models import Kind
 from app.services.l9_slim import (
@@ -57,6 +57,7 @@ from app.services.slim_client import (
 
 if TYPE_CHECKING:
     from app.services.l9_models import L9
+    from app.services.twins import Twin
 
 # The room-aware summon hook the manager holds: unlike the persister's
 # per-message ``SummonHook`` (which knows only the handle + envelope), this
@@ -95,6 +96,35 @@ def _is_own_registered_agent(room: str, handle: str) -> bool:
     return (get_room_dir(room) / "agents" / f"{handle}.md").exists()
 
 
+def _registered_agent_handles(room: str) -> list[str]:
+    """Every agent handle with a manifest in ``room`` (``agents/*.md`` stems)."""
+    from app.services.filesystem import get_room_dir
+
+    agents_dir = get_room_dir(room) / "agents"
+    if not agents_dir.is_dir():
+        return []
+    return sorted(p.stem for p in agents_dir.glob("*.md"))
+
+
+def _prebuild_signerjwt_roster(room: str) -> None:
+    """Register every known member's signing key before the moderator App exists.
+
+    A SignerJwt moderator snapshots the roster JWKS into its verifier at app
+    creation, so a twin whose JWK is absent then can't be MLS-verified when it is
+    later admitted. Registering the backend + every registered agent up front makes
+    the verifier complete for the room's known members. (Spire needs no pre-build —
+    its verifier trusts any peer in the trust domain, not a static roster.) A twin
+    for an agent registered *after* provisioning still self-registers on admit; the
+    moderator picks up such late arrivals on its next channel (re)provision.
+    """
+    slim_identity.ensure_agent_keypair(BACKEND_AGENT)
+    for handle in _registered_agent_handles(room):
+        try:
+            slim_identity.ensure_agent_keypair(handle)
+        except Exception:
+            logger.debug("roster pre-build skipped for @%s in room %s", handle, room)
+
+
 @dataclass
 class ManagedRoomChannel:
     """One backend-moderated room channel and its live membership/episode state."""
@@ -107,6 +137,10 @@ class ManagedRoomChannel:
     lifecycle: EpisodeLifecycle = field(default_factory=EpisodeLifecycle)
     persister: RoomPersister | None = None
     persister_task: asyncio.Task[None] | None = None
+    # Per-actor twin MLS Apps this backend custodies for the room (#666), keyed by
+    # handle. Populated only under an identity tier (``twins.twins_enabled()``);
+    # empty under the PSK default, where the moderator is the single member.
+    twins: dict[str, Twin] = field(default_factory=dict)
 
 
 @dataclass
@@ -387,10 +421,13 @@ class RoomChannelManager:
                 if slim_identity.resolve_identity_mode() == slim_identity.MODE_SIGNERJWT:
                     # The moderator is a first-class identity (#476): self-register
                     # its own signing key + roster entry before presenting a
-                    # SignerJwt identity. Agents register explicitly via
-                    # `mycelium agent credential slim-key`; the backend registers
-                    # itself. No-op under the PSK default.
-                    slim_identity.ensure_agent_keypair(BACKEND_AGENT)
+                    # SignerJwt identity. Under twins (#666) also register every
+                    # known member up front so the moderator's verifier — snapshotted
+                    # here — can MLS-verify their twins on admit. No-op under PSK.
+                    if twins.twins_enabled():
+                        _prebuild_signerjwt_roster(room)
+                    else:
+                        slim_identity.ensure_agent_keypair(BACKEND_AGENT)
                 client = await SlimClient(identity).connect(self._endpoint)
                 session = await client.create_group(to_channel_name(ws, room))
             except Exception as exc:
@@ -478,6 +515,9 @@ class RoomChannelManager:
         # fresh channel — the old channel's membership record is gone.
         self._announced.pop(room, None)
         if managed is not None:
+            for twin in managed.twins.values():
+                with contextlib.suppress(Exception):
+                    await twin.close(graceful=False)
             with contextlib.suppress(Exception):
                 await managed.client.close()
         while not self._closing:
@@ -487,6 +527,9 @@ class RoomChannelManager:
             # provision() re-connects, re-creates the group session, and starts a
             # fresh supervised persister; None means the node is still unreachable.
             if await self.provision(room, workspace=workspace) is not None:
+                # Revive twins against the fresh connection from their stores — the
+                # old Apps died with the dropped connection (spike D3/restart shape).
+                await self.restore_twins(room)
                 logger.info("recovered room %s channel after persister exit", room)
                 return
 
@@ -530,10 +573,18 @@ class RoomChannelManager:
         return adapter
 
     async def invite(self, room: str, agent: str) -> bool:
-        """Invite ``agent`` into the room channel. Best-effort; returns success."""
+        """Invite ``agent`` into the room channel. Best-effort; returns success.
+
+        Under an identity tier (#666) this stands up the agent's **twin** — a
+        genuine per-actor MLS member the backend custodies — instead of inviting a
+        bare Name; under the PSK default it is byte-for-byte the prior single-member
+        invite.
+        """
         managed = self._channels.get(room)
         if managed is None or agent == BACKEND_AGENT:
             return False
+        if twins.twins_enabled():
+            return await self._ensure_twin(managed, agent) is not None
         try:
             member = to_slim_name(managed.workspace, room, agent)
             await managed.client.invite(managed.channel.session, member)
@@ -544,8 +595,17 @@ class RoomChannelManager:
             logger.warning("SLIM invite failed (room=%s agent=%s): %s", room, agent, exc)
             self._metrics.invite_failures += 1
             return False
+        await self._register_member(managed, agent)
+        return True
+
+    async def _register_member(self, managed: ManagedRoomChannel, agent: str) -> None:
+        """Post-admit bookkeeping shared by the PSK invite and the twin path.
+
+        Records presence, announces the join, re-serves a reconnecting member's
+        missed tail, and lets a mid-episode membership change abort the episode.
+        """
         managed.members.add(agent)
-        self.announce_join(room, agent)
+        self.announce_join(managed.room, agent)
         # Durable inbox: a membership add for a handle the persister has already
         # seen is a *reconnect* — re-serve its missed tail. Kept separate from the
         # episode-abort path below: transcript continuity and episode lifecycle
@@ -554,7 +614,101 @@ class RoomChannelManager:
         if managed.persister is not None and managed.persister.note_join(agent):
             await managed.persister.reserve(agent)
         await self._enforce_membership_change(managed)
-        return True
+
+    # -- per-actor twins (#666; identity tiers only) --
+
+    async def _ensure_twin(self, managed: ManagedRoomChannel, agent: str) -> Twin | None:
+        """Stand up (or reuse) ``agent``'s twin and admit it into the group.
+
+        The twin App subscribes and starts listening *before* the moderator invite
+        lands (they run concurrently, single process), so the MLS Welcome is
+        received. Idempotent: an already-joined twin is returned as-is. Best-effort
+        — a failure returns ``None`` and the caller degrades (respond falls back to
+        a moderator send), never raising into the request path.
+        """
+        existing = managed.twins.get(agent)
+        if existing is not None and existing.joined:
+            return existing
+        try:
+            twin = await twins.create_twin_app(
+                self._endpoint, managed.workspace, managed.room, agent
+            )
+            member = to_slim_name(managed.workspace, managed.room, agent)
+            join_task = asyncio.create_task(twins.join_twin(twin))
+            try:
+                await managed.client.invite(managed.channel.session, member)
+                await join_task
+            except Exception:
+                join_task.cancel()
+                await twin.close(graceful=False)
+                raise
+        except Exception as exc:
+            logger.warning("twin admit failed (room=%s agent=%s): %s", managed.room, agent, exc)
+            self._metrics.invite_failures += 1
+            return None
+        twin.drain_task = asyncio.create_task(twin.drain())
+        managed.twins[agent] = twin
+        await self._register_member(managed, agent)
+        logger.info("admitted twin for @%s into room %s", agent, managed.room)
+        return twin
+
+    async def send_as_twin(self, room: str, handle: str, data: bytes) -> bool:
+        """Publish ``data`` to the room as ``handle`` via its twin (real MLS send).
+
+        The whole point of #666: the wire sender is the actor's own MLS identity,
+        not the backend's. Ensures the twin on first participation. Returns whether
+        the send went out as the actor; ``False`` (with the caller falling back to a
+        moderator send) preserves liveness when a twin can't be stood up.
+        """
+        if not twins.twins_enabled() or handle == BACKEND_AGENT:
+            return False
+        managed = self._channels.get(room)
+        if managed is None:
+            return False
+        try:
+            twin = managed.twins.get(handle)
+            if twin is None or not twin.joined:
+                twin = await self._ensure_twin(managed, handle)
+            if twin is None:
+                return False
+            await twin.publish(data)
+            return True
+        except Exception as exc:
+            logger.warning("twin send failed (room=%s handle=%s): %s", room, handle, exc)
+            return False
+
+    async def restore_twins(self, room: str) -> int:
+        """Revive every persisted twin for ``room`` after a backend restart (#666).
+
+        Each twin resumes from its own encrypted store via ``restore_sessions`` —
+        no re-invite, no MLS Welcome — and the always-draining moderator heals its
+        ``rejoin`` (spike D1). The durable transcript replays any gap; SLIM
+        persistence resumes crypto state only. Returns the count revived.
+        """
+        if not twins.twins_enabled():
+            return 0
+        managed = self._channels.get(room)
+        if managed is None:
+            return 0
+        restored = 0
+        for room_name, handle in twins.iter_persisted_twins():
+            if room_name != room or handle in managed.twins:
+                continue
+            try:
+                twin = await twins.restore_twin(self._endpoint, managed.workspace, room, handle)
+            except Exception as exc:
+                logger.warning("twin restore failed (room=%s handle=%s): %s", room, handle, exc)
+                continue
+            if twin is None:
+                continue
+            twin.drain_task = asyncio.create_task(twin.drain())
+            managed.twins[handle] = twin
+            managed.members.add(handle)
+            self.announce_join(room, handle)
+            restored += 1
+        if restored:
+            logger.info("restored %d twin(s) for room %s (no re-invite)", restored, room)
+        return restored
 
     def invite_in_background(self, room: str, agent: str) -> None:
         """Schedule :meth:`invite` without blocking the caller.
@@ -738,16 +892,27 @@ class RoomChannelManager:
             logger.debug("consent prompt bus publish failed for room %s", invite.room)
 
     async def remove(self, room: str, agent: str) -> bool:
-        """Remove ``agent`` from the room channel. Best-effort; returns success."""
+        """Remove ``agent`` from the room channel. Best-effort; returns success.
+
+        Under an identity tier this is revocation (#590/#666): the twin gracefully
+        leaves the MLS group (one Commit; the other members heal with **no
+        room-wide re-key**) and its at-rest store is deleted so it can't be
+        revived. Under the PSK default it is the prior moderator-side remove.
+        """
         managed = self._channels.get(room)
         if managed is None or agent not in managed.members:
             return False
-        try:
-            member = to_slim_name(managed.workspace, room, agent)
-            await managed.client.remove_member(managed.channel.session, member)
-        except Exception as exc:
-            logger.debug("SLIM remove skipped (room=%s agent=%s): %s", room, agent, exc)
-            return False
+        twin = managed.twins.pop(agent, None)
+        if twin is not None:
+            await twin.close(graceful=True)
+            twins.delete_store(room, agent)
+        else:
+            try:
+                member = to_slim_name(managed.workspace, room, agent)
+                await managed.client.remove_member(managed.channel.session, member)
+            except Exception as exc:
+                logger.debug("SLIM remove skipped (room=%s agent=%s): %s", room, agent, exc)
+                return False
         managed.members.discard(agent)
         self._announced.get(room, set()).discard(agent)
         await self._enforce_membership_change(managed)
@@ -815,6 +980,11 @@ class RoomChannelManager:
             except Exception as exc:  # pragma: no cover - best-effort teardown
                 logger.debug("persister task teardown error for room %s: %s", room, exc)
             managed.persister_task = None
+        # Non-graceful twin teardown: leave the encrypted stores intact so a
+        # restart revives every twin via ``restore_sessions`` (no re-invite).
+        for twin in managed.twins.values():
+            await twin.close(graceful=False)
+        managed.twins.clear()
         await managed.client.close()
         logger.info("Closed SLIM channel for room %s", room)
 

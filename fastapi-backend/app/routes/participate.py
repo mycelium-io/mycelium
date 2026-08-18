@@ -34,7 +34,7 @@ from pydantic import BaseModel, Field
 from app.services import actor, l9, principals, room_channels
 from app.services.filesystem import room_exists
 from app.services.l9_models import Kind
-from app.services.l9_slim import serialize_content
+from app.services.l9_slim import serialize_content, serialize_envelope
 
 router = APIRouter(prefix="/rooms/{room_name}", tags=["participate"])
 
@@ -231,10 +231,20 @@ async def post_reply(room_name: str, body: ReplyBody, request: Request):
     # ``list_write=True`` so the reply is visible in the room view immediately, the
     # same store a ``room send`` broadcast lands in (no store divergence).
     managed.persister.ingest_local(envelope, content, list_write=True)
-    try:
-        await managed.channel.send(envelope, extra={"content": clean})
-    except Exception:
-        pass
+    # Under an identity tier (#666), send through the actor's **twin** so the wire
+    # sender is @handle's own MLS identity — cryptographic, not backend-stamped.
+    # The moderator receives that real MLS message and dedups it against the
+    # ``ingest_local`` above by message id, so the transcript stays single-copy.
+    # A twin that can't be stood up falls back to a moderator broadcast (attribution
+    # degrades to app-level for that one message; liveness is preserved). Under the
+    # PSK default ``send_as_twin`` is a no-op and this is the prior moderator send.
+    wire = serialize_envelope(envelope, extra={"content": clean})
+    sent_as_actor = await room_channels.manager.send_as_twin(room_name, handle, wire)
+    if not sent_as_actor:
+        try:
+            await managed.channel.send(envelope, extra={"content": clean})
+        except Exception:
+            pass
     return {
         "room": room_name,
         "handle": handle,

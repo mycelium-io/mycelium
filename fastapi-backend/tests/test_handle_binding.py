@@ -243,6 +243,10 @@ async def test_reply_stamps_the_token_handle_on_the_l9_actor(
         def refresh_lease(self, room: str, handle: str) -> None:
             return None
 
+        async def send_as_twin(self, room: str, handle: str, data: bytes) -> bool:
+            # PSK default: no twin, so the reply falls back to a moderator send.
+            return False
+
     monkeypatch.setattr(room_channels, "manager", _Manager())
 
     await _make_room(client)
