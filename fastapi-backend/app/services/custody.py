@@ -1,51 +1,43 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Server-side **custodial** SLIM/MLS sessions (#666).
+"""Server-side custodial SLIM/MLS sessions (#666).
 
-Under the PSK default the backend is a single MLS member per room that
-impersonates every actor: attribution ("@alice said this") is stamped
-application-side and forgeable, and "who may touch which room" is app logic.
-This module is the productized alternative proven in the #662/#665 spike: the
-backend becomes the **custodian** of one genuine MLS-member session per
-``(room, actor)`` — a **custodial session**, holding the actor's own
-SignerJwt/SPIRE key and MLS state on the actor's behalf. ``respond(@alice, …)``
-then sends through @alice's custodial session (cryptographically @alice on the
-wire), and room access is enforced by **MLS group membership**, not app logic.
+Under the PSK default the backend is a single MLS member per room and acts for every
+actor: attribution ("@alice said this") is added application-side and is forgeable,
+and access control is application logic. This module is the alternative proven in the
+#662/#665 spike: the backend holds one genuine MLS-member session per ``(room,
+actor)``, keeping that actor's own SignerJwt/SPIRE key and MLS state on its behalf.
+``respond(@alice, ...)`` sends through @alice's session, so the wire sender is
+@alice's own MLS identity, and room access is enforced by MLS group membership rather
+than application logic.
 
-The name is the term of art: this is **custodial** in the key-management sense
-(the custodian holds your keys for you), exactly as a custodial wallet is. The
-axis is server-side vs client-held: this rung is custodial; a native client
-holding its own session (the next rung) is the non-custodial one.
+"Custodial" is used in the key-management sense: the hub holds the keys on the
+actor's behalf (server-side). A native client holding its own session would be the
+non-custodial case, which is out of scope here.
 
-**Off by default (#567), non-negotiable.** Custodial sessions engage only when
-``slim.identity`` is ``signerjwt``/``spire`` — never under the PSK default, where
-the try-it path stays byte-for-byte unchanged. Finding C from the spike makes
-this structural, not just policy: ``create_app_with_persistence_async`` *requires*
-the identity provider/verifier pair, so a custodial session cannot run on the PSK
-tier at all.
+Off by default (#567): custodial sessions engage only when ``slim.identity`` is
+``signerjwt`` or ``spire``, never under the PSK default, where the try-it path is
+unchanged. This is structural, not just policy: ``create_app_with_persistence_async``
+requires the identity provider/verifier pair, so a custodial session cannot run on
+the PSK tier.
 
-**Honest scope boundary (do not oversell).** Because it is custodial, the hub
-holds every session's private key + plaintext, so all backend cognition (aligner,
-plan compiler, memory-sync, L9) still reads plaintext — cognition is preserved.
-This hardens the **wire + attribution + access-by-membership** and makes
-per-agent identity true at the MLS layer (today the identity epic identifies only
-the backend's one App). It is **NOT** E2E-from-the-hub: a compromised hub still
-sees and can impersonate everything — which is just what "custodial" means. The
-pitch is "the trust boundary is now honest, legible, and movable," not "more
-secure." Non-custodial (client-held) sessions are the next rung, native-only, and
-out of scope here.
+Scope boundary: because the hub holds every session's private key and plaintext, all
+backend cognition (aligner, plan compiler, memory-sync, L9) still reads plaintext.
+This hardens attribution and access-by-membership and makes per-agent identity real
+at the MLS layer, but it is not end-to-end encryption from the hub: a compromised hub
+can still read and impersonate everything. Client-held (non-custodial) sessions are a
+separate, later step.
 
-The per-session MLS state is persisted at rest via the ``agntcy-slim-persistence``
-SQLite store, one directory per session under ``<data>/custody/{room}/{handle}/``.
-The at-rest passphrase is ``HMAC(server session secret, workspace/room/handle)`` so
-each store gets a distinct key and one leaked passphrase does not open every
-session. The session secret is **server-held** (``MYCELIUM_CUSTODY_STORE_SECRET``),
-deliberately NOT the actor's OIDC/SignerJwt token (which rotates hourly and is not
-a durable at-rest key). On backend restart ``restore_sessions`` revives every
-custodial session from its store **without a re-invite** — SLIM resumes crypto
-state only, never missed messages, so the durable transcript/inbox
-(:mod:`app.services.persister`) stays the offline-replay layer.
+Per-session MLS state is persisted at rest via ``agntcy-slim-persistence`` (SQLite),
+one directory per session under ``<data>/custody/{room}/{handle}/``. The at-rest
+passphrase is ``HMAC(server session secret, workspace/room/handle)``, so each store
+has a distinct key and one leaked passphrase does not open every session. The session
+secret is server-held (``MYCELIUM_CUSTODY_STORE_SECRET``), not the actor's
+OIDC/SignerJwt token (which rotates and is not a durable at-rest key). On backend
+restart ``restore_sessions`` revives every session from its store without a
+re-invite; SLIM resumes crypto state only, never missed messages, so the durable
+transcript/inbox (:mod:`app.services.persister`) stays the offline-replay layer.
 """
 
 from __future__ import annotations

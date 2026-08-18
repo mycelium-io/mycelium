@@ -277,8 +277,8 @@ is no litellm dependency.
   on restart `restore_sessions` revives every session with **no re-invite** (proven
   across a real two-process kill/restart). **Honest scope boundary (keep it honest in
   code + the user-facing SPIRE identity guide):** custodial means the hub still holds
-  every key + plaintext — this hardens the wire + attribution + access-by-membership,
-  it is **NOT** E2E-from-the-hub.
+  every key + plaintext; this hardens the wire + attribution + access-by-membership,
+  and it is **NOT** E2E-from-the-hub.
 - **Adapter capability (be honest).** `claude_code` is proven; `cursor` is untested.
   `openclaw` and `hermes` are **gone**, not deprecated — they rode the removed
   SSE/coordination-tick model and their packages were deleted (#503). Don't

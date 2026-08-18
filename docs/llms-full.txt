@@ -2222,7 +2222,7 @@ host with `pnpm dev` instead? Drop `INTERNAL_ISSUER`; the two coincide.
 > unset, the frontend never engages OIDC. And it only shows the sign-in screen
 > when the backend's `/health` reports the gate on; the try-it path is untouched.
 
-## The honest ceiling
+## Limitations
 
 The shipped overlay is **dev-grade**: Keycloak in `start-dev` (in-memory H2, HTTP,
 a demo user with a weak password). It is a real OIDC provider minting real RS256
@@ -2250,20 +2250,20 @@ domain, or type `spire-server entry create` by hand.
 ## What "distinct members" actually means
 
 With any channel-identity tier on (`signerjwt` or `spire`), each actor participates
-as its **own MLS member** — a *custodial session* the hub holds on the actor's
+as its **own MLS member**: a *custodial session* the hub holds on the actor's
 behalf, server-side. A message is then cryptographically attributable to the actor
 on the wire (not stamped by the backend after the fact), and room access is enforced
 by **MLS group membership**, not application logic. These sessions survive a backend
-restart — they're revived from encrypted local state with no re-invite. Under the
-`psk` default there are no custodial sessions; the backend is the single member and
+restart; they're revived from encrypted local state with no re-invite. Under the
+`psk` default there are no custodial sessions: the backend is the single member and
 nothing here applies.
 
-**Honest boundary — this is not E2E from the hub.** Custodial sessions live *in the
-hub process*, so the hub still holds every actor's key and reads all plaintext —
-that's what lets the aligner, plan compiler, and memory sync work at all. Turning on
+**Honest boundary: this is not E2E from the hub.** Custodial sessions live *in the
+hub process*, so the hub still holds every actor's key and reads all plaintext. That
+is what lets the aligner, plan compiler, and memory sync work at all. Turning on
 identity hardens **attribution and access** and makes per-agent identity real at the
 MLS layer; it does **not** mean the hub can no longer read your messages. It means
-the hub represents each actor as a distinct, verifiable member — not that the room is
+the hub represents each actor as a distinct, verifiable member, not that the room is
 end-to-end encrypted away from the hub.
 
 ## Turn it on
@@ -2318,7 +2318,7 @@ export MYCELIUM_SLIM_SPIRE_TRUST_DOMAIN=corp.example.com
 Set it in `~/.mycelium/.env` (or the shell that runs `mycelium up`) before bringing
 the stack up.
 
-## The honest ceiling
+## Limitations
 
 The appliance uses SPIRE's `unix` workload attestor, which identifies a workload by
 its process credentials. That requires the SPIRE node daemon to share the workload's

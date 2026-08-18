@@ -209,7 +209,7 @@ host with `pnpm dev` instead? Drop `INTERNAL_ISSUER`; the two coincide.
 > unset, the frontend never engages OIDC. And it only shows the sign-in screen
 > when the backend's `/health` reports the gate on; the try-it path is untouched.
 
-## The honest ceiling
+## Limitations
 
 The shipped overlay is **dev-grade**: Keycloak in `start-dev` (in-memory H2, HTTP,
 a demo user with a weak password). It is a real OIDC provider minting real RS256
