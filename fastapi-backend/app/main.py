@@ -156,21 +156,21 @@ async def lifespan(app: FastAPI):
     from app.services.filesystem import list_room_names
 
     reprovisioned = 0
-    restored_twins = 0
+    restored_custody = 0
     for _room in list_room_names():
         try:
             if await room_channel_manager.provision(_room) is not None:
                 reprovisioned += 1
-                # Two-process resume (#666): revive every per-actor twin from its
-                # encrypted store via ``restore_sessions`` — no re-invite/welcome.
-                # No-op under the PSK default. The transcript replays any gap.
-                restored_twins += await room_channel_manager.restore_twins(_room)
+                # Two-process resume (#666): revive every per-actor custodial session
+                # from its encrypted store via ``restore_sessions`` — no re-invite/
+                # welcome. No-op under the PSK default. The transcript replays any gap.
+                restored_custody += await room_channel_manager.restore_custody(_room)
         except Exception:
             logger.exception("startup re-provision failed for room %s", _room)
     if reprovisioned:
         logger.info("re-provisioned %d room channel(s) on startup", reprovisioned)
-    if restored_twins:
-        logger.info("restored %d twin session(s) on startup (no re-invite)", restored_twins)
+    if restored_custody:
+        logger.info("restored %d custodial session(s) on startup (no re-invite)", restored_custody)
 
     yield
     stop_watcher()
