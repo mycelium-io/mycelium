@@ -6,6 +6,16 @@ end-to-end on the pinned stack, measures its shape, and leaves the current
 server-held-membership model untouched so a follow-up can adopt it off-by-default
 and additively.
 
+Two rounds: **v1** (`twin_sessions_spike.py`) proved the primitive in one process;
+**v2** (`spike_v2.py`) then stress-tested the cases v1 could not, with real
+kill-able subprocesses -- restart-and-receive, epoch change while offline,
+moderator restart, wrong-passphrase rejection, multi-room resume, and the
+PSK-cannot-persist constraint. **All six v2 scenarios pass** (see the v2 matrix
+below). One apparent v1/early-v2 limitation (a restored member could send but not
+receive) was chased down, cross-checked against the SLIM source via deepwiki, and
+resolved: it is correct SLIM behavior, satisfied by mycelium's existing
+always-draining moderator loop.
+
 ## The problem it addresses
 
 Today the backend is a **single SLIM/MLS member per room that impersonates every
@@ -105,17 +115,44 @@ immediately **transacted at the group's current epoch** (it encrypted a message 
 the live group key it recovered from disk; the moderator decrypted and attributed
 it) with no re-invite and no MLS Welcome/Commit replay.
 
-**Caveat this exposed (a real finding).** In a single-process simulation the
-crashed App's *subscription for the victim's Name* is still registered over the
-shared connection (a real crash drops the connection and the node forgets it). So
-inbound re-delivery to the fresh subscription is confounded here; the spike proves
-the resume by having the revived twin **send**, which is the stronger crypto proof
-(the recovered MLS epoch is usable) and does not depend on node re-routing.
-Follow-up: a true two-process kill/restart validates inbound re-delivery cleanly.
-Independently, note that **SLIM does not replay messages missed while offline** --
-it only tracks missed *heartbeats*. Persistence resumes *crypto state*, not *missed
-messages*, so the durable transcript/inbox (`app/services/persister.py`) stays
-exactly as-is; it remains the offline-replay mechanism.
+v1 proved the resume by having the revived twin **send** (the single-process sim
+left a stale subscription that confounded *inbound* re-delivery). **v2 removed that
+confound with real subprocesses and validated inbound too** -- see the v2 matrix
+(D1). Independently, note that **SLIM does not replay messages missed while
+offline** -- it only tracks missed *heartbeats* (v2/D1 confirms the missed message
+is not replayed). Persistence resumes *crypto state*, not *missed messages*, so the
+durable transcript/inbox (`app/services/persister.py`) stays exactly as-is; it
+remains the offline-replay mechanism.
+
+## v2 -- the cases v1 could not test (all pass)
+
+`spike_v2.py` (run: `./run_v2.sh`) runs each twin as a real, SIGKILL-able
+subprocess (`twin_runner.py`), so a restart drops the connection and the node
+forgets the subscription -- a faithful backend/twin bounce, without v1's
+single-process confound. Each scenario is isolated (its own SLIM Names, store root,
+and rooms; reusing a Name leaks the node's per-Name multicast queue between tests).
+
+| # | Scenario | Verdict | What it establishes |
+|---|----------|---------|---------------------|
+| C | PSK cannot persist | **PASS** | There is no `create_app_with_secret_and_persistence` in the 2.1.0 wheel: persistence **requires** the identity provider/verifier pair, so a twin cannot run on the default PSK tier. **Twins mandate `signerjwt`/`spire`.** |
+| D1 | Clean restart, receive a NEW message | **PASS** | After a real kill + `restore_sessions`, the twin both sends and **receives** new broadcasts. Inbound resumes once the moderator processes the twin's `rejoin` -- which it does only while **actively draining** its session. The moderator's message sent while the twin was down is **not** replayed (confirms no offline replay). |
+| D2 | Epoch change while offline | **PASS** | Twin killed, moderator rekeys the group (removes another member -> MLS Commit), twin restores: it still sends and receives. A twin that missed a Commit is **not** stranded -- `rejoin()` heals the epoch. |
+| D3 | Moderator (backend) restart | **PASS** | The **group creator** is killed and `restore_sessions`'d: the room stays live -- the member keeps receiving moderator broadcasts and the restored moderator receives member replies. A backend bounce resumes the room from disk. |
+| A | Wrong passphrase | **PASS** | Re-opening a twin's store with the wrong passphrase fails with `decryption failed (wrong key or corrupt data)`. **The at-rest passphrase is load-bearing**, not decorative. |
+| B | Multi-room resume | **PASS** | A twin in two rooms gets **both** sessions back from a single `restore_sessions` call (`n=2`). |
+
+**The D1 chase (why this matters, and the deepwiki cross-check).** v1 and the first
+v2 pass showed a restored member could *send* but not *receive*. Rather than ship
+that as a limitation, it was run down against the SLIM source via deepwiki:
+`restore_sessions` re-establishes the member's routes/subscriptions and emits an
+online `rejoin()`, but the **moderator only re-adds the member to its fan-out list
+when it processes that rejoin control message -- which happens only while the
+moderator is actively draining `get_message`** (confirmed present in 2.1.0, not a
+newer-branch feature). The failing runs had an idle moderator that only published.
+This is exactly mycelium's production posture: the backend moderator's persister
+(`RoomPersister.run()`) *is* an always-on `receive_with_context()` drain loop. With
+a draining moderator, D1 passes in a single round. So it is **correct SLIM
+behavior**, already satisfied by the existing backend -- not a bug and not a gap.
 
 ### Q4 -- where the store lives + the passphrase boundary
 
@@ -218,8 +255,12 @@ manage.
 
 | File | Purpose |
 |------|---------|
-| `twin_sessions_spike.py` | The fleet: N persistence-backed SignerJwt twins in one process, one GROUP, one restore. |
-| `run.sh` | One-command repro: stock SLIM 2.1.0 node + key mint + roster JWKS + exec. |
+| `twin_sessions_spike.py` | **v1** fleet: N persistence-backed SignerJwt twins in one process, one GROUP, one restore. |
+| `run.sh` | v1 repro: stock SLIM 2.1.0 node + key mint + roster JWKS + exec. |
+| `spike_v2.py` | **v2** restart matrix (C/D1/D2/D3/A/B): orchestrates kill-able twin subprocesses, asserts a PASS/FAIL/FINDING table. |
+| `twin_runner.py` | v2: one twin as its own OS process, driven by a file-command protocol; SIGKILL-able for faithful restarts. |
+| `twin_common.py` | Shared identity/persistence/session helpers for the v2 harness. |
+| `run_v2.sh` | v2 repro: node + per-test key mint + exec `spike_v2.py`. |
 | `build_roster_jwks.py` | Assemble the room-roster JWKS from the twins' public keys (shared with #587). |
 
 ## Matched stack (proven)
