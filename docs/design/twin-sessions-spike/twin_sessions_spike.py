@@ -331,11 +331,24 @@ async def main() -> int:  # noqa: PLR0915 -- spike: linear narrative is the poin
         return 1
 
     # ---- Q4: report where the store lives + the passphrase boundary ----
-    print("\n[store] per-twin server-side MLS state (Q4):", flush=True)
+    # `path` is treated by agntcy-slim-persistence as a DIRECTORY; it writes a real
+    # SQLite DB (WAL mode) inside, so we sum the files it created, not stat the dir.
+    print("\n[store] per-twin server-side agntcy-slim-persistence SQLite store (Q4):", flush=True)
     for name in TWINS:
-        path = _store_path(name)
-        size = Path(path).stat().st_size if Path(path).exists() else 0
-        print(f"  {name:10} {path}  ({size} bytes, AES-256-GCM at rest)", flush=True)
+        store_dir = Path(_store_path(name))
+        files = list(store_dir.glob("*")) if store_dir.is_dir() else []
+        total = sum(f.stat().st_size for f in files if f.is_file())
+        dbs = [f.name for f in files if f.suffix == ".db"]
+        print(
+            f"  {name:10} {store_dir}/  ({total} bytes across {len(files)} file(s); "
+            f"db={dbs[0] if dbs else '?'})",
+            flush=True,
+        )
+    print(
+        "  DB container is standard SQLite (WAL); the passphrase encrypts the MLS "
+        "state blobs (AES-256-GCM), not the whole file.",
+        flush=True,
+    )
     print(
         "  passphrase = HMAC(server session secret, handle) -- distinct per twin, "
         "NOT the OIDC/SignerJwt token.",

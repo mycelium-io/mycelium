@@ -119,18 +119,24 @@ exactly as-is; it remains the offline-replay mechanism.
 
 ### Q4 -- where the store lives + the passphrase boundary
 
-Per-twin, server-side, one SQLite MLS-state store per actor, AES-256-GCM at rest:
+Per-twin, server-side, backed by the **`agntcy-slim-persistence` SQLite store**
+(`SlimGroupStateStorage`, the crate the issue pointed at -- we did not hand-roll
+persistence, only passed `PersistenceConfig(path, passphrase)`). The `path` is
+treated by the crate as a **directory**, into which it writes a real SQLite
+database in WAL mode, one per app:
 
 ```
-[store] per-twin server-side MLS state (Q4):
-  backend    .../twin-store/backend/mls-state.sqlite  (AES-256-GCM at rest)
-  alice      .../twin-store/alice/mls-state.sqlite    (AES-256-GCM at rest)
-  bob        .../twin-store/bob/mls-state.sqlite       (AES-256-GCM at rest)
-  carol      .../twin-store/carol/mls-state.sqlite     (AES-256-GCM at rest)
+twin-store/alice/mls-state.sqlite/            <- the `path` we pass (a directory)
+  slim-<hex>.db        (magic: "SQLite format 3", ~120-240 KB per twin here)
+  slim-<hex>.db-wal    (WAL sidecar)
+  slim-<hex>.db-shm    (shared-memory index)
 ```
 
-In production this sits under the hub's data dir (`~/.mycelium/`-style), one path
-per twin. **The passphrase is the real at-rest confidentiality boundary and needs
+`<hex>` is the app/session id. The DB *container* is a standard (plaintext-schema)
+SQLite file; the **passphrase encrypts the stored MLS state blobs (AES-256-GCM)**,
+per the crate -- it is value-level at-rest encryption, not whole-file/SQLCipher
+encryption. In production this sits under the hub's data dir (`~/.mycelium/`-style),
+one directory per twin. **The passphrase is the real at-rest confidentiality boundary and needs
 its own hardening pass.** The spike derives it as `HMAC(server session secret,
 handle)` so each twin store gets a distinct key and one leaked passphrase does not
 open every twin. The session secret must be a **server-held** secret
@@ -148,7 +154,8 @@ whether the secret should be per-host or per-deployment.
 N twins multiplex over **one** dataplane connection (`Service` allows one per
 endpoint per process anyway; the existing `slim_client._shared_connection` cache
 already relies on this). So the footprint is N Apps + N MLS group states, **not** N
-sockets. The MLS state stores were ~160 bytes each in this run. Persistence makes a
+sockets. The per-twin SQLite MLS-state stores were ~120-240 KB each in this run
+(the `agntcy-slim-persistence` DB + WAL, see Q4). Persistence makes a
 connect-per-turn footprint viable as an alternative to N always-live Apps, but the
 spike did not stress a room's worth of actors; scale-testing the App/MLS-state
 memory footprint at (say) 20-50 twins is a follow-up measurement, not a blocker.
