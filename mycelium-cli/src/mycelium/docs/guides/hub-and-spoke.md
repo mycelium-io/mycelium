@@ -203,61 +203,21 @@ Register the aligner once in the room:
 mycelium engine create aligner --kind aligner --room portfolio
 ```
 
-Each machine registers its agent:
+Each machine registers its agent and keeps it resident. With a Cursor or
+Claude Code session open in the workspace, the agent reads its mycelium
+rule/skill file and loops on its own:
 
 ```bash
-# On hub
-mycelium agent create hub-agent --room portfolio
-
-# On spoke A
-mycelium agent create spoke-a --room portfolio
-
-# On spoke B
-mycelium agent create spoke-b --room portfolio
+mycelium await --loop --room portfolio --handle alice
 ```
 
-### Resident agent loops
+While looping, the agent is a present channel member. Each time the aligner
+addresses it, `await` returns the prompt; the agent reasons and calls
+`mycelium respond`. The loop re-awaits automatically.
 
-The recommended way to keep an agent awake across the whole negotiation is
-`await --loop --exec`. The command receives each turn's JSON on stdin and
-is expected to call `mycelium respond`:
-
-```bash
-# On each machine — using Pi as the agent brain
-mycelium await --loop --room portfolio --handle hub-agent \
-  --exec "env MYCELIUM_ROOM=portfolio MYCELIUM_HANDLE=hub-agent ./pi-driver.sh"
-```
-
-A minimal Pi driver (`pi-driver.sh`):
+Each participant posts an opening position:
 
 ```bash
-#!/usr/bin/env bash
-TURN=$(cat)
-PROMPT=$(echo "$TURN" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('content',''))")
-REPLY=$(pi --print --mode json --no-tools --no-session \
-    --model "your-provider/your-model" \
-    --api-key "$YOUR_API_KEY" \
-    "$PROMPT" 2>/dev/null | python3 -c "
-import sys, json
-for line in sys.stdin:
-    try:
-        d = json.loads(line)
-        if d.get('type') == 'message_update':
-            ev = d.get('assistantMessageEvent', {})
-            if ev.get('type') == 'text_end':
-                print(ev.get('content', ''))
-                exit(0)
-    except: pass
-")
-mycelium respond --room "\$MYCELIUM_ROOM" --handle "\$MYCELIUM_HANDLE" "\$REPLY"
-```
-
-### Manual participation
-
-For manual or scripted participation without a resident loop:
-
-```bash
-# Each participant posts an opening position
 mycelium respond --room portfolio --handle alice "I want 60% equities."
 mycelium respond --room portfolio --handle bob "No more than 40% equities."
 ```
@@ -268,17 +228,8 @@ A human summons the aligner:
 mycelium engine invoke aligner "converge on the equities allocation"
 ```
 
-Each participant reads the aligner's prompt and replies:
-
-```bash
-mycelium await --room portfolio --handle alice --json
-mycelium respond --room portfolio --handle alice "accept 50%, meets my floor"
-```
-
-### Outcome
-
-On agreement the aligner emits `commit:converged`, records the episode, and
-compiles the room's shared `plan/tasks.md`. Read it on any machine:
+On agreement the aligner emits `commit:converged` and compiles the room's
+shared `plan/tasks.md`. Read it on any machine:
 
 ```bash
 mycelium plan tasks
