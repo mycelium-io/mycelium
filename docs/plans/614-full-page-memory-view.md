@@ -201,11 +201,11 @@ Demo pages (seeded in `demo`):
 
 ### 5b. Rail integrity banner + inline transclusion (#599)
 
-- [ ] Select `context/integrity-orphan` (or similar) in the rail → banner shows in the
+- [x] Select `context/integrity-orphan` (or similar) in the rail → banner shows in the
       drawer, matching the full-page wording
-- [ ] Select a memory with `![[key]]` in the rail → **Rendered** mode (default) shows
+- [x] Select a memory with `![[key]]` in the rail → **Rendered** mode (default) shows
       the expanded content, not a raw `![[…]]` marker
-- [ ] **Raw** toggle in the rail still shows the original markdown with the marker intact
+- [x] **Raw** toggle in the rail still shows the original markdown with the marker intact
 
 ### 6. Memory tree vs off-tree navigation
 
