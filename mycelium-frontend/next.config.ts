@@ -19,6 +19,11 @@ const allowedDevOrigins =
     .filter(Boolean) ?? [];
 
 const nextConfig: NextConfig = {
+  // `next dev` sniffs the environment for an AI coding agent (CLAUDECODE,
+  // CURSOR_TRACE_ID, …) and, on a match, writes a managed AGENTS.md + CLAUDE.md
+  // into the project root unprompted. We don't want the dev server mutating the
+  // working tree, so opt out.
+  agentRules: false,
   // Standalone output → minimal Docker image (no full node_modules in runtime layer)
   output: "standalone",
   // Next.js's built-in gzip middleware buffers chunks before flushing, which
