@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Reference · mycelium</title>
-<meta name="description" content="Architecture, CLI reference, configuration, guides, and troubleshooting for Mycelium.">
+<meta name="description" content="Architecture, CLI reference, configuration, dependencies and compatibility, guides, and troubleshooting for Mycelium.">
 <meta property="og:title" content="Reference · mycelium">
-<meta property="og:description" content="Architecture, CLI reference, configuration, guides, and troubleshooting for Mycelium.">
+<meta property="og:description" content="Architecture, CLI reference, configuration, dependencies and compatibility, guides, and troubleshooting for Mycelium.">
 <meta property="og:image" content="https://mycelium-io.github.io/mycelium/og.png">
 <meta property="og:url" content="https://mycelium-io.github.io/mycelium/reference.html">
 <meta property="og:type" content="website">
@@ -102,6 +102,13 @@
       <a href="#config-login" class="nav-link sub">login</a>
       <a href="#config-agent-auth" class="nav-link sub">agent_auth</a>
       <a href="#config-metrics" class="nav-link sub">metrics</a>
+    </div>
+    <div class="nav-section">
+      <div class="nav-section-label">Dependencies</div>
+      <a href="#dependencies-messaging-fabric-agntcy-slim" class="nav-link sub">Messaging (SLIM)</a>
+      <a href="#dependencies-memory-and-search" class="nav-link sub">Memory &amp; Search</a>
+      <a href="#dependencies-cognition" class="nav-link sub">Cognition</a>
+      <a href="#dependencies-identity-and-crypto" class="nav-link sub">Identity &amp; Crypto</a>
     </div>
     <div class="nav-section">
       <div class="nav-section-label">Guides</div>
@@ -960,6 +967,139 @@
 
 <span class="comment"># Explicit Prometheus /metrics endpoints for the collector to scrape.</span>
 <span class="arg">scrape</span> = PydanticUndefined</code></pre>
+    </section>
+
+    <hr class="divider">
+
+    <section class="doc-section" id="dependencies">
+      <h1>Dependencies &amp; Compatibility</h1>
+      <p>Mycelium is assembled from a small set of upstream components. This page lists every notable runtime dependency, the version pinned, what it&#x27;s for, and where to check what changed upstream. The versions are read from the pins in <code>pyproject.toml</code> and <code>compose.yml</code>, so they match what ships.</p>
+      <h2 id="dependencies-messaging-fabric-agntcy-slim">Messaging fabric (AGNTCY SLIM)</h2>
+      <p>Mycelium is SLIM-native: rooms are SLIM group channels and the node forwards only MLS ciphertext. This is the one deep coupling in the stack, so it comes first.</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Component</th>
+              <th>Pinned version</th>
+              <th>Role</th>
+              <th>Upstream</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>slim-bindings</code></td>
+              <td><code>&gt;=2.1,&lt;2.2</code></td>
+              <td>The client the CLI and backend use to join channels</td>
+              <td><a href="https://github.com/agntcy/slim/releases">agntcy/slim releases</a></td>
+            </tr>
+            <tr>
+              <td><code>ghcr.io/agntcy/slim</code></td>
+              <td><code>2.1.0</code></td>
+              <td>The messaging node itself, a blind ciphertext forwarder</td>
+              <td><a href="https://github.com/agntcy/slim/pkgs/container/slim">ghcr.io/agntcy/slim</a></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="callout callout-note">
+        <div class="callout-bar"></div>
+        <div class="callout-body"><strong>Version lockstep.</strong> The node image and the <code>slim-bindings</code> wheel must move together. Today both sides pin <code>slim-bindings&gt;=2.1,&lt;2.2</code> and the node image is <code>2.1.0</code>. Mixing versions fails the MLS handshake with <code>public key length is invalid</code>, so bump both to the same 2.x line at once. 2.1.x is the first MLS-with-external-identity stack, which is what the identity tiers build on.</div>
+      </div>
+      <h2 id="dependencies-memory-and-search">Memory and search</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Component</th>
+              <th>Pinned version</th>
+              <th>Role</th>
+              <th>Upstream</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>fastembed</code></td>
+              <td><code>&gt;=0.8.0</code></td>
+              <td>Local ONNX embeddings (BAAI/bge-small-en-v1.5, 384-dim); no external service</td>
+              <td><a href="https://github.com/qdrant/fastembed/releases">qdrant/fastembed</a></td>
+            </tr>
+            <tr>
+              <td><code>tiktoken</code></td>
+              <td><code>&gt;=0.12.0</code></td>
+              <td>Token counting for context budgeting</td>
+              <td><a href="https://github.com/openai/tiktoken/releases">openai/tiktoken</a></td>
+            </tr>
+            <tr>
+              <td><code>rapidfuzz</code></td>
+              <td><code>&gt;=3.14.5</code></td>
+              <td>Fuzzy key matching over memory</td>
+              <td><a href="https://github.com/rapidfuzz/RapidFuzz/releases">rapidfuzz/RapidFuzz</a></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <h2 id="dependencies-cognition">Cognition</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Component</th>
+              <th>Pinned version</th>
+              <th>Role</th>
+              <th>Upstream</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>negmas</code></td>
+              <td><code>&gt;=0.15.7</code> backend / <code>&gt;=0.11</code> CLI engine extra</td>
+              <td>The Stacked Alternating Offers mechanism the aligner runs</td>
+              <td><a href="https://github.com/yasserfarouk/negmas/releases">yasserfarouk/negmas</a></td>
+            </tr>
+            <tr>
+              <td><code>anthropic</code></td>
+              <td><code>&gt;=0.40.0</code></td>
+              <td>LLM client for backend cognition stages</td>
+              <td><a href="https://github.com/anthropics/anthropic-sdk-python/releases">anthropic-sdk-python</a></td>
+            </tr>
+            <tr>
+              <td>Pi (<code>pi</code> binary)</td>
+              <td>shipped in the backend image</td>
+              <td>The aligner&#x27;s brain and every one-shot cognition turn</td>
+              <td>external binary, not a Python dependency</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <h2 id="dependencies-identity-and-crypto">Identity and crypto</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Component</th>
+              <th>Pinned version</th>
+              <th>Role</th>
+              <th>Upstream</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>pyjwt[crypto]</code></td>
+              <td><code>&gt;=2.10,&lt;3</code></td>
+              <td>JWT validation for the auth gate and SignerJwt identity</td>
+              <td><a href="https://github.com/jpadilla/pyjwt/releases">jpadilla/pyjwt</a></td>
+            </tr>
+            <tr>
+              <td><code>cryptography</code></td>
+              <td><code>&gt;=42,&lt;47</code></td>
+              <td>ES256 keypair and JWK for SLIM channel identity</td>
+              <td><a href="https://github.com/pyca/cryptography/releases">pyca/cryptography</a></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>The rest of the stack is standard, widely used building blocks with no special version constraint beyond their pins: <code>fastapi[standard]</code>, <code>httpx</code>, <code>pydantic</code> / <code>pydantic-settings</code>, <code>typer</code>, <code>rich</code>, and <code>questionary</code>. See the <code>pyproject.toml</code> in each package for exact ranges.</p>
     </section>
 
     <hr class="divider">

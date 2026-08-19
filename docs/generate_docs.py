@@ -22,6 +22,7 @@ import argparse
 import html
 import re
 import sys
+import tomllib
 from collections import defaultdict
 from pathlib import Path
 
@@ -36,8 +37,8 @@ PAGES: list[tuple[str, str, str, str, str, str, str]] = [
      "ADP-001", "ADAPTERS · CLAUDE CODE · CURSOR · REST API",
      "Connect Claude Code, Cursor, or any HTTP client to the Mycelium coordination layer."),
     ("reference", "reference.html", "Reference · mycelium", "Reference",
-     "REF-001", "REFERENCE · ARCHITECTURE · CLI · CONFIG · GUIDES · HELP",
-     "Architecture, CLI reference, configuration, guides, and troubleshooting for Mycelium."),
+     "REF-001", "REFERENCE · ARCHITECTURE · CLI · CONFIG · DEPENDENCIES · GUIDES · HELP",
+     "Architecture, CLI reference, configuration, dependencies and compatibility, guides, and troubleshooting for Mycelium."),
 ]
 
 # Sections, in render order per page.
@@ -103,9 +104,16 @@ CONFIG_NAMESPACE_ORDER: list[str] = [
 ]
 CONFIG_NAMESPACE_SKIP: set[str] = {"adapters"}
 
-DOCS_DIR = Path(__file__).parent.parent / "mycelium-cli" / "src" / "mycelium" / "docs"
+REPO_ROOT = Path(__file__).parent.parent
+DOCS_DIR = REPO_ROOT / "mycelium-cli" / "src" / "mycelium" / "docs"
 OUT_DIR = Path(__file__).parent
 LEGACY_INDEX = OUT_DIR / "index.html"  # for kept-section migration
+
+# Source-of-truth pin files for the Dependencies & Compatibility section. Versions
+# are read live from these so the page can never drift from what ships.
+CLI_PYPROJECT = REPO_ROOT / "mycelium-cli" / "pyproject.toml"
+BACKEND_PYPROJECT = REPO_ROOT / "fastapi-backend" / "pyproject.toml"
+COMPOSE_YML = REPO_ROOT / "mycelium-cli" / "src" / "mycelium" / "docker" / "compose.yml"
 
 
 # ── Markdown to HTML conversion (minimal, no dependencies) ──
@@ -636,6 +644,292 @@ def _generate_config_reference() -> tuple[str, list[tuple[str, str]]]:
     return body, sidebar_entries
 
 
+# ── Dependencies & Compatibility ──
+#
+# The version cell of every row is read live from the pin files (below), so the
+# published page cannot drift from what actually ships. The editorial metadata
+# (which group a dependency belongs to, what it's for, where its releases live)
+# is curated here, because none of it is derivable from a pyproject entry.
+#
+# A version source is one of:
+#   ("dep", "cli"|"backend", pkg)          # a [project.dependencies] pin
+#   ("extra", "cli"|"backend", extra, pkg) # a [project.optional-dependencies] pin
+#   ("image", "<image ref>")               # a container image tag from compose.yml
+#   ("literal", "<text>")                  # not version-pinned in a file (e.g. Pi)
+#   ("multi", [(label, source), ...])      # several pins rendered together
+
+DEPENDENCY_GROUPS: list[dict] = [
+    {
+        "heading": "Messaging fabric (AGNTCY SLIM)",
+        "sidebar": "Messaging (SLIM)",
+        "intro": (
+            "Mycelium is SLIM-native: rooms are SLIM group channels and the node "
+            "forwards only MLS ciphertext. This is the one deep coupling in the "
+            "stack, so it comes first."
+        ),
+        "components": [
+            {
+                "name": "slim-bindings",
+                "version": ("dep", "cli", "slim-bindings"),
+                "role": "The client the CLI and backend use to join channels",
+                "upstream": ("agntcy/slim releases", "https://github.com/agntcy/slim/releases"),
+            },
+            {
+                "name": "agntcy/slim (node image)",
+                "display": "`ghcr.io/agntcy/slim`",
+                "version": ("image", "ghcr.io/agntcy/slim"),
+                "role": "The messaging node itself, a blind ciphertext forwarder",
+                "upstream": (
+                    "ghcr.io/agntcy/slim",
+                    "https://github.com/agntcy/slim/pkgs/container/slim",
+                ),
+            },
+        ],
+        # {slim} and {node} are filled from the resolved pins so the constraint
+        # text always names the versions actually in force.
+        "callout": (
+            "**Version lockstep.** The node image and the `slim-bindings` wheel "
+            "must move together. Today both sides pin `slim-bindings{slim}` and the "
+            "node image is `{node}`. Mixing versions fails the MLS handshake with "
+            "`public key length is invalid`, so bump both to the same 2.x line at "
+            "once. 2.1.x is the first MLS-with-external-identity stack, which is "
+            "what the identity tiers build on."
+        ),
+    },
+    {
+        "heading": "Memory and search",
+        "sidebar": "Memory & Search",
+        "components": [
+            {
+                "name": "fastembed",
+                "version": ("dep", "backend", "fastembed"),
+                "role": "Local ONNX embeddings (BAAI/bge-small-en-v1.5, 384-dim); no external service",
+                "upstream": ("qdrant/fastembed", "https://github.com/qdrant/fastembed/releases"),
+            },
+            {
+                "name": "tiktoken",
+                "version": ("dep", "backend", "tiktoken"),
+                "role": "Token counting for context budgeting",
+                "upstream": ("openai/tiktoken", "https://github.com/openai/tiktoken/releases"),
+            },
+            {
+                "name": "rapidfuzz",
+                "version": ("dep", "backend", "rapidfuzz"),
+                "role": "Fuzzy key matching over memory",
+                "upstream": ("rapidfuzz/RapidFuzz", "https://github.com/rapidfuzz/RapidFuzz/releases"),
+            },
+        ],
+    },
+    {
+        "heading": "Cognition",
+        "sidebar": "Cognition",
+        "components": [
+            {
+                "name": "negmas",
+                "version": (
+                    "multi",
+                    [
+                        ("backend", ("dep", "backend", "negmas")),
+                        ("CLI engine extra", ("extra", "cli", "engine", "negmas")),
+                    ],
+                ),
+                "role": "The Stacked Alternating Offers mechanism the aligner runs",
+                "upstream": ("yasserfarouk/negmas", "https://github.com/yasserfarouk/negmas/releases"),
+            },
+            {
+                "name": "anthropic",
+                "version": ("dep", "backend", "anthropic"),
+                "role": "LLM client for backend cognition stages",
+                "upstream": (
+                    "anthropic-sdk-python",
+                    "https://github.com/anthropics/anthropic-sdk-python/releases",
+                ),
+            },
+            {
+                "name": "Pi",
+                "display": "Pi (`pi` binary)",
+                "version": ("literal", "shipped in the backend image"),
+                "role": "The aligner's brain and every one-shot cognition turn",
+                "upstream": "external binary, not a Python dependency",
+            },
+        ],
+    },
+    {
+        "heading": "Identity and crypto",
+        "sidebar": "Identity & Crypto",
+        "components": [
+            {
+                "name": "pyjwt[crypto]",
+                "version": ("dep", "backend", "pyjwt"),
+                "role": "JWT validation for the auth gate and SignerJwt identity",
+                "upstream": ("jpadilla/pyjwt", "https://github.com/jpadilla/pyjwt/releases"),
+            },
+            {
+                "name": "cryptography",
+                "version": ("dep", "cli", "cryptography"),
+                "role": "ES256 keypair and JWK for SLIM channel identity",
+                "upstream": ("pyca/cryptography", "https://github.com/pyca/cryptography/releases"),
+            },
+        ],
+    },
+]
+
+# Rendered verbatim as the closing paragraph. These carry no special version
+# constraint beyond their pins, so they don't earn a row each.
+DEPENDENCY_FOOTER = (
+    "The rest of the stack is standard, widely used building blocks with no "
+    "special version constraint beyond their pins: `fastapi[standard]`, `httpx`, "
+    "`pydantic` / `pydantic-settings`, `typer`, `rich`, and `questionary`. See the "
+    "`pyproject.toml` in each package for exact ranges."
+)
+
+
+def _normalize_pkg(name: str) -> str:
+    """PyPI-normalize a distribution name (case-fold, unify -/_/., drop extras)."""
+    name = name.split("[", 1)[0]
+    return re.sub(r"[-_.]+", "-", name).strip().lower()
+
+
+def _dep_version(deps: list[str], pkg: str) -> str:
+    """Return the version specifier for pkg from a dependencies list, e.g. '>=2.1,<2.2'."""
+    want = _normalize_pkg(pkg)
+    for entry in deps:
+        m = re.match(r"^\s*([A-Za-z0-9._-]+(?:\[[^\]]*\])?)\s*(.*)$", entry)
+        if m and _normalize_pkg(m.group(1)) == want:
+            return m.group(2).strip()
+    raise KeyError(f"dependency '{pkg}' not found; the pin was renamed or removed")
+
+
+def _image_tag(compose_text: str, image: str) -> str:
+    """Extract the default tag for a compose image, e.g. 'ghcr.io/agntcy/slim' -> '2.1.0'."""
+    # Matches either `image:2.1.0` or `image:${VAR:-2.1.0}`.
+    m = re.search(
+        rf"{re.escape(image)}:(?:\$\{{[^:}}]+:-([^}}]+)\}}|([^\s${{}}]+))",
+        compose_text,
+    )
+    if not m:
+        raise KeyError(f"image '{image}' not found in compose.yml")
+    return (m.group(1) or m.group(2)).strip()
+
+
+def _load_pin_context() -> dict:
+    """Read every pin file once into a lookup the version resolver reads from."""
+    cli = tomllib.loads(CLI_PYPROJECT.read_text())
+    backend = tomllib.loads(BACKEND_PYPROJECT.read_text())
+
+    def deps(pp: dict) -> list[str]:
+        return pp.get("project", {}).get("dependencies", [])
+
+    def extras(pp: dict) -> dict:
+        return pp.get("project", {}).get("optional-dependencies", {})
+
+    return {
+        "cli": {"deps": deps(cli), "extras": extras(cli)},
+        "backend": {"deps": deps(backend), "extras": extras(backend)},
+        "compose": COMPOSE_YML.read_text(),
+    }
+
+
+def _resolve_version(source: tuple, ctx: dict) -> str:
+    kind = source[0]
+    if kind == "dep":
+        _, which, pkg = source
+        return _dep_version(ctx[which]["deps"], pkg)
+    if kind == "extra":
+        _, which, extra, pkg = source
+        return _dep_version(ctx[which]["extras"].get(extra, []), pkg)
+    if kind == "image":
+        return _image_tag(ctx["compose"], source[1])
+    if kind == "literal":
+        return source[1]
+    raise ValueError(f"unknown version source: {source!r}")
+
+
+def _version_cell(source: tuple, ctx: dict) -> str:
+    """Render a component's version as a markdown table cell."""
+    if source[0] == "literal":
+        return source[1]
+    if source[0] == "multi":
+        return " / ".join(
+            f"`{_resolve_version(sub, ctx)}` {label}" for label, sub in source[1]
+        )
+    return f"`{_resolve_version(source, ctx)}`"
+
+
+def _upstream_cell(upstream: object) -> str:
+    if isinstance(upstream, tuple):
+        label, url = upstream
+        return f"[{label}]({url})"
+    return str(upstream)
+
+
+def _generate_dependencies_reference() -> tuple[str, list[tuple[str, str]]]:
+    """Return (content_html, sidebar_entries) for the Dependencies & Compatibility section.
+
+    Versions come live from the pin files; role/upstream metadata is curated in
+    DEPENDENCY_GROUPS. The section is emitted as markdown and run through the same
+    renderer as every other page, so it inherits table/callout styling for free.
+    """
+    ctx = _load_pin_context()
+
+    # Lockstep invariant: the CLI and backend slim-bindings pins must be identical,
+    # or the shared node image can't match both. Surfacing this page while the two
+    # have silently diverged would document a broken state, so fail loudly.
+    cli_slim = _dep_version(ctx["cli"]["deps"], "slim-bindings")
+    backend_slim = _dep_version(ctx["backend"]["deps"], "slim-bindings")
+    if cli_slim != backend_slim:
+        raise SystemExit(
+            "slim-bindings pins have drifted: "
+            f"CLI '{cli_slim}' vs backend '{backend_slim}'. They must match "
+            "(see the version-lockstep note in compose.yml)."
+        )
+    node_tag = _image_tag(ctx["compose"], "ghcr.io/agntcy/slim")
+
+    md: list[str] = [
+        "# Dependencies & Compatibility",
+        "",
+        "Mycelium is assembled from a small set of upstream components. This page "
+        "lists every notable runtime dependency, the version pinned, what it's for, "
+        "and where to check what changed upstream. The versions are read from the "
+        "pins in `pyproject.toml` and `compose.yml`, so they match what ships.",
+        "",
+    ]
+    sidebar_entries: list[tuple[str, str]] = []
+
+    for group in DEPENDENCY_GROUPS:
+        heading = group["heading"]
+        md.append(f"## {heading}")
+        md.append("")
+        sidebar_entries.append((f"dependencies-{_slugify(heading)}", group["sidebar"]))
+
+        if group.get("intro"):
+            md.append(group["intro"])
+            md.append("")
+
+        md.append("| Component | Pinned version | Role | Upstream |")
+        md.append("| --- | --- | --- | --- |")
+        for comp in group["components"]:
+            name = comp.get("display", f"`{comp['name']}`")
+            version = _version_cell(comp["version"], ctx)
+            upstream = _upstream_cell(comp["upstream"])
+            md.append(f"| {name} | {version} | {comp['role']} | {upstream} |")
+        md.append("")
+
+        if group.get("callout"):
+            md.append("> " + group["callout"].format(slim=cli_slim, node=node_tag))
+            md.append("")
+
+    md.append(DEPENDENCY_FOOTER)
+
+    body = _md_to_html("\n".join(md), "dependencies")
+    section = (
+        '    <section class="doc-section" id="dependencies">\n'
+        + body
+        + "\n    </section>"
+    )
+    return section, sidebar_entries
+
+
 # ── Page assembly ──
 
 
@@ -861,12 +1155,13 @@ def _build_page(
     kept: dict[str, str],
     cli_block: tuple[str, list[tuple[str, str]]] | None = None,
     config_block: tuple[str, list[tuple[str, str]]] | None = None,
+    deps_block: tuple[str, list[tuple[str, str]]] | None = None,
 ) -> tuple[str, list[tuple[str, list[tuple[str, str]]]]]:
     """Build (content_html, sidebar_groups) for a single page.
 
     sidebar_groups: list of (group_label, [(anchor, label), ...]) preserving order.
-    For the reference page, cli_block + config_block (each a (html, sidebar_entries))
-    are inserted between architecture and troubleshooting.
+    For the reference page, cli_block + config_block + deps_block (each a
+    (html, sidebar_entries)) are inserted between architecture and troubleshooting.
     """
     parts: list[str] = []
     grouped: dict[str, list[tuple[str, str]]] = {}
@@ -910,6 +1205,11 @@ def _build_page(
                 parts.append(config_html)
                 for anchor, lbl in config_entries:
                     add_group("Configuration", anchor, lbl)
+            if deps_block is not None:
+                deps_html, deps_entries = deps_block
+                parts.append(deps_html)
+                for anchor, lbl in deps_entries:
+                    add_group("Dependencies", anchor, lbl)
 
     content = "\n\n    <hr class=\"divider\">\n\n".join(parts)
     sidebar_groups = [(g, grouped[g]) for g in group_order]
@@ -958,17 +1258,22 @@ def main() -> None:
 
     cli_block: tuple[str, list[tuple[str, str]]] | None = None
     config_block: tuple[str, list[tuple[str, str]]] | None = None
+    deps_block: tuple[str, list[tuple[str, str]]] | None = None
     if "reference" in pages_to_build:
         print("Generating CLI reference from @doc_ref decorators...")
         cli_block = _generate_cli_reference()
         print("Generating config reference from pydantic schema...")
         config_block = _generate_config_reference()
+        print("Generating dependency reference from pyproject + compose pins...")
+        deps_block = _generate_dependencies_reference()
 
     print("Rendering pages...")
     for page_id, file_name, title, _label, sheet_no, plate_title, description in PAGES:
         if page_id not in pages_to_build:
             continue
-        content, sidebar_groups = _build_page(page_id, kept, cli_block, config_block)
+        content, sidebar_groups = _build_page(
+            page_id, kept, cli_block, config_block, deps_block
+        )
         _render_and_write(
             page_id, file_name, title, description, content, sidebar_groups,
             sheet_no, plate_title,
