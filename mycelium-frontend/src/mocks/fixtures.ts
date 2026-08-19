@@ -23,6 +23,9 @@ import type {
   EpisodeSummary,
   HostInfo,
   L9Envelope,
+  MemoryGraph,
+  MemoryGraphEdge,
+  MemoryGraphNode,
   PendingInvite,
   PlanResponse,
 } from "@/lib/api";
@@ -71,6 +74,35 @@ export interface RoomFixture {
   episodes: EpisodeSummary[];
   episodeDetails: Record<string, EpisodeDetail>;
   invites: PendingInvite[];
+  /** The room's link graph (#599/#611) — undefined means "no link index yet",
+   *  the same degrade-to-empty case the real backend serves for an unlinked room. */
+  links?: MemoryGraph;
+}
+
+/**
+ * Builds a `MemoryGraph` from a room's memories plus a hand-authored edge list,
+ * deriving each node's `inbound`/`outbound` the same way the backend does
+ * (`app/services/links.py:graph`): `outbound` counts every parsed link from that
+ * memory, `inbound` counts only the edges that actually resolved — so a memory
+ * that is only the *target* of a broken link still reads as an orphan.
+ */
+function buildMockGraph(
+  memories: MockMemory[],
+  edges: MemoryGraphEdge[],
+): MemoryGraph {
+  const outbound = new Map<string, number>();
+  const inbound = new Map<string, number>();
+  for (const edge of edges) {
+    outbound.set(edge.source, (outbound.get(edge.source) ?? 0) + 1);
+    if (edge.resolved) inbound.set(edge.target, (inbound.get(edge.target) ?? 0) + 1);
+  }
+  const nodes: MemoryGraphNode[] = memories.map((m) => ({
+    key: m.key,
+    expandable: false,
+    outbound: outbound.get(m.key) ?? 0,
+    inbound: inbound.get(m.key) ?? 0,
+  }));
+  return { nodes, edges };
 }
 
 // ── agent manifests (YAML strings — the UI parses description/adapter) ─────────
@@ -259,6 +291,22 @@ const atlas: RoomFixture = {
   episodeDetails: { e4f1a2: { ...atlasEpisodeSummary, messages: atlasL9Chain } },
   invites: [],
 };
+
+// The synthesized briefing links out to the three memories it summarizes; the
+// decision itself relates to the goal and wikilinks a plan file that isn't a
+// memory (so it can't resolve) — a deliberate broken-link example. The four
+// `agents/*` manifests and the briefing itself are never linked *to*, so they
+// render as orphans (#599's graph and #611's rail integrity banner agree on
+// this by construction, since both read the same edge list).
+const ATLAS_LINK_EDGES: MemoryGraphEdge[] = [
+  { source: "context/synthesis", target: "decisions/cutover", kind: "wikilink", resolved: true },
+  { source: "context/synthesis", target: "status/sprint", kind: "wikilink", resolved: true },
+  { source: "context/synthesis", target: "context/goal", kind: "wikilink", resolved: true },
+  { source: "status/sprint", target: "decisions/cutover", kind: "wikilink", resolved: true },
+  { source: "decisions/cutover", target: "context/goal", kind: "relation", relation: "depends-on", resolved: true },
+  { source: "decisions/cutover", target: "plan/tasks", kind: "wikilink", resolved: false, error: "not_found" },
+];
+atlas.links = buildMockGraph(atlas.memories, ATLAS_LINK_EDGES);
 
 // ── pricing-model: an in-progress negotiation, no plan yet ─────────────────────
 

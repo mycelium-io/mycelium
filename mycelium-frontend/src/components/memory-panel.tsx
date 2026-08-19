@@ -6,7 +6,16 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Brain, ChevronRight, ExternalLink, Folder, FolderOpen, FileText, AlertCircle } from "lucide-react";
+import {
+  Brain,
+  ChevronRight,
+  ExternalLink,
+  Folder,
+  FolderOpen,
+  FileText,
+  AlertCircle,
+  Network,
+} from "lucide-react";
 import {
   fetchMemory,
   fetchMemoryExpanded,
@@ -15,7 +24,7 @@ import {
   type MemorySearchResult,
 } from "@/lib/api";
 import { useRoomMemories, useRoomMemoryIntegrity } from "@/lib/room-data";
-import { memoryHref } from "@/lib/memory-routes";
+import { memoryGraphHref, memoryHref } from "@/lib/memory-routes";
 import { expandedPathsForKey, resolveMemoryPeekNavigation } from "@/lib/memory-panel-nav";
 import { DetailDrawer } from "@/components/detail-drawer";
 import { EmptyState } from "@/components/empty-state";
@@ -308,6 +317,14 @@ export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusM
           <span className="text-faint px-1">·</span>
           <span className="text-text font-semibold tabular">{contributors.length}</span>
           <span>contributors</span>
+          <Link
+            href={memoryGraphHref(roomName)}
+            className="ml-auto inline-flex items-center gap-1 rounded-md px-2 py-1 text-micro font-medium text-accent transition-colors hover:bg-hairline"
+            title="Open the memory link graph"
+          >
+            <Network className="size-3.5" />
+            Graph
+          </Link>
         </div>
         {contributors.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mt-2.5">

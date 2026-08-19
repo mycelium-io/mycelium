@@ -292,6 +292,46 @@ export async function fetchMemoryExpanded(roomName: string, key: string): Promis
   return { ...EMPTY_EXPAND, ...data, key };
 }
 
+// ── Memory graph ─────────────────────────────────────────────────────────────
+// The whole room as a graph — one node per memory, one edge per link — for the
+// full-page graph view (#599). A thin read over the same link index that backs
+// `fetchMemoryLinks`/integrity, so orphan/broken-link facts (`inbound === 0`,
+// `resolved === false`) are derived client-side from this one payload instead
+// of a second integrity fetch.
+
+export interface MemoryGraphNode {
+  key: string;
+  expandable: boolean;
+  outbound: number;
+  inbound: number;
+}
+
+export interface MemoryGraphEdge {
+  source: string;
+  target: string;
+  kind: MemoryLink["kind"];
+  relation?: string | null;
+  resolved: boolean;
+  error?: string | null;
+}
+
+export interface MemoryGraph {
+  nodes: MemoryGraphNode[];
+  edges: MemoryGraphEdge[];
+}
+
+const EMPTY_GRAPH: MemoryGraph = { nodes: [], edges: [] };
+
+/** The room's whole link graph. Degrades to empty — a room with no link index
+ *  yet (or an unreachable hub) is the normal unlinked case, not a hard error. */
+export async function fetchMemoryGraph(roomName: string): Promise<MemoryGraph> {
+  const data = await apiFetch<Partial<MemoryGraph>>(`/api/rooms/${roomName}/links/graph`, {
+    cache: "no-store",
+    fallback: EMPTY_GRAPH,
+  });
+  return { nodes: data.nodes ?? [], edges: data.edges ?? [] };
+}
+
 // ── Skills ───────────────────────────────────────────────────────────────────
 // A skill is a memory under the room's `skills/` namespace, promoted into its
 // own surface (like `agents/` → the members panel). Room-scoped, like memory.

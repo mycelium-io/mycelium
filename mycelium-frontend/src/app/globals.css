@@ -51,6 +51,17 @@
   --green: #0d8a63;
   --yellow: #8a6410;
   --red: #bd3f3a;
+  /* categorical palette — memory-graph namespaces, assigned by hash rather
+   * than meaning, so these carry no semantics beyond "tell these apart".
+   * Darkened for legibility on the light canvas. */
+  --graph-ns-1: #2f6fd0;
+  --graph-ns-2: #c2543c;
+  --graph-ns-3: #0e7d8c;
+  --graph-ns-4: #8e50b0;
+  --graph-ns-5: #4a8a2f;
+  --graph-ns-6: #9a6b12;
+  --graph-ns-7: #4b5ec4;
+  --graph-ns-8: #bb4a77;
 }
 
 .dark {
@@ -76,6 +87,15 @@
   --green: #4fc296;
   --yellow: #d9a94e;
   --red: #e6746f;
+  /* categorical palette (see :root) — lifted for the dark canvas. */
+  --graph-ns-1: #5b8def;
+  --graph-ns-2: #e0725c;
+  --graph-ns-3: #5cc7d2;
+  --graph-ns-4: #c98bd8;
+  --graph-ns-5: #8fbf5f;
+  --graph-ns-6: #e0b155;
+  --graph-ns-7: #7a90c9;
+  --graph-ns-8: #d97a9e;
 }
 
 /* Raw-var back-compat: legacy CSS + inline styles reference var(--text2),
