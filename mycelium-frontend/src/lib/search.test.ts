@@ -22,14 +22,19 @@ describe("result links", () => {
     expect(resultHref(hit({ type: "room", id: "atlas", room: "atlas" }))).toBe("/room/atlas");
   });
 
-  it("carries the item as one focus parameter, round-tripping through the URL", () => {
+  it("opens memory hits on the full-page route (#614)", () => {
     const href = resultHref(hit());
+    expect(href).toBe("/room/atlas%20migration/memory/decisions/db%20choice");
+  });
+
+  it("carries non-memory items as one focus parameter, round-tripping through the URL", () => {
+    const href = resultHref(hit({ type: "episode", id: "ep-1" }));
     const focus = new URL(href, "http://x").searchParams.get("focus");
-    expect(parseFocus(focus)).toEqual({ type: "memory", id: "decisions/db choice" });
+    expect(parseFocus(focus)).toEqual({ type: "episode", id: "ep-1" });
   });
 
   it("escapes a room name so a space can't end the path", () => {
-    expect(resultHref(hit())).toContain("/room/atlas%20migration?");
+    expect(resultHref(hit({ type: "episode", id: "ep-1" }))).toContain("/room/atlas%20migration?");
   });
 
   it("keeps the colons inside a memory key out of the type split", () => {

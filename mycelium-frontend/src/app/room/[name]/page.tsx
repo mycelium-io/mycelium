@@ -7,6 +7,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchRoom, logFetchError, type EpisodeSummary, type Room } from "@/lib/api";
 import { parseFocus, type FocusTarget } from "@/lib/search";
+import { memoryHref } from "@/lib/memory-routes";
 import { AppShell } from "@/components/app-shell";
 import { EventStream, type View, type NegotiationPhase } from "@/components/event-stream";
 import { RoomChatBox } from "@/components/room-chat-box";
@@ -116,9 +117,12 @@ function RoomWorkspace() {
     applied.current = focusParam;
     const target = parseFocus(focusParam);
     if (!target) return;
+    if (target.type === "memory") {
+      router.replace(memoryHref(roomName, target.id));
+      return;
+    }
     setFocus(target);
-    if (target.type === "memory") openTab("memory");
-    else if (target.type === "episode") openTab("episodes");
+    if (target.type === "episode") openTab("episodes");
     else if (target.type === "agent") openTab("agents");
     else if (target.type === "message") setEditorView("channel");
     router.replace(`/room/${encodeURIComponent(roomName)}`, { scroll: false });

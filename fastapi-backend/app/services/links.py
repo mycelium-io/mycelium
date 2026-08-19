@@ -206,6 +206,23 @@ def _strip_code(body: str) -> str:
     return _INLINE_CODE_RE.sub(lambda m: " " * len(m.group(0)), body)
 
 
+def _code_span_ranges(body: str) -> list[tuple[int, int]]:
+    """Start/end offsets of fenced code blocks and inline code spans.
+
+    A ``![[…]]`` example quoted in backticks (documentation about the syntax,
+    not a live link) must not be treated as a real marker — same rule
+    ``parse_body_links`` applies via ``_strip_code``, restated here as ranges
+    since ``expand`` needs to preserve the surrounding text verbatim.
+    """
+    ranges = [m.span() for m in _FENCE_RE.finditer(body)]
+    ranges += [m.span() for m in _INLINE_CODE_RE.finditer(body)]
+    return ranges
+
+
+def _in_code_span(pos: int, ranges: list[tuple[int, int]]) -> bool:
+    return any(start <= pos < end for start, end in ranges)
+
+
 def parse_body_links(body: str) -> list[Link]:
     """Extract every link in a markdown body, in document order."""
     scannable = _strip_code(body)
@@ -547,8 +564,11 @@ def expand(room_name: str, key: str) -> dict[str, Any]:
     body = source[1]
     targets = {e.key: e for e in load_index(room_name)}
     expansions: list[Expansion] = []
+    code_ranges = _code_span_ranges(body)
 
     def replace(match: re.Match[str]) -> str:
+        if _in_code_span(match.start(), code_ranges):
+            return match.group(0)
         link = _make_link(match.group(1), kind=KIND_TRANSCLUSION, raw=match.group(0))
         if link is None:
             return match.group(0)

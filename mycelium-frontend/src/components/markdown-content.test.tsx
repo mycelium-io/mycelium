@@ -110,4 +110,18 @@ describe("<MarkdownContent /> memory links", () => {
 
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
+
+  it("leaves a wikilink/transclusion syntax example inside a code span inert", () => {
+    // A glossary row like `` `![[key]]` embeds the target `` is prose *about*
+    // the syntax, not a live link — it must not become a chip that navigates
+    // to a literal memory named "key".
+    render(
+      <MarkdownContent onLinkClick={vi.fn()}>
+        {"Transclusion: `![[key]]` embeds the target body, and `[[key]]` is a wikilink."}
+      </MarkdownContent>,
+    );
+
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+    expect(screen.getByText(/!\[\[key\]\]/)).toBeInTheDocument();
+  });
 });

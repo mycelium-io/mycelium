@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Mycelium Contributors
 
+import { memoryHref } from "@/lib/memory-routes";
+
 /** Command-style search: the content counterpart to the command palette.
  *
  *  ⌘K runs *actions*; this finds *things* — memories, episodes, messages, rooms
@@ -110,9 +112,11 @@ export function parseFocus(raw: string | null | undefined): FocusTarget | null {
 }
 
 /** Where picking `hit` navigates to. A room is its own target and needs no
- *  focus; everything else opens its room with the item selected. */
+ *  focus; memory hits open the dedicated full-page route (#614); everything
+ *  else opens its room with the item selected. */
 export function resultHref(hit: SearchHit): string {
-  const room = `/room/${encodeURIComponent(hit.room)}`;
   if (hit.type === "room") return `/room/${encodeURIComponent(hit.id)}`;
+  if (hit.type === "memory") return memoryHref(hit.room, hit.id);
+  const room = `/room/${encodeURIComponent(hit.room)}`;
   return `${room}?focus=${encodeURIComponent(focusParam(hit))}`;
 }

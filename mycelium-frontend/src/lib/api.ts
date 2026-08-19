@@ -7,6 +7,7 @@
 // URL baking. The internal backend URL is a server-side concern.
 
 import type { SearchResponse } from "@/lib/search";
+import { encodeMemoryKeyPath } from "@/lib/memory-routes";
 
 /**
  * Attach to a fetch `.catch` to surface network failures in the browser
@@ -176,7 +177,7 @@ export async function fetchMemories(roomName: string, prefix?: string): Promise<
  *  a caller jumping to a since-deleted key lands on the room rather than an
  *  error. */
 export async function fetchMemory(roomName: string, key: string): Promise<Memory | null> {
-  const path = key.split("/").map(encodeURIComponent).join("/");
+  const path = encodeMemoryKeyPath(key);
   return apiFetch<Memory | null>(`/api/rooms/${roomName}/memory/${path}`, {
     cache: "no-store",
     fallback: null,
@@ -244,6 +245,51 @@ export async function fetchMemoryLinks(roomName: string, key: string): Promise<M
     { cache: "no-store", fallback: EMPTY_LINKS },
   );
   return { key, outbound: data.outbound ?? [], backlinks: data.backlinks ?? [] };
+}
+
+export interface BrokenLink extends MemoryLink {
+  source: string;
+}
+
+export interface MemoryLinksIntegrity {
+  broken: BrokenLink[];
+  orphans: string[];
+  total_memories: number;
+  total_links: number;
+}
+
+const EMPTY_INTEGRITY: MemoryLinksIntegrity = {
+  broken: [],
+  orphans: [],
+  total_memories: 0,
+  total_links: 0,
+};
+
+/** Room-wide link integrity — broken edges and orphans. Degrades to empty. */
+export async function fetchMemoryIntegrity(roomName: string): Promise<MemoryLinksIntegrity> {
+  return apiFetch<MemoryLinksIntegrity>(`/api/rooms/${roomName}/links/integrity`, {
+    cache: "no-store",
+    fallback: EMPTY_INTEGRITY,
+  });
+}
+
+export interface MemoryExpanded {
+  key: string;
+  rendered: string;
+  expansions: Array<{ raw: string; target: string; resolved: boolean; error?: string | null }>;
+  found: boolean;
+}
+
+const EMPTY_EXPAND: MemoryExpanded = { key: "", rendered: "", expansions: [], found: false };
+
+/** Body with `![[…]]` transclusions expanded (depth 1). Returns empty when missing. */
+export async function fetchMemoryExpanded(roomName: string, key: string): Promise<MemoryExpanded> {
+  const params = new URLSearchParams({ key });
+  const data = await apiFetch<MemoryExpanded>(
+    `/api/rooms/${roomName}/links/expand?${params}`,
+    { cache: "no-store", fallback: { ...EMPTY_EXPAND, key } },
+  );
+  return { ...EMPTY_EXPAND, ...data, key };
 }
 
 // ── Skills ───────────────────────────────────────────────────────────────────
