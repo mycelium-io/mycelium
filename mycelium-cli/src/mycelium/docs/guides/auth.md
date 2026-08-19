@@ -4,6 +4,10 @@ Mycelium's backend can require a signed **bearer token** on every HTTP API call,
 validated against an OIDC issuer you configure. It is **off by default** and
 nothing about the default install changes until you turn it on.
 
+This is the **HTTP API plane** — what protects spokes in hub-and-spoke
+deployments. It is separate from SLIM/MLS PSK or SignerJwt on the coordination
+fabric; see [Security Planes](#security-planes).
+
 ## Off by default, on purpose
 
 Auth must never be a wall between someone and trying Mycelium. A fresh install

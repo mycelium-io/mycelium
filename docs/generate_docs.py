@@ -70,6 +70,7 @@ SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
     # CLI + Config blocks injected after architecture, before guides/troubleshooting.
     ("guides/structured-memory.md", "structured-memory",  "reference", "Guides",       "Structured Memory"),
     ("guides/hub-and-spoke.md",     "hub-and-spoke",      "reference", "Guides",       "Hub & Spoke"),
+    ("guides/security-planes.md",   "security-planes",    "reference", "Guides",       "Security Planes"),
     ("guides/auth.md",              "auth",               "reference", "Guides",       "Authentication"),
     ("guides/keycloak-oidc.md",     "keycloak-oidc",      "reference", "Guides",       "Keycloak / OIDC Setup"),
     ("guides/spire-identity.md",    "spire-identity",     "reference", "Guides",       "Attested Identity (SPIRE)"),

@@ -42,7 +42,8 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # ── Mode switch (off by default) ─────────────────────────────────────────────
-# Mirrors the D1 ``MYCELIUM_SLIM_MASTER_SECRET`` posture: env-only, no config-apply
+# Mirrors the hub ``[slim].master_secret`` → ``MYCELIUM_SLIM_MASTER_SECRET`` path in
+# ``docker_utils.generate_env_file``; env override still wins via ``_load_from_env``.
 # coupling, so both the backend and the thin CLI resolve it identically.
 _MODE_ENV = "MYCELIUM_SLIM_IDENTITY"
 _REQUIRE_ENV = "MYCELIUM_SLIM_IDENTITY_REQUIRE"

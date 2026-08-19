@@ -117,7 +117,7 @@ def host(ctx: typer.Context) -> None:
 
         # Self-host: wire this machine up immediately.
         config = MyceliumConfig.load()
-        config.slim = SlimConfig(node_endpoint=local_endpoint)
+        config.slim = config.slim.model_copy(update={"node_endpoint": local_endpoint})
         config.save()
 
         typer.secho("SLIM node running.", fg=typer.colors.GREEN)
@@ -162,12 +162,22 @@ def connect(
         config = MyceliumConfig.load()
         # Construct through SlimConfig so its validator adds the scheme and trims
         # slashes (pydantic v2 doesn't validate plain attribute assignment).
-        config.slim = SlimConfig(node_endpoint=address)
+        normalized = SlimConfig(
+            node_endpoint=address,
+            identity=config.slim.identity,
+            master_secret=config.slim.master_secret,
+        )
+        config.slim = normalized
         config.save()
         typer.secho(
             f"Connected to SLIM node at {config.slim.node_endpoint}",
             fg=typer.colors.GREEN,
         )
+        typer.echo(
+            "  Stored the SLIM node endpoint. Default participation (memory, "
+            "await/respond) uses the hub HTTP API (server.api_url), not SLIM."
+        )
+        typer.echo("  Spokes do not need MYCELIUM_SLIM_MASTER_SECRET for that path.")
     except Exception as e:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
         print_error(e, verbose=verbose)
