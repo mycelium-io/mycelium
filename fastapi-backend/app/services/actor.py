@@ -91,6 +91,26 @@ def bind_optional_actor(
     return _authoritative(principal, claimed, field)
 
 
+def bind_delegated_actor(
+    request: Request | None, room: str, claimed: str | None, *, field: str = "handle"
+) -> str:
+    """Like :func:`bind_actor`, but also honors owner/allow_from delegation.
+
+    Use this for a write that is a *documented* delegation surface (an agent's
+    owner replying on its behalf, per ``mycelium agent create --owner``) — unlike
+    ``bind_actor``/``_authoritative``, which requires the claimed handle to be the
+    token's own and is right for writes that must always be the caller's own.
+    """
+    principal = current_principal(request)
+    if principal is None:
+        return claimed or ""
+    authorize_handle(request, room, claimed, field=field)
+    base, sep, session = (claimed or "").partition("#")
+    normalized = normalize_handle(base)
+    resolved = normalized if normalized is not None else principal.handle
+    return f"{resolved}#{session}" if sep and session else resolved
+
+
 def may_act_as(principal: Principal, room: str, handle: str | None) -> bool:
     """Whether ``principal`` may act as ``handle`` in ``room``.
 
