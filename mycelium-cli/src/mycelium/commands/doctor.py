@@ -517,7 +517,7 @@ def _check_http_auth_gate(*, api_url: str) -> CheckResult:
                 name="HTTP API auth",
                 status=status,
                 message="JWT gate enabled on hub",
-                details=details or None,
+                details=details,
             )
         if remote_target:
             return CheckResult(
