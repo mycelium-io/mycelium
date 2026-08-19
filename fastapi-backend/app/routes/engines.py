@@ -20,7 +20,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from app.routes.memory import upsert_memories
-from app.schemas import AgentRead, MemoryBatchCreate, MemoryCreate
+from app.schemas import HANDLE_PATTERN, AgentRead, MemoryBatchCreate, MemoryCreate
 from app.services import actor
 from app.services.filesystem import get_room_dir, read_memory_file, room_exists
 
@@ -32,7 +32,7 @@ router = APIRouter(prefix="/rooms/{room_name}/engines", tags=["engines"])
 # ``mycelium.protocol.ENGINE_KINDS``; the summon seam self-selects by ``kind``.
 ENGINE_KINDS = frozenset({"aligner", "synthesizer"})
 
-_HANDLE_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
+_HANDLE_RE = re.compile(HANDLE_PATTERN)
 
 
 class EngineCreate(BaseModel):

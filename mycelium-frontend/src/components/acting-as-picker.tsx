@@ -30,7 +30,10 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
-const SLUG = /^[a-z0-9][a-z0-9._-]*$/;
+// A handle is an identity and can be minted by a real IdP, so it allows the `@`
+// a corporate SSO `preferred_username` carries (e.g. `user@example.com`). Keep
+// in sync with the backend (`app/schemas.py`) and CLI (`protocol.py`) copies.
+const HANDLE = /^[a-z0-9][a-z0-9._@-]*$/;
 const normHandle = (s: string) => s.trim().replace(/^@/, "").toLowerCase();
 
 interface Form {
@@ -128,8 +131,8 @@ export function ActingAsPicker() {
       setError("Enter a handle.");
       return;
     }
-    if (!SLUG.test(handle)) {
-      setError("Handle must be lowercase letters, digits, . _ or -, with no spaces.");
+    if (!HANDLE.test(handle)) {
+      setError("Handle must be lowercase letters, digits, . _ - or @, with no spaces.");
       return;
     }
     try {

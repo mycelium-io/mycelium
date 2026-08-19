@@ -12,6 +12,15 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
 
+# Two shape rules, deliberately distinct. A *handle* is an identity and can be
+# minted by a real IdP, so it allows the `@` a corporate SSO `preferred_username`
+# carries (e.g. `user@example.com`). A *slug* is a filename / composer trigger
+# token (skill names) and stays clean. The CLI (`mycelium/protocol.py`) and the
+# frontend (`acting-as-picker.tsx`) keep matching copies; the thin CLI can't
+# import this package.
+HANDLE_PATTERN = r"^[a-z0-9][a-z0-9._@-]*$"
+SLUG_PATTERN = r"^[a-z0-9][a-z0-9._-]*$"
+
 # ── Room ──────────────────────────────────────────────────────────────────────
 
 
@@ -375,7 +384,7 @@ class SkillCreate(BaseModel):
         ...,
         min_length=1,
         max_length=128,
-        pattern=r"^[a-z0-9][a-z0-9._-]*$",
+        pattern=SLUG_PATTERN,
         description="Skill slug (kebab-case); the filename and the composer's /trigger token",
     )
     description: str = Field("", max_length=512, description="One-line summary shown in listings")
@@ -417,7 +426,7 @@ class SkillListResponse(BaseModel):
 
 
 class UserCreate(BaseModel):
-    handle: str = Field(..., min_length=1, pattern=r"^[a-z0-9][a-z0-9._-]*$")
+    handle: str = Field(..., min_length=1, pattern=HANDLE_PATTERN)
     display_name: str = ""
     teams: list[str] = Field(default_factory=list)
     notify: str | None = None

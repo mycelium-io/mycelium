@@ -53,6 +53,15 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+# Two shape rules, deliberately distinct. A *handle* is an identity and can be
+# minted by a real IdP, so it allows the `@` a corporate SSO `preferred_username`
+# carries (e.g. `user@example.com`). A *slug* is a filename / composer trigger
+# token (memory keys, skill names) and stays clean. Keep this backend-side copy
+# (`app/schemas.py`, `app/routes/engines.py`) and the frontend copy
+# (`acting-as-picker.tsx`) in agreement; the thin CLI can't import the backend.
+HANDLE_PATTERN = r"^[a-z0-9][a-z0-9._@-]*$"
+SLUG_PATTERN = r"^[a-z0-9][a-z0-9._-]*$"
+
 # Why an agent's stated belief moved this turn (SIEP `belief.revision_cause`).
 # ``social_compliance`` is the one that drives SCR down; the rest are genuine.
 RevisionCause = Literal[
@@ -266,7 +275,7 @@ class MemoryLogEntry(BaseModel):
     """
 
     category: Literal["work", "decisions", "context", "status", "procedures", "plan"]
-    slug: str = Field(..., min_length=1, pattern=r"^[a-z0-9][a-z0-9._-]*$")
+    slug: str = Field(..., min_length=1, pattern=SLUG_PATTERN)
     content: str = Field(..., min_length=1)
     tags: list[str] | None = None
 
@@ -316,11 +325,12 @@ class AgentManifest(BaseModel):
     - ``engine``: a first-party cognition engine (e.g. ``aligner``), run by the
       backend. Requires ``kind``.
 
-    The handle slug doubles as the mention target (``@release-agent``), so it
-    must match the same lowercase pattern other memory slugs use.
+    The handle doubles as the mention target (``@release-agent``). It follows the
+    lowercase ``HANDLE_PATTERN`` — like a memory slug but also allowing ``@``, so
+    an IdP-minted email identity (``user@example.com``) is a valid handle.
     """
 
-    handle: str = Field(..., min_length=1, pattern=r"^[a-z0-9][a-z0-9._-]*$")
+    handle: str = Field(..., min_length=1, pattern=HANDLE_PATTERN)
     adapter: Literal["claude_code", "cursor", "engine"] = "claude_code"
     kind: str | None = Field(
         default=None,
@@ -421,7 +431,7 @@ class UserManifest(BaseModel):
     cryptographic.
     """
 
-    handle: str = Field(..., min_length=1, pattern=r"^[a-z0-9][a-z0-9._-]*$")
+    handle: str = Field(..., min_length=1, pattern=HANDLE_PATTERN)
     display_name: str = Field(default="", description="Human-readable name, e.g. 'Avery Quinn'.")
     teams: list[str] = Field(
         default_factory=list,
