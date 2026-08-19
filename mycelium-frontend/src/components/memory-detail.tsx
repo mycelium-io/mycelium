@@ -143,9 +143,11 @@ interface Props {
   onNavigate?: (key: string) => void;
   /** Rail peek vs full-page wiki layout. */
   variant?: "rail" | "page";
-  /** When set, Rendered mode shows expanded transclusions (#614 full page). */
+  /** When set, Rendered mode shows expanded transclusions instead of raw
+   *  `![[…]]` markers (#614 full page, #599 rail drawer). */
   renderedBody?: string | null;
-  /** Room integrity report; page variant surfaces per-memory notes. */
+  /** Room integrity report; surfaces this memory's broken-link/orphan notes
+   *  in either variant when supplied. */
   integrity?: MemoryLinksIntegrity | null;
 }
 
@@ -277,9 +279,12 @@ export function MemoryDetail({
     () => (variant === "page" ? neighborKeys(memory.key, outbound, backlinks) : []),
     [variant, memory.key, outbound, backlinks],
   );
+  // Integrity banner shows in both variants when a report is supplied — the
+  // rail drawer is a valid place to notice a broken link before opening the
+  // full page (#599).
   const integrityNotes = useMemo(
-    () => (variant === "page" ? integrityNotesForMemory(memory.key, integrity) : null),
-    [variant, memory.key, integrity],
+    () => integrityNotesForMemory(memory.key, integrity),
+    [memory.key, integrity],
   );
 
   return (

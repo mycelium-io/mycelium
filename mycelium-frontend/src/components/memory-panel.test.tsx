@@ -25,7 +25,13 @@ vi.mock("next/link", () => ({
 }));
 
 vi.mock("@/components/memory-detail", () => ({
-  MemoryDetail: () => <div data-testid="memory-detail" />,
+  MemoryDetail: (props: { integrity?: unknown; renderedBody?: string | null }) => (
+    <div
+      data-testid="memory-detail"
+      data-has-integrity={props.integrity ? "yes" : "no"}
+      data-rendered-body={props.renderedBody ?? ""}
+    />
+  ),
 }));
 
 vi.mock("@/components/detail-drawer", () => ({
@@ -41,11 +47,22 @@ vi.mock("@/components/detail-drawer", () => ({
 vi.mock("@/lib/api", () => ({
   fetchMemories: vi.fn(),
   fetchMemory: vi.fn(),
+  fetchMemoryExpanded: vi.fn(),
+  fetchMemoryIntegrity: vi.fn(),
   searchMemories: vi.fn(),
   fetchMemoryLinks: vi.fn(),
 }));
 
-import { fetchMemories, fetchMemory, fetchMemoryLinks } from "@/lib/api";
+import {
+  fetchMemories,
+  fetchMemory,
+  fetchMemoryExpanded,
+  fetchMemoryIntegrity,
+  fetchMemoryLinks,
+} from "@/lib/api";
+
+const EMPTY_INTEGRITY = { broken: [], orphans: [], total_memories: 0, total_links: 0 };
+const EMPTY_EXPAND = { key: "", rendered: "", expansions: [], found: false };
 
 const offTree = {
   key: "context/off-tree",
@@ -66,6 +83,8 @@ describe("<MemoryPanel /> peek navigation", () => {
       outbound: [],
       backlinks: [],
     });
+    vi.mocked(fetchMemoryIntegrity).mockResolvedValue(EMPTY_INTEGRITY);
+    vi.mocked(fetchMemoryExpanded).mockResolvedValue(EMPTY_EXPAND);
   });
 
   it("routes to full page when focusMemory targets a missing key", async () => {
@@ -103,5 +122,42 @@ describe("<MemoryPanel /> peek navigation", () => {
     await waitFor(() => expect(fetchMemory).toHaveBeenCalled());
     expect(await screen.findByTestId("memory-drawer")).toBeInTheDocument();
     expect(push).not.toHaveBeenCalled();
+  });
+
+  it("passes the room integrity report and expanded body into the drawer's MemoryDetail (#599)", async () => {
+    vi.mocked(fetchMemory).mockResolvedValue(offTree);
+    vi.mocked(fetchMemoryIntegrity).mockResolvedValue({
+      broken: [
+        {
+          source: offTree.key,
+          target: "gone",
+          kind: "wikilink",
+          raw: "[[gone]]",
+          resolved: false,
+        },
+      ],
+      orphans: [],
+      total_memories: 1,
+      total_links: 1,
+    });
+    vi.mocked(fetchMemoryExpanded).mockResolvedValue({
+      key: offTree.key,
+      rendered: "expanded transclusion body",
+      expansions: [],
+      found: true,
+    });
+
+    render(
+      <MemoryPanel
+        roomName="demo"
+        refreshTrigger={0}
+        focusMemory={{ key: offTree.key, nonce: 1 }}
+      />,
+    );
+
+    const detail = await screen.findByTestId("memory-detail");
+    await waitFor(() => expect(fetchMemoryExpanded).toHaveBeenCalledWith("demo", offTree.key));
+    await waitFor(() => expect(detail).toHaveAttribute("data-has-integrity", "yes"));
+    expect(detail).toHaveAttribute("data-rendered-body", "expanded transclusion body");
   });
 });

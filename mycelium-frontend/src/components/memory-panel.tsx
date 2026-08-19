@@ -10,8 +10,11 @@ import { Brain, ChevronRight, ExternalLink, Folder, FolderOpen, FileText, AlertC
 import {
   fetchMemories,
   fetchMemory,
+  fetchMemoryExpanded,
+  fetchMemoryIntegrity,
   searchMemories,
   type Memory,
+  type MemoryLinksIntegrity,
   type MemorySearchResult,
 } from "@/lib/api";
 import { memoryHref } from "@/lib/memory-routes";
@@ -201,6 +204,8 @@ export function MemoryPanel({ roomName, refreshTrigger, focusKey = null, onFocus
   const [searchError, setSearchError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Memory | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [integrity, setIntegrity] = useState<MemoryLinksIntegrity | null>(null);
+  const [renderedBody, setRenderedBody] = useState<string | null>(null);
   const memoriesRef = useRef(memories);
   memoriesRef.current = memories;
 
@@ -210,6 +215,37 @@ export function MemoryPanel({ roomName, refreshTrigger, focusKey = null, onFocus
     setMemories(await fetchMemories(roomName));
     setLoaded(true);
   }, [roomName]);
+
+  // Room-wide integrity report, refreshed alongside the tree — cheap enough
+  // to fetch unconditionally so the drawer can flag a broken/orphaned memory
+  // without a per-open round trip (#599).
+  useEffect(() => {
+    let live = true;
+    fetchMemoryIntegrity(roomName).then(report => {
+      if (live) setIntegrity(report);
+    });
+    return () => {
+      live = false;
+    };
+  }, [roomName, refreshTrigger]);
+
+  // Expanded transclusions for whichever memory is open in the drawer, so the
+  // rail peek matches the full page instead of leaving `![[…]]` markers as
+  // unexpanded chips (#599).
+  useEffect(() => {
+    if (!selected) {
+      setRenderedBody(null);
+      return;
+    }
+    let live = true;
+    setRenderedBody(null);
+    fetchMemoryExpanded(roomName, selected.key).then(exp => {
+      if (live && exp.found && exp.rendered) setRenderedBody(exp.rendered);
+    });
+    return () => {
+      live = false;
+    };
+  }, [roomName, selected]);
 
   const contributors = useMemo(
     () => Array.from(new Set(memories.map(m => m.created_by).filter(Boolean))),
@@ -420,7 +456,13 @@ export function MemoryPanel({ roomName, refreshTrigger, focusKey = null, onFocus
         }
       >
         {selected && (
-          <MemoryDetail memory={selected} roomName={roomName} onNavigate={openMemoryByKey} />
+          <MemoryDetail
+            memory={selected}
+            roomName={roomName}
+            onNavigate={openMemoryByKey}
+            renderedBody={renderedBody}
+            integrity={integrity}
+          />
         )}
       </DetailDrawer>
     </div>

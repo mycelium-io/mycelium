@@ -30,12 +30,15 @@ slashes allowed). Rail stays as **quick peek**; full-page is the reading surface
 | ----- | --------------------------------------------------------------------------- |
 | #600  | Epic — #614 is the dedicated-route track                                    |
 | #611  | Merged — wikilinks, backlinks, relations in rail; transclusion markers only |
-| #599  | Graph viz + global inline transclusion in `markdown-content` (later)        |
+| #599  | Graph viz (later); rail integrity banner + inline transclusion moved here  |
 | #596  | Frontmatter schemas (out of scope)                                          |
 
 
 #599's open question (*rail vs full-page*) is answered here: **full-page for reading**;
-graph stays in Memory area (#599).
+graph stays in Memory area (#599). The rail integrity banner and inline transclusion
+(originally scoped to #599) shipped in this branch too, since #614 already built the
+`fetchMemoryIntegrity`/`fetchMemoryExpanded` plumbing and `MemoryDetail` accepts both
+props regardless of variant — see Phase 3.
 
 ---
 
@@ -86,11 +89,17 @@ tests when the slice needs a later phase.
 
 - "Open full page" link in `DetailDrawer` header (memory panel)
 - `navigateToKey`: if key not in loaded list → `router.push(memoryHref(...))`
+- Rail drawer fetches the room's `fetchMemoryIntegrity` report and the selected
+  memory's `fetchMemoryExpanded` body, passing both into `MemoryDetail` — the
+  integrity banner and inline transclusion (#599) are no longer page-only
 
 **Tests**
 
 - `memory-detail.test.tsx`: "Open full page" href correct when `showOpenFullPage`
 - `memory-routes.test.ts` already covers href generation (panel uses same helper)
+- `memory-detail.test.tsx`: integrity banner renders on the default (rail) variant
+- `memory-panel.test.tsx`: drawer's `MemoryDetail` receives the integrity report and
+  the selected memory's expanded `renderedBody`
 
 ---
 
@@ -189,6 +198,14 @@ Demo pages (seeded in `demo`):
 - [x] Memory tab → select a memory in the rail
 - [x] Drawer header **Full page** link (title: "Open full page") is visible
 - [x] Click → navigates to `/room/demo/memory/{key}` with same content
+
+### 5b. Rail integrity banner + inline transclusion (#599)
+
+- [ ] Select `context/integrity-orphan` (or similar) in the rail → banner shows in the
+      drawer, matching the full-page wording
+- [ ] Select a memory with `![[key]]` in the rail → **Rendered** mode (default) shows
+      the expanded content, not a raw `![[…]]` marker
+- [ ] **Raw** toggle in the rail still shows the original markdown with the marker intact
 
 ### 6. Memory tree vs off-tree navigation
 

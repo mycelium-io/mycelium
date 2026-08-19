@@ -79,6 +79,22 @@ describe("MemoryDetail", () => {
     expect(await screen.findByRole("status")).toHaveTextContent(/broken outbound link/i);
   });
 
+  it("shows the integrity banner on the rail (default) variant too (#599)", async () => {
+    render(
+      <MemoryDetail
+        memory={memory}
+        roomName="demo"
+        integrity={{
+          broken: [],
+          orphans: [memory.key],
+          total_memories: 1,
+          total_links: 0,
+        }}
+      />,
+    );
+    expect(await screen.findByRole("status")).toHaveTextContent(/orphan/i);
+  });
+
   it("uses renderedBody in Rendered mode", async () => {
     render(
       <MemoryDetail
