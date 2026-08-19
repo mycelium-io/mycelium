@@ -580,6 +580,13 @@ class AlignerEngine:
         if isinstance(offer, dict):
             reply["offer"] = offer
             reply.setdefault("action", "accept" if proposing else "reject")
+        # The wire move type, kept distinct from the collapsed metric ``action``
+        # above: the mediator's raw verb when it's one of the closed vocabulary,
+        # else a bare offer is a ``counter`` (the opening position included).
+        if isinstance(action, str) and action in l9.EXCHANGE_MOVE_SUBKINDS:
+            reply["move"] = action
+        elif isinstance(offer, dict):
+            reply["move"] = "counter"
         l9_episode.record_reply(ep, handle=handle, reply=reply, round_n=None)
 
     def _mediator_text(
