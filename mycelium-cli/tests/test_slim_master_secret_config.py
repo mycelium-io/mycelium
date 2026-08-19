@@ -88,3 +88,18 @@ def test_write_env_file_preserves_secret_on_reapply(isolated_home) -> None:
     assert second_assigned is False
     second_secret = _parse_env(env_path.read_text(encoding="utf-8"))["MYCELIUM_SLIM_MASTER_SECRET"]
     assert second_secret == first_secret
+
+
+def test_save_locks_secret_bearing_files_to_owner_only(isolated_home) -> None:
+    """config.toml + config.json hold slim.master_secret / llm.api_key, so save()
+    must write them 0600, not the default umask (often 0644)."""
+    myc = isolated_home / ".mycelium"
+    myc.mkdir(parents=True)
+    config_path = myc / "config.toml"
+
+    cfg = MyceliumConfig()
+    cfg.slim.master_secret = "stable-secret-value-0123456789abcdef"
+    cfg.save(config_path)
+
+    assert config_path.stat().st_mode & 0o777 == 0o600
+    assert (myc / "config.json").stat().st_mode & 0o777 == 0o600

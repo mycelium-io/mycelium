@@ -177,9 +177,7 @@ def connect(
             "  Stored the SLIM node endpoint. Default participation (memory, "
             "await/respond) uses the hub HTTP API (server.api_url), not SLIM."
         )
-        typer.echo(
-            "  Spokes do not need MYCELIUM_SLIM_MASTER_SECRET for that path."
-        )
+        typer.echo("  Spokes do not need MYCELIUM_SLIM_MASTER_SECRET for that path.")
     except Exception as e:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
         print_error(e, verbose=verbose)

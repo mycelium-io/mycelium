@@ -670,6 +670,8 @@ class MyceliumConfig(BaseModel):
             config_path.parent.mkdir(parents=True, exist_ok=True)
             with open(config_path, "w") as f:
                 toml.dump(config_dict, f)
+            # Holds secrets (slim.master_secret, llm.api_key); keep it owner-only.
+            config_path.chmod(0o600)
             self._write_json_snapshot(config_path.parent)
             return
 
@@ -701,6 +703,8 @@ class MyceliumConfig(BaseModel):
 
         with open(global_path, "w") as f:
             toml.dump(global_dict, f)
+        # Holds secrets (slim.master_secret, llm.api_key); keep it owner-only.
+        global_path.chmod(0o600)
         self._write_json_snapshot(global_path.parent)
 
     def _write_json_snapshot(self, config_dir: Path) -> None:
@@ -724,6 +728,9 @@ class MyceliumConfig(BaseModel):
             # rather than showing as `\u2014`.
             json.dump(snapshot, f, indent=2, ensure_ascii=False)
             f.write("\n")
+        # The snapshot is a full config dump (includes slim.master_secret,
+        # llm.api_key); keep it owner-only, same as config.toml.
+        json_path.chmod(0o600)
 
     def get_data_dir(self) -> Path:
         """Get the resolved data directory."""
