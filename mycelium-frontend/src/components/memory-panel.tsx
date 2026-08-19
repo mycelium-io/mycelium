@@ -3,8 +3,10 @@
 
 "use client";
 
-import { useEffect, useMemo, useState, useCallback } from "react";
-import { Brain, ChevronRight, Folder, FolderOpen, FileText, AlertCircle } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Brain, ChevronRight, ExternalLink, Folder, FolderOpen, FileText, AlertCircle } from "lucide-react";
 import {
   fetchMemories,
   fetchMemory,
@@ -12,6 +14,8 @@ import {
   type Memory,
   type MemorySearchResult,
 } from "@/lib/api";
+import { memoryHref } from "@/lib/memory-routes";
+import { expandedPathsForKey, resolveMemoryPeekNavigation } from "@/lib/memory-panel-nav";
 import { DetailDrawer } from "@/components/detail-drawer";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -188,6 +192,7 @@ function TreeRows({ nodes, depth, collapsed, onToggle, onSelect, selected }: Tre
 }
 
 export function MemoryPanel({ roomName, refreshTrigger, focusKey = null, onFocusConsumed, focusMemory }: Props) {
+  const router = useRouter();
   const [memories, setMemories] = useState<Memory[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -196,6 +201,8 @@ export function MemoryPanel({ roomName, refreshTrigger, focusKey = null, onFocus
   const [searchError, setSearchError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Memory | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const memoriesRef = useRef(memories);
+  memoriesRef.current = memories;
 
   // fetchMemories degrades to [] on failure (fire-and-forget list), so no
   // try/catch is needed here — a failed load just shows the empty state.
@@ -211,6 +218,33 @@ export function MemoryPanel({ roomName, refreshTrigger, focusKey = null, onFocus
 
   useEffect(() => { loadData(); }, [loadData, refreshTrigger]);
 
+  const revealKeyInTree = useCallback((key: string, clearSearch = false) => {
+    if (clearSearch) setSearchResults(null);
+    setCollapsed(prev => {
+      const next = new Set(prev);
+      for (const path of expandedPathsForKey(key)) next.delete(path);
+      return next;
+    });
+  }, []);
+
+  const openMemoryByKey = useCallback(
+    async (key: string) => {
+      const nav = await resolveMemoryPeekNavigation(
+        roomName,
+        key,
+        memoriesRef.current,
+        fetchMemory,
+      );
+      if (nav.action === "drawer") {
+        setSelected(nav.memory);
+        revealKeyInTree(key, true);
+        return;
+      }
+      router.push(nav.href);
+    },
+    [roomName, revealKeyInTree, router],
+  );
+
   // Arriving from search: open the named memory and reveal its folder. The tree
   // only holds the first page of keys, so the memory is fetched by key rather
   // than looked up in what happens to be loaded.
@@ -218,20 +252,8 @@ export function MemoryPanel({ roomName, refreshTrigger, focusKey = null, onFocus
     if (!focusKey) return;
     // Consumed only once the memory is in hand: clearing the request first would
     // unmount the effect that is still fetching what it asked for.
-    fetchMemory(roomName, focusKey).then(memory => {
-      if (memory) {
-        setSearchResults(null);
-        setSelected(memory);
-        setCollapsed(prev => {
-          const next = new Set(prev);
-          const parts = focusKey.split("/");
-          for (let i = 1; i < parts.length; i++) next.delete(parts.slice(0, i).join("/"));
-          return next;
-        });
-      }
-      onFocusConsumed?.();
-    });
-  }, [roomName, focusKey, onFocusConsumed]);
+    void openMemoryByKey(focusKey).finally(() => onFocusConsumed?.());
+  }, [roomName, focusKey, onFocusConsumed, openMemoryByKey]);
 
   const handleSearch = async () => {
     if (!searchQuery.trim()) { setSearchResults(null); setSearchError(null); return; }
@@ -249,22 +271,11 @@ export function MemoryPanel({ roomName, refreshTrigger, focusKey = null, onFocus
 
   const tree = useMemo(() => buildTree(memories), [memories]);
 
-  // Following a link keeps the drawer open on the target, so a reader can walk
-  // the graph without going back through the tree.
-  const navigateToKey = useCallback(
-    (key: string) => {
-      const target = memories.find(m => m.key === key);
-      if (target) setSelected(target);
-    },
-    [memories],
-  );
-
   // A chat `[[wikilink]]` (or any external focus request) selects that memory.
-  // navigateToKey changes with `memories`, so a focus set before the list loads
-  // resolves once it arrives; the nonce re-fires the same key on a repeat click.
+  // The nonce re-fires the same key on a repeat click.
   useEffect(() => {
-    if (focusMemory?.key) navigateToKey(focusMemory.key);
-  }, [focusMemory, navigateToKey]);
+    if (focusMemory?.key) void openMemoryByKey(focusMemory.key);
+  }, [focusMemory, openMemoryByKey]);
 
   const toggleNs = useCallback((path: string) =>
     setCollapsed(prev => {
@@ -395,9 +406,21 @@ export function MemoryPanel({ roomName, refreshTrigger, focusKey = null, onFocus
         onClose={() => setSelected(null)}
         title={selected?.key}
         subtitle={selected ? `v${selected.version} · ${selected.created_by}` : undefined}
+        actions={
+          selected ? (
+            <Link
+              href={memoryHref(roomName, selected.key)}
+              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-micro font-medium text-accent transition-colors hover:bg-hairline"
+              title="Open full page"
+            >
+              <ExternalLink className="size-3.5" />
+              Full page
+            </Link>
+          ) : undefined
+        }
       >
         {selected && (
-          <MemoryDetail memory={selected} roomName={roomName} onNavigate={navigateToKey} />
+          <MemoryDetail memory={selected} roomName={roomName} onNavigate={openMemoryByKey} />
         )}
       </DetailDrawer>
     </div>

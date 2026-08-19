@@ -4,9 +4,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowUpRight, CornerDownLeft } from "lucide-react";
+import { ArrowUpRight, CornerDownLeft, Share2 } from "lucide-react";
+import { highlightJson } from "@/components/l9-inspector";
 import { MarkdownContent } from "@/components/markdown-content";
-import { fetchMemoryLinks, type MemoryLink } from "@/lib/api";
+import { fetchMemoryLinks, type MemoryLink, type MemoryLinksIntegrity } from "@/lib/api";
+import { isJsonRawText, prettyPrintJsonRawText } from "@/lib/json-text";
+import { integrityNotesForMemory, neighborKeys, type MemoryIntegrityNotes } from "@/lib/memory-links";
 
 export interface MemoryLike {
   key: string;
@@ -138,14 +141,97 @@ interface Props {
   roomName?: string;
   /** Opens another memory by key — supplied by whatever owns the selection. */
   onNavigate?: (key: string) => void;
+  /** Rail peek vs full-page wiki layout. */
+  variant?: "rail" | "page";
+  /** When set, Rendered mode shows expanded transclusions (#614 full page). */
+  renderedBody?: string | null;
+  /** Room integrity report; page variant surfaces per-memory notes. */
+  integrity?: MemoryLinksIntegrity | null;
+}
+
+function IntegrityBanner({ notes }: { notes: MemoryIntegrityNotes }) {
+  const parts: string[] = [];
+  if (notes.brokenOutbound > 0) {
+    parts.push(
+      `${notes.brokenOutbound} broken outbound link${notes.brokenOutbound === 1 ? "" : "s"}`,
+    );
+  }
+  if (notes.isOrphan) parts.push("nothing links here yet (orphan)");
+  return (
+    <div
+      role="status"
+      className="mx-5 mt-4 rounded-lg border border-yellow/30 bg-yellow/10 px-3 py-2 text-label text-yellow"
+    >
+      {parts.join(" · ")}
+    </div>
+  );
+}
+
+function NeighborChips({
+  keys,
+  onNavigate,
+  className,
+}: {
+  keys: string[];
+  onNavigate?: (key: string) => void;
+  className?: string;
+}) {
+  if (keys.length === 0) return null;
+  return (
+    <div className={`border-t border-border py-4 ${className ?? "px-5"}`}>
+      <div className="mb-2 flex items-center gap-1.5 text-micro uppercase tracking-wide text-faint">
+        <Share2 className="size-3" />
+        Related
+        <span className="tabular">({keys.length})</span>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {keys.map(key => (
+          onNavigate ? (
+            <button
+              key={key}
+              type="button"
+              onClick={() => onNavigate(key)}
+              className="rounded-md border border-border bg-surface px-2 py-1 font-mono text-micro text-accent transition-colors hover:bg-hairline"
+            >
+              {key}
+            </button>
+          ) : (
+            <span
+              key={key}
+              className="rounded-md border border-border bg-surface px-2 py-1 font-mono text-micro text-muted-foreground"
+            >
+              {key}
+            </span>
+          )
+        ))}
+      </div>
+    </div>
+  );
 }
 
 /** Read-only review/audit of one memory: metadata, its markdown body, its links. */
-export function MemoryDetail({ memory, roomName, onNavigate }: Props) {
+export function MemoryDetail({
+  memory,
+  roomName,
+  onNavigate,
+  variant = "rail",
+  renderedBody = null,
+  integrity = null,
+}: Props) {
+  const pad = variant === "page" ? "px-6 md:px-8" : "px-5";
   const [raw, setRaw] = useState(false);
+  const [jsonView, setJsonView] = useState(false);
   const [outbound, setOutbound] = useState<MemoryLink[]>([]);
   const [backlinks, setBacklinks] = useState<MemoryLink[]>([]);
   const text = memory.content_text ?? formatValue(memory.value);
+  const displayText = !raw && renderedBody ? renderedBody : text;
+  const rawIsJson = useMemo(() => isJsonRawText(text), [text]);
+  const rawDisplay =
+    jsonView && rawIsJson ? (prettyPrintJsonRawText(text) ?? text) : text;
+
+  useEffect(() => {
+    if (!raw) setJsonView(false);
+  }, [raw]);
 
   useEffect(() => {
     if (!roomName) return;
@@ -187,18 +273,27 @@ export function MemoryDetail({ memory, roomName, onNavigate }: Props) {
   );
 
   const hasLinks = outbound.length > 0 || backlinks.length > 0;
+  const neighbors = useMemo(
+    () => (variant === "page" ? neighborKeys(memory.key, outbound, backlinks) : []),
+    [variant, memory.key, outbound, backlinks],
+  );
+  const integrityNotes = useMemo(
+    () => (variant === "page" ? integrityNotesForMemory(memory.key, integrity) : null),
+    [variant, memory.key, integrity],
+  );
 
   return (
     <div>
+      {integrityNotes && <IntegrityBanner notes={integrityNotes} />}
       {/* A skill is just a `skills/…` memory — no special pane, just a tag. */}
       {memory.key.startsWith("skills/") && (
-        <div className="px-5 pt-4">
+        <div className={`${pad} pt-4`}>
           <span className="inline-flex items-center rounded-md border border-accent/30 bg-accent-soft/40 px-2 py-0.5 text-micro font-medium text-accent">
             skill
           </span>
         </div>
       )}
-      <div className="grid grid-cols-2 gap-x-6 gap-y-4 border-b border-border px-5 py-4">
+      <div className={`grid grid-cols-2 gap-x-6 gap-y-4 border-b border-border ${pad} py-4`}>
         <Meta label="Version"><span className="tabular">v{memory.version}</span></Meta>
         <Meta label="Author">{memory.updated_by || memory.created_by}</Meta>
         {memory.updated_at && (
@@ -213,7 +308,7 @@ export function MemoryDetail({ memory, roomName, onNavigate }: Props) {
         )}
       </div>
 
-      <div className="flex items-center gap-2 px-5 pt-4">
+      <div className={`flex flex-wrap items-center gap-2 ${pad} pt-4`}>
         <div className="flex items-center gap-0.5 rounded-lg border border-border bg-surface p-0.5">
           {([["Rendered", false], ["Raw", true]] as const).map(([label, on]) => (
             <button
@@ -227,28 +322,45 @@ export function MemoryDetail({ memory, roomName, onNavigate }: Props) {
             </button>
           ))}
         </div>
+        {raw && rawIsJson && (
+          <button
+            type="button"
+            aria-pressed={jsonView}
+            aria-label="Pretty-print JSON"
+            onClick={() => setJsonView(on => !on)}
+            className={`rounded-lg border px-2.5 py-1 text-micro font-medium transition-colors ${
+              jsonView
+                ? "border-accent/40 bg-accent-soft/40 text-accent"
+                : "border-border bg-surface text-muted-foreground hover:text-text"
+            }`}
+          >
+            Format JSON
+          </button>
+        )}
       </div>
 
-      <div className="px-5 py-4">
+      <div className={`${pad} py-4`}>
         {raw ? (
           <pre className="overflow-x-auto rounded-lg border border-border bg-surface p-3 font-mono text-micro leading-relaxed text-text whitespace-pre-wrap break-words">
-            {text}
+            {jsonView ? highlightJson(rawDisplay) : rawDisplay}
           </pre>
         ) : (
           <MarkdownContent
-            className="contrast text-body leading-relaxed"
+            className={`contrast leading-relaxed ${variant === "page" ? "text-body max-w-prose" : "text-body"}`}
             onLinkClick={onNavigate}
             brokenLinks={broken}
           >
-            {text}
+            {displayText}
           </MarkdownContent>
         )}
       </div>
 
-      {/* Backlinks are the point: before changing this memory, they show
-          exactly which others depend on what it says. */}
+      {variant === "page" && (
+        <NeighborChips keys={neighbors} onNavigate={onNavigate} className={pad} />
+      )}
+
       {hasLinks && (
-        <div className="grid gap-4 border-t border-border px-5 py-4">
+        <div className={`grid gap-4 border-t border-border ${pad} py-4`}>
           <LinkGroup
             title="Links to"
             icon={ArrowUpRight}
