@@ -175,6 +175,10 @@ export function MarkdownContent({ children, className, onLinkClick, brokenLinks 
       if (Array.isArray(node))
         return node.map((n, i) => <React.Fragment key={i}>{walk(n)}</React.Fragment>);
       if (React.isValidElement(node)) {
+        // A code span/block is prose *about* syntax, not a link — e.g. a
+        // glossary row showing `![[key]]` as an example must stay inert text,
+        // not become a chip that navigates to a literal memory named "key".
+        if (node.type === "code" || node.type === "pre") return node;
         const props = node.props as { children?: React.ReactNode };
         return React.cloneElement(
           node as React.ReactElement<{ children?: React.ReactNode }>,
