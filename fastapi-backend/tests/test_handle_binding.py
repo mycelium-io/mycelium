@@ -251,6 +251,10 @@ async def test_reply_as_an_owned_agent_is_allowed(client: AsyncClient, as_princi
         def refresh_lease(self, room: str, handle: str) -> None:
             return None
 
+        async def send_as_custodian(self, room: str, handle: str, data: bytes) -> bool:
+            # PSK default: no custodial session, so the reply falls back to a moderator send.
+            return False
+
     monkeypatch.setattr(room_channels, "manager", _Manager())
 
     await _make_room(client)
