@@ -231,6 +231,33 @@ def test_expand_reports_a_missing_memory():
     assert links.expand("r", "nope")["found"] is False
 
 
+def test_expansion_skips_a_marker_quoted_as_a_code_example():
+    """A backtick-quoted `![[…]]` is documentation about the syntax, not a live
+    link — same rule ``parse_body_links`` already applies via ``_strip_code``,
+    but ``expand`` runs its own substitution and must honor it too."""
+    _write(
+        "r",
+        "glossary/self",
+        "Definition. Other pages embed this with `![[glossary/self]]`.",
+        expandable=True,
+    )
+    _write("r", "reader", "![[glossary/self]]")
+
+    result = links.expand("r", "reader")
+
+    assert result["rendered"].count("Definition.") == 1
+    assert "`![[glossary/self]]`" in result["rendered"]
+    assert result["expansions"] == [
+        {
+            "target": "glossary/self",
+            "anchor": None,
+            "raw": "![[glossary/self]]",
+            "expanded": True,
+            "error": None,
+        }
+    ]
+
+
 # ── Backward compatibility ───────────────────────────────────────────────────
 
 
