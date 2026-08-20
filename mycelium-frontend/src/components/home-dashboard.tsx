@@ -5,13 +5,15 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Boxes, Plus, Sparkles } from "lucide-react";
+import { Boxes, Plus, Sparkles, Terminal } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
+import { InstallPanel } from "@/components/install-panel";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CreateRoomDialog } from "@/components/create-room-dialog";
 import { type EpisodeSummary, type Room } from "@/lib/api";
 import { useRoomAgents, useRoomEpisodes, useRooms, type RoomQueryOptions } from "@/lib/room-data";
+import { useBackendHealth } from "@/lib/use-status";
 
 /** The cards read the shared caches but don't drive them: a grid of rooms is a
  *  glance, not a watch. */
@@ -29,6 +31,20 @@ function RunSampleLink({ className = "" }: { className?: string }) {
     >
       <Sparkles className="size-4 text-accent" />
       Run a sample
+    </Link>
+  );
+}
+
+/** Onboarding escape hatch from a connected workspace: the install flow, for a
+ *  second machine or an agent that still needs the CLI. */
+function InstallLink() {
+  return (
+    <Link
+      href="/install"
+      className="inline-flex items-center gap-1.5 text-label font-medium text-muted-foreground transition-colors hover:text-text"
+    >
+      <Terminal className="size-3.5" />
+      Install the CLI
     </Link>
   );
 }
@@ -65,6 +81,11 @@ function episodeState(ep: EpisodeSummary): { label: string; color: string; live:
 export function HomeDashboard() {
   const [showCreate, setShowCreate] = useState(false);
   const { rooms, loading, refresh } = useRooms();
+  // A room list read off an unreachable hub is empty rather than absent, so the
+  // health probe — not the list — is what tells "nothing here yet" apart from
+  // "nothing to talk to": with no hub, the grid would be a lie and the install
+  // flow is the whole screen.
+  const disconnected = useBackendHealth() === false;
 
   return (
     <div className="flex-1 overflow-y-auto">
@@ -73,19 +94,25 @@ export function HomeDashboard() {
           <div className="min-w-0">
             <h1 className="text-2xl font-semibold text-text">Command center</h1>
             <p className="mt-1 text-label text-muted-foreground">
-              Every coordination workspace, at a glance. Open one to negotiate, plan, and remember.
+              {disconnected
+                ? "No hub is answering yet. Install the CLI and this fills with your rooms."
+                : "Every coordination workspace, at a glance. Open one to negotiate, plan, and remember."}
             </p>
           </div>
-          <div className="mt-1 flex flex-shrink-0 items-center gap-2">
-            <RunSampleLink />
-            <Button onClick={() => setShowCreate(true)}>
-              <Plus className="size-4" />
-              New room
-            </Button>
-          </div>
+          {!disconnected && (
+            <div className="mt-1 flex flex-shrink-0 items-center gap-2">
+              <RunSampleLink />
+              <Button onClick={() => setShowCreate(true)}>
+                <Plus className="size-4" />
+                New room
+              </Button>
+            </div>
+          )}
         </header>
 
-        {loading ? (
+        {disconnected ? (
+          <InstallPanel className="max-w-3xl" />
+        ) : loading ? (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {Array.from({ length: 4 }, (_, i) => (
               <RoomCardSkeleton key={i} />
@@ -98,12 +125,15 @@ export function HomeDashboard() {
               title="No rooms yet"
               description="Create your first coordination room, or run a guided sample to see it work."
               action={
-                <div className="flex items-center gap-2">
-                  <Button onClick={() => setShowCreate(true)}>
-                    <Plus className="size-4" />
-                    New room
-                  </Button>
-                  <RunSampleLink />
+                <div className="flex flex-col items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <Button onClick={() => setShowCreate(true)}>
+                      <Plus className="size-4" />
+                      New room
+                    </Button>
+                    <RunSampleLink />
+                  </div>
+                  <InstallLink />
                 </div>
               }
             />

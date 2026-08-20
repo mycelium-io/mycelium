@@ -122,7 +122,7 @@ export function RoomsSidebar({ activeRoom = null }: Props) {
   useKeyAction("rooms.digit", chord => go(filtered[Number(chord.split("+").pop()) - 1]));
   useKeyAction("nav.home", () => router.push("/"));
 
-  // Every room by name, plus the two things this rail can do. Rooms come from
+  // Every room by name, plus what this rail can reach. Rooms come from
   // the full list, not the filtered one: the palette has a query of its own,
   // and a sidebar filter left set would silently hide rooms from it.
   const commands = useMemo<PaletteCommand[]>(
@@ -148,6 +148,13 @@ export function RoomsSidebar({ activeRoom = null }: Props) {
         run: () => setShowCreate(true),
       },
       { id: "nav.metrics", title: "Metrics", group: "Navigate", run: () => router.push("/metrics") },
+      {
+        id: "nav.install",
+        title: "Install the CLI",
+        group: "Navigate",
+        keywords: ["setup", "onboarding", "cli"],
+        run: () => router.push("/install"),
+      },
     ],
     [rooms, go, router],
   );
