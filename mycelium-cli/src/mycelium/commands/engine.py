@@ -173,7 +173,9 @@ def engine_invoke(
 ) -> None:
     """Summon a registered cognition engine by posting an ``@handle`` message.
 
-    The backend recognises a registered ``engine`` and runs it as that handle.
+    Fills gap #4: the built-in aligner previously had no CLI surface (you had to
+    hit the REST API directly). The backend recognises a registered ``engine``
+    and runs it as that handle.
 
     Example:
         mycelium engine invoke mediator-1 "converge on tech allocation and the cap"

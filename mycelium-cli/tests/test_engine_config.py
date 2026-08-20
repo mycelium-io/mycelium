@@ -16,7 +16,7 @@ def test_default_runtime_is_backend() -> None:
 
 @pytest.mark.parametrize(("given", "expected"), [("BACKEND", "backend"), (" backend ", "backend")])
 def test_runtime_normalized(given: str, expected: str) -> None:
-    # given is a dynamic str exercising the normalizer; the field is the EngineRuntime Literal.
+    # Pydantic validates the type, so the comment on normal return is implied.
     assert EngineConfig(runtime=given).runtime == expected  # ty: ignore[invalid-argument-type]
 
 

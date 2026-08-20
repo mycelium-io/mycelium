@@ -73,12 +73,7 @@ _UNSAFE = re.compile(r"[^a-z0-9._-]+")
 
 
 def normalize_handle(raw: str | None) -> str | None:
-    """The canonical handle a credential is keyed by.
-
-    Matches the backend's ``auth.normalize_handle``, and drops a session
-    qualifier (``alpha#a8f3``): a session is the same agent, so it presents the
-    same credential.
-    """
+    """Normalize handle, dropping session qualifier (matches ``auth.normalize_handle``)."""
     if not isinstance(raw, str):
         return None
     base = raw.partition("#")[0]
@@ -86,12 +81,10 @@ def normalize_handle(raw: str | None) -> str | None:
 
 
 def ambient_handle() -> str | None:
-    """The handle this process is running as, when it says so."""
     return normalize_handle(os.environ.get(AGENT_HANDLE_ENV))
 
 
 def store_path() -> Path:
-    """Where per-agent credentials are kept (``~/.mycelium/agent-credentials.json``)."""
     override = os.environ.get(CREDENTIAL_STORE_ENV, "").strip()
     if override:
         return Path(override).expanduser()
@@ -102,7 +95,6 @@ def store_path() -> Path:
 
 
 def token_cache_path(handle: str) -> Path:
-    """Where an agent's *minted* token is cached, one file per agent."""
     safe = _UNSAFE.sub("-", handle) or "agent"
     return store_path().parent / "agent-tokens" / f"{safe}.json"
 
@@ -134,7 +126,7 @@ class AgentCredential:
 
 
 def _read_store() -> dict[str, dict[str, Any]]:
-    """The stored per-agent entries. A damaged store reads as empty, not as an error."""
+    """Return stored agents (damaged store reads as empty)."""
     try:
         data = json.loads(store_path().read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -148,7 +140,7 @@ def _read_store() -> dict[str, dict[str, Any]]:
 
 
 def _write_store(agents: dict[str, dict[str, Any]]) -> Path:
-    """Persist the store owner-readable only; it holds client secrets."""
+    """Write store with 0600 permissions (holds secrets)."""
     path = store_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     # os.open with 0600 rather than write_text + chmod: the file must never exist,
@@ -271,7 +263,6 @@ def _cached_token(handle: str, credential: AgentCredential) -> str | None:
 
 
 def clear_cached_token(handle: str) -> bool:
-    """Drop an agent's cached mint. Returns whether there was one."""
     from mycelium.tokens import clear_token
 
     return clear_token(token_cache_path(handle))
@@ -324,11 +315,7 @@ def _mint(handle: str, credential: AgentCredential) -> str | None:
 
 
 def access_token(config: MyceliumConfig, handle: str | None = None) -> str | None:
-    """The bearer token an agent should send, or ``None`` when it has no credential.
-
-    Re-minted transparently once the cached one is close enough to expiry that it
-    could die in flight.
-    """
+    """Return an agent's bearer token (re-mints transparently when needed)."""
     credential = resolve(config, handle)
     if credential is None:
         return None
@@ -340,7 +327,6 @@ def access_token(config: MyceliumConfig, handle: str | None = None) -> str | Non
 
 
 def describe(config: MyceliumConfig, handle: str) -> dict[str, Any]:
-    """What credential an agent resolves to, for ``agent credential show``."""
     credential = resolve(config, handle)
     if credential is None:
         return {"handle": normalize_handle(handle) or handle, "configured": False}

@@ -43,7 +43,6 @@ class _Client:
 
 @pytest.fixture(autouse=True)
 def _hub(monkeypatch: pytest.MonkeyPatch) -> None:
-    """No command may open a real connection."""
     monkeypatch.setattr(memory_cmd, "_get_client", lambda: _Client())
 
 
@@ -84,7 +83,7 @@ def _structured(**fields: Any):
 
 
 def _stub_get(monkeypatch: pytest.MonkeyPatch, result: Any) -> None:
-    """Stub the get-memory API; an Exception instance is raised instead."""
+    """Stub get-memory API; raise Exception if result is one."""
 
     def _sync(**_kw: Any):
         if isinstance(result, Exception):
@@ -98,7 +97,7 @@ def _stub_get(monkeypatch: pytest.MonkeyPatch, result: Any) -> None:
 
 
 def _stub_list(monkeypatch: pytest.MonkeyPatch, result: Any) -> list[dict[str, Any]]:
-    """Stub the list-memories API; returns the kwargs it was called with."""
+    """Stub list-memories API; return call kwargs."""
     calls: list[dict[str, Any]] = []
 
     def _sync(**kwargs: Any):
@@ -115,7 +114,7 @@ def _stub_list(monkeypatch: pytest.MonkeyPatch, result: Any) -> list[dict[str, A
 
 
 def _stub_create(monkeypatch: pytest.MonkeyPatch) -> list:
-    """Stub the create-memories API, returning the batches it was handed."""
+    """Stub create-memories API; return captured batches."""
     captured: list = []
 
     def _sync(*, room_name: str, client, body):  # noqa: ANN001, ARG001

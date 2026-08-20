@@ -92,8 +92,7 @@ function roomKey(room: string, resource: RoomResource, ...rest: (string | number
   return room ? (["room", room, resource, ...rest] as const) : null;
 }
 
-/** Per-call-site overrides. The one that earns its keep is `refreshInterval: 0`
- *  — a card in a grid of rooms wants the shared cache, not N more timers. */
+/** Per-call-site overrides; refreshInterval: 0 skips polling in room grids. */
 export interface RoomQueryOptions {
   refreshInterval?: number;
 }
@@ -136,8 +135,7 @@ export function useRooms(opts: RoomQueryOptions = {}) {
   return { rooms: data ?? NO_ROOMS, loading: isLoading, refresh };
 }
 
-/** One room's metadata. `fetchRoom` throws rather than falling back, so a
- *  failure is logged here and left as `null` for the caller to render around. */
+/** fetchRoom failure logged; returns null for caller to render. */
 export function useRoom(room: string, opts: RoomQueryOptions = {}) {
   const { data, loading, error, refresh } = useRoomQuery(
     room,
@@ -168,8 +166,7 @@ export function useRoomMembers(room: string, opts: RoomQueryOptions = {}) {
   return { members: data, loading, refresh };
 }
 
-/** Handles that have broadcast into the room — people reachable by `@` even
- *  when they aren't present right now. */
+/** Handles that have broadcast — reachable by `@` even when not present. */
 export function useRoomPosters(room: string, opts: RoomQueryOptions = {}) {
   const { data, isLoading, mutate } = useSWR(
     room ? (["room", room, "messages", POSTER_LIMIT] as const) : null,
@@ -196,8 +193,7 @@ export function useRoomMemories(room: string, opts: RoomQueryOptions = {}) {
   return { memories: data, loading, refresh };
 }
 
-/** Room-wide link integrity. Not polled: it moves only when a memory does, and
- *  a memory write already revalidates the room. */
+/** Not polled; memory writes revalidate the room. */
 export function useRoomMemoryIntegrity(room: string, opts: RoomQueryOptions = {}) {
   const { data, loading, refresh } = useRoomQuery(
     room, "integrity", fetchMemoryIntegrity, null as MemoryLinksIntegrity | null, 0, opts,
@@ -236,9 +232,7 @@ export function useCoordination(opts: RoomQueryOptions = {}) {
 
 // ── Revalidation ─────────────────────────────────────────────────────────────
 
-/** Refetch everything this room owns. This is what a pushed SSE event calls:
- *  one trigger reaches every reader of every room resource, wherever it sits in
- *  the tree, so nothing has to thread a refresh counter down as a prop. */
+/** Refetch all room resources; one call reaches every reader without prop-threading. */
 export function useRoomRevalidate(room: string): () => void {
   const { mutate } = useSWRConfig();
   return useCallback(() => {

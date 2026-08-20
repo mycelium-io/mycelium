@@ -95,7 +95,6 @@ def _numeric_snap(raw: str, valid: list[str]) -> str | None | bool:
 
 
 def _normalise(text: str) -> str:
-    """Lowercase; collapse whitespace, underscores, hyphens to a single space."""
     return re.sub(r"[\s_\-]+", " ", str(text).strip().lower())
 
 

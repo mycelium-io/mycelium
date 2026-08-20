@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Tests for the L9 episode read API that backs the protocol inspector."""
 
 import pytest
 
@@ -9,7 +8,6 @@ from app.services import l9_episode
 
 
 async def _seed_episode(client, room: str, short_id: str = "abc123", *, broken: bool = False):
-    """Create a room and write one closed episode record into its memory."""
     await client.post("/api/rooms", json={"name": room})
     ep = l9_episode.open_episode(
         parent_room=room,
@@ -63,7 +61,6 @@ async def test_list_episodes_returns_summary(client):
 
 @pytest.mark.asyncio
 async def test_list_episodes_surfaces_an_in_progress_episode(client):
-    """An in-progress episode shows in the list with outcome 'open'."""
     from app.services.room_channels import ManagedRoomChannel, manager
 
     room = "live-room"

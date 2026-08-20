@@ -408,7 +408,6 @@
   // PRE-WARM: Build the network before first render
   // ══════════════════════════════════════════════════════════════════
 
-  // Seed initial colonies
   var numColonies = 15 + Math.floor(Math.random() * 8);
   for (var c = 0; c < numColonies; c++) {
     seedColony(
@@ -419,17 +418,14 @@
     );
   }
 
-  // Grow the network silently
   for (var warm = 0; warm < 4000; warm++) {
     growStep();
   }
 
-  // Seed nutrient agents onto the established network
   for (var a = 0; a < MAX_AGENTS; a++) {
     spawnAgentOnNetwork();
   }
 
-  // Pre-warm the flow layer too
   for (var warm = 0; warm < 200; warm++) {
     for (var i = 0; i < trail.length; i++) {
       trail[i] *= 0.995;
@@ -466,7 +462,6 @@
     if (timestamp - lastFrame < frameInterval) return;
     lastFrame = timestamp;
 
-    // Continue growing tips (slow ongoing growth)
     growStep();
 
     // Respawn colonies if tips exhausted

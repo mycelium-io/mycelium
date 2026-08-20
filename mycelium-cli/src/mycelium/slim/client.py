@@ -38,7 +38,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("mycelium.slim")
 
-# Warn only once per (mode, handle) when a selected identity degrades to the PSK.
 _identity_degraded_warned: set[tuple[str, str]] = set()
 
 # Per-mode hint for the degrade warning / fail-closed error: what material is
@@ -75,7 +74,7 @@ def _warn_identity_degraded(mode: str, handle: str) -> None:
 
 
 class SlimError(RuntimeError):
-    """Base class for SLIM wrapper errors."""
+    pass
 
 
 class SlimUnavailableError(SlimError):

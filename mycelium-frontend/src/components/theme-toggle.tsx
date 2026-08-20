@@ -22,7 +22,6 @@ export function ThemeToggle() {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => setMounted(true), []);
 
-  // Close on outside click / Escape.
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => {

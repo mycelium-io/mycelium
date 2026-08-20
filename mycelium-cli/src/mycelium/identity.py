@@ -17,12 +17,10 @@ if TYPE_CHECKING:
 
 
 def get_session_path() -> Path:
-    """Path to the project-local session file."""
     return Path.cwd() / ".mycelium" / "session"
 
 
 def load_session() -> str | None:
-    """Load session ID from project-local .mycelium/session."""
     session_path = get_session_path()
     if session_path.exists():
         return session_path.read_text().strip()
@@ -30,19 +28,16 @@ def load_session() -> str | None:
 
 
 def save_session(session_id: str) -> None:
-    """Write session ID to .mycelium/session."""
     session_path = get_session_path()
     session_path.parent.mkdir(parents=True, exist_ok=True)
     session_path.write_text(session_id)
 
 
 def generate_session_id() -> str:
-    """Random 4-character hex session ID."""
     return secrets.token_hex(2)
 
 
 def generate_handle(name: str, session_id: str) -> str:
-    """Handle as name#session_id (e.g., 'julvalen#a8f3')."""
     return f"{name}#{session_id}"
 
 

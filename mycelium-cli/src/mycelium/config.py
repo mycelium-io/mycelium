@@ -481,29 +481,24 @@ class MyceliumConfig(BaseModel):
 
     @classmethod
     def get_global_config_dir(cls) -> Path:
-        """Get the global configuration directory (~/.mycelium/)."""
         return Path.home() / ".mycelium"
 
     @classmethod
     def get_global_config_path(cls) -> Path:
-        """Get the global configuration file path."""
         return cls.get_global_config_dir() / "config.toml"
 
     @classmethod
     def get_logs_dir(cls) -> Path:
-        """Get the logs directory (~/.mycelium/logs/)."""
         logs_dir = cls.get_global_config_dir() / "logs"
         logs_dir.mkdir(parents=True, exist_ok=True)
         return logs_dir
 
     @classmethod
     def get_project_config_dir(cls) -> Path:
-        """Get the project-local configuration directory (./.mycelium/)."""
         return Path.cwd() / ".mycelium"
 
     @classmethod
     def get_project_config_path(cls) -> Path:
-        """Get the project-local configuration file path."""
         return cls.get_project_config_dir() / "config.toml"
 
     @classmethod
@@ -520,18 +515,15 @@ class MyceliumConfig(BaseModel):
 
     @classmethod
     def has_project_config(cls) -> bool:
-        """Check if project-local .mycelium/ exists."""
         return cls.find_project_config() is not None
 
     @classmethod
     def get_config_path(cls) -> Path:
-        """Get the configuration file path (prefers project-local)."""
         project_config = cls.find_project_config()
         return project_config if project_config else cls.get_global_config_path()
 
     @classmethod
     def get_config_dir(cls) -> Path:
-        """Get the configuration directory path (prefers project-local)."""
         project_config = cls.find_project_config()
         if project_config:
             return project_config.parent
@@ -728,7 +720,6 @@ class MyceliumConfig(BaseModel):
         json_path.chmod(0o600)
 
     def get_data_dir(self) -> Path:
-        """Get the resolved data directory."""
         if self.runtime.data_dir:
             return Path(self.runtime.data_dir).expanduser()
         return self.get_global_config_dir()
@@ -769,7 +760,6 @@ class MyceliumConfig(BaseModel):
         return config_dir
 
     def get_active_room(self) -> str | None:
-        """Get the currently active room."""
         return self.rooms.active
 
     def set_active_room(self, room_name: str) -> None:
@@ -778,12 +768,10 @@ class MyceliumConfig(BaseModel):
         self.save()
 
     def clear_active_room(self) -> None:
-        """Clear the active room setting."""
         self.rooms.active = None
         self.save()
 
     def get_current_identity(self) -> str:
-        """Get the current identity handle for attribution."""
         import os
 
         from mycelium.identity import get_current_handle

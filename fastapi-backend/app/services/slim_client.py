@@ -78,10 +78,8 @@ _DEV_MASTER_SECRET = "mycelium-dev-shared-secret-v1-do-not-use-in-prod"
 
 logger = logging.getLogger(__name__)
 
-# Warn only once per process when falling back to the public dev secret.
 _dev_secret_warned = False
 
-# Warn only once per (mode, handle) when a selected identity degrades to the PSK.
 _identity_degraded_warned: set[tuple[str, str]] = set()
 
 # Per-mode hint for the degrade warning / fail-closed error: what material is
@@ -151,7 +149,7 @@ def resolve_master_secret() -> str:
 
 
 class SlimError(RuntimeError):
-    """Base class for SLIM wrapper errors."""
+    pass
 
 
 class SlimUnavailableError(SlimError):

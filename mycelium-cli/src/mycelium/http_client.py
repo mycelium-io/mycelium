@@ -20,8 +20,6 @@ T = TypeVar("T")
 
 
 class MyceliumHTTPClient:
-    """HTTP client for interacting with the Mycelium backend API."""
-
     def __init__(
         self,
         config: MyceliumConfig | None = None,

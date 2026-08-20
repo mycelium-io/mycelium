@@ -88,8 +88,6 @@ _INLINE_CODE_RE = re.compile(r"`[^`\n]+`")
 
 @dataclass(frozen=True)
 class Link:
-    """One outbound edge from a memory."""
-
     target: str
     kind: str
     anchor: str | None = None
@@ -122,8 +120,6 @@ class ResolvedLink:
 
 @dataclass
 class Expansion:
-    """The outcome of one ``![[…]]`` marker in a body."""
-
     target: str
     anchor: str | None = None
     raw: str = ""
@@ -145,7 +141,6 @@ class MemoryLinks:
 
 
 def slugify_heading(text: str) -> str:
-    """Slugify a markdown heading into an anchor (GitHub-style)."""
     slug = re.sub(r"[^\w\s-]", "", text.strip().lower())
     return re.sub(r"[\s_]+", "-", slug).strip("-")
 
@@ -156,11 +151,7 @@ def headings_of(body: str) -> list[str]:
 
 
 def normalize_key(target: str) -> str:
-    """Normalize a link target to a memory key.
-
-    Strips a ``myc://`` scheme, leading ``./`` or ``/``, and a trailing ``.md``
-    so ``myc://decisions/db.md`` and ``decisions/db`` are one key.
-    """
+    """Strip ``myc://`` scheme, leading ``./`` or ``/``, trailing ``.md``."""
     target = target.strip()
     if target.startswith("myc://"):
         target = target[len("myc://") :]
@@ -173,7 +164,6 @@ def normalize_key(target: str) -> str:
 
 
 def _split_target(inner: str) -> tuple[str, str | None, str | None]:
-    """Split ``key#anchor|label`` into its three parts."""
     label: str | None = None
     if "|" in inner:
         inner, _, label_part = inner.partition("|")
@@ -186,7 +176,6 @@ def _split_target(inner: str) -> tuple[str, str | None, str | None]:
 
 
 def _make_link(inner: str, *, kind: str, raw: str, relation: str | None = None) -> Link | None:
-    """Build a Link from a link body, or None if it isn't one."""
     if not inner.strip() or _DIRECTIVE_RE.match(inner.strip()):
         return None
     target, anchor, label = _split_target(inner)
@@ -224,7 +213,6 @@ def _in_code_span(pos: int, ranges: list[tuple[int, int]]) -> bool:
 
 
 def parse_body_links(body: str) -> list[Link]:
-    """Extract every link in a markdown body, in document order."""
     scannable = _strip_code(body)
     found: list[tuple[int, Link]] = []
     seen_spans: list[tuple[int, int]] = []
@@ -254,7 +242,6 @@ def parse_body_links(body: str) -> list[Link]:
 
 
 def parse_relation_links(meta: dict[str, Any]) -> list[Link]:
-    """Extract typed ontology edges from frontmatter relation keys."""
     links: list[Link] = []
     for relation in RELATION_KEYS:
         raw_value = meta.get(relation)
@@ -278,7 +265,6 @@ def is_expandable(meta: dict[str, Any]) -> bool:
 
 
 def parse_memory_links(key: str, meta: dict[str, Any], body: str) -> MemoryLinks:
-    """Parse one memory's full link state from its frontmatter and body."""
     return MemoryLinks(
         key=key,
         links=parse_body_links(body) + parse_relation_links(meta),
@@ -359,7 +345,6 @@ def write_index(room_name: str, entries: list[MemoryLinks]) -> None:
 
 
 def upsert(room_name: str, key: str, meta: dict[str, Any], body: str) -> None:
-    """Reparse one memory's links and replace its line in the index."""
     entries = [e for e in load_index(room_name) if e.key != key]
     entries.append(parse_memory_links(key, meta, body))
     entries.sort(key=lambda e: e.key)
@@ -367,7 +352,6 @@ def upsert(room_name: str, key: str, meta: dict[str, Any], body: str) -> None:
 
 
 def remove(room_name: str, key: str) -> bool:
-    """Drop a memory's line from the index. True if one was removed."""
     entries = load_index(room_name)
     kept = [e for e in entries if e.key != key]
     if len(kept) == len(entries):
@@ -377,7 +361,6 @@ def remove(room_name: str, key: str) -> bool:
 
 
 def rebuild(room_name: str) -> int:
-    """Rebuild a room's whole link index from its markdown. Returns entry count."""
     room_dir = get_data_dir() / "rooms" / room_name
     if not room_dir.exists():
         return 0
@@ -396,7 +379,6 @@ def rebuild(room_name: str) -> int:
 def _resolve(
     link: Link, targets: dict[str, MemoryLinks], *, source: str | None = None
 ) -> ResolvedLink:
-    """Resolve one edge against the room's index."""
     resolved = ResolvedLink(
         target=link.target,
         kind=link.kind,
@@ -426,7 +408,6 @@ def _resolve(
 
 
 def outbound(room_name: str, key: str) -> list[ResolvedLink]:
-    """Every edge leaving ``key``, each resolved against the room."""
     entries = load_index(room_name)
     targets = {e.key: e for e in entries}
     entry = targets.get(key)
@@ -456,7 +437,6 @@ def backlinks(room_name: str, key: str) -> list[ResolvedLink]:
 
 
 def graph(room_name: str) -> dict[str, Any]:
-    """The room's whole link graph as nodes + edges."""
     entries = load_index(room_name)
     targets = {e.key: e for e in entries}
     inbound_counts: dict[str, int] = {}

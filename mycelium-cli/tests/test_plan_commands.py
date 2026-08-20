@@ -91,12 +91,7 @@ def test_fetch_plan_hits_room_scoped_endpoint(
 ) -> None:
     """The real ``_fetch_plan`` GETs the room-scoped plan endpoint.
 
-    Needs ``isolated_home``: without it, ``current_token()`` picks up whatever
-    real session happens to be cached at the developer's actual
-    ``~/.mycelium/token.json`` and tries to refresh it against the bare
-    ``SimpleNamespace`` config stubbed below (which has no ``login`` section),
-    crashing with an unrelated ``AttributeError`` instead of exercising what
-    this test actually checks: the HTTP wiring.
+    Needs ``isolated_home`` to avoid cached-token refresh crash on stubbed config.
     """
     del isolated_home  # only needed for its patching side effect
     from types import SimpleNamespace

@@ -56,7 +56,6 @@ _STATUS_COLOR = {
 
 
 def _bucket(status: str) -> str:
-    """Normalize any status string to one of ok / warning / error / info."""
     return _STATUS_ALIAS.get(status, "warning")
 
 

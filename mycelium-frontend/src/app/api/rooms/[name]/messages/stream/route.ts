@@ -19,7 +19,6 @@ export async function GET(
   try {
     res = await fetch(upstream, {
       headers: await upstreamSseHeaders(),
-      // Prevent Next.js fetch cache from buffering the response
       cache: "no-store",
     });
   } catch {

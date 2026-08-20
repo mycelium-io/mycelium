@@ -54,12 +54,10 @@ async def send_message(room_name: str, payload: MessageCreate, request: Request)
     """Send a message to a room; publish it to the room's live stream."""
     channel, coord = _resolve_channel(room_name)
 
-    # Whoever a verified token says is calling is the sender; unauthenticated, the
-    # body's handle stands as before.
+    # Token-verified sender; fall back to payload handle if unauthenticated.
     sender_handle = actor.bind_actor(request, payload.sender_handle, field="sender_handle")
 
-    # A human posts under a self-asserted handle (may be unregistered), but no
-    # one may pose as an engine — engines speak only through their own runtime.
+    # Prevent impersonation: only engines post as engine handles.
     base_room = channel.split(":session:", 1)[0]
     reason = principals.post_rejection_reason(base_room, sender_handle, allow_unregistered=True)
     if reason:

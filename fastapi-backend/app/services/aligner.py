@@ -113,25 +113,15 @@ def _registered_engine_kind(room: str, handle: str) -> str | None:
 
 
 def _norm(handle: str) -> str:
-    """Case/space-fold a handle for identity comparison (matches the connector)."""
     return handle.strip().lower()
 
 
 def _new_episode_id() -> str:
-    """A short, unique, filesystem-safe id for one convening (one episode).
-
-    Each ``@``-summon convenes a *distinct* episode. The id flows into the episode
-    URN (``l9.episode_urn``), every envelope on the wire, and the
-    ``log/episodes/{id}.md`` record filename — so two convenings in the same room
-    never share a URN or clobber each other's record. Each ``@``-summon convenes a
-    distinct episode with its own tag, so negotiations don't collide on one
-    ``align.md``.
-    """
+    """Generate a unique episode id (used in URN, filename, wire)."""
     return uuid.uuid4().hex[:8]
 
 
 def _payload(content: dict[str, Any]) -> dict[str, Any]:
-    """The L9 payload dict of a recorded message's content (empty when absent)."""
     env = content.get("l9")
     if not isinstance(env, dict):
         return {}
@@ -140,7 +130,6 @@ def _payload(content: dict[str, Any]) -> dict[str, Any]:
 
 
 def _sender_role(content: dict[str, Any]) -> str | None:
-    """Role of the first actor (the sender) on a recorded message, if any."""
     env = content.get("l9")
     if not isinstance(env, dict):
         return None

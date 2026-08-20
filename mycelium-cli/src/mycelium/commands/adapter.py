@@ -144,8 +144,7 @@ def add(
             )
             raise typer.Exit(0)
 
-        # Confirm before a destructive reinstall; any local edits or stale
-        # files from a prior version get wiped.
+        # Confirm before destructive reinstall (local edits will be lost).
         if reinstall and not dry_run and not yes:
             targets = (
                 integ.reinstall_targets(profile=None, container=None) if integ is not None else []

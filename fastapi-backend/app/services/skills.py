@@ -32,22 +32,18 @@ SKILLS_PREFIX = "skills/"
 
 
 def skill_key(name: str) -> str:
-    """The memory key backing a skill (``summarize`` → ``skills/summarize``)."""
     return f"{SKILLS_PREFIX}{name}"
 
 
 def name_from_key(key: str) -> str:
-    """The skill name from its memory key (``skills/summarize`` → ``summarize``)."""
     return key[len(SKILLS_PREFIX) :] if key.startswith(SKILLS_PREFIX) else key
 
 
 def list_room_skills(room_name: str) -> list[tuple[str, dict[str, Any], str]]:
-    """List a room's skills as (name, frontmatter, body), newest-updated first."""
     room_dir = get_room_dir(room_name)
     entries = list_memory_files(room_dir, prefix=SKILLS_PREFIX)
     return [(name_from_key(key), meta, body) for key, meta, body in entries]
 
 
 def read_room_skill(room_name: str, name: str) -> tuple[dict[str, Any], str] | None:
-    """Read one skill by name. Returns (frontmatter, body) or None if absent."""
     return read_memory_file(get_room_dir(room_name), skill_key(name))

@@ -248,7 +248,7 @@ async def test_mediate_scopes_to_named_participants() -> None:
     # Only the named subset is addressed; @legal (a room member) is left out.
     assert prompted <= {"growth", "risk"}
     assert "legal" not in prompted
-    assert prompted  # the scoped negotiation actually ran
+    assert prompted
 
 
 @pytest.mark.asyncio

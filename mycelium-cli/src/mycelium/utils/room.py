@@ -11,11 +11,6 @@ def ensure_room_set(
     config: MyceliumConfig,
     room_override: str | None = None,
 ) -> str:
-    """
-    Ensure a room is set.
-
-    Returns the active room name or raises if none is set.
-    """
     active_room = config.get_active_room()
 
     if room_override is not None:

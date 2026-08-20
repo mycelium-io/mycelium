@@ -155,7 +155,6 @@ export function RoomsSidebar({ activeRoom = null }: Props) {
 
   return (
     <aside data-tour="rooms" className="flex w-[236px] flex-shrink-0 flex-col border-r border-border bg-surface/50">
-      {/* Brand */}
       <Link
         href="/"
         className="relative flex h-[52px] flex-shrink-0 items-center gap-2.5 border-b border-border px-4 transition-colors hover:bg-hairline"
@@ -174,7 +173,6 @@ export function RoomsSidebar({ activeRoom = null }: Props) {
         </span>
       </Link>
 
-      {/* Rooms header + search */}
       <div className="flex items-center gap-2 px-3 pt-3 pb-2">
         <span className="text-micro font-semibold uppercase tracking-wide text-muted-foreground">Rooms</span>
         <span className="text-micro tabular text-muted-foreground">{rooms.length}</span>
@@ -199,7 +197,6 @@ export function RoomsSidebar({ activeRoom = null }: Props) {
         </div>
       </div>
 
-      {/* Rooms list */}
       <ScrollArea className="min-h-0 flex-1">
         <nav className="px-2 pb-2">
         {filtered.length === 0 ? (
@@ -265,7 +262,6 @@ export function RoomsSidebar({ activeRoom = null }: Props) {
         </nav>
       </ScrollArea>
 
-      {/* Footer */}
       <div className="flex items-center gap-1 border-t border-border px-3 py-2">
         <Link
           href="/metrics"

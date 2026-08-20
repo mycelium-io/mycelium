@@ -338,8 +338,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [connected, setConnected] = useState(false);
 
-  // Surface connection state to the shell's status bar (editor-style), so the
-  // chat header stays clean and the live/reconnecting signal has one home.
+  // Surface connection state to status bar; one home for the signal.
   useEffect(() => {
     onConnectionChange?.(connected);
   }, [connected, onConnectionChange]);
@@ -699,8 +698,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
                     marked ? "bg-accent/15" : ""
                   }`}
                 >
-                  {/* Timestamp is low-signal: keep it out of the way in the right
-                      gutter, revealed on hover, faint. */}
+                  {/* Timestamp low-signal: right gutter, hover-revealed. */}
                   <span className="pointer-events-none absolute right-5 top-1.5 text-micro tabular text-faint opacity-0 transition-opacity group-hover:opacity-100">
                     {ev.time.slice(0, 5)}
                   </span>
