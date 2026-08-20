@@ -196,7 +196,7 @@ describe("<MemoryGraph />", () => {
     expect(new Set(fills).size).toBe(namespaces.length);
   });
 
-  it("wraps the palette past its 8th namespace rather than inventing a color", () => {
+  it("wraps the palette past its 8th namespace rather than inventing a color", async () => {
     // Pinned as the documented ceiling, not as desirable: a 9th hue would have to
     // come from the arc reserved for broken links and orphans. The legend still
     // names every namespace, so the collision is readable rather than silent.
@@ -213,6 +213,8 @@ describe("<MemoryGraph />", () => {
       screen.getByRole("button", { name: `Open ${ns}/x` }).querySelector("circle")?.getAttribute("fill");
 
     expect(fill("i")).toBe(fill("a"));
+    // Legend is collapsed by default; open it to check the button is present.
+    await userEvent.click(screen.getByRole("button", { name: /expand legend/i }));
     expect(screen.getByRole("button", { name: /hide i/i })).toBeInTheDocument();
   });
 
@@ -235,8 +237,13 @@ describe("<MemoryGraph />", () => {
       return screen.getByRole("group", { name: /memory link graph/i }).querySelectorAll("line");
     }
 
+    async function openLegend() {
+      await userEvent.click(screen.getByRole("button", { name: /expand legend/i }));
+    }
+
     it("hides a namespace's memories, and the edges that reached them", async () => {
       render(<MemoryGraph graph={mixed} />);
+      await openLegend();
       expect(lines()).toHaveLength(2);
 
       await userEvent.click(screen.getByRole("button", { name: /hide context/i }));
@@ -250,6 +257,7 @@ describe("<MemoryGraph />", () => {
 
     it("hides one relation type without touching the memories", async () => {
       render(<MemoryGraph graph={mixed} />);
+      await openLegend();
 
       await userEvent.click(screen.getByRole("button", { name: /hide depends-on edges/i }));
 
@@ -259,6 +267,7 @@ describe("<MemoryGraph />", () => {
 
     it("counts what's on screen, and says what it's a subset of", async () => {
       render(<MemoryGraph graph={mixed} />);
+      await openLegend();
       expect(screen.getByText(wholeText("3 memories"))).toBeInTheDocument();
 
       await userEvent.click(screen.getByRole("button", { name: /hide context/i }));
@@ -274,6 +283,7 @@ describe("<MemoryGraph />", () => {
       // you're currently looking at; recomputing it from the visible edges
       // would leave context/c with no referrers and report it as the orphan.
       render(<MemoryGraph graph={mixed} />);
+      await openLegend();
       expect(screen.getByText(wholeText("1 orphan"))).toBeInTheDocument();
 
       await userEvent.click(screen.getByRole("button", { name: /hide decisions/i }));
@@ -287,6 +297,7 @@ describe("<MemoryGraph />", () => {
       // filtered out, context/c is no longer connected to anything on screen, so
       // highlighting it would assert a link the canvas isn't drawing.
       render(<MemoryGraph graph={mixed} />);
+      await openLegend();
       const opacityOf = (key: string) =>
         screen.getByRole("button", { name: `Open ${key}` }).getAttribute("opacity");
 
@@ -304,6 +315,7 @@ describe("<MemoryGraph />", () => {
       // hovered key can outlive the node. Left uncorrected, every remaining node
       // stays dimmed against a neighbour that isn't on screen to explain it.
       render(<MemoryGraph graph={mixed} />);
+      await openLegend();
       const opacityOf = (key: string) =>
         screen.getByRole("button", { name: `Open ${key}` }).getAttribute("opacity");
 
@@ -320,6 +332,7 @@ describe("<MemoryGraph />", () => {
       // Filters are keyed by namespace name, so carrying them across a refresh
       // would hide part of a graph the reader never filtered.
       const { rerender } = render(<MemoryGraph graph={mixed} />);
+      await openLegend();
       await userEvent.click(screen.getByRole("button", { name: /hide context/i }));
       expect(screen.queryByRole("button", { name: "Open context/c" })).not.toBeInTheDocument();
 
@@ -330,6 +343,7 @@ describe("<MemoryGraph />", () => {
 
     it("restores everything with one click, and only offers that while filtered", async () => {
       render(<MemoryGraph graph={mixed} />);
+      await openLegend();
       expect(screen.queryByRole("button", { name: /clear filters/i })).not.toBeInTheDocument();
 
       await userEvent.click(screen.getByRole("button", { name: /hide context/i }));
@@ -342,6 +356,7 @@ describe("<MemoryGraph />", () => {
 
     it("says so rather than showing a blank canvas when everything is hidden", async () => {
       render(<MemoryGraph graph={mixed} />);
+      await openLegend();
 
       await userEvent.click(screen.getByRole("button", { name: /hide context/i }));
       await userEvent.click(screen.getByRole("button", { name: /hide decisions/i }));
@@ -351,6 +366,7 @@ describe("<MemoryGraph />", () => {
 
     it("reports each toggle's state to assistive tech", async () => {
       render(<MemoryGraph graph={mixed} />);
+      await openLegend();
       const context = screen.getByRole("button", { name: /hide context/i });
       expect(context).toHaveAttribute("aria-pressed", "true");
 

@@ -13,7 +13,7 @@ import {
   type KeyboardEvent,
   type PointerEvent,
 } from "react";
-import { AlertTriangle, ExternalLink, Filter, Link2, RotateCcw, Unlink } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronUp, ExternalLink, Filter, Link2, RotateCcw, Unlink } from "lucide-react";
 import type { MemoryGraph as MemoryGraphData, MemoryGraphNode } from "@/lib/api";
 import { computeForceLayout, type GraphLayoutEdge, type GraphLayoutNode } from "@/lib/memory-graph-layout";
 import { isBrokenLinkError, linkErrorLabel, LINK_ERRORS } from "@/lib/memory-links";
@@ -148,6 +148,7 @@ export function MemoryGraph({ graph, onNavigate, roomName, className }: Props) {
   // excluded for never having been ticked.
   const [hiddenNamespaces, setHiddenNamespaces] = useState<ReadonlySet<string>>(new Set());
   const [hiddenTypes, setHiddenTypes] = useState<ReadonlySet<string>>(new Set());
+  const [legendOpen, setLegendOpen] = useState(false);
   const filtered = hiddenNamespaces.size > 0 || hiddenTypes.size > 0;
 
   useEffect(() => {
@@ -607,72 +608,84 @@ export function MemoryGraph({ graph, onNavigate, roomName, className }: Props) {
         )}
 
         {/* Legend — floats over the canvas, outside the pan/zoom transform, and
-            doubles as the filter. The rows already enumerate exactly what you'd
-            want to filter by, so a separate control would just say it twice. */}
-        <div className="absolute bottom-3 left-3 flex flex-col gap-1 rounded-lg border border-border bg-paper/90 px-3 py-2 text-micro text-muted-foreground shadow-sm backdrop-blur-sm">
-          <div className="mb-0.5 text-micro font-semibold uppercase tracking-wide text-faint">Key · click to filter</div>
-          <div className="text-faint">namespace</div>
-          {namespaces.map(ns => {
-            const hidden = hiddenNamespaces.has(ns);
-            return (
-              <button
-                key={ns}
-                onClick={() => toggle(setHiddenNamespaces, ns)}
-                aria-pressed={!hidden}
-                // Labelled explicitly: the row's own text is just the namespace,
-                // which says what it is but not what clicking it does.
-                aria-label={hidden ? `Show ${ns}` : `Hide ${ns}`}
-                title={hidden ? `Show ${ns}` : `Hide ${ns}`}
-                className={`flex items-center gap-1.5 rounded px-1 py-0.5 text-left transition-colors hover:bg-hairline ${
-                  hidden ? "opacity-40" : ""
-                }`}
-              >
-                <span
-                  className="size-2 flex-shrink-0 rounded-full"
-                  style={{ background: hidden ? "transparent" : colorFor(ns), boxShadow: `inset 0 0 0 1px ${colorFor(ns)}` }}
-                />
-                <span className={`font-mono ${hidden ? "line-through" : ""}`}>{ns}</span>
-              </button>
-            );
-          })}
-
-          {edgeTypes.length > 1 && (
-            <>
-              <div className="mt-1 border-t border-border pt-1 text-faint">link type</div>
-              {edgeTypes.map(type => {
-                const hidden = hiddenTypes.has(type);
+            doubles as the filter. Collapsed to a pill tab by default; click the
+            tab to expand, click again (or the header) to collapse. */}
+        <div className="absolute bottom-3 left-3 flex flex-col items-start gap-0">
+          {legendOpen && (
+            <div className="mb-0 flex flex-col gap-1 rounded-t-lg border border-b-0 border-border bg-paper/90 px-3 py-2 text-micro text-muted-foreground shadow-sm backdrop-blur-sm">
+              <div className="text-faint">namespace</div>
+              {namespaces.map(ns => {
+                const hidden = hiddenNamespaces.has(ns);
                 return (
                   <button
-                    key={type}
-                    onClick={() => toggle(setHiddenTypes, type)}
+                    key={ns}
+                    onClick={() => toggle(setHiddenNamespaces, ns)}
                     aria-pressed={!hidden}
-                    aria-label={hidden ? `Show ${type} edges` : `Hide ${type} edges`}
-                    title={hidden ? `Show ${type} edges` : `Hide ${type} edges`}
+                    aria-label={hidden ? `Show ${ns}` : `Hide ${ns}`}
+                    title={hidden ? `Show ${ns}` : `Hide ${ns}`}
                     className={`flex items-center gap-1.5 rounded px-1 py-0.5 text-left transition-colors hover:bg-hairline ${
                       hidden ? "opacity-40" : ""
                     }`}
                   >
-                    <Link2 className="size-3 flex-shrink-0" />
-                    <span className={`font-mono ${hidden ? "line-through" : ""}`}>{type}</span>
+                    <span
+                      className="size-2 flex-shrink-0 rounded-full"
+                      style={{ background: hidden ? "transparent" : colorFor(ns), boxShadow: `inset 0 0 0 1px ${colorFor(ns)}` }}
+                    />
+                    <span className={`font-mono ${hidden ? "line-through" : ""}`}>{ns}</span>
                   </button>
                 );
               })}
-            </>
-          )}
 
-          <div className="mt-1 flex items-center gap-1.5 border-t border-border pt-1">
-            <span className="size-2 flex-shrink-0 rounded-full border border-dashed border-yellow" />
-            orphan (nothing links here)
-          </div>
-          <div className="flex items-center gap-1.5">
-            <Link2 className="size-3" />
-            solid = link · dashed = relation
-          </div>
-          <div className="flex items-center gap-1.5 text-red">
-            <span className="h-px w-3 flex-shrink-0 border-t border-dashed border-red" />
-            broken link between two real memories
-          </div>
-          <div className="mt-1 border-t border-border pt-1">drag a memory to arrange · click to open</div>
+              {edgeTypes.length > 1 && (
+                <>
+                  <div className="mt-1 border-t border-border pt-1 text-faint">link type</div>
+                  {edgeTypes.map(type => {
+                    const hidden = hiddenTypes.has(type);
+                    return (
+                      <button
+                        key={type}
+                        onClick={() => toggle(setHiddenTypes, type)}
+                        aria-pressed={!hidden}
+                        aria-label={hidden ? `Show ${type} edges` : `Hide ${type} edges`}
+                        title={hidden ? `Show ${type} edges` : `Hide ${type} edges`}
+                        className={`flex items-center gap-1.5 rounded px-1 py-0.5 text-left transition-colors hover:bg-hairline ${
+                          hidden ? "opacity-40" : ""
+                        }`}
+                      >
+                        <Link2 className="size-3 flex-shrink-0" />
+                        <span className={`font-mono ${hidden ? "line-through" : ""}`}>{type}</span>
+                      </button>
+                    );
+                  })}
+                </>
+              )}
+
+              <div className="mt-1 flex items-center gap-1.5 border-t border-border pt-1">
+                <span className="size-2 flex-shrink-0 rounded-full border border-dashed border-yellow" />
+                orphan (nothing links here)
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Link2 className="size-3" />
+                solid = link · dashed = relation
+              </div>
+              <div className="flex items-center gap-1.5 text-red">
+                <span className="h-px w-3 flex-shrink-0 border-t border-dashed border-red" />
+                broken link between two real memories
+              </div>
+              <div className="mt-1 border-t border-border pt-1">drag a memory to arrange · click to open</div>
+            </div>
+          )}
+          <button
+            onClick={() => setLegendOpen(o => !o)}
+            aria-expanded={legendOpen}
+            aria-label={legendOpen ? "Collapse legend" : "Expand legend"}
+            className={`flex items-center gap-1 rounded-b-lg border border-border bg-paper/90 px-3 py-1 text-micro font-semibold uppercase tracking-wide text-faint shadow-sm backdrop-blur-sm transition-colors hover:bg-hairline hover:text-text ${
+              legendOpen ? "" : "rounded-t-lg"
+            }`}
+          >
+            Key
+            {legendOpen ? <ChevronDown className="size-3" /> : <ChevronUp className="size-3" />}
+          </button>
         </div>
       </div>
     </div>
