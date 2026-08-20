@@ -3,15 +3,9 @@
 
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import {
-  fetchPlan,
-  togglePlanTask,
-  addPlanTask,
-  setPlanTitle,
-  type PlanResponse,
-  type PlanFile,
-} from "@/lib/api";
+import { useState } from "react";
+import { togglePlanTask, addPlanTask, setPlanTitle, type PlanFile, type PlanResponse } from "@/lib/api";
+import { useRoomPlan } from "@/lib/room-data";
 import { ListChecks, AlertCircle } from "lucide-react";
 import { MarkdownContent } from "./markdown-content";
 import { EmptyState } from "@/components/empty-state";
@@ -22,7 +16,6 @@ import { Input } from "@/components/ui/input";
 
 interface Props {
   roomName: string;
-  refreshTrigger: number;
 }
 
 // Filter the "title" file out of file chips; its content is the headline above.
@@ -33,29 +26,18 @@ type Open =
   | { kind: "tasks" }
   | { kind: "file"; slug: string };
 
-export function RoomPlanHeader({ roomName, refreshTrigger }: Props) {
-  const [plan, setPlan] = useState<PlanResponse | null>(null);
+export function RoomPlanHeader({ roomName }: Props) {
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
   const [open, setOpen] = useState<Open>({ kind: "tasks" });
   const [newTaskText, setNewTaskText] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
 
-  // fetchPlan degrades to an empty plan on failure, so no try/catch is
-  // needed here — a failed load just shows the "no tasks yet" empty state.
-  const load = useCallback(async () => {
-    setPlan(await fetchPlan(roomName));
-  }, [roomName]);
-
-  // Reload on mount, on refreshTrigger bumps, and on a slow poll. A
-  // negotiation consensus compiles plan/tasks.md on the backend; that write
-  // lands on the parent room without a memory_changed event this page sees,
-  // so polling guarantees the materialized plan surfaces after consensus.
-  useEffect(() => {
-    load();
-    const t = setInterval(load, 8000);
-    return () => clearInterval(t);
-  }, [load, refreshTrigger]);
+  // A negotiation consensus compiles plan/tasks.md on the backend, and that
+  // write lands without a memory_changed event this page sees — so the plan is
+  // the one room resource still worth polling closely, and `refresh` is what an
+  // edit made here calls to see its own result.
+  const { plan, refresh: load } = useRoomPlan(roomName);
 
   const startEditTitle = () => {
     setTitleDraft(plan?.title ?? "");

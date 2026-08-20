@@ -3,13 +3,8 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
-import {
-  fetchCoordination,
-  logFetchError,
-  type CoordinationRoom,
-  type CoordinationStatus,
-} from "@/lib/api";
+import { type CoordinationRoom } from "@/lib/api";
+import { useCoordination } from "@/lib/room-data";
 import { Skeleton } from "@/components/ui/skeleton";
 
 /** This room's SLIM channel status — the node it rides, who is present (SLIM
@@ -27,29 +22,8 @@ export function RoomSlimView({
   roomName: string;
   layout?: "full" | "rail";
 }) {
-  const [coord, setCoord] = useState<CoordinationStatus | null>(null);
-  const [loaded, setLoaded] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    const load = () =>
-      fetchCoordination()
-        .then((c) => {
-          if (cancelled) return;
-          setCoord(c);
-          setLoaded(true);
-        })
-        .catch((err) => {
-          logFetchError("fetchCoordination")(err);
-          if (!cancelled) setLoaded(true);
-        });
-    load();
-    const t = setInterval(load, 20_000);
-    return () => {
-      cancelled = true;
-      clearInterval(t);
-    };
-  }, []);
+  const { coordination: coord, loading } = useCoordination();
+  const loaded = !loading;
 
   const room: CoordinationRoom | null = coord?.rooms.find((r) => r.room === roomName) ?? null;
   const enabled = coord?.slim_enabled ?? false;

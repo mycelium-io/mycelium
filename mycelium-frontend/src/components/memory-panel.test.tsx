@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Mycelium Contributors
 
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
+import { renderWithSWR } from "@/test/swr";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryPanel } from "@/components/memory-panel";
 
@@ -90,10 +91,9 @@ describe("<MemoryPanel /> peek navigation", () => {
   it("routes to full page when focusMemory targets a missing key", async () => {
     vi.mocked(fetchMemory).mockResolvedValue(null);
 
-    render(
+    renderWithSWR(
       <MemoryPanel
         roomName="demo"
-        refreshTrigger={0}
         focusMemory={{ key: "missing/key", nonce: 1 }}
       />,
     );
@@ -111,10 +111,9 @@ describe("<MemoryPanel /> peek navigation", () => {
       return offTree;
     });
 
-    render(
+    renderWithSWR(
       <MemoryPanel
         roomName="demo"
-        refreshTrigger={0}
         focusMemory={{ key: offTree.key, nonce: 1 }}
       />,
     );
@@ -147,10 +146,9 @@ describe("<MemoryPanel /> peek navigation", () => {
       found: true,
     });
 
-    render(
+    renderWithSWR(
       <MemoryPanel
         roomName="demo"
-        refreshTrigger={0}
         focusMemory={{ key: offTree.key, nonce: 1 }}
       />,
     );

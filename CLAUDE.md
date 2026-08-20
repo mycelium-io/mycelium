@@ -279,6 +279,16 @@ is no litellm dependency.
   code + the user-facing SPIRE identity guide):** custodial means the hub still holds
   every key + plaintext; this hardens the wire + attribution + access-by-membership,
   and it is **NOT** E2E-from-the-hub.
+- **GUI server state is one SWR cache; client state stays local.** Every room
+  read in the frontend goes through `mycelium-frontend/src/lib/room-data.ts` —
+  typed SWR hooks keyed `["room", name, resource]`, so N panels reading the same
+  resource make one request and share one cache entry (the composer's `@`
+  popover and the Members rail are two views of one `useRoomRoster`). SWR owns
+  polling, refocus and dedup, so components hold no `setInterval` and no
+  fetched-data `useState`; a pushed SSE event calls `useRoomRevalidate(room)`
+  rather than threading a refresh counter down as a prop. A store (Zustand) is
+  reserved for genuine client state — which rail is open, what's selected — not
+  for anything the hub owns.
 - **Adapter capability (be honest).** `claude_code` is proven; `cursor` is untested.
   `openclaw` and `hermes` are **gone**, not deprecated — they rode the removed
   SSE/coordination-tick model and their packages were deleted (#503). Don't

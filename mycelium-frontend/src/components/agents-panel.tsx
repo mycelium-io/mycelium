@@ -3,17 +3,10 @@
 
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Users } from "lucide-react";
-import {
-  createEngine,
-  fetchMessages,
-  fetchRoomAgents,
-  fetchRoomMembers,
-  type AgentSummary,
-  type EngineKind,
-  type PresenceMember,
-} from "@/lib/api";
+import { createEngine, type EngineKind, type PresenceMember } from "@/lib/api";
+import { useRoomRoster } from "@/lib/room-data";
 import { Button } from "@/components/ui/button";
 import { Chip } from "@/components/ui/chip";
 import { Input } from "@/components/ui/input";
@@ -32,8 +25,6 @@ import {
 
 interface Props {
   roomName: string;
-  /** Bumped by the room page on pushed presence/memory events to refetch now. */
-  refreshKey?: number;
   /** One-shot request to open the Add dialog on its engines tab — how the
    *  command palette reaches the invite form from anywhere in the room. */
   engineInvite?: boolean;
@@ -42,16 +33,6 @@ interface Props {
    *  so the row scrolls into sight and marks itself instead of opening. */
   focusHandle?: string | null;
   onFocusConsumed?: () => void;
-}
-
-interface Person {
-  handle: string;
-  /** Team slugs, unioned from the agents this person owns. */
-  teams: string[];
-  /** True when this is the handle the browser is acting as. */
-  you: boolean;
-  /** True when they own ≥1 agent here (vs. only having posted). */
-  owns: boolean;
 }
 
 /** Minute-granular relative age; null under a minute (an actively-polling lease
@@ -92,50 +73,20 @@ function subtext(...parts: (string | null | undefined | false)[]): string {
  */
 export function AgentsPanel({
   roomName,
-  refreshKey = 0,
   engineInvite = false,
   onEngineInviteShown,
   focusHandle = null,
   onFocusConsumed,
 }: Props) {
-  const [agents, setAgents] = useState<AgentSummary[]>([]);
-  const [posters, setPosters] = useState<string[]>([]);
-  const [liveMembers, setLiveMembers] = useState<PresenceMember[]>([]);
-  const [loaded, setLoaded] = useState(false);
   const [mineOnly, setMineOnly] = useState(false);
   const [addTab, setAddTab] = useState<"agents" | "engines">("agents");
   const [addOpen, setAddOpen] = useState(false);
   const { principal } = useCurrentUser();
 
-  const refresh = useCallback(() => {
-    // fetchRoomAgents degrades to [] on failure, so no .catch is needed —
-    // `loaded` still flips so the skeleton clears either way.
-    fetchRoomAgents(roomName).then((a) => {
-      setAgents(a);
-      setLoaded(true);
-    });
-    // Human posters come from the transcript: a room chat post is a broadcast
-    // from a handle that isn't a registered agent. fetchMessages degrades to
-    // { messages: [] } on failure, so no .catch is needed.
-    fetchMessages(roomName, 200).then(({ messages }) => {
-      setPosters(
-        messages
-          .filter((m) => m.message_type === "broadcast")
-          .map((m) => m.sender_handle ?? "")
-          .filter(Boolean),
-      );
-    });
-    // Live presence: SLIM-connected + server-held lease members. Catches handles
-    // that joined via `mycelium await` without registering an agent manifest.
-    // fetchRoomMembers degrades to [] on failure, so no .catch is needed.
-    fetchRoomMembers(roomName).then(setLiveMembers);
-  }, [roomName]);
-
-  useEffect(() => {
-    refresh();
-    const t = setInterval(refresh, 30_000);
-    return () => clearInterval(t);
-  }, [refresh, refreshKey]);
+  // Who's here, shared with the composer's `@` popover: agents from the room's
+  // manifests, people from agent owners ∪ posters ∪ live presence ∪ you, and a
+  // presence entry for whoever holds a SLIM socket or an `await` lease.
+  const { agents, people, presence, loading, refresh } = useRoomRoster(roomName);
 
   useEffect(() => {
     if (!engineInvite) return;
@@ -157,15 +108,7 @@ export function AgentsPanel({
   useEffect(() => {
     if (!highlight) return;
     highlightRow.current?.scrollIntoView({ block: "center" });
-  }, [highlight, loaded]);
-
-  const agentHandles = useMemo(() => new Set(agents.map((a) => a.handle)), [agents]);
-
-  // presence map: handle → full presence member (kind + last_seen) for each live one.
-  const presenceMap = useMemo(
-    () => new Map(liveMembers.map((m) => [m.handle, m])),
-    [liveMembers],
-  );
+  }, [highlight, loading]);
 
   // Re-tick once a minute so the minute-granular "seen Xm ago" labels advance
   // without a refetch (matches the label resolution — no sub-minute churn).
@@ -174,35 +117,6 @@ export function AgentsPanel({
     const t = setInterval(() => setNow((n) => n + 1), 60_000);
     return () => clearInterval(t);
   }, []);
-
-  // People = owners of the room's agents ∪ human posters ∪ live presence members
-  // ∪ the acting-as handle. Teams roll up from each person's owned agents.
-  const people = useMemo(() => {
-    const byHandle = new Map<string, Person>();
-    const add = (handle: string, owns: boolean) => {
-      const h = handle.replace(/^@/, "").toLowerCase();
-      if (!h) return;
-      const existing = byHandle.get(h);
-      if (existing) {
-        existing.owns = existing.owns || owns;
-        return;
-      }
-      byHandle.set(h, { handle: h, teams: [], you: h === principal, owns });
-    };
-    for (const a of agents) if (a.owner) add(a.owner, true);
-    for (const p of posters) if (!agentHandles.has(p)) add(p, false);
-    // Include handles present via SLIM or lease that aren't registered agents.
-    for (const m of liveMembers) if (!agentHandles.has(m.handle)) add(m.handle, false);
-    if (principal) add(principal, false);
-    for (const person of byHandle.values()) {
-      person.teams = [
-        ...new Set(
-          agents.filter((a) => a.owner === person.handle && a.team).map((a) => a.team as string),
-        ),
-      ];
-    }
-    return [...byHandle.values()].sort((x, y) => x.handle.localeCompare(y.handle));
-  }, [agents, posters, liveMembers, agentHandles, principal]);
 
   // "Mine" scopes the agent list to the acting-as user: agents they own, plus
   // any agent fielded by a team their own agents claim.
@@ -324,7 +238,7 @@ export function AgentsPanel({
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        {!loaded &&
+        {loading &&
           ["w-20", "w-28", "w-16"].map((w, i) => (
             <div key={i} className="flex items-center gap-2.5 px-3 py-2.5">
               <Skeleton className="size-8 flex-shrink-0 rounded-full" />
@@ -334,7 +248,7 @@ export function AgentsPanel({
               </div>
             </div>
           ))}
-        {loaded && agents.length === 0 && people.length === 0 && (
+        {!loading && agents.length === 0 && people.length === 0 && (
           <EmptyState
             size="sm"
             icon={Users}
@@ -352,7 +266,7 @@ export function AgentsPanel({
           <>
             <SectionLabel count={people.length}>People</SectionLabel>
             {people.map((p) => {
-              const presence = presenceMap.get(p.handle);
+              const memberPresence = presence.get(p.handle);
               const marked = highlight === p.handle;
               return (
                 <div
@@ -362,7 +276,7 @@ export function AgentsPanel({
                     marked ? "bg-accent/15" : ""
                   }`}
                 >
-                  <Monogram handle={p.handle} color="var(--muted-foreground)" presence={presence?.kind} />
+                  <Monogram handle={p.handle} color="var(--muted-foreground)" presence={memberPresence?.kind} />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5">
                       <span className="truncate font-mono text-label font-semibold text-text">
@@ -373,7 +287,7 @@ export function AgentsPanel({
                     <div className="mt-0.5 truncate text-micro text-muted-foreground">
                       {subtext(
                         p.owns ? "owner" : "posted here",
-                        presenceNote(presence),
+                        presenceNote(memberPresence),
                         p.teams.length > 0 && p.teams.join(", "),
                       )}
                     </div>
@@ -387,7 +301,7 @@ export function AgentsPanel({
         {agents.length > 0 && <SectionLabel count={visibleAgents.length}>Agents</SectionLabel>}
         {visibleAgents.map((a) => {
           const mine = principal !== "" && a.owner === principal;
-          const presence = presenceMap.get(a.handle);
+          const memberPresence = presence.get(a.handle.toLowerCase());
           const marked = highlight === a.handle;
           return (
             <div
@@ -397,7 +311,7 @@ export function AgentsPanel({
                 marked ? "bg-accent/15" : ""
               }`}
             >
-              <Monogram handle={a.handle} presence={presence?.kind} />
+              <Monogram handle={a.handle} presence={memberPresence?.kind} />
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5">
                   <span className="truncate font-mono text-label font-semibold text-text">
@@ -421,7 +335,7 @@ export function AgentsPanel({
                 <div className="mt-0.5 truncate text-micro text-muted-foreground">
                   {subtext(
                     a.adapter === "engine" && a.kind ? `engine · ${a.kind}` : a.adapter,
-                    presenceNote(presence),
+                    presenceNote(memberPresence),
                     a.description,
                   )}
                 </div>
