@@ -58,28 +58,17 @@ export function MemoryEditor({ memory, roomName, onSaved, onCancel, actor }: Pro
   const editorRef = useRef<MarkdownEditorHandle | null>(null);
 
   const { memories } = useRoomMemories(roomName);
-
-  // Refs so the completion source always reads the latest keys even though the
-  // CM6 extension is created once at editor mount (extraExtensions is not
-  // reactive — fedoup applies it only during EditorState.create()).
-  const allKeysRef = useRef<string[]>([]);
-  const expandableKeysRef = useRef<string[]>([]);
-
-  allKeysRef.current = useMemo(() => memories.map(m => m.key), [memories]);
-  expandableKeysRef.current = useMemo(
+  const allKeys = useMemo(() => memories.map(m => m.key), [memories]);
+  const expandableKeys = useMemo(
     () => memories.filter(m => {
       if (!m.value || typeof m.value !== "object") return false;
       return (m.value as Record<string, unknown>)["expandable"] === true;
     }).map(m => m.key),
     [memories],
   );
-
-  // Create the extension once; the getter closures read the current ref values
-  // at completion time so async key loads are picked up automatically.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const extensions = useMemo(
-    () => [wikilinkCompletions(() => allKeysRef.current, () => expandableKeysRef.current)],
-    [],
+    () => [wikilinkCompletions(allKeys, expandableKeys)],
+    [allKeys, expandableKeys],
   );
 
   // Keep tags/expandable in sync if the parent switches to a different memory.

@@ -2,23 +2,20 @@
 // Copyright 2026 Mycelium Contributors
 
 import { autocompletion, type CompletionContext, type CompletionResult } from "@codemirror/autocomplete";
+import { tooltips } from "@codemirror/view";
 import type { Extension } from "@codemirror/state";
-
-type KeysArg = string[] | (() => string[]);
-const resolve = (arg: KeysArg): string[] => (typeof arg === "function" ? arg() : arg);
 
 /**
  * CodeMirror 6 `CompletionSource` for `[[key]]` wikilinks.
  *
- * `keys` and `expandableKeys` may be plain arrays or getter functions.
- * Pass a getter (e.g. `() => keysRef.current`) so the completion source
- * always reads the latest list even after the EditorState was created —
- * this avoids the "empty completions on first open" problem that occurs
- * when the keys arrive asynchronously after editor mount.
+ * Feed it the room's memory keys and it will offer completions any time the
+ * cursor is inside an in-flight `[[…` token, inserting `[[key]]` when chosen.
+ * Pass `expandableKeys` to also complete `![[key]]` — limited to memories
+ * whose `expandable: true` frontmatter flag allows transclusion.
  */
 export function wikilinkSource(
-  keys: KeysArg,
-  expandableKeys?: KeysArg,
+  keys: string[],
+  expandableKeys?: string[],
 ): (ctx: CompletionContext) => CompletionResult | null {
   return (ctx: CompletionContext): CompletionResult | null => {
     // Match `![[` (transclusion) or `[[` (link), then optional partial key.
@@ -29,7 +26,7 @@ export function wikilinkSource(
     const sigilLen = sigil.length;
     const query = before.text.slice(sigilLen).toLowerCase();
 
-    const candidates = sigil === "![[" ? resolve(expandableKeys ?? []) : resolve(keys);
+    const candidates = sigil === "![[" ? (expandableKeys ?? []) : keys;
     const options = candidates
       .filter(k => k.toLowerCase().includes(query))
       .map(k => ({
@@ -50,14 +47,17 @@ export function wikilinkSource(
  * CodeMirror 6 `Extension` that autocompletes `[[key]]` wikilinks (and
  * optionally `![[key]]` transclusions) in a markdown editor.
  *
- * `keys` / `expandableKeys` accept either a plain array or a getter function.
- * Use a getter (`() => ref.current`) when the list is fetched asynchronously
- * after editor mount so the extension is created once but always reads the
- * latest keys at completion time.
+ * The extension renders its completion popup in `document.body` so it is
+ * not clipped by `overflow:hidden/auto` ancestors (e.g. the detail drawer).
  */
 export function wikilinkCompletions(
-  keys: KeysArg,
-  expandableKeys?: KeysArg,
+  keys: string[],
+  expandableKeys?: string[],
 ): Extension {
-  return autocompletion({ override: [wikilinkSource(keys, expandableKeys)] });
+  return [
+    autocompletion({ override: [wikilinkSource(keys, expandableKeys)] }),
+    // Render the completion tooltip in document.body so it escapes any
+    // overflow:hidden/auto ancestor (drawer, panel scroll containers).
+    tooltips({ parent: typeof document !== "undefined" ? document.body : undefined }),
+  ];
 }
