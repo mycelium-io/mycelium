@@ -21,7 +21,7 @@ interface Props {
 export function AppShell({ activeRoom = null, statusLeft, statusRight, children }: Props) {
   return (
     <GlobalSearch>
-      <div className="flex h-screen flex-col overflow-hidden bg-bg text-text">
+      <div className="flex h-screen flex-col overflow-hidden bg-bg text-text" data-app-shell="ready">
         <div className="flex min-h-0 flex-1">
           <RoomsSidebar activeRoom={activeRoom} />
           <div className="flex min-w-0 flex-1 flex-col overflow-hidden">{children}</div>
