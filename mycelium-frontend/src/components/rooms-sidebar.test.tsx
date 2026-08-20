@@ -19,6 +19,7 @@ vi.mock("@/lib/api", () => ({
 }));
 
 import { CurrentUserProvider } from "@/components/current-user";
+import { InstallModalProvider } from "@/components/install-modal";
 import { KeymapProvider } from "@/components/keymap-provider";
 import { NotificationsProvider } from "@/components/notifications-provider";
 import { RoomsSidebar } from "@/components/rooms-sidebar";
@@ -34,7 +35,9 @@ async function renderSidebar(names: string[], activeRoom: string | null = null) 
     <CurrentUserProvider>
       <NotificationsProvider>
         <KeymapProvider>
-          <RoomsSidebar activeRoom={activeRoom} />
+          <InstallModalProvider>
+            <RoomsSidebar activeRoom={activeRoom} />
+          </InstallModalProvider>
         </KeymapProvider>
       </NotificationsProvider>
     </CurrentUserProvider>,

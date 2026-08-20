@@ -66,6 +66,14 @@ Steps 1 (CLI), 5 (adapter), and 6 (room + UI) are common to all three paths.
 Only "bring up a backend" (Step 3) and "point at an existing hub" (Step 4) are
 conditional.
 
+The frontend offers a guided version of this, reachable via the "Install CLI"
+button in its header. It only covers the client-only path (Steps 1 + 4, plus
+`mycelium login` if the hub is gated): install the CLI, point it at this hub,
+sign in if asked. It never guides "host the service" (Step 3), since the page
+showing that guidance is itself served by a hub that already exists, and a
+browser can't stand one up. If that hub is unreachable, the UI shows an error
+instead, since that's an operator problem the visitor's CLI commands can't fix.
+
 ## Step 3 (host the service): Bring up the stack
 
 Skip this step entirely on the **client only** path.

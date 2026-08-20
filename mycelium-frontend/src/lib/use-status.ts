@@ -65,6 +65,18 @@ async function probeHealth(): Promise<boolean> {
   }
 }
 
+/** How often the status bar re-checks the hub. */
+const HEALTH_POLL = 20_000;
+
+/** Is the hub answering? One shared cache entry (`health`) for every caller, so
+ *  the status bar and the install panel agree and cost one request between
+ *  them — the install panel just watches it faster while it waits for the hub
+ *  to come up. `null` until the first probe lands. */
+export function useBackendHealth(refreshInterval: number = HEALTH_POLL): boolean | null {
+  const { data } = useSWR("health", probeHealth, { refreshInterval });
+  return data ?? null;
+}
+
 /** Global workspace status for the status bar: primary LLM model, spend, and
  *  backend health (polled slowly, fail-soft). The status bar renders on every
  *  page, so both reads are shared cache entries like the room ones. */
@@ -74,12 +86,12 @@ export function useGlobalStatus(): GlobalStatus {
     () => fetchCollectorMetrics<CollectorSpendShape>(),
     { refreshInterval: 20_000 },
   );
-  const { data: healthy } = useSWR("health", probeHealth, { refreshInterval: 20_000 });
+  const healthy = useBackendHealth();
 
   const cost = collector?.counters?.cost_usd;
   return {
     model: primaryModel(collector ?? null),
     spend: typeof cost?.total === "number" ? cost.total : null,
-    healthy: healthy ?? null,
+    healthy,
   };
 }
