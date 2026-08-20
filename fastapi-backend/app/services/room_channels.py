@@ -34,7 +34,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from app.config import settings
 from app.services import custody, l9, slim_identity
@@ -737,7 +737,13 @@ class RoomChannelManager:
     # -- human-in-the-room --
 
     async def publish_human(
-        self, room: str, *, sender: str, text: str
+        self,
+        room: str,
+        *,
+        sender: str,
+        text: str,
+        parents: list[str] | None = None,
+        payload_data: dict[str, Any] | None = None,
     ) -> HumanPublishResult | None:
         """Publish a human's message onto the room channel as their proxy.
 
@@ -750,6 +756,10 @@ class RoomChannelManager:
         The published message is ingested locally via the persister so the
         transcript and UI bus see it exactly once, independent of whether SLIM
         loops a broadcast back to its own sender.
+
+        ``parents`` scopes the message to a thread: the causal edge *is* the
+        thread membership (see :mod:`app.services.threads`), so posting into one
+        is just naming what this message follows.
         """
         managed = self._channels.get(room)
         if managed is None:
@@ -767,6 +777,8 @@ class RoomChannelManager:
             recipients=mentioned,
             topic=l9.topic_urn(room),
             payload_type="message",
+            payload_data=payload_data,
+            parents=parents,
         )
         content = serialize_content(envelope, extra={"content": text})
         message_id = envelope.header.message.id if envelope.header.message else None

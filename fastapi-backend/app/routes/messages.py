@@ -25,7 +25,7 @@ from app.schemas import (
     MessageRead,
     MessageType,
 )
-from app.services import actor, local_state, persister, principals, room_channels
+from app.services import actor, local_state, persister, principals, room_channels, threads
 from app.services.filesystem import room_exists
 
 logger = logging.getLogger(__name__)
@@ -47,6 +47,38 @@ def _resolve_channel(name: str) -> tuple[str, local_state.CoordSessionShim | Non
     if room_exists(name):
         return name, None
     raise HTTPException(status_code=404, detail="Room or session not found")
+
+
+def resolve_thread(room: str, ref: str | None) -> threads.ThreadSummary | None:
+    """Resolve a thread reference for a room, 404/409-ing the way a route should."""
+    if not ref:
+        return None
+    try:
+        found = threads.resolve(room, ref)
+    except threads.AmbiguousThread as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if found is None:
+        raise HTTPException(status_code=404, detail=f"Thread {ref!r} not found in {room}")
+    return found
+
+
+def thread_parents(room: str, *, thread: str | None, reply_to: str | None) -> list[str]:
+    """The causal parents that place a new message in a thread.
+
+    Threading *is* the causal edge, so scoping a post is a matter of naming what it
+    follows: the replied-to message, or — for a chat thread named by id — its root,
+    whose id the thread is. An episode thread is scoped by its episode instead, so
+    it hangs off the thread's latest message rather than re-rooting it.
+    """
+    parents: list[str] = []
+    if reply_to:
+        parents.append(reply_to)
+    found = resolve_thread(room, thread)
+    if found is not None:
+        anchor = found.last_message_id if found.kind == "episode" else found.root_message_id
+        if anchor and anchor not in parents:
+            parents.append(anchor)
+    return parents
 
 
 @router.post("", response_model=MessageRead, status_code=201)
@@ -112,7 +144,10 @@ async def send_message(room_name: str, payload: MessageCreate, request: Request)
         and room_channels.manager.is_live(channel)
     ):
         result = await room_channels.manager.publish_human(
-            channel, sender=msg.sender_handle, text=msg.content
+            channel,
+            sender=msg.sender_handle,
+            text=msg.content,
+            parents=thread_parents(channel, thread=payload.thread, reply_to=payload.reply_to),
         )
         published = result is not None
         if result is not None:
@@ -157,10 +192,14 @@ async def list_messages(
     episode: str | None = Query(
         None, description="Only messages belonging to this L9 episode URN (one negotiation/session)"
     ),
+    thread: str | None = Query(
+        None, description="Only messages in this thread (id or id prefix); mirrors ?episode="
+    ),
 ):
     """List messages in a room (or coordination session), newest first."""
     channel, coord = _resolve_channel(room_name)
     now = datetime.now(UTC)
+    scope = resolve_thread(channel, thread) if coord is None else None
 
     messages = _read_messages(channel, coord)
     filtered = []
@@ -178,6 +217,8 @@ async def list_messages(
         if since and m.created_at < since:
             continue
         if episode and m.episode != episode:
+            continue
+        if thread and (scope is None or m.thread != scope.id):
             continue
         filtered.append(m)
 

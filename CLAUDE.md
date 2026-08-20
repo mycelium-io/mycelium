@@ -153,6 +153,20 @@ is no litellm dependency.
   than silently answered from something stale (`commands/memory.py:_hub_session`).
 - **Rooms are always persistent.** Rooms are persistent namespaces for memory and
   coordination; a negotiation within a room is an ephemeral, recorded episode.
+- **Threads are derived, and an episode is a typed thread.** A thread is a
+  conversation scope *inside* a room — an app-layer scope over the room's single
+  channel, never a second SLIM channel. It is **derived from the L9 causal DAG**
+  (`app/services/threads.py`), not stored: a reply inherits its parent's thread or
+  roots one at that parent, so threads appear in transcripts written before they
+  existed and there is no parallel `thread_id` to keep in sync. An episode outranks
+  causality — a negotiation's turns thread on their episode — which is how threads
+  *generalize* episodes instead of sitting beside them. The one declared case is
+  `mycelium thread new`: an opener with no parent and no reply yet says so in its
+  own L9 payload (`thread_root`). The surface is additive everywhere: `--thread` on
+  `await`/`respond`/`room send`/`room messages`, `?thread=` on the messages API, a
+  `thread` field on each `await` turn. A thread-scoped `await` drains a cursor of
+  its own (`handle#thread:<id>`), so working one conversation never consumes the
+  room-level backlog.
 - **The CLI skill is a protocol.** Post a position → await → respond → consensus →
   plan → work. This is the value add; don't change it to an augmentation layer.
 - **memory set always upserts.** `memory set` overwrites existing keys automatically

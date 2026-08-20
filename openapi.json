@@ -1269,10 +1269,34 @@
             "description": "Recipient handle for direct messages; omit for broadcast",
             "title": "Recipient Handle"
           },
+          "reply_to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Reply to this message id \u2014 threads the post onto that message's conversation",
+            "title": "Reply To"
+          },
           "sender_handle": {
             "description": "Sender handle (e.g., 'alpha#a8f3')",
             "title": "Sender Handle",
             "type": "string"
+          },
+          "thread": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Post into this thread (id or id prefix) instead of the room at large",
+            "title": "Thread"
           }
         },
         "required": [
@@ -1385,6 +1409,18 @@
           "sender_handle": {
             "title": "Sender Handle",
             "type": "string"
+          },
+          "thread": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Thread this message belongs to, derived from its L9 causal parents; null for a room-level message",
+            "title": "Thread"
           }
         },
         "required": [
@@ -1672,10 +1708,34 @@
             "title": "Handle",
             "type": "string"
           },
+          "reply_to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Reply to this message id \u2014 threads the reply onto that message",
+            "title": "Reply To"
+          },
           "text": {
             "description": "The reply / position prose (may carry a position marker)",
             "title": "Text",
             "type": "string"
+          },
+          "thread": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Reply into this thread (id or id prefix) rather than the room at large",
+            "title": "Thread"
           }
         },
         "required": [
@@ -2290,6 +2350,217 @@
           "team"
         ],
         "title": "TeamRead",
+        "type": "object"
+      },
+      "ThreadCreate": {
+        "description": "Open a thread: post its root message and hand back the thread's id.",
+        "properties": {
+          "sender_handle": {
+            "description": "Handle opening the thread",
+            "title": "Sender Handle",
+            "type": "string"
+          },
+          "title": {
+            "description": "The opening message \u2014 its first line becomes the thread's title. @-mentions wake the agents they name, as in any room post.",
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "sender_handle"
+        ],
+        "title": "ThreadCreate",
+        "type": "object"
+      },
+      "ThreadDetailRead": {
+        "description": "A thread plus the messages scoped to it, oldest first.",
+        "properties": {
+          "episode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Episode URN, for an episode-typed thread",
+            "title": "Episode"
+          },
+          "id": {
+            "description": "Thread id: the root message's id, or an episode's short id",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "description": "\"chat\" (a reply chain) or \"episode\" (a negotiation)",
+            "title": "Kind",
+            "type": "string"
+          },
+          "last_message_at": {
+            "default": "",
+            "title": "Last Message At",
+            "type": "string"
+          },
+          "last_message_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Message Id"
+          },
+          "message_count": {
+            "default": 0,
+            "title": "Message Count",
+            "type": "integer"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/MessageRead"
+            },
+            "title": "Messages",
+            "type": "array"
+          },
+          "participants": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Participants",
+            "type": "array"
+          },
+          "root_message_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Root Message Id"
+          },
+          "started_at": {
+            "default": "",
+            "title": "Started At",
+            "type": "string"
+          },
+          "title": {
+            "description": "First line of the thread's opening message",
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "title"
+        ],
+        "title": "ThreadDetailRead",
+        "type": "object"
+      },
+      "ThreadListResponse": {
+        "properties": {
+          "threads": {
+            "items": {
+              "$ref": "#/components/schemas/ThreadSummaryRead"
+            },
+            "title": "Threads",
+            "type": "array"
+          }
+        },
+        "required": [
+          "threads"
+        ],
+        "title": "ThreadListResponse",
+        "type": "object"
+      },
+      "ThreadSummaryRead": {
+        "description": "One thread in a room: a conversation scope derived from the L9 causal DAG.",
+        "properties": {
+          "episode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Episode URN, for an episode-typed thread",
+            "title": "Episode"
+          },
+          "id": {
+            "description": "Thread id: the root message's id, or an episode's short id",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "description": "\"chat\" (a reply chain) or \"episode\" (a negotiation)",
+            "title": "Kind",
+            "type": "string"
+          },
+          "last_message_at": {
+            "default": "",
+            "title": "Last Message At",
+            "type": "string"
+          },
+          "last_message_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Message Id"
+          },
+          "message_count": {
+            "default": 0,
+            "title": "Message Count",
+            "type": "integer"
+          },
+          "participants": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Participants",
+            "type": "array"
+          },
+          "root_message_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Root Message Id"
+          },
+          "started_at": {
+            "default": "",
+            "title": "Started At",
+            "type": "string"
+          },
+          "title": {
+            "description": "First line of the thread's opening message",
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "title"
+        ],
+        "title": "ThreadSummaryRead",
         "type": "object"
       },
       "TitleUpdate": {
@@ -3014,7 +3285,7 @@
     },
     "/api/rooms/{room_name}/await": {
       "get": {
-        "description": "Long-poll for the next message addressed to ``handle`` (server-held member).",
+        "description": "Long-poll for the next message addressed to ``handle`` (server-held member).\n\n``thread`` narrows the poll to one conversation scope inside the room; without\nit the caller awaits the whole room and reads each turn's ``thread`` field.\nNarrowing is what it says: a scoped poll still serves only turns *addressed*\nto the handle, off a cursor of its own so the room-level backlog is untouched.",
         "operationId": "await_message_api_rooms__room_name__await_get",
         "parameters": [
           {
@@ -3043,6 +3314,22 @@
               "default": 0,
               "title": "Timeout",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "thread",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Thread"
             }
           }
         ],
@@ -4127,6 +4414,24 @@
               "description": "Only messages belonging to this L9 episode URN (one negotiation/session)",
               "title": "Episode"
             }
+          },
+          {
+            "description": "Only messages in this thread (id or id prefix); mirrors ?episode=",
+            "in": "query",
+            "name": "thread",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only messages in this thread (id or id prefix); mirrors ?episode=",
+              "title": "Thread"
+            }
           }
         ],
         "responses": {
@@ -5139,6 +5444,162 @@
         "summary": "Get Skill",
         "tags": [
           "skills"
+        ]
+      }
+    },
+    "/api/rooms/{room_name}/threads": {
+      "get": {
+        "description": "List a room's threads, most recently active first.",
+        "operationId": "list_threads_api_rooms__room_name__threads_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "room_name",
+            "required": true,
+            "schema": {
+              "title": "Room Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Threads",
+        "tags": [
+          "threads"
+        ]
+      },
+      "post": {
+        "description": "Open a thread by posting its root message; returns the new thread.\n\nA thread born from a reply needs nothing declared \u2014 the causal edge is the\nthread. Opening one *before* anyone has replied is the exception: the root\nmessage says so in its own L9 payload, so the thread exists (and can be\naddressed by id) from the moment it is created.",
+        "operationId": "open_thread_api_rooms__room_name__threads_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "room_name",
+            "required": true,
+            "schema": {
+              "title": "Room Name",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ThreadCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadSummaryRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Open Thread",
+        "tags": [
+          "threads"
+        ]
+      }
+    },
+    "/api/rooms/{room_name}/threads/{thread_id}": {
+      "get": {
+        "description": "One thread and its messages, oldest first. ``thread_id`` may be a prefix.",
+        "operationId": "get_thread_api_rooms__room_name__threads__thread_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "room_name",
+            "required": true,
+            "schema": {
+              "title": "Room Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "thread_id",
+            "required": true,
+            "schema": {
+              "title": "Thread Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadDetailRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Thread",
+        "tags": [
+          "threads"
         ]
       }
     },

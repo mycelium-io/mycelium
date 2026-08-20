@@ -54,7 +54,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from app.schemas import MessageType
-from app.services import l9, memory_sync
+from app.services import l9, memory_sync, threads
 from app.services.l9_slim import ChannelReceiveTimeout
 
 # Stable namespace so a transcript record maps to the same synthetic
@@ -393,13 +393,17 @@ def _conversational_text(content: dict[str, Any]) -> str | None:
     return text
 
 
-def stored_message_from_record(room: str, record: TranscriptRecord) -> StoredMessage | None:
+def stored_message_from_record(
+    room: str, record: TranscriptRecord, *, thread: str | None = None
+) -> StoredMessage | None:
     """Project a transcript record into the ``StoredMessage`` the list/UI reads.
 
     Returns None for a non-conversational, non-raise-up record. The synthetic id is
     derived from the envelope id so it's stable across reads, and ``message_id``
     carries that envelope id as the cross-store correlation key (dedup against
-    ``local_state``).
+    ``local_state``). ``thread`` is the record's derived conversation scope, which
+    only a caller holding the whole transcript can know (see
+    :mod:`app.services.threads`).
     """
     from app.services.local_state import StoredMessage
 
@@ -424,6 +428,7 @@ def stored_message_from_record(room: str, record: TranscriptRecord) -> StoredMes
         message_type=message_type,
         content=content,
         episode=episode if isinstance(episode, str) else None,
+        thread=thread,
         message_id=record.message_id or None,
         id=uuid.uuid5(_MESSAGE_ID_NS, seed),
     )
@@ -465,8 +470,13 @@ def conversational_messages(room: str) -> list[StoredMessage]:
     cached = _conversational_cache.get(room)
     if cached is not None and cached[0] == stamp:
         return list(cached[1])
+    records = load_transcript(room)
+    assigned = threads.thread_map(records)
     messages = [
-        m for r in load_transcript(room) if (m := stored_message_from_record(room, r)) is not None
+        m
+        for r in records
+        if (m := stored_message_from_record(room, r, thread=assigned.get(r.message_id or "")))
+        is not None
     ]
     _conversational_cache[room] = (stamp, messages)
     return list(messages)
@@ -486,11 +496,21 @@ def room_conversation(room: str) -> list[StoredMessage]:
 
     mem = local_state.list_messages(room)
     live_ids = {m.message_id for m in mem if m.message_id}
-    disk = [m for m in conversational_messages(room) if m.message_id not in live_ids]
-    return disk + mem
+    disk = conversational_messages(room)
+    # A live row is written the moment its message lands, before anything can have
+    # replied to it — so its thread is only knowable from the transcript, which by
+    # then holds the reply that opened the thread. Backfill from the disk view so a
+    # message doesn't lose its scope by virtue of still being in memory.
+    assigned = {m.message_id: m.thread for m in disk if m.message_id and m.thread}
+    for m in mem:
+        if m.thread is None and m.message_id:
+            m.thread = assigned.get(m.message_id)
+    return [m for m in disk if m.message_id not in live_ids] + mem
 
 
-def l9_bus_frame(room: str, record: TranscriptRecord) -> dict[str, Any]:
+def l9_bus_frame(
+    room: str, record: TranscriptRecord, *, thread: str | None = None
+) -> dict[str, Any]:
     """Project a transcript record into the L9 wire frame the SSE bus carries.
 
     The single shape the frontend L9 inspector reads (``l9_<kind>`` + the full
@@ -507,6 +527,7 @@ def l9_bus_frame(room: str, record: TranscriptRecord) -> dict[str, Any]:
         "created_at": record.recorded_at,
         "room_name": room,
         "episode": episode if isinstance(episode, str) else None,
+        "thread": thread,
     }
 
 
@@ -520,9 +541,10 @@ def l9_wire_history(room: str, limit: int = 200) -> list[dict[str, Any]]:
     last ``limit`` frames.
     """
     records = load_transcript(room)
+    assigned = threads.thread_map(records)
     if limit and len(records) > limit:
         records = records[-limit:]
-    return [l9_bus_frame(room, r) for r in records]
+    return [l9_bus_frame(room, r, thread=assigned.get(r.message_id or "")) for r in records]
 
 
 # Delivery cursors persist next to the transcript so a reconnecting agent's
@@ -668,6 +690,11 @@ class RoomPersister:
         # delivery position — so a member that was offline at shutdown is still
         # recognised as a reconnect and re-served exactly its missed tail.
         self.log = DeliveryLog(load_transcript(room), cursors=load_cursors(room))
+        # Thread assignment kept warm alongside the log, so the live path (bus
+        # frames, list-store rows, a thread-scoped ``await``) can scope a message
+        # in O(1) instead of re-deriving the room on every message.
+        self.threads = threads.ThreadIndex()
+        self.threads.extend(self.log.records)
         # handle -> most recent inbound MessageContext, for targeted re-serve.
         self._contexts: dict[str, slim_bindings.MessageContext] = {}
         # Message ids ingested this process lifetime, so a message the backend
@@ -903,6 +930,7 @@ class RoomPersister:
                 return
             self._ingested_ids.add(mid)
         record = record_from(envelope, content)
+        thread = self.threads.add(record)
         present = set(self._members_provider())
         self.log.record(record, delivered_to=present, recipients=envelope_recipients(envelope))
         append_transcript(self.room, record)
@@ -912,9 +940,9 @@ class RoomPersister:
         # here so they're visible immediately; the human-proxy broadcast skips it
         # (``list_write=False``) since the transcript already carries it.
         if list_write:
-            self._record_to_list_store(record)
+            self._record_to_list_store(record, thread)
         if self._feed_bus:
-            self._publish_to_bus(record)
+            self._publish_to_bus(record, thread)
         # Triggers: @-summon and commit:converged (skeleton hooks). The full
         # summon list is passed to every hook call so an engine summoned alongside
         # other handles (``@aligner @a @b``) can scope the run to those co-mentions.
@@ -963,7 +991,7 @@ class RoomPersister:
         elif result.applied:
             self.knowledge_applied += 1
 
-    def _publish_to_bus(self, record: TranscriptRecord) -> None:
+    def _publish_to_bus(self, record: TranscriptRecord, thread: str | None = None) -> None:
         """Feed the recorded message to the in-process bus so the SSE UI sees it.
 
         The bus (``routes/stream.py``) is the frontend's live feed; agent messages
@@ -973,11 +1001,11 @@ class RoomPersister:
         try:
             from app.bus import bus, room_channel
 
-            bus.publish(room_channel(self.room), l9_bus_frame(self.room, record))
+            bus.publish(room_channel(self.room), l9_bus_frame(self.room, record, thread=thread))
         except Exception:
             logger.debug("bus publish from persister failed for room %s", self.room, exc_info=True)
 
-    def _record_to_list_store(self, record: TranscriptRecord) -> None:
+    def _record_to_list_store(self, record: TranscriptRecord, thread: str | None = None) -> None:
         """Mirror a conversational record into the in-memory list store (live lens).
 
         The durable transcript is the read path's source of truth; this write keeps
@@ -986,7 +1014,7 @@ class RoomPersister:
         in the transcript/bus, out of the chat list. Carries the envelope id so a
         cold read dedups this row against its transcript projection.
         """
-        msg = stored_message_from_record(self.room, record)
+        msg = stored_message_from_record(self.room, record, thread=thread)
         if msg is None:
             return
         try:

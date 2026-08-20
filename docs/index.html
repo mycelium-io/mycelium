@@ -83,6 +83,7 @@
       <a href="#rooms" class="nav-link sub">Rooms</a>
       <a href="#users" class="nav-link sub">Users &amp; Teams</a>
       <a href="#episodes" class="nav-link sub">Episodes</a>
+      <a href="#threads" class="nav-link sub">Threads</a>
       <a href="#memory" class="nav-link sub">Memory</a>
       <a href="#plan" class="nav-link sub">Plan</a>
       <a href="#l9-protocol" class="nav-link sub">L9 Protocol</a>
@@ -404,6 +405,70 @@ PATCH .../messages/{id}  {<span class="str">&quot;status&quot;</span>: <span cla
 <span class="comment"># Second episode (room memory carries over)</span>
 <span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="flag">--handle</span> planner &quot;Now let&#x27;s plan the API layer&quot; <span class="flag">-r</span> sprint-plan
 <span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">invoke</span> aligner <span class="str">&quot;converge on the API layer scope&quot;</span> <span class="flag">-r</span> sprint-plan</code></pre>
+    </section>
+
+    <hr class="divider">
+
+    <section class="doc-section" id="threads">
+      <h1>Threads</h1>
+      <p>A thread is a conversation scope <em>inside</em> a <a href="#rooms">room</a>. A room is one broadcast transcript, so once more than two participants are talking — or agents are talking to each other — the stream tangles: which reply answers which prompt becomes guesswork, and there&#x27;s no unit smaller than &quot;the whole room&quot; to follow or address. A thread is that unit.</p>
+      <p>Threads are <strong>not</strong> a transport feature. A room is one SLIM group channel and stays one; a thread is an application-layer scope over it, the same way an episode is. No second channel, no per-thread membership.</p>
+      <h2 id="threads-threads-are-derived-not-stored">Threads are derived, not stored</h2>
+      <p>Every message already records what it answers: the causal <code>parents</code> its <a href="#l9-protocol">L9</a> envelope carries. That edge <em>is</em> the thread, so nothing new is written down and a transcript recorded before threads existed reads as threaded now.</p>
+      <p>The rules, in order:</p>
+      <ol class="steps">
+        <li>A message on a <strong>negotiation episode</strong> belongs to that episode&#x27;s thread. <em>An episode is a typed thread</em> — a negotiation is the conversation scope Mycelium already had, so threads generalize it rather than sitting beside it.</li>
+        <li>A message that <strong>opens a thread deliberately</strong> (<code>mycelium thread new</code>) roots one at itself — the one case causality can&#x27;t express, since a fresh thread has no parent to hang off and no reply yet to root it.</li>
+        <li>Otherwise a message <strong>inherits the thread of what it replies to</strong>, or opens one rooted at that message. So a thread is born the moment someone replies, and its id is the root message&#x27;s id.</li>
+        <li>Otherwise the message is room-level and belongs to no thread.</li>
+      </ol>
+      <p>A chat thread&#x27;s id is the root message&#x27;s id; an episode thread&#x27;s id is the episode&#x27;s short id. Both resolve by prefix, so eight characters is enough to name one.</p>
+      <h2 id="threads-working-one-conversation">Working one conversation</h2>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">thread</span> <span class="cmd">ls</span>                          # the room&#x27;s live conversations
+<span class="bin">mycelium</span> <span class="cmd">thread</span> <span class="cmd">show</span> 3f9a1c2d               # read one end to end
+<span class="bin">mycelium</span> <span class="cmd">thread</span> <span class="cmd">new</span> <span class="str">&quot;@rowan rollout order?&quot;</span> # open one; prints its id
+
+<span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">messages</span> <span class="flag">--thread</span> 3f9a1c2d    # filter the transcript
+<span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">send</span> <span class="flag">--thread</span> 3f9a1c2d <span class="str">&quot;…&quot;</span>    # post inside it</code></pre>
+      <p>For a participating agent it&#x27;s the same two stateless calls as always, with one optional parameter:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">await</span>   <span class="flag">--handle</span> me <span class="flag">--thread</span> 3f9a1c2d   # wait on one conversation
+<span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="flag">--handle</span> me <span class="flag">--thread</span> 3f9a1c2d <span class="str">&quot;…&quot;</span></code></pre>
+      <p>Nothing here is required. With no <code>--thread</code>, <code>await</code> watches the whole room and <code>respond</code> answers the turn that woke it — which already lands in the right conversation. A resident agent normally stays on the whole-room loop and reads the <code>thread</code> field on each turn, holding several conversations apart from one poll; <code>--thread</code> is the narrower case of working one and ignoring the rest.</p>
+      <p>A thread-scoped <code>await</code> keeps a delivery cursor of its own, so draining one conversation never consumes the turns waiting in another.</p>
+      <h2 id="threads-threads-vs-episodes">Threads vs episodes</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th></th>
+              <th>Thread</th>
+              <th>Episode</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>What it is</td>
+              <td>Any conversation scope in a room</td>
+              <td>A recorded negotiation</td>
+            </tr>
+            <tr>
+              <td>How it starts</td>
+              <td>Someone replies, or <code>thread new</code></td>
+              <td>The aligner is summoned</td>
+            </tr>
+            <tr>
+              <td>Ends</td>
+              <td>Never — it&#x27;s just a scope</td>
+              <td>At consensus or rejection</td>
+            </tr>
+            <tr>
+              <td>Relationship</td>
+              <td>The general case</td>
+              <td>A thread with a mechanism and a verdict</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </section>
 
     <hr class="divider">

@@ -769,8 +769,8 @@ def watch(
 
 
 @doc_ref(
-    usage='mycelium room send "<content>" [--room <room>] [--handle <handle>]',
-    desc="Send an addressed chat message into a room. Use <code>@handle</code> mentions to direct it to specific agents.",
+    usage='mycelium room send "<content>" [--room <room>] [--handle <handle>] [--thread <id>]',
+    desc="Send an addressed chat message into a room. Use <code>@handle</code> mentions to direct it to specific agents, and <code>--thread</code> to post inside a conversation.",
     group="room",
 )
 @app.command("send")
@@ -788,6 +788,12 @@ def send(
         "--handle",
         "-H",
         help="Your sender handle (defaults to identity config)",
+    ),
+    thread: str | None = typer.Option(
+        None, "--thread", help="Post into this thread (id or prefix) rather than the room at large"
+    ),
+    reply_to: str | None = typer.Option(
+        None, "--reply-to", help="Reply to this message id — threads onto that message"
     ),
 ) -> None:
     """
@@ -809,6 +815,7 @@ def send(
         mycelium room send "@avery-agent please review the cache config"
         mycelium room send --room design-review --handle arnold "@rowan-agent thoughts on the API proposal?"
         mycelium room send "@avery-agent @rowan-agent sync at 3pm re: sprint priorities"
+        mycelium room send --thread 3f9a1c2d "one more thought on the TTL"
     """
     try:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False  # noqa: F841
@@ -822,12 +829,15 @@ def send(
             send_message_api_rooms_room_name_messages_post as send_api,
         )
         from mycelium_backend_client.models import MessageCreate, MessageCreateMessageType
+        from mycelium_backend_client.types import UNSET
 
         with _typed_client(config) as client:
             body = MessageCreate(
                 sender_handle=sender_handle,
                 message_type=MessageCreateMessageType.BROADCAST,
                 content=content,
+                thread=thread or UNSET,
+                reply_to=reply_to or UNSET,
             )
             result = send_api.sync(room_name=room_name, client=client, body=body)
 
@@ -847,8 +857,8 @@ def send(
 
 
 @doc_ref(
-    usage="mycelium room messages [<room>] [--limit N] [--sender <handle>] [--type <type>]",
-    desc="Read recent messages in a room (point-in-time, newest first). Filter with <code>--sender</code> / <code>--type</code>.",
+    usage="mycelium room messages [<room>] [--limit N] [--sender <handle>] [--type <type>] [--thread <id>]",
+    desc="Read recent messages in a room (point-in-time, newest first). Filter with <code>--sender</code> / <code>--type</code> / <code>--thread</code>.",
     group="room",
 )
 @app.command("messages")
@@ -861,6 +871,9 @@ def messages(
     ),
     message_type: str | None = typer.Option(
         None, "--type", "-t", help="Only this message type (e.g. direct, broadcast, announce)"
+    ),
+    thread: str | None = typer.Option(
+        None, "--thread", help="Only messages in this thread (id or prefix)"
     ),
 ) -> None:
     """
@@ -875,6 +888,7 @@ def messages(
         mycelium room messages design-review --limit 5
         mycelium room messages cc-e2e --sender cc-x
         mycelium room messages my-room --type broadcast
+        mycelium room messages --thread 3f9a1c2d
     """
     try:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False  # noqa: F841
@@ -896,6 +910,7 @@ def messages(
                 limit=limit,
                 sender=sender or UNSET,
                 message_type=message_type or UNSET,
+                thread=thread or UNSET,
             )
 
         if not result or isinstance(result, HTTPValidationError):

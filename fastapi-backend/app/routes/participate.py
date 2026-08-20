@@ -31,7 +31,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from app.services import actor, l9, principals, room_channels
+from app.services import actor, l9, principals, room_channels, threads
 from app.services.filesystem import room_exists
 from app.services.l9_models import Kind
 from app.services.l9_slim import serialize_content, serialize_envelope
@@ -118,7 +118,7 @@ def _addressed_to(content: dict[str, Any], handle: str) -> bool:
     return not (nxt.isalnum() or nxt in "_-")
 
 
-def _describe(room: str, handle: str, record: Any) -> dict[str, Any]:
+def _describe(room: str, handle: str, record: Any, thread: str | None = None) -> dict[str, Any]:
     content = record.content
     header = (content.get("l9") or {}).get("header") or {}
     message = header.get("message") or {}
@@ -129,16 +129,56 @@ def _describe(room: str, handle: str, record: Any) -> dict[str, Any]:
         "prompt": content.get("content") or "",
         "sender": record.sender,
         "episode": message.get("episode"),
+        # The thread this turn belongs to (null when it is room-level). A resident
+        # loop watches the whole room and routes on this field, so one loop can
+        # hold several conversations apart without a poll per thread.
+        "thread": thread,
         "topic": context.get("topic"),
         "message_id": record.message_id,
     }
 
 
+def _resolve_thread(room: str, ref: str | None) -> threads.ThreadSummary | None:
+    """Resolve a ``--thread`` reference (id or prefix) for a room."""
+    if not ref:
+        return None
+    try:
+        found = threads.resolve(room, ref)
+    except threads.AmbiguousThread as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if found is None:
+        raise HTTPException(status_code=404, detail=f"Thread {ref!r} not found in {room}")
+    return found
+
+
+def _cursor_key(handle: str, thread: str | None) -> str:
+    """The durable delivery cursor a scope drains from.
+
+    A thread-scoped ``await`` needs its own position — otherwise draining one
+    thread would consume the handle's room-level turns. ``#`` can't occur in a
+    handle, so a scoped key can never collide with a plain one.
+    """
+    return handle if thread is None else f"{handle}#thread:{thread}"
+
+
 @router.get("/await")
-async def await_message(room_name: str, request: Request, handle: str, timeout: int = 0):
-    """Long-poll for the next message addressed to ``handle`` (server-held member)."""
+async def await_message(
+    room_name: str,
+    request: Request,
+    handle: str,
+    timeout: int = 0,
+    thread: str | None = None,
+):
+    """Long-poll for the next message addressed to ``handle`` (server-held member).
+
+    ``thread`` narrows the poll to one conversation scope inside the room; without
+    it the caller awaits the whole room and reads each turn's ``thread`` field.
+    Narrowing is what it says: a scoped poll still serves only turns *addressed*
+    to the handle, off a cursor of its own so the room-level backlog is untouched.
+    """
     if not room_exists(room_name):
         raise HTTPException(status_code=404, detail="Room not found")
+    scope = _resolve_thread(room_name, thread)
     # Draining a queue consumes it: the cursor advances, so a served turn is not
     # served again. A verified token may therefore only drain its own handle or one
     # that granted it — otherwise @bob's token could intercept @alice's coordination.
@@ -149,6 +189,13 @@ async def await_message(room_name: str, request: Request, handle: str, timeout: 
         return {"room": room_name, "handle": handle, "message": None}
     persister = managed.persister
     key = (room_name, handle)
+    cursor_key = _cursor_key(handle, scope.id if scope else None)
+    if scope is not None and not persister.log.knows(cursor_key):
+        # A thread is a narrowing of the same stream, so a first scoped poll starts
+        # where the handle already stands room-wide — never re-serving turns it has
+        # been given, never skipping ahead of them either.
+        persister.advance_cursor(cursor_key, persister.log.position(handle))
+    index = threads.ThreadIndex()
     # The cursor rides the durable inbox: its first read is the handle's persisted
     # delivery position — anchored at the mention that summoned it (``record()``
     # holds an @-addressed turn for an untracked recipient) and preserved across a
@@ -158,18 +205,20 @@ async def await_message(room_name: str, request: Request, handle: str, timeout: 
     deadline = loop.time() + (timeout if timeout > 0 else _MAX_WAIT_S)
     while True:
         records = persister.log.records
-        i = persister.log.position(handle)
+        index.extend(records)
+        i = persister.log.position(cursor_key)
         while i < len(records):
             record = records[i]
             i += 1
-            if _addressed_to(record.content, handle):
-                persister.advance_cursor(handle, i)
+            in_scope = scope is None or index.thread_of_record(record) == scope.id
+            if in_scope and _addressed_to(record.content, handle):
+                persister.advance_cursor(cursor_key, i)
                 _last_tick[key] = record.content
                 room_channels.manager.refresh_lease(room_name, handle)
-                return _describe(room_name, handle, record)
+                return _describe(room_name, handle, record, index.thread_of_record(record))
         # Nothing addressed in the scanned range: consume it (advance past the
         # observer/broadcast turns this handle doesn't await) and keep polling.
-        persister.advance_cursor(handle, len(records))
+        persister.advance_cursor(cursor_key, len(records))
         if loop.time() >= deadline:
             return {"room": room_name, "handle": handle, "message": None}
         room_channels.manager.refresh_lease(room_name, handle)
@@ -179,6 +228,12 @@ async def await_message(room_name: str, request: Request, handle: str, timeout: 
 class ReplyBody(BaseModel):
     handle: str = Field(..., description="The handle publishing the reply")
     text: str = Field(..., description="The reply / position prose (may carry a position marker)")
+    thread: str | None = Field(
+        None, description="Reply into this thread (id or id prefix) rather than the room at large"
+    )
+    reply_to: str | None = Field(
+        None, description="Reply to this message id — threads the reply onto that message"
+    )
 
 
 @router.post("/reply")
@@ -203,6 +258,7 @@ async def post_reply(room_name: str, body: ReplyBody, request: Request):
     if managed is None or managed.persister is None:
         raise HTTPException(status_code=503, detail="No live channel for room")
 
+    scope = _resolve_thread(room_name, body.thread)
     payload_data, clean = _parse_marker(body.text)
     woke = _last_tick.get((room_name, handle)) or {}
     woke_header = (woke.get("l9") or {}).get("header") or {}
@@ -213,7 +269,22 @@ async def post_reply(room_name: str, body: ReplyBody, request: Request):
     )
     episode = woke_msg.get("episode") or l9.episode_urn(room_name, "live")
     topic = ((woke_header.get("context") or {}).get("topic")) or l9.topic_urn(room_name)
-    parents = [woke_msg["id"]] if woke_msg.get("id") else []
+    # A named thread is the reply's scope, so it leads the causal parents — that
+    # edge *is* the thread membership. An episode-typed thread is scoped by its
+    # episode instead; a chat thread has to clear the woken tick's episode, or the
+    # episode rule would silently pull the reply back into the negotiation.
+    parents: list[str] = []
+    if body.reply_to:
+        parents.append(body.reply_to)
+    if scope is not None:
+        if scope.kind == "episode":
+            episode = scope.episode or episode
+        else:
+            episode = l9.episode_urn(room_name, "live")
+            if scope.root_message_id and scope.root_message_id not in parents:
+                parents.append(scope.root_message_id)
+    if woke_msg.get("id") and woke_msg["id"] not in parents:
+        parents.append(woke_msg["id"])
 
     envelope = l9.build_envelope(
         kind=Kind.exchange,

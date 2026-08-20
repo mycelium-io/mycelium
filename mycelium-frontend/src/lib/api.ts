@@ -400,6 +400,9 @@ export interface RoomMessage {
   key?: string;
   version?: number;
   episode?: string | null;
+  /** The conversation scope this message belongs to inside the room, derived
+   *  from what it replies to. Null for a room-level message. */
+  thread?: string | null;
   [key: string]: unknown;
 }
 
@@ -708,6 +711,33 @@ export async function fetchEpisode(
     `/api/rooms/${roomName}/episodes/${encodeURIComponent(shortId)}`,
     { cache: "no-store", fallback: null },
   );
+}
+
+// ── Threads (conversation scopes inside a room) ──────────────────────────────
+
+/** One thread: a conversation inside the room, derived from the L9 causal DAG.
+ *  A chat thread is rooted at the message that was replied to; a negotiation
+ *  episode is a typed thread, keyed by its episode's short id. */
+export interface ThreadSummary {
+  id: string;
+  kind: "chat" | "episode";
+  title: string;
+  root_message_id: string | null;
+  last_message_id: string | null;
+  episode: string | null;
+  participants: string[];
+  message_count: number;
+  started_at: string;
+  last_message_at: string;
+}
+
+/** A room's threads, most recently active first. */
+export async function fetchThreads(roomName: string): Promise<ThreadSummary[]> {
+  const data = await apiFetch<{ threads?: ThreadSummary[] }>(`/api/rooms/${roomName}/threads`, {
+    cache: "no-store",
+    fallback: {},
+  });
+  return data.threads ?? [];
 }
 
 // ── SLIM coordination fabric (the `/health` coordination block) ──────────────

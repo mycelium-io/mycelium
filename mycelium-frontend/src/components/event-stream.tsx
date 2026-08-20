@@ -43,6 +43,10 @@ interface Event {
   // turns share their mediator's episode; casual chat carries the room default
   // or none. Lets the feed group/fold one negotiation's turns together.
   episode: string | null;
+  // The conversation scope inside the room this event belongs to — derived from
+  // what it replies to, so a busy room can be read one exchange at a time. Null
+  // for a room-level message that neither answers anything nor rode an episode.
+  thread: string | null;
   raw: Record<string, unknown>;
 }
 
@@ -271,6 +275,7 @@ function parseEvent(msg: Record<string, unknown>): Event {
     recipient,
     time,
     episode,
+    thread: typeof msg.thread === "string" ? msg.thread : null,
     raw,
   };
 }
@@ -451,9 +456,18 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
     return () => { es?.close(); clearTimeout(retryTimeout); };
   }, [roomName, onMemoryChanged]);
 
+  // Following one conversation: the feed is a flat room stream, so a thread is
+  // the way to read a single exchange out of several running at once. Null is
+  // the whole room — the default the feed has always been.
+  const [thread, setThread] = useState<string | null>(null);
+  useEffect(() => setThread(null), [roomName]);
+
   const visible = useMemo(
-    () => events.filter(e => CHANNEL_VIEW_TYPES.has(e.type)),
-    [events],
+    () =>
+      events.filter(
+        (e) => CHANNEL_VIEW_TYPES.has(e.type) && (thread === null || e.thread === thread),
+      ),
+    [events, thread],
   );
 
   // Arriving from search: mark the named message and scroll it into sight once
@@ -565,6 +579,22 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
           <NegotiationView events={events} />
         </div>
       ) : (
+      <>
+      {thread !== null && view === "channel" && (
+        <div className="flex shrink-0 items-center gap-2 border-b border-border bg-surface/60 px-5 py-1.5">
+          <span className="text-micro uppercase tracking-wide text-muted-foreground">Thread</span>
+          <span className="font-mono text-label text-accent">{thread.slice(0, 8)}</span>
+          <span className="text-micro text-muted-foreground">
+            {visible.length} message{visible.length === 1 ? "" : "s"}
+          </span>
+          <button
+            onClick={() => setThread(null)}
+            className="ml-auto rounded px-2 py-0.5 text-micro text-muted-foreground hover:bg-hairline hover:text-text"
+          >
+            show whole room
+          </button>
+        </div>
+      )}
       <ScrollArea className="flex-1 min-h-0" viewportRef={scrollRef}>
         {view === "plan" ? (
           <RoomPlanHeader roomName={roomName} refreshTrigger={planRefreshTrigger} />
@@ -745,6 +775,15 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
                             → {ev.recipient}
                           </span>
                         )}
+                        {ev.thread && thread === null && (
+                          <button
+                            onClick={() => setThread(ev.thread)}
+                            title="Follow this thread"
+                            className="rounded bg-hairline px-1.5 py-px font-mono text-micro text-muted-foreground hover:text-accent"
+                          >
+                            ⌥ {ev.thread.slice(0, 8)}
+                          </button>
+                        )}
                       </div>
                     )}
                     <MarkdownContent className="contrast text-body leading-relaxed" onLinkClick={onOpenMemory}>
@@ -757,6 +796,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
         </div>
         )}
       </ScrollArea>
+      </>
       )}
     </div>
   );

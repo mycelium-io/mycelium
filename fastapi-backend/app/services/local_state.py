@@ -87,6 +87,12 @@ class StoredMessage:
     # casual reply carries the room's default). Lets the UI group/fold a
     # negotiation's turns under their episode instead of interleaving them inline.
     episode: str | None = None
+    # The thread this message belongs to, derived from the L9 causal DAG
+    # (``app.services.threads``): a conversation scope inside the room, so a
+    # reader can follow one exchange instead of the whole broadcast stream.
+    # ``None`` for a room-level message that neither replies to anything nor
+    # belongs to a negotiation episode.
+    thread: str | None = None
     # The L9 envelope id when this message rode the channel (respond / broadcast /
     # agent reply). A cross-store correlation key: the same message can surface
     # from the durable transcript and this in-memory store, and they dedup by this

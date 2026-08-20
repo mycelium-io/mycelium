@@ -27,6 +27,7 @@ from mycelium.commands import (
     plan,
     room,
     skill,
+    thread,
     ui,
     user,
     wire,
@@ -108,6 +109,7 @@ app.command(name="ls")(room.list_rooms)
 app.add_typer(room.app, name="room")
 app.add_typer(memory.app, name="memory")
 app.add_typer(skill.app, name="skill")
+app.add_typer(thread.app, name="thread")
 app.add_typer(plan.app, name="plan")
 app.add_typer(config.app, name="config")
 app.add_typer(adapter.app, name="adapter")

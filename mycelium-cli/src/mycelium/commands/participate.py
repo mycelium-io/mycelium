@@ -43,14 +43,23 @@ from mycelium.error_handler import print_error
 _TERMINAL_STATUSES = frozenset({401, 403})
 
 
-def _await_once(config: MyceliumConfig, room_name: str, handle: str, timeout: int) -> dict | None:
+def _await_once(
+    config: MyceliumConfig,
+    room_name: str,
+    handle: str,
+    timeout: int,
+    thread: str | None = None,
+) -> dict | None:
     """One long-poll. Returns the turn dict, or ``None`` on timeout."""
     path = f"/api/rooms/{room_name}/await"
     # The server blocks up to `timeout`; give the client a little more headroom
     # (or no cap when waiting indefinitely).
     client_timeout = float(timeout) + 15.0 if timeout > 0 else None
+    params: dict[str, str | int] = {"handle": handle, "timeout": timeout}
+    if thread:
+        params["thread"] = thread
     with hub_client(config, timeout=client_timeout, handle=handle) as client:
-        resp = client.get(path, params={"handle": handle, "timeout": timeout})
+        resp = client.get(path, params=params)
     resp.raise_for_status()
     data = resp.json()
     return data if "prompt" in data else None
@@ -71,6 +80,7 @@ def _run_exec(exec_cmd: str, turn: dict, room_name: str, handle: str) -> None:
         "MYCELIUM_HANDLE": handle,
         "MYCELIUM_SENDER": str(turn.get("sender") or ""),
         "MYCELIUM_PROMPT": str(turn.get("prompt") or ""),
+        "MYCELIUM_THREAD": str(turn.get("thread") or ""),
     }
     subprocess.run(  # noqa: S602 - user-supplied command, turn passed via stdin (no injection)
         exec_cmd,
@@ -83,8 +93,8 @@ def _run_exec(exec_cmd: str, turn: dict, room_name: str, handle: str) -> None:
 
 
 @doc_ref(
-    usage="mycelium await --room <room> --handle <handle> [--loop] [--exec CMD] [--timeout N] [--json]",
-    desc="Long-poll a room as a server-held member until a message is addressed to the handle.",
+    usage="mycelium await --room <room> --handle <handle> [--thread <id>] [--loop] [--exec CMD] [--timeout N] [--json]",
+    desc="Long-poll a room as a server-held member until a message is addressed to the handle. <code>--thread</code> narrows the wait to one conversation.",
     group="other",
 )
 def await_room(
@@ -93,6 +103,11 @@ def await_room(
     handle: str = typer.Option(..., "--handle", help="Handle to participate as"),
     timeout: int = typer.Option(
         0, "--timeout", "-t", help="Seconds to wait before giving up (0 = wait indefinitely)"
+    ),
+    thread: str | None = typer.Option(
+        None,
+        "--thread",
+        help="Only wait for turns in this thread (id or prefix); omit to watch the whole room.",
     ),
     loop: bool = typer.Option(
         False,
@@ -119,9 +134,15 @@ def await_room(
     This is the supported way to keep a turn-based agent (Claude Code, Cursor) woken
     without writing your own service.
 
+    A resident normally watches the **whole room** and routes on each turn's
+    ``thread`` field (one loop, several conversations held apart). ``--thread``
+    is the narrower case: work one conversation and ignore the rest of the room —
+    it polls off a cursor of its own, so the room-level turns keep waiting.
+
     Examples:
         mycelium await --room design --handle me
         mycelium await --room design --handle me --json --timeout 120
+        mycelium await --room design --handle me --thread 3f9a1c2d
         mycelium await --room design --handle bot --loop --exec ./drive-agent.sh
     """
     try:
@@ -129,14 +150,14 @@ def await_room(
         room_name = _resolve_room(config, room)
 
         if loop:
-            _await_loop(config, room_name, handle, timeout, exec_cmd, json_output)
+            _await_loop(config, room_name, handle, timeout, exec_cmd, json_output, thread)
             return
 
         if exec_cmd:
             typer.secho("  ⟫  --exec requires --loop", fg=typer.colors.RED)
             raise typer.Exit(2)
 
-        data = _await_once(config, room_name, handle, timeout)
+        data = _await_once(config, room_name, handle, timeout, thread)
         if data is None:  # timed out; backend returned {"message": null}
             if json_output:
                 typer.echo(
@@ -167,6 +188,7 @@ def _await_loop(
     timeout: int,
     exec_cmd: str | None,
     json_output: bool,
+    thread: str | None = None,
 ) -> None:
     """Resident-runner loop: re-await forever, dispatching each turn.
 
@@ -181,13 +203,14 @@ def _await_loop(
     if not json_output:
         typer.secho(
             f"  ⟫  @{handle} resident in {room_name}, awaiting"
+            + (f" thread {thread}" if thread else "")
             + (f", driving `{exec_cmd}` per turn" if exec_cmd else "")
             + " (Ctrl-C to stop)",
             fg=typer.colors.CYAN,
         )
     while True:
         try:
-            data = _await_once(config, room_name, handle, timeout)
+            data = _await_once(config, room_name, handle, timeout, thread)
         except KeyboardInterrupt:
             typer.echo("\n  [Stopped]")
             return
@@ -220,8 +243,8 @@ def _await_loop(
 
 
 @doc_ref(
-    usage='mycelium respond --room <room> --handle <handle> "<text>"',
-    desc="Publish a reply as the handle; the backend records it as a position for the aligner.",
+    usage='mycelium respond --room <room> --handle <handle> [--thread <id>] "<text>"',
+    desc="Publish a reply as the handle; the backend records it as a position for the aligner. <code>--thread</code> / <code>--reply-to</code> place it in a conversation.",
     group="other",
 )
 def respond(
@@ -229,6 +252,12 @@ def respond(
     text: str = typer.Argument(..., help="The reply / position text to publish"),
     room: str | None = typer.Option(None, "--room", "-r", help="Room (default: active room)"),
     handle: str = typer.Option(..., "--handle", help="Handle to publish the reply as"),
+    thread: str | None = typer.Option(
+        None, "--thread", help="Reply into this thread (id or prefix) rather than the room at large"
+    ),
+    reply_to: str | None = typer.Option(
+        None, "--reply-to", help="Reply to this message id — threads onto that message"
+    ),
     json_output: bool = typer.Option(False, "--json", help="Emit the result as JSON for agents"),
 ) -> None:
     """Publish the caller's reply; the backend threads it onto the last awaited turn.
@@ -237,22 +266,33 @@ def respond(
     `[[mycelium: confidence=0.85 stance=accept]]`); the backend lifts it onto the L9
     payload so the aligner can score it, and strips it from the posted prose.
 
+    By default the reply answers the turn that woke the caller, which is what puts
+    it in the right conversation without anyone naming one. ``--thread`` and
+    ``--reply-to`` say so explicitly — for a reply that belongs to a conversation
+    other than the last one awaited.
+
     Examples:
         mycelium respond --room design --handle me "I can move to 30% if the timeline slips."
+        mycelium respond --room design --handle me --thread 3f9a1c2d "60s, and here's why…"
+        mycelium respond --room design --handle me --reply-to <message-id> "answering this one"
     """
     try:
         config = MyceliumConfig.load()
         room_name = _resolve_room(config, room)
+        body: dict[str, object] = {"handle": handle, "text": text}
+        if thread:
+            body["thread"] = thread
+        if reply_to:
+            body["reply_to"] = reply_to
         with hub_client(config, timeout=30.0, handle=handle) as client:
-            resp = client.post(
-                f"/api/rooms/{room_name}/reply", json={"handle": handle, "text": text}
-            )
+            resp = client.post(f"/api/rooms/{room_name}/reply", json=body)
         resp.raise_for_status()
         data = resp.json()
         if json_output:
             typer.echo(json_module.dumps(data))
         else:
-            typer.secho(f"  ⟫  @{handle} replied in {room_name}", fg=typer.colors.GREEN)
+            where = f"{room_name} (thread {thread})" if thread else room_name
+            typer.secho(f"  ⟫  @{handle} replied in {where}", fg=typer.colors.GREEN)
     except KeyboardInterrupt:
         typer.echo("\n  [Stopped]")
     except Exception as e:

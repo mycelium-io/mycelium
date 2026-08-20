@@ -149,6 +149,13 @@ class MessageCreate(BaseModel):
     metadata: EventMetadata | None = Field(
         None, description='Structured event metadata; required when message_type="event"'
     )
+    thread: str | None = Field(
+        None, description="Post into this thread (id or id prefix) instead of the room at large"
+    )
+    reply_to: str | None = Field(
+        None,
+        description="Reply to this message id — threads the post onto that message's conversation",
+    )
 
     @model_validator(mode="after")
     def _metadata_matches_type(self) -> "MessageCreate":
@@ -171,6 +178,11 @@ class MessageRead(BaseModel):
     metadata: dict | None = Field(None, validation_alias="event_metadata")
     episode: str | None = Field(
         None, description="L9 episode URN this message belongs to, if any (for grouping/folding)"
+    )
+    thread: str | None = Field(
+        None,
+        description="Thread this message belongs to, derived from its L9 causal parents; "
+        "null for a room-level message",
     )
     created_at: datetime
 
@@ -496,6 +508,46 @@ class SubscriptionRead(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+# ── Threads (a conversation scope inside a room) ─────────────────────────────
+
+
+class ThreadSummaryRead(BaseModel):
+    """One thread in a room: a conversation scope derived from the L9 causal DAG."""
+
+    id: str = Field(..., description="Thread id: the root message's id, or an episode's short id")
+    kind: str = Field(..., description='"chat" (a reply chain) or "episode" (a negotiation)')
+    title: str = Field(..., description="First line of the thread's opening message")
+    root_message_id: str | None = None
+    last_message_id: str | None = None
+    episode: str | None = Field(None, description="Episode URN, for an episode-typed thread")
+    participants: list[str] = Field(default_factory=list)
+    message_count: int = 0
+    started_at: str = ""
+    last_message_at: str = ""
+
+
+class ThreadListResponse(BaseModel):
+    threads: list[ThreadSummaryRead]
+
+
+class ThreadDetailRead(ThreadSummaryRead):
+    """A thread plus the messages scoped to it, oldest first."""
+
+    messages: list[MessageRead] = Field(default_factory=list)
+
+
+class ThreadCreate(BaseModel):
+    """Open a thread: post its root message and hand back the thread's id."""
+
+    title: str = Field(
+        ...,
+        min_length=1,
+        description="The opening message — its first line becomes the thread's title. "
+        "@-mentions wake the agents they name, as in any room post.",
+    )
+    sender_handle: str = Field(..., description="Handle opening the thread")
 
 
 # ── L9 episodes (protocol inspector) ─────────────────────────────────────────
