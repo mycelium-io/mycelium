@@ -63,7 +63,10 @@ VALID_SUBKINDS: dict[str, frozenset[str]] = {
     "knowledge": frozenset({"query", "distillation", "extraction", "feedback"}),
     "commit": frozenset({"converged", "resolved", "rejected"}),
     "intent": frozenset({"coordinator-assignment", "mission"}),
-    "exchange": frozenset({"team-formation"}),
+    # ``counter``/``accept``/``reject`` are the negotiation-move subkinds a
+    # coordination reply carries (see the backend's ``EXCHANGE_MOVE_SUBKINDS``);
+    # ``team-formation`` predates them. An empty/None subkind stays valid.
+    "exchange": frozenset({"team-formation", "counter", "accept", "reject"}),
     "contingency": frozenset({"negotiation"}),
 }
 

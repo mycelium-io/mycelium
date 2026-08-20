@@ -50,13 +50,21 @@ SUBPROTOCOL_MYCELIUM = "mycelium"
 SYSTEM_ACTOR_ID = "system"
 SYSTEM_ACTOR_ROLE = "coordinator"
 
+# ``exchange`` move subkinds: the closed vocabulary a coordination reply carries
+# so a negotiation move is explicit on the wire (countable, replayable) instead
+# of inferred from prose. ``counter`` is any offer (the opening one included);
+# ``accept``/``reject`` respond to the standing offer. The mediator emits exactly
+# these (``mediator.interpret``). A reply with no subkind stays valid, so replies
+# predating this vocabulary round-trip unchanged.
+EXCHANGE_MOVE_SUBKINDS = frozenset({"counter", "accept", "reject"})
+
 # Kind -> allowed subkinds. An empty/None subkind is always valid. A failed
 # negotiation commits as ``rejected`` (was ``abort`` under the now-removed Go CFN).
 VALID_SUBKINDS: dict[Kind, frozenset[str]] = {
     Kind.knowledge: frozenset({"query", "distillation", "extraction", "feedback"}),
     Kind.commit: frozenset({"converged", "resolved", "rejected"}),
     Kind.intent: frozenset({"coordinator-assignment", "mission"}),
-    Kind.exchange: frozenset({"team-formation"}),
+    Kind.exchange: frozenset({"team-formation"}) | EXCHANGE_MOVE_SUBKINDS,
     Kind.contingency: frozenset({"negotiation"}),
 }
 

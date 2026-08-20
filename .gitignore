@@ -33,3 +33,7 @@ pnpm-lock.yaml
 
 # Claude Code harness state (per-session worktrees, transcripts)
 .claude/worktrees/
+
+# portman per-worktree dev-server port leases (machine-local)
+.ports.lock
+.ports.toml

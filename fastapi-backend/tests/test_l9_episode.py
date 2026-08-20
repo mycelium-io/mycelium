@@ -390,3 +390,38 @@ def test_read_team_prior_local_absent_returns_none(tmp_path, monkeypatch):
 
     monkeypatch.setattr(settings, "MYCELIUM_DATA_DIR", str(tmp_path))
     assert l9_episode.read_team_prior_local("never-negotiated") is None
+
+
+# ── move subkind on the wire (#681) ───────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("move", "expected"),
+    [("counter", "counter"), ("accept", "accept"), ("reject", "reject")],
+)
+def test_reply_stamps_move_subkind(move: str, expected: str):
+    """A recognized move rides the exchange reply's header.subkind, so a
+    negotiation move is explicit on the wire instead of inferred from prose."""
+    ep = _open()
+    l9_episode.record_reply(ep, handle="a1", reply={"action": "accept", "move": move}, round_n=1)
+    reply = ep.messages[-1]
+    assert reply["header"]["kind"] == "exchange"
+    assert reply["header"]["subkind"] == expected
+
+
+def test_reply_without_move_has_no_subkind():
+    """Replies predating the move vocabulary carry no subkind and round-trip
+    unchanged (an absent subkind is always valid)."""
+    ep = _open()
+    l9_episode.record_reply(ep, handle="a1", reply={"action": "accept"}, round_n=1)
+    reply = ep.messages[-1]
+    assert reply["header"]["kind"] == "exchange"
+    assert "subkind" not in reply["header"]
+
+
+def test_reply_ignores_unknown_move():
+    """A move outside the closed vocabulary is dropped, never stamped as an
+    invalid subkind (faithful, never fabricated)."""
+    ep = _open()
+    l9_episode.record_reply(ep, handle="a1", reply={"action": "accept", "move": "bogus"}, round_n=1)
+    assert "subkind" not in ep.messages[-1]["header"]

@@ -193,6 +193,13 @@ def record_reply(
     prior/posterior/deference tracking used by the consensus metrics.
     """
     action = str(reply.get("action") or "reject")
+    # The wire move type (l9.EXCHANGE_MOVE_SUBKINDS) is distinct from ``action``:
+    # ``action`` keeps its accept/hold semantics for the belief-move metrics
+    # below, while ``move`` records what the agent actually did (a proposer's
+    # offer folds to action=accept for the metrics but is a ``counter`` on the
+    # wire). Absent or unrecognized -> no subkind, so the reply stays valid.
+    move = reply.get("move")
+    subkind = move if move in l9.EXCHANGE_MOVE_SUBKINDS else None
     payload_data: dict[str, Any] = {"round": round_n, "action": action}
     if synthesised:
         payload_data["synthesised"] = True
@@ -214,6 +221,7 @@ def record_reply(
     parent = ep.last_tick_ids.get(handle) or ep.intent_id
     env = l9.build_envelope(
         kind=Kind.exchange,
+        subkind=subkind,
         episode=ep.episode,
         parents=[parent] if parent else [],
         sender=handle,
