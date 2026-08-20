@@ -238,6 +238,15 @@ def main() -> None:
     ap.add_argument("--cap", type=int, default=30, help="max SAO steps")
     ap.add_argument("--turn-timeout", type=float, default=3600.0, help="seconds to wait per reply")
     args = ap.parse_args()
+    # The data dir is fixed at import time (settings reads it once), so a --workdir
+    # that disagrees would run the turn bridge in one place and read the episode
+    # record from another. Point people at the env var rather than half-honour it.
+    if Path(args.workdir).resolve() != _WORKDIR.resolve():
+        raise SystemExit(
+            f"--workdir {args.workdir} disagrees with the data dir under {_WORKDIR}; "
+            f"set ALIGNER_DRIVER_WORKDIR={args.workdir} instead (it must be read "
+            "before app.config is imported)."
+        )
     if not settings.ALIGNER_TERM_CHECK:
         print("[driver] note: ALIGNER_TERM_CHECK is off — stage 0 will be skipped", flush=True)
     asyncio.run(_drive(args))
