@@ -256,6 +256,20 @@ class MediatedNegotiation:
         # Last outcome we actually *read* from each proposer, so an unreadable
         # later turn holds that agent's own line instead of fabricating one.
         self._last_offer: dict[str, tuple[str, ...]] = {}
+        # Each agent's first concrete offer (issue -> value) — its opening ask.
+        # The turn-order policy (#683) scores satisfaction with the standing offer
+        # against this; captured once per agent, on its first readable proposal.
+        self.opening_offers: dict[str, dict[str, str]] = {}
+
+    @property
+    def issue_options(self) -> dict[str, list[str]]:
+        """Each issue's ordered options as strings (the grid satisfaction scores on)."""
+        return {n: [str(o) for o in self._options[n]] for n in self._names}
+
+    def note_opening_offer(self, handle: str, offer: dict[str, Any]) -> None:
+        """Record ``handle``'s opening ask the first time it makes a readable offer."""
+        if offer:
+            self.opening_offers.setdefault(handle, {k: str(v) for k, v in offer.items()})
 
     # -- mediator LLM stages (run in the negotiator thread) --
 
@@ -415,10 +429,12 @@ class LiveNegotiator(SAONegotiator):
             self.handle, state.current_offer, proposing=True, round_n=state.step
         )
         reading = self._neg.interpret(self.handle, prose, proposing=True)
-        read = self._neg.to_outcome(reading.get("offer", {}) if isinstance(reading, dict) else {})
+        offer = reading.get("offer", {}) if isinstance(reading, dict) else {}
+        read = self._neg.to_outcome(offer)
         if read is not None:
             # Faithful read of this agent's move — record and remember it.
             self._neg.set_last_offer(self.handle, read)
+            self._neg.note_opening_offer(self.handle, offer)
             outcome = read
         else:
             # Unreadable move (silence, off-grid, garbage). Hold THIS agent's own
@@ -454,15 +470,76 @@ class LiveNegotiator(SAONegotiator):
         return resp
 
 
+def least_satisfied_order(
+    order: list[str],
+    id_to_handle: dict[str, str | None],
+    opening_offers: dict[str, dict[str, str]],
+    standing: dict[str, str] | None,
+    issue_options: dict[str, list[str]],
+) -> list[str]:
+    """Reorder a step's negotiator ids so the least-satisfied agent acts first (#683).
+
+    Satisfaction is each agent's opening ask scored against the ``standing`` offer
+    (the same ordinal-grid estimate the episode uses post-hoc). Pure and total: with
+    no standing offer yet (round 0) or no captured opening offers it returns ``order``
+    unchanged — the default round-robin. The sort is stable, so agents whose
+    satisfaction can't be scored keep their round-robin position (treated as
+    already-satisfied, i.e. not pulled forward).
+    """
+    if not standing or not opening_offers:
+        return list(order)
+    from app.services.l9_episode import estimate_satisfaction
+
+    satisfaction = estimate_satisfaction(opening_offers, standing, issue_options)
+    if not satisfaction:
+        return list(order)
+    return sorted(order, key=lambda nid: satisfaction.get(id_to_handle.get(nid) or "", 1.0))
+
+
+class SatisfactionOrderedSAO(SAOMechanism):
+    """SAO mechanism that addresses the least-satisfied agent next, not round-robin.
+
+    NEGMAS decides each step's turn order in ``next_negotitor_ids`` (its spelling);
+    we override it to sort by satisfaction with the current standing offer, so the
+    aligner spends turns on the agent who actually needs to move rather than on one
+    already content with the offer. Termination is untouched — NEGMAS still stops at
+    unanimity regardless of who is asked in what order (the anti-theatre property).
+    """
+
+    def __init__(self, *args: Any, negotiation: MediatedNegotiation, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._neg = negotiation
+
+    def _standing_offer(self) -> dict[str, str] | None:
+        offer = self.state.current_offer
+        if not offer:
+            return None
+        names = self._neg.names
+        return {names[i]: str(offer[i]) for i in range(min(len(names), len(offer)))}
+
+    def next_negotitor_ids(self) -> list[str]:
+        return least_satisfied_order(
+            super().next_negotitor_ids(),
+            {n.id: getattr(n, "handle", None) for n in self.negotiators},
+            self._neg.opening_offers,
+            self._standing_offer(),
+            self._neg.issue_options,
+        )
+
+
 def build_mechanism(
     issues: list[dict[str, Any]], handles: list[str], negotiation: MediatedNegotiation, *, cap: int
 ) -> SAOMechanism:
-    """Assemble the SAO mechanism with one live negotiator per participant."""
+    """Assemble the SAO mechanism with one live negotiator per participant.
+
+    The mechanism addresses the least-satisfied agent first each step (#683); until
+    a standing offer exists it is exactly NEGMAS's round-robin.
+    """
     negmas_issues = [
         make_issue(values=[str(v) for v in issue["options"]], name=issue["name"])
         for issue in issues
     ]
-    mech = SAOMechanism(issues=negmas_issues, n_steps=cap)
+    mech = SatisfactionOrderedSAO(issues=negmas_issues, n_steps=cap, negotiation=negotiation)
     for handle in handles:
         mech.add(LiveNegotiator(handle, negotiation))
     return mech

@@ -371,6 +371,7 @@ class AlignerEngine:
                     text="✗ not converged — could not structure the discussion into issues.",
                 )
 
+            ep.issue_options = {i["name"]: [str(o) for o in i["options"]] for i in issues}
             loop = asyncio.get_running_loop()
             negotiation = mediator.MediatedNegotiation(
                 issues=issues,
@@ -391,6 +392,18 @@ class AlignerEngine:
             assignments = mediator.agreement_assignments(mech, negotiation.names)
             converged = assignments is not None
             _, metrics = self._verdict(ep)
+            # Post-hoc satisfaction (#682): how close the agreed outcome sits to
+            # each agent's opening ask, and the room minimum — the least-happy
+            # agent. Independent of MPC/GAR/SCR (which need stated confidence the
+            # mediated path rarely has), so it rides alongside in ``metrics``.
+            if converged and assignments:
+                satisfaction = l9_episode.estimate_satisfaction(
+                    ep.opening_offers, assignments, ep.issue_options
+                )
+                if satisfaction:
+                    metrics = dict(metrics or {})
+                    metrics["satisfaction"] = satisfaction
+                    metrics["min_satisfaction"] = round(min(satisfaction.values()), 4)
             logger.info(
                 "aligner (mediator) room %s → %s in %d steps (%s)",
                 room,
@@ -662,6 +675,9 @@ class AlignerEngine:
         if isinstance(offer, dict):
             reply["offer"] = offer
             reply.setdefault("action", "accept" if proposing else "reject")
+            # The agent's first concrete offer is its opening ask — the baseline
+            # #682 scores the agreed outcome's satisfaction against.
+            ep.opening_offers.setdefault(handle, {k: str(v) for k, v in offer.items()})
         # The wire move type, kept distinct from the collapsed metric ``action``
         # above: the mediator's raw verb when it's one of the closed vocabulary,
         # else a bare offer is a ``counter`` (the opening position included).

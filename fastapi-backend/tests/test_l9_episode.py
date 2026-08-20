@@ -543,3 +543,56 @@ def test_episode_record_omits_term_clarifications_when_absent(tmp_path, monkeypa
     l9_episode.write_episode_record(_open(), outcome="converged", metrics=None, plan_file=None)
     body = (tmp_path / "rooms" / "sprint" / "log" / "episodes" / "abc123.md").read_text()
     assert "## Term Clarifications" not in body
+
+
+# ── minimum satisfaction (#682) ───────────────────────────────────────────────
+
+
+def test_estimate_satisfaction_ordinal_distance():
+    """Each agent's satisfaction is 1 - grid distance from its opening ask; the
+    room minimum is the least-happy agent."""
+    opening = {"growth": {"cap": "60"}, "risk": {"cap": "30"}}
+    options = {"cap": ["30", "40", "50", "60"]}
+    sat = l9_episode.estimate_satisfaction(opening, {"cap": "50"}, options)
+    assert sat["growth"] == round(1 - 1 / 3, 4)  # wanted 60, got 50 → one step
+    assert sat["risk"] == round(1 - 2 / 3, 4)  # wanted 30, got 50 → two steps
+    assert min(sat.values()) == sat["risk"]
+
+
+def test_estimate_satisfaction_exact_ask_scores_one():
+    opening = {"a": {"cap": "50", "scope": "Full"}}
+    options = {"cap": ["30", "40", "50"], "scope": ["Thin", "Mid", "Full"]}
+    sat = l9_episode.estimate_satisfaction(opening, {"cap": "50", "scope": "Full"}, options)
+    assert sat["a"] == 1.0
+
+
+def test_estimate_satisfaction_skips_agents_and_values_it_cannot_score():
+    opening = {"stated": {"cap": "40"}, "silent": {}, "offgrid": {"cap": "999"}}
+    options = {"cap": ["30", "40", "50"]}
+    sat = l9_episode.estimate_satisfaction(opening, {"cap": "50"}, options)
+    assert sat == {"stated": round(1 - 1 / 2, 4)}  # silent has no offer; 999 not on grid
+
+
+def test_episode_record_renders_satisfaction(tmp_path, monkeypatch):
+    monkeypatch.setenv("MYCELIUM_DATA_DIR", str(tmp_path))
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "MYCELIUM_DATA_DIR", str(tmp_path))
+    metrics = {"min_satisfaction": 0.33, "satisfaction": {"a1": 0.33, "a2": 0.8}}
+    l9_episode.write_episode_record(_open(), outcome="converged", metrics=metrics, plan_file=None)
+    body = (tmp_path / "rooms" / "sprint" / "log" / "episodes" / "abc123.md").read_text()
+    assert "- satisfaction: min 0.33 (least-happy of 2 agents" in body
+
+
+def test_record_satisfaction_renders_without_siep_metrics(tmp_path, monkeypatch):
+    """Satisfaction rides even when MPC/GAR/SCR are absent (the mediated path
+    rarely has stated confidence) — and the missing SIEP line never KeyErrors."""
+    monkeypatch.setenv("MYCELIUM_DATA_DIR", str(tmp_path))
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "MYCELIUM_DATA_DIR", str(tmp_path))
+    metrics = {"min_satisfaction": 0.5, "satisfaction": {"a1": 0.5, "a2": 0.5}}
+    l9_episode.write_episode_record(_open(), outcome="converged", metrics=metrics, plan_file=None)
+    body = (tmp_path / "rooms" / "sprint" / "log" / "episodes" / "abc123.md").read_text()
+    assert "MPC" not in body
+    assert "- satisfaction: min 0.50" in body
