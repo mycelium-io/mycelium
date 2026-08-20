@@ -95,7 +95,9 @@ export function InstallPanel({ className }: Props) {
 
   // "Prompt" is a fourth tab alongside the OS ones, not a fifth platform: it
   // swaps the manual steps for one line to hand a coding agent instead, same
-  // as the landing page's prompt/curl toggle. Selected by default, same as there.
+  // as the landing page's prompt/curl toggle. Selected by default, same as
+  // there. The detected OS tab stays highlighted underneath it (its own
+  // independent toggle), so it's already right the moment you switch off Prompt.
   const [usePrompt, setUsePrompt] = useState(true);
 
   return (
@@ -133,14 +135,14 @@ export function InstallPanel({ className }: Props) {
           <button
             key={p.id}
             type="button"
-            aria-pressed={!usePrompt && platform === p.id}
+            aria-pressed={platform === p.id}
             onClick={() => {
               setUsePrompt(false);
               setPlatform(p.id);
             }}
             className={cn(
               "rounded-md border px-2.5 py-1 text-micro font-medium transition-colors",
-              !usePrompt && platform === p.id
+              platform === p.id
                 ? "border-border2 bg-surface text-text"
                 : "border-transparent text-muted-foreground hover:bg-hairline hover:text-text",
             )}

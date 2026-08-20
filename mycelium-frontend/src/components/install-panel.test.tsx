@@ -35,8 +35,12 @@ describe("<InstallPanel />", () => {
   });
 
   it("hands over the CLI, config, and login commands, and says the hub is unreachable", async () => {
+    const user = userEvent.setup();
     stubHub(false);
     renderWithSWR(<InstallPanel />);
+
+    // Prompt is the default tab; switch to a manual one to see the three steps.
+    await user.click(screen.getByRole("button", { name: "macOS" }));
 
     expect(commandField(CLI_INSTALL_COMMAND)).toBeInTheDocument();
     await waitFor(() =>
@@ -50,13 +54,16 @@ describe("<InstallPanel />", () => {
   });
 
   it("flips to reachable and shows the next steps once the hub answers", async () => {
+    const user = userEvent.setup();
     stubHub(true);
     renderWithSWR(<InstallPanel />);
 
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Hub reachable"));
     expect(screen.getByText("Next: your first room")).toBeInTheDocument();
     expect(commandField("mycelium room create my-project && mycelium room use my-project")).toBeInTheDocument();
-    // The install commands stay on screen — a second machine still needs them.
+
+    // The install commands stay reachable — a second machine still needs them.
+    await user.click(screen.getByRole("button", { name: "macOS" }));
     expect(commandField(CLI_INSTALL_COMMAND)).toBeInTheDocument();
   });
 
@@ -70,26 +77,28 @@ describe("<InstallPanel />", () => {
     expect(screen.getByText(/Run both commands inside WSL/)).toBeInTheDocument();
   });
 
-  it("swaps the manual steps for the agent prompt when Prompt is selected", async () => {
+  it("shows the agent prompt by default, and the manual steps once an OS tab is picked", async () => {
     const user = userEvent.setup();
     stubHub(false);
     renderWithSWR(<InstallPanel />);
 
-    expect(screen.queryByDisplayValue(PROMPT_COMMAND)).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Prompt" }));
-
     expect(commandField(PROMPT_COMMAND)).toBeInTheDocument();
     expect(screen.queryByText("Install the CLI")).not.toBeInTheDocument();
     expect(screen.queryByDisplayValue(CLI_INSTALL_COMMAND)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "macOS" }));
+    expect(commandField(CLI_INSTALL_COMMAND)).toBeInTheDocument();
+    expect(screen.queryByDisplayValue(PROMPT_COMMAND)).not.toBeInTheDocument();
   });
 
-  it("preselects the platform it detects", async () => {
+  it("preselects the platform it detects, underneath the default Prompt tab", async () => {
     stubHub(false);
     vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
     );
     renderWithSWR(<InstallPanel />);
 
+    expect(screen.getByRole("button", { name: "Prompt" })).toHaveAttribute("aria-pressed", "true");
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "macOS" })).toHaveAttribute("aria-pressed", "true"),
     );
