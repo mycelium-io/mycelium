@@ -118,6 +118,13 @@ exclude = [
 [tool.ty.environment]
 python-version = "3.12"
 
+[[tool.ty.overrides]]
+# negmas is an optional extra (engine group) — not installed in the standard
+# dev venv. The engine/ subtree is only type-checked by contributors who have
+# run `uv sync --group engine`.
+include = ["src/mycelium/engine/mediator.py"]
+rules = { unresolved-import = "ignore" }
+
 [tool.ruff]
 line-length = 100
 target-version = "py312"

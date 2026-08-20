@@ -498,7 +498,7 @@ def _negotiation() -> mediator.MediatedNegotiation:
         issues=_ISSUES_683,
         cap=10,
         loop=asyncio.new_event_loop(),
-        fetch_prose=lambda *a: None,  # type: ignore[arg-type,return-value]
+        fetch_prose=lambda *a: None,
         turn_timeout_s=1.0,
         llm=lambda *a, **k: "",
     )
