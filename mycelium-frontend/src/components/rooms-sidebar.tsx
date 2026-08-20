@@ -20,6 +20,7 @@ import { EmptyState } from "@/components/empty-state";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { KeyBadge } from "@/components/key-badge";
 import { useCommands, useKeyAction } from "@/components/keymap-provider";
+import { useOpenInstallModal } from "@/components/install-modal";
 import type { PaletteCommand } from "@/lib/commands";
 
 /** Two-letter monogram from a room name (mirrors the agent avatars). */
@@ -122,7 +123,9 @@ export function RoomsSidebar({ activeRoom = null }: Props) {
   useKeyAction("rooms.digit", chord => go(filtered[Number(chord.split("+").pop()) - 1]));
   useKeyAction("nav.home", () => router.push("/"));
 
-  // Every room by name, plus the two things this rail can do. Rooms come from
+  const openInstallModal = useOpenInstallModal();
+
+  // Every room by name, plus what this rail can reach. Rooms come from
   // the full list, not the filtered one: the palette has a query of its own,
   // and a sidebar filter left set would silently hide rooms from it.
   const commands = useMemo<PaletteCommand[]>(
@@ -148,8 +151,15 @@ export function RoomsSidebar({ activeRoom = null }: Props) {
         run: () => setShowCreate(true),
       },
       { id: "nav.metrics", title: "Metrics", group: "Navigate", run: () => router.push("/metrics") },
+      {
+        id: "nav.install",
+        title: "Install the CLI",
+        group: "Navigate",
+        keywords: ["setup", "onboarding", "cli"],
+        run: openInstallModal,
+      },
     ],
-    [rooms, go, router],
+    [rooms, go, router, openInstallModal],
   );
   useCommands(commands);
 

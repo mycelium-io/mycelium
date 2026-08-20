@@ -195,6 +195,10 @@ export async function handleMock(req: Request): Promise<Response | null> {
     }
 
     case "messages": {
+      // GET /messages/l9 — the L9 wire feed for the Network pane.
+      if (sub[1] === "l9" && method === "GET") {
+        return json(fx.l9 ?? []);
+      }
       if (method === "GET") {
         // The backend serves newest-first; the UI reverses to oldest-first.
         const limit = Number(searchParams.get("limit") ?? "0");

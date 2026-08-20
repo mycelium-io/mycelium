@@ -579,7 +579,38 @@ def start(
 
             _ensure_shared_dir(Path.home() / ".mycelium" / "metrics")
         up_args = ["up", "-d", "--remove-orphans"]
+        build_env: dict[str, str] | None = None
         if build:
+            # Include compose-dev.yml so `--build` builds from the local source
+            # tree instead of downloading pre-built GHCR images. compose-dev.yml
+            # adds build: stanzas and sets pull_policy: never for all first-party
+            # services.
+            #
+            # Build contexts in compose-dev.yml use ${MYCELIUM_REPO_ROOT} (an
+            # absolute path) so that Docker BuildKit resolves them correctly when
+            # the bake definition is piped via stdin — relative paths break in
+            # that transport because buildkit uses CWD, not the compose file
+            # location.
+            dev_compose: Path | None = None
+            try:
+                # instance.py → commands/ → mycelium/ → docker/compose-dev.yml
+                here = Path(__file__).parent.parent / "docker" / "compose-dev.yml"
+                if here.exists():
+                    dev_compose = here
+            except Exception:
+                pass
+            if dev_compose is not None:
+                base = base + ["-f", str(dev_compose)]
+                # Compute repo root: mycelium-cli/src/mycelium/docker/ → up 4 → repo root
+                repo_root = dev_compose.parent.parent.parent.parent.parent
+                build_env = {**__import__("os").environ, "MYCELIUM_REPO_ROOT": str(repo_root)}
+            else:
+                typer.secho(
+                    "  ⚠  --build requires an editable (development) install; "
+                    "compose-dev.yml not found in the package source tree. "
+                    "Falling back to pulling released images.",
+                    fg=typer.colors.YELLOW,
+                )
             up_args.append("--build")
 
         # SPIRE two-phase (#588): the node daemon needs a join token minted against
@@ -597,7 +628,7 @@ def start(
         typer.echo("Starting Mycelium...")
 
         quiet_cmd = base[:2] + ["--progress=plain"] + base[2:] + up_args
-        result = subprocess.run(quiet_cmd, capture_output=True, text=True)
+        result = subprocess.run(quiet_cmd, capture_output=True, text=True, env=build_env)
 
         if result.returncode != 0:
             output = (result.stdout or "") + (result.stderr or "")
@@ -609,7 +640,7 @@ def start(
                     fg=typer.colors.YELLOW,
                 )
                 _remove_managed_containers()
-                result = subprocess.run(base + up_args, check=False)
+                result = subprocess.run(base + up_args, check=False, env=build_env)
                 if result.returncode != 0:
                     raise typer.Exit(result.returncode)
             else:

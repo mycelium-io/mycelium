@@ -1,12 +1,15 @@
-# Dev override: build mycelium-backend from local source instead of pulling.
+# Dev override: build first-party services from local source instead of pulling.
 #
-# Run from the repo root:
+# `mycelium up --build` sets MYCELIUM_REPO_ROOT and injects this file automatically.
+#
+# For manual use, export the variable first:
+#   export MYCELIUM_REPO_ROOT=/path/to/mycelium
 #   docker compose -f mycelium-cli/src/mycelium/docker/compose.yml \
 #                  -f mycelium-cli/src/mycelium/docker/compose-dev.yml \
 #                  up -d --build
 #
-# Build context paths are relative to this file's location (docker/).
-# env_file paths are also relative to this file's location.
+# Build contexts use MYCELIUM_REPO_ROOT (absolute) so that Docker BuildKit
+# resolves them correctly regardless of CWD or the bake-stdin transport.
 services:
   # The `slim` node service is defined in compose.yml with a pulled upstream
   # image (ghcr.io/agntcy/slim) and inline node config. compose-dev.yml is an
@@ -14,12 +17,9 @@ services:
   # dev stack automatically — there is nothing dev-specific to build or override
   # for it, so no `slim:` block is needed here.
 
-  # Override env_file for all services to point at ~/.mycelium/.env so that
-  # LLM_MODEL etc. are available when running compose manually from the repo
-  # root (compose.yml's ../.env path resolves incorrectly then).
   mycelium-backend:
     build:
-      context: ../../../../fastapi-backend
+      context: ${MYCELIUM_REPO_ROOT}/fastapi-backend
       dockerfile: Dockerfile
     pull_policy: never
     image: mycelium-backend:dev
@@ -35,14 +35,14 @@ services:
   # `--build` on the next `up` — so pin it to the dev tag and never pull here.
   mycelium-frontend:
     build:
-      context: ../../../../mycelium-frontend
+      context: ${MYCELIUM_REPO_ROOT}/mycelium-frontend
       dockerfile: Dockerfile
     pull_policy: never
     image: mycelium-frontend:dev
 
   mycelium-collector:
     build:
-      context: ../../../
+      context: ${MYCELIUM_REPO_ROOT}/mycelium-cli
       dockerfile: Dockerfile.collector
     pull_policy: never
     image: mycelium-collector:dev
