@@ -4,36 +4,21 @@
 import { describe, expect, it } from "vitest";
 import { EditorState } from "@codemirror/state";
 import { CompletionContext } from "@codemirror/autocomplete";
-import { wikilinkCompletions } from "@/lib/wikilink-completions";
+import { wikilinkSource, wikilinkCompletions } from "@/lib/wikilink-completions";
 
-// Build a minimal EditorState with the given doc + cursor position, run the
-// completion source, and return the result's option labels.
-function complete(
-  doc: string,
-  cursor: number,
-  keys: string[],
-  expandableKeys?: string[],
-): string[] {
+function makeCtx(doc: string, cursor: number, keys: string[], expandableKeys?: string[]) {
   const state = EditorState.create({
     doc,
     selection: { anchor: cursor },
     extensions: [wikilinkCompletions(keys, expandableKeys)],
   });
-  const ctx = new CompletionContext(state, cursor, false);
-  // Pull the override source from the autocompletion extension's transactions.
-  // Easier: call the closure directly by extracting it from the module.
-  // Since wikilinkCompletions returns an Extension (not a bare function),
-  // we test through the public CompletionContext API by building a minimal
-  // CompletionContext and calling the source function explicitly.
-  // Re-import the private source by testing the exported function indirectly:
-  // build a CompletionContext from the state above and check getCompletions.
-  // The simplest approach: create a bare CompletionContext, call matchBefore ourselves.
-  const before = ctx.matchBefore(/!?\[\[[^\]]*$/);
-  if (!before) return [];
-  const sigil = before.text.startsWith("![[") ? "![[" : "[[";
-  const query = before.text.slice(sigil.length).toLowerCase();
-  const candidates = sigil === "![[" ? (expandableKeys ?? []) : keys;
-  return candidates.filter(k => k.toLowerCase().includes(query));
+  return { ctx: new CompletionContext(state, cursor, false), source: wikilinkSource(keys, expandableKeys) };
+}
+
+function complete(doc: string, cursor: number, keys: string[], expandableKeys?: string[]): string[] {
+  const { ctx, source } = makeCtx(doc, cursor, keys, expandableKeys);
+  const result = source(ctx);
+  return result?.options.map(o => o.label) ?? [];
 }
 
 describe("wikilink completions", () => {
@@ -73,5 +58,20 @@ describe("wikilink completions", () => {
     const text = "![[";
     const labels = complete(text, text.length, keys);
     expect(labels).toHaveLength(0);
+  });
+
+  it("sets from to the start of the [[ sigil so the apply string replaces it, not appends to it", () => {
+    // Regression: `from` was previously set to `before.from + sigilLen`,
+    // causing the [[key]] apply text to be inserted *after* the already-typed
+    // [[ rather than replacing it, producing [[[[key]].
+    const text = "text [[dec";
+    const cursor = text.length;
+    const { ctx, source } = makeCtx(text, cursor, keys);
+    const result = source(ctx);
+    expect(result).not.toBeNull();
+    // `from` should be at the position of the first `[`, not after `[[`.
+    expect(result!.from).toBe(text.indexOf("[["));
+    // The apply string already contains the sigil.
+    expect(result!.options[0].apply).toBe("[[decisions/db]]");
   });
 });

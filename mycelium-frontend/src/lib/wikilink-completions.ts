@@ -12,7 +12,7 @@ import type { Extension } from "@codemirror/state";
  * Pass `expandableKeys` to also complete `![[key]]` — limited to memories
  * whose `expandable: true` frontmatter flag allows transclusion.
  */
-function wikilinkSource(
+export function wikilinkSource(
   keys: string[],
   expandableKeys?: string[],
 ): (ctx: CompletionContext) => CompletionResult | null {
@@ -36,8 +36,9 @@ function wikilinkSource(
       }));
 
     if (options.length === 0) return null;
-    // Replace from just after the opening sigil so the sigil is preserved.
-    return { from: before.from + sigilLen, options };
+    // `from` must point at the start of the sigil so the full `[[query`
+    // token is replaced by the `[[key]]` apply string, not appended to it.
+    return { from: before.from, options };
   };
 }
 
