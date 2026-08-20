@@ -11,27 +11,30 @@ import { useBackendHealth } from "@/lib/use-status";
 import {
   CLI_INSTALL_COMMAND,
   DOCS_URL,
+  LOGIN_COMMAND,
   NEXT_STEPS,
   PLATFORMS,
-  STACK_INSTALL_COMMAND,
+  PROMPT_COMMAND,
+  configSetCommand,
   detectPlatform,
   type Platform,
 } from "@/lib/install";
 import { cn } from "@/lib/utils";
 
-/** While there's no hub, the panel watches for one closely enough that it flips
- *  over on its own the moment `mycelium install` finishes. Once connected the
- *  default status-bar cadence is plenty. */
+/** While the hub is down, the pill watches closer so it flips the moment it's
+ *  back. Once connected, the default status-bar cadence is plenty. */
 const WAITING_POLL = 4_000;
 
-/** Live connection state, in the panel's own words. */
+/** Live connection state, in the panel's own words. This hub either answers
+ *  or it doesn't; there's no "not installed yet" state, since the page
+ *  showing this panel is already being served by a hub. */
 function ConnectionPill({ healthy }: { healthy: boolean | null }) {
   const state =
     healthy === null
-      ? { label: "Checking for a hub…", color: "var(--faint)", pulse: true }
+      ? { label: "Checking this hub…", color: "var(--faint)", pulse: true }
       : healthy
-        ? { label: "Hub connected", color: "var(--green)", pulse: false }
-        : { label: "No hub yet", color: "var(--yellow)", pulse: true };
+        ? { label: "Hub reachable", color: "var(--green)", pulse: false }
+        : { label: "Hub unreachable", color: "var(--yellow)", pulse: true };
 
   return (
     <span
@@ -62,65 +65,82 @@ function Step({ n, title, children }: { n: number; title: string; children: Reac
 }
 
 interface Props {
-  /** `page` fills a route; `inline` sits inside the dashboard's content column. */
-  variant?: "page" | "inline";
   className?: string;
 }
 
 /**
- * The guided install surface: the two commands to paste, live detection of the
- * hub coming up, and what to do once it has.
+ * The guided client-only setup surface (`docs/agents.md` Steps 1 + 4): get
+ * the CLI, point it at this hub, and sign in if the hub asks for it. It never
+ * offers to stand up a new hub, since this page is already served by one.
  *
- * The browser can't run the install, so "is the CLI installed" is inferred from
- * the backend answering — a healthy hub means `mycelium install` ran. That's the
- * honest limit of this flow, and the panel says so rather than pretending to
- * inspect the machine.
+ * The pill reflects whether this hub is answering right now. That's an
+ * operator concern, not something the commands below can fix themselves:
+ * they configure the viewer's own CLI, not this deployment.
  */
-export function InstallPanel({ variant = "inline", className }: Props) {
+export function InstallPanel({ className }: Props) {
   const healthy = useBackendHealth(WAITING_POLL);
 
-  // Server-rendered markup can't know the OS, so the detected platform lands
-  // after mount; until then no tab is preselected and the commands (identical
-  // on macOS and Linux) read the same either way.
+  // Server-rendered markup can't know the OS or this page's own origin, so
+  // both land after mount to avoid a hydration mismatch. Until then, no
+  // platform tab is preselected and the config command shows a placeholder
+  // host. The origin is only a first guess, since some deployments front
+  // the API on a different port than the UI, so it's there to edit.
   const [platform, setPlatform] = useState<Platform>("unknown");
+  const [hubUrl, setHubUrl] = useState("<this-hub-url>");
   useEffect(() => {
     setPlatform(detectPlatform(navigator.userAgent));
+    setHubUrl(window.location.origin);
   }, []);
   const note = PLATFORMS.find(p => p.id === platform)?.note;
 
+  // "Prompt" is a fourth tab alongside the OS ones, not a fifth platform: it
+  // swaps the manual steps for one line to hand a coding agent instead, same
+  // as the landing page's prompt/curl toggle. Selected by default, same as there.
+  const [usePrompt, setUsePrompt] = useState(true);
+
   return (
-    <section
-      className={cn(
-        "rounded-xl border border-border bg-paper",
-        variant === "page" ? "p-6" : "p-5",
-        className,
-      )}
-    >
+    <section className={cn("rounded-xl border border-border bg-paper p-5", className)}>
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex min-w-0 items-start gap-3">
           <span className="flex size-9 flex-shrink-0 items-center justify-center rounded-lg bg-surface text-muted-foreground">
             <Terminal className="size-4" strokeWidth={1.75} />
           </span>
           <div className="min-w-0">
-            <h2 className="text-ui font-medium text-text">Get the CLI</h2>
+            <h2 className="text-ui font-medium text-text">Connect your CLI to this hub</h2>
             <p className="mt-0.5 text-label text-muted-foreground">
-              Two commands in a terminal. This page notices the moment your hub comes up.
+              A few terminal commands to join the hub.
             </p>
           </div>
         </div>
         <ConnectionPill healthy={healthy} />
       </header>
 
-      <div className="mt-4 flex items-center gap-1.5" role="group" aria-label="Platform">
+      <div className="mt-4 flex items-center gap-1.5" role="group" aria-label="Install method">
+        <button
+          type="button"
+          aria-pressed={usePrompt}
+          onClick={() => setUsePrompt(true)}
+          className={cn(
+            "rounded-md border px-2.5 py-1 text-micro font-medium transition-colors",
+            usePrompt
+              ? "border-border2 bg-surface text-text"
+              : "border-transparent text-muted-foreground hover:bg-hairline hover:text-text",
+          )}
+        >
+          Prompt
+        </button>
         {PLATFORMS.map(p => (
           <button
             key={p.id}
             type="button"
-            aria-pressed={platform === p.id}
-            onClick={() => setPlatform(p.id)}
+            aria-pressed={!usePrompt && platform === p.id}
+            onClick={() => {
+              setUsePrompt(false);
+              setPlatform(p.id);
+            }}
             className={cn(
               "rounded-md border px-2.5 py-1 text-micro font-medium transition-colors",
-              platform === p.id
+              !usePrompt && platform === p.id
                 ? "border-border2 bg-surface text-text"
                 : "border-transparent text-muted-foreground hover:bg-hairline hover:text-text",
             )}
@@ -130,24 +150,41 @@ export function InstallPanel({ variant = "inline", className }: Props) {
         ))}
       </div>
 
-      <ol className="mt-4 space-y-4">
-        <Step n={1} title="Install the CLI">
-          <p className="mt-0.5 text-micro text-muted-foreground">
-            Drops the <code className="font-mono">mycelium</code> binary on your PATH.
+      {usePrompt ? (
+        <div className="mt-4">
+          <p className="text-micro text-muted-foreground">
+            Give this to a coding agent instead of a terminal. It reads{" "}
+            <code className="font-mono">agents.md</code> and does the setup itself.
           </p>
-          <CopyField value={CLI_INSTALL_COMMAND} className="mt-2" />
-        </Step>
-        <Step n={2} title="Bring up the stack">
-          <p className="mt-0.5 text-micro text-muted-foreground">
-            Pulls the images, asks for your LLM key, and writes{" "}
-            <code className="font-mono">~/.mycelium/config.toml</code>.
-          </p>
-          <CopyField value={STACK_INSTALL_COMMAND} className="mt-2" />
-        </Step>
-      </ol>
+          <CopyField value={PROMPT_COMMAND} className="mt-2" />
+        </div>
+      ) : (
+        <>
+          <ol className="mt-4 space-y-4">
+            <Step n={1} title="Install the CLI">
+              <p className="mt-0.5 text-micro text-muted-foreground">
+                Drops the <code className="font-mono">mycelium</code> binary on your PATH.
+              </p>
+              <CopyField value={CLI_INSTALL_COMMAND} className="mt-2" />
+            </Step>
+            <Step n={2} title="Point it at this hub">
+              <p className="mt-0.5 text-micro text-muted-foreground">This hub's address.</p>
+              <CopyField value={configSetCommand(hubUrl)} className="mt-2" />
+            </Step>
+            <Step n={3} title="Sign in">
+              <p className="mt-0.5 text-micro text-muted-foreground">
+                Only needed if this hub requires it. The CLI will tell you if it doesn't.
+              </p>
+              <CopyField value={LOGIN_COMMAND} className="mt-2" />
+            </Step>
+          </ol>
 
-      {note && (
-        <p className="mt-3 rounded-lg bg-surface px-3 py-2 text-micro text-muted-foreground">{note}</p>
+          {note && (
+            <p className="mt-3 rounded-lg bg-surface px-3 py-2 text-micro text-muted-foreground">
+              {note}
+            </p>
+          )}
+        </>
       )}
 
       {healthy ? (
@@ -182,8 +219,8 @@ export function InstallPanel({ variant = "inline", className }: Props) {
         </div>
       ) : (
         <p className="mt-5 border-t border-border pt-4 text-micro text-muted-foreground">
-          The browser can&apos;t run the install for you, so this is a guided flow: it watches for the
-          hub answering rather than inspecting your machine. Prefer the long version? Read the{" "}
+          The hub isn&apos;t answering right now, so the CLI may not be able to connect. Prefer
+          the long version? Read the{" "}
           <a
             href={`${DOCS_URL}/index.html#quickstart`}
             target="_blank"

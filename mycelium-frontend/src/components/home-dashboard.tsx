@@ -5,12 +5,12 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Boxes, Plus, Sparkles, Terminal } from "lucide-react";
+import { AlertTriangle, Boxes, Plus, Sparkles, Terminal } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
-import { InstallPanel } from "@/components/install-panel";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CreateRoomDialog } from "@/components/create-room-dialog";
+import { useOpenInstallModal } from "@/components/install-modal";
 import { type EpisodeSummary, type Room } from "@/lib/api";
 import { useRoomAgents, useRoomEpisodes, useRooms, type RoomQueryOptions } from "@/lib/room-data";
 import { useBackendHealth } from "@/lib/use-status";
@@ -38,14 +38,16 @@ function RunSampleLink({ className = "" }: { className?: string }) {
 /** Onboarding escape hatch from a connected workspace: the install flow, for a
  *  second machine or an agent that still needs the CLI. */
 function InstallLink() {
+  const openInstallModal = useOpenInstallModal();
   return (
-    <Link
-      href="/install"
+    <button
+      type="button"
+      onClick={openInstallModal}
       className="inline-flex items-center gap-1.5 text-label font-medium text-muted-foreground transition-colors hover:text-text"
     >
       <Terminal className="size-3.5" />
       Install the CLI
-    </Link>
+    </button>
   );
 }
 
@@ -81,10 +83,11 @@ function episodeState(ep: EpisodeSummary): { label: string; color: string; live:
 export function HomeDashboard() {
   const [showCreate, setShowCreate] = useState(false);
   const { rooms, loading, refresh } = useRooms();
-  // A room list read off an unreachable hub is empty rather than absent, so the
-  // health probe — not the list — is what tells "nothing here yet" apart from
-  // "nothing to talk to": with no hub, the grid would be a lie and the install
-  // flow is the whole screen.
+  // A room list read off an unreachable backend is empty rather than absent, so
+  // the health probe, not the list, is what tells "nothing here yet" apart
+  // from "nothing to talk to". This page is served by a hub, so an unreachable
+  // backend is an operator problem, not something the viewer's own CLI can
+  // fix. It's an error state, not onboarding.
   const disconnected = useBackendHealth() === false;
 
   return (
@@ -94,9 +97,7 @@ export function HomeDashboard() {
           <div className="min-w-0">
             <h1 className="text-2xl font-semibold text-text">Command center</h1>
             <p className="mt-1 text-label text-muted-foreground">
-              {disconnected
-                ? "No hub is answering yet. Install the CLI and this fills with your rooms."
-                : "Every coordination workspace, at a glance. Open one to negotiate, plan, and remember."}
+              {disconnected ? "Hub unreachable." : "Your rooms. Open one to coordinate."}
             </p>
           </div>
           {!disconnected && (
@@ -111,7 +112,13 @@ export function HomeDashboard() {
         </header>
 
         {disconnected ? (
-          <InstallPanel className="max-w-3xl" />
+          <div className="rounded-xl border border-dashed border-border2">
+            <EmptyState
+              icon={AlertTriangle}
+              title="Hub unreachable"
+              description="The hub isn't answering right now, so the CLI may not be able to connect."
+            />
+          </div>
         ) : loading ? (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {Array.from({ length: 4 }, (_, i) => (

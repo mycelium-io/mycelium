@@ -4,9 +4,11 @@
 import { describe, expect, it } from "vitest";
 import {
   CLI_INSTALL_COMMAND,
+  LOGIN_COMMAND,
   NEXT_STEPS,
   PLATFORMS,
-  STACK_INSTALL_COMMAND,
+  PROMPT_COMMAND,
+  configSetCommand,
   detectPlatform,
 } from "@/lib/install";
 
@@ -40,7 +42,19 @@ describe("install content", () => {
     expect(CLI_INSTALL_COMMAND).toBe(
       "curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash",
     );
-    expect(STACK_INSTALL_COMMAND).toBe("mycelium install");
+  });
+
+  it("points the config command at whatever hub URL it's given, and never stands up a stack", () => {
+    expect(configSetCommand("http://hub.example.com:8000")).toBe(
+      "mycelium config set server.api_url http://hub.example.com:8000 && mycelium config apply",
+    );
+    expect(LOGIN_COMMAND).toBe("mycelium login");
+  });
+
+  it("carries the same prompt one-liner the landing page's prompt tab publishes", () => {
+    expect(PROMPT_COMMAND).toBe(
+      "Use curl to read https://mycelium-io.github.io/mycelium/agents.md and perform the setup to install Mycelium",
+    );
   });
 
   it("notes the WSL constraint on Windows only", () => {

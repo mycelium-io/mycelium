@@ -26,8 +26,9 @@ admin panel bolted onto the side, it is one of the two intended ways in.
 - **Some actions are deliberately CLI-only.** Anything with local side effects on
   a user's machine — installing adapter assets, running a resident agent — can't
   be done from a browser, and the UI says so rather than pretending. Onboarding
-  is guided on those terms: `/install` (and the dashboard, when no hub answers)
-  hands over the commands to paste and watches `/health` to know they worked.
+  is guided on those terms: the "Install CLI" header button (and the dashboard,
+  when no hub answers) hands over the commands to paste and watches `/health`
+  to know they worked.
 - **The L9 inspector's promoted message types are contract-driven.** The
   whitelist is frozen in `contracts/` and asserted from both sides, so the UI
   and CLI can't drift on what counts as chat.
