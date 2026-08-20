@@ -85,7 +85,7 @@ function namespaceOf(key: string): string {
  *  Past 8 namespaces the palette wraps and two of them do share a color. The
  *  legend still names every namespace, so the ambiguity is recoverable by
  *  reading rather than silent; a 9th distinct hue would have to come out of the
- *  arc reserved for `--red`/`--yellow` (broken links, orphans), and colliding
+ *  arc reserved for `--red`/`--yellow` (broken links, orphan nodes), and colliding
  *  with a state color reads as a worse lie than colliding with a sibling. */
 function colorMapFor(namespaces: readonly string[]): Map<string, string> {
   return new Map(namespaces.map((ns, i) => [ns, NAMESPACE_COLORS[i % NAMESPACE_COLORS.length]]));
@@ -183,27 +183,47 @@ export function MemoryGraph({ graph, onNavigate, roomName, className }: Props) {
   const visibleEdges = useMemo(() => layout.edges.filter(edgeDrawable), [layout.edges, edgeDrawable]);
 
   // Every count below describes what's on screen, so the strip and the canvas
-  // never disagree. "Links" counts what actually resolves; a broken edge is
-  // reported on its own terms beside it, never folded into the working total.
+  // never disagree. "Links" counts drawn resolved arcs; "broken" counts drawn
+  // broken arcs. Dead references (not_found targets that aren't nodes) aren't
+  // drawn and so don't appear here — they're surfaced by the integrity system
+  // (IntegrityBanner in the detail drawer; `mycelium memory --check`).
   const linkCount = useMemo(() => visibleEdges.filter(e => e.resolved).length, [visibleEdges]);
-  // Cross-room references are reported apart from breakage: they're legitimate
-  // syntax that just can't resolve room-locally, so calling them broken would
-  // fault a room for doing something correct.
+  // A broken arc is only drawn when its target is also a real node, so we
+  // derive brokenCount from visibleEdges (the drawn set) rather than from
+  // graph.edges (all unresolved references from visible sources). Cross-room
+  // references are excluded — they're legitimate syntax, not mistakes.
+  const brokenCount = useMemo(
+    () => visibleEdges.filter(e => !e.resolved && isBrokenLinkError(e.error)).length,
+    [visibleEdges],
+  );
+  // Cross-room count still comes from all edges (not just drawn), since the
+  // cross-room target won't be a node; brokenAttributable narrows to visible sources.
   const unresolvedShown = useMemo(
     () => graph.edges.filter(e => !e.resolved && brokenAttributable(e)),
     [graph.edges, brokenAttributable],
   );
-  const brokenCount = useMemo(() => unresolvedShown.filter(e => isBrokenLinkError(e.error)).length, [unresolvedShown]);
   const crossRoomCount = useMemo(
     () => unresolvedShown.filter(e => !isBrokenLinkError(e.error)).length,
     [unresolvedShown],
   );
-  // Orphanhood stays a fact about the room, not about the filter: `inbound` is
-  // the full graph's count, so hiding a namespace can't invent orphans out of
-  // memories whose only referrers you happen to have hidden. Only the tally is
-  // narrowed to what's shown.
+  // Graph roles stay facts about the room, not the filter: `inbound`/`outbound`
+  // are full-graph counts, so hiding a namespace can't reclassify a node. Only
+  // the tallies are narrowed to what's visible.
+  //
+  // Vocabulary:
+  //   orphan — inbound === 0 AND outbound === 0: fully isolated.
+  //   root   — inbound === 0 AND outbound > 0:  entry point, nothing links here.
+  //   leaf   — inbound > 0  AND outbound === 0: dead end, links arrive but stop.
   const orphanCount = useMemo(
-    () => graph.nodes.filter(n => n.inbound === 0 && visibleKeys.has(n.key)).length,
+    () => graph.nodes.filter(n => n.inbound === 0 && n.outbound === 0 && visibleKeys.has(n.key)).length,
+    [graph.nodes, visibleKeys],
+  );
+  const rootCount = useMemo(
+    () => graph.nodes.filter(n => n.inbound === 0 && n.outbound > 0 && visibleKeys.has(n.key)).length,
+    [graph.nodes, visibleKeys],
+  );
+  const leafCount = useMemo(
+    () => graph.nodes.filter(n => n.inbound > 0 && n.outbound === 0 && visibleKeys.has(n.key)).length,
     [graph.nodes, visibleKeys],
   );
 
@@ -501,9 +521,19 @@ export function MemoryGraph({ graph, onNavigate, roomName, className }: Props) {
           {linkCount === 1 ? "" : "s"}
         </span>
         {orphanCount > 0 && (
-          <span className="flex items-center gap-1 text-yellow">
+          <span className="flex items-center gap-1 text-yellow" title="Fully isolated — no inbound or outbound links">
             <Unlink className="size-3.5" />
             <span className="font-semibold tabular">{orphanCount}</span> orphan{orphanCount === 1 ? "" : "s"}
+          </span>
+        )}
+        {rootCount > 0 && (
+          <span className="flex items-center gap-1 text-muted-foreground" title="Entry points — nothing links here yet">
+            <span className="font-semibold tabular">{rootCount}</span> root{rootCount === 1 ? "" : "s"}
+          </span>
+        )}
+        {leafCount > 0 && (
+          <span className="flex items-center gap-1 text-muted-foreground" title="Dead ends — links arrive but go no further">
+            <span className="font-semibold tabular">{leafCount}</span> lea{leafCount === 1 ? "f" : "ves"}
           </span>
         )}
         {brokenCount > 0 && (
@@ -661,8 +691,12 @@ export function MemoryGraph({ graph, onNavigate, roomName, className }: Props) {
               )}
 
               <div className="mt-1 flex items-center gap-1.5 border-t border-border pt-1">
-                <span className="size-2 flex-shrink-0 rounded-full border border-dashed border-yellow" />
-                orphan (nothing links here)
+                <span className="size-2 flex-shrink-0 rounded-full border-2 border-dashed border-yellow" />
+                orphan (no connections)
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="size-2 flex-shrink-0 rounded-full border-2 border-dashed border-muted-foreground" />
+                leaf (links arrive, go no further)
               </div>
               <div className="flex items-center gap-1.5">
                 <Link2 className="size-3" />
@@ -736,7 +770,9 @@ function GraphNodeDot({
   onDragStart: (key: string, e: PointerEvent<SVGGElement>) => void;
 }) {
   const radius = nodeRadius(node);
-  const orphan = node.inbound === 0;
+  const isOrphan = node.inbound === 0 && node.outbound === 0;
+  const isLeaf = node.inbound > 0 && node.outbound === 0;
+  // roots (inbound=0, outbound>0) get no special border — entry points are intentional.
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<SVGGElement>) => {
@@ -772,9 +808,9 @@ function GraphNodeDot({
       <circle
         r={radius}
         fill={color}
-        stroke={orphan ? "var(--yellow)" : "var(--paper)"}
-        strokeWidth={orphan ? 2 : 1.5}
-        strokeDasharray={orphan ? "3 2" : undefined}
+        stroke={isOrphan ? "var(--yellow)" : isLeaf ? "var(--muted-foreground)" : "var(--paper)"}
+        strokeWidth={isOrphan || isLeaf ? 2 : 1.5}
+        strokeDasharray={isOrphan ? "3 2" : isLeaf ? "2 3" : undefined}
       >
         <title>{node.key}</title>
       </circle>

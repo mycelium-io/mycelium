@@ -12,21 +12,11 @@ vi.mock("@/lib/api", () => ({
   fetchMemoryExpanded: vi.fn().mockResolvedValue({ found: false, rendered: "", expansions: [], key: "" }),
   // MemoryDetail loads the selected memory's links on mount.
   fetchMemoryLinks: vi.fn().mockResolvedValue({ outbound: [], backlinks: [] }),
+  // useRoomMemoryIntegrity (room-data) calls this; give it a stable no-op so
+  // it doesn't throw in the test environment. Banner behaviour is tested via
+  // <MemoryDetail> directly in memory-detail.test.tsx.
+  fetchMemoryIntegrity: vi.fn().mockResolvedValue({ broken: [], orphans: [], roots: [], leaves: [], total_memories: 0, total_links: 0 }),
 }));
-
-const EMPTY_INTEGRITY = { broken: [], orphans: [], total_memories: 0, total_links: 0 };
-let integrityValue = EMPTY_INTEGRITY as import("@/lib/api").MemoryLinksIntegrity;
-vi.mock("@/lib/room-data", async (importOriginal) => {
-  const orig = await importOriginal<typeof import("@/lib/room-data")>();
-  return {
-    ...orig,
-    useRoomMemoryIntegrity: () => ({
-      integrity: integrityValue,
-      loading: false,
-      refresh: vi.fn(),
-    }),
-  };
-});
 
 import { MemoryGraphView } from "@/components/memory-graph-view";
 import {
@@ -65,7 +55,6 @@ describe("<MemoryGraphView />", () => {
     mockGraph.mockReset();
     mockMemory.mockReset();
     mockExpanded.mockReset().mockResolvedValue({ key: "", rendered: "", expansions: [], found: false });
-    integrityValue = EMPTY_INTEGRITY;
   });
 
   it("renders the graph once the payload arrives", async () => {
@@ -162,24 +151,6 @@ describe("<MemoryGraphView />", () => {
 
     expect(screen.queryByText(/FIRST BODY/)).not.toBeInTheDocument();
     expect(screen.getByText(/SECOND BODY/)).toBeInTheDocument();
-  });
-
-  it("warns about a broken link on the memory it opens", async () => {
-    mockGraph.mockResolvedValue(POPULATED);
-    mockMemory.mockResolvedValue(memory("context/goal"));
-    integrityValue = {
-      broken: [
-        { source: "context/goal", target: "gone", kind: "wikilink", resolved: false, error: "not_found", raw: "[[gone]]" },
-      ],
-      orphans: [],
-      total_memories: 2,
-      total_links: 1,
-    };
-    render(<MemoryGraphView roomName="atlas" />);
-
-    await userEvent.click(await screen.findByRole("button", { name: "Open context/goal" }));
-
-    expect(await screen.findByText(/broken link/i)).toBeInTheDocument();
   });
 
   it("keeps a saved arrangement across a reload of the whole view", async () => {

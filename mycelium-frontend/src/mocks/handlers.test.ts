@@ -18,7 +18,7 @@ describe("mock links handlers (#599)", () => {
 
     expect(graph.nodes.length).toBeGreaterThan(0);
     expect(graph.edges.some((e) => !e.resolved)).toBe(true); // the deliberate broken link
-    expect(graph.nodes.some((n) => n.inbound === 0)).toBe(true); // the deliberate orphans
+    expect(graph.nodes.some((n) => n.inbound === 0)).toBe(true); // roots or orphans (no inbound)
 
     // node/edge counts must be internally consistent: every edge endpoint is a real node
     const keys = new Set(graph.nodes.map((n) => n.key));
@@ -51,14 +51,33 @@ describe("mock links handlers (#599)", () => {
     // graph plainly shows a break.
     const { status, body } = await mockGet("/api/rooms/atlas-migration/links/integrity");
     expect(status).toBe(200);
-    const report = body as { broken: { source: string; target: string }[]; orphans: string[]; total_memories: number };
+    const report = body as {
+      broken: { source: string; target: string }[];
+      orphans: string[];
+      roots: string[];
+      leaves: string[];
+      total_memories: number;
+    };
     expect(report.broken).toContainEqual(expect.objectContaining({ source: "decisions/cutover", target: "plan/tasks" }));
     expect(report.total_memories).toBeGreaterThan(0);
-    // Whatever is reported orphaned must really have nothing pointing at it.
+
+    // Orphans must have no inbound AND no outbound edges.
     const { body: graphBody } = await mockGet("/api/rooms/atlas-migration/links/graph");
-    const graph = graphBody as { edges: { target: string; resolved: boolean }[] };
+    const graph = graphBody as { nodes: { key: string; inbound: number; outbound: number }[]; edges: { source: string; target: string; resolved: boolean }[] };
+    const nodeMap = new Map(graph.nodes.map((n) => [n.key, n]));
     for (const key of report.orphans) {
       expect(graph.edges.some((e) => e.resolved && e.target === key)).toBe(false);
+      expect(nodeMap.get(key)?.outbound ?? 0).toBe(0);
+    }
+    // Roots must have no inbound but have outbound.
+    for (const key of report.roots) {
+      expect(graph.edges.some((e) => e.resolved && e.target === key)).toBe(false);
+      expect(nodeMap.get(key)?.outbound ?? 0).toBeGreaterThan(0);
+    }
+    // Leaves must have inbound but no outbound.
+    for (const key of report.leaves) {
+      expect(graph.edges.some((e) => e.resolved && e.target === key)).toBe(true);
+      expect(nodeMap.get(key)?.outbound ?? 0).toBe(0);
     }
   });
 

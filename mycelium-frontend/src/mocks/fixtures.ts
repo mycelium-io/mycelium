@@ -84,7 +84,8 @@ export interface RoomFixture {
  * deriving each node's `inbound`/`outbound` the same way the backend does
  * (`app/services/links.py:graph`): `outbound` counts every parsed link from that
  * memory, `inbound` counts only the edges that actually resolved — so a memory
- * that is only the *target* of a broken link still reads as an orphan.
+ * that is only the *target* of a broken link still reads as a root (inbound=0,
+ * outbound=0 → orphan; inbound=0, outbound>0 → root).
  */
 function buildMockGraph(
   memories: MockMemory[],
@@ -297,8 +298,9 @@ const atlas: RoomFixture = {
 // decision itself relates to the goal and wikilinks a plan file that isn't a
 // memory (so it can't resolve) — a deliberate broken-link example. The four
 // `agents/*` manifests and the briefing itself are never linked *to*, so they
-// render as orphans (#599's graph and #611's rail integrity banner agree on
-// this by construction, since both read the same edge list).
+// render as roots (inbound=0, outbound>0) in the graph — entry points with no
+// referrers yet (#599's graph and #611's rail integrity banner agree on this by
+// construction, since both read the same edge list).
 const ATLAS_LINK_EDGES: MemoryGraphEdge[] = [
   { source: "context/synthesis", target: "decisions/cutover", kind: "wikilink", resolved: true },
   { source: "context/synthesis", target: "status/sprint", kind: "wikilink", resolved: true },

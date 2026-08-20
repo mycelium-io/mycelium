@@ -56,7 +56,7 @@
    * (qualitative-palette convention: equal visual weight, so no namespace
    * reads as more important than another), drawn from the 90–325° arc and
    * skipping 325–90 entirely — that band holds --red and --yellow above,
-   * which are reserved for "broken" and "orphan" and must never double as a
+   * which are reserved for broken links and orphan/leaf nodes and must never double as a
    * namespace color.
    *
    * ORDER IS LOAD-BEARING. Slots are handed out in order to a room's sorted

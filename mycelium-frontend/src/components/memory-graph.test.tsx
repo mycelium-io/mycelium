@@ -62,16 +62,24 @@ describe("<MemoryGraph />", () => {
     expect(onNavigate).toHaveBeenCalledWith("decisions/b");
   });
 
-  it("marks a memory nothing links to as an orphan", () => {
+  it("marks a fully-isolated memory (orphan) with a yellow dashed border", () => {
     const { container } = render(<MemoryGraph graph={graph()} />);
+    // context/orphan: inbound=0, outbound=0 → orphan → yellow dashed
     const orphanNode = screen.getByRole("button", { name: "Open context/orphan" });
     const circle = orphanNode.querySelector("circle");
     expect(circle).toHaveAttribute("stroke", "var(--yellow)");
+    expect(circle).toHaveAttribute("stroke-dasharray", "3 2");
 
+    // decisions/a: inbound=1, outbound=1 → normal → paper border
     const linkedNode = screen.getByRole("button", { name: "Open decisions/a" });
     expect(linkedNode.querySelector("circle")).toHaveAttribute("stroke", "var(--paper)");
 
-    // sanity: container actually rendered an svg with both nodes
+    // decisions/b: inbound=1, outbound=0 → leaf → muted-foreground dashed
+    const leafNode = screen.getByRole("button", { name: "Open decisions/b" });
+    expect(leafNode.querySelector("circle")).toHaveAttribute("stroke", "var(--muted-foreground)");
+    expect(leafNode.querySelector("circle")).toHaveAttribute("stroke-dasharray", "2 3");
+
+    // sanity: container actually rendered an svg with all three nodes
     expect(container.querySelectorAll("circle")).toHaveLength(3);
   });
 
@@ -90,6 +98,11 @@ describe("<MemoryGraph />", () => {
     // also render <line> elements internally.
     const canvas = screen.getByRole("group", { name: /memory link graph/i });
     expect(canvas.querySelectorAll("line")).toHaveLength(1);
+    // Dead references (no target node) don't appear in the broken-link count —
+    // the strip only reflects what's drawn. The integrity system (IntegrityBanner,
+    // `mycelium memory --check`) is where dead refs surface.
+    expect(screen.queryByText(wholeText("1 broken link"))).not.toBeInTheDocument();
+    expect(screen.getByText(wholeText("1 link"))).toBeInTheDocument();
   });
 
   it("draws a broken link between two real memories in the broken style", () => {
@@ -118,23 +131,32 @@ describe("<MemoryGraph />", () => {
     expect(screen.getByText(wholeText("1 broken link"))).toBeInTheDocument();
   });
 
-  it("summarizes memory, link, orphan and broken-link counts", () => {
+  it("summarizes memory, link, orphan, leaf and broken-link counts", () => {
+    // decisions/a: inbound=1, outbound=1 → normal
+    // decisions/b: inbound=1, outbound=0 → leaf
+    // context/orphan: inbound=0, outbound=0 → orphan
+    //
+    // The broken edge targets context/orphan (a real node in the graph), so it
+    // is drawn as a red dashed arc and counted. A `not_found` edge whose target
+    // isn't a node at all can't be drawn and therefore doesn't appear in the
+    // strip — those dead references are surfaced by the integrity system instead.
     render(
       <MemoryGraph
         graph={graph({
           edges: [
             { source: "decisions/a", target: "decisions/b", kind: "wikilink", resolved: true },
-            { source: "decisions/a", target: "missing", kind: "wikilink", resolved: false, error: "not_found" },
+            { source: "decisions/a", target: "context/orphan", kind: "wikilink", resolved: false, error: "no_anchor" },
           ],
         })}
       />,
     );
     // Asserted as whole phrases, so each one pins the *count* rather than the
-    // mere presence of the word — the legend also says "orphan", and matching
-    // that would pass even with the counting removed.
+    // mere presence of the word — the legend also says "orphan"/"leaf", and
+    // matching partial text would pass even with the counting removed.
     expect(screen.getByText(wholeText("3 memories"))).toBeInTheDocument();
-    expect(screen.getByText(wholeText("1 link"))).toBeInTheDocument(); // the broken one isn't drawn
+    expect(screen.getByText(wholeText("1 link"))).toBeInTheDocument();
     expect(screen.getByText(wholeText("1 orphan"))).toBeInTheDocument();
+    expect(screen.getByText(wholeText("1 leaf"))).toBeInTheDocument();
     expect(screen.getByText(wholeText("1 broken link"))).toBeInTheDocument();
   });
 
@@ -142,11 +164,16 @@ describe("<MemoryGraph />", () => {
     // `myc://rooms/other/key` is documented syntax that just can't resolve
     // room-locally. Folding it into "broken" would fault a room for writing
     // something correct, so the strip names the two separately.
+    //
+    // The genuine break targets context/orphan (a real node) so it is drawn as a
+    // red arc and counted. The cross-room reference targets a non-node, so it
+    // never draws — it's counted separately using brokenAttributable (source-only
+    // visibility check) since the target won't be in the room at all.
     render(
       <MemoryGraph
         graph={graph({
           edges: [
-            { source: "decisions/a", target: "typo", kind: "wikilink", resolved: false, error: "not_found" },
+            { source: "decisions/a", target: "context/orphan", kind: "wikilink", resolved: false, error: "no_anchor" },
             { source: "decisions/b", target: "elsewhere", kind: "wikilink", resolved: false, error: "cross_room" },
           ],
         })}
@@ -276,20 +303,24 @@ describe("<MemoryGraph />", () => {
       expect(screen.getByText(wholeText("1 link"))).toBeInTheDocument();
     });
 
-    it("does not invent orphans out of memories whose referrers are hidden", async () => {
-      // decisions/a is the room's one orphan. context/c has inbound === 1, so
-      // it is not — and hiding the only namespace that links to it must not
-      // reclassify it. Orphanhood is a fact about the room, not about what
-      // you're currently looking at; recomputing it from the visible edges
-      // would leave context/c with no referrers and report it as the orphan.
+    it("does not reclassify a leaf as an orphan when its referrers are hidden", async () => {
+      // decisions/a: inbound=0, outbound=2 → root (entry point)
+      // decisions/b: inbound=1, outbound=0 → leaf
+      // context/c:   inbound=1, outbound=0 → leaf
+      // Hiding decisions/ removes decisions/a and decisions/b from view.
+      // context/c still has inbound=1 in its node data — that's a room fact —
+      // so it must stay a leaf, not become an orphan.
       render(<MemoryGraph graph={mixed} />);
       await openLegend();
-      expect(screen.getByText(wholeText("1 orphan"))).toBeInTheDocument();
+      expect(screen.getByText(wholeText("1 root"))).toBeInTheDocument();
+      expect(screen.getByText(wholeText("2 leaves"))).toBeInTheDocument();
 
       await userEvent.click(screen.getByRole("button", { name: /hide decisions/i }));
 
+      // context/c is still visible and still a leaf — not reclassified.
       expect(screen.getByRole("button", { name: "Open context/c" })).toBeInTheDocument();
       expect(screen.queryByText(wholeText("1 orphan"))).not.toBeInTheDocument();
+      expect(screen.getByText(wholeText("1 leaf"))).toBeInTheDocument();
     });
 
     it("does not highlight a neighbor reached only through a hidden edge", async () => {
@@ -791,7 +822,9 @@ describe("<MemoryGraph />", () => {
     });
   });
 
-  it("reports no orphans or broken links when every memory is linked", () => {
+  it("reports no orphans, roots, leaves or broken links when every memory is linked", () => {
+    // Both nodes are well-connected (inbound=1, outbound=1), so no node is
+    // a root, orphan, or leaf — the strip should show only memory/link counts.
     render(
       <MemoryGraph
         graph={{
@@ -809,6 +842,9 @@ describe("<MemoryGraph />", () => {
     expect(screen.getByText(wholeText("2 memories"))).toBeInTheDocument();
     expect(screen.getByText(wholeText("2 links"))).toBeInTheDocument();
     expect(screen.queryAllByText(wholeText(/^\d+ orphans?$/))).toHaveLength(0);
+    expect(screen.queryAllByText(wholeText(/^\d+ roots?$/))).toHaveLength(0);
+    expect(screen.queryAllByText(wholeText(/^\d+ leaf$/))).toHaveLength(0);
+    expect(screen.queryAllByText(wholeText(/^\d+ leaves$/))).toHaveLength(0);
     expect(screen.queryAllByText(wholeText(/^\d+ broken links?$/))).toHaveLength(0);
   });
 });

@@ -142,8 +142,8 @@ interface Props {
   /** When set, Rendered mode shows expanded transclusions instead of raw
    *  `![[…]]` markers (#614 full page, #599 rail drawer). */
   renderedBody?: string | null;
-  /** Room integrity report; surfaces this memory's broken-link/orphan notes
-   *  in either variant when supplied. */
+  /** Room integrity report; surfaces this memory's broken-link / graph-role
+   *  notes in either variant when supplied. */
   integrity?: MemoryLinksIntegrity | null;
 }
 
@@ -154,7 +154,8 @@ function IntegrityBanner({ notes }: { notes: MemoryIntegrityNotes }) {
       `${notes.brokenOutbound} broken outbound link${notes.brokenOutbound === 1 ? "" : "s"}`,
     );
   }
-  if (notes.isOrphan) parts.push("nothing links here yet (orphan)");
+  if (notes.isOrphan) parts.push("no connections at all (orphan)");
+  else if (notes.isLeaf) parts.push("nothing is reachable from here (leaf)");
   return (
     <div
       role="status"

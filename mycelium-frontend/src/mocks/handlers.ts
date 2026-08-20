@@ -249,7 +249,12 @@ export async function handleMock(req: Request): Promise<Response | null> {
             .map((e) => ({ source: e.source, target: e.target, kind: e.kind, resolved: false, error: e.error, raw: synthesizeRaw(e) })),
           // Sorted, like the backend's `integrity()`, so a consumer that ever
           // relies on the order sees the same thing here as in production.
-          orphans: graph.nodes.filter((n) => n.inbound === 0).map((n) => n.key).sort(),
+          // orphan = inbound===0 AND outbound===0 (fully isolated)
+          // root   = inbound===0 AND outbound>0  (entry point)
+          // leaf   = inbound>0  AND outbound===0 (dead end)
+          orphans: graph.nodes.filter((n) => n.inbound === 0 && n.outbound === 0).map((n) => n.key).sort(),
+          roots: graph.nodes.filter((n) => n.inbound === 0 && n.outbound > 0).map((n) => n.key).sort(),
+          leaves: graph.nodes.filter((n) => n.inbound > 0 && n.outbound === 0).map((n) => n.key).sort(),
           total_memories: graph.nodes.length,
           total_links: graph.edges.length,
         });

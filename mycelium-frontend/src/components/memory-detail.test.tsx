@@ -71,6 +71,8 @@ describe("MemoryDetail", () => {
             },
           ],
           orphans: [],
+          roots: [],
+          leaves: [],
           total_memories: 1,
           total_links: 1,
         }}
@@ -87,12 +89,32 @@ describe("MemoryDetail", () => {
         integrity={{
           broken: [],
           orphans: [memory.key],
+          roots: [],
+          leaves: [],
           total_memories: 1,
           total_links: 0,
         }}
       />,
     );
     expect(await screen.findByRole("status")).toHaveTextContent(/orphan/i);
+  });
+
+  it("shows a leaf banner when nothing links out from this memory", async () => {
+    render(
+      <MemoryDetail
+        memory={memory}
+        roomName="demo"
+        integrity={{
+          broken: [],
+          orphans: [],
+          roots: [],
+          leaves: [memory.key],
+          total_memories: 2,
+          total_links: 1,
+        }}
+      />,
+    );
+    expect(await screen.findByRole("status")).toHaveTextContent(/leaf/i);
   });
 
   it("uses renderedBody in Rendered mode", async () => {
