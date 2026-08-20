@@ -284,6 +284,7 @@ class FakeSlimClient:
 def make_fake_llm() -> Any:
     """A deterministic stand-in for the mediator's Pi brain, keyed on the prompt.
 
+    * the term check → no mismatch (so no clarifying round);
     * discovery → one issue ``cap`` with three options;
     * a propose interpretation → counter to ``cap = 30``;
     * a respond interpretation → accept;
@@ -294,6 +295,8 @@ def make_fake_llm() -> Any:
     """
 
     def _fake_llm(prompt: str, *, system: str = "", temperature: float = 0.3) -> str:
+        if "TERM MISMATCHES" in prompt:
+            return json.dumps({"mismatches": []})  # the shared-vocabulary default
         if "identify the negotiable ISSUES" in prompt:
             return json.dumps({"issues": [{"name": "cap", "options": ["25", "30", "35"]}]})
         if "Interpret @" in prompt:

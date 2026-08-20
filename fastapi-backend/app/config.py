@@ -125,6 +125,11 @@ class Settings(BaseSettings):
     # well above the participant count so several proposer rotations can happen
     # (spike used 20).
     ALIGNER_MEDIATOR_MAX_STEPS: int = 20
+    # Pre-negotiation term check — one cheap brain call over the opening positions
+    # looking for a word two agents use in different senses, and one clarifying
+    # round when it finds any. On by default: a room that shares its vocabulary
+    # pays a single call and negotiates exactly as before. Off skips the check.
+    ALIGNER_TERM_CHECK: bool = True
     # Mediator brain runtime — the cognitive engine behind the SAO
     # mediator, an *internal* agent — always a persistent, optionally
     # OpenShell-sandboxed `pi -p --session <id> --mode json` session that gives the

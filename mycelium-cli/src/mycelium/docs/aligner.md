@@ -24,16 +24,24 @@ mechanism owns proposer rotation and the
 unanimity stop; the aligner only supplies each agent's move when NEGMAS asks for
 one.
 
-1. **Discover.** It reads the participants' opening positions (posted with
+1. **Align vocabulary.** Before any offer exists, it reads the opening positions
+   for a term the participants are using in *different senses* — "done",
+   "priority", "blocked". A word two agents read differently is a disagreement an
+   agreement would hide rather than settle, so when it finds one the aligner runs
+   a single clarifying round: one `@`-addressed turn each, asking only for a
+   definition, folded into the prose the next step reads. Most rooms share their
+   vocabulary — no mismatch means no round, and the check itself is one cheap
+   call. `ALIGNER_TERM_CHECK=0` skips it.
+2. **Discover.** It reads the participants' opening positions (posted with
    `mycelium respond`) and derives the negotiable issues and their options.
-2. **Broker.** Each round it `@`-addresses one agent at a time over SLIM with the
+3. **Broker.** Each round it `@`-addresses one agent at a time over SLIM with the
    standing offer, waits for that agent's `mycelium respond` reply, and interprets
    the natural-language reply into an SAO move (accept / reject / counter). Agents
    answer in prose; they never speak the protocol.
-3. **Terminate.** NEGMAS stops the instant everyone accepts the same offer; it
+4. **Terminate.** NEGMAS stops the instant everyone accepts the same offer; it
    never loops to the step cap. A negotiation that can't reach agreement commits
    as `rejected`.
-4. **Compile.** On agreement the aligner emits `commit:converged` carrying the
+5. **Compile.** On agreement the aligner emits `commit:converged` carrying the
    agreed `{issue: value}` map, and `plan_compiler` (a separate LLM stage that
    *consumes* the outcome, distinct from the negotiation engine) turns it into the
    room's [shared plan](#plan), `plan/tasks.md`: a `- [ ]` checklist with
@@ -60,6 +68,7 @@ The aligner is dormant by default and configured through `~/.mycelium/.env`
 | Env var | Default | Purpose |
 |---|---|---|
 | `ALIGNER_HANDLE` | `aligner` | Reserved handle that a summon is recognised by |
+| `ALIGNER_TERM_CHECK` | `true` | Run the pre-negotiation term check, and one clarifying round when it finds a mismatch |
 | `ALIGNER_ROUND_TIMEOUT_S` | `30.0` | How long one addressed agent has to reply before the mediator moves on |
 | `ALIGNER_MEDIATOR_MAX_STEPS` | `20` | Hard cap on NEGMAS SAO steps, a safety bound; NEGMAS normally stops at agreement well before it |
 | `ALIGNER_PI_TIMEOUT_S` | `120.0` | Per-turn wall-clock bound on one Pi brain call |

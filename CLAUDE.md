@@ -113,10 +113,11 @@ see issue #446.)
 engine, the **aligner** (`app/services/aligner.py`), summoned by `@`-mention. It
 runs a real **NEGMAS Stacked Alternating Offers** mechanism (`mediator.py`); its
 brain is a persistent **Pi** coding-agent session (`pi_brain.py`) so it keeps memory
-across rounds. It discovers issues from the agents' opening positions, brokers each
-round, `@`-addresses one agent at a time over SLIM, interprets each reply into an
-SAO move (`offer_snap.py` snaps near-misses / nearest numeric grid point), and
-**NEGMAS owns termination**: it stops the instant the agents agree.
+across rounds. It checks the opening positions for a term the agents are using in
+different senses (one clarifying round if so, none otherwise), discovers issues from
+those positions, brokers each round, `@`-addresses one agent at a time over SLIM,
+interprets each reply into an SAO move (`offer_snap.py` snaps near-misses / nearest
+numeric grid point), and **NEGMAS owns termination**: it stops the instant the agents agree.
 
 **Episodes.** A summon opens an **episode**, a tagged, membership-scoped negotiation
 on the room's channel (a tag over the existing channel, not a separate one), 1:1 with

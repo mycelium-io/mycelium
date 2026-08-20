@@ -79,6 +79,11 @@ _NON_PARTICIPANTS = frozenset({BACKEND_AGENT, l9.SYSTEM_ACTOR_ID})
 # L9-addressed agent wakes; the names stay readable.
 _AT_MENTION = re.compile(r"@(?=\w)")
 
+# Round number stamped on the pre-negotiation clarifying tick. SAO steps are
+# NEGMAS's own, counted from 1, so round 0 marks the turn that ran before the
+# mechanism existed.
+_CLARIFY_ROUND = 0
+
 
 def _registered_engine_kind(room: str, handle: str) -> str | None:
     """The CE kind if ``handle`` is a registered ``engine`` agent in ``room``.
@@ -346,6 +351,9 @@ class AlignerEngine:
         )
         try:
             brain = self._make_brain(episode)
+            positions = await self._clarify_terms(
+                managed, persister, ep, me, episode, topic, positions, brain
+            )
             issues = await asyncio.to_thread(
                 mediator.discover_issues,
                 "Converge on the room's open question — agree one value per issue.",
@@ -454,6 +462,76 @@ class AlignerEngine:
             latest.setdefault(handle, f"(no opening position stated by @{handle})")
         return latest
 
+    async def _clarify_terms(
+        self,
+        managed: ManagedRoomChannel,
+        persister: RoomPersister,
+        ep: EpisodeState,
+        sender: str,
+        episode: str,
+        topic: str,
+        positions: dict[str, str],
+        brain: Callable[..., str],
+    ) -> dict[str, str]:
+        """Stage 0 — one clarifying round when agents share a term but not its meaning.
+
+        Agents can converge on words they read differently ("priority", "done",
+        "blocked"), and an agreement built on those words settles nothing. So
+        before any offer exists, the brain reads the opening prose for terms two
+        participants are using in different senses; when it finds any, each
+        participant is ``@``-addressed once — the same one-agent-at-a-time seam the
+        SAO rounds use — and its answer is folded into the prose that issue
+        discovery then reads.
+
+        Exactly one round, never a loop: the point is to make the vocabulary
+        visible to the mediator and the room, not to negotiate the definitions.
+        No mismatch (the common case) means no prompt and no reply wait, so a room
+        that speaks the same language runs exactly as it did before.
+
+        The returned positions are what the negotiation proceeds on; the episode
+        keeps the untouched opening snapshot, so the record still shows what each
+        agent said before it was asked to define anything.
+        """
+        from app.services import mediator
+
+        if not settings.ALIGNER_TERM_CHECK:
+            return positions
+        try:
+            mismatches = await asyncio.to_thread(
+                mediator.detect_term_mismatch, positions, llm=brain
+            )
+        except Exception:
+            logger.warning("aligner term check failed on room %s", managed.room, exc_info=True)
+            return positions
+        if not mismatches:
+            return positions
+        logger.info(
+            "aligner (mediator) room %s: term mismatch on %s — one clarifying round",
+            managed.room,
+            [m["term"] for m in mismatches],
+        )
+        clarified = dict(positions)
+        clarifications: dict[str, str] = {}
+        for handle in positions:
+            reply = await self._slim_turn(
+                managed,
+                persister,
+                sender,
+                handle,
+                episode,
+                topic,
+                mediator.clarification_prompt(handle, mismatches),
+                _CLARIFY_ROUND,
+                action="clarify",
+            )
+            text = reply.strip()
+            if not text:
+                continue  # silence leaves that agent's opening prose as stated
+            clarifications[handle] = text
+            clarified[handle] = f"{positions[handle]}\n\n(clarified by @{handle}: {text})"
+        l9_episode.record_term_check(ep, mismatches=mismatches, clarifications=clarifications)
+        return clarified
+
     async def _slim_turn(
         self,
         managed: ManagedRoomChannel,
@@ -464,11 +542,14 @@ class AlignerEngine:
         topic: str,
         prompt: str,
         round_n: int,
+        action: str = "position",
     ) -> str:
         """Publish one ``@handle`` prompt, wait for the reply, return its prose.
 
         Bounded by ``round_timeout_s`` (a silent agent yields ``""``, read as a
-        reject) so the mechanism can never hang on one participant.
+        reject) so the mechanism can never hang on one participant. ``action`` is
+        what the tick asks for: an SAO ``position``, or a ``clarify`` definition on
+        the pre-negotiation round.
         """
         before = len(persister.log.records)
         env = l9.build_envelope(
@@ -478,7 +559,7 @@ class AlignerEngine:
             recipients=[handle],
             topic=topic,
             payload_type="tick",
-            payload_data={"round": round_n, "action": "position"},
+            payload_data={"round": round_n, "action": action},
         )
         # Neutralise ``@`` tokens so the broker's summary (which names the other
         # agents) doesn't spuriously wake them — only the L9 ``recipients=[handle]``

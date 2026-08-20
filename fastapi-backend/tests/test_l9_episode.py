@@ -480,3 +480,66 @@ def test_episode_record_omits_opening_positions_when_absent(tmp_path, monkeypatc
     l9_episode.write_episode_record(_open(), outcome="rejected", metrics=None, plan_file=None)
     body = (tmp_path / "rooms" / "sprint" / "log" / "episodes" / "abc123.md").read_text()
     assert "## Opening Positions" not in body
+
+
+# ── term check + clarifying round (#680) ──────────────────────────────────────
+
+_MISMATCH = [{"term": "done", "readings": {"a1": "shipped", "a2": "merged"}}]
+
+
+def test_record_term_check_stores_mismatches_and_clarifications():
+    ep = _open()
+    assert ep.term_mismatches == [] and ep.clarifications == {}
+    l9_episode.record_term_check(
+        ep, mismatches=_MISMATCH, clarifications={"a1": "done means live", "a2": "   "}
+    )
+    assert ep.term_mismatches == _MISMATCH
+    assert ep.clarifications == {"a1": "done means live"}  # a blank answer isn't one
+
+
+def test_record_term_check_leaves_quality_metrics_alone():
+    """The clarifying round is vocabulary repair, not a negotiation move: it must
+    not read as a concession in MPC/GAR/SCR."""
+    ep = _open()
+    l9_episode.record_reply(
+        ep, handle="a1", reply={"action": "accept", "confidence": 0.9}, round_n=1
+    )
+    l9_episode.record_reply(
+        ep, handle="a2", reply={"action": "accept", "confidence": 0.8}, round_n=1
+    )
+    before = l9_episode.compute_metrics(ep)
+    messages = len(ep.messages)
+    l9_episode.record_term_check(ep, mismatches=_MISMATCH, clarifications={"a1": "live"})
+    assert l9_episode.compute_metrics(ep) == before
+    assert len(ep.messages) == messages
+
+
+def test_episode_record_renders_term_clarifications(tmp_path, monkeypatch):
+    monkeypatch.setenv("MYCELIUM_DATA_DIR", str(tmp_path))
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "MYCELIUM_DATA_DIR", str(tmp_path))
+    ep = _open()
+    l9_episode.record_term_check(
+        ep,
+        mismatches=_MISMATCH,
+        clarifications={"a1": "done means live", "a2": "done means merged"},
+    )
+    l9_episode.write_episode_record(ep, outcome="converged", metrics=None, plan_file=None)
+    body = (tmp_path / "rooms" / "sprint" / "log" / "episodes" / "abc123.md").read_text()
+    assert "## Term Clarifications" in body
+    assert "- **done**" in body
+    assert "read by @a1 as: shipped" in body
+    assert "- **@a1**: done means live" in body
+    assert body.index("## Term Clarifications") < body.index("## Messages")
+
+
+def test_episode_record_omits_term_clarifications_when_absent(tmp_path, monkeypatch):
+    """The common path — a room that shares its vocabulary — records nothing."""
+    monkeypatch.setenv("MYCELIUM_DATA_DIR", str(tmp_path))
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "MYCELIUM_DATA_DIR", str(tmp_path))
+    l9_episode.write_episode_record(_open(), outcome="converged", metrics=None, plan_file=None)
+    body = (tmp_path / "rooms" / "sprint" / "log" / "episodes" / "abc123.md").read_text()
+    assert "## Term Clarifications" not in body
