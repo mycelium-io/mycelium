@@ -27,6 +27,7 @@ from tests.fakes import (
     FakeManager,
     FakePersister,
     fake_brain_factory,
+    make_fake_llm,
 )
 
 _ROOM = "mediate-room"
@@ -267,3 +268,217 @@ async def test_mediate_rejects_when_no_issues_discovered(
     assert verdict is not None
     assert verdict["header"]["subkind"] == "rejected"
     assert manager.closed == [_ROOM]
+
+
+# ── stage 0: the pre-negotiation term check (#680) ────────────────────────────
+
+
+def _mismatch_llm(*, term: str = "done") -> Any:
+    """A fake brain that reports one term mismatch, then behaves like the default."""
+    base = make_fake_llm()
+
+    def _llm(prompt: str, *, system: str = "", temperature: float = 0.3) -> str:
+        if "TERM MISMATCHES" in prompt:
+            return json.dumps(
+                {
+                    "mismatches": [
+                        {
+                            "term": term,
+                            "readings": {
+                                "growth": "shipped to users",
+                                "risk": "code merged, review pending",
+                            },
+                        }
+                    ]
+                }
+            )
+        return base(prompt, system=system, temperature=temperature)
+
+    return _llm
+
+
+def test_detect_term_mismatch_keeps_real_clashes_and_drops_the_rest() -> None:
+    """A term two named participants read differently survives; a one-sided
+    reading, an unknown handle, and a malformed entry are dropped rather than
+    repaired — a fabricated mismatch would cost the room a whole round."""
+
+    def llm(prompt: str, *, system: str = "", temperature: float = 0.0) -> str:
+        return json.dumps(
+            {
+                "mismatches": [
+                    {"term": "done", "readings": {"growth": "shipped", "risk": "merged"}},
+                    {"term": "priority", "readings": {"growth": "urgent"}},  # one-sided
+                    {"term": "blocked", "readings": {"growth": "waiting", "ghost": "stuck"}},
+                    {"term": "", "readings": {"growth": "x", "risk": "y"}},
+                    "not a dict",
+                ]
+            }
+        )
+
+    found = mediator.detect_term_mismatch({"growth": "a", "risk": "b"}, llm=llm)
+    assert found == [{"term": "done", "readings": {"growth": "shipped", "risk": "merged"}}]
+
+
+def test_detect_term_mismatch_empty_on_garbage_or_failure() -> None:
+    """No mismatch is the safe answer: unparseable output and a brain that raises
+    both mean the negotiation runs exactly as it would have."""
+    positions = {"growth": "a", "risk": "b"}
+    assert mediator.detect_term_mismatch(positions, llm=lambda *a, **k: "not json") == []
+    assert mediator.detect_term_mismatch(positions, llm=lambda *a, **k: '{"mismatches":{}}') == []
+
+    def boom(*_a: Any, **_k: Any) -> str:
+        raise RuntimeError("brain down")
+
+    assert mediator.detect_term_mismatch(positions, llm=boom) == []
+
+
+def test_detect_term_mismatch_caps_the_clarifying_prompt() -> None:
+    """More reported terms than the cap reads as over-reading, not a broken room."""
+
+    def llm(*_a: Any, **_k: Any) -> str:
+        return json.dumps(
+            {
+                "mismatches": [
+                    {"term": f"t{i}", "readings": {"growth": "x", "risk": "y"}} for i in range(6)
+                ]
+            }
+        )
+
+    found = mediator.detect_term_mismatch({"growth": "a", "risk": "b"}, llm=llm)
+    assert len(found) == mediator.MAX_TERM_MISMATCHES
+
+
+def test_clarification_prompt_asks_for_a_definition_not_an_offer() -> None:
+    prompt = mediator.clarification_prompt(
+        "growth", [{"term": "done", "readings": {"growth": "shipped", "risk": "merged"}}]
+    )
+    assert "done" in prompt
+    assert "shipped" in prompt and "merged" in prompt  # both readings shown, correctable
+    assert "before any offers" in prompt
+
+
+@pytest.mark.asyncio
+async def test_mediate_injects_one_clarifying_round_on_term_mismatch() -> None:
+    """A mismatch buys exactly ONE clarifying round — one turn per participant,
+    before the first SAO step — and its answers reach issue discovery."""
+    from app.services.l9_models import Kind as _Kind
+    from app.services.persister import envelope_recipients
+
+    persister = FakePersister()
+    channel = FakeChannel(persister, reply_conf=0.9)
+    managed = FakeManaged(_ROOM, "mycelium", channel, persister)
+    manager = FakeManager(managed, ["growth", "risk", "aligner"])
+
+    seen: list[dict[str, str]] = []
+    real_discover = mediator.discover_issues
+
+    def spy_discover(task: str, positions: dict[str, str], **kw: Any) -> Any:
+        seen.append(dict(positions))
+        return real_discover(task, positions, **kw)
+
+    engine = _engine(manager, brain_factory=lambda _ep: _mismatch_llm())
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(mediator, "discover_issues", spy_discover)
+        verdict = await engine.mediate(_ROOM)
+
+    assert verdict is not None
+    ticks = [s for s, _ in channel.sent if s.header.kind == _Kind.exchange]
+    clarify = [t for t in ticks if t.payload.data.get("action") == "clarify"]
+    # One clarifying turn per participant, and one only — never a loop.
+    assert [envelope_recipients(t)[0] for t in clarify] == ["growth", "risk"]
+    assert all(t.payload.data["round"] == 0 for t in clarify)
+    # It ran BEFORE the mechanism: the clarifying ticks precede every SAO tick.
+    assert ticks[: len(clarify)] == clarify
+    # And the answers are what discovery reads — the whole point of the round.
+    assert seen and all("(clarified by @" in prose for prose in seen[0].values())
+
+
+@pytest.mark.asyncio
+async def test_mediate_records_the_term_check_on_the_episode() -> None:
+    """The mismatch and each agent's answer land in the episode record, so an
+    audit can see which words the room had to agree on before it could agree."""
+    from app.services.filesystem import ensure_room_structure, get_room_dir
+
+    room_dir = get_room_dir("term-record-room")
+    ensure_room_structure(room_dir)
+
+    persister = FakePersister()
+    channel = FakeChannel(persister, reply_conf=0.9)
+    managed = FakeManaged("term-record-room", "mycelium", channel, persister)
+    manager = FakeManager(managed, ["growth", "risk", "aligner"])
+
+    await _engine(manager, brain_factory=lambda _ep: _mismatch_llm()).mediate("term-record-room")
+
+    records = list((room_dir / "log" / "episodes").glob("*.md"))
+    assert len(records) == 1
+    body = records[0].read_text()
+    assert "## Term Clarifications" in body
+    assert "**done**" in body
+    assert "read by @growth as: shipped to users" in body
+    # The opening snapshot stays the prose the agents actually posted (#679) —
+    # the clarification is recorded beside it, never folded back into it.
+    assert "(clarified by @" not in body.split("## Term Clarifications")[0]
+
+
+@pytest.mark.asyncio
+async def test_mediate_without_term_mismatch_adds_no_round() -> None:
+    """A room that shares its vocabulary negotiates exactly as before: no
+    clarifying tick, no extra reply wait."""
+    from app.services.l9_models import Kind as _Kind
+
+    persister = FakePersister()
+    channel = FakeChannel(persister, reply_conf=0.9)
+    managed = FakeManaged(_ROOM, "mycelium", channel, persister)
+    manager = FakeManager(managed, ["growth", "risk", "aligner"])
+
+    verdict = await _engine(manager).mediate(_ROOM)
+
+    assert verdict is not None
+    ticks = [s for s, _ in channel.sent if s.header.kind == _Kind.exchange]
+    assert ticks  # the negotiation itself still ran
+    assert all(t.payload.data.get("action") == "position" for t in ticks)
+
+
+@pytest.mark.asyncio
+async def test_term_check_can_be_switched_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``ALIGNER_TERM_CHECK=0`` skips the check entirely — not even the one call."""
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "ALIGNER_TERM_CHECK", False)
+    calls: list[str] = []
+
+    def spy_detect(*a: Any, **k: Any) -> list[dict[str, Any]]:
+        calls.append("called")
+        return []
+
+    monkeypatch.setattr(mediator, "detect_term_mismatch", spy_detect)
+
+    persister = FakePersister()
+    channel = FakeChannel(persister, reply_conf=0.9)
+    managed = FakeManaged(_ROOM, "mycelium", channel, persister)
+    manager = FakeManager(managed, ["growth", "risk", "aligner"])
+
+    await _engine(manager, brain_factory=lambda _ep: _mismatch_llm()).mediate(_ROOM)
+
+    assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_mediate_survives_a_failing_term_check(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A broken check costs the room nothing: the negotiation runs as if the
+    vocabulary were shared, rather than failing the whole summon."""
+
+    def boom(*_a: Any, **_k: Any) -> list[dict[str, Any]]:
+        raise RuntimeError("brain down")
+
+    monkeypatch.setattr(mediator, "detect_term_mismatch", boom)
+
+    persister = FakePersister()
+    channel = FakeChannel(persister, reply_conf=0.9)
+    managed = FakeManaged(_ROOM, "mycelium", channel, persister)
+    manager = FakeManager(managed, ["growth", "risk", "aligner"])
+
+    verdict = await _engine(manager).mediate(_ROOM)
+
+    assert verdict is not None
+    assert verdict["header"]["subkind"] == "converged"

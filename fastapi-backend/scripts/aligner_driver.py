@@ -114,15 +114,12 @@ def main() -> None:
     )
 
     print(f"[driver] model={llm_env['LLM_MODEL']}  participants={participants}", flush=True)
-    print("[driver] discovering issues from opening positions (real LLM)...", flush=True)
-    issues = mediator.discover_issues(args.task, positions, llm=brain)
-    print(f"[driver] issues = {json.dumps(issues)}", flush=True)
-    if not issues:
-        result_file.write_text(json.dumps({"converged": False, "reason": "no issues discovered"}))
-        print("[driver] no issues discovered; done.", flush=True)
-        return
 
     seq = {"n": 0}
+
+    def ask(handle: str, prompt: str, round_n: int) -> str:
+        """Blocking form of the file bridge, for turns outside the async run."""
+        return asyncio.run(fetch_prose(handle, prompt, round_n))
 
     async def fetch_prose(handle: str, prompt: str, round_n: int) -> str:
         """Interactive agent-reply seam: publish the turn, block on reply.txt."""
@@ -151,6 +148,31 @@ def main() -> None:
         print(f"[driver] @{handle} timed out (no reply) — treating as silence.", flush=True)
         return ""
 
+    print("[driver] checking the opening positions for term mismatch (real LLM)...", flush=True)
+    mismatches = mediator.detect_term_mismatch(positions, llm=brain)
+    clarifications: dict[str, str] = {}
+    if mismatches:
+        print(
+            f"[driver] term mismatch = {json.dumps(mismatches)} — one clarifying round", flush=True
+        )
+        for handle in list(positions):
+            reply = ask(handle, mediator.clarification_prompt(handle, mismatches), 0).strip()
+            if not reply:
+                continue
+            clarifications[handle] = reply
+            positions[handle] = f"{positions[handle]}\n\n(clarified by @{handle}: {reply})"
+        l9_episode.record_term_check(ep, mismatches=mismatches, clarifications=clarifications)
+    else:
+        print("[driver] no term mismatch — negotiating on the opening positions", flush=True)
+
+    print("[driver] discovering issues from opening positions (real LLM)...", flush=True)
+    issues = mediator.discover_issues(args.task, positions, llm=brain)
+    print(f"[driver] issues = {json.dumps(issues)}", flush=True)
+    if not issues:
+        result_file.write_text(json.dumps({"converged": False, "reason": "no issues discovered"}))
+        print("[driver] no issues discovered; done.", flush=True)
+        return
+
     async def run() -> None:
         loop = asyncio.get_running_loop()
         negotiation = mediator.MediatedNegotiation(
@@ -178,6 +200,8 @@ def main() -> None:
             "metrics": metrics,
             "issues": issues,
             "opening_positions": ep.opening_positions,
+            "term_mismatches": ep.term_mismatches,
+            "clarifications": ep.clarifications,
             "episode_messages": ep.messages,
         }
         result_file.write_text(json.dumps(result, indent=2))

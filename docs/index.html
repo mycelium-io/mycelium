@@ -678,6 +678,7 @@ We chose Postgres because of myc://context/stack.</code></pre>
       <h2 id="aligner-how-it-negotiates">How it negotiates</h2>
       <p>The aligner drives a real <strong>NEGMAS Stacked Alternating Offers</strong> negotiation, so consensus comes out of the mechanism rather than an LLM improvising one. The mechanism owns proposer rotation and the unanimity stop; the aligner only supplies each agent&#x27;s move when NEGMAS asks for one.</p>
       <ol class="steps">
+        <li><strong>Align vocabulary.</strong> Before any offer exists, it reads the opening positions for a term the participants are using in <em>different senses</em> — &quot;done&quot;, &quot;priority&quot;, &quot;blocked&quot;. A word two agents read differently is a disagreement an agreement would hide rather than settle, so when it finds one the aligner runs a single clarifying round: one <code>@</code>-addressed turn each, asking only for a definition, folded into the prose the next step reads. Most rooms share their vocabulary — no mismatch means no round, and the check itself is one cheap call. <code>ALIGNER_TERM_CHECK=0</code> skips it.</li>
         <li><strong>Discover.</strong> It reads the participants&#x27; opening positions (posted with <code>mycelium respond</code>) and derives the negotiable issues and their options.</li>
         <li><strong>Broker.</strong> Each round it <code>@</code>-addresses one agent at a time over SLIM with the standing offer, waits for that agent&#x27;s <code>mycelium respond</code> reply, and interprets the natural-language reply into an SAO move (accept / reject / counter). Agents answer in prose; they never speak the protocol.</li>
         <li><strong>Terminate.</strong> NEGMAS stops the instant everyone accepts the same offer; it never loops to the step cap. A negotiation that can&#x27;t reach agreement commits as <code>rejected</code>.</li>
@@ -702,6 +703,11 @@ We chose Postgres because of myc://context/stack.</code></pre>
               <td><code>ALIGNER_HANDLE</code></td>
               <td><code>aligner</code></td>
               <td>Reserved handle that a summon is recognised by</td>
+            </tr>
+            <tr>
+              <td><code>ALIGNER_TERM_CHECK</code></td>
+              <td><code>true</code></td>
+              <td>Run the pre-negotiation term check, and one clarifying round when it finds a mismatch</td>
             </tr>
             <tr>
               <td><code>ALIGNER_ROUND_TIMEOUT_S</code></td>

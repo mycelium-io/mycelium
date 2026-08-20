@@ -52,6 +52,11 @@ logger = logging.getLogger(__name__)
 # The mediator's issue-discovery runs at temperature 0 for stable JSON parsing.
 _DISCOVER_TEMPERATURE = 0.0
 
+# Terms the pre-negotiation check will ask about in one clarifying round. A
+# mismatch list longer than this is a signal the check is over-reading the prose,
+# not that the room shares five broken words; the clarifying prompt stays short.
+MAX_TERM_MISMATCHES = 3
+
 # Negotiation stance appended to every agent-facing prompt. Deliberately neutral:
 # the earlier "no agreement is the worst outcome … concede everything secondary"
 # framing coerced agents into capitulating below their stated floor in a single
@@ -83,6 +88,98 @@ def _extract_json(text: str) -> dict[str, Any]:
         if isinstance(parsed, dict):
             return parsed
     return {}
+
+
+def detect_term_mismatch(
+    positions: dict[str, str], *, llm: Callable[..., str]
+) -> list[dict[str, Any]]:
+    """Mediator stage 0 — do two agents use the same word to mean different things?
+
+    Reads the opening prose *before* any offers and returns the terms two or more
+    participants use in materially different senses, as
+    ``[{"term": str, "readings": {handle: meaning}}]``. An empty list — the
+    common case — means the negotiation proceeds exactly as it would have.
+
+    A term mismatch is not a disagreement: two agents wanting a different *value*
+    for the same word is the negotiation itself. What this catches is the case
+    that survives it — an agreement whose words each side reads differently, so
+    the room converges on prose while still talking past each other.
+
+    Faithful, never fabricated (the aligner's standing rule): a reported mismatch
+    must name a real participant on both sides and quote a reading per agent, and
+    anything that fails those checks is dropped rather than repaired. Fail-soft on
+    an LLM error or garbage output — no mismatch, no clarifying round.
+    """
+    roster = {handle.strip().lower(): handle for handle in positions}
+    opening = "\n".join(f"@{handle}: {prose}" for handle, prose in positions.items())
+    try:
+        out = _extract_json(
+            llm(
+                "You are a negotiation mediator reading the opening positions BEFORE any "
+                "offers are made. Find TERM MISMATCHES: a word or phrase that two or more "
+                "agents both use but MEAN DIFFERENTLY, so an agreement written with that word "
+                "would hide a disagreement instead of settling it.\n"
+                "Report a mismatch ONLY when you can quote each agent's own sense of the term "
+                "from their text. Wanting a different VALUE for the same term is NOT a "
+                "mismatch — that is the negotiation. An empty list is the normal answer; do "
+                "not invent one.\n\n"
+                f"POSITIONS:\n{opening}\n\n"
+                'Return ONLY JSON: {"mismatches":[{"term":"the word",'
+                '"readings":{"handle":"what that agent means by it"}}]}',
+                system="Strict JSON. Report only genuine same-word-different-meaning clashes; "
+                'prefer {"mismatches":[]} over a speculative one.',
+                temperature=_DISCOVER_TEMPERATURE,
+            )
+        )
+    except Exception:
+        logger.warning("mediator term check failed; continuing without a clarifying round")
+        return []
+    raw = out.get("mismatches")
+    if not isinstance(raw, list):
+        return []
+    clean: list[dict[str, Any]] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        term = item.get("term")
+        readings = item.get("readings")
+        if not isinstance(term, str) or not term.strip() or not isinstance(readings, dict):
+            continue
+        # Keep only readings attributed to a real participant, and only a term at
+        # least two of them are on: a one-sided "mismatch" is just one agent's
+        # definition, and an unknown handle is a fabrication.
+        named = {
+            roster[str(h).strip().lower()]: str(v).strip()
+            for h, v in readings.items()
+            if str(h).strip().lower() in roster and str(v).strip()
+        }
+        if len(named) < 2:
+            continue
+        clean.append({"term": term.strip(), "readings": named})
+        if len(clean) == MAX_TERM_MISMATCHES:
+            break
+    return clean
+
+
+def clarification_prompt(handle: str, mismatches: list[dict[str, Any]]) -> str:
+    """The one clarifying turn's prompt — deterministic prose, no offer requested.
+
+    Shows the agent how the room is reading each contested term (including its own
+    reading, so a misread is correctable in-band, the same way the mediator
+    restates its SAO readings) and asks only for a definition.
+    """
+    terms = "\n".join(
+        f'- "{m["term"]}" — '
+        + "; ".join(f"@{h} seems to mean {reading}" for h, reading in m["readings"].items())
+        for m in mismatches
+    )
+    return (
+        f"@{handle} — clarifying round, before any offers. The opening positions use the same "
+        f"term in what look like different senses:\n\n{terms}\n\n"
+        "State plainly what YOU mean by each term (one sentence each), and correct the reading "
+        "above if it has you wrong. Do not make or accept an offer yet — this round only fixes "
+        "the vocabulary so the agreement means the same thing to everyone."
+    )
 
 
 def discover_issues(

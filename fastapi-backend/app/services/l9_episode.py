@@ -90,6 +90,11 @@ class EpisodeState:
     # structured snapshot the episode record renders as "Opening Positions" so a
     # negotiation can be audited against what the room believed going in (#679).
     opening_positions: dict[str, str] = field(default_factory=dict)
+    # Terms the pre-negotiation check found the participants using in different
+    # senses, and what each answered in the clarifying round that followed. Empty
+    # on the common path (no mismatch, no clarifying round).
+    term_mismatches: list[dict[str, Any]] = field(default_factory=list)
+    clarifications: dict[str, str] = field(default_factory=dict)
     # Ordered record of every envelope in the episode (dicts, wire shape).
     messages: list[dict[str, Any]] = field(default_factory=list)
     # handle -> l9 message id of the last tick sent to that agent.
@@ -186,6 +191,23 @@ def record_tick(
     ep.last_tick_ids[handle] = env.header.message.id  # type: ignore[union-attr]
     ep.messages.append(env_dict)
     return env_dict
+
+
+def record_term_check(
+    ep: EpisodeState,
+    *,
+    mismatches: list[dict[str, Any]],
+    clarifications: dict[str, str],
+) -> None:
+    """Record the pre-negotiation term check and the clarifying round it drove.
+
+    Kept off the quality metrics on purpose: the clarifying round is vocabulary
+    repair, not a negotiation move, so folding it into MPC/GAR/SCR would score a
+    definition as a concession. It lands in the episode record instead, where an
+    audit can see which words the room had to agree on before it could agree.
+    """
+    ep.term_mismatches = [dict(m) for m in mismatches]
+    ep.clarifications = {h: t for h, t in clarifications.items() if t.strip()}
 
 
 def record_reply(
@@ -409,6 +431,31 @@ def write_episode_record(
                     if handle in ep.opening_positions
                 ),
             ]
+        if ep.term_mismatches:
+            lines += [
+                "",
+                "## Term Clarifications",
+                "",
+                "Terms the participants were using differently, caught before the first "
+                "offer, and what each said they meant:",
+                "",
+            ]
+            for mismatch in ep.term_mismatches:
+                lines.append(f"- **{mismatch.get('term', '')}**")
+                readings = mismatch.get("readings")
+                if isinstance(readings, dict):
+                    lines += [f"  - read by @{handle} as: {r}" for handle, r in readings.items()]
+            if ep.clarifications:
+                lines += [
+                    "",
+                    "Clarifying round:",
+                    "",
+                    *(
+                        f"- **@{handle}**: {ep.clarifications[handle]}"
+                        for handle in ep.agents
+                        if handle in ep.clarifications
+                    ),
+                ]
         lines += [
             "",
             "## Messages",
