@@ -425,3 +425,58 @@ def test_reply_ignores_unknown_move():
     ep = _open()
     l9_episode.record_reply(ep, handle="a1", reply={"action": "accept", "move": "bogus"}, round_n=1)
     assert "subkind" not in ep.messages[-1]["header"]
+
+
+# ── opening positions snapshot (#679) ─────────────────────────────────────────
+
+
+def test_open_episode_stores_opening_positions():
+    """The snapshot is captured on the episode at open, before mediation."""
+    ep = l9_episode.open_episode(
+        parent_room="sprint",
+        short_id="abc123",
+        workspace_id="ws-1",
+        mas_id="mas-1",
+        agents=["a1", "a2"],
+        joined_intents="- a1: ship\n- a2: test",
+        opening_positions={"a1": "ship it in Q3", "a2": "test first, Q4"},
+    )
+    assert ep.opening_positions == {"a1": "ship it in Q3", "a2": "test first, Q4"}
+
+
+def test_open_episode_opening_positions_default_empty():
+    """Absent snapshot → empty dict (older callers are unaffected)."""
+    assert _open().opening_positions == {}
+
+
+def test_episode_record_renders_opening_positions(tmp_path, monkeypatch):
+    monkeypatch.setenv("MYCELIUM_DATA_DIR", str(tmp_path))
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "MYCELIUM_DATA_DIR", str(tmp_path))
+    ep = l9_episode.open_episode(
+        parent_room="sprint",
+        short_id="abc123",
+        workspace_id="ws-1",
+        mas_id="mas-1",
+        agents=["a1", "a2"],
+        joined_intents="- a1: ship\n- a2: test",
+        opening_positions={"a1": "ship it in Q3", "a2": "test first, Q4"},
+    )
+    l9_episode.write_episode_record(ep, outcome="converged", metrics=None, plan_file=None)
+    body = (tmp_path / "rooms" / "sprint" / "log" / "episodes" / "abc123.md").read_text()
+    assert "## Opening Positions" in body
+    assert "- **@a1**: ship it in Q3" in body
+    assert "- **@a2**: test first, Q4" in body
+    # Renders in roster order, above the message log.
+    assert body.index("## Opening Positions") < body.index("## Messages")
+
+
+def test_episode_record_omits_opening_positions_when_absent(tmp_path, monkeypatch):
+    monkeypatch.setenv("MYCELIUM_DATA_DIR", str(tmp_path))
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "MYCELIUM_DATA_DIR", str(tmp_path))
+    l9_episode.write_episode_record(_open(), outcome="rejected", metrics=None, plan_file=None)
+    body = (tmp_path / "rooms" / "sprint" / "log" / "episodes" / "abc123.md").read_text()
+    assert "## Opening Positions" not in body
