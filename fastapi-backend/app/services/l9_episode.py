@@ -95,6 +95,13 @@ class EpisodeState:
     # on the common path (no mismatch, no clarifying round).
     term_mismatches: list[dict[str, Any]] = field(default_factory=list)
     clarifications: dict[str, str] = field(default_factory=dict)
+    # Each agent's first concrete SAO offer (issue -> value), captured as the
+    # mediator reads it — the "opening ask" a converged outcome's satisfaction is
+    # scored against (#682). Distinct from opening_positions (prose): parsed offers.
+    opening_offers: dict[str, dict[str, str]] = field(default_factory=dict)
+    # The negotiable issues' ordered option grids (issue -> options), so
+    # satisfaction can be scored as ordinal distance on the grid actually negotiated.
+    issue_options: dict[str, list[str]] = field(default_factory=dict)
     # Ordered record of every envelope in the episode (dicts, wire shape).
     messages: list[dict[str, Any]] = field(default_factory=list)
     # handle -> l9 message id of the last tick sent to that agent.
@@ -361,6 +368,40 @@ def compute_metrics(ep: EpisodeState) -> dict[str, Any] | None:
     }
 
 
+def estimate_satisfaction(
+    opening_offers: dict[str, dict[str, str]],
+    assignments: dict[str, Any],
+    issue_options: dict[str, list[str]],
+) -> dict[str, float]:
+    """Estimate each agent's satisfaction with the agreed outcome, relative to its
+    own opening offer, as mean closeness across the issues it stated.
+
+    Closeness on an issue is ``1 - grid_distance / grid_span``, treating each
+    issue's option list as ordinal — the order ``discover_issues`` emits (ascending
+    numbers, low->high scope). An agent that got exactly its opening ask scores
+    ``1.0``; the further the agreed value sits from it on the grid, the lower. It's
+    a post-hoc estimate, not a utility the agent stated: agents with no recorded
+    offer, and issues absent from an offer or the agreement, are skipped rather
+    than guessed. The room's minimum flags a consensus that one participant barely
+    tolerated.
+    """
+    out: dict[str, float] = {}
+    for handle, offer in opening_offers.items():
+        scores: list[float] = []
+        for issue, options in issue_options.items():
+            want, got = offer.get(issue), assignments.get(issue)
+            if want is None or got is None:
+                continue
+            try:
+                distance = abs(options.index(str(want)) - options.index(str(got)))
+            except ValueError:
+                continue
+            scores.append(1.0 - distance / max(1, len(options) - 1))
+        if scores:
+            out[handle] = round(sum(scores) / len(scores), 4)
+    return out
+
+
 def build_consensus_envelope(
     ep: EpisodeState,
     *,
@@ -410,11 +451,17 @@ def write_episode_record(
             f"- outcome: **{outcome}**",
             f"- participants: {', '.join(ep.agents)}",
         ]
-        if metrics:
+        if metrics and "mpc" in metrics:
             lines.append(
                 f"- quality: MPC {metrics['mpc']:.2f} · GAR {metrics['gar']:.2f} · "
                 f"SCR {metrics['scr']:.2f} · provenance weight "
                 f"{metrics['provenance_weight']:.2f}"
+            )
+        if metrics and metrics.get("min_satisfaction") is not None:
+            per_agent = metrics.get("satisfaction", {})
+            lines.append(
+                f"- satisfaction: min {metrics['min_satisfaction']:.2f} "
+                f"(least-happy of {len(per_agent)} agents, relative to opening asks)"
             )
         if plan_file:
             lines.append(f"- plan: `{plan_file}`")
