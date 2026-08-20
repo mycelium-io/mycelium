@@ -110,6 +110,7 @@ def main() -> None:
         agents=participants,
         joined_intents="\n".join(f"- {h}: {p}" for h, p in positions.items()),
         engine_handle="aligner",
+        opening_positions=positions,
     )
 
     print(f"[driver] model={llm_env['LLM_MODEL']}  participants={participants}", flush=True)
@@ -176,6 +177,7 @@ def main() -> None:
             "steps": mech.current_step,
             "metrics": metrics,
             "issues": issues,
+            "opening_positions": ep.opening_positions,
             "episode_messages": ep.messages,
         }
         result_file.write_text(json.dumps(result, indent=2))

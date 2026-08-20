@@ -114,6 +114,7 @@
       <div class="nav-section-label">Guides</div>
       <a href="#structured-memory" class="nav-link sub">Structured Memory</a>
       <a href="#hub-and-spoke" class="nav-link sub">Hub &amp; Spoke</a>
+      <a href="#security-planes" class="nav-link sub">Security Planes</a>
       <a href="#auth" class="nav-link sub">Authentication</a>
       <a href="#keycloak-oidc" class="nav-link sub">Keycloak / OIDC Setup</a>
       <a href="#spire-identity" class="nav-link sub">Attested Identity (SPIRE)</a>
@@ -136,7 +137,7 @@
       <p>Everything (the backend, the SLIM node, agents, and CLI) runs on one machine, typically a developer&#x27;s laptop. This is what <code>mycelium install</code> sets up out of the box. No network configuration, no remote services to point at, no shared infrastructure required.</p>
       <p>This is the primary deployment target. Use it when one person (or one machine) owns the whole agent workflow.</p>
       <h3 id="architecture-2-hub-and-spoke-small-teams">2. Hub-and-spoke (small teams)</h3>
-      <p>A second, optional mode for small teams that want to share memory, rooms, and coordination across machines. One machine runs the SLIM node and backend (the <strong>hub</strong>); other machines run only the CLI + agents (<strong>spokes</strong>) and connect to the hub&#x27;s channel.</p>
+      <p>A second, optional mode for small teams that want to share memory, rooms, and coordination across machines. One machine runs the SLIM node and backend (the <strong>hub</strong>); other machines run only the CLI + agents (<strong>spokes</strong>) as <strong>thin HTTP clients</strong> to the hub API.</p>
       <div class="table-wrap">
         <table>
           <thead>
@@ -154,19 +155,20 @@
             </tr>
             <tr>
               <td><strong>Spoke</strong></td>
-              <td>CLI + agents only. Points at the hub&#x27;s SLIM address.</td>
-              <td>Each teammate&#x27;s laptop. Agents on the spoke participate in shared rooms hosted by the hub.</td>
+              <td>CLI + agents only. Points <code>server.api_url</code> at the hub backend.</td>
+              <td>Each teammate&#x27;s laptop. Memory and participation go over HTTP <code>:8000</code>.</td>
             </tr>
           </tbody>
         </table>
       </div>
-      <p>Stand a hub up and point spokes at it:</p>
-      <pre><code><span class="comment"># On the hub: starts the SLIM node + backend, prints the connect address</span>
+      <p>Stand a hub up and point spokes at the <strong>backend</strong> (required):</p>
+      <pre><code><span class="comment"># On the hub: starts the SLIM node + backend</span>
 <span class="bin">mycelium</span> <span class="cmd">hub</span> <span class="cmd">host</span>
+<span class="bin">mycelium</span> <span class="cmd">up</span>
 
-<span class="comment"># On each spoke: point this machine at the hub&#x27;s channel</span>
-<span class="bin">mycelium</span> <span class="cmd">hub</span> <span class="cmd">connect</span> http://&lt;hub-ip&gt;:46357</code></pre>
-      <p>See the <a href="#hub-and-spoke">Hub &amp; Spoke Setup guide</a> for step-by-step instructions.</p>
+<span class="comment"># On each spoke: point at the hub&#x27;s HTTP API</span>
+<span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> server.api_url http://&lt;hub-ip&gt;:8000</code></pre>
+      <p>Spokes do not need <code>MYCELIUM_SLIM_MASTER_SECRET</code> for the default path. The SLIM/MLS fabric is hub-side; spokes use <code>await</code>/<code>respond</code> over HTTP. See <a href="#security-planes">Security Planes</a> and the <a href="#hub-and-spoke">Hub &amp; Spoke Setup guide</a> for step-by-step instructions.</p>
       <p><code>mycelium doctor</code> auto-detects which mode you&#x27;re in by looking at <code>server.api_url</code> in <code>~/.mycelium/config.toml</code>: if it points to <code>localhost</code>/<code>127.0.0.1</code>, you&#x27;re a hub; otherwise a spoke. Override the auto-detection with:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">doctor</span> <span class="flag">--mode</span> hub     # force hub checks
 <span class="bin">mycelium</span> <span class="cmd">doctor</span> <span class="flag">--mode</span> spoke   # force spoke checks (skip local-only)
@@ -178,7 +180,7 @@
 <span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">clone</span> my-project <span class="flag">--from</span> <span class="url">http://ec2-host:8000</span></code></pre>
       <h2 id="architecture-stack">Stack</h2>
       <p>Mycelium runs on <strong>one SLIM node</strong> and a thin backend: no database, no message broker, no vector store.</p>
-      <p>Agents coordinate over an <a href="https://github.com/agntcy">AGNTCY SLIM</a> group channel, one per room: an MLS-encrypted group with shared-secret PSK auth. The backend is each room&#x27;s <strong>moderator</strong>; agents (and the human, by proxy) are members. Room state lives on the hub as markdown files; search runs against a local embedding index. Every other machine is a thin client that reads and writes that state over HTTP. Coordination messages ride SLIM as additive <a href="#l9-protocol">L9 envelopes</a>.</p>
+      <p>The hub backend moderates an <a href="https://github.com/agntcy">AGNTCY SLIM</a> group channel per room (MLS-encrypted; PSK or SignerJwt/SPIRE on the <strong>SLIM plane</strong>). Turn-based agents on spokes (and humans by proxy) participate over <strong>HTTP</strong> — the backend holds server-side presence and serves turns from the durable transcript. Room state lives on the hub as markdown files; search runs against a local embedding index. Every spoke reads and writes that state over HTTP. Coordination messages on the fabric ride SLIM as additive <a href="#l9-protocol">L9 envelopes</a>.</p>
       <div class="table-wrap">
         <table>
           <thead>
@@ -893,6 +895,9 @@
 <span class="comment"># SLIM channel identity tier: &#x27;psk&#x27; (default, off-by-default #567) is the shared-secret credential every room member derives (zero infra, no per-agent identity). &#x27;signerjwt&#x27; opts into the SignerJwt floor (#476): each member presents a per-agent self-signed ES256 identity so members are cryptographically distinct, individually revocable MLS participants. &#x27;spire&#x27; opts into SPIRE/SPIFFE (#579): each member presents a SPIRE-attested JWT-SVID from the Workload API (tightest attestation, heaviest deploy: a co-located SPIRE server + node daemon, brought up automatically by &#x27;mycelium up&#x27; via the shipped &#x27;spire&#x27; compose profile; #588. Selecting &#x27;signerjwt&#x27;/&#x27;spire&#x27; with no resolvable material degrades to &#x27;psk&#x27; unless MYCELIUM_SLIM_IDENTITY_REQUIRE=1 fails closed.</span>
 <span class="arg">identity</span> = <span class="str">&quot;psk&quot;</span>
 
+<span class="comment"># Hub-only SLIM PSK master secret. Auto-generated on first ``mycelium config apply`` / install when unset; rendered to ``MYCELIUM_SLIM_MASTER_SECRET`` in ~/.mycelium/.env for the backend container. Spokes do not need this. Override with ``mycelium config set slim.master_secret …`` to rotate.</span>
+<span class="arg">master_secret</span> = <span class="str">&quot;&quot;</span>
+
 <span class="comment"># First-party Cognition Engine runtime configuration.</span>
 <span class="cmd" id="config-engine">[engine]</span>
 
@@ -1168,186 +1173,278 @@ procedures/  Reusable how-to steps (do this again later)</code></pre>
 
     <section class="doc-section" id="hub-and-spoke">
       <h1>Hub &amp; Spoke Setup</h1>
-      <p>Run Mycelium across two or more machines so a small team shares rooms, memory, and coordination over one SLIM node.</p>
-      <p>Coordination rides an AGNTCY SLIM group channel, an MLS-encrypted messaging fabric. One machine is the <strong>hub</strong>: it runs the SLIM node plus the always-on backend that moderates each room. Every other machine is a <strong>spoke</strong> that points at the hub&#x27;s node. There is no database and no separate channel server; the node is a blind ciphertext forwarder, so the hub never sees room contents in the clear.</p>
+      <p>Run Mycelium across two or more machines so a small team shares rooms, memory, and coordination from one hub.</p>
+      <p>One machine is the <strong>hub</strong>: it runs the SLIM node and the always-on FastAPI backend (room moderator + memory store). Every other machine is a <strong>spoke</strong>: CLI + agents only, talking to the hub over <strong>HTTP</strong>. There is no database and no separate channel server.</p>
+      <div class="callout callout-note">
+        <div class="callout-bar"></div>
+        <div class="callout-body"><strong>Two planes.</strong> Spokes use the <strong>HTTP API</strong> (<code>:8000</code>) for memory and participation. The <strong>SLIM/MLS fabric</strong> (<code>:46357</code>) is used by the hub backend as moderator; spokes do not join it in the default path and do <strong>not</strong> need <code>MYCELIUM_SLIM_MASTER_SECRET</code>. See <a href="#security-planes">Security Planes</a>.</div>
+      </div>
       <h2 id="hub-and-spoke-when-to-use-this">When to use this</h2>
-      <p>Use hub-and-spoke when people on different machines need to join the same rooms, see the same memories, and run negotiations together. If everything runs on one machine, the default single-device install already does this.</p>
+      <p>Use hub-and-spoke when people on different machines need to join the same rooms, see the same memories, and run negotiations together. If everything runs on one machine, the default single-device install already does this; see the <a href="#quickstart">Quick Start</a>.</p>
       <h2 id="hub-and-spoke-topology">Topology</h2>
-      <pre><code>┌──────────────────────────────────┐
-│  Hub  (one machine)              │
-│                                  │
-│  <span class="bin">mycelium</span> <span class="cmd">install</span>                │
-│  <span class="bin">mycelium</span> <span class="cmd">hub</span> <span class="cmd">host</span>  → SLIM :46357│
-│  <span class="bin">mycelium</span> <span class="cmd">up</span>        → backend    │
-│  <span class="bin">mycelium</span> <span class="cmd">up</span> <span class="flag">--ui</span>   → frontend   │
-└────────────┬─────────────────────┘
-             │  SLIM (MLS-encrypted)
-     ┌───────┴───────┐
-     │               │
-┌────┴─────┐   ┌─────┴────┐
-│ Spoke A  │   │ Spoke B  │
-│          │   │          │
-│ <span class="bin">mycelium</span> │   │ <span class="bin">mycelium</span> │
-│ connect  │   │ connect  │
-│ + agents │   │ + agents │
-└──────────┘   └──────────┘</code></pre>
-      <p>Spokes run only the CLI and their agents. They connect to the hub&#x27;s node address and coordinate over the shared channel.</p>
+      <pre><code>┌─────────────────────────────────────────────┐
+│  Hub  (one machine)                         │
+│                                             │
+│  <span class="bin">mycelium</span> <span class="cmd">install</span>                           │
+│  <span class="bin">mycelium</span> <span class="cmd">hub</span> <span class="cmd">host</span>                          │
+│  ├─ SLIM node        :46357  (MLS fabric)   │
+│  └─ FastAPI backend  :8000  (HTTP API)     │
+│       moderator + memory store              │
+└──────────────────┬──────────────────────────┘
+                   │
+         HTTP :8000  (memory, await, respond)
+                   │
+     ┌─────────────┴─────────────┐
+     │                           │
+┌────┴──────┐              ┌─────┴─────┐
+│ Spoke A   │              │ Spoke B   │
+│ CLI       │              │ CLI       │
+│ + agents  │              │ + agents  │
+└───────────┘              └───────────┘</code></pre>
+      <p>Spokes are <strong>thin HTTP clients</strong>. They keep no copy of room memory locally; every <code>memory</code>, <code>await</code>, and <code>respond</code> call goes to the hub API.</p>
+      <p>The SLIM node on the hub forwards MLS <strong>ciphertext</strong> between native SLIM members. The backend moderator decrypts for the transcript, aligner, and memory — it is not a blind observer of room content.</p>
       <h2 id="hub-and-spoke-step-1-stand-up-the-hub">Step 1: Stand up the hub</h2>
-      <p>On the hub machine, install the stack:</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">install</span></code></pre>
-      <p>Start the SLIM node — this prints the address spokes connect to:</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">hub</span> <span class="cmd">host</span></code></pre>
+      <p>On the hub machine, install the stack and start the SLIM node:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">install</span>
+<span class="bin">mycelium</span> <span class="cmd">hub</span> <span class="cmd">host</span></code></pre>
+      <p><code>mycelium hub host</code> starts the <code>slim</code> node container and prints addresses:</p>
       <pre><code>SLIM node running.
   local     → <span class="url">http://127.0.0.1:46357</span>  (this machine, saved to config)
-  for peers → <span class="url">http://192.168.1.20:46357</span>
-
-  Peers connect with:  <span class="bin">mycelium</span> <span class="cmd">connect</span> <span class="url">http://192.168.1.20:46357</span></code></pre>
-      <p>Note the <code>for peers</code> LAN address. Then bring up the backend (and optionally the frontend UI):</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">up</span>          # backend only
-<span class="bin">mycelium</span> <span class="cmd">up</span> <span class="flag">--ui</span>     # backend + frontend at <span class="url">http://hub-ip:3000</span></code></pre>
-      <p>Verify everything is running:</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">status</span>
-<span class="bin">mycelium</span> <span class="cmd">doctor</span></code></pre>
-      <p><code>doctor</code> auto-detects hub vs spoke mode from <code>server.api_url</code> (a local backend means hub) and runs the checks that apply.</p>
+  for peers → <span class="url">http://192.168.1.20:46357</span></code></pre>
+      <p>Ensure the backend is up as well (<code>mycelium up</code> or the full install stack).</p>
+      <p>Verify with:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">doctor</span></code></pre>
+      <p><code>doctor</code> auto-detects hub vs spoke mode from <code>server.api_url</code> (a local backend means hub) and runs the checks that apply. Override with <code>--mode hub|spoke</code> if needed.</p>
+      <h3 id="hub-and-spoke-hub-only-slim-master-secret">Hub-only: SLIM master secret</h3>
+      <p>The hub SLIM PSK lives in <strong><code>config.toml</code></strong>, not as a hand-edited <code>.env</code> entry. On first <code>mycelium install</code> or <code>mycelium config apply</code>, Mycelium generates <code>[slim].master_secret</code> when unset and renders it to <code>MYCELIUM_SLIM_MASTER_SECRET</code> in <code>~/.mycelium/.env</code> for the backend container.</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">apply</span>    # generates [slim].master_secret if missing
+<span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">show</span>     # SLIM PSK shown masked</code></pre>
+      <p>To rotate:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> slim.master_secret <span class="str">&quot;$(openssl rand <span class="flag">-hex</span> 32)&quot;</span>
+<span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">apply</span> <span class="flag">--restart</span></code></pre>
+      <p>Spokes never need this value. Re-running <code>config apply</code> preserves the secret.</p>
       <h3 id="hub-and-spoke-open-ports">Open ports</h3>
-      <p>Spokes need to reach the hub on:</p>
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
               <th>Port</th>
               <th>Service</th>
-              <th>Required</th>
+              <th>Spokes need it?</th>
+              <th>Purpose</th>
             </tr>
           </thead>
           <tbody>
             <tr>
+              <td><strong>8000</strong></td>
+              <td>FastAPI backend</td>
+              <td><strong>Yes</strong></td>
+              <td>Memory, <code>await</code>/<code>respond</code>, room ops</td>
+            </tr>
+            <tr>
               <td>46357</td>
               <td>SLIM node</td>
-              <td>Yes</td>
-            </tr>
-            <tr>
-              <td>8000</td>
-              <td>Backend HTTP API</td>
-              <td>Yes</td>
-            </tr>
-            <tr>
-              <td>3000</td>
-              <td>Frontend UI</td>
-              <td>Optional</td>
+              <td>No (default)</td>
+              <td>Native SLIM on hub; optional for <code>slim send</code></td>
             </tr>
           </tbody>
         </table>
       </div>
-      <p>The SLIM node forwards only MLS ciphertext. Restrict access with a VPN, Tailscale, or firewall rules regardless — access to a channel is gated by its shared-secret PSK, but defence in depth applies.</p>
-      <h3 id="hub-and-spoke-shared-secret">Shared secret</h3>
-      <p>The per-channel MLS key is derived offline from <code>MYCELIUM_SLIM_MASTER_SECRET</code>. Every host that shares rooms must set the <strong>same</strong> value:</p>
-      <pre><code><span class="comment"># On every host (hub and all spokes)</span>
-export MYCELIUM_SLIM_MASTER_SECRET=<span class="str">&quot;your-private-secret-here&quot;</span></code></pre>
-      <p>Add it to <code>~/.mycelium/.env</code> or your system environment. The built-in dev default is public — anyone with the repo can derive it. Set your own value before any shared or internet-facing use.</p>
-      <h3 id="hub-and-spoke-accessing-the-ui-from-a-public-ip-or-nat">Accessing the UI from a public IP or NAT</h3>
-      <p>If you run <code>mycelium up --ui</code> and access the frontend from a browser whose origin differs from <code>localhost</code> (common on cloud VMs accessed over a public IP), Next.js dev mode returns 403 on internal endpoints. Fix it by allowlisting the browser&#x27;s origin:</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> runtime.allowed_dev_origins <span class="str">&quot;203.0.113.42&quot;</span>
-<span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">apply</span></code></pre>
-      <p><code>mycelium config apply</code> writes <code>MYCELIUM_ALLOWED_DEV_ORIGINS</code> to <code>~/.mycelium/.env</code>, which the frontend container reads. Comma-separate multiple origins:</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> runtime.allowed_dev_origins <span class="str">&quot;203.0.113.42,10.0.0.5&quot;</span></code></pre>
-      <p>This is a dev-mode concern only. Production builds serve the browser from the same origin, so no allowlist is needed.</p>
+      <p>Restrict <code>:8000</code> on the hub when the team shares a network. Enable the <a href="#auth">HTTP JWT gate</a> — that is what protects spokes, not the SLIM PSK.</p>
       <h2 id="hub-and-spoke-step-2-connect-each-spoke">Step 2: Connect each spoke</h2>
       <p>On each spoke, install the CLI:</p>
       <pre><code><span class="cmd">curl</span> <span class="flag">-fsSL</span> <span class="url">https://mycelium-io.github.io/mycelium/install.sh</span> | bash</code></pre>
-      <p>Point it at the hub&#x27;s SLIM node (the <code>for peers</code> line from Step 1) and at the hub&#x27;s backend:</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">connect</span> <span class="url">http://192.168.1.20:46357</span>
-<span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> server.api_url <span class="url">http://192.168.1.20:8000</span></code></pre>
+      <p>Point the spoke at the <strong>hub backend</strong> (required):</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> server.api_url <span class="url">http://192.168.1.20:8000</span></code></pre>
+      <p>Or during init:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">init</span> <span class="flag">--api-url</span> <span class="url">http://192.168.1.20:8000</span></code></pre>
+      <p><strong>Optional:</strong> store the hub&#x27;s SLIM node address (only needed for native SLIM tooling such as <code>mycelium slim send</code>, not for normal participation):</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">connect</span> <span class="url">http://192.168.1.20:46357</span></code></pre>
       <p>Verify:</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">status</span>
-<span class="bin">mycelium</span> <span class="cmd">doctor</span></code></pre>
-      <p>The spoke reports backend connectivity and skips checks that only apply to a local backend.</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">doctor</span></code></pre>
+      <p>The spoke reports <strong>spoke mode</strong>, checks backend reachability and HTTP auth status, and skips hub-only checks (Docker, SLIM PSK).</p>
+      <h3 id="hub-and-spoke-secure-a-shared-hub">Secure a shared hub</h3>
+      <p>When spokes reach the hub over a LAN or VPN, turn on HTTP authentication on the hub. See <a href="#auth">Authentication</a>. Without it, any peer on the network can read/write memory and post as any <code>@handle</code> — independent of SLIM PSK.</p>
       <h2 id="hub-and-spoke-step-3-use-a-room-from-a-spoke">Step 3: Use a room from a spoke</h2>
-      <p>There is one store: the hub&#x27;s. A spoke is a thin client; it keeps no copy of the room&#x27;s memory and needs no sync step. Create the room on the hub, then use it from anywhere.</p>
+      <p>There is one store: the hub&#x27;s. Create the room on the hub, then use it from anywhere.</p>
       <pre><code><span class="comment"># On the hub</span>
 <span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">create</span> portfolio
 <span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">use</span> portfolio</code></pre>
       <p>On a spoke, just make it the active room:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">use</span> portfolio</code></pre>
-      <p>Every memory command now resolves against the hub over HTTP:</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">ls</span>                       # the hub&#x27;s memories
+      <p>Every memory command resolves against the hub over HTTP:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">ls</span>
 <span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">get</span> decisions/allocation
 <span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> decisions/allocation <span class="str">&quot;60/40 equities to bonds&quot;</span>
 <span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">search</span> <span class="str">&quot;what did we decide about risk&quot;</span></code></pre>
-      <p>Because reads go to the hub, a spoke sees a write the moment it lands; there is no local copy to drift. The flip side: memory commands need the hub reachable, and say so plainly when it isn&#x27;t.</p>
+      <p>Because reads go to the hub, a spoke sees a write the moment it lands. Memory commands need the hub reachable and report plainly when it is not.</p>
       <div class="callout callout-note">
         <div class="callout-bar"></div>
-        <div class="callout-body"><code>mycelium room clone</code> pulls a point-in-time HTTP snapshot of a room&#x27;s memories to local files, useful for backups or offline reads. It is not how agents join or stay in sync — that is the live SLIM channel.</div>
+        <div class="callout-body"><code>mycelium room clone</code> pulls a point-in-time snapshot to local files (backup or offline read). It is not part of joining a room from a spoke.</div>
       </div>
       <h2 id="hub-and-spoke-step-4-run-a-negotiation-across-machines">Step 4: Run a negotiation across machines</h2>
-      <p>Register the aligner once in the room:</p>
+      <p>Register the <a href="#aligner">aligner</a> once in the room, post opening positions, and loop on participation. The aligner runs on the hub over the SLIM fabric; spoke agents use HTTP <code>await</code>/<code>respond</code>.</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> aligner <span class="flag">--kind</span> aligner <span class="flag">--room</span> portfolio</code></pre>
-      <p>Each machine registers its agent:</p>
-      <pre><code><span class="comment"># On hub</span>
-<span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">create</span> hub-agent <span class="flag">--room</span> portfolio
-
-<span class="comment"># On spoke A</span>
-<span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">create</span> spoke-a <span class="flag">--room</span> portfolio
-
-<span class="comment"># On spoke B</span>
-<span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">create</span> spoke-b <span class="flag">--room</span> portfolio</code></pre>
-      <h3 id="hub-and-spoke-resident-agent-loops">Resident agent loops</h3>
-      <p>The recommended way to keep an agent awake across the whole negotiation is <code>await --loop --exec</code>. The command receives each turn&#x27;s JSON on stdin and is expected to call <code>mycelium respond</code>:</p>
-      <pre><code><span class="comment"># On each machine — using Pi as the agent brain</span>
-<span class="bin">mycelium</span> <span class="cmd">await</span> <span class="flag">--loop</span> <span class="flag">--room</span> portfolio <span class="flag">--handle</span> hub-agent \
-  <span class="flag">--exec</span> <span class="str">&quot;env MYCELIUM_ROOM=portfolio MYCELIUM_HANDLE=hub-agent ./pi-driver.sh&quot;</span></code></pre>
-      <p>A minimal Pi driver (<code>pi-driver.sh</code>):</p>
-      <pre><code><span class="comment">#!/usr/bin/env bash</span>
-TURN=$(cat)
-PROMPT=$(echo <span class="str">&quot;$TURN&quot;</span> | python3 <span class="flag">-c</span> &quot;import sys,json; d=json.load(sys.stdin); print(d.get(&#x27;content&#x27;,&#x27;&#x27;))&quot;)
-REPLY=$(pi <span class="flag">--print</span> <span class="flag">--mode</span> json <span class="flag">--no-tools</span> <span class="flag">--no-session</span> \
-    <span class="flag">--model</span> <span class="str">&quot;your-provider/your-model&quot;</span> \
-    <span class="flag">--api-key</span> <span class="str">&quot;$YOUR_API_KEY&quot;</span> \
-    <span class="str">&quot;$PROMPT&quot;</span> 2&gt;/dev/null | python3 <span class="flag">-c</span> &quot;
-import sys, json
-for line in sys.stdin:
-    try:
-        d = json.loads(line)
-        if d.get(&#x27;type&#x27;) == &#x27;message_update&#x27;:
-            ev = d.get(&#x27;assistantMessageEvent&#x27;, {})
-            if ev.get(&#x27;type&#x27;) == &#x27;text_end&#x27;:
-                print(ev.get(&#x27;content&#x27;, &#x27;&#x27;))
-                exit(0)
-    except: pass
-&quot;)
-<span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="flag">--room</span> <span class="str">&quot;\$MYCELIUM_ROOM&quot;</span> <span class="flag">--handle</span> <span class="str">&quot;\$MYCELIUM_HANDLE&quot;</span> <span class="str">&quot;\$REPLY&quot;</span></code></pre>
-      <h3 id="hub-and-spoke-manual-participation">Manual participation</h3>
-      <p>For manual or scripted participation without a resident loop:</p>
-      <pre><code><span class="comment"># Each participant posts an opening position</span>
+      <p>Each participant posts an opening position:</p>
+      <pre><code><span class="comment"># Spoke A&#x27;s agent</span>
 <span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="flag">--room</span> portfolio <span class="flag">--handle</span> alice <span class="str">&quot;I want 60% equities.&quot;</span>
+
+<span class="comment"># Spoke B&#x27;s agent</span>
 <span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="flag">--room</span> portfolio <span class="flag">--handle</span> bob <span class="str">&quot;No more than 40% equities.&quot;</span></code></pre>
-      <p>A human summons the aligner:</p>
+      <p>Summon the aligner:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">invoke</span> aligner <span class="str">&quot;converge on the equities allocation&quot;</span></code></pre>
-      <p>Each participant reads the aligner&#x27;s prompt and replies:</p>
+      <p>Each participant loops over HTTP (no SLIM socket on the spoke):</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">await</span> <span class="flag">--room</span> portfolio <span class="flag">--handle</span> alice <span class="flag">--json</span>
 <span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="flag">--room</span> portfolio <span class="flag">--handle</span> alice <span class="str">&quot;accept 50%, meets my floor&quot;</span></code></pre>
-      <h3 id="hub-and-spoke-outcome">Outcome</h3>
-      <p>On agreement the aligner emits <code>commit:converged</code>, records the episode, and compiles the room&#x27;s shared <code>plan/tasks.md</code>. Read it on any machine:</p>
+      <p>On agreement the aligner compiles <code>plan/tasks.md</code>. Read it on any machine:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">plan</span> <span class="cmd">tasks</span></code></pre>
-      <p>Agents work the <code>@handle</code> tasks assigned to them. The compiled plan syncs as a <code>knowledge</code> memory to every machine on the channel.</p>
       <h2 id="hub-and-spoke-agent-identity">Agent identity</h2>
-      <p>Each agent needs a unique handle across the whole deployment. The handle is resolved from, in order:</p>
+      <p>Each agent needs a unique handle across the deployment. The handle is resolved from, in order:</p>
       <ol class="steps">
         <li><code>identity.name</code> in <code>~/.mycelium/config.toml</code></li>
         <li>The <code>MYCELIUM_AGENT_HANDLE</code> environment variable</li>
         <li>The <code>--handle</code> flag on <code>await</code> / <code>respond</code></li>
       </ol>
+      <p>On a shared hub with <a href="#auth">auth enabled</a>, the token — not the body alone — is the actor of record. Configure agent credentials for unattended spokes.</p>
       <h2 id="hub-and-spoke-troubleshooting">Troubleshooting</h2>
-      <h3 id="hub-and-spoke-spoke-cant-reach-the-hubs-slim-node">Spoke can&#x27;t reach the hub&#x27;s SLIM node</h3>
-      <pre><code><span class="cmd">curl</span> <span class="url">http://192.168.1.20:46357</span></code></pre>
-      <p>If this fails, check firewall rules, VPN connectivity, or security groups. The SLIM node binds inside Docker; the host firewall may block external access.</p>
-      <h3 id="hub-and-spoke-spoke-cant-reach-the-backend">Spoke can&#x27;t reach the backend</h3>
+      <h3 id="hub-and-spoke-spoke-cant-reach-the-hub">Spoke can&#x27;t reach the hub</h3>
+      <p>Check the <strong>backend</strong> first (the path spokes actually use):</p>
       <pre><code><span class="cmd">curl</span> <span class="url">http://192.168.1.20:8000/health</span></code></pre>
-      <p>Ensure port 8000 is open on the hub and <code>mycelium up</code> is running. Check <code>mycelium status</code> on the hub.</p>
-      <h3 id="hub-and-spoke-invites-silently-fail-agents-cant-join-channels">Invites silently fail / agents can&#x27;t join channels</h3>
-      <p>The most common cause is a <code>MYCELIUM_SLIM_MASTER_SECRET</code> mismatch. Every host must use the <strong>same</strong> secret; a mismatch means channel keys don&#x27;t agree and invites are silently dropped. Verify the value is identical on hub and all spokes, then restart the backend on the hub.</p>
+      <p>If this fails, check firewall rules, VPN connectivity, or security groups. The backend must be reachable on port <strong>8000</strong>.</p>
+      <p>The SLIM node (<code>:46357</code>) is only required on the hub for coordination fabric; spokes do not need it for <code>memory</code> or <code>await</code>/<code>respond</code>.</p>
       <h3 id="hub-and-spoke-doctor-reports-spoke-mode-unexpectedly"><code>doctor</code> reports &quot;spoke mode&quot; unexpectedly</h3>
-      <p><code>mycelium doctor</code> infers mode from <code>server.api_url</code>. If it points at a non-local address, doctor assumes spoke mode. If you&#x27;re running the backend locally on a non-default address, set <code>server.api_url</code> to <code>http://localhost:8000</code>, or force the mode with <code>mycelium doctor --mode hub</code>.</p>
+      <p><code>mycelium doctor</code> infers mode from <code>server.api_url</code>. If it points at a non-local address, doctor assumes spoke mode. If you&#x27;re running the backend locally on a non-default address, set <code>server.api_url</code> to <code>http://localhost:8000</code> in <code>~/.mycelium/config.toml</code>, or force hub mode:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">doctor</span> <span class="flag">--mode</span> hub</code></pre>
+      <p>See <a href="#troubleshooting">Troubleshooting</a> for the full runbook and <a href="#security-planes">Security Planes</a> for HTTP vs SLIM protection.</p>
+    </section>
+
+    <hr class="divider">
+
+    <section class="doc-section" id="security-planes">
+      <h1>Security Planes</h1>
+      <p>Mycelium has <strong>two enforcement planes</strong>. They protect different things, use different credentials, and apply to different machines. Conflating them is the most common hub-and-spoke misconfiguration.</p>
+      <h2 id="security-planes-the-two-planes">The two planes</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Plane</th>
+              <th>Port (default)</th>
+              <th>Who uses it</th>
+              <th>What it protects</th>
+              <th>Default</th>
+              <th>Upgrade</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>HTTP API</strong></td>
+              <td>8000</td>
+              <td>Spokes, humans, agents (<code>memory</code>, <code>await</code>, <code>respond</code>)</td>
+              <td>Memory, participation, handle attribution</td>
+              <td>Open (no token)</td>
+              <td><a href="#auth">Authentication</a> (<code>auth.enabled</code>)</td>
+            </tr>
+            <tr>
+              <td><strong>SLIM / MLS</strong></td>
+              <td>46357</td>
+              <td>Hub backend (moderator); dev <code>slim send</code>; future native connectors</td>
+              <td>Native SLIM group membership on the coordination fabric</td>
+              <td>Shared-secret <strong>PSK</strong> (hub only)</td>
+              <td><a href="#spire-identity">SignerJwt</a> / <a href="#spire-identity">SPIRE</a></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p><strong>Spokes do not use the SLIM plane for normal work.</strong> A spoke is a thin HTTP client: it points <code>server.api_url</code> at the hub backend and never needs <code>MYCELIUM_SLIM_MASTER_SECRET</code>.</p>
+      <p>The hub backend holds the room&#x27;s SLIM/MLS session as <strong>moderator</strong>. Spoke agents participate over HTTP; the backend keeps them present via a <strong>server-held lease</strong> and delivers turns from the <strong>durable transcript</strong>. That path bypasses PSK entirely.</p>
+      <h2 id="security-planes-what-psk-actually-protects">What PSK actually protects</h2>
+      <p>PSK (<code>MYCELIUM_SLIM_MASTER_SECRET</code> → HMAC per <code>workspace/room</code> → <code>create_app_with_secret</code>) is the <strong>SLIM-plane room gate</strong>:</p>
+      <ul>
+        <li>It decides who may <strong>authenticate as a SLIM app and join a room&#x27;s MLS group</strong>.</li>
+        <li>It is scoped per <strong>room</strong>, not per agent — every member with the secret is cryptographically indistinguishable under the <code>psk</code> tier.</li>
+        <li>It does <strong>not</strong> encrypt message bodies; <strong>MLS</strong> performs group key agreement once members are admitted.</li>
+        <li>It does <strong>not</strong> protect spokes, memory, or <code>@handle</code> impersonation over HTTP.</li>
+      </ul>
+      <p>With the public dev literal shipped in the repo, PSK protects nothing by itself. A fresh hub install generates a private <code>[slim].master_secret</code> in <code>config.toml</code> on first <code>mycelium config apply</code> (rendered to <code>.env</code> for Docker). Override with <code>mycelium config set slim.master_secret …</code> to rotate.</p>
+      <h2 id="security-planes-what-protects-spokes">What protects spokes</h2>
+      <p>For hub-and-spoke, the urgent control is the <strong>HTTP API gate</strong>, not PSK:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> auth.enabled true
+<span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> auth.audience mycelium
+<span class="comment"># … configure [[auth.issuers]] …</span>
+<span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">apply</span></code></pre>
+      <p>See <a href="#auth">Authentication</a> for humans and agent service accounts.</p>
+      <p>Without the gate, anyone who can reach <code>:8000</code> can read/write memory and post as any <code>@handle</code> — <strong>even if the hub uses a private SLIM master secret.</strong></p>
+      <h2 id="security-planes-deployment-profiles">Deployment profiles</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Profile</th>
+              <th>HTTP API</th>
+              <th>SLIM (hub)</th>
+              <th>Spoke config</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Solo dev</strong></td>
+              <td>Open</td>
+              <td>Dev PSK literal (fallback if no config secret)</td>
+              <td>N/A (all-in-one)</td>
+            </tr>
+            <tr>
+              <td><strong>LAN team</strong></td>
+              <td>JWT on</td>
+              <td>Auto-generated <code>[slim].master_secret</code> on hub</td>
+              <td><code>server.api_url</code> → hub:8000 only</td>
+            </tr>
+            <tr>
+              <td><strong>Hosted</strong></td>
+              <td>JWT required</td>
+              <td>Private hub secret + SignerJwt or SPIRE</td>
+              <td>Same; no master secret on spokes</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p><code>mycelium doctor</code> reports HTTP auth status from the hub&#x27;s <code>/health</code> endpoint. In <strong>hub</strong> mode it also warns when <code>[slim].master_secret</code> is missing or still the public dev literal.</p>
+      <h2 id="security-planes-slim-identity-ladder-hub-native-clients">SLIM identity ladder (hub native clients)</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Tier</th>
+              <th>Plane</th>
+              <th>Spoke needs it?</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>psk</code></td>
+              <td>SLIM</td>
+              <td>No (hub backend only today)</td>
+            </tr>
+            <tr>
+              <td><code>signerjwt</code></td>
+              <td>SLIM</td>
+              <td>Only if the spoke runs a native SLIM connector</td>
+            </tr>
+            <tr>
+              <td><code>spire</code></td>
+              <td>SLIM</td>
+              <td>Same</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p><code>mycelium config set slim.identity signerjwt</code> changes <strong>SLIM channel identity</strong> on machines that open native SLIM connections. It does <strong>not</strong> turn on HTTP API auth. Configure <code>[auth]</code> separately.</p>
+      <h2 id="security-planes-related-guides">Related guides</h2>
+      <ul>
+        <li><a href="#hub-and-spoke">Hub &amp; Spoke Setup</a> — topology and spoke checklist</li>
+        <li><a href="#auth">Authentication</a> — HTTP JWT gate (spokes and hub API)</li>
+        <li><a href="#spire-identity">Attested Identity (SPIRE)</a> — hardened SLIM plane</li>
+      </ul>
     </section>
 
     <hr class="divider">
@@ -1355,6 +1452,7 @@ for line in sys.stdin:
     <section class="doc-section" id="auth">
       <h1>Authentication</h1>
       <p>Mycelium&#x27;s backend can require a signed <strong>bearer token</strong> on every HTTP API call, validated against an OIDC issuer you configure. It is <strong>off by default</strong> and nothing about the default install changes until you turn it on.</p>
+      <p>This is the <strong>HTTP API plane</strong> — what protects spokes in hub-and-spoke deployments. It is separate from SLIM/MLS PSK or SignerJwt on the coordination fabric; see <a href="#security-planes">Security Planes</a>.</p>
       <h2 id="auth-off-by-default-on-purpose">Off by default, on purpose</h2>
       <p>Auth must never be a wall between someone and trying Mycelium. A fresh install runs with no issuer, no tokens, and no extra containers: memory, rooms, and coordination all work exactly as they do today.</p>
       <p>Turn it on when a <strong>team shares a hub over a network</strong>. Until then, leaving it off is the supported configuration, not a shortcut.</p>
@@ -1809,17 +1907,18 @@ export AUTH_SESSION_SECRET=$(openssl rand <span class="flag">-hex</span> 32)
 <span class="comment"># or point at a remote hub:</span>
 <span class="bin">mycelium</span> <span class="cmd">init</span> <span class="flag">--api-url</span> <span class="url">http://your-hub:8000</span></code></pre>
       <hr class="divider">
-      <h3 id="troubleshooting-4-slim-node-unreachable">4. SLIM Node Unreachable</h3>
-      <p><strong>Symptom</strong>: agents join a room but never exchange anything; <code>mycelium await</code> hangs; <code>mycelium doctor</code> flags the backend or a spoke can&#x27;t reach the hub.</p>
-      <p>Agents coordinate over a <strong>SLIM group channel</strong> served by the hub&#x27;s SLIM node (default port <strong>46357</strong>). If that node is down or unreachable, no messages flow.</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">doctor</span>                     # detects hub vs spoke, checks reachability
-<span class="cmd">docker</span> ps | grep slim               # is the SLIM node up on the hub?
-<span class="bin">mycelium</span> <span class="cmd">hub</span> <span class="cmd">host</span>                   # (re)start the SLIM node and print its address</code></pre>
-      <p>On a spoke, confirm it points at the right node and the port is open:</p>
-      <pre><code>grep node_endpoint ~/.mycelium/config.toml
-<span class="cmd">curl</span> http://&lt;hub-ip&gt;:46357            # raw reachability from the spoke
-<span class="bin">mycelium</span> <span class="cmd">connect</span> <span class="cmd">http</span>://&lt;hub-ip&gt;:46357  # re-point at the hub node</code></pre>
-      <p>Common causes: firewall/security group blocks 46357, VPN/Tailscale not connected, or a stale endpoint in <code>config.toml</code>.</p>
+      <h3 id="troubleshooting-4-spoke-cant-reach-the-hub-or-backend-down">4. Spoke Can&#x27;t Reach the Hub (or Backend Down)</h3>
+      <p><strong>Symptom</strong>: <code>Cannot connect to Mycelium API</code>; memory/<code>await</code>/<code>respond</code> fail; <code>mycelium doctor</code> reports backend unreachable.</p>
+      <p>Spokes talk to the hub over <strong>HTTP</strong> (<code>server.api_url</code>, default port <strong>8000</strong>). They do not need the SLIM node for normal participation.</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">doctor</span>                     # detects hub vs spoke; checks /health
+<span class="cmd">curl</span> http://&lt;hub-ip&gt;:8000/health    # from the spoke
+<span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">get</span> server.api_url    # should point at the hub backend</code></pre>
+      <p>On the <strong>hub</strong>, ensure the backend and SLIM node are running:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">up</span>
+<span class="cmd">docker</span> ps | grep mycelium
+<span class="bin">mycelium</span> <span class="cmd">hub</span> <span class="cmd">host</span>                   # (re)start the SLIM node if needed</code></pre>
+      <p>If coordination still fails on the hub itself, check the SLIM node (port <strong>46357</strong>) — the backend moderator needs it. Spokes rarely need <code>:46357</code> unless you use native SLIM tooling (<code>mycelium slim send</code>).</p>
+      <p>Common causes: firewall blocks <strong>8000</strong>, wrong <code>server.api_url</code>, VPN not connected, or auth enabled on the hub without <code>mycelium login</code> on the spoke. See <a href="#security-planes">Security Planes</a> and <a href="#auth">Authentication</a>.</p>
       <hr class="divider">
       <h3 id="troubleshooting-5-port-already-in-use">5. Port Already in Use</h3>
       <p><strong>Symptom</strong>: <code>bind: address already in use</code></p>

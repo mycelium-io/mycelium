@@ -333,6 +333,7 @@ class AlignerEngine:
         topic = l9.topic_urn(room)
 
         self._manager.open_episode(room, episode)
+        positions = self._opening_positions(persister, participants)
         ep = l9_episode.open_episode(
             parent_room=room,
             short_id=episode_id,
@@ -341,10 +342,10 @@ class AlignerEngine:
             agents=participants,
             joined_intents="aligner mediate: converge on the open question via SAO",
             engine_handle=me,
+            opening_positions=positions,
         )
         try:
             brain = self._make_brain(episode)
-            positions = self._opening_positions(persister, participants)
             issues = await asyncio.to_thread(
                 mediator.discover_issues,
                 "Converge on the room's open question — agree one value per issue.",
