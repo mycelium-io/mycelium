@@ -1767,6 +1767,7 @@ export AUTH_SESSION_SECRET=$(openssl rand <span class="flag">-hex</span> 32)
       <h2 id="spire-identity-check-it">Check it</h2>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">doctor</span></code></pre>
       <p>When SPIRE is on, doctor shows a legible line (<code>SPIRE up, @alice attested</code>) so a misconfiguration is a clear message rather than a member silently hanging at &quot;Initializing spire identity manager.&quot;</p>
+      <p>The app answers the same question: a room&#x27;s <strong>Network</strong> tab reports the tier in force (<code>psk</code> / <code>signerjwt</code> / <code>spire</code>) and, when spire is selected without a reachable Workload API socket, says so — a selected tier is not a tier in force. The same rail reports whether the HTTP API auth gate is up and which issuers it trusts.</p>
       <h2 id="spire-identity-trust-domain">Trust domain</h2>
       <p>The trust domain defaults to <code>mycelium.dev</code>. Override it (server, agent, backend MLS identity, and registration all read the same value) with:</p>
       <pre><code>export MYCELIUM_SLIM_SPIRE_TRUST_DOMAIN=corp.example.com</code></pre>

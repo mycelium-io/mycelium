@@ -710,7 +710,7 @@ export async function fetchEpisode(
   );
 }
 
-// ── SLIM coordination fabric (the `/health` coordination block) ──────────────
+// ── Network diagnostics (the `/health` coordination + identity + auth blocks) ─
 
 /** Per-room channel telemetry: present members (SLIM + server-held `await`
  *  leases), open consent invites, episode state, and durable-inbox counters. */
@@ -740,12 +740,54 @@ export interface CoordinationStatus {
   rooms: CoordinationRoom[];
 }
 
-/** Read the SLIM coordination telemetry from the backend `/health` endpoint.
- *  Fail-soft: returns null when the backend is unreachable or has no block. */
-export async function fetchCoordination(): Promise<CoordinationStatus | null> {
-  const data = await apiFetch<{ coordination?: CoordinationStatus }>(`/api/health`, {
+/** The SLIM channel identity tier this hub runs on (`psk` / `signerjwt` /
+ *  `spire`). `socket`/`socket_present` are reported for `spire` only, and
+ *  `status` carries the honest degrade: `spire` with no Workload API socket is
+ *  `degraded` (falling back to the PSK) or `error` (required, failing closed). */
+export interface IdentityStatus {
+  status: string;
+  mode: string;
+  message: string;
+  socket?: string | null;
+  socket_present?: boolean;
+}
+
+/** The HTTP-API JWT gate: whether this hub is gated at all, and against what.
+ *  `warnings` carries the backend's own configuration complaints (e.g. no
+ *  audience set), so an operator sees the same text `/health` reports. */
+export interface AuthStatus {
+  enabled: boolean;
+  issuers: string[];
+  localhost_bypass: boolean;
+  audience?: string | null;
+  warnings?: string[];
+}
+
+/** The three `/health` blocks the Network tab reads. They arrive in one
+ *  response, so the deployment's posture (identity tier, auth gate) costs no
+ *  extra call beyond the coordination telemetry the tab already polls. */
+export interface NetworkStatus {
+  coordination: CoordinationStatus | null;
+  identity: IdentityStatus | null;
+  auth: AuthStatus | null;
+}
+
+/** Read the network diagnostics blocks from the backend `/health` endpoint.
+ *  Fail-soft: returns null when the backend is unreachable; an individual block
+ *  the backend didn't report is null rather than fabricated. */
+export async function fetchNetworkStatus(): Promise<NetworkStatus | null> {
+  const data = await apiFetch<{
+    coordination?: CoordinationStatus;
+    identity?: IdentityStatus;
+    auth?: AuthStatus;
+  } | null>(`/api/health`, {
     cache: "no-store",
-    fallback: {},
+    fallback: null,
   });
-  return data.coordination ?? null;
+  if (!data) return null;
+  return {
+    coordination: data.coordination ?? null,
+    identity: data.identity ?? null,
+    auth: data.auth ?? null,
+  };
 }

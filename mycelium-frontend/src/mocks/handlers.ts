@@ -87,6 +87,10 @@ export async function handleMock(req: Request): Promise<Response | null> {
           },
         ],
       },
+      // The default posture a fresh install runs on: PSK channel identity, HTTP
+      // API gate off.
+      identity: { status: "ok", mode: "psk", message: "psk" },
+      auth: { enabled: false, issuers: [], localhost_bypass: true, audience: null },
     });
 
   // ── /api/search ─────────────────────────────────────────────────────────────

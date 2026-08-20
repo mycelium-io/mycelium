@@ -2306,6 +2306,12 @@ When SPIRE is on, doctor shows a legible line (`SPIRE up, @alice attested`) so a
 misconfiguration is a clear message rather than a member silently hanging at
 "Initializing spire identity manager."
 
+The app answers the same question: a room's **Network** tab reports the tier in
+force (`psk` / `signerjwt` / `spire`) and, when spire is selected without a
+reachable Workload API socket, says so — a selected tier is not a tier in force.
+The same rail reports whether the HTTP API auth gate is up and which issuers it
+trusts.
+
 ## Trust domain
 
 The trust domain defaults to `mycelium.dev`. Override it (server, agent, backend
