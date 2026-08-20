@@ -4,17 +4,21 @@
 import { autocompletion, type CompletionContext, type CompletionResult } from "@codemirror/autocomplete";
 import type { Extension } from "@codemirror/state";
 
+type KeysArg = string[] | (() => string[]);
+const resolve = (arg: KeysArg): string[] => (typeof arg === "function" ? arg() : arg);
+
 /**
  * CodeMirror 6 `CompletionSource` for `[[key]]` wikilinks.
  *
- * Feed it the room's memory keys and it will offer completions any time the
- * cursor is inside an in-flight `[[…` token, inserting `[[key]]` when chosen.
- * Pass `expandableKeys` to also complete `![[key]]` — limited to memories
- * whose `expandable: true` frontmatter flag allows transclusion.
+ * `keys` and `expandableKeys` may be plain arrays or getter functions.
+ * Pass a getter (e.g. `() => keysRef.current`) so the completion source
+ * always reads the latest list even after the EditorState was created —
+ * this avoids the "empty completions on first open" problem that occurs
+ * when the keys arrive asynchronously after editor mount.
  */
 export function wikilinkSource(
-  keys: string[],
-  expandableKeys?: string[],
+  keys: KeysArg,
+  expandableKeys?: KeysArg,
 ): (ctx: CompletionContext) => CompletionResult | null {
   return (ctx: CompletionContext): CompletionResult | null => {
     // Match `![[` (transclusion) or `[[` (link), then optional partial key.
@@ -25,7 +29,7 @@ export function wikilinkSource(
     const sigilLen = sigil.length;
     const query = before.text.slice(sigilLen).toLowerCase();
 
-    const candidates = sigil === "![[" ? (expandableKeys ?? []) : keys;
+    const candidates = sigil === "![[" ? resolve(expandableKeys ?? []) : resolve(keys);
     const options = candidates
       .filter(k => k.toLowerCase().includes(query))
       .map(k => ({
@@ -46,12 +50,14 @@ export function wikilinkSource(
  * CodeMirror 6 `Extension` that autocompletes `[[key]]` wikilinks (and
  * optionally `![[key]]` transclusions) in a markdown editor.
  *
- * Pass all room memory keys as `keys` and the subset whose `expandable`
- * frontmatter flag is true as `expandableKeys`.
+ * `keys` / `expandableKeys` accept either a plain array or a getter function.
+ * Use a getter (`() => ref.current`) when the list is fetched asynchronously
+ * after editor mount so the extension is created once but always reads the
+ * latest keys at completion time.
  */
 export function wikilinkCompletions(
-  keys: string[],
-  expandableKeys?: string[],
+  keys: KeysArg,
+  expandableKeys?: KeysArg,
 ): Extension {
   return autocompletion({ override: [wikilinkSource(keys, expandableKeys)] });
 }
