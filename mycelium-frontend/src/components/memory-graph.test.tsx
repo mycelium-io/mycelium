@@ -31,6 +31,15 @@ function graph(over: Partial<MemoryGraphData> = {}): MemoryGraphData {
   };
 }
 
+/** What a browser actually sends while a left-button drag is underway.
+ *
+ *  `PointerEventInit` defaults `buttons` to 0 and `isPrimary` to false — a
+ *  pointer with nothing held down that isn't the primary one — and the canvas is
+ *  built to decline exactly that (it's how a released-off-canvas drag and a
+ *  second finger are rejected). Synthetic gestures have to spell both out or
+ *  they test a press no browser sends. */
+const PRESS = { bubbles: true, pointerId: 1, button: 0, buttons: 1, isPrimary: true } as const;
+
 describe("<MemoryGraph />", () => {
   it("navigates when a node is clicked", async () => {
     const onNavigate = vi.fn();
@@ -148,6 +157,209 @@ describe("<MemoryGraph />", () => {
     expect(screen.getByText(wholeText("1 cross-room"))).toBeInTheDocument();
   });
 
+  it("gives context/ and decisions/ different colors", () => {
+    // These two hashed to the same palette slot under the previous scheme, so
+    // the two namespaces almost every room has rendered identically. Named
+    // explicitly rather than testing distinctness in the abstract, because this
+    // exact pair is the case that shipped broken.
+    render(
+      <MemoryGraph
+        graph={{
+          nodes: [
+            { key: "context/goal", expandable: false, outbound: 0, inbound: 0 },
+            { key: "decisions/db", expandable: false, outbound: 0, inbound: 0 },
+          ],
+          edges: [],
+        }}
+      />,
+    );
+    const fill = (key: string) =>
+      screen.getByRole("button", { name: `Open ${key}` }).querySelector("circle")?.getAttribute("fill");
+
+    expect(fill("context/goal")).not.toBe(fill("decisions/db"));
+  });
+
+  it("colors every namespace distinctly up to the size of the palette", () => {
+    const namespaces = ["a", "b", "c", "d", "e", "f", "g", "h"];
+    render(
+      <MemoryGraph
+        graph={{
+          nodes: namespaces.map(ns => ({ key: `${ns}/x`, expandable: false, outbound: 0, inbound: 0 })),
+          edges: [],
+        }}
+      />,
+    );
+    const fills = namespaces.map(
+      ns => screen.getByRole("button", { name: `Open ${ns}/x` }).querySelector("circle")?.getAttribute("fill"),
+    );
+
+    expect(new Set(fills).size).toBe(namespaces.length);
+  });
+
+  it("wraps the palette past its 8th namespace rather than inventing a color", () => {
+    // Pinned as the documented ceiling, not as desirable: a 9th hue would have to
+    // come from the arc reserved for broken links and orphans. The legend still
+    // names every namespace, so the collision is readable rather than silent.
+    const namespaces = ["a", "b", "c", "d", "e", "f", "g", "h", "i"];
+    render(
+      <MemoryGraph
+        graph={{
+          nodes: namespaces.map(ns => ({ key: `${ns}/x`, expandable: false, outbound: 0, inbound: 0 })),
+          edges: [],
+        }}
+      />,
+    );
+    const fill = (ns: string) =>
+      screen.getByRole("button", { name: `Open ${ns}/x` }).querySelector("circle")?.getAttribute("fill");
+
+    expect(fill("i")).toBe(fill("a"));
+    expect(screen.getByRole("button", { name: /hide i/i })).toBeInTheDocument();
+  });
+
+  describe("filtering", () => {
+    // Two namespaces and two link types, so each filter has something to remove
+    // and something to leave behind.
+    const mixed: MemoryGraphData = {
+      nodes: [
+        { key: "decisions/a", expandable: false, outbound: 2, inbound: 0 },
+        { key: "decisions/b", expandable: false, outbound: 0, inbound: 1 },
+        { key: "context/c", expandable: false, outbound: 0, inbound: 1 },
+      ],
+      edges: [
+        { source: "decisions/a", target: "decisions/b", kind: "wikilink", resolved: true },
+        { source: "decisions/a", target: "context/c", kind: "relation", relation: "depends-on", resolved: true },
+      ],
+    };
+
+    function lines() {
+      return screen.getByRole("group", { name: /memory link graph/i }).querySelectorAll("line");
+    }
+
+    it("hides a namespace's memories, and the edges that reached them", async () => {
+      render(<MemoryGraph graph={mixed} />);
+      expect(lines()).toHaveLength(2);
+
+      await userEvent.click(screen.getByRole("button", { name: /hide context/i }));
+
+      expect(screen.queryByRole("button", { name: "Open context/c" })).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Open decisions/a" })).toBeInTheDocument();
+      // The depends-on edge pointed at the hidden memory, so it goes too —
+      // rather than being left dangling at a node that isn't drawn.
+      expect(lines()).toHaveLength(1);
+    });
+
+    it("hides one relation type without touching the memories", async () => {
+      render(<MemoryGraph graph={mixed} />);
+
+      await userEvent.click(screen.getByRole("button", { name: /hide depends-on edges/i }));
+
+      expect(lines()).toHaveLength(1);
+      expect(screen.getByRole("button", { name: "Open context/c" })).toBeInTheDocument();
+    });
+
+    it("counts what's on screen, and says what it's a subset of", async () => {
+      render(<MemoryGraph graph={mixed} />);
+      expect(screen.getByText(wholeText("3 memories"))).toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole("button", { name: /hide context/i }));
+
+      expect(screen.getByText(wholeText("2 memories of 3"))).toBeInTheDocument();
+      expect(screen.getByText(wholeText("1 link"))).toBeInTheDocument();
+    });
+
+    it("does not invent orphans out of memories whose referrers are hidden", async () => {
+      // decisions/a is the room's one orphan. context/c has inbound === 1, so
+      // it is not — and hiding the only namespace that links to it must not
+      // reclassify it. Orphanhood is a fact about the room, not about what
+      // you're currently looking at; recomputing it from the visible edges
+      // would leave context/c with no referrers and report it as the orphan.
+      render(<MemoryGraph graph={mixed} />);
+      expect(screen.getByText(wholeText("1 orphan"))).toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole("button", { name: /hide decisions/i }));
+
+      expect(screen.getByRole("button", { name: "Open context/c" })).toBeInTheDocument();
+      expect(screen.queryByText(wholeText("1 orphan"))).not.toBeInTheDocument();
+    });
+
+    it("does not highlight a neighbor reached only through a hidden edge", async () => {
+      // Hover dims everything that isn't a neighbor. Once the depends-on edge is
+      // filtered out, context/c is no longer connected to anything on screen, so
+      // highlighting it would assert a link the canvas isn't drawing.
+      render(<MemoryGraph graph={mixed} />);
+      const opacityOf = (key: string) =>
+        screen.getByRole("button", { name: `Open ${key}` }).getAttribute("opacity");
+
+      await userEvent.click(screen.getByRole("button", { name: /hide depends-on edges/i }));
+      await userEvent.hover(screen.getByRole("button", { name: "Open decisions/a" }));
+
+      // Still a neighbor: the wikilink to decisions/b is drawn.
+      expect(opacityOf("decisions/b")).toBe("1");
+      // Not a neighbor any more: its only edge is hidden.
+      expect(opacityOf("context/c")).not.toBe("1");
+    });
+
+    it("stops dimming the canvas once the hovered memory is filtered away", async () => {
+      // Hiding a namespace unmounts its nodes without firing mouseleave, so the
+      // hovered key can outlive the node. Left uncorrected, every remaining node
+      // stays dimmed against a neighbour that isn't on screen to explain it.
+      render(<MemoryGraph graph={mixed} />);
+      const opacityOf = (key: string) =>
+        screen.getByRole("button", { name: `Open ${key}` }).getAttribute("opacity");
+
+      await userEvent.hover(screen.getByRole("button", { name: "Open context/c" }));
+      expect(opacityOf("decisions/b")).not.toBe("1"); // dimmed, as a non-neighbour
+
+      await userEvent.click(screen.getByRole("button", { name: /hide context/i }));
+
+      expect(opacityOf("decisions/a")).toBe("1");
+      expect(opacityOf("decisions/b")).toBe("1");
+    });
+
+    it("starts a new payload unfiltered", async () => {
+      // Filters are keyed by namespace name, so carrying them across a refresh
+      // would hide part of a graph the reader never filtered.
+      const { rerender } = render(<MemoryGraph graph={mixed} />);
+      await userEvent.click(screen.getByRole("button", { name: /hide context/i }));
+      expect(screen.queryByRole("button", { name: "Open context/c" })).not.toBeInTheDocument();
+
+      rerender(<MemoryGraph graph={{ ...mixed }} />);
+
+      expect(screen.getByRole("button", { name: "Open context/c" })).toBeInTheDocument();
+    });
+
+    it("restores everything with one click, and only offers that while filtered", async () => {
+      render(<MemoryGraph graph={mixed} />);
+      expect(screen.queryByRole("button", { name: /clear filters/i })).not.toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole("button", { name: /hide context/i }));
+      await userEvent.click(screen.getByRole("button", { name: /clear filters/i }));
+
+      expect(screen.getByRole("button", { name: "Open context/c" })).toBeInTheDocument();
+      expect(lines()).toHaveLength(2);
+      expect(screen.queryByRole("button", { name: /clear filters/i })).not.toBeInTheDocument();
+    });
+
+    it("says so rather than showing a blank canvas when everything is hidden", async () => {
+      render(<MemoryGraph graph={mixed} />);
+
+      await userEvent.click(screen.getByRole("button", { name: /hide context/i }));
+      await userEvent.click(screen.getByRole("button", { name: /hide decisions/i }));
+
+      expect(screen.getByText(/nothing to show/i)).toBeInTheDocument();
+    });
+
+    it("reports each toggle's state to assistive tech", async () => {
+      render(<MemoryGraph graph={mixed} />);
+      const context = screen.getByRole("button", { name: /hide context/i });
+      expect(context).toHaveAttribute("aria-pressed", "true");
+
+      await userEvent.click(context);
+
+      expect(screen.getByRole("button", { name: /show context/i })).toHaveAttribute("aria-pressed", "false");
+    });
+  });
+
   it("consumes the wheel event so the browser doesn't zoom the page too", () => {
     render(<MemoryGraph graph={graph()} />);
     const canvas = screen.getByRole("group", { name: /memory link graph/i });
@@ -197,7 +409,7 @@ describe("<MemoryGraph />", () => {
 
     /** One press-move-release on a node, in screen coordinates. */
     function dragNode(node: Element, dx: number, dy: number, canvas: Element) {
-      const opts = { bubbles: true, pointerId: 1, clientX: 100, clientY: 100 };
+      const opts = { ...PRESS, clientX: 100, clientY: 100 };
       act(() => {
         node.dispatchEvent(new PointerEvent("pointerdown", opts));
         canvas.dispatchEvent(new PointerEvent("pointermove", { ...opts, clientX: 100 + dx, clientY: 100 + dy }));
@@ -307,13 +519,13 @@ describe("<MemoryGraph />", () => {
 
           // Twenty intermediate positions, as a real gesture produces.
           act(() => {
-            target.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerId: 1, clientX: 100, clientY: 100 }));
+            target.dispatchEvent(new PointerEvent("pointerdown", { ...PRESS, clientX: 100, clientY: 100 }));
             for (let i = 1; i <= 20; i++) {
               canvas.dispatchEvent(
-                new PointerEvent("pointermove", { bubbles: true, pointerId: 1, clientX: 100 + i * 5, clientY: 100 + i * 2 }),
+                new PointerEvent("pointermove", { ...PRESS, clientX: 100 + i * 5, clientY: 100 + i * 2 }),
               );
             }
-            canvas.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerId: 1, clientX: 200, clientY: 140 }));
+            canvas.dispatchEvent(new PointerEvent("pointerup", { ...PRESS, clientX: 200, clientY: 140 }));
           });
 
           expect(writes).not.toHaveBeenCalled(); // still pending
@@ -426,6 +638,140 @@ describe("<MemoryGraph />", () => {
 
       expect(transformOf(node("decisions/a"))).toBe(original);
       expect(screen.queryByRole("button", { name: /reset layout/i })).not.toBeInTheDocument();
+    });
+
+    it("does not yank a half-dragged node when the zoom changes mid-gesture", () => {
+      const { canvas } = renderGraph();
+      const target = node("decisions/a");
+      const opts = { ...PRESS, clientX: 100, clientY: 100 };
+
+      act(() => {
+        target.dispatchEvent(new PointerEvent("pointerdown", opts));
+        canvas.dispatchEvent(new PointerEvent("pointermove", { ...opts, clientX: 200, clientY: 100 }));
+      });
+      const midDrag = positionOf(node("decisions/a"));
+
+      // Separate acts on purpose: the move has to run against a handler that has
+      // re-rendered with the new scale, which is what makes this a *mid-gesture*
+      // zoom rather than two events sharing one stale closure.
+      act(() => {
+        canvas.dispatchEvent(new WheelEvent("wheel", { deltaY: -100, cancelable: true, bubbles: true }));
+      });
+      act(() => {
+        // The pointer has not moved, so neither should the node. Measuring the
+        // whole displacement from the press instead of the step since the last
+        // move re-divides it by the *new* scale, snapping the node backwards.
+        canvas.dispatchEvent(new PointerEvent("pointermove", { ...opts, clientX: 200, clientY: 100 }));
+      });
+
+      expect(positionOf(node("decisions/a")).x).toBeCloseTo(midDrag.x);
+      expect(positionOf(node("decisions/a")).y).toBeCloseTo(midDrag.y);
+    });
+
+    it("ignores a right-button press: no drag, and no drawer behind the context menu", () => {
+      const onNavigate = vi.fn();
+      const { canvas } = renderGraph({ onNavigate });
+      const target = node("decisions/a");
+      const before = transformOf(target);
+      const opts = { ...PRESS, button: 2, buttons: 2, clientX: 100, clientY: 100 };
+
+      act(() => {
+        target.dispatchEvent(new PointerEvent("pointerdown", opts));
+        canvas.dispatchEvent(new PointerEvent("pointermove", { ...opts, clientX: 220, clientY: 160 }));
+        canvas.dispatchEvent(new PointerEvent("pointerup", { ...opts, clientX: 220, clientY: 160 }));
+      });
+
+      expect(transformOf(node("decisions/a"))).toBe(before);
+      expect(onNavigate).not.toHaveBeenCalled();
+    });
+
+    it("declines a second finger instead of letting it steal the drag in progress", () => {
+      const { canvas } = renderGraph();
+      const originalX = positionOf(node("decisions/a")).x;
+      const first = { ...PRESS, clientX: 100, clientY: 100 };
+      const second = { ...PRESS, pointerId: 2, isPrimary: false, clientX: 400, clientY: 400 };
+
+      act(() => {
+        node("decisions/a").dispatchEvent(new PointerEvent("pointerdown", first));
+        node("decisions/b").dispatchEvent(new PointerEvent("pointerdown", second));
+        // The first finger keeps moving; it must still own the gesture.
+        canvas.dispatchEvent(new PointerEvent("pointermove", { ...first, clientX: 220, clientY: 160 }));
+        canvas.dispatchEvent(new PointerEvent("pointerup", { ...first, clientX: 220, clientY: 160 }));
+      });
+
+      expect(positionOf(node("decisions/a")).x).toBeCloseTo(originalX + 120);
+    });
+
+    it("stops following the cursor when the release happened somewhere it never heard", () => {
+      // Pointer capture normally guarantees the release comes back to this
+      // canvas. Where it isn't available, the only evidence a drag ended is a
+      // move with no button held — without acting on that the node trails the
+      // cursor around the screen forever.
+      const { canvas } = renderGraph();
+      const opts = { ...PRESS, clientX: 100, clientY: 100 };
+
+      act(() => {
+        node("decisions/a").dispatchEvent(new PointerEvent("pointerdown", opts));
+        canvas.dispatchEvent(new PointerEvent("pointermove", { ...opts, clientX: 200, clientY: 100 }));
+      });
+      const whenReleased = positionOf(node("decisions/a"));
+
+      act(() => {
+        canvas.dispatchEvent(new PointerEvent("pointermove", { ...opts, buttons: 0, clientX: 400, clientY: 300 }));
+        canvas.dispatchEvent(new PointerEvent("pointermove", { ...opts, clientX: 600, clientY: 500 }));
+      });
+
+      expect(positionOf(node("decisions/a")).x).toBeCloseTo(whenReleased.x);
+    });
+
+    it("abandons a cancelled press rather than treating it as a click", () => {
+      const onNavigate = vi.fn();
+      const { canvas } = renderGraph({ onNavigate });
+      const opts = { ...PRESS, clientX: 100, clientY: 100 };
+
+      act(() => {
+        node("decisions/a").dispatchEvent(new PointerEvent("pointerdown", opts));
+        // The system takes the pointer away — no pointerup ever arrives.
+        canvas.dispatchEvent(new PointerEvent("pointercancel", opts));
+      });
+
+      expect(onNavigate).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("pan", () => {
+    /** Deliberately *not* the 1000x700 viewBox: at that one size a screen pixel
+     *  happens to equal a graph unit, which hides any missing conversion. Real
+     *  panes are almost never that size. */
+    const PANE_W = 2000;
+    const PANE_H = 1400;
+
+    function translateOf(canvas: Element) {
+      const t = canvas.querySelector("g")?.getAttribute("transform") ?? "";
+      const [x, y] = /translate\(([-\d.]+),([-\d.]+)\)/.exec(t)!.slice(1).map(Number);
+      return { x, y };
+    }
+
+    it("moves the graph with the cursor, in graph units rather than raw pixels", () => {
+      render(<MemoryGraph graph={graph()} />);
+      const canvas = screen.getByRole("group", { name: /memory link graph/i });
+      canvas.getBoundingClientRect = () =>
+        ({ left: 0, top: 0, width: PANE_W, height: PANE_H, right: PANE_W, bottom: PANE_H, x: 0, y: 0 }) as DOMRect;
+      const before = translateOf(canvas);
+      const opts = { ...PRESS, clientX: 100, clientY: 100 };
+
+      act(() => {
+        canvas.dispatchEvent(new PointerEvent("pointerdown", opts));
+        canvas.dispatchEvent(new PointerEvent("pointermove", { ...opts, clientX: 300, clientY: 240 }));
+        canvas.dispatchEvent(new PointerEvent("pointerup", { ...opts, clientX: 300, clientY: 240 }));
+      });
+
+      // The pane is twice the viewBox, so a 200x140 pixel drag is a 100x70 unit
+      // one. Feeding the pixel delta straight into `translate` (which speaks
+      // units) is what made the graph outrun the cursor.
+      const after = translateOf(canvas);
+      expect(after.x).toBeCloseTo(before.x + 100);
+      expect(after.y).toBeCloseTo(before.y + 70);
     });
   });
 

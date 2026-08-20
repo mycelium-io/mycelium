@@ -32,20 +32,20 @@ describe("computeForceLayout", () => {
     for (const n of layout.nodes) expect(isFinitePoint(n)).toBe(true);
   });
 
-  it("positions a resolved edge at its two endpoints", () => {
+  it("keeps a surviving edge addressed by key, not by baked coordinates", () => {
+    // The layout deliberately returns no endpoints: nodes move after it stops
+    // (the reader can drag them), so coordinates frozen here would leave an edge
+    // pointing at where its node used to be. Callers resolve endpoints by key.
     const graph: MemoryGraph = {
       nodes: [node("a"), node("b")],
       edges: [edge("a", "b")],
     };
     const layout = computeForceLayout(graph, { ticks: 50 });
-    const a = layout.nodes.find(n => n.key === "a")!;
-    const b = layout.nodes.find(n => n.key === "b")!;
     expect(layout.edges).toHaveLength(1);
     const [drawn] = layout.edges;
-    expect(drawn.x1).toBeCloseTo(a.x);
-    expect(drawn.y1).toBeCloseTo(a.y);
-    expect(drawn.x2).toBeCloseTo(b.x);
-    expect(drawn.y2).toBeCloseTo(b.y);
+    expect(drawn.source).toBe("a");
+    expect(drawn.target).toBe("b");
+    expect(layout.nodes.map(n => n.key).sort()).toEqual(["a", "b"]);
   });
 
   it("places an isolated node without crashing and without a link", () => {
@@ -67,8 +67,8 @@ describe("computeForceLayout", () => {
 
   it("keeps an unresolved edge whose two ends are both real memories", () => {
     // A `no_anchor` / `not_expandable` failure is about the *link*, not the
-    // target: both memories exist, so the edge is positioned and left for the
-    // canvas to draw in the broken style.
+    // target: both memories exist, so the edge survives layout and is left for
+    // the canvas to draw in the broken style.
     const graph: MemoryGraph = {
       nodes: [node("a"), node("b")],
       edges: [edge("a", "b", { resolved: false, error: "no_anchor" })],
@@ -77,7 +77,8 @@ describe("computeForceLayout", () => {
     expect(layout.edges).toHaveLength(1);
     expect(layout.edges[0].resolved).toBe(false);
     expect(layout.edges[0].error).toBe("no_anchor");
-    expect(isFinitePoint({ x: layout.edges[0].x1, y: layout.edges[0].y1 })).toBe(true);
+    // Both endpoints were laid out, so the canvas has positions to draw between.
+    for (const n of layout.nodes) expect(isFinitePoint(n)).toBe(true);
   });
 
   it("drops an edge whose target isn't a node in this graph", () => {

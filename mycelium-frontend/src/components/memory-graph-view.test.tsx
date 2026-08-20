@@ -9,15 +9,26 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/lib/api", () => ({
   fetchMemoryGraph: vi.fn(),
   fetchMemory: vi.fn(),
+  fetchMemoryExpanded: vi.fn().mockResolvedValue({ found: false, rendered: "", expansions: [], key: "" }),
+  fetchMemoryIntegrity: vi.fn().mockResolvedValue({ broken: [], orphans: [], total_memories: 0, total_links: 0 }),
   // MemoryDetail loads the selected memory's links on mount.
   fetchMemoryLinks: vi.fn().mockResolvedValue({ outbound: [], backlinks: [] }),
 }));
 
 import { MemoryGraphView } from "@/components/memory-graph-view";
-import { fetchMemory, fetchMemoryGraph, type Memory, type MemoryGraph } from "@/lib/api";
+import {
+  fetchMemory,
+  fetchMemoryExpanded,
+  fetchMemoryGraph,
+  fetchMemoryIntegrity,
+  type Memory,
+  type MemoryGraph,
+} from "@/lib/api";
 
 const mockGraph = vi.mocked(fetchMemoryGraph);
 const mockMemory = vi.mocked(fetchMemory);
+const mockExpanded = vi.mocked(fetchMemoryExpanded);
+const mockIntegrity = vi.mocked(fetchMemoryIntegrity);
 
 const POPULATED: MemoryGraph = {
   nodes: [
@@ -42,6 +53,10 @@ describe("<MemoryGraphView />", () => {
   beforeEach(() => {
     mockGraph.mockReset();
     mockMemory.mockReset();
+    // Reset to the inert defaults too, or a test that stubs an expanded body or
+    // a broken link leaks it into every case that runs after it.
+    mockExpanded.mockReset().mockResolvedValue({ key: "", rendered: "", expansions: [], found: false });
+    mockIntegrity.mockReset().mockResolvedValue({ broken: [], orphans: [], total_memories: 0, total_links: 0 });
   });
 
   it("renders the graph once the payload arrives", async () => {
@@ -92,6 +107,70 @@ describe("<MemoryGraphView />", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Open context/goal" }));
 
     expect(mockMemory).toHaveBeenCalledWith("atlas migration", "context/goal");
+  });
+
+  it("shows the transcluded body, like the rail and the full page do", async () => {
+    // Without this the drawer renders `![[…]]` as an unexpanded chip, so the
+    // same memory reads differently depending on which surface opened it.
+    mockGraph.mockResolvedValue(POPULATED);
+    mockMemory.mockResolvedValue({ ...memory("decisions/cutover"), content_text: "before ![[context/goal]] after" });
+    mockExpanded.mockResolvedValue({
+      key: "decisions/cutover",
+      rendered: "before THE EMBEDDED GOAL after",
+      expansions: [],
+      found: true,
+    });
+    render(<MemoryGraphView roomName="atlas" />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Open decisions/cutover" }));
+
+    expect(mockExpanded).toHaveBeenCalledWith("atlas", "decisions/cutover");
+    expect(await screen.findByText(/THE EMBEDDED GOAL/)).toBeInTheDocument();
+  });
+
+  it("ignores a slow first request when a second memory has been opened", async () => {
+    // Opening is two requests, and clicks can overlap. Without a guard the first
+    // memory's body can land after the second's and the drawer titles itself one
+    // memory while rendering another's text.
+    mockGraph.mockResolvedValue(POPULATED);
+    const slow: { resolve: (v: { key: string; rendered: string; expansions: []; found: boolean }) => void } = {
+      resolve: () => {},
+    };
+    mockMemory.mockImplementation(async (_room, key) => memory(key));
+    mockExpanded
+      .mockImplementationOnce(() => new Promise(res => (slow.resolve = res)))
+      .mockResolvedValue({ key: "context/goal", rendered: "SECOND BODY", expansions: [], found: true });
+
+    render(<MemoryGraphView roomName="atlas" />);
+    await userEvent.click(await screen.findByRole("button", { name: "Open decisions/cutover" }));
+    await userEvent.click(screen.getByRole("button", { name: "Open context/goal" }));
+    expect(await screen.findByText(/SECOND BODY/)).toBeInTheDocument();
+
+    // The abandoned first request finally answers.
+    await act(async () => {
+      slow.resolve({ key: "decisions/cutover", rendered: "FIRST BODY", expansions: [], found: true });
+    });
+
+    expect(screen.queryByText(/FIRST BODY/)).not.toBeInTheDocument();
+    expect(screen.getByText(/SECOND BODY/)).toBeInTheDocument();
+  });
+
+  it("warns about a broken link on the memory it opens", async () => {
+    mockGraph.mockResolvedValue(POPULATED);
+    mockMemory.mockResolvedValue(memory("context/goal"));
+    mockIntegrity.mockResolvedValue({
+      broken: [
+        { source: "context/goal", target: "gone", kind: "wikilink", resolved: false, error: "not_found", raw: "[[gone]]" },
+      ],
+      orphans: [],
+      total_memories: 2,
+      total_links: 1,
+    });
+    render(<MemoryGraphView roomName="atlas" />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Open context/goal" }));
+
+    expect(await screen.findByText(/broken link/i)).toBeInTheDocument();
   });
 
   it("keeps a saved arrangement across a reload of the whole view", async () => {

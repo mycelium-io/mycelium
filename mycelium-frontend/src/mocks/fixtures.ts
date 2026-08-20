@@ -244,7 +244,8 @@ const atlas: RoomFixture = {
         "**Goal.** Move the Atlas catalog off the legacy store with zero downtime.\n\n" +
         "_Owners:_ @growth drives delivery; @risk guards reliability.",
       content_text:
-        "Atlas migration briefing: phased 48h cutover (dual-write then flip); rehearsal green, flip Thursday; zero-downtime goal.",
+        "Atlas migration briefing: phased 48h cutover (dual-write then flip); rehearsal green, flip Thursday; zero-downtime goal.\n\n" +
+        "The goal this all serves, embedded verbatim:\n\n![[context/goal]]",
       created_by: "synthesizer",
       version: 1,
       updated_at: iso(38),
@@ -301,7 +302,7 @@ const atlas: RoomFixture = {
 const ATLAS_LINK_EDGES: MemoryGraphEdge[] = [
   { source: "context/synthesis", target: "decisions/cutover", kind: "wikilink", resolved: true },
   { source: "context/synthesis", target: "status/sprint", kind: "wikilink", resolved: true },
-  { source: "context/synthesis", target: "context/goal", kind: "wikilink", resolved: true },
+  { source: "context/synthesis", target: "context/goal", kind: "transclusion", resolved: true },
   { source: "status/sprint", target: "decisions/cutover", kind: "wikilink", resolved: true },
   { source: "decisions/cutover", target: "context/goal", kind: "relation", relation: "depends-on", resolved: true },
   { source: "decisions/cutover", target: "plan/tasks", kind: "wikilink", resolved: false, error: "not_found" },

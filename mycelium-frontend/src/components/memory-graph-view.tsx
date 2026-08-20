@@ -3,9 +3,17 @@
 
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Network } from "lucide-react";
-import { fetchMemory, fetchMemoryGraph, type Memory, type MemoryGraph as MemoryGraphData } from "@/lib/api";
+import {
+  fetchMemory,
+  fetchMemoryExpanded,
+  fetchMemoryGraph,
+  fetchMemoryIntegrity,
+  type Memory,
+  type MemoryGraph as MemoryGraphData,
+  type MemoryLinksIntegrity,
+} from "@/lib/api";
 import { MemoryGraph } from "@/components/memory-graph";
 import { DetailDrawer } from "@/components/detail-drawer";
 import { MemoryDetail } from "@/components/memory-detail";
@@ -24,11 +32,18 @@ interface Props {
 export function MemoryGraphView({ roomName }: Props) {
   const [graph, setGraph] = useState<MemoryGraphData | null>(null);
   const [selected, setSelected] = useState<Memory | null>(null);
+  const [renderedBody, setRenderedBody] = useState<string | null>(null);
+  const [integrity, setIntegrity] = useState<MemoryLinksIntegrity | null>(null);
 
   useEffect(() => {
     let live = true;
     fetchMemoryGraph(roomName).then(g => {
       if (live) setGraph(g);
+    });
+    // Room-wide, so it's fetched once here rather than per opened memory;
+    // `MemoryDetail` slices out the entry for whichever key is showing.
+    fetchMemoryIntegrity(roomName).then(report => {
+      if (live) setIntegrity(report);
     });
     return () => {
       live = false;
@@ -38,10 +53,26 @@ export function MemoryGraphView({ roomName }: Props) {
   // Always fetched by key rather than looked up in a loaded list: the graph
   // holds only keys, and unlike the rail (whose tree may hold just the first
   // page) every node here is therefore openable.
+  //
+  // The expanded body is fetched alongside it for the same reason the rail and
+  // the full page do: without it the drawer renders `![[key]]` as an unexpanded
+  // chip, so the same memory would read differently depending on which surface
+  // you opened it from.
+  // Two requests per open, and clicks can overlap, so each open takes a ticket
+  // and late responses from a superseded one are dropped. Without it a slow
+  // first request can land after a fast second and the drawer titles itself one
+  // memory while rendering another's body.
+  const openTicket = useRef(0);
   const openKey = useCallback(
     (key: string) => {
+      const ticket = ++openTicket.current;
+      const current = () => ticket === openTicket.current;
+      setRenderedBody(null);
       fetchMemory(roomName, key).then(memory => {
-        if (memory) setSelected(memory);
+        if (memory && current()) setSelected(memory);
+      });
+      fetchMemoryExpanded(roomName, key).then(exp => {
+        if (exp.found && exp.rendered && current()) setRenderedBody(exp.rendered);
       });
     },
     [roomName],
@@ -84,7 +115,15 @@ export function MemoryGraphView({ roomName }: Props) {
       >
         {/* Following a link inside the drawer swaps it to the target, so a
             reader can walk the graph without closing and re-aiming at a node. */}
-        {selected && <MemoryDetail memory={selected} roomName={roomName} onNavigate={openKey} />}
+        {selected && (
+          <MemoryDetail
+            memory={selected}
+            roomName={roomName}
+            onNavigate={openKey}
+            renderedBody={renderedBody}
+            integrity={integrity}
+          />
+        )}
       </DetailDrawer>
     </>
   );

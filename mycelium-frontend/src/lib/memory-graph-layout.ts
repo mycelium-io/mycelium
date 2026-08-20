@@ -9,12 +9,13 @@ export interface GraphLayoutNode extends MemoryGraphNode {
   y: number;
 }
 
-export interface GraphLayoutEdge extends MemoryGraphEdge {
-  x1: number;
-  y1: number;
-  x2: number;
-  y2: number;
-}
+/** An edge that survived layout — endpoints deliberately *not* included.
+ *
+ *  Baking coordinates in here would freeze them at the moment the simulation
+ *  stopped, and nodes move afterwards (a reader can drag them). Consumers look
+ *  their endpoints up by key instead, so an edge can't drift away from the nodes
+ *  it connects. */
+export type GraphLayoutEdge = MemoryGraphEdge;
 
 export interface GraphLayout {
   nodes: GraphLayoutNode[];
@@ -108,11 +109,7 @@ export function computeForceLayout(graph: MemoryGraph, options: LayoutOptions = 
     x: n.x,
     y: n.y,
   }));
-  const edges: GraphLayoutEdge[] = simLinks.map(link => {
-    const source = link.source as SimNode;
-    const target = link.target as SimNode;
-    return { ...link.edge, x1: source.x, y1: source.y, x2: target.x, y2: target.y };
-  });
+  const edges: GraphLayoutEdge[] = simLinks.map(link => ({ ...link.edge }));
 
   return { nodes, edges };
 }

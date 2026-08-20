@@ -46,6 +46,39 @@ describe("mock links handlers (#599)", () => {
     expect(links.backlinks.map((l) => l.source).sort()).toEqual(["context/synthesis", "status/sprint"]);
   });
 
+  it("derives the integrity report from the same edges the graph draws", async () => {
+    // Hand-written integrity would let a fixture claim a clean room while its
+    // graph plainly shows a break.
+    const { status, body } = await mockGet("/api/rooms/atlas-migration/links/integrity");
+    expect(status).toBe(200);
+    const report = body as { broken: { source: string; target: string }[]; orphans: string[]; total_memories: number };
+    expect(report.broken).toContainEqual(expect.objectContaining({ source: "decisions/cutover", target: "plan/tasks" }));
+    expect(report.total_memories).toBeGreaterThan(0);
+    // Whatever is reported orphaned must really have nothing pointing at it.
+    const { body: graphBody } = await mockGet("/api/rooms/atlas-migration/links/graph");
+    const graph = graphBody as { edges: { target: string; resolved: boolean }[] };
+    for (const key of report.orphans) {
+      expect(graph.edges.some((e) => e.resolved && e.target === key)).toBe(false);
+    }
+  });
+
+  it("expands a transclusion into the embedded memory's text", async () => {
+    const { status, body } = await mockGet(
+      "/api/rooms/atlas-migration/links/expand?key=" + encodeURIComponent("context/synthesis"),
+    );
+    expect(status).toBe(200);
+    const expanded = body as { rendered: string; found: boolean; expansions: { target: string; resolved: boolean }[] };
+    expect(expanded.found).toBe(true);
+    expect(expanded.rendered).not.toContain("![[context/goal]]");
+    expect(expanded.rendered).toContain("Move the Atlas catalog");
+    expect(expanded.expansions).toContainEqual({ raw: "![[context/goal]]", target: "context/goal", resolved: true });
+  });
+
+  it("reports a memory it doesn't have as not found rather than empty-but-fine", async () => {
+    const { body } = await mockGet("/api/rooms/atlas-migration/links/expand?key=nope");
+    expect((body as { found: boolean }).found).toBe(false);
+  });
+
   it("404s a key-scoped lookup with no key", async () => {
     const { status } = await mockGet("/api/rooms/atlas-migration/links");
     expect(status).toBe(404);

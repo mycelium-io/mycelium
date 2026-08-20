@@ -13,7 +13,7 @@ import {
   type KeyboardEvent,
   type PointerEvent,
 } from "react";
-import { AlertTriangle, ExternalLink, Link2, RotateCcw, Unlink } from "lucide-react";
+import { AlertTriangle, ExternalLink, Filter, Link2, RotateCcw, Unlink } from "lucide-react";
 import type { MemoryGraph as MemoryGraphData, MemoryGraphNode } from "@/lib/api";
 import { computeForceLayout, type GraphLayoutEdge, type GraphLayoutNode } from "@/lib/memory-graph-layout";
 import { isBrokenLinkError, linkErrorLabel, LINK_ERRORS } from "@/lib/memory-links";
@@ -25,6 +25,9 @@ import {
 } from "@/lib/memory-graph-placements";
 
 interface Props {
+  /** Treated as immutable and keyed by identity: a new object reruns the force
+   *  layout, drops any filters, and reloads the saved arrangement. Hold it in
+   *  state rather than rebuilding it each render. */
   graph: MemoryGraphData;
   /** Opens a memory by key — supplied by whatever owns navigation. */
   onNavigate?: (key: string) => void;
@@ -46,24 +49,46 @@ const DRAG_THRESHOLD = 4;
  *  well before any realistic reload. */
 const SAVE_DEBOUNCE_MS = 250;
 
-// A small, fixed, deterministic palette: namespaces are colored by a stable
-// hash of their name rather than an enumerated list, so a brand-new
-// top-level folder gets a color without this file needing to know about it.
-// The values are theme tokens (`globals.css`), so the palette re-tunes itself
-// for the light canvas rather than staying at dark-mode brightness.
+// A small, fixed palette, assigned by `colorMapFor` below. The values are theme
+// tokens (`globals.css`), so the palette re-tunes itself for the light canvas
+// rather than staying at dark-mode brightness.
 const NAMESPACE_COLORS = Array.from({ length: 8 }, (_, i) => `var(--graph-ns-${i + 1})`);
 
 const ROOT_NAMESPACE = "(root)";
+
+/** What an edge is filtered by: its relation name when it has one, else its
+ *  kind — the same string the tooltip shows, so the legend can't name an edge
+ *  one thing and the filter another. */
+function edgeTypeOf(edge: { kind: string; relation?: string | null }): string {
+  return edge.relation ?? edge.kind;
+}
 
 function namespaceOf(key: string): string {
   const slash = key.indexOf("/");
   return slash === -1 ? ROOT_NAMESPACE : key.slice(0, slash);
 }
 
-function colorFor(namespace: string): string {
-  let hash = 0;
-  for (let i = 0; i < namespace.length; i++) hash = (hash * 31 + namespace.charCodeAt(i)) >>> 0;
-  return NAMESPACE_COLORS[hash % NAMESPACE_COLORS.length];
+/** Namespace → color, by position in the room's own sorted namespace list.
+ *
+ *  Not by hashing the name, which was the previous scheme and is wrong for the
+ *  job: `context` and `decisions` hash to the same slot, so the two most common
+ *  namespaces in any room rendered as the *same* color, indistinguishable and
+ *  unfixable by repainting the palette. Assigning by position instead makes a
+ *  collision impossible below 9 namespaces, and since the palette is ordered
+ *  farthest-apart-first, the handful a real room has land far apart in hue.
+ *
+ *  The cost is that colors aren't stable across rooms, and adding a namespace
+ *  can restripe the ones sorting after it. That's the right trade: the legend
+ *  states the mapping on screen, so a color only has to be unambiguous *here*,
+ *  and being memorable across rooms was never something the view promised.
+ *
+ *  Past 8 namespaces the palette wraps and two of them do share a color. The
+ *  legend still names every namespace, so the ambiguity is recoverable by
+ *  reading rather than silent; a 9th distinct hue would have to come out of the
+ *  arc reserved for `--red`/`--yellow` (broken links, orphans), and colliding
+ *  with a state color reads as a worse lie than colliding with a sibling. */
+function colorMapFor(namespaces: readonly string[]): Map<string, string> {
+  return new Map(namespaces.map((ns, i) => [ns, NAMESPACE_COLORS[i % NAMESPACE_COLORS.length]]));
 }
 
 function leafName(key: string): string {
@@ -78,9 +103,21 @@ function nodeRadius(node: MemoryGraphNode): number {
 
 /** Routes every later move/up for this pointer to one element, so a drag
  *  survives the cursor outrunning the canvas. Optional because jsdom doesn't
- *  implement it on SVG elements; losing it only costs that robustness. */
+ *  implement it on SVG elements. Without it a release outside the canvas is
+ *  never delivered, which is why `handlePointerMove` also ends a gesture whose
+ *  buttons have gone up — otherwise the node would follow the cursor forever. */
 function capturePointer(el: SVGSVGElement | null, pointerId: number): void {
   el?.setPointerCapture?.(pointerId);
+}
+
+/** Only the main button of the first pointer drives the canvas.
+ *
+ *  Without this a right-click both opens the context menu and opens the memory
+ *  (a press with no movement is how this view decides a click happened), and a
+ *  second finger hijacks the single drag slot, freezing whatever the first one
+ *  was moving. */
+function isPrimaryPress(e: { button: number; isPrimary: boolean }): boolean {
+  return e.button === 0 && e.isPrimary;
 }
 
 /** Force-directed view of a room's memory links (#599). Runs the layout once
@@ -96,22 +133,92 @@ export function MemoryGraph({ graph, onNavigate, roomName, className }: Props) {
     () => Array.from(new Set(graph.nodes.map(n => namespaceOf(n.key)))).sort(),
     [graph.nodes],
   );
+  const edgeTypes = useMemo(
+    () => Array.from(new Set(graph.edges.map(edgeTypeOf))).sort(),
+    [graph.edges],
+  );
+  const colors = useMemo(() => colorMapFor(namespaces), [namespaces]);
+  const colorFor = useCallback(
+    (ns: string) => colors.get(ns) ?? NAMESPACE_COLORS[0],
+    [colors],
+  );
 
-  // "Links" counts what actually resolves; a broken edge is reported on its own
-  // terms beside it, never folded into the working total.
-  const linkCount = useMemo(() => layout.edges.filter(e => e.resolved).length, [layout.edges]);
+  // Filters are held as the *hidden* sets so an unfiltered graph is the empty
+  // state, and a namespace or relation that appears later isn't silently
+  // excluded for never having been ticked.
+  const [hiddenNamespaces, setHiddenNamespaces] = useState<ReadonlySet<string>>(new Set());
+  const [hiddenTypes, setHiddenTypes] = useState<ReadonlySet<string>>(new Set());
+  const filtered = hiddenNamespaces.size > 0 || hiddenTypes.size > 0;
+
+  useEffect(() => {
+    // Guarded so a mount with nothing filtered doesn't hand React two fresh
+    // (unequal) Sets and buy an extra render of every node for no change.
+    setHiddenNamespaces(prev => (prev.size === 0 ? prev : new Set()));
+    setHiddenTypes(prev => (prev.size === 0 ? prev : new Set()));
+  }, [graph]);
+
+  const visibleKeys = useMemo(
+    () => new Set(graph.nodes.filter(n => !hiddenNamespaces.has(namespaceOf(n.key))).map(n => n.key)),
+    [graph.nodes, hiddenNamespaces],
+  );
+  // A line is drawn only if its type is shown *and* both endpoints are, so
+  // hiding a namespace takes its edges with it rather than leaving them dangling.
+  const edgeDrawable = useCallback(
+    (e: { source: string; target: string; kind: string; relation?: string | null }) =>
+      !hiddenTypes.has(edgeTypeOf(e)) && visibleKeys.has(e.source) && visibleKeys.has(e.target),
+    [hiddenTypes, visibleKeys],
+  );
+  // Counting a *failed* link turns on the source alone. Requiring a visible
+  // target would drop every `not_found` from the tally, since its target isn't
+  // a memory in this room to begin with — the break is a fact about the memory
+  // that wrote the link, which is exactly the one being shown or hidden.
+  const brokenAttributable = useCallback(
+    (e: { source: string; kind: string; relation?: string | null }) =>
+      !hiddenTypes.has(edgeTypeOf(e)) && visibleKeys.has(e.source),
+    [hiddenTypes, visibleKeys],
+  );
+
+  const visibleNodes = useMemo(() => layout.nodes.filter(n => visibleKeys.has(n.key)), [layout.nodes, visibleKeys]);
+  const visibleEdges = useMemo(() => layout.edges.filter(edgeDrawable), [layout.edges, edgeDrawable]);
+
+  // Every count below describes what's on screen, so the strip and the canvas
+  // never disagree. "Links" counts what actually resolves; a broken edge is
+  // reported on its own terms beside it, never folded into the working total.
+  const linkCount = useMemo(() => visibleEdges.filter(e => e.resolved).length, [visibleEdges]);
   // Cross-room references are reported apart from breakage: they're legitimate
   // syntax that just can't resolve room-locally, so calling them broken would
   // fault a room for doing something correct.
-  const brokenCount = useMemo(
-    () => graph.edges.filter(e => !e.resolved && isBrokenLinkError(e.error)).length,
-    [graph.edges],
+  const unresolvedShown = useMemo(
+    () => graph.edges.filter(e => !e.resolved && brokenAttributable(e)),
+    [graph.edges, brokenAttributable],
   );
+  const brokenCount = useMemo(() => unresolvedShown.filter(e => isBrokenLinkError(e.error)).length, [unresolvedShown]);
   const crossRoomCount = useMemo(
-    () => graph.edges.filter(e => !e.resolved && !isBrokenLinkError(e.error)).length,
-    [graph.edges],
+    () => unresolvedShown.filter(e => !isBrokenLinkError(e.error)).length,
+    [unresolvedShown],
   );
-  const orphanCount = useMemo(() => graph.nodes.filter(n => n.inbound === 0).length, [graph.nodes]);
+  // Orphanhood stays a fact about the room, not about the filter: `inbound` is
+  // the full graph's count, so hiding a namespace can't invent orphans out of
+  // memories whose only referrers you happen to have hidden. Only the tally is
+  // narrowed to what's shown.
+  const orphanCount = useMemo(
+    () => graph.nodes.filter(n => n.inbound === 0 && visibleKeys.has(n.key)).length,
+    [graph.nodes, visibleKeys],
+  );
+
+  const toggle = useCallback(
+    (setter: typeof setHiddenNamespaces, value: string) =>
+      setter(prev => {
+        const next = new Set(prev);
+        if (!next.delete(value)) next.add(value);
+        return next;
+      }),
+    [],
+  );
+  const clearFilters = useCallback(() => {
+    setHiddenNamespaces(new Set());
+    setHiddenTypes(new Set());
+  }, []);
 
   const [hovered, setHovered] = useState<string | null>(null);
   const [view, setView] = useState({ x: 0, y: 0, scale: 1 });
@@ -120,12 +227,26 @@ export function MemoryGraph({ graph, onNavigate, roomName, className }: Props) {
   // just a coordinate override — there is no live physics to pin against.
   const [placed, setPlaced] = useState<Placements>({});
   const svgRef = useRef<SVGSVGElement>(null);
-  const panState = useRef<{ pointerId: number; startX: number; startY: number; viewX: number; viewY: number } | null>(
-    null,
-  );
-  const nodeDrag = useRef<
-    { pointerId: number; key: string; startX: number; startY: number; origin: Point; moved: boolean } | null
-  >(null);
+  // `last` is in SVG user space, not client pixels: `view.x/y` feed a
+  // `translate()`, so the delta has to be measured in the units translate
+  // speaks or the graph slides faster or slower than the cursor.
+  //
+  // Each move applies the step since the previous one rather than the total
+  // since the press, so a zoom landing mid-gesture just changes the scale of
+  // what follows instead of retroactively rescaling everything already moved.
+  const panState = useRef<{ pointerId: number; last: Point } | null>(null);
+  // `startX/startY` stay in client pixels because they only feed the "was this a
+  // drag or a click?" threshold, which is a screen-distance question; `last` is
+  // the user-space step baseline, as on `panState`.
+  const nodeDrag = useRef<{
+    pointerId: number;
+    key: string;
+    startX: number;
+    startY: number;
+    last: Point;
+    origin: Point;
+    moved: boolean;
+  } | null>(null);
 
   // Read by the deferred writes below, so they always persist the newest
   // arrangement rather than the one captured when their timer was armed.
@@ -170,6 +291,13 @@ export function MemoryGraph({ graph, onNavigate, roomName, className }: Props) {
 
   // The debounce would otherwise swallow an arrangement made immediately before
   // navigating away, since unmounting clears the pending timer.
+  //
+  // Declared *after* the layout effect that loads a room's placements, and that
+  // order is load-bearing: layout effects clean up before passive ones, so on a
+  // room change the loader has already cleared `dirty` by the time this cleanup
+  // reads `latestPlaced` — which by then holds the incoming room's positions.
+  // Reordering these, or demoting the loader to a plain effect, would write one
+  // room's arrangement into another's key.
   useEffect(() => {
     if (!roomName) return undefined;
     return () => {
@@ -183,15 +311,22 @@ export function MemoryGraph({ graph, onNavigate, roomName, className }: Props) {
     return map;
   }, [layout.nodes, placed]);
 
+  // Walks the *drawn* edges, not the whole payload: highlighting a neighbor
+  // reached through a filtered-out edge would assert a connection the canvas
+  // isn't showing.
   const neighbors = useMemo(() => {
-    if (!hovered) return null;
+    // A node that gets filtered away under a stationary cursor fires no
+    // mouseleave, so `hovered` can outlive what it named. Treating that as "not
+    // hovering" keeps a stale key from dimming the whole canvas with nothing
+    // highlighted to explain why.
+    if (!hovered || !visibleKeys.has(hovered)) return null;
     const set = new Set<string>([hovered]);
-    for (const e of layout.edges) {
+    for (const e of visibleEdges) {
       if (e.source === hovered) set.add(e.target);
       else if (e.target === hovered) set.add(e.source);
     }
     return set;
-  }, [hovered, layout.edges]);
+  }, [hovered, visibleEdges, visibleKeys]);
 
   /** Client coordinates → the SVG's own user space (pre pan/zoom transform). */
   const toSvgPoint = useCallback((clientX: number, clientY: number): Point => {
@@ -242,17 +377,27 @@ export function MemoryGraph({ graph, onNavigate, roomName, className }: Props) {
   const handlePointerDown = useCallback(
     (e: PointerEvent<SVGSVGElement>) => {
       if (e.target !== svgRef.current) return; // a node owns its own press
-      panState.current = { pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, viewX: view.x, viewY: view.y };
+      if (!isPrimaryPress(e)) return;
+      panState.current = { pointerId: e.pointerId, last: toSvgPoint(e.clientX, e.clientY) };
       capturePointer(svgRef.current, e.pointerId);
     },
-    [view.x, view.y],
+    [toSvgPoint],
   );
 
   const beginNodeDrag = useCallback(
     (key: string, e: PointerEvent<SVGGElement>) => {
+      if (!isPrimaryPress(e)) return;
       const origin = positions.get(key);
       if (!origin) return;
-      nodeDrag.current = { pointerId: e.pointerId, key, startX: e.clientX, startY: e.clientY, origin, moved: false };
+      nodeDrag.current = {
+        pointerId: e.pointerId,
+        key,
+        startX: e.clientX,
+        startY: e.clientY,
+        last: toSvgPoint(e.clientX, e.clientY),
+        origin,
+        moved: false,
+      };
       // Captured on the <svg>, not the node, so the pointer keeps reporting to
       // one handler even when it outruns the circle it grabbed.
       capturePointer(svgRef.current, e.pointerId);
@@ -260,28 +405,52 @@ export function MemoryGraph({ graph, onNavigate, roomName, className }: Props) {
     [positions],
   );
 
+  /** Drops whatever gesture this pointer owned, without activating anything. */
+  const abandonGesture = useCallback((pointerId: number) => {
+    if (nodeDrag.current?.pointerId === pointerId) nodeDrag.current = null;
+    if (panState.current?.pointerId === pointerId) panState.current = null;
+  }, []);
+
   const handlePointerMove = useCallback(
     (e: PointerEvent<SVGSVGElement>) => {
+      // A move with nothing held down means this pointer's release happened
+      // somewhere the canvas never heard about (no pointer capture, or it was
+      // lost). Dropping the gesture here stops a node from trailing a cursor
+      // that isn't pressing anything.
+      if (e.buttons === 0) {
+        abandonGesture(e.pointerId);
+        return;
+      }
+
       const drag = nodeDrag.current;
       if (drag && drag.pointerId === e.pointerId) {
         if (!drag.moved && Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY) > DRAG_THRESHOLD) {
           drag.moved = true;
         }
         if (!drag.moved) return;
-        const from = toSvgPoint(drag.startX, drag.startY);
         const to = toSvgPoint(e.clientX, e.clientY);
         // The nodes live inside the pan/zoom <g>, so a delta measured in SVG
         // space has to be divided back out by the zoom to stay under the cursor.
-        const dx = (to.x - from.x) / view.scale;
-        const dy = (to.y - from.y) / view.scale;
+        const dx = (to.x - drag.last.x) / view.scale;
+        const dy = (to.y - drag.last.y) / view.scale;
+        drag.last = to;
         dirty.current = true;
-        setPlaced(prev => ({ ...prev, [drag.key]: { x: drag.origin.x + dx, y: drag.origin.y + dy } }));
+        setPlaced(prev => {
+          const from = prev[drag.key] ?? drag.origin;
+          return { ...prev, [drag.key]: { x: from.x + dx, y: from.y + dy } };
+        });
         return;
       }
 
       const pan = panState.current;
       if (!pan || pan.pointerId !== e.pointerId) return;
-      setView(prev => ({ ...prev, x: pan.viewX + (e.clientX - pan.startX), y: pan.viewY + (e.clientY - pan.startY) }));
+      // Measured in user space, and *not* divided by the zoom: `translate` runs
+      // before `scale` in the transform, so it already speaks parent units.
+      const to = toSvgPoint(e.clientX, e.clientY);
+      const dx = to.x - pan.last.x;
+      const dy = to.y - pan.last.y;
+      pan.last = to;
+      setView(prev => ({ ...prev, x: prev.x + dx, y: prev.y + dy }));
     },
     [toSvgPoint, view.scale],
   );
@@ -295,11 +464,23 @@ export function MemoryGraph({ graph, onNavigate, roomName, className }: Props) {
       const drag = nodeDrag.current;
       if (drag?.pointerId === e.pointerId) {
         nodeDrag.current = null;
-        if (!drag.moved) onNavigate?.(drag.key);
+        // `visibleKeys` because a filter applied mid-press can retire the node
+        // under the finger, and opening a memory the canvas is busy hiding reads
+        // as the wrong one having been clicked.
+        if (!drag.moved && visibleKeys.has(drag.key)) onNavigate?.(drag.key);
       }
       if (panState.current?.pointerId === e.pointerId) panState.current = null;
     },
-    [onNavigate],
+    [onNavigate, visibleKeys],
+  );
+
+  // A cancelled pointer is an abandoned gesture, not a completed one: the system
+  // took the pointer away (touch handed to a browser gesture, device removed),
+  // so routing it through `endDrag` would open a memory the reader never
+  // released on.
+  const cancelDrag = useCallback(
+    (e: PointerEvent<SVGSVGElement>) => abandonGesture(e.pointerId),
+    [abandonGesture],
   );
 
   const hasPlacements = Object.keys(placed).length > 0;
@@ -310,8 +491,9 @@ export function MemoryGraph({ graph, onNavigate, roomName, className }: Props) {
           never has to make a second integrity call. */}
       <div className="flex flex-shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-b border-border bg-paper px-5 py-3 text-label text-muted-foreground">
         <span>
-          <span className="font-semibold tabular text-text">{graph.nodes.length}</span> memor
-          {graph.nodes.length === 1 ? "y" : "ies"}
+          <span className="font-semibold tabular text-text">{visibleKeys.size}</span> memor
+          {visibleKeys.size === 1 ? "y" : "ies"}
+          {filtered && <span className="text-faint"> of {graph.nodes.length}</span>}
         </span>
         <span>
           <span className="font-semibold tabular text-text">{linkCount}</span> link
@@ -338,19 +520,31 @@ export function MemoryGraph({ graph, onNavigate, roomName, className }: Props) {
             <span className="font-semibold tabular">{crossRoomCount}</span> cross-room
           </span>
         )}
-        {hasPlacements && (
-          <button
-            onClick={() => {
-              dirty.current = true;
-              setPlaced({});
-            }}
-            className="ml-auto inline-flex items-center gap-1 rounded-md px-2 py-1 text-micro font-medium text-accent transition-colors hover:bg-hairline"
-            title="Put every hand-moved memory back where the force layout placed it, and forget the saved arrangement"
-          >
-            <RotateCcw className="size-3.5" />
-            Reset layout
-          </button>
-        )}
+        <div className="ml-auto flex items-center gap-1">
+          {filtered && (
+            <button
+              onClick={clearFilters}
+              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-micro font-medium text-accent transition-colors hover:bg-hairline"
+              title="Show every namespace and link type again"
+            >
+              <Filter className="size-3.5" />
+              Clear filters
+            </button>
+          )}
+          {hasPlacements && (
+            <button
+              onClick={() => {
+                dirty.current = true;
+                setPlaced({});
+              }}
+              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-micro font-medium text-accent transition-colors hover:bg-hairline"
+              title="Put every hand-moved memory back where the force layout placed it, and forget the saved arrangement"
+            >
+              <RotateCcw className="size-3.5" />
+              Reset layout
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="relative min-h-0 flex-1">
@@ -361,17 +555,17 @@ export function MemoryGraph({ graph, onNavigate, roomName, className }: Props) {
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={endDrag}
-          onPointerCancel={endDrag}
+          onPointerCancel={cancelDrag}
           // `group`, not `img`: ARIA treats an `img`'s descendants as
           // presentational, which would hide every node button below from
           // assistive tech.
           role="group"
-          aria-label={`Memory link graph: ${graph.nodes.length} memories, ${linkCount} links`}
+          aria-label={`Memory link graph: ${visibleKeys.size} memories, ${linkCount} links`}
         >
           <g transform={`translate(${view.x},${view.y}) scale(${view.scale})`}>
             {/* Endpoints come from `positions`, not the layout's baked x1/y1 —
                 that's what keeps an edge attached while its node is dragged. */}
-            {layout.edges.map((edge, i) => {
+            {visibleEdges.map((edge, i) => {
               const from = positions.get(edge.source);
               const to = positions.get(edge.target);
               if (!from || !to) return null;
@@ -385,10 +579,11 @@ export function MemoryGraph({ graph, onNavigate, roomName, className }: Props) {
                 />
               );
             })}
-            {layout.nodes.map(node => (
+            {visibleNodes.map(node => (
               <GraphNodeDot
                 key={node.key}
                 node={node}
+                color={colorFor(namespaceOf(node.key))}
                 at={positions.get(node.key) ?? node}
                 dimmed={neighbors !== null && !neighbors.has(node.key)}
                 onHover={setHovered}
@@ -399,16 +594,72 @@ export function MemoryGraph({ graph, onNavigate, roomName, className }: Props) {
           </g>
         </svg>
 
-        {/* Legend — floats over the canvas, outside the pan/zoom transform. */}
-        <div className="pointer-events-none absolute bottom-3 left-3 flex flex-col gap-1 rounded-lg border border-border bg-paper/90 px-3 py-2 text-micro text-muted-foreground shadow-sm backdrop-blur-sm">
-          <div className="mb-0.5 text-micro font-semibold uppercase tracking-wide text-faint">Key</div>
+        {visibleKeys.size === 0 && (
+          // Blames the filter only when a filter is what emptied the canvas.
+          // `MemoryGraph` is exported on its own, so it can also be handed a
+          // payload with no nodes at all.
+          <p
+            role="status"
+            className="pointer-events-none absolute inset-0 flex items-center justify-center text-label text-muted-foreground"
+          >
+            {graph.nodes.length === 0 ? "Nothing to show." : "Every namespace is hidden — nothing to show."}
+          </p>
+        )}
+
+        {/* Legend — floats over the canvas, outside the pan/zoom transform, and
+            doubles as the filter. The rows already enumerate exactly what you'd
+            want to filter by, so a separate control would just say it twice. */}
+        <div className="absolute bottom-3 left-3 flex flex-col gap-1 rounded-lg border border-border bg-paper/90 px-3 py-2 text-micro text-muted-foreground shadow-sm backdrop-blur-sm">
+          <div className="mb-0.5 text-micro font-semibold uppercase tracking-wide text-faint">Key · click to filter</div>
           <div className="text-faint">namespace</div>
-          {namespaces.map(ns => (
-            <div key={ns} className="flex items-center gap-1.5">
-              <span className="size-2 flex-shrink-0 rounded-full" style={{ background: colorFor(ns) }} />
-              <span className="font-mono">{ns}</span>
-            </div>
-          ))}
+          {namespaces.map(ns => {
+            const hidden = hiddenNamespaces.has(ns);
+            return (
+              <button
+                key={ns}
+                onClick={() => toggle(setHiddenNamespaces, ns)}
+                aria-pressed={!hidden}
+                // Labelled explicitly: the row's own text is just the namespace,
+                // which says what it is but not what clicking it does.
+                aria-label={hidden ? `Show ${ns}` : `Hide ${ns}`}
+                title={hidden ? `Show ${ns}` : `Hide ${ns}`}
+                className={`flex items-center gap-1.5 rounded px-1 py-0.5 text-left transition-colors hover:bg-hairline ${
+                  hidden ? "opacity-40" : ""
+                }`}
+              >
+                <span
+                  className="size-2 flex-shrink-0 rounded-full"
+                  style={{ background: hidden ? "transparent" : colorFor(ns), boxShadow: `inset 0 0 0 1px ${colorFor(ns)}` }}
+                />
+                <span className={`font-mono ${hidden ? "line-through" : ""}`}>{ns}</span>
+              </button>
+            );
+          })}
+
+          {edgeTypes.length > 1 && (
+            <>
+              <div className="mt-1 border-t border-border pt-1 text-faint">link type</div>
+              {edgeTypes.map(type => {
+                const hidden = hiddenTypes.has(type);
+                return (
+                  <button
+                    key={type}
+                    onClick={() => toggle(setHiddenTypes, type)}
+                    aria-pressed={!hidden}
+                    aria-label={hidden ? `Show ${type} edges` : `Hide ${type} edges`}
+                    title={hidden ? `Show ${type} edges` : `Hide ${type} edges`}
+                    className={`flex items-center gap-1.5 rounded px-1 py-0.5 text-left transition-colors hover:bg-hairline ${
+                      hidden ? "opacity-40" : ""
+                    }`}
+                  >
+                    <Link2 className="size-3 flex-shrink-0" />
+                    <span className={`font-mono ${hidden ? "line-through" : ""}`}>{type}</span>
+                  </button>
+                );
+              })}
+            </>
+          )}
+
           <div className="mt-1 flex items-center gap-1.5 border-t border-border pt-1">
             <span className="size-2 flex-shrink-0 rounded-full border border-dashed border-yellow" />
             orphan (nothing links here)
@@ -452,6 +703,7 @@ function GraphEdgeLine({ edge, from, to, dimmed }: { edge: GraphLayoutEdge; from
 
 function GraphNodeDot({
   node,
+  color,
   at,
   dimmed,
   onHover,
@@ -459,6 +711,8 @@ function GraphNodeDot({
   onDragStart,
 }: {
   node: GraphLayoutNode;
+  /** Resolved namespace fill — the mapping is room-wide, so the parent owns it. */
+  color: string;
   /** Where to draw — the hand-placed position if there is one, else the layout's. */
   at: Point;
   dimmed: boolean;
@@ -470,7 +724,6 @@ function GraphNodeDot({
 }) {
   const radius = nodeRadius(node);
   const orphan = node.inbound === 0;
-  const ns = namespaceOf(node.key);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<SVGGElement>) => {
@@ -492,16 +745,20 @@ function GraphNodeDot({
       opacity={dimmed ? 0.25 : 1}
       onMouseEnter={() => onHover(node.key)}
       onMouseLeave={() => onHover(null)}
+      // Focus highlights too, so tabbing through the graph reveals each memory's
+      // neighbours the way hovering does rather than only moving a focus ring.
+      onFocus={() => onHover(node.key)}
+      onBlur={() => onHover(null)}
       onPointerDown={handlePointerDown}
       onKeyDown={handleKeyDown}
       role="button"
       tabIndex={0}
       aria-label={`Open ${node.key}`}
-      style={{ cursor: "grab" }}
+      className="cursor-grab active:cursor-grabbing"
     >
       <circle
         r={radius}
-        fill={colorFor(ns)}
+        fill={color}
         stroke={orphan ? "var(--yellow)" : "var(--paper)"}
         strokeWidth={orphan ? 2 : 1.5}
         strokeDasharray={orphan ? "3 2" : undefined}
