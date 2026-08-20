@@ -86,6 +86,10 @@ class EpisodeState:
     # back to the system actor (an episode opened outside an engine context).
     engine_handle: str = ""
     intent_id: str = ""
+    # Each participant's opening prose, captured before mediation runs — the
+    # structured snapshot the episode record renders as "Opening Positions" so a
+    # negotiation can be audited against what the room believed going in (#679).
+    opening_positions: dict[str, str] = field(default_factory=dict)
     # Ordered record of every envelope in the episode (dicts, wire shape).
     messages: list[dict[str, Any]] = field(default_factory=list)
     # handle -> l9 message id of the last tick sent to that agent.
@@ -114,12 +118,17 @@ def open_episode(
     agents: list[str],
     joined_intents: str,
     engine_handle: str = "",
+    opening_positions: dict[str, str] | None = None,
 ) -> EpisodeState:
     """Open the episode: mint URNs and record the ``intent`` envelope.
 
     ``engine_handle`` is the registered engine mediating the episode; it signs
     the intent/tick/consensus envelopes so the wire carries the engine's real
     identity. Empty falls back to the system actor.
+
+    ``opening_positions`` is each participant's stated prose at the start,
+    captured before mediation runs; it is rendered into the episode record's
+    "Opening Positions" section for audit (#679).
     """
     ep = EpisodeState(
         episode=l9.episode_urn(parent_room, short_id),
@@ -130,6 +139,7 @@ def open_episode(
         mas_id=mas_id,
         agents=agents[:],
         engine_handle=engine_handle,
+        opening_positions=dict(opening_positions or {}),
     )
     intent = l9.build_envelope(
         kind=Kind.intent,
@@ -386,6 +396,19 @@ def write_episode_record(
             )
         if plan_file:
             lines.append(f"- plan: `{plan_file}`")
+        if ep.opening_positions:
+            lines += [
+                "",
+                "## Opening Positions",
+                "",
+                "Each participant's stated position at the start, before mediation:",
+                "",
+                *(
+                    f"- **@{handle}**: {ep.opening_positions[handle]}"
+                    for handle in ep.agents
+                    if handle in ep.opening_positions
+                ),
+            ]
         lines += [
             "",
             "## Messages",
