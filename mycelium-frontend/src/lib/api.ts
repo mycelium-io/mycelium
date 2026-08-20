@@ -157,8 +157,33 @@ export interface Memory {
   content_text?: string;
   version: number;
   created_by: string;
+  updated_by?: string | null;
   updated_at: string;
   file_path?: string;
+  tags?: string[];
+}
+
+/** Shape sent to POST /api/rooms/{room}/memory to create or upsert a memory. */
+export interface MemoryCreate {
+  key: string;
+  value: string;
+  tags?: string[];
+  embed?: boolean;
+  created_by: string;
+  base_version?: number;
+  meta?: Record<string, unknown>;
+}
+
+/** Create or upsert one or more memories. Throws `ApiError` on failure. */
+export async function createMemories(
+  roomName: string,
+  items: MemoryCreate[],
+): Promise<void> {
+  await apiFetch<unknown>(`/api/rooms/${roomName}/memory`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ items }),
+  });
 }
 
 export async function fetchMemories(roomName: string, prefix?: string): Promise<Memory[]> {

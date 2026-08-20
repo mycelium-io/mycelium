@@ -157,6 +157,25 @@ export async function handleMock(req: Request): Promise<Response | null> {
         const chosen = hits.length ? hits : fx.memories.slice(0, 3).map((m, i) => ({ memory: m, score: 0.7 - i * 0.1 }));
         return json({ results: chosen.map((r) => ({ memory: r.memory, similarity: r.score })), total: chosen.length });
       }
+      // POST /memory — create or upsert one or more memories.
+      if (sub.length === 1 && method === "POST") {
+        const body = await req.json() as { items?: Array<{ key: string; value: string; base_version?: number }> };
+        const items = body.items ?? [];
+        const updated: Array<{ key: string; version: number }> = [];
+        for (const item of items) {
+          const idx = fx.memories.findIndex((m) => m.key === item.key);
+          const now = new Date().toISOString();
+          if (idx >= 0) {
+            fx.memories[idx] = { ...fx.memories[idx], value: item.value, content_text: item.value, version: (fx.memories[idx].version ?? 1) + 1, updated_at: now };
+            updated.push({ key: item.key, version: fx.memories[idx].version as number });
+          } else {
+            const newMem = { key: item.key, value: item.value, content_text: item.value, version: 1, created_by: "user", updated_at: now };
+            fx.memories.push(newMem);
+            updated.push({ key: item.key, version: 1 });
+          }
+        }
+        return json(updated);
+      }
       if (method !== "GET") return null;
       // GET /memory/:key — the key is a path, so it spans the remaining segments.
       if (sub.length > 1) {

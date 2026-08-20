@@ -22,9 +22,10 @@ export interface MemoryLike {
   content_text?: string;
   version: number;
   created_by: string;
-  updated_by?: string;
+  updated_by?: string | null;
   updated_at?: string;
   file_path?: string;
+  tags?: string[];
 }
 
 function formatValue(v: unknown): string {
@@ -305,6 +306,21 @@ export function MemoryDetail({
           <Meta label="File">
             <span className="break-all font-mono text-micro text-muted-foreground">{memory.file_path}</span>
           </Meta>
+        )}
+        {memory.tags && memory.tags.length > 0 && (
+          <div className="col-span-2 flex flex-col gap-0.5">
+            <span className="text-micro uppercase tracking-wide text-faint">Tags</span>
+            <div className="flex flex-wrap gap-1">
+              {memory.tags.map(tag => (
+                <span
+                  key={tag}
+                  className="rounded border border-border bg-surface px-1.5 py-0.5 font-mono text-micro text-muted-foreground"
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+          </div>
         )}
       </div>
 

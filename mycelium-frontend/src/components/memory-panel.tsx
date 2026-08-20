@@ -15,6 +15,8 @@ import {
   FileText,
   AlertCircle,
   Network,
+  Pencil,
+  Eye,
 } from "lucide-react";
 import {
   fetchMemory,
@@ -23,13 +25,15 @@ import {
   type Memory,
   type MemorySearchResult,
 } from "@/lib/api";
-import { useRoomMemories, useRoomMemoryIntegrity } from "@/lib/room-data";
+import { useRoomMemories, useRoomMemoryIntegrity, useRoomRevalidate } from "@/lib/room-data";
 import { memoryGraphHref, memoryHref } from "@/lib/memory-routes";
 import { expandedPathsForKey, resolveMemoryPeekNavigation } from "@/lib/memory-panel-nav";
 import { DetailDrawer } from "@/components/detail-drawer";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MemoryDetail } from "@/components/memory-detail";
+import { MemoryEditor } from "@/components/memory-editor";
+import { useCurrentUser } from "@/components/current-user";
 
 interface TreeNode {
   name: string;
@@ -207,6 +211,9 @@ export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusM
   const [selected, setSelected] = useState<Memory | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [renderedBody, setRenderedBody] = useState<string | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const { principal } = useCurrentUser();
+  const revalidate = useRoomRevalidate(roomName);
 
   // The tree, plus the room-wide integrity report the drawer reads to flag a
   // broken or orphaned memory without a per-open round trip. Both revalidate
@@ -215,6 +222,9 @@ export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusM
   const { integrity } = useRoomMemoryIntegrity(roomName);
   const memoriesRef = useRef(memories);
   memoriesRef.current = memories;
+
+  // Exit edit mode whenever the selected memory changes.
+  useEffect(() => { setIsEditing(false); }, [selected?.key]);
 
   // Expanded transclusions for whichever memory is open in the drawer, so the
   // rail peek matches the full page instead of leaving `![[…]]` markers as
@@ -432,30 +442,56 @@ export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusM
 
       <DetailDrawer
         open={selected !== null}
-        onClose={() => setSelected(null)}
+        onClose={() => { setSelected(null); setIsEditing(false); }}
         title={selected?.key}
         subtitle={selected ? `v${selected.version} · ${selected.created_by}` : undefined}
         actions={
           selected ? (
-            <Link
-              href={memoryHref(roomName, selected.key)}
-              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-micro font-medium text-accent transition-colors hover:bg-hairline"
-              title="Open full page"
-            >
-              <ExternalLink className="size-3.5" />
-              Full page
-            </Link>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setIsEditing(e => !e)}
+                title={isEditing ? "View" : "Edit"}
+                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-micro font-medium text-accent transition-colors hover:bg-hairline"
+              >
+                {isEditing ? <Eye className="size-3.5" /> : <Pencil className="size-3.5" />}
+                {isEditing ? "View" : "Edit"}
+              </button>
+              <Link
+                href={memoryHref(roomName, selected.key)}
+                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-micro font-medium text-accent transition-colors hover:bg-hairline"
+                title="Open full page"
+              >
+                <ExternalLink className="size-3.5" />
+                Full page
+              </Link>
+            </div>
           ) : undefined
         }
       >
         {selected && (
-          <MemoryDetail
-            memory={selected}
-            roomName={roomName}
-            onNavigate={openMemoryByKey}
-            renderedBody={renderedBody}
-            integrity={integrity}
-          />
+          isEditing ? (
+            <MemoryEditor
+              memory={selected}
+              roomName={roomName}
+              actor={principal}
+              onSaved={() => {
+                revalidate();
+                setIsEditing(false);
+                // Refresh the selected memory to show updated content.
+                fetchMemory(roomName, selected.key).then(m => { if (m) setSelected(m); });
+              }}
+              onCancel={() => setIsEditing(false)}
+            />
+          ) : (
+            <MemoryDetail
+              memory={selected}
+              roomName={roomName}
+              onNavigate={openMemoryByKey}
+              renderedBody={renderedBody}
+              integrity={integrity}
+            />
+          )
         )}
       </DetailDrawer>
     </div>

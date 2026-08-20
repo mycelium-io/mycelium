@@ -44,6 +44,12 @@ export function TagInput({ value, onChange, suggestions = [], placeholder, ariaL
     }
   };
 
+  // Commit any pending draft when the input loses focus so clicking Save
+  // without pressing Enter still captures whatever was typed.
+  const onBlur = () => {
+    if (draft.trim()) add(draft);
+  };
+
   return (
     <div>
       <div
@@ -74,6 +80,7 @@ export function TagInput({ value, onChange, suggestions = [], placeholder, ariaL
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={onKeyDown}
+          onBlur={onBlur}
           placeholder={value.length === 0 ? placeholder : ""}
           aria-label={ariaLabel}
           className="min-w-[8ch] flex-1 bg-transparent font-mono text-micro text-text outline-none placeholder:text-muted-foreground"
