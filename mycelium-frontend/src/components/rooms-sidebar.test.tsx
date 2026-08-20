@@ -2,7 +2,8 @@
 // Copyright 2026 Mycelium Contributors
 
 import { act } from "react";
-import { render, screen, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
+import { renderWithSWR } from "@/test/swr";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeEventSource } from "@/test/fake-event-source";
@@ -29,7 +30,7 @@ function rooms(...names: string[]) {
 
 async function renderSidebar(names: string[], activeRoom: string | null = null) {
   vi.mocked(fetchRooms).mockResolvedValue(rooms(...names) as never);
-  render(
+  renderWithSWR(
     <CurrentUserProvider>
       <NotificationsProvider>
         <KeymapProvider>

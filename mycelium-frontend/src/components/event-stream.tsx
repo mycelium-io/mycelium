@@ -7,12 +7,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   getSSEUrl,
   fetchMessages,
-  fetchRoomAgents,
   fetchPendingInvites,
   respondToInvite,
   logFetchError,
   type PendingInvite,
 } from "@/lib/api";
+import { useRoomAgents } from "@/lib/room-data";
 import { MarkdownContent } from "@/components/markdown-content";
 import { RoomPlanHeader } from "@/components/room-plan-header";
 import { ConsentDialog } from "@/components/consent-dialog";
@@ -322,7 +322,6 @@ interface Props {
   onMemoryChanged?: () => void;
   onConnectionChange?: (connected: boolean) => void;
   onNegotiationPhaseChange?: (phase: NegotiationPhase) => void;
-  planRefreshTrigger?: number;
   /** Open a memory by key — wired to `[[wikilinks]]` in chat so a message can
    *  link a room's memory and a reader (or agent author) can jump straight to it. */
   onOpenMemory?: (key: string) => void;
@@ -337,7 +336,7 @@ interface Props {
   onFocusConsumed?: () => void;
 }
 
-export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onNegotiationPhaseChange, planRefreshTrigger = 0, onOpenMemory, view: viewProp, onViewChange, suppressInvites = false, focusMessageId = null, onFocusConsumed }: Props) {
+export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onNegotiationPhaseChange, onOpenMemory, view: viewProp, onViewChange, suppressInvites = false, focusMessageId = null, onFocusConsumed }: Props) {
   const [events, setEvents] = useState<Event[]>([]);
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [connected, setConnected] = useState(false);
@@ -350,34 +349,19 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
   const [viewInternal, setViewInternal] = useState<View>("channel");
   const view = viewProp ?? viewInternal;
   const setView = (v: View) => { if (viewProp === undefined) setViewInternal(v); onViewChange?.(v); };
-  const [agentHandles, setAgentHandles] = useState<Set<string>>(new Set());
-  const [agentOwners, setAgentOwners] = useState<Map<string, string>>(new Map());
   const [invites, setInvites] = useState<PendingInvite[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Know which senders are registered agents (to badge their replies) and whom
-  // each belongs to (to attribute them inline). Self-fetched (mirrors the chat
-  // box) so the page doesn't have to thread it; owner is resolved at render time
+  // each belongs to (to attribute them inline). Off the room's shared agent
+  // read, so this costs no request of its own; owner is resolved at render time
   // so it always reflects the current manifest, never a stale stamp.
-  useEffect(() => {
-    let cancelled = false;
-    const load = () =>
-      fetchRoomAgents(roomName)
-        .then((a) => {
-          if (cancelled) return;
-          setAgentHandles(new Set(a.map((x) => x.handle)));
-          setAgentOwners(
-            new Map(a.filter((x) => x.owner).map((x) => [x.handle, x.owner as string])),
-          );
-        })
-        .catch(logFetchError("fetchRoomAgents"));
-    load();
-    const t = setInterval(load, 30_000);
-    return () => {
-      cancelled = true;
-      clearInterval(t);
-    };
-  }, [roomName]);
+  const { agents } = useRoomAgents(roomName);
+  const agentHandles = useMemo(() => new Set(agents.map((a) => a.handle)), [agents]);
+  const agentOwners = useMemo(
+    () => new Map(agents.filter((a) => a.owner).map((a) => [a.handle, a.owner as string])),
+    [agents],
+  );
 
   // Load initial messages
   useEffect(() => {
@@ -567,7 +551,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
       ) : (
       <ScrollArea className="flex-1 min-h-0" viewportRef={scrollRef}>
         {view === "plan" ? (
-          <RoomPlanHeader roomName={roomName} refreshTrigger={planRefreshTrigger} />
+          <RoomPlanHeader roomName={roomName} />
         ) : !historyLoaded ? (
           <ChannelSkeleton />
         ) : visible.length === 0 ? (

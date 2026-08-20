@@ -3,24 +3,13 @@
 
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import TextareaAutosize from "react-textarea-autosize";
 import { ArrowUp } from "lucide-react";
-import {
-  fetchMemories,
-  fetchMessages,
-  fetchRoomAgents,
-  fetchRoomMembers,
-  fetchSkills,
-  logFetchError,
-  sendRoomMessage,
-  type AgentSummary,
-  type Memory,
-  type PresenceMember,
-  type Skill,
-} from "@/lib/api";
-import { useCurrentUser } from "@/components/current-user";
+import { sendRoomMessage, type Memory } from "@/lib/api";
+import { useRoomMemories, useRoomRoster, useRoomSkills } from "@/lib/room-data";
 import { useKeyAction } from "@/components/keymap-provider";
+import { useCurrentUser } from "@/components/current-user";
 
 interface Props {
   roomName: string;
@@ -90,44 +79,17 @@ export function RoomChatBox({ roomName, onSent, className }: Props) {
   const { principal } = useCurrentUser();
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [agents, setAgents] = useState<AgentSummary[]>([]);
-  const [members, setMembers] = useState<PresenceMember[]>([]);
-  const [posters, setPosters] = useState<string[]>([]);
-  const [memories, setMemories] = useState<Memory[]>([]);
-  const [skills, setSkills] = useState<Skill[]>([]);
   const [trigger, setTrigger] = useState<Trigger | null>(null);
   const [highlight, setHighlight] = useState(0);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
-  const refreshSources = useCallback(() => {
-    // `@` mentions anyone in the room — agents plus the present people (and you).
-    fetchRoomAgents(roomName).then(setAgents).catch((err) => {
-      logFetchError("fetchRoomAgents")(err);
-      setAgents([]);
-    });
-    fetchRoomMembers(roomName).then(setMembers).catch(logFetchError("fetchRoomMembers"));
-    // Human posters from the transcript — a broadcast from a non-agent handle —
-    // so `@` reaches people who've spoken even if they aren't present right now.
-    fetchMessages(roomName, 200)
-      .then(({ messages }) =>
-        setPosters(
-          messages
-            .filter((m) => m.message_type === "broadcast")
-            .map((m) => m.sender_handle ?? "")
-            .filter(Boolean),
-        ),
-      )
-      .catch(logFetchError("fetchMessages"));
-    // Memory keys drive `[[` autocomplete; skills drive `/`. Both degrade to [].
-    fetchMemories(roomName).then(setMemories).catch(logFetchError("fetchMemories"));
-    fetchSkills(roomName).then(setSkills).catch(logFetchError("fetchSkills"));
-  }, [roomName]);
-
-  useEffect(() => {
-    refreshSources();
-    const t = setInterval(refreshSources, 30_000);
-    return () => clearInterval(t);
-  }, [refreshSources]);
+  // `@` reaches everyone in the room, off the same roster the Members rail
+  // renders; `[[` reads the room's memory keys and `/` its skills. All three
+  // are shared reads — opening a room fetches each of them once, however many
+  // panels are looking.
+  const { agents, people } = useRoomRoster(roomName);
+  const { memories } = useRoomMemories(roomName);
+  const { skills } = useRoomSkills(roomName);
 
   // The composer is a keybind target. Focus lands on the next frame because the
   // same keypress may be switching the channel pane back into view, and a
@@ -145,41 +107,22 @@ export function RoomChatBox({ roomName, onSent, className }: Props) {
     if (found) setHighlight(0);
   };
 
-  // Everyone `@` can address, at parity with the Members panel: agents first,
-  // then people — agent owners ∪ posters ∪ present members ∪ you (minus agents),
-  // deduped by handle. `present` marks a live SLIM member.
-  const mentionRoster = useMemo(() => {
-    const agentHandles = new Set(agents.map((a) => a.handle.toLowerCase()));
-    const agentItems = agents.map((a) => ({
-      handle: a.handle,
-      secondary: a.adapter === "engine" && a.kind ? `engine · ${a.kind}` : a.adapter,
-      tertiary: a.description as string | undefined,
-    }));
-
-    const me = principal.trim().toLowerCase();
-    const peopleByHandle = new Map<string, { handle: string; present: boolean }>();
-    const addPerson = (raw: string, present: boolean) => {
-      const h = raw.replace(/^@/, "").toLowerCase();
-      if (!h || agentHandles.has(h)) return;
-      const existing = peopleByHandle.get(h);
-      if (existing) existing.present = existing.present || present;
-      else peopleByHandle.set(h, { handle: h, present });
-    };
-    for (const a of agents) if (a.owner) addPerson(a.owner, false);
-    for (const p of posters) addPerson(p, false);
-    for (const m of members) addPerson(m.handle, m.kind === "slim");
-    if (me) addPerson(me, false);
-
-    const peopleItems = [...peopleByHandle.values()]
-      .sort((a, b) => a.handle.localeCompare(b.handle))
-      .map((p) => ({
+  // Agents first, then people — the roster's order, labelled for the popover.
+  const mentionRoster = useMemo(
+    () => [
+      ...agents.map((a) => ({
+        handle: a.handle,
+        secondary: a.adapter === "engine" && a.kind ? `engine · ${a.kind}` : a.adapter,
+        tertiary: a.description as string | undefined,
+      })),
+      ...people.map((p) => ({
         handle: p.handle,
-        secondary: p.handle === me ? "you" : p.present ? "person · here" : "person",
+        secondary: p.you ? "you" : p.presence?.kind === "slim" ? "person · here" : "person",
         tertiary: undefined as string | undefined,
-      }));
-
-    return [...agentItems, ...peopleItems];
-  }, [agents, members, posters, principal]);
+      })),
+    ],
+    [agents, people],
+  );
 
   const candidates = useMemo<Candidate[]>(() => {
     if (trigger === null) return [];

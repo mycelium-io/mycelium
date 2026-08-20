@@ -8,7 +8,8 @@ import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { AtSign, BarChart3, Bell, BellOff, Boxes, Check, Plus, Search, SearchX, type LucideIcon } from "lucide-react";
-import { fetchRooms, getAppEventsSSEUrl, type Room } from "@/lib/api";
+import { getAppEventsSSEUrl, type Room } from "@/lib/api";
+import { useRooms } from "@/lib/room-data";
 import { roomLevel, type RoomLevel } from "@/lib/notifications";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CreateRoomDialog } from "@/components/create-room-dialog";
@@ -20,11 +21,6 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { KeyBadge } from "@/components/key-badge";
 import { useCommands, useKeyAction } from "@/components/keymap-provider";
 import type { PaletteCommand } from "@/lib/commands";
-
-// The sidebar lives inside each page's AppShell, so navigation remounts it. A
-// module-level cache lets a fresh mount paint the last-known rooms immediately
-// (no count flashing 100 → 0 → 100 while the refetch is in flight).
-let roomsCache: Room[] = [];
 
 /** Two-letter monogram from a room name (mirrors the agent avatars). */
 function monogram(name: string): string {
@@ -39,20 +35,17 @@ interface Props {
 }
 
 export function RoomsSidebar({ activeRoom = null }: Props) {
-  const [rooms, setRooms] = useState<Room[]>(roomsCache);
   const [query, setQuery] = useState("");
   const [showCreate, setShowCreate] = useState(false);
 
-  // fetchRooms degrades to [] on failure (fire-and-forget list), so no
-  // .catch is needed — a failed poll just leaves the last-known rooms in place.
-  const load = () => fetchRooms().then((data) => { roomsCache = data; setRooms(roomsCache); });
+  // The rooms list is a shared cache entry that outlives this mount — the
+  // sidebar sits inside each page's AppShell, so navigation remounts it, and a
+  // warm cache paints the last-known rooms instead of flashing an empty rail.
+  const { rooms, refresh } = useRooms();
 
+  // Push keeps the list instant; the hook's slow poll is the fail-soft fallback
+  // for a dropped SSE connection.
   useEffect(() => {
-    load();
-    // Push keeps the list instant; the slow poll is a fail-soft fallback for a
-    // dropped SSE connection.
-    const t = setInterval(load, 30_000);
-
     let es: EventSource | undefined;
     let retry: ReturnType<typeof setTimeout>;
     function connect() {
@@ -60,15 +53,15 @@ export function RoomsSidebar({ activeRoom = null }: Props) {
       es.onmessage = (e) => {
         try {
           const msg = JSON.parse(e.data);
-          if (msg.type === "room_created" || msg.type === "room_deleted") load();
+          if (msg.type === "room_created" || msg.type === "room_deleted") refresh();
         } catch {}
       };
       es.onerror = () => { es?.close(); retry = setTimeout(connect, 5000); };
     }
     connect();
 
-    return () => { clearInterval(t); es?.close(); clearTimeout(retry); };
-  }, []);
+    return () => { es?.close(); clearTimeout(retry); };
+  }, [refresh]);
 
   // Unread activity per room, from the same client-side notification store the
   // bell reads. Any non-muted message counts (broadcasts badge here even though
@@ -287,7 +280,7 @@ export function RoomsSidebar({ activeRoom = null }: Props) {
         </div>
       </div>
 
-      <CreateRoomDialog open={showCreate} onClose={() => setShowCreate(false)} onCreated={load} />
+      <CreateRoomDialog open={showCreate} onClose={() => setShowCreate(false)} onCreated={refresh} />
     </aside>
   );
 }

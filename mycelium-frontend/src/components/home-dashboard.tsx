@@ -3,20 +3,19 @@
 
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { Boxes, Plus, Sparkles } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CreateRoomDialog } from "@/components/create-room-dialog";
-import {
-  fetchRooms,
-  fetchRoomAgents,
-  fetchEpisodes,
-  type EpisodeSummary,
-  type Room,
-} from "@/lib/api";
+import { type EpisodeSummary, type Room } from "@/lib/api";
+import { useRoomAgents, useRoomEpisodes, useRooms, type RoomQueryOptions } from "@/lib/room-data";
+
+/** The cards read the shared caches but don't drive them: a grid of rooms is a
+ *  glance, not a watch. */
+const NO_POLL: RoomQueryOptions = { refreshInterval: 0 };
 
 // The seeded sample room the "Run a sample coordination" onboarding routes into.
 const SAMPLE_TOUR_HREF = "/room/pricing-model?tour=1";
@@ -66,22 +65,8 @@ function episodeState(ep: EpisodeSummary): { label: string; color: string; live:
  *  heading it wears — "command palette" and "command center" are two different
  *  things, and only one of them is a command surface. */
 export function HomeDashboard() {
-  const [rooms, setRooms] = useState<Room[]>([]);
-  const [loaded, setLoaded] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
-
-  // fetchRooms degrades to [] on failure (fire-and-forget list), so no
-  // .catch is needed — `loaded` still flips so the skeleton clears either way.
-  const load = useCallback(
-    () => fetchRooms().then((data) => { setRooms(data); setLoaded(true); }),
-    [],
-  );
-
-  useEffect(() => {
-    load();
-    const t = setInterval(load, 10_000);
-    return () => clearInterval(t);
-  }, [load]);
+  const { rooms, loading, refresh } = useRooms();
 
   return (
     <div className="flex-1 overflow-y-auto">
@@ -102,7 +87,7 @@ export function HomeDashboard() {
           </div>
         </header>
 
-        {!loaded ? (
+        {loading ? (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {Array.from({ length: 4 }, (_, i) => (
               <RoomCardSkeleton key={i} />
@@ -134,7 +119,7 @@ export function HomeDashboard() {
         )}
       </div>
 
-      <CreateRoomDialog open={showCreate} onClose={() => setShowCreate(false)} onCreated={load} />
+      <CreateRoomDialog open={showCreate} onClose={() => setShowCreate(false)} onCreated={refresh} />
     </div>
   );
 }
@@ -159,22 +144,14 @@ function RoomCardSkeleton() {
 }
 
 function RoomCard({ room }: { room: Room }) {
-  const [agentCount, setAgentCount] = useState<number | null>(null);
-  const [episodes, setEpisodes] = useState<EpisodeSummary[] | null>(null);
+  // A card per room, so these read once and don't poll: the grid is a glance,
+  // and opening a room is what starts watching it.
+  const { agents, loading: agentsLoading } = useRoomAgents(room.name, NO_POLL);
+  const { episodes } = useRoomEpisodes(room.name, NO_POLL);
 
-  useEffect(() => {
-    let cancelled = false;
-    fetchRoomAgents(room.name)
-      .then(a => { if (!cancelled) setAgentCount(a.length); })
-      .catch(() => { if (!cancelled) setAgentCount(0); });
-    fetchEpisodes(room.name)
-      .then(e => { if (!cancelled) setEpisodes(e); })
-      .catch(() => { if (!cancelled) setEpisodes([]); });
-    return () => { cancelled = true; };
-  }, [room.name]);
-
-  const live = (episodes ?? []).map(episodeState).filter(s => s.live).length;
-  const latest = (episodes ?? [])[0];
+  const agentCount = agentsLoading ? null : agents.length;
+  const live = episodes.map(episodeState).filter(s => s.live).length;
+  const latest = episodes[0];
   const latestState = latest ? episodeState(latest) : null;
 
   return (

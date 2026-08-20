@@ -5,7 +5,8 @@
 
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { fetchRoom, logFetchError, type EpisodeSummary, type Room } from "@/lib/api";
+import { type EpisodeSummary } from "@/lib/api";
+import { useRoom, useRoomRevalidate } from "@/lib/room-data";
 import { parseFocus, type FocusTarget } from "@/lib/search";
 import { memoryHref } from "@/lib/memory-routes";
 import { AppShell } from "@/components/app-shell";
@@ -46,8 +47,6 @@ export default function RoomPage() {
 function RoomWorkspace() {
   const params = useParams();
   const roomName = params.name as string;
-  const [room, setRoom] = useState<Room | null>(null);
-  const [memoryRefresh, setMemoryRefresh] = useState(0);
   const [connected, setConnected] = useState(false);
   const [inspectorTab, setInspectorTab] = useState<Tab>("agents");
   const [inspectorOpen, setInspectorOpen] = useState(true);
@@ -69,20 +68,12 @@ function RoomWorkspace() {
     if (typeof window !== "undefined") window.history.replaceState(null, "", window.location.pathname);
   }, []);
 
-  const { agents, episodes, openTasks } = useRoomStatus(roomName, memoryRefresh);
+  const { agents, episodes, openTasks } = useRoomStatus(roomName);
+  const { room } = useRoom(roomName);
 
-  useEffect(() => {
-    let cancelled = false;
-    const load = () =>
-      fetchRoom(roomName).then((r: Room) => { if (!cancelled) setRoom(r); }).catch(logFetchError("fetchRoom"));
-    load();
-    const t = setInterval(load, 8000);
-    return () => { cancelled = true; clearInterval(t); };
-  }, [roomName]);
-
-  const handleMemoryChanged = useCallback(() => {
-    setMemoryRefresh(n => n + 1);
-  }, []);
+  // A pushed memory/presence event refreshes every reader of this room's data
+  // at once — the panels no longer take a refresh counter to find out.
+  const handleMemoryChanged = useRoomRevalidate(roomName);
 
   const openTab = useCallback((tab: Tab) => {
     setInspectorTab(tab);
@@ -220,7 +211,6 @@ function RoomWorkspace() {
               onMemoryChanged={handleMemoryChanged}
               onConnectionChange={setConnected}
               onNegotiationPhaseChange={setNegPhase}
-              planRefreshTrigger={memoryRefresh}
               onOpenMemory={openMemory}
               view={editorView}
               onViewChange={setEditorView}
@@ -235,7 +225,6 @@ function RoomWorkspace() {
         <RoomInspector
           roomName={roomName}
           masId={room?.mas_id ?? null}
-          memoryRefresh={memoryRefresh}
           tab={inspectorTab}
           onTabChange={setInspectorTab}
           open={inspectorOpen}

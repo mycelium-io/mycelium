@@ -2,7 +2,8 @@
 // Copyright 2026 Mycelium Contributors
 
 import { act } from "react";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { screen, fireEvent } from "@testing-library/react";
+import { renderWithSWR } from "@/test/swr";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeEventSource } from "@/test/fake-event-source";
 
@@ -45,7 +46,7 @@ describe("<EventStream /> consent prompt", () => {
   });
 
   it("surfaces a consent_request bus event as an accept/decline prompt", async () => {
-    render(<EventStream roomName="sprint" />);
+    renderWithSWR(<EventStream roomName="sprint" />);
     // Let the initial fetchPendingInvites effect settle so its empty result
     // can't overwrite the invite the bus event adds below.
     await act(async () => {});
@@ -62,7 +63,7 @@ describe("<EventStream /> consent prompt", () => {
   });
 
   it("accept wiring calls the invites endpoint with the accept decision", async () => {
-    render(<EventStream roomName="sprint" />);
+    renderWithSWR(<EventStream roomName="sprint" />);
     // Let the initial fetchPendingInvites effect settle so its empty result
     // can't overwrite the invite the bus event adds below.
     await act(async () => {});
@@ -78,7 +79,7 @@ describe("<EventStream /> consent prompt", () => {
   });
 
   it("decline wiring calls the invites endpoint with the decline decision", async () => {
-    render(<EventStream roomName="sprint" />);
+    renderWithSWR(<EventStream roomName="sprint" />);
     // Let the initial fetchPendingInvites effect settle so its empty result
     // can't overwrite the invite the bus event adds below.
     await act(async () => {});
