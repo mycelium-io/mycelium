@@ -32,12 +32,10 @@ _PARTICIPANT_NS = uuid.UUID("9a8b7c6d-5e4f-3a2b-1c0d-9e8f7a6b5c4d")
 
 
 def session_id_for_room(room_name: str) -> uuid.UUID:
-    """Deterministic coordination-session id for a room's presence shim."""
     return uuid.uuid5(_SESSION_NS, room_name)
 
 
 def participant_id(session_id: uuid.UUID, handle: str) -> uuid.UUID:
-    """Deterministic participant id for a (session, handle) pair."""
     return uuid.uuid5(_PARTICIPANT_NS, f"{session_id}/{handle}")
 
 
@@ -47,11 +45,9 @@ def _now() -> datetime:
 
 @dataclass
 class CoordSessionShim:
-    """Stand-in for the removed ``coordination_sessions`` row.
+    """Presence shim: keeps the presence endpoints' shape without a DB row.
 
-    Coordination sessions become SLIM channels in Steps 3-4; this only exists so
-    the presence endpoints keep their shape. Attribute names mirror the old
-    SQLAlchemy model for ``model_validate``.
+    Attribute names are what ``model_validate`` expects.
     """
 
     parent_room_name: str

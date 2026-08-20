@@ -28,8 +28,7 @@ from mycelium.error_handler import print_error
 
 LOG_WINDOW = 4
 
-# Public images that are always pulled regardless of profile.
-# Pulling these during the animation means compose-up is faster.
+# Public images pulled during animation to speed compose-up.
 _PUBLIC_IMAGES: list[tuple[str, str]] = []
 
 
@@ -100,7 +99,6 @@ def _ask(prompt: str, default: str = "") -> str:
 def _prompt_llm() -> dict[str, str]:
     from beaupy import select
 
-    # Offer to reuse existing LLM config if present
     env_path = Path.home() / ".mycelium" / ".env"
     if env_path.exists():
         from dotenv import dotenv_values
@@ -214,7 +212,7 @@ def _write_env_file(env_path: Path, llm_config: dict[str, str]) -> None:
 
     # On re-install, preserve existing .env and only update/append changed keys.
     # Remove LLM_BASE_URL when the new config doesn't include it: avoids
-    # leaving a stale empty value that breaks the LLM client (see #97).
+    # leaving a stale empty value that breaks the LLM client.
     if env_path.exists():
         _patch_env_vars(env_path, llm_config)
         if "LLM_BASE_URL" not in llm_config:
@@ -617,9 +615,6 @@ def _write_mycelium_config(
         typer.echo("  ✓ Generated [slim].master_secret (hub SLIM PSK)")
 
 
-# ── Animation helper ──────────────────────────────────────────────────────────
-
-
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 
@@ -857,8 +852,7 @@ def install(
 
         done = threading.Event()
 
-        # Honor DOCKER_DEFAULT_PLATFORM from the env defaults so pre-pulled
-        # images match the platform compose will use.
+        # Pre-pulled images must match the compose platform.
         import importlib.resources as _ir
         import os as _os
 
@@ -872,8 +866,7 @@ def install(
                         break
             except Exception:
                 pass
-        # Services that need amd64 (AgensGraph) pin platform in compose.
-        # For pre-pulling public images that are amd64-only, force the platform.
+        # Force amd64 platform for pre-pulled images when on arm64.
         if not _pull_platform:
             try:
                 import platform as _pf
@@ -998,7 +991,6 @@ def install(
         env_dir.mkdir(parents=True, exist_ok=True)
         env_path = env_dir / ".env"
 
-        # Merge LLM keys into .env (create or patch; never skip merge when .env exists).
         if not env_path.exists():
             typer.echo(f"  ✓ Creating {env_path}")
         else:
@@ -1155,8 +1147,7 @@ def upgrade(
         typer.echo(f"  Current CLI version: v{__version__}")
         typer.echo("")
 
-        # --version pins directly; skip the latest-release fetch and the
-        # is-this-newer gate entirely.  This is how you downgrade or pin.
+        # --version pins directly without is-this-newer check (for downgrade/pin).
         if target_version is not None:
             latest_version = target_version.lstrip("v")
             latest_tag = f"v{latest_version}"

@@ -27,8 +27,7 @@ interface Props {
   presence?: Presence;
 }
 
-/** Circular initials avatar shared across the agent roster, event stream, and
- *  the acting-as picker so every handle renders the same way. */
+/** Circular initials avatar; shared across roster, stream, and picker. */
 export function Monogram({ handle, color = "var(--accent)", className, presence }: Props) {
   return (
     <div className="relative flex-shrink-0">
@@ -47,8 +46,7 @@ export function Monogram({ handle, color = "var(--accent)", className, presence 
   );
 }
 
-/** Corner presence dot, ringed by the panel background so it reads as an overlay
- *  on the avatar edge. Solid accent for a live socket, pulsing muted for a lease. */
+/** Presence badge: solid for live socket, pulsing for server lease. */
 function PresenceBadge({ presence }: { presence: Presence }) {
   const slim = presence === "slim";
   return (

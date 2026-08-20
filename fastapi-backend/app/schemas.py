@@ -124,7 +124,6 @@ class EventMetadata(BaseModel):
         # Stateful kinds open by default; the ledger needs a queryable status.
         if self.kind in STATEFUL_EVENT_KINDS and self.status is None:
             self.status = "open"
-        # source_event is stateless by definition.
         if self.kind == EVENT_KIND_SOURCE_EVENT and self.status is not None:
             raise ValueError("source_event is stateless — status must be null")
         return self

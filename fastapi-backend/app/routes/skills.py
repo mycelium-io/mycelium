@@ -58,15 +58,13 @@ def _skill_read(name: str, meta: dict, body: str) -> SkillRead:
 @router.post("", response_model=SkillRead, status_code=201)
 async def create_skill(room_name: str, payload: SkillCreate, request: Request) -> SkillRead:
     """Create or upsert a skill. Writes a ``skills/{name}`` memory (version bumps)."""
-    # Deferred import breaks the routes.memory ↔ routes.skills cycle at load time.
+    # Break routes.memory ↔ routes.skills cycle.
     from app.routes.memory import upsert_memories
 
     _require_room(room_name)
     created_by = actor.bind_actor(request, payload.created_by, field="created_by")
 
-    # Description is skill-specific frontmatter; it rides in the memory's
-    # user-managed meta (preserved across rewrites, ignored by the store's
-    # managed keys). Everything else is an ordinary memory write.
+    # Description rides in user-managed frontmatter (preserved on rewrites).
     item = MemoryCreate(
         key=skills.skill_key(payload.name),
         value={"text": payload.body},

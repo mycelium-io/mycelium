@@ -208,7 +208,6 @@ def _write_agents_md_section(path: Path, section: str) -> None:
             path.write_text(replaced, encoding="utf-8")
         return
 
-    # No marker yet; append.
     sep = "\n\n" if existing and not existing.endswith("\n\n") else ""
     path.write_text(existing + sep + section, encoding="utf-8")
 

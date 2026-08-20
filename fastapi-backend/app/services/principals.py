@@ -150,7 +150,6 @@ def load_user(handle: str) -> dict[str, Any] | None:
 
 
 def list_users() -> list[dict[str, Any]]:
-    """Every user record in the global store."""
     out: list[dict[str, Any]] = []
     for key, _meta, _content in list_memory_files(get_users_dir(), limit=1000):
         # The store is flat: one record per handle, no nested keys.
@@ -245,7 +244,6 @@ def _apply_rollup(user: dict[str, Any], manifests: list[dict[str, Any]]) -> dict
 
 
 def user_with_rollup(handle: str) -> dict[str, Any] | None:
-    """A user record enriched with the agents they own."""
     user = load_user(handle)
     if user is None:
         return None
@@ -253,7 +251,7 @@ def user_with_rollup(handle: str) -> dict[str, Any] | None:
 
 
 def list_users_with_rollup() -> list[dict[str, Any]]:
-    """All users, each enriched with their owned-agent roll-up (one manifest scan)."""
+    """All users with owned-agent roll-up (one manifest scan)."""
     manifests = iter_agent_manifests()
     return [_apply_rollup(user, manifests) for user in list_users()]
 

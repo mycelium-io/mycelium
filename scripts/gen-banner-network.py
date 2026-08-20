@@ -20,8 +20,7 @@ from pathlib import Path
 from PIL import Image
 from playwright.sync_api import sync_playwright
 
-# A real desktop hero viewport, so colony density/spread matches what you'd
-# actually see live rather than a made-up aspect ratio.
+# Hero viewport dimensions; matches live site's appearance.
 RENDER_W, RENDER_H = 1600, 900
 ZOOM = 1.4  # how much of the render to crop before upscaling to output size
 

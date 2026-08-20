@@ -7,12 +7,7 @@ import { handleMock, isMockMode } from "@/mocks";
 
 /**
  * Catch-all proxy for `/api/*` → the backend, resolved at REQUEST time.
- *
- * Replaces the old next.config rewrite whose destination was frozen at build
- * time (to localhost:8000), ignoring the runtime MYCELIUM_INTERNAL_API_URL and
- * breaking the Dockerized UI. The more-specific SSE route handler
- * (rooms/[name]/messages/stream) still takes precedence for the stream
- * endpoint; everything else flows through here.
+ * The more-specific SSE route handler (rooms/[name]/messages/stream) takes precedence.
  */
 export const dynamic = "force-dynamic";
 

@@ -39,7 +39,7 @@ def test_extract_json_tolerates_fences_and_prose() -> None:
         'Here is my reading:\n```json\n{"action": "counter", "offer": {"cap": "30"}}\n```\nDone.'
     )
     assert ex(fenced) == {"action": "counter", "offer": {"cap": "30"}}
-    # a stray brace in preamble must not break the greedy span (the old bug)
+    # a stray brace in preamble must not break the greedy span
     assert ex('I considered {a few options} and chose: {"action":"reject"}') == {"action": "reject"}
     # no JSON at all → empty dict, never a crash
     assert ex("I accept the offer on the table.") == {}

@@ -540,12 +540,7 @@ class MetricsStore:
 
         Cumulative counters are reported as a running total per host, so
         the correct cross-host value is the SUM of each host's latest
-        reported value. The previous implementation kept a single shared
-        bucket and simply overwrote on every push, which meant whichever
-        host pushed last clobbered everyone else's contribution, making
-        the headline ``Tokens by Channel`` and ``Cost Estimates`` panels
-        report the value from a single (essentially random) host instead
-        of the cluster total.
+        reported value.
         """
         if not self._counters_by_host:
             return self._empty_counter_bucket()

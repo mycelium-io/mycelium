@@ -13,17 +13,13 @@ a live negotiation) cascades into timeouts and misreported agreements.
 
 This snaps such near-misses to the nearest canonical value before rejecting,
 mirroring the good part of the sibling `ioc-scale-cf-cognition-engines`
-`offer_validation.py` (their 5-tier rapidfuzz/embedding version). We keep it
-**stdlib-only** (`difflib`) deliberately: option lists here are tiny (a handful
-per issue) and snapping runs once per agent turn, so a heavy fuzzy dep buys
-nothing. Order: exact → case-insensitive → normalised → `difflib` ratio.
+`offer_validation.py`. Uses **stdlib-only** (`difflib`): option lists are tiny
+(a handful per issue) and snapping runs once per agent turn. Order: exact → case-insensitive → normalised → `difflib` ratio.
 
-**What snapping does NOT fix:** a value that has no near-match in the set at all
-(the agents agreed 30% but the discovered grid only has {25, 35}). That is an
-issue-*discovery* problem (the grid must contain the meeting point), not a
-snapping one. `difflib` correctly refuses to snap "30"→"25" (ratio ≈ 50, below
-threshold), so this never fabricates a numeric value; it only rescues genuine
-surface-form near-misses.
+Snapping requires a near-match: if the agents agree 30% but the grid only has
+{25, 35}, that is an issue-*discovery* problem (the grid must contain the
+meeting point). `difflib` refuses to snap "30"→"25" (ratio ≈ 50, below
+threshold), so fabricated values are never returned.
 """
 
 from __future__ import annotations

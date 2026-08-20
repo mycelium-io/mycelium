@@ -29,10 +29,9 @@ import yaml
 
 logger = logging.getLogger(__name__)
 
-# Room metadata sidecar. Rooms are folders; this file holds the handful of
-# room attributes that aren't derivable from the memory files (description,
-# visibility, creation time). Absent for rooms created before the DB was
-# dropped — read_room_meta synthesizes defaults so those still list/get.
+# Room metadata sidecar. Rooms are folders; this file holds room attributes
+# (description, visibility, creation time) not derivable from memory files.
+# read_room_meta synthesizes defaults when the sidecar is missing.
 ROOM_META_FILENAME = ".room.json"
 
 # Sentinel for "no default" so we can distinguish None from missing
@@ -231,7 +230,6 @@ def list_memory_files(
         except Exception:
             logger.warning("Failed to read memory file: %s", f)
 
-    # Sort by updated_at descending (newest first)
     def sort_key(item: tuple[str, dict[str, Any], str]) -> str:
         return item[1].get("updated_at", "")
 
@@ -253,11 +251,9 @@ def _cleanup_empty_dirs(directory: Path, stop_at: Path) -> None:
 def ensure_room_structure(room_dir: Path) -> None:
     """Ensure standard namespace subdirectories exist for a room.
 
-    These are the structured *memory* namespaces. Note ``agents/`` is
-    deliberately absent: agent manifests live under ``agents/`` in the room
-    dir, but it's room *storage*, not an indexed knowledge surface — it's
-    excluded from embedding, and is created lazily by
-    ``mycelium agent create`` rather than pre-seeded here.
+    These are the structured *memory* namespaces. Note agents/ is excluded
+    from embedding (it's room storage, not a knowledge surface) and created
+    lazily by ``mycelium agent create`` rather than pre-seeded here.
     """
     for subdir in (
         "decisions",
@@ -305,11 +301,9 @@ def _is_session_dir(name: str) -> bool:
 
 
 def room_id(room_name: str) -> int:
-    """Stable positive int id for a room, derived from its name.
+    """Stable positive int id for a room, derived from its name via CRC32.
 
-    The API's ``RoomRead.id`` is an int (a Postgres serial, historically). With
-    no database there's no serial to hand out, so we derive a deterministic id
-    from the name via CRC32. The frontend keys rooms by name, not id.
+    The frontend keys rooms by name, not id.
     """
     return zlib.crc32(room_name.encode()) & 0x7FFFFFFF
 

@@ -33,7 +33,6 @@ function trimSlash(s: string): string {
   return s.replace(/\/+$/, "");
 }
 
-/** Resolved OIDC config, or null when browser login is not configured. */
 export function oidcConfig(): OidcConfig | null {
   const issuer = process.env.MYCELIUM_OIDC_ISSUER?.trim();
   const sessionSecret = process.env.AUTH_SESSION_SECRET?.trim();
@@ -52,7 +51,6 @@ export function oidcConfig(): OidcConfig | null {
   };
 }
 
-/** Whether browser OIDC login is configured (issuer + session secret present). */
 export function oidcConfigured(): boolean {
   return oidcConfig() != null;
 }

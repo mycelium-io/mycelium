@@ -333,7 +333,6 @@ def _migrate_env_to_config(config: "MyceliumConfig") -> None:
 
     changed = False
 
-    # LLM
     if not config.llm.model and env.get("LLM_MODEL"):
         config.llm.model = env["LLM_MODEL"]
         changed = True
@@ -345,7 +344,6 @@ def _migrate_env_to_config(config: "MyceliumConfig") -> None:
         config.llm.base_url = base_url
         changed = True
 
-    # Runtime: ports
     env_backend_port = env.get("MYCELIUM_BACKEND_PORT")
     if env_backend_port and config.runtime.backend_port == 8000:  # still default
         try:
@@ -361,12 +359,10 @@ def _migrate_env_to_config(config: "MyceliumConfig") -> None:
         except ValueError:
             pass
 
-    # Runtime: data dir
     if not config.runtime.data_dir and env.get("MYCELIUM_DATA_DIR"):
         config.runtime.data_dir = env["MYCELIUM_DATA_DIR"]
         changed = True
 
-    # SLIM: hub master secret (legacy .env → config.toml)
     if not config.slim.master_secret and env.get("MYCELIUM_SLIM_MASTER_SECRET"):
         config.slim.master_secret = env["MYCELIUM_SLIM_MASTER_SECRET"]
         changed = True

@@ -48,8 +48,7 @@ async def test_index_room_skips_unchanged_on_second_pass() -> None:
     first = await indexer.index_room("room-a")
     assert first["indexed"] == 1
 
-    # Backdate the file's mtime so it's unambiguously older than the just-written
-    # index record — the incremental path must then skip it.
+    # Backdate the file so the incremental indexer skips it.
     path = get_room_dir("room-a") / "decisions" / "db.md"
     past = path.stat().st_mtime - 3600
     os.utime(path, (past, past))

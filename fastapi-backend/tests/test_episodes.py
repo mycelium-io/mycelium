@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Tests for the L9 episode read API that backs the protocol inspector."""
 
 import pytest
 
@@ -9,7 +8,6 @@ from app.services import l9_episode
 
 
 async def _seed_episode(client, room: str, short_id: str = "abc123", *, broken: bool = False):
-    """Create a room and write one closed episode record into its memory."""
     await client.post("/api/rooms", json={"name": room})
     ep = l9_episode.open_episode(
         parent_room=room,
@@ -63,8 +61,6 @@ async def test_list_episodes_returns_summary(client):
 
 @pytest.mark.asyncio
 async def test_list_episodes_surfaces_an_in_progress_episode(client):
-    """An episode that is open (mid-negotiation, no record yet) shows in the list
-    with outcome 'open' — so the UI sees a session while it runs, not only after."""
     from app.services.room_channels import ManagedRoomChannel, manager
 
     room = "live-room"
@@ -110,9 +106,7 @@ async def test_get_episode_returns_causal_chain(client):
 
 @pytest.mark.asyncio
 async def test_episode_envelopes_carry_actor_identity(client):
-    """The typed seam: every envelope validates against the response model and
-    carries its sender as the first participant actor (the id the frontend reads
-    to render a handle). There is no flattened `sender_handle` on the wire."""
+    """Every envelope carries its sender as the first participant, with no flattened `sender_handle` on the wire."""
     await _seed_episode(client, "sprint")
 
     resp = await client.get("/api/rooms/sprint/episodes/abc123")
@@ -126,7 +120,6 @@ async def test_episode_envelopes_carry_actor_identity(client):
         actors = env["header"]["participants"]["actors"]
         assert actors, "every exchange must name its participant actors"
         assert actors[0]["id"], "the first actor is the sender handle the UI renders"
-        # The seam is a pure envelope: no flattened sender_handle leaks onto it.
         assert "sender_handle" not in env
 
     # An agent reply resolves to a real handle (not the system actor).

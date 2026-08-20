@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Error handler for formatting exceptions into user-friendly CLI messages."""
+"""Format exceptions as user-friendly CLI messages."""
 
 import httpx
 import typer

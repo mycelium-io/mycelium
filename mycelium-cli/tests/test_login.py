@@ -72,7 +72,6 @@ def _isolate(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _flat(text: str) -> str:
-    """Console output with Rich's wrapping normalized away."""
     return " ".join(text.split())
 
 

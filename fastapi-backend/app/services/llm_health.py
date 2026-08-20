@@ -331,18 +331,16 @@ def invalidate_cache() -> None:
     _cached_completion_at = 0.0
 
 
-# ── Completion probe ─────────────────────────────────────────────────────────
+# ── Completion probe ───────────────────────────────────────────────────
 #
 # probe_provider() uses provider-specific model-list endpoints (free, zero-token)
-# but only knows about openai/anthropic/ollama/openai-compatible proxies. It
-# reports "unchecked" for everything else — which means a user with a broken
-# Bedrock or Vertex config sees a green tick until their first real inference.
+# but reports "unchecked" outside openai/anthropic/ollama/openai-compatible
+# proxies — so a broken Bedrock or Vertex config reads green until the first
+# real inference.
 #
 # probe_completion() runs a real one-shot ``pi`` turn — the same runtime the
-# aligner's brain and the plan compiler use — so it exercises the actual
-# inference path and surfaces problems that only show up on the first inference:
-# a missing/broken ``pi`` binary, bad model strings, and auth errors at the true
-# endpoint.
+# aligner's brain and the plan compiler use — catching a missing/broken ``pi``
+# binary, bad model strings, and auth errors at the true endpoint.
 
 
 _cached_completion: LLMHealthResult | None = None
@@ -417,7 +415,7 @@ async def probe_completion() -> LLMHealthResult:
 
 
 def _pi_ping(model: str) -> str:
-    """One blocking ``pi`` turn (``"ping"``) against the configured model."""
+    """Run a blocking pi "ping" completion probe."""
     from app.services.pi_brain import PiBrain
 
     session_dir = Path(tempfile.gettempdir()) / "mycelium-pi-sessions"

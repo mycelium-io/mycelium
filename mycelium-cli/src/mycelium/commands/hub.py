@@ -104,8 +104,7 @@ def host(ctx: typer.Context) -> None:
             raise typer.Exit(result.returncode)
 
         if spire:
-            # `cmd[:-len(...)]` would be brittle; rebuild the compose prefix minus the
-            # up args for the phase-2 agent bootstrap.
+            # Rebuild the compose prefix (without the up args) for phase-2 bootstrap.
             base = ["docker", "compose", "-p", _COMPOSE_PROJECT, "-f", str(compose_path)]
             if env_path:
                 base += ["--env-file", str(env_path)]
@@ -135,8 +134,6 @@ def host(ctx: typer.Context) -> None:
         print_error(e, verbose=verbose)
 
 
-# Register `host` on the hub group. `connect` is registered as a top-level
-# command in cli.py (`mycelium connect`), so it isn't attached here.
 app.command(name="host")(host)
 
 

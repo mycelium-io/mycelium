@@ -61,9 +61,7 @@ function episodeState(ep: EpisodeSummary): { label: string; color: string; live:
   return { label: "live", color: "var(--accent)", live: true };
 }
 
-/** The landing view: every room as a card. Named for where it sits, not for the
- *  heading it wears — "command palette" and "command center" are two different
- *  things, and only one of them is a command surface. */
+/** The landing view: every room as a card. */
 export function HomeDashboard() {
   const [showCreate, setShowCreate] = useState(false);
   const { rooms, loading, refresh } = useRooms();

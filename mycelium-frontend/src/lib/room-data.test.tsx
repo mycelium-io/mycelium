@@ -36,8 +36,7 @@ const agent = (handle: string, extra: Record<string, unknown> = {}) => ({
   ...extra,
 });
 
-/** One consumer of the roster, rendered as a flat list so a second copy of the
- *  same component is indistinguishable from the first in the DOM. */
+/** A roster consumer for testing cache dedup (two instances should share one request). */
 function Roster({ room, testId }: { room: string; testId: string }) {
   const { agents, people } = useRoomRoster(room);
   return (

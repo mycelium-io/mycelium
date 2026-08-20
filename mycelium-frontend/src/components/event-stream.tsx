@@ -73,7 +73,7 @@ const CHANNEL_VIEW_TYPES = new Set([...CHAT_TYPES, ...L9_RAISE_UP_TYPES]);
 // when no system notice interrupts the run.
 const SYSTEM_TYPES = new Set(L9_RAISE_UP_TYPES);
 
-/** Loading placeholder shaped like a short run of chat rows (avatar + lines). */
+/** Skeleton loader for chat rows. */
 function ChannelSkeleton() {
   const widths = ["w-3/5", "w-2/5", "w-1/2"];
   return (
@@ -210,11 +210,8 @@ function parseEvent(msg: Record<string, unknown>): Event {
       mtype = recipient ? "direct" : "broadcast";
       break;
     case "l9_commit": {
-      // The aligner's verdict rides as an L9 "commit" envelope, not the legacy
-      // `coordination_consensus` message_type nothing on the live wire actually
-      // emits anymore. Unwrap it into the shape the (still-live)
-      // "coordination_consensus" render path and NegotiationView expect, so a
-      // real consensus renders instead of hitting the unhandled-type fallback.
+      // Unwrap the L9 commit envelope into the coordination_consensus shape
+      // so NegotiationView can render it.
       const l9env = (raw.l9 as Record<string, unknown> | undefined) ?? {};
       const header = (l9env.header as Record<string, unknown> | undefined) ?? {};
       const payload = (l9env.payload as Record<string, unknown> | undefined) ?? {};
@@ -341,8 +338,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [connected, setConnected] = useState(false);
 
-  // Surface connection state to the shell's status bar (editor-style), so the
-  // chat header stays clean and the live/reconnecting signal has one home.
+  // Surface connection state to status bar; one home for the signal.
   useEffect(() => {
     onConnectionChange?.(connected);
   }, [connected, onConnectionChange]);
@@ -499,7 +495,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
         onDecline={(invite) => respond(invite, "decline")}
       />
       <div className="flex items-center gap-3 border-b border-border shrink-0 h-[48px] bg-paper px-4">
-        {/* Connection state lives in the shell status bar now, not here. */}
+        {/* Connection state lives in the shell status bar. */}
         <div className="ml-auto flex items-center gap-0.5 rounded-lg border border-border bg-surface p-0.5">
           {([
             { id: "channel" as const,   label: "Channel",   count: channelCount as number | null, dot: false },
@@ -702,8 +698,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
                     marked ? "bg-accent/15" : ""
                   }`}
                 >
-                  {/* Timestamp is low-signal: keep it out of the way in the right
-                      gutter, revealed on hover, faint. */}
+                  {/* Timestamp low-signal: right gutter, hover-revealed. */}
                   <span className="pointer-events-none absolute right-5 top-1.5 text-micro tabular text-faint opacity-0 transition-opacity group-hover:opacity-100">
                     {ev.time.slice(0, 5)}
                   </span>

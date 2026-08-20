@@ -73,7 +73,6 @@ class OpenShellError(RuntimeError):
 
 
 def openshell_dir() -> Path:
-    """Root for OpenShell host artifacts (``~/.mycelium/openshell``)."""
     return Path.home() / ".mycelium" / "openshell"
 
 
@@ -211,7 +210,6 @@ def cli_installed() -> bool:
 
 
 def ensure_cli() -> None:
-    """Install the ``openshell`` CLI via uv if it isn't already on PATH."""
     if cli_installed():
         return
     if shutil.which("uv") is None:
@@ -242,7 +240,6 @@ def generate_jwt_keypair(dest: Path) -> None:
 
 
 def extract_supervisor(dest: Path) -> None:
-    """Copy the supervisor binary out of the supervisor image to a host path."""
     if dest.exists():
         return
     dest.parent.mkdir(parents=True, exist_ok=True)

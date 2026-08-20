@@ -702,7 +702,6 @@ export function MetricsScreen() {
     return () => { cancelled = true; clearInterval(id); };
   }, [paused, intervalSec]);
 
-  // Backend-down branch
   if (backendUnreachable && !backend) {
     return (
       <div className="flex flex-1 flex-col">

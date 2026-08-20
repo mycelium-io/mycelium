@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""``GET /rooms`` sorts by last activity, not creation order."""
 
 from __future__ import annotations
 
@@ -19,7 +18,6 @@ async def _create_room(client, name: str) -> None:
 
 
 def _touch_transcript(room: str) -> None:
-    """Append a transcript record to ``room``, bumping its file mtime to now."""
     ensure_room_structure(get_room_dir(room))
     append_transcript(
         room,

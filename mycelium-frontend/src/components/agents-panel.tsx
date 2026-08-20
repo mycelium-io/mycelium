@@ -53,7 +53,6 @@ function presenceNote(member?: PresenceMember): string | null {
   return age ? `awaiting · seen ${age}` : "awaiting";
 }
 
-/** Join the non-empty parts of a row's subtext with a middot separator. */
 function subtext(...parts: (string | null | undefined | false)[]): string {
   return parts.filter(Boolean).join(" · ");
 }

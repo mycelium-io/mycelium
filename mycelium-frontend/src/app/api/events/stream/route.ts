@@ -13,8 +13,7 @@ const SSE_HEADERS = {
 };
 
 export async function GET() {
-  // Fake-backend mode has no live room churn: hold an idle keep-alive stream
-  // open so the client's EventSource connects cleanly and never errors.
+  // Mock mode: hold idle keep-alive for the EventSource to connect.
   if (isMockMode()) {
     const stream = new ReadableStream({
       start(controller) {

@@ -265,8 +265,8 @@ def memory_set(
             tags=tag_list,
         )
 
-    # Extra frontmatter rides as an additional property: the generated client
-    # passes unknown fields straight through, so this needs no client regen.
+    # Extra frontmatter rides as an additional property; the generated client
+    # passes unknown fields through, so no client regen is needed.
     frontmatter = _parse_meta_pairs(meta)
     if expandable:
         frontmatter["expandable"] = True
@@ -275,8 +275,7 @@ def memory_set(
 
     batch = MemoryBatchCreate(items=[item])
 
-    # The write goes to the hub, which owns the store (files + index). A spoke
-    # keeps no local copy; reads resolve against the hub (see memory_get/ls).
+    # Write to hub (single store; spoke has no local copy)
     with _hub_session() as client:
         result = create_api.sync(room_name=room_name, client=client, body=batch)
         if result and isinstance(result, list) and len(result) > 0:

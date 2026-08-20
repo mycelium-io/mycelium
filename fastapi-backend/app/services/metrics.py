@@ -153,11 +153,11 @@ def record_llm_call(
     Per-operation token totals are tracked alongside the grand totals so that
     callers (e.g. ``mycelium metrics show mycelium``) can show per-operation
     figures without having to assume that other operations (health probes,
-    future heartbeats) contribute negligibly. See issue #296.
+    future heartbeats) contribute negligibly.
 
     Per-room counters are recorded when ``room`` is provided so the
     ``mycelium metrics show cost`` view can break down spend by the parent
-    mycelium room (see issue #297). Sessions belonging to the same parent
+    mycelium room. Sessions belonging to the same parent
     room (``mycelium_room:session:<uuid>``) are bucketed by the CLI
     renderer via the shared ``_parent_room`` helper, matching the rule
     used for ``cfn_llm.by_room.*``.

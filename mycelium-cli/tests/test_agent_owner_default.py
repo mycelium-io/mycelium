@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""`agent create` defaults --owner to the caller's --as handle (#650)."""
+"""`agent create` defaults --owner to the caller's --as handle."""
 
 from __future__ import annotations
 

@@ -34,7 +34,6 @@ _PLAN_RE = re.compile(r"^- plan: `(.+)`$", re.MULTILINE)
 
 
 def parse_envelopes(content: str) -> list[dict[str, Any]]:
-    """Pull the ``jsonl`` envelope chain out of an episode record's markdown."""
     match = _JSONL_RE.search(content)
     if not match:
         return []

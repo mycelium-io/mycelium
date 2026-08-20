@@ -229,7 +229,7 @@ def wire_sender(context: slim_bindings.MessageContext) -> str | None:
             if callable(fn):
                 try:
                     return fn()[-1]
-                except Exception:  # fall through to str() of the source Name
+                except Exception:
                     pass
         return str(val)
     return None

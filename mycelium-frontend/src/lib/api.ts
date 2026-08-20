@@ -10,9 +10,7 @@ import type { SearchResponse } from "@/lib/search";
 import { encodeMemoryKeyPath } from "@/lib/memory-routes";
 
 /**
- * Attach to a fetch `.catch` to surface network failures in the browser
- * console. Replaces the previous `.catch(() => {})` pattern that swallowed
- * every error and made cloud-install debugging impossible.
+ * Attach to a fetch `.catch` to surface network failures in the browser console.
  */
 export const logFetchError =
   (label: string) =>

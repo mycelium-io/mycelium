@@ -17,8 +17,7 @@ interface Props {
   children: ReactNode;
 }
 
-/** The app frame: a persistent rooms sidebar (global nav), the workspace, and a
- *  bottom status bar — an editor-style shell (Explorer / editor / status bar). */
+/** The app frame: rooms sidebar, workspace, and status bar (editor-style). */
 export function AppShell({ activeRoom = null, statusLeft, statusRight, children }: Props) {
   return (
     <GlobalSearch>
