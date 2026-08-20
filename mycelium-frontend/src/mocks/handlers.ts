@@ -237,9 +237,11 @@ export async function handleMock(req: Request): Promise<Response | null> {
     case "links": {
       if (method !== "GET") return null;
       const graph = fx.links ?? EMPTY_GRAPH;
-      // GET /links/graph — whole-room link graph.
+      // GET /links/graph — the whole room, for the full-page graph view (#599).
       if (sub[1] === "graph") return json(graph);
-      // GET /links/integrity — derived from the graph edge list.
+      // GET /links/integrity — derived from the same edge list rather than
+      // hand-written, so a fixture can't claim a room is clean while its graph
+      // shows a break.
       if (sub[1] === "integrity") {
         return json({
           broken: graph.edges
@@ -272,7 +274,8 @@ export async function handleMock(req: Request): Promise<Response | null> {
         });
         return json({ key, rendered, expansions, found: true });
       }
-      // GET /links?key=… — outbound links and backlinks for one memory.
+      // GET /links?key=... — one memory's outbound links + backlinks (#611),
+      // read off the same edge list the graph draws from.
       const key = searchParams.get("key");
       if (!key) return notFound("missing key (mock)");
       const outbound: MemoryLink[] = graph.edges
@@ -318,7 +321,15 @@ export async function handleMock(req: Request): Promise<Response | null> {
 
 // ── /api/search ───────────────────────────────────────────────────────────────
 
-/** Fixture-backed cross-entity search: same query grammar and response shape; substring scoring only. */
+/**
+ * A fixture-backed stand-in for the backend's cross-entity search.
+ *
+ * It follows the same grammar (`#room`, `@handle`, `<type>:`, `kind:`) and
+ * returns the same shape, so the search surface can be designed against every
+ * result type with no hub. The scoring is deliberately cruder than the real
+ * thing — substring hits, no embeddings — since what it exists to exercise is
+ * the surface, not the ranking.
+ */
 const TYPE_TOKENS: Record<string, SearchResultType> = {
   memory: "memory", memories: "memory", mem: "memory",
   episode: "episode", episodes: "episode", ep: "episode",

@@ -23,7 +23,11 @@ interface Props {
   roomName: string;
 }
 
-/** Full-page link graph; node click opens memory in `DetailDrawer` without leaving the view. */
+/** Fetches a room's link graph and renders it full-page (#599). Clicking a node
+ *  opens that memory in the same right-hand `DetailDrawer` the Memory rail uses,
+ *  over the graph rather than navigating away — the graph is the thing you're
+ *  exploring, so losing your pan/zoom and hand-arranged layout to read one
+ *  memory would defeat the view. */
 export function MemoryGraphView({ roomName }: Props) {
   const [graph, setGraph] = useState<MemoryGraphData | null>(null);
   const [selected, setSelected] = useState<Memory | null>(null);
@@ -40,9 +44,18 @@ export function MemoryGraphView({ roomName }: Props) {
     };
   }, [roomName]);
 
-  // Graph nodes are keys only; fetch by key on open. Expanded body is fetched
-  // in parallel so transclusions render inline. Each open takes a ticket; stale
-  // responses from a superseded open are dropped.
+  // Always fetched by key rather than looked up in a loaded list: the graph
+  // holds only keys, and unlike the rail (whose tree may hold just the first
+  // page) every node here is therefore openable.
+  //
+  // The expanded body is fetched alongside it for the same reason the rail and
+  // the full page do: without it the drawer renders `![[key]]` as an unexpanded
+  // chip, so the same memory would read differently depending on which surface
+  // you opened it from.
+  // Two requests per open, and clicks can overlap, so each open takes a ticket
+  // and late responses from a superseded one are dropped. Without it a slow
+  // first request can land after a fast second and the drawer titles itself one
+  // memory while rendering another's body.
   const openTicket = useRef(0);
   const openKey = useCallback(
     (key: string) => {
@@ -68,8 +81,12 @@ export function MemoryGraphView({ roomName }: Props) {
     );
   }
 
-  // Empty graph is ambiguous: hub unreachable or link index not built yet.
-  // Message targets the link graph, not memory count.
+  // An empty payload is genuinely ambiguous: `fetchMemoryGraph` degrades to
+  // `{nodes: [], edges: []}` for an unreachable hub, and the backend returns
+  // the same for a room whose link index hasn't been built yet (memories
+  // written straight to disk stay unindexed until `mycelium memory reindex`).
+  // Claiming "no memories" would contradict the Memory rail beside it, so the
+  // empty state speaks only to what this payload actually proves.
   if (graph.nodes.length === 0) {
     return (
       <EmptyState

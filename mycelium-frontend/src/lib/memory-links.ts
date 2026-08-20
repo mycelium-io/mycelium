@@ -32,7 +32,14 @@ export function linkErrorLabel(error?: string | null): string {
   return LINK_ERRORS[error] ?? error;
 }
 
-/** `cross_room` links are valid room-local syntax and are not counted as broken. */
+/**
+ * Whether an unresolved link is a *defect* rather than a limitation.
+ *
+ * `myc://rooms/other/key` is documented, legitimate syntax that simply doesn't
+ * resolve room-locally — counting it alongside a typo would report a room as
+ * broken for doing something correct. The other three failures each mean the
+ * author wrote something that doesn't exist.
+ */
 export function isBrokenLinkError(error?: string | null): boolean {
   return error !== "cross_room";
 }

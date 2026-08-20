@@ -9,7 +9,12 @@ export interface GraphLayoutNode extends MemoryGraphNode {
   y: number;
 }
 
-/** Layout edge: same fields as `MemoryGraphEdge`; endpoints are looked up by key after layout. */
+/** An edge that survived layout — endpoints deliberately *not* included.
+ *
+ *  Baking coordinates in here would freeze them at the moment the simulation
+ *  stopped, and nodes move afterwards (a reader can drag them). Consumers look
+ *  their endpoints up by key instead, so an edge can't drift away from the nodes
+ *  it connects. */
 export type GraphLayoutEdge = MemoryGraphEdge;
 
 export interface GraphLayout {
@@ -44,9 +49,18 @@ interface SimLink {
 }
 
 /**
- * Run a synchronous force layout. Keeps edges where both ends are real nodes
- * (including `no_anchor`/`not_expandable` broken links, drawn in the broken
- * style); drops self-loops and edges to unknown targets.
+ * Lays out a room's memory graph with a force simulation, run to convergence
+ * synchronously (a fixed tick count, no live animation loop). Rooms here are
+ * tens to low hundreds of memories, so a one-shot layout on mount is simpler
+ * and cheaper than keeping a simulation alive across renders.
+ *
+ * An edge earns a physics link and a drawn line when both of its ends are real
+ * nodes in this graph. That deliberately includes an edge that failed to
+ * resolve for a reason *other* than a missing target — a `no_anchor` or
+ * `not_expandable` link still joins two memories that both exist, and the
+ * canvas draws it in the broken style rather than pretending it isn't there.
+ * What gets dropped is an edge with nothing at the other end to pull toward:
+ * a self-link, or one naming a target this room has no memory for.
  */
 export function computeForceLayout(graph: MemoryGraph, options: LayoutOptions = {}): GraphLayout {
   const width = options.width ?? DEFAULT_WIDTH;

@@ -2,8 +2,20 @@
 // Copyright 2026 Mycelium Contributors
 
 /**
- * Mock fixtures for `MYCELIUM_UI_MOCK=1`, mirroring `src/lib/api.ts` shapes.
- * Three rooms: `atlas-migration` (rich/converged), `pricing-model` (in-progress), `scratch` (empty).
+ * Canonical mock data for the UI's fake-backend mode.
+ *
+ * These fixtures mirror the shapes the real backend serves (see
+ * `src/lib/api.ts`), so with `MYCELIUM_UI_MOCK=1` the *real* UI renders every
+ * surface — populated, in-progress, and empty — with no SLIM node, no LLM, and
+ * no backend server. This is the frontend analogue of the backend/CLI fake
+ * stacks: one place to reach any state, for design + visual work.
+ *
+ * Three rooms cover the states worth designing against:
+ *   - `atlas-migration` — a rich, converged room (memories, agents, a compiled
+ *     plan, a finished L9 episode);
+ *   - `pricing-model`   — an in-progress negotiation (no plan yet, a pending
+ *     consent invite, a live-looking episode);
+ *   - `scratch`         — a brand-new empty room (empty states).
  */
 
 import type {
@@ -62,7 +74,8 @@ export interface RoomFixture {
   episodes: EpisodeSummary[];
   episodeDetails: Record<string, EpisodeDetail>;
   invites: PendingInvite[];
-  /** Room link graph; `undefined` means no link index (degrades to empty). */
+  /** The room's link graph (#599/#611) — undefined means "no link index yet",
+   *  the same degrade-to-empty case the real backend serves for an unlinked room. */
   links?: MemoryGraph;
 }
 
@@ -281,8 +294,13 @@ const atlas: RoomFixture = {
   invites: [],
 };
 
-// Atlas edges: briefing links to cutover/status/goal; cutover→`plan/tasks` is unresolved;
-// unlinked `agents/*` manifests and the briefing are roots (inbound=0, outbound>0).
+// The synthesized briefing links out to the three memories it summarizes; the
+// decision itself relates to the goal and wikilinks a plan file that isn't a
+// memory (so it can't resolve) — a deliberate broken-link example. The four
+// `agents/*` manifests and the briefing itself are never linked *to*, so they
+// render as roots (inbound=0, outbound>0) in the graph — entry points with no
+// referrers yet (#599's graph and #611's rail integrity banner agree on this by
+// construction, since both read the same edge list).
 const ATLAS_LINK_EDGES: MemoryGraphEdge[] = [
   { source: "context/synthesis", target: "decisions/cutover", kind: "wikilink", resolved: true },
   { source: "context/synthesis", target: "status/sprint", kind: "wikilink", resolved: true },

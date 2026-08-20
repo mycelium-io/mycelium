@@ -2,27 +2,35 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-Memory linking — ``myc://`` / ``[[…]]`` / ``![[…]]`` parsing, JSONL link index,
-resolution, and transclusion (depth 1, ``expandable: true`` only).
+Memory linking — ``myc://`` links, backlinks, and transclusion.
 
-Four link forms, all resolved through one parser::
+Turns a room's flat set of markdown files into an interlinked graph. Four link
+forms all resolve through one parser::
 
     myc://decisions/db              canonical URI (also inside [label](myc://…))
     [[decisions/db]]                shorthand, equivalent to the URI form
     [[decisions/db#tradeoffs|why]]  section anchor + display label
     ![[glossary/vector-store]]      transclusion — embeds the target inline
 
-plus typed frontmatter relations (``supersedes:``, ``depends-on:``,
-``part-of:``, ``relates-to:``).
+plus typed relations in frontmatter (``supersedes:``, ``depends-on:``,
+``part-of:``, ``relates-to:``), which become ontology edges rather than prose
+navigation.
 
-Transclusion requires ``expandable: true`` on the target; expansion is depth 1.
+**Transclusion is opt-in on the target.** A memory is embeddable only when its
+frontmatter carries ``expandable: true``; pointing ``![[…]]`` at anything else
+is an integrity error, not a silent inclusion. Expansion is depth 1 — text
+pulled from an expandable page is inserted verbatim, so a ``![[…]]`` inside it
+stays literal. That makes cycles structurally impossible and bounds how large
+an expanded body can get.
 
-The ``.link-index.jsonl`` sits beside the embedding index: derived from the
-markdown, rebuildable, upserted on every write. Persisted so inbound lookups
-need not reparse the room.
+The index (``.link-index.jsonl``, one line per source memory) sits beside the
+embedding index and follows the same contract: derived from the markdown,
+rebuildable, upserted on every write. Backlinks are the reason it's persisted —
+answering "who references this?" by deriving on read means parsing every file
+in the room on every memory open.
 
 Links are room-local. ``myc://rooms/{other}/{key}`` parses, but resolves to a
-``cross_room`` error.
+``cross_room`` error rather than reaching across rooms.
 """
 
 from __future__ import annotations
@@ -201,8 +209,10 @@ def _strip_code(body: str) -> str:
 def _code_span_ranges(body: str) -> list[tuple[int, int]]:
     """Start/end offsets of fenced code blocks and inline code spans.
 
-    Code-span ranges so ``expand`` skips markers inside fenced or inline code,
-    like ``parse_body_links`` does via ``_strip_code``.
+    A ``![[…]]`` example quoted in backticks (documentation about the syntax,
+    not a live link) must not be treated as a real marker — same rule
+    ``parse_body_links`` applies via ``_strip_code``, restated here as ranges
+    since ``expand`` needs to preserve the surrounding text verbatim.
     """
     ranges = [m.span() for m in _FENCE_RE.finditer(body)]
     ranges += [m.span() for m in _INLINE_CODE_RE.finditer(body)]
@@ -426,7 +436,11 @@ def outbound(room_name: str, key: str) -> list[ResolvedLink]:
 
 
 def backlinks(room_name: str, key: str) -> list[ResolvedLink]:
-    """Every edge pointing at ``key``, tagged with the source memory."""
+    """Every edge pointing at ``key``, tagged with the memory it came from.
+
+    This is what makes a DRY leaf-node update safe: the blast radius of a change
+    is exactly this list.
+    """
     entries = load_index(room_name)
     targets = {e.key: e for e in entries}
     inbound: list[ResolvedLink] = []

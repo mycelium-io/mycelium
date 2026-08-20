@@ -95,6 +95,9 @@ describe("<MemoryGraphView />", () => {
   });
 
   it("resolves a node by key rather than a preloaded list", async () => {
+    // The graph payload carries only keys, so every node has to be openable via
+    // a fetch — this is why the rail's "find it in `memories`" lookup, which
+    // silently no-ops for anything past the first page, isn't reused here.
     mockGraph.mockResolvedValue(POPULATED);
     mockMemory.mockResolvedValue(memory("context/goal"));
     render(<MemoryGraphView roomName="atlas migration" />);
@@ -151,6 +154,11 @@ describe("<MemoryGraphView />", () => {
   });
 
   it("keeps a saved arrangement across a reload of the whole view", async () => {
+    // End-to-end for the persistence path, in the shape the real page takes: a
+    // StrictMode mount where the graph arrives asynchronously, so the node only
+    // exists after a fetch resolves. The component-level tests mount
+    // <MemoryGraph> with its payload already in hand and would miss anything
+    // that goes wrong in that ordering.
     const data = new Map<string, string>();
     vi.stubGlobal("localStorage", {
       getItem: (k: string) => data.get(k) ?? null,
@@ -190,6 +198,9 @@ describe("<MemoryGraphView />", () => {
   });
 
   it("does not claim the room is empty when the graph payload is", async () => {
+    // `fetchMemoryGraph` degrades to an empty graph for an unreachable hub or a
+    // room whose link index was never built, so this state cannot honestly say
+    // "no memories" — the Memory rail may well be listing plenty.
     mockGraph.mockResolvedValue({ nodes: [], edges: [] });
     render(<MemoryGraphView roomName="atlas" />);
 

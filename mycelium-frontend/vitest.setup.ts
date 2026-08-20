@@ -23,8 +23,16 @@ if (!("ResizeObserver" in globalThis)) {
     disconnect() {}
   };
 }
-// Install in-memory `localStorage` when the global lacks usable `Storage` methods
-// (Node 22+ empty stub). In-memory so tests don't inherit state between runs.
+// Node 22+ ships its own Web Storage, and Node hands over an empty object with
+// none of the `Storage` methods on it when that's enabled without a valid
+// `--localstorage-file` (it says so: "`--localstorage-file` was provided without
+// a valid path"). That bare global then shadows the implementation jsdom would
+// have installed, so anything calling `localStorage.getItem` fails on the
+// environment rather than on its own behaviour.
+//
+// Installed only when the global isn't usable, so a runtime whose Web Storage
+// works keeps it. In-memory rather than file-backed on purpose: tests must not
+// inherit state from the last run.
 if (typeof globalThis.localStorage?.getItem !== "function") {
   const entries = new Map<string, string>();
   const storage: Storage = {

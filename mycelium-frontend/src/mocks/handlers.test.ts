@@ -10,7 +10,7 @@ async function mockGet(path: string): Promise<{ status: number; body: unknown }>
   return { status: res.status, body: await res.json() };
 }
 
-describe("mock links handlers", () => {
+describe("mock links handlers (#599)", () => {
   it("serves the atlas-migration room's whole link graph", async () => {
     const { status, body } = await mockGet("/api/rooms/atlas-migration/links/graph");
     expect(status).toBe(200);
@@ -47,6 +47,8 @@ describe("mock links handlers", () => {
   });
 
   it("derives the integrity report from the same edges the graph draws", async () => {
+    // Hand-written integrity would let a fixture claim a clean room while its
+    // graph plainly shows a break.
     const { status, body } = await mockGet("/api/rooms/atlas-migration/links/integrity");
     expect(status).toBe(200);
     const report = body as {

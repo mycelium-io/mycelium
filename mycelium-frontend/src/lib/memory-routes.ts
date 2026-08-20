@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Mycelium Contributors
 
-/** URL helpers for full-page memory routes and the room link graph.
+/** URL helpers for the memory surfaces that live outside the room-inspector
+ * rail: the full-page memory view (#614) and the link graph (#599).
  *
- * Keys may contain slashes (`decisions/db`). Each path segment is encoded separately
- * so the catch-all route `[...key]` round-trips cleanly. */
+ * Keys may contain slashes (`decisions/db`). We encode each path segment separately
+ * so the catch-all route `[...key]` round-trips cleanly — same contract as the
+ * backend memory API path. */
 
 /** Encode a memory key for use in a URL path (one segment per slash). */
 export function encodeMemoryKeyPath(key: string): string {

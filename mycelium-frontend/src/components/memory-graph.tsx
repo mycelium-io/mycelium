@@ -68,10 +68,25 @@ function namespaceOf(key: string): string {
   return slash === -1 ? ROOT_NAMESPACE : key.slice(0, slash);
 }
 
-/** Namespace → color, by position in the room's sorted namespace list.
+/** Namespace → color, by position in the room's own sorted namespace list.
  *
- *  Colors are assigned by sorted index so each namespace in a typical room gets
- *  a distinct hue. The palette wraps at 8; the legend labels every namespace. */
+ *  Not by hashing the name, which was the previous scheme and is wrong for the
+ *  job: `context` and `decisions` hash to the same slot, so the two most common
+ *  namespaces in any room rendered as the *same* color, indistinguishable and
+ *  unfixable by repainting the palette. Assigning by position instead makes a
+ *  collision impossible below 9 namespaces, and since the palette is ordered
+ *  farthest-apart-first, the handful a real room has land far apart in hue.
+ *
+ *  The cost is that colors aren't stable across rooms, and adding a namespace
+ *  can restripe the ones sorting after it. That's the right trade: the legend
+ *  states the mapping on screen, so a color only has to be unambiguous *here*,
+ *  and being memorable across rooms was never something the view promised.
+ *
+ *  Past 8 namespaces the palette wraps and two of them do share a color. The
+ *  legend still names every namespace, so the ambiguity is recoverable by
+ *  reading rather than silent; a 9th distinct hue would have to come out of the
+ *  arc reserved for `--red`/`--yellow` (broken links, orphan nodes), and colliding
+ *  with a state color reads as a worse lie than colliding with a sibling. */
 function colorMapFor(namespaces: readonly string[]): Map<string, string> {
   return new Map(namespaces.map((ns, i) => [ns, NAMESPACE_COLORS[i % NAMESPACE_COLORS.length]]));
 }
@@ -105,8 +120,12 @@ function isPrimaryPress(e: { button: number; isPrimary: boolean }): boolean {
   return e.button === 0 && e.isPrimary;
 }
 
-/** SVG force layout of room memory links. Layout runs once per payload, then
- *  pan/zoom, drag-to-arrange, hover highlighting, and click-to-open are live. */
+/** Force-directed view of a room's memory links (#599). Runs the layout once
+ *  per graph payload (no live physics), then offers plain SVG pan/zoom, hover
+ *  highlighting, drag-to-arrange, and click-to-open — no charting/graph
+ *  dependency, so it reuses the app's own design tokens instead of a library's
+ *  theme. Because the simulation is already stopped, a drag is a plain
+ *  coordinate override rather than a pinned node in a running simulation. */
 export function MemoryGraph({ graph, onNavigate, roomName, className }: Props) {
   const layout = useMemo(() => computeForceLayout(graph, { width: WIDTH, height: HEIGHT }), [graph]);
 
@@ -164,22 +183,11 @@ export function MemoryGraph({ graph, onNavigate, roomName, className }: Props) {
   const visibleEdges = useMemo(() => layout.edges.filter(edgeDrawable), [layout.edges, edgeDrawable]);
 
   // Every count below describes what's on screen, so the strip and the canvas
-  // never disagree.
-  //
-  // "links"      — unique (source, target) resolved pairs: the number of
-  //                distinct lines you would count by eye on the canvas.
-  // "edge links" — raw resolved-edge count: higher when multiple link forms
-  //                (wikilink + frontmatter relation) connect the same pair.
-  //
-  // "broken" counts drawn broken arcs only. Dead references (not_found targets
-  // that aren't nodes) aren't drawn and don't appear here — they surface through
-  // the integrity system (IntegrityBanner, `mycelium memory --check`).
-  const resolvedEdges = useMemo(() => visibleEdges.filter(e => e.resolved), [visibleEdges]);
-  const edgeLinkCount = resolvedEdges.length;
-  const linkCount = useMemo(() => {
-    const pairs = new Set(resolvedEdges.map(e => `${e.source}\0${e.target}`));
-    return pairs.size;
-  }, [resolvedEdges]);
+  // never disagree. "Links" counts drawn resolved arcs; "broken" counts drawn
+  // broken arcs. Dead references (not_found targets that aren't nodes) aren't
+  // drawn and so don't appear here — they're surfaced by the integrity system
+  // (IntegrityBanner in the detail drawer; `mycelium memory --check`).
+  const linkCount = useMemo(() => visibleEdges.filter(e => e.resolved).length, [visibleEdges]);
   // A broken arc is only drawn when its target is also a real node, so we
   // derive brokenCount from visibleEdges (the drawn set) rather than from
   // graph.edges (all unresolved references from visible sources). Cross-room
@@ -266,14 +274,24 @@ export function MemoryGraph({ graph, onNavigate, roomName, className }: Props) {
   const latestPlaced = useRef(placed);
   latestPlaced.current = placed;
 
-  // Only a drag or a reset may write (dirty flag). Hydration reads from storage,
-  // not back to it.
+  // Only a drag or a reset may write. Persisting on any change to `placed`
+  // instead — mirroring state outward — silently wiped the saved arrangement
+  // under StrictMode, which Next enables in dev: its mount-time cleanup pass
+  // fired the unmount flush below while `placed` was still the pre-hydration
+  // empty map, storing that over the real one. Nothing about hydration is worth
+  // persisting anyway, since it came from the store to begin with.
   const dirty = useRef(false);
 
-  // useLayoutEffect loads saved placements after graph fetch, pruning keys
-  // missing from the payload. Avoids the flinch a plain effect would cause by
-  // snapping positions before paint. Safe client-side only (parent holds a
-  // loading state until the graph fetch resolves).
+  // Hydrated in an effect rather than during render, since reading storage
+  // inline would desync SSR markup. A *layout* effect specifically: a plain one
+  // paints the force positions first and snaps to the saved arrangement a frame
+  // later, which reads as a flinch on every load. Safe here because this
+  // component only ever mounts client-side — its parent renders a loading state
+  // until the graph fetch resolves — so the server never reaches this.
+  //
+  // Re-runs when the payload changes, pruned to the nodes that actually exist
+  // now, so a renamed or deleted memory drops its position instead of stranding
+  // it.
   useLayoutEffect(() => {
     dirty.current = false;
     if (!roomName) {
@@ -292,9 +310,15 @@ export function MemoryGraph({ graph, onNavigate, roomName, className }: Props) {
     return () => clearTimeout(timer);
   }, [placed, roomName]);
 
-  // Unmount flush so a drag made just before navigation isn't lost.
-  // Must run after the layout-effect loader: layout effects clean up first, so
-  // `dirty` is already cleared before this cleanup reads `latestPlaced`.
+  // The debounce would otherwise swallow an arrangement made immediately before
+  // navigating away, since unmounting clears the pending timer.
+  //
+  // Declared *after* the layout effect that loads a room's placements, and that
+  // order is load-bearing: layout effects clean up before passive ones, so on a
+  // room change the loader has already cleared `dirty` by the time this cleanup
+  // reads `latestPlaced` — which by then holds the incoming room's positions.
+  // Reordering these, or demoting the loader to a plain effect, would write one
+  // room's arrangement into another's key.
   useEffect(() => {
     if (!roomName) return undefined;
     return () => {
@@ -492,12 +516,9 @@ export function MemoryGraph({ graph, onNavigate, roomName, className }: Props) {
           {visibleKeys.size === 1 ? "y" : "ies"}
           {filtered && <span className="text-faint"> of {graph.nodes.length}</span>}
         </span>
-        <span title={edgeLinkCount !== linkCount ? `${edgeLinkCount} edge links (some node pairs have multiple link types)` : undefined}>
+        <span>
           <span className="font-semibold tabular text-text">{linkCount}</span> link
           {linkCount === 1 ? "" : "s"}
-          {edgeLinkCount !== linkCount && (
-            <span className="ml-1 text-faint">({edgeLinkCount} edge links)</span>
-          )}
         </span>
         {orphanCount > 0 && (
           <span className="flex items-center gap-1 text-yellow" title="Fully isolated — no inbound or outbound links">

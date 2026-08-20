@@ -265,7 +265,8 @@ def memory_set(
             tags=tag_list,
         )
 
-    # Extra frontmatter is passed through as an additional property on ``MemoryCreate``.
+    # Extra frontmatter rides as an additional property; the generated client
+    # passes unknown fields through, so no client regen is needed.
     frontmatter = _parse_meta_pairs(meta)
     if expandable:
         frontmatter["expandable"] = True
@@ -574,7 +575,10 @@ def memory_links(
     ),
     as_json: bool = typer.Option(False, "--json", help="Emit raw JSON"),
 ) -> None:
-    """Show outbound links and inbound backlinks for a memory key.
+    """Show what a memory links to, and what links back to it.
+
+    Backlinks are the point: before you change a memory, they tell you exactly
+    which other memories depend on what it says.
 
     Examples:
         mycelium memory links decisions/db
