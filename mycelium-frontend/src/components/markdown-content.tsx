@@ -232,7 +232,6 @@ export function MarkdownContent({ children, className, onLinkClick, brokenLinks 
           h2: ({ children }) => <h2>{processNode(children)}</h2>,
           h3: ({ children }) => <h3>{processNode(children)}</h3>,
           h4: ({ children }) => <h4>{processNode(children)}</h4>,
-          // Plain code spans use the underlying renderer (no mentions inside code)
         }}
       >
         {children}

@@ -22,8 +22,7 @@ export interface MemoryLike {
   file_path?: string;
 }
 
-// Why a link doesn't resolve, in words. The API reports codes; only the UI has
-// to phrase them.
+// Link-failure codes from the API, phrased for the UI.
 const LINK_ERRORS: Record<string, string> = {
   not_found: "no such memory",
   no_anchor: "no such section",
@@ -144,7 +143,7 @@ interface Props {
   /** Rail peek vs full-page wiki layout. */
   variant?: "rail" | "page";
   /** When set, Rendered mode shows expanded transclusions instead of raw
-   *  `![[…]]` markers (#614 full page, #599 rail drawer). */
+   *  `![[…]]` markers. */
   renderedBody?: string | null;
   /** Room integrity report; surfaces this memory's broken-link/orphan notes
    *  in either variant when supplied. */
@@ -279,9 +278,7 @@ export function MemoryDetail({
     () => (variant === "page" ? neighborKeys(memory.key, outbound, backlinks) : []),
     [variant, memory.key, outbound, backlinks],
   );
-  // Integrity banner shows in both variants when a report is supplied — the
-  // rail drawer is a valid place to notice a broken link before opening the
-  // full page (#599).
+  // Integrity banner shows in both variants when a report is supplied.
   const integrityNotes = useMemo(
     () => integrityNotesForMemory(memory.key, integrity),
     [memory.key, integrity],

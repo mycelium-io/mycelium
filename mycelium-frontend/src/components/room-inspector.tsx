@@ -40,8 +40,7 @@ interface Props {
   focusMemory?: { key: string; nonce: number } | null;
 }
 
-/** The room's context, consolidated: agents, episodes, and memory behind one
- *  tabbed right rail (Model B) instead of sprawling across both sides. */
+/** The room's context: agents, episodes, and memory behind one tabbed right rail. */
 export function RoomInspector({
   roomName,
   masId,

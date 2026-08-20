@@ -84,8 +84,7 @@ def discover_issues(
 ) -> list[dict[str, Any]]:
     """Mediator stage 1: read opening prose into negotiable issues + options.
 
-    Ported from the spike's ``discover_issues``. Returns a list of
-    ``{"name": snake_case, "options": [token, ...]}``. An empty/degenerate result
+    Returns a list of ``{"name": snake_case, "options": [token, ...]}``. An empty/degenerate result
     (fewer than one issue) is a signal to the caller to bail to a rejected
     verdict rather than build an empty mechanism. ``llm`` is required; the host
     runtime always injects a Pi brain; there is no global fallback.

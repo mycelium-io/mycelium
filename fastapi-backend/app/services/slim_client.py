@@ -101,7 +101,7 @@ def _warn_identity_degraded(mode: str, handle: str) -> None:
     """One-time warning that a selected identity mode fell back to the PSK.
 
     A silent downgrade is a security smell, so the fallback is announced even
-    though it is the specified off-by-default behavior (#567). Set
+    though it is the specified off-by-default behavior. Set
     ``MYCELIUM_SLIM_IDENTITY_REQUIRE=1`` to refuse the fallback instead.
     """
     if (mode, handle) in _identity_degraded_warned:
@@ -433,9 +433,8 @@ class SlimClient:
         # (Welcome/Commit/epoch, RFC 9420) — the node never holds the group key.
         return sb.SessionConfig(
             session_type=sb.SessionType.GROUP,
-            # SLIM 2.0 replaced the ``enable_mls`` bool with ``mls_settings`` —
-            # MLS is on iff settings are present. 100% header-integrity validation
-            # keeps the old always-on posture. Matched pair with the CLI member.
+            # MLS is on iff settings are present; 100% header-integrity validation
+            # ensures strict validation. Matched pair with the CLI member.
             mls_settings=sb.MlsSettings(
                 header_integrity_validation_percent=100,
                 max_seen_control_message_ids_size=None,  # None → SLIM core default

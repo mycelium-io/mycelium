@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Unit tests for the SignerJwt-floor SLIM identity (#476, CLI mirror).
+"""Unit tests for the SignerJwt-floor SLIM identity (CLI mirror).
 
 The live MLS path (two identified members over a real 2.1.0 node) needs the rig
 and is out of scope here; these cover everything offline: the mode switch and its
@@ -17,7 +17,7 @@ import pytest
 from mycelium.slim import identity as slim_identity
 
 
-# ── mode switch (off by default, #567) ───────────────────────────────────────
+# mode switch (off by default)
 def test_mode_defaults_to_psk_when_unset(monkeypatch):
     monkeypatch.delenv("MYCELIUM_SLIM_IDENTITY", raising=False)
     assert slim_identity.resolve_identity_mode() == slim_identity.MODE_PSK
@@ -153,7 +153,7 @@ def test_material_built_when_key_and_roster_present(tmp_path):
     assert verifier is not None
 
 
-# ── SPIRE mode (#579): socket / trust-domain / SPIFFE-ID resolution ──────────
+# SPIRE mode: socket / trust-domain / SPIFFE-ID resolution
 def test_spire_mode_selected(monkeypatch):
     monkeypatch.setenv("MYCELIUM_SLIM_IDENTITY", "SPIRE")
     assert slim_identity.resolve_identity_mode() == slim_identity.MODE_SPIRE
@@ -239,7 +239,7 @@ def test_identity_material_dispatch_spire(monkeypatch, tmp_path):
     assert material is not None
 
 
-# ── handle ↔ channel-identity reconciliation (the identity spine, #589) ──────
+# handle ↔ channel-identity reconciliation (the identity spine)
 def test_handle_from_jwk_is_the_kid():
     _, public_pem = slim_identity.generate_es256_keypair()
     jwk = slim_identity.public_jwk_from_pem("alice", public_pem)
@@ -273,7 +273,7 @@ def test_handle_from_spiffe_id_refuses_foreign_or_malformed(spiffe_id):
     assert slim_identity.handle_from_spiffe_id(spiffe_id) is None
 
 
-# ── provision_channel_identity: registration-time credential minting (#589) ──
+# provision_channel_identity: registration-time credential minting
 def test_provision_psk_is_a_noop(tmp_path):
     result = slim_identity.provision_channel_identity("alice", slim_identity.MODE_PSK, tmp_path)
     assert result == {"mode": "psk", "handle": "alice", "provisioned": False}
@@ -322,7 +322,7 @@ def test_provision_defaults_to_active_mode(tmp_path, monkeypatch):
     assert result["provisioned"] is True
 
 
-# ── revoke_channel_identity: the payoff — per-member revoke, no re-key (#590) ──
+# revoke_channel_identity: the payoff — per-member revoke, no re-key
 def test_revoke_psk_is_a_noop(tmp_path):
     result = slim_identity.revoke_channel_identity("alice", slim_identity.MODE_PSK, tmp_path)
     assert result == {"mode": "psk", "handle": "alice", "revoked": False}

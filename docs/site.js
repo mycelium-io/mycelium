@@ -213,9 +213,8 @@
   var colorIdx = new Uint8Array(cols * rows);
 
   // ── Palette ──
-  // Read from the stylesheet rather than hardcoded, so the network tracks the
-  // active theme. The old cyan/indigo/purple triad was three unrelated hues;
-  // the colonies now vary in depth off the single accent instead.
+  // Read from the stylesheet so the network tracks the active theme.
+  // Three depths of one accent provide variation without a second hue.
   var BG = { r: 12, g: 14, b: 17 };
   var COLORS = [{ r: 92, g: 199, b: 210 }, { r: 92, g: 199, b: 210 }, { r: 92, g: 199, b: 210 }];
   var INK_ALPHA = 1;

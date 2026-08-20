@@ -88,7 +88,7 @@ class EpisodeState:
     intent_id: str = ""
     # Each participant's opening prose, captured before mediation runs — the
     # structured snapshot the episode record renders as "Opening Positions" so a
-    # negotiation can be audited against what the room believed going in (#679).
+    # negotiation can be audited against what the room believed going in.
     opening_positions: dict[str, str] = field(default_factory=dict)
     # Terms the pre-negotiation check found the participants using in different
     # senses, and what each answered in the clarifying round that followed. Empty
@@ -97,7 +97,7 @@ class EpisodeState:
     clarifications: dict[str, str] = field(default_factory=dict)
     # Each agent's first concrete SAO offer (issue -> value), captured as the
     # mediator reads it — the "opening ask" a converged outcome's satisfaction is
-    # scored against (#682). Distinct from opening_positions (prose): parsed offers.
+    # scored against. Distinct from opening_positions (prose): parsed offers.
     opening_offers: dict[str, dict[str, str]] = field(default_factory=dict)
     # The negotiable issues' ordered option grids (issue -> options), so
     # satisfaction can be scored as ordinal distance on the grid actually negotiated.
@@ -140,7 +140,7 @@ def open_episode(
 
     ``opening_positions`` is each participant's stated prose at the start,
     captured before mediation runs; it is rendered into the episode record's
-    "Opening Positions" section for audit (#679).
+    "Opening Positions" section for audit.
     """
     ep = EpisodeState(
         episode=l9.episode_urn(parent_room, short_id),

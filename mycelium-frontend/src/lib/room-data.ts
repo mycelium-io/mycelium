@@ -273,8 +273,7 @@ export interface RoomRoster {
 /**
  * Everyone in a room, computed once: agents from the manifests, people from
  * agent owners ∪ posters ∪ present members ∪ you. The Members rail and the
- * composer's `@` popover are two views of this one answer — they used to derive
- * it separately, from the same three endpoints, on two timers.
+ * composer's `@` popover are two views of this one answer.
  */
 export function useRoomRoster(room: string, opts: RoomQueryOptions = {}): RoomRoster {
   const { agents, loading, refresh: refreshAgents } = useRoomAgents(room, opts);

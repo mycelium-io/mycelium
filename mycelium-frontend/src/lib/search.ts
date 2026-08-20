@@ -112,8 +112,8 @@ export function parseFocus(raw: string | null | undefined): FocusTarget | null {
 }
 
 /** Where picking `hit` navigates to. A room is its own target and needs no
- *  focus; memory hits open the dedicated full-page route (#614); everything
- *  else opens its room with the item selected. */
+ *  focus; memory hits open their dedicated full-page view; everything else
+ *  opens its room with the item selected. */
 export function resultHref(hit: SearchHit): string {
   if (hit.type === "room") return `/room/${encodeURIComponent(hit.id)}`;
   if (hit.type === "memory") return memoryHref(hit.room, hit.id);

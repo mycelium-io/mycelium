@@ -289,7 +289,7 @@
   }
 
   if (reduced.matches) {
-    // Grown, but still: the network is branding, the motion is optional.
+    // Show the grown network without animation when reduced-motion is preferred.
     paint();
   } else {
     requestAnimationFrame(animate);

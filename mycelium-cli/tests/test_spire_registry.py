@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""CLI-driven SPIRE registration/revocation (#588).
+"""CLI-driven SPIRE registration/revocation.
 
 `mycelium agent create`/`rm` register/revoke a member's SVID entry against the
 appliance SPIRE server, so a user types zero `spire-server entry create` commands.

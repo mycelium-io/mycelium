@@ -214,7 +214,7 @@ def _write_env_file(env_path: Path, llm_config: dict[str, str]) -> None:
 
     # On re-install, preserve existing .env and only update/append changed keys.
     # Remove LLM_BASE_URL when the new config doesn't include it: avoids
-    # leaving a stale empty value that breaks the LLM client (see #97).
+    # leaving a stale empty value that breaks the LLM client.
     if env_path.exists():
         _patch_env_vars(env_path, llm_config)
         if "LLM_BASE_URL" not in llm_config:
@@ -615,9 +615,6 @@ def _write_mycelium_config(
     typer.echo(f"  ✓ Regenerated {env_path} from config.toml")
     if secret_assigned:
         typer.echo("  ✓ Generated [slim].master_secret (hub SLIM PSK)")
-
-
-# ── Animation helper ──────────────────────────────────────────────────────────
 
 
 # ── Main ─────────────────────────────────────────────────────────────────────

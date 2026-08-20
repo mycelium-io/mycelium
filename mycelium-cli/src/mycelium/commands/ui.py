@@ -28,7 +28,6 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 
-# Container name set in the bundled compose.yml.
 _FRONTEND_CONTAINER = "mycelium-frontend"
 _DEFAULT_PORT = 3000
 
@@ -47,7 +46,7 @@ def _ui_url() -> str:
 
 
 def _container_running(name: str) -> bool:
-    """True if a Docker container with this name is currently running."""
+    """Check if a running Docker container matches the given name."""
     if not shutil.which("docker"):
         return False
     r = subprocess.run(

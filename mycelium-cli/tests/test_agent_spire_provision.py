@@ -1,13 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""`agent create`/`rm` resolve the SPIRE tier from config, not just env (#588).
+"""`agent create`/`rm` resolve the SPIRE tier from config, not just env.
 
-Regression for a bug the live bring-up caught: the runtime resolves the identity
-mode from ``MYCELIUM_SLIM_IDENTITY`` (env-only), but the "one switch" writes the
-tier to ``config.slim.identity``. A fresh CLI process doesn't inherit that env, so
-`agent create` read psk and silently skipped registration even with spire on. The
-provision/revoke helpers must key off the passed-in (config) mode.
+The runtime resolves the identity mode from ``MYCELIUM_SLIM_IDENTITY`` (env-only),
+but the "one switch" writes the tier to ``config.slim.identity``. A fresh CLI
+process doesn't inherit that env, so the provision/revoke helpers must key off the
+passed-in (config) mode.
 """
 
 from __future__ import annotations

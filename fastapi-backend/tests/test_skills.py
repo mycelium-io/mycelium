@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Skills API — the room-scoped ``skills/`` memory namespace, promoted (#617)."""
+"""Skills API — the room-scoped ``skills/`` memory namespace."""
 
 import pytest
 
@@ -53,7 +53,7 @@ async def test_create_get_and_list_skill(client):
 
 @pytest.mark.asyncio
 async def test_skill_is_reachable_as_a_memory(client):
-    """A skill is a memory under skills/ — the promoted-view model (#617)."""
+    """A skill is a memory under skills/, promoted as a view."""
     await _make_room(client)
     await client.post(
         "/api/rooms/demo/skills",

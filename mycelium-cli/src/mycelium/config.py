@@ -25,13 +25,10 @@ from pydantic import BaseModel, Field, field_validator
 
 from mycelium.protocol import EngineRuntime
 
-# Header key prepended to every ~/.mycelium/config.json write. Strict JSON
-# has no comment syntax; ``"//"`` is the long-standing npm/package.json
-# convention for documentation keys and is ignored by every consumer of this
-# file (they look up known sections by name: server / llm / runtime /
-# etc). The key leads so it's the first thing a user sees on `cat`. Long
-# term we plan to delete this file entirely and have JS hooks parse
-# config.toml directly (see #146), so this is interim.
+# Header key prepended to every ~/.mycelium/config.json write. Strict JSON has no
+# comment syntax; ``"//"`` is the npm/package.json convention for documentation
+# keys and every consumer ignores it (they look up known sections by name). The
+# key leads so it's the first thing a user sees on `cat`.
 _JSON_HEADER_KEY = "//"
 _JSON_HEADER_VALUE = (
     "DO NOT EDIT: auto-generated from ~/.mycelium/config.toml on every save. "
@@ -180,9 +177,7 @@ class EngineConfig(BaseModel):
     @field_validator("runtime", mode="before")
     @classmethod
     def _normalize_runtime(cls, v: object) -> object:
-        # Normalize casing/whitespace; coerce the retired 'host' value to
-        # 'backend' so a pre-existing config.toml keeps loading after the daemon
-        # (and host runtime) removal.
+        # Normalize casing/whitespace; coerce 'host' to 'backend' for backward compatibility.
         if isinstance(v, str):
             normalized = v.strip().lower()
             return "backend" if normalized == "host" else normalized

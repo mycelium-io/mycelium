@@ -51,7 +51,7 @@ export function GlobalStatusItems() {
           <span className="tabular">${spend.toFixed(2)}</span>
         </StatusLink>
       )}
-      {/* Health only speaks up when unhealthy (only-surface-the-abnormal). */}
+      {/* Health only shows when unhealthy. */}
       {healthy === false && (
         <StatusLink href="/metrics" title="Backend unreachable">
           <span className="flex items-center gap-1.5 text-red">

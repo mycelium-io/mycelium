@@ -72,8 +72,8 @@ def test_generate_emits_pin_even_for_explicit_latest() -> None:
 
 
 def test_write_preserves_existing_pin(tmp_path: Path) -> None:
-    """The #287-class bug we just fixed: ``mycelium config apply`` must NOT
-    silently drop a pin set by ``mycelium pull --version``.
+    """``mycelium config apply`` must preserve an existing MYCELIUM_IMAGE_TAG pin;
+    it must not be silently dropped when regenerating .env from config.toml.
     """
     env_path = tmp_path / ".env"
     env_path.write_text(
@@ -85,8 +85,7 @@ def test_write_preserves_existing_pin(tmp_path: Path) -> None:
 
     env = _parse_env(env_path.read_text(encoding="utf-8"))
     assert env["MYCELIUM_IMAGE_TAG"] == "1.0.14rc3", (
-        "config apply silently rolled the pin back to :latest (regression of "
-        "the v1.0.14rc3 mismatch incident)"
+        "MYCELIUM_IMAGE_TAG pin was lost when config apply regenerated .env"
     )
 
 

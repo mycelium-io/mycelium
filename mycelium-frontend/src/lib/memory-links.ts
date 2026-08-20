@@ -3,7 +3,7 @@
 
 import type { MemoryLink, MemoryLinksIntegrity } from "@/lib/api";
 
-/** One-hop neighbors for the full-page "Related" section (#614).
+/** One-hop neighbors for the full-page "Related" section.
  *
  * Union of outbound targets and backlink sources, deduped, excluding self. */
 export function neighborKeys(key: string, outbound: MemoryLink[], backlinks: MemoryLink[]): string[] {

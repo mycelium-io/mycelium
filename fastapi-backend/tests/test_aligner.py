@@ -213,7 +213,7 @@ def test_at_mention_neutralized_in_mediator_prompt() -> None:
     assert "@ home" in out  # a lone @ (not before a word char) is untouched
 
 
-# ── move type reaches the wire (#681) ─────────────────────────────────────────
+# ── move type reaches the wire ─────────────────────────────────────────────
 
 
 def _fold_episode() -> Any:

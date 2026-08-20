@@ -478,10 +478,9 @@ def resolve_spire_material(
 # ``@handle`` is the single logical identity across both planes. On the SLIM plane
 # we own the credential, so the handle binds *directly*: the SignerJwt JWK ``kid``
 # and the SPIFFE-ID leaf both carry the raw ``@handle``, and a peer reconciles an
-# observed credential back to its handle with the two inverses below. (On the HTTP
-# plane the OIDC ``sub`` is opaque, so handle↔sub is a binding table (the token's
-# handle claim plus the actor-authz in ``app.services.actor``), not this equality.
-# We deliberately do not force the OIDC ``sub`` to equal the handle.)
+# observed credential back to its handle with the two inverses below. On the HTTP
+# plane the OIDC ``sub`` is opaque — handle↔sub is a binding table (the token's
+# handle claim plus the actor-authz in ``app.services.actor``), not an equality.
 def handle_from_jwk(jwk: dict[str, str]) -> str | None:
     """The ``@handle`` a roster JWK belongs to: its ``kid`` (the direct binding).
 

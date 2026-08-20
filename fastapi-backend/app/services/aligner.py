@@ -392,7 +392,7 @@ class AlignerEngine:
             assignments = mediator.agreement_assignments(mech, negotiation.names)
             converged = assignments is not None
             _, metrics = self._verdict(ep)
-            # Post-hoc satisfaction (#682): how close the agreed outcome sits to
+            # Post-hoc satisfaction: how close the agreed outcome sits to
             # each agent's opening ask, and the room minimum — the least-happy
             # agent. Independent of MPC/GAR/SCR (which need stated confidence the
             # mediated path rarely has), so it rides alongside in ``metrics``.

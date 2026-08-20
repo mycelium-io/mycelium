@@ -58,7 +58,7 @@ def _warn_identity_degraded(mode: str, handle: str) -> None:
     """One-time warning that a selected identity mode fell back to the PSK.
 
     A silent downgrade is a security smell, so the fallback is announced even
-    though it is the specified off-by-default behavior (#567). Set
+    though it is the specified off-by-default behavior. Set
     ``MYCELIUM_SLIM_IDENTITY_REQUIRE=1`` to refuse the fallback instead.
     """
     if (mode, handle) in _identity_degraded_warned:
@@ -199,11 +199,10 @@ class SlimClient:
     def _create_app(self, service: slim_bindings.Service) -> slim_bindings.App:
         """Register the local app, selecting the identity tier (PSK default).
 
-        Twin of the backend seam: ``psk`` (default, #567) is the shared-secret
-        credential, the try-it path, untouched. ``signerjwt`` (the floor, #476)
-        presents this member's per-agent self-signed ES256 identity; ``spire``
-        (#579) presents a SPIRE-attested JWT-SVID. Both resolve to a
-        provider/verifier pair through one dispatcher and share one
+        Twin of the backend seam: ``psk`` is the shared-secret credential, the
+        try-it path. ``signerjwt`` presents this member's per-agent self-signed
+        ES256 identity; ``spire`` presents a SPIRE-attested JWT-SVID. Both resolve
+        to a provider/verifier pair through one dispatcher and share one
         degrade/fail-closed path: absent the mode's material it degrades to PSK with
         a one-time warning unless ``MYCELIUM_SLIM_IDENTITY_REQUIRE=1`` fails closed.
         """
@@ -239,10 +238,8 @@ class SlimClient:
         # do not diverge.
         return sb.SessionConfig(
             session_type=sb.SessionType.GROUP,
-            # SLIM 2.0 replaced the ``enable_mls`` bool with ``mls_settings``:
-            # MLS is on iff settings are present. 100% header-integrity validation
-            # matches the old always-on posture. Matched pair with the backend
-            # moderator's config; do not diverge.
+            # MLS is on iff settings are present; 100% header-integrity validation
+            # ensures strict validation. Matched pair with backend config.
             mls_settings=sb.MlsSettings(
                 header_integrity_validation_percent=100,
                 max_seen_control_message_ids_size=None,  # None → SLIM core default

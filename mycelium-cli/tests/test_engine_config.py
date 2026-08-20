@@ -21,8 +21,7 @@ def test_runtime_normalized(given: str, expected: str) -> None:
 
 
 def test_legacy_host_coerces_to_backend() -> None:
-    """The retired ``host`` runtime (rode the removed daemon) coerces to backend
-    so a pre-existing config.toml keeps loading."""
+    """The ``host`` runtime coerces to backend for backward compatibility."""
     assert EngineConfig(runtime="host").runtime == "backend"  # ty: ignore[invalid-argument-type]
 
 

@@ -2,7 +2,7 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-Skills — a promoted view over the ``skills/`` memory namespace (#617).
+Skills — a promoted view over the ``skills/`` memory namespace.
 
 A skill is just a memory: markdown + frontmatter at
 ``.mycelium/rooms/{room}/skills/{name}.md``. The store is uniform — the same way

@@ -659,8 +659,7 @@ class RoomChannelManager:
     async def send_as_custodian(self, room: str, handle: str, data: bytes) -> bool:
         """Publish ``data`` to the room as ``handle`` via its custodial session (real MLS send).
 
-        The whole point of #666: the wire sender is the actor's own MLS identity,
-        not the backend's. Ensures the session on first participation. Returns whether
+        The wire sender is the actor's own MLS identity, not the backend's. Ensures the session on first participation. Returns whether
         the send went out as the actor; ``False`` (with the caller falling back to a
         moderator send) preserves liveness when a session can't be stood up.
         """

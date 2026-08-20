@@ -153,8 +153,7 @@ function TreeRows({ nodes, depth, collapsed, onToggle, onSelect, selected }: Tre
                   {isFolder ? node.name : fileName(node)}
                 </span>
 
-                {/* dot indicator when node is both a file and a folder */}
-                {isFolder && node.memory && (
+                  {isFolder && node.memory && (
                   <span className="flex-shrink-0 w-1 h-1 rounded-full bg-accent opacity-60" />
                 )}
               </button>
@@ -166,7 +165,6 @@ function TreeRows({ nodes, depth, collapsed, onToggle, onSelect, selected }: Tre
                 </span>
               )}
 
-              {/* version badge — files only */}
               {node.memory && !isFolder && (
                 <span className="flex-shrink-0 font-mono text-[10px] tabular text-faint">
                   v{node.memory.version}

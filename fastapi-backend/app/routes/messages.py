@@ -97,14 +97,10 @@ async def send_message(room_name: str, payload: MessageCreate, request: Request)
         notify_payload["coordination_session_id"] = str(coord.id)
     notify_payload["room_name"] = channel
 
-    # Human-in-the-room: for a real room with a live SLIM channel, the backend
-    # publishes the human's message onto the channel as their proxy — ``@``-parsing
-    # recipients so in-room agents wake, and raising consent for absent mentions.
-    # The persister records it to the durable transcript (via ``ingest_local``),
-    # which is the read path's source of truth, so we must NOT also write
-    # ``local_state`` / ``bus.publish`` here (that would double it). The no-channel
-    # path and event/non-broadcast messages have no persister, so they keep the
-    # direct ``local_state`` write + legacy bus.
+    # Human-in-the-room: backend publishes onto the channel as proxy for live SLIM
+    # rooms, parsing ``@`` recipients and raising consent for absent mentions. The
+    # persister records to the durable transcript (source of truth), so don't also
+    # write local_state/bus here (would duplicate). Non-SLIM paths use direct write.
     published = False
     if (
         coord is None
