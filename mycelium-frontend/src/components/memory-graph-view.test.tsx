@@ -10,17 +10,29 @@ vi.mock("@/lib/api", () => ({
   fetchMemoryGraph: vi.fn(),
   fetchMemory: vi.fn(),
   fetchMemoryExpanded: vi.fn().mockResolvedValue({ found: false, rendered: "", expansions: [], key: "" }),
-  fetchMemoryIntegrity: vi.fn().mockResolvedValue({ broken: [], orphans: [], total_memories: 0, total_links: 0 }),
   // MemoryDetail loads the selected memory's links on mount.
   fetchMemoryLinks: vi.fn().mockResolvedValue({ outbound: [], backlinks: [] }),
 }));
+
+const EMPTY_INTEGRITY = { broken: [], orphans: [], total_memories: 0, total_links: 0 };
+let integrityValue = EMPTY_INTEGRITY as import("@/lib/api").MemoryLinksIntegrity;
+vi.mock("@/lib/room-data", async (importOriginal) => {
+  const orig = await importOriginal<typeof import("@/lib/room-data")>();
+  return {
+    ...orig,
+    useRoomMemoryIntegrity: () => ({
+      integrity: integrityValue,
+      loading: false,
+      refresh: vi.fn(),
+    }),
+  };
+});
 
 import { MemoryGraphView } from "@/components/memory-graph-view";
 import {
   fetchMemory,
   fetchMemoryExpanded,
   fetchMemoryGraph,
-  fetchMemoryIntegrity,
   type Memory,
   type MemoryGraph,
 } from "@/lib/api";
@@ -28,7 +40,6 @@ import {
 const mockGraph = vi.mocked(fetchMemoryGraph);
 const mockMemory = vi.mocked(fetchMemory);
 const mockExpanded = vi.mocked(fetchMemoryExpanded);
-const mockIntegrity = vi.mocked(fetchMemoryIntegrity);
 
 const POPULATED: MemoryGraph = {
   nodes: [
@@ -53,10 +64,8 @@ describe("<MemoryGraphView />", () => {
   beforeEach(() => {
     mockGraph.mockReset();
     mockMemory.mockReset();
-    // Reset to the inert defaults too, or a test that stubs an expanded body or
-    // a broken link leaks it into every case that runs after it.
     mockExpanded.mockReset().mockResolvedValue({ key: "", rendered: "", expansions: [], found: false });
-    mockIntegrity.mockReset().mockResolvedValue({ broken: [], orphans: [], total_memories: 0, total_links: 0 });
+    integrityValue = EMPTY_INTEGRITY;
   });
 
   it("renders the graph once the payload arrives", async () => {
@@ -158,14 +167,14 @@ describe("<MemoryGraphView />", () => {
   it("warns about a broken link on the memory it opens", async () => {
     mockGraph.mockResolvedValue(POPULATED);
     mockMemory.mockResolvedValue(memory("context/goal"));
-    mockIntegrity.mockResolvedValue({
+    integrityValue = {
       broken: [
         { source: "context/goal", target: "gone", kind: "wikilink", resolved: false, error: "not_found", raw: "[[gone]]" },
       ],
       orphans: [],
       total_memories: 2,
       total_links: 1,
-    });
+    };
     render(<MemoryGraphView roomName="atlas" />);
 
     await userEvent.click(await screen.findByRole("button", { name: "Open context/goal" }));

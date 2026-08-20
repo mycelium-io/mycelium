@@ -9,11 +9,10 @@ import {
   fetchMemory,
   fetchMemoryExpanded,
   fetchMemoryGraph,
-  fetchMemoryIntegrity,
   type Memory,
   type MemoryGraph as MemoryGraphData,
-  type MemoryLinksIntegrity,
 } from "@/lib/api";
+import { useRoomMemoryIntegrity } from "@/lib/room-data";
 import { MemoryGraph } from "@/components/memory-graph";
 import { DetailDrawer } from "@/components/detail-drawer";
 import { MemoryDetail } from "@/components/memory-detail";
@@ -33,17 +32,12 @@ export function MemoryGraphView({ roomName }: Props) {
   const [graph, setGraph] = useState<MemoryGraphData | null>(null);
   const [selected, setSelected] = useState<Memory | null>(null);
   const [renderedBody, setRenderedBody] = useState<string | null>(null);
-  const [integrity, setIntegrity] = useState<MemoryLinksIntegrity | null>(null);
+  const { integrity } = useRoomMemoryIntegrity(roomName);
 
   useEffect(() => {
     let live = true;
     fetchMemoryGraph(roomName).then(g => {
       if (live) setGraph(g);
-    });
-    // Room-wide, so it's fetched once here rather than per opened memory;
-    // `MemoryDetail` slices out the entry for whichever key is showing.
-    fetchMemoryIntegrity(roomName).then(report => {
-      if (live) setIntegrity(report);
     });
     return () => {
       live = false;

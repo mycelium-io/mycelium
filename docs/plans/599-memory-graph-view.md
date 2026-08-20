@@ -400,3 +400,47 @@ broken link reported in the summary strip. Clicking `decisions/cutover` should
 return to the room with that memory focused in the rail, whose link panel should
 show the same edges (`context/goal` resolved, `plan/tasks` broken).
 `src/mocks/handlers.test.ts` pins this shape as an automated regression check.
+
+## Graph library decision
+
+**Why hand-rolled SVG + d3-force (and when to revisit)**
+
+The implementation uses a custom SVG renderer driven by `d3-force` rather than a
+third-party graph component. This was a deliberate choice, not a default.
+
+### What we evaluated (August 2026)
+
+| Library | Renderer | Verdict |
+|---------|----------|---------|
+| **react-force-graph-2d** | Canvas + d3-force | Closest alternative — same physics, less code, Canvas is faster for 200+ nodes |
+| **React Flow (@xyflow/react)** | DOM/SVG | Built for node *editors* (drag-to-connect workflows), not navigation graphs |
+| **Sigma.js / @react-sigma** | WebGL | Scales to 100k nodes; customization requires shader work — overkill for room scale |
+| **Cytoscape.js** | Canvas | Rich graph-analysis algorithms; heavier than needed for a read-only view |
+| **graphier** | Three.js + WebGL + Web Worker | Impressive specs but 62 downloads/week as of evaluation — too early |
+| **ReGraph** | WebGL | Commercial (Cambridge Intelligence); not OSS |
+
+### Why we stayed with hand-rolled SVG
+
+The SVG performance cliff (where DOM nodes become visibly slow) sits at roughly
+500–1000 nodes. A well-used Mycelium room realistically has 50–300 memories, so we
+are well clear of that limit. Staying with SVG gave us:
+
+- **Full visual control** — broken-link dashed-red edges, namespace fill colors, and
+  the LINK_ERRORS vocabulary are all expressed as plain JSX, not a library callback API.
+- **No SSR workaround** — Canvas-based libraries require a `dynamic(() => import(…),
+  { ssr: false })` wrapper in Next.js; SVG renders server-side without ceremony.
+- **Zero new dependencies** — `d3-force` was already a transitive dependency.
+
+### When to migrate
+
+The natural trigger is "the graph is visibly sluggish during pan/zoom on a full room."
+At that point, **`react-force-graph-2d`** is the cleanest next step:
+
+- Same d3-force physics, same `{ nodes, edges }` data shape.
+- Canvas rendering replaces our SVG, removing the DOM-node bottleneck.
+- Built-in zoom/pan/drag replaces our pointer-event handling.
+- The cost: edge styling (dashed broken links, typed-relation colours) must be
+  re-expressed as draw callbacks rather than JSX elements.
+
+Sigma.js / WebGL is a further step if Canvas also becomes a bottleneck, but that
+threshold is in the tens of thousands of nodes — not a realistic Mycelium scenario.
