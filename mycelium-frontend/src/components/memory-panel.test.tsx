@@ -62,7 +62,14 @@ import {
   fetchMemoryLinks,
 } from "@/lib/api";
 
-const EMPTY_INTEGRITY = { broken: [], orphans: [], total_memories: 0, total_links: 0 };
+const EMPTY_INTEGRITY = {
+  broken: [],
+  orphans: [],
+  roots: [],
+  leaves: [],
+  total_memories: 0,
+  total_links: 0,
+};
 const EMPTY_EXPAND = { key: "", rendered: "", expansions: [], found: false };
 
 const offTree = {
@@ -136,6 +143,8 @@ describe("<MemoryPanel /> peek navigation", () => {
         },
       ],
       orphans: [],
+      roots: [],
+      leaves: [],
       total_memories: 1,
       total_links: 1,
     });

@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Mycelium Contributors
 
-/** URL helpers for the full-page memory view (#614).
+/** URL helpers for the memory surfaces that live outside the room-inspector
+ * rail: the full-page memory view (#614) and the link graph (#599).
  *
  * Keys may contain slashes (`decisions/db`). We encode each path segment separately
  * so the catch-all route `[...key]` round-trips cleanly — same contract as the
@@ -20,4 +21,9 @@ export function parseMemoryKeyParam(segments: string[]): string {
 /** Canonical in-app URL for a room memory page. */
 export function memoryHref(room: string, key: string): string {
   return `/room/${encodeURIComponent(room)}/memory/${encodeMemoryKeyPath(key)}`;
+}
+
+/** Where the room's full-page memory graph lives: `/room/{room}/graph`. */
+export function memoryGraphHref(roomName: string): string {
+  return `/room/${encodeURIComponent(roomName)}/graph`;
 }

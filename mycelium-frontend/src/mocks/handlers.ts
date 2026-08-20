@@ -11,7 +11,19 @@
  */
 
 import { BACKEND_METRICS, COLLECTOR_METRICS, HOSTS, ROOMS, ROOM_FIXTURES, getRoomFixture } from "./fixtures";
+import type { MemoryGraph, MemoryGraphEdge, MemoryLink } from "@/lib/api";
 import type { SearchHit, SearchResultType } from "@/lib/search";
+
+const EMPTY_GRAPH: MemoryGraph = { nodes: [], edges: [] };
+
+/** A graph edge's `raw` markdown, synthesized for display — the fixtures only
+ *  need to carry the parsed shape (source/target/kind), not the literal text. */
+function synthesizeRaw(edge: MemoryGraphEdge): string {
+  if (edge.kind === "transclusion") return `![[${edge.target}]]`;
+  if (edge.kind === "uri") return `myc://${edge.target}`;
+  if (edge.kind === "relation") return `${edge.relation ?? "relates-to"}: [[${edge.target}]]`;
+  return `[[${edge.target}]]`;
+}
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -224,6 +236,59 @@ export async function handleMock(req: Request): Promise<Response | null> {
           allow_from: [],
         }));
       return json(agents);
+    }
+
+    case "links": {
+      if (method !== "GET") return null;
+      const graph = fx.links ?? EMPTY_GRAPH;
+      // GET /links/graph — the whole room, for the full-page graph view (#599).
+      if (sub[1] === "graph") return json(graph);
+      // GET /links/integrity — derived from the same edge list rather than
+      // hand-written, so a fixture can't claim a room is clean while its graph
+      // shows a break.
+      if (sub[1] === "integrity") {
+        return json({
+          broken: graph.edges
+            .filter((e) => !e.resolved)
+            .map((e) => ({ source: e.source, target: e.target, kind: e.kind, resolved: false, error: e.error, raw: synthesizeRaw(e) })),
+          // Sorted, like the backend's `integrity()`, so a consumer that ever
+          // relies on the order sees the same thing here as in production.
+          // orphan = inbound===0 AND outbound===0 (fully isolated)
+          // root   = inbound===0 AND outbound>0  (entry point)
+          // leaf   = inbound>0  AND outbound===0 (dead end)
+          orphans: graph.nodes.filter((n) => n.inbound === 0 && n.outbound === 0).map((n) => n.key).sort(),
+          roots: graph.nodes.filter((n) => n.inbound === 0 && n.outbound > 0).map((n) => n.key).sort(),
+          leaves: graph.nodes.filter((n) => n.inbound > 0 && n.outbound === 0).map((n) => n.key).sort(),
+          total_memories: graph.nodes.length,
+          total_links: graph.edges.length,
+        });
+      }
+      // GET /links/expand?key=... — depth-1 transclusion, mirroring the
+      // backend: a marker expands only when its target exists, and is left
+      // exactly as written when it doesn't.
+      if (sub[1] === "expand") {
+        const key = searchParams.get("key");
+        const source = fx.memories.find((m) => m.key === key);
+        if (!key || !source) return json({ key: key ?? "", rendered: "", expansions: [], found: false });
+        const expansions: Array<{ raw: string; target: string; resolved: boolean }> = [];
+        const rendered = (source.content_text ?? "").replace(/!\[\[([^\]]+)\]\]/g, (raw, target: string) => {
+          const embedded = fx.memories.find((m) => m.key === target);
+          expansions.push({ raw, target, resolved: Boolean(embedded) });
+          return embedded?.content_text ?? raw;
+        });
+        return json({ key, rendered, expansions, found: true });
+      }
+      // GET /links?key=... — one memory's outbound links + backlinks (#611),
+      // read off the same edge list the graph draws from.
+      const key = searchParams.get("key");
+      if (!key) return notFound("missing key (mock)");
+      const outbound: MemoryLink[] = graph.edges
+        .filter((e) => e.source === key)
+        .map((e) => ({ target: e.target, kind: e.kind, relation: e.relation, resolved: e.resolved, error: e.error, raw: synthesizeRaw(e) }));
+      const backlinks: MemoryLink[] = graph.edges
+        .filter((e) => e.target === key && e.resolved)
+        .map((e) => ({ target: key, source: e.source, kind: e.kind, relation: e.relation, resolved: true, raw: synthesizeRaw(e) }));
+      return json({ outbound, backlinks });
     }
 
     case "sessions": {

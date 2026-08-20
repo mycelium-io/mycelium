@@ -575,7 +575,7 @@
         <div class="cmd-ref-header">
           <code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">links</span> <span class="arg">&lt;key&gt;</span> [<span class="flag">--check</span>]</code>
         </div>
-        <div class="cmd-ref-body">Show a memory's links: what it points at and what points back at it. Links are <code>myc://key</code> or <code>[[key]]</code> in the body, plus typed frontmatter relations (<code>supersedes</code>, <code>depends-on</code>, <code>part-of</code>, <code>relates-to</code>). <code>--check</code> reports broken links and orphans across the whole room.</div>
+        <div class="cmd-ref-body">Show a memory's links: what it points at and what points back at it. Links are <code>myc://key</code> or <code>[[key]]</code> in the body, plus typed frontmatter relations (<code>supersedes</code>, <code>depends-on</code>, <code>part-of</code>, <code>relates-to</code>). <code>--check</code> reports broken links, orphans (no connections), roots (no inbound), and leaves (no outbound) across the whole room.</div>
       </div>
 
       <div class="cmd-ref">

@@ -109,8 +109,14 @@ def plan_ls(
 ) -> None:
     """List plan files in the active room."""
     data = _fetch_plan(room)
-    files = data.get("files", [])
+    # plan/title.md is the room's display title, not a plan file — exclude it
+    # from the listing so it doesn't appear as a peer alongside tasks/sprint/etc.
+    files = [f for f in data.get("files", []) if f["slug"] != "title"]
+    plan_title = data.get("title")
+
     if not files:
+        if plan_title:
+            console.print(f"[bold]{plan_title}[/bold]")
         console.print("[dim]No plan files yet.[/dim]")
         console.print(
             "[dim]Add one with[/dim] [cyan]mycelium plan set <slug> <body>[/cyan] "
@@ -118,8 +124,8 @@ def plan_ls(
         )
         return
 
-    table = Table(title=f"{data['room']} plan", show_lines=False)
-    table.add_column("Slug", style="cyan", no_wrap=True)
+    table = Table(title=plan_title or f"{data['room']} plan", show_lines=False)
+    table.add_column("Name", style="cyan", no_wrap=True)
     table.add_column("Title")
     table.add_column("Tasks", justify="right")
     table.add_column("Open", justify="right")

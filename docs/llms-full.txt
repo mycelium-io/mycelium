@@ -577,6 +577,12 @@ room for them along with orphans, memories nothing links to:
 mycelium memory links --check
 ```
 
+If you run the optional UI, the same thing is drawable rather than listable:
+`/room/{room}/graph` lays the room out as a link graph, colored by namespace, with
+broken links and orphans marked. It answers a different question than the list does —
+not "what does this memory touch?" but "what shape has this room grown into, and what
+is dangling off the edge of it?"
+
 ### Typed relations
 
 Frontmatter relations are edges with meaning, not just navigation. Set them on a

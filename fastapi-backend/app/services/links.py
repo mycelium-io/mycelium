@@ -491,10 +491,12 @@ def graph(room_name: str) -> dict[str, Any]:
 
 
 def integrity(room_name: str) -> dict[str, Any]:
-    """Broken links and orphans across a room.
+    """Broken links, orphans, roots, and leaves across a room.
 
-    An orphan is a memory nothing links to — meaningful once a room links at
-    all, which is why the count is reported alongside the room's link total.
+    Terminology (graph theory):
+    - orphan: inbound == 0 AND outbound == 0 — completely isolated, no connections.
+    - root:   inbound == 0 AND outbound > 0  — entry point, nothing links here yet.
+    - leaf:   inbound > 0  AND outbound == 0 — dead end, links arrive but don't continue.
     """
     entries = load_index(room_name)
     targets = {e.key: e for e in entries}
@@ -511,9 +513,19 @@ def integrity(room_name: str) -> dict[str, Any]:
             else:
                 broken.append(resolved.to_dict())
 
+    outbound_counts = {e.key: len(e.links) for e in entries}
+
     return {
         "broken": broken,
-        "orphans": sorted(e.key for e in entries if e.key not in linked_to),
+        "orphans": sorted(
+            e.key for e in entries if e.key not in linked_to and outbound_counts[e.key] == 0
+        ),
+        "roots": sorted(
+            e.key for e in entries if e.key not in linked_to and outbound_counts[e.key] > 0
+        ),
+        "leaves": sorted(
+            e.key for e in entries if e.key in linked_to and outbound_counts[e.key] == 0
+        ),
         "total_memories": len(entries),
         "total_links": total_links,
     }
