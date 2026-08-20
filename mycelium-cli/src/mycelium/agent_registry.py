@@ -65,6 +65,7 @@ def load_manifest(room_name: str, handle: str) -> AgentManifest | None:
 
 
 def load_notes(room_name: str, handle: str) -> str:
+    """Return the agent's freeform notes (``agents/<handle>/notes``), or ''."""
     room_dir = get_room_dir(room_name)
     result = read_memory(room_dir, f"agents/{handle}/notes")
     if result is None:

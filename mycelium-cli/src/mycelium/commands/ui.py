@@ -46,6 +46,7 @@ def _ui_url() -> str:
 
 
 def _container_running(name: str) -> bool:
+    """True if a Docker container with this name is currently running."""
     """Check if a running Docker container matches the given name."""
     if not shutil.which("docker"):
         return False

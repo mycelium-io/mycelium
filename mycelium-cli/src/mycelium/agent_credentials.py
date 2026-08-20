@@ -263,6 +263,7 @@ def _cached_token(handle: str, credential: AgentCredential) -> str | None:
 
 
 def clear_cached_token(handle: str) -> bool:
+    """Drop an agent's cached mint. Returns whether there was one."""
     from mycelium.tokens import clear_token
 
     return clear_token(token_cache_path(handle))
@@ -315,7 +316,7 @@ def _mint(handle: str, credential: AgentCredential) -> str | None:
 
 
 def access_token(config: MyceliumConfig, handle: str | None = None) -> str | None:
-    """Return an agent's bearer token (re-mints transparently when needed)."""
+    """The agent's bearer token, or ``None`` with no credential; re-minted near expiry."""
     credential = resolve(config, handle)
     if credential is None:
         return None

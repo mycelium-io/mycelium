@@ -38,6 +38,7 @@ _MASTER_SECRET_ENV = "MYCELIUM_SLIM_MASTER_SECRET"
 
 
 def _read_env_value(env_path: Path | None, key: str) -> str | None:
+    """Return a single key from an existing ``.env``, or ``None``."""
     if env_path is None or not env_path.exists():
         return None
     try:
@@ -110,7 +111,7 @@ def _read_operator_managed_keys(env_path: Path | None) -> dict[str, str]:
 
 
 def read_pinned_image_tag(env_path: Path | None) -> str | None:
-    """Public helper so that ``mycelium up`` can surface the effective tag."""
+    """Return the ``MYCELIUM_IMAGE_TAG`` value from ``env_path``, or ``None``."""
     return _read_operator_managed_keys(env_path).get("MYCELIUM_IMAGE_TAG")
 
 
