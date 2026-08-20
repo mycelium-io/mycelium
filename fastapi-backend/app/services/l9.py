@@ -59,7 +59,7 @@ SYSTEM_ACTOR_ROLE = "coordinator"
 EXCHANGE_MOVE_SUBKINDS = frozenset({"counter", "accept", "reject"})
 
 # Kind -> allowed subkinds. An empty/None subkind is always valid. A failed
-# negotiation commits as ``rejected`` (was ``abort`` under the now-removed Go CFN).
+# negotiation commits as ``rejected``.
 VALID_SUBKINDS: dict[Kind, frozenset[str]] = {
     Kind.knowledge: frozenset({"query", "distillation", "extraction", "feedback"}),
     Kind.commit: frozenset({"converged", "resolved", "rejected"}),

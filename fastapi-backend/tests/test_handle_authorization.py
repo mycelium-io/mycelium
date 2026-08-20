@@ -159,7 +159,7 @@ async def test_handles_are_compared_normalized(client: AsyncClient, as_principal
 
 @pytest.mark.asyncio
 async def test_a_session_qualifier_still_names_its_own_queue(client: AsyncClient, as_principal):
-    """``alice#a8f3`` is alice on one machine — her own queue, not a second actor's."""
+    """``alice#a8f3`` is alice on one machine — her own queue."""
     await _make_room(client)
     as_principal("alice")
     assert (await _await_as(client, "alice#a8f3")).status_code == 200
@@ -175,7 +175,7 @@ async def test_a_session_qualifier_cannot_smuggle_another_queue(client: AsyncCli
 
 @pytest.mark.asyncio
 async def test_an_empty_handle_names_no_queue(client: AsyncClient, as_principal):
-    """Unlike an omitted write actor, a blank parameter is not a claim to fill in."""
+    """A blank parameter does not claim a handle to fill in."""
     await _make_room(client)
     as_principal("alice")
     assert (await _await_as(client, "")).status_code == 403

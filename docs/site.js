@@ -213,9 +213,8 @@
   var colorIdx = new Uint8Array(cols * rows);
 
   // ── Palette ──
-  // Read from the stylesheet rather than hardcoded, so the network tracks the
-  // active theme. The old cyan/indigo/purple triad was three unrelated hues;
-  // the colonies now vary in depth off the single accent instead.
+  // Read from the stylesheet so the network tracks the active theme.
+  // Three depths of one accent provide variation without a second hue.
   var BG = { r: 12, g: 14, b: 17 };
   var COLORS = [{ r: 92, g: 199, b: 210 }, { r: 92, g: 199, b: 210 }, { r: 92, g: 199, b: 210 }];
   var INK_ALPHA = 1;
@@ -409,7 +408,6 @@
   // PRE-WARM: Build the network before first render
   // ══════════════════════════════════════════════════════════════════
 
-  // Seed initial colonies
   var numColonies = 15 + Math.floor(Math.random() * 8);
   for (var c = 0; c < numColonies; c++) {
     seedColony(
@@ -420,17 +418,14 @@
     );
   }
 
-  // Grow the network silently
   for (var warm = 0; warm < 4000; warm++) {
     growStep();
   }
 
-  // Seed nutrient agents onto the established network
   for (var a = 0; a < MAX_AGENTS; a++) {
     spawnAgentOnNetwork();
   }
 
-  // Pre-warm the flow layer too
   for (var warm = 0; warm < 200; warm++) {
     for (var i = 0; i < trail.length; i++) {
       trail[i] *= 0.995;
@@ -467,7 +462,6 @@
     if (timestamp - lastFrame < frameInterval) return;
     lastFrame = timestamp;
 
-    // Continue growing tips (slow ongoing growth)
     growStep();
 
     // Respawn colonies if tips exhausted

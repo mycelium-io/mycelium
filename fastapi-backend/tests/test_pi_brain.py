@@ -119,8 +119,8 @@ def test_build_command_core_flags(tmp_path: Path) -> None:
 
 def test_build_command_omits_optional_flags(tmp_path: Path) -> None:
     cmd = _brain(tmp_path)._build_command("prompt", system="")
-    assert "--api-key" not in cmd  # no key configured
-    assert "--append-system-prompt" not in cmd  # no system prompt
+    assert "--api-key" not in cmd
+    assert "--append-system-prompt" not in cmd
     assert cmd[-1] == "prompt"
 
 

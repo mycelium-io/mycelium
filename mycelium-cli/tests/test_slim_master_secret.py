@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Debt D1 (minimal hardening): the CLI's MLS master secret is env-configurable,
-and byte-for-byte compatible with the backend so cross-host channel keys match.
+"""The CLI's MLS master secret is env-configurable and byte-for-byte compatible
+with the backend so cross-host channel keys match.
 """
 
 import hashlib

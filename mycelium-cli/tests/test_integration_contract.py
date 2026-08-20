@@ -62,10 +62,8 @@ def test_family_declares_lifecycle(family: str) -> None:
 def test_install_facet_is_implemented(family: str) -> None:
     """Both facets of the contract are present on every family.
 
-    These are the install-facet methods relocated from the old
-    ``commands/adapter.py`` ``if adapter_type ==`` branches. If a family is
-    missing one, the class stays abstract and ``get_integration`` (above)
-    raises — but assert the surface explicitly so the contract is documented.
+    If a family is missing one, the class stays abstract and ``get_integration``
+    (above) raises — assert the surface explicitly so the contract is documented.
     """
     impl = get_integration(family)
     for method in (

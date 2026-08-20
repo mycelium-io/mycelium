@@ -26,7 +26,6 @@ from app.services.metrics import (
 
 
 def _reset_metrics() -> None:
-    """Clear all counters and histograms."""
     with _lock:
         _counters.clear()
         _histograms.clear()

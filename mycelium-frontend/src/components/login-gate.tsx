@@ -9,8 +9,8 @@ import { useAuthSession } from "./auth-session";
 
 /**
  * Renders the app when the gate is off or the user is signed in; otherwise a
- * sign-in screen. This is the fix for #606's silent-empty degrade: a gated hub
- * with no session gets an explicit "sign in" prompt, not blank room lists.
+ * sign-in screen. A gated hub with no session shows an explicit "sign in" prompt,
+ * not blank room lists.
  */
 export function LoginGate({ children }: { children: ReactNode }) {
   const { loading, authRequired, oidcConfigured, signedIn, login } = useAuthSession();

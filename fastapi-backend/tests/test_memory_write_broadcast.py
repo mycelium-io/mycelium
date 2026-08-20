@@ -24,8 +24,7 @@ from tests.fakes import FakeChannel, FakeManaged, FakePersister
 
 
 async def _drain_broadcasts() -> None:
-    """Await every in-flight fire-and-forget broadcast task, then let its
-    done-callback (which discards it from the tracking set) run."""
+    """Await in-flight broadcasts and let done-callbacks run."""
     tasks = list(memory_route._broadcast_tasks)
     if tasks:
         await asyncio.gather(*tasks)

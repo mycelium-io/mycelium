@@ -55,9 +55,5 @@ def doc_ref(
 
 
 def get_registry() -> list[DocEntry]:
-    """All registered CLI doc entries, collected at import time.
-
-    Read by ``docs/generate_docs.py`` to build the CLI-reference page. Importing
-    each command module runs its ``@doc_ref`` decorators, which append here.
-    """
+    """Registered CLI doc entries used by docs/generate_docs.py."""
     return _registry

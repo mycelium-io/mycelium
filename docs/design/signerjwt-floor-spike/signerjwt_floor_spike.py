@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""SignerJwt floor -> SLIM MLS member spike (issue #587).
+"""SignerJwt floor -> SLIM MLS member spike.
 
 The **default resident credential path**: an agent that runs no SPIRE at all. Each
 member generates its *own* local ES256 keypair, self-signs a short-lived JWT that
@@ -40,8 +40,7 @@ import slim_bindings
 SLIM = os.environ.get("SLIM_ENDPOINT", "http://127.0.0.1:46358")
 KEYDIR = os.environ.get("KEYDIR", "/tmp/signerjwt-floor-spike")
 
-# A self-issued floor has no issuer discovery endpoint: the issuer/audience are just
-# labels both sides agree on, and verification rests on the JWKS, not on the issuer.
+# Self-issued: issuer/audience are labels; verification rests on the JWKS.
 ISSUER = os.environ.get("SIGNERJWT_ISSUER", "mycelium-resident")
 AUDIENCE = [os.environ.get("SIGNERJWT_AUDIENCE", "mycelium-slim")]
 

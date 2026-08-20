@@ -1619,10 +1619,8 @@ def _fmt_cost(n: float | None) -> str:
 
 def _parent_room(label: str) -> str:
     """Strip ``:session:<uuid>`` suffix so per-session counters roll up to the
-    user-visible parent room. Used by multiple renderers that aggregate
-    session-scoped backend counters; lifted here to keep the bucketing
-    consistent and avoid the bug fixed in #295 where each renderer had to
-    remember to strip *before* keying its dict (not just *while* labelling).
+    user-visible parent room. Centralizes bucketing logic so each renderer
+    strips consistently (before keying, not just while labelling).
     """
     return label.split(":session:", 1)[0] if ":session:" in label else label
 
@@ -1633,10 +1631,8 @@ def _aggregate_by_room(
     """Group ``<prefix><room>.<metric>`` counters by parent room.
 
     Returns ``{room: {metric: total}}`` with sessions of the same parent
-    folded together via :func:`_parent_room`. Used by the cost estimates
-    panel (#297) and any future renderer that needs to roll up a
-    ``by_room`` namespace; centralising the bucketing here means the
-    ``:session:`` rollup rule is applied exactly once and the same way
+    folded together via :func:`_parent_room`. Centralizes the
+    ``:session:`` rollup rule so it is applied exactly once and the same way
     everywhere.
     """
     out: dict[str, dict[str, int | float]] = {}
@@ -1824,12 +1820,12 @@ def _render_summary_table(
     total_turns = sum(s.get("turns", 1) for s in otel_sessions)
     table.add_row("Total turns", _fmt_num(total_turns) if otel_sessions else "-")
 
-    # Context utilization histogram (newly captured)
+    # Context utilization histogram
     ctx = histograms.get("context_tokens", {})
     if ctx.get("count", 0) > 0:
         table.add_row("Context window", _fmt_histogram_raw(ctx))
 
-    # Webhook stats (newly captured)
+    # Webhook stats
     webhooks = counters.get("webhooks", {})
     wh_received = webhooks.get("received", 0)
     if wh_received > 0:
@@ -1842,7 +1838,7 @@ def _render_summary_table(
         if wh_dur.get("count", 0) > 0:
             table.add_row("Webhook latency", _fmt_histogram_s(wh_dur, _max_n_width(wh_dur)))
 
-    # Session state and stuck (newly captured)
+    # Session state and stuck
     stuck = counters.get("sessions_stuck", 0)
     if stuck:
         table.add_row("Sessions stuck", f"[red]{_fmt_num(stuck)}[/red]")
@@ -2772,10 +2768,9 @@ def _render_cost_estimates(
             )
             total_cost += myc_est
 
-        # Per-room breakdown under Mycelium LLM. Backends record
-        # ``llm.by_room.<room>.*`` keys; older backends don't have these keys
-        # (we just render nothing in that case). Prefers provider-reported
-        # cost when present, falling back to estimate. All rooms shown.
+        # Per-room breakdown under Mycelium LLM. Aggregates by_room.* keys
+        # when present; skips quietly if unavailable. Prefers provider-reported
+        # cost when available, falling back to estimate. All rooms shown.
         myc_by_room = _aggregate_by_room(myc_llm, prefix="by_room.")
         if myc_by_room:
             ranked = sorted(

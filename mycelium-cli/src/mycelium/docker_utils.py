@@ -111,11 +111,7 @@ def _read_operator_managed_keys(env_path: Path | None) -> dict[str, str]:
 
 
 def read_pinned_image_tag(env_path: Path | None) -> str | None:
-    """Return the ``MYCELIUM_IMAGE_TAG`` value from ``env_path``, or None.
-
-    Public helper so that ``mycelium up`` can surface the effective tag
-    without rebuilding the parser.
-    """
+    """Return the ``MYCELIUM_IMAGE_TAG`` value from ``env_path``, or ``None``."""
     return _read_operator_managed_keys(env_path).get("MYCELIUM_IMAGE_TAG")
 
 
@@ -178,9 +174,8 @@ def generate_env_file(
         else "# LLM_BASE_URL not set, using provider default",
         "",
         "# ── Engine ───────────────────────────────────────────────────────────────",
-        # Where a registered `engine` runs its NEGMAS/Pi drive; backend-only now
-        # (the host runtime rode the removed daemon). Emitted for the backend to
-        # read; always `backend`.
+        # Where a registered `engine` runs its NEGMAS/Pi drive; backend-only.
+        # Always `backend`.
         f"ENGINE_RUNTIME={config.engine.runtime}",
         "",
         "# ── Auth (HTTP-API JWT gate; off unless auth.enabled is set) ─────────────",

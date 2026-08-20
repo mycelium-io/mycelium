@@ -29,7 +29,6 @@ def get_mycelium_dir() -> Path:
 
 
 def get_room_dir(room_name: str) -> Path:
-    """Get the directory for a room."""
     room_dir = get_mycelium_dir() / "rooms" / room_name
     room_dir.mkdir(parents=True, exist_ok=True)
     return room_dir
@@ -49,7 +48,6 @@ def get_users_dir() -> Path:
 
 
 def list_room_names() -> list[str]:
-    """Names of every room materialized in the local store."""
     rooms_root = get_mycelium_dir() / "rooms"
     if not rooms_root.is_dir():
         return []
@@ -57,7 +55,6 @@ def list_room_names() -> list[str]:
 
 
 def ensure_room_structure(room_dir: Path) -> None:
-    """Create standard namespace subdirectories."""
     for subdir in ("decisions", "failed", "status", "context", "work", "procedures", "log"):
         (room_dir / subdir).mkdir(parents=True, exist_ok=True)
 

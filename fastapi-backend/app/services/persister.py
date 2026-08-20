@@ -627,8 +627,7 @@ def _default_summon_hook(
 
 def _default_converged_hook(envelope: L9) -> None:
     # Log-only default for a persister with no plan-sync consumer wired (unit
-    # tests / a bare backend). In the running backend ``main.py`` binds this to
-    # the plan-sync consumer via the manager's ``_converged_adapter``.
+    # tests / a bare backend).
     logger.info(
         "converged hook (unwired): commit:converged on episode %s; no plan-sync consumer",
         envelope.header.message.episode if envelope.header.message else "?",

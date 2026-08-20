@@ -78,10 +78,8 @@ _DEV_MASTER_SECRET = "mycelium-dev-shared-secret-v1-do-not-use-in-prod"
 
 logger = logging.getLogger(__name__)
 
-# Warn only once per process when falling back to the public dev secret.
 _dev_secret_warned = False
 
-# Warn only once per (mode, handle) when a selected identity degrades to the PSK.
 _identity_degraded_warned: set[tuple[str, str]] = set()
 
 # Per-mode hint for the degrade warning / fail-closed error: what material is
@@ -101,7 +99,7 @@ def _warn_identity_degraded(mode: str, handle: str) -> None:
     """One-time warning that a selected identity mode fell back to the PSK.
 
     A silent downgrade is a security smell, so the fallback is announced even
-    though it is the specified off-by-default behavior (#567). Set
+    though it is the specified off-by-default behavior. Set
     ``MYCELIUM_SLIM_IDENTITY_REQUIRE=1`` to refuse the fallback instead.
     """
     if (mode, handle) in _identity_degraded_warned:
@@ -151,7 +149,7 @@ def resolve_master_secret() -> str:
 
 
 class SlimError(RuntimeError):
-    """Base class for SLIM wrapper errors."""
+    pass
 
 
 class SlimUnavailableError(SlimError):
@@ -433,9 +431,8 @@ class SlimClient:
         # (Welcome/Commit/epoch, RFC 9420) — the node never holds the group key.
         return sb.SessionConfig(
             session_type=sb.SessionType.GROUP,
-            # SLIM 2.0 replaced the ``enable_mls`` bool with ``mls_settings`` —
-            # MLS is on iff settings are present. 100% header-integrity validation
-            # keeps the old always-on posture. Matched pair with the CLI member.
+            # MLS is on iff settings are present; 100% header-integrity validation
+            # ensures strict validation. Matched pair with the CLI member.
             mls_settings=sb.MlsSettings(
                 header_integrity_validation_percent=100,
                 max_seen_control_message_ids_size=None,  # None → SLIM core default

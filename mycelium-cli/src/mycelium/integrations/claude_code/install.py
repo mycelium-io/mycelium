@@ -17,7 +17,7 @@ import typer
 
 from mycelium.integrations._resources import _resolve_asset
 
-# ── constants (relocated verbatim from commands/adapter.py) ───────────────────
+# ── constants ───────────────────────────────────────────────────────────────────
 
 _CLAUDE_CODE_SKILL_NAME = "mycelium"
 _CLAUDE_CODE_HOOKS: list[str] = []
@@ -56,7 +56,7 @@ _CLAUDE_CODE_STALE_SCRIPTS = [
 _CLAUDE_CODE_STEPS: dict[str, str] = {}
 
 
-# ── skill + hooks install (relocated verbatim) ───────────────────────────────
+# ── skill + hooks install ────────────────────────────────────────────────────
 
 
 def _install_claude_code(verbose: bool = False) -> None:
@@ -304,8 +304,7 @@ def _cleanup_stale_claude_code_assets(claude_dir: Path, verbose: bool = False) -
                 except OSError as e:
                     if verbose:
                         typer.echo(f"  warning: could not remove {p}: {e}")
-        # Remove the scripts dir if it's now empty so we don't leave a
-        # dangling directory behind.
+        # Remove the scripts dir if empty.
         try:
             if not any(scripts_dir.iterdir()):
                 scripts_dir.rmdir()

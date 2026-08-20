@@ -57,11 +57,9 @@ _DISCOVER_TEMPERATURE = 0.0
 # not that the room shares five broken words; the clarifying prompt stays short.
 MAX_TERM_MISMATCHES = 3
 
-# Negotiation stance appended to every agent-facing prompt. Deliberately neutral:
-# the earlier "no agreement is the worst outcome … concede everything secondary"
-# framing coerced agents into capitulating below their stated floor in a single
-# step (an instant cave, not a negotiation). Encourage a genuine position instead
-# — concede only where there's real give, and hold the lines that actually matter.
+# Negotiation stance appended to every agent-facing prompt: concede where you
+# genuinely can, and hold the limits that matter. A durable agreement reflects
+# true position, not capitulation.
 _BATNA = (
     "Negotiate in good faith toward a workable agreement: concede where you genuinely can, "
     "and hold the limits that actually matter to you. Do not abandon a real hard line just to "
@@ -257,8 +255,8 @@ class MediatedNegotiation:
         # later turn holds that agent's own line instead of fabricating one.
         self._last_offer: dict[str, tuple[str, ...]] = {}
         # Each agent's first concrete offer (issue -> value) — its opening ask.
-        # The turn-order policy (#683) scores satisfaction with the standing offer
-        # against this; captured once per agent, on its first readable proposal.
+        # Used by satisfaction-ordering to score against the standing offer;
+        # captured once per agent, on its first readable proposal.
         self.opening_offers: dict[str, dict[str, str]] = {}
 
     @property
@@ -477,7 +475,7 @@ def least_satisfied_order(
     standing: dict[str, str] | None,
     issue_options: dict[str, list[str]],
 ) -> list[str]:
-    """Reorder a step's negotiator ids so the least-satisfied agent acts first (#683).
+    """Reorder a step's negotiator ids so the least-satisfied agent acts first.
 
     Satisfaction is each agent's opening ask scored against the ``standing`` offer
     (the same ordinal-grid estimate the episode uses post-hoc). Pure and total: with
@@ -532,7 +530,7 @@ def build_mechanism(
 ) -> SAOMechanism:
     """Assemble the SAO mechanism with one live negotiator per participant.
 
-    The mechanism addresses the least-satisfied agent first each step (#683); until
+    The mechanism addresses the least-satisfied agent first each step; until
     a standing offer exists it is exactly NEGMAS's round-robin.
     """
     negmas_issues = [

@@ -20,8 +20,7 @@ import { EventStream } from "@/components/event-stream";
 
 const CREATED = "2026-08-04T10:00:00.000000+00:00";
 
-/** The live SSE stream wraps a human/agent message as an L9 exchange envelope —
- *  the shape that was silently dropped before (issue #490). */
+/** The live SSE stream wraps a human/agent message as an L9 exchange envelope. */
 function l9Exchange(text: string) {
   return {
     message_type: "l9_exchange",

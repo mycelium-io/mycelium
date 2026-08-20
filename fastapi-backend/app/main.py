@@ -292,8 +292,8 @@ async def root(
         llm = get_config_status()
     result["llm"] = llm.to_dict()
 
-    # Coordination fabric — channels/persisters/members (H1). Every smoke bug was
-    # silent; this makes "is the fabric actually working" answerable in one GET.
+    # Coordination fabric — channels/persisters/members (H1). Makes "is the fabric
+    # actually working" answerable in one GET.
     from app.services.room_channels import manager as room_channel_manager
 
     coordination = room_channel_manager.status()

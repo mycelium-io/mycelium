@@ -112,8 +112,7 @@ def _report(token: StoredToken, config: MyceliumConfig, *, json_output: bool) ->
         )
     console.print(f"[dim]Session cached at {token_path()} (mode 0600).[/dim]")
 
-    # #562 binds the actor of a write to the token; a self-asserted identity that
-    # names someone else is a 403 waiting to happen, so say so now.
+    # A self-asserted identity that names someone else is a 403 waiting to happen, so warn.
     asserted = (config.identity.name or "").strip().lstrip("@").lower()
     if asserted and asserted != handle:
         console.print(

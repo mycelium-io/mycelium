@@ -4,11 +4,10 @@
 """``mycelium agent add`` bails with chown guidance when ~/.mycelium is
 root-owned, instead of raising a raw ``PermissionError`` halfway through.
 
-Cloud-install symptom (#13 from #326): something earlier in the install runs
-as root and root-owns part of ``~/.mycelium/`` (sudo step, gateway in a
-container with a bind mount, etc.). Later ``mycelium agent add`` fails with
-no signal about how to recover. The pre-check + the PermissionError catch
-both surface the same one-line fix: ``sudo chown -R $USER ~/.mycelium``.
+When part of ~/.mycelium/ is root-owned (from a prior sudo step, container
+bind mount, etc.), ``mycelium agent add`` fails with no signal about recovery.
+The pre-check + PermissionError catch both surface the same one-line fix:
+``sudo chown -R $USER ~/.mycelium``.
 """
 
 from __future__ import annotations

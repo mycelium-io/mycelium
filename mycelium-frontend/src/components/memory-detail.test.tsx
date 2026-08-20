@@ -79,7 +79,7 @@ describe("MemoryDetail", () => {
     expect(await screen.findByRole("status")).toHaveTextContent(/broken outbound link/i);
   });
 
-  it("shows the integrity banner on the rail (default) variant too (#599)", async () => {
+  it("shows the integrity banner on the rail (default) variant too", async () => {
     render(
       <MemoryDetail
         memory={memory}

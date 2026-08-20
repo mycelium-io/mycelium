@@ -23,7 +23,7 @@ interface Props {
   memoryKey: string;
 }
 
-/** Full-page wiki view for one memory (#614). */
+/** Full-page wiki view for one memory. */
 export function MemoryPageView({ roomName, memoryKey }: Props) {
   const router = useRouter();
   const [memory, setMemory] = useState<Memory | null | undefined>(undefined);

@@ -24,7 +24,6 @@ log = logging.getLogger("mycelium.agent_registry")
 
 
 def list_agent_handles(room_name: str) -> list[str]:
-    """List handles registered in *room_name* by scanning the local filesystem."""
     room_dir = get_room_dir(room_name)
     entries = list_memories(room_dir, prefix="agents/", limit=500)
     handles: list[str] = []

@@ -478,7 +478,6 @@ def extract_issues_from_session_transcript(content: str) -> list[str]:
 
 
 def _iter_json_objects(text: str):
-    """Yield top-level JSON object strings from text using brace matching."""
     depth = 0
     start = None
     for i, ch in enumerate(text):
