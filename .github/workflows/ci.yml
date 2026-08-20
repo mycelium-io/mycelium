@@ -108,6 +108,22 @@ jobs:
         working-directory: mycelium-cli
         run: uv run pytest tests/ -q
 
+      # docs/*.html and docs/llms-full.txt are generated from the markdown under
+      # mycelium-cli/src/mycelium/docs/, the @doc_ref decorators, and the pydantic
+      # config schema. Same contract as the openapi.json check above: regenerate,
+      # fail if the tree moves. Without it the committed output drifts silently and
+      # the backlog lands as unrelated diff in whichever PR next runs the generator.
+      - name: Docs site is current
+        run: |
+          (cd mycelium-cli && uv run python ../docs/generate_docs.py)
+          if [ -n "$(git status --porcelain -- docs/)" ]; then
+            echo "::error file=docs/llms-full.txt::Generated docs are stale — run 'cd mycelium-cli && uv run python ../docs/generate_docs.py' and commit docs/."
+            git status --porcelain -- docs/
+            git diff --stat -- docs/
+            exit 1
+          fi
+          echo "Generated docs match their markdown + CLI sources."
+
   build-collector:
     # Smoke-build the OTLP collector image so PRs that touch the collector
     # source / Dockerfile fail fast in CI rather than at the next release.
