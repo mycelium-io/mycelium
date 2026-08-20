@@ -14,10 +14,12 @@ GET /rooms/{room}/episodes/{short_id} — one episode + its envelope chain
 from __future__ import annotations
 
 import logging
+from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
 from app.schemas import EpisodeDetailRead, EpisodeListResponse
+from app.services import pagination
 from app.services.episode_records import (
     EPISODES_PREFIX,
     episode_summary,
@@ -36,11 +38,42 @@ def _require_room(room_name: str) -> None:
         raise HTTPException(status_code=404, detail="Room not found")
 
 
+def _episode_sort_key(episode: dict[str, Any]) -> tuple[str, str, str]:
+    """An episode's keyset sort key: pinned-live first, then newest, then id.
+
+    The leading rank is how "an in-progress episode sorts first" survives
+    pagination — it is part of the order rather than a post-sort insert, so a
+    cursor into page two still agrees with page one about where the live one sits.
+    """
+    live = "1" if episode.get("outcome") == "open" else "0"
+    return (live, str(episode.get("updated_at") or ""), str(episode.get("short_id") or ""))
+
+
 @router.get("", response_model=EpisodeListResponse)
-async def list_episodes(room_name: str, limit: int = 50):
+async def list_episodes(
+    room_name: str,
+    limit: int = Query(50, ge=1, le=500),
+    cursor: str | None = Query(
+        None, description="Opaque cursor from a previous page's next_cursor"
+    ),
+):
     """List episode summaries for a room, newest first (an in-progress one first)."""
     _require_room(room_name)
-    return {"episodes": room_episodes(room_name, limit=limit)}
+    try:
+        page = pagination.paginate(
+            room_episodes(room_name, limit=None),
+            key=_episode_sort_key,
+            limit=limit,
+            cursor=cursor,
+        )
+    except pagination.InvalidCursor as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {
+        "episodes": page.items,
+        "total": page.total,
+        "next_cursor": page.next_cursor,
+        "has_more": page.has_more,
+    }
 
 
 @router.get("/{short_id}", response_model=EpisodeDetailRead)

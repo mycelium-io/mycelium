@@ -25,7 +25,7 @@ from app.schemas import (
     MessageRead,
     MessageType,
 )
-from app.services import actor, local_state, persister, principals, room_channels
+from app.services import actor, local_state, pagination, persister, principals, room_channels
 from app.services.filesystem import room_exists
 
 logger = logging.getLogger(__name__)
@@ -144,11 +144,28 @@ def _read_messages(
     return persister.room_conversation(channel)
 
 
+def _message_sort_key(msg: local_state.StoredMessage) -> tuple[str, str]:
+    """A message's keyset sort key: when it was created, then its id.
+
+    The id breaks ties so the order is total — without it two messages sharing a
+    timestamp could swap between reads and a cursor sitting on them would skip
+    or repeat a row.
+    """
+    return (pagination.timestamp_key(msg.created_at), str(msg.id))
+
+
 @router.get("", response_model=MessageListResponse)
 async def list_messages(
     room_name: str,
     limit: int = Query(50, le=500),
     offset: int = 0,
+    cursor: str | None = Query(
+        None,
+        description=(
+            "Opaque cursor from a previous page's next_cursor; returns the messages "
+            "immediately older than it. Stable while the room keeps growing (unlike offset)."
+        ),
+    ),
     sender: str | None = None,
     message_type: str | None = None,
     kind: str | None = Query(None, description="Filter events by metadata.kind"),
@@ -158,7 +175,11 @@ async def list_messages(
         None, description="Only messages belonging to this L9 episode URN (one negotiation/session)"
     ),
 ):
-    """List messages in a room (or coordination session), newest first."""
+    """List messages in a room (or coordination session), newest first.
+
+    Walk backward through history by following ``next_cursor``; ``offset`` stays
+    for callers that haven't migrated but shifts under a live room.
+    """
     channel, coord = _resolve_channel(room_name)
     now = datetime.now(UTC)
 
@@ -181,13 +202,18 @@ async def list_messages(
             continue
         filtered.append(m)
 
-    filtered.sort(key=lambda m: m.created_at, reverse=True)
-    total = len(filtered)
-    page = filtered[offset : offset + limit]
+    try:
+        page = pagination.paginate(
+            filtered, key=_message_sort_key, limit=limit, cursor=cursor, offset=offset
+        )
+    except pagination.InvalidCursor as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return MessageListResponse(
-        messages=[MessageRead.model_validate(m) for m in page],
-        total=total,
+        messages=[MessageRead.model_validate(m) for m in page.items],
+        total=page.total,
+        next_cursor=page.next_cursor,
+        has_more=page.has_more,
     )
 
 

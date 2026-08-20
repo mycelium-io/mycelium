@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import datetime
 import uuid
+from http import HTTPStatus
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +23,7 @@ from typer.testing import CliRunner
 
 from mycelium.commands import memory as memory_cmd
 from mycelium_backend_client.errors import UnexpectedStatus
+from mycelium_backend_client.types import Response
 
 runner = CliRunner()
 
@@ -97,21 +99,40 @@ def _stub_get(monkeypatch: pytest.MonkeyPatch, result: Any) -> None:
     )
 
 
-def _stub_list(monkeypatch: pytest.MonkeyPatch, result: Any) -> list[dict[str, Any]]:
-    """Stub the list-memories API; returns the kwargs it was called with."""
-    calls: list[dict[str, Any]] = []
+def _stub_list(
+    monkeypatch: pytest.MonkeyPatch, result: Any, pages: list[Any] | None = None
+) -> list[dict[str, Any]]:
+    """Stub the list-memories API; returns the kwargs it was called with.
 
-    def _sync(**kwargs: Any):
+    ``pages`` serves a paginated hub: each entry is one page, and every page but
+    the last advertises a next cursor in its headers (where this list carries its
+    pagination, its body being a bare list).
+    """
+    calls: list[dict[str, Any]] = []
+    queued = list(pages) if pages is not None else None
+
+    def _sync_detailed(**kwargs: Any):
         calls.append(kwargs)
         if isinstance(result, Exception):
             raise result
-        return result
+        if queued is None:
+            return _response(result, more=False)
+        page = queued.pop(0) if queued else []
+        return _response(page, more=bool(queued), cursor=f"cursor-{len(calls)}")
 
     monkeypatch.setattr(
-        "mycelium_backend_client.api.memory.list_memories_api_rooms_room_name_memory_get.sync",
-        _sync,
+        "mycelium_backend_client.api.memory.list_memories_api_rooms_room_name_memory_get"
+        ".sync_detailed",
+        _sync_detailed,
     )
     return calls
+
+
+def _response(parsed: Any, *, more: bool, cursor: str = "") -> Response:
+    headers = {"x-has-more": "true" if more else "false"}
+    if more:
+        headers["x-next-cursor"] = cursor
+    return Response(status_code=HTTPStatus.OK, content=b"", headers=headers, parsed=parsed)
 
 
 def _stub_create(monkeypatch: pytest.MonkeyPatch) -> list:
@@ -358,3 +379,38 @@ def test_memory_search_no_results(monkeypatch: pytest.MonkeyPatch) -> None:
     result = runner.invoke(memory_cmd.app, ["search", "nothing", "--room", "demo"])
     assert result.exit_code == 0, result.output
     assert "No matching memories found" in result.output
+
+
+def test_memory_ls_walks_every_page_with_all(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Past the first page a room's memories used to be unreachable (issue #654)."""
+    calls = _stub_list(
+        monkeypatch,
+        None,
+        pages=[
+            [_record("decisions/db", "postgres")],
+            [_record("decisions/lang", "python")],
+            [_record("decisions/ui", "next")],
+        ],
+    )
+
+    result = runner.invoke(memory_cmd.app, ["ls", "--room", "demo", "-n", "1", "--all"])
+
+    assert result.exit_code == 0, result.output
+    assert "decisions/db" in result.output
+    assert "decisions/lang" in result.output
+    assert "decisions/ui" in result.output
+    assert [c["cursor"] for c in calls][1:] == ["cursor-1", "cursor-2"]
+
+
+def test_memory_ls_reads_one_page_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = _stub_list(
+        monkeypatch,
+        None,
+        pages=[[_record("decisions/db", "postgres")], [_record("decisions/lang", "python")]],
+    )
+
+    result = runner.invoke(memory_cmd.app, ["ls", "--room", "demo", "-n", "1"])
+
+    assert result.exit_code == 0, result.output
+    assert "decisions/lang" not in result.output
+    assert len(calls) == 1

@@ -828,3 +828,100 @@ async def test_ingest_knowledge_stale_base_is_a_conflict_not_a_merge():
     assert got[1] == "v2 content"  # the newer local content was not overwritten
     assert p.knowledge_applied == 1  # the stale write did not count as applied
     assert p.knowledge_conflicts == 1
+
+
+def _chat_record(message_id: str, *, text: str, sender: str = "growth"):
+    """A transcript record the read path projects as chat (a human-facing reply)."""
+    env, content = _msg_content(message_id, sender=sender, text=text, payload_type="reply")
+    return persister.record_from(env, content)
+
+
+def test_a_grown_transcript_is_read_from_where_the_last_read_stopped(tmp_path, monkeypatch):
+    """Paging a long room must not re-parse the whole file per page (issue #654).
+
+    The transcript is append-only, so each read parses only the lines that arrived
+    since the last one — measured directly, by counting the lines handed to the
+    parser.
+    """
+    monkeypatch.setattr("app.config.settings.MYCELIUM_DATA_DIR", str(tmp_path / ".mycelium"))
+    room = "incremental-room"
+    get_room_dir(room)
+
+    parsed: list[int] = []
+    real_parse = persister._parse_jsonl
+    monkeypatch.setattr(
+        persister,
+        "_parse_jsonl",
+        lambda text: (parsed.append(len(text.splitlines())), real_parse(text))[1],
+    )
+
+    for i in range(20):
+        persister.append_transcript(room, _chat_record(f"a-{i}", text=f"line {i}"))
+    assert len(persister.conversational_messages(room)) == 20
+    assert parsed == [20]  # cold read: the whole file, once
+
+    persister.append_transcript(room, _chat_record("a-20", text="line 20"))
+    served = persister.conversational_messages(room)
+
+    assert [m.content for m in served] == [f"line {i}" for i in range(21)]
+    assert parsed == [20, 1]  # and then only what was appended
+
+
+def test_a_cached_transcript_is_not_re_read_at_all_when_nothing_changed(tmp_path, monkeypatch):
+    """Repeated pages over a quiet room touch the parser zero further times."""
+    monkeypatch.setattr("app.config.settings.MYCELIUM_DATA_DIR", str(tmp_path / ".mycelium"))
+    room = "quiet-room"
+    get_room_dir(room)
+    persister.append_transcript(room, _chat_record("a-1", text="only"))
+    persister.conversational_messages(room)
+
+    calls: list[str] = []
+    monkeypatch.setattr(persister, "_parse_jsonl", lambda text: calls.append(text) or [])
+
+    assert [m.content for m in persister.conversational_messages(room)] == ["only"]
+    assert calls == []
+
+
+def test_a_transcript_rewritten_under_the_cache_is_re_read(tmp_path, monkeypatch):
+    """The other side of that bargain: when the prefix we parsed is no longer
+    there, the cache must not stitch a tail onto history that never happened."""
+    monkeypatch.setattr("app.config.settings.MYCELIUM_DATA_DIR", str(tmp_path / ".mycelium"))
+    room = "rewritten-room"
+    get_room_dir(room)
+
+    persister.append_transcript(room, _chat_record("a-1", text="original"))
+    assert [m.content for m in persister.conversational_messages(room)] == ["original"]
+
+    persister.write_transcript(
+        room,
+        [
+            _chat_record("b-1", text="replaced"),
+            _chat_record("b-2", text="and appended"),
+        ],
+    )
+
+    assert [m.content for m in persister.conversational_messages(room)] == [
+        "replaced",
+        "and appended",
+    ]
+
+
+def test_a_half_written_final_line_waits_for_the_rest(tmp_path, monkeypatch):
+    """A record caught mid-append is not history yet — it is served once the
+    writer finishes the line, never as a truncated row."""
+    monkeypatch.setattr("app.config.settings.MYCELIUM_DATA_DIR", str(tmp_path / ".mycelium"))
+    room = "partial-room"
+    path = get_room_dir(room) / persister.TRANSCRIPT_FILENAME
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    persister.append_transcript(room, _chat_record("a-1", text="complete"))
+    persister.conversational_messages(room)
+
+    whole = persister._transcript_line(_chat_record("a-2", text="torn")) + "\n"
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write(whole[: len(whole) // 2])
+    assert [m.content for m in persister.conversational_messages(room)] == ["complete"]
+
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write(whole[len(whole) // 2 :])
+    assert [m.content for m in persister.conversational_messages(room)] == ["complete", "torn"]

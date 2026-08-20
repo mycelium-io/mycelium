@@ -17,6 +17,9 @@ from typer.testing import CliRunner
 
 from mycelium.commands import room as room_cmd
 
+# What the generated client sends when a query parameter is simply not set.
+UNSET_SENTINEL = __import__("mycelium_backend_client.types", fromlist=["UNSET"]).UNSET
+
 
 def _make_messages() -> list:
     from mycelium_backend_client.models import MessageRead
@@ -152,3 +155,122 @@ def test_room_messages_indents_multiline_content(monkeypatch: pytest.MonkeyPatch
     assert result.exit_code == 0, result.output
     assert "first line" in result.output
     assert "second line" in result.output
+
+
+def _page(contents: list[str], *, cursor: str | None):
+    """One page of the room's history, with the cursor that continues past it."""
+    from mycelium_backend_client.models import MessageListResponse, MessageRead
+
+    return MessageListResponse(
+        messages=[
+            MessageRead(
+                id=uuid4(),
+                sender_handle="operator",
+                message_type="broadcast",
+                content=text,
+                created_at=datetime.datetime(2026, 6, 11, 21, 22, 56),  # noqa: DTZ001
+            )
+            for text in contents
+        ],
+        total=6,
+        next_cursor=cursor,
+        has_more=cursor is not None,
+    )
+
+
+def _paged(monkeypatch: pytest.MonkeyPatch, pages: list) -> list[dict]:
+    """Serve ``pages`` in order; returns the kwargs each call was made with."""
+    calls: list[dict] = []
+    queued = list(pages)
+
+    def fake_sync(**kwargs):
+        calls.append(kwargs)
+        return queued.pop(0) if queued else _page([], cursor=None)
+
+    _patch_common(monkeypatch, fake_sync)
+    return calls
+
+
+def test_room_messages_walks_the_whole_history_with_all(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The gap this closes: a room deeper than one page was unreadable past it."""
+    calls = _paged(
+        monkeypatch,
+        [
+            _page(["newest", "second"], cursor="c1"),
+            _page(["third", "fourth"], cursor="c2"),
+            _page(["fifth", "oldest"], cursor=None),
+        ],
+    )
+
+    result = CliRunner().invoke(room_cmd.app, ["messages", "msgtest", "--limit", "2", "--all"])
+
+    assert result.exit_code == 0, result.output
+    for text in ("newest", "second", "third", "fourth", "fifth", "oldest"):
+        assert text in result.output
+    assert [c["cursor"] for c in calls] == [UNSET_SENTINEL, "c1", "c2"]
+    assert "6 messages" in result.output
+
+
+def test_room_messages_points_at_the_history_it_did_not_show(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A page that isn't the end says so, and hands over the cursor to continue."""
+    _paged(monkeypatch, [_page(["newest", "second"], cursor="c1")])
+
+    result = CliRunner().invoke(room_cmd.app, ["messages", "msgtest", "--limit", "2"])
+
+    assert result.exit_code == 0, result.output
+    assert "more history" in result.output
+    assert "--cursor c1" in result.output
+
+
+def test_room_messages_stops_at_the_end_of_history(monkeypatch: pytest.MonkeyPatch) -> None:
+    _paged(monkeypatch, [_page(["only"], cursor=None)])
+
+    result = CliRunner().invoke(room_cmd.app, ["messages", "msgtest"])
+
+    assert result.exit_code == 0, result.output
+    assert "more history" not in result.output
+
+
+def test_room_messages_resumes_from_a_given_cursor(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = _paged(monkeypatch, [_page(["older"], cursor=None)])
+
+    result = CliRunner().invoke(room_cmd.app, ["messages", "msgtest", "--cursor", "c9"])
+
+    assert result.exit_code == 0, result.output
+    assert calls[0]["cursor"] == "c9"
+
+
+def test_room_messages_json_carries_the_cursor_for_a_script(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A script drives the walk itself, so the cursor has to survive --json."""
+    import json
+
+    from mycelium.cli import app as root_app
+
+    _paged(monkeypatch, [_page(["newest"], cursor="c1")])
+
+    result = CliRunner().invoke(root_app, ["--json", "room", "messages", "msgtest"])
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["next_cursor"] == "c1"
+    assert payload["has_more"] is True
+    assert [m["content"] for m in payload["messages"]] == ["newest"]
+
+
+def test_room_messages_all_resumes_from_a_cursor(monkeypatch: pytest.MonkeyPatch) -> None:
+    """--all and --cursor compose: walk the rest of history from where I stopped."""
+    calls = _paged(
+        monkeypatch,
+        [_page(["third"], cursor="c2"), _page(["fourth"], cursor=None)],
+    )
+
+    result = CliRunner().invoke(room_cmd.app, ["messages", "msgtest", "--cursor", "c1", "--all"])
+
+    assert result.exit_code == 0, result.output
+    assert [c["cursor"] for c in calls] == ["c1", "c2"]
+    assert "third" in result.output
+    assert "fourth" in result.output

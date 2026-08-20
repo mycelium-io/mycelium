@@ -20,9 +20,11 @@ Commands:
 
 import json as json_module
 import os
+from typing import Any
 
 import typer
 
+from mycelium import pagination
 from mycelium.client import hub_client
 from mycelium.client import typed_client as _typed_client
 from mycelium.config import MyceliumConfig
@@ -847,32 +849,47 @@ def send(
 
 
 @doc_ref(
-    usage="mycelium room messages [<room>] [--limit N] [--sender <handle>] [--type <type>]",
-    desc="Read recent messages in a room (point-in-time, newest first). Filter with <code>--sender</code> / <code>--type</code>.",
+    usage=(
+        "mycelium room messages [<room>] [--limit N] [--all] [--cursor <cursor>] "
+        "[--sender <handle>] [--type <type>]"
+    ),
+    desc=(
+        "Read messages in a room, newest first. <code>--all</code> walks the full history; "
+        "<code>--cursor</code> resumes from a previous page. Filter with "
+        "<code>--sender</code> / <code>--type</code>."
+    ),
     group="room",
 )
 @app.command("messages")
 def messages(
     ctx: typer.Context,
     room: str | None = typer.Argument(None, help="Room to read (defaults to active room)"),
-    limit: int = typer.Option(20, "--limit", "-l", help="Max messages to show (newest first)"),
+    limit: int = typer.Option(20, "--limit", "-l", help="Messages per page (newest first)"),
     sender: str | None = typer.Option(
         None, "--sender", "-s", help="Only messages from this handle"
     ),
     message_type: str | None = typer.Option(
         None, "--type", "-t", help="Only this message type (e.g. direct, broadcast, announce)"
     ),
+    cursor: str | None = pagination.CursorOption,
+    walk_all: bool = pagination.AllOption,
 ) -> None:
     """
-    Read recent messages in a room: a point-in-time snapshot, newest first.
+    Read messages in a room, newest first.
 
     Unlike `mycelium room watch` (which streams live), this returns immediately
-    with the most recent messages and exits. Handy for scripts and for checking
-    whether an agent's reply has landed.
+    and exits. Handy for scripts and for checking whether an agent's reply landed.
+
+    One page by default. To go further back, either follow the cursor a page
+    hands you (`--json` prints it as `next_cursor`) or let `--all` walk to the
+    beginning for you. Cursors name a message rather than a position, so a walk
+    holds its place even while the room keeps talking.
 
     Examples:
         mycelium room messages
         mycelium room messages design-review --limit 5
+        mycelium room messages my-room --all
+        mycelium room messages my-room --cursor eyJ2IjoxfQ
         mycelium room messages cc-e2e --sender cc-x
         mycelium room messages my-room --type broadcast
     """
@@ -889,26 +906,34 @@ def messages(
         from mycelium_backend_client.models import HTTPValidationError
         from mycelium_backend_client.types import UNSET
 
-        with _typed_client(config) as client:
-            result = list_api.sync(
-                room_name=room_name,
-                client=client,
-                limit=limit,
-                sender=sender or UNSET,
-                message_type=message_type or UNSET,
-            )
+        last_page: dict[str, Any] = {"messages": [], "total": 0, "next_cursor": None}
 
-        if not result or isinstance(result, HTTPValidationError):
-            msgs = []
-        else:
-            msgs = result.messages
+        with _typed_client(config) as client:
+
+            def fetch(page_cursor: str | None):
+                result = list_api.sync(
+                    room_name=room_name,
+                    client=client,
+                    limit=limit,
+                    cursor=page_cursor or UNSET,
+                    sender=sender or UNSET,
+                    message_type=message_type or UNSET,
+                )
+                if not result or isinstance(result, HTTPValidationError):
+                    return [], None
+                last_page.update(result.to_dict())
+                return list(result.messages), result.next_cursor
+
+            if walk_all:
+                msgs = pagination.walk_pages(fetch, start=cursor)
+            else:
+                msgs, _ = fetch(cursor)
 
         if json_output:
-            payload = (
-                result.to_dict()
-                if result and not isinstance(result, HTTPValidationError)
-                else {"messages": [], "total": 0}
-            )
+            # The rows the walk actually produced, but the paging fields of the
+            # page it stopped on — so a script can resume exactly where this left
+            # off (null after --all: there is nothing further back).
+            payload = {**last_page, "messages": [m.to_dict() for m in msgs], "count": len(msgs)}
             typer.echo(json_module.dumps(payload, indent=2, default=str))
             return
 
@@ -931,6 +956,14 @@ def messages(
             typer.echo(f"  {stamp}  {m.sender_handle}{own} [{m.message_type}]: {first}")
             for line in rest:
                 typer.echo(f"              {line}")
+        # Tell the reader there is more history and exactly how to reach it,
+        # rather than leaving the window looking like the whole room.
+        if last_page.get("next_cursor"):
+            typer.secho(
+                f"\n  … more history — mycelium room messages {room_name} "
+                f"--cursor {last_page['next_cursor']}  (or --all)",
+                fg=typer.colors.BRIGHT_BLACK,
+            )
         typer.echo()
 
     except (typer.Exit, typer.Abort):

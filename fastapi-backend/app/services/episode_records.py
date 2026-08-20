@@ -148,8 +148,12 @@ def live_episode_summary(room_name: str) -> dict[str, Any] | None:
     }
 
 
-def room_episodes(room_name: str, *, limit: int = 50) -> list[dict[str, Any]]:
-    """Episode summaries for a room, newest first, with an in-progress one first."""
+def room_episodes(room_name: str, *, limit: int | None = 50) -> list[dict[str, Any]]:
+    """Episode summaries for a room, newest first, with an in-progress one first.
+
+    ``limit=None`` returns every episode — what a paginated caller wants, since
+    truncating here would hide the pages past the cut.
+    """
     records = list_memory_files(get_room_dir(room_name), prefix=EPISODES_PREFIX, limit=limit)
     episodes = [episode_summary(key, meta, content) for key, meta, content in records]
     live = live_episode_summary(room_name)

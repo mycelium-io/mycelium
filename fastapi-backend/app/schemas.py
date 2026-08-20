@@ -177,7 +177,22 @@ class MessageRead(BaseModel):
     model_config = {"from_attributes": True, "populate_by_name": True}
 
 
-class MessageListResponse(BaseModel):
+class CursorPage(BaseModel):
+    """The keyset-pagination fields every list response carries.
+
+    ``next_cursor`` continues in the list's own traversal direction (older, for
+    a newest-first list) and is null on the last page. Tokens are opaque: they
+    encode the sort key of the row the page ended on, so they stay valid while
+    the list grows. See ``app/services/pagination.py``.
+    """
+
+    next_cursor: str | None = Field(
+        None, description="Opaque cursor for the next page; null when this is the last page"
+    )
+    has_more: bool = Field(False, description="Whether more rows follow this page")
+
+
+class MessageListResponse(CursorPage):
     messages: list[MessageRead]
     total: int
 
@@ -581,8 +596,9 @@ class EpisodeSummaryRead(BaseModel):
     updated_by: str = ""
 
 
-class EpisodeListResponse(BaseModel):
+class EpisodeListResponse(CursorPage):
     episodes: list[EpisodeSummaryRead]
+    total: int = 0
 
 
 class EpisodeDetailRead(EpisodeSummaryRead):

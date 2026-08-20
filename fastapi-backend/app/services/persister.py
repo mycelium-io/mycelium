@@ -432,10 +432,21 @@ def stored_message_from_record(room: str, record: TranscriptRecord) -> StoredMes
     return msg
 
 
-# Per-room cache of the mapped conversational view, invalidated when the
-# transcript file changes, so a hot UI poll re-stats (cheap) rather than
-# re-parsing the whole file every read.
-_conversational_cache: dict[str, tuple[tuple[int, int], list[StoredMessage]]] = {}
+@dataclass
+class _ConversationCache:
+    """A room's projected transcript, and how much of the file produced it."""
+
+    stamp: tuple[int, int]
+    consumed: int
+    seal: bytes
+    messages: list[StoredMessage]
+
+
+# Per-room cache of the mapped conversational view. The transcript is append-only,
+# so a grown file is re-read *from where the last read stopped* rather than from
+# the top: a hot UI poll, or a walk back through a long room's history one page at
+# a time, costs the bytes that arrived since — not the whole file, every time.
+_conversational_cache: dict[str, _ConversationCache] = {}
 
 
 def _stat_stamp(path: Path) -> tuple[int, int] | None:
@@ -445,6 +456,56 @@ def _stat_stamp(path: Path) -> tuple[int, int] | None:
     except OSError:
         return None
     return (st.st_mtime_ns, st.st_size)
+
+
+def _whole_lines(text: str) -> tuple[str, int, bytes]:
+    """Split ``text`` at its last newline into (parsable, bytes, seal).
+
+    A transcript read can catch a record mid-append. Only whole lines count as
+    history — the rest waits for the write to finish rather than being parsed as
+    a truncated row — so what was consumed ends on a line boundary. The seal is
+    the final consumed line, which the next read re-checks against the file to be
+    sure it is still continuing the same history.
+    """
+    end = text.rfind("\n")
+    if end < 0:
+        return ("", 0, b"")
+    whole = text[: end + 1]
+    seal = whole[:-1].rsplit("\n", 1)[-1] + "\n"
+    return (whole, len(whole.encode("utf-8")), seal.encode("utf-8"))
+
+
+def _appended_since(path: Path, cached: _ConversationCache) -> str | None:
+    """The text appended since ``cached``, or None if that isn't safe to assume.
+
+    None means "re-read from the top": the file shrank, or its last consumed line
+    is no longer where we left it — the file was rewritten, not appended to.
+    """
+    try:
+        with path.open("rb") as fh:
+            fh.seek(cached.consumed - len(cached.seal))
+            if fh.read(len(cached.seal)) != cached.seal:
+                return None
+            return fh.read().decode("utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+
+
+def _extended(
+    room: str, path: Path, cached: _ConversationCache | None, stamp: tuple[int, int]
+) -> _ConversationCache | None:
+    """The cache entry a plain append yields, or None if the file must be re-read."""
+    if cached is None or not cached.seal or stamp[1] < cached.consumed:
+        return None
+    appended = _appended_since(path, cached)
+    if appended is None:
+        return None
+    text, grew, seal = _whole_lines(appended)
+    if not grew:  # nothing but a half-written line: keep what we have
+        return _ConversationCache(stamp, cached.consumed, cached.seal, cached.messages)
+    return _ConversationCache(
+        stamp, cached.consumed + grew, seal, cached.messages + _project(room, text)
+    )
 
 
 def conversational_messages(room: str) -> list[StoredMessage]:
@@ -463,13 +524,25 @@ def conversational_messages(room: str) -> list[StoredMessage]:
         _conversational_cache.pop(room, None)
         return []
     cached = _conversational_cache.get(room)
-    if cached is not None and cached[0] == stamp:
-        return list(cached[1])
-    messages = [
-        m for r in load_transcript(room) if (m := stored_message_from_record(room, r)) is not None
-    ]
-    _conversational_cache[room] = (stamp, messages)
-    return list(messages)
+    if cached is not None and cached.stamp == stamp:
+        return list(cached.messages)
+
+    entry = _extended(room, path, cached, stamp)
+    if entry is None:
+        try:
+            body = path.read_text(encoding="utf-8")
+        except OSError:
+            return []
+        text, consumed, seal = _whole_lines(body)
+        entry = _ConversationCache(stamp, consumed, seal, _project(room, text))
+
+    _conversational_cache[room] = entry
+    return list(entry.messages)
+
+
+def _project(room: str, text: str) -> list[StoredMessage]:
+    """Parse a slice of transcript JSONL into the chat rows the read path serves."""
+    return [m for r in _parse_jsonl(text) if (m := stored_message_from_record(room, r)) is not None]
 
 
 def room_conversation(room: str) -> list[StoredMessage]:

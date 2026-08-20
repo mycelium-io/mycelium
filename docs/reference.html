@@ -455,9 +455,9 @@
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">messages</span> [<span class="arg">&lt;room&gt;</span>] [<span class="flag">--limit</span> N] [<span class="flag">--sender</span> <span class="arg">&lt;handle&gt;</span>] [<span class="flag">--type</span> <span class="arg">&lt;type&gt;</span>]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">messages</span> [<span class="arg">&lt;room&gt;</span>] [<span class="flag">--limit</span> N] [<span class="flag">--all</span>] [<span class="flag">--cursor</span> <span class="arg">&lt;cursor&gt;</span>] [<span class="flag">--sender</span> <span class="arg">&lt;handle&gt;</span>] [<span class="flag">--type</span> <span class="arg">&lt;type&gt;</span>]</code>
         </div>
-        <div class="cmd-ref-body">Read recent messages in a room (point-in-time, newest first). Filter with <code>--sender</code> / <code>--type</code>.</div>
+        <div class="cmd-ref-body">Read messages in a room, newest first. <code>--all</code> walks the full history; <code>--cursor</code> resumes from a previous page. Filter with <code>--sender</code> / <code>--type</code>.</div>
       </div>
 
       <div class="cmd-ref">
@@ -557,9 +557,9 @@
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">ls</span> [prefix/]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">ls</span> [prefix/] [<span class="flag">--all</span>]</code>
         </div>
-        <div class="cmd-ref-body">List memories from the hub. Optional prefix filters by namespace.</div>
+        <div class="cmd-ref-body">List memories from the hub. Optional prefix filters by namespace; <code>--all</code> walks past the first page.</div>
       </div>
 
       <div class="cmd-ref">

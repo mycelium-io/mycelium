@@ -3,7 +3,7 @@
 
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   getSSEUrl,
   fetchMessages,
@@ -13,6 +13,9 @@ import {
   logFetchError,
   type PendingInvite,
 } from "@/lib/api";
+import { mergeOlder } from "@/lib/cursor-pagination";
+import { useCursorPagination } from "@/lib/use-cursor-pagination";
+import { useReverseScroll, useStickToBottom } from "@/lib/use-reverse-scroll";
 import { MarkdownContent } from "@/components/markdown-content";
 import { RoomPlanHeader } from "@/components/room-plan-header";
 import { ConsentDialog } from "@/components/consent-dialog";
@@ -47,6 +50,10 @@ interface Event {
 }
 
 const CHAT_TYPES = new Set(["broadcast", "direct", "announce", "delegate"]);
+
+// Messages fetched per page of history. Big enough that a reader scrolling up
+// rarely waits, small enough that opening a long-lived room stays instant.
+const HISTORY_PAGE_SIZE = 50;
 
 // The L9 "raise-up" whitelist: message types promoted from the L9 inspector
 // into the primary channel/chat surface. This must mirror
@@ -379,17 +386,42 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
     };
   }, [roomName]);
 
-  // Load initial messages
-  useEffect(() => {
-    fetchMessages(roomName).then(data => {
-      const msgs = (data.messages || []).reverse();
-      setEvents(msgs.map(parseEvent));
-      setHistoryLoaded(true);
-    }).catch((err) => {
-      logFetchError("fetchMessages")(err);
-      setHistoryLoaded(true);
+  // History, a page at a time. The feed holds the newest page on mount and walks
+  // back from there as the reader scrolls up, so a room with thousands of
+  // messages opens as fast as an empty one and still gives up all of its past.
+  const { loadMore, exhausted } = useCursorPagination<Event>(
+    (cursor) =>
+      fetchMessages(roomName, HISTORY_PAGE_SIZE, cursor).then((data) => ({
+        ...data,
+        items: (data.messages || []).reverse().map(parseEvent),
+      })),
+    roomName,
+  );
+
+  // A page of history goes in front of what is already on screen, minus anything
+  // the live stream has shown already — the two overlap by design (SSE keeps
+  // running while a page is in flight), and a message must appear once.
+  const loadOlder = useCallback(async () => {
+    const older = await loadMore();
+    if (!older.length) return 0;
+    let added = 0;
+    setEvents((prev) => {
+      const merged = mergeOlder(prev, older, (e) => e.messageId);
+      added = merged.length - prev.length;
+      return merged;
     });
-  }, [roomName]);
+    return added;
+  }, [loadMore]);
+
+  useEffect(() => {
+    setEvents([]);
+    setHistoryLoaded(false);
+    loadOlder()
+      .catch(logFetchError("fetchMessages"))
+      .finally(() => setHistoryLoaded(true));
+    // Re-runs when the room changes — a different room is a different history.
+    // loadOlder is stable within one, so it never re-fires the load by itself.
+  }, [roomName, loadOlder]);
 
   // Load any consent prompts already open (an @-invite raised before this
   // client connected). Live ones arrive over SSE below.
@@ -467,12 +499,22 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
     onFocusConsumed?.();
   }, [focusMessageId, onFocusConsumed]);
 
+  // Load older history when the reader reaches the top, holding their place.
+  const topSentinelRef = useReverseScroll({
+    viewportRef: scrollRef,
+    itemCount: visible.length,
+    enabled: historyLoaded && !exhausted && view === "channel",
+    onLoadOlder: loadOlder,
+  });
+
   // Auto-scroll when new events arrive — but not over a message the user was
-  // just sent to, which is the one place in the feed they're looking.
+  // just sent to, which is the one place in the feed they're looking, and not
+  // when they have scrolled up (reading history, or a page of it just landed).
+  const following = useStickToBottom(scrollRef);
   useEffect(() => {
-    if (highlight) return;
+    if (highlight || !following()) return;
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [visible, highlight]);
+  }, [visible, highlight, following]);
 
   useEffect(() => {
     if (!highlight) return;
@@ -570,7 +612,9 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
           <RoomPlanHeader roomName={roomName} refreshTrigger={planRefreshTrigger} />
         ) : !historyLoaded ? (
           <ChannelSkeleton />
-        ) : visible.length === 0 ? (
+        ) : visible.length === 0 && exhausted ? (
+          // Only once the walk has reached the beginning is an empty feed
+          // really empty — until then it is a window that hasn't found chat yet.
           <EmptyState
             className="h-full"
             icon={MessagesSquare}
@@ -579,6 +623,13 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
           />
         ) : (
         <div className="py-3">
+        {/* Crossing this marks the top of what's loaded and pulls in the page
+            before it, carrying the notice so the reader sees history arriving
+            rather than a stall. */}
+        <div ref={topSentinelRef} aria-hidden className="h-px" />
+        {!exhausted && (
+          <div className="px-5 py-2 text-micro text-muted-foreground">loading earlier messages…</div>
+        )}
         {visible.map((ev, idx) => {
               // Coordination + plan lifecycle events render as slim, centered
               // system notices — quiet dividers woven into the conversation,

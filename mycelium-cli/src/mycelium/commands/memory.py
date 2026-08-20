@@ -22,6 +22,7 @@ from pydantic import ValidationError
 from rich.console import Console
 from rich.table import Table
 
+from mycelium import pagination
 from mycelium.client import hub_client, typed_client
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
@@ -347,36 +348,55 @@ def memory_get(
     console.print(content)
 
 
-def _fetch_memories(room_name: str, prefix: str | None, limit: int) -> list[dict[str, Any]]:
+def _fetch_memories(
+    room_name: str, prefix: str | None, limit: int, *, walk_all: bool = False
+) -> list[dict[str, Any]]:
     """Fetch a room's memories from the hub, newest-first as the hub orders them.
 
-    Returns the raw JSON records (the list endpoint is untyped in the generated
-    client), or exits with a clear message when the room is unknown.
+    One page, or every page when ``walk_all``. Returns the raw JSON records (the
+    list endpoint is untyped in the generated client), or exits with a clear
+    message when the room is unknown.
     """
     from mycelium_backend_client.api.memory import (
         list_memories_api_rooms_room_name_memory_get as list_api,
     )
+    from mycelium_backend_client.types import UNSET
 
     with _hub_session() as client:
-        try:
-            entries = list_api.sync(room_name=room_name, client=client, prefix=prefix, limit=limit)
-        except UnexpectedStatus as exc:
-            if exc.status_code == 404:
-                console.print(
-                    f"[red]Not found:[/red] room '{room_name}' does not exist on the hub "
-                    f"at {_hub_url()}"
-                )
-                raise typer.Exit(1) from exc
-            raise
 
-    if not isinstance(entries, list):
-        return []
-    return cast("list[dict[str, Any]]", [r for r in entries if isinstance(r, dict)])
+        def fetch(cursor: str | None) -> tuple[list[dict[str, Any]], str | None]:
+            try:
+                resp = list_api.sync_detailed(
+                    room_name=room_name,
+                    client=client,
+                    prefix=prefix,
+                    limit=limit,
+                    cursor=cursor or UNSET,
+                )
+            except UnexpectedStatus as exc:
+                if exc.status_code == 404:
+                    console.print(
+                        f"[red]Not found:[/red] room '{room_name}' does not exist on the hub "
+                        f"at {_hub_url()}"
+                    )
+                    raise typer.Exit(1) from exc
+                raise
+            entries = resp.parsed if isinstance(resp.parsed, list) else []
+            rows = cast("list[dict[str, Any]]", [r for r in entries if isinstance(r, dict)])
+            # This list keeps a bare-list body, so its cursor rides in the headers.
+            return rows, pagination.cursor_from_headers(resp.headers)
+
+        if walk_all:
+            return pagination.walk_pages(fetch)
+        return fetch(None)[0]
 
 
 @doc_ref(
-    usage="mycelium memory ls [prefix/]",
-    desc="List memories from the hub. Optional prefix filters by namespace.",
+    usage="mycelium memory ls [prefix/] [--all]",
+    desc=(
+        "List memories from the hub. Optional prefix filters by namespace; "
+        "<code>--all</code> walks past the first page."
+    ),
     group="memory",
 )
 @app.command(name="ls")
@@ -388,13 +408,14 @@ def memory_ls(
     prefix: str | None = typer.Option(
         None, "--prefix", "-p", help="Key prefix filter (same as positional arg)"
     ),
-    limit: int = typer.Option(20, "--limit", "-n", help="Max results"),
+    limit: int = typer.Option(20, "--limit", "-n", help="Results per page"),
+    walk_all: bool = pagination.AllOption,
 ) -> None:
     """List memories in a room (from the hub)."""
     prefix = namespace or prefix
     room_name = _get_active_room(room)
 
-    entries = _fetch_memories(room_name, prefix, limit)
+    entries = _fetch_memories(room_name, prefix, limit, walk_all=walk_all)
     if not entries:
         console.print("[dim]No memories found[/dim]")
         return

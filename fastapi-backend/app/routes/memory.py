@@ -40,7 +40,7 @@ from app.schemas import (
     SubscriptionCreate,
     SubscriptionRead,
 )
-from app.services import actor, links, local_state, memory_sync, search_index
+from app.services import actor, links, local_state, memory_sync, pagination, search_index
 from app.services.embedding import embed_text
 from app.services.filesystem import (
     delete_memory_file,
@@ -349,6 +349,17 @@ async def upsert_memories(room_name: str, payload: MemoryBatchCreate) -> list[Me
     return results
 
 
+def _memory_sort_key(entry: tuple[str, dict[str, Any], str]) -> tuple[str, str]:
+    """A memory's keyset sort key: when it was last written, then its key.
+
+    The memory key breaks ties — memories written in the same second are common
+    (a batch write), and without a total order a cursor sitting inside that run
+    would skip or repeat rows.
+    """
+    key, meta, _content = entry
+    return (str(meta.get("updated_at", "")), key)
+
+
 @router.get("")
 async def list_memories(
     room_name: str,
@@ -356,32 +367,49 @@ async def list_memories(
     prefix: str | None = Query(None, description="Key prefix filter"),
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
+    cursor: str | None = Query(
+        None, description="Opaque cursor from a previous page's X-Next-Cursor header"
+    ),
 ):
-    """List memories in a room (from the filesystem).
+    """List memories in a room (from the filesystem), newest-written first.
 
     Supports ETag / If-None-Match for efficient sync — returns 304 if nothing
-    changed.
+    changed. The body stays a bare list, so this list carries its pagination in
+    the ``X-Next-Cursor`` / ``X-Has-More`` headers rather than in an envelope
+    (see ``app/services/pagination.py``).
     """
     _require_room(room_name)
     room_dir = get_room_dir(room_name)
-    file_entries = list_memory_files(room_dir, prefix=prefix, limit=limit + offset)
+    file_entries = list_memory_files(room_dir, prefix=prefix, limit=None)
 
     latest_ts = max((meta.get("updated_at", "") for _, meta, _ in file_entries), default="")
     etag = '"' + hashlib.md5(str(latest_ts).encode()).hexdigest() + '"' if latest_ts else '"empty"'
     if request.headers.get("if-none-match") == etag:
         return Response(status_code=304, headers={"ETag": etag})
 
-    page = file_entries[offset : offset + limit]
+    try:
+        page = pagination.paginate(
+            file_entries, key=_memory_sort_key, limit=limit, cursor=cursor, offset=offset
+        )
+    except pagination.InvalidCursor as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     memories = [
-        _memory_read_from_file(room_name, key, meta, content) for key, meta, content in page
+        _memory_read_from_file(room_name, key, meta, content) for key, meta, content in page.items
     ]
 
     from fastapi.encoders import jsonable_encoder
 
+    headers = {
+        "ETag": etag,
+        "X-Has-More": "true" if page.has_more else "false",
+        "X-Total-Count": str(page.total),
+    }
+    if page.next_cursor:
+        headers["X-Next-Cursor"] = page.next_cursor
     return Response(
         content=json.dumps(jsonable_encoder(memories)),
         media_type="application/json",
-        headers={"ETag": etag},
+        headers=headers,
     )
 
 

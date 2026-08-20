@@ -420,6 +420,29 @@
             },
             "title": "Episodes",
             "type": "array"
+          },
+          "has_more": {
+            "default": false,
+            "description": "Whether more rows follow this page",
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Opaque cursor for the next page; null when this is the last page",
+            "title": "Next Cursor"
+          },
+          "total": {
+            "default": 0,
+            "title": "Total",
+            "type": "integer"
           }
         },
         "required": [
@@ -1285,12 +1308,30 @@
       },
       "MessageListResponse": {
         "properties": {
+          "has_more": {
+            "default": false,
+            "description": "Whether more rows follow this page",
+            "title": "Has More",
+            "type": "boolean"
+          },
           "messages": {
             "items": {
               "$ref": "#/components/schemas/MessageRead"
             },
             "title": "Messages",
             "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Opaque cursor for the next page; null when this is the last page",
+            "title": "Next Cursor"
           },
           "total": {
             "title": "Total",
@@ -3145,8 +3186,28 @@
             "required": false,
             "schema": {
               "default": 50,
+              "maximum": 500,
+              "minimum": 1,
               "title": "Limit",
               "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque cursor from a previous page's next_cursor",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Opaque cursor from a previous page's next_cursor",
+              "title": "Cursor"
             }
           }
         ],
@@ -3559,7 +3620,7 @@
     },
     "/api/rooms/{room_name}/memory": {
       "get": {
-        "description": "List memories in a room (from the filesystem).\n\nSupports ETag / If-None-Match for efficient sync \u2014 returns 304 if nothing\nchanged.",
+        "description": "List memories in a room (from the filesystem), newest-written first.\n\nSupports ETag / If-None-Match for efficient sync \u2014 returns 304 if nothing\nchanged. The body stays a bare list, so this list carries its pagination in\nthe ``X-Next-Cursor`` / ``X-Has-More`` headers rather than in an envelope\n(see ``app/services/pagination.py``).",
         "operationId": "list_memories_api_rooms__room_name__memory_get",
         "parameters": [
           {
@@ -3610,6 +3671,24 @@
               "minimum": 0,
               "title": "Offset",
               "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque cursor from a previous page's X-Next-Cursor header",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Opaque cursor from a previous page's X-Next-Cursor header",
+              "title": "Cursor"
             }
           }
         ],
@@ -3990,7 +4069,7 @@
     },
     "/api/rooms/{room_name}/messages": {
       "get": {
-        "description": "List messages in a room (or coordination session), newest first.",
+        "description": "List messages in a room (or coordination session), newest first.\n\nWalk backward through history by following ``next_cursor``; ``offset`` stays\nfor callers that haven't migrated but shifts under a live room.",
         "operationId": "list_messages_api_rooms__room_name__messages_get",
         "parameters": [
           {
@@ -4021,6 +4100,24 @@
               "default": 0,
               "title": "Offset",
               "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque cursor from a previous page's next_cursor; returns the messages immediately older than it. Stable while the room keeps growing (unlike offset).",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Opaque cursor from a previous page's next_cursor; returns the messages immediately older than it. Stable while the room keeps growing (unlike offset).",
+              "title": "Cursor"
             }
           },
           {

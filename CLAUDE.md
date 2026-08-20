@@ -159,6 +159,16 @@ is no litellm dependency.
   (version increments). Frontmatter the store doesn't manage is user data: it
   survives a rewrite rather than being dropped, and `MemoryCreate.meta` (CLI:
   `--meta k=v`, `--expandable`) writes it.
+- **Lists page by keyset cursor, not offset.** One primitive
+  (`app/services/pagination.py`) pages every list: ask with `cursor`, get back
+  `next_cursor` + `has_more`, and a null cursor means the end. The token carries the
+  sort key of the row a page ended on, so a page boundary survives rows arriving at
+  the head — the reason a reader can scroll back through a live room without
+  duplicating or skipping messages, which offset cannot do. Envelope responses carry
+  the two fields in the body; the one bare-list response (memory) carries them as
+  `X-Next-Cursor` / `X-Has-More`. `offset` still works where it already did.
+  Client-side the same contract has one walker each: `mycelium/pagination.py`
+  (`--all` / `--cursor`) and `use-cursor-pagination.ts` + `use-reverse-scroll.ts`.
 - **Memories interlink; the link index is derived.** `myc://key` (canonical) and
   `[[key]]` (shorthand) are the same edge, plus `![[key]]` transclusions and typed
   frontmatter relations (`supersedes`, `depends-on`, `part-of`, `relates-to`).

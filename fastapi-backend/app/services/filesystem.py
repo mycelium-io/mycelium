@@ -199,11 +199,13 @@ def delete_memory_file(base_dir: Path, key: str) -> bool:
 def list_memory_files(
     base_dir: Path,
     prefix: str | None = None,
-    limit: int = 1000,
+    limit: int | None = 1000,
 ) -> list[tuple[str, dict[str, Any], str]]:
     """List memory files, optionally filtered by key prefix.
 
     Returns list of (key, metadata, content) tuples, sorted by updated_at desc.
+    ``limit=None`` returns every match, which is what a paginating caller needs
+    (a truncation here would hide the pages past the cut).
     """
     if not base_dir.exists():
         return []
@@ -236,7 +238,7 @@ def list_memory_files(
         return item[1].get("updated_at", "")
 
     results.sort(key=sort_key, reverse=True)
-    return results[:limit]
+    return results if limit is None else results[:limit]
 
 
 def _cleanup_empty_dirs(directory: Path, stop_at: Path) -> None:

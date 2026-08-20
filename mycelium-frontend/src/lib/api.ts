@@ -387,6 +387,15 @@ export async function addPlanTask(roomName: string, text: string, slug = "tasks"
 }
 
 // ── Messages ─────────────────────────────────────────────────────────────────
+/** The keyset-pagination fields every paginated list on the hub returns.
+ *  `next_cursor` continues in the list's own direction — older, for a
+ *  newest-first list — and is null once there is nothing further. */
+export interface CursorPage {
+  next_cursor?: string | null;
+  has_more?: boolean;
+}
+
+
 
 export interface RoomMessage {
   id?: string;
@@ -403,7 +412,7 @@ export interface RoomMessage {
   [key: string]: unknown;
 }
 
-export interface MessagesResponse {
+export interface MessagesResponse extends CursorPage {
   messages: RoomMessage[];
   total?: number;
 }
@@ -411,11 +420,21 @@ export interface MessagesResponse {
 const isMessagesResponse = (d: unknown): d is MessagesResponse =>
   !!d && typeof d === "object" && Array.isArray((d as { messages?: unknown }).messages);
 
-export async function fetchMessages(roomName: string, limit?: number): Promise<MessagesResponse> {
-  const url = limit
-    ? `/api/rooms/${roomName}/messages?limit=${limit}`
-    : `/api/rooms/${roomName}/messages`;
-  return apiFetch<MessagesResponse>(url, {
+/** One page of a room's messages, newest first.
+ *
+ *  Pass the previous page's `next_cursor` to read the page *before* it — that
+ *  cursor names a message rather than a position, so a reader walking back
+ *  through history keeps its place while the room keeps talking. */
+export async function fetchMessages(
+  roomName: string,
+  limit?: number,
+  cursor?: string | null,
+): Promise<MessagesResponse> {
+  const query = new URLSearchParams();
+  if (limit) query.set("limit", String(limit));
+  if (cursor) query.set("cursor", cursor);
+  const suffix = query.toString() ? `?${query}` : "";
+  return apiFetch<MessagesResponse>(`/api/rooms/${roomName}/messages${suffix}`, {
     cache: "no-store",
     fallback: { messages: [] },
     guard: isMessagesResponse,
