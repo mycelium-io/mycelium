@@ -15,6 +15,7 @@ step cap.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any
 
@@ -473,6 +474,114 @@ async def test_mediate_survives_a_failing_term_check(monkeypatch: pytest.MonkeyP
 
     monkeypatch.setattr(mediator, "detect_term_mismatch", boom)
 
+    persister = FakePersister()
+    channel = FakeChannel(persister, reply_conf=0.9)
+    managed = FakeManaged(_ROOM, "mycelium", channel, persister)
+    manager = FakeManager(managed, ["growth", "risk", "aligner"])
+
+    verdict = await _engine(manager).mediate(_ROOM)
+
+    assert verdict is not None
+    assert verdict["header"]["subkind"] == "converged"
+
+
+# ── #683: address the least-satisfied agent next (turn order) ─────────────────
+
+_ISSUES_683 = [{"name": "cap", "options": ["30", "40", "50", "60"]}]
+_OPTIONS_683 = {"cap": ["30", "40", "50", "60"]}
+
+
+def _negotiation() -> mediator.MediatedNegotiation:
+    """A MediatedNegotiation for turn-order tests; the seams it doesn't use here
+    (fetch_prose/llm) are inert stubs since these tests never run the mechanism."""
+    return mediator.MediatedNegotiation(
+        issues=_ISSUES_683,
+        cap=10,
+        loop=asyncio.new_event_loop(),
+        fetch_prose=lambda *a: None,  # type: ignore[arg-type,return-value]
+        turn_timeout_s=1.0,
+        llm=lambda *a, **k: "",
+    )
+
+
+def test_negmas_turn_order_seam_present() -> None:
+    """Explainer guard: if NEGMAS renames ``next_negotitor_ids`` or drops
+    ``state.current_offer``, this fails with a clear message instead of the
+    least-satisfied ordering silently reverting to round-robin."""
+    from negmas import SAOMechanism
+    from negmas.outcomes import make_issue
+
+    m = SAOMechanism(issues=[make_issue(values=["a", "b"], name="x")], n_steps=5)
+    neg = _negotiation()
+    m.add(mediator.LiveNegotiator("growth", neg))
+    m.add(mediator.LiveNegotiator("risk", neg))
+    assert callable(getattr(m, "next_negotitor_ids", None)), "NEGMAS turn-order seam moved"
+    # Default (no standing offer): every negotiator, NEGMAS's round-robin.
+    assert set(m.next_negotitor_ids()) == set(m.negotiator_ids)
+    assert hasattr(m.state, "current_offer"), "NEGMAS state.current_offer seam moved"
+
+
+def test_least_satisfied_order_puts_worst_first() -> None:
+    order = ["g", "r"]
+    id_to_handle = {"g": "growth", "r": "risk"}
+    opening = {"growth": {"cap": "60"}, "risk": {"cap": "30"}}
+    # Standing 40 sits next to risk's 30, far from growth's 60 → growth least happy.
+    assert mediator.least_satisfied_order(
+        order, id_to_handle, opening, {"cap": "40"}, _OPTIONS_683
+    ) == [
+        "g",
+        "r",
+    ]
+    # Standing 50 flips it — now risk is furthest from satisfied.
+    assert mediator.least_satisfied_order(
+        order, id_to_handle, opening, {"cap": "50"}, _OPTIONS_683
+    ) == [
+        "r",
+        "g",
+    ]
+
+
+def test_least_satisfied_order_falls_back_to_round_robin() -> None:
+    order = ["g", "r"]
+    id_to_handle = {"g": "growth", "r": "risk"}
+    opening = {"growth": {"cap": "60"}, "risk": {"cap": "30"}}
+    # No standing offer yet (round 0) → unchanged.
+    assert mediator.least_satisfied_order(order, id_to_handle, opening, None, _OPTIONS_683) == order
+    # No opening offers captured → unchanged.
+    assert (
+        mediator.least_satisfied_order(order, id_to_handle, {}, {"cap": "40"}, _OPTIONS_683)
+        == order
+    )
+    # Unscoreable handles keep round-robin (stable, treated as satisfied).
+    assert (
+        mediator.least_satisfied_order(
+            order, {"g": None, "r": None}, opening, {"cap": "40"}, _OPTIONS_683
+        )
+        == order
+    )
+
+
+def test_mechanism_addresses_least_satisfied_first(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The override composes NEGMAS order + negotiator→handle map + satisfaction."""
+    neg = _negotiation()
+    neg.opening_offers = {"growth": {"cap": "60"}, "risk": {"cap": "30"}}
+    mech = mediator.build_mechanism(_ISSUES_683, ["growth", "risk"], neg, cap=10)
+    monkeypatch.setattr(mech, "_standing_offer", lambda: {"cap": "40"})  # near risk's floor
+    id_to_handle = {n.id: n.handle for n in mech.negotiators}
+    ordered = [id_to_handle[i] for i in mech.next_negotitor_ids()]
+    assert ordered[0] == "growth"
+
+
+def test_mechanism_defaults_to_round_robin_before_first_offer() -> None:
+    neg = _negotiation()  # no opening offers, no standing offer
+    mech = mediator.build_mechanism(_ISSUES_683, ["growth", "risk"], neg, cap=10)
+    assert set(mech.next_negotitor_ids()) == set(mech.negotiator_ids)
+
+
+@pytest.mark.asyncio
+async def test_least_satisfied_order_preserves_termination() -> None:
+    """Reordering who is asked must not break termination: a converging run still
+    stops at agreement, not the step cap (the anti-theatre invariant)."""
     persister = FakePersister()
     channel = FakeChannel(persister, reply_conf=0.9)
     managed = FakeManaged(_ROOM, "mycelium", channel, persister)
