@@ -52,6 +52,12 @@ MYCELIUM_SLIM_ENDPOINT=http://127.0.0.1:46357 uv run pytest tests/test_slim_roun
 # the spec). CI + the wheel/binary builds run this themselves.
 SPEC_FILE=openapi.json ./scripts/gen-mycelium-client.sh
 
+# Regenerate the docs site (docs/*.html + docs/llms-full.txt) from the markdown
+# under mycelium-cli/src/mycelium/docs/, the @doc_ref decorators, and the config
+# schema. Needs the OpenAPI client above. Run it in any PR that touches those
+# sources — CI fails on drift.
+cd mycelium-cli && uv run python ../docs/generate_docs.py
+
 # CLI (install globally)
 cd mycelium-cli && uv tool install -e . --with mycelium-backend-client@../mycelium-client --force
 
