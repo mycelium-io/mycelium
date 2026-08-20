@@ -14,8 +14,9 @@ dependencies = [
     "watchdog>=6.0.0",
     "tiktoken>=0.12.0",
     "rapidfuzz>=3.14.5",
-    "slim-bindings>=2,<3",
+    "slim-bindings>=2.1,<2.2",
     "negmas>=0.15.7",
+    "pyjwt[crypto]>=2.10,<3",
 ]
 
 [dependency-groups]

@@ -2,7 +2,7 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-Metrics commands — collect, display, and manage OpenClaw telemetry data.
+Metrics commands: collect, display, and manage OpenClaw telemetry data.
 
 Provides an OTLP HTTP receiver that aggregates token usage, costs, durations,
 and session data from OpenClaw's diagnostics-otel plugin. The `show` command
@@ -361,11 +361,11 @@ def _resolve_agent_to_room() -> dict[str, str]:
     """Return ``{agent_id: room_name}`` from local + reachable openclaw.json files.
 
     The mycelium openclaw plugin's per-host config (``channels.mycelium-room``)
-    is the authoritative agent→room mapping — that's what tells the gateway
+    is the authoritative agent→room mapping; that's what tells the gateway
     which OpenClaw agents fan into which Mycelium room. We read the local
     file directly. In hub-and-spoke deployments, spoke agents won't appear
     in the hub's config; covering them properly would require collecting
-    each spoke's mapping (future work — for now the local mapping is enough
+    each spoke's mapping (future work; for now the local mapping is enough
     to colour-code single-host deployments correctly and to label the
     co-located agents on a hub).
     """
@@ -395,9 +395,9 @@ _ROOM_LOOKUP_CACHE: tuple[dict[str, str], dict[str, str]] | None = None
 # Per-invocation handle on the backend snapshot, so ``_resolve_room_lookup``
 # can layer the ``room_identities`` registry on top of ``/api/rooms``. Set
 # by ``show()`` after backend data is loaded, cleared at the end of the
-# invocation. The snapshot's identity entries win — they survive room
+# invocation. The snapshot's identity entries win; they survive room
 # deletion, while /api/rooms is destructive (see Room model in
-# fastapi-backend/app/models.py — no ``deleted_at`` column).
+# fastapi-backend/app/models.py, no ``deleted_at`` column).
 _SNAPSHOT_BACKEND_FOR_LOOKUP: dict | None = None
 
 
@@ -405,7 +405,7 @@ def _set_room_lookup_context(backend: dict | None) -> None:
     """Wire the backend snapshot into the next ``_resolve_room_lookup`` call.
 
     Also invalidates any cached lookup so the new context takes effect.
-    Safe to call multiple times — the cache is rebuilt lazily on first
+    Safe to call multiple times; the cache is rebuilt lazily on first
     read after the context changes.
     """
     global _SNAPSHOT_BACKEND_FOR_LOOKUP, _ROOM_LOOKUP_CACHE
@@ -421,10 +421,10 @@ def _resolve_room_lookup() -> tuple[dict[str, str], dict[str, str]]:
          ``record_room_identity`` server-side at write-time). Survives
          room deletion, so it's the authoritative join for both alive
          and tombstoned rooms.
-      2. ``GET /api/rooms`` — covers any room registered before the
+      2. ``GET /api/rooms``: covers any room registered before the
          server started tracking identities, but rows vanish on delete.
 
-    The result is cached for the lifetime of the CLI process — `metrics show`
+    The result is cached for the lifetime of the CLI process; `metrics show`
     runs are short-lived, and rooms rarely churn within a single invocation.
     On any failure (no backend reachable, request error) we still return
     whatever the snapshot gave us; if both are empty, two empty dicts so
@@ -436,7 +436,7 @@ def _resolve_room_lookup() -> tuple[dict[str, str], dict[str, str]]:
     mas_to_name: dict[str, str] = {}
     name_to_mas: dict[str, str] = {}
 
-    # Source 1: snapshot identities — authoritative for both directions.
+    # Source 1: snapshot identities, authoritative for both directions.
     # These survive room deletion, so they override /api/rooms when both
     # are present (in practice they'll agree for alive rooms).
     snap = _SNAPSHOT_BACKEND_FOR_LOOKUP or {}
@@ -447,7 +447,7 @@ def _resolve_room_lookup() -> tuple[dict[str, str], dict[str, str]]:
                 mas_to_name[str(mas_id)] = str(name)
                 name_to_mas[str(name)] = str(mas_id)
 
-    # Source 2: /api/rooms — fills in anything the snapshot missed.
+    # Source 2: /api/rooms, fills in anything the snapshot missed.
     # ``setdefault`` semantics ensure snapshot wins on conflicts.
     try:
         from mycelium.config import MyceliumConfig
@@ -477,7 +477,7 @@ def _resolve_room_lookup() -> tuple[dict[str, str], dict[str, str]]:
                 mas_to_name.setdefault(str(mas_id), str(name))
                 name_to_mas.setdefault(str(name), str(mas_id))
     except Exception:
-        # Caching the (possibly snapshot-only) result is intentional —
+        # Caching the (possibly snapshot-only) result is intentional:
         # avoid retrying a failed lookup repeatedly within the same
         # render pass.
         pass
@@ -486,7 +486,7 @@ def _resolve_room_lookup() -> tuple[dict[str, str], dict[str, str]]:
 
 
 def _resolve_room_names_by_mas() -> dict[str, str]:
-    """Backwards-compatible accessor — returns just the ``mas → name`` map."""
+    """Backwards-compatible accessor; returns just the ``mas → name`` map."""
     return _resolve_room_lookup()[0]
 
 
@@ -1433,7 +1433,7 @@ def _load_metrics_json() -> dict | None:
     """Load metrics data, merging local and remote sources in spoke mode.
 
     Hub / local mode (no ``collector_url`` or it points to localhost):
-      Read only the local ``metrics.json`` — the Docker collector already
+      Read only the local ``metrics.json``; the Docker collector already
       has everything.
 
     Spoke mode (``collector_url`` points to a remote hub):
@@ -1489,7 +1489,7 @@ def _get_openclaw_status() -> dict | None:
     except (OSError, json.JSONDecodeError):
         pass
 
-    # Cache miss or stale — fetch fresh
+    # Cache miss or stale; fetch fresh
     data = _fetch_openclaw_status()
     try:
         _OC_STATUS_CACHE.write_text(json.dumps(data) if data else "null")
@@ -1619,10 +1619,8 @@ def _fmt_cost(n: float | None) -> str:
 
 def _parent_room(label: str) -> str:
     """Strip ``:session:<uuid>`` suffix so per-session counters roll up to the
-    user-visible parent room. Used by multiple renderers that aggregate
-    session-scoped backend counters; lifted here to keep the bucketing
-    consistent and avoid the bug fixed in #295 where each renderer had to
-    remember to strip *before* keying its dict (not just *while* labelling).
+    user-visible parent room. Centralizes bucketing logic so each renderer
+    strips consistently (before keying, not just while labelling).
     """
     return label.split(":session:", 1)[0] if ":session:" in label else label
 
@@ -1633,10 +1631,8 @@ def _aggregate_by_room(
     """Group ``<prefix><room>.<metric>`` counters by parent room.
 
     Returns ``{room: {metric: total}}`` with sessions of the same parent
-    folded together via :func:`_parent_room`. Used by the cost estimates
-    panel (#297) and any future renderer that needs to roll up a
-    ``by_room`` namespace; centralising the bucketing here means the
-    ``:session:`` rollup rule is applied exactly once and the same way
+    folded together via :func:`_parent_room`. Centralizes the
+    ``:session:`` rollup rule so it is applied exactly once and the same way
     everywhere.
     """
     out: dict[str, dict[str, int | float]] = {}
@@ -1716,7 +1712,7 @@ def _fmt_histogram_s(h: dict, n_width: int) -> str:
             )
 
     # Degenerate case: no min/max info or essentially zero spread. Drop
-    # the empty-bar slot entirely — saves ~16 chars and still shows the
+    # the empty-bar slot entirely; saves ~16 chars and still shows the
     # value, the avg (which equals the only datum), and the count.
     return f"{_fmt_val_s(avg):>{_W}} [dim]avg {_fmt_val_s(avg):>{_W}} {n_field}[/dim]"
 
@@ -1824,12 +1820,12 @@ def _render_summary_table(
     total_turns = sum(s.get("turns", 1) for s in otel_sessions)
     table.add_row("Total turns", _fmt_num(total_turns) if otel_sessions else "-")
 
-    # Context utilization histogram (newly captured)
+    # Context utilization histogram
     ctx = histograms.get("context_tokens", {})
     if ctx.get("count", 0) > 0:
         table.add_row("Context window", _fmt_histogram_raw(ctx))
 
-    # Webhook stats (newly captured)
+    # Webhook stats
     webhooks = counters.get("webhooks", {})
     wh_received = webhooks.get("received", 0)
     if wh_received > 0:
@@ -1842,7 +1838,7 @@ def _render_summary_table(
         if wh_dur.get("count", 0) > 0:
             table.add_row("Webhook latency", _fmt_histogram_s(wh_dur, _max_n_width(wh_dur)))
 
-    # Session state and stuck (newly captured)
+    # Session state and stuck
     stuck = counters.get("sessions_stuck", 0)
     if stuck:
         table.add_row("Sessions stuck", f"[red]{_fmt_num(stuck)}[/red]")
@@ -2213,8 +2209,8 @@ def _load_pricing() -> dict:
     """Load pricing data (cached after first call).
 
     Resolution order:
-      1. ``$MYCELIUM_DATA_DIR/metrics/pricing.json`` — written by ``mycelium metrics update-pricing``
-      2. Bundled ``data/pricing.json`` — shipped with the CLI package
+      1. ``$MYCELIUM_DATA_DIR/metrics/pricing.json``: written by ``mycelium metrics update-pricing``
+      2. Bundled ``data/pricing.json``: shipped with the CLI package
     """
     global _pricing_data
     if _pricing_data is not None:
@@ -2481,7 +2477,7 @@ def _render_knowledge_table(backend: dict | None, *, detail: bool = False) -> No
                 parts.append(f"~{_fmt_num(n_tok)} tok")
             if n_err > 0:
                 parts.append(f"[red]{n_err} err[/red]")
-            # Blank room cell when unresolved — the mas_id alone identifies
+            # Blank room cell when unresolved; the mas_id alone identifies
             # the row, matching the CLI's normal "tombstone" semantics.
             room_cell = f"  {room_label}" if room_label else "  [dim](deleted)[/dim]"
             table.add_row(room_cell, _format_mas(mas_id, detail=detail), "  ·  ".join(parts))
@@ -2519,7 +2515,7 @@ def _render_mycelium_llm_table(backend: dict | None) -> None:
 
     # Break out each backend LLM operation by its call count. We deliberately
     # do NOT show per-operation tokens here because these sites (health_probe
-    # today; future heartbeats) are by design ~zero-token — surfacing the call
+    # today; future heartbeats) are by design ~zero-token; surfacing the call
     # count is enough to confirm they're firing without cluttering the table.
     # The ``count(".") == 1`` filter keeps only base operation counters,
     # excluding any per-operation token/error sub-keys.
@@ -2690,7 +2686,7 @@ def _render_cost_estimates(
         # configured room (from the local openclaw.json mycelium-room
         # channel block).  We can't compute per-room cost reliably without
         # provider-reported cost per session, so we estimate from the
-        # configured LLM model — labelled accordingly.  Sessions whose
+        # configured LLM model, labelled accordingly.  Sessions whose
         # agent isn't in the local channel config are bucketed under
         # ``other``.
         sessions = (otel or {}).get("sessions", []) if otel else []
@@ -2772,10 +2768,9 @@ def _render_cost_estimates(
             )
             total_cost += myc_est
 
-        # Per-room breakdown under Mycelium LLM. Backends record
-        # ``llm.by_room.<room>.*`` keys; older backends don't have these keys
-        # (we just render nothing in that case). Prefers provider-reported
-        # cost when present, falling back to estimate. All rooms shown.
+        # Per-room breakdown under Mycelium LLM. Aggregates by_room.* keys
+        # when present; skips quietly if unavailable. Prefers provider-reported
+        # cost when available, falling back to estimate. All rooms shown.
         myc_by_room = _aggregate_by_room(myc_llm, prefix="by_room.")
         if myc_by_room:
             ranked = sorted(
@@ -2819,7 +2814,7 @@ def _render_cost_estimates(
                         )
 
     # ── Claude Code (placeholder) ──────────────────────────────────────
-    # Not yet wired — omit row entirely until data available
+    # Not yet wired; omit row entirely until data available
 
     # ── Totals ─────────────────────────────────────────────────────────
     if total_cost > 0:
@@ -2869,7 +2864,7 @@ def _render_spoke_sites_table(otel: dict | None) -> None:
 
     for host_key in sorted(by_host, key=lambda h: by_host[h].get("last_seen", ""), reverse=True):
         data = by_host[host_key]
-        # Match liberally — hostname may be "oclw4" while OTLP host could be
+        # Match liberally; hostname may be "oclw4" while OTLP host could be
         # "oclw4.local", "oclw-4", FQDN, etc. Compare normalised forms.
         norm_local = local_host.lower().split(".")[0].replace("-", "")
         norm_key = host_key.lower().split(".")[0].replace("-", "")

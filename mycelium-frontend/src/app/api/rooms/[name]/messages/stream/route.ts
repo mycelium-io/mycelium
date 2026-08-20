@@ -2,6 +2,7 @@
 // Copyright 2026 Mycelium Contributors
 
 import { getBackendUrl } from "@/lib/backend";
+import { upstreamSseHeaders } from "@/lib/session";
 import { isMockMode, mockStream } from "@/mocks";
 
 export async function GET(
@@ -17,8 +18,7 @@ export async function GET(
   let res: Response;
   try {
     res = await fetch(upstream, {
-      headers: { Accept: "text/event-stream", "Cache-Control": "no-cache" },
-      // Prevent Next.js fetch cache from buffering the response
+      headers: await upstreamSseHeaders(),
       cache: "no-store",
     });
   } catch {

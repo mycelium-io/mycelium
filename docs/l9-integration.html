@@ -8,36 +8,55 @@
 <meta name="robots" content="noindex, nofollow">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="mycelium.css">
+<script>
+// Resolve the theme before first paint so the page never flashes the wrong one.
+(function () {
+  try {
+    var t = localStorage.getItem('mycelium-theme') || 'system';
+    var dark = t === 'dark'
+      || (t === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    document.documentElement.classList.toggle('dark', dark);
+  } catch (e) {
+    document.documentElement.classList.add('dark');
+  }
+})();
+</script>
 <style>
-  /* Ghost-page-only tweaks: this page is unlinked from the site nav. */
+  /* Ghost-page-only tweaks: this page is unlinked from the site nav. The warm
+     tan/olive palette this page used predated the shared tokens; it now draws
+     from them so it tracks both themes. */
   .ghost-banner {
-    border: 1px solid var(--rule, #cbb89a);
-    background: rgba(203, 184, 154, 0.10);
-    padding: 12px 16px; margin: 0 0 28px; border-radius: 4px;
-    font-size: 0.9rem;
+    border: 1px solid var(--border);
+    background: var(--hairline);
+    padding: 12px 16px; margin: 0 0 28px; border-radius: var(--radius-lg);
+    font-size: var(--text-body);
   }
   .ghost-banner strong { letter-spacing: 0.04em; }
   .caveat-banner {
-    border: 1px solid rgba(200,120,90,0.55);
-    background: rgba(200,120,90,0.12);
-    padding: 14px 18px; margin: 0 0 22px; border-radius: 4px;
-    font-size: 0.95rem;
+    border: 1px solid color-mix(in srgb, var(--yellow) 40%, transparent);
+    background: color-mix(in srgb, var(--yellow) 9%, transparent);
+    padding: 14px 18px; margin: 0 0 22px; border-radius: var(--radius-lg);
+    font-size: var(--text-body);
   }
-  table.l9 { border-collapse: collapse; width: 100%; margin: 18px 0; font-size: 0.92rem; }
-  table.l9 th, table.l9 td { border: 1px solid rgba(120,110,90,0.25); padding: 7px 10px; text-align: left; vertical-align: top; }
-  table.l9 th { background: rgba(203,184,154,0.12); font-weight: 600; }
+  table.l9 { border-collapse: collapse; width: 100%; margin: 18px 0; font-size: var(--text-body); }
+  table.l9 th, table.l9 td { border: 1px solid var(--border); padding: 7px 10px; text-align: left; vertical-align: top; }
+  table.l9 th { background: var(--surface); font-weight: 600; }
   table.l9 code { white-space: nowrap; }
-  .pill { display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 0.78rem; border: 1px solid rgba(120,110,90,0.35); }
-  .pill.ours { background: rgba(120,170,120,0.15); }
-  .pill.cfn  { background: rgba(120,150,200,0.15); }
-  .pill.gap  { background: rgba(200,140,120,0.15); }
-  /* Mermaid's neutral theme draws dark text; sit it on a light panel so it
-     has contrast against the site's dark background. */
+  .pill {
+    display: inline-block; padding: 1px 7px; border-radius: 999px;
+    font-size: var(--text-micro); border: 1px solid var(--border);
+    background: var(--surface); color: var(--muted-foreground);
+  }
+  .pill.ours { color: var(--green); border-color: color-mix(in srgb, var(--green) 30%, transparent); }
+  .pill.cfn  { color: var(--viz-2); border-color: color-mix(in srgb, var(--viz-2) 30%, transparent); }
+  .pill.gap  { color: var(--yellow); border-color: color-mix(in srgb, var(--yellow) 30%, transparent); }
+  /* Mermaid renders with its own neutral theme, so it keeps a light panel of
+     its own in both themes rather than inheriting the surface tokens. */
   .mermaid {
     margin: 22px 0; text-align: center;
-    background: #f5f1e8;
-    border: 1px solid rgba(120,110,90,0.35);
-    border-radius: 6px;
+    background: #f5f6f7;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
     padding: 20px 16px;
   }
   .mermaid svg { max-width: 100%; height: auto; }
@@ -58,7 +77,17 @@
     <span class="caps-mono">L9 · INTERNAL</span>
   </span>
   <div class="topnav-right">
-    <a href="https://github.com/mycelium-io/mycelium" aria-label="GitHub" style="display:flex;align-items:center;"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style="display:block;"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg></a>
+    <div class="theme-toggle">
+      <button class="theme-btn" id="theme-btn" aria-label="Theme" onclick="toggleThemeMenu(event)">
+        <i data-lucide="sun"></i>
+      </button>
+      <div class="theme-menu" id="theme-menu">
+        <button data-theme-set="light"><i data-lucide="sun"></i>Light</button>
+        <button data-theme-set="dark"><i data-lucide="moon"></i>Dark</button>
+        <button data-theme-set="system"><i data-lucide="monitor"></i>System</button>
+      </div>
+    </div>
+    <a href="https://github.com/mycelium-io/mycelium" aria-label="GitHub"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style="display:block;"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg></a>
   </div>
 </nav>
 <div class="layout">
@@ -220,7 +249,7 @@ sequenceDiagram
 
       <h2>Position &rarr; the episode opens</h2>
       <p>Each participant posts an opening position with <code>mycelium respond</code>. When a human summons the aligner (<code>mycelium engine invoke aligner …</code>), mycelium mints the episode and synthesizes the opening <code>intent:mission</code> envelope.</p>
-      <pre><code>mycelium respond --handle julia-agent --room api-design \
+      <pre><code>mycelium respond --handle avery-agent --room api-design \
   "REST primary; GraphQL internal only"</code></pre>
       <pre><code>// mycelium synthesizes (recorded into the episode):
 {
@@ -230,7 +259,7 @@ sequenceDiagram
     "participants": {
       "actors": [
         {"id": "aligner", "role": "coordinator"},
-        {"id": "julia-agent", "role": "agent"}
+        {"id": "avery-agent", "role": "agent"}
       ],
       "groups": {"room": "api-design"}
     },
@@ -239,12 +268,12 @@ sequenceDiagram
     "context": {"topic": "urn:concept:mycelium:api-design"}
   },
   "payload": {"type": "utterance",
-              "data": {"content": "- julia-agent: REST primary; GraphQL internal only"}}
+              "data": {"content": "- avery-agent: REST primary; GraphQL internal only"}}
 }</code></pre>
 
       <h2>Respond &rarr; a reply envelope (exchange)</h2>
       <p>On a tick, the agent answers with a prose reply and optional epistemic flags; mycelium parses it and folds it into a synthesized <code>exchange</code> envelope parented on the tick it answers.</p>
-      <pre><code>mycelium respond --handle julia-agent --room api-design \
+      <pre><code>mycelium respond --handle avery-agent --room api-design \
   "counter: transport=rest, meets the latency target" \
   --confidence 0.8 \
   --supporting-evidence "staging p99 data" \
@@ -261,7 +290,7 @@ sequenceDiagram
 {
   "header": {
     "kind": "exchange", "subprotocol": "mycelium",
-    "participants": {"actors": [{"id": "julia-agent", "role": "agent"},
+    "participants": {"actors": [{"id": "avery-agent", "role": "agent"},
                                 {"id": "aligner", "role": "agent"}],
                      "groups": null},
     "message": {"id": "9d2…", "parents": ["&lt;tick-id&gt;"],
@@ -276,7 +305,7 @@ sequenceDiagram
       <p><strong>What reaches the aligner from this:</strong> the parsed action + offer. The epistemic fields stay mycelium-side, folded into the episode for the metrics.</p>
 
       <h2>Grounding + revision_cause</h2>
-      <pre><code>mycelium respond --handle julia-agent --room api-design "accept" \
+      <pre><code>mycelium respond --handle avery-agent --room api-design "accept" \
   --confidence 0.9 --addresses "staging p99 data" --revision-cause grounded_argument</code></pre>
       <pre><code>// mycelium parses:
 {"action": "accept", "confidence": 0.9,
@@ -387,5 +416,16 @@ sequenceDiagram
   </div>
   </main>
 </div>
+
+<!-- STATUS BAR -->
+<footer class="docs-footer">
+  <a href="https://github.com/mycelium-io/mycelium">mycelium-io/mycelium</a>
+  <span class="sep">·</span>
+  <span>Internal · unlinked</span>
+  <span class="tagline">Shared Intent &middot; Shared Memory &middot; Shared Context</span>
+</footer>
+
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<script src="site.js"></script>
 </body>
 </html>

@@ -5,25 +5,21 @@
 
 The mediator's ``interpret`` stage asks an LLM to map an agent's prose into an
 offer ``{issue: option}``. LLMs routinely return keys/values that are *almost*
-the canonical ones registered at issue-discovery time — ``"Tech"`` for
+the canonical ones registered at issue-discovery time: ``"Tech"`` for
 ``tech_allocation``, ``"30%"`` for ``"30"``, ``"express delivery"`` for
 ``"express"``. Left alone, ``to_outcome`` rejects the whole offer (a value not
-exactly in the option list), which downgrades a real move to a reject and — over
-a live negotiation — cascades into timeouts and misreported agreements.
+exactly in the option list), which downgrades a real move to a reject and (over
+a live negotiation) cascades into timeouts and misreported agreements.
 
 This snaps such near-misses to the nearest canonical value before rejecting,
 mirroring the good part of the sibling `ioc-scale-cf-cognition-engines`
-`offer_validation.py` (their 5-tier rapidfuzz/embedding version). We keep it
-**stdlib-only** (`difflib`) deliberately: option lists here are tiny (a handful
-per issue) and snapping runs once per agent turn, so a heavy fuzzy dep buys
-nothing. Order: exact → case-insensitive → normalised → `difflib` ratio.
+`offer_validation.py`. Uses **stdlib-only** (`difflib`): option lists are tiny
+(a handful per issue) and snapping runs once per agent turn. Order: exact → case-insensitive → normalised → `difflib` ratio.
 
-**What snapping does NOT fix:** a value that has no near-match in the set at all
-(the agents agreed 30% but the discovered grid only has {25, 35}). That is an
-issue-*discovery* problem — the grid must contain the meeting point — not a
-snapping one. `difflib` correctly refuses to snap "30"→"25" (ratio ≈ 50, below
-threshold), so this never fabricates a numeric value; it only rescues genuine
-surface-form near-misses.
+Snapping requires a near-match: if the agents agree 30% but the grid only has
+{25, 35}, that is an issue-*discovery* problem (the grid must contain the
+meeting point). `difflib` refuses to snap "30"→"25" (ratio ≈ 50, below
+threshold), so fabricated values are never returned.
 """
 
 from __future__ import annotations
@@ -51,7 +47,7 @@ def snap(raw: str, valid: list[str], *, threshold: float = _SNAP_THRESHOLD) -> s
 
     Tiers, first match wins: exact, case-insensitive, normalised, then a
     ``difflib`` ratio at/above *threshold* (best match). ``None`` means *raw* is
-    too far from every option to snap — the caller should treat that as a real
+    too far from every option to snap; the caller should treat that as a real
     mismatch, not force it.
     """
     s = str(raw)
@@ -64,7 +60,7 @@ def snap(raw: str, valid: list[str], *, threshold: float = _SNAP_THRESHOLD) -> s
     for v in valid:
         if s_norm == _normalise(v):
             return v
-    # Token containment — "express delivery" ~ "express" (the CE's token_set_ratio
+    # Token containment: "express delivery" ~ "express" (the CE's token_set_ratio
     # intent, done with plain sets so difflib's whole-string ratio doesn't penalise
     # the extra word). Single-token numerics never trigger this (distinct tokens).
     raw_tokens = set(s_norm.split())
@@ -89,7 +85,7 @@ def snap_offer(
 
     Resolves each canonical issue's key (the LLM may have named it loosely) and
     then its value against that issue's options. Returns the fully-snapped offer,
-    or ``None`` if *any* issue's key or value can't be resolved — an all-or-
+    or ``None`` if *any* issue's key or value can't be resolved; an all-or-
     nothing outcome so ``to_outcome`` never returns a partial tuple.
     """
     if not isinstance(offer_raw, dict):

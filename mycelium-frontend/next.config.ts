@@ -18,7 +18,16 @@ const allowedDevOrigins =
     .map((s) => s.trim())
     .filter(Boolean) ?? [];
 
-const nextConfig: NextConfig = {
+// `agentRules` is a Next 16.3+ config key; our `next` range (`^16.2.6`) also
+// resolves to 16.2.x builds whose `NextConfig` type predates it, so type it
+// locally rather than rely on the property existing. Setting an unknown key on
+// an older runtime is a harmless no-op.
+const nextConfig: NextConfig & { agentRules?: boolean } = {
+  // `next dev` sniffs the environment for an AI coding agent (CLAUDECODE,
+  // CURSOR_TRACE_ID, …) and, on a match, writes a managed AGENTS.md + CLAUDE.md
+  // into the project root unprompted. We don't want the dev server mutating the
+  // working tree, so opt out.
+  agentRules: false,
   // Standalone output → minimal Docker image (no full node_modules in runtime layer)
   output: "standalone",
   // Next.js's built-in gzip middleware buffers chunks before flushing, which

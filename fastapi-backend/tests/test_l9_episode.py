@@ -390,3 +390,209 @@ def test_read_team_prior_local_absent_returns_none(tmp_path, monkeypatch):
 
     monkeypatch.setattr(settings, "MYCELIUM_DATA_DIR", str(tmp_path))
     assert l9_episode.read_team_prior_local("never-negotiated") is None
+
+
+# ── move subkind on the wire (#681) ───────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("move", "expected"),
+    [("counter", "counter"), ("accept", "accept"), ("reject", "reject")],
+)
+def test_reply_stamps_move_subkind(move: str, expected: str):
+    """A recognized move rides the exchange reply's header.subkind, so a
+    negotiation move is explicit on the wire instead of inferred from prose."""
+    ep = _open()
+    l9_episode.record_reply(ep, handle="a1", reply={"action": "accept", "move": move}, round_n=1)
+    reply = ep.messages[-1]
+    assert reply["header"]["kind"] == "exchange"
+    assert reply["header"]["subkind"] == expected
+
+
+def test_reply_without_move_has_no_subkind():
+    """Replies predating the move vocabulary carry no subkind and round-trip
+    unchanged (an absent subkind is always valid)."""
+    ep = _open()
+    l9_episode.record_reply(ep, handle="a1", reply={"action": "accept"}, round_n=1)
+    reply = ep.messages[-1]
+    assert reply["header"]["kind"] == "exchange"
+    assert "subkind" not in reply["header"]
+
+
+def test_reply_ignores_unknown_move():
+    """A move outside the closed vocabulary is dropped, never stamped as an
+    invalid subkind (faithful, never fabricated)."""
+    ep = _open()
+    l9_episode.record_reply(ep, handle="a1", reply={"action": "accept", "move": "bogus"}, round_n=1)
+    assert "subkind" not in ep.messages[-1]["header"]
+
+
+# ── opening positions snapshot (#679) ─────────────────────────────────────────
+
+
+def test_open_episode_stores_opening_positions():
+    """The snapshot is captured on the episode at open, before mediation."""
+    ep = l9_episode.open_episode(
+        parent_room="sprint",
+        short_id="abc123",
+        workspace_id="ws-1",
+        mas_id="mas-1",
+        agents=["a1", "a2"],
+        joined_intents="- a1: ship\n- a2: test",
+        opening_positions={"a1": "ship it in Q3", "a2": "test first, Q4"},
+    )
+    assert ep.opening_positions == {"a1": "ship it in Q3", "a2": "test first, Q4"}
+
+
+def test_open_episode_opening_positions_default_empty():
+    """Absent snapshot → empty dict (older callers are unaffected)."""
+    assert _open().opening_positions == {}
+
+
+def test_episode_record_renders_opening_positions(tmp_path, monkeypatch):
+    monkeypatch.setenv("MYCELIUM_DATA_DIR", str(tmp_path))
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "MYCELIUM_DATA_DIR", str(tmp_path))
+    ep = l9_episode.open_episode(
+        parent_room="sprint",
+        short_id="abc123",
+        workspace_id="ws-1",
+        mas_id="mas-1",
+        agents=["a1", "a2"],
+        joined_intents="- a1: ship\n- a2: test",
+        opening_positions={"a1": "ship it in Q3", "a2": "test first, Q4"},
+    )
+    l9_episode.write_episode_record(ep, outcome="converged", metrics=None, plan_file=None)
+    body = (tmp_path / "rooms" / "sprint" / "log" / "episodes" / "abc123.md").read_text()
+    assert "## Opening Positions" in body
+    assert "- **@a1**: ship it in Q3" in body
+    assert "- **@a2**: test first, Q4" in body
+    # Renders in roster order, above the message log.
+    assert body.index("## Opening Positions") < body.index("## Messages")
+
+
+def test_episode_record_omits_opening_positions_when_absent(tmp_path, monkeypatch):
+    monkeypatch.setenv("MYCELIUM_DATA_DIR", str(tmp_path))
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "MYCELIUM_DATA_DIR", str(tmp_path))
+    l9_episode.write_episode_record(_open(), outcome="rejected", metrics=None, plan_file=None)
+    body = (tmp_path / "rooms" / "sprint" / "log" / "episodes" / "abc123.md").read_text()
+    assert "## Opening Positions" not in body
+
+
+# ── term check + clarifying round (#680) ──────────────────────────────────────
+
+_MISMATCH = [{"term": "done", "readings": {"a1": "shipped", "a2": "merged"}}]
+
+
+def test_record_term_check_stores_mismatches_and_clarifications():
+    ep = _open()
+    assert ep.term_mismatches == [] and ep.clarifications == {}
+    l9_episode.record_term_check(
+        ep, mismatches=_MISMATCH, clarifications={"a1": "done means live", "a2": "   "}
+    )
+    assert ep.term_mismatches == _MISMATCH
+    assert ep.clarifications == {"a1": "done means live"}  # a blank answer isn't one
+
+
+def test_record_term_check_leaves_quality_metrics_alone():
+    """The clarifying round is vocabulary repair, not a negotiation move: it must
+    not read as a concession in MPC/GAR/SCR."""
+    ep = _open()
+    l9_episode.record_reply(
+        ep, handle="a1", reply={"action": "accept", "confidence": 0.9}, round_n=1
+    )
+    l9_episode.record_reply(
+        ep, handle="a2", reply={"action": "accept", "confidence": 0.8}, round_n=1
+    )
+    before = l9_episode.compute_metrics(ep)
+    messages = len(ep.messages)
+    l9_episode.record_term_check(ep, mismatches=_MISMATCH, clarifications={"a1": "live"})
+    assert l9_episode.compute_metrics(ep) == before
+    assert len(ep.messages) == messages
+
+
+def test_episode_record_renders_term_clarifications(tmp_path, monkeypatch):
+    monkeypatch.setenv("MYCELIUM_DATA_DIR", str(tmp_path))
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "MYCELIUM_DATA_DIR", str(tmp_path))
+    ep = _open()
+    l9_episode.record_term_check(
+        ep,
+        mismatches=_MISMATCH,
+        clarifications={"a1": "done means live", "a2": "done means merged"},
+    )
+    l9_episode.write_episode_record(ep, outcome="converged", metrics=None, plan_file=None)
+    body = (tmp_path / "rooms" / "sprint" / "log" / "episodes" / "abc123.md").read_text()
+    assert "## Term Clarifications" in body
+    assert "- **done**" in body
+    assert "read by @a1 as: shipped" in body
+    assert "- **@a1**: done means live" in body
+    assert body.index("## Term Clarifications") < body.index("## Messages")
+
+
+def test_episode_record_omits_term_clarifications_when_absent(tmp_path, monkeypatch):
+    """The common path — a room that shares its vocabulary — records nothing."""
+    monkeypatch.setenv("MYCELIUM_DATA_DIR", str(tmp_path))
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "MYCELIUM_DATA_DIR", str(tmp_path))
+    l9_episode.write_episode_record(_open(), outcome="converged", metrics=None, plan_file=None)
+    body = (tmp_path / "rooms" / "sprint" / "log" / "episodes" / "abc123.md").read_text()
+    assert "## Term Clarifications" not in body
+
+
+# ── minimum satisfaction (#682) ───────────────────────────────────────────────
+
+
+def test_estimate_satisfaction_ordinal_distance():
+    """Each agent's satisfaction is 1 - grid distance from its opening ask; the
+    room minimum is the least-happy agent."""
+    opening = {"growth": {"cap": "60"}, "risk": {"cap": "30"}}
+    options = {"cap": ["30", "40", "50", "60"]}
+    sat = l9_episode.estimate_satisfaction(opening, {"cap": "50"}, options)
+    assert sat["growth"] == round(1 - 1 / 3, 4)  # wanted 60, got 50 → one step
+    assert sat["risk"] == round(1 - 2 / 3, 4)  # wanted 30, got 50 → two steps
+    assert min(sat.values()) == sat["risk"]
+
+
+def test_estimate_satisfaction_exact_ask_scores_one():
+    opening = {"a": {"cap": "50", "scope": "Full"}}
+    options = {"cap": ["30", "40", "50"], "scope": ["Thin", "Mid", "Full"]}
+    sat = l9_episode.estimate_satisfaction(opening, {"cap": "50", "scope": "Full"}, options)
+    assert sat["a"] == 1.0
+
+
+def test_estimate_satisfaction_skips_agents_and_values_it_cannot_score():
+    opening = {"stated": {"cap": "40"}, "silent": {}, "offgrid": {"cap": "999"}}
+    options = {"cap": ["30", "40", "50"]}
+    sat = l9_episode.estimate_satisfaction(opening, {"cap": "50"}, options)
+    assert sat == {"stated": round(1 - 1 / 2, 4)}  # silent has no offer; 999 not on grid
+
+
+def test_episode_record_renders_satisfaction(tmp_path, monkeypatch):
+    monkeypatch.setenv("MYCELIUM_DATA_DIR", str(tmp_path))
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "MYCELIUM_DATA_DIR", str(tmp_path))
+    metrics = {"min_satisfaction": 0.33, "satisfaction": {"a1": 0.33, "a2": 0.8}}
+    l9_episode.write_episode_record(_open(), outcome="converged", metrics=metrics, plan_file=None)
+    body = (tmp_path / "rooms" / "sprint" / "log" / "episodes" / "abc123.md").read_text()
+    assert "- satisfaction: min 0.33 (least-happy of 2 agents" in body
+
+
+def test_record_satisfaction_renders_without_siep_metrics(tmp_path, monkeypatch):
+    """Satisfaction rides even when MPC/GAR/SCR are absent (the mediated path
+    rarely has stated confidence) — and the missing SIEP line never KeyErrors."""
+    monkeypatch.setenv("MYCELIUM_DATA_DIR", str(tmp_path))
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "MYCELIUM_DATA_DIR", str(tmp_path))
+    metrics = {"min_satisfaction": 0.5, "satisfaction": {"a1": 0.5, "a2": 0.5}}
+    l9_episode.write_episode_record(_open(), outcome="converged", metrics=metrics, plan_file=None)
+    body = (tmp_path / "rooms" / "sprint" / "log" / "episodes" / "abc123.md").read_text()
+    assert "MPC" not in body
+    assert "- satisfaction: min 0.50" in body

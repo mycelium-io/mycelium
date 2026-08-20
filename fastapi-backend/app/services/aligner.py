@@ -79,6 +79,11 @@ _NON_PARTICIPANTS = frozenset({BACKEND_AGENT, l9.SYSTEM_ACTOR_ID})
 # L9-addressed agent wakes; the names stay readable.
 _AT_MENTION = re.compile(r"@(?=\w)")
 
+# Round number stamped on the pre-negotiation clarifying tick. SAO steps are
+# NEGMAS's own, counted from 1, so round 0 marks the turn that ran before the
+# mechanism existed.
+_CLARIFY_ROUND = 0
+
 
 def _registered_engine_kind(room: str, handle: str) -> str | None:
     """The CE kind if ``handle`` is a registered ``engine`` agent in ``room``.
@@ -108,25 +113,15 @@ def _registered_engine_kind(room: str, handle: str) -> str | None:
 
 
 def _norm(handle: str) -> str:
-    """Case/space-fold a handle for identity comparison (matches the connector)."""
     return handle.strip().lower()
 
 
 def _new_episode_id() -> str:
-    """A short, unique, filesystem-safe id for one convening (one episode).
-
-    Each ``@``-summon convenes a *distinct* episode. The id flows into the episode
-    URN (``l9.episode_urn``), every envelope on the wire, and the
-    ``log/episodes/{id}.md`` record filename — so two convenings in the same room
-    never share a URN or clobber each other's record. Each ``@``-summon convenes a
-    distinct episode with its own tag, so negotiations don't collide on one
-    ``align.md``.
-    """
+    """Generate a unique episode id (used in URN, filename, wire)."""
     return uuid.uuid4().hex[:8]
 
 
 def _payload(content: dict[str, Any]) -> dict[str, Any]:
-    """The L9 payload dict of a recorded message's content (empty when absent)."""
     env = content.get("l9")
     if not isinstance(env, dict):
         return {}
@@ -135,7 +130,6 @@ def _payload(content: dict[str, Any]) -> dict[str, Any]:
 
 
 def _sender_role(content: dict[str, Any]) -> str | None:
-    """Role of the first actor (the sender) on a recorded message, if any."""
     env = content.get("l9")
     if not isinstance(env, dict):
         return None
@@ -333,6 +327,7 @@ class AlignerEngine:
         topic = l9.topic_urn(room)
 
         self._manager.open_episode(room, episode)
+        positions = self._opening_positions(persister, participants)
         ep = l9_episode.open_episode(
             parent_room=room,
             short_id=episode_id,
@@ -341,10 +336,13 @@ class AlignerEngine:
             agents=participants,
             joined_intents="aligner mediate: converge on the open question via SAO",
             engine_handle=me,
+            opening_positions=positions,
         )
         try:
             brain = self._make_brain(episode)
-            positions = self._opening_positions(persister, participants)
+            positions = await self._clarify_terms(
+                managed, persister, ep, me, episode, topic, positions, brain
+            )
             issues = await asyncio.to_thread(
                 mediator.discover_issues,
                 "Converge on the room's open question — agree one value per issue.",
@@ -362,6 +360,7 @@ class AlignerEngine:
                     text="✗ not converged — could not structure the discussion into issues.",
                 )
 
+            ep.issue_options = {i["name"]: [str(o) for o in i["options"]] for i in issues}
             loop = asyncio.get_running_loop()
             negotiation = mediator.MediatedNegotiation(
                 issues=issues,
@@ -382,6 +381,18 @@ class AlignerEngine:
             assignments = mediator.agreement_assignments(mech, negotiation.names)
             converged = assignments is not None
             _, metrics = self._verdict(ep)
+            # Post-hoc satisfaction: how close the agreed outcome sits to
+            # each agent's opening ask, and the room minimum — the least-happy
+            # agent. Independent of MPC/GAR/SCR (which need stated confidence the
+            # mediated path rarely has), so it rides alongside in ``metrics``.
+            if converged and assignments:
+                satisfaction = l9_episode.estimate_satisfaction(
+                    ep.opening_offers, assignments, ep.issue_options
+                )
+                if satisfaction:
+                    metrics = dict(metrics or {})
+                    metrics["satisfaction"] = satisfaction
+                    metrics["min_satisfaction"] = round(min(satisfaction.values()), 4)
             logger.info(
                 "aligner (mediator) room %s → %s in %d steps (%s)",
                 room,
@@ -453,6 +464,76 @@ class AlignerEngine:
             latest.setdefault(handle, f"(no opening position stated by @{handle})")
         return latest
 
+    async def _clarify_terms(
+        self,
+        managed: ManagedRoomChannel,
+        persister: RoomPersister,
+        ep: EpisodeState,
+        sender: str,
+        episode: str,
+        topic: str,
+        positions: dict[str, str],
+        brain: Callable[..., str],
+    ) -> dict[str, str]:
+        """Stage 0 — one clarifying round when agents share a term but not its meaning.
+
+        Agents can converge on words they read differently ("priority", "done",
+        "blocked"), and an agreement built on those words settles nothing. So
+        before any offer exists, the brain reads the opening prose for terms two
+        participants are using in different senses; when it finds any, each
+        participant is ``@``-addressed once — the same one-agent-at-a-time seam the
+        SAO rounds use — and its answer is folded into the prose that issue
+        discovery then reads.
+
+        Exactly one round, never a loop: the point is to make the vocabulary
+        visible to the mediator and the room, not to negotiate the definitions.
+        No mismatch (the common case) means no prompt and no reply wait, so a room
+        that speaks the same language runs exactly as it did before.
+
+        The returned positions are what the negotiation proceeds on; the episode
+        keeps the untouched opening snapshot, so the record still shows what each
+        agent said before it was asked to define anything.
+        """
+        from app.services import mediator
+
+        if not settings.ALIGNER_TERM_CHECK:
+            return positions
+        try:
+            mismatches = await asyncio.to_thread(
+                mediator.detect_term_mismatch, positions, llm=brain
+            )
+        except Exception:
+            logger.warning("aligner term check failed on room %s", managed.room, exc_info=True)
+            return positions
+        if not mismatches:
+            return positions
+        logger.info(
+            "aligner (mediator) room %s: term mismatch on %s — one clarifying round",
+            managed.room,
+            [m["term"] for m in mismatches],
+        )
+        clarified = dict(positions)
+        clarifications: dict[str, str] = {}
+        for handle in positions:
+            reply = await self._slim_turn(
+                managed,
+                persister,
+                sender,
+                handle,
+                episode,
+                topic,
+                mediator.clarification_prompt(handle, mismatches),
+                _CLARIFY_ROUND,
+                action="clarify",
+            )
+            text = reply.strip()
+            if not text:
+                continue  # silence leaves that agent's opening prose as stated
+            clarifications[handle] = text
+            clarified[handle] = f"{positions[handle]}\n\n(clarified by @{handle}: {text})"
+        l9_episode.record_term_check(ep, mismatches=mismatches, clarifications=clarifications)
+        return clarified
+
     async def _slim_turn(
         self,
         managed: ManagedRoomChannel,
@@ -463,11 +544,14 @@ class AlignerEngine:
         topic: str,
         prompt: str,
         round_n: int,
+        action: str = "position",
     ) -> str:
         """Publish one ``@handle`` prompt, wait for the reply, return its prose.
 
         Bounded by ``round_timeout_s`` (a silent agent yields ``""``, read as a
-        reject) so the mechanism can never hang on one participant.
+        reject) so the mechanism can never hang on one participant. ``action`` is
+        what the tick asks for: an SAO ``position``, or a ``clarify`` definition on
+        the pre-negotiation round.
         """
         before = len(persister.log.records)
         env = l9.build_envelope(
@@ -477,7 +561,7 @@ class AlignerEngine:
             recipients=[handle],
             topic=topic,
             payload_type="tick",
-            payload_data={"round": round_n, "action": "position"},
+            payload_data={"round": round_n, "action": action},
         )
         # Neutralise ``@`` tokens so the broker's summary (which names the other
         # agents) doesn't spuriously wake them — only the L9 ``recipients=[handle]``
@@ -580,6 +664,16 @@ class AlignerEngine:
         if isinstance(offer, dict):
             reply["offer"] = offer
             reply.setdefault("action", "accept" if proposing else "reject")
+            # The agent's first concrete offer is its opening ask — the baseline
+            # #682 scores the agreed outcome's satisfaction against.
+            ep.opening_offers.setdefault(handle, {k: str(v) for k, v in offer.items()})
+        # The wire move type, kept distinct from the collapsed metric ``action``
+        # above: the mediator's raw verb when it's one of the closed vocabulary,
+        # else a bare offer is a ``counter`` (the opening position included).
+        if isinstance(action, str) and action in l9.EXCHANGE_MOVE_SUBKINDS:
+            reply["move"] = action
+        elif isinstance(offer, dict):
+            reply["move"] = "counter"
         l9_episode.record_reply(ep, handle=handle, reply=reply, round_n=None)
 
     def _mediator_text(

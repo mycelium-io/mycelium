@@ -45,7 +45,6 @@ def test_read_collector_pid_returns_running_pid(monkeypatch: pytest.MonkeyPatch,
     pid_file = tmp_path / "collector.pid"
     pid_file.write_text(str(os.getpid()))
     monkeypatch.setattr(metrics_cmd, "_collector_pid_file", lambda: pid_file)
-    # Our own pid is alive, so it's returned as-is.
     assert metrics_cmd._read_collector_pid() == os.getpid()
 
 
@@ -56,7 +55,7 @@ def test_read_collector_pid_none_when_missing(monkeypatch: pytest.MonkeyPatch, t
 
 def test_read_collector_pid_prunes_dead_pid(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     pid_file = tmp_path / "collector.pid"
-    pid_file.write_text("999999999")  # a pid that isn't running
+    pid_file.write_text("999999999")
     monkeypatch.setattr(metrics_cmd, "_collector_pid_file", lambda: pid_file)
     assert metrics_cmd._read_collector_pid() is None
-    assert not pid_file.exists()  # a stale pid file is cleaned up
+    assert not pid_file.exists()

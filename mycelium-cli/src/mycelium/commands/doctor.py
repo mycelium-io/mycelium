@@ -2,12 +2,12 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-Doctor command — diagnose and fix common Mycelium configuration issues.
+Doctor command: diagnose and fix common Mycelium configuration issues.
 
 Checks:
   1. Config files exist (~/.mycelium/.env, config.toml)
-  2. Config file drift — every shared key aligned between .env and config.toml
-  3. Runtime config drift — backend container env matches .env on disk
+  2. Config file drift: every shared key aligned between .env and config.toml
+  3. Runtime config drift: backend container env matches .env on disk
   4. Docker containers running and healthy
   5. Backend API reachable
   6. LLM connectivity (real completion probe via backend)
@@ -103,7 +103,7 @@ def _check_mycelium_dir_ownership() -> CheckResult:
 
     uid = os.getuid()
     foreign: list[str] = []
-    # Cap the walk — a pathological room shouldn't make doctor hang.
+    # Cap the walk; a pathological room shouldn't make doctor hang.
     seen = 0
     for path in mycelium_dir.rglob("*"):
         seen += 1
@@ -139,7 +139,7 @@ def _check_llm_connectivity() -> CheckResult:
     """Probe the backend's LLM with a real one-shot ``pi`` turn.
 
     Exercises the same runtime as inference and surfaces problems that only
-    show up at first use — a missing/broken ``pi`` binary, bad model strings,
+    show up at first use: a missing/broken ``pi`` binary, bad model strings,
     and auth failures at the actual endpoint (not just the free model-list
     endpoint).
 
@@ -147,7 +147,7 @@ def _check_llm_connectivity() -> CheckResult:
     executes inside the backend container, which is where LLM calls will
     actually run in production.
     """
-    # Skip entirely if the LLM isn't configured at all — _check_llm_config
+    # Skip entirely if the LLM isn't configured at all; _check_llm_config
     # already reported that and running the probe would be redundant noise.
     env_path = Path.home() / ".mycelium" / ".env"
     if env_path.exists():
@@ -348,15 +348,57 @@ def _backend_container_running() -> bool:
     return "mycelium-backend" in r.stdout.split()
 
 
+def _check_spire_identity() -> CheckResult | None:
+    """Legible SPIRE status when ``slim.identity=spire`` (#588); ``None`` otherwise.
+
+    Returns ``None`` under the default psk/signerjwt tiers so the check is invisible
+    unless attested identity is on. When on, it renders "SPIRE up, @alice attested"
+    so a misconfig (server down, no entries) is a clear line, not a member
+    silently hanging at "Initializing spire identity manager."
+    """
+    from mycelium.commands.instance import _spire_enabled
+
+    if not _spire_enabled():
+        return None
+
+    from mycelium import spire_registry
+
+    if not spire_registry.server_healthy():
+        return CheckResult(
+            name="SPIRE identity",
+            status="error",
+            message="slim.identity=spire but the SPIRE server is unreachable",
+            details=[
+                "start the appliance SPIRE with: mycelium up  (the spire profile is",
+                "config-driven, no --profile flag needed), then re-run doctor.",
+            ],
+        )
+
+    handles = spire_registry.registered_handles()
+    if not handles:
+        return CheckResult(
+            name="SPIRE identity",
+            status="warning",
+            message="SPIRE up, no members attested yet",
+            details=["register one with: mycelium agent create <handle>"],
+        )
+    attested = ", ".join(f"@{h}" for h in handles)
+    return CheckResult(
+        name="SPIRE identity",
+        status="ok",
+        message=f"SPIRE up, {attested} attested",
+    )
+
+
 def _check_mediator_pi_binary() -> CheckResult:
-    """The aligner's SAO mediator runs on Pi — warn if it's unreachable on a
+    """The aligner's SAO mediator runs on Pi; warn if it's unreachable on a
     host-run backend.
 
     Pi is the mediator's *brain*; without it on PATH, an ``@aligner`` summon fails
     (``PiBrainError: pi not found``). The released **backend image already installs
     Pi**, so the normal ``mycelium up`` path is fine and needs no host binary. The
     only gap is running the backend *outside Docker* (a contributor doing
-    ``uvicorn app.main:app`` on the host) — there Pi must be on the host PATH. So:
+    ``uvicorn app.main:app`` on the host): there Pi must be on the host PATH. So:
     if the backend container is up, this is satisfied by the image; otherwise check
     the host.
     """
@@ -437,8 +479,123 @@ def _check_backend_reachable(*, local_backend: bool = True) -> CheckResult:
         )
 
 
+def _read_env_master_secret() -> str | None:
+    """Return ``MYCELIUM_SLIM_MASTER_SECRET`` from ``~/.mycelium/.env`` if set."""
+    env_path = Path.home() / ".mycelium" / ".env"
+    if not env_path.exists():
+        return None
+    for line in env_path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        key, _, val = stripped.partition("=")
+        if key.strip() == "MYCELIUM_SLIM_MASTER_SECRET":
+            cleaned = val.strip().strip('"').strip("'")
+            return cleaned or None
+    return None
+
+
+def _check_http_auth_gate(*, api_url: str) -> CheckResult:
+    """Warn when the hub HTTP API is reachable but auth is off on a remote URL."""
+    host = (urlparse(api_url).hostname or "").lower()
+    remote_target = host not in ("localhost", "127.0.0.1", "::1", "0.0.0.0")
+    try:
+        import httpx
+
+        resp = httpx.get(f"{api_url.rstrip('/')}/health", timeout=5)
+        if resp.status_code >= 500:
+            return CheckResult(
+                name="HTTP API auth",
+                status="warning",
+                message="Could not read auth status from /health",
+            )
+        auth = resp.json().get("auth") or {}
+        if auth.get("enabled"):
+            details = [str(w) for w in auth.get("warnings") or []]
+            status = "warning" if details else "ok"
+            return CheckResult(
+                name="HTTP API auth",
+                status=status,
+                message="JWT gate enabled on hub",
+                details=details,
+            )
+        if remote_target:
+            return CheckResult(
+                name="HTTP API auth",
+                status="warning",
+                message=(
+                    "HTTP JWT gate is off — peers can read/write memory and post as any @handle"
+                ),
+                details=[
+                    "Spokes use the HTTP API (:8000), not SLIM PSK.",
+                    "Enable auth.enabled on the hub before sharing over a network.",
+                    "See: mycelium config set auth.enabled true",
+                ],
+            )
+        return CheckResult(
+            name="HTTP API auth",
+            status="ok",
+            message="Off (local backend — expected for try-it)",
+        )
+    except Exception as exc:
+        return CheckResult(
+            name="HTTP API auth",
+            status="warning",
+            message=f"Could not check auth status: {type(exc).__name__}",
+            details=[str(exc)],
+        )
+
+
+def _hub_slim_master_secret() -> str | None:
+    """Return the hub SLIM master secret from config.toml, falling back to .env."""
+    try:
+        from mycelium.config import MyceliumConfig
+
+        secret = MyceliumConfig.load().slim.master_secret
+        if secret:
+            return secret
+    except Exception:
+        pass
+    return _read_env_master_secret()
+
+
+def _check_hub_slim_psk(*, local_backend: bool) -> CheckResult | None:
+    """Hub-only: warn when SLIM keys derive from the public dev master secret."""
+    if not local_backend:
+        return None
+    from mycelium.slim import naming
+
+    secret = _hub_slim_master_secret()
+    if secret and secret != naming._DEV_MASTER_SECRET:
+        return CheckResult(
+            name="SLIM PSK (hub)",
+            status="ok",
+            message="Private slim.master_secret configured",
+        )
+    if not secret:
+        return CheckResult(
+            name="SLIM PSK (hub)",
+            status="warning",
+            message="No hub SLIM master secret in config.toml",
+            details=[
+                "Run: mycelium config apply  (generates [slim].master_secret)",
+                "PSK gates native SLIM group join on the hub — spokes do not use it.",
+            ],
+        )
+    return CheckResult(
+        name="SLIM PSK (hub)",
+        status="warning",
+        message="Hub uses the public dev SLIM master secret",
+        details=[
+            "PSK gates native SLIM group join on the hub — spokes do not use it.",
+            "Run: mycelium config apply  (generates a private [slim].master_secret)",
+            "For spokes on a network, enable auth.enabled (HTTP JWT gate).",
+        ],
+    )
+
+
 # Keys that should match between ~/.mycelium/.env and config.toml. Each entry
-# is (env_key, config_accessor) — config_accessor pulls the equivalent value
+# is (env_key, config_accessor); config_accessor pulls the equivalent value
 # out of a loaded MyceliumConfig. `mycelium config apply` regenerates .env
 # from config.toml, so config.toml is the source of truth on drift.
 _SHARED_CONFIG_KEYS: list[tuple[str, Callable[..., str]]] = [
@@ -451,7 +608,7 @@ def _check_config_file_drift(*, local_backend: bool = True) -> CheckResult:
 
     Catches the common "I edited one file and forgot the other" failure mode.
     The sibling runtime-drift check covers "I edited both files but forgot
-    to restart the container" — this one only looks at disk, not runtime.
+    to restart the container"; this one only looks at disk, not runtime.
 
     When *local_backend* is False (spoke mode) the Docker-port comparison is
     skipped because there is no local container to map the port for.
@@ -483,7 +640,7 @@ def _check_config_file_drift(*, local_backend: bool = True) -> CheckResult:
 
     mismatches: list[str] = []
 
-    # Text keys — only flag when both sides have a value. A missing value on
+    # Text keys: only flag when both sides have a value. A missing value on
     # one side isn't drift, it's an opt-out.
     for env_key, get_toml in _SHARED_CONFIG_KEYS:
         try:
@@ -496,7 +653,7 @@ def _check_config_file_drift(*, local_backend: bool = True) -> CheckResult:
             mismatches.append(f"  .env:         {env_val}")
             mismatches.append(f"  config.toml:  {toml_val}")
 
-    # Port special case — compare .env port to the port parsed from config
+    # Port special case: compare .env port to the port parsed from config
     # URL.  Only meaningful on hub nodes where Docker maps the port locally.
     if local_backend:
         env_port = vals.get("MYCELIUM_BACKEND_PORT", "")
@@ -529,7 +686,7 @@ def _check_config_file_drift(*, local_backend: bool = True) -> CheckResult:
 def _check_runtime_config_drift() -> CheckResult:
     """Compare backend runtime values against the on-disk ``.env``.
 
-    Catches "I edited the files but didn't restart the backend" — in that
+    Catches "I edited the files but didn't restart the backend"; in that
     state ``mycelium doctor`` may happily green-light LLM connectivity
     because the container is still running the old-but-working config, so
     the user never notices their config changes took no effect.
@@ -630,8 +787,8 @@ def _check_runtime_config_drift() -> CheckResult:
 #
 # Gate every check on whether the user has opted into the cursor adapter (via
 # ``mycelium adapter add cursor``).  A fresh mycelium install that has never
-# touched Cursor — and a user who happens to have ``cursor-agent`` on PATH for
-# unrelated reasons — should both see all cursor checks cleanly skipped.  We
+# touched Cursor (and a user who happens to have ``cursor-agent`` on PATH for
+# unrelated reasons) should both see all cursor checks cleanly skipped.  We
 # surface health only after the user has explicitly asked for the adapter.
 
 
@@ -685,14 +842,14 @@ def _check_cursor_login() -> CheckResult:
     """Verify ``cursor-agent`` is authenticated so a resident Cursor session can run.
 
     ``cursor-agent`` persists its session at ``~/.config/cursor/auth.json``
-    (top-level ``accessToken`` / ``refreshToken``) — that's the file
+    (top-level ``accessToken`` / ``refreshToken``): that's the file
     ``cursor-agent`` itself reads on startup. Verified empirically on
     2026.05 builds: moving that file aside reproduces the
     ``Authentication required.`` error path; nothing else does. The
     older ``~/.cursor/cli-config.json`` ``preferences.tokenInfo`` schema
     is gone in current builds, and ``cli-config.json`` ``authInfo``
     (email/displayName) is a *biographical* breadcrumb that survives
-    logout — so we deliberately do NOT consider it a "logged in"
+    logout, so we deliberately do NOT consider it a "logged in"
     signal. Doctor must report what ``cursor-agent`` will actually do at
     spawn time, not what the user ever did.
 
@@ -724,7 +881,7 @@ def _check_cursor_login() -> CheckResult:
 
     try:
         auth_data = json.loads(auth_path.read_text(encoding="utf-8"))
-    except Exception as exc:  # noqa: BLE001 — malformed JSON shouldn't crash doctor
+    except Exception as exc:  # noqa: BLE001 (malformed JSON shouldn't crash doctor)
         return CheckResult(
             name="cursor-agent login",
             status="warning",
@@ -910,9 +1067,17 @@ def doctor(
         if local:
             service_checks.append(_check_docker_containers())
         service_checks.append(_check_backend_reachable(local_backend=local))
+        service_checks.append(_check_http_auth_gate(api_url=api_url))
+        if local:
+            psk_check = _check_hub_slim_psk(local_backend=local)
+            if psk_check is not None:
+                service_checks.append(psk_check)
         service_checks.append(_check_llm_connectivity())
         if local:
             service_checks.append(_check_mediator_pi_binary())
+            spire_check = _check_spire_identity()
+            if spire_check is not None:
+                service_checks.append(spire_check)
 
         sections: list[tuple[str, list[CheckResult]]] = [
             ("Configuration", config_checks),
@@ -999,7 +1164,7 @@ def doctor(
 
         # Exit code: hard errors (and backend-classified hard failures) are
         # fatal so CI/scripts can rely on a non-zero exit. Warnings don't
-        # flip the exit code — they're nudges, not failures.
+        # flip the exit code; they're nudges, not failures.
         if errors:
             raise typer.Exit(1)
 

@@ -5,7 +5,7 @@
 
 OpenShell (https://github.com/NVIDIA/OpenShell) is the policy-controlled sandbox
 runtime we run our *internal* Pi cognition engines inside. The gateway is its
-control plane — a Docker container that spawns per-run sandboxes via the host
+control plane: a Docker container that spawns per-run sandboxes via the host
 Docker socket. Getting a working *local* gateway is a multi-step recipe the
 upstream "quickstart" glosses over; this module encodes the version we validated
 end to end (``pi`` running inside a ``--from pi`` sandbox) so ``mycelium openshell
@@ -15,10 +15,10 @@ The recipe, in order:
 
 1. **Ensure the ``openshell`` CLI** on PATH (``uv tool install openshell``).
 2. **Extract the supervisor binary** from the supervisor image to a host path
-   that is *mirrored* into the gateway (host path == container path) — the
+   that is *mirrored* into the gateway (host path == container path); the
    gateway hands that same path to Docker when it starts a sandbox, so it must
    resolve on the host too.
-3. **Generate an Ed25519 JWT signing keypair** — the Docker driver requires
+3. **Generate an Ed25519 JWT signing keypair**, the Docker driver requires
    gateway-minted sandbox JWT auth (``[openshell.gateway.gateway_jwt]``).
 4. **Render ``gateway.toml``** (jwt + ``allow_unauthenticated_users`` for local +
    the docker driver).
@@ -27,13 +27,13 @@ The recipe, in order:
    staging paths exist on the host, and the Prometheus ``/metrics`` port on.
 6. **Register + select** the gateway with the CLI and **create the ``pi``
    sandbox**.
-7. **Wire observability** — add a ``grpc_red`` scrape target so the gateway's
+7. **Wire observability**: add a ``grpc_red`` scrape target so the gateway's
    gRPC RED metrics surface in ``mycelium metrics`` (traces are not exported by
    OpenShell today).
 
 **Security posture (local dev):** the gateway mounts ``/var/run/docker.sock`` and
 runs with TLS off + unauthenticated local access. That's the documented local
-setup but a real host exposure — the command layer surfaces it as an explicit
+setup but a real host exposure; the command layer surfaces it as an explicit
 opt-in; this module never enables it silently.
 """
 
@@ -66,14 +66,13 @@ SCRAPE_TARGET_KIND = "grpc_red"
 
 
 class OpenShellError(RuntimeError):
-    """A step of the OpenShell setup failed (missing tool, docker error, …)."""
+    """A step of the OpenShell setup failed (missing tool, docker error, ...)."""
 
 
 # ── Host paths (all under ~/.mycelium/openshell, mirrored into the gateway) ───
 
 
 def openshell_dir() -> Path:
-    """Root for OpenShell host artifacts (``~/.mycelium/openshell``)."""
     return Path.home() / ".mycelium" / "openshell"
 
 
@@ -137,7 +136,7 @@ def build_gateway_run_command(
     supervisor: Path,
     enable_metrics: bool = True,
 ) -> list[str]:
-    """The ``docker run`` argv for the gateway — the validated invocation.
+    """The ``docker run`` argv for the gateway: the validated invocation.
 
     Runs as root (docker.sock access), TLS off for local, with ``HOME`` set to
     the mirrored *state* dir so the gateway stages the supervisor binary + minted
@@ -211,7 +210,6 @@ def cli_installed() -> bool:
 
 
 def ensure_cli() -> None:
-    """Install the ``openshell`` CLI via uv if it isn't already on PATH."""
     if cli_installed():
         return
     if shutil.which("uv") is None:
@@ -226,14 +224,14 @@ def generate_jwt_keypair(dest: Path) -> None:
     """Write an Ed25519 signing keypair + ``kid`` (the gateway's required alg).
 
     Idempotent: existing keys are kept (regenerating would invalidate any live
-    sandbox tokens). Shells to ``openssl`` — the same path validated live.
+    sandbox tokens). Shells to ``openssl``, the same path validated live.
     """
     dest.mkdir(parents=True, exist_ok=True)
     signing, public, kid = dest / "signing.pem", dest / "public.pem", dest / "kid"
     if signing.exists() and public.exists() and kid.exists():
         return
     if shutil.which("openssl") is None:
-        raise OpenShellError("`openssl` not found — needed to generate the gateway JWT keypair.")
+        raise OpenShellError("`openssl` not found, needed to generate the gateway JWT keypair.")
     _run(["openssl", "genpkey", "-algorithm", "ed25519", "-out", str(signing)], capture=True)
     _run(["openssl", "pkey", "-in", str(signing), "-pubout", "-out", str(public)], capture=True)
     kid.write_text("mycelium", encoding="utf-8")
@@ -242,7 +240,6 @@ def generate_jwt_keypair(dest: Path) -> None:
 
 
 def extract_supervisor(dest: Path) -> None:
-    """Copy the supervisor binary out of the supervisor image to a host path."""
     if dest.exists():
         return
     dest.parent.mkdir(parents=True, exist_ok=True)

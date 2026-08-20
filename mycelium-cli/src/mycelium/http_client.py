@@ -20,8 +20,6 @@ T = TypeVar("T")
 
 
 class MyceliumHTTPClient:
-    """HTTP client for interacting with the Mycelium backend API."""
-
     def __init__(
         self,
         config: MyceliumConfig | None = None,
@@ -46,10 +44,13 @@ class MyceliumHTTPClient:
         )
 
     def _get_headers(self) -> dict[str, str]:
-        """Get default headers."""
+        """Default headers, including the session bearer when logged in."""
+        from mycelium.client import auth_headers
+
         return {
             "Content-Type": "application/json",
             "Accept": "application/json",
+            **auth_headers(self.config),
         }
 
     def _should_retry(self, exception: Exception) -> bool:

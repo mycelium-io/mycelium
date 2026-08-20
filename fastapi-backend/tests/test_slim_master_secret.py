@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Debt D1 (minimal hardening): the MLS master secret is env-configurable.
+"""The MLS master secret is env-configurable.
 
 The built-in literal is a public dev default; a deployment overrides it via
 ``MYCELIUM_SLIM_MASTER_SECRET`` (the same value on every host that shares rooms),
@@ -28,7 +28,7 @@ def test_defaults_to_dev_secret_when_unset(monkeypatch):
     monkeypatch.delenv("MYCELIUM_SLIM_MASTER_SECRET", raising=False)
     monkeypatch.delenv("MYCELIUM_SLIM_REQUIRE_SECRET", raising=False)
     assert resolve_master_secret() == slim_client._DEV_MASTER_SECRET
-    # Behaviour unchanged from before the env override: the dev digest stands.
+    # The dev digest remains the default when no override is set.
     assert mint_shared_secret(_ID) == _expected(slim_client._DEV_MASTER_SECRET)
 
 

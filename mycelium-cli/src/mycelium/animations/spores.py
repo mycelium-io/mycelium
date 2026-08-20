@@ -166,7 +166,7 @@ class _RainState:
     def _seed(self, width: int, height: int) -> None:
         count = max(1, int(width * height * self.density))
         self._stars = []
-        _PHI = 0.6180339887  # golden ratio — keeps the two oscillators from ever locking
+        _PHI = 0.6180339887  # golden ratio, keeps the two oscillators from ever locking
         for _ in range(count):
             # Three personality types: slow/steady, medium, fast/flashy
             kind = random.random()
@@ -581,7 +581,7 @@ def run_animation_with_output(
     Play the hex animation with timed output lines appearing below it.
 
     Each frame redraws the entire region (animation + output) in a single
-    write — no threads, no cursor save/restore, no scrollback pollution.
+    write, with no threads, no cursor save/restore, no scrollback pollution.
 
     Parameters
     ----------
@@ -595,7 +595,7 @@ def run_animation_with_output(
     fill : float
         Body opacity.
     mode : str
-        Rendering mode — 'ascii', 'braille', or 'blocks'.
+        Rendering mode: 'ascii', 'braille', or 'blocks'.
     linger : float
         Extra seconds to animate after the last timeline entry.
     skip_intro : bool
@@ -742,7 +742,7 @@ def run_animation_with_output(
             # Go back to the top of the hex area.
             lines_to_top = height + len(current_output)
             sys.stdout.write(f"\x1b[{lines_to_top}A")
-            # Render one frame at the "face toward viewer" orientation — no rain.
+            # Render one frame at the "face toward viewer" orientation, no rain.
             face_frame = _render_frame(
                 0.55,
                 0.0,
@@ -819,7 +819,6 @@ def run_animation_live(
     current_output: list[str] = []
     _interrupted = False
 
-    # Reserve space
     sys.stdout.write("\n" * height)
     sys.stdout.write(f"\x1b[{height}A")
     sys.stdout.write("\x1b[?25l")

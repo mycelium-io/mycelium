@@ -56,7 +56,6 @@ _STATUS_COLOR = {
 
 
 def _bucket(status: str) -> str:
-    """Normalize any status string to one of ok / warning / error / info."""
     return _STATUS_ALIAS.get(status, "warning")
 
 
@@ -110,14 +109,14 @@ def print_check(result: CheckResult, name_width: int = NAME_WIDTH) -> None:
 
 
 def print_kv(key: str, value: str, name_width: int = NAME_WIDTH) -> None:
-    """Informational key/value line (no icon, no color) — for Configuration-style blocks."""
+    """Informational key/value line (no icon, no color), for Configuration-style blocks."""
     typer.echo(f"{INDENT}  {key:<{name_width}s}{value}")
 
 
 def print_verdict(status: str, message: str) -> None:
     """Final one-line summary with icon + color. Blank line above for separation.
 
-    ``status`` is any string accepted by ``print_check`` — "ok", "warning",
+    ``status`` is any string accepted by ``print_check``: "ok", "warning",
     "error", or a backend alias ("auth_error", "missing_extras", etc).
     Warning-only doctor runs should verdict with "warning" (yellow ~),
     not "error" (red ✗), to avoid over-claiming severity.

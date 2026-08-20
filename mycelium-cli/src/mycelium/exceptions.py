@@ -59,7 +59,7 @@ class APIError(MyceliumError):
 
 
 class APIConnectionError(APIError):
-    """Failed to connect to API server."""
+    """Backend is not reachable."""
 
     def __init__(self, base_url: str, original_error: Exception | None = None) -> None:
         super().__init__(

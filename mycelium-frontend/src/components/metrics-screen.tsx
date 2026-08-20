@@ -452,9 +452,8 @@ function AgentActivityTable({ collector }: { collector: CollectorMetrics }) {
         <div className="border border-dashed border-border2 bg-paper px-5 py-4">
           <Caps>WAITING ON OTLP</Caps>
           <p className="mt-1.5 max-w-[640px] text-micro leading-relaxed text-muted-foreground">
-            The collector is online but no OpenClaw agents are exporting traces. Wire it up with{" "}
-            <span className="font-mono text-accent">mycelium adapter add openclaw --step=otel</span>{" "}
-            and send a message through one of your configured channels. Per-agent rows appear here as soon as the first trace arrives.
+            The collector is online but no agents are exporting traces. Point a runtime&apos;s OTLP
+            exporter at the collector and coordinate in a room. Per-agent rows appear here as soon as the first trace arrives.
           </p>
         </div>
       ) : (
@@ -566,8 +565,8 @@ function CollectorOffPlate() {
           <span className="text-accent">not collected</span> on this host.
         </div>
         <div className="mt-2 max-w-[620px] text-micro leading-relaxed text-muted-foreground">
-          The backend dashboard above is fully populated; the collector adds OpenClaw OTLP traces
-          and a Prometheus scrape of CFN. Start it in another terminal and this section will
+          The backend dashboard above is fully populated; the collector adds OTLP traces exported
+          by agent runtimes. Start it in another terminal and this section will
           populate within 30 seconds.
         </div>
       </div>
@@ -593,8 +592,8 @@ function BackendDownPlate() {
         </div>
         <div className="mt-2.5 text-micro leading-relaxed text-muted-foreground">
           The frontend is running but the backend isn&apos;t responding. Start it with{" "}
-          <span className="font-mono text-accent">mycelium up</span> or check that postgres is
-          reachable on the configured port.
+          <span className="font-mono text-accent">mycelium up</span>, or run{" "}
+          <span className="font-mono text-accent">mycelium doctor</span> to diagnose the stack.
         </div>
       </div>
     </div>
@@ -703,7 +702,6 @@ export function MetricsScreen() {
     return () => { cancelled = true; clearInterval(id); };
   }, [paused, intervalSec]);
 
-  // Backend-down branch
   if (backendUnreachable && !backend) {
     return (
       <div className="flex flex-1 flex-col">
@@ -937,7 +935,7 @@ export function MetricsScreen() {
             <div className="px-6 pb-6">
               <div className="my-3.5 flex items-baseline justify-between">
                 <Caps className="text-muted-foreground">SPEND · BY MODEL</Caps>
-                <span className="font-mono text-micro italic text-faint">OpenClaw OTLP</span>
+                <span className="font-mono text-micro italic text-faint">OTLP</span>
               </div>
               <ByModelTable models={models} />
             </div>

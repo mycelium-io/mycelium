@@ -1,11 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""``mycelium network`` — SLIM coordination fabric status.
+"""``mycelium network``: SLIM coordination fabric status.
 
 Surfaces the backend's live coordination telemetry (from ``/health``): the SLIM
 node endpoint, channel/provision counters, and, per room, who is present plus the
-durable-inbox counters. This is the read-only observability view over the fabric —
+durable-inbox counters. This is the read-only observability view over the fabric:
 who is on the channel and how each room's channel is doing.
 
 The backend is the authority on room membership: the SLIM node only forwards
@@ -41,7 +41,7 @@ def network(
     Show the SLIM coordination fabric status.
 
     Renders the backend's live coordination telemetry: the SLIM node endpoint,
-    live-channel and provision counters, and — per room — who is present (SLIM
+    live-channel and provision counters, and (per room) who is present (SLIM
     members plus server-held ``await`` participants), open consent invites, whether
     an episode is active, and durable-inbox counters (re-serves, receive errors).
 
@@ -71,7 +71,7 @@ def network(
             typer.echo(json_module.dumps({**coord, "rooms": rooms}, indent=2, default=str))
             return
 
-        endpoint = coord.get("endpoint") or "—"
+        endpoint = coord.get("endpoint") or "-"
         enabled = bool(coord.get("slim_enabled"))
         print_title("Mycelium Network", subtitle=f"SLIM node {endpoint}")
 
@@ -106,7 +106,7 @@ def network(
                 f"{episode:<7}  "
                 f"{r.get('reserves', 0):>5}  "
                 f"{r.get('receive_errors', 0):>8}  "
-                f"{', '.join(members) if members else '—'}"
+                f"{', '.join(members) if members else '-'}"
             )
         typer.echo()
 

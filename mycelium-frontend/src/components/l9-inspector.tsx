@@ -4,8 +4,20 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ChevronRight, Radio } from "lucide-react";
+import {
+  ArrowLeftRight,
+  BookOpen,
+  ChevronRight,
+  Circle,
+  CircleCheck,
+  CircleX,
+  Radio,
+  Target,
+  TriangleAlert,
+  type LucideIcon,
+} from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   fetchL9History,
   getSSEUrl,
@@ -175,9 +187,7 @@ export function envelopeJson(raw: Record<string, unknown>): string {
 // else value), literals, and numbers. Punctuation/whitespace fall between matches.
 const JSON_TOKENS = /("(?:\\.|[^"\\])*")(\s*:)?|\b(true|false|null)\b|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g;
 
-/** Dependency-free JSON syntax highlight for the expanded envelope. Colors keys,
- *  strings, numbers, and literals with the app palette; everything else inherits.
- *  Operates on the printed string, so the visible text is byte-for-byte unchanged. */
+/** JSON syntax highlight: colors keys, strings, numbers, literals. */
 export function highlightJson(src: string): ReactNode[] {
   const out: ReactNode[] = [];
   let last = 0;
@@ -220,10 +230,39 @@ function kindTone(kind: string): string {
   return KIND_TONE[kind] ?? "var(--muted-foreground)";
 }
 
+/** Row tone, refined by subkind: a rejected commit reads red, not the green of a
+ *  converged one. Everything else follows its kind. */
+function frameTone(kind: string, subkind?: string | null): string {
+  if (kind === "commit") return subkind === "rejected" ? "var(--red)" : "var(--green)";
+  return kindTone(kind);
+}
+
+/** One glyph per kind — the scannable anchor at the start of every row. Commit
+ *  splits on outcome (✓ converged/resolved, ✕ rejected). */
+function frameIcon(kind: string, subkind?: string | null): LucideIcon {
+  switch (kind) {
+    case "exchange":
+      return ArrowLeftRight;
+    case "commit":
+      return subkind === "rejected" ? CircleX : CircleCheck;
+    case "knowledge":
+      return BookOpen;
+    case "contingency":
+      return TriangleAlert;
+    case "intent":
+      return Target;
+    default:
+      return Circle;
+  }
+}
+
 export function KindBadge({ kind, subkind }: { kind: string; subkind?: string | null }) {
-  const tone = kindTone(kind);
   return (
-    <span className="caps-mono-sm flex-shrink-0" style={{ color: tone }}>
+    <span
+      className="block min-w-0 truncate font-mono text-label font-semibold uppercase tracking-[0.02em]"
+      style={{ color: frameTone(kind, subkind) }}
+      title={`${kind}${subkind ? ":" + subkind : ""}`}
+    >
       {kind.toUpperCase()}
       {subkind ? <span className="text-muted-foreground">:{subkind}</span> : null}
     </span>
@@ -266,6 +305,9 @@ function FrameRow({
     return () => onExpandedChange(-1);
   }, [expanded, onExpandedChange]);
 
+  const Icon = frameIcon(frame.kind, frame.subkind);
+  const tone = frameTone(frame.kind, frame.subkind);
+
   return (
     <div className="border-b border-border last:border-b-0">
       <button
@@ -273,35 +315,42 @@ function FrameRow({
         aria-expanded={expanded}
         onClick={() => setExpanded((prev) => !prev)}
         title={expanded ? "Collapse envelope" : "Expand full envelope JSON"}
-        className="group flex items-baseline gap-2 px-4 py-2 w-full text-left cursor-pointer text-body transition-colors hover:bg-hairline"
+        // Fixed columns so kind / actor / summary line up down the feed, one text
+        // size throughout; timestamp + metrics ride a right-aligned meta cluster.
+        className="group grid w-full cursor-pointer grid-cols-[14px_16px_176px_120px_minmax(0,1fr)_auto] items-center gap-x-2.5 px-4 py-1.5 text-left text-label transition-colors hover:bg-hairline"
       >
         <ChevronRight
           aria-hidden
-          className={`size-3.5 flex-shrink-0 self-center text-faint transition-transform group-hover:text-muted-foreground ${expanded ? "rotate-90" : ""}`}
+          className={`size-3.5 text-faint transition-transform group-hover:text-muted-foreground ${expanded ? "rotate-90" : ""}`}
         />
+        <Icon aria-hidden className="size-3.5" style={{ color: tone }} />
         <KindBadge kind={frame.kind} subkind={frame.subkind} />
-        {frame.episode ? (
-          <span className="font-mono text-micro text-accent" title={frame.episode}>
-            {shortEpisode(frame.episode)}
-          </span>
-        ) : null}
-        <span className="font-mono text-label text-muted-foreground truncate">{frame.sender}</span>
-        <span className="text-muted-foreground truncate">{frame.summary}</span>
-        {frame.metrics ? <MetricsRow metrics={frame.metrics} /> : null}
-        {frame.parents.length > 0 ? (
-          <span className="text-micro text-muted-foreground font-mono" title={frame.parents.join("\n")}>
-            ←{frame.parents.length}
-          </span>
-        ) : null}
-        <span className="ml-auto text-micro text-muted-foreground font-mono tabular flex-shrink-0">{frame.time}</span>
+        <span className="truncate font-mono text-muted-foreground">{frame.sender}</span>
+        <span className="min-w-0 truncate text-text">{frame.summary}</span>
+        <span className="flex items-center justify-end gap-2.5 text-micro text-muted-foreground">
+          {frame.metrics ? <MetricsRow metrics={frame.metrics} /> : null}
+          {frame.parents.length > 0 ? (
+            <span className="font-mono tabular" title={frame.parents.join("\n")}>
+              ←{frame.parents.length}
+            </span>
+          ) : null}
+          {frame.episode ? (
+            <span className="font-mono text-accent" title={frame.episode}>
+              {shortEpisode(frame.episode)}
+            </span>
+          ) : null}
+          <span className="font-mono tabular">{frame.time}</span>
+        </span>
       </button>
       {expanded ? (
-        <pre
-          data-testid="frame-json"
-          className="mx-4 mb-2 max-h-64 overflow-auto px-2.5 py-2 font-mono text-micro text-muted-foreground bg-surface border border-border whitespace-pre-wrap break-words"
-        >
-          {highlightJson(envelopeJson(frame.raw))}
-        </pre>
+        <ScrollArea className="mx-4 mb-2 h-64 border border-border bg-surface">
+          <pre
+            data-testid="frame-json"
+            className="px-2.5 py-2 font-mono text-micro text-muted-foreground whitespace-pre-wrap break-words"
+          >
+            {highlightJson(envelopeJson(frame.raw))}
+          </pre>
+        </ScrollArea>
       ) : null}
     </div>
   );
@@ -318,6 +367,9 @@ const MAX_FRAMES = 200;
 export function L9Inspector({ roomName }: Props) {
   const [frames, setFrames] = useState<L9Frame[]>([]);
   const [connected, setConnected] = useState(false);
+  // Kinds toggled off; empty by default so new kinds auto-show.
+  const [hiddenKinds, setHiddenKinds] = useState<Set<string>>(new Set());
+  const [episodeFilter, setEpisodeFilter] = useState<string>("all");
   const wireRef = useRef<HTMLDivElement>(null);
   // Frame ids already shown, so a history-backfill row and its live re-push don't
   // double up. Reset per room.
@@ -353,9 +405,7 @@ export function L9Inspector({ roomName }: Props) {
     return () => { cancelled = true; };
   }, [roomName]);
 
-  // Live L9 wire: same EventSource pattern as the room feed. (Episodes have
-  // their own home in the inspector's Episodes tab + review drawer; this tab is
-  // purely the live protocol feed.)
+  // Live L9 wire: same EventSource pattern as the room feed.
   useEffect(() => {
     const url = getSSEUrl(roomName);
     let es: EventSource;
@@ -389,39 +439,123 @@ export function L9Inspector({ roomName }: Props) {
     };
   }, [roomName]);
 
+  // Kinds + episodes actually present in the feed so far, for the filter controls.
+  const kindsPresent = useMemo(
+    () => Array.from(new Set(frames.map((f) => f.kind))).sort(),
+    [frames],
+  );
+  const episodesPresent = useMemo(
+    () => Array.from(new Set(frames.map((f) => f.episode).filter((e): e is string => Boolean(e)))),
+    [frames],
+  );
+  // Reset filters that no longer apply to any frame (e.g. the selected episode
+  // scrolled out of the MAX_FRAMES window).
+  useEffect(() => {
+    if (episodeFilter !== "all" && !episodesPresent.includes(episodeFilter)) {
+      setEpisodeFilter("all");
+    }
+  }, [episodeFilter, episodesPresent]);
+
+  const toggleKind = useCallback((kind: string) => {
+    setHiddenKinds((prev) => {
+      const next = new Set(prev);
+      next.has(kind) ? next.delete(kind) : next.add(kind);
+      return next;
+    });
+  }, []);
+
+  const wire = useMemo(
+    () =>
+      frames.filter(
+        (f) => !hiddenKinds.has(f.kind) && (episodeFilter === "all" || f.episode === episodeFilter),
+      ),
+    [frames, hiddenKinds, episodeFilter],
+  );
+
   useEffect(() => {
     if (expandedRows.current > 0) return;
     wireRef.current?.scrollTo({ top: wireRef.current.scrollHeight, behavior: "smooth" });
-  }, [frames]);
+  }, [wire]);
 
-  const wire = useMemo(() => frames, [frames]);
+  const filtered = frames.length > 0 && wire.length === 0;
 
   return (
     <div className="flex flex-col h-full" data-testid="l9-inspector">
-      <div className="flex items-center gap-2 px-4 border-b border-border shrink-0 h-[48px] bg-paper">
-        <span className="caps-mono-sm text-muted-foreground">L9 PROTOCOL</span>
-        {!connected && (
-          <span className="caps-mono-sm text-yellow flex items-center gap-1.5">
-            <span aria-hidden className="inline-block size-1.5 rounded-full bg-yellow" />
-            RECONNECTING
-          </span>
-        )}
-      </div>
+      {/* No title bar; pane tab already reads "Network". */}
+      {!connected && (
+        <div className="flex items-center gap-1.5 px-4 shrink-0 h-[28px] border-b border-border bg-paper caps-mono-sm text-yellow">
+          <span aria-hidden className="inline-block size-1.5 rounded-full bg-yellow" />
+          RECONNECTING
+        </div>
+      )}
 
-      <div ref={wireRef} className="flex-1 overflow-y-auto min-h-0">
+      {frames.length > 0 && (
+        <div className="flex items-center gap-2 px-4 py-2 border-b border-border shrink-0 bg-paper">
+          <span className="caps-mono-sm text-muted-foreground">L9 PROTOCOL</span>
+          <span className="h-3 w-px bg-border" aria-hidden />
+          <div className="flex flex-wrap items-center gap-1">
+            {kindsPresent.map((kind) => {
+              const active = !hiddenKinds.has(kind);
+              return (
+                <button
+                  key={kind}
+                  type="button"
+                  aria-pressed={active}
+                  aria-label={`Toggle ${kind} frames`}
+                  onClick={() => toggleKind(kind)}
+                  className={`flex items-center gap-1.5 rounded-md px-2 py-1 caps-mono-sm transition-colors ${
+                    active
+                      ? "bg-elevated text-text shadow-sm ring-1 ring-border"
+                      : "text-muted-foreground hover:bg-hairline hover:text-text"
+                  }`}
+                >
+                  <span
+                    aria-hidden
+                    className="inline-block size-1.5 rounded-full"
+                    style={{ background: active ? kindTone(kind) : "var(--muted-foreground)" }}
+                  />
+                  {/* Lowercase; caps-mono-sm uppercases visually. */}
+                  {kind}
+                </button>
+              );
+            })}
+          </div>
+          {episodesPresent.length > 0 && (
+            <select
+              aria-label="Filter by episode"
+              value={episodeFilter}
+              onChange={(e) => setEpisodeFilter(e.target.value)}
+              className="ml-auto rounded-md border border-border bg-surface px-2 py-1 font-mono text-micro text-muted-foreground focus:border-accent focus:text-text focus:outline-none"
+            >
+              <option value="all">All episodes</option>
+              {episodesPresent.map((ep) => (
+                <option key={ep} value={ep}>
+                  {shortEpisode(ep)}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+      )}
+
+      <ScrollArea className="flex-1 min-h-0" viewportRef={wireRef}>
         {wire.length === 0 ? (
           <EmptyState
             className="h-full"
             icon={Radio}
-            title="No L9 traffic yet"
-            description="Protocol envelopes stream here as agents coordinate: exchanges, commits, and knowledge."
+            title={filtered ? "No frames match the current filters" : "No L9 traffic yet"}
+            description={
+              filtered
+                ? "Try clearing a kind toggle or switching episodes."
+                : "Protocol envelopes stream here as agents coordinate: exchanges, commits, and knowledge."
+            }
           />
         ) : (
           wire.map((frame) => (
             <FrameRow key={frame.id} frame={frame} onExpandedChange={onExpandedChange} />
           ))
         )}
-      </div>
+      </ScrollArea>
     </div>
   );
 }

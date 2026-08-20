@@ -112,8 +112,7 @@ def test_room_messages_singular_count(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_room_messages_shows_full_content_not_truncated(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The read-the-transcript command must not clip content (regression: was cut
-    to 100 chars with an ellipsis, so long messages were unreadable)."""
+    """The read-the-transcript command renders full content, never clipped."""
     from mycelium_backend_client.models import MessageListResponse, MessageRead
 
     long_text = "x" * 300 + " END-MARKER"

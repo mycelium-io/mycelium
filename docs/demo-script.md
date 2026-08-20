@@ -35,31 +35,31 @@ ls .mycelium/rooms/design-review/
 # decisions/  failed/  status/  context/  work/  procedures/  log/  plan/
 ```
 
-### Agent 1: Julia shares architecture decisions
+### Agent 1: Avery shares architecture decisions
 
 ```bash
 # CLI syntax: mycelium memory set KEY VALUE [--handle AGENT]
-mycelium memory set decisions/scope "Ship the reduced-scope Q3 spec first" --handle julia-agent
-mycelium memory set decisions/llm-provider "litellm: provider/model format, one interface" --handle julia-agent
-mycelium memory set decisions/api-style "REST for now, generated OpenAPI client for type safety" --handle julia-agent
+mycelium memory set decisions/scope "Ship the reduced-scope Q3 spec first" --handle avery-agent
+mycelium memory set decisions/llm-provider "litellm: provider/model format, one interface" --handle avery-agent
+mycelium memory set decisions/api-style "REST for now, generated OpenAPI client for type safety" --handle avery-agent
 
 # These are just markdown files:
 cat .mycelium/rooms/design-review/decisions/scope.md
 # ---
 # key: decisions/scope
-# created_by: julia-agent
+# created_by: avery-agent
 # version: 1
 # ---
 # Ship the reduced-scope Q3 spec first
 ```
 
-### Agent 2: Selina shares research
+### Agent 2: Rowan shares research
 
 ```bash
 cat > .mycelium/rooms/design-review/context/staging.md << 'EOF'
 ---
 key: context/staging
-created_by: selina-agent
+created_by: rowan-agent
 version: 1
 ---
 Staging environment provisions in ~4 min from the base image; safe to stand up per-launch
@@ -105,22 +105,34 @@ mycelium watch design-review
 ```
 
 Then write memories from the first terminal; they appear live in the watch output.
-The UI room view is at `http://localhost:3000/room/design-review`.
+The UI room view is at `http://localhost:3000/room/design-review`, and
+`/room/design-review/graph` draws the room's memories as a link graph — worth showing
+once a few memories reference each other, since it makes the shape of what the agents
+have built visible at a glance (and flags anything broken or orphaned).
 
-### Git-based sharing
+### Sharing across machines
+
+Sharing is the **live channel**, not a file sync. The hub runs the SLIM node and holds
+the one copy of the room; every other machine is a thin client that reads and writes it
+over that channel:
 
 ```bash
-# Rooms are folders; share them with git:
-cd .mycelium/rooms/design-review && git init && git add -A && git commit -m "initial room state"
+# On the hub — serves the SLIM node + backend, prints its LAN address:
+mycelium hub host
 
-# Agent A pushes findings:
-git push origin main
-
-# Agent B on another machine picks up context:
-git pull
-mycelium memory reindex
-mycelium memory search "..."
+# On another machine — point at the hub and use the same room:
+mycelium connect http://<hub-ip>:46357
+mycelium room use design-review
+mycelium memory search "what scope decisions were made"
 ```
+
+A spoke keeps no local `.mycelium/` replica, so there is nothing to reconcile and no
+window in which two machines disagree. For a point-in-time copy instead of live
+participation, `mycelium room clone design-review --from <api-url>` takes an HTTP
+snapshot.
+
+Git can still version or back up the hub's `.mycelium/` files, but it is **not** a
+sharing path — no room flow pushes or pulls over git. See `cross-machine.md`.
 
 ---
 
@@ -139,16 +151,16 @@ mycelium engine create aligner --kind aligner --room design-review
 
 ### Each participant posts an opening position
 
-**Terminal 1 (or Claude Code instance 1), julia-agent:**
+**Terminal 1 (or Claude Code instance 1), avery-agent:**
 ```bash
 mycelium room use design-review
-mycelium respond --room design-review --handle julia-agent \
+mycelium respond --room design-review --handle avery-agent \
   "Prioritize the reduced-scope Q3 spec; we've slipped on big-bang launches before."
 ```
 
-**Terminal 2 (or Claude Code instance 2), selina-agent:**
+**Terminal 2 (or Claude Code instance 2), rowan-agent:**
 ```bash
-mycelium respond --room design-review --handle selina-agent \
+mycelium respond --room design-review --handle rowan-agent \
   "Focus on demo UX and frontend polish. Staging is cheap to stand up per-launch."
 ```
 
@@ -176,10 +188,10 @@ prose. The aligner interprets each reply against the NEGMAS negotiation:
 
 ```bash
 # Blocks until a message is addressed to the handle:
-mycelium await --room design-review --handle julia-agent --json
+mycelium await --room design-review --handle avery-agent --json
 # → read the aligner's prompt, then reply with accept/reject/counter + one line why:
-mycelium respond --room design-review --handle julia-agent \
-  "I can accept if staging is owned by selina and the go/no-go review is scheduled."
+mycelium respond --room design-review --handle avery-agent \
+  "I can accept if staging is owned by rowan and the go/no-go review is scheduled."
 ```
 
 Repeat `await` → `respond` until the aligner reaches consensus. Agents never speak
@@ -206,24 +218,24 @@ mycelium plan task done <id>
 Give this to the second Claude Code instance:
 
 > You are participating in a Mycelium coordination room called `design-review`. You
-> are `selina-agent`. Your position: "Focus on demo UX and frontend polish; staging
+> are `rowan-agent`. Your position: "Focus on demo UX and frontend polish; staging
 > is cheap to stand up per-launch."
 >
 > ```bash
 > mycelium room use design-review
-> mycelium respond --room design-review --handle selina-agent \
+> mycelium respond --room design-review --handle rowan-agent \
 >   "Focus on demo UX and frontend polish. Staging is cheap to stand up per-launch."
 > ```
 >
 > Then loop until the aligner reaches consensus:
 > ```bash
-> mycelium await --room design-review --handle selina-agent --json
+> mycelium await --room design-review --handle rowan-agent --json
 > # read the aligner's prompt, then reply in prose (accept / reject / counter + why):
-> mycelium respond --room design-review --handle selina-agent "<your reply>"
+> mycelium respond --room design-review --handle rowan-agent "<your reply>"
 > ```
 >
 > When consensus is reached, the aligner has already compiled a shared plan, so run
-> `mycelium plan tasks --room design-review` and work the tasks tagged `@selina-agent`.
+> `mycelium plan tasks --room design-review` and work the tasks tagged `@rowan-agent`.
 
 ---
 
@@ -238,7 +250,7 @@ Give this to the second Claude Code instance:
    - **Transport** → one SLIM node; agents coordinate over an MLS-encrypted group
      channel per room.
    - **Memory** → rooms are folders, memories are markdown, search is a local
-     embedding index. Sharing is git.
+     embedding index. Sharing is the live SLIM channel, not a file sync.
    - **Negotiation** → the aligner (Pi + NEGMAS) mediates to consensus, then the
      plan compiler materializes the agreement as `plan/tasks.md`.
 
@@ -256,6 +268,5 @@ Give this to the second Claude Code instance:
 
 - Frontend: `http://localhost:3000`
 - Room view: `http://localhost:3000/room/design-review`
+- Link graph: `http://localhost:3000/room/design-review/graph`
 - Backend API docs: `http://localhost:8000/docs`
-</content>
-</invoke>

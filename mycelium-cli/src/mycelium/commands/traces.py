@@ -2,7 +2,7 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-Trace viewer — query and pivot the spans collected in ``~/.mycelium/metrics/traces.db``.
+Trace viewer: query and pivot the spans collected in ``~/.mycelium/metrics/traces.db``.
 
 The OTLP receiver in ``mycelium.collector`` writes every span it receives
 from OpenClaw (typically via the built-in ``diagnostics-otel`` plugin)
@@ -112,7 +112,7 @@ def _open_db() -> sqlite3.Connection:
 #
 #   - ``oclw-3``  (legacy diagnostics-otel resource attrs from before
 #                  the adapter started normalizing host.name)
-#   - ``oclw3``   (post-reinstall diagnostics-otel — desired)
+#   - ``oclw3``   (post-reinstall diagnostics-otel, desired)
 #   - ``10.0.50.171`` (spans where host.name wasn't set in
 #                      OTEL_RESOURCE_ATTRIBUTES, so the OTLP collector
 #                      fell back to the source IP)
@@ -122,7 +122,7 @@ def _open_db() -> sqlite3.Connection:
 # of precedence:
 #
 #   1. Explicit overrides in ~/.mycelium/config.toml under
-#      ``[metrics.traces.host_aliases]`` — e.g. ``"10.0.50.171" = "oclw3"``
+#      ``[metrics.traces.host_aliases]`` (e.g. ``"10.0.50.171" = "oclw3"``)
 #   2. Best-effort reverse DNS for raw IPs
 
 _HOST_ALIAS_CACHE: dict[str, str] | None = None
@@ -154,7 +154,7 @@ def _user_host_aliases() -> dict[str, str]:
         return {}
     try:
         import tomllib
-    except ImportError:  # pragma: no cover — Python <3.11
+    except ImportError:  # pragma: no cover (Python <3.11)
         return {}
     try:
         data = tomllib.loads(cfg_path.read_text())

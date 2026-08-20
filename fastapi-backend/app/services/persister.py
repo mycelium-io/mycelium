@@ -25,6 +25,14 @@ This module is that consumer, and it does four things as each message flows past
    ``on_converged`` seam the plan-sync consumer runs ``plan_compiler`` off of;
    the persister itself does **not** compile — it just fires the seam.
 
+5. **Memory-sync receiver.** On a ``knowledge`` envelope — from a real SLIM
+   arrival or the sender's own :meth:`RoomPersister.ingest_local` loopback
+   alike — it applies the carried write to this backend's local store via
+   :func:`app.services.memory_sync.apply_knowledge`, closing the loop the
+   emit side (``_broadcast_memory_write`` / :mod:`app.services.plan_sync`)
+   opens. Unlike the summon/converged hooks this isn't a pluggable engine
+   seam: the applier is stateless and version-idempotent, so it always runs.
+
 The pure pieces (:class:`DeliveryLog`, the transcript read/write, the trigger
 detection) carry no SLIM dependency and are unit-tested without a node;
 :class:`RoomPersister` is the thin async loop that drives them over a live
@@ -46,7 +54,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from app.schemas import MessageType
-from app.services import l9
+from app.services import l9, memory_sync
 from app.services.l9_slim import ChannelReceiveTimeout
 
 # Stable namespace so a transcript record maps to the same synthetic
@@ -257,6 +265,29 @@ class DeliveryLog:
         pos = self._cursors.get(handle, len(self._records))
         return self._records[pos:]
 
+    def position(self, handle: str) -> int:
+        """``handle``'s delivery cursor — the transcript end if never tracked.
+
+        The same cursor the durable inbox re-serves from, so server-held
+        ``await`` (a pull) and reconnect re-serve (a push) share one persisted
+        delivery position instead of the process-local one ``await`` used to keep.
+        """
+        return self._cursors.get(handle, len(self._records))
+
+    def advance(self, handle: str, pos: int) -> None:
+        """Move ``handle``'s cursor forward to ``pos`` (clamped, never backward).
+
+        Registers the handle if new, so a first ``await`` that consumes to the
+        transcript end is remembered across a restart instead of re-initializing
+        to "now" each process. Never rewinds: a lower ``pos`` is ignored, so a
+        drain can't un-deliver a tail an earlier live send already advanced past.
+        """
+        end = len(self._records)
+        clamped = max(0, min(int(pos), end))
+        current = self._cursors.get(handle)
+        if current is None or clamped > current:
+            self._cursors[handle] = clamped
+
     def mark_caught_up(self, handle: str) -> None:
         """Advance ``handle`` to the transcript end (after a re-serve)."""
         self._cursors[handle] = len(self._records)
@@ -338,6 +369,17 @@ def write_transcript(room: str, records: list[TranscriptRecord]) -> None:
         logger.exception("transcript write failed for room %s", room)
 
 
+# L9 record kinds promoted into the room chat view on a cold read, mirroring the
+# frontend's ``L9_RAISE_UP_TYPES`` (contracts/l9-surface.json): ``knowledge`` (a
+# memory push, e.g. a distilled extraction or the synced plan) and ``commit`` (an
+# aligner consensus). Chat itself (an ``exchange`` with a ``message``/``reply``
+# payload) is projected as a plain broadcast above; these ride as their
+# ``l9_<kind>`` frame instead — the exact shape the live SSE bus pushes
+# (:func:`l9_bus_frame`), so the frontend decodes a refresh identically to the
+# live stream instead of dropping the row (the "temporary" raise-up rows bug).
+_RAISE_UP_KINDS = frozenset({"knowledge", "commit"})
+
+
 def _conversational_text(content: dict[str, Any]) -> str | None:
     """The human-facing chat text of a record, or None if it isn't chat.
 
@@ -354,22 +396,33 @@ def _conversational_text(content: dict[str, Any]) -> str | None:
 def stored_message_from_record(room: str, record: TranscriptRecord) -> StoredMessage | None:
     """Project a transcript record into the ``StoredMessage`` the list/UI reads.
 
-    Returns None for a non-conversational record. The synthetic id is derived from
-    the envelope id so it's stable across reads, and ``message_id`` carries that
-    envelope id as the cross-store correlation key (dedup against ``local_state``).
+    Returns None for a non-conversational, non-raise-up record. The synthetic id is
+    derived from the envelope id so it's stable across reads, and ``message_id``
+    carries that envelope id as the cross-store correlation key (dedup against
+    ``local_state``).
     """
     from app.services.local_state import StoredMessage
 
     text = _conversational_text(record.content)
-    if text is None:
+    if text is not None:
+        # Chat: a plain broadcast row carrying the prose.
+        message_type: str = MessageType.BROADCAST
+        content = text
+    elif record.kind in _RAISE_UP_KINDS:
+        # A promoted L9 system frame (memory push / consensus): carry the whole
+        # envelope as the ``l9_<kind>`` frame the live stream uses, so the cold
+        # read reproduces the live view instead of dropping it on refresh.
+        message_type = f"l9_{record.kind}"
+        content = json.dumps(record.content)
+    else:
         return None
     episode = record.content.get("l9", {}).get("header", {}).get("message", {}).get("episode")
     seed = record.message_id or f"{record.recorded_at}:{record.sender}"
     msg = StoredMessage(
         room_name=room,
-        sender_handle=record.sender,
-        message_type=MessageType.BROADCAST,
-        content=text,
+        sender_handle=record.sender or l9.SYSTEM_ACTOR_ID,
+        message_type=message_type,
+        content=content,
         episode=episode if isinstance(episode, str) else None,
         message_id=record.message_id or None,
         id=uuid.uuid5(_MESSAGE_ID_NS, seed),
@@ -417,6 +470,24 @@ def conversational_messages(room: str) -> list[StoredMessage]:
     ]
     _conversational_cache[room] = (stamp, messages)
     return list(messages)
+
+
+def room_conversation(room: str) -> list[StoredMessage]:
+    """A room's full conversational view: durable transcript + live in-memory rows.
+
+    The transcript survives restarts and both post paths converge on it; the
+    in-memory ``local_state`` rows are the live lens and carry the ledger fields
+    (ttl/status) plus the ids clients already hold. Where a message is in both,
+    the ``local_state`` row wins and the transcript only fills what memory lost.
+    Dedup is by envelope ``message_id`` — a distinct id space from
+    ``StoredMessage.id``.
+    """
+    from app.services import local_state
+
+    mem = local_state.list_messages(room)
+    live_ids = {m.message_id for m in mem if m.message_id}
+    disk = [m for m in conversational_messages(room) if m.message_id not in live_ids]
+    return disk + mem
 
 
 def l9_bus_frame(room: str, record: TranscriptRecord) -> dict[str, Any]:
@@ -556,8 +627,7 @@ def _default_summon_hook(
 
 def _default_converged_hook(envelope: L9) -> None:
     # Log-only default for a persister with no plan-sync consumer wired (unit
-    # tests / a bare backend). In the running backend ``main.py`` binds this to
-    # the plan-sync consumer via the manager's ``_converged_adapter``.
+    # tests / a bare backend).
     logger.info(
         "converged hook (unwired): commit:converged on episode %s; no plan-sync consumer",
         envelope.header.message.episode if envelope.header.message else "?",
@@ -603,21 +673,40 @@ class RoomPersister:
         # publishes itself (the human proxy) is recorded/fed to the bus exactly
         # once even if SLIM loops the broadcast back to the moderator.
         self._ingested_ids: set[str] = set()
+        # Strong refs to in-flight knowledge-apply tasks (apply_knowledge does file
+        # IO + reindexing, so it can't run inline in the sync ``_ingest`` call);
+        # without this the task could be GC'd mid-flight.
+        self._knowledge_tasks: set[asyncio.Task[None]] = set()
         # Health counters surfaced via RoomChannelManager.status(). ``receive_errors``
         # is genuine (fatal) transport faults; ``transient_errors`` is recoverable
         # membership-churn receive errors (retried, not lost) — split so the health
         # surface distinguishes "the channel is faulting" from "the channel is
         # churning". ``reserve_failures``/``reserve_skipped`` make the two ways a
         # missed-message re-serve fails to land visible instead of log-only.
+        # ``knowledge_applied``/``knowledge_conflicts`` are the memory-sync receiver's
+        # equivalent: how many inbound writes converged vs. lost to a stale base.
         self.reserves = 0
         self.receive_errors = 0
         self.transient_errors = 0
         self.reserve_failures = 0
         self.reserve_skipped = 0
+        self.knowledge_applied = 0
+        self.knowledge_conflicts = 0
 
     def _persist_cursors(self) -> None:
         """Snapshot the delivery cursors to disk (best-effort, per mutation)."""
         write_cursors(self.room, self.log.cursors)
+
+    def advance_cursor(self, handle: str, pos: int) -> None:
+        """Advance ``handle``'s durable delivery cursor to ``pos`` and persist it.
+
+        The consume side of the durable inbox for a server-held ``await`` caller:
+        as ``await`` drains the transcript it commits the new position here so it
+        survives a backend restart, rather than the process-local cursor that
+        silently reset every handle to "now" on restart.
+        """
+        self.log.advance(handle, pos)
+        self._persist_cursors()
 
     # -- membership signals (driven by RoomChannelManager) --
 
@@ -840,6 +929,38 @@ class RoomPersister:
                 self.on_converged(envelope)
             except Exception:
                 logger.exception("converged hook failed")
+        if memory_sync.is_knowledge(envelope):
+            self._schedule_knowledge_apply(envelope)
+
+    def _schedule_knowledge_apply(self, envelope: L9) -> None:
+        """Apply an inbound ``knowledge`` write off the ingest path.
+
+        Fires for a real SLIM arrival and for the sender's own
+        :meth:`ingest_local` loopback alike — ``apply_knowledge`` is
+        version-idempotent (see :mod:`app.services.memory_sync`), so re-applying
+        a write this store already holds is a silent no-op, not a double-write.
+        Scheduled as a tracked background task since ``_ingest`` is sync but the
+        applier does file IO + reindexing; never re-broadcasts, so this cannot
+        loop with the emit side (``_broadcast_memory_write`` / ``plan_sync``).
+        """
+        write = memory_sync.knowledge_write_from_envelope(envelope)
+        if write is None:
+            logger.warning("malformed knowledge envelope on room %s; not applied", self.room)
+            return
+        task = asyncio.create_task(self._apply_knowledge(write))
+        self._knowledge_tasks.add(task)
+        task.add_done_callback(self._knowledge_tasks.discard)
+
+    async def _apply_knowledge(self, write: memory_sync.KnowledgeWrite) -> None:
+        try:
+            result = await memory_sync.apply_knowledge(self.room, write)
+        except Exception:
+            logger.exception("apply_knowledge failed for %s/%s", self.room, write.key)
+            return
+        if result.conflict:
+            self.knowledge_conflicts += 1
+        elif result.applied:
+            self.knowledge_applied += 1
 
     def _publish_to_bus(self, record: TranscriptRecord) -> None:
         """Feed the recorded message to the in-process bus so the SSE UI sees it.

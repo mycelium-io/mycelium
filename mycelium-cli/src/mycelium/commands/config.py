@@ -58,6 +58,13 @@ def show(ctx: typer.Context) -> None:
             if config.llm.api_key:
                 masked = config.llm.api_key[:8] + "..." if len(config.llm.api_key) > 8 else "***"
                 typer.echo(f"  LLM API Key:  {masked}")
+            if config.slim.master_secret:
+                masked = (
+                    config.slim.master_secret[:8] + "..."
+                    if len(config.slim.master_secret) > 8
+                    else "***"
+                )
+                typer.echo(f"  SLIM PSK:     {masked}  (hub-only)")
             typer.echo(f"  Backend Port: {config.runtime.backend_port}")
 
     except Exception as e:
@@ -127,6 +134,15 @@ def set_config(
             f"Set {key} = {value[:20]}{'...' if len(value) > 20 else ''}",
             fg=typer.colors.GREEN,
         )
+        if key == "slim.identity" and str(parsed_value).lower() in (
+            "signerjwt",
+            "spire",
+        ):
+            typer.echo(
+                "[dim]SLIM channel identity (native SLIM clients on the hub). "
+                "Does not enable HTTP API auth — configure auth.enabled separately "
+                "for shared spokes.[/dim]"
+            )
 
     except Exception as e:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
@@ -208,8 +224,13 @@ def apply_config(
 
         from mycelium.docker_utils import write_env_file
 
-        env_path = write_env_file(config)
+        env_path, secret_assigned = write_env_file(config)
         typer.secho(f"  ✓ Wrote {env_path}", fg=typer.colors.GREEN)
+        if secret_assigned:
+            typer.secho(
+                "  ✓ Generated [slim].master_secret (hub SLIM PSK) in config.toml",
+                fg=typer.colors.GREEN,
+            )
 
         if restart:
             typer.echo("  Restarting containers...")
@@ -249,7 +270,7 @@ def apply_config(
 
 
 def _find_compose_path() -> Path | None:
-    """Find the compose file — same logic as install.py but simplified."""
+    """Find the compose file: same logic as install.py but simplified."""
     import importlib.resources
 
     bundled = Path.home() / ".mycelium" / "docker" / "compose.yml"
@@ -301,7 +322,7 @@ def _parse_env_file(env_path: Path) -> dict[str, str]:
 def _migrate_env_to_config(config: "MyceliumConfig") -> None:
     """Import LLM and runtime settings from the existing .env into config.
 
-    Only fills in fields that are empty/default in config.toml — never
+    Only fills in fields that are empty/default in config.toml, never
     overwrites values the user already set in TOML.
     """
     env_path = config.get_global_config_dir() / ".env"
@@ -312,7 +333,6 @@ def _migrate_env_to_config(config: "MyceliumConfig") -> None:
 
     changed = False
 
-    # LLM
     if not config.llm.model and env.get("LLM_MODEL"):
         config.llm.model = env["LLM_MODEL"]
         changed = True
@@ -324,7 +344,6 @@ def _migrate_env_to_config(config: "MyceliumConfig") -> None:
         config.llm.base_url = base_url
         changed = True
 
-    # Runtime — ports
     env_backend_port = env.get("MYCELIUM_BACKEND_PORT")
     if env_backend_port and config.runtime.backend_port == 8000:  # still default
         try:
@@ -340,9 +359,12 @@ def _migrate_env_to_config(config: "MyceliumConfig") -> None:
         except ValueError:
             pass
 
-    # Runtime — data dir
     if not config.runtime.data_dir and env.get("MYCELIUM_DATA_DIR"):
         config.runtime.data_dir = env["MYCELIUM_DATA_DIR"]
+        changed = True
+
+    if not config.slim.master_secret and env.get("MYCELIUM_SLIM_MASTER_SECRET"):
+        config.slim.master_secret = env["MYCELIUM_SLIM_MASTER_SECRET"]
         changed = True
 
     if changed:

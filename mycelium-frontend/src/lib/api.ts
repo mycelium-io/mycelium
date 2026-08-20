@@ -6,10 +6,11 @@
 // talks to its own origin: no CORS, no second public port, no build-time
 // URL baking. The internal backend URL is a server-side concern.
 
+import type { SearchResponse } from "@/lib/search";
+import { encodeMemoryKeyPath } from "@/lib/memory-routes";
+
 /**
- * Attach to a fetch `.catch` to surface network failures in the browser
- * console. Replaces the previous `.catch(() => {})` pattern that swallowed
- * every error and made cloud-install debugging impossible.
+ * Attach to a fetch `.catch` to surface network failures in the browser console.
  */
 export const logFetchError =
   (label: string) =>
@@ -78,6 +79,12 @@ async function apiFetch<T = unknown>(path: string, opts: ApiFetchOptions<T> = {}
   }
 
   if (!res.ok) {
+    // A gated hub answering 401 means the session lapsed (or never existed).
+    // Signal the auth provider to re-check rather than letting a `fallback`
+    // caller degrade to a silently-empty view. See components/auth-session.tsx.
+    if (res.status === 401 && typeof window !== "undefined") {
+      window.dispatchEvent(new Event("mycelium:auth-required"));
+    }
     const message = await errorDetail(res);
     if (hasFallback) {
       logFetchError(path)(new Error(message));
@@ -164,6 +171,17 @@ export async function fetchMemories(roomName: string, prefix?: string): Promise<
   });
 }
 
+/** One memory by key. Returns null when it isn't there (or the read failed), so
+ *  a caller jumping to a since-deleted key lands on the room rather than an
+ *  error. */
+export async function fetchMemory(roomName: string, key: string): Promise<Memory | null> {
+  const path = encodeMemoryKeyPath(key);
+  return apiFetch<Memory | null>(`/api/rooms/${roomName}/memory/${path}`, {
+    cache: "no-store",
+    fallback: null,
+  });
+}
+
 export interface MemorySearchResult {
   memory: Memory;
   similarity: number;
@@ -179,6 +197,173 @@ export async function searchMemories(roomName: string, query: string): Promise<M
     body: JSON.stringify({ query, limit: 10 }),
   });
   return data.results ?? [];
+}
+
+// ── Cross-entity search ──────────────────────────────────────────────────────
+
+/** One ranked query across memories, episodes, messages, rooms and members.
+ *
+ *  Throws (rather than falling back to empty) so the search surface can tell
+ *  "nothing matched" from "the hub is unreachable" and say which. */
+export async function searchEverything(query: string, limit = 20): Promise<SearchResponse> {
+  const params = new URLSearchParams({ q: query, limit: String(limit) });
+  return apiFetch<SearchResponse>(`/api/search?${params}`, { cache: "no-store" });
+}
+
+// ── Memory links ─────────────────────────────────────────────────────────────
+
+/** One edge between two memories, plus what it resolves to right now. */
+export interface MemoryLink {
+  target: string;
+  kind: "wikilink" | "uri" | "transclusion" | "relation";
+  anchor?: string | null;
+  label?: string | null;
+  relation?: string | null;
+  raw: string;
+  /** Set on a backlink: the memory the edge came from. */
+  source?: string | null;
+  resolved: boolean;
+  error?: string | null;
+}
+
+export interface MemoryLinks {
+  key: string;
+  outbound: MemoryLink[];
+  backlinks: MemoryLink[];
+}
+
+const EMPTY_LINKS = { outbound: [], backlinks: [] };
+
+/** A memory's links in both directions. Degrades to empty — a room with no
+ *  link index yet is the normal unlinked case, not an error worth surfacing. */
+export async function fetchMemoryLinks(roomName: string, key: string): Promise<MemoryLinks> {
+  const params = new URLSearchParams({ key });
+  const data = await apiFetch<Omit<MemoryLinks, "key">>(
+    `/api/rooms/${roomName}/links?${params}`,
+    { cache: "no-store", fallback: EMPTY_LINKS },
+  );
+  return { key, outbound: data.outbound ?? [], backlinks: data.backlinks ?? [] };
+}
+
+export interface BrokenLink extends MemoryLink {
+  source: string;
+}
+
+export interface MemoryLinksIntegrity {
+  broken: BrokenLink[];
+  /** Fully isolated: inbound === 0 AND outbound === 0. */
+  orphans: string[];
+  /** Entry points: inbound === 0 AND outbound > 0. Nothing links here yet. */
+  roots: string[];
+  /** Dead ends: inbound > 0 AND outbound === 0. Links arrive but go no further. */
+  leaves: string[];
+  total_memories: number;
+  total_links: number;
+}
+
+const EMPTY_INTEGRITY: MemoryLinksIntegrity = {
+  broken: [],
+  orphans: [],
+  roots: [],
+  leaves: [],
+  total_memories: 0,
+  total_links: 0,
+};
+
+/** Room-wide link integrity — broken edges, orphans, roots, and leaves. Degrades to empty. */
+export async function fetchMemoryIntegrity(roomName: string): Promise<MemoryLinksIntegrity> {
+  return apiFetch<MemoryLinksIntegrity>(`/api/rooms/${roomName}/links/integrity`, {
+    cache: "no-store",
+    fallback: EMPTY_INTEGRITY,
+  });
+}
+
+export interface MemoryExpanded {
+  key: string;
+  rendered: string;
+  expansions: Array<{ raw: string; target: string; resolved: boolean; error?: string | null }>;
+  found: boolean;
+}
+
+const EMPTY_EXPAND: MemoryExpanded = { key: "", rendered: "", expansions: [], found: false };
+
+/** Body with `![[…]]` transclusions expanded (depth 1). Returns empty when missing. */
+export async function fetchMemoryExpanded(roomName: string, key: string): Promise<MemoryExpanded> {
+  const params = new URLSearchParams({ key });
+  const data = await apiFetch<MemoryExpanded>(
+    `/api/rooms/${roomName}/links/expand?${params}`,
+    { cache: "no-store", fallback: { ...EMPTY_EXPAND, key } },
+  );
+  return { ...EMPTY_EXPAND, ...data, key };
+}
+
+// ── Memory graph ─────────────────────────────────────────────────────────────
+// The whole room as a graph — one node per memory, one edge per link — for the
+// full-page graph view (#599). A thin read over the same link index that backs
+// `fetchMemoryLinks`/integrity, so graph-role facts (orphan = `inbound===0 &&
+// outbound===0`, root = `inbound===0 && outbound>0`, leaf = `inbound>0 &&
+// outbound===0`) and broken-link facts (`resolved === false`) are derived
+// client-side from this one payload instead of a second integrity fetch.
+
+export interface MemoryGraphNode {
+  key: string;
+  expandable: boolean;
+  outbound: number;
+  inbound: number;
+}
+
+export interface MemoryGraphEdge {
+  source: string;
+  target: string;
+  kind: MemoryLink["kind"];
+  relation?: string | null;
+  resolved: boolean;
+  error?: string | null;
+}
+
+export interface MemoryGraph {
+  nodes: MemoryGraphNode[];
+  edges: MemoryGraphEdge[];
+}
+
+const EMPTY_GRAPH: MemoryGraph = { nodes: [], edges: [] };
+
+/** The room's whole link graph. Degrades to empty — a room with no link index
+ *  yet (or an unreachable hub) is the normal unlinked case, not a hard error. */
+export async function fetchMemoryGraph(roomName: string): Promise<MemoryGraph> {
+  const data = await apiFetch<Partial<MemoryGraph>>(`/api/rooms/${roomName}/links/graph`, {
+    cache: "no-store",
+    fallback: EMPTY_GRAPH,
+  });
+  return { nodes: data.nodes ?? [], edges: data.edges ?? [] };
+}
+
+// ── Skills ───────────────────────────────────────────────────────────────────
+// A skill is a memory under the room's `skills/` namespace, promoted into its
+// own surface (like `agents/` → the members panel). Room-scoped, like memory.
+// Backs the chat composer's `/` trigger and the Skills rail. See #617.
+
+export interface Skill {
+  name: string;
+  description: string;
+  body: string;
+  tags?: string[] | null;
+  created_by: string;
+  updated_by?: string | null;
+  version: number;
+  created_at: string;
+  updated_at: string;
+}
+
+/** List a room's skills, for the composer's `/` autocomplete. Skills are just
+ *  `skills/…` memories; in the GUI they surface as memories (with a tag), so this
+ *  read is the only skill-specific frontend call. Degrades to empty on failure. */
+export async function fetchSkills(roomName: string): Promise<Skill[]> {
+  const data = await apiFetch<{ skills?: Skill[] }>(`/api/rooms/${roomName}/skills`, {
+    cache: "no-store",
+    fallback: { skills: [] },
+  });
+  return data.skills ?? [];
 }
 
 // ── Plan ─────────────────────────────────────────────────────────────────────

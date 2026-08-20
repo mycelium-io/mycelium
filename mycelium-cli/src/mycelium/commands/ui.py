@@ -2,12 +2,12 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-`mycelium ui` — manage the optional frontend.
+`mycelium ui`: manage the optional frontend.
 
 The frontend ships as a separate Docker image gated behind the `ui` profile
 in the bundled compose file. It runs at http://localhost:3000 by default and
 talks to the backend at http://localhost:<backend_port> (baked into the
-image at build time — see mycelium-frontend/Dockerfile).
+image at build time; see mycelium-frontend/Dockerfile).
 """
 
 from __future__ import annotations
@@ -28,7 +28,6 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 
-# Container name set in the bundled compose.yml.
 _FRONTEND_CONTAINER = "mycelium-frontend"
 _DEFAULT_PORT = 3000
 
@@ -48,6 +47,7 @@ def _ui_url() -> str:
 
 def _container_running(name: str) -> bool:
     """True if a Docker container with this name is currently running."""
+    """Check if a running Docker container matches the given name."""
     if not shutil.which("docker"):
         return False
     r = subprocess.run(

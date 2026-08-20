@@ -1,12 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Cursor dispatch facet — manifest IS the registration (same shape as claude_code).
+"""Cursor dispatch facet: manifest IS the registration (same shape as claude_code).
 
 A ``cursor`` agent is a **resident** runtime: a Cursor session (kept woken with
 ``mycelium await --loop``) that participates via ``await``/``respond``. Registration
 drops the workspace-local Cursor rule + AGENTS.md section so the session knows how
-to coordinate; mycelium does not run the process. (Untested end-to-end — kept as the
+to coordinate; mycelium does not run the process. (Untested end-to-end; kept as the
 resident sibling of claude_code.)
 """
 
@@ -73,7 +73,7 @@ class CursorIntegration(Integration):
         # Cursor session knows how to coordinate. ``install_workspace_assets``
         # raises ``NotADirectoryError`` when ``manifest.cwd`` doesn't exist; the
         # command layer surfaces that as a clean validation error. No runtime is
-        # started — the user runs the session (via ``mycelium await --loop``).
+        # started; the user runs the session (via ``mycelium await --loop``).
         if manifest.cwd:
             install_workspace_assets(Path(manifest.cwd), verbose=False)
 
@@ -81,7 +81,7 @@ class CursorIntegration(Integration):
         self, *, manifest: AgentManifest, config: MyceliumConfig, room: str, full: bool
     ) -> None:
         # ``full`` requests destructive teardown of *this agent's runtime*
-        # — for cursor that means removing the workspace assets we dropped.
+        # (for cursor that means removing the workspace assets we dropped).
         # Without ``full``, we leave them in place so a re-add picks up where
         # we left off and the user's project-rules history isn't disturbed.
         # The agent's manifest and notes/logs are owned by the command layer
@@ -127,12 +127,12 @@ class CursorIntegration(Integration):
         reinstall: bool,
     ) -> None:
         # No host-level work. The banner printed via :meth:`post_install_banner`
-        # is what the user sees. Reinstall has nothing to refresh either —
+        # is what the user sees. Reinstall has nothing to refresh either;
         # the per-workspace assets are owned by the agent's :meth:`register`.
         return
 
     def uninstall(self, *, record: dict, profile: str | None, container: str | None) -> None:
-        # No host-level assets ever installed — symmetry with :meth:`install`.
+        # No host-level assets ever installed; symmetry with :meth:`install`.
         return
 
     def reinstall_targets(self, *, profile: str | None, container: str | None) -> list[str]:
@@ -145,7 +145,7 @@ class CursorIntegration(Integration):
         self, *, config: MyceliumConfig, profile: str | None, container: str | None
     ) -> list[str]:
         return [
-            "  (no host-level install for cursor — workspace assets drop at agent create)",
+            "  (no host-level install for cursor; workspace assets drop at agent create)",
             "  Per agent:",
             f"    rule    → <agent-cwd>/.cursor/rules/{_CURSOR_RULE_FILENAME}",
             "    agents  → <agent-cwd>/AGENTS.md (merged inside",
@@ -162,7 +162,7 @@ class CursorIntegration(Integration):
     ) -> None:
         verb = "reinstalled" if reinstall else "installed"
         typer.secho(f"Adapter 'cursor' {verb}.", fg=typer.colors.GREEN)
-        typer.echo("  (no host-level files — cursor reads workspace-local rules)")
+        typer.echo("  (no host-level files; cursor reads workspace-local rules)")
         typer.echo("")
         typer.secho("  Next steps:", bold=True)
         typer.echo("")
@@ -198,7 +198,7 @@ class CursorIntegration(Integration):
         return
 
     def status_check(self, *, name: str, info: dict) -> dict:
-        # No host-level files to probe — the only meaningful per-host check is
+        # No host-level files to probe; the only meaningful per-host check is
         # whether ``cursor-agent`` is on PATH. Returning ``ok`` on that lets
         # ``mycelium adapter status`` list cursor without a misleading red ✗.
         import shutil
@@ -218,7 +218,7 @@ class CursorIntegration(Integration):
         return {"ok": binary_ok, "details": details}
 
     def will_destroy_runtime(self, manifest: AgentManifest, *, full: bool) -> bool:
-        # ``full`` removes the workspace assets — confirm in the command
+        # ``full`` removes the workspace assets; confirm in the command
         # layer because users may have committed AGENTS.md and don't expect
         # ``agent rm --full`` to mutate their git working tree.
         return bool(full and manifest.cwd)

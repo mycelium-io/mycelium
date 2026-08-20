@@ -14,7 +14,7 @@ import logging
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 
 from app.bus import bus, room_channel
 from app.schemas import (
@@ -25,7 +25,7 @@ from app.schemas import (
     MessageRead,
     MessageType,
 )
-from app.services import local_state, persister, principals, room_channels
+from app.services import actor, local_state, persister, principals, room_channels
 from app.services.filesystem import room_exists
 
 logger = logging.getLogger(__name__)
@@ -50,23 +50,23 @@ def _resolve_channel(name: str) -> tuple[str, local_state.CoordSessionShim | Non
 
 
 @router.post("", response_model=MessageRead, status_code=201)
-async def send_message(room_name: str, payload: MessageCreate):
+async def send_message(room_name: str, payload: MessageCreate, request: Request):
     """Send a message to a room; publish it to the room's live stream."""
     channel, coord = _resolve_channel(room_name)
 
-    # A human posts under a self-asserted handle (may be unregistered), but no
-    # one may pose as an engine — engines speak only through their own runtime.
+    # Token-verified sender; fall back to payload handle if unauthenticated.
+    sender_handle = actor.bind_actor(request, payload.sender_handle, field="sender_handle")
+
+    # Prevent impersonation: only engines post as engine handles.
     base_room = channel.split(":session:", 1)[0]
-    reason = principals.post_rejection_reason(
-        base_room, payload.sender_handle, allow_unregistered=True
-    )
+    reason = principals.post_rejection_reason(base_room, sender_handle, allow_unregistered=True)
     if reason:
         raise HTTPException(status_code=403, detail=reason)
 
     msg = local_state.StoredMessage(
         room_name=None if coord else channel,
         coordination_session_id=coord.id if coord else None,
-        sender_handle=payload.sender_handle,
+        sender_handle=sender_handle,
         recipient_handle=payload.recipient_handle,
         message_type=payload.message_type,
         content=payload.content,
@@ -95,14 +95,10 @@ async def send_message(room_name: str, payload: MessageCreate):
         notify_payload["coordination_session_id"] = str(coord.id)
     notify_payload["room_name"] = channel
 
-    # Human-in-the-room: for a real room with a live SLIM channel, the backend
-    # publishes the human's message onto the channel as their proxy — ``@``-parsing
-    # recipients so in-room agents wake, and raising consent for absent mentions.
-    # The persister records it to the durable transcript (via ``ingest_local``),
-    # which is the read path's source of truth, so we must NOT also write
-    # ``local_state`` / ``bus.publish`` here (that would double it). The no-channel
-    # path and event/non-broadcast messages have no persister, so they keep the
-    # direct ``local_state`` write + legacy bus.
+    # Human-in-the-room: backend publishes onto the channel as proxy for live SLIM
+    # rooms, parsing ``@`` recipients and raising consent for absent mentions. The
+    # persister records to the durable transcript (source of truth), so don't also
+    # write local_state/bus here (would duplicate). Non-SLIM paths use direct write.
     published = False
     if (
         coord is None
@@ -142,21 +138,12 @@ def _read_messages(
 ) -> list[local_state.StoredMessage]:
     """The room view: durable conversational history + in-memory event-ledger rows.
 
-    A real room's durable conversational history lives in the transcript (survives
-    restarts; both ``respond`` and ``room send`` converge there). The in-memory
-    ``local_state`` is the live lens and holds the ledger fields (ttl/status) plus
-    the ids clients already hold, so where a message is in both stores the
-    ``local_state`` row wins; the transcript only fills what memory lost (a message
-    from before a restart). Dedup is by envelope ``message_id`` (a distinct id space
-    from ``StoredMessage.id``). A coordination session has no transcript.
+    A coordination session has no transcript, so it is the in-memory rows alone;
+    a real room is the merged view ``persister.room_conversation`` builds.
     """
     if coord is not None:
         return local_state.list_messages(channel)
-
-    mem = local_state.list_messages(channel)
-    live_ids = {m.message_id for m in mem if m.message_id}
-    disk = [m for m in persister.conversational_messages(channel) if m.message_id not in live_ids]
-    return disk + mem
+    return persister.room_conversation(channel)
 
 
 @router.get("", response_model=MessageListResponse)

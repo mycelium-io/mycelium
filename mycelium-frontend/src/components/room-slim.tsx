@@ -3,46 +3,77 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
-import {
-  fetchCoordination,
-  logFetchError,
-  type CoordinationRoom,
-  type CoordinationStatus,
-} from "@/lib/api";
+import { type CoordinationRoom } from "@/lib/api";
+import { useCoordination } from "@/lib/room-data";
 import { Skeleton } from "@/components/ui/skeleton";
 
-/** The "SLIM" room view: this room's SLIM channel status — the node it rides,
- *  who is present (SLIM members plus server-held `await` participants), episode
- *  state, and durable-inbox counters. Scoped to the current room (the fabric-wide
- *  fleet view is the CLI's `mycelium network`). Read-only, polled, fail-soft. */
-export function RoomSlimView({ roomName }: { roomName: string }) {
-  const [coord, setCoord] = useState<CoordinationStatus | null>(null);
-  const [loaded, setLoaded] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    const load = () =>
-      fetchCoordination()
-        .then((c) => {
-          if (cancelled) return;
-          setCoord(c);
-          setLoaded(true);
-        })
-        .catch((err) => {
-          logFetchError("fetchCoordination")(err);
-          if (!cancelled) setLoaded(true);
-        });
-    load();
-    const t = setInterval(load, 20_000);
-    return () => {
-      cancelled = true;
-      clearInterval(t);
-    };
-  }, []);
+/** This room's SLIM channel status — the node it rides, who is present (SLIM
+ *  members plus server-held `await` participants), episode state, and
+ *  durable-inbox counters. Scoped to the current room (the fabric-wide fleet view
+ *  is the CLI's `mycelium network`). Read-only, polled, fail-soft.
+ *
+ *  `layout="rail"` renders a compact single-strip diagnostics bar — the top of
+ *  the unified Network pane, above the L9 feed. `layout="full"` (default) is the
+ *  stacked card view. */
+export function RoomSlimView({
+  roomName,
+  layout = "full",
+}: {
+  roomName: string;
+  layout?: "full" | "rail";
+}) {
+  const { coordination: coord, loading } = useCoordination();
+  const loaded = !loading;
 
   const room: CoordinationRoom | null = coord?.rooms.find((r) => r.room === roomName) ?? null;
   const enabled = coord?.slim_enabled ?? false;
+
+  if (layout === "rail") {
+    if (loaded && !coord) {
+      return (
+        <div className="flex items-center gap-1.5 px-4 py-2 text-micro text-muted-foreground">
+          <span style={{ color: "var(--red)" }}>●</span> SLIM · backend unreachable
+        </div>
+      );
+    }
+    return (
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2 text-micro">
+        <RailStat
+          dot={coord ? (enabled ? "var(--green)" : "var(--red)") : "var(--yellow)"}
+          label="SLIM"
+        >
+          <span className="font-mono text-text">{coord?.endpoint ?? "…"}</span>
+        </RailStat>
+        <RailStat label="channels">{coord?.channels_live ?? "—"}</RailStat>
+        <RailStat label="provisions">
+          {coord ? `${coord.provisions_ok}✓ / ${coord.provisions_failed}✗` : "—"}
+        </RailStat>
+        <span className="h-3 w-px bg-border" aria-hidden />
+        <RailStat
+          dot={room?.provisioned ? "var(--green)" : "var(--yellow)"}
+          label={`channel · ${roomName}`}
+        >
+          {room ? (room.provisioned ? "live" : "pending") : loaded ? "none" : "…"}
+        </RailStat>
+        <RailStat label="members">{room?.members.length ?? 0}</RailStat>
+        <RailStat label="episode">
+          <span style={{ color: room?.episode_active ? "var(--accent)" : undefined }}>
+            {room?.episode_active ? "active" : "idle"}
+          </span>
+        </RailStat>
+        <RailStat label="invites">
+          <span style={{ color: (room?.pending_invites ?? 0) > 0 ? "var(--yellow)" : undefined }}>
+            {room?.pending_invites ?? 0}
+          </span>
+        </RailStat>
+        {(room?.receive_errors ?? 0) > 0 && (
+          <RailStat label="recv-err">
+            <span style={{ color: "var(--red)" }}>{room?.receive_errors}</span>
+          </RailStat>
+        )}
+      </div>
+    );
+  }
 
   if (loaded && !coord) {
     return <div className="p-6 text-label text-muted-foreground">Backend unreachable.</div>;
@@ -50,7 +81,6 @@ export function RoomSlimView({ roomName }: { roomName: string }) {
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-6 p-6">
-      {/* SLIM node — the fabric this room's channel rides. */}
       <section className="overflow-hidden rounded-xl border border-border bg-surface/40">
         <SectionHeader
           title="SLIM node"
@@ -145,6 +175,28 @@ function SectionHeader({ title, dot, dotLabel }: { title: string; dot: string; d
         {dotLabel}
       </span>
     </div>
+  );
+}
+
+function RailStat({
+  label,
+  dot,
+  children,
+}: {
+  label: string;
+  dot?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <span className="flex items-center gap-1.5">
+      {dot && (
+        <span style={{ color: dot }} aria-hidden>
+          ●
+        </span>
+      )}
+      <span className="text-muted-foreground">{label}</span>
+      <span className="tabular text-text">{children}</span>
+    </span>
   );
 }
 

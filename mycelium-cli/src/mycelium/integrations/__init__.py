@@ -2,14 +2,14 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-Integration registry — the single resolution point for a runtime family.
+Integration registry: the single resolution point for a runtime family.
 
 Each family implements an :class:`Integration` subclass exposing the facets that
 build/register agent manifests and spawn turns: the per-family ``dispatch`` facet,
 ``install.py``, and the ``assets/`` bundle live together under
 ``integrations/<family>/``.
 
-One canonical family id is used everywhere internally — the **underscore**
+One canonical family id is used everywhere internally: the **underscore**
 spelling (``claude_code``), since that is the value persisted in
 ``agents/<handle>`` manifests and matched by the daemon dispatch guard and
 ``sstp.AGENT_ADAPTERS``. The **hyphen** spelling (``claude-code``) survives
@@ -69,7 +69,7 @@ def get_integration(
     if canonical == "claude_code":
         return ClaudeCodeIntegration(cwd=cwd)
     if canonical == "cursor":
-        # cursor takes the same ``cwd`` flag claude_code does — it's the
+        # cursor takes the same ``cwd`` flag claude_code does; it's the
         # workspace root ``cursor-agent --workspace`` opens.
         return CursorIntegration(cwd=cwd)
     if canonical == "engine":

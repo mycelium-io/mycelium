@@ -26,22 +26,26 @@ from typing import Any
 os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
 os.environ.setdefault("HF_HUB_OFFLINE", "1")
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.routes.agents import router as agents_router
 from app.routes.engines import router as engines_router
 from app.routes.episodes import router as episodes_router
 from app.routes.invites import router as invites_router
+from app.routes.links import router as links_router
 from app.routes.memory import router as memory_router
 from app.routes.messages import router as messages_router
 from app.routes.participate import router as participate_router
 from app.routes.plan import agent_router as agent_context_router
 from app.routes.plan import router as plan_router
 from app.routes.rooms import router as rooms_router
+from app.routes.search import router as search_router
 from app.routes.sessions import router as sessions_router
+from app.routes.skills import router as skills_router
 from app.routes.stream import router as stream_router
 from app.routes.users import router as users_router
+from app.services.auth import auth_gate
 
 from .config import settings
 
@@ -64,6 +68,20 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Mycelium backend starting up")
+    # Say plainly whether the HTTP surface is gated — "is this hub open?" should
+    # never require reading config to answer.
+    from app.services import auth as auth_service
+
+    if settings.AUTH_ENABLED:
+        logger.info(
+            "HTTP-API JWT gate ENABLED (issuers=%s, localhost_bypass=%s)",
+            [e.issuer for e in settings.AUTH_ISSUERS] or "<none>",
+            settings.AUTH_LOCALHOST_BYPASS,
+        )
+        for warning in auth_service.config_warnings():
+            logger.warning("auth: %s", warning)
+    else:
+        logger.info("HTTP-API JWT gate disabled — requests are unauthenticated")
     # Incremental scan of filesystem → JSONL search index
     from app.services.reindex import start_watcher, startup_scan, stop_watcher
 
@@ -138,14 +156,21 @@ async def lifespan(app: FastAPI):
     from app.services.filesystem import list_room_names
 
     reprovisioned = 0
+    restored_custody = 0
     for _room in list_room_names():
         try:
             if await room_channel_manager.provision(_room) is not None:
                 reprovisioned += 1
+                # Two-process resume (#666): revive every per-actor custodial session
+                # from its encrypted store via ``restore_sessions`` — no re-invite/
+                # welcome. No-op under the PSK default. The transcript replays any gap.
+                restored_custody += await room_channel_manager.restore_custody(_room)
         except Exception:
             logger.exception("startup re-provision failed for room %s", _room)
     if reprovisioned:
         logger.info("re-provisioned %d room channel(s) on startup", reprovisioned)
+    if restored_custody:
+        logger.info("restored %d custodial session(s) on startup (no re-invite)", restored_custody)
 
     yield
     stop_watcher()
@@ -182,6 +207,10 @@ app = FastAPI(
     version=_read_pkg_version(),
     openapi_url=settings.OPENAPI_URL,
     lifespan=lifespan,
+    # The JWT gate rides every route rather than a hand-picked list, so a route
+    # added later is protected without anyone remembering to opt it in. It is
+    # inert unless AUTH_ENABLED is on, and exempts health/docs itself.
+    dependencies=[Depends(auth_gate)],
 )
 
 # CORS — starlette types CORSMiddleware as a class but typeshed expects a factory.
@@ -205,9 +234,12 @@ app.include_router(participate_router, prefix="/api")
 app.include_router(sessions_router, prefix="/api")
 app.include_router(stream_router, prefix="/api")
 app.include_router(memory_router, prefix="/api")
+app.include_router(links_router, prefix="/api")
 app.include_router(plan_router, prefix="/api")
 app.include_router(agent_context_router, prefix="/api")
 app.include_router(users_router, prefix="/api")
+app.include_router(search_router, prefix="/api")
+app.include_router(skills_router, prefix="/api")
 
 
 @app.get("/", tags=["health"])
@@ -236,6 +268,17 @@ async def root(
     # Storage — markdown + local JSONL, no database.
     result["storage"] = _check_storage()
 
+    # HTTP-API JWT gate — whether this hub is gated, and how.
+    from app.services import auth as auth_service
+
+    result["auth"] = auth_service.status()
+
+    # SLIM channel identity tier — psk (default) / signerjwt / spire (#588). For
+    # spire, report whether the Workload API socket is actually present, so a
+    # member stuck at "Initializing spire identity manager" (no co-located daemon)
+    # is legible from /health, not just from the logs.
+    result["identity"] = _check_slim_identity()
+
     # Embedding model
     result["embedding"] = _check_embedding()
 
@@ -249,8 +292,8 @@ async def root(
         llm = get_config_status()
     result["llm"] = llm.to_dict()
 
-    # Coordination fabric — channels/persisters/members (H1). Every smoke bug was
-    # silent; this makes "is the fabric actually working" answerable in one GET.
+    # Coordination fabric — channels/persisters/members (H1). Makes "is the fabric
+    # actually working" answerable in one GET.
     from app.services.room_channels import manager as room_channel_manager
 
     coordination = room_channel_manager.status()
@@ -397,6 +440,37 @@ def _check_storage() -> dict:
     except Exception as exc:
         logger.warning("Storage health check failed: %s", exc)
         return {"status": "unreachable", "message": f"Cannot access data dir: {type(exc).__name__}"}
+
+
+def _check_slim_identity() -> dict:
+    """Report the SLIM channel identity tier and, for spire, socket presence (#588).
+
+    ``psk``/``signerjwt`` report just the mode. ``spire`` additionally reports
+    whether the SPIFFE Workload API socket is present — the difference between an
+    attested member and one degrading to the PSK (or hanging at "Initializing spire
+    identity manager" when it's required but absent). Backend-observable only: entry
+    counts live behind the SPIRE server's admin API, surfaced by ``mycelium doctor``.
+    """
+    from app.services import slim_identity
+
+    mode = slim_identity.resolve_identity_mode()
+    result: dict = {"status": "ok", "mode": mode, "message": mode}
+    if mode != slim_identity.MODE_SPIRE:
+        return result
+
+    socket_path = slim_identity.resolve_spire_socket()
+    socket_present = bool(socket_path) and slim_identity._spire_socket_present(socket_path)
+    result["socket"] = socket_path
+    result["socket_present"] = socket_present
+    if socket_present:
+        result["message"] = "spire (Workload API socket present)"
+    elif slim_identity.identity_required():
+        result["status"] = "error"
+        result["message"] = "spire required but no Workload API socket — failing closed"
+    else:
+        result["status"] = "degraded"
+        result["message"] = "spire selected but no Workload API socket — degrading to PSK"
+    return result
 
 
 def _check_embedding() -> dict:

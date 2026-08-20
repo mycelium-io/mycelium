@@ -20,13 +20,15 @@ import {
   classify,
   DEFAULT_SETTINGS,
   electLeader,
-  isAdmitted,
+  isAlert,
   loadNotifications,
   loadSettings,
   openCrossTabChannel,
+  roomLevel,
   saveNotifications,
   saveSettings,
   type NotificationSettings,
+  type RoomLevel,
   type StoredNotification,
 } from "@/lib/notifications";
 
@@ -38,10 +40,12 @@ interface NotificationsContextValue {
   setSettings: (settings: NotificationSettings) => void;
   markRead: (id: string) => void;
   markAllRead: () => void;
+  markRoomRead: (room: string) => void;
   dismiss: (id: string) => void;
   clearAll: () => void;
   muteRoom: (room: string) => void;
   unmuteRoom: (room: string) => void;
+  setRoomLevel: (room: string, level: RoomLevel) => void;
   desktopPermission: NotificationPermission | "unsupported";
   requestDesktopPermission: () => void;
 }
@@ -109,6 +113,11 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
         case "read-all":
           setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
           break;
+        case "room-read":
+          setNotifications((prev) =>
+            prev.map((n) => (n.room === msg.room ? { ...n, read: true } : n)),
+          );
+          break;
         case "dismiss":
           setNotifications((prev) => prev.filter((n) => n.id !== msg.id));
           break;
@@ -124,14 +133,14 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     return () => channel.close();
   }, []);
 
-  // Persist to localStorage whenever the list changes.
   useEffect(() => {
     saveNotifications(notifications);
   }, [notifications]);
 
-  // Tab-title unread badge.
+  // Tab-title unread badge — loud items only, matching the bell (badge-only room
+  // activity stays in the sidebar, not the tab title).
   useEffect(() => {
-    const unread = notifications.filter((n) => !n.read).length;
+    const unread = notifications.filter((n) => n.alert !== false && !n.read).length;
     document.title = unread > 0 ? `(${unread}) ${BASE_TITLE}` : BASE_TITLE;
   }, [notifications]);
 
@@ -152,14 +161,18 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
           if (!n) return;
           if (seenIds.current.has(n.id)) return;
           seenIds.current.add(n.id);
-          if (!isAdmitted(n, settingsRef.current)) return;
-          setNotifications((prev) => [...prev, { ...n, read: false }]);
-          // Notify when this tab isn't the one you're looking at. `hasFocus()`
-          // (not visibilityState) is the right signal: it's false when you've
-          // switched to another tab, minimized, OR alt-tabbed to another app —
-          // whereas visibilityState stays "visible" for a window that's merely
-          // behind another app, so those pings would be silently dropped.
-          if (isLeader.current && !document.hasFocus()) {
+          // Muted rooms are dropped outright. Everything else is stored so it can
+          // badge the room; `alert` records whether it's also "loud" (bell inbox
+          // + sound/desktop) or badge-only.
+          if (roomLevel(settingsRef.current, n.room) === "muted") return;
+          const loud = isAlert(n, settingsRef.current);
+          setNotifications((prev) => [...prev, { ...n, read: false, alert: loud }]);
+          // Sound/desktop only for loud items, and only when this tab isn't the
+          // one you're looking at. `hasFocus()` (not visibilityState) is the right
+          // signal: it's false when you've switched to another tab, minimized, OR
+          // alt-tabbed to another app — whereas visibilityState stays "visible"
+          // for a window merely behind another app, so those pings would be lost.
+          if (loud && !settingsRef.current.dnd && isLeader.current && !document.hasFocus()) {
             if (settingsRef.current.soundEnabled) ping(settingsRef.current.soundVolume);
             if (settingsRef.current.desktopEnabled && "Notification" in window && window.Notification.permission === "granted") {
               try {
@@ -213,27 +226,54 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     channelRef.current?.post({ type: "clear" });
   }, []);
 
-  const muteRoom = useCallback(
-    (room: string) => {
-      if (settingsRef.current.mutedRooms.includes(room)) return;
-      setSettings({ ...settingsRef.current, mutedRooms: [...settingsRef.current.mutedRooms, room] });
+  // Set a room's Discord-style level. `mutedRooms` is kept in sync with the
+  // override so the settings panel's muted-rooms list keeps working unchanged.
+  const setRoomLevel = useCallback(
+    (room: string, level: RoomLevel) => {
+      const s = settingsRef.current;
+      const roomLevels = { ...s.roomLevels, [room]: level };
+      const mutedRooms =
+        level === "muted"
+          ? [...new Set([...s.mutedRooms, room])]
+          : s.mutedRooms.filter((r) => r !== room);
+      setSettings({ ...s, roomLevels, mutedRooms });
     },
     [setSettings],
   );
 
+  const muteRoom = useCallback((room: string) => setRoomLevel(room, "muted"), [setRoomLevel]);
+
+  // Unmute clears the override entirely, restoring the global default.
   const unmuteRoom = useCallback(
     (room: string) => {
-      setSettings({ ...settingsRef.current, mutedRooms: settingsRef.current.mutedRooms.filter((r) => r !== room) });
+      const s = settingsRef.current;
+      const roomLevels = { ...s.roomLevels };
+      delete roomLevels[room];
+      setSettings({ ...s, roomLevels, mutedRooms: s.mutedRooms.filter((r) => r !== room) });
     },
     [setSettings],
   );
+
+  // Opening a room reads it: clears its unread badge and marks its bell entries
+  // read, on every tab.
+  const markRoomRead = useCallback((room: string) => {
+    setNotifications((prev) =>
+      prev.map((n) => (n.room === room && !n.read ? { ...n, read: true } : n)),
+    );
+    channelRef.current?.post({ type: "room-read", room });
+  }, []);
 
   const requestDesktopPermission = useCallback(() => {
     if (typeof window === "undefined" || !("Notification" in window)) return;
     window.Notification.requestPermission().then((perm) => setDesktopPermission(perm));
   }, []);
 
-  const unreadCount = useMemo(() => notifications.filter((n) => !n.read).length, [notifications]);
+  // The bell's badge + tab title count only "loud" unread — mentions, directs,
+  // consensus, knowledge. Badge-only room activity lives in the sidebar, not here.
+  const unreadCount = useMemo(
+    () => notifications.filter((n) => n.alert !== false && !n.read).length,
+    [notifications],
+  );
 
   const value = useMemo<NotificationsContextValue>(
     () => ({
@@ -244,10 +284,12 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       setSettings,
       markRead,
       markAllRead,
+      markRoomRead,
       dismiss,
       clearAll,
       muteRoom,
       unmuteRoom,
+      setRoomLevel,
       desktopPermission,
       requestDesktopPermission,
     }),
@@ -259,10 +301,12 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       setSettings,
       markRead,
       markAllRead,
+      markRoomRead,
       dismiss,
       clearAll,
       muteRoom,
       unmuteRoom,
+      setRoomLevel,
       desktopPermission,
       requestDesktopPermission,
     ],

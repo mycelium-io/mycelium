@@ -92,7 +92,7 @@ def test_build_envelope_content_sets_kind_and_subkind() -> None:
     content = l9.build_envelope_content(
         kind="commit",
         subkind="resolved",
-        sender="julia",
+        sender="avery",
         recipients=["bob"],
         episode="ep-1",
         parents=["p-1"],
@@ -105,14 +105,14 @@ def test_build_envelope_content_sets_kind_and_subkind() -> None:
 
 
 def test_build_envelope_content_omits_subkind_when_absent() -> None:
-    content = l9.build_envelope_content(kind="exchange", sender="julia", episode="ep-1")
+    content = l9.build_envelope_content(kind="exchange", sender="avery", episode="ep-1")
     assert "subkind" not in content["l9"]["header"]
 
 
 def test_build_envelope_content_rejects_invalid_subkind() -> None:
     with pytest.raises(l9.L9ValidationError):
         l9.build_envelope_content(
-            kind="exchange", subkind="not-a-real-subkind", sender="julia", episode="ep-1"
+            kind="exchange", subkind="not-a-real-subkind", sender="avery", episode="ep-1"
         )
 
 

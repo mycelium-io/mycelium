@@ -235,12 +235,7 @@ def ensure_provider_config(
 
 
 class PiBrainError(RuntimeError):
-    """A ``pi`` invocation failed (missing binary, non-zero exit, timeout).
-
-    The mediator's LLM stages already catch broadly and degrade (a failed
-    ``interpret`` becomes a reject, a failed ``broker`` a no-op note), so raising
-    here keeps :class:`PiBrain` honest without special-casing the caller.
-    """
+    """A ``pi`` invocation failed (missing binary, non-zero exit, timeout)."""
 
 
 def _assistant_text(message: dict[str, Any]) -> str:
@@ -379,13 +374,7 @@ class PiBrain:
         return self._sandbox_wrap(cmd)
 
     def _sandbox_wrap(self, cmd: list[str]) -> list[str]:
-        """Prefix *cmd* with an OpenShell sandbox exec when enabled.
-
-        Best-effort seam: the exact ``openshell`` invocation is unvalidated here
-        (the binary isn't installed on the build host), so this is the documented
-        shape to confirm during live validation, gated behind ``openshell=False``
-        by default. Kept in code so turning the sandbox on is a config flip.
-        """
+        """Prefix *cmd* with an OpenShell sandbox exec when enabled."""
         if not self._openshell:
             return cmd
         return ["openshell", "sandbox", "exec", "--from", "pi", "--", *cmd]

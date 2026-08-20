@@ -53,6 +53,15 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+# Two shape rules. A *handle* is an identity and can be minted by a real IdP, so it
+# allows the `@` a corporate SSO `preferred_username` carries (e.g.
+# `user@example.com`). A *slug* is a filename / composer trigger token (memory keys,
+# skill names) and stays clean. Keep this copy in agreement with the backend
+# (`app/schemas.py`, `app/routes/engines.py`) and the frontend
+# (`acting-as-picker.tsx`); the thin CLI can't import the backend.
+HANDLE_PATTERN = r"^[a-z0-9][a-z0-9._@-]*$"
+SLUG_PATTERN = r"^[a-z0-9][a-z0-9._-]*$"
+
 # Why an agent's stated belief moved this turn (SIEP `belief.revision_cause`).
 # ``social_compliance`` is the one that drives SCR down; the rest are genuine.
 RevisionCause = Literal[
@@ -63,9 +72,7 @@ RevisionCause = Literal[
     "repair_resolution",
 ]
 
-# Where a registered engine runs its NEGMAS drive. The ``host`` runtime rode the
-# (now-removed) daemon; engines run backend-side only. Retained as a single-value
-# type so config plumbing stays stable and legacy ``host`` coerces to ``backend``.
+# Engines run backend-side only. ``host`` coerces to ``backend`` for legacy config.
 EngineRuntime = Literal["backend"]
 
 
@@ -222,7 +229,7 @@ class InboundTick(BaseModel):
 
 
 class MemoryCategory(StrEnum):
-    """Structured memory categories — key prefix conventions for room memories.
+    """Structured memory categories: key prefix conventions for room memories.
 
     These are the recommended top-level namespaces for persistent memories.
     Using typed categories instead of raw strings gives CLI validation, tab
@@ -240,7 +247,7 @@ class MemoryCategory(StrEnum):
 MEMORY_CATEGORIES: frozenset[str] = frozenset(c.value for c in MemoryCategory)
 
 # Labels used by both CLI (category commands) and backend (synthesis grouping).
-# Single source of truth — backend imports this dict.
+# Single source of truth; backend imports this dict.
 STRUCTURED_CATEGORY_LABELS: dict[str, str] = {
     "work": "Work Done",
     "decisions": "Decisions Made",
@@ -266,7 +273,7 @@ class MemoryLogEntry(BaseModel):
     """
 
     category: Literal["work", "decisions", "context", "status", "procedures", "plan"]
-    slug: str = Field(..., min_length=1, pattern=r"^[a-z0-9][a-z0-9._-]*$")
+    slug: str = Field(..., min_length=1, pattern=SLUG_PATTERN)
     content: str = Field(..., min_length=1)
     tags: list[str] | None = None
 
@@ -295,7 +302,7 @@ AGENT_ADAPTERS: frozenset[str] = frozenset({"claude_code", "cursor", "engine"})
 #: Cognition-engine kinds hosted by the first-party ``engine`` runtime family.
 #: The extensibility axis: ``aligner`` (SIEP converge) and ``synthesizer`` (room
 #: memory → structured summary) today; ``bargainer`` (SAB), ``team_former`` (TFP),
-#: a drift evaluator, etc. later — no new adapter per CE.
+#: a drift evaluator, etc. later; no new adapter per CE.
 ENGINE_KINDS: frozenset[str] = frozenset({"aligner", "synthesizer"})
 
 
@@ -304,23 +311,24 @@ class AgentManifest(BaseModel):
 
     Each Mycelium agent is just a memory entry under ``agents/<handle>`` plus a
     notes blob under ``agents/<handle>/notes``. This model validates the
-    manifest body — the bare minimum a dispatcher needs to route an
+    manifest body, the bare minimum a dispatcher needs to route an
     ``@handle`` mention to the agent's runtime.
 
     Adapters:
 
-    - ``claude_code`` — a resident Claude Code session (kept woken with
+    - ``claude_code``: a resident Claude Code session (kept woken with
       ``mycelium await --loop``). Optional ``cwd`` (the session's working dir).
-    - ``cursor`` — a resident Cursor session. Optional ``cwd`` (Cursor's workspace
+    - ``cursor``: a resident Cursor session. Optional ``cwd`` (Cursor's workspace
       root; also where workspace assets drop when set).
-    - ``engine`` — a first-party cognition engine (e.g. ``aligner``), run by the
+    - ``engine``: a first-party cognition engine (e.g. ``aligner``), run by the
       backend. Requires ``kind``.
 
-    The handle slug doubles as the mention target (``@release-agent``), so it
-    must match the same lowercase pattern other memory slugs use.
+    The handle doubles as the mention target (``@release-agent``). It follows the
+    lowercase ``HANDLE_PATTERN`` — like a memory slug but also allowing ``@``, so
+    an IdP-minted email identity (``user@example.com``) is a valid handle.
     """
 
-    handle: str = Field(..., min_length=1, pattern=r"^[a-z0-9][a-z0-9._-]*$")
+    handle: str = Field(..., min_length=1, pattern=HANDLE_PATTERN)
     adapter: Literal["claude_code", "cursor", "engine"] = "claude_code"
     kind: str | None = Field(
         default=None,
@@ -354,9 +362,11 @@ class AgentManifest(BaseModel):
     allow_from: list[str] = Field(
         default_factory=list,
         description=(
-            "Sender handles allowed to invoke this agent (e.g. ['@julia', '@docs-agent']). "
+            "Sender handles allowed to invoke this agent (e.g. ['@avery', '@docs-agent']). "
             "Empty list means anyone in the room can invoke. "
-            "Enforced by the daemon for claude_code / cursor."
+            "Also the 'act on behalf of' grant: with the hub's auth gate enabled, these "
+            "handles (and the owner) may await or join as this agent; an empty list "
+            "grants no one."
         ),
     )
 
@@ -365,9 +375,9 @@ class AgentManifest(BaseModel):
     def lowercase_handle(cls, data: dict) -> dict:
         if not isinstance(data, dict):
             return data
-        # Handle and the two principal pointers are all lowercase slugs — an
-        # owner/team is a `users/<handle>` / team slug, so `--owner Julia`
-        # binds to `users/julia`. The handle is required, so an empty result
+        # Handle and the two principal pointers are all lowercase slugs; an
+        # owner/team is a `users/<handle>` / team slug, so `--owner Avery`
+        # binds to `users/avery`. The handle is required, so an empty result
         # stays a string (and fails the pattern); owner/team collapse to None.
         for field in ("handle", "owner", "team"):
             value = data.get(field)
@@ -415,12 +425,12 @@ class UserManifest(BaseModel):
     The human, made first-class and symmetric with ``agents/<handle>``. An
     agent's ``owner`` points here; a ``team`` groups these handles. People span
     rooms, so this store is global (``~/.mycelium/users/<handle>``), not
-    room-scoped. Trust is self-asserted — the handle is consistent, not
+    room-scoped. Trust is self-asserted; the handle is consistent, not
     cryptographic.
     """
 
-    handle: str = Field(..., min_length=1, pattern=r"^[a-z0-9][a-z0-9._-]*$")
-    display_name: str = Field(default="", description="Human-readable name, e.g. 'Julia Valenti'.")
+    handle: str = Field(..., min_length=1, pattern=HANDLE_PATTERN)
+    display_name: str = Field(default="", description="Human-readable name, e.g. 'Avery Quinn'.")
     teams: list[str] = Field(
         default_factory=list,
         description="Team slugs this person belongs to. Scopes 'my team' views.",

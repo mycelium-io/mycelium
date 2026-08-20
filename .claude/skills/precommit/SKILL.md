@@ -22,21 +22,16 @@ Run all quality checks on the mycelium codebase. Auto-fix issues where possible.
    ```
    Generated client (`mycelium-cli/src/mycelium_backend_client/`) is excluded via `[tool.ty.src]` since openapi-python-client templates produce diagnostics we can't fix without forking the generator. New diagnostics outside that path must be resolved before commit — don't paper over with `# ty: ignore` unless the underlying issue is a typeshed/library bug (CORSMiddleware add_middleware is the canonical example).
 
-3. **Tests** — Run pytest:
+3. **Backend tests** — Run pytest:
    ```bash
    cd fastapi-backend && uv run pytest tests/ -x -q
    ```
 
-3. **Frontend** — Type-check and build:
+4. **Frontend** — Type-check, test, and build. All three: `tsc` and `next build` between them prove the app compiles, not that it behaves, and the component suite is where the interaction bugs actually get caught.
    ```bash
-   cd mycelium-frontend && npx tsc --noEmit && npx next build
+   cd mycelium-frontend && npx tsc --noEmit && npx vitest run && npx next build
    ```
-
-4. **OpenClaw plugin tests** — If any file under `mycelium-cli/src/mycelium/integrations/openclaw/assets/mycelium/plugin/` was changed (source, test, or config), run the plugin's vitest suite:
-   ```bash
-   cd mycelium-cli/src/mycelium/integrations/openclaw/assets/mycelium/plugin && npm test
-   ```
-   If `node_modules/` is missing, run `npm install --silent` first. Tests cover the pure routing logic (mentions, session-key format, channel config parsing, route decisions). Adding new message types or routing rules should come with tests in `test/route.test.ts`.
+   `npm run lint` is `tsc --noEmit` — there's no separate ESLint pass. The suite should come back fully green; a failure that looks environmental (missing DOM API, a global the runtime shapes differently) belongs in `vitest.setup.ts` as a guarded stub next to the others, not left failing for the next person to rediscover.
 
 5. **CLI docs** — If any CLI command files were changed (`mycelium-cli/src/mycelium/commands/`):
    - Ensure new commands have `@doc_ref` decorators
@@ -62,7 +57,7 @@ Run all quality checks on the mycelium codebase. Auto-fix issues where possible.
    - `mycelium-cli/src/mycelium/docs/` — built-in CLI docs
    - Adapter skills (`mycelium-cli/src/mycelium/integrations/*/assets/skills/`)
 
-8. **Doctor sanity check** — If any file under `mycelium-cli/src/mycelium/commands/doctor.py`, `mycelium-cli/src/mycelium/commands/adapter.py`, or `mycelium-cli/src/mycelium/integrations/openclaw/assets/` was changed, run `mycelium doctor` to verify every check still passes against the current install:
+8. **Doctor sanity check** — If any file under `mycelium-cli/src/mycelium/commands/doctor.py`, `mycelium-cli/src/mycelium/commands/adapter.py`, or an adapter's shipped assets (`mycelium-cli/src/mycelium/integrations/claude_code/assets/`, `.../cursor/assets/`) was changed, run `mycelium doctor` to verify every check still passes against the current install:
    ```bash
    mycelium doctor
    ```

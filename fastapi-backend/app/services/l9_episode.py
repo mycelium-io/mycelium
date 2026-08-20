@@ -86,6 +86,22 @@ class EpisodeState:
     # back to the system actor (an episode opened outside an engine context).
     engine_handle: str = ""
     intent_id: str = ""
+    # Each participant's opening prose, captured before mediation runs — the
+    # structured snapshot the episode record renders as "Opening Positions" so a
+    # negotiation can be audited against what the room believed going in.
+    opening_positions: dict[str, str] = field(default_factory=dict)
+    # Terms the pre-negotiation check found the participants using in different
+    # senses, and what each answered in the clarifying round that followed. Empty
+    # on the common path (no mismatch, no clarifying round).
+    term_mismatches: list[dict[str, Any]] = field(default_factory=list)
+    clarifications: dict[str, str] = field(default_factory=dict)
+    # Each agent's first concrete SAO offer (issue -> value), captured as the
+    # mediator reads it — the "opening ask" a converged outcome's satisfaction is
+    # scored against. Distinct from opening_positions (prose): parsed offers.
+    opening_offers: dict[str, dict[str, str]] = field(default_factory=dict)
+    # The negotiable issues' ordered option grids (issue -> options), so
+    # satisfaction can be scored as ordinal distance on the grid actually negotiated.
+    issue_options: dict[str, list[str]] = field(default_factory=dict)
     # Ordered record of every envelope in the episode (dicts, wire shape).
     messages: list[dict[str, Any]] = field(default_factory=list)
     # handle -> l9 message id of the last tick sent to that agent.
@@ -114,12 +130,17 @@ def open_episode(
     agents: list[str],
     joined_intents: str,
     engine_handle: str = "",
+    opening_positions: dict[str, str] | None = None,
 ) -> EpisodeState:
     """Open the episode: mint URNs and record the ``intent`` envelope.
 
     ``engine_handle`` is the registered engine mediating the episode; it signs
     the intent/tick/consensus envelopes so the wire carries the engine's real
     identity. Empty falls back to the system actor.
+
+    ``opening_positions`` is each participant's stated prose at the start,
+    captured before mediation runs; it is rendered into the episode record's
+    "Opening Positions" section for audit.
     """
     ep = EpisodeState(
         episode=l9.episode_urn(parent_room, short_id),
@@ -130,6 +151,7 @@ def open_episode(
         mas_id=mas_id,
         agents=agents[:],
         engine_handle=engine_handle,
+        opening_positions=dict(opening_positions or {}),
     )
     intent = l9.build_envelope(
         kind=Kind.intent,
@@ -178,6 +200,23 @@ def record_tick(
     return env_dict
 
 
+def record_term_check(
+    ep: EpisodeState,
+    *,
+    mismatches: list[dict[str, Any]],
+    clarifications: dict[str, str],
+) -> None:
+    """Record the pre-negotiation term check and the clarifying round it drove.
+
+    Kept off the quality metrics on purpose: the clarifying round is vocabulary
+    repair, not a negotiation move, so folding it into MPC/GAR/SCR would score a
+    definition as a concession. It lands in the episode record instead, where an
+    audit can see which words the room had to agree on before it could agree.
+    """
+    ep.term_mismatches = [dict(m) for m in mismatches]
+    ep.clarifications = {h: t for h, t in clarifications.items() if t.strip()}
+
+
 def record_reply(
     ep: EpisodeState,
     *,
@@ -193,6 +232,13 @@ def record_reply(
     prior/posterior/deference tracking used by the consensus metrics.
     """
     action = str(reply.get("action") or "reject")
+    # The wire move type (l9.EXCHANGE_MOVE_SUBKINDS) is distinct from ``action``:
+    # ``action`` keeps its accept/hold semantics for the belief-move metrics
+    # below, while ``move`` records what the agent actually did (a proposer's
+    # offer folds to action=accept for the metrics but is a ``counter`` on the
+    # wire). Absent or unrecognized -> no subkind, so the reply stays valid.
+    move = reply.get("move")
+    subkind = move if move in l9.EXCHANGE_MOVE_SUBKINDS else None
     payload_data: dict[str, Any] = {"round": round_n, "action": action}
     if synthesised:
         payload_data["synthesised"] = True
@@ -214,6 +260,7 @@ def record_reply(
     parent = ep.last_tick_ids.get(handle) or ep.intent_id
     env = l9.build_envelope(
         kind=Kind.exchange,
+        subkind=subkind,
         episode=ep.episode,
         parents=[parent] if parent else [],
         sender=handle,
@@ -321,6 +368,40 @@ def compute_metrics(ep: EpisodeState) -> dict[str, Any] | None:
     }
 
 
+def estimate_satisfaction(
+    opening_offers: dict[str, dict[str, str]],
+    assignments: dict[str, Any],
+    issue_options: dict[str, list[str]],
+) -> dict[str, float]:
+    """Estimate each agent's satisfaction with the agreed outcome, relative to its
+    own opening offer, as mean closeness across the issues it stated.
+
+    Closeness on an issue is ``1 - grid_distance / grid_span``, treating each
+    issue's option list as ordinal — the order ``discover_issues`` emits (ascending
+    numbers, low->high scope). An agent that got exactly its opening ask scores
+    ``1.0``; the further the agreed value sits from it on the grid, the lower. It's
+    a post-hoc estimate, not a utility the agent stated: agents with no recorded
+    offer, and issues absent from an offer or the agreement, are skipped rather
+    than guessed. The room's minimum flags a consensus that one participant barely
+    tolerated.
+    """
+    out: dict[str, float] = {}
+    for handle, offer in opening_offers.items():
+        scores: list[float] = []
+        for issue, options in issue_options.items():
+            want, got = offer.get(issue), assignments.get(issue)
+            if want is None or got is None:
+                continue
+            try:
+                distance = abs(options.index(str(want)) - options.index(str(got)))
+            except ValueError:
+                continue
+            scores.append(1.0 - distance / max(1, len(options) - 1))
+        if scores:
+            out[handle] = round(sum(scores) / len(scores), 4)
+    return out
+
+
 def build_consensus_envelope(
     ep: EpisodeState,
     *,
@@ -370,14 +451,58 @@ def write_episode_record(
             f"- outcome: **{outcome}**",
             f"- participants: {', '.join(ep.agents)}",
         ]
-        if metrics:
+        if metrics and "mpc" in metrics:
             lines.append(
                 f"- quality: MPC {metrics['mpc']:.2f} · GAR {metrics['gar']:.2f} · "
                 f"SCR {metrics['scr']:.2f} · provenance weight "
                 f"{metrics['provenance_weight']:.2f}"
             )
+        if metrics and metrics.get("min_satisfaction") is not None:
+            per_agent = metrics.get("satisfaction", {})
+            lines.append(
+                f"- satisfaction: min {metrics['min_satisfaction']:.2f} "
+                f"(least-happy of {len(per_agent)} agents, relative to opening asks)"
+            )
         if plan_file:
             lines.append(f"- plan: `{plan_file}`")
+        if ep.opening_positions:
+            lines += [
+                "",
+                "## Opening Positions",
+                "",
+                "Each participant's stated position at the start, before mediation:",
+                "",
+                *(
+                    f"- **@{handle}**: {ep.opening_positions[handle]}"
+                    for handle in ep.agents
+                    if handle in ep.opening_positions
+                ),
+            ]
+        if ep.term_mismatches:
+            lines += [
+                "",
+                "## Term Clarifications",
+                "",
+                "Terms the participants were using differently, caught before the first "
+                "offer, and what each said they meant:",
+                "",
+            ]
+            for mismatch in ep.term_mismatches:
+                lines.append(f"- **{mismatch.get('term', '')}**")
+                readings = mismatch.get("readings")
+                if isinstance(readings, dict):
+                    lines += [f"  - read by @{handle} as: {r}" for handle, r in readings.items()]
+            if ep.clarifications:
+                lines += [
+                    "",
+                    "Clarifying round:",
+                    "",
+                    *(
+                        f"- **@{handle}**: {ep.clarifications[handle]}"
+                        for handle in ep.agents
+                        if handle in ep.clarifications
+                    ),
+                ]
         lines += [
             "",
             "## Messages",

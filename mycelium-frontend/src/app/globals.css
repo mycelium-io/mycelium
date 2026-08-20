@@ -51,6 +51,27 @@
   --green: #0d8a63;
   --yellow: #8a6410;
   --red: #bd3f3a;
+  /* categorical palette — memory-graph namespaces, carrying no semantics
+   * beyond "tell these apart". 8 hues at constant saturation/lightness
+   * (qualitative-palette convention: equal visual weight, so no namespace
+   * reads as more important than another), drawn from the 90–325° arc and
+   * skipping 325–90 entirely — that band holds --red and --yellow above,
+   * which are reserved for broken links and orphan/leaf nodes and must never double as a
+   * namespace color.
+   *
+   * ORDER IS LOAD-BEARING. Slots are handed out in order to a room's sorted
+   * namespaces, so these are sequenced farthest-apart-first (90°, 235°, 325°,
+   * then filling in) rather than walking the wheel. A room with two or three
+   * namespaces — the common case — therefore gets yellow-green/blue/pink,
+   * ~90°+ apart, instead of three neighboring greens. */
+  --graph-ns-1: #75ca21; /* hue  90 yellow-green */
+  --graph-ns-2: #212fca; /* hue 235 blue */
+  --graph-ns-3: #ca2183; /* hue 325 pink */
+  --graph-ns-4: #21cabc; /* hue 175 teal */
+  --graph-ns-5: #21ca3d; /* hue 130 green */
+  --graph-ns-6: #2183ca; /* hue 205 sky */
+  --graph-ns-7: #6721ca; /* hue 265 violet */
+  --graph-ns-8: #ca21ca; /* hue 300 magenta */
 }
 
 .dark {
@@ -76,6 +97,16 @@
   --green: #4fc296;
   --yellow: #d9a94e;
   --red: #e6746f;
+  /* categorical palette (see :root) — same 8 hues in the same load-bearing
+   * order, lifted brighter for the dark canvas. */
+  --graph-ns-1: #a3e265; /* hue  90 yellow-green */
+  --graph-ns-2: #656fe2; /* hue 235 blue */
+  --graph-ns-3: #e265ae; /* hue 325 pink */
+  --graph-ns-4: #65e2d7; /* hue 175 teal */
+  --graph-ns-5: #65e27a; /* hue 130 green */
+  --graph-ns-6: #65aee2; /* hue 205 sky */
+  --graph-ns-7: #9965e2; /* hue 265 violet */
+  --graph-ns-8: #e265e2; /* hue 300 magenta */
 }
 
 /* Raw-var back-compat: legacy CSS + inline styles reference var(--text2),

@@ -7,12 +7,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   getSSEUrl,
   fetchMessages,
-  fetchRoomAgents,
   fetchPendingInvites,
   respondToInvite,
   logFetchError,
   type PendingInvite,
 } from "@/lib/api";
+import { useRoomAgents } from "@/lib/room-data";
 import { MarkdownContent } from "@/components/markdown-content";
 import { RoomPlanHeader } from "@/components/room-plan-header";
 import { ConsentDialog } from "@/components/consent-dialog";
@@ -20,13 +20,20 @@ import { L9Inspector } from "@/components/l9-inspector";
 import { NegotiationView } from "@/components/negotiation-view";
 import { RoomSlimView } from "@/components/room-slim";
 import { EmptyState } from "@/components/empty-state";
+import { KeyBadge } from "@/components/key-badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { initials } from "@/components/ui/monogram";
-import { MessagesSquare } from "lucide-react";
+import { Monogram } from "@/components/ui/monogram";
+import { Bot, MessagesSquare } from "lucide-react";
 
 interface Event {
+  /** Render key only — synthesized, so a message republished by a status
+   *  transition can't collide with the row it updates. */
   id: string;
+  /** The backend's id for this message, where it has one. Stable across reads
+   *  (the transcript derives it from the envelope id), which is what a search
+   *  result points at. */
+  messageId: string | null;
   type: string;
   content: string;
   sender: string;
@@ -40,30 +47,33 @@ interface Event {
 }
 
 const CHAT_TYPES = new Set(["broadcast", "direct", "announce", "delegate"]);
+
+// The L9 "raise-up" whitelist: message types promoted from the L9 inspector
+// into the primary channel/chat surface. This must mirror
+// contracts/l9-surface.json's `raise_up_types` byte-for-byte — the CLI
+// (mycelium-cli/src/mycelium/commands/room.py) carries an independent copy,
+// and event-stream.contract.test.ts asserts both stay in sync with the
+// contract so the two surfaces can't silently drift apart.
+export const L9_RAISE_UP_TYPES = [
+  "coordination_join",
+  "coordination_consensus",
+  "plan_updated",
+  "l9_knowledge",
+];
+
 // Event types that appear in the chat-channel view alongside real chat.
 // Joins + consensus belong here so the room's chat surface narrates the
 // negotiation lifecycle ("alice joined session X", "CONSENSUS in session X
 // → plan/tasks.md", "TIMEOUT in session X, no agreement") instead of
 // burying it all under the EVENTS tab.
-const CHANNEL_VIEW_TYPES = new Set([
-  ...CHAT_TYPES,
-  "coordination_join",
-  "coordination_consensus",
-  "plan_updated",
-  "l9_knowledge",
-]);
+const CHANNEL_VIEW_TYPES = new Set([...CHAT_TYPES, ...L9_RAISE_UP_TYPES]);
 
 // Lifecycle events that render as slim system notices (not chat rows). Used to
 // decide message grouping: a chat message only groups under the sender above it
 // when no system notice interrupts the run.
-const SYSTEM_TYPES = new Set([
-  "coordination_join",
-  "coordination_consensus",
-  "plan_updated",
-  "l9_knowledge",
-]);
+const SYSTEM_TYPES = new Set(L9_RAISE_UP_TYPES);
 
-/** Loading placeholder shaped like a short run of chat rows (avatar + lines). */
+/** Skeleton loader for chat rows. */
 function ChannelSkeleton() {
   const widths = ["w-3/5", "w-2/5", "w-1/2"];
   return (
@@ -98,7 +108,7 @@ function SystemNotice({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center gap-2 px-5 py-1.5 text-micro text-muted-foreground">
+    <div className="group mt-3 flex items-center gap-2 px-5 py-1 text-micro text-muted-foreground first:mt-0">
       <span aria-hidden className="inline-block size-1.5 flex-shrink-0 rounded-full" style={{ background: dot }} />
       {label && (
         <span className={strong ? "font-semibold" : "font-medium"} style={{ color: labelColor ?? "var(--muted-foreground)" }}>
@@ -106,7 +116,9 @@ function SystemNotice({
         </span>
       )}
       <span className="flex min-w-0 items-center gap-1.5 truncate">{children}</span>
-      <span className="ml-auto flex-shrink-0 tabular">{time}</span>
+      <span className="ml-auto flex-shrink-0 tabular text-faint opacity-0 transition-opacity group-hover:opacity-100">
+        {time.slice(0, 5)}
+      </span>
     </div>
   );
 }
@@ -198,11 +210,8 @@ function parseEvent(msg: Record<string, unknown>): Event {
       mtype = recipient ? "direct" : "broadcast";
       break;
     case "l9_commit": {
-      // The aligner's verdict rides as an L9 "commit" envelope, not the legacy
-      // `coordination_consensus` message_type nothing on the live wire actually
-      // emits anymore. Unwrap it into the shape the (still-live)
-      // "coordination_consensus" render path and NegotiationView expect, so a
-      // real consensus renders instead of hitting the unhandled-type fallback.
+      // Unwrap the L9 commit envelope into the coordination_consensus shape
+      // so NegotiationView can render it.
       const l9env = (raw.l9 as Record<string, unknown> | undefined) ?? {};
       const header = (l9env.header as Record<string, unknown> | undefined) ?? {};
       const payload = (l9env.payload as Record<string, unknown> | undefined) ?? {};
@@ -252,6 +261,7 @@ function parseEvent(msg: Record<string, unknown>): Event {
 
   return {
     id: `${Date.now()}-${Math.random()}`,
+    messageId: typeof msg.id === "string" ? msg.id : null,
     type: mtype,
     content,
     sender,
@@ -301,7 +311,7 @@ function renderWithMentions(text: string): React.ReactNode {
   );
 }
 
-export type View = "channel" | "negotiate" | "plan" | "l9" | "slim";
+export type View = "channel" | "negotiate" | "plan" | "network";
 export type NegotiationPhase = "idle" | "negotiating" | "converged" | "rejected";
 
 interface Props {
@@ -309,56 +319,45 @@ interface Props {
   onMemoryChanged?: () => void;
   onConnectionChange?: (connected: boolean) => void;
   onNegotiationPhaseChange?: (phase: NegotiationPhase) => void;
-  planRefreshTrigger?: number;
+  /** Open a memory by key — wired to `[[wikilinks]]` in chat so a message can
+   *  link a room's memory and a reader (or agent author) can jump straight to it. */
+  onOpenMemory?: (key: string) => void;
   /** Optional controlled tab (e.g. driven by the onboarding tour). */
   view?: View;
   onViewChange?: (view: View) => void;
   /** Hold back the consent-request modal (e.g. during the onboarding tour, so
    *  its backdrop doesn't cover the coached highlights). */
   suppressInvites?: boolean;
+  /** A message to reveal in the channel, arrived at from search. */
+  focusMessageId?: string | null;
+  onFocusConsumed?: () => void;
 }
 
-export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onNegotiationPhaseChange, planRefreshTrigger = 0, view: viewProp, onViewChange, suppressInvites = false }: Props) {
+export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onNegotiationPhaseChange, onOpenMemory, view: viewProp, onViewChange, suppressInvites = false, focusMessageId = null, onFocusConsumed }: Props) {
   const [events, setEvents] = useState<Event[]>([]);
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [connected, setConnected] = useState(false);
 
-  // Surface connection state to the shell's status bar (editor-style), so the
-  // chat header stays clean and the live/reconnecting signal has one home.
+  // Surface connection state to status bar; one home for the signal.
   useEffect(() => {
     onConnectionChange?.(connected);
   }, [connected, onConnectionChange]);
   const [viewInternal, setViewInternal] = useState<View>("channel");
   const view = viewProp ?? viewInternal;
   const setView = (v: View) => { if (viewProp === undefined) setViewInternal(v); onViewChange?.(v); };
-  const [agentHandles, setAgentHandles] = useState<Set<string>>(new Set());
-  const [agentOwners, setAgentOwners] = useState<Map<string, string>>(new Map());
   const [invites, setInvites] = useState<PendingInvite[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Know which senders are registered agents (to badge their replies) and whom
-  // each belongs to (to attribute them inline). Self-fetched (mirrors the chat
-  // box) so the page doesn't have to thread it; owner is resolved at render time
+  // each belongs to (to attribute them inline). Off the room's shared agent
+  // read, so this costs no request of its own; owner is resolved at render time
   // so it always reflects the current manifest, never a stale stamp.
-  useEffect(() => {
-    let cancelled = false;
-    const load = () =>
-      fetchRoomAgents(roomName)
-        .then((a) => {
-          if (cancelled) return;
-          setAgentHandles(new Set(a.map((x) => x.handle)));
-          setAgentOwners(
-            new Map(a.filter((x) => x.owner).map((x) => [x.handle, x.owner as string])),
-          );
-        })
-        .catch(logFetchError("fetchRoomAgents"));
-    load();
-    const t = setInterval(load, 30_000);
-    return () => {
-      cancelled = true;
-      clearInterval(t);
-    };
-  }, [roomName]);
+  const { agents } = useRoomAgents(roomName);
+  const agentHandles = useMemo(() => new Set(agents.map((a) => a.handle)), [agents]);
+  const agentOwners = useMemo(
+    () => new Map(agents.filter((a) => a.owner).map((a) => [a.handle, a.owner as string])),
+    [agents],
+  );
 
   // Load initial messages
   useEffect(() => {
@@ -437,10 +436,28 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
     [events],
   );
 
-  // Auto-scroll when new events arrive
+  // Arriving from search: mark the named message and scroll it into sight once
+  // history has landed. The mark outlives the request that carried it — a
+  // highlight cleared with the URL parameter would be gone before it was read.
+  const [highlight, setHighlight] = useState<string | null>(null);
+  const highlightRow = useRef<HTMLDivElement>(null);
   useEffect(() => {
+    if (!focusMessageId) return;
+    setHighlight(focusMessageId);
+    onFocusConsumed?.();
+  }, [focusMessageId, onFocusConsumed]);
+
+  // Auto-scroll when new events arrive — but not over a message the user was
+  // just sent to, which is the one place in the feed they're looking.
+  useEffect(() => {
+    if (highlight) return;
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [visible]);
+  }, [visible, highlight]);
+
+  useEffect(() => {
+    if (!highlight) return;
+    highlightRow.current?.scrollIntoView({ block: "center" });
+  }, [highlight, historyLoaded, visible]);
 
   const channelCount = useMemo(
     () => events.filter(e => CHANNEL_VIEW_TYPES.has(e.type)).length,
@@ -478,28 +495,29 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
         onDecline={(invite) => respond(invite, "decline")}
       />
       <div className="flex items-center gap-3 border-b border-border shrink-0 h-[48px] bg-paper px-4">
-        {/* Connection state lives in the shell status bar now, not here. */}
+        {/* Connection state lives in the shell status bar. */}
         <div className="ml-auto flex items-center gap-0.5 rounded-lg border border-border bg-surface p-0.5">
           {([
             { id: "channel" as const,   label: "Channel",   count: channelCount as number | null, dot: false },
             { id: "negotiate" as const, label: "Negotiate", count: null,                          dot: negotiating },
-            { id: "l9" as const,        label: "L9",        count: null,                          dot: false },
             { id: "plan" as const,      label: "Plan",      count: null,                          dot: false },
-            { id: "slim" as const,      label: "SLIM",      count: null,                          dot: false },
+            { id: "network" as const,   label: "Network",   count: null,                          dot: false },
           ]).map(t => {
+            // Hold the reveal modifier and each tab wears the key that selects it.
             const active = view === t.id;
             return (
               <button
                 key={t.id}
                 data-tour={`tab-${t.id}`}
                 onClick={() => setView(t.id)}
-                className={`flex items-center gap-1.5 rounded-md px-3 py-1 text-label font-medium transition-colors ${
+                className={`relative flex items-center gap-1.5 rounded-md px-3 py-1 text-label font-medium transition-colors ${
                   active
                     ? "bg-elevated text-text shadow-sm ring-1 ring-border"
                     : "text-muted-foreground hover:bg-hairline hover:text-text"
                 }`}
               >
                 {t.label}
+                <KeyBadge action={`pane.${t.id}`} />
                 {t.dot && <span className="inline-block size-1.5 rounded-full bg-accent" aria-label="live" />}
                 {t.count !== null && (
                   <span className={`text-micro tabular ${active ? "text-accent" : "text-muted-foreground"}`}>
@@ -511,22 +529,25 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
           })}
         </div>
       </div>
-      {view === "l9" ? (
-        <div className="flex-1 min-h-0">
-          <L9Inspector roomName={roomName} />
+      {view === "network" ? (
+        // Unified Network pane: SLIM channel diagnostics as a rail on top, the
+        // live L9 protocol feed filling the rest.
+        <div className="flex flex-1 min-h-0 flex-col">
+          <div className="shrink-0 border-b border-border bg-surface/40">
+            <RoomSlimView roomName={roomName} layout="rail" />
+          </div>
+          <div className="flex-1 min-h-0">
+            <L9Inspector roomName={roomName} />
+          </div>
         </div>
       ) : view === "negotiate" ? (
         <div className="flex-1 min-h-0">
           <NegotiationView events={events} />
         </div>
-      ) : view === "slim" ? (
-        <ScrollArea className="flex-1 min-h-0">
-          <RoomSlimView roomName={roomName} />
-        </ScrollArea>
       ) : (
       <ScrollArea className="flex-1 min-h-0" viewportRef={scrollRef}>
         {view === "plan" ? (
-          <RoomPlanHeader roomName={roomName} refreshTrigger={planRefreshTrigger} />
+          <RoomPlanHeader roomName={roomName} />
         ) : !historyLoaded ? (
           <ChannelSkeleton />
         ) : visible.length === 0 ? (
@@ -667,52 +688,45 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
               // Agents wear the accent; humans stay neutral. Consistent with the
               // agents panel so one agent isn't two colors in two places.
               const color = isAgent ? "var(--accent)" : "var(--muted-foreground)";
+              const marked = highlight !== null && ev.messageId === highlight;
+              const owner = isAgent ? agentOwners.get(ev.sender) : undefined;
               return (
                 <div
                   key={ev.id}
-                  className={`group flex gap-3 px-5 hover:bg-hairline ${grouped ? "py-0.5" : "mt-3 pt-1 first:mt-0"}`}
+                  ref={marked ? highlightRow : undefined}
+                  className={`group relative flex gap-3 px-5 hover:bg-hairline ${grouped ? "py-0.5" : "mt-3 pt-1 first:mt-0"} ${
+                    marked ? "bg-accent/15" : ""
+                  }`}
                 >
-                  <div className="w-8 flex-shrink-0">
-                    {grouped ? (
-                      <span className="block pt-1 text-right text-micro tabular text-muted-foreground opacity-0 group-hover:opacity-100">
-                        {ev.time.slice(0, 5)}
+                  {/* Timestamp low-signal: right gutter, hover-revealed. */}
+                  <span className="pointer-events-none absolute right-5 top-1.5 text-micro tabular text-faint opacity-0 transition-opacity group-hover:opacity-100">
+                    {ev.time.slice(0, 5)}
+                  </span>
+
+                  <div className="w-7 flex-shrink-0">
+                    {!grouped && (
+                      <span title={owner ? `@${ev.sender} · owned by @${owner}` : ev.sender}>
+                        <Monogram handle={ev.sender} color={color} className="size-7 text-micro" />
                       </span>
-                    ) : (
-                      <div
-                        className="flex size-8 items-center justify-center rounded-full text-micro font-semibold"
-                        style={{ background: `color-mix(in srgb, ${color} 16%, transparent)`, color }}
-                        aria-hidden
-                      >
-                        {initials(ev.sender)}
-                      </div>
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
                     {!grouped && (
-                      <div className="flex items-baseline gap-2">
+                      <div className="flex items-center gap-1.5 pr-12">
                         <span className="text-label font-semibold text-text truncate">
                           {ev.sender}
                         </span>
                         {isAgent && (
-                          <span
-                            className="rounded px-1.5 py-px text-micro font-medium"
-                            style={{ color: "var(--accent)", background: "color-mix(in srgb, var(--accent) 14%, transparent)" }}
-                          >
-                            agent
-                          </span>
-                        )}
-                        {isAgent && agentOwners.get(ev.sender) && (
-                          <span className="text-micro text-muted-foreground truncate">
-                            owned by @{agentOwners.get(ev.sender)}
-                          </span>
+                          <Bot aria-label="agent" className="size-3 flex-shrink-0 text-accent" />
                         )}
                         {ev.recipient && (
-                          <span className="text-micro text-muted-foreground">→ {ev.recipient}</span>
+                          <span className="rounded bg-hairline px-1.5 py-px font-mono text-micro text-muted-foreground">
+                            → {ev.recipient}
+                          </span>
                         )}
-                        <span className="text-micro text-muted-foreground tabular">{ev.time}</span>
                       </div>
                     )}
-                    <MarkdownContent className="contrast text-body leading-relaxed">
+                    <MarkdownContent className="contrast text-body leading-relaxed" onLinkClick={onOpenMemory}>
                       {ev.content}
                     </MarkdownContent>
                   </div>

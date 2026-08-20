@@ -1,21 +1,21 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""``mycelium demo`` — run a real sample coordination end-to-end.
+"""``mycelium demo``: run a real sample coordination end-to-end.
 
 A guided onboarding command. It is pure glue over the real
 system, with no mirrored data: it discovers scenarios and agent personas from
 the public ``agent-personas`` dataset at run time, creates a room, runs
 ``mycelium agent create`` for each persona on your chosen adapter, seeds the
 room with a task, and then lets the agents actually negotiate to consensus.
-There is no canned transcript and nothing replayed — what you watch is a live
+There is no canned transcript and nothing replayed; what you watch is a live
 run.
 
 Because it is live, it requires a working stack: an installed agent adapter
 (``--adapter``), the backend up, and an LLM configured. If those aren't present
 the command fails fast with the exact fix, rather than pretending.
 
-Everything for the demo lives in this single module — it is deliberately
+Everything for the demo lives in this single module; it is deliberately
 isolated and clearly labeled so it can be lifted out cleanly.
 """
 
@@ -245,7 +245,7 @@ def _provision(
     """Create the room + persona agents and seed the task. Raises typer.Exit on failure."""
     handles = [a["handle"] for a in scenario["agents"]]
 
-    # 1. Fetch personas first — fail before we create anything if unreachable.
+    # 1. Fetch personas first, failing before we create anything if unreachable.
     console.print("[dim]Fetching personas from agent-personas…[/dim]")
     personas: dict[str, str] = {}
     for a in scenario["agents"]:
@@ -263,7 +263,7 @@ def _provision(
         raise typer.Exit(1)
     console.print(f"[green]✓[/green] Room [cyan]{room}[/cyan]")
 
-    # 3. Agents — one `mycelium agent create` per persona, on the chosen adapter.
+    # 3. Agents: one `mycelium agent create` per persona, on the chosen adapter.
     for a in scenario["agents"]:
         handle = a["handle"]
         args = [
@@ -289,7 +289,7 @@ def _provision(
     if r.returncode != 0:
         console.print(f"[red]seeding failed:[/red]\n{r.stderr or r.stdout}")
         raise typer.Exit(1)
-    console.print("[green]✓[/green] Seeded the room — agents are negotiating")
+    console.print("[green]✓[/green] Seeded the room; agents are negotiating")
 
 
 def _room_senders(api: str, room: str) -> set[str]:
@@ -319,8 +319,8 @@ def _drive_consensus(
     """Wait for the agents to state positions, then summon the aligner.
 
     Resident agents post their turns asynchronously (each reasons in its own
-    session), so poll the room until every agent has spoken — then let a short
-    settle window catch their final positions — and post ``@aligner``. That summon is what the backend
+    session), so poll the room until every agent has spoken (then let a short
+    settle window catch their final positions) and post ``@aligner``. That summon is what the backend
     scores into a ``commit:converged``/``rejected`` verdict and, on convergence,
     compiles into ``plan/tasks.md`` + syncs as a ``knowledge`` memory. Driving it
     here makes the payoff deterministic instead of hoping an agent remembers to.
@@ -343,7 +343,7 @@ def _drive_consensus(
         console.print(f"[green]✓[/green] Positions in from {', '.join('@' + h for h in posted)}")
     else:
         console.print(
-            "[yellow]⚠ No agent positions yet[/yellow] — summoning the aligner anyway; "
+            "[yellow]⚠ No agent positions yet[/yellow]; summoning the aligner anyway; "
             "it will report no convergence."
         )
 
@@ -363,7 +363,7 @@ def _drive_consensus(
         console.print(f"[yellow]⚠ could not summon the aligner:[/yellow]\n{r.stderr or r.stdout}")
         return
     console.print(
-        f"[green]✓[/green] Summoned [bold]@{ALIGNER_HANDLE}[/bold] — on convergence the backend "
+        f"[green]✓[/green] Summoned [bold]@{ALIGNER_HANDLE}[/bold]; on convergence the backend "
         "compiles [cyan]plan/tasks.md[/cyan] and syncs it as a knowledge memory."
     )
 
@@ -381,7 +381,7 @@ def _print_intro(scenario: dict[str, Any], adapter: str, room: str) -> None:
         Panel(
             body,
             title=f"[bold]mycelium demo · {scenario['title']}[/bold]",
-            subtitle="[dim]live run — real agents, real negotiation[/dim]",
+            subtitle="[dim]live run: real agents, real negotiation[/dim]",
             border_style="cyan",
         )
     )
@@ -412,7 +412,7 @@ def _print_outro(scenario: dict[str, Any], adapter: str, room: str) -> None:
     console.print(
         Panel(
             repro,
-            title="[bold]What just happened — reproduce it yourself[/bold]",
+            title="[bold]What just happened: reproduce it yourself[/bold]",
             border_style="cyan",
         )
     )
@@ -510,8 +510,7 @@ def demo(
 
     _provision(chosen, adapter, room_name)
 
-    # The payoff: once positions are in, summon the aligner so the negotiation
-    # actually converges → compiles plan/tasks.md → syncs a knowledge memory.
+    # Summon the aligner to assess convergence and compile the plan.
     handles = [a["handle"] for a in chosen["agents"]]
     _drive_consensus(_config, room_name, handles)
 

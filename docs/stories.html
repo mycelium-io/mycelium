@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -30,13 +30,13 @@
     padding: 80px;
     padding-top: 140px;
     background:
-      radial-gradient(ellipse at 15% 60%, rgba(56,189,248,0.07) 0%, transparent 55%),
-      radial-gradient(ellipse at 80% 20%, rgba(192,132,252,0.06) 0%, transparent 50%);
+      radial-gradient(ellipse at 15% 60%, rgba(92,199,210,0.07) 0%, transparent 55%),
+      radial-gradient(ellipse at 80% 20%, rgba(195,162,224,0.06) 0%, transparent 50%);
   }
   .hero-eyebrow {
     font-size: 11px; letter-spacing: 0.25em; text-transform: uppercase;
     color: var(--accent); font-weight: 700; margin-bottom: 20px;
-    font-family: 'SF Mono', monospace;
+    font-family: 'Geist Mono', 'SF Mono', monospace;
   }
   .hero-title {
     font-size: clamp(32px, 4vw, 52px);
@@ -78,14 +78,14 @@
     width: 100%;
     height: 100%;
     background: linear-gradient(135deg, rgba(12,21,36,0.95) 0%, rgba(8,14,24,0.98) 100%);
-    border: 1px solid rgba(56,189,248,0.1);
+    border: 1px solid rgba(92,199,210,0.1);
     border-radius: 16px;
     position: relative;
     overflow: hidden;
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 0 60px rgba(56,189,248,0.03), inset 0 1px 0 rgba(56,189,248,0.07);
+    box-shadow: 0 0 60px rgba(92,199,210,0.03), inset 0 1px 0 rgba(92,199,210,0.07);
   }
 
   /* ── SCENES ── */
@@ -120,7 +120,7 @@
   .sec-label {
     font-size: 10px; font-weight: 700; letter-spacing: 0.2em;
     text-transform: uppercase; color: var(--accent);
-    font-family: 'SF Mono', monospace; margin-bottom: 14px;
+    font-family: 'Geist Mono', 'SF Mono', monospace; margin-bottom: 14px;
   }
   .sec-label.blue   { color: var(--blue); }
   .sec-label.green  { color: var(--green); }
@@ -137,7 +137,7 @@
   }
   .sec-body strong { color: #aaa; font-weight: 600; }
   .sec-body code {
-    font-family: 'SF Mono', monospace; font-size: 12px;
+    font-family: 'Geist Mono', 'SF Mono', monospace; font-size: 12px;
     background: rgba(255,255,255,0.06); padding: 2px 6px;
     border-radius: 4px; color: #c4c4c4;
   }
@@ -147,7 +147,7 @@
     border-left: 2px solid var(--accent);
     border-radius: 0 6px 6px 0;
     padding: 10px 14px;
-    font-family: 'SF Mono', monospace;
+    font-family: 'Geist Mono', 'SF Mono', monospace;
     font-size: 11px; color: var(--muted); line-height: 1.6;
   }
   .sec-detail.blue   { border-color: var(--blue); }
@@ -162,7 +162,7 @@
   /* ── USER / AGENT LABELS ── */
   .story-label {
     font-size: 10px; font-weight: 700; letter-spacing: 0.15em;
-    text-transform: uppercase; font-family: 'SF Mono', monospace;
+    text-transform: uppercase; font-family: 'Geist Mono', 'SF Mono', monospace;
     margin-bottom: 6px; margin-top: 18px;
   }
   .story-label.user    { color: var(--blue); }
@@ -171,14 +171,14 @@
     font-size: 14px; color: var(--text);
     font-style: italic; line-height: 1.55;
     padding: 10px 14px;
-    background: rgba(129,140,248,0.05);
-    border: 1px solid rgba(129,140,248,0.15);
+    background: rgba(143,184,232,0.05);
+    border: 1px solid rgba(143,184,232,0.15);
     border-radius: 7px;
     max-width: 400px;
   }
   .story-input code {
     font-style: normal; font-size: 12px;
-    background: rgba(129,140,248,0.12);
+    background: rgba(143,184,232,0.12);
     color: var(--blue); border-radius: 3px;
     padding: 1px 5px;
   }
@@ -187,10 +187,10 @@
   .term {
     width: 100%;
     background: rgba(0,0,0,0.45);
-    border: 1px solid rgba(56,189,248,0.18);
+    border: 1px solid rgba(92,199,210,0.18);
     border-radius: 8px;
     padding: 16px 18px;
-    font-family: 'SF Mono', monospace;
+    font-family: 'Geist Mono', 'SF Mono', monospace;
     font-size: 12.5px; line-height: 1.7;
     color: var(--muted); overflow-x: auto;
   }
@@ -212,7 +212,7 @@
   .d-box .d-label {
     font-size: 10px; font-weight: 700; letter-spacing: 0.12em;
     text-transform: uppercase; margin-bottom: 4px;
-    font-family: 'SF Mono', monospace;
+    font-family: 'Geist Mono', 'SF Mono', monospace;
   }
   .d-box .d-name { font-size: 13px; font-weight: 700; color: var(--text); }
   .d-box .d-sub  { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
@@ -222,7 +222,7 @@
   .footer {
     display: flex; gap: 20px; padding: 48px 80px;
     font-size: 12px; color: var(--muted);
-    font-family: 'SF Mono', monospace;
+    font-family: 'Geist Mono', 'SF Mono', monospace;
     border-top: 1px solid var(--border);
   }
   .footer a { color: var(--muted); text-decoration: none; }
@@ -254,14 +254,15 @@
 
 <!-- TOP NAV -->
 <nav class="topnav">
-  <a href="https://mycelium-io.github.io/mycelium/" class="topnav-brand">
+  <a href="https://mycelium-io.github.io/mycelium/" class="topnav-cell topnav-brand">
     <img src="logo.png" alt="Mycelium">
-    mycelium
+    <span class="brand-word">mycelium</span>
   </a>
-  <span class="topnav-sep">/</span>
-  <a href="index.html" class="topnav-page" style="text-decoration:none;">docs</a>
-  <span class="topnav-sep">/</span>
-  <span class="topnav-page">stories</span>
+  <span class="topnav-cell topnav-page-cell">
+    <a href="index.html" class="topnav-page">Docs</a>
+    <span class="topnav-sep">/</span>
+    <span>Stories</span>
+  </span>
   <div class="topnav-right">
     <div class="resources-dropdown">
       <button class="resources-btn" onclick="toggleResources(event)">Resources <i data-lucide="chevron-down" style="width:12px;height:12px;stroke:currentColor;vertical-align:-2px;"></i></button>
@@ -416,16 +417,16 @@
           </div>
           <div style="display:flex; align-items:center; gap:6px; margin-top:4px;">
             <div style="flex:1; height:1px; background:var(--border);"></div>
-            <span style="font-size:10px; color:var(--muted); font-family:'SF Mono',monospace; letter-spacing:0.1em;">written to disk</span>
+            <span style="font-size:10px; color:var(--muted); font-family:'Geist Mono', 'SF Mono',monospace; letter-spacing:0.1em;">written to disk</span>
             <div style="flex:1; height:1px; background:var(--border);"></div>
           </div>
-          <div style="background:var(--card); border:1px solid var(--border); border-radius:8px; padding:12px 16px; font-family:'SF Mono',monospace; font-size:11.5px; line-height:1.7; color:var(--muted);">
+          <div style="background:var(--card); border:1px solid var(--border); border-radius:8px; padding:12px 16px; font-family:'Geist Mono', 'SF Mono',monospace; font-size:11.5px; line-height:1.7; color:var(--muted);">
             <span style="color:var(--muted);">~/.mycelium/rooms/design-review/</span><br>
             <span style="color:var(--blue);">  decisions/</span><span style="color:var(--muted);">db.md &nbsp;&nbsp;api.md</span><br>
             <span style="color:var(--accent);">  work/</span><span style="color:var(--muted);">query-perf.md</span> <span style="color:var(--green); font-size:10px;">← just written</span><br>
             <span style="color:var(--purple);">  failed/</span><span style="color:var(--muted);">sqlite.md</span>
           </div>
-          <div style="padding:6px 12px; background:rgba(56,189,248,0.05); border:1px solid rgba(56,189,248,0.15); border-radius:6px; font-size:11px; color:var(--muted); font-family:'SF Mono',monospace; text-align:center;">
+          <div style="padding:6px 12px; background:rgba(92,199,210,0.05); border:1px solid rgba(92,199,210,0.15); border-radius:6px; font-size:11px; color:var(--muted); font-family:'Geist Mono', 'SF Mono',monospace; text-align:center;">
             local embedding index updated simultaneously
           </div>
         </div>
@@ -441,16 +442,16 @@
 <span class="dim">&nbsp;&nbsp;&nbsp;&nbsp; N+1 on user.posts, 47 queries per page load.</span><br>
 <span class="dim">&nbsp;&nbsp;&nbsp;&nbsp; Fixed with select_related. p99: 340ms → 28ms.</span><br>
 <br>
-<span style="color:rgba(52,211,153,0.6);">0.74</span>  <span class="k">decisions/db</span><br>
+<span style="color:rgba(79,194,150,0.6);">0.74</span>  <span class="k">decisions/db</span><br>
 <span class="dim">&nbsp;&nbsp;&nbsp;&nbsp; Markdown files on disk are the source of truth.</span><br>
 <span class="dim">&nbsp;&nbsp;&nbsp;&nbsp; No database; search runs on a local index.</span>
           </div>
           <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:4px;">
-            <div style="padding:10px 12px; background:var(--card); border:1px solid var(--border); border-radius:7px; font-size:11px; font-family:'SF Mono',monospace; color:var(--muted); line-height:1.5;">
+            <div style="padding:10px 12px; background:var(--card); border:1px solid var(--border); border-radius:7px; font-size:11px; font-family:'Geist Mono', 'SF Mono',monospace; color:var(--muted); line-height:1.5;">
               <div style="color:var(--accent); font-weight:700; margin-bottom:4px;">model</div>
               local ONNX index<br>~384 dimensions<br>runs locally
             </div>
-            <div style="padding:10px 12px; background:var(--card); border:1px solid var(--border); border-radius:7px; font-size:11px; font-family:'SF Mono',monospace; color:var(--muted); line-height:1.5;">
+            <div style="padding:10px 12px; background:var(--card); border:1px solid var(--border); border-radius:7px; font-size:11px; font-family:'Geist Mono', 'SF Mono',monospace; color:var(--muted); line-height:1.5;">
               <div style="color:var(--accent); font-weight:700; margin-bottom:4px;">metric</div>
               cosine similarity<br>no keyword match<br>no API key
             </div>
@@ -470,7 +471,7 @@
 <br>
 <span class="ok">✓</span> <span class="dim">failed/pgbouncer written to design-review</span>
           </div>
-          <div style="background:rgba(248,113,113,0.05); border:1px solid rgba(248,113,113,0.2); border-radius:8px; padding:12px 14px; font-size:12px; font-family:'SF Mono',monospace; color:rgba(248,113,113,0.7); line-height:1.55;">
+          <div style="background:rgba(248,113,113,0.05); border:1px solid rgba(248,113,113,0.2); border-radius:8px; padding:12px 14px; font-size:12px; font-family:'Geist Mono', 'SF Mono',monospace; color:rgba(248,113,113,0.7); line-height:1.55;">
             <span style="font-weight:700; display:block; margin-bottom:4px;">failed/ namespace</span>
             <span style="color:var(--muted);">Browsable to every future agent that opens the room directory. Prevents duplicate effort.</span>
           </div>
@@ -503,27 +504,27 @@
       <div class="scene" id="sc5">
         <div style="width:100%; display:flex; flex-direction:column; gap:10px;">
           <div style="display:grid; grid-template-columns:1fr auto 1fr; gap:8px; align-items:start;">
-            <div style="background:rgba(129,140,248,0.07); border:1px solid rgba(129,140,248,0.3); border-radius:8px; padding:10px 12px; font-family:'SF Mono',monospace; font-size:11.5px;">
-              <div style="color:var(--blue); font-weight:700; margin-bottom:6px;">julia-agent</div>
+            <div style="background:rgba(143,184,232,0.07); border:1px solid rgba(143,184,232,0.3); border-radius:8px; padding:10px 12px; font-family:'Geist Mono', 'SF Mono',monospace; font-size:11.5px;">
+              <div style="color:var(--blue); font-weight:700; margin-bottom:6px;">avery-agent</div>
               <div style="color:var(--muted); line-height:1.5;">"DB migration first: auth + frontend both depend on new schema."</div>
             </div>
             <div style="display:flex; flex-direction:column; align-items:center; gap:6px; padding-top:10px; color:var(--muted); font-size:18px;">↓<br>↑</div>
-            <div style="background:rgba(192,132,252,0.07); border:1px solid rgba(192,132,252,0.3); border-radius:8px; padding:10px 12px; font-family:'SF Mono',monospace; font-size:11.5px;">
-              <div style="color:var(--purple); font-weight:700; margin-bottom:6px;">selina-agent</div>
+            <div style="background:rgba(195,162,224,0.07); border:1px solid rgba(195,162,224,0.3); border-radius:8px; padding:10px 12px; font-family:'Geist Mono', 'SF Mono',monospace; font-size:11.5px;">
+              <div style="color:var(--purple); font-weight:700; margin-bottom:6px;">rowan-agent</div>
               <div style="color:var(--muted); line-height:1.5;">"Frontend polish first: users churning on UX. Backend solid enough."</div>
             </div>
           </div>
           <div style="display:flex; justify-content:center;">
-            <div style="padding:10px 20px; background:rgba(56,189,248,0.08); border:1px solid rgba(56,189,248,0.25); border-radius:8px; font-size:12px; font-family:'SF Mono',monospace; color:var(--accent); text-align:center;">
+            <div style="padding:10px 20px; background:rgba(92,199,210,0.08); border:1px solid rgba(92,199,210,0.25); border-radius:8px; font-size:12px; font-family:'Geist Mono', 'SF Mono',monospace; color:var(--accent); text-align:center;">
               <div style="font-weight:700; margin-bottom:4px;">the aligner</div>
               <div style="color:var(--muted); font-size:11px;">NEGMAS Stacked Alternating Offers</div>
             </div>
           </div>
-          <div style="background:rgba(52,211,153,0.06); border:1px solid rgba(52,211,153,0.2); border-radius:8px; padding:10px 14px; font-size:11.5px; font-family:'SF Mono',monospace; color:var(--muted); line-height:1.6;">
+          <div style="background:rgba(79,194,150,0.06); border:1px solid rgba(79,194,150,0.2); border-radius:8px; padding:10px 14px; font-size:11.5px; font-family:'Geist Mono', 'SF Mono',monospace; color:var(--muted); line-height:1.6;">
             <span style="color:var(--green); font-weight:700; display:block; margin-bottom:4px;">consensus → compiled into plan/tasks.md</span>
             scope=migration-first · quality=high<br>
-            <span style="color:var(--muted);">- [ ] lead the schema migration @julia-agent</span><br>
-            <span style="color:var(--muted);">- [ ] parallel frontend prep @selina-agent</span>
+            <span style="color:var(--muted);">- [ ] lead the schema migration @avery-agent</span><br>
+            <span style="color:var(--muted);">- [ ] parallel frontend prep @rowan-agent</span>
           </div>
         </div>
       </div>
@@ -532,23 +533,23 @@
       <div class="scene" id="sc6">
         <div style="width:100%; display:flex; flex-direction:column; gap:12px;">
           <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
-            <div style="background:rgba(56,189,248,0.06); border:1.5px solid rgba(56,189,248,0.3); border-radius:10px; padding:14px; text-align:center;">
-              <div style="font-size:10px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; font-family:'SF Mono',monospace; color:var(--accent); margin-bottom:6px;">Machine 1 · hub</div>
+            <div style="background:rgba(92,199,210,0.06); border:1.5px solid rgba(92,199,210,0.3); border-radius:10px; padding:14px; text-align:center;">
+              <div style="font-size:10px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; font-family:'Geist Mono', 'SF Mono',monospace; color:var(--accent); margin-bottom:6px;">Machine 1 · hub</div>
               <div style="font-size:13px; font-weight:700; color:var(--text); margin-bottom:4px;">backend-agent</div>
               <div style="font-size:11px; color:var(--muted);">Claude Code adapter</div>
-              <div style="margin-top:8px; font-size:11px; color:var(--green); font-family:'SF Mono',monospace;">✓ API layer done</div>
+              <div style="margin-top:8px; font-size:11px; color:var(--green); font-family:'Geist Mono', 'SF Mono',monospace;">✓ API layer done</div>
             </div>
-            <div style="background:rgba(192,132,252,0.06); border:1.5px solid rgba(192,132,252,0.3); border-radius:10px; padding:14px; text-align:center;">
-              <div style="font-size:10px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; font-family:'SF Mono',monospace; color:var(--purple); margin-bottom:6px;">Machine 2 · spoke</div>
+            <div style="background:rgba(195,162,224,0.06); border:1.5px solid rgba(195,162,224,0.3); border-radius:10px; padding:14px; text-align:center;">
+              <div style="font-size:10px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; font-family:'Geist Mono', 'SF Mono',monospace; color:var(--purple); margin-bottom:6px;">Machine 2 · spoke</div>
               <div style="font-size:13px; font-weight:700; color:var(--text); margin-bottom:4px;">frontend-agent</div>
               <div style="font-size:11px; color:var(--muted);">joined over the hub</div>
-              <div style="margin-top:8px; font-size:11px; color:var(--blue); font-family:'SF Mono',monospace;">↳ picking up frontend</div>
+              <div style="margin-top:8px; font-size:11px; color:var(--blue); font-family:'Geist Mono', 'SF Mono',monospace;">↳ picking up frontend</div>
             </div>
           </div>
           <div style="display:flex; justify-content:center; align-items:center; gap:8px;">
-            <div style="height:1px; flex:1; background:rgba(56,189,248,0.2);"></div>
-            <div style="padding:8px 16px; background:rgba(56,189,248,0.08); border:1px solid rgba(56,189,248,0.2); border-radius:20px; font-size:11px; font-family:'SF Mono',monospace; color:var(--accent);">api-project room</div>
-            <div style="height:1px; flex:1; background:rgba(192,132,252,0.2);"></div>
+            <div style="height:1px; flex:1; background:rgba(92,199,210,0.2);"></div>
+            <div style="padding:8px 16px; background:rgba(92,199,210,0.08); border:1px solid rgba(92,199,210,0.2); border-radius:20px; font-size:11px; font-family:'Geist Mono', 'SF Mono',monospace; color:var(--accent);">api-project room</div>
+            <div style="height:1px; flex:1; background:rgba(195,162,224,0.2);"></div>
           </div>
           <div class="term" style="font-size:11px;">
 <span class="dim">context/handoff:</span> <span class="v">"Use TypeScript client in mycelium-client/.</span><br>
@@ -563,13 +564,13 @@
       <div class="scene" id="sc7">
         <div style="width:100%; display:flex; flex-direction:column; gap:10px;">
           <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-            <div style="padding:5px 10px; background:var(--card); border:1px solid var(--border); border-radius:6px; font-size:11px; font-family:'SF Mono',monospace; color:var(--muted);">decisions/db</div>
-            <div style="padding:5px 10px; background:var(--card); border:1px solid var(--border); border-radius:6px; font-size:11px; font-family:'SF Mono',monospace; color:var(--muted);">work/api-layer</div>
-            <div style="padding:5px 10px; background:rgba(248,113,113,0.08); border:1px solid rgba(248,113,113,0.2); border-radius:6px; font-size:11px; font-family:'SF Mono',monospace; color:rgba(248,113,113,0.7);">failed/pgbouncer</div>
-            <div style="padding:5px 10px; background:rgba(56,189,248,0.08); border:1px solid rgba(56,189,248,0.2); border-radius:6px; font-size:11px; font-family:'SF Mono',monospace; color:var(--accent);">plan/tasks.md</div>
+            <div style="padding:5px 10px; background:var(--card); border:1px solid var(--border); border-radius:6px; font-size:11px; font-family:'Geist Mono', 'SF Mono',monospace; color:var(--muted);">decisions/db</div>
+            <div style="padding:5px 10px; background:var(--card); border:1px solid var(--border); border-radius:6px; font-size:11px; font-family:'Geist Mono', 'SF Mono',monospace; color:var(--muted);">work/api-layer</div>
+            <div style="padding:5px 10px; background:rgba(248,113,113,0.08); border:1px solid rgba(248,113,113,0.2); border-radius:6px; font-size:11px; font-family:'Geist Mono', 'SF Mono',monospace; color:rgba(248,113,113,0.7);">failed/pgbouncer</div>
+            <div style="padding:5px 10px; background:rgba(92,199,210,0.08); border:1px solid rgba(92,199,210,0.2); border-radius:6px; font-size:11px; font-family:'Geist Mono', 'SF Mono',monospace; color:var(--accent);">plan/tasks.md</div>
           </div>
           <div style="text-align:center; font-size:18px; color:var(--accent);">↓</div>
-          <div style="padding:10px 16px; background:rgba(56,189,248,0.06); border:1px solid rgba(56,189,248,0.2); border-radius:8px; font-size:12px; font-family:'SF Mono',monospace; color:var(--accent); text-align:center;">
+          <div style="padding:10px 16px; background:rgba(92,199,210,0.06); border:1px solid rgba(92,199,210,0.2); border-radius:8px; font-size:12px; font-family:'Geist Mono', 'SF Mono',monospace; color:var(--accent); text-align:center;">
             <span style="color:var(--muted);">the room directory <em>is</em> the briefing</span>
           </div>
           <div style="text-align:center; font-size:18px; color:var(--accent);">↓</div>
@@ -579,7 +580,7 @@
 <span class="em">What failed</span>    <span class="dim">PgBouncer: do not retry.</span><br>
 <span class="em">Open tasks</span>     <span class="dim">3 open across plan/tasks.md, plan/sprint.md.</span>
           </div>
-          <div style="padding:6px 12px; background:rgba(56,189,248,0.05); border:1px solid rgba(56,189,248,0.12); border-radius:6px; font-size:11px; font-family:'SF Mono',monospace; color:var(--muted); text-align:center;">
+          <div style="padding:6px 12px; background:rgba(92,199,210,0.05); border:1px solid rgba(92,199,210,0.12); border-radius:6px; font-size:11px; font-family:'Geist Mono', 'SF Mono',monospace; color:var(--muted); text-align:center;">
             new agent reads the room → zero context loss
           </div>
         </div>

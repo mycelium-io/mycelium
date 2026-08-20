@@ -21,7 +21,7 @@ import logging
 from datetime import UTC, datetime
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from app.bus import bus, room_channel
@@ -31,7 +31,7 @@ from app.schemas import (
     ParticipantListResponse,
     ParticipantRead,
 )
-from app.services import l9, local_state, room_channels
+from app.services import actor, l9, local_state, room_channels
 from app.services.filesystem import (
     ensure_room_structure,
     get_room_dir,
@@ -90,8 +90,12 @@ async def spawn_session(room_name: str):
 
 
 @router.post("", response_model=ParticipantRead, status_code=201)
-async def join_room(room_name: str, payload: ParticipantCreate):
+async def join_room(room_name: str, payload: ParticipantCreate, request: Request):
     """Join a room — record the agent's presence. Idempotent per handle."""
+    # Presence is a claim on a handle, same as draining its queue: registering as
+    # someone else would put their name on the roster and pull their SLIM invite.
+    # Authorized before the room is created, so a claim can't leave a room behind.
+    actor.authorize_handle(request, room_name, payload.agent_handle, field="agent_handle")
     _ensure_room(room_name)
     coord = local_state.get_or_create_session(room_name)
 

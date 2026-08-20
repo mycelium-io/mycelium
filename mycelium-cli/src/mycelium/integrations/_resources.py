@@ -4,7 +4,7 @@
 """Bundled-asset resolution shared by every integration's install facet.
 
 The static assets (shell hooks, SKILL.md, workspace rules) live under
-``mycelium.integrations.<family>.assets`` — colocated with the family that
+``mycelium.integrations.<family>.assets``, colocated with the family that
 owns it. This resolves a real filesystem path to them whether the package
 is editable or zipped.
 """

@@ -26,34 +26,26 @@ from __future__ import annotations
 
 import asyncio
 import re
-from dataclasses import dataclass
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from app.services import l9, principals, room_channels
+from app.services import actor, l9, principals, room_channels
 from app.services.filesystem import room_exists
 from app.services.l9_models import Kind
-from app.services.l9_slim import serialize_content
+from app.services.l9_slim import serialize_content, serialize_envelope
 
 router = APIRouter(prefix="/rooms/{room_name}", tags=["participate"])
 
 
-@dataclass
-class _AwaitState:
-    """Per-(room, handle) long-poll cursor over the durable transcript.
-
-    ``cursor`` is how far the handle has consumed; ``last_tick`` is the content of
-    the last tick it was served, so a following reply parents onto it.
-    """
-
-    cursor: int
-    last_tick: dict[str, Any] | None = None
-
-
-# Process-local — a fresh backend starts every handle at the current transcript end.
-_await_state: dict[tuple[str, str], _AwaitState] = {}
+# The delivery cursor itself lives on the durable inbox (``persister.log``), so it
+# survives a restart and starts a brand-new handle at its ``agent create`` /
+# first-mention anchor rather than "now". Only the last served tick is kept
+# process-local here: it's a best-effort convenience so a following ``reply``
+# parents onto the tick that woke the caller, and losing it on restart just drops
+# that one parent edge — never a message.
+_last_tick: dict[tuple[str, str], dict[str, Any]] = {}
 
 _POLL_INTERVAL_S = 0.4
 _MAX_WAIT_S = 3600.0
@@ -143,37 +135,41 @@ def _describe(room: str, handle: str, record: Any) -> dict[str, Any]:
 
 
 @router.get("/await")
-async def await_message(room_name: str, handle: str, timeout: int = 0):
+async def await_message(room_name: str, request: Request, handle: str, timeout: int = 0):
     """Long-poll for the next message addressed to ``handle`` (server-held member)."""
     if not room_exists(room_name):
         raise HTTPException(status_code=404, detail="Room not found")
+    # Draining a queue consumes it: the cursor advances, so a served turn is not
+    # served again. A verified token may therefore only drain its own handle or one
+    # that granted it — otherwise @bob's token could intercept @alice's coordination.
+    actor.authorize_handle(request, room_name, handle)
     managed = await room_channels.manager.provision(room_name)
     room_channels.manager.refresh_lease(room_name, handle)
     if managed is None or managed.persister is None:
         return {"room": room_name, "handle": handle, "message": None}
     persister = managed.persister
     key = (room_name, handle)
-    state = _await_state.get(key)
-    if state is None:
-        # First await for this handle: start at the current end so it only sees
-        # turns addressed to it from when it began participating.
-        state = _AwaitState(cursor=len(persister.log.records))
-        _await_state[key] = state
-
+    # The cursor rides the durable inbox: its first read is the handle's persisted
+    # delivery position — anchored at the mention that summoned it (``record()``
+    # holds an @-addressed turn for an untracked recipient) and preserved across a
+    # backend restart. So a message sitting in the transcript before this handle's
+    # first ``await`` is delivered, not skipped.
     loop = asyncio.get_event_loop()
     deadline = loop.time() + (timeout if timeout > 0 else _MAX_WAIT_S)
     while True:
         records = persister.log.records
-        i = state.cursor
+        i = persister.log.position(handle)
         while i < len(records):
             record = records[i]
             i += 1
             if _addressed_to(record.content, handle):
-                state.cursor = i
-                state.last_tick = record.content
+                persister.advance_cursor(handle, i)
+                _last_tick[key] = record.content
                 room_channels.manager.refresh_lease(room_name, handle)
                 return _describe(room_name, handle, record)
-        state.cursor = len(records)
+        # Nothing addressed in the scanned range: consume it (advance past the
+        # observer/broadcast turns this handle doesn't await) and keep polling.
+        persister.advance_cursor(handle, len(records))
         if loop.time() >= deadline:
             return {"room": room_name, "handle": handle, "message": None}
         room_channels.manager.refresh_lease(room_name, handle)
@@ -186,24 +182,29 @@ class ReplyBody(BaseModel):
 
 
 @router.post("/reply")
-async def post_reply(room_name: str, body: ReplyBody):
+async def post_reply(room_name: str, body: ReplyBody, request: Request):
     """Publish ``handle``'s reply as an L9 agent exchange the aligner scores."""
     if not room_exists(room_name):
         raise HTTPException(status_code=404, detail="Room not found")
+    # A verified token names the replier; unauthenticated, the body's handle does.
+    # Either way it is resolved here, so the transcript sender and the L9 actor
+    # below are the same handle the room-membership guard passed. Delegation-aware
+    # (owner/allow_from), matching await_message's authorize_handle just below —
+    # an agent's owner can reply on its behalf, not just watch for its turns.
+    handle = actor.bind_delegated_actor(request, room_name, body.handle, field="handle")
     # The reply rides as sender_role="agent", so the handle must be a real
     # principal — a registered agent or a known user — and never an engine
     # (engines aren't impersonable). Guard before provisioning a channel.
-    reason = principals.post_rejection_reason(room_name, body.handle, allow_unregistered=False)
+    reason = principals.post_rejection_reason(room_name, handle, allow_unregistered=False)
     if reason:
         raise HTTPException(status_code=403, detail=reason)
     managed = await room_channels.manager.provision(room_name)
-    room_channels.manager.refresh_lease(room_name, body.handle)
+    room_channels.manager.refresh_lease(room_name, handle)
     if managed is None or managed.persister is None:
         raise HTTPException(status_code=503, detail="No live channel for room")
 
     payload_data, clean = _parse_marker(body.text)
-    st = _await_state.get((room_name, body.handle))
-    woke = (st.last_tick if st else None) or {}
+    woke = _last_tick.get((room_name, handle)) or {}
     woke_header = (woke.get("l9") or {}).get("header") or {}
     woke_msg = woke_header.get("message") or {}
     woke_actors = (woke_header.get("participants") or {}).get("actors") or []
@@ -217,7 +218,7 @@ async def post_reply(room_name: str, body: ReplyBody):
     envelope = l9.build_envelope(
         kind=Kind.exchange,
         episode=episode,
-        sender=body.handle,
+        sender=handle,
         sender_role="agent",
         recipients=[tick_sender] if tick_sender else [l9.SYSTEM_ACTOR_ID],
         topic=topic,
@@ -232,10 +233,21 @@ async def post_reply(room_name: str, body: ReplyBody):
     # ``list_write=True`` so the reply is visible in the room view immediately, the
     # same store a ``room send`` broadcast lands in (no store divergence).
     managed.persister.ingest_local(envelope, content, list_write=True)
-    try:
-        await managed.channel.send(envelope, extra={"content": clean})
-    except Exception:
-        pass
+    # Under an identity tier (#666), send through the actor's **custodial session**
+    # so the wire sender is @handle's own MLS identity — cryptographic, not
+    # backend-stamped. The moderator receives that real MLS message and dedups it
+    # against the ``ingest_local`` above by message id, so the transcript stays
+    # single-copy. A session that can't be stood up falls back to a moderator
+    # broadcast (attribution degrades to app-level for that one message; liveness is
+    # preserved). Under the PSK default ``send_as_custodian`` is a no-op and this is
+    # the prior moderator send.
+    wire = serialize_envelope(envelope, extra={"content": clean})
+    sent_as_actor = await room_channels.manager.send_as_custodian(room_name, handle, wire)
+    if not sent_as_actor:
+        try:
+            await managed.channel.send(envelope, extra={"content": clean})
+        except Exception:
+            pass
     # herdr wake-on-mention, agent→agent leg: a reply that tags another handle
     # should wake it the same as a human's tag does. Shares the one hook the
     # human POST /messages path uses; ``exclude`` skips a self-mention so a reply
@@ -243,6 +255,6 @@ async def post_reply(room_name: str, body: ReplyBody):
     room_channels.manager.enqueue_herdr_wakes_for_mentions(room_name, clean, exclude=body.handle)
     return {
         "room": room_name,
-        "handle": body.handle,
+        "handle": handle,
         "message_id": envelope.header.message.id if envelope.header.message else None,
     }

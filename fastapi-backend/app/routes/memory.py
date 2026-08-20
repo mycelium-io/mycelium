@@ -40,7 +40,7 @@ from app.schemas import (
     SubscriptionCreate,
     SubscriptionRead,
 )
-from app.services import local_state, search_index
+from app.services import actor, links, local_state, memory_sync, search_index
 from app.services.embedding import embed_text
 from app.services.filesystem import (
     delete_memory_file,
@@ -56,6 +56,12 @@ from app.services.search_index import stable_memory_id
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/rooms/{room_name}/memory", tags=["memory"])
+
+# Frontmatter the store owns. Everything else in a memory's frontmatter is user
+# data: it survives a rewrite, and a caller can set it via ``MemoryCreate.meta``.
+MANAGED_META = frozenset(
+    {"key", "created_by", "updated_by", "version", "created_at", "updated_at", "tags", "value"}
+)
 
 
 def _require_room(room_name: str) -> None:
@@ -117,14 +123,94 @@ def _notify_change(room_name: str, key: str, updated_by: str, version: int) -> N
             bus.publish(agent_channel(sub.subscriber), payload)
 
 
+# Strong refs for the fire-and-forget broadcasts below — an unreferenced
+# asyncio task can be garbage-collected mid-flight (mirrors
+# RoomChannelManager._tasks / PlanSyncEngine._tasks).
+_broadcast_tasks: set[asyncio.Task[Any]] = set()
+
+
+def _broadcast_memory_write(
+    room_name: str,
+    *,
+    key: str,
+    content: str,
+    version: int,
+    base_version: int | None,
+    created_by: str,
+    updated_by: str,
+    updated_at: str,
+) -> None:
+    """Schedule an ``extraction`` knowledge push mirroring a direct memory write.
+
+    Fire-and-forget: the write has already landed on disk and in the index, so a
+    broadcast failure must never surface as a write failure. A room with no live
+    channel is a silent no-op, same as the plan-sync consumer.
+    """
+    from app.services import room_channels
+
+    managed = room_channels.manager.get(room_name)
+    if managed is None:
+        return
+    write = memory_sync.KnowledgeWrite(
+        key=key,
+        content=content,
+        version=version,
+        base_version=base_version,
+        created_by=created_by,
+        updated_by=updated_by,
+        updated_at=updated_at,
+    )
+    recipients = room_channels.manager.members(room_name)
+    task = asyncio.create_task(_send_memory_write_knowledge(room_name, managed, write, recipients))
+    _broadcast_tasks.add(task)
+    task.add_done_callback(_broadcast_tasks.discard)
+
+
+async def _send_memory_write_knowledge(
+    room_name: str, managed: Any, write: memory_sync.KnowledgeWrite, recipients: list[str]
+) -> None:
+    """Broadcast ``write`` on the room channel and record it locally.
+
+    ``ingest_local`` makes the transcript/UI bus see it even if SLIM never loops
+    the broadcast back; it only records, so it cannot re-enter this write path.
+    """
+    from app.services.l9_slim import serialize_content
+
+    envelope = memory_sync.build_knowledge_envelope(
+        room=room_name,
+        write=write,
+        recipients=recipients,
+        subkind=memory_sync.MEMORY_WRITE_SUBKIND,
+    )
+    content = serialize_content(envelope, extra={"content": f"memory updated → {write.key}"})
+    try:
+        await managed.channel.send(envelope, extra={"content": content["content"]})
+    except Exception:
+        logger.warning("failed to broadcast memory-write knowledge on room %s", room_name)
+    if managed.persister is not None:
+        managed.persister.ingest_local(envelope, content)
+
+
 @router.post("", response_model=list[MemoryRead], status_code=201)
-async def create_memories(room_name: str, payload: MemoryBatchCreate):
+async def create_memories(room_name: str, payload: MemoryBatchCreate, request: Request):
     """Create or upsert one or more memories (batch: 1-100 items).
 
     Writes markdown files to ``.mycelium/rooms/{room_name}/`` and updates the
     JSONL search index. Conflict policy: last-write-wins ordered by the memory's
     incrementing ``version``; a write against a stale ``base_version`` is
     rejected with the current content + who/when last wrote it.
+    """
+    for item in payload.items:
+        item.created_by = actor.bind_actor(request, item.created_by, field="created_by")
+    return await upsert_memories(room_name, payload)
+
+
+async def upsert_memories(room_name: str, payload: MemoryBatchCreate) -> list[MemoryRead]:
+    """The write itself, with ``created_by`` already resolved to its true author.
+
+    Split from the route so backend-owned writers (the synthesizer, an engine
+    manifest) reuse the one correct upsert without routing their actor through a
+    request body they never had.
     """
     _require_room(room_name)
     room_dir = get_room_dir(room_name)
@@ -171,10 +257,19 @@ async def create_memories(room_name: str, payload: MemoryBatchCreate):
             created_by = item.created_by
             created_at = now
 
+        # Frontmatter the store doesn't manage is user data — carry it forward so
+        # a content update doesn't silently drop a page's `expandable: true` or
+        # its typed relations — then overlay whatever this write supplies.
+        extra_meta: dict[str, Any] = {
+            k: v for k, v in existing_meta.items() if k not in MANAGED_META
+        }
+        if item.meta:
+            extra_meta.update({k: v for k, v in item.meta.items() if k not in MANAGED_META})
+
         # Persist structured values into frontmatter so non-text keys survive
         # the round-trip (the markdown body only carries the ``text``/rendering).
-        extra_meta: dict[str, Any] = {}
-        if set(value.keys()) != {"text"}:
+        structured = set(value.keys()) != {"text"}
+        if structured:
             extra_meta["value"] = value
 
         write_memory_file(
@@ -202,7 +297,7 @@ async def create_memories(room_name: str, payload: MemoryBatchCreate):
                 "room_name": room_name,
                 "content_text": content_text,
                 "embedding": embedding,
-                "value": value if extra_meta else None,
+                "value": value if structured else None,
                 "created_by": created_by,
                 "updated_by": item.created_by,
                 "version": new_version,
@@ -214,6 +309,7 @@ async def create_memories(room_name: str, payload: MemoryBatchCreate):
                 "file_path": f"rooms/{room_name}/{item.key}.md",
             },
         )
+        links.upsert(room_name, item.key, extra_meta, body)
 
         results.append(
             MemoryRead(
@@ -232,6 +328,16 @@ async def create_memories(room_name: str, payload: MemoryBatchCreate):
             )
         )
         _notify_change(room_name, item.key, item.created_by, new_version)
+        _broadcast_memory_write(
+            room_name,
+            key=item.key,
+            content=body.rstrip("\n") + "\n",
+            version=new_version,
+            base_version=current_version if existing else None,
+            created_by=created_by,
+            updated_by=item.created_by,
+            updated_at=now.isoformat(),
+        )
 
     for embedded in write_metrics:
         record_memory_write(scope="namespace", embedded=embedded)
@@ -373,5 +479,6 @@ async def delete_memory(room_name: str, key: str):
     room_dir = get_room_dir(room_name)
     file_deleted = delete_memory_file(room_dir, key)
     index_deleted = search_index.remove(room_name, key)
+    links.remove(room_name, key)
     if not file_deleted and not index_deleted:
         raise HTTPException(status_code=404, detail="Memory not found")

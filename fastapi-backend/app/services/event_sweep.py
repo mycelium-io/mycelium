@@ -37,7 +37,7 @@ async def _sweep_loop() -> None:
     while True:
         try:
             await sweep_expired_events()
-        except Exception:  # keep the loop alive across transient DB errors
+        except Exception:  # keep the loop alive
             logger.exception("event sweep iteration failed")
         await asyncio.sleep(SWEEP_INTERVAL_SECONDS)
 

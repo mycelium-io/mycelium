@@ -5,7 +5,11 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { CurrentUserProvider } from "@/components/current-user";
+import { AuthSessionProvider } from "@/components/auth-session";
+import { LoginGate } from "@/components/login-gate";
+import { KeymapProvider } from "@/components/keymap-provider";
 import { NotificationsProvider } from "@/components/notifications-provider";
+import { SWRProvider } from "@/components/swr-provider";
 
 export const metadata: Metadata = {
   title: "mycelium",
@@ -24,9 +28,26 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className="min-h-screen bg-bg text-text antialiased">
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange>
-          <CurrentUserProvider>
-            <NotificationsProvider>{children}</NotificationsProvider>
-          </CurrentUserProvider>
+          {/* One cache for every room read below, above the router so it
+              survives navigation between rooms. */}
+          <SWRProvider>
+            <CurrentUserProvider>
+              <AuthSessionProvider>
+                {/* Gate the whole app: when the backend requires auth and
+                    there's no session, this renders the sign-in screen instead
+                    of the shell (and its silently-empty room lists). Inert when
+                    the gate is off. */}
+                <LoginGate>
+                  <NotificationsProvider>
+                    {/* Above the pages, not inside a page's shell: a page
+                        registers its own bindings, so it has to sit under the
+                        provider. */}
+                    <KeymapProvider>{children}</KeymapProvider>
+                  </NotificationsProvider>
+                </LoginGate>
+              </AuthSessionProvider>
+            </CurrentUserProvider>
+          </SWRProvider>
         </ThemeProvider>
       </body>
     </html>

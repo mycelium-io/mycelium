@@ -45,7 +45,6 @@ def test_parse_mentions_maps_tokens_and_ignores_emails():
 def _manager_with_channel(
     members: set[str] | None = None,
 ) -> tuple[RoomChannelManager, ManagedRoomChannel]:
-    """A manager whose room has a faked, always-'live' channel + persister."""
     manager = RoomChannelManager(endpoint="http://127.0.0.1:46357", default_workspace="mycelium")
     channel = MagicMock()
     channel.send = AsyncMock()
@@ -69,18 +68,18 @@ def _manager_with_channel(
 async def test_publish_human_maps_recipients_wakes_present_invites_absent():
     manager, managed = _manager_with_channel(members={"agent-x"})
 
-    result = await manager.publish_human(_ROOM, sender="julia", text="@agent-x @agent-y ship it")
+    result = await manager.publish_human(_ROOM, sender="avery", text="@agent-x @agent-y ship it")
 
     assert result is not None
-    # Both mentions become L9 recipients (the semantic "to").
+    # Mentions map to L9 recipients.
     assert result.recipients == ["agent-x", "agent-y"]
 
-    # The broadcast carried an exchange whose recipients are exactly the mentions.
+    # Exchange recipients match the mentions.
     channel_send = cast(MagicMock, managed.channel.send)
     channel_send.assert_awaited_once()
     envelope = channel_send.await_args.args[0]
     actor_ids = [a.id for a in envelope.header.participants.actors]
-    assert actor_ids == ["julia", "agent-x", "agent-y"]
+    assert actor_ids == ["avery", "agent-x", "agent-y"]
     assert envelope.header.kind.value == "exchange"
 
     # Persister ingests the message locally exactly once (transcript + bus feed).
@@ -94,7 +93,7 @@ async def test_publish_human_maps_recipients_wakes_present_invites_absent():
 @pytest.mark.asyncio
 async def test_publish_human_returns_none_without_a_live_channel():
     manager = RoomChannelManager(endpoint="http://127.0.0.1:46357", default_workspace="mycelium")
-    assert await manager.publish_human("no-such-room", sender="julia", text="@x hi") is None
+    assert await manager.publish_human("no-such-room", sender="avery", text="@x hi") is None
 
 
 @pytest.mark.asyncio
@@ -105,7 +104,7 @@ async def test_publish_human_treats_await_lease_holder_as_present():
     manager, _managed = _manager_with_channel(members=set())
     manager.refresh_lease(_ROOM, "workpc")  # an active `await` long-poll
 
-    result = await manager.publish_human(_ROOM, sender="julia", text="@workpc ping")
+    result = await manager.publish_human(_ROOM, sender="avery", text="@workpc ping")
 
     assert result is not None
     assert result.invites == []  # present via lease → wake, no consent prompt
@@ -131,7 +130,7 @@ async def test_absent_invite_accept_joins():
     invite_mock = AsyncMock(return_value=True)
     manager.invite = invite_mock  # type: ignore[method-assign]
 
-    result = await manager.publish_human(_ROOM, sender="julia", text="@bob take a look")
+    result = await manager.publish_human(_ROOM, sender="avery", text="@bob take a look")
     assert result is not None
     invite = result.invites[0]
     assert manager.pending_invites(_ROOM) == [invite]
@@ -150,7 +149,7 @@ async def test_absent_invite_decline_does_not_join():
     invite_mock = AsyncMock(return_value=True)
     manager.invite = invite_mock  # type: ignore[method-assign]
 
-    result = await manager.publish_human(_ROOM, sender="julia", text="@carol ?")
+    result = await manager.publish_human(_ROOM, sender="avery", text="@carol ?")
     assert result is not None
     invite = result.invites[0]
 
@@ -170,7 +169,7 @@ async def test_mid_episode_invite_is_queued_then_flushed_on_close():
     manager.invite = invite_mock  # type: ignore[method-assign]
     manager.open_episode(_ROOM, "urn:ioc:mycelium:episode:step6-room:e1")
 
-    result = await manager.publish_human(_ROOM, sender="julia", text="@dave join us")
+    result = await manager.publish_human(_ROOM, sender="avery", text="@dave join us")
     assert result is not None
     invite = result.invites[0]
 
@@ -189,8 +188,8 @@ async def test_mid_episode_invite_is_queued_then_flushed_on_close():
 
 def test_request_invite_returns_none_for_present_member():
     manager, _managed = _manager_with_channel(members={"agent-x"})
-    assert manager.request_invite(_ROOM, "agent-x", requested_by="julia") is None
-    assert manager.request_invite(_ROOM, room_channels.BACKEND_AGENT, requested_by="julia") is None
+    assert manager.request_invite(_ROOM, "agent-x", requested_by="avery") is None
+    assert manager.request_invite(_ROOM, room_channels.BACKEND_AGENT, requested_by="avery") is None
 
 
 # ── cross-host consent: the invitee is addressed by identity, not by host ──────
@@ -218,7 +217,7 @@ async def test_accept_invites_remote_agent_by_identity_only(monkeypatch):
     cast(MagicMock, managed.client).invite = AsyncMock()  # the real manager.invite() path runs
     cast(MagicMock, managed.persister).note_join.return_value = False  # no re-serve
 
-    result = await manager.publish_human(_ROOM, sender="julia", text="@remote-bob join us")
+    result = await manager.publish_human(_ROOM, sender="avery", text="@remote-bob join us")
     assert result is not None
     invite = result.invites[0]
     assert invite.agent == "remote-bob"
@@ -245,7 +244,7 @@ async def test_own_agent_mention_outside_episode_invites_immediately(monkeypatch
     bg = MagicMock()
     manager.invite_in_background = bg  # type: ignore[method-assign]
 
-    result = await manager.publish_human(_ROOM, sender="julia", text="@mine hi")
+    result = await manager.publish_human(_ROOM, sender="avery", text="@mine hi")
 
     assert result is not None
     assert result.invites == []  # own agent → no consent prompt
@@ -266,7 +265,7 @@ async def test_own_agent_mention_mid_episode_is_queued_not_invited(monkeypatch):
     manager.invite_in_background = bg  # type: ignore[method-assign]
     manager.open_episode(_ROOM, "urn:ioc:mycelium:episode:step6-room:e1")
 
-    result = await manager.publish_human(_ROOM, sender="julia", text="@mine come help")
+    result = await manager.publish_human(_ROOM, sender="avery", text="@mine come help")
 
     assert result is not None
     assert result.invites == []  # own agent → no consent prompt surfaced
@@ -293,7 +292,7 @@ async def test_episode_abort_ingests_locally_and_flushes_queue():
     manager.open_episode(_ROOM, "urn:ioc:mycelium:episode:step6-room:e1")
 
     # A consent invite accepted mid-episode is deferred (queued).
-    result = await manager.publish_human(_ROOM, sender="julia", text="@dave join")
+    result = await manager.publish_human(_ROOM, sender="avery", text="@dave join")
     assert result is not None
     invite = result.invites[0]
     await manager.accept_invite(invite.id)

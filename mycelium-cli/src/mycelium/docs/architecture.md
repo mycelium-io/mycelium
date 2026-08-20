@@ -20,25 +20,28 @@ machine) owns the whole agent workflow.
 A second, optional mode for small teams that want to share memory, rooms,
 and coordination across machines. One machine runs the SLIM node and
 backend (the **hub**); other machines run only the CLI + agents (**spokes**)
-and connect to the hub's channel.
+as **thin HTTP clients** to the hub API.
 
 | Role  | What runs locally | When to use |
 |-------|-------------------|-------------|
 | **Hub**   | The SLIM node + the thin FastAPI backend (room moderator). | The team's shared coordination server. One per team. |
-| **Spoke** | CLI + agents only. Points at the hub's SLIM address. | Each teammate's laptop. Agents on the spoke participate in shared rooms hosted by the hub. |
+| **Spoke** | CLI + agents only. Points `server.api_url` at the hub backend. | Each teammate's laptop. Memory and participation go over HTTP `:8000`. |
 
-Stand a hub up and point spokes at it:
+Stand a hub up and point spokes at the **backend** (required):
 
 ```bash
-# On the hub: starts the SLIM node + backend, prints the connect address
+# On the hub: starts the SLIM node + backend
 mycelium hub host
+mycelium up
 
-# On each spoke: point this machine at the hub's channel
-mycelium hub connect http://<hub-ip>:46357
+# On each spoke: point at the hub's HTTP API
+mycelium config set server.api_url http://<hub-ip>:8000
 ```
 
-See the [Hub & Spoke Setup guide](#hub-and-spoke) for step-by-step
-instructions.
+Spokes do not need `MYCELIUM_SLIM_MASTER_SECRET` for the default path. The
+SLIM/MLS fabric is hub-side; spokes use `await`/`respond` over HTTP. See
+[Security Planes](#security-planes) and the [Hub & Spoke Setup guide](#hub-and-spoke)
+for step-by-step instructions.
 
 `mycelium doctor` auto-detects which mode you're in by looking at
 `server.api_url` in `~/.mycelium/config.toml`: if it points to
@@ -51,18 +54,20 @@ mycelium doctor --mode spoke   # force spoke checks (skip local-only)
 mycelium doctor --mode auto    # default; detect from api_url
 ```
 
-### Syncing room files (remote backend)
+### Reading a remote room (spoke)
 
-When the backend runs on a remote server (EC2, Raspberry Pi, a hub), room files
-sync via the HTTP API. The adapter does not auto-sync; run `mycelium sync`
-yourself when you want fresh state.
+When the backend runs on a remote server (EC2, Raspberry Pi, a hub), a spoke is
+a **thin client**: `mycelium memory` and `mycelium room` resolve against the hub
+over HTTP, so reads are always fresh and there is **no sync step**: nothing is
+mirrored locally to fall out of date.
+
+`room clone` / `mycelium sync` remain only as an explicit **export**: a
+point-in-time local snapshot for backup or offline reference, not part of the
+normal flow.
 
 ```bash
-# Clone a room from a remote backend
+# Optional: export a point-in-time snapshot of a room to local files
 mycelium room clone my-project --from http://ec2-host:8000
-
-# Fetch all memories from the backend and write local files
-mycelium sync
 ```
 
 ## Stack
@@ -70,17 +75,18 @@ mycelium sync
 Mycelium runs on **one SLIM node** and a thin backend: no database, no
 message broker, no vector store.
 
-Agents coordinate over an [AGNTCY SLIM](https://github.com/agntcy) group
-channel, one per room: an MLS-encrypted group with shared-secret PSK auth.
-The backend is each room's **moderator**; agents (and the human, by proxy)
-are members. Room state lives on disk as markdown files; search runs against a
-local embedding index. Coordination messages ride SLIM as additive
-[L9 envelopes](#l9-protocol).
+The hub backend moderates an [AGNTCY SLIM](https://github.com/agntcy) group
+channel per room (MLS-encrypted; PSK or SignerJwt/SPIRE on the **SLIM plane**).
+Turn-based agents on spokes (and humans by proxy) participate over **HTTP** —
+the backend holds server-side presence and serves turns from the durable
+transcript. Room state lives on the hub as markdown files; search runs against
+a local embedding index. Every spoke reads and writes that state over HTTP.
+Coordination messages on the fabric ride SLIM as additive [L9 envelopes](#l9-protocol).
 
 | Layer | Technology | Used for |
 |-------|-----------|----------|
 | Messaging | one SLIM node (MLS group channels) | per-room encrypted coordination fabric |
-| State | markdown files under `~/.mycelium/rooms/{room}/` | rooms, memories, plan: the source of truth |
+| State | markdown files on the hub, under `~/.mycelium/rooms/{room}/` | rooms, memories, plan: the source of truth |
 | Search | local ONNX embedding index (JSONL) | ~384-dim semantic recall, no external service |
 | Protocol | L9 envelopes over SLIM | `exchange` ticks/replies, `commit:*`, `knowledge` |
 | Cognition | the aligner (Pi + NEGMAS) | drives the negotiation (see [aligner](#aligner)) |
@@ -90,7 +96,7 @@ local embedding index. Coordination messages ride SLIM as additive
 | CLI | Typer + Rich | agent interface |
 | Frontend | Next.js + Tailwind | frontend UI |
 
-**Participation is a CLI primitive.** Any already-awake caller joins a room and
+**Participation is built into the CLI.** Any already-awake caller joins a room and
 coordinates with two stateless HTTP calls. The backend holds membership via a
 presence lease and a durable transcript cursor, so ticks are never missed
 between turns:
@@ -104,7 +110,7 @@ mycelium respond --room my-project --handle me "moving toward 30% …"
 ```
 
 **An agent is a resident runtime.** A participant is your own live Claude Code or
-Cursor session. It just loops the participation calls itself — no wrapper, no
+Cursor session. It just loops the participation calls itself: no wrapper, no
 separate process, no shelling out:
 
 ```bash
@@ -116,13 +122,13 @@ mycelium respond --room my-project --handle me "moving toward 30% …"
 
 The loop *is* the wake: await → reason → respond → await. The session does the
 reasoning **in its own head**; `respond` just posts it. There is no daemon and no
-cold-spawn; agents never speak SLIM or L9 directly.
+cold-spawn, and agents never speak SLIM or L9 directly.
 
-For a **headless** agent — no interactive session sitting there to hold the loop —
+For a **headless** agent (no interactive session sitting there to hold the loop),
 `mycelium await --loop --exec <cmd>` runs the loop for you and hands each turn to
 `<cmd>` (turn JSON on stdin); `<cmd>` is your reasoning runtime and calls
 `respond`. Point it at a **persistent** runtime (e.g. an Agent-SDK session) so
-context accumulates across turns — a throwaway one-shot per turn would just rebuild
+context accumulates across turns; a throwaway one-shot per turn would just rebuild
 the amnesiac cold-spawn this design replaced.
 
 An `@`-mention to a handle with no resident runtime simply waits on the durable
@@ -142,10 +148,10 @@ the room's memory into a shared briefing. See [engines](#engines),
 Mycelium integrates with AI coding agents via adapters. The coordination model is
 the same regardless of adapter: join, await, respond.
 
-| Adapter | Status |
+| Adapter | How it connects |
 |---------|--------|
-| **claude_code** | proven; the supported path today |
-| **cursor** | untested / unverified |
+| **claude_code** | Skill + resident await/respond loop |
+| **cursor** | Workspace rules + the same resident loop |
 
 ### Claude Code
 
@@ -162,12 +168,12 @@ The adapter is skill-only.
 A Claude Code session participates as a resident runtime: it loops `mycelium
 await` → reason → `mycelium respond`, picking up each `@handle` mention on its
 next turn and answering in its own context. (For a headless, unattended agent,
-`mycelium await --loop --exec <cmd>` runs that loop for you — see above.)
+`mycelium await --loop --exec <cmd>` runs that loop for you; see above.)
 
-### Cursor (untested)
+### Cursor
 
 Same resident model as Claude Code: a Cursor session loops `await` → reason →
-`respond`. This path is present but not yet verified end-to-end.
+`respond`.
 
 ```bash
 mycelium adapter add cursor   # installs the workspace rule + AGENTS.md assets

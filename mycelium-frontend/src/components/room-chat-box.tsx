@@ -3,10 +3,12 @@
 
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import TextareaAutosize from "react-textarea-autosize";
 import { ArrowUp } from "lucide-react";
-import { fetchRoomAgents, logFetchError, sendRoomMessage, type AgentSummary } from "@/lib/api";
+import { sendRoomMessage, type Memory } from "@/lib/api";
+import { useRoomMemories, useRoomRoster, useRoomSkills } from "@/lib/room-data";
+import { useKeyAction } from "@/components/keymap-provider";
 import { useCurrentUser } from "@/components/current-user";
 
 interface Props {
@@ -14,6 +16,59 @@ interface Props {
   /** Fired after a successful POST so the parent can refresh the event stream. */
   onSent?: () => void;
   className?: string;
+}
+
+// Three sigils, three vocabularies, one composer (#618, #619):
+//   @   → agents        → inserts `@handle`
+//   [[  → memories      → inserts `[[key]]` (resolves to myc://, clickable in chat)
+//   /   → skills        → inserts `/name`
+// Each detects an in-flight token by the cursor's prefix, offers a candidate
+// popover, and inserts on select — the same machinery the `@` mention always had.
+type TriggerKind = "agent" | "memory" | "skill";
+
+interface Trigger {
+  kind: TriggerKind;
+  /** Index where the sigil begins (`@`, `[[`, or `/`) — the start of the replaced span. */
+  start: number;
+  /** Cursor position (the end of the replaced span). */
+  end: number;
+  query: string;
+}
+
+/** A normalized popover row, so rendering is uniform across the three sigils. */
+interface Candidate {
+  /** Stable React key. */
+  id: string;
+  /** The full token written into the message on select, e.g. `@bob`, `[[decisions/db]]`, `/summarize`. */
+  insert: string;
+  /** Monospace accent label (the token itself). */
+  primary: string;
+  /** Dim qualifier (adapter, "memory", "skill"). */
+  secondary: string;
+  /** Optional trailing description. */
+  tertiary?: string;
+}
+
+/** Detect an in-flight trigger from the cursor's prefix. Order matters: `[[`
+ *  is checked before `/` and `@` since a memory key can itself contain slashes. */
+function detectTrigger(prefix: string, cursor: number): Trigger | null {
+  const mem = prefix.match(/\[\[([^\]\n]*)$/);
+  if (mem) {
+    return { kind: "memory", start: cursor - mem[1].length - 2, end: cursor, query: mem[1] };
+  }
+  const agent = prefix.match(/(?:^|\s)@([a-z0-9._-]*)$/i);
+  if (agent) {
+    return { kind: "agent", start: cursor - agent[1].length - 1, end: cursor, query: agent[1].toLowerCase() };
+  }
+  const skill = prefix.match(/(?:^|\s)\/([a-z0-9._-]*)$/i);
+  if (skill) {
+    return { kind: "skill", start: cursor - skill[1].length - 1, end: cursor, query: skill[1].toLowerCase() };
+  }
+  return null;
+}
+
+function memoryKey(m: Memory): string {
+  return m.key;
 }
 
 export function RoomChatBox({ roomName, onSent, className }: Props) {
@@ -24,57 +79,100 @@ export function RoomChatBox({ roomName, onSent, className }: Props) {
   const { principal } = useCurrentUser();
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [agents, setAgents] = useState<AgentSummary[]>([]);
-  const [mention, setMention] = useState<{ start: number; query: string } | null>(null);
+  const [trigger, setTrigger] = useState<Trigger | null>(null);
   const [highlight, setHighlight] = useState(0);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
-  const refreshAgents = useCallback(() => {
-    fetchRoomAgents(roomName).then(setAgents).catch((err) => {
-      logFetchError("fetchRoomAgents")(err);
-      setAgents([]);
-    });
-  }, [roomName]);
+  // `@` reaches everyone in the room, off the same roster the Members rail
+  // renders; `[[` reads the room's memory keys and `/` its skills. All three
+  // are shared reads — opening a room fetches each of them once, however many
+  // panels are looking.
+  const { agents, people } = useRoomRoster(roomName);
+  const { memories } = useRoomMemories(roomName);
+  const { skills } = useRoomSkills(roomName);
 
-  useEffect(() => {
-    refreshAgents();
-    const t = setInterval(refreshAgents, 30_000);
-    return () => clearInterval(t);
-  }, [refreshAgents]);
+  // The composer is a keybind target. Focus lands on the next frame because the
+  // same keypress may be switching the channel pane back into view, and a
+  // hidden textarea can't take focus.
+  useKeyAction("focus.chat", () => {
+    requestAnimationFrame(() => inputRef.current?.focus());
+  });
 
-  // Detect an in-flight @-mention by looking at the cursor's prefix.
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const next = e.target.value;
     setContent(next);
     const cursor = e.target.selectionStart ?? next.length;
-    const prefix = next.slice(0, cursor);
-    const match = prefix.match(/(?:^|\s)@([a-z0-9._-]*)$/i);
-    if (match) {
-      setMention({ start: cursor - match[1].length - 1, query: match[1].toLowerCase() });
-      setHighlight(0);
-    } else {
-      setMention(null);
-    }
+    const found = detectTrigger(next.slice(0, cursor), cursor);
+    setTrigger(found);
+    if (found) setHighlight(0);
   };
 
-  const candidates = useMemo(() => {
-    if (mention === null) return [];
-    if (!mention.query) return agents.slice(0, 6);
-    return agents
-      .filter((a) => a.handle.toLowerCase().startsWith(mention.query))
-      .slice(0, 6);
-  }, [agents, mention]);
+  // Agents first, then people — the roster's order, labelled for the popover.
+  const mentionRoster = useMemo(
+    () => [
+      ...agents.map((a) => ({
+        handle: a.handle,
+        secondary: a.adapter === "engine" && a.kind ? `engine · ${a.kind}` : a.adapter,
+        tertiary: a.description as string | undefined,
+      })),
+      ...people.map((p) => ({
+        handle: p.handle,
+        secondary: p.you ? "you" : p.presence?.kind === "slim" ? "person · here" : "person",
+        tertiary: undefined as string | undefined,
+      })),
+    ],
+    [agents, people],
+  );
 
-  const acceptMention = useCallback(
-    (handle: string) => {
-      if (mention === null) return;
-      const before = content.slice(0, mention.start);
-      const after = content.slice(mention.start + 1 + mention.query.length);
-      const insertion = `@${handle} `;
+  const candidates = useMemo<Candidate[]>(() => {
+    if (trigger === null) return [];
+    if (trigger.kind === "agent") {
+      const pool = trigger.query
+        ? mentionRoster.filter((r) => r.handle.toLowerCase().startsWith(trigger.query))
+        : mentionRoster;
+      return pool.slice(0, 8).map((r) => ({
+        id: r.handle,
+        insert: `@${r.handle}`,
+        primary: `@${r.handle}`,
+        secondary: r.secondary,
+        tertiary: r.tertiary,
+      }));
+    }
+    if (trigger.kind === "memory") {
+      const q = trigger.query.toLowerCase();
+      const pool = q
+        ? memories.filter((m) => memoryKey(m).toLowerCase().includes(q))
+        : memories;
+      return pool.slice(0, 6).map((m) => ({
+        id: memoryKey(m),
+        insert: `[[${memoryKey(m)}]]`,
+        primary: `[[${memoryKey(m)}]]`,
+        secondary: "memory",
+        tertiary: `v${m.version} · ${m.created_by}`,
+      }));
+    }
+    // skill
+    const q = trigger.query;
+    const pool = q ? skills.filter((s) => s.name.toLowerCase().startsWith(q)) : skills;
+    return pool.slice(0, 6).map((s) => ({
+      id: s.name,
+      insert: `/${s.name}`,
+      primary: `/${s.name}`,
+      secondary: "skill",
+      tertiary: s.description || undefined,
+    }));
+  }, [mentionRoster, memories, skills, trigger]);
+
+  const accept = useCallback(
+    (candidate: Candidate) => {
+      if (trigger === null) return;
+      const before = content.slice(0, trigger.start);
+      const after = content.slice(trigger.end);
+      const insertion = `${candidate.insert} `;
       const next = `${before}${insertion}${after}`;
       setContent(next);
-      setMention(null);
-      // Restore the cursor after the inserted handle.
+      setTrigger(null);
+      // Restore the cursor after the inserted token.
       requestAnimationFrame(() => {
         const node = inputRef.current;
         if (!node) return;
@@ -83,7 +181,7 @@ export function RoomChatBox({ roomName, onSent, className }: Props) {
         node.setSelectionRange(pos, pos);
       });
     },
-    [content, mention],
+    [content, trigger],
   );
 
   const submit = useCallback(async () => {
@@ -95,7 +193,7 @@ export function RoomChatBox({ roomName, onSent, className }: Props) {
     try {
       await sendRoomMessage(roomName, { sender_handle: handle, content: body });
       setContent("");
-      setMention(null);
+      setTrigger(null);
       onSent?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -108,7 +206,7 @@ export function RoomChatBox({ roomName, onSent, className }: Props) {
   }, [content, onSent, roomName, principal, sending]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (mention !== null && candidates.length > 0) {
+    if (trigger !== null && candidates.length > 0) {
       if (e.key === "ArrowDown") {
         e.preventDefault();
         setHighlight((h) => (h + 1) % candidates.length);
@@ -121,12 +219,12 @@ export function RoomChatBox({ roomName, onSent, className }: Props) {
       }
       if (e.key === "Enter" || e.key === "Tab") {
         e.preventDefault();
-        acceptMention(candidates[highlight].handle);
+        accept(candidates[highlight]);
         return;
       }
       if (e.key === "Escape") {
         e.preventDefault();
-        setMention(null);
+        setTrigger(null);
         return;
       }
     }
@@ -139,31 +237,31 @@ export function RoomChatBox({ roomName, onSent, className }: Props) {
   return (
     <div data-tour="composer" className={`border-t border-border bg-bg px-4 py-3 flex-shrink-0${className ? ` ${className}` : ""}`}>
       <div className="relative">
-        {mention !== null && candidates.length > 0 && (
+        {trigger !== null && candidates.length > 0 && (
           <div className="absolute bottom-full left-0 mb-2 z-20 w-full max-w-md bg-elevated border border-border rounded-xl shadow-xl overflow-hidden p-1">
-            {candidates.map((a, i) => (
+            {candidates.map((c, i) => (
               <button
-                key={a.handle}
+                key={c.id}
                 type="button"
                 onMouseDown={(e) => {
                   // mouseDown so we don't lose textarea focus before the click
                   e.preventDefault();
-                  acceptMention(a.handle);
+                  accept(c);
                 }}
                 onMouseEnter={() => setHighlight(i)}
                 className={`w-full text-left px-2.5 py-1.5 rounded-lg flex items-baseline gap-2 transition-colors ${
                   i === highlight ? "bg-surface" : "hover:bg-surface/60"
                 }`}
               >
-                <span className="font-mono text-label text-accent flex-shrink-0">
-                  @{a.handle}
+                <span className="font-mono text-label text-accent flex-shrink-0 truncate max-w-[60%]">
+                  {c.primary}
                 </span>
                 <span className="text-micro text-muted-foreground flex-shrink-0">
-                  {a.adapter === "engine" && a.kind ? `engine · ${a.kind}` : a.adapter}
+                  {c.secondary}
                 </span>
-                {a.description && (
+                {c.tertiary && (
                   <span className="text-micro text-muted-foreground truncate min-w-0">
-                    · {a.description}
+                    · {c.tertiary}
                   </span>
                 )}
               </button>
@@ -177,7 +275,7 @@ export function RoomChatBox({ roomName, onSent, className }: Props) {
             value={content}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
-            placeholder="Message the room…  @ to mention an agent"
+            placeholder="Message the room…  @ mention · [[ memory · / skill"
             minRows={1}
             maxRows={10}
             className="w-full resize-none bg-transparent px-4 pt-3 pb-1.5 text-body text-text leading-relaxed focus:outline-none placeholder:text-muted-foreground"
@@ -197,7 +295,8 @@ export function RoomChatBox({ roomName, onSent, className }: Props) {
           </div>
         </div>
         <div className="mt-1.5 px-1 text-micro text-muted-foreground">
-          <kbd className="font-sans">Enter</kbd> to send · <kbd className="font-sans">Shift+Enter</kbd> for newline
+          <kbd className="font-sans">Enter</kbd> to send · <kbd className="font-sans">Shift+Enter</kbd> for newline ·{" "}
+          <kbd className="font-sans">Esc</kbd> for command mode
         </div>
       </div>
     </div>

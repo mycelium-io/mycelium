@@ -7,10 +7,19 @@ Minimal schemas for Mycelium's core models.
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
+
+# Two shape rules, deliberately distinct. A *handle* is an identity and can be
+# minted by a real IdP, so it allows the `@` a corporate SSO `preferred_username`
+# carries (e.g. `user@example.com`). A *slug* is a filename / composer trigger
+# token (skill names) and stays clean. The CLI (`mycelium/protocol.py`) and the
+# frontend (`acting-as-picker.tsx`) keep matching copies; the thin CLI can't
+# import this package.
+HANDLE_PATTERN = r"^[a-z0-9][a-z0-9._@-]*$"
+SLUG_PATTERN = r"^[a-z0-9][a-z0-9._-]*$"
 
 # ── Room ──────────────────────────────────────────────────────────────────────
 
@@ -115,7 +124,6 @@ class EventMetadata(BaseModel):
         # Stateful kinds open by default; the ledger needs a queryable status.
         if self.kind in STATEFUL_EVENT_KINDS and self.status is None:
             self.status = "open"
-        # source_event is stateless by definition.
         if self.kind == EVENT_KIND_SOURCE_EVENT and self.status is not None:
             raise ValueError("source_event is stateless — status must be null")
         return self
@@ -315,6 +323,16 @@ class MemoryCreate(BaseModel):
             "is rejected (409) with the current content. Omit for last-write-wins."
         ),
     )
+    meta: dict[str, Any] | None = Field(
+        None,
+        description=(
+            "Extra YAML frontmatter merged into the memory file — soft, typed, "
+            "user-extensible data such as 'expandable: true' or "
+            "'supersedes: decisions/db-v1'. Keys the store manages (key, version, "
+            "timestamps, authorship, tags, value) are ignored here. Frontmatter "
+            "already on disk is preserved across writes; this overlays it."
+        ),
+    )
 
 
 class MemoryBatchCreate(BaseModel):
@@ -355,6 +373,51 @@ class MemorySearchResponse(BaseModel):
     total: int
 
 
+# ── Skills (global, reusable invokable skills) ────────────────────────────────
+# Same grain as memory (markdown + frontmatter) but a distinct, project-level
+# store — skills are reusable across rooms. See app/services/skills.py.
+
+
+class SkillCreate(BaseModel):
+    name: str = Field(
+        ...,
+        min_length=1,
+        max_length=128,
+        pattern=SLUG_PATTERN,
+        description="Skill slug (kebab-case); the filename and the composer's /trigger token",
+    )
+    description: str = Field("", max_length=512, description="One-line summary shown in listings")
+    body: str = Field("", description="The skill's prose (SKILL.md-style instructions)")
+    tags: list[str] | None = None
+    created_by: str = Field(..., description="Handle creating this skill")
+    meta: dict[str, Any] | None = Field(
+        None,
+        description=(
+            "Extra YAML frontmatter merged into the skill file. Managed keys "
+            "(name, description, version, timestamps, authorship, tags) are ignored."
+        ),
+    )
+
+
+class SkillRead(BaseModel):
+    name: str
+    description: str = ""
+    body: str = ""
+    tags: list[str] | None = None
+    created_by: str
+    updated_by: str | None = None
+    version: int
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class SkillListResponse(BaseModel):
+    skills: list[SkillRead]
+    total: int
+
+
 # ── Principal (self-asserted user store) ──────────────────────────────────────
 # The human made first-class, symmetric with agents/<handle>. An agent's owner
 # points at a users/<handle>; a team groups these handles. Trust is self-asserted
@@ -362,7 +425,7 @@ class MemorySearchResponse(BaseModel):
 
 
 class UserCreate(BaseModel):
-    handle: str = Field(..., min_length=1, pattern=r"^[a-z0-9][a-z0-9._-]*$")
+    handle: str = Field(..., min_length=1, pattern=HANDLE_PATTERN)
     display_name: str = ""
     teams: list[str] = Field(default_factory=list)
     notify: str | None = None
@@ -523,3 +586,51 @@ class EpisodeListResponse(BaseModel):
 
 class EpisodeDetailRead(EpisodeSummaryRead):
     messages: list[L9EnvelopeRead] = Field(default_factory=list)
+
+
+# ── Cross-entity search ───────────────────────────────────────────────────────
+
+
+SearchResultType = Literal["room", "agent", "episode", "memory", "message"]
+
+
+class SearchScopeRead(BaseModel):
+    """How the server read the query's scoping tokens.
+
+    Echoed back so a caller draws its scope chips from the interpretation the
+    search actually ran under, rather than re-parsing the string itself.
+    """
+
+    text: str = ""
+    rooms: list[str] = Field(default_factory=list)
+    actors: list[str] = Field(default_factory=list)
+    types: list[SearchResultType] = Field(default_factory=list)
+    kinds: list[str] = Field(default_factory=list)
+
+
+class SearchHitRead(BaseModel):
+    """One result, flattened to the shape every entity type shares."""
+
+    type: SearchResultType
+    room: str
+    id: str = Field(
+        ...,
+        description="Type-specific identifier to navigate by: memory key, episode "
+        "short id, message uuid, room name, agent handle",
+    )
+    title: str
+    subtitle: str = ""
+    snippet: str = ""
+    kind: str | None = None
+    timestamp: str = ""
+    score: float
+
+
+class SearchResponse(BaseModel):
+    query: str
+    scope: SearchScopeRead
+    results: list[SearchHitRead] = Field(default_factory=list)
+    counts: dict[str, int] = Field(
+        default_factory=dict,
+        description="Matches per type before the result list was trimmed",
+    )

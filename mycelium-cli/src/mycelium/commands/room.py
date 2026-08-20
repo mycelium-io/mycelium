@@ -23,17 +23,30 @@ import os
 
 import typer
 
+from mycelium.client import hub_client
+from mycelium.client import typed_client as _typed_client
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
 from mycelium.error_handler import print_error
 from mycelium.exceptions import ConfigNotFoundError, MyceliumError
 
-
-def _typed_client(config: MyceliumConfig):
-    """Get a typed OpenAPI client."""
-    from mycelium_backend_client import Client
-
-    return Client(base_url=config.server.api_url, raise_on_unexpected_status=True)
+# The L9 "raise-up" whitelist: message types promoted onto the primary channel
+# surface (here, `room watch`'s live stream) rather than staying inspector-only.
+# Must mirror contracts/l9-surface.json's `raise_up_types` byte-for-byte; the
+# frontend (mycelium-frontend/src/components/event-stream.tsx) carries an
+# independent copy, and tests/test_l9_surface_contract.py asserts both stay in
+# sync with the contract so the two surfaces can't silently drift apart.
+# (`room watch` also renders CLI-native detail: ticks, session start, raw
+# memory_changed; that has no frontend-inspector equivalent to hide behind;
+# that detail is intentionally outside this shared list.)
+L9_RAISE_UP_TYPES = frozenset(
+    {
+        "coordination_join",
+        "coordination_consensus",
+        "plan_updated",
+        "l9_knowledge",
+    }
+)
 
 
 app = typer.Typer(
@@ -193,13 +206,9 @@ def create(
             result = create_api.sync(client=client, body=body)
             room_data = result.to_dict() if result and hasattr(result, "to_dict") else {}
 
-        # The backend now creates the directory, but also create locally
-        # in case the CLI is running on a different machine
-        from mycelium.filesystem import ensure_room_structure, get_room_dir
-
-        room_dir = get_room_dir(name)
-        ensure_room_structure(room_dir)
-
+        # The hub owns the room dir + store; a spoke keeps no local copy. Any
+        # local dir an agent needs (e.g. agents/ for a manifest) is created
+        # lazily on write, so nothing to pre-create here.
         if json_output:
             typer.echo(json_module.dumps(room_data, indent=2, default=str))
         else:
@@ -209,7 +218,6 @@ def create(
             )
             typer.echo(f"  ID:      {room_data.get('id')}")
             typer.echo(f"  Created: {str(room_data.get('created_at', ''))[:10]}")
-            typer.echo(f"  Path:    {room_dir}")
             typer.echo("")
             typer.echo(f"  Run 'mycelium room use {name}' to make it your active room")
 
@@ -338,8 +346,6 @@ def clone_room(
     """
     import json as _json
 
-    import httpx
-
     from mycelium.filesystem import (
         ensure_room_structure,
         get_mycelium_dir,
@@ -360,7 +366,7 @@ def clone_room(
 
         typer.echo(f"Cloning {room_name} from {api_url}...")
 
-        with httpx.Client(base_url=api_url, timeout=60) as client:
+        with hub_client(config, base_url=api_url, timeout=60) as client:
             resp = client.get(f"/api/rooms/{room_name}/memory", params={"limit": 1000})
             resp.raise_for_status()
             memories = resp.json()
@@ -405,7 +411,7 @@ def clone_room(
         # Reindex local copy against the configured backend
         typer.echo("Re-indexing...")
         try:
-            with httpx.Client(base_url=config.server.api_url, timeout=120) as client:
+            with hub_client(config, timeout=120) as client:
                 resp = client.post(f"/api/rooms/{room_name}/reindex")
                 resp.raise_for_status()
                 data = resp.json()
@@ -504,15 +510,14 @@ def _agent_owner_map(room_name: str) -> dict[str, str]:
         from mycelium.commands.agent import _room_manifests
 
         return {m.handle: m.owner for m in _room_manifests(room_name) if m.owner}
-    except Exception:  # noqa: BLE001 — attribution is best-effort, never fatal
+    except Exception:  # noqa: BLE001, attribution is best-effort, never fatal
         return {}
 
 
 def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
-    """Core SSE watch loop — pretty-renders coordination and memory events."""
+    """Core SSE watch loop: pretty-renders coordination and memory events."""
     import time
 
-    import httpx
     from rich.console import Console
     from rich.panel import Panel
     from rich.table import Table
@@ -604,6 +609,29 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
                 lines.append(f"[dim]{quality_line}[/]")
             return "\n".join(lines)
 
+        if mtype == "plan_updated":
+            kind = data.get("kind")
+            if kind == "task_toggled":
+                mark = "[green]✓[/]" if data.get("done") else "[dim]○[/]"
+                return f"  {ts()}  [bold]plan[/] {mark} [dim]{data.get('text', 'task')}[/]"
+            if kind == "task_added":
+                return f"  {ts()}  [bold]plan[/] + [dim]{data.get('text', 'task')}[/]"
+            if kind == "title_set":
+                by = data.get("updated_by")
+                suffix = f" [dim]by {by}[/]" if by else ""
+                return (
+                    f"  {ts()}  [bold]plan[/] title set to [dim]{data.get('title', '')}[/]{suffix}"
+                )
+            return f"  {ts()}  [bold]plan[/] updated"
+
+        if mtype == "l9_knowledge":
+            l9_payload = data.get("l9", {}).get("payload", {}).get("data", {})
+            key = l9_payload.get("key", "memory")
+            by = l9_payload.get("updated_by")
+            text = data.get("content") or f"{key} updated"
+            suffix = f" [dim]by {by}[/]" if by else ""
+            return f"  {ts()}  [yellow]knowledge[/] {text}{suffix}"
+
         if mtype == "memory_changed":
             key = data.get("key", "?")
             version = data.get("version", "?")
@@ -645,10 +673,8 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
     # coordination_join events are NOTIFY-only (not persisted), so we synthesize
     # them from the sessions list to ensure all participants are shown.
     try:
-        sess_resp = httpx.get(
-            f"{config.server.api_url}/api/rooms/{room_name}/sessions",
-            timeout=10,
-        )
+        with hub_client(config, timeout=10) as client:
+            sess_resp = client.get(f"/api/rooms/{room_name}/sessions")
         if sess_resp.status_code == 200:
             sess_body = sess_resp.json()
             participants = sess_body.get("sessions", [])
@@ -671,11 +697,8 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
         pass
 
     try:
-        hist_resp = httpx.get(
-            f"{config.server.api_url}/api/rooms/{room_name}/messages",
-            params={"limit": 50},
-            timeout=10,
-        )
+        with hub_client(config, timeout=10) as client:
+            hist_resp = client.get(f"/api/rooms/{room_name}/messages", params={"limit": 50})
         if hist_resp.status_code == 200:
             body = hist_resp.json()
             msgs = body.get("messages", body) if isinstance(body, dict) else body
@@ -686,10 +709,13 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
     except Exception:
         pass
 
-    url = f"{config.server.api_url}/api/rooms/{room_name}/messages/stream"
+    stream_path = f"/api/rooms/{room_name}/messages/stream"
     start = time.time()
 
-    with httpx.Client(timeout=None) as http, http.stream("GET", url) as response:
+    with (
+        hub_client(config, timeout=None) as http,
+        http.stream("GET", stream_path) as response,
+    ):
         for line in response.iter_lines():
             if timeout > 0 and (time.time() - start) >= timeout:
                 console.print(f"\n  [dim]Timeout after {timeout}s[/]")
@@ -752,7 +778,7 @@ def send(
     ctx: typer.Context,
     content: str = typer.Argument(
         ...,
-        help='Message content. Use @handle mentions to address specific agents, e.g. "@julia-agent ping".',
+        help='Message content. Use @handle mentions to address specific agents, e.g. "@avery-agent ping".',
     ),
     room: str | None = typer.Option(
         None, "--room", "-r", help="Room to post into (defaults to active room)"
@@ -780,9 +806,9 @@ def send(
     instead.
 
     Examples:
-        mycelium room send "@julia-agent please review the cache config"
-        mycelium room send --room design-review --handle arnold "@selina-agent thoughts on the API proposal?"
-        mycelium room send "@julia-agent @selina-agent sync at 3pm re: sprint priorities"
+        mycelium room send "@avery-agent please review the cache config"
+        mycelium room send --room design-review --handle arnold "@rowan-agent thoughts on the API proposal?"
+        mycelium room send "@avery-agent @rowan-agent sync at 3pm re: sprint priorities"
     """
     try:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False  # noqa: F841
@@ -795,12 +821,12 @@ def send(
         from mycelium_backend_client.api.messages import (
             send_message_api_rooms_room_name_messages_post as send_api,
         )
-        from mycelium_backend_client.models import MessageCreate
+        from mycelium_backend_client.models import MessageCreate, MessageCreateMessageType
 
         with _typed_client(config) as client:
             body = MessageCreate(
                 sender_handle=sender_handle,
-                message_type="broadcast",
+                message_type=MessageCreateMessageType.BROADCAST,
                 content=content,
             )
             result = send_api.sync(room_name=room_name, client=client, body=body)
@@ -896,7 +922,7 @@ def messages(
         typer.secho(f"({len(msgs)} {plural}, newest first)\n", fg=typer.colors.BRIGHT_BLACK)
         for m in msgs:
             stamp = m.created_at.strftime("%H:%M:%S")
-            # Show the full message — this is the read-the-transcript command, so
+            # Show the full message; this is the read-the-transcript command, so
             # never truncate. Keep multi-line content readable by indenting any
             # continuation lines under the first.
             first, *rest = (m.content or "").split("\n")
@@ -944,11 +970,14 @@ def delegate(
         from mycelium_backend_client.api.messages import (
             send_message_api_rooms_room_name_messages_post as send_api,
         )
-        from mycelium_backend_client.models import MessageCreate
+        from mycelium_backend_client.models import MessageCreate, MessageCreateMessageType
 
         with _typed_client(config) as client:
             body = MessageCreate(
-                sender_handle=sender, message_type="delegate", content=task, recipient_handle=to
+                sender_handle=sender,
+                message_type=MessageCreateMessageType.DELEGATE,
+                content=task,
+                recipient_handle=to,
             )
             result = send_api.sync(room_name=session_id, client=client, body=body)
             data = result.to_dict() if result and hasattr(result, "to_dict") else {}

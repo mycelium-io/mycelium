@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Cursor integration — daemon dispatch (cold spawn ``cursor-agent -p``)."""
+"""Cursor integration: daemon dispatch (cold spawn ``cursor-agent -p``)."""
 
 from __future__ import annotations
 

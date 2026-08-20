@@ -41,6 +41,8 @@ from types import ModuleType
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
+from app.services import slim_identity
+
 if TYPE_CHECKING:
     import slim_bindings
 
@@ -76,8 +78,41 @@ _DEV_MASTER_SECRET = "mycelium-dev-shared-secret-v1-do-not-use-in-prod"
 
 logger = logging.getLogger(__name__)
 
-# Warn only once per process when falling back to the public dev secret.
 _dev_secret_warned = False
+
+_identity_degraded_warned: set[tuple[str, str]] = set()
+
+# Per-mode hint for the degrade warning / fail-closed error: what material is
+# missing and how to provision it.
+_IDENTITY_MISSING_HINT = {
+    slim_identity.MODE_SIGNERJWT: (
+        "no signing key/roster resolved — register the agent's key (ensure_agent_keypair)"
+    ),
+    slim_identity.MODE_SPIRE: (
+        "no SPIRE Workload API socket present — start the co-located SPIRE agent "
+        "and set MYCELIUM_SLIM_SPIRE_SOCKET"
+    ),
+}
+
+
+def _warn_identity_degraded(mode: str, handle: str) -> None:
+    """One-time warning that a selected identity mode fell back to the PSK.
+
+    A silent downgrade is a security smell, so the fallback is announced even
+    though it is the specified off-by-default behavior. Set
+    ``MYCELIUM_SLIM_IDENTITY_REQUIRE=1`` to refuse the fallback instead.
+    """
+    if (mode, handle) in _identity_degraded_warned:
+        return
+    _identity_degraded_warned.add((mode, handle))
+    hint = _IDENTITY_MISSING_HINT.get(mode, "no identity material resolved")
+    logger.warning(
+        "MYCELIUM_SLIM_IDENTITY=%s but %s for %r — falling back to the shared-secret "
+        "PSK. Set MYCELIUM_SLIM_IDENTITY_REQUIRE=1 to fail closed.",
+        mode,
+        hint,
+        handle,
+    )
 
 
 def _truthy(value: str | None) -> bool:
@@ -114,7 +149,7 @@ def resolve_master_secret() -> str:
 
 
 class SlimError(RuntimeError):
-    """Base class for SLIM wrapper errors."""
+    pass
 
 
 class SlimUnavailableError(SlimError):
@@ -348,9 +383,37 @@ class SlimClient:
         self._sb = sb
         self._local_name = to_slim_name(*self.identity.as_tuple())
         self._conn_id = await _shared_connection(service, sb, endpoint)
-        self._app = service.create_app_with_secret(self._local_name, self._secret)
+        self._app = self._create_app(service)
         await self._app.subscribe_async(self._local_name, self._conn_id)
         return self
+
+    def _create_app(self, service: slim_bindings.Service) -> slim_bindings.App:
+        """Register the local app, selecting the identity tier (PSK default).
+
+        ``psk`` (default, #567) is the shared-secret credential — the try-it path,
+        untouched. ``signerjwt`` (the floor, #476) presents a per-member self-signed
+        ES256 identity; ``spire`` (#579) presents a SPIRE-attested JWT-SVID. Both
+        resolve to an ``IdentityProviderConfig``/``IdentityVerifierConfig`` pair so
+        members are cryptographically distinct MLS participants; both share one
+        degrade/fail-closed path. Absent the mode's material it degrades to PSK with
+        a one-time warning, unless ``MYCELIUM_SLIM_IDENTITY_REQUIRE=1`` fails closed.
+        """
+        assert self._local_name is not None
+        mode = slim_identity.resolve_identity_mode()
+        if mode != slim_identity.MODE_PSK:
+            material = slim_identity.resolve_identity_material(mode, self.identity.agent)
+            if material is not None:
+                provider, verifier = material
+                return service.create_app(self._local_name, provider, verifier)
+            if slim_identity.identity_required():
+                hint = _IDENTITY_MISSING_HINT.get(mode, "no identity material resolved")
+                raise SlimError(
+                    f"MYCELIUM_SLIM_IDENTITY={mode} but {hint} for "
+                    f"{self.identity.agent!r}, and MYCELIUM_SLIM_IDENTITY_REQUIRE is "
+                    "set: refusing to fall back to the shared-secret PSK."
+                )
+            _warn_identity_degraded(mode, self.identity.agent)
+        return service.create_app_with_secret(self._local_name, self._secret)
 
     @property
     def app(self) -> slim_bindings.App:
@@ -368,9 +431,8 @@ class SlimClient:
         # (Welcome/Commit/epoch, RFC 9420) — the node never holds the group key.
         return sb.SessionConfig(
             session_type=sb.SessionType.GROUP,
-            # SLIM 2.0 replaced the ``enable_mls`` bool with ``mls_settings`` —
-            # MLS is on iff settings are present. 100% header-integrity validation
-            # keeps the old always-on posture. Matched pair with the CLI member.
+            # MLS is on iff settings are present; 100% header-integrity validation
+            # ensures strict validation. Matched pair with the CLI member.
             mls_settings=sb.MlsSettings(
                 header_integrity_validation_percent=100,
                 max_seen_control_message_ids_size=None,  # None → SLIM core default

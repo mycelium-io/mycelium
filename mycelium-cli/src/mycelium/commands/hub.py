@@ -1,12 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Hub commands — run and connect to a SLIM node (the messaging fabric).
+"""Hub commands: run and connect to a SLIM node (the messaging fabric).
 
 ``mycelium hub host`` spins up the ``slim`` node container and prints the
 address peers connect to. ``mycelium connect <address>`` stores a node endpoint
 in config. The connect address is the same whether the node is self-hosted or a
-shared mycelium-hosted rendezvous — MLS makes the node a blind ciphertext
+shared mycelium-hosted rendezvous; MLS makes the node a blind ciphertext
 forwarder, so there's no separate command per host.
 """
 
@@ -79,7 +79,20 @@ def host(ctx: typer.Context) -> None:
         env_path = _get_env_path()
         if env_path:
             cmd += ["--env-file", str(env_path)]
-        cmd += ["up", "-d", "slim"]
+        services = ["slim"]
+        # When attested identity is on (slim.identity=spire), bring the SPIRE server
+        # up alongside the node, one control, config-driven (#588). The agent is
+        # co-located with the backend (shared PID namespace), so it pulls the backend
+        # in too; that's intended, SPIRE needs a workload to attest. The node daemon
+        # itself starts in a second phase (it needs a join token minted against the
+        # live server). On the default psk this is a no-op and only `slim` starts.
+        from mycelium.commands.instance import _spire_enabled, bootstrap_spire_node
+
+        spire = _spire_enabled()
+        if spire:
+            cmd += ["--profile", "spire"]
+            services += ["mycelium-backend", "spire-server"]
+        cmd += ["up", "-d", *services]
 
         typer.echo("Starting SLIM node...")
         result = subprocess.run(cmd, capture_output=True, text=True)
@@ -90,12 +103,20 @@ def host(ctx: typer.Context) -> None:
                 typer.echo(result.stderr, err=True)
             raise typer.Exit(result.returncode)
 
+        if spire:
+            # Rebuild the compose prefix (without the up args) for phase-2 bootstrap.
+            base = ["docker", "compose", "-p", _COMPOSE_PROJECT, "-f", str(compose_path)]
+            if env_path:
+                base += ["--env-file", str(env_path)]
+            base += ["--profile", "spire"]
+            bootstrap_spire_node(base)
+
         port = _slim_port()
         local_endpoint = f"http://127.0.0.1:{port}"
 
         # Self-host: wire this machine up immediately.
         config = MyceliumConfig.load()
-        config.slim = SlimConfig(node_endpoint=local_endpoint)
+        config.slim = config.slim.model_copy(update={"node_endpoint": local_endpoint})
         config.save()
 
         typer.secho("SLIM node running.", fg=typer.colors.GREEN)
@@ -113,8 +134,6 @@ def host(ctx: typer.Context) -> None:
         print_error(e, verbose=verbose)
 
 
-# Register `host` on the hub group. `connect` is registered as a top-level
-# command in cli.py (`mycelium connect`), so it isn't attached here.
 app.command(name="host")(host)
 
 
@@ -140,12 +159,22 @@ def connect(
         config = MyceliumConfig.load()
         # Construct through SlimConfig so its validator adds the scheme and trims
         # slashes (pydantic v2 doesn't validate plain attribute assignment).
-        config.slim = SlimConfig(node_endpoint=address)
+        normalized = SlimConfig(
+            node_endpoint=address,
+            identity=config.slim.identity,
+            master_secret=config.slim.master_secret,
+        )
+        config.slim = normalized
         config.save()
         typer.secho(
             f"Connected to SLIM node at {config.slim.node_endpoint}",
             fg=typer.colors.GREEN,
         )
+        typer.echo(
+            "  Stored the SLIM node endpoint. Default participation (memory, "
+            "await/respond) uses the hub HTTP API (server.api_url), not SLIM."
+        )
+        typer.echo("  Spokes do not need MYCELIUM_SLIM_MASTER_SECRET for that path.")
     except Exception as e:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False
         print_error(e, verbose=verbose)

@@ -21,6 +21,7 @@ from pathlib import Path
 
 import pytest
 
+from mycelium.slim import identity as slim_identity
 from mycelium.slim import l9
 from mycelium.slim.l9 import room_episode as _room_episode
 from mycelium.slim.l9 import room_topic as _room_topic
@@ -62,6 +63,32 @@ def test_mint_shared_secret_matches_contract_digest():
     g = _contract()["shared_secret"]
     identity = SlimIdentity(g["workspace"], g["room"], g["agent"])
     assert mint_shared_secret(identity) == g["expected_digest"]
+
+
+def test_signerjwt_identity_constants_match_contract():
+    """The CLI's SignerJwt-floor labels match the backend's frozen contract."""
+    g = _contract()["identity"]
+    assert g["mode_env"] == slim_identity._MODE_ENV
+    assert g["require_env"] == slim_identity._REQUIRE_ENV
+    assert g["mode_default"] == slim_identity.MODE_PSK
+    assert list(slim_identity.VALID_MODES) == g["modes"]
+    assert g["issuer"] == slim_identity.SIGNERJWT_ISSUER
+    assert g["audience"] == slim_identity.SIGNERJWT_AUDIENCE
+    assert g["alg"] == slim_identity.SIGNERJWT_ALG
+    assert g["curve"] == slim_identity.SIGNERJWT_CURVE
+
+
+def test_spire_identity_constants_match_contract():
+    """The CLI's SPIRE mode labels match the backend's frozen contract (#579)."""
+    s = _contract()["identity"]["spire"]
+    assert slim_identity.MODE_SPIRE in slim_identity.VALID_MODES
+    assert s["socket_env"] == slim_identity._SPIRE_SOCKET_ENV
+    assert s["socket_env_fallback"] == slim_identity._SPIRE_SOCKET_ENV_FALLBACK
+    assert s["trust_domain_env"] == slim_identity._SPIRE_TRUST_DOMAIN_ENV
+    assert s["trust_domain_default"] == slim_identity.SPIRE_DEFAULT_TRUST_DOMAIN
+    assert s["workload_path_prefix"] == slim_identity.SPIRE_WORKLOAD_PATH_PREFIX
+    # The SVID audience is the shared MLS audience label, not a separate constant.
+    assert _contract()["identity"]["audience"] == slim_identity.SPIRE_AUDIENCE
 
 
 def test_episode_and_topic_urns_match_contract():

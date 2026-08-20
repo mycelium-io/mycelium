@@ -37,7 +37,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from app.config import settings
-from app.services import l9
+from app.services import custody, l9, slim_identity
 from app.services.invites import ACCEPTED, DECLINED, QUEUED, PendingInvite, PendingInviteRegistry
 from app.services.l9_models import Kind
 from app.services.l9_slim import (
@@ -56,6 +56,7 @@ from app.services.slim_client import (
 )
 
 if TYPE_CHECKING:
+    from app.services.custody import CustodialSession
     from app.services.l9_models import L9
 
 # The room-aware summon hook the manager holds: unlike the persister's
@@ -95,6 +96,35 @@ def _is_own_registered_agent(room: str, handle: str) -> bool:
     return (get_room_dir(room) / "agents" / f"{handle}.md").exists()
 
 
+def _registered_agent_handles(room: str) -> list[str]:
+    """Every agent handle with a manifest in ``room`` (``agents/*.md`` stems)."""
+    from app.services.filesystem import get_room_dir
+
+    agents_dir = get_room_dir(room) / "agents"
+    if not agents_dir.is_dir():
+        return []
+    return sorted(p.stem for p in agents_dir.glob("*.md"))
+
+
+def _prebuild_signerjwt_roster(room: str) -> None:
+    """Register every known member's signing key before the moderator App exists.
+
+    A SignerJwt moderator snapshots the roster JWKS into its verifier at app
+    creation, so a session whose JWK is absent then can't be MLS-verified when it is
+    later admitted. Registering the backend + every registered agent up front makes
+    the verifier complete for the room's known members. (Spire needs no pre-build —
+    its verifier trusts any peer in the trust domain, not a static roster.) A session
+    for an agent registered *after* provisioning still self-registers on admit; the
+    moderator picks up such late arrivals on its next channel (re)provision.
+    """
+    slim_identity.ensure_agent_keypair(BACKEND_AGENT)
+    for handle in _registered_agent_handles(room):
+        try:
+            slim_identity.ensure_agent_keypair(handle)
+        except Exception:
+            logger.debug("roster pre-build skipped for @%s in room %s", handle, room)
+
+
 @dataclass
 class ManagedRoomChannel:
     """One backend-moderated room channel and its live membership/episode state."""
@@ -107,6 +137,10 @@ class ManagedRoomChannel:
     lifecycle: EpisodeLifecycle = field(default_factory=EpisodeLifecycle)
     persister: RoomPersister | None = None
     persister_task: asyncio.Task[None] | None = None
+    # Per-actor custodial MLS sessions this backend holds for the room (#666), keyed by
+    # handle. Populated only under an identity tier (``custody.custody_enabled()``);
+    # empty under the PSK default, where the moderator is the single member.
+    custody: dict[str, CustodialSession] = field(default_factory=dict)
 
 
 @dataclass
@@ -255,6 +289,12 @@ class RoomChannelManager:
                     "receive_errors": managed.persister.receive_errors if managed.persister else 0,
                     "transient_errors": (
                         managed.persister.transient_errors if managed.persister else 0
+                    ),
+                    "knowledge_applied": (
+                        managed.persister.knowledge_applied if managed.persister else 0
+                    ),
+                    "knowledge_conflicts": (
+                        managed.persister.knowledge_conflicts if managed.persister else 0
                     ),
                 }
             )
@@ -557,6 +597,16 @@ class RoomChannelManager:
             ws = workspace or self._default_workspace
             try:
                 identity = SlimIdentity(ws, room, BACKEND_AGENT)
+                if slim_identity.resolve_identity_mode() == slim_identity.MODE_SIGNERJWT:
+                    # The moderator is a first-class identity (#476): self-register
+                    # its own signing key + roster entry before presenting a
+                    # SignerJwt identity. Under custody (#666) also register every
+                    # known member up front so the moderator's verifier — snapshotted
+                    # here — can MLS-verify their sessions on admit. No-op under PSK.
+                    if custody.custody_enabled():
+                        _prebuild_signerjwt_roster(room)
+                    else:
+                        slim_identity.ensure_agent_keypair(BACKEND_AGENT)
                 client = await SlimClient(identity).connect(self._endpoint)
                 session = await client.create_group(to_channel_name(ws, room))
             except Exception as exc:
@@ -644,6 +694,9 @@ class RoomChannelManager:
         # fresh channel — the old channel's membership record is gone.
         self._announced.pop(room, None)
         if managed is not None:
+            for cs in managed.custody.values():
+                with contextlib.suppress(Exception):
+                    await cs.close(graceful=False)
             with contextlib.suppress(Exception):
                 await managed.client.close()
         while not self._closing:
@@ -653,6 +706,9 @@ class RoomChannelManager:
             # provision() re-connects, re-creates the group session, and starts a
             # fresh supervised persister; None means the node is still unreachable.
             if await self.provision(room, workspace=workspace) is not None:
+                # Revive custodial sessions against the fresh connection from their stores — the
+                # old Apps died with the dropped connection (spike D3/restart shape).
+                await self.restore_custody(room)
                 logger.info("recovered room %s channel after persister exit", room)
                 return
 
@@ -696,10 +752,18 @@ class RoomChannelManager:
         return adapter
 
     async def invite(self, room: str, agent: str) -> bool:
-        """Invite ``agent`` into the room channel. Best-effort; returns success."""
+        """Invite ``agent`` into the room channel. Best-effort; returns success.
+
+        Under an identity tier (#666) this stands up the agent's **custodial session** — a
+        genuine per-actor MLS member the backend custodies — instead of inviting a
+        bare Name; under the PSK default it is byte-for-byte the prior single-member
+        invite.
+        """
         managed = self._channels.get(room)
         if managed is None or agent == BACKEND_AGENT:
             return False
+        if custody.custody_enabled():
+            return await self._ensure_custody(managed, agent) is not None
         try:
             member = to_slim_name(managed.workspace, room, agent)
             await managed.client.invite(managed.channel.session, member)
@@ -710,8 +774,17 @@ class RoomChannelManager:
             logger.warning("SLIM invite failed (room=%s agent=%s): %s", room, agent, exc)
             self._metrics.invite_failures += 1
             return False
+        await self._register_member(managed, agent)
+        return True
+
+    async def _register_member(self, managed: ManagedRoomChannel, agent: str) -> None:
+        """Post-admit bookkeeping shared by the PSK invite and the custody path.
+
+        Records presence, announces the join, re-serves a reconnecting member's
+        missed tail, and lets a mid-episode membership change abort the episode.
+        """
         managed.members.add(agent)
-        self.announce_join(room, agent)
+        self.announce_join(managed.room, agent)
         # Durable inbox: a membership add for a handle the persister has already
         # seen is a *reconnect* — re-serve its missed tail. Kept separate from the
         # episode-abort path below: transcript continuity and episode lifecycle
@@ -720,7 +793,108 @@ class RoomChannelManager:
         if managed.persister is not None and managed.persister.note_join(agent):
             await managed.persister.reserve(agent)
         await self._enforce_membership_change(managed)
-        return True
+
+    # -- per-actor custodial sessions (#666; identity tiers only) --
+
+    async def _ensure_custody(
+        self, managed: ManagedRoomChannel, agent: str
+    ) -> CustodialSession | None:
+        """Stand up (or reuse) ``agent``'s custodial session and admit it into the group.
+
+        The session's App subscribes and starts listening *before* the moderator invite
+        lands (they run concurrently, single process), so the MLS Welcome is
+        received. Idempotent: an already-joined session is returned as-is. Best-effort
+        — a failure returns ``None`` and the caller degrades (respond falls back to
+        a moderator send), never raising into the request path.
+        """
+        existing = managed.custody.get(agent)
+        if existing is not None and existing.joined:
+            return existing
+        try:
+            cs = await custody.create_session(
+                self._endpoint, managed.workspace, managed.room, agent
+            )
+            member = to_slim_name(managed.workspace, managed.room, agent)
+            join_task = asyncio.create_task(custody.join_session(cs))
+            try:
+                await managed.client.invite(managed.channel.session, member)
+                await join_task
+            except Exception:
+                join_task.cancel()
+                await cs.close(graceful=False)
+                raise
+        except Exception as exc:
+            logger.warning(
+                "custodial admit failed (room=%s agent=%s): %s", managed.room, agent, exc
+            )
+            self._metrics.invite_failures += 1
+            return None
+        cs.drain_task = asyncio.create_task(cs.drain())
+        managed.custody[agent] = cs
+        await self._register_member(managed, agent)
+        logger.info("admitted custodial session for @%s into room %s", agent, managed.room)
+        return cs
+
+    async def send_as_custodian(self, room: str, handle: str, data: bytes) -> bool:
+        """Publish ``data`` to the room as ``handle`` via its custodial session (real MLS send).
+
+        The wire sender is the actor's own MLS identity, not the backend's. Ensures the session on first participation. Returns whether
+        the send went out as the actor; ``False`` (with the caller falling back to a
+        moderator send) preserves liveness when a session can't be stood up.
+        """
+        if not custody.custody_enabled() or handle == BACKEND_AGENT:
+            return False
+        managed = self._channels.get(room)
+        if managed is None:
+            return False
+        try:
+            cs = managed.custody.get(handle)
+            if cs is None or not cs.joined:
+                cs = await self._ensure_custody(managed, handle)
+            if cs is None:
+                return False
+            await cs.publish(data)
+            return True
+        except Exception as exc:
+            logger.warning("custodial send failed (room=%s handle=%s): %s", room, handle, exc)
+            return False
+
+    async def restore_custody(self, room: str) -> int:
+        """Revive every persisted custodial session for ``room`` after a backend restart (#666).
+
+        Each session resumes from its own encrypted store via ``restore_sessions`` —
+        no re-invite, no MLS Welcome — and the always-draining moderator heals its
+        ``rejoin`` (spike D1). The durable transcript replays any gap; SLIM
+        persistence resumes crypto state only. Returns the count revived.
+        """
+        if not custody.custody_enabled():
+            return 0
+        managed = self._channels.get(room)
+        if managed is None:
+            return 0
+        restored = 0
+        for room_name, handle in custody.iter_persisted_sessions():
+            if room_name != room or handle in managed.custody:
+                continue
+            try:
+                cs = await custody.restore_session(self._endpoint, managed.workspace, room, handle)
+            except Exception as exc:
+                logger.warning(
+                    "custodial restore failed (room=%s handle=%s): %s", room, handle, exc
+                )
+                continue
+            if cs is None:
+                continue
+            cs.drain_task = asyncio.create_task(cs.drain())
+            managed.custody[handle] = cs
+            managed.members.add(handle)
+            self.announce_join(room, handle)
+            restored += 1
+        if restored:
+            logger.info(
+                "restored %d custodial session(s) for room %s (no re-invite)", restored, room
+            )
+        return restored
 
     def invite_in_background(self, room: str, agent: str) -> None:
         """Schedule :meth:`invite` without blocking the caller.
@@ -904,16 +1078,27 @@ class RoomChannelManager:
             logger.debug("consent prompt bus publish failed for room %s", invite.room)
 
     async def remove(self, room: str, agent: str) -> bool:
-        """Remove ``agent`` from the room channel. Best-effort; returns success."""
+        """Remove ``agent`` from the room channel. Best-effort; returns success.
+
+        Under an identity tier this is revocation (#590/#666): the custodial session gracefully
+        leaves the MLS group (one Commit; the other members heal with **no
+        room-wide re-key**) and its at-rest store is deleted so it can't be
+        revived. Under the PSK default it is the prior moderator-side remove.
+        """
         managed = self._channels.get(room)
         if managed is None or agent not in managed.members:
             return False
-        try:
-            member = to_slim_name(managed.workspace, room, agent)
-            await managed.client.remove_member(managed.channel.session, member)
-        except Exception as exc:
-            logger.debug("SLIM remove skipped (room=%s agent=%s): %s", room, agent, exc)
-            return False
+        cs = managed.custody.pop(agent, None)
+        if cs is not None:
+            await cs.close(graceful=True)
+            custody.delete_store(room, agent)
+        else:
+            try:
+                member = to_slim_name(managed.workspace, room, agent)
+                await managed.client.remove_member(managed.channel.session, member)
+            except Exception as exc:
+                logger.debug("SLIM remove skipped (room=%s agent=%s): %s", room, agent, exc)
+                return False
         managed.members.discard(agent)
         self._announced.get(room, set()).discard(agent)
         await self._enforce_membership_change(managed)
@@ -981,6 +1166,11 @@ class RoomChannelManager:
             except Exception as exc:  # pragma: no cover - best-effort teardown
                 logger.debug("persister task teardown error for room %s: %s", room, exc)
             managed.persister_task = None
+        # Non-graceful custody teardown: leave the encrypted stores intact so a
+        # restart revives every session via ``restore_sessions`` (no re-invite).
+        for cs in managed.custody.values():
+            await cs.close(graceful=False)
+        managed.custody.clear()
         await managed.client.close()
         logger.info("Closed SLIM channel for room %s", room)
 

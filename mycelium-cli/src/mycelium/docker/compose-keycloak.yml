@@ -1,0 +1,45 @@
+# Real Keycloak issuer for the human OIDC tier (#565).
+#
+# Unlike compose-auth-dev.yml (the mock issuer, #566), this is a REAL OIDC
+# provider: it authenticates a real user and mints RS256 tokens against a real
+# JWKS. It is still an OPT-IN overlay, off the default try-it path — you add it
+# with an extra `-f` exactly like the dev issuer, and the base stack is
+# byte-for-byte unchanged without it.
+#
+# Bring it up alongside the running stack (from the docker/ dir, same project):
+#   docker compose \
+#     -f compose.yml -f compose-dev.yml -f compose-keycloak.yml \
+#     up -d keycloak
+#
+# The realm import (keycloak/mycelium-realm.json) ships a `mycelium` realm with:
+#   • a public PKCE client `mycelium-cli` (Authorization Code + Device Code,
+#     loopback redirect) — the client `mycelium login` uses,
+#   • an audience mapper stamping `mycelium` into the access token's `aud`, and
+#   • a demo user (demo / demo) so a human login has someone to sign in as.
+#
+# THE ISSUER/HOSTNAME SPLIT (this is the crux the guide documents):
+#   KC_HOSTNAME pins the token `iss` to http://localhost:8080/realms/mycelium
+#   regardless of which host reached Keycloak. The browser/CLI reach it at
+#   localhost:8080 (matches iss); the backend, on the compose network, cannot use
+#   `localhost` (that is the backend container itself) — so the gate is pointed at
+#   jwks_url http://keycloak:8080/realms/mycelium/protocol/openid-connect/certs
+#   for key fetch while still matching iss by exact string. See
+#   docs/guides/keycloak-oidc.md.
+
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.1
+    container_name: mycelium-keycloak
+    restart: unless-stopped
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${MYCELIUM_KEYCLOAK_ADMIN:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${MYCELIUM_KEYCLOAK_ADMIN_PASSWORD:-admin}
+      # Pin the advertised base URL so the minted `iss` is stable across callers.
+      KC_HOSTNAME: http://localhost:${MYCELIUM_KEYCLOAK_PORT:-8080}
+      KC_HTTP_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
+    volumes:
+      - ./keycloak/mycelium-realm.json:/opt/keycloak/data/import/mycelium-realm.json:ro
+    ports:
+      - "${MYCELIUM_KEYCLOAK_PORT:-8080}:8080"

@@ -2,16 +2,12 @@
 // Copyright 2026 Mycelium Contributors
 
 import { getBackendUrl } from "@/lib/backend";
+import { bearer } from "@/lib/session";
 import { handleMock, isMockMode } from "@/mocks";
 
 /**
  * Catch-all proxy for `/api/*` → the backend, resolved at REQUEST time.
- *
- * Replaces the old next.config rewrite whose destination was frozen at build
- * time (to localhost:8000), ignoring the runtime MYCELIUM_INTERNAL_API_URL and
- * breaking the Dockerized UI. The more-specific SSE route handler
- * (rooms/[name]/messages/stream) still takes precedence for the stream
- * endpoint; everything else flows through here.
+ * The more-specific SSE route handler (rooms/[name]/messages/stream) takes precedence.
  */
 export const dynamic = "force-dynamic";
 
@@ -40,6 +36,11 @@ async function proxy(req: Request): Promise<Response> {
   // Ask upstream for plain bytes so we can stream the response straight through
   // without a content-encoding/content-length mismatch.
   headers.delete("accept-encoding");
+  // Attach the signed-in user's bearer (refreshing it if near expiry). Returns
+  // null when there's no session — gate off or signed out — so the header stays
+  // absent and the proxy behaves exactly as it did before OIDC existed.
+  const token = await bearer();
+  if (token) headers.set("authorization", `Bearer ${token}`);
 
   const init: RequestInit = {
     method: req.method,

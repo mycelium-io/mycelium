@@ -1,27 +1,96 @@
-  lucide.createIcons();
+  // Icons come from a third-party CDN. If it fails to load, the page must still
+  // work, a bare lucide.createIcons() here would throw and abort this whole
+  // file, taking the nav, theme toggle and background canvas down with it.
+  function icons() {
+    if (window.lucide && window.lucide.createIcons) window.lucide.createIcons();
+  }
 
-  function toggleResources(e) {
+  icons();
+
+  // ── Theme (light / dark / system) ──
+  // Mirrors the app's ThemeToggle. The pre-paint resolver lives inline in the
+  // page head; this owns the menu, persistence, and telling the canvas to
+  // repaint on a theme change.
+  const THEME_KEY = 'mycelium-theme';
+  const themeMedia = window.matchMedia('(prefers-color-scheme: dark)');
+
+  function storedTheme() {
+    try { return localStorage.getItem(THEME_KEY) || 'dark'; } catch (e) { return 'dark'; }
+  }
+
+  function applyTheme(pref) {
+    const dark = pref === 'dark' || (pref === 'system' && themeMedia.matches);
+    document.documentElement.classList.toggle('dark', dark);
+    const btn = document.getElementById('theme-btn');
+    if (btn) {
+      btn.innerHTML = '<i data-lucide="' + (dark ? 'moon' : 'sun') + '"></i>';
+      icons();
+    }
+    document.querySelectorAll('[data-theme-set]').forEach(b => {
+      b.classList.toggle('active', b.getAttribute('data-theme-set') === pref);
+    });
+    window.dispatchEvent(new CustomEvent('mycelium:theme'));
+  }
+
+  function setTheme(pref) {
+    try { localStorage.setItem(THEME_KEY, pref); } catch (e) {}
+    applyTheme(pref);
+  }
+
+  function toggleThemeMenu(e) {
     e.stopPropagation();
-    const menu = document.getElementById('resources-menu');
+    const menu = document.getElementById('theme-menu');
     if (menu) menu.classList.toggle('open');
   }
+
   document.addEventListener('click', () => {
-    const menu = document.getElementById('resources-menu');
+    const menu = document.getElementById('theme-menu');
     if (menu) menu.classList.remove('open');
   });
+  document.querySelectorAll('[data-theme-set]').forEach(b => {
+    b.addEventListener('click', () => setTheme(b.getAttribute('data-theme-set')));
+  });
+  themeMedia.addEventListener('change', () => {
+    if (storedTheme() === 'system') applyTheme('system');
+  });
+  applyTheme(storedTheme());
+
+  // ── Mobile nav drawer (hamburger) ──
+  function toggleDrawer(e) {
+    if (e) e.stopPropagation();
+    const sb = document.getElementById('sidebar');
+    const bd = document.getElementById('nav-backdrop');
+    const open = sb && sb.classList.toggle('open');
+    if (bd) bd.classList.toggle('open', !!open);
+  }
+  function closeDrawer() {
+    const sb = document.getElementById('sidebar');
+    const bd = document.getElementById('nav-backdrop');
+    if (sb) sb.classList.remove('open');
+    if (bd) bd.classList.remove('open');
+  }
+  // Close on link tap inside the drawer, on Escape, or when it grows to desktop.
+  document.addEventListener('click', (e) => {
+    const sb = document.getElementById('sidebar');
+    if (sb && sb.classList.contains('open') && sb.contains(e.target) && e.target.closest('a')) {
+      closeDrawer();
+    }
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDrawer(); });
+  window.addEventListener('resize', () => { if (window.innerWidth > 860) closeDrawer(); });
 
   function copyPage() {
     const text = document.querySelector('.main').innerText;
     navigator.clipboard.writeText(text).then(() => {
       const btn = document.querySelector('.copy-page-btn');
       const tokens = Math.round(text.length / 4).toLocaleString();
-      btn.innerHTML = '<i data-lucide="check" style="width:13px;height:13px;stroke:currentColor;vertical-align:-2px;margin-right:6px;"></i>copied! (~' + tokens + ' tokens)';
+      btn.innerHTML = '<i data-lucide="check"></i>Copied (~' + tokens + ' tokens)';
       btn.classList.add('copied');
-      lucide.createIcons();
+      icons();
       setTimeout(() => {
-        btn.innerHTML = '<i data-lucide="copy" style="width:13px;height:13px;stroke:currentColor;vertical-align:-2px;margin-right:6px;"></i>copy this page';
+        btn.innerHTML = '<i data-lucide="copy"></i>Copy page';
         btn.classList.remove('copied');
-        lucide.createIcons();
+        icons();
       }, 2000);
     });
   }
@@ -38,7 +107,7 @@
     const btn = document.querySelector('.install-copy-btn');
     btn.innerHTML = '<i data-lucide="copy"></i>';
     btn.classList.remove('copied');
-    lucide.createIcons();
+    icons();
   }
 
   function copyInstallCmd(btn) {
@@ -46,11 +115,11 @@
     navigator.clipboard.writeText(cmd).then(() => {
       btn.innerHTML = '<i data-lucide="check"></i>';
       btn.classList.add('copied');
-      lucide.createIcons();
+      icons();
       setTimeout(() => {
         btn.innerHTML = '<i data-lucide="copy"></i>';
         btn.classList.remove('copied');
-        lucide.createIcons();
+        icons();
       }, 2000);
     });
   }
@@ -102,13 +171,13 @@
     const cmd = SECTION_DOCS_MAP[currentDocsSection] || 'mycelium docs --full';
     navigator.clipboard.writeText(cmd).then(() => {
       const btn = document.querySelector('.copy-docs-btn');
-      btn.innerHTML = '<i data-lucide="check" style="width:13px;height:13px;stroke:currentColor;vertical-align:-2px;margin-right:6px;"></i>' + cmd;
+      btn.innerHTML = '<i data-lucide="check"></i>' + cmd;
       btn.classList.add('copied');
-      lucide.createIcons();
+      icons();
       setTimeout(() => {
-        btn.innerHTML = '<i data-lucide="terminal" style="width:13px;height:13px;stroke:currentColor;vertical-align:-2px;margin-right:6px;"></i>copy docs cmd';
+        btn.innerHTML = '<i data-lucide="terminal"></i>Copy docs cmd';
         btn.classList.remove('copied');
-        lucide.createIcons();
+        icons();
       }, 2000);
     });
   }
@@ -143,12 +212,48 @@
   var trail = new Float32Array(cols * rows);       // animated nutrient flow
   var colorIdx = new Uint8Array(cols * rows);
 
-  const BG = { r: 12, g: 13, b: 16 };
-  const COLORS = [
-    { r: 56, g: 189, b: 248 },   // cyan
-    { r: 129, g: 140, b: 248 },   // indigo
-    { r: 192, g: 132, b: 252 },   // purple
-  ];
+  // ── Palette ──
+  // Read from the stylesheet so the network tracks the active theme.
+  // Three depths of one accent provide variation without a second hue.
+  var BG = { r: 12, g: 14, b: 17 };
+  var COLORS = [{ r: 92, g: 199, b: 210 }, { r: 92, g: 199, b: 210 }, { r: 92, g: 199, b: 210 }];
+  var INK_ALPHA = 1;
+
+  function hexToRgb(hex) {
+    var h = hex.trim().replace('#', '');
+    if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+    return {
+      r: parseInt(h.slice(0, 2), 16),
+      g: parseInt(h.slice(2, 4), 16),
+      b: parseInt(h.slice(4, 6), 16),
+    };
+  }
+
+  function mix(a, b, t) {
+    return {
+      r: Math.round(a.r + (b.r - a.r) * t),
+      g: Math.round(a.g + (b.g - a.g) * t),
+      b: Math.round(a.b + (b.b - a.b) * t),
+    };
+  }
+
+  function readPalette() {
+    var cs = getComputedStyle(document.documentElement);
+    var bg = cs.getPropertyValue('--canvas-bg');
+    var ink = cs.getPropertyValue('--canvas-ink').split(',');
+    var alpha = parseFloat(cs.getPropertyValue('--canvas-alpha'));
+    if (bg) BG = hexToRgb(bg);
+    if (ink.length === 3) {
+      var base = { r: +ink[0], g: +ink[1], b: +ink[2] };
+      // Three depths of one accent: enough variation to read as separate
+      // colonies, without spending a second hue.
+      COLORS = [base, mix(base, BG, 0.28), mix(base, BG, 0.5)];
+    }
+    if (!isNaN(alpha)) INK_ALPHA = alpha;
+  }
+
+  readPalette();
+  window.addEventListener('mycelium:theme', readPalette);
 
   canvas.style.width = '100%';
   canvas.style.height = '100%';
@@ -165,7 +270,7 @@
   resize();
 
   // ══════════════════════════════════════════════════════════════════
-  // LAYER 1: Tip-growth (Meškauskas et al.) — builds the network
+  // LAYER 1: Tip-growth (Meškauskas et al.), builds the network
   // ══════════════════════════════════════════════════════════════════
 
   const TIP_SPEED = 0.25;
@@ -263,7 +368,7 @@
   }
 
   // ══════════════════════════════════════════════════════════════════
-  // LAYER 2: Nutrient agents (Physarum-style) — flow through network
+  // LAYER 2: Nutrient agents (Physarum-style), flow through network
   // ══════════════════════════════════════════════════════════════════
   // These agents are constrained to the established network.
   // They follow trails and re-deposit, creating organic pulsing.
@@ -295,7 +400,7 @@
     var sx = Math.floor(ax + Math.cos(angle + offset) * SENSOR_DIST);
     var sy = Math.floor(ay + Math.sin(angle + offset) * SENSOR_DIST);
     if (sx < 0 || sx >= cols || sy < 0 || sy >= rows) return 0;
-    // Sense both structure and flow trail — prefer flowing along the network
+    // Sense both structure and flow trail, prefer flowing along the network
     return structure[sy * cols + sx] * 0.5 + trail[sy * cols + sx];
   }
 
@@ -303,7 +408,6 @@
   // PRE-WARM: Build the network before first render
   // ══════════════════════════════════════════════════════════════════
 
-  // Seed initial colonies
   var numColonies = 15 + Math.floor(Math.random() * 8);
   for (var c = 0; c < numColonies; c++) {
     seedColony(
@@ -314,17 +418,14 @@
     );
   }
 
-  // Grow the network silently
   for (var warm = 0; warm < 4000; warm++) {
     growStep();
   }
 
-  // Seed nutrient agents onto the established network
   for (var a = 0; a < MAX_AGENTS; a++) {
     spawnAgentOnNetwork();
   }
 
-  // Pre-warm the flow layer too
   for (var warm = 0; warm < 200; warm++) {
     for (var i = 0; i < trail.length; i++) {
       trail[i] *= 0.995;
@@ -361,7 +462,6 @@
     if (timestamp - lastFrame < frameInterval) return;
     lastFrame = timestamp;
 
-    // Continue growing tips (slow ongoing growth)
     growStep();
 
     // Respawn colonies if tips exhausted
@@ -371,13 +471,13 @@
       seedColony(cx, cy, Math.floor(Math.random() * COLORS.length), 2 + Math.floor(Math.random() * 2));
     }
 
-    // Decay flow trail — faster than structure, creates the pulsing effect
+    // Decay flow trail, faster than structure, creates the pulsing effect
     for (var i = 0; i < trail.length; i++) {
       trail[i] *= 0.99;
       if (trail[i] < 0.005) trail[i] = 0;
     }
 
-    // Update nutrient agents — Physarum sensing on the combined field
+    // Update nutrient agents, Physarum sensing on the combined field
     for (var i = 0; i < agents.length; i++) {
       var a = agents[i];
 
@@ -404,7 +504,7 @@
       // If agent drifted off the network, teleport back onto it
       var gx = Math.floor(a.x), gy = Math.floor(a.y);
       if (gx >= 0 && gx < cols && gy >= 0 && gy < rows && structure[gy * cols + gx] < 0.05) {
-        // Off-network — find a random network cell to respawn on
+        // Off-network, find a random network cell to respawn on
         for (var att = 0; att < 30; att++) {
           var rx = Math.floor(Math.random() * viewCols);
           var ry = Math.floor(Math.random() * viewRows);
@@ -440,7 +540,7 @@
         if (sVal < 0.01 && tVal < 0.01) continue;
         var c = COLORS[colorIdx[idx]];
         // Structure is dim/permanent, flow is brighter/animated
-        var alpha = sVal * 0.02 + tVal * 0.2;
+        var alpha = (sVal * 0.02 + tVal * 0.2) * INK_ALPHA;
         ctx.fillStyle = 'rgba(' + c.r + ',' + c.g + ',' + c.b + ',' + alpha + ')';
         ctx.fillRect(x, y, 1, 1);
       }

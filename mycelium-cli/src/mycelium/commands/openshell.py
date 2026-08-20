@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""``mycelium openshell`` — install + run the OpenShell gateway that sandboxes Pi.
+"""``mycelium openshell``: install + run the OpenShell gateway that sandboxes Pi.
 
 Drives the validated local-gateway recipe (see :mod:`mycelium.openshell`) as one
 opt-in command so a user doesn't hand-assemble the JWT keys, config, mirrored

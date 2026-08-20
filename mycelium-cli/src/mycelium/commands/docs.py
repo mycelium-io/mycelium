@@ -5,7 +5,7 @@
 Documentation commands for Mycelium CLI.
 
 Provides built-in, agent-friendly documentation accessible from the command line.
-Section files mirror the GUI docs at mycelium-io.github.io/mycelium/ — markdown
+Section files mirror the GUI docs at mycelium-io.github.io/mycelium/; markdown
 is the single source of truth for both.
 """
 
@@ -50,7 +50,7 @@ def _get_docs_root() -> Path:
 
 
 def _extract_title(path: Path) -> str:
-    """Extract title from markdown file (first # heading)."""
+    """Extract the first markdown heading as the title."""
     try:
         content = path.read_text()
         for line in content.split("\n"):

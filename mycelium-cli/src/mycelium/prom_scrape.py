@@ -30,7 +30,7 @@ from dataclasses import dataclass, field
 
 # A line like:  http_requests_total{method="get",status="200"} 1027 1395066363000
 # The value is required; the trailing timestamp is optional and we ignore it.
-# We tolerate the relaxed Prometheus text grammar — extra whitespace, empty
+# We tolerate the relaxed Prometheus text grammar: extra whitespace, empty
 # label sets, and missing trailing newline.
 _LINE_RE = re.compile(
     r"""
@@ -83,7 +83,7 @@ def parse_text(body: str) -> list[Sample]:
             value = float(m.group("value"))
         except ValueError:
             # NaN/+Inf/-Inf would parse fine; this covers genuinely malformed
-            # values. Skip silently — better than crashing the collector loop.
+            # values. Skip silently; better than crashing the collector loop.
             continue
         labels: dict[str, str] = {}
         if m.group("labels"):
@@ -121,7 +121,7 @@ def aggregate_http_red(samples: list[Sample]) -> dict:
     pair because real percentiles (via ``histogram_quantile``) are far more
     useful than bucket-edge approximations. Buckets are stored as a list of
     ``(upper_bound_ms, cumulative_count)`` tuples sorted ascending, with
-    ``+Inf`` represented as ``math.inf`` — exactly what
+    ``+Inf`` represented as ``math.inf``, exactly what
     ``histogram_quantile`` expects.
     """
     by_route: dict[str, dict] = {}
@@ -157,7 +157,7 @@ def aggregate_http_red(samples: list[Sample]) -> dict:
         elif s.name == "http_request_duration_seconds_sum":
             handler = s.labels.get("handler", "<unlabeled>")
             route = by_route.setdefault(handler, _empty_route())
-            # Convert from seconds to milliseconds — matches OTLP histogram
+            # Convert from seconds to milliseconds, matching the OTLP histogram
             # convention used by every other panel in `mycelium metrics show`.
             route["latency_ms"]["sum"] = s.value * 1000.0
         elif s.name == "http_request_duration_seconds_bucket":
@@ -271,7 +271,7 @@ def histogram_quantile(
             span = bound - prev_bound
             in_bucket = count - prev_count
             if in_bucket <= 0:
-                # No observations actually fall in this bucket — Prometheus
+                # No observations actually fall in this bucket; Prometheus
                 # treats this as "target sits at the bucket boundary".
                 return bound
             frac = (target - prev_count) / in_bucket
@@ -295,7 +295,7 @@ def _empty_route() -> dict:
 def scrape(url: str, timeout: float = 5.0) -> list[Sample] | None:
     """GET a Prometheus ``/metrics`` endpoint and parse it.
 
-    Returns None on any network/HTTP/parse failure — callers should treat a
+    Returns None on any network/HTTP/parse failure; callers should treat a
     None as "target unavailable, render nothing" rather than crashing the
     collector loop.
     """

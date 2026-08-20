@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<!--
+  Standalone harness for capturing a static frame of the real mycelial
+  canvas algorithm (see splash.js / site.js) as banner artwork, instead of
+  hand-drawn ImageMagick primitives. Loaded headlessly by
+  gen-banner-network.py via Playwright.
+
+  mycelial-canvas.js is a byte-for-byte copy of the live canvas IIFE (the
+  point is that this looks exactly like the real site's vignette, just
+  cropped/zoomed) — if the live algorithm changes, re-copy it rather than
+  hand-editing this one out of sync. --canvas-bg/--canvas-ink/--canvas-alpha
+  below match the site's actual html.dark values (splash.css/mycelium.css).
+-->
+<html class="dark">
+<head>
+<meta charset="UTF-8">
+<style>
+  html, body { margin: 0; padding: 0; background: #0c0e11; }
+  html {
+    --canvas-bg: #0c0e11;
+    --canvas-ink: 92, 199, 210;
+    --canvas-alpha: 1.5;
+  }
+  canvas { display: block; width: 100vw; height: 100vh; }
+</style>
+</head>
+<body>
+<canvas id="mycelium-bg"></canvas>
+<script src="mycelial-canvas.js"></script>
+</body>
+</html>

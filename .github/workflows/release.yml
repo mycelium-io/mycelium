@@ -38,7 +38,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Log in to GHCR
-        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -63,9 +63,6 @@ jobs:
           # to every existing user on their next `mycelium pull`.
           if [ "$IS_PRERELEASE" = "true" ]; then
             {
-              echo "db<<EOF"
-              echo "ghcr.io/$OWNER/mycelium-db:$VERSION"
-              echo "EOF"
               echo "backend<<EOF"
               echo "ghcr.io/$OWNER/mycelium-backend:$VERSION"
               echo "EOF"
@@ -78,10 +75,6 @@ jobs:
             } >> "$GITHUB_OUTPUT"
           else
             {
-              echo "db<<EOF"
-              echo "ghcr.io/$OWNER/mycelium-db:latest"
-              echo "ghcr.io/$OWNER/mycelium-db:$VERSION"
-              echo "EOF"
               echo "backend<<EOF"
               echo "ghcr.io/$OWNER/mycelium-backend:latest"
               echo "ghcr.io/$OWNER/mycelium-backend:$VERSION"
@@ -96,17 +89,6 @@ jobs:
               echo "EOF"
             } >> "$GITHUB_OUTPUT"
           fi
-
-      - name: Build and push mycelium-db
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
-        with:
-          context: fastapi-backend
-          file: fastapi-backend/docker/Dockerfile.agensgraph
-          platforms: linux/amd64
-          push: true
-          tags: ${{ steps.tags.outputs.db }}
-          cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/mycelium-db:cache
-          cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/mycelium-db:cache,mode=max
 
       - name: Bump backend pyproject version to match tag
         # FastAPI reads `version=` from this file at startup (see app/main.py
@@ -185,6 +167,11 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           sed -i.bak "s/^version = .*/version = \"$VERSION\"/" pyproject.toml && rm -f pyproject.toml.bak
 
+      # The OpenAPI client isn't committed (#613); generate both copies from the
+      # committed openapi.json before building the client wheel and the binary.
+      - name: Generate OpenAPI client
+        run: SPEC_FILE=openapi.json SKIP_FORMAT=1 bash scripts/gen-mycelium-client.sh
+
       - name: Build mycelium-client wheel
         working-directory: mycelium-client
         run: uv build --wheel
@@ -238,6 +225,11 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           sed -i "s/^version = .*/version = \"$VERSION\"/" pyproject.toml
 
+      # The OpenAPI client isn't committed (#613); generate it into src/ so the
+      # wheel includes it (setuptools packages.find picks it up).
+      - name: Generate OpenAPI client
+        run: SPEC_FILE=openapi.json SKIP_FORMAT=1 bash scripts/gen-mycelium-client.sh
+
       - name: Build wheel
         working-directory: mycelium-cli
         run: uv build --wheel
@@ -264,7 +256,7 @@ jobs:
           sha256sum *.whl binaries/mycelium-* > binaries/checksums.txt
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
           tag_name: ${{ github.ref_name }}
           name: mycelium ${{ github.ref_name }}

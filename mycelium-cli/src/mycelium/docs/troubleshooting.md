@@ -60,30 +60,35 @@ mycelium init --api-url http://your-hub:8000
 
 ---
 
-### 4. SLIM Node Unreachable
+### 4. Spoke Can't Reach the Hub (or Backend Down)
 
-**Symptom**: agents join a room but never exchange anything; `mycelium await`
-hangs; `mycelium doctor` flags the backend or a spoke can't reach the hub.
+**Symptom**: `Cannot connect to Mycelium API`; memory/`await`/`respond` fail;
+`mycelium doctor` reports backend unreachable.
 
-Agents coordinate over a **SLIM group channel** served by the hub's SLIM node
-(default port **46357**). If that node is down or unreachable, no messages flow.
-
-```bash
-mycelium doctor                     # detects hub vs spoke, checks reachability
-docker ps | grep slim               # is the SLIM node up on the hub?
-mycelium hub host                   # (re)start the SLIM node and print its address
-```
-
-On a spoke, confirm it points at the right node and the port is open:
+Spokes talk to the hub over **HTTP** (`server.api_url`, default port **8000**).
+They do not need the SLIM node for normal participation.
 
 ```bash
-grep node_endpoint ~/.mycelium/config.toml
-curl http://<hub-ip>:46357            # raw reachability from the spoke
-mycelium connect http://<hub-ip>:46357  # re-point at the hub node
+mycelium doctor                     # detects hub vs spoke; checks /health
+curl http://<hub-ip>:8000/health    # from the spoke
+mycelium config get server.api_url    # should point at the hub backend
 ```
 
-Common causes: firewall/security group blocks 46357, VPN/Tailscale not
-connected, or a stale endpoint in `config.toml`.
+On the **hub**, ensure the backend and SLIM node are running:
+
+```bash
+mycelium up
+docker ps | grep mycelium
+mycelium hub host                   # (re)start the SLIM node if needed
+```
+
+If coordination still fails on the hub itself, check the SLIM node (port
+**46357**) — the backend moderator needs it. Spokes rarely need `:46357`
+unless you use native SLIM tooling (`mycelium slim send`).
+
+Common causes: firewall blocks **8000**, wrong `server.api_url`, VPN not
+connected, or auth enabled on the hub without `mycelium login` on the spoke.
+See [Security Planes](#security-planes) and [Authentication](#auth).
 
 ---
 
@@ -256,7 +261,7 @@ Unreachable* above); the backend and the node are separate ports.
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `LLM_MODEL` | LiteLLM model string | `anthropic/claude-sonnet-4-6` |
+| `LLM_MODEL` | `provider/model` string, as Pi takes it | `anthropic/claude-sonnet-4-6` |
 | `LLM_API_KEY` | Provider API key | (none) |
 | `LLM_BASE_URL` | Custom LLM endpoint (Ollama, vLLM) | (none) |
 | `MYCELIUM_DATA_DIR` | Data directory | `~/.mycelium` |

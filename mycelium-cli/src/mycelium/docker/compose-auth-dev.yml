@@ -1,0 +1,40 @@
+# Dev-only OIDC issuer for the identity work (Wave 0 of the identity epic #560).
+#
+# ⚠️  DEV / TEST ONLY. This mock issuer mints a valid-looking JWT for ANY client
+# with ANY secret and performs no real authentication. Never run it in a
+# deployment that anything trusts. Production issuers: Keycloak / SPIRE (#565).
+#
+# Purpose: give the HTTP-API JWT gate (#561) a real issuer + JWKS to validate
+# against locally, so the identity tickets can be built and tested end-to-end
+# without standing up Keycloak.
+#
+# Bring it up alongside the dev stack (run from the repo root):
+#   docker compose \
+#     -f mycelium-cli/src/mycelium/docker/compose.yml \
+#     -f mycelium-cli/src/mycelium/docker/compose-dev.yml \
+#     -f mycelium-cli/src/mycelium/docker/compose-auth-dev.yml \
+#     up -d
+#
+# Endpoints:
+#   In-network (the backend gate):  http://mycelium-auth-dev:8080/default
+#   From the host (CLI / curl):     http://localhost:9090/default
+#   Discovery: <issuer>/.well-known/openid-configuration   JWKS: <issuer>/jwks
+#
+# Mint an agent token (mock accepts any client_id/secret):
+#   curl -s -X POST http://localhost:9090/default/token \
+#     -H 'Content-Type: application/x-www-form-urlencoded' \
+#     -d 'grant_type=client_credentials&client_id=poc-agent&client_secret=dev&scope=openid'
+#   → a RS256 JWT whose `sub` is the client_id (the agent handle).
+#
+# Note: mock-oauth2-server derives `iss` from the request host, so the
+# in-network `iss` (mycelium-auth-dev:8080) differs from the host one
+# (localhost:9090). The #561 gate is issuer-agnostic — configure it to trust the
+# in-network issuer + JWKS URL; the host URLs are for manual token minting.
+
+services:
+  mycelium-auth-dev:
+    image: ghcr.io/navikt/mock-oauth2-server:2.1.10
+    container_name: mycelium-auth-dev
+    restart: unless-stopped
+    ports:
+      - "${MYCELIUM_AUTH_DEV_PORT:-9090}:8080"

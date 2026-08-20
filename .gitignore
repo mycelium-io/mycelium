@@ -16,7 +16,11 @@ logs/
 .DS_Store
 .mycelium/
 
-# Generated OpenAPI client (regenerated from spec)
+# Generated OpenAPI client — a build artifact, NOT source (#613). Generated
+# from the committed openapi.json by scripts/gen-mycelium-client.sh at dev
+# setup / CI / wheel + binary build time. Never commit the generated code.
+/mycelium-cli/src/mycelium_backend_client/
+/mycelium-client/mycelium_backend_client/
 fastapi-backend/mycelium-client/
 
 # Frontend
@@ -29,3 +33,7 @@ pnpm-lock.yaml
 
 # Claude Code harness state (per-session worktrees, transcripts)
 .claude/worktrees/
+
+# portman per-worktree dev-server port leases (machine-local)
+.ports.lock
+.ports.toml

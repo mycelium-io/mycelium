@@ -1,20 +1,20 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""The ``engine`` integration — mycelium's *first-party* cognition-engine family.
+"""The ``engine`` integration: mycelium's *first-party* cognition-engine family.
 
 Unlike ``claude_code`` / ``cursor`` (which bridge to a
 *third-party* runtime we don't own), an engine is **ours**: our NEGMAS loop, our
 brain. One ``engine`` family hosts a variety of Cognition Engines, selected by
 the manifest's ``kind`` (``aligner`` today; ``bargainer``, ``team_former``, a
-drift evaluator later) — the extensibility axis, no new adapter per CE.
+drift evaluator later): the extensibility axis, no new adapter per CE.
 
-An engine is a first-class registered *room citizen* — a manifest at
+An engine is a first-class registered *room citizen*, a manifest at
 ``agents/<handle>`` (``adapter="engine"``, ``kind=<ce>``), listed by
 ``engine ls`` / ``agent ls``, invokable, posting as itself. Its run is owned
 by the **backend's summon seam** (which recognises registered engines instead of
 the old reserved ``ALIGNER_HANDLE``), so ``lifecycle="backend_engine"``. There are
-no host-side assets — hence the no-op install/register facets.
+no host-side assets; hence the no-op install/register facets.
 """
 
 from __future__ import annotations
@@ -65,7 +65,7 @@ class EngineIntegration(Integration):
     def register(
         self, *, manifest: AgentManifest, config: MyceliumConfig, opts: AddOptions
     ) -> None:
-        # No runtime side effects — the backend owns an engine's run via its
+        # No runtime side effects; the backend owns an engine's run via its
         # summon seam. The manifest (persisted by the command layer) is the whole
         # registration.
         return
@@ -91,7 +91,7 @@ class EngineIntegration(Integration):
         )
         return lines
 
-    # ── install facet (no host assets — engines are backend-run) ─────────────
+    # ── install facet (no host assets; engines are backend-run) ─────────────
 
     def install(
         self,
@@ -113,7 +113,7 @@ class EngineIntegration(Integration):
     def dry_run_lines(
         self, *, config: MyceliumConfig, profile: str | None, container: str | None
     ) -> list[str]:
-        return ["  (no host-level install for engines — the backend runs them)"]
+        return ["  (no host-level install for engines; the backend runs them)"]
 
     def post_install_banner(
         self,

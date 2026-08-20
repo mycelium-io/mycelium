@@ -1,0 +1,98 @@
+{
+  "realm": "mycelium",
+  "enabled": true,
+  "displayName": "Mycelium",
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "accessTokenLifespan": 300,
+  "clients": [
+    {
+      "clientId": "mycelium-cli",
+      "name": "Mycelium CLI",
+      "description": "Public client for `mycelium login` (Authorization Code + PKCE and Device Code).",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "fullScopeAllowed": true,
+      "redirectUris": [
+        "http://127.0.0.1/*",
+        "http://127.0.0.1:*/callback",
+        "http://localhost:*/callback"
+      ],
+      "webOrigins": ["+"],
+      "attributes": {
+        "oauth2.device.authorization.grant.enabled": "true",
+        "standard.token.exchange.enabled": "false"
+      },
+      "protocolMappers": [
+        {
+          "name": "mycelium-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.custom.audience": "mycelium",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "mycelium-web",
+      "name": "Mycelium Web",
+      "description": "Public client for the Next.js frontend's browser OIDC login (Authorization Code + PKCE, web redirect).",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "fullScopeAllowed": true,
+      "redirectUris": [
+        "http://localhost:3000/api/auth/callback",
+        "http://127.0.0.1:3000/api/auth/callback"
+      ],
+      "webOrigins": ["+"],
+      "attributes": {
+        "post.logout.redirect.uris": "+"
+      },
+      "protocolMappers": [
+        {
+          "name": "mycelium-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.custom.audience": "mycelium",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "demo",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "demo@mycelium.dev",
+      "firstName": "Demo",
+      "lastName": "User",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "demo",
+          "temporary": false
+        }
+      ],
+      "realmRoles": ["default-roles-mycelium"]
+    }
+  ]
+}

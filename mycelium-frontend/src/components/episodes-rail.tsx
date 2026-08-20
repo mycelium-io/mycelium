@@ -5,7 +5,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Activity } from "lucide-react";
-import { fetchEpisodes, logFetchError, type EpisodeSummary } from "@/lib/api";
+import { fetchEpisode, type EpisodeSummary } from "@/lib/api";
+import { useRoomEpisodes } from "@/lib/room-data";
 import { DetailDrawer } from "@/components/detail-drawer";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -29,34 +30,36 @@ function isLive(ep: EpisodeSummary): boolean {
 
 interface EpisodesRailProps {
   roomName: string;
+  /** An episode short id to open, arrived at from search. */
+  focusShortId?: string | null;
+  onFocusConsumed?: () => void;
 }
 
-export function EpisodesRail({ roomName }: EpisodesRailProps) {
-  const [episodes, setEpisodes] = useState<EpisodeSummary[]>([]);
-  const [loaded, setLoaded] = useState(false);
+export function EpisodesRail({ roomName, focusShortId = null, onFocusConsumed }: EpisodesRailProps) {
   const [selected, setSelected] = useState<EpisodeSummary | null>(null);
+  const { episodes, loading } = useRoomEpisodes(roomName);
 
+  // Arriving from search: open the named episode's drawer. The list is the
+  // primary source because an episode still *running* has no `log/episodes/*`
+  // record yet — it exists only in the moderator's lifecycle, which the list
+  // synthesizes and the detail endpoint has nothing to serve for. The fetch is
+  // the fallback for a closed episode sitting past the list's limit.
   useEffect(() => {
-    let cancelled = false;
-    const load = () =>
-      fetchEpisodes(roomName)
-        .then((data) => {
-          if (!cancelled) {
-            setEpisodes(data);
-            setLoaded(true);
-          }
-        })
-        .catch((err) => {
-          logFetchError("fetchEpisodes")(err);
-          if (!cancelled) setLoaded(true);
-        });
-    load();
-    const t = setInterval(load, 5000);
-    return () => {
-      cancelled = true;
-      clearInterval(t);
-    };
-  }, [roomName]);
+    if (!focusShortId) return;
+    const known = episodes.find((ep) => ep.short_id === focusShortId);
+    if (known) {
+      setSelected(known);
+      onFocusConsumed?.();
+      return;
+    }
+    if (loading) return;
+    fetchEpisode(roomName, focusShortId).then((detail) => {
+      if (detail) setSelected(detail);
+      // Answered either way: a since-deleted episode leaves you in the room
+      // rather than leaving the request pending forever.
+      onFocusConsumed?.();
+    });
+  }, [roomName, focusShortId, episodes, loading, onFocusConsumed]);
 
   const counts = useMemo(() => {
     const live = episodes.filter(isLive).length;
@@ -74,7 +77,7 @@ export function EpisodesRail({ roomName }: EpisodesRailProps) {
       </div>
 
       <div className="flex-1 overflow-y-auto py-1">
-        {!loaded ? (
+        {loading ? (
           Array.from({ length: 3 }, (_, i) => (
             <div key={i} className="flex flex-col gap-1.5 px-4 py-2.5">
               <div className="flex items-center gap-2">

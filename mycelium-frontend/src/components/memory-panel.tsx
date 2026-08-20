@@ -3,9 +3,29 @@
 
 "use client";
 
-import { useEffect, useMemo, useState, useCallback } from "react";
-import { Brain, ChevronRight, Folder, FolderOpen, FileText, AlertCircle } from "lucide-react";
-import { fetchMemories, searchMemories, type Memory, type MemorySearchResult } from "@/lib/api";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Brain,
+  ChevronRight,
+  ExternalLink,
+  Folder,
+  FolderOpen,
+  FileText,
+  AlertCircle,
+  Network,
+} from "lucide-react";
+import {
+  fetchMemory,
+  fetchMemoryExpanded,
+  searchMemories,
+  type Memory,
+  type MemorySearchResult,
+} from "@/lib/api";
+import { useRoomMemories, useRoomMemoryIntegrity } from "@/lib/room-data";
+import { memoryGraphHref, memoryHref } from "@/lib/memory-routes";
+import { expandedPathsForKey, resolveMemoryPeekNavigation } from "@/lib/memory-panel-nav";
 import { DetailDrawer } from "@/components/detail-drawer";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -21,7 +41,12 @@ interface TreeNode {
 interface Props {
   roomName: string;
   masId?: string | null;
-  refreshTrigger: number;
+  /** A memory key to open, arrived at from search. */
+  focusKey?: string | null;
+  onFocusConsumed?: () => void;
+  /** Select and reveal a memory by key (e.g. a chat `[[wikilink]]` was clicked).
+   *  The nonce lets the same key re-open after the reader has browsed elsewhere. */
+  focusMemory?: { key: string; nonce: number } | null;
 }
 
 function buildTree(memories: Memory[]): TreeNode[] {
@@ -65,6 +90,16 @@ function formatValue(v: unknown): string {
     return JSON.stringify(v, null, 0);
   }
   return String(v);
+}
+
+// Filename for a memory leaf, with its extension. Keys usually omit it (they're
+// stored as markdown); a structured value with no `text` field is really JSON.
+// A key that already carries an extension is shown as-is.
+function fileName(node: TreeNode): string {
+  if (node.name.includes(".")) return node.name;
+  const v = node.memory?.value;
+  const ext = v && typeof v === "object" && !("text" in (v as Record<string, unknown>)) ? "json" : "md";
+  return `${node.name}.${ext}`;
 }
 
 const ROW_H = 22; // px, matches vscode compact density
@@ -124,16 +159,21 @@ function TreeRows({ nodes, depth, collapsed, onToggle, onSelect, selected }: Tre
                 </span>
 
                 <span className="font-mono text-[11.5px] leading-none truncate min-w-0">
-                  {node.name}
+                  {isFolder ? node.name : fileName(node)}
                 </span>
 
-                {/* dot indicator when node is both a file and a folder */}
-                {isFolder && node.memory && (
+                  {isFolder && node.memory && (
                   <span className="flex-shrink-0 w-1 h-1 rounded-full bg-accent opacity-60" />
                 )}
               </button>
 
-              {/* version badge — files only */}
+              {/* skill tag — a skill is just a skills/… memory, flagged here */}
+              {node.memory && !isFolder && node.memory.key.startsWith("skills/") && (
+                <span className="flex-shrink-0 rounded-sm border border-accent/30 bg-accent/10 px-1 text-[9px] font-medium leading-tight text-accent">
+                  skill
+                </span>
+              )}
+
               {node.memory && !isFolder && (
                 <span className="flex-shrink-0 font-mono text-[10px] tabular text-faint">
                   v{node.memory.version}
@@ -158,29 +198,83 @@ function TreeRows({ nodes, depth, collapsed, onToggle, onSelect, selected }: Tre
   );
 }
 
-export function MemoryPanel({ roomName, refreshTrigger }: Props) {
-  const [memories, setMemories] = useState<Memory[]>([]);
-  const [loaded, setLoaded] = useState(false);
+export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusMemory }: Props) {
+  const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<MemorySearchResult[] | null>(null);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Memory | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [renderedBody, setRenderedBody] = useState<string | null>(null);
 
-  // fetchMemories degrades to [] on failure (fire-and-forget list), so no
-  // try/catch is needed here — a failed load just shows the empty state.
-  const loadData = useCallback(async () => {
-    setMemories(await fetchMemories(roomName));
-    setLoaded(true);
-  }, [roomName]);
+  // The tree, plus the room-wide integrity report the drawer reads to flag a
+  // broken or orphaned memory without a per-open round trip. Both revalidate
+  // when a memory write reaches the room, so neither needs a refresh prop.
+  const { memories, loading } = useRoomMemories(roomName);
+  const { integrity } = useRoomMemoryIntegrity(roomName);
+  const memoriesRef = useRef(memories);
+  memoriesRef.current = memories;
+
+  // Expanded transclusions for whichever memory is open in the drawer, so the
+  // rail peek matches the full page instead of leaving `![[…]]` markers as
+  // unexpanded chips (#599).
+  useEffect(() => {
+    if (!selected) {
+      setRenderedBody(null);
+      return;
+    }
+    let live = true;
+    setRenderedBody(null);
+    fetchMemoryExpanded(roomName, selected.key).then(exp => {
+      if (live && exp.found && exp.rendered) setRenderedBody(exp.rendered);
+    });
+    return () => {
+      live = false;
+    };
+  }, [roomName, selected]);
 
   const contributors = useMemo(
     () => Array.from(new Set(memories.map(m => m.created_by).filter(Boolean))),
     [memories],
   );
 
-  useEffect(() => { loadData(); }, [loadData, refreshTrigger]);
+  const revealKeyInTree = useCallback((key: string, clearSearch = false) => {
+    if (clearSearch) setSearchResults(null);
+    setCollapsed(prev => {
+      const next = new Set(prev);
+      for (const path of expandedPathsForKey(key)) next.delete(path);
+      return next;
+    });
+  }, []);
+
+  const openMemoryByKey = useCallback(
+    async (key: string) => {
+      const nav = await resolveMemoryPeekNavigation(
+        roomName,
+        key,
+        memoriesRef.current,
+        fetchMemory,
+      );
+      if (nav.action === "drawer") {
+        setSelected(nav.memory);
+        revealKeyInTree(key, true);
+        return;
+      }
+      router.push(nav.href);
+    },
+    [roomName, revealKeyInTree, router],
+  );
+
+  // Arriving from search: open the named memory and reveal its folder. The tree
+  // only holds the first page of keys, so the memory is fetched by key rather
+  // than looked up in what happens to be loaded.
+  useEffect(() => {
+    if (!focusKey) return;
+    // Consumed only once the memory is in hand: clearing the request first would
+    // unmount the effect that is still fetching what it asked for.
+    void openMemoryByKey(focusKey).finally(() => onFocusConsumed?.());
+  }, [roomName, focusKey, onFocusConsumed, openMemoryByKey]);
 
   const handleSearch = async () => {
     if (!searchQuery.trim()) { setSearchResults(null); setSearchError(null); return; }
@@ -197,6 +291,12 @@ export function MemoryPanel({ roomName, refreshTrigger }: Props) {
   };
 
   const tree = useMemo(() => buildTree(memories), [memories]);
+
+  // A chat `[[wikilink]]` (or any external focus request) selects that memory.
+  // The nonce re-fires the same key on a repeat click.
+  useEffect(() => {
+    if (focusMemory?.key) void openMemoryByKey(focusMemory.key);
+  }, [focusMemory, openMemoryByKey]);
 
   const toggleNs = useCallback((path: string) =>
     setCollapsed(prev => {
@@ -215,6 +315,14 @@ export function MemoryPanel({ roomName, refreshTrigger }: Props) {
           <span className="text-faint px-1">·</span>
           <span className="text-text font-semibold tabular">{contributors.length}</span>
           <span>contributors</span>
+          <Link
+            href={memoryGraphHref(roomName)}
+            className="ml-auto inline-flex items-center gap-1 rounded-md px-2 py-1 text-micro font-medium text-accent transition-colors hover:bg-hairline"
+            title="Open the memory link graph"
+          >
+            <Network className="size-3.5" />
+            Graph
+          </Link>
         </div>
         {contributors.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mt-2.5">
@@ -294,7 +402,7 @@ export function MemoryPanel({ roomName, refreshTrigger }: Props) {
         {/* File tree */}
         {!searchResults && (
           <div className="py-1">
-            {!loaded ? (
+            {loading ? (
               ["w-24", "w-32", "w-20", "w-28"].map((w, i) => (
                 <div key={i} className="flex items-center gap-1.5 pr-3" style={{ height: ROW_H, paddingLeft: 8 }}>
                   <Skeleton className="size-3 rounded-sm" />
@@ -327,8 +435,28 @@ export function MemoryPanel({ roomName, refreshTrigger }: Props) {
         onClose={() => setSelected(null)}
         title={selected?.key}
         subtitle={selected ? `v${selected.version} · ${selected.created_by}` : undefined}
+        actions={
+          selected ? (
+            <Link
+              href={memoryHref(roomName, selected.key)}
+              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-micro font-medium text-accent transition-colors hover:bg-hairline"
+              title="Open full page"
+            >
+              <ExternalLink className="size-3.5" />
+              Full page
+            </Link>
+          ) : undefined
+        }
       >
-        {selected && <MemoryDetail memory={selected} />}
+        {selected && (
+          <MemoryDetail
+            memory={selected}
+            roomName={roomName}
+            onNavigate={openMemoryByKey}
+            renderedBody={renderedBody}
+            integrity={integrity}
+          />
+        )}
       </DetailDrawer>
     </div>
   );

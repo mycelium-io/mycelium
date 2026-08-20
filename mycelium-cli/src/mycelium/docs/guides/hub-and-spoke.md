@@ -1,14 +1,17 @@
 # Hub & Spoke Setup
 
 Run Mycelium across two or more machines so a small team shares rooms,
-memory, and coordination over one SLIM node.
+memory, and coordination from one hub.
 
-Coordination rides an [AGNTCY SLIM](#architecture) group channel, an
-MLS-encrypted messaging fabric. One machine is the **hub**: it runs the
-SLIM node plus the always-on backend that moderates each room. Every
-other machine is a **spoke** that points at the hub's node. There is no
-database and no separate channel server; the node is a blind ciphertext
-forwarder, so the hub never sees room contents in the clear.
+One machine is the **hub**: it runs the SLIM node and the always-on FastAPI
+backend (room moderator + memory store). Every other machine is a **spoke**:
+CLI + agents only, talking to the hub over **HTTP**. There is no database and
+no separate channel server.
+
+> **Two planes.** Spokes use the **HTTP API** (`:8000`) for memory and
+> participation. The **SLIM/MLS fabric** (`:46357`) is used by the hub backend
+> as moderator; spokes do not join it in the default path and do **not** need
+> `MYCELIUM_SLIM_MASTER_SECRET`. See [Security Planes](#security-planes).
 
 ## When to use this
 
@@ -20,28 +23,33 @@ see the [Quick Start](#quickstart).
 ## Topology
 
 ```
-┌──────────────────────────────────┐
-│  Hub  (one machine)              │
-│                                  │
-│  mycelium install                │
-│  mycelium hub host               │
-│  ├─ SLIM node   :46357           │
-│  └─ FastAPI backend (moderator)  │
-└────────────┬─────────────────────┘
-             │  SLIM (MLS-encrypted)
-     ┌───────┴───────┐
-     │               │
-┌────┴─────┐   ┌─────┴────┐
-│ Spoke A  │   │ Spoke B  │
-│          │   │          │
-│ mycelium │   │ mycelium │
-│ connect  │   │ connect  │
-│ + agents │   │ + agents │
-└──────────┘   └──────────┘
+┌─────────────────────────────────────────────┐
+│  Hub  (one machine)                         │
+│                                             │
+│  mycelium install                           │
+│  mycelium hub host                          │
+│  ├─ SLIM node        :46357  (MLS fabric)   │
+│  └─ FastAPI backend  :8000  (HTTP API)     │
+│       moderator + memory store              │
+└──────────────────┬──────────────────────────┘
+                   │
+         HTTP :8000  (memory, await, respond)
+                   │
+     ┌─────────────┴─────────────┐
+     │                           │
+┌────┴──────┐              ┌─────┴─────┐
+│ Spoke A   │              │ Spoke B   │
+│ CLI       │              │ CLI       │
+│ + agents  │              │ + agents  │
+└───────────┘              └───────────┘
 ```
 
-Spokes run only the CLI and their agents. They connect to the hub's node
-address and coordinate over the shared channel.
+Spokes are **thin HTTP clients**. They keep no copy of room memory locally;
+every `memory`, `await`, and `respond` call goes to the hub API.
+
+The SLIM node on the hub forwards MLS **ciphertext** between native SLIM
+members. The backend moderator decrypts for the transcript, aligner, and
+memory — it is not a blind observer of room content.
 
 ## Step 1: Stand up the hub
 
@@ -52,20 +60,15 @@ mycelium install
 mycelium hub host
 ```
 
-`mycelium hub host` starts the `slim` node container and prints the
-address peers connect to:
+`mycelium hub host` starts the `slim` node container and prints addresses:
 
 ```
 SLIM node running.
   local     → http://127.0.0.1:46357  (this machine, saved to config)
   for peers → http://192.168.1.20:46357
-
-  Peers connect with:  mycelium connect http://192.168.1.20:46357
 ```
 
-It also wires this machine to its own node, so the hub is ready to host
-rooms immediately. Note the `for peers` LAN address; that's what spokes
-connect to.
+Ensure the backend is up as well (`mycelium up` or the full install stack).
 
 Verify with:
 
@@ -77,17 +80,36 @@ mycelium doctor
 backend means hub) and runs the checks that apply. Override with
 `--mode hub|spoke` if needed.
 
+### Hub-only: SLIM master secret
+
+The hub SLIM PSK lives in **`config.toml`**, not as a hand-edited `.env` entry.
+On first `mycelium install` or `mycelium config apply`, Mycelium generates
+`[slim].master_secret` when unset and renders it to `MYCELIUM_SLIM_MASTER_SECRET`
+in `~/.mycelium/.env` for the backend container.
+
+```bash
+mycelium config apply    # generates [slim].master_secret if missing
+mycelium config show     # SLIM PSK shown masked
+```
+
+To rotate:
+
+```bash
+mycelium config set slim.master_secret "$(openssl rand -hex 32)"
+mycelium config apply --restart
+```
+
+Spokes never need this value. Re-running `config apply` preserves the secret.
+
 ### Open ports
 
-Spokes need to reach the hub's SLIM node:
+| Port  | Service        | Spokes need it? | Purpose |
+|-------|----------------|-----------------|---------|
+| **8000** | FastAPI backend | **Yes** | Memory, `await`/`respond`, room ops |
+| 46357 | SLIM node      | No (default)    | Native SLIM on hub; optional for `slim send` |
 
-| Port  | Service   | Required |
-|-------|-----------|----------|
-| 46357 | SLIM node | Yes      |
-
-The node forwards only MLS ciphertext, but restrict access anyway with a
-VPN, Tailscale, or firewall rules; access to a channel is gated by its
-shared-secret PSK.
+Restrict `:8000` on the hub when the team shares a network. Enable the
+[HTTP JWT gate](#auth) — that is what protects spokes, not the SLIM PSK.
 
 ## Step 2: Connect each spoke
 
@@ -97,15 +119,24 @@ On each spoke, install the CLI:
 curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
 ```
 
-Point it at the hub's node address (the `for peers` line from Step 1):
+Point the spoke at the **hub backend** (required):
+
+```bash
+mycelium config set server.api_url http://192.168.1.20:8000
+```
+
+Or during init:
+
+```bash
+mycelium init --api-url http://192.168.1.20:8000
+```
+
+**Optional:** store the hub's SLIM node address (only needed for native SLIM
+tooling such as `mycelium slim send`, not for normal participation):
 
 ```bash
 mycelium connect http://192.168.1.20:46357
 ```
-
-This stores the node endpoint in `~/.mycelium/config.toml`. The command
-is identical whether the hub is self-hosted on your LAN or a shared
-mycelium-hosted rendezvous; only the address changes.
 
 Verify:
 
@@ -113,13 +144,19 @@ Verify:
 mycelium doctor
 ```
 
-The spoke reports **spoke mode** and skips checks that only apply to a
-local backend.
+The spoke reports **spoke mode**, checks backend reachability and HTTP auth
+status, and skips hub-only checks (Docker, SLIM PSK).
 
-## Step 3: Share a room
+### Secure a shared hub
 
-Rooms are folders. Create one on any machine, then share it so every
-machine has the same room to coordinate in.
+When spokes reach the hub over a LAN or VPN, turn on HTTP authentication on
+the hub. See [Authentication](#auth). Without it, any peer on the network can
+read/write memory and post as any `@handle` — independent of SLIM PSK.
+
+## Step 3: Use a room from a spoke
+
+There is one store: the hub's. Create the room on the hub, then use it from
+anywhere.
 
 ```bash
 # On the hub
@@ -127,26 +164,34 @@ mycelium room create portfolio
 mycelium room use portfolio
 ```
 
-On a spoke, pull the room's memories from the hub's backend:
+On a spoke, just make it the active room:
 
 ```bash
-mycelium room clone portfolio --from http://192.168.1.20:8000
+mycelium room use portfolio
 ```
 
-`room clone` fetches the room's memories over HTTP and writes them
-locally, then sets the room active. From here, memory is shared the
-normal way: git push/pull for durable state, and the live SLIM channel
-for coordination.
+Every memory command resolves against the hub over HTTP:
+
+```bash
+mycelium memory ls
+mycelium memory get decisions/allocation
+mycelium memory set decisions/allocation "60/40 equities to bonds"
+mycelium memory search "what did we decide about risk"
+```
+
+Because reads go to the hub, a spoke sees a write the moment it lands.
+Memory commands need the hub reachable and report plainly when it is not.
+
+> `mycelium room clone` pulls a point-in-time snapshot to local files (backup
+> or offline read). It is not part of joining a room from a spoke.
 
 ## Step 4: Run a negotiation across machines
 
-Register the mediator (the [aligner](#aligner)) once in the room, then
-have each machine's agent post an opening position and loop on the
-channel. The aligner runs a NEGMAS negotiation and stops the instant the
-agents agree.
+Register the [aligner](#aligner) once in the room, post opening positions,
+and loop on participation. The aligner runs on the hub over the SLIM fabric;
+spoke agents use HTTP `await`/`respond`.
 
 ```bash
-# Once, on any machine: register the aligner in the room
 mycelium engine create aligner --kind aligner --room portfolio
 ```
 
@@ -160,58 +205,63 @@ mycelium respond --room portfolio --handle alice "I want 60% equities."
 mycelium respond --room portfolio --handle bob "No more than 40% equities."
 ```
 
-A human summons the aligner to converge:
+Summon the aligner:
 
 ```bash
 mycelium engine invoke aligner "converge on the equities allocation"
 ```
 
-Each participant then loops: wait for a prompt addressed to their
-handle, read it, and reply:
+Each participant loops over HTTP (no SLIM socket on the spoke):
 
 ```bash
 mycelium await --room portfolio --handle alice --json
 mycelium respond --room portfolio --handle alice "accept 50%, meets my floor"
 ```
 
-On agreement the aligner records the [episode](#episodes) and compiles
-the room's shared `plan/tasks.md`. Read it on any machine:
+On agreement the aligner compiles `plan/tasks.md`. Read it on any machine:
 
 ```bash
 mycelium plan tasks
 ```
 
-Agents work the `@handle` tasks assigned to them. The plan and any new
-memories sync across machines the same way the room did.
-
 ## Agent identity
 
-Each agent needs a unique handle across the whole deployment; it's the
-agent's identity in every room. The handle is resolved from, in order:
+Each agent needs a unique handle across the deployment. The handle is
+resolved from, in order:
 
 1. `identity.name` in `~/.mycelium/config.toml`
 2. The `MYCELIUM_AGENT_HANDLE` environment variable
-3. The `--handle` flag on `await` / `respond` (or `--as` when summoning
-   an engine)
+3. The `--handle` flag on `await` / `respond`
+
+On a shared hub with [auth enabled](#auth), the token — not the body alone —
+is the actor of record. Configure agent credentials for unattended spokes.
 
 ## Troubleshooting
 
 ### Spoke can't reach the hub
 
+Check the **backend** first (the path spokes actually use):
+
 ```bash
-curl http://192.168.1.20:46357
+curl http://192.168.1.20:8000/health
 ```
 
-If this fails, check firewall rules, VPN connectivity, or security
-groups. The node binds inside Docker; the host firewall may block
-external access.
+If this fails, check firewall rules, VPN connectivity, or security groups.
+The backend must be reachable on port **8000**.
+
+The SLIM node (`:46357`) is only required on the hub for coordination
+fabric; spokes do not need it for `memory` or `await`/`respond`.
 
 ### `doctor` reports "spoke mode" unexpectedly
 
 `mycelium doctor` infers mode from `server.api_url`. If it points at a
-non-local address, doctor assumes spoke mode. If you're running the
-backend locally on a non-default address, set `server.api_url` to
-`http://localhost:8000` in `~/.mycelium/config.toml`, or force the mode
-with `mycelium doctor --mode hub`.
+non-local address, doctor assumes spoke mode. If you're running the backend
+locally on a non-default address, set `server.api_url` to
+`http://localhost:8000` in `~/.mycelium/config.toml`, or force hub mode:
 
-See [Troubleshooting](#troubleshooting) for the full runbook.
+```bash
+mycelium doctor --mode hub
+```
+
+See [Troubleshooting](#troubleshooting) for the full runbook and
+[Security Planes](#security-planes) for HTTP vs SLIM protection.

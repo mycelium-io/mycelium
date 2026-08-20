@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Mycelium Contributors
 
-// A minimal EventSource stand-in for component tests. jsdom has no
-// EventSource; the components open one to consume the room's SSE. Tests grab
-// the latest instance and drive it (`open()`, `emit()`) to simulate the bus.
+// EventSource mock for testing; tests drive instances via open()/emit().
 export class FakeEventSource {
   static instances: FakeEventSource[] = [];
 

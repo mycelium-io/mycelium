@@ -6,7 +6,7 @@
 Drives NEGMAS over SLIM as the summoned engine handle: discover issues from the
 opening prose, ``@``-address one agent per turn, read the real reply, interpret
 it, step NEGMAS, and emit a ``commit:converged`` when the mechanism reaches
-agreement — the same seam the backend's ``plan_sync`` consumes off the channel.
+agreement: the same seam the backend's ``plan_sync`` consumes off the channel.
 
 **The channel is an injected seam** (:class:`EngineChannel`) so the drive *logic*
 is unit-testable with a fake. The real SLIM transport
@@ -30,13 +30,13 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Same fix as the backend: neutralise ``@`` in outgoing prompts so the broker's
-# summary (which names the other agents) doesn't spuriously wake them — only the
+# summary (which names the other agents) doesn't spuriously wake them; only the
 # L9 recipient should wake, one agent per turn.
 _AT_MENTION = re.compile(r"@(?=\w)")
 
 
 class EngineChannel(Protocol):
-    """The SLIM seam the drive loop needs — publish a content dict, receive one.
+    """The SLIM seam the drive loop needs: publish a content dict, receive one.
 
     ``publish`` broadcasts one L9 content dict onto the room channel. ``receive``
     returns the next inbound content dict (already parsed) or ``None`` on timeout.
@@ -97,7 +97,7 @@ class EngineDrive:
 
         issues = await asyncio.to_thread(
             mediator.discover_issues,
-            "Converge on the room's open question — agree one value per issue.",
+            "Converge on the room's open question; agree one value per issue.",
             openings,
             llm=self._brain,
         )
@@ -169,10 +169,10 @@ class EngineDrive:
             if inbound is None:
                 continue
             if l9.payload_type_of(inbound) == "keepalive":
-                continue  # an idle keepalive ping — never a negotiation reply
+                continue  # an idle keepalive ping, never a negotiation reply
             sender = l9.sender_of(inbound)
             if sender is None or _norm(sender) != pending:
-                continue  # not the addressed agent's reply — ignore (own prompt, others)
+                continue  # not the addressed agent's reply; ignore (own prompt, others)
             if (l9.payload_data_of(inbound) or {}).get("action") == "position":
                 continue  # a prompt echo, not a reply
             return l9.human_text_of(inbound) or ""
@@ -185,7 +185,7 @@ class EngineDrive:
         → memory sync (unchanged tail), so the host engine only has to emit it.
         """
         summary = (
-            "✓ agreement — " + " · ".join(f"{k} = {v}" for k, v in assignments.items())
+            "✓ agreement: " + " · ".join(f"{k} = {v}" for k, v in assignments.items())
             if converged
             else "✗ not converged"
         )
@@ -217,7 +217,7 @@ class EngineDrive:
 class SlimEngineChannel:
     """An :class:`EngineChannel` backed by a live SLIM session.
 
-    Wraps the CLI ``SlimClient`` — the same transport the daemon connector uses.
+    Wraps the CLI ``SlimClient`` (the same transport the daemon connector uses).
     This is the one part of the runtime whose correctness only shows up live (the
     wire format + real agent connectors), so it's deliberately thin: build the
     content dicts in :class:`EngineDrive`, move bytes here.

@@ -6,17 +6,17 @@
 The backend (``fastapi-backend/app/services/{slim_client,l9,l9_slim}.py``) is the
 room **moderator**; this package is the **member** half a connector needs so a
 Claude Code agent can ride the same channel. It is a deliberately small,
-self-contained mirror of the backend's wrappers — the CLI installs as a thin
+self-contained mirror of the backend's wrappers: the CLI installs as a thin
 ``uv tool`` and must not drag in the FastAPI/ML backend just to hold a SLIM
 connection.
 
 Two invariants keep the two halves interoperable and MUST match the backend:
 
-- **Naming + shared secret** (:mod:`mycelium.slim.naming`) — the
+- **Naming + shared secret** (:mod:`mycelium.slim.naming`): the
   ``workspace/room/agent`` → SLIM ``Name`` mapping and the shared-secret
   (authentication PSK) derivation are byte-for-byte the backend's, or a member
   fails identity verification and can't join the moderator's group.
-- **L9 wire shape** (:mod:`mycelium.slim.l9`) — an envelope rides under the
+- **L9 wire shape** (:mod:`mycelium.slim.l9`): an envelope rides under the
   additive ``l9`` key of a message's content JSON, in the exact shape the
   backend's ``l9.envelope_to_dict`` emits, so ``l9.parse_envelope`` accepts a
   connector's reply.

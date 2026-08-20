@@ -3,9 +3,11 @@
 
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTheme } from "next-themes";
 import { Monitor, Moon, Sun, type LucideIcon } from "lucide-react";
+import { useCommands } from "@/components/keymap-provider";
+import type { PaletteCommand } from "@/lib/commands";
 
 const OPTIONS: { value: string; label: string; icon: LucideIcon }[] = [
   { value: "light", label: "Light", icon: Sun },
@@ -20,7 +22,6 @@ export function ThemeToggle() {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => setMounted(true), []);
 
-  // Close on outside click / Escape.
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => {
@@ -34,6 +35,20 @@ export function ThemeToggle() {
       document.removeEventListener("keydown", onKey);
     };
   }, [open]);
+
+  // Separate commands so palette search finds "Dark" instead of "Toggle theme".
+  const commands = useMemo<PaletteCommand[]>(
+    () =>
+      OPTIONS.map(({ value, label }) => ({
+        id: `theme.${value}`,
+        title: `${label} theme`,
+        group: "Preferences",
+        keywords: ["theme", "appearance", "colour", "color"],
+        run: () => setTheme(value),
+      })),
+    [setTheme],
+  );
+  useCommands(commands);
 
   const Active = (mounted && resolvedTheme === "dark" ? Moon : Sun) as LucideIcon;
 

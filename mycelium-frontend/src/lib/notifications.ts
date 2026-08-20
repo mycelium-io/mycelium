@@ -7,7 +7,7 @@
 // Framework-agnostic on purpose — `notifications-provider.tsx` is the only
 // React-aware consumer, so this stays unit-testable without rendering.
 
-export type NotificationKind = "mention" | "direct" | "consensus" | "knowledge" | "join";
+export type NotificationKind = "mention" | "direct" | "consensus" | "knowledge" | "join" | "message";
 
 export interface ClassifiedNotification {
   id: string;
@@ -16,17 +16,25 @@ export interface ClassifiedNotification {
   summary: string;
   sender: string;
   time: string;
-  /** True for the kinds "Needs me" scope includes (mention/direct/consensus/
-   *  knowledge); false for ambient activity ("everything" scope only, e.g. a
-   *  plain join). */
+  /** True for the kinds that ring the bell (mention/direct/consensus/knowledge);
+   *  false for ambient activity that only badges (a plain broadcast or a join). */
   needsMe: boolean;
 }
 
 export interface StoredNotification extends ClassifiedNotification {
   read: boolean;
+  /** True when this reached the bell inbox + sound/desktop ("loud"); false when
+   *  it only bumps the room's unread badge ("quiet"). Missing on legacy entries,
+   *  which were all loud — treat `!== false` as loud. */
+  alert?: boolean;
 }
 
 export type NotificationScope = "needs-me" | "everything";
+
+/** Per-room notification level (Discord-style), overriding the global default.
+ *  all = every message is loud; mentions = only @you/consensus is loud, the rest
+ *  just badges; muted = nothing (no badge, no bell). */
+export type RoomLevel = "all" | "mentions" | "muted";
 
 export interface NotificationSettings {
   scope: NotificationScope;
@@ -35,6 +43,8 @@ export interface NotificationSettings {
   desktopEnabled: boolean;
   dnd: boolean;
   mutedRooms: string[];
+  /** Per-room overrides of the scope-derived default. */
+  roomLevels: Record<string, RoomLevel>;
 }
 
 export const DEFAULT_SETTINGS: NotificationSettings = {
@@ -44,7 +54,26 @@ export const DEFAULT_SETTINGS: NotificationSettings = {
   desktopEnabled: false,
   dnd: false,
   mutedRooms: [],
+  roomLevels: {},
 };
+
+/** The effective level for a room: an explicit per-room override wins, else a
+ *  legacy mute reads as "muted", else the global scope's default ("everything" →
+ *  all, "needs-me" → mentions). */
+export function roomLevel(settings: NotificationSettings, room: string): RoomLevel {
+  const override = settings.roomLevels?.[room];
+  if (override) return override;
+  if (settings.mutedRooms.includes(room)) return "muted";
+  return settings.scope === "everything" ? "all" : "mentions";
+}
+
+/** Is this notification "loud" — bell inbox + sound/desktop — vs badge-only?
+ *  Loud when the room is on "all", or the item needs you and the room isn't muted. */
+export function isAlert(n: ClassifiedNotification, settings: NotificationSettings): boolean {
+  const level = roomLevel(settings, n.room);
+  if (level === "muted") return false;
+  return level === "all" || n.needsMe;
+}
 
 const MENTION_RE = /@([\w-]+)/g;
 
@@ -87,17 +116,21 @@ export function classify(raw: Record<string, unknown>, principal: string): Class
   switch (mtype) {
     case "l9_exchange": {
       const text = (content.content as string) || "";
+      // Your own post is never a notification to yourself.
+      if (sender.toLowerCase() === handle) return null;
       const directed = recipient !== null && recipient.toLowerCase() === handle;
       const mentioned = mentionsHandle(text, handle);
-      if (!directed && !mentioned) return null;
+      // A message that neither addresses nor mentions you is ambient room
+      // activity: it badges the room (quiet) but doesn't ring the bell.
+      const kind = directed ? "direct" : mentioned ? "mention" : "message";
       return {
         id,
         room,
         sender,
         time,
-        kind: directed ? "direct" : "mention",
+        kind,
         summary: text.slice(0, 160),
-        needsMe: true,
+        needsMe: directed || mentioned,
       };
     }
     case "l9_commit": {
@@ -121,14 +154,12 @@ export function classify(raw: Record<string, unknown>, principal: string): Class
   }
 }
 
-/** Does ``settings`` admit this classified notification (scope, per-room
- *  mute, global do-not-disturb)? Pure predicate — the caller decides what to
- *  do with an admitted notification (store it, ping, badge it). */
+/** Should this notification ring the bell right now — i.e. it's "loud" for the
+ *  room's level and global do-not-disturb is off. (A badge-only item is stored
+ *  but never admitted here.) Pure predicate; the caller decides what to do. */
 export function isAdmitted(n: ClassifiedNotification, settings: NotificationSettings): boolean {
   if (settings.dnd) return false;
-  if (settings.mutedRooms.includes(n.room)) return false;
-  if (settings.scope === "needs-me" && !n.needsMe) return false;
-  return true;
+  return isAlert(n, settings);
 }
 
 const NOTIFICATIONS_KEY = "mycelium.notifications";
@@ -187,6 +218,7 @@ export function saveSettings(settings: NotificationSettings): void {
 export type CrossTabMessage =
   | { type: "read"; id: string }
   | { type: "read-all" }
+  | { type: "room-read"; room: string }
   | { type: "dismiss"; id: string }
   | { type: "clear" }
   | { type: "settings"; settings: NotificationSettings };
@@ -203,11 +235,26 @@ export function openCrossTabChannel(onMessage: (msg: CrossTabMessage) => void): 
   if (typeof window === "undefined" || typeof window.BroadcastChannel === "undefined") {
     return { post: () => {}, close: () => {} };
   }
+  let closed = false;
   const bc = new BroadcastChannel(CHANNEL_NAME);
   bc.onmessage = (e) => onMessage(e.data as CrossTabMessage);
   return {
-    post: (msg) => bc.postMessage(msg),
-    close: () => bc.close(),
+    // Posting on a closed channel throws InvalidStateError. React Strict Mode
+    // double-mounts the provider (close → reopen), and an effect can fire a post
+    // against the just-closed channel in that window — so a post after close is a
+    // no-op, not a crash.
+    post: (msg) => {
+      if (closed) return;
+      try {
+        bc.postMessage(msg);
+      } catch {
+        // Channel closed between the guard and the post — ignore.
+      }
+    },
+    close: () => {
+      closed = true;
+      bc.close();
+    },
   };
 }
 

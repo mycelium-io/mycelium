@@ -22,6 +22,7 @@ import argparse
 import html
 import re
 import sys
+import tomllib
 from collections import defaultdict
 from pathlib import Path
 
@@ -29,18 +30,15 @@ from pathlib import Path
 # 3 pages, each a long doc with a grouped sidebar.
 # (page_id, file_name, page_title, top_nav_label, sheet_no, plate_title, meta_description)
 PAGES: list[tuple[str, str, str, str, str, str, str]] = [
-    ("start", "index.html", "mycelium Docs", "Get Started",
-     "GET-001", "OVERVIEW · INSTALL · FIRST ROOM · COORDINATE",
-     "Coordination layer for multi-agent systems. Install and run your first multi-agent coordination flow: room, agents, negotiation, plan."),
-    ("concepts", "concepts.html", "Concepts · mycelium", "Concepts",
-     "CON-001", "CONCEPTS · ROOMS · EPISODES · MEMORY · PLAN",
-     "The core concepts behind Mycelium: rooms, episodes, memory, plan, engines (the aligner and synthesizer), and the L9 protocol."),
+    ("start", "index.html", "mycelium Docs", "Guide",
+     "GET-001", "OVERVIEW · QUICK START · CONCEPTS · ENGINES",
+     "A shared space for humans and agents. Install Mycelium and learn the core concepts: rooms, memory, plan, engines (the aligner and synthesizer), and the L9 protocol."),
     ("adapters", "adapters.html", "Adapters · mycelium", "Adapters",
      "ADP-001", "ADAPTERS · CLAUDE CODE · CURSOR · REST API",
      "Connect Claude Code, Cursor, or any HTTP client to the Mycelium coordination layer."),
     ("reference", "reference.html", "Reference · mycelium", "Reference",
-     "REF-001", "REFERENCE · ARCHITECTURE · CLI · CONFIG · GUIDES · HELP",
-     "Architecture, CLI reference, configuration, guides, and troubleshooting for Mycelium."),
+     "REF-001", "REFERENCE · ARCHITECTURE · CLI · CONFIG · DEPENDENCIES · GUIDES · HELP",
+     "Architecture, CLI reference, configuration, dependencies and compatibility, guides, and troubleshooting for Mycelium."),
 ]
 
 # Sections, in render order per page.
@@ -48,21 +46,21 @@ PAGES: list[tuple[str, str, str, str, str, str, str]] = [
 # md_file=None means the section is hand-coded (kept verbatim from source HTML).
 # If md_file is set AND a kept section with the same id exists, the kept HTML wins.
 SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
-    # ── start (index.html) — overview + quickstart ──
+    # ── start (index.html), overview + quickstart ──
     ("overview.md",                 "overview",           "start",       "Get Started",  "Overview"),
     ("quickstart.md",               "quickstart",         "start",       "Get Started",  "Quick Start"),
-    # ── concepts (concepts.html) ──
-    ("rooms.md",                    "rooms",              "concepts",    "Concepts",     "Rooms"),
-    ("principals.md",               "users",              "concepts",    "Concepts",     "Users & Teams"),
-    ("episodes.md",                 "episodes",           "concepts",    "Concepts",     "Episodes"),
-    ("memory.md",                   "memory",             "concepts",    "Concepts",     "Memory"),
-    ("plan.md",                     "plan",               "concepts",    "Concepts",     "Plan"),
-    ("l9-protocol.md",              "l9-protocol",        "concepts",    "Concepts",     "L9 Protocol"),
+    # ── concepts (now on the start page, grouped in the sidebar) ──
+    ("rooms.md",                    "rooms",              "start",       "Concepts",     "Rooms"),
+    ("principals.md",               "users",              "start",       "Concepts",     "Users & Teams"),
+    ("episodes.md",                 "episodes",           "start",       "Concepts",     "Episodes"),
+    ("memory.md",                   "memory",             "start",       "Concepts",     "Memory"),
+    ("plan.md",                     "plan",               "start",       "Concepts",     "Plan"),
+    ("l9-protocol.md",              "l9-protocol",        "start",       "Concepts",     "L9 Protocol"),
     # Engines are a nested group: the overview, then one page per kind.
-    ("engines.md",                  "engines",            "concepts",    "Engines",      "Overview"),
-    ("aligner.md",                  "aligner",            "concepts",    "Engines",      "Aligner"),
-    ("synthesizer.md",              "synthesizer",        "concepts",    "Engines",      "Synthesizer"),
-    # ── adapters (adapters.html) — all hand-coded ──
+    ("engines.md",                  "engines",            "start",       "Engines",      "Overview"),
+    ("aligner.md",                  "aligner",            "start",       "Engines",      "Aligner"),
+    ("synthesizer.md",              "synthesizer",        "start",       "Engines",      "Synthesizer"),
+    # ── adapters (adapters.html), all hand-coded ──
     (None,                          "adapters",           "adapters",  "Adapters",     "Overview"),
     (None,                          "adapter-claude-code","adapters",  "Adapters",     "Claude Code"),
     (None,                          "adapter-cursor",     "adapters",  "Adapters",     "Cursor"),
@@ -72,6 +70,10 @@ SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
     # CLI + Config blocks injected after architecture, before guides/troubleshooting.
     ("guides/structured-memory.md", "structured-memory",  "reference", "Guides",       "Structured Memory"),
     ("guides/hub-and-spoke.md",     "hub-and-spoke",      "reference", "Guides",       "Hub & Spoke"),
+    ("guides/security-planes.md",   "security-planes",    "reference", "Guides",       "Security Planes"),
+    ("guides/auth.md",              "auth",               "reference", "Guides",       "Authentication"),
+    ("guides/keycloak-oidc.md",     "keycloak-oidc",      "reference", "Guides",       "Keycloak / OIDC Setup"),
+    ("guides/spire-identity.md",    "spire-identity",     "reference", "Guides",       "Attested Identity (SPIRE)"),
     ("troubleshooting.md",          "troubleshooting",    "reference", "Help",         "Troubleshooting"),
 ]
 
@@ -86,7 +88,9 @@ GROUP_CONFIG: list[tuple[str, str, str]] = [
     ("setup", "setup", "setup"),
     ("room", "room", "room"),
     ("session", "session", "session"),
+    ("agent", "agent", "agent"),
     ("memory", "memory", "memory"),
+    ("skill", "skill", "skill"),
     ("plan", "plan", "plan"),
     ("negotiate", "negotiate", "negotiate"),
     ("cfn", "cfn", "cfn"),
@@ -101,9 +105,16 @@ CONFIG_NAMESPACE_ORDER: list[str] = [
 ]
 CONFIG_NAMESPACE_SKIP: set[str] = {"adapters"}
 
-DOCS_DIR = Path(__file__).parent.parent / "mycelium-cli" / "src" / "mycelium" / "docs"
+REPO_ROOT = Path(__file__).parent.parent
+DOCS_DIR = REPO_ROOT / "mycelium-cli" / "src" / "mycelium" / "docs"
 OUT_DIR = Path(__file__).parent
 LEGACY_INDEX = OUT_DIR / "index.html"  # for kept-section migration
+
+# Source-of-truth pin files for the Dependencies & Compatibility section. Versions
+# are read live from these so the page can never drift from what ships.
+CLI_PYPROJECT = REPO_ROOT / "mycelium-cli" / "pyproject.toml"
+BACKEND_PYPROJECT = REPO_ROOT / "fastapi-backend" / "pyproject.toml"
+COMPOSE_YML = REPO_ROOT / "mycelium-cli" / "src" / "mycelium" / "docker" / "compose.yml"
 
 
 # ── Markdown to HTML conversion (minimal, no dependencies) ──
@@ -226,18 +237,27 @@ def _md_to_html(md: str, section_id: str) -> str:
         if re.match(r"^\d+\.\s", line):
             out.append('      <ol class="steps">')
             while i < len(lines) and re.match(r"^\d+\.\s", lines[i]):
-                item_text = re.sub(r"^\d+\.\s+", "", lines[i])
-                out.append(f"        <li>{_inline(item_text)}</li>")
+                item_text = re.sub(r"^\d+\.\s+", "", lines[i]).rstrip()
                 i += 1
+                # Fold indented continuation lines (wrapped prose) into this item
+                # so a multi-line item stays one <li> instead of splitting into a
+                # fresh single-item <ol> that restarts numbering at 1.
+                while i < len(lines) and lines[i].strip() and lines[i][0].isspace():
+                    item_text += " " + lines[i].strip()
+                    i += 1
+                out.append(f"        <li>{_inline(item_text)}</li>")
             out.append("      </ol>")
             continue
 
         if line.startswith("- "):
             out.append("      <ul>")
             while i < len(lines) and lines[i].startswith("- "):
-                item_text = lines[i][2:]
-                out.append(f"        <li>{_inline(item_text)}</li>")
+                item_text = lines[i][2:].rstrip()
                 i += 1
+                while i < len(lines) and lines[i].strip() and lines[i][0].isspace():
+                    item_text += " " + lines[i].strip()
+                    i += 1
+                out.append(f"        <li>{_inline(item_text)}</li>")
             out.append("      </ul>")
             continue
 
@@ -267,7 +287,7 @@ def _md_to_html(md: str, section_id: str) -> str:
         if i == progress_i:
             print(
                 f"WARNING: unhandled markdown line in section '{section_id}' "
-                f"(line {i + 1}): {lines[i]!r} — skipping",
+                f"(line {i + 1}): {lines[i]!r}, skipping",
                 file=sys.stderr,
             )
             i += 1
@@ -301,30 +321,51 @@ def _highlight_code(code: str, lang: str) -> str:
     for line in lines:
         if line.strip().startswith("#"):
             out.append(f'<span class="comment">{html.escape(line)}</span>')
-        else:
-            highlighted = html.escape(line)
-            highlighted = re.sub(
-                r"(\s)(--?\w[\w-]*)",
-                r'\1<span class="flag">\2</span>',
-                highlighted,
-            )
-            highlighted = re.sub(
-                r"(&quot;[^&]*&quot;)",
-                r'<span class="str">\1</span>',
-                highlighted,
-            )
-            highlighted = re.sub(
-                r"(mycelium\s+\w+(?:\s+\w+)?)",
-                r'<span class="cmd">\1</span>',
-                highlighted,
-            )
-            out.append(highlighted)
+            continue
+        highlighted = html.escape(line)
+        # URLs carry the warm secondary tone.
+        highlighted = re.sub(
+            r"(https?://[^\s&|]+)",
+            r'<span class="url">\1</span>',
+            highlighted,
+        )
+        highlighted = re.sub(
+            r"(\s)(--?\w[\w-]*)",
+            r'\1<span class="flag">\2</span>',
+            highlighted,
+        )
+        highlighted = re.sub(
+            r"(&quot;[^&]*&quot;)",
+            r'<span class="str">\1</span>',
+            highlighted,
+        )
+        # The mycelium binary is its own token; its subcommands stay cmd-toned.
+        # Only when it's a standalone command, not inside a path (.mycelium/,
+        # ~/.mycelium) or a hyphenated name (mycelium-io).
+        highlighted = re.sub(
+            r"(?<![\w./~-])mycelium(?=\s)((?:\s+[\w-]+){0,2})",
+            lambda m: '<span class="bin">mycelium</span>'
+            + re.sub(r"[\w-]+", r'<span class="cmd">\g<0></span>', m.group(1)),
+            highlighted,
+        )
+        # Other leading shell commands that would otherwise render plain.
+        highlighted = re.sub(
+            r"^(\s*)(curl|docker|bash|cd|uv|ssh|git|open|cursor-agent|command)\b",
+            r'\1<span class="cmd">\2</span>',
+            highlighted,
+        )
+        out.append(highlighted)
     return "\n".join(out)
 
 
 def _highlight_usage(usage: str) -> str:
     s = html.escape(usage)
-    s = re.sub(r"^(mycelium(?:\s+\w+){1,2})", r'<span class="cmd">\1</span>', s)
+    s = re.sub(
+        r"^mycelium((?:\s+[\w-]+){1,2})",
+        lambda m: '<span class="bin">mycelium</span>'
+        + re.sub(r"[\w-]+", r'<span class="cmd">\g<0></span>', m.group(1)),
+        s,
+    )
     s = re.sub(r"(&quot;[^&]*&quot;)", r'<span class="str">\1</span>', s)
     s = re.sub(r"([\s\[])(-{1,2}\w[\w-]*)", r'\1<span class="flag">\2</span>', s)
     s = re.sub(r"(&lt;\w+&gt;)", r'<span class="arg">\1</span>', s)
@@ -442,10 +483,12 @@ def _generate_cli_reference() -> tuple[str, list[tuple[str, str]]]:
     import mycelium.commands.hub  # noqa: F401
     import mycelium.commands.install  # noqa: F401
     import mycelium.commands.instance  # noqa: F401
+    import mycelium.commands.login  # noqa: F401
     import mycelium.commands.memory  # noqa: F401
     import mycelium.commands.participate  # noqa: F401
     import mycelium.commands.plan  # noqa: F401
     import mycelium.commands.room  # noqa: F401
+    import mycelium.commands.skill  # noqa: F401
     import mycelium.commands.ui  # noqa: F401
     from mycelium.doc_ref import get_registry
 
@@ -602,6 +645,292 @@ def _generate_config_reference() -> tuple[str, list[tuple[str, str]]]:
     return body, sidebar_entries
 
 
+# ── Dependencies & Compatibility ──
+#
+# The version cell of every row is read live from the pin files (below), so the
+# published page cannot drift from what actually ships. The editorial metadata
+# (which group a dependency belongs to, what it's for, where its releases live)
+# is curated here, because none of it is derivable from a pyproject entry.
+#
+# A version source is one of:
+#   ("dep", "cli"|"backend", pkg)          # a [project.dependencies] pin
+#   ("extra", "cli"|"backend", extra, pkg) # a [project.optional-dependencies] pin
+#   ("image", "<image ref>")               # a container image tag from compose.yml
+#   ("literal", "<text>")                  # not version-pinned in a file (e.g. Pi)
+#   ("multi", [(label, source), ...])      # several pins rendered together
+
+DEPENDENCY_GROUPS: list[dict] = [
+    {
+        "heading": "Messaging fabric (AGNTCY SLIM)",
+        "sidebar": "Messaging (SLIM)",
+        "intro": (
+            "Mycelium is SLIM-native: rooms are SLIM group channels and the node "
+            "forwards only MLS ciphertext. This is the one deep coupling in the "
+            "stack, so it comes first."
+        ),
+        "components": [
+            {
+                "name": "slim-bindings",
+                "version": ("dep", "cli", "slim-bindings"),
+                "role": "The client the CLI and backend use to join channels",
+                "upstream": ("agntcy/slim releases", "https://github.com/agntcy/slim/releases"),
+            },
+            {
+                "name": "agntcy/slim (node image)",
+                "display": "`ghcr.io/agntcy/slim`",
+                "version": ("image", "ghcr.io/agntcy/slim"),
+                "role": "The messaging node itself, a blind ciphertext forwarder",
+                "upstream": (
+                    "ghcr.io/agntcy/slim",
+                    "https://github.com/agntcy/slim/pkgs/container/slim",
+                ),
+            },
+        ],
+        # {slim} and {node} are filled from the resolved pins so the constraint
+        # text always names the versions actually in force.
+        "callout": (
+            "**Version lockstep.** The node image and the `slim-bindings` wheel "
+            "must move together. Today both sides pin `slim-bindings{slim}` and the "
+            "node image is `{node}`. Mixing versions fails the MLS handshake with "
+            "`public key length is invalid`, so bump both to the same 2.x line at "
+            "once. 2.1.x is the first MLS-with-external-identity stack, which is "
+            "what the identity tiers build on."
+        ),
+    },
+    {
+        "heading": "Memory and search",
+        "sidebar": "Memory & Search",
+        "components": [
+            {
+                "name": "fastembed",
+                "version": ("dep", "backend", "fastembed"),
+                "role": "Local ONNX embeddings (BAAI/bge-small-en-v1.5, 384-dim); no external service",
+                "upstream": ("qdrant/fastembed", "https://github.com/qdrant/fastembed/releases"),
+            },
+            {
+                "name": "tiktoken",
+                "version": ("dep", "backend", "tiktoken"),
+                "role": "Token counting for context budgeting",
+                "upstream": ("openai/tiktoken", "https://github.com/openai/tiktoken/releases"),
+            },
+            {
+                "name": "rapidfuzz",
+                "version": ("dep", "backend", "rapidfuzz"),
+                "role": "Fuzzy key matching over memory",
+                "upstream": ("rapidfuzz/RapidFuzz", "https://github.com/rapidfuzz/RapidFuzz/releases"),
+            },
+        ],
+    },
+    {
+        "heading": "Cognition",
+        "sidebar": "Cognition",
+        "components": [
+            {
+                "name": "negmas",
+                "version": (
+                    "multi",
+                    [
+                        ("backend", ("dep", "backend", "negmas")),
+                        ("CLI engine extra", ("extra", "cli", "engine", "negmas")),
+                    ],
+                ),
+                "role": "The Stacked Alternating Offers mechanism the aligner runs",
+                "upstream": ("yasserfarouk/negmas", "https://github.com/yasserfarouk/negmas/releases"),
+            },
+            {
+                "name": "anthropic",
+                "version": ("dep", "backend", "anthropic"),
+                "role": "LLM client for backend cognition stages",
+                "upstream": (
+                    "anthropic-sdk-python",
+                    "https://github.com/anthropics/anthropic-sdk-python/releases",
+                ),
+            },
+            {
+                "name": "Pi",
+                "display": "Pi (`pi` binary)",
+                "version": ("literal", "shipped in the backend image"),
+                "role": "The aligner's brain and every one-shot cognition turn",
+                "upstream": "external binary, not a Python dependency",
+            },
+        ],
+    },
+    {
+        "heading": "Identity and crypto",
+        "sidebar": "Identity & Crypto",
+        "components": [
+            {
+                "name": "pyjwt[crypto]",
+                "version": ("dep", "backend", "pyjwt"),
+                "role": "JWT validation for the auth gate and SignerJwt identity",
+                "upstream": ("jpadilla/pyjwt", "https://github.com/jpadilla/pyjwt/releases"),
+            },
+            {
+                "name": "cryptography",
+                "version": ("dep", "cli", "cryptography"),
+                "role": "ES256 keypair and JWK for SLIM channel identity",
+                "upstream": ("pyca/cryptography", "https://github.com/pyca/cryptography/releases"),
+            },
+        ],
+    },
+]
+
+# Rendered verbatim as the closing paragraph. These carry no special version
+# constraint beyond their pins, so they don't earn a row each.
+DEPENDENCY_FOOTER = (
+    "The rest of the stack is standard, widely used building blocks with no "
+    "special version constraint beyond their pins: `fastapi[standard]`, `httpx`, "
+    "`pydantic` / `pydantic-settings`, `typer`, `rich`, and `questionary`. See the "
+    "`pyproject.toml` in each package for exact ranges."
+)
+
+
+def _normalize_pkg(name: str) -> str:
+    """PyPI-normalize a distribution name (case-fold, unify -/_/., drop extras)."""
+    name = name.split("[", 1)[0]
+    return re.sub(r"[-_.]+", "-", name).strip().lower()
+
+
+def _dep_version(deps: list[str], pkg: str) -> str:
+    """Return the version specifier for pkg from a dependencies list, e.g. '>=2.1,<2.2'."""
+    want = _normalize_pkg(pkg)
+    for entry in deps:
+        m = re.match(r"^\s*([A-Za-z0-9._-]+(?:\[[^\]]*\])?)\s*(.*)$", entry)
+        if m and _normalize_pkg(m.group(1)) == want:
+            return m.group(2).strip()
+    raise KeyError(f"dependency '{pkg}' not found; the pin was renamed or removed")
+
+
+def _image_tag(compose_text: str, image: str) -> str:
+    """Extract the default tag for a compose image, e.g. 'ghcr.io/agntcy/slim' -> '2.1.0'."""
+    # Matches either `image:2.1.0` or `image:${VAR:-2.1.0}`.
+    m = re.search(
+        rf"{re.escape(image)}:(?:\$\{{[^:}}]+:-([^}}]+)\}}|([^\s${{}}]+))",
+        compose_text,
+    )
+    if not m:
+        raise KeyError(f"image '{image}' not found in compose.yml")
+    return (m.group(1) or m.group(2)).strip()
+
+
+def _load_pin_context() -> dict:
+    """Read every pin file once into a lookup the version resolver reads from."""
+    cli = tomllib.loads(CLI_PYPROJECT.read_text())
+    backend = tomllib.loads(BACKEND_PYPROJECT.read_text())
+
+    def deps(pp: dict) -> list[str]:
+        return pp.get("project", {}).get("dependencies", [])
+
+    def extras(pp: dict) -> dict:
+        return pp.get("project", {}).get("optional-dependencies", {})
+
+    return {
+        "cli": {"deps": deps(cli), "extras": extras(cli)},
+        "backend": {"deps": deps(backend), "extras": extras(backend)},
+        "compose": COMPOSE_YML.read_text(),
+    }
+
+
+def _resolve_version(source: tuple, ctx: dict) -> str:
+    kind = source[0]
+    if kind == "dep":
+        _, which, pkg = source
+        return _dep_version(ctx[which]["deps"], pkg)
+    if kind == "extra":
+        _, which, extra, pkg = source
+        return _dep_version(ctx[which]["extras"].get(extra, []), pkg)
+    if kind == "image":
+        return _image_tag(ctx["compose"], source[1])
+    if kind == "literal":
+        return source[1]
+    raise ValueError(f"unknown version source: {source!r}")
+
+
+def _version_cell(source: tuple, ctx: dict) -> str:
+    """Render a component's version as a markdown table cell."""
+    if source[0] == "literal":
+        return source[1]
+    if source[0] == "multi":
+        return " / ".join(
+            f"`{_resolve_version(sub, ctx)}` {label}" for label, sub in source[1]
+        )
+    return f"`{_resolve_version(source, ctx)}`"
+
+
+def _upstream_cell(upstream: object) -> str:
+    if isinstance(upstream, tuple):
+        label, url = upstream
+        return f"[{label}]({url})"
+    return str(upstream)
+
+
+def _generate_dependencies_reference() -> tuple[str, list[tuple[str, str]]]:
+    """Return (content_html, sidebar_entries) for the Dependencies & Compatibility section.
+
+    Versions come live from the pin files; role/upstream metadata is curated in
+    DEPENDENCY_GROUPS. The section is emitted as markdown and run through the same
+    renderer as every other page, so it inherits table/callout styling for free.
+    """
+    ctx = _load_pin_context()
+
+    # Lockstep invariant: the CLI and backend slim-bindings pins must be identical,
+    # or the shared node image can't match both. Surfacing this page while the two
+    # have silently diverged would document a broken state, so fail loudly.
+    cli_slim = _dep_version(ctx["cli"]["deps"], "slim-bindings")
+    backend_slim = _dep_version(ctx["backend"]["deps"], "slim-bindings")
+    if cli_slim != backend_slim:
+        raise SystemExit(
+            "slim-bindings pins have drifted: "
+            f"CLI '{cli_slim}' vs backend '{backend_slim}'. They must match "
+            "(see the version-lockstep note in compose.yml)."
+        )
+    node_tag = _image_tag(ctx["compose"], "ghcr.io/agntcy/slim")
+
+    md: list[str] = [
+        "# Dependencies & Compatibility",
+        "",
+        "Mycelium is assembled from a small set of upstream components. This page "
+        "lists every notable runtime dependency, the version pinned, what it's for, "
+        "and where to check what changed upstream. The versions are read from the "
+        "pins in `pyproject.toml` and `compose.yml`, so they match what ships.",
+        "",
+    ]
+    sidebar_entries: list[tuple[str, str]] = []
+
+    for group in DEPENDENCY_GROUPS:
+        heading = group["heading"]
+        md.append(f"## {heading}")
+        md.append("")
+        sidebar_entries.append((f"dependencies-{_slugify(heading)}", group["sidebar"]))
+
+        if group.get("intro"):
+            md.append(group["intro"])
+            md.append("")
+
+        md.append("| Component | Pinned version | Role | Upstream |")
+        md.append("| --- | --- | --- | --- |")
+        for comp in group["components"]:
+            name = comp.get("display", f"`{comp['name']}`")
+            version = _version_cell(comp["version"], ctx)
+            upstream = _upstream_cell(comp["upstream"])
+            md.append(f"| {name} | {version} | {comp['role']} | {upstream} |")
+        md.append("")
+
+        if group.get("callout"):
+            md.append("> " + group["callout"].format(slim=cli_slim, node=node_tag))
+            md.append("")
+
+    md.append(DEPENDENCY_FOOTER)
+
+    body = _md_to_html("\n".join(md), "dependencies")
+    section = (
+        '    <section class="doc-section" id="dependencies">\n'
+        + body
+        + "\n    </section>"
+    )
+    return section, sidebar_entries
+
+
 # ── Page assembly ──
 
 
@@ -642,57 +971,99 @@ def _head(title: str, description: str, file_name: str) -> str:
 <meta name="twitter:image" content="https://mycelium-io.github.io/mycelium/og.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="mycelium.css">
+<script>
+// Resolve the theme before first paint so the page never flashes the wrong one.
+(function () {{
+  try {{
+    var t = localStorage.getItem('mycelium-theme') || 'dark';
+    var dark = t !== 'light'
+      && (t === 'dark' || window.matchMedia('(prefers-color-scheme: dark)').matches);
+    document.documentElement.classList.toggle('dark', dark);
+  }} catch (e) {{
+    document.documentElement.classList.add('dark');
+  }}
+}})();
+</script>
 </head>
 <body>
 <canvas id="mycelium-bg"></canvas>
 """
 
 
-def _topnav() -> str:
-    return f"""<!-- TOP NAV -->
+def _theme_toggle() -> str:
+    """Light / dark / system menu, mirroring the app's ThemeToggle."""
+    opts = [
+        ("light", "Light", "sun"),
+        ("dark", "Dark", "moon"),
+        ("system", "System", "monitor"),
+    ]
+    items = "\n".join(
+        f'      <button data-theme-set="{value}">'
+        f'<i data-lucide="{icon}"></i>{label}</button>'
+        for value, label, icon in opts
+    )
+    return f"""    <div class="theme-toggle">
+      <button class="theme-btn" id="theme-btn" aria-label="Theme" onclick="toggleThemeMenu(event)">
+        <i data-lucide="sun"></i>
+      </button>
+      <div class="theme-menu" id="theme-menu">
+{items}
+      </div>
+    </div>"""
+
+
+def _topnav(active_page_id: str) -> str:
+    """The app's shell header: brand over the rail, page tabs, right-hand actions.
+
+    The brand cell is sidebar-width so the rail reads as one column, matching
+    RoomsSidebar sitting under the workspace header in the app.
+    """
+    tabs = []
+    for page_id, file_name, _, label, *_ in PAGES:
+        cls = "active" if page_id == active_page_id else ""
+        tabs.append(f'      <a href="{file_name}" class="{cls}">{html.escape(label)}</a>')
+    return f"""<!-- TOP BAR -->
 <nav class="topnav">
+  <button class="nav-toggle" aria-label="Menu" onclick="toggleDrawer(event)"><i data-lucide="menu"></i></button>
   <a href="https://mycelium-io.github.io" class="topnav-cell topnav-brand">
     <img src="logo.png" alt="Mycelium">
     <span class="brand-word">mycelium</span>
   </a>
-  <span class="topnav-cell topnav-page-cell">
-    <span class="caps-mono">DOCS</span>
-  </span>
+  <nav class="sectionnav">
+    <div class="sectionnav-inner">
+{chr(10).join(tabs)}
+    </div>
+    <div class="sectionnav-right">
+      <a href="{SKILL_MD_URL}" target="_blank" rel="noopener">SKILL.md ↗</a>
+    </div>
+  </nav>
   <div class="topnav-right">
-    <button class="copy-docs-btn" onclick="copyDocsCmd()"><i data-lucide="terminal" style="width:13px;height:13px;stroke:currentColor;vertical-align:-2px;margin-right:6px;"></i>copy docs cmd</button>
-    <button class="copy-page-btn" onclick="copyPage()"><i data-lucide="copy" style="width:13px;height:13px;stroke:currentColor;vertical-align:-2px;margin-right:6px;"></i>copy this page</button>
-    <a href="https://github.com/mycelium-io/mycelium" aria-label="GitHub" style="display:flex;align-items:center;">{GITHUB_SVG}</a>
+    <button class="copy-docs-btn" onclick="copyDocsCmd()"><i data-lucide="terminal"></i>Copy docs cmd</button>
+    <button class="copy-page-btn" onclick="copyPage()"><i data-lucide="copy"></i>Copy page</button>
+{_theme_toggle()}
+    <a href="https://github.com/mycelium-io/mycelium" aria-label="GitHub">{GITHUB_SVG}</a>
   </div>
 </nav>
 """
 
 
-def _sectionnav(active_page_id: str) -> str:
-    links = []
-    for page_id, file_name, _, label, *_ in PAGES:
-        cls = "active" if page_id == active_page_id else ""
-        links.append(
-            f'    <a href="{file_name}" class="{cls}">'
-            f'<span class="square-dot"></span>{html.escape(label).upper()}</a>'
-        )
-    right_links = [
-        f'    <a href="{SKILL_MD_URL}" target="_blank">SKILL.md ↗</a>',
-    ]
-    return (
-        '<nav class="sectionnav">\n'
-        '  <div class="sectionnav-inner">\n'
-        + "\n".join(links)
-        + '\n    <div class="sectionnav-right">\n'
-        + "\n".join(right_links)
-        + "\n    </div>\n"
-        "  </div>\n"
-        "</nav>\n"
-    )
-
-
-def _sidebar(groups: list[tuple[str, list[tuple[str, str]]]]) -> str:
+def _sidebar(
+    groups: list[tuple[str, list[tuple[str, str]]]],
+    active_page_id: str = "",
+) -> str:
     """Render a grouped sidebar: [(group_label, [(anchor, label), ...]), ...]."""
-    out = ['  <nav class="sidebar">']
+    out = ['  <nav class="sidebar" id="sidebar">']
+    # Mobile-only page links, so the drawer doubles as the full menu on phones.
+    out.append('    <div class="nav-section nav-pages">')
+    out.append('      <div class="nav-section-label">Pages</div>')
+    for page_id, file_name, _t, label, *_ in PAGES:
+        cls = "nav-link page" + (" active" if page_id == active_page_id else "")
+        out.append(f'      <a href="{file_name}" class="{cls}">{html.escape(label)}</a>')
+    out.append(
+        f'      <a href="{SKILL_MD_URL}" class="nav-link page" '
+        f'target="_blank" rel="noopener">SKILL.md ↗</a>'
+    )
+    out.append("    </div>")
     for group_label, items in groups:
         out.append('    <div class="nav-section">')
         out.append(
@@ -712,6 +1083,7 @@ def _layout_open(sidebar_html: str) -> str:
     return f"""<div class="layout">
 
 {sidebar_html}
+  <div class="nav-backdrop" id="nav-backdrop" onclick="closeDrawer()"></div>
 
   <!-- MAIN -->
   <main class="main">
@@ -720,18 +1092,18 @@ def _layout_open(sidebar_html: str) -> str:
 
 
 def _layout_close(sheet_no: str, plate_title: str) -> str:
-    return """    <!-- FOOTER -->
-    <div class="docs-footer">
-      <a href="https://github.com/mycelium-io/mycelium">mycelium-io/mycelium</a>
-      <span class="sep">·</span>
-      <span>Apache 2.0</span>
-      <span class="sep">·</span>
-      <span class="tagline">Shared Intent &middot; Shared Memory &middot; Shared Context</span>
-    </div>
-
-  </div>
+    """Close the workspace and pin the editor-style status bar beneath it."""
+    return f"""  </div>
   </main>
 </div>
+
+<!-- STATUS BAR -->
+<footer class="docs-footer">
+  <a href="https://github.com/mycelium-io/mycelium">mycelium-io/mycelium</a>
+  <span class="sep">·</span>
+  <span>Apache 2.0</span>
+  <span class="tagline">Shared Intent &middot; Shared Memory &middot; Shared Context</span>
+</footer>
 
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 <script src="site.js"></script>
@@ -751,11 +1123,10 @@ def _render_page(
     sheet_no: str,
     plate_title: str,
 ) -> str:
-    sidebar_html = _sidebar(sidebar_groups)
+    sidebar_html = _sidebar(sidebar_groups, page_id)
     return (
         _head(title, description, file_name)
-        + _topnav()
-        + _sectionnav(page_id)
+        + _topnav(page_id)
         + _layout_open(sidebar_html)
         + content_html
         + "\n"
@@ -785,12 +1156,13 @@ def _build_page(
     kept: dict[str, str],
     cli_block: tuple[str, list[tuple[str, str]]] | None = None,
     config_block: tuple[str, list[tuple[str, str]]] | None = None,
+    deps_block: tuple[str, list[tuple[str, str]]] | None = None,
 ) -> tuple[str, list[tuple[str, list[tuple[str, str]]]]]:
     """Build (content_html, sidebar_groups) for a single page.
 
     sidebar_groups: list of (group_label, [(anchor, label), ...]) preserving order.
-    For the reference page, cli_block + config_block (each a (html, sidebar_entries))
-    are inserted between architecture and troubleshooting.
+    For the reference page, cli_block + config_block + deps_block (each a
+    (html, sidebar_entries)) are inserted between architecture and troubleshooting.
     """
     parts: list[str] = []
     grouped: dict[str, list[tuple[str, str]]] = {}
@@ -834,6 +1206,11 @@ def _build_page(
                 parts.append(config_html)
                 for anchor, lbl in config_entries:
                     add_group("Configuration", anchor, lbl)
+            if deps_block is not None:
+                deps_html, deps_entries = deps_block
+                parts.append(deps_html)
+                for anchor, lbl in deps_entries:
+                    add_group("Dependencies", anchor, lbl)
 
     content = "\n\n    <hr class=\"divider\">\n\n".join(parts)
     sidebar_groups = [(g, grouped[g]) for g in group_order]
@@ -882,17 +1259,22 @@ def main() -> None:
 
     cli_block: tuple[str, list[tuple[str, str]]] | None = None
     config_block: tuple[str, list[tuple[str, str]]] | None = None
+    deps_block: tuple[str, list[tuple[str, str]]] | None = None
     if "reference" in pages_to_build:
         print("Generating CLI reference from @doc_ref decorators...")
         cli_block = _generate_cli_reference()
         print("Generating config reference from pydantic schema...")
         config_block = _generate_config_reference()
+        print("Generating dependency reference from pyproject + compose pins...")
+        deps_block = _generate_dependencies_reference()
 
     print("Rendering pages...")
     for page_id, file_name, title, _label, sheet_no, plate_title, description in PAGES:
         if page_id not in pages_to_build:
             continue
-        content, sidebar_groups = _build_page(page_id, kept, cli_block, config_block)
+        content, sidebar_groups = _build_page(
+            page_id, kept, cli_block, config_block, deps_block
+        )
         _render_and_write(
             page_id, file_name, title, description, content, sidebar_groups,
             sheet_no, plate_title,

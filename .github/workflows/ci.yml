@@ -39,6 +39,22 @@ jobs:
         working-directory: fastapi-backend
         run: uv run ty check .
 
+      # The committed openapi.json is the source of truth the OpenAPI client is
+      # generated from (#613). Fail if it drifts from the live app, so an API
+      # change can't ship a stale spec (which would regenerate a stale client).
+      - name: OpenAPI spec is current
+        working-directory: fastapi-backend
+        run: |
+          uv run python - <<'PY'
+          import json, sys
+          from app.main import app
+          committed = json.load(open("../openapi.json"))
+          if app.openapi() != committed:
+              print("::error file=openapi.json::openapi.json is stale — run scripts/snapshot-openapi.sh and commit it (the OpenAPI client is generated from this spec).")
+              sys.exit(1)
+          print("openapi.json matches the backend.")
+          PY
+
       # Fast gate: the core protocol (room -> engine -> await -> respond ->
       # converge -> plan) over the fake stack — no node, no LLM. Runs first so a
       # broken happy path fails in seconds, ahead of the full suite.
@@ -64,6 +80,12 @@ jobs:
       - name: Set up Python
         run: uv python install 3.12
 
+      # The OpenAPI client is a build artifact, not committed (#613). Generate it
+      # from the committed openapi.json (no backend needed) before anything imports
+      # `mycelium_backend_client`.
+      - name: Generate OpenAPI client
+        run: SPEC_FILE=openapi.json bash scripts/gen-mycelium-client.sh
+
       - name: Install dependencies
         working-directory: mycelium-cli
         run: uv sync --group dev --extra engine
@@ -85,6 +107,22 @@ jobs:
       - name: Unit tests
         working-directory: mycelium-cli
         run: uv run pytest tests/ -q
+
+      # docs/*.html and docs/llms-full.txt are generated from the markdown under
+      # mycelium-cli/src/mycelium/docs/, the @doc_ref decorators, and the pydantic
+      # config schema. Same contract as the openapi.json check above: regenerate,
+      # fail if the tree moves. Without it the committed output drifts silently and
+      # the backlog lands as unrelated diff in whichever PR next runs the generator.
+      - name: Docs site is current
+        run: |
+          (cd mycelium-cli && uv run python ../docs/generate_docs.py)
+          if [ -n "$(git status --porcelain -- docs/)" ]; then
+            echo "::error file=docs/llms-full.txt::Generated docs are stale — run 'cd mycelium-cli && uv run python ../docs/generate_docs.py' and commit docs/."
+            git status --porcelain -- docs/
+            git diff --stat -- docs/
+            exit 1
+          fi
+          echo "Generated docs match their markdown + CLI sources."
 
   build-collector:
     # Smoke-build the OTLP collector image so PRs that touch the collector
@@ -146,7 +184,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Node
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22"
           cache: npm
@@ -203,7 +241,7 @@ jobs:
           EOF
           docker run -d --name mycelium-slim -p 46357:46357 \
             -v "$RUNNER_TEMP/slim-config.yaml:/slim-config.yaml" \
-            ghcr.io/agntcy/slim:2.0.0 /slim --config /slim-config.yaml
+            ghcr.io/agntcy/slim:2.1.0 /slim --config /slim-config.yaml
           for _ in $(seq 1 30); do
             if (exec 3<>/dev/tcp/127.0.0.1/46357) 2>/dev/null; then
               exec 3>&-

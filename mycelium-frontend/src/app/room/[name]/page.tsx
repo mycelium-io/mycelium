@@ -3,9 +3,12 @@
 
 "use client";
 
-import { useParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { fetchRoom, logFetchError, type EpisodeSummary, type Room } from "@/lib/api";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type EpisodeSummary } from "@/lib/api";
+import { useRoom, useRoomRevalidate } from "@/lib/room-data";
+import { parseFocus, type FocusTarget } from "@/lib/search";
+import { memoryHref } from "@/lib/memory-routes";
 import { AppShell } from "@/components/app-shell";
 import { EventStream, type View, type NegotiationPhase } from "@/components/event-stream";
 import { RoomChatBox } from "@/components/room-chat-box";
@@ -13,6 +16,8 @@ import { RoomInspector, type Tab } from "@/components/room-inspector";
 import { RoomTour } from "@/components/room-tour";
 import { GlobalStatusItems, StatusButton } from "@/components/status-items";
 import { ActingAsPicker } from "@/components/acting-as-picker";
+import { useCommands, useKeyAction, useKeyScope } from "@/components/keymap-provider";
+import type { PaletteCommand } from "@/lib/commands";
 import { useRoomStatus } from "@/lib/use-status";
 
 function episodeSummaryLabel(episodes: EpisodeSummary[] | null): { text: string; color: string } | null {
@@ -29,17 +34,27 @@ function episodeSummaryLabel(episodes: EpisodeSummary[] | null): { text: string;
   return { text: "converged", color: "var(--green)" };
 }
 
+/** `useSearchParams` suspends on the static prerender pass, so the room's body
+ *  sits under a boundary rather than making the whole route dynamic. */
 export default function RoomPage() {
+  return (
+    <Suspense fallback={null}>
+      <RoomWorkspace />
+    </Suspense>
+  );
+}
+
+function RoomWorkspace() {
   const params = useParams();
   const roomName = params.name as string;
-  const [room, setRoom] = useState<Room | null>(null);
-  const [memoryRefresh, setMemoryRefresh] = useState(0);
   const [connected, setConnected] = useState(false);
   const [inspectorTab, setInspectorTab] = useState<Tab>("agents");
   const [inspectorOpen, setInspectorOpen] = useState(true);
   const [editorView, setEditorView] = useState<View>("channel");
   const [negPhase, setNegPhase] = useState<NegotiationPhase>("idle");
   const [tourActive, setTourActive] = useState(false);
+  const [inviteEngine, setInviteEngine] = useState(false);
+  const [focusMemory, setFocusMemory] = useState<{ key: string; nonce: number } | null>(null);
 
   // Start the coached tour when arriving via "Run a sample coordination".
   useEffect(() => {
@@ -53,25 +68,90 @@ export default function RoomPage() {
     if (typeof window !== "undefined") window.history.replaceState(null, "", window.location.pathname);
   }, []);
 
-  const { agents, episodes, openTasks } = useRoomStatus(roomName, memoryRefresh);
+  const { agents, episodes, openTasks } = useRoomStatus(roomName);
+  const { room } = useRoom(roomName);
 
-  useEffect(() => {
-    let cancelled = false;
-    const load = () =>
-      fetchRoom(roomName).then((r: Room) => { if (!cancelled) setRoom(r); }).catch(logFetchError("fetchRoom"));
-    load();
-    const t = setInterval(load, 8000);
-    return () => { cancelled = true; clearInterval(t); };
-  }, [roomName]);
-
-  const handleMemoryChanged = useCallback(() => {
-    setMemoryRefresh(n => n + 1);
-  }, []);
+  // A pushed memory/presence event refreshes every reader of this room's data
+  // at once — the panels no longer take a refresh counter to find out.
+  const handleMemoryChanged = useRoomRevalidate(roomName);
 
   const openTab = useCallback((tab: Tab) => {
     setInspectorTab(tab);
     setInspectorOpen(true);
   }, []);
+
+  // A `[[wikilink]]` clicked in chat opens the Memory rail on that key.
+  const openMemory = useCallback((key: string) => {
+    setInspectorTab("memory");
+    setInspectorOpen(true);
+    setFocusMemory(prev => ({ key, nonce: (prev?.nonce ?? 0) + 1 }));
+  }, []);
+
+  const handleEngineInviteShown = useCallback(() => setInviteEngine(false), []);
+
+  // Arriving from search: `?focus=<type>:<id>` names one item in this room.
+  // Reveal the surface it lives on, then hand the id to the panel that owns the
+  // row — a result opens the item, not just the room it is in. The parameter is
+  // consumed on arrival so returning to a rail later doesn't re-select, and so
+  // jumping to the same item twice is a change the panel sees both times.
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const focusParam = searchParams.get("focus");
+  const [focus, setFocus] = useState<FocusTarget | null>(null);
+  const clearFocus = useCallback(() => setFocus(null), []);
+  // Acted on once per value: the request is a one-shot, and a re-run over the
+  // same parameter would drag you back to the item you had just dismissed.
+  const applied = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (applied.current === focusParam) return;
+    applied.current = focusParam;
+    const target = parseFocus(focusParam);
+    if (!target) return;
+    if (target.type === "memory") {
+      router.replace(memoryHref(roomName, target.id));
+      return;
+    }
+    setFocus(target);
+    if (target.type === "episode") openTab("episodes");
+    else if (target.type === "agent") openTab("agents");
+    else if (target.type === "message") setEditorView("channel");
+    router.replace(`/room/${encodeURIComponent(roomName)}`, { scroll: false });
+  }, [focusParam, openTab, roomName, router]);
+
+  // Room-scoped keybinds: the panes, the inspector rails, and the composer are
+  // all reachable without a pointer. The chat box focuses the textarea itself;
+  // this only makes sure the pane holding it is the one on screen.
+  useKeyScope("room");
+  useKeyAction("pane.channel", () => setEditorView("channel"));
+  useKeyAction("pane.negotiate", () => setEditorView("negotiate"));
+  useKeyAction("pane.plan", () => setEditorView("plan"));
+  useKeyAction("pane.network", () => setEditorView("network"));
+  useKeyAction("rail.agents", () => openTab("agents"));
+  useKeyAction("rail.episodes", () => openTab("episodes"));
+  useKeyAction("rail.memory", () => openTab("memory"));
+  useKeyAction("rail.toggle", () => setInspectorOpen(open => !open));
+  useKeyAction("focus.chat", () => setEditorView("channel"));
+
+  // The palette reaches the invite form wherever you are in the room: open the
+  // rail it lives behind, and ask it to show itself. A one-shot request the
+  // panel clears once consumed, so returning to the rail later doesn't reopen it.
+  const commands = useMemo<PaletteCommand[]>(
+    () => [
+      {
+        id: "engine.invite",
+        title: "Invite an engine",
+        group: "Inspector",
+        keywords: ["aligner", "synthesizer", "member", "add"],
+        run: () => {
+          openTab("agents");
+          setInviteEngine(true);
+        },
+      },
+    ],
+    [openTab],
+  );
+  useCommands(commands);
 
   const episodeLabel = useMemo(() => episodeSummaryLabel(episodes), [episodes]);
 
@@ -110,19 +190,23 @@ export default function RoomPage() {
     </>
   );
 
-  return (
-    <AppShell activeRoom={roomName} statusLeft={statusLeft} statusRight={statusRight}>
-      {/* Room header: identity + room-level context, spanning the workspace. */}
-      <header className="flex h-[52px] flex-shrink-0 items-center gap-3 border-b border-border bg-surface/50 px-5">
-        <span className="text-ui font-semibold text-text truncate">{roomName}</span>
-        {room?.mas_id && (
-          <span className="font-mono text-micro text-faint truncate" title="MAS id">{room.mas_id}</span>
-        )}
-        <div className="ml-auto flex-shrink-0">
-          <ActingAsPicker />
-        </div>
-      </header>
+  const header = (
+    <>
+      <span className="text-ui font-semibold text-text truncate">{roomName}</span>
+      {room?.mas_id && (
+        <span className="font-mono text-micro text-faint truncate" title="MAS id">{room.mas_id}</span>
+      )}
+    </>
+  );
 
+  return (
+    <AppShell
+      activeRoom={roomName}
+      header={header}
+      headerRight={<ActingAsPicker />}
+      statusLeft={statusLeft}
+      statusRight={statusRight}
+    >
       <div className="flex flex-1 overflow-hidden">
         <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <div className="flex-1 overflow-hidden">
@@ -131,10 +215,12 @@ export default function RoomPage() {
               onMemoryChanged={handleMemoryChanged}
               onConnectionChange={setConnected}
               onNegotiationPhaseChange={setNegPhase}
-              planRefreshTrigger={memoryRefresh}
+              onOpenMemory={openMemory}
               view={editorView}
               onViewChange={setEditorView}
               suppressInvites={tourActive}
+              focusMessageId={focus?.type === "message" ? focus.id : null}
+              onFocusConsumed={clearFocus}
             />
           </div>
           <RoomChatBox roomName={roomName} className={editorView !== "channel" ? "hidden" : undefined} />
@@ -143,11 +229,15 @@ export default function RoomPage() {
         <RoomInspector
           roomName={roomName}
           masId={room?.mas_id ?? null}
-          memoryRefresh={memoryRefresh}
           tab={inspectorTab}
           onTabChange={setInspectorTab}
           open={inspectorOpen}
           onOpenChange={setInspectorOpen}
+          engineInvite={inviteEngine}
+          onEngineInviteShown={handleEngineInviteShown}
+          focus={focus}
+          onFocusConsumed={clearFocus}
+          focusMemory={focusMemory}
         />
       </div>
 

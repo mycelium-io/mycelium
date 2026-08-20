@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""``await`` / ``respond`` — first-class participation for awake callers.
+"""``await`` / ``respond``: first-class participation for awake callers.
 
-Being a participant in a room — receiving coordination and replying — is two
+Being a participant in a room (receiving coordination and replying) is two
 plain, **stateless** HTTP calls. The backend holds the caller's membership
 server-side (a presence lease) and uses the durable transcript as the delivery
 queue, so the caller never holds a SLIM socket between turns:
@@ -17,7 +17,7 @@ tick or an ``@``-mention) is served past a persistent per-handle cursor, so a ti
 is never missed between one await and the next. ``respond`` posts the reply, which
 the backend records as an L9 ``exchange`` the aligner scores as a position.
 
-No SLIM connection, no background process, no compound shell — which is exactly
+No SLIM connection, no background process, no compound shell, which is exactly
 what a headless / allowlisted agent (a Claude Code session, a subagent) can safely
 issue. This is the whole agent-side participation surface: a resident runtime loops
 ``await`` → reason → ``respond`` (see ``await --loop``) to stay woken.
@@ -32,19 +32,25 @@ import subprocess
 import httpx
 import typer
 
+from mycelium.client import hub_client
 from mycelium.commands.room import _resolve_room
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
 from mycelium.error_handler import print_error
 
+#: Statuses a resident loop stops on: the hub rejected the caller's identity
+#: (401) or refused it this handle (403). Everything else is treated as a blip.
+_TERMINAL_STATUSES = frozenset({401, 403})
+
 
 def _await_once(config: MyceliumConfig, room_name: str, handle: str, timeout: int) -> dict | None:
     """One long-poll. Returns the turn dict, or ``None`` on timeout."""
-    url = f"{config.server.api_url}/api/rooms/{room_name}/await"
+    path = f"/api/rooms/{room_name}/await"
     # The server blocks up to `timeout`; give the client a little more headroom
     # (or no cap when waiting indefinitely).
     client_timeout = float(timeout) + 15.0 if timeout > 0 else None
-    resp = httpx.get(url, params={"handle": handle, "timeout": timeout}, timeout=client_timeout)
+    with hub_client(config, timeout=client_timeout, handle=handle) as client:
+        resp = client.get(path, params={"handle": handle, "timeout": timeout})
     resp.raise_for_status()
     data = resp.json()
     return data if "prompt" in data else None
@@ -56,7 +62,7 @@ def _run_exec(exec_cmd: str, turn: dict, room_name: str, handle: str) -> None:
     The command is the user's own reasoning runtime (an Agent-SDK loop, a script,
     etc.); it is expected to reason and call ``mycelium respond`` itself. The turn
     JSON is piped to stdin and the salient fields are exported as env vars for
-    convenience. Run through the shell so the user can compose freely — this is a
+    convenience. Run through the shell so the user can compose freely; this is a
     resident runner the user starts, not an allowlisted-subagent surface.
     """
     env = {
@@ -102,13 +108,13 @@ def await_room(
 ) -> None:
     """Block until a message addressed to the handle arrives, print it, and exit.
 
-    A single stateless long-poll against the backend — the caller is a server-held
+    A single stateless long-poll against the backend: the caller is a server-held
     room member for the purpose of the aligner's roster, without holding any
     connection. On timeout, exits non-zero with no message.
 
     With ``--loop`` it becomes a **resident runner**: it re-awaits after every turn,
     so the handle stays present (its lease refreshes each poll) and never misses a
-    tick. Pair with ``--exec`` to drive a reasoning runtime per turn — the command
+    tick. Pair with ``--exec`` to drive a reasoning runtime per turn; the command
     receives the turn JSON on stdin and is expected to call ``mycelium respond``.
     This is the supported way to keep a turn-based agent (Claude Code, Cursor) woken
     without writing your own service.
@@ -131,7 +137,7 @@ def await_room(
             raise typer.Exit(2)
 
         data = _await_once(config, room_name, handle, timeout)
-        if data is None:  # timed out — backend returned {"message": null}
+        if data is None:  # timed out; backend returned {"message": null}
             if json_output:
                 typer.echo(
                     json_module.dumps({"room": room_name, "handle": handle, "message": None})
@@ -164,16 +170,17 @@ def _await_loop(
 ) -> None:
     """Resident-runner loop: re-await forever, dispatching each turn.
 
-    A timeout is not terminal here — it just means "nothing yet," so we re-await
+    A timeout is not terminal here; it just means "nothing yet," so we re-await
     (keeping the presence lease warm). Ctrl-C is the clean stop. Errors on a single
     poll are surfaced and the loop backs off briefly rather than dying, so a blip in
-    the backend doesn't drop the agent out of the room.
+    the backend doesn't drop the agent out of the room. A rejected identity is the
+    exception: retrying can't earn a credential, so 401/403 ends the loop.
     """
     import time
 
     if not json_output:
         typer.secho(
-            f"  ⟫  @{handle} resident in {room_name} — awaiting"
+            f"  ⟫  @{handle} resident in {room_name}, awaiting"
             + (f", driving `{exec_cmd}` per turn" if exec_cmd else "")
             + " (Ctrl-C to stop)",
             fg=typer.colors.CYAN,
@@ -184,6 +191,15 @@ def _await_loop(
         except KeyboardInterrupt:
             typer.echo("\n  [Stopped]")
             return
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code not in _TERMINAL_STATUSES:
+                typer.secho(f"  ⟫  await error: {e}; retrying…", fg=typer.colors.YELLOW)
+                time.sleep(2.0)
+                continue
+            # A refused identity is not a blip; no amount of re-polling turns a
+            # wrong or ungranted credential into an accepted one, and a resident
+            # loop that kept trying would hammer the hub for as long as it ran.
+            print_error(e)
         except Exception as e:  # noqa: BLE001 - a poll blip must not drop residency
             typer.secho(f"  ⟫  await error: {e}; retrying…", fg=typer.colors.YELLOW)
             time.sleep(2.0)
@@ -227,8 +243,10 @@ def respond(
     try:
         config = MyceliumConfig.load()
         room_name = _resolve_room(config, room)
-        url = f"{config.server.api_url}/api/rooms/{room_name}/reply"
-        resp = httpx.post(url, json={"handle": handle, "text": text}, timeout=30.0)
+        with hub_client(config, timeout=30.0, handle=handle) as client:
+            resp = client.post(
+                f"/api/rooms/{room_name}/reply", json={"handle": handle, "text": text}
+            )
         resp.raise_for_status()
         data = resp.json()
         if json_output:

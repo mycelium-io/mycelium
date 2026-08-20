@@ -3,7 +3,7 @@
 
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronLeft, Pencil, Plus, UserRound } from "lucide-react";
 import {
   createUser,
@@ -14,6 +14,9 @@ import {
   type User,
 } from "@/lib/api";
 import { useCurrentUser } from "@/components/current-user";
+import { useCommands } from "@/components/keymap-provider";
+import type { PaletteCommand } from "@/lib/commands";
+import { useAuthSession } from "@/components/auth-session";
 import { Monogram } from "@/components/ui/monogram";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,7 +30,10 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
-const SLUG = /^[a-z0-9][a-z0-9._-]*$/;
+// A handle is an identity and can be minted by a real IdP, so it allows the `@`
+// a corporate SSO `preferred_username` carries (e.g. `user@example.com`). Keep
+// in sync with the backend (`app/schemas.py`) and CLI (`protocol.py`) copies.
+const HANDLE = /^[a-z0-9][a-z0-9._@-]*$/;
 const normHandle = (s: string) => s.trim().replace(/^@/, "").toLowerCase();
 
 interface Form {
@@ -67,6 +73,7 @@ function iamCommand(u: BoundUser): string {
  */
 export function ActingAsPicker() {
   const { principal, setPrincipal } = useCurrentUser();
+  const { signedIn, handle: sessionHandle, logout } = useAuthSession();
   const [open, setOpen] = useState(false);
   const [users, setUsers] = useState<User[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
@@ -124,8 +131,8 @@ export function ActingAsPicker() {
       setError("Enter a handle.");
       return;
     }
-    if (!SLUG.test(handle)) {
-      setError("Handle must be lowercase letters, digits, . _ or -, with no spaces.");
+    if (!HANDLE.test(handle)) {
+      setError("Handle must be lowercase letters, digits, . _ - or @, with no spaces.");
       return;
     }
     try {
@@ -137,6 +144,20 @@ export function ActingAsPicker() {
       setError(err instanceof Error ? err.message : String(err));
     }
   };
+
+  const commands = useMemo<PaletteCommand[]>(
+    () => [
+      {
+        id: "identity.switch",
+        title: "Switch who you're acting as",
+        group: "Preferences",
+        keywords: ["user", "identity", "principal", "handle", "acting as"],
+        run: () => setOpen(true),
+      },
+    ],
+    [],
+  );
+  useCommands(commands);
 
   // A new handle that matches an existing user would upsert (overwrite) it —
   // offer to edit that record instead of silently clobbering it.
@@ -165,6 +186,21 @@ export function ActingAsPicker() {
             <DialogHeader>
               <DialogTitle className="text-ui font-semibold text-text">Acting as</DialogTitle>
             </DialogHeader>
+
+            {signedIn && (
+              // Signed in through the hub's identity provider: the handle is the
+              // token's, not a free choice — a gated hub attributes writes to the
+              // token, so switching here would only earn a 403. Offer sign-out.
+              <div className="mt-2 flex items-center justify-between gap-2 rounded-md border border-border bg-surface/40 px-3 py-2">
+                <span className="min-w-0 text-label">
+                  <span className="text-micro text-muted-foreground">Signed in as </span>
+                  <span className="font-mono text-text">@{sessionHandle}</span>
+                </span>
+                <Button variant="ghost" size="xs" onClick={logout}>
+                  Sign out
+                </Button>
+              </div>
+            )}
 
             <div className="mt-2 max-h-64 overflow-y-auto border border-border">
               <button
@@ -252,7 +288,7 @@ export function ActingAsPicker() {
               <label className="block space-y-1">
                 <span className="text-micro text-muted-foreground">Handle</span>
                 <Input
-                  placeholder="e.g. julia"
+                  placeholder="e.g. avery"
                   value={form.handle}
                   disabled={!form.isNew}
                   onChange={(e) => {
@@ -278,7 +314,7 @@ export function ActingAsPicker() {
               <label className="block space-y-1">
                 <span className="text-micro text-muted-foreground">Display name</span>
                 <Input
-                  placeholder="e.g. Julia Valenti"
+                  placeholder="e.g. Avery Quinn"
                   value={form.displayName}
                   onChange={(e) => setForm((f) => ({ ...f, displayName: e.target.value }))}
                 />

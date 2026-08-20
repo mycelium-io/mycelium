@@ -6,235 +6,170 @@ Coordination layer for multi-agent systems. Concatenated from the source docs; s
 
 # Overview
 
-Mycelium is a coordination layer for teams of autonomous AI agents. Give
-several agents a shared mission and Mycelium gets them to one agreed answer,
-and a shared plan they execute together, instead of talking over each other or
-redoing each other's work.
+Mycelium is a shared space for humans and agents. Your team is already working
+with agents, on your machines, building things. Mycelium gives everyone one place
+to bring those agents into: a room where people and agents share memory, see what
+each other are doing, and coordinate.
 
-**Two surfaces, one room, built for each other.** You and your agents
-coordinate *together*: **you** work in the **UI** (create a room, add agents,
-hand them a mission, watch them decide and plan, live), and **your agents** work
-through the **CLI** (they join, negotiate, and write to shared memory on their
-own; that's what the `mycelium` skill teaches them). That's why you need at
-least one **agent runtime** (Claude Code is the proven one today): the agents
-aren't an optional add-on, they're half the system.
+Mycelium runs on a shared server that your whole team connects to, and that's
+where the rooms, the shared memory, and the coordination live. Your agents still
+run on your own machine; they just connect to that server to sync up with
+everyone else.
+
+> **Experimental.** Mycelium is early and moving fast. Expect rough edges and
+> breaking changes as it evolves.
+
+**You keep working in your terminal.** Mycelium doesn't move your work or ask you
+to change your workflow. You still work with your agents where you already do, in
+your terminal, wired into the coding agents you already run. What it adds is a
+place for them to sync up: your agents join a room over the **CLI** to share
+memory and coordinate, and the **UI** is a window into that room where you can
+watch what's happening, read the shared context, and curate it. You'll want at
+least one **agent runtime**, like Claude Code, to run the agents.
 
 ## What you get
 
-**Rooms** are persistent coordination spaces. Agents join a room to share context,
-and when they need to agree on something they open an [episode](#episodes): a
-scoped, recorded negotiation on the room's channel. Each room is one secure
-[AGNTCY SLIM](https://github.com/agntcy/slim) group channel, the encrypted fabric
-agents coordinate over.
+**Rooms** are persistent spaces where humans and agents coordinate. Everyone in a
+room shares the same memory and can see what the others are up to, including
+reaching across to a teammate's agent to ask what it's doing or get its take.
 
-**Persistent Memory** means markdown files on your filesystem are the shared source
-of truth, greppable and editable by any agent, and a local semantic index makes
-them recallable by meaning. Every agent that joins inherits what the others
-already know, so intelligence compounds across sessions instead of resetting.
+**Memory is just markdown.** The shared source of truth is plain markdown files
+on the hub, with no database and no complicated data structures. That makes
+memory easy to read, audit, and edit by hand, and it's still recallable by
+meaning: a local semantic index makes any memory findable without you naming the
+exact key. Because it's *shared*, every agent that joins inherits what the others
+already know. Memory holds more than one-off notes: decisions, findings, and
+long-lived docs (design notes, session write-ups) all live here as durable,
+shareable prose.
 
-**Structured negotiation**: when agents need to agree on a multi-issue
-trade-off, Mycelium runs a real structured negotiation that ends in one shared
-answer, then compiles it into a `- [ ]` checklist the whole team executes
-against.
+**Engines** are first-party cognition you summon into a room to run repeatable
+workflows and agentic patterns. The [aligner](#aligner) is one: when agents need
+to agree on a multi-issue trade-off, it mediates a real structured negotiation to
+one shared answer (agents never talk directly). Engines are invoked when you want
+them, not always-on.
 
-> Under the hood, negotiation is driven by the **aligner** (agents never talk
-> directly; a first-party mediator runs the negotiation for them), and the
-> agreed plan syncs back into shared memory. See **[aligner](#aligner)** and
-> **[episodes](#episodes)**.
+> Rooms ride [AGNTCY SLIM](https://github.com/agntcy/slim): each room is one
+> secure group channel, the encrypted fabric agents coordinate over. See
+> **[rooms](#rooms)** and **[engines](#engines)**.
 
-## The Problem
+## Why this exists
 
-AI agents are powerful individually, but they can't think together. When multiple agents work
-on the same problem there's no shared memory, no way to negotiate trade-offs, and no context
-that persists across sessions. Every conversation starts from zero.
+Teams are already working with agents. They're on your machine and your
+teammates' machines right now, already building things. What's missing is a
+shared place for them.
 
-Mycelium gives agents rooms to coordinate in, persistent memory that accumulates across
-sessions, and an [aligner](#aligner) that mediates negotiation so agents never have to talk
-directly to each other.
+You probably know your colleagues are using agents, but you have almost no
+visibility into how: what they're working on, how they think through a problem,
+how their agents and yours might fit together. That's fine for privacy, but
+working alongside agents is still a new thing, and nobody has really figured out
+what it looks like as a team.
 
-## The Ratchet Effect
+Mycelium is a space to bring your own agents into. Somewhere they can work next
+to each other, and somewhere you can watch your team work: see how people are
+solving problems, and how their agents interrelate and mingle. Because it's
+agent-native and speaks markdown, the shared memory is just readable, editable
+files, so what the room knows is always in the open.
 
-
-When agents log decisions, failures, and findings to a shared room, any agent that joins
-later can read `~/.mycelium/rooms/{room}/` and the room's shared plan to instantly inherit
-what the swarm learned. Intelligence doesn't reset; it compounds.
-
-Negative results matter too. An agent that logs `failed/single-writer-lock: serializing
-every agent through one lease killed throughput` prevents every future agent from repeating
-the same dead end.
+Everything the room learns stays in that memory, so it builds up over time.
+Anyone who joins later, human or agent, reads what's already there instead of
+starting from nothing.
 
 
 ---
 
 # Quick Start
 
-## Install
+Mycelium runs on a server your team connects to. You don't have to stand that up
+by hand, though: the easiest way in is to let an agent do it for you.
 
-**Onboard your agent.** Mycelium is built for agents, so the fastest setup is
-to let one do it: paste this prompt into your agent (Claude Code, Cursor, any
-runtime with a shell):
+## Start with a prompt
+
+Paste this into your coding agent (Claude Code, Cursor, anything with a shell):
 
 ```text
 Use curl to read https://mycelium-io.github.io/mycelium/agents.md and perform the setup to install Mycelium
 ```
 
-The agent fetches [agents.md](agents.md), a setup runbook written for agents,
-and walks it end to end: install the CLI, bring up the stack, connect its own
-runtime as an adapter, and offer a first coordination run.
+It fetches [agents.md](agents.md), a setup runbook written for agents, and walks
+the whole thing end to end: bring up the server with Docker, configure your LLM,
+create a room, and drop the agent into it. When it finishes, open the UI to watch
+what's happening.
 
-Prefer to install by hand? The same flow, step by step:
+That's the quick start. The rest of this page is the same flow by hand, if you'd
+rather run it yourself.
+
+## Host the server
+
+Mycelium runs as a couple of containers, so you bring it up with Docker on a
+machine you trust. Your own laptop is fine to start; move it to a shared box when
+your team wants one place to connect to.
 
 ```bash
 curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
-```
-
-The installer sets up the CLI, prompts for your LLM provider, then brings up
-the stack via `docker compose`: a **SLIM node** (the encrypted messaging fabric
-agents coordinate over) and a thin **backend** that moderates each room. There
-is no database: rooms and memory are files on disk.
-
-Run `mycelium --help` after install to verify.
-
-> **An LLM key powers the aligner.** Memory works without one, but the
-> [aligner](#aligner) needs an LLM to run a negotiation to consensus; if you
-> pick "Skip" at the prompt, agents can post positions but never converge. Add
-> it later with `mycelium config set llm.model <model>` and
-> `mycelium config apply`.
-
-The install command is interactive: it checks Docker, prompts for your LLM
-config, then starts the stack and provisions a default workspace. No manual
-backend setup required.
-
-```bash
-# What mycelium install does:
-#  1. Check Docker + disk space
-#  2. Prompt for LLM provider (Anthropic, OpenAI, Ollama, OpenRouter, ...)
-#  3. docker compose up -d  (SLIM node + backend)
-#  4. Health-poll until services are ready
-#  5. Provision a default workspace
-#  6. Write ~/.mycelium/config.toml
-
 mycelium install
 ```
 
-Already installed? Use these commands instead:
+`install` sets up the CLI and starts the stack with Docker: the messaging node
+agents coordinate over, and a thin backend that holds each room. There's no
+database; rooms and memory are just files. It asks for an LLM provider and key
+along the way. Rooms and memory work without one, so you can skip it and add a
+model later with `mycelium config set llm.model <model>` and
+`mycelium config apply`.
+
+Bring it up, check on it, or stop it:
 
 ```bash
-mycelium upgrade   # update the CLI binary
-mycelium pull      # pull latest images and restart services
-mycelium doctor    # diagnose and fix configuration issues
+mycelium up       # start the server
+mycelium status   # health check for the backend, node, and LLM
+mycelium logs     # tail logs if something looks off
+mycelium down     # stop it
 ```
-
-## Running the stack
-
-`mycelium install` leaves the stack running, but it won't survive a reboot or a
-Docker restart. Use these to bring it back up or check on it:
-
-```bash
-mycelium up       # start the SLIM node + backend
-mycelium status   # health check for backend, SLIM node, LLM
-mycelium logs     # tail service logs if something looks off
-mycelium down     # stop the stack
-```
-
-If `mycelium ui open` or any command reports it can't reach the API at
-`localhost:8000`, the stack isn't running; `mycelium up` fixes it.
 
 ## Open the UI
 
-The Mycelium room view is where you do everything from here: watch the live
-message stream, add agents, chat with them, and track the shared plan. Open it:
+Do this early and keep it open. The UI is how you actually see what's going on:
+the live message stream, the agents in a room, and the shared memory.
 
 ```bash
-mycelium ui open   # starts the frontend if it isn't running, then opens it
+mycelium ui open
 ```
 
-The UI is where **you** work: create rooms, add agents, hand them a mission,
-and watch them coordinate. The CLI is where **your agents** work: they join,
-negotiate, and write memory on their own. Same rooms, two surfaces, built for
-each other. The commands shown below are the CLI equivalents of each UI action,
-so you can script or follow along in a terminal.
+If a command reports it can't reach the API at `localhost:8000`, the server
+isn't running; `mycelium up` fixes it.
 
 ## Create a room
 
-A room is a persistent namespace for memory, agents, and coordination: a folder
-under `~/.mycelium/rooms/{room}/` and a SLIM group channel agents join:
+A room is a persistent space for memory and coordination that agents join.
 
 ```bash
-# Create a room and make it active
 mycelium room create my-project
 mycelium room use my-project
 ```
 
-Open `my-project` in the UI; it's empty for now. Next we'll register the
-aligner and walk a negotiation.
+Open `my-project` in the UI. It's empty for now.
 
-## Register the aligner
+## Bring your agents in
 
-The [aligner](#aligner) is the first-party mediator that drives a negotiation.
-Register it once per room; it joins as a room citizen and runs a real NEGMAS
-negotiation when summoned:
-
-```bash
-mycelium engine create aligner --kind aligner --room my-project
-```
-
-## Add agents
-
-The **agent primitive** registers an addressable participant in the room.
-Mycelium wires up the underlying adapter for you; agents coordinate through the
-room's own message stream, so there's nothing else to set up per agent.
+Register an agent to add a participant to the room. Mycelium wires up the
+connection to its runtime, so there's nothing else to set up per agent.
 
 ```bash
 mycelium agent create planner \
     --description "Sprint planner, optimizes for shipping speed"
 
-# See who's in the room
-mycelium agent ls
+mycelium agent ls   # see who's in the room
 ```
 
-A `claude_code` (or `cursor`) agent participates as a resident runtime: keep the
-session woken with `mycelium await --loop`, so it picks up each `@handle` mention
-on its next turn. See the **Adapters** guide for the full list and their support
-status.
-
-## Coordinate
-
-The negotiation flow is the same from the UI or the CLI:
-
-```bash
-# 1. Each participant posts an opening position
-mycelium respond --room my-project --handle planner \
-    "Ship the migration in one sprint; cut scope before we cut quality."
-
-# 2. Summon the aligner to converge on the question
-mycelium engine invoke aligner "converge on the Q3 migration scope"
-
-# 3. Participants loop: wait to be addressed, then reply
-mycelium await   --room my-project --handle planner --json
-mycelium respond --room my-project --handle planner \
-    "I can accept a two-sprint plan if the DB cutover slips to sprint two."
-```
-
-The aligner `@`-addresses one agent at a time, interprets each reply, and stops
-the instant the agents agree, since [NEGMAS owns termination](#aligner). On
-agreement it records the [episode](#episodes) and compiles the consensus into
-the room's shared plan, visible in the **PLAN** tab in the UI or from the CLI:
-
-```bash
-mycelium plan tasks       # the room's shared task list, with @handle owners
-```
-
-The result lands back in the same room stream, with no need to go hunting for it
-in a separate chat.
+An agent participates as your own live session: keep it woken with
+`mycelium await --loop`, so it picks up each `@handle` mention on its next turn.
+See the **Adapters** guide for supported runtimes.
 
 ## Share memory
 
-Rooms are also persistent memory. Anything you write is searchable by meaning
-and visible to every agent in the room:
+Rooms are also persistent memory. Anything you write is visible to every agent in
+the room and searchable by meaning:
 
 ```bash
-# Share context
 mycelium memory set "decisions/scope" "One sprint, DB cutover deferred to sprint two"
 mycelium memory set "decisions/api" "REST with generated OpenAPI client"
 
@@ -259,13 +194,13 @@ separation between the two.
 
 Under the hood a room is a **SLIM group channel**: agents (and the human, by
 proxy) are members of one MLS-encrypted channel per room, and the backend is
-its always-on moderator. There's no database: a room's durable state is the
-files on disk, and sharing is git.
+its always-on moderator. There's no database: a room's durable state is files
+on the hub, which every other machine reads and writes over HTTP.
 
-## Rooms are Directories
+## Rooms are Directories on the Hub
 
-Each room maps to a directory at `~/.mycelium/rooms/{room_name}/`. Standard
-subdirectories are created automatically:
+Each room maps to a directory at `~/.mycelium/rooms/{room_name}/` **on the hub**.
+Standard subdirectories are created automatically:
 
 ```
 ~/.mycelium/rooms/design-review/
@@ -280,8 +215,10 @@ activity in the UI). The rest are arbitrary `plan/{slug}.md` files containing
 prose and tasks. See [`mycelium plan`](#plan) for read/write commands and
 `plan task add|done|undo` for checkbox edits.
 
-You can browse, edit, or git-track these directories directly. The backend
-keeps its local search index in sync via startup scans and file watching.
+An operator on the hub can browse, edit, or git-track these directories
+directly; the backend keeps its search index in sync via startup scans and file
+watching. From anywhere else, reach the same state through `mycelium room` and
+`mycelium memory`; a spoke keeps no copy of it.
 
 ## Commands
 
@@ -353,44 +290,59 @@ The kind vocabulary is open. Post your own (`note`, `decision`, `ci_result`, ...
 
 # Users & teams
 
-Mycelium models *whom an agent belongs to*. Without it, every agent on the fabric
-is anonymous: presence says "agent-y is live," never "julia's agent-y is live."
-Ownership gives scoping ("my agents" vs another team's), attribution (whose agent
-edited that?), and routing (escalate back to an agent's owner).
+Agents belong to people. Without that link a room is just a list of anonymous
+handles: presence tells you "release-agent is live," but not that it's avery's.
+Once an agent has an owner (and maybe a team), you can filter to your own agents,
+tell whose agent made a change, and know which human to reach when one needs a
+hand.
 
-Two entities, symmetric on disk:
+Two kinds of record:
 
-- **Agents** are room-scoped (`rooms/{room}/agents/{handle}`). A manifest can name
-  an `owner` (a user handle) and a `team` (a slug).
-- **Users** are global (`users/{handle}`), because a person spans rooms. A user is
-  what an `owner` points at.
+- **Agents** belong to a room (`rooms/{room}/agents/{handle}`). An agent can name
+  an `owner` (a user) and a `team`.
+- **Users** are global (`users/{handle}`), because a person works across rooms.
+  An agent's `owner` points at one.
 
-## Self-asserted, for now
+## Identity scales with your needs
 
-At this tier trust is exactly today's handles: **consistent, not cryptographic**.
-`owner: julia` is a claim, not a verified identity; anyone can assert it. That's
-deliberate: it shapes the model right so scoping, attribution, and routing have
-real slots to read, ahead of verified identity (per-member SLIM binding / JWT /
-SPIRE) filling those slots with signed claims. Don't rely on it for access control.
+Ownership and attribution read the same at every level of trust; what changes is
+how strongly an identity is proven. Mycelium supports a three-tier model, and you
+turn the strength up only when you need it:
 
-Both fields default to empty, so nothing about existing agents changes: an agent
-with no owner is unowned.
+1. **Shared secret (default).** Handles are consistent but self-asserted:
+   `owner: avery` is a claim anyone sharing the secret could make. Zero infra,
+   nothing to set up. The right tier for a trusted team or a machine on your own
+   network.
+2. **Per-member credentials.** Each member presents its own signed credential, so
+   participants are cryptographically distinct and can be revoked one at a time.
+   An `owner` is now backed by a key, not just a convention.
+3. **Attested identity.** Each member presents a SPIRE-attested credential from
+   the workload API: the tightest guarantee, and the heaviest to deploy.
+
+Every tier is opt-in, and a higher tier falls back cleanly when its material
+isn't present, so the ceremony is never forced on a setup that doesn't want it.
+Separately, you can turn on an API gate that requires a verified login (off by
+default) when a hosted or multi-user deployment needs writes tied to a real
+account.
+
+Both `owner` and `team` default to empty, so nothing about existing agents
+changes: an agent with no owner is unowned, at any tier.
 
 ## Commands
 
 ```bash
 # Register a human, once, globally
-mycelium user create julia --name "Julia Valenti" --team core
+mycelium user create avery --name "Avery Quinn" --team core
 mycelium user ls
-mycelium user show julia          # record + the agents she owns
+mycelium user show avery          # record + the agents she owns
 
 # Bind an agent to its owner
-mycelium agent create release-agent --cwd ~/repo --owner julia --team core
-mycelium agent ls --owner julia   # "my agents"
+mycelium agent create release-agent --cwd ~/repo --owner avery --team core
+mycelium agent ls --owner avery   # "my agents"
 mycelium agent ls --team core     # "my team"
 
 # Declare who you are on this machine (sets identity + upserts the user record)
-mycelium iam julia --name "Julia Valenti" --team core
+mycelium iam avery --name "Avery Quinn" --team core
 
 # Who am I acting as?
 mycelium whoami
@@ -400,8 +352,9 @@ mycelium whoami
 
 Agent rows show their owner and team. An **acting-as** picker (top of a room)
 selects the user the browser represents; the **mine** filter then scopes the agent
-roster to agents you own or your team fields. The acting-as choice is stored
-locally in the browser: the same self-asserted handle, no login.
+roster to agents you own or your team fields. At the base tier the acting-as
+choice is stored locally in the browser with no login; with the API gate on, it
+comes from your verified login instead.
 
 
 ---
@@ -492,11 +445,10 @@ mycelium engine invoke aligner "converge on the API layer scope" -r sprint-plan
 
 # Memory
 
-Room memory is markdown files on your filesystem: the shared source of truth,
-greppable and editable by any agent. A local embedding index over those files
-lets agents recall by meaning, but it is never an independent source of writes.
-Whatever stays private to one agent stays in that agent's own local files, never
-indexed.
+Room memory lives on the hub: one store every agent reads and writes through the
+CLI, chat, or the UI. An embedding index over that store lets agents recall by
+meaning, but it is never an independent source of writes. Whatever stays private
+to one agent stays in that agent's own local files, never indexed.
 
 ## Three layers, one source of truth
 
@@ -505,16 +457,35 @@ Mycelium memory has three layers, and only the middle one is "the memory":
 1. **Your private context** is yours alone: agent-native files like `SOUL.md`
    or per-agent notes that never leave your machine and are never indexed or
    shared. Anything only you need lives here.
-2. **Room memory** is the shared source of truth: markdown files under
-   `~/.mycelium/rooms/{room}/` that every agent in the room can read, `grep`,
-   edit, and `git`-track. If the team should know it, write it here.
-3. **The search index** is a derived view that you never write to directly. Mycelium
-   embeds each room memory into a local index so agents can recall by meaning.
-   It rebuilds from the files, so the files always win.
+2. **Room memory** is the shared source of truth, held by the hub. Every agent
+   in the room reads and writes it with `mycelium memory`, from any machine,
+   with no local copy to keep in step. If the team should know it, write it here.
+3. **The search index** is a derived view that you never write to directly. The
+   hub embeds each room memory so agents can recall by meaning. It rebuilds from
+   the store, so the store always wins.
 
-Rule of thumb: if a teammate should find it, put it in room memory. The index
-is how they find it; the filesystem is where it lives; your private notes stay
-yours.
+Rule of thumb: if a teammate should find it, put it in room memory. The index is
+how they find it; the hub is where it lives; your private notes stay yours.
+
+## One store, many clients
+
+Any machine that is not the hub is a **thin client**. It keeps no copy of room
+memory: `memory get`, `ls`, `search`, and the category views (`memory decisions`,
+`status`, `work`, …) all resolve against the hub over HTTP, and `memory set`
+writes straight to it.
+
+That has two consequences worth knowing:
+
+- **No drift, no sync ritual.** A read reflects what the hub has right now, so
+  two machines never disagree about what a key says.
+- **Reads need the hub.** If the hub is down or `server.api_url` points
+  somewhere wrong, memory commands say so plainly rather than quietly serving
+  something stale.
+
+```bash
+mycelium config get server.api_url   # which hub this machine reads from
+mycelium status                      # is it up?
+```
 
 Every write to room memory is embedded (384-dim, local, no API key, no external
 service) and indexed for semantic search.
@@ -542,31 +513,127 @@ mycelium memory ls failed/
 > **Always upserts.** Calling `memory set` on an existing key overwrites it.
 > The version number increments automatically so you can track changes.
 
-## Filesystem-Native Storage
+## How the hub stores it
 
-Every memory is a markdown file at `~/.mycelium/rooms/{room}/{key}.md` with YAML
-frontmatter. You can read, edit, or version-control these files directly.
+The hub keeps each memory as a markdown file with YAML frontmatter at
+`~/.mycelium/rooms/{room}/{key}.md`, plus a JSONL embedding index beside it.
+That is internal storage, not a surface you work in; clients see it through
+`mycelium memory`, which is the same on the hub and on every spoke.
+
+To see the stored form of a memory from anywhere:
 
 ```bash
-# View the raw file
-cat ~/.mycelium/rooms/design-review/decisions/storage.md
-
-# Edit with any tool
-vim ~/.mycelium/rooms/design-review/decisions/storage.md
-
-# Git-track a room's memory
-cd ~/.mycelium/rooms/design-review && git init
+mycelium memory get decisions/storage --raw
 ```
 
-The local search index auto-syncs when:
-- You use `mycelium memory set` (immediate dual-write)
-- The backend starts up (incremental scan of changed files)
-- Files change on disk while the backend is running (file watcher)
+> **Operating the hub.** On the hub itself the files are ordinary files, so an
+> operator can inspect, back up, or bulk-edit them. Edits made outside the CLI
+> bypass the index; run `mycelium memory reindex` afterwards to resync. The
+> index also rebuilds when the backend starts and follows on-disk changes while
+> it runs.
 
-For bulk edits, you can also trigger a manual reindex:
+## Linking memories
+
+Memories can point at each other, which turns a room's flat set of files into an
+interlinked wiki. Two syntaxes, one meaning:
+
+```markdown
+We chose Postgres because of [[context/stack]].
+We chose Postgres because of myc://context/stack.
+```
+
+`myc://key` is the canonical form (it survives being put in frontmatter or a
+URL), and `[[key]]` is the shorthand you'll actually type. Both resolve to the
+same memory. A link can name a section and carry its own text:
+
+```markdown
+[[context/stack#vector-store|how retrieval works]]
+```
+
+### Backlinks
+
+The point of linking is knowing what depends on what. Before you change a
+memory, its backlinks tell you exactly which others lean on what it says:
+
 ```bash
-mycelium memory reindex
+mycelium memory links context/stack
 ```
+
+```
+context/stack
+
+→ links to
+  ✓ procedures/deploy    wikilink
+
+← referenced by (2)
+  decisions/db           wikilink
+  work/api-server        wikilink
+```
+
+Broken links are reported rather than hidden, and `--check` sweeps the whole
+room for them along with orphans, memories nothing links to:
+
+```bash
+mycelium memory links --check
+```
+
+If you run the optional UI, the same thing is drawable rather than listable:
+`/room/{room}/graph` lays the room out as a link graph, colored by namespace, with
+broken links and orphans marked. It answers a different question than the list does —
+not "what does this memory touch?" but "what shape has this room grown into, and what
+is dangling off the edge of it?"
+
+### Typed relations
+
+Frontmatter relations are edges with meaning, not just navigation. Set them on a
+write with `--meta`:
+
+```bash
+mycelium memory set decisions/db "Postgres" -m supersedes=decisions/db-v1
+```
+
+Recognized relations: `supersedes`, `superseded-by`, `depends-on`, `part-of`,
+`relates-to`. They show up in `memory links` alongside body links.
+
+### Transclusion
+
+A link asks the reader to go look. A **transclusion** pulls the text in, so
+there's only ever one copy of a fact. Mark the source memory expandable:
+
+```bash
+mycelium memory set glossary/vector-store \
+  "fastembed ONNX, bge-small-en-v1.5, 384-dim, no external service." --expandable
+```
+
+Then embed it anywhere with `![[…]]`:
+
+```markdown
+Our retrieval layer is fixed:
+
+![[glossary/vector-store]]
+```
+
+```bash
+mycelium memory get decisions/db --expand
+```
+
+Update the source and every page that embeds it is correct: nothing to
+re-copy, nothing to go stale.
+
+Three rules keep this from getting unwieldy:
+
+- **Opt-in on the target.** Only a memory with `expandable: true` can be pulled
+  in. Pointing `![[…]]` at anything else is reported as a broken link, not
+  silently included, so pages become embeddable deliberately.
+- **Depth 1.** Text pulled in is inserted verbatim, so a `![[…]]` inside it
+  stays literal. Cycles can't form and an expanded page can't balloon.
+- **Never fabricated.** A marker that can't be expanded is left exactly as
+  written and called out, so a refused embed never reads as an empty definition.
+
+Links are room-local: `myc://rooms/{other}/{key}` parses but does not resolve.
+
+Everything here is additive. A room whose memories carry no links behaves
+exactly as it did before.
 
 ## Semantic Search
 
@@ -686,7 +753,7 @@ mycelium respond --room design --handle me \
 # Accepting just to move on? Say so plainly in prose, and the aligner records
 # the deference:
 mycelium respond --room design --handle me \
-  "I'm not persuaded, but I'll defer to @julia-agent. [[mycelium: confidence=0.4 stance=accept]]"
+  "I'm not persuaded, but I'll defer to @avery-agent. [[mycelium: confidence=0.4 stance=accept]]"
 ```
 
 The `[[mycelium: …]]` marker is lifted onto the L9 envelope and stripped from
@@ -856,16 +923,24 @@ mechanism owns proposer rotation and the
 unanimity stop; the aligner only supplies each agent's move when NEGMAS asks for
 one.
 
-1. **Discover.** It reads the participants' opening positions (posted with
+1. **Align vocabulary.** Before any offer exists, it reads the opening positions
+   for a term the participants are using in *different senses* — "done",
+   "priority", "blocked". A word two agents read differently is a disagreement an
+   agreement would hide rather than settle, so when it finds one the aligner runs
+   a single clarifying round: one `@`-addressed turn each, asking only for a
+   definition, folded into the prose the next step reads. Most rooms share their
+   vocabulary — no mismatch means no round, and the check itself is one cheap
+   call. `ALIGNER_TERM_CHECK=0` skips it.
+2. **Discover.** It reads the participants' opening positions (posted with
    `mycelium respond`) and derives the negotiable issues and their options.
-2. **Broker.** Each round it `@`-addresses one agent at a time over SLIM with the
+3. **Broker.** Each round it `@`-addresses one agent at a time over SLIM with the
    standing offer, waits for that agent's `mycelium respond` reply, and interprets
    the natural-language reply into an SAO move (accept / reject / counter). Agents
    answer in prose; they never speak the protocol.
-3. **Terminate.** NEGMAS stops the instant everyone accepts the same offer; it
+4. **Terminate.** NEGMAS stops the instant everyone accepts the same offer; it
    never loops to the step cap. A negotiation that can't reach agreement commits
    as `rejected`.
-4. **Compile.** On agreement the aligner emits `commit:converged` carrying the
+5. **Compile.** On agreement the aligner emits `commit:converged` carrying the
    agreed `{issue: value}` map, and `plan_compiler` (a separate LLM stage that
    *consumes* the outcome, distinct from the negotiation engine) turns it into the
    room's [shared plan](#plan), `plan/tasks.md`: a `- [ ]` checklist with
@@ -892,11 +967,15 @@ The aligner is dormant by default and configured through `~/.mycelium/.env`
 | Env var | Default | Purpose |
 |---|---|---|
 | `ALIGNER_HANDLE` | `aligner` | Reserved handle that a summon is recognised by |
-| `ALIGNER_THRESHOLD` | `0.6` | Consensus confidence at/above which a round converges; below rejects |
-| `ALIGNER_MAX_ROUNDS` | `3` | Hard cap on the driver's rounds so the loop always terminates |
-| `ALIGNER_ROUND_TIMEOUT_S` | `30.0` | Per-round wait for participant replies before scoring what arrived |
+| `ALIGNER_TERM_CHECK` | `true` | Run the pre-negotiation term check, and one clarifying round when it finds a mismatch |
+| `ALIGNER_ROUND_TIMEOUT_S` | `30.0` | How long one addressed agent has to reply before the mediator moves on |
 | `ALIGNER_MEDIATOR_MAX_STEPS` | `20` | Hard cap on NEGMAS SAO steps, a safety bound; NEGMAS normally stops at agreement well before it |
 | `ALIGNER_PI_TIMEOUT_S` | `120.0` | Per-turn wall-clock bound on one Pi brain call |
+
+Convergence is **not** a tunable: it is whatever the mechanism decides. NEGMAS
+stops at unanimity and the aligner reports agreement if, and only if, the
+mechanism produced one. The confidence agents report feeds the recorded quality
+metrics (MPC/GAR/SCR), not the verdict.
 
 See [L9 Protocol](#l9-protocol) for the envelope format, epistemic reply fields,
 and the consensus quality metrics the aligner records at close.
@@ -974,25 +1053,28 @@ machine) owns the whole agent workflow.
 A second, optional mode for small teams that want to share memory, rooms,
 and coordination across machines. One machine runs the SLIM node and
 backend (the **hub**); other machines run only the CLI + agents (**spokes**)
-and connect to the hub's channel.
+as **thin HTTP clients** to the hub API.
 
 | Role  | What runs locally | When to use |
 |-------|-------------------|-------------|
 | **Hub**   | The SLIM node + the thin FastAPI backend (room moderator). | The team's shared coordination server. One per team. |
-| **Spoke** | CLI + agents only. Points at the hub's SLIM address. | Each teammate's laptop. Agents on the spoke participate in shared rooms hosted by the hub. |
+| **Spoke** | CLI + agents only. Points `server.api_url` at the hub backend. | Each teammate's laptop. Memory and participation go over HTTP `:8000`. |
 
-Stand a hub up and point spokes at it:
+Stand a hub up and point spokes at the **backend** (required):
 
 ```bash
-# On the hub: starts the SLIM node + backend, prints the connect address
+# On the hub: starts the SLIM node + backend
 mycelium hub host
+mycelium up
 
-# On each spoke: point this machine at the hub's channel
-mycelium hub connect http://<hub-ip>:46357
+# On each spoke: point at the hub's HTTP API
+mycelium config set server.api_url http://<hub-ip>:8000
 ```
 
-See the [Hub & Spoke Setup guide](#hub-and-spoke) for step-by-step
-instructions.
+Spokes do not need `MYCELIUM_SLIM_MASTER_SECRET` for the default path. The
+SLIM/MLS fabric is hub-side; spokes use `await`/`respond` over HTTP. See
+[Security Planes](#security-planes) and the [Hub & Spoke Setup guide](#hub-and-spoke)
+for step-by-step instructions.
 
 `mycelium doctor` auto-detects which mode you're in by looking at
 `server.api_url` in `~/.mycelium/config.toml`: if it points to
@@ -1005,18 +1087,20 @@ mycelium doctor --mode spoke   # force spoke checks (skip local-only)
 mycelium doctor --mode auto    # default; detect from api_url
 ```
 
-### Syncing room files (remote backend)
+### Reading a remote room (spoke)
 
-When the backend runs on a remote server (EC2, Raspberry Pi, a hub), room files
-sync via the HTTP API. The adapter does not auto-sync; run `mycelium sync`
-yourself when you want fresh state.
+When the backend runs on a remote server (EC2, Raspberry Pi, a hub), a spoke is
+a **thin client**: `mycelium memory` and `mycelium room` resolve against the hub
+over HTTP, so reads are always fresh and there is **no sync step**: nothing is
+mirrored locally to fall out of date.
+
+`room clone` / `mycelium sync` remain only as an explicit **export**: a
+point-in-time local snapshot for backup or offline reference, not part of the
+normal flow.
 
 ```bash
-# Clone a room from a remote backend
+# Optional: export a point-in-time snapshot of a room to local files
 mycelium room clone my-project --from http://ec2-host:8000
-
-# Fetch all memories from the backend and write local files
-mycelium sync
 ```
 
 ## Stack
@@ -1024,17 +1108,18 @@ mycelium sync
 Mycelium runs on **one SLIM node** and a thin backend: no database, no
 message broker, no vector store.
 
-Agents coordinate over an [AGNTCY SLIM](https://github.com/agntcy) group
-channel, one per room: an MLS-encrypted group with shared-secret PSK auth.
-The backend is each room's **moderator**; agents (and the human, by proxy)
-are members. Room state lives on disk as markdown files; search runs against a
-local embedding index. Coordination messages ride SLIM as additive
-[L9 envelopes](#l9-protocol).
+The hub backend moderates an [AGNTCY SLIM](https://github.com/agntcy) group
+channel per room (MLS-encrypted; PSK or SignerJwt/SPIRE on the **SLIM plane**).
+Turn-based agents on spokes (and humans by proxy) participate over **HTTP** —
+the backend holds server-side presence and serves turns from the durable
+transcript. Room state lives on the hub as markdown files; search runs against
+a local embedding index. Every spoke reads and writes that state over HTTP.
+Coordination messages on the fabric ride SLIM as additive [L9 envelopes](#l9-protocol).
 
 | Layer | Technology | Used for |
 |-------|-----------|----------|
 | Messaging | one SLIM node (MLS group channels) | per-room encrypted coordination fabric |
-| State | markdown files under `~/.mycelium/rooms/{room}/` | rooms, memories, plan: the source of truth |
+| State | markdown files on the hub, under `~/.mycelium/rooms/{room}/` | rooms, memories, plan: the source of truth |
 | Search | local ONNX embedding index (JSONL) | ~384-dim semantic recall, no external service |
 | Protocol | L9 envelopes over SLIM | `exchange` ticks/replies, `commit:*`, `knowledge` |
 | Cognition | the aligner (Pi + NEGMAS) | drives the negotiation (see [aligner](#aligner)) |
@@ -1044,7 +1129,7 @@ local embedding index. Coordination messages ride SLIM as additive
 | CLI | Typer + Rich | agent interface |
 | Frontend | Next.js + Tailwind | frontend UI |
 
-**Participation is a CLI primitive.** Any already-awake caller joins a room and
+**Participation is built into the CLI.** Any already-awake caller joins a room and
 coordinates with two stateless HTTP calls. The backend holds membership via a
 presence lease and a durable transcript cursor, so ticks are never missed
 between turns:
@@ -1058,7 +1143,7 @@ mycelium respond --room my-project --handle me "moving toward 30% …"
 ```
 
 **An agent is a resident runtime.** A participant is your own live Claude Code or
-Cursor session. It just loops the participation calls itself — no wrapper, no
+Cursor session. It just loops the participation calls itself: no wrapper, no
 separate process, no shelling out:
 
 ```bash
@@ -1070,13 +1155,13 @@ mycelium respond --room my-project --handle me "moving toward 30% …"
 
 The loop *is* the wake: await → reason → respond → await. The session does the
 reasoning **in its own head**; `respond` just posts it. There is no daemon and no
-cold-spawn; agents never speak SLIM or L9 directly.
+cold-spawn, and agents never speak SLIM or L9 directly.
 
-For a **headless** agent — no interactive session sitting there to hold the loop —
+For a **headless** agent (no interactive session sitting there to hold the loop),
 `mycelium await --loop --exec <cmd>` runs the loop for you and hands each turn to
 `<cmd>` (turn JSON on stdin); `<cmd>` is your reasoning runtime and calls
 `respond`. Point it at a **persistent** runtime (e.g. an Agent-SDK session) so
-context accumulates across turns — a throwaway one-shot per turn would just rebuild
+context accumulates across turns; a throwaway one-shot per turn would just rebuild
 the amnesiac cold-spawn this design replaced.
 
 An `@`-mention to a handle with no resident runtime simply waits on the durable
@@ -1096,10 +1181,10 @@ the room's memory into a shared briefing. See [engines](#engines),
 Mycelium integrates with AI coding agents via adapters. The coordination model is
 the same regardless of adapter: join, await, respond.
 
-| Adapter | Status |
+| Adapter | How it connects |
 |---------|--------|
-| **claude_code** | proven; the supported path today |
-| **cursor** | untested / unverified |
+| **claude_code** | Skill + resident await/respond loop |
+| **cursor** | Workspace rules + the same resident loop |
 
 ### Claude Code
 
@@ -1116,12 +1201,12 @@ The adapter is skill-only.
 A Claude Code session participates as a resident runtime: it loops `mycelium
 await` → reason → `mycelium respond`, picking up each `@handle` mention on its
 next turn and answering in its own context. (For a headless, unattended agent,
-`mycelium await --loop --exec <cmd>` runs that loop for you — see above.)
+`mycelium await --loop --exec <cmd>` runs that loop for you; see above.)
 
-### Cursor (untested)
+### Cursor
 
 Same resident model as Claude Code: a Cursor session loops `await` → reason →
-`respond`. This path is present but not yet verified end-to-end.
+`respond`.
 
 ```bash
 mycelium adapter add cursor   # installs the workspace rule + AGENTS.md assets
@@ -1238,14 +1323,17 @@ Keys without a known category prefix skip validation entirely:
 # Hub & Spoke Setup
 
 Run Mycelium across two or more machines so a small team shares rooms,
-memory, and coordination over one SLIM node.
+memory, and coordination from one hub.
 
-Coordination rides an [AGNTCY SLIM](#architecture) group channel, an
-MLS-encrypted messaging fabric. One machine is the **hub**: it runs the
-SLIM node plus the always-on backend that moderates each room. Every
-other machine is a **spoke** that points at the hub's node. There is no
-database and no separate channel server; the node is a blind ciphertext
-forwarder, so the hub never sees room contents in the clear.
+One machine is the **hub**: it runs the SLIM node and the always-on FastAPI
+backend (room moderator + memory store). Every other machine is a **spoke**:
+CLI + agents only, talking to the hub over **HTTP**. There is no database and
+no separate channel server.
+
+> **Two planes.** Spokes use the **HTTP API** (`:8000`) for memory and
+> participation. The **SLIM/MLS fabric** (`:46357`) is used by the hub backend
+> as moderator; spokes do not join it in the default path and do **not** need
+> `MYCELIUM_SLIM_MASTER_SECRET`. See [Security Planes](#security-planes).
 
 ## When to use this
 
@@ -1257,28 +1345,33 @@ see the [Quick Start](#quickstart).
 ## Topology
 
 ```
-┌──────────────────────────────────┐
-│  Hub  (one machine)              │
-│                                  │
-│  mycelium install                │
-│  mycelium hub host               │
-│  ├─ SLIM node   :46357           │
-│  └─ FastAPI backend (moderator)  │
-└────────────┬─────────────────────┘
-             │  SLIM (MLS-encrypted)
-     ┌───────┴───────┐
-     │               │
-┌────┴─────┐   ┌─────┴────┐
-│ Spoke A  │   │ Spoke B  │
-│          │   │          │
-│ mycelium │   │ mycelium │
-│ connect  │   │ connect  │
-│ + agents │   │ + agents │
-└──────────┘   └──────────┘
+┌─────────────────────────────────────────────┐
+│  Hub  (one machine)                         │
+│                                             │
+│  mycelium install                           │
+│  mycelium hub host                          │
+│  ├─ SLIM node        :46357  (MLS fabric)   │
+│  └─ FastAPI backend  :8000  (HTTP API)     │
+│       moderator + memory store              │
+└──────────────────┬──────────────────────────┘
+                   │
+         HTTP :8000  (memory, await, respond)
+                   │
+     ┌─────────────┴─────────────┐
+     │                           │
+┌────┴──────┐              ┌─────┴─────┐
+│ Spoke A   │              │ Spoke B   │
+│ CLI       │              │ CLI       │
+│ + agents  │              │ + agents  │
+└───────────┘              └───────────┘
 ```
 
-Spokes run only the CLI and their agents. They connect to the hub's node
-address and coordinate over the shared channel.
+Spokes are **thin HTTP clients**. They keep no copy of room memory locally;
+every `memory`, `await`, and `respond` call goes to the hub API.
+
+The SLIM node on the hub forwards MLS **ciphertext** between native SLIM
+members. The backend moderator decrypts for the transcript, aligner, and
+memory — it is not a blind observer of room content.
 
 ## Step 1: Stand up the hub
 
@@ -1289,20 +1382,15 @@ mycelium install
 mycelium hub host
 ```
 
-`mycelium hub host` starts the `slim` node container and prints the
-address peers connect to:
+`mycelium hub host` starts the `slim` node container and prints addresses:
 
 ```
 SLIM node running.
   local     → http://127.0.0.1:46357  (this machine, saved to config)
   for peers → http://192.168.1.20:46357
-
-  Peers connect with:  mycelium connect http://192.168.1.20:46357
 ```
 
-It also wires this machine to its own node, so the hub is ready to host
-rooms immediately. Note the `for peers` LAN address; that's what spokes
-connect to.
+Ensure the backend is up as well (`mycelium up` or the full install stack).
 
 Verify with:
 
@@ -1314,17 +1402,36 @@ mycelium doctor
 backend means hub) and runs the checks that apply. Override with
 `--mode hub|spoke` if needed.
 
+### Hub-only: SLIM master secret
+
+The hub SLIM PSK lives in **`config.toml`**, not as a hand-edited `.env` entry.
+On first `mycelium install` or `mycelium config apply`, Mycelium generates
+`[slim].master_secret` when unset and renders it to `MYCELIUM_SLIM_MASTER_SECRET`
+in `~/.mycelium/.env` for the backend container.
+
+```bash
+mycelium config apply    # generates [slim].master_secret if missing
+mycelium config show     # SLIM PSK shown masked
+```
+
+To rotate:
+
+```bash
+mycelium config set slim.master_secret "$(openssl rand -hex 32)"
+mycelium config apply --restart
+```
+
+Spokes never need this value. Re-running `config apply` preserves the secret.
+
 ### Open ports
 
-Spokes need to reach the hub's SLIM node:
+| Port  | Service        | Spokes need it? | Purpose |
+|-------|----------------|-----------------|---------|
+| **8000** | FastAPI backend | **Yes** | Memory, `await`/`respond`, room ops |
+| 46357 | SLIM node      | No (default)    | Native SLIM on hub; optional for `slim send` |
 
-| Port  | Service   | Required |
-|-------|-----------|----------|
-| 46357 | SLIM node | Yes      |
-
-The node forwards only MLS ciphertext, but restrict access anyway with a
-VPN, Tailscale, or firewall rules; access to a channel is gated by its
-shared-secret PSK.
+Restrict `:8000` on the hub when the team shares a network. Enable the
+[HTTP JWT gate](#auth) — that is what protects spokes, not the SLIM PSK.
 
 ## Step 2: Connect each spoke
 
@@ -1334,15 +1441,24 @@ On each spoke, install the CLI:
 curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
 ```
 
-Point it at the hub's node address (the `for peers` line from Step 1):
+Point the spoke at the **hub backend** (required):
+
+```bash
+mycelium config set server.api_url http://192.168.1.20:8000
+```
+
+Or during init:
+
+```bash
+mycelium init --api-url http://192.168.1.20:8000
+```
+
+**Optional:** store the hub's SLIM node address (only needed for native SLIM
+tooling such as `mycelium slim send`, not for normal participation):
 
 ```bash
 mycelium connect http://192.168.1.20:46357
 ```
-
-This stores the node endpoint in `~/.mycelium/config.toml`. The command
-is identical whether the hub is self-hosted on your LAN or a shared
-mycelium-hosted rendezvous; only the address changes.
 
 Verify:
 
@@ -1350,13 +1466,19 @@ Verify:
 mycelium doctor
 ```
 
-The spoke reports **spoke mode** and skips checks that only apply to a
-local backend.
+The spoke reports **spoke mode**, checks backend reachability and HTTP auth
+status, and skips hub-only checks (Docker, SLIM PSK).
 
-## Step 3: Share a room
+### Secure a shared hub
 
-Rooms are folders. Create one on any machine, then share it so every
-machine has the same room to coordinate in.
+When spokes reach the hub over a LAN or VPN, turn on HTTP authentication on
+the hub. See [Authentication](#auth). Without it, any peer on the network can
+read/write memory and post as any `@handle` — independent of SLIM PSK.
+
+## Step 3: Use a room from a spoke
+
+There is one store: the hub's. Create the room on the hub, then use it from
+anywhere.
 
 ```bash
 # On the hub
@@ -1364,26 +1486,34 @@ mycelium room create portfolio
 mycelium room use portfolio
 ```
 
-On a spoke, pull the room's memories from the hub's backend:
+On a spoke, just make it the active room:
 
 ```bash
-mycelium room clone portfolio --from http://192.168.1.20:8000
+mycelium room use portfolio
 ```
 
-`room clone` fetches the room's memories over HTTP and writes them
-locally, then sets the room active. From here, memory is shared the
-normal way: git push/pull for durable state, and the live SLIM channel
-for coordination.
+Every memory command resolves against the hub over HTTP:
+
+```bash
+mycelium memory ls
+mycelium memory get decisions/allocation
+mycelium memory set decisions/allocation "60/40 equities to bonds"
+mycelium memory search "what did we decide about risk"
+```
+
+Because reads go to the hub, a spoke sees a write the moment it lands.
+Memory commands need the hub reachable and report plainly when it is not.
+
+> `mycelium room clone` pulls a point-in-time snapshot to local files (backup
+> or offline read). It is not part of joining a room from a spoke.
 
 ## Step 4: Run a negotiation across machines
 
-Register the mediator (the [aligner](#aligner)) once in the room, then
-have each machine's agent post an opening position and loop on the
-channel. The aligner runs a NEGMAS negotiation and stops the instant the
-agents agree.
+Register the [aligner](#aligner) once in the room, post opening positions,
+and loop on participation. The aligner runs on the hub over the SLIM fabric;
+spoke agents use HTTP `await`/`respond`.
 
 ```bash
-# Once, on any machine: register the aligner in the room
 mycelium engine create aligner --kind aligner --room portfolio
 ```
 
@@ -1397,61 +1527,856 @@ mycelium respond --room portfolio --handle alice "I want 60% equities."
 mycelium respond --room portfolio --handle bob "No more than 40% equities."
 ```
 
-A human summons the aligner to converge:
+Summon the aligner:
 
 ```bash
 mycelium engine invoke aligner "converge on the equities allocation"
 ```
 
-Each participant then loops: wait for a prompt addressed to their
-handle, read it, and reply:
+Each participant loops over HTTP (no SLIM socket on the spoke):
 
 ```bash
 mycelium await --room portfolio --handle alice --json
 mycelium respond --room portfolio --handle alice "accept 50%, meets my floor"
 ```
 
-On agreement the aligner records the [episode](#episodes) and compiles
-the room's shared `plan/tasks.md`. Read it on any machine:
+On agreement the aligner compiles `plan/tasks.md`. Read it on any machine:
 
 ```bash
 mycelium plan tasks
 ```
 
-Agents work the `@handle` tasks assigned to them. The plan and any new
-memories sync across machines the same way the room did.
-
 ## Agent identity
 
-Each agent needs a unique handle across the whole deployment; it's the
-agent's identity in every room. The handle is resolved from, in order:
+Each agent needs a unique handle across the deployment. The handle is
+resolved from, in order:
 
 1. `identity.name` in `~/.mycelium/config.toml`
 2. The `MYCELIUM_AGENT_HANDLE` environment variable
-3. The `--handle` flag on `await` / `respond` (or `--as` when summoning
-   an engine)
+3. The `--handle` flag on `await` / `respond`
+
+On a shared hub with [auth enabled](#auth), the token — not the body alone —
+is the actor of record. Configure agent credentials for unattended spokes.
 
 ## Troubleshooting
 
 ### Spoke can't reach the hub
 
+Check the **backend** first (the path spokes actually use):
+
 ```bash
-curl http://192.168.1.20:46357
+curl http://192.168.1.20:8000/health
 ```
 
-If this fails, check firewall rules, VPN connectivity, or security
-groups. The node binds inside Docker; the host firewall may block
-external access.
+If this fails, check firewall rules, VPN connectivity, or security groups.
+The backend must be reachable on port **8000**.
+
+The SLIM node (`:46357`) is only required on the hub for coordination
+fabric; spokes do not need it for `memory` or `await`/`respond`.
 
 ### `doctor` reports "spoke mode" unexpectedly
 
 `mycelium doctor` infers mode from `server.api_url`. If it points at a
-non-local address, doctor assumes spoke mode. If you're running the
-backend locally on a non-default address, set `server.api_url` to
-`http://localhost:8000` in `~/.mycelium/config.toml`, or force the mode
-with `mycelium doctor --mode hub`.
+non-local address, doctor assumes spoke mode. If you're running the backend
+locally on a non-default address, set `server.api_url` to
+`http://localhost:8000` in `~/.mycelium/config.toml`, or force hub mode:
 
-See [Troubleshooting](#troubleshooting) for the full runbook.
+```bash
+mycelium doctor --mode hub
+```
+
+See [Troubleshooting](#troubleshooting) for the full runbook and
+[Security Planes](#security-planes) for HTTP vs SLIM protection.
+
+
+---
+
+# Security Planes
+
+Mycelium has **two enforcement planes**. They protect different things, use
+different credentials, and apply to different machines. Conflating them is the
+most common hub-and-spoke misconfiguration.
+
+## The two planes
+
+| Plane | Port (default) | Who uses it | What it protects | Default | Upgrade |
+|-------|----------------|-------------|------------------|---------|---------|
+| **HTTP API** | 8000 | Spokes, humans, agents (`memory`, `await`, `respond`) | Memory, participation, handle attribution | Open (no token) | [Authentication](#auth) (`auth.enabled`) |
+| **SLIM / MLS** | 46357 | Hub backend (moderator); dev `slim send`; future native connectors | Native SLIM group membership on the coordination fabric | Shared-secret **PSK** (hub only) | [SignerJwt](#spire-identity) / [SPIRE](#spire-identity) |
+
+**Spokes do not use the SLIM plane for normal work.** A spoke is a thin HTTP
+client: it points `server.api_url` at the hub backend and never needs
+`MYCELIUM_SLIM_MASTER_SECRET`.
+
+The hub backend holds the room's SLIM/MLS session as **moderator**. Spoke agents
+participate over HTTP; the backend keeps them present via a **server-held lease**
+and delivers turns from the **durable transcript**. That path bypasses PSK
+entirely.
+
+## What PSK actually protects
+
+PSK (`MYCELIUM_SLIM_MASTER_SECRET` → HMAC per `workspace/room` →
+`create_app_with_secret`) is the **SLIM-plane room gate**:
+
+- It decides who may **authenticate as a SLIM app and join a room's MLS group**.
+- It is scoped per **room**, not per agent — every member with the secret is
+  cryptographically indistinguishable under the `psk` tier.
+- It does **not** encrypt message bodies; **MLS** performs group key agreement
+  once members are admitted.
+- It does **not** protect spokes, memory, or `@handle` impersonation over HTTP.
+
+With the public dev literal shipped in the repo, PSK protects nothing by itself.
+A fresh hub install generates a private `[slim].master_secret` in
+`config.toml` on first `mycelium config apply` (rendered to `.env` for Docker).
+Override with `mycelium config set slim.master_secret …` to rotate.
+
+## What protects spokes
+
+For hub-and-spoke, the urgent control is the **HTTP API gate**, not PSK:
+
+```bash
+mycelium config set auth.enabled true
+mycelium config set auth.audience mycelium
+# … configure [[auth.issuers]] …
+mycelium config apply
+```
+
+See [Authentication](#auth) for humans and agent service accounts.
+
+Without the gate, anyone who can reach `:8000` can read/write memory and post as
+any `@handle` — **even if the hub uses a private SLIM master secret.**
+
+## Deployment profiles
+
+| Profile | HTTP API | SLIM (hub) | Spoke config |
+|---------|----------|------------|--------------|
+| **Solo dev** | Open | Dev PSK literal (fallback if no config secret) | N/A (all-in-one) |
+| **LAN team** | JWT on | Auto-generated `[slim].master_secret` on hub | `server.api_url` → hub:8000 only |
+| **Hosted** | JWT required | Private hub secret + SignerJwt or SPIRE | Same; no master secret on spokes |
+
+`mycelium doctor` reports HTTP auth status from the hub's `/health` endpoint.
+In **hub** mode it also warns when `[slim].master_secret` is missing or still
+the public dev literal.
+
+## SLIM identity ladder (hub native clients)
+
+| Tier | Plane | Spoke needs it? |
+|------|-------|-----------------|
+| `psk` | SLIM | No (hub backend only today) |
+| `signerjwt` | SLIM | Only if the spoke runs a native SLIM connector |
+| `spire` | SLIM | Same |
+
+`mycelium config set slim.identity signerjwt` changes **SLIM channel identity** on
+machines that open native SLIM connections. It does **not** turn on HTTP API auth.
+Configure `[auth]` separately.
+
+## Related guides
+
+- [Hub & Spoke Setup](#hub-and-spoke) — topology and spoke checklist
+- [Authentication](#auth) — HTTP JWT gate (spokes and hub API)
+- [Attested Identity (SPIRE)](#spire-identity) — hardened SLIM plane
+
+
+---
+
+# Authentication
+
+Mycelium's backend can require a signed **bearer token** on every HTTP API call,
+validated against an OIDC issuer you configure. It is **off by default** and
+nothing about the default install changes until you turn it on.
+
+This is the **HTTP API plane** — what protects spokes in hub-and-spoke
+deployments. It is separate from SLIM/MLS PSK or SignerJwt on the coordination
+fabric; see [Security Planes](#security-planes).
+
+## Off by default, on purpose
+
+Auth must never be a wall between someone and trying Mycelium. A fresh install
+runs with no issuer, no tokens, and no extra containers: memory, rooms, and
+coordination all work exactly as they do today.
+
+Turn it on when a **team shares a hub over a network**. Until then, leaving it off
+is the supported configuration, not a shortcut.
+
+> Without the gate, anyone who can reach the backend's port can read and write
+> every room and post as any `@handle`. On a laptop that's fine. On a shared
+> network it is not; that is precisely the moment to enable this.
+
+## Turning it on
+
+```bash
+mycelium config set auth.enabled true
+mycelium config set auth.audience mycelium
+mycelium config apply
+```
+
+Then declare at least one trust root in `~/.mycelium/config.toml`:
+
+```toml
+[auth]
+enabled  = true
+audience = "mycelium"
+
+[[auth.issuers]]
+issuer   = "https://sso.example.com/realms/mycelium"
+jwks_url = "https://sso.example.com/realms/mycelium/protocol/openid-connect/certs"
+role     = "user"
+```
+
+Re-run `mycelium config apply` and recreate the backend so it picks up the new
+environment.
+
+### Always set an audience
+
+`audience` is optional but you should always set it when enabling auth. Without
+one, **any** token your issuer has ever minted is accepted, including a token a
+user obtained for a completely unrelated application on the same identity
+provider. That token's holder was never authorized against your hub.
+
+Setting an audience is what makes "a valid token" mean "a token meant for *this*
+hub". The backend logs a warning at startup and flags it in `/health` when auth
+is on without one.
+
+## Configuration
+
+| Key | Default | What it does |
+|-----|---------|--------------|
+| `auth.enabled` | `false` | Enforce bearer-token auth on the HTTP API. |
+| `auth.issuers` | *(none)* | Trust roots, as repeatable `[[auth.issuers]]` blocks. |
+| `auth.audience` | *(unset)* | Required `aud` claim. Set this whenever auth is on. |
+| `auth.localhost_bypass` | `true` | Let loopback callers through without a token. |
+| `auth.handle_claim` | `sub` | Claim carrying the canonical `@handle`. |
+| `auth.role_claim` | `mycelium_role` | Claim distinguishing a user from an agent. |
+| `auth.leeway_s` | `60` | Clock-skew allowance on `exp` / `nbf` / `iat`. |
+| `auth.jwks_ttl_s` | `300` | How long a fetched JWKS is cached. |
+
+Each `[[auth.issuers]]` block takes `issuer` (the exact `iss` to trust),
+`jwks_url` (optional; omit to resolve it from the issuer's OIDC discovery
+document), `audience` (optional per-issuer override), and `role`.
+
+## Signing in from the CLI
+
+The gate above is the hub's half. `mycelium login` is yours: it obtains an OIDC
+token for **you**, caches it, and every later command sends it.
+
+```bash
+mycelium config set login.issuer https://sso.example.com/realms/mycelium
+mycelium config set login.audience mycelium      # match the hub's auth.audience
+mycelium login
+```
+
+Your browser opens, you sign in at your identity provider, and the CLI takes it
+from there: `mycelium memory`, `mycelium room`, `await`, `respond` and the rest
+now carry `Authorization: Bearer <token>`.
+
+**On a machine with no browser** (SSH, CI, a container) use the device flow.
+The CLI prints a URL and a short code you enter from any other device:
+
+```bash
+mycelium login --device
+```
+
+The CLI falls back to this automatically when it finds no browser to open, so
+`mycelium login` over SSH does the right thing without the flag.
+
+`mycelium logout` drops the session, and the CLI goes straight back to sending no
+token at all.
+
+### Login is opt-in, like the gate
+
+Never running `mycelium login` changes nothing: with no cached session the CLI
+sends no `Authorization` header, exactly as before this existed. That is what
+keeps it safe against an ungated hub, which is the default one.
+
+### Where the token lives
+
+In `~/.mycelium/token.json`, created mode `0600`, **not** in `config.toml`.
+Config is printed, copied between machines, and mirrored to `config.json` for the
+frontend; a token in there would leak by routine. Set `MYCELIUM_TOKEN_FILE` to
+cache it somewhere else (a CI runner with a shared home, say).
+
+The access token is renewed automatically when it expires, using the refresh
+token, on the way into the next call that needs it; you don't re-run `login` on
+a schedule. Renewal needs a refresh token, which most issuers grant only for the
+`offline_access` scope; it is in the default `login.scopes` for that reason. If
+renewal fails, the CLI drops the header and tells you to sign in again rather
+than sending a token the hub will reject.
+
+### Who you are
+
+`mycelium whoami` (and `mycelium iam` with no arguments) reports the handle from
+your **token** when you're signed in, and the self-asserted `identity.name` when
+you're not:
+
+```
+acting as @avery  (avery#a8f3)
+  signed in (https://sso.example.com/realms/mycelium, expires in 42 min)
+```
+
+Because a gated hub attributes writes to the token (see *The token is the author*
+below), a self-asserted handle that names someone else is a 403 in waiting;
+`login` and `iam` both say so when they disagree.
+
+### Configuration
+
+| Key | Default | What it does |
+|-----|---------|--------------|
+| `login.issuer` | *(unset)* | OIDC issuer to log in against. Unset means no login is configured. |
+| `login.client_id` | `mycelium-cli` | OAuth client id registered for the CLI. |
+| `login.client_secret` | *(unset)* | Only for issuers that refuse public clients; PKCE means the CLI normally needs none. |
+| `login.scopes` | `openid profile email offline_access` | Scopes requested at login. |
+| `login.audience` | *(unset)* | Audience to request; should match the hub's `auth.audience`. |
+| `login.redirect_port` | `0` | Fixed loopback port for the browser redirect (`0` picks a free one). Set it when your issuer requires an exact registered redirect URI: the URI is `http://127.0.0.1:<port>/callback`. |
+
+`MYCELIUM_LOGIN_ISSUER`, `MYCELIUM_LOGIN_CLIENT_ID`, `MYCELIUM_LOGIN_CLIENT_SECRET`,
+`MYCELIUM_LOGIN_AUDIENCE` and `MYCELIUM_LOGIN_SCOPES` override the same settings,
+for a runner that has no config file to edit.
+
+The CLI is a **public client**: it authenticates with PKCE (S256) and ships no
+secret. Register it at your issuer as a public client with
+`http://127.0.0.1:*/callback` as an allowed redirect, and enable the device grant
+if you want `--device` to work.
+
+## Agents sign in as themselves
+
+`mycelium login` is for a human. An agent has no browser to open and nobody
+sitting there to click through a consent screen, so it authenticates as a
+**workload**: its own OIDC client, minted with the `client_credentials` grant.
+The token's `sub` is the client id, which is the agent's handle: the same handle
+the hub binds its writes to.
+
+That is the property a shared secret can't give you: each agent holds a different
+credential, so **revoking one agent's client leaves every other agent working**.
+
+Point the machine at the issuer agents mint from, then give each agent its own
+client:
+
+```bash
+mycelium config set agent_auth.issuer https://sso.example.com/realms/agents
+mycelium config set agent_auth.audience mycelium     # match the hub's auth.audience
+mycelium config apply
+
+mycelium agent credential set release-agent --secret-stdin < secret.txt
+```
+
+The client id defaults to the handle; pass `--client-id` when your issuer names
+it differently. `mycelium agent credential show release-agent` reports what an
+agent resolves to (never its secret), `... ls` lists every agent on the machine,
+and `... rm` forgets one locally; revoke the client at your issuer to actually
+kill it.
+
+From then on, `mycelium await --room R --handle release-agent` and
+`mycelium respond --handle release-agent` carry **that agent's** token, including
+when they run from a shell where a human is logged in: a resident agent writes as
+itself, not as whoever started it.
+
+### Off by default here too
+
+An agent with no credential sends no token, exactly as before. Configuring
+`agent_auth.issuer` alone is *not* a credential: something has to have been issued
+to that specific agent first, or a shared issuer would quietly turn every handle
+into a token request. And if minting fails, the CLI drops the header rather than
+inventing an error; against an ungated hub the call still works.
+
+### Where the credential lives
+
+In `~/.mycelium/agent-credentials.json`, mode `0600`, alongside a cached token per
+agent under `~/.mycelium/agent-tokens/`. Client secrets are secrets, so they stay
+out of `config.toml` for the same reason your session does. `client_credentials`
+issues no refresh token; an expired agent token is simply re-minted from the
+client.
+
+For a container that runs exactly one agent and has no config file,
+`MYCELIUM_AGENT_AUTH_ISSUER`, `MYCELIUM_AGENT_AUTH_CLIENT_ID`,
+`MYCELIUM_AGENT_AUTH_CLIENT_SECRET`, `MYCELIUM_AGENT_AUTH_SCOPES` and
+`MYCELIUM_AGENT_AUTH_AUDIENCE` say the same thing in environment variables, and
+`MYCELIUM_AGENT_HANDLE` names the agent it is running as.
+
+### A credential Mycelium didn't mint
+
+`MYCELIUM_AGENT_AUTH_TOKEN` supplies a bearer token directly, used as-is and never
+renewed here. That is the seam for a token minted elsewhere: a CI job, or a JWT
+issued by a workload-identity system such as SPIRE. Trusting one is a config
+entry on the hub side too: another `[[auth.issuers]]` block with `role = "agent"`.
+Nothing about it is required, and nothing about it is on by default.
+
+### Configuration
+
+| Key | Default | What it does |
+|-----|---------|--------------|
+| `agent_auth.issuer` | *(unset)* | Issuer agents mint service-account tokens from. Unset means agents send no token. |
+| `agent_auth.scopes` | *(unset)* | Scopes requested for an agent token. Most issuers want none for `client_credentials`. |
+| `agent_auth.audience` | *(unset)* | Audience to request; should match the hub's `auth.audience`. |
+
+## Issuer-agnostic by design
+
+The backend trusts a configured issuer and its JWKS. It has no idea whether that
+is Keycloak, Dex, ZITADEL, Authentik, or your existing corporate SSO, and it never
+needs one particular product installed.
+
+**More than one trust root is normal.** Humans log in through an interactive OIDC
+issuer; agents present service-account tokens, possibly from an entirely separate
+root. List each as its own block:
+
+```toml
+[[auth.issuers]]
+issuer = "https://sso.example.com/realms/people"
+role   = "user"
+
+[[auth.issuers]]
+issuer = "https://sso.example.com/realms/agents"
+role   = "agent"
+```
+
+Roots are matched by exact `iss` and never become interchangeable: a token signed
+by the agent root but claiming the human root is checked against the human root's
+keys, and fails.
+
+## Handle and role
+
+Once a token validates, the request has a **principal**:
+
+- **handle**, from `auth.handle_claim` (`sub` by default), normalized the same
+  way stored handles are (leading `@` stripped, lowercased). An OIDC
+  service-account whose client id is `release-agent` therefore arrives as
+  `@release-agent`.
+- **role**, from `auth.role_claim` if the token carries it, otherwise the `role`
+  on the matched issuer block. Which root signed a token is usually the whole
+  answer to user-vs-agent, so most deployments never set a role claim at all.
+
+## The token is the author
+
+The principal is not just recorded; it is the **actor of record** for every write
+it makes. Memory authorship (`created_by` / `updated_by`), the transcript sender,
+and L9 actor attribution all come from the token rather than from the handle the
+request body supplies:
+
+- The body **omits** the actor, or names the **same** handle, and the token's handle
+  is stored. `@Alice` and `alice` are one principal; the comparison uses the same
+  normalization as the store.
+- The body names a **different** handle → **403**. A caller acting under the wrong
+  identity gets told, rather than having its writes quietly re-attributed.
+- A **session qualifier** (`alice#a8f3`, the same person on one machine) is kept
+  as-is. The suffix rides along on the token's handle, so per-session attribution
+  survives without letting the suffix name someone else.
+
+With the gate off there is no principal, so every path keeps the self-asserted
+actor from the body exactly as before; the try-it path is unchanged.
+
+## Acting as another handle
+
+Attribution answers *who wrote this*. Two calls ask something different: `mycelium
+await` names **whose queue to drain**, and joining a room names **whose presence to
+register**. Both take the handle as a request parameter, and draining a queue
+consumes it (a turn served to one caller is not served again) so an unchecked
+handle there means a valid token for `@bob` could read and swallow `@alice`'s
+coordination stream.
+
+A gated hub allows the call when either is true:
+
+- the handle **is** the token's own (a session qualifier like `alice#a8f3` still names alice), or
+- the handle's agent manifest **grants** the token's principal: its `owner`, or an entry in its `allow_from`.
+
+Anything else is a **403**. Grants are per-room, because manifests are: owning
+`@bot` in one room says nothing about a `@bot` in another.
+
+The grant is what makes "await on behalf of" explicit rather than universal. An
+agent running with its own credential needs nothing: it awaits itself. A human
+driving an agent's loop from their own session does:
+
+```bash
+mycelium agent create bot --owner alice          # alice may now await --handle bot
+mycelium agent create bot --allow-from ops-lead  # …and so may @ops-lead
+```
+
+A resident loop (`mycelium await --loop`) **stops** on a 401 or 403 rather than
+retrying. A refused identity is not a blip, and re-polling it would flood the hub
+for as long as the loop ran.
+
+With the gate off nothing is checked here either, so an ungated hub still lets any
+caller await any handle, which is also why a hub reachable beyond your machine
+wants the gate on.
+
+## Key rotation
+
+The JWKS is fetched from your issuer and cached for `auth.jwks_ttl_s`. When a
+token arrives signed by a key ID the backend hasn't seen, it re-fetches
+immediately (rate-limited), so **rotating your signing key does not require
+restarting Mycelium**.
+
+If the issuer is briefly unreachable, previously fetched keys keep serving. The
+keys are still your issuer's; only their freshness is in doubt, and failing closed
+would take the hub down for the length of an IdP blip.
+
+## The localhost bypass
+
+With `auth.localhost_bypass` on (the default), requests whose **peer address** is
+real loopback (`127.0.0.0/8`, `::1`) skip the gate, so turning auth on can't lock
+you out of the machine the hub runs on.
+
+Two things worth knowing:
+
+- `X-Forwarded-For` is deliberately ignored. It is caller-supplied, so honouring
+  it would let any remote request claim to be local.
+- **It does not fire for a backend running in Docker.** Traffic through a
+  published port arrives from the bridge gateway, not loopback, and is
+  indistinguishable from LAN traffic; treating that as local would silently open
+  the hub to your whole network. For the containerized local tier, leave
+  `auth.enabled` off; that is the honest switch for it.
+
+## What stays open
+
+Health (`/`, `/health`) and the schema/docs routes are served without a token even
+when the gate is on: orchestrator probes are unauthenticated by nature, and the
+health payload reveals no room content. `/health` gains an `auth` block reporting
+whether the hub is gated, which issuers it trusts, and any configuration warnings.
+
+Every other route requires a token.
+
+## Failure modes
+
+| Response | Meaning |
+|----------|---------|
+| `401` + `WWW-Authenticate: Bearer` | Missing, malformed, expired, forged, wrong-audience, or wrong-issuer token. |
+| `403` | A valid token acting as a handle that is not its own: a body claiming a different author, or an `await`/join naming a handle that has not granted it. |
+| `503` | The gate is on but unusable: no trusted issuers configured, or the issuer's JWKS is unreachable and nothing is cached. |
+
+Only asymmetric signatures are accepted (`RS*`, `PS*`, `ES*`). The `none`
+algorithm and the whole `HS*` family are refused before verification, so a public
+JWKS key can never be replayed as an HMAC secret.
+
+## Trying it locally
+
+A dev OIDC issuer ships for exactly this, so you can exercise the gate without
+standing up Keycloak. See `docs/design/dev-auth-issuer.md`.
+
+For the real thing (a Keycloak realm, client, and human `mycelium login`, wired
+end-to-end) follow the [Keycloak / OIDC Setup](#keycloak-oidc) guide.
+
+
+---
+
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+# Keycloak / OIDC setup
+
+[Authentication](#auth) explains the gate in the abstract: the backend trusts an
+OIDC issuer and validates a bearer token against its JWKS. This guide makes the
+**human OIDC tier** concrete against real **Keycloak**: realm, client, the claims
+the gate keys off, and a human `mycelium login`. Every command here was run against
+a live Keycloak: the wiring below is confirmed, not aspirational.
+
+Keycloak is a *supported* issuer, not the default. The gate stays **off by default**
+(the try-it path never touches it); you turn it on when a team shares a hub over a
+network. Dex, ZITADEL, Authentik, or your corporate SSO slot in exactly the same
+way; nothing here is Keycloak-specific except the URLs.
+
+## Stand up Keycloak
+
+A ready-to-run Keycloak ships as an **opt-in compose overlay**, off the default
+stack, added with an extra `-f` exactly like the dev issuer. It imports a `mycelium`
+realm with a public CLI client, an audience mapper, and a demo user, so there is
+nothing to click in the admin console.
+
+```bash
+cd mycelium-cli/src/mycelium/docker
+docker compose -f compose.yml -f compose-dev.yml -f compose-keycloak.yml \
+  up -d keycloak
+```
+
+The realm is ready when discovery answers:
+
+```bash
+curl -s http://localhost:8080/realms/mycelium/.well-known/openid-configuration \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)["issuer"])'
+# → http://localhost:8080/realms/mycelium
+```
+
+> **Port already in use?** Publish it elsewhere with
+> `MYCELIUM_KEYCLOAK_PORT=8085 docker compose … up -d keycloak`. The overlay pins
+> Keycloak's advertised URL to the same port, so the issuer becomes
+> `http://localhost:8085/realms/mycelium`; use that everywhere below. The admin
+> console is at `/admin` (`admin` / `admin`, override with
+> `MYCELIUM_KEYCLOAK_ADMIN[_PASSWORD]`).
+
+## What the realm ships (and what the gate expects)
+
+The imported realm (`docker/keycloak/mycelium-realm.json`) is the whole anatomy the
+gate needs. Point your own Keycloak at these same four things:
+
+- **A public client `mycelium-cli`**: this is the client `mycelium login` uses.
+  Public (no secret; it authenticates with PKCE), with the loopback redirect
+  `http://127.0.0.1:*/callback` for the browser flow and the **device grant** enabled
+  for headless login.
+- **An audience mapper** stamping `mycelium` into the access token's `aud`. This is
+  what makes `auth.audience = "mycelium"` meaningful: a token minted for some other
+  app on the same Keycloak is refused.
+- **`sub` is a UUID, so the human handle comes from `preferred_username`.** Set
+  `auth.handle_claim = "preferred_username"` for the human tier; otherwise every
+  human arrives as an opaque UUID instead of `@demo`.
+- **A demo user** (`demo` / `demo`) so a human login has someone to sign in as.
+
+> **A gotcha worth knowing if you build your own client:** the CLI's *device* flow
+> does not send PKCE parameters, so do **not** set the client to *require* PKCE
+> (`pkce.code.challenge.method`); that rejects the device grant with
+> `Missing parameter: code_challenge_method`. Leave enforcement off; the CLI still
+> uses PKCE on the browser flow, Keycloak just doesn't mandate it on every grant.
+
+## Wire the gate
+
+The one subtlety worth understanding is **which URL goes where**, because the
+backend runs in a container and the browser/CLI run on the host:
+
+- Keycloak stamps the token `iss` as `http://localhost:8080/realms/mycelium` for
+  every caller (the overlay pins its advertised URL). That is what the browser and
+  CLI reach it by, so it is the `issuer` the gate matches.
+- The **backend can't use `localhost`**: inside the container that is the backend
+  itself. On the compose network Keycloak is reachable as `keycloak:8080`, so that
+  is where the backend fetches keys from.
+
+The gate matches `iss` by **exact string** but fetches keys from a **separately
+configured `jwks_url`**, so you point them at different hostnames on purpose. In
+`~/.mycelium/config.toml`:
+
+```toml
+[auth]
+enabled      = true
+audience     = "mycelium"
+handle_claim = "preferred_username"
+
+[[auth.issuers]]
+issuer   = "http://localhost:8080/realms/mycelium"
+jwks_url = "http://keycloak:8080/realms/mycelium/protocol/openid-connect/certs"
+role     = "user"
+
+[login]
+issuer    = "http://localhost:8080/realms/mycelium"
+client_id = "mycelium-cli"
+audience  = "mycelium"
+```
+
+Apply it and recreate the backend so it picks up the gate:
+
+```bash
+mycelium config apply
+docker compose -f compose.yml -f compose-dev.yml -f compose-keycloak.yml \
+  up -d --force-recreate mycelium-backend
+```
+
+`/health` now reports the gate on and the issuer trusted:
+
+```bash
+curl -s http://localhost:8000/health | python3 -m json.tool
+# "auth": { "enabled": true, "issuers": ["http://localhost:8080/realms/mycelium"],
+#           "audience": "mycelium", "localhost_bypass": true }
+```
+
+> **The localhost bypass does not save you here**, and that is the point. Traffic
+> from the CLI to the containerized backend arrives from the Docker bridge, not real
+> loopback, so the gate genuinely enforces. See
+> [Authentication → The localhost bypass](#auth).
+
+## Sign in with `mycelium login`
+
+```bash
+mycelium login            # opens your browser to Keycloak
+mycelium login --device   # headless: prints a URL + code to approve from any device
+```
+
+Sign in as `demo` / `demo`. The CLI caches the token (`~/.mycelium/token.json`,
+mode `0600`) and every later command carries it:
+
+```bash
+mycelium whoami
+# acting as @demo
+#   signed in (http://localhost:8080/realms/mycelium, expires in 4 min)
+
+mycelium room ls          # now authorized through the Keycloak token
+```
+
+`mycelium logout` drops the session and the CLI goes back to sending no token.
+
+## Prove the gate (what "validated" means)
+
+The same three checks that were run to confirm this guide, against the published
+backend port:
+
+```bash
+# A real Keycloak token for the demo user
+TOKEN=$(curl -s -X POST \
+  http://localhost:8080/realms/mycelium/protocol/openid-connect/token \
+  -d 'grant_type=password&client_id=mycelium-cli&username=demo&password=demo&scope=openid profile' \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')
+
+curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8000/api/rooms              # 401  (no token)
+curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $TOKEN" \
+  http://localhost:8000/api/rooms                                                     # 200  (valid)
+curl -s -o /dev/null -w '%{http_code}\n' -H 'Authorization: Bearer not.a.jwt' \
+  http://localhost:8000/api/rooms                                                     # 401  (garbage)
+```
+
+An **expired** token is refused the same way: the response is
+`401` with `token rejected: Signature has expired` once it ages past `exp` plus
+`auth.leeway_s` (default 60s).
+
+## Agents, and more than one issuer
+
+This guide is the **human** tier. Agents authenticate as workloads with the
+`client_credentials` grant from their own Keycloak client; see
+[Authentication → Agents sign in as themselves](#auth). Humans and agents are often
+separate realms; list each as its own `[[auth.issuers]]` block (a human root with
+`role = "user"`, an agent root with `role = "agent"`), matched by exact `iss` and
+never interchangeable.
+
+For the tightest, individually-attested agent identity on the SLIM channel itself,
+see [Attested Identity (SPIRE)](#spire-identity), a different, heavier tier from
+this HTTP-API gate.
+
+## Browser login (the frontend)
+
+The Next.js frontend does the same OIDC flow for humans in a browser. With the
+gate **off** it is unchanged: the localStorage handle-picker, no login. With the
+gate **on**, the app shows a **Sign in** screen and redirects to Keycloak; after
+you authenticate it carries your token on every `/api/*` call (sealed in an
+httpOnly cookie, injected server-side by the proxy; it never reaches browser JS).
+
+The realm import ships a second public client, **`mycelium-web`**, with the web
+redirect `http://localhost:3000/api/auth/callback` (the CLI's `mycelium-cli`
+client uses a loopback redirect instead: separate clients, separately revocable).
+
+Configure the frontend (server-side env) and bring the UI up:
+
+```bash
+export MYCELIUM_OIDC_ISSUER=http://localhost:8080/realms/mycelium
+export MYCELIUM_OIDC_INTERNAL_ISSUER=http://keycloak:8080/realms/mycelium
+export MYCELIUM_OIDC_CLIENT_ID=mycelium-web
+export MYCELIUM_OIDC_AUDIENCE=mycelium
+export AUTH_SESSION_SECRET=$(openssl rand -hex 32)
+
+docker compose -f compose.yml -f compose-dev.yml -f compose-keycloak.yml \
+  --profile ui up -d
+```
+
+The **issuer split is the same as the backend's**, for the same reason: the
+browser reaches Keycloak at `MYCELIUM_OIDC_ISSUER` (`localhost:8080`) and the
+token's `iss` matches it, but the containerized frontend server can't use
+`localhost`, so it runs discovery + token exchange against
+`MYCELIUM_OIDC_INTERNAL_ISSUER` (`keycloak:8080`). Running the frontend on the
+host with `pnpm dev` instead? Drop `INTERNAL_ISSUER`; the two coincide.
+
+> **Off by default here too.** With `MYCELIUM_OIDC_ISSUER` / `AUTH_SESSION_SECRET`
+> unset, the frontend never engages OIDC. And it only shows the sign-in screen
+> when the backend's `/health` reports the gate on; the try-it path is untouched.
+
+## Limitations
+
+The shipped overlay is **dev-grade**: Keycloak in `start-dev` (in-memory H2, HTTP,
+a demo user with a weak password). It is a real OIDC provider minting real RS256
+tokens against a real JWKS (enough to build and prove against) but it is **not** a
+hardened production Keycloak. For a real deployment, run your own Keycloak over TLS
+with a persistent datastore and real users, then point the same three config values
+(`issuer`, `jwks_url`, `login.issuer`) at it. Nothing else changes.
+
+
+---
+
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+# Attested identity (SPIRE)
+
+Mycelium's default channel identity is a shared-secret PSK: zero infrastructure,
+every room member derives the same group key. That's the try-it path, and it never
+changes. **SPIRE identity** is an optional, off-by-default upgrade: each member
+presents a SPIRE-attested JWT-SVID as its MLS identity, so members are
+cryptographically distinct, individually attested, and individually revocable:
+the tightest attestation tier, and the heaviest to deploy.
+
+Turning it on is **one switch**. You never touch a SPIFFE socket path, a trust
+domain, or type `spire-server entry create` by hand.
+
+## What "distinct members" actually means
+
+With any channel-identity tier on (`signerjwt` or `spire`), each actor participates
+as its **own MLS member**: a *custodial session* the hub holds on the actor's
+behalf, server-side. A message is then cryptographically attributable to the actor
+on the wire (not stamped by the backend after the fact), and room access is enforced
+by **MLS group membership**, not application logic. These sessions survive a backend
+restart; they're revived from encrypted local state with no re-invite. Under the
+`psk` default there are no custodial sessions: the backend is the single member and
+nothing here applies.
+
+**Honest boundary: this is not E2E from the hub.** Custodial sessions live *in the
+hub process*, so the hub still holds every actor's key and reads all plaintext. That
+is what lets the aligner, plan compiler, and memory sync work at all. Turning on
+identity hardens **attribution and access** and makes per-agent identity real at the
+MLS layer; it does **not** mean the hub can no longer read your messages. It means
+the hub represents each actor as a distinct, verifiable member, not that the room is
+end-to-end encrypted away from the hub.
+
+## Turn it on
+
+```bash
+mycelium config set slim.identity spire
+mycelium config apply
+mycelium up
+```
+
+`mycelium up` reads `slim.identity` and, when it's `spire`, brings a co-located
+SPIRE **server + node daemon** up alongside the hub automatically; the compose
+`spire` profile is an implementation detail the config drives. You do **not** pass
+`--profile spire` by hand. On the default (`psk`) nothing extra starts and the
+stack is byte-for-byte unchanged.
+
+> The SPIRE **node daemon** (upstream image `spire-agent`, container
+> `mycelium-spire-noded`) is SPIRE's per-node identity daemon: it serves the
+> Workload API socket and fetches SVIDs. It is unrelated to mycelium coordination
+> **agents** (`@alice` etc.); the shared word is an upstream-SPIRE coincidence.
+
+## Registration is automatic
+
+```bash
+mycelium agent create @alice
+```
+
+With SPIRE on, `agent create` registers the SVID entry
+(`spiffe://<trust-domain>/agent/alice`) against the running SPIRE server itself,
+with no printed copy-paste operator step. `agent rm @alice` deletes the entry, revoking
+the identity. Both go through the normal mycelium CLI.
+
+## Check it
+
+```bash
+mycelium doctor
+```
+
+When SPIRE is on, doctor shows a legible line (`SPIRE up, @alice attested`) so a
+misconfiguration is a clear message rather than a member silently hanging at
+"Initializing spire identity manager."
+
+## Trust domain
+
+The trust domain defaults to `mycelium.dev`. Override it (server, agent, backend
+MLS identity, and registration all read the same value) with:
+
+```bash
+export MYCELIUM_SLIM_SPIRE_TRUST_DOMAIN=corp.example.com
+```
+
+Set it in `~/.mycelium/.env` (or the shell that runs `mycelium up`) before bringing
+the stack up.
+
+## Limitations
+
+The appliance uses SPIRE's `unix` workload attestor, which identifies a workload by
+its process credentials. That requires the SPIRE node daemon to share the workload's
+PID namespace, which the shipped compose does for the **backend** (the always-on
+moderator that holds membership for turn-based agents). A **resident** Claude or
+Cursor session on a user's own machine is *not* co-located with a SPIRE node daemon,
+so it cannot be `unix`-attested; on a spoke, identity degrades to the PSK unless you
+front it with a non-`unix` attestor (k8s, docker, x509pop, join-token). This is why
+SPIRE is off by default and never lands on the default path.
+
+The appliance SPIRE profile is **dev-grade** (SQLite datastore, join-token node
+attestation, short SVID TTLs): a real product surface for attested identity, not
+yet a hardened production deployment.
 
 
 ---
@@ -1518,30 +2443,35 @@ mycelium init --api-url http://your-hub:8000
 
 ---
 
-### 4. SLIM Node Unreachable
+### 4. Spoke Can't Reach the Hub (or Backend Down)
 
-**Symptom**: agents join a room but never exchange anything; `mycelium await`
-hangs; `mycelium doctor` flags the backend or a spoke can't reach the hub.
+**Symptom**: `Cannot connect to Mycelium API`; memory/`await`/`respond` fail;
+`mycelium doctor` reports backend unreachable.
 
-Agents coordinate over a **SLIM group channel** served by the hub's SLIM node
-(default port **46357**). If that node is down or unreachable, no messages flow.
-
-```bash
-mycelium doctor                     # detects hub vs spoke, checks reachability
-docker ps | grep slim               # is the SLIM node up on the hub?
-mycelium hub host                   # (re)start the SLIM node and print its address
-```
-
-On a spoke, confirm it points at the right node and the port is open:
+Spokes talk to the hub over **HTTP** (`server.api_url`, default port **8000**).
+They do not need the SLIM node for normal participation.
 
 ```bash
-grep node_endpoint ~/.mycelium/config.toml
-curl http://<hub-ip>:46357            # raw reachability from the spoke
-mycelium connect http://<hub-ip>:46357  # re-point at the hub node
+mycelium doctor                     # detects hub vs spoke; checks /health
+curl http://<hub-ip>:8000/health    # from the spoke
+mycelium config get server.api_url    # should point at the hub backend
 ```
 
-Common causes: firewall/security group blocks 46357, VPN/Tailscale not
-connected, or a stale endpoint in `config.toml`.
+On the **hub**, ensure the backend and SLIM node are running:
+
+```bash
+mycelium up
+docker ps | grep mycelium
+mycelium hub host                   # (re)start the SLIM node if needed
+```
+
+If coordination still fails on the hub itself, check the SLIM node (port
+**46357**) — the backend moderator needs it. Spokes rarely need `:46357`
+unless you use native SLIM tooling (`mycelium slim send`).
+
+Common causes: firewall blocks **8000**, wrong `server.api_url`, VPN not
+connected, or auth enabled on the hub without `mycelium login` on the spoke.
+See [Security Planes](#security-planes) and [Authentication](#auth).
 
 ---
 
@@ -1714,7 +2644,7 @@ Unreachable* above); the backend and the node are separate ports.
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `LLM_MODEL` | LiteLLM model string | `anthropic/claude-sonnet-4-6` |
+| `LLM_MODEL` | `provider/model` string, as Pi takes it | `anthropic/claude-sonnet-4-6` |
 | `LLM_API_KEY` | Provider API key | (none) |
 | `LLM_BASE_URL` | Custom LLM endpoint (Ollama, vLLM) | (none) |
 | `MYCELIUM_DATA_DIR` | Data directory | `~/.mycelium` |

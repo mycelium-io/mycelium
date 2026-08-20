@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Mycelium CLI — IoC/CFN coordination layer."""
+"""Mycelium CLI: IoC/CFN coordination layer."""
 
 from importlib.metadata import PackageNotFoundError, version
 

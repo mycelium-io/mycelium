@@ -1,7 +1,7 @@
 # mycelium
 
 <div align="center">
-  <img src="docs/banner.png?v=2" alt="mycelium" width="800" />
+  <img src="docs/banner.png?v=3" alt="mycelium" width="800" />
 </div>
 
 <p align="center">
@@ -60,11 +60,11 @@ That's also why you need at least one **agent runtime** (Claude Code): the agent
 
 ```bash
 # Agent 1 shares context in a persistent room
-mycelium memory set "position/julia" "I think we should use REST, not GraphQL" --handle julia-agent
+mycelium memory set "position/avery" "I think we should use REST, not GraphQL" --handle avery-agent
 
 # Agent 2 (hours later, different session) reads and adds their perspective
 mycelium memory search "API design decisions"
-mycelium memory set "position/selina" "Agree on REST, but we need pagination standards" --handle selina-agent
+mycelium memory set "position/rowan" "Agree on REST, but we need pagination standards" --handle rowan-agent
 ```
 
 When agents need to agree on something, one participant summons the aligner, and each agent takes turns responding until the team converges:
@@ -75,8 +75,8 @@ mycelium engine create aligner --kind aligner --room design
 mycelium engine invoke aligner "converge on API design"
 
 # Each participant loops: wait for its turn, then post a position
-mycelium await   --room design --handle julia-agent --json
-mycelium respond --room design --handle julia-agent "I can accept REST with pagination standards."
+mycelium await   --room design --handle avery-agent --json
+mycelium respond --room design --handle avery-agent "I can accept REST with pagination standards."
 
 # On agreement the agreement is compiled into the room's shared plan
 mycelium plan tasks   # the - [ ] checklist the team now executes against
@@ -86,9 +86,9 @@ mycelium plan tasks   # the - [ ] checklist the team now executes against
 
 **1. Alignment.** When agents need to agree, one participant summons the **aligner**, a first-party mediator that runs a real NEGMAS Stacked Alternating Offers negotiation. It discovers the issues from the agents' opening positions, brokers each round, addresses one agent at a time, interprets each reply, and stops the instant the agents agree. Every agent has a voice, and the result is one shared answer, not parallel outputs a human has to reconcile. From that consensus Mycelium compiles a **shared plan**: a `- [ ]` checklist at `plan/tasks.md` with `@handle` owners the whole team executes against. The arc is one line: summon → negotiate → **plan** → work. The negotiation decides *what*; the plan is *how the team carries it out*.
 
-**2. Room Memory.** Rooms are folders. Memories are markdown files at `~/.mycelium/rooms/{room}/{namespace}/{key}.md`. Any agent with file I/O can read and write room memory directly. The CLI is sugar. Memories accumulate across agents and turns, and are searchable by meaning via a local embedding index, with no external service and no database.
+**2. Room Memory.** A room's memory is one store, held by the hub. Any agent reads and writes it with `mycelium memory set` / `get` / `ls` / `search` — from any machine, with nothing to sync and no copy to drift. Memories accumulate across agents and turns, and are searchable by meaning via an embedding index that runs on the hub, with no external service and no database.
 
-**3. Peer Collaboration Environment.** Any agent joining a room reads from `~/.mycelium/rooms/{room}/` and instantly inherits everything the swarm has learned: decisions made, what failed, open questions, the room's shared plan. No repeated context-setting. Intelligence compounds instead of resetting.
+**3. Peer Collaboration Environment.** Any agent joining a room reads that memory and instantly inherits everything the swarm has learned: decisions made, what failed, open questions, the room's shared plan. No repeated context-setting. Intelligence compounds instead of resetting.
 
 ## Quick Start
 
@@ -140,13 +140,15 @@ mycelium plan tasks   # the shared - [ ] checklist the team executes against
 
 ## Architecture
 
-**Memories live on the filesystem.** Rooms are folders, memories are markdown files with YAML frontmatter at `~/.mycelium/rooms/{room}/{key}.md`. This is the source of truth. Direct writes (cat, editor, agent file I/O) always work; run `mycelium memory reindex` to refresh the search index after bypassing the CLI. Search runs against a **local embedding index** (~384-dim, on-device), with no external vector service and no database.
+**The hub holds the memory; everything else is a thin client.** On the hub, rooms are folders and memories are markdown files with YAML frontmatter at `~/.mycelium/rooms/{room}/{key}.md` — the source of truth, with search running against a **local embedding index** (~384-dim, on-device), no external vector service and no database. Every other machine keeps no replica: `mycelium memory` resolves against the hub over HTTP, so a read always reflects what the room actually says. (Operating the hub, direct file writes still work; run `mycelium memory reindex` to refresh the index after bypassing the CLI.)
 
-**One SLIM node coordinates the room.** Agents coordinate over an [AGNTCY SLIM](https://github.com/agntcy/slim) group channel per room: MLS-encrypted, shared-secret PSK auth. An always-on thin FastAPI backend is each room's **moderator**; the agents (and you, by proxy) are members. There's no database, no message broker, no separate realtime service.
+**One SLIM node coordinates the room.** Agents coordinate over an [AGNTCY SLIM](https://github.com/agntcy/slim) group channel per room: MLS-encrypted end-to-end, with the node forwarding only ciphertext. An always-on thin FastAPI backend is each room's **moderator**; the agents (and you, by proxy) are members. There's no database, no message broker, no separate realtime service.
 
-**Participation is a CLI primitive.** Any already-awake caller joins a room and coordinates with two stateless calls: `mycelium await` long-polls until a message is addressed to its handle (the backend holds membership via a presence lease and a durable transcript cursor, so a tick is never missed between turns), and `mycelium respond` posts a reply or position. No background process required. An optional daemon exists to auto-wake runtimes that can't wake themselves.
+**Identity is a ladder, and it starts off.** Out of the box the channel key derives from a shared secret every host in the mesh sets alike — enough for a laptop or a trusted LAN, with no per-member identity. From there `slim.identity` climbs: **SignerJwt** gives each member its own self-signed credential with no extra infrastructure, and **SPIRE** gives each member an attested SVID from a co-located agent. Both make members cryptographically distinct participants rather than holders of one shared key. Separately, an HTTP API JWT gate can be turned on for the backend. All of it is off by default, so the try-it path is never blocked by auth — and turning it on, rather than building it, is what's left before a hosted or multi-user deployment (revocation is the open piece).
 
-**Rooms are git-friendly.** Commit `~/.mycelium/rooms/` to share context across machines. Agents on different machines pull the folder and inherit the room's full memory.
+**Participation is a CLI primitive.** Any already-awake caller joins a room and coordinates with two stateless calls: `mycelium await` long-polls until a message is addressed to its handle (the backend holds membership via a presence lease and a durable transcript cursor, so a tick is never missed between turns), and `mycelium respond` posts a reply or position. An agent participates as a **resident** runtime — your own live Claude Code session — kept woken with `mycelium await --loop --exec <cmd>`, which loops await → reason → respond. The loop *is* the wake: there's no daemon and no cold-spawn, so the session keeps its context between turns instead of starting over each time.
+
+**Sharing is the live channel.** Two machines share a room by sharing the fabric: one runs `mycelium hub host`, the other runs `mycelium connect`, and both talk to the same room channel and the same memory store. Git can version or back up the hub's `~/.mycelium/` files, but it is not the sharing path — no room flow pushes or pulls over git. For a point-in-time copy, `mycelium room clone --from <api-url>` takes an HTTP snapshot.
 
 **Mycelium speaks IOC L9.** Coordination rides SLIM as additive [Layer 9](https://github.com/outshift-open/ioc-protocols-models) epistemic envelopes (`exchange` for ticks/replies, `commit:converged|resolved|rejected`, `knowledge`) with episodes and causal message threading. Summoning the aligner opens an **episode**: a tagged, membership-scoped negotiation on the room's channel with its own record at `log/episodes/{id}.md` (the full causally-linked envelope chain), surfaced live in the UI protocol inspector. Agents can state confidence, cite evidence, and flag deference on replies; consensus gets measurable quality metrics. All of it is optional; agents never need to speak L9.
 
@@ -170,14 +172,21 @@ Repo layout:
 ```
 .mycelium/            Memory storage (rooms are folders, memories are markdown files)
 mycelium-cli/         CLI + adapters
-fastapi-backend/      FastAPI moderator + aligner
+fastapi-backend/      FastAPI moderator + engines (aligner, synthesizer)
 mycelium-client/      Generated typed OpenAPI client
 mycelium-frontend/    Next.js UI
+contracts/            Frozen JSON contracts shared across components
+docs/                 Docs site + design notes
 ```
+
+Each component directory carries its own README covering what lives inside it and the
+boundaries worth knowing before changing anything there.
 
 ## Adapters
 
-Mycelium reaches your agents through per-runtime adapters. Support is honest about maturity:
+Mycelium reaches your agents through per-runtime adapters. An adapter doesn't run your
+agent — it teaches the runtime you already use how to participate in a room. Support is
+honest about maturity:
 
 | Adapter | Status |
 |---|---|
@@ -189,6 +198,10 @@ Mycelium reaches your agents through per-runtime adapters. Support is honest abo
 ```bash
 mycelium adapter add claude-code
 ```
+
+**Cursor.** Ships its assets per-agent rather than host-wide: `mycelium agent create
+--adapter cursor --cwd <workspace>` drops a Cursor rule and an `AGENTS.md` section into
+that workspace, which `cursor-agent` reads on every session there.
 
 ## Development
 
@@ -209,3 +222,4 @@ Mycelium builds on OSS projects we found invaluable in this space:
 - [IOC L9 protocol models](https://github.com/outshift-open/ioc-protocols-models): the epistemic envelope layer that rides SLIM
 - [NegMAS](https://negmas.readthedocs.io/): multi-issue negotiation, the aligner's engine
 - [FastAPI](https://fastapi.tiangolo.com/) + [fastembed](https://github.com/qdrant/fastembed): the moderator backend and on-device embeddings
+- [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/mycelium-io/mycelium)

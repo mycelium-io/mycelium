@@ -2,6 +2,7 @@
 // Copyright 2026 Mycelium Contributors
 
 import { getBackendUrl } from "@/lib/backend";
+import { upstreamSseHeaders } from "@/lib/session";
 import { isMockMode } from "@/mocks";
 
 const SSE_HEADERS = {
@@ -12,8 +13,7 @@ const SSE_HEADERS = {
 };
 
 export async function GET() {
-  // Fake-backend mode has no live room churn: hold an idle keep-alive stream
-  // open so the client's EventSource connects cleanly and never errors.
+  // Mock mode: hold idle keep-alive for the EventSource to connect.
   if (isMockMode()) {
     const stream = new ReadableStream({
       start(controller) {
@@ -27,7 +27,7 @@ export async function GET() {
   let res: Response;
   try {
     res = await fetch(upstream, {
-      headers: { Accept: "text/event-stream", "Cache-Control": "no-cache" },
+      headers: await upstreamSseHeaders(),
       cache: "no-store",
     });
   } catch {

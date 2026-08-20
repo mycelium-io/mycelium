@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""``mycelium engine`` — manage first-party Cognition Engines as room citizens.
+"""``mycelium engine``: manage first-party Cognition Engines as room citizens.
 
 An engine is *not* an external-runtime agent (claude_code/cursor/…). It's a
-first-party mycelium Cognition Engine — our NEGMAS loop, our brain — registered
+first-party mycelium Cognition Engine (our NEGMAS loop, our brain) registered
 as a real room participant so it's visible, routable, and invokable like anyone
 else. ``--kind`` selects the CE (``aligner`` today; more later).
 
@@ -58,7 +58,7 @@ def engine_create(
     allow_from: str | None = typer.Option(
         None,
         "--allow-from",
-        help="Comma-separated sender handles allowed to summon (e.g. '@julia').",
+        help="Comma-separated sender handles allowed to summon (e.g. '@avery').",
     ),
     handle_flag: str = typer.Option(
         "cli-user", "--as", "-H", help="Your own handle (recorded as created_by)."
@@ -187,7 +187,7 @@ def engine_invoke(
         from mycelium_backend_client.api.messages import (
             send_message_api_rooms_room_name_messages_post as send_api,
         )
-        from mycelium_backend_client.models import MessageCreate
+        from mycelium_backend_client.models import MessageCreate, MessageCreateMessageType
 
         with _typed_client(config) as client:
             manifest = _load_manifest(room_name, handle) or _load_manifest_remote(
@@ -210,7 +210,7 @@ def engine_invoke(
             sender_handle = handle_flag or config.get_current_identity()
             body = MessageCreate(
                 sender_handle=sender_handle,
-                message_type="broadcast",
+                message_type=MessageCreateMessageType.BROADCAST,
                 content=f"@{manifest.handle} {message}",
             )
             send_api.sync(room_name=room_name, client=client, body=body)

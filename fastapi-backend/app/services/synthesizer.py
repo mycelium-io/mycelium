@@ -38,8 +38,7 @@ from typing import TYPE_CHECKING, Any
 
 from app.config import settings
 
-# The manifest-kind gate and handle-fold are the shared summon-gate primitives;
-# reuse the aligner's single copy rather than re-deriving the manifest read.
+# Reuse the aligner's manifest-kind gate and handle-fold implementations.
 from app.services import l9
 from app.services.aligner import _norm, _registered_engine_kind
 from app.services.l9_slim import serialize_content
@@ -293,14 +292,12 @@ class SynthesizerEngine:
 
     async def _write_summary(self, room: str, summary: str, created_by: str) -> None:
         """Upsert the summary through the canonical versioned + indexed path."""
-        # Lazy import: the route module imports services heavily, so importing it
-        # at module load would risk a cycle. ``create_memories`` is the single
-        # source of truth for a correct (versioned, indexed, NOTIFY-ing) write —
-        # reused here rather than re-implementing the upsert.
-        from app.routes.memory import create_memories
+        # Lazy import to avoid circular dependency. ``upsert_memories`` is the
+        # canonical path for a correct versioned + indexed write.
+        from app.routes.memory import upsert_memories
         from app.schemas import MemoryBatchCreate, MemoryCreate
 
-        await create_memories(
+        await upsert_memories(
             room,
             MemoryBatchCreate(
                 items=[

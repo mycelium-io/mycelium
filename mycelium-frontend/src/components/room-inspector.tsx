@@ -7,8 +7,12 @@ import { useState } from "react";
 import { Activity, Brain, PanelRightClose, PanelRightOpen, Users, type LucideIcon } from "lucide-react";
 import { AgentsPanel } from "@/components/agents-panel";
 import { EpisodesRail } from "@/components/episodes-rail";
+import { KeyBadge } from "@/components/key-badge";
 import { MemoryPanel } from "@/components/memory-panel";
+import type { FocusTarget } from "@/lib/search";
 
+// Skills aren't a rail: a skill is just a `skills/…` memory, so it shows up in
+// the Memory list like any other. No dedicated tab or panel.
 export type Tab = "agents" | "episodes" | "memory";
 
 const TABS: { id: Tab; label: string; icon: LucideIcon }[] = [
@@ -20,25 +24,37 @@ const TABS: { id: Tab; label: string; icon: LucideIcon }[] = [
 interface Props {
   roomName: string;
   masId?: string | null;
-  memoryRefresh: number;
   /** Optional controlled tab + open state (e.g. driven from the status bar). */
   tab?: Tab;
   onTabChange?: (tab: Tab) => void;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  /** One-shot request to show the engine invite form (from the palette). */
+  engineInvite?: boolean;
+  onEngineInviteShown?: () => void;
+  /** One item to select, arrived at from search. Only the rail that owns that
+   *  kind of row sees it; the others are handed null. */
+  focus?: FocusTarget | null;
+  onFocusConsumed?: () => void;
+  /** Reveal a memory by key in the Memory tab (e.g. a clicked chat wikilink). */
+  focusMemory?: { key: string; nonce: number } | null;
 }
 
-/** The room's context, consolidated: agents, episodes, and memory behind one
- *  tabbed right rail (Model B) instead of sprawling across both sides. */
+/** The room's context: agents, episodes, and memory behind one tabbed right rail. */
 export function RoomInspector({
   roomName,
   masId,
-  memoryRefresh,
   tab: tabProp,
   onTabChange,
   open: openProp,
   onOpenChange,
+  engineInvite = false,
+  onEngineInviteShown,
+  focus = null,
+  onFocusConsumed,
+  focusMemory,
 }: Props) {
+  const focused = (type: FocusTarget["type"]) => (focus?.type === type ? focus.id : null);
   const [tabInternal, setTabInternal] = useState<Tab>("agents");
   const [openInternal, setOpenInternal] = useState(true);
   const tab = tabProp ?? tabInternal;
@@ -64,11 +80,12 @@ export function RoomInspector({
             onClick={() => { setTab(id); setOpen(true); }}
             aria-label={label}
             title={label}
-            className={`flex size-9 items-center justify-center rounded-lg transition-colors hover:bg-surface hover:text-text ${
+            className={`relative flex size-9 items-center justify-center rounded-lg transition-colors hover:bg-surface hover:text-text ${
               tab === id ? "text-accent" : "text-muted-foreground"
             }`}
           >
             <Icon className="size-[18px]" />
+            <KeyBadge action={`rail.${id}`} overlay />
           </button>
         ))}
       </aside>
@@ -86,12 +103,13 @@ export function RoomInspector({
                 key={id}
                 data-tour={`inspector-${id}`}
                 onClick={() => setTab(id)}
-                className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-label font-medium transition-colors ${
+                className={`relative flex items-center gap-1.5 rounded-md px-2.5 py-1 text-label font-medium transition-colors ${
                   active ? "bg-elevated text-text shadow-sm ring-1 ring-border" : "text-muted-foreground hover:text-text"
                 }`}
               >
                 <Icon className="size-3.5" />
                 {label}
+                <KeyBadge action={`rail.${id}`} />
               </button>
             );
           })}
@@ -106,10 +124,30 @@ export function RoomInspector({
       </div>
 
       <div className="min-h-0 flex-1 overflow-hidden">
-        {tab === "agents" && <AgentsPanel roomName={roomName} refreshKey={memoryRefresh} />}
-        {tab === "episodes" && <EpisodesRail roomName={roomName} />}
+        {tab === "agents" && (
+          <AgentsPanel
+            roomName={roomName}
+            engineInvite={engineInvite}
+            onEngineInviteShown={onEngineInviteShown}
+            focusHandle={focused("agent")}
+            onFocusConsumed={onFocusConsumed}
+          />
+        )}
+        {tab === "episodes" && (
+          <EpisodesRail
+            roomName={roomName}
+            focusShortId={focused("episode")}
+            onFocusConsumed={onFocusConsumed}
+          />
+        )}
         {tab === "memory" && (
-          <MemoryPanel roomName={roomName} masId={masId ?? null} refreshTrigger={memoryRefresh} />
+          <MemoryPanel
+            roomName={roomName}
+            masId={masId ?? null}
+            focusKey={focused("memory")}
+            onFocusConsumed={onFocusConsumed}
+            focusMemory={focusMemory}
+          />
         )}
       </div>
     </aside>

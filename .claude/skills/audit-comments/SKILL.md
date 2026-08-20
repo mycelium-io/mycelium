@@ -211,7 +211,7 @@ the user can run the matching quality gate to confirm nothing broke:
 
 - backend: `cd fastapi-backend && uv run ruff check . && uv run ruff format --check . && uv run ty check .`
 - cli: `cd mycelium-cli && uv run ruff check . && uv run ruff format --check .`
-- openclaw plugin / frontend: the package's own lint (`pnpm lint`).
+- frontend: the package's own lint (`cd mycelium-frontend && npm run lint`, i.e. `tsc --noEmit`).
 
 Report what changed.
 

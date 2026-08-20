@@ -211,3 +211,52 @@ def test_at_mention_neutralized_in_mediator_prompt() -> None:
     assert "@growth" not in out and "@risk" not in out
     assert "growth holds tech" in out and "risk wants" in out
     assert "@ home" in out  # a lone @ (not before a word char) is untouched
+
+
+# ── move type reaches the wire ─────────────────────────────────────────────
+
+
+def _fold_episode() -> Any:
+    from app.services import l9_episode
+
+    return l9_episode.open_episode(
+        parent_room=_ROOM,
+        short_id="abc123",
+        workspace_id="ws-1",
+        mas_id="mas-1",
+        agents=["a1", "a2"],
+        joined_intents="- a1: ship\n- a2: test",
+        engine_handle="aligner",
+    )
+
+
+def _last_subkind(ep: Any) -> str | None:
+    return ep.messages[-1]["header"].get("subkind")
+
+
+def test_fold_reading_stamps_move_subkind() -> None:
+    """The mediator's interpreted move survives to the reply envelope's subkind
+    instead of being collapsed away — a proposer's offer is a ``counter``, a
+    responder's verdict is ``accept``/``reject``."""
+    engine = _engine(
+        FakeManager(FakeManaged(_ROOM, "mycelium", FakeChannel(), FakePersister()), [])
+    )
+
+    # Responder accept / reject map straight through.
+    ep = _fold_episode()
+    engine._fold_reading(ep, "a1", {"action": "accept"}, proposing=False)
+    assert _last_subkind(ep) == "accept"
+    engine._fold_reading(ep, "a1", {"action": "reject"}, proposing=False)
+    assert _last_subkind(ep) == "reject"
+
+    # A proposer's offer is a counter even though the metric action folds to accept.
+    ep = _fold_episode()
+    engine._fold_reading(
+        ep, "a1", {"action": "counter", "offer": {"budget": "high"}}, proposing=True
+    )
+    assert _last_subkind(ep) == "counter"
+
+    # A bare offer with no explicit verb still reads as a counter.
+    ep = _fold_episode()
+    engine._fold_reading(ep, "a1", {"offer": {"budget": "low"}}, proposing=True)
+    assert _last_subkind(ep) == "counter"

@@ -2,11 +2,11 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-Plan commands — read and edit the room's plan/ namespace.
+Plan commands: read and edit the room's plan/ namespace.
 
 A plan is a set of markdown files in ``.mycelium/rooms/{room}/plan/`` plus the
 ``- [ ]`` / ``- [x]`` checklist lines those files contain.  Plan files are
-ordinary memory files with the ``plan/`` key prefix — file CRUD piggybacks on
+ordinary memory files with the ``plan/`` key prefix; file CRUD piggybacks on
 ``mycelium memory set/rm``.  This module adds the task-aware verbs on top.
 """
 
@@ -14,11 +14,11 @@ from __future__ import annotations
 
 import sys
 
-import httpx
 import typer
 from rich.console import Console
 from rich.table import Table
 
+from mycelium.client import hub_client
 from mycelium.commands.room import _resolve_room
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
@@ -45,7 +45,7 @@ app.add_typer(task_app, name="task")
 def _fetch_plan(room: str | None = None) -> dict:
     cfg = MyceliumConfig.load()
     room_name = _resolve_room(cfg, room)
-    with httpx.Client(base_url=cfg.server.api_url, timeout=30) as client:
+    with hub_client(cfg, timeout=30) as client:
         resp = client.get(f"/api/rooms/{room_name}/plan")
         resp.raise_for_status()
         return resp.json()
@@ -109,8 +109,14 @@ def plan_ls(
 ) -> None:
     """List plan files in the active room."""
     data = _fetch_plan(room)
-    files = data.get("files", [])
+    # plan/title.md is the room's display title, not a plan file — exclude it
+    # from the listing so it doesn't appear as a peer alongside tasks/sprint/etc.
+    files = [f for f in data.get("files", []) if f["slug"] != "title"]
+    plan_title = data.get("title")
+
     if not files:
+        if plan_title:
+            console.print(f"[bold]{plan_title}[/bold]")
         console.print("[dim]No plan files yet.[/dim]")
         console.print(
             "[dim]Add one with[/dim] [cyan]mycelium plan set <slug> <body>[/cyan] "
@@ -118,8 +124,8 @@ def plan_ls(
         )
         return
 
-    table = Table(title=f"{data['room']} plan", show_lines=False)
-    table.add_column("Slug", style="cyan", no_wrap=True)
+    table = Table(title=plan_title or f"{data['room']} plan", show_lines=False)
+    table.add_column("Name", style="cyan", no_wrap=True)
     table.add_column("Title")
     table.add_column("Tasks", justify="right")
     table.add_column("Open", justify="right")
@@ -206,7 +212,7 @@ def plan_title(
     """Read or set the room's plan title."""
     cfg = MyceliumConfig.load()
     room_name = _resolve_room(cfg, room)
-    with httpx.Client(base_url=cfg.server.api_url, timeout=30) as client:
+    with hub_client(cfg, timeout=30) as client:
         if text is None:
             data = client.get(f"/api/rooms/{room_name}/plan").json()
             title = data.get("title")
@@ -277,7 +283,7 @@ def task_add(
     """Append a new ``- [ ]`` line to a plan file."""
     cfg = MyceliumConfig.load()
     room_name = _resolve_room(cfg, room)
-    with httpx.Client(base_url=cfg.server.api_url, timeout=30) as client:
+    with hub_client(cfg, timeout=30) as client:
         resp = client.post(
             f"/api/rooms/{room_name}/plan/tasks",
             json={"text": text, "slug": file},
@@ -292,7 +298,7 @@ def task_add(
 def _toggle(task_id: str, *, done: bool, room: str | None) -> dict:
     cfg = MyceliumConfig.load()
     room_name = _resolve_room(cfg, room)
-    with httpx.Client(base_url=cfg.server.api_url, timeout=30) as client:
+    with hub_client(cfg, timeout=30) as client:
         resp = client.post(
             f"/api/rooms/{room_name}/plan/tasks/{task_id}/toggle",
             json={"done": done},
