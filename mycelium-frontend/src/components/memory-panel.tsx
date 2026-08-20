@@ -216,9 +216,7 @@ export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusM
   const memoriesRef = useRef(memories);
   memoriesRef.current = memories;
 
-  // Expanded transclusions for whichever memory is open in the drawer, so the
-  // rail peek matches the full page instead of leaving `![[…]]` markers as
-  // unexpanded chips (#599).
+  // Fetch the expanded body for the open memory so transclusions render inline.
   useEffect(() => {
     if (!selected) {
       setRenderedBody(null);

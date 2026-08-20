@@ -250,9 +250,7 @@ def test_expand_reports_a_missing_memory():
 
 
 def test_expansion_skips_a_marker_quoted_as_a_code_example():
-    """A backtick-quoted `![[…]]` is documentation about the syntax, not a live
-    link — same rule ``parse_body_links`` already applies via ``_strip_code``,
-    but ``expand`` runs its own substitution and must honor it too."""
+    """Backtick-quoted markers are not expanded; ``expand`` must skip them like ``parse_body_links``."""
     _write(
         "r",
         "glossary/self",
@@ -276,7 +274,7 @@ def test_expansion_skips_a_marker_quoted_as_a_code_example():
     ]
 
 
-# ── Backward compatibility ───────────────────────────────────────────────────
+# ── Empty graph / missing index ──────────────────────────────────────────────
 
 
 def test_a_room_that_never_linked_has_an_empty_graph():

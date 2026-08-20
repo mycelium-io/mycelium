@@ -4,9 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadPlacements, savePlacements, storageKeyFor } from "@/lib/memory-graph-placements";
 
-/** A stand-in for `localStorage`. Stubbed rather than using jsdom's, whose
- *  methods are missing entirely under some Node versions — the same gap that
- *  makes the pre-existing suite failures in this repo. */
+/** In-memory `localStorage` stub for tests when the environment provides no usable storage API. */
 function fakeStorage(seed: Record<string, string> = {}) {
   const data = new Map(Object.entries(seed));
   return {
@@ -98,7 +96,6 @@ describe("memory graph placements", () => {
     });
 
     it("survives a storage object whose methods are missing", () => {
-      // Exactly the shape this repo's local jsdom hands back.
       vi.stubGlobal("localStorage", {});
       expect(loadPlacements("atlas", ALL)).toEqual({});
       expect(() => savePlacements("atlas", { a: { x: 1, y: 2 } })).not.toThrow();

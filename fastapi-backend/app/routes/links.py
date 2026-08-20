@@ -9,8 +9,8 @@ GET /rooms/{room}/links/graph      — the room's whole link graph (nodes + edge
 GET /rooms/{room}/links/integrity  — broken links + orphans/roots/leaves
 GET /rooms/{room}/links/expand?key=… — a body with its ![[…]] markers expanded
 
-A sibling router rather than routes under ``/memory``: the memory router ends in
-a ``{key:path}`` catch-all, and hanging suffixes off it invites ordering bugs.
+Separate ``/links`` router: ``/memory`` ends in a ``{key:path}`` catch-all,
+so suffix routes there would risk ordering bugs.
 """
 
 import logging

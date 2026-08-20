@@ -1,16 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Unit tests for the SAO mediator (app/services/mediator.py + aligner mediate).
+"""Unit tests for the SAO mediator and aligner ``mediate`` path.
 
-Node-free and LLM-free: the mediator's brain is injected as a deterministic
-prompt-keyed stub (via the aligner's ``brain_factory``) and the agents are
-simulated by the same fake channel the aligner tests use. This exercises the
-anti-theatre property that matters —
-**NEGMAS owns termination**: once the agents accept a standing offer the
-mechanism *stops*, and the aligner emits a ``commit:converged`` carrying the
-agreed ``issue = value`` map (the anti-theatre guarantee), never looping to the
-step cap.
+Brain and channel are deterministic fakes: no node, no LLM calls.
 """
 
 from __future__ import annotations
@@ -119,13 +112,7 @@ def test_to_outcome_snaps_near_miss_but_refuses_out_of_grid() -> None:
 
 
 def test_propose_holds_own_line_not_the_table_when_unreadable() -> None:
-    """THE phantom-convergence guard at the proposer seam.
-
-    When an agent's proposing move can't be read onto the grid (here an off-grid
-    '999'), it must be recorded as holding ITS OWN last line — never the standing
-    offer on the table. Adopting the table's number silently converts a rejection
-    into a fabricated concession.
-    """
+    """An unreadable proposing move records the agent's own last line, not the standing offer."""
     import asyncio
 
     def llm(prompt: str, *, system: str = "", temperature: float = 0.3) -> str:
@@ -176,8 +163,7 @@ async def test_mediate_terminates_at_agreement() -> None:
     # The agreed issue=value map rides the envelope for plan_sync to compile.
     assert verdict["payload"]["data"]["assignments"] == {"cap": "30"}
     # Episode lifecycle: frozen membership opened, drained on close. Each convening
-    # gets a unique episode id (no longer the hardcoded "align"), so assert the
-    # shape — one room-scoped episode opened — not a fixed suffix.
+    # gets a unique episode id; assert shape (one room-scoped episode opened), not a fixed suffix.
     assert len(manager.opened) == 1
     assert manager.opened[0].startswith(l9.episode_urn(_ROOM, ""))
     assert manager.closed == [_ROOM]
@@ -195,13 +181,7 @@ async def test_mediate_terminates_at_agreement() -> None:
 
 @pytest.mark.asyncio
 async def test_two_convenings_write_distinct_episode_records() -> None:
-    """Episodes are distinct sessions: two ``@aligner`` convenings in the SAME room
-    must produce TWO distinct ``log/episodes/{id}.md`` records, not clobber one.
-
-    Guards the fix that replaced the hardcoded ``short_id="align"`` (every
-    negotiation overwrote the single ``align.md``) with a unique id per convening.
-    Exercises the real ``write_episode_record`` path against the temp data dir.
-    """
+    """Two convenings in the same room write two distinct ``log/episodes/{id}.md`` records."""
     from app.services.filesystem import ensure_room_structure, get_room_dir
 
     room_dir = get_room_dir(_ROOM)
@@ -271,7 +251,7 @@ async def test_mediate_rejects_when_no_issues_discovered(
     assert manager.closed == [_ROOM]
 
 
-# ── stage 0: the pre-negotiation term check (#680) ────────────────────────────
+# ── Pre-negotiation term check ────────────────────────────────────────────────
 
 
 def _mismatch_llm(*, term: str = "done") -> Any:
@@ -416,15 +396,13 @@ async def test_mediate_records_the_term_check_on_the_episode() -> None:
     assert "## Term Clarifications" in body
     assert "**done**" in body
     assert "read by @growth as: shipped to users" in body
-    # The opening snapshot stays the prose the agents actually posted (#679) —
-    # the clarification is recorded beside it, never folded back into it.
+    # Opening snapshot keeps original agent prose; clarifications are recorded separately.
     assert "(clarified by @" not in body.split("## Term Clarifications")[0]
 
 
 @pytest.mark.asyncio
 async def test_mediate_without_term_mismatch_adds_no_round() -> None:
-    """A room that shares its vocabulary negotiates exactly as before: no
-    clarifying tick, no extra reply wait."""
+    """When no term mismatch is detected, no clarifying ticks are sent."""
     from app.services.l9_models import Kind as _Kind
 
     persister = FakePersister()
@@ -485,7 +463,7 @@ async def test_mediate_survives_a_failing_term_check(monkeypatch: pytest.MonkeyP
     assert verdict["header"]["subkind"] == "converged"
 
 
-# ── #683: address the least-satisfied agent next (turn order) ─────────────────
+# ── Least-satisfied turn order ────────────────────────────────────────────────
 
 _ISSUES_683 = [{"name": "cap", "options": ["30", "40", "50", "60"]}]
 _OPTIONS_683 = {"cap": ["30", "40", "50", "60"]}
@@ -580,8 +558,7 @@ def test_mechanism_defaults_to_round_robin_before_first_offer() -> None:
 
 @pytest.mark.asyncio
 async def test_least_satisfied_order_preserves_termination() -> None:
-    """Reordering who is asked must not break termination: a converging run still
-    stops at agreement, not the step cap (the anti-theatre invariant)."""
+    """Turn reordering still terminates at agreement, not the step cap."""
     persister = FakePersister()
     channel = FakeChannel(persister, reply_conf=0.9)
     managed = FakeManaged(_ROOM, "mycelium", channel, persister)

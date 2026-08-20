@@ -33,9 +33,6 @@ describe("computeForceLayout", () => {
   });
 
   it("keeps a surviving edge addressed by key, not by baked coordinates", () => {
-    // The layout deliberately returns no endpoints: nodes move after it stops
-    // (the reader can drag them), so coordinates frozen here would leave an edge
-    // pointing at where its node used to be. Callers resolve endpoints by key.
     const graph: MemoryGraph = {
       nodes: [node("a"), node("b")],
       edges: [edge("a", "b")],

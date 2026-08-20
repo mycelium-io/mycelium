@@ -1,13 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Mycelium Contributors
 
-/** Per-room persistence for hand-arranged memory-graph positions (#599).
- *
- *  Kept in `localStorage` rather than on the hub: an arrangement is a personal
- *  view preference, not room state other members should inherit — the same call
- *  the command palette's recents make. Split out of the component so the
- *  pruning and schema rules below are unit-testable without rendering an SVG.
- */
+/** Per-room persistence for hand-arranged memory-graph positions in `localStorage`. */
 
 export interface Point {
   x: number;
@@ -63,10 +57,7 @@ export function loadPlacements(roomName: string, known: ReadonlySet<string>): Pl
       if (known.has(key) && isPoint(point)) out[key] = { x: point.x, y: point.y };
       else dropped = true;
     }
-    // Written back here, at the one moment we know something became
-    // unreachable. The component only persists changes the *user* made, so if
-    // pruning didn't clean up after itself the stale entry would ride along
-    // forever — filtered on every read, but never actually gone.
+    // Rewrite storage when pruning drops stale keys.
     if (dropped) savePlacements(roomName, out);
     return out;
   } catch {
@@ -75,8 +66,7 @@ export function loadPlacements(roomName: string, known: ReadonlySet<string>): Pl
   }
 }
 
-/** Persists an arrangement, or removes the entry entirely when it's empty —
- *  so "reset layout" leaves nothing behind rather than an empty husk. */
+/** Persists an arrangement; removes the storage entry when placements is empty. */
 export function savePlacements(roomName: string, placements: Placements): void {
   if (typeof localStorage === "undefined") return;
   try {

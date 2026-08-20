@@ -298,12 +298,8 @@ export async function fetchMemoryExpanded(roomName: string, key: string): Promis
 }
 
 // ── Memory graph ─────────────────────────────────────────────────────────────
-// The whole room as a graph — one node per memory, one edge per link — for the
-// full-page graph view (#599). A thin read over the same link index that backs
-// `fetchMemoryLinks`/integrity, so graph-role facts (orphan = `inbound===0 &&
-// outbound===0`, root = `inbound===0 && outbound>0`, leaf = `inbound>0 &&
-// outbound===0`) and broken-link facts (`resolved === false`) are derived
-// client-side from this one payload instead of a second integrity fetch.
+// Room link graph: one node per memory, one edge per link. Graph roles
+// (orphan/root/leaf) and broken links are derived client-side from this payload.
 
 export interface MemoryGraphNode {
   key: string;
@@ -339,9 +335,7 @@ export async function fetchMemoryGraph(roomName: string): Promise<MemoryGraph> {
 }
 
 // ── Skills ───────────────────────────────────────────────────────────────────
-// A skill is a memory under the room's `skills/` namespace, promoted into its
-// own surface (like `agents/` → the members panel). Room-scoped, like memory.
-// Backs the chat composer's `/` trigger and the Skills rail. See #617.
+// Skills are room-scoped `skills/…` memories; backs the composer's `/` autocomplete.
 
 export interface Skill {
   name: string;
@@ -355,9 +349,7 @@ export interface Skill {
   updated_at: string;
 }
 
-/** List a room's skills, for the composer's `/` autocomplete. Skills are just
- *  `skills/…` memories; in the GUI they surface as memories (with a tag), so this
- *  read is the only skill-specific frontend call. Degrades to empty on failure. */
+/** List a room's skills for the composer's `/` autocomplete. Degrades to empty on failure. */
 export async function fetchSkills(roomName: string): Promise<Skill[]> {
   const data = await apiFetch<{ skills?: Skill[] }>(`/api/rooms/${roomName}/skills`, {
     cache: "no-store",
@@ -570,9 +562,7 @@ export async function fetchRoomAgents(roomName: string): Promise<AgentSummary[]>
 
 export type EngineKind = "aligner" | "synthesizer";
 
-/** Invite a first-party cognition engine (aligner / synthesizer) into a room.
- *  Engines are backend-owned — registration is just a manifest write with no
- *  machine-local side effects — so the UI can do this natively (no CLI). */
+/** Register a first-party cognition engine (aligner / synthesizer) in a room. */
 export async function createEngine(
   roomName: string,
   data: { handle: string; kind: EngineKind; description?: string; created_by?: string },
@@ -656,11 +646,7 @@ export async function createUser(payload: {
 
 // ── Metrics ──────────────────────────────────────────────────────────────────
 
-// The backend/collector metrics payloads are large, loosely-structured, and
-// shaped differently by each consumer (the metrics screen wants the full
-// dashboard shape; the status bar wants just a couple of counters), so these
-// stay generic rather than forcing one shared interface — callers supply the
-// slice of the shape they actually read.
+// Observability payloads vary in shape by consumer; callers type the fields they read.
 export async function fetchBackendMetrics<T = Record<string, unknown>>(): Promise<T | null> {
   return apiFetch<T | null>(`/api/observability`, { cache: "no-store", fallback: null });
 }

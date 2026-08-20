@@ -185,10 +185,6 @@ describe("<MemoryGraph />", () => {
   });
 
   it("gives context/ and decisions/ different colors", () => {
-    // These two hashed to the same palette slot under the previous scheme, so
-    // the two namespaces almost every room has rendered identically. Named
-    // explicitly rather than testing distinctness in the abstract, because this
-    // exact pair is the case that shipped broken.
     render(
       <MemoryGraph
         graph={{
@@ -224,9 +220,6 @@ describe("<MemoryGraph />", () => {
   });
 
   it("wraps the palette past its 8th namespace rather than inventing a color", async () => {
-    // Pinned as the documented ceiling, not as desirable: a 9th hue would have to
-    // come from the arc reserved for broken links and orphans. The legend still
-    // names every namespace, so the collision is readable rather than silent.
     const namespaces = ["a", "b", "c", "d", "e", "f", "g", "h", "i"];
     render(
       <MemoryGraph
@@ -431,17 +424,7 @@ describe("<MemoryGraph />", () => {
     const VIEW_W = 1000;
     const VIEW_H = 700;
 
-    /**
-     * Renders with a canvas that reports a real size. jsdom's
-     * `getBoundingClientRect` is all zeros, which makes the drag math divide by
-     * zero and produce `translate(NaN,NaN)` — a "did it move?" assertion passes
-     * on that, so without this the drag tests would be green on garbage.
-     *
-     * Wrapped in `StrictMode` because Next's App Router turns it on by default,
-     * so its setup→cleanup→setup mount is the shape every dev page load takes.
-     * Rendering bare hid a bug where that extra cleanup pass wiped the saved
-     * arrangement; running every case this way keeps it from creeping back.
-     */
+    /** StrictMode + sized canvas so drag math and placement persistence are realistic in jsdom. */
     function renderGraph(props: Partial<Parameters<typeof MemoryGraph>[0]> = {}) {
       const utils = render(
         <StrictMode>
@@ -585,9 +568,6 @@ describe("<MemoryGraph />", () => {
       });
 
       it("does not write on mount, so a StrictMode cleanup can't wipe the store", () => {
-        // The regression this pins: mirroring `placed` outward meant the
-        // mount-time cleanup pass saved the pre-hydration empty map over the
-        // real one. Only a drag or a reset may ever write.
         const data = stubStorage();
         savePlacements("atlas", { "decisions/a": { x: 111, y: 222 } });
 
