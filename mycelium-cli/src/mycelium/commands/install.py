@@ -307,6 +307,18 @@ def _refresh_compose_templates(*, backup: bool = True) -> list[Path]:
     compose_dest.write_bytes(compose_ref.read_bytes())
     refreshed.append(compose_dest)
 
+    # Copy companion override files. These are always bundled (docker/* in
+    # package-data) and are not user-edited, so no backup is needed for them.
+    for companion in ("compose-dev.yml", "compose-keycloak.yml", "compose-auth-dev.yml"):
+        try:
+            ref = importlib.resources.files("mycelium.docker") / companion
+            data = ref.read_bytes()
+            dest = dest_dir / companion
+            dest.write_bytes(data)
+            refreshed.append(dest)
+        except Exception:
+            pass  # file absent in this wheel version — skip silently
+
     return refreshed
 
 
