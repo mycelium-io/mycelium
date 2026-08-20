@@ -474,6 +474,7 @@ We chose Postgres because of myc://context/stack.</code></pre>
   work/api-server        wikilink</code></pre>
       <p>Broken links are reported rather than hidden, and <code>--check</code> sweeps the whole room for them along with orphans, memories nothing links to:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">links</span> <span class="flag">--check</span></code></pre>
+      <p>If you run the optional UI, the same thing is drawable rather than listable: <code>/room/{room}/graph</code> lays the room out as a link graph, colored by namespace, with broken links and orphans marked. It answers a different question than the list does — not &quot;what does this memory touch?&quot; but &quot;what shape has this room grown into, and what is dangling off the edge of it?&quot;</p>
       <h3 id="memory-typed-relations">Typed relations</h3>
       <p>Frontmatter relations are edges with meaning, not just navigation. Set them on a write with <code>--meta</code>:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> decisions/db <span class="str">&quot;Postgres&quot;</span> <span class="flag">-m</span> supersedes=decisions/db-v1</code></pre>

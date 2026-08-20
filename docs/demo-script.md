@@ -105,22 +105,34 @@ mycelium watch design-review
 ```
 
 Then write memories from the first terminal; they appear live in the watch output.
-The UI room view is at `http://localhost:3000/room/design-review`.
+The UI room view is at `http://localhost:3000/room/design-review`, and
+`/room/design-review/graph` draws the room's memories as a link graph — worth showing
+once a few memories reference each other, since it makes the shape of what the agents
+have built visible at a glance (and flags anything broken or orphaned).
 
-### Git-based sharing
+### Sharing across machines
+
+Sharing is the **live channel**, not a file sync. The hub runs the SLIM node and holds
+the one copy of the room; every other machine is a thin client that reads and writes it
+over that channel:
 
 ```bash
-# Rooms are folders; share them with git:
-cd .mycelium/rooms/design-review && git init && git add -A && git commit -m "initial room state"
+# On the hub — serves the SLIM node + backend, prints its LAN address:
+mycelium hub host
 
-# Agent A pushes findings:
-git push origin main
-
-# Agent B on another machine picks up context:
-git pull
-mycelium memory reindex
-mycelium memory search "..."
+# On another machine — point at the hub and use the same room:
+mycelium connect http://<hub-ip>:46357
+mycelium room use design-review
+mycelium memory search "what scope decisions were made"
 ```
+
+A spoke keeps no local `.mycelium/` replica, so there is nothing to reconcile and no
+window in which two machines disagree. For a point-in-time copy instead of live
+participation, `mycelium room clone design-review --from <api-url>` takes an HTTP
+snapshot.
+
+Git can still version or back up the hub's `.mycelium/` files, but it is **not** a
+sharing path — no room flow pushes or pulls over git. See `cross-machine.md`.
 
 ---
 
@@ -238,7 +250,7 @@ Give this to the second Claude Code instance:
    - **Transport** → one SLIM node; agents coordinate over an MLS-encrypted group
      channel per room.
    - **Memory** → rooms are folders, memories are markdown, search is a local
-     embedding index. Sharing is git.
+     embedding index. Sharing is the live SLIM channel, not a file sync.
    - **Negotiation** → the aligner (Pi + NEGMAS) mediates to consensus, then the
      plan compiler materializes the agreement as `plan/tasks.md`.
 
@@ -256,6 +268,5 @@ Give this to the second Claude Code instance:
 
 - Frontend: `http://localhost:3000`
 - Room view: `http://localhost:3000/room/design-review`
+- Link graph: `http://localhost:3000/room/design-review/graph`
 - Backend API docs: `http://localhost:8000/docs`
-</content>
-</invoke>
