@@ -291,16 +291,15 @@ export function RoomsSidebar({ activeRoom = null }: Props) {
   );
 }
 
-// Every level wears a bell: the glyph is a notification control, not a mention
-// marker, so the row reads as "notifications for this room" at a glance.
 const LEVEL_OPTIONS: { level: RoomLevel; label: string; hint: string; Icon: LucideIcon }[] = [
   { level: "all", label: "All messages", hint: "badge + bell + sound", Icon: BellRing },
   { level: "mentions", label: "Only mentions", hint: "badge; bell on @you", Icon: Bell },
   { level: "muted", label: "Muted", hint: "nothing", Icon: BellOff },
 ];
 
-/** Discord-style notification level picker for one room. The trigger wears the
- *  current level's glyph; the menu sets it. */
+/** Discord-style notification level picker for one room. The trigger is always a
+ *  bell — it's the notification control, not a readout of the level; the level
+ *  lives in the menu it opens (and the row's own BellOff marks a muted room). */
 function RoomLevelMenu({
   room,
   level,
@@ -311,7 +310,6 @@ function RoomLevelMenu({
   onSet: (room: string, level: RoomLevel) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const Current = LEVEL_OPTIONS.find((o) => o.level === level)?.Icon ?? Bell;
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
@@ -319,7 +317,7 @@ function RoomLevelMenu({
         onClick={(e) => e.preventDefault()}
         className="flex size-5 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-surface hover:text-text"
       >
-        <Current className="size-3.5" />
+        <Bell className="size-3.5" />
       </PopoverTrigger>
       <PopoverContent className="w-48 p-1">
         {LEVEL_OPTIONS.map(({ level: l, label, hint, Icon }) => (
