@@ -7,7 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { AtSign, BarChart3, Bell, BellOff, Boxes, Check, Plus, Search, SearchX, type LucideIcon } from "lucide-react";
+import { BarChart3, Bell, BellOff, BellRing, Boxes, Check, Plus, Search, SearchX, type LucideIcon } from "lucide-react";
 import { getAppEventsSSEUrl, type Room } from "@/lib/api";
 import { useRooms } from "@/lib/room-data";
 import { roomLevel, type RoomLevel } from "@/lib/notifications";
@@ -292,13 +292,14 @@ export function RoomsSidebar({ activeRoom = null }: Props) {
 }
 
 const LEVEL_OPTIONS: { level: RoomLevel; label: string; hint: string; Icon: LucideIcon }[] = [
-  { level: "all", label: "All messages", hint: "badge + bell + sound", Icon: Bell },
-  { level: "mentions", label: "Only mentions", hint: "badge; bell on @you", Icon: AtSign },
+  { level: "all", label: "All messages", hint: "badge + bell + sound", Icon: BellRing },
+  { level: "mentions", label: "Only mentions", hint: "badge; bell on @you", Icon: Bell },
   { level: "muted", label: "Muted", hint: "nothing", Icon: BellOff },
 ];
 
-/** Discord-style notification level picker for one room. The trigger wears the
- *  current level's glyph; the menu sets it. */
+/** Discord-style notification level picker for one room. The trigger is always a
+ *  bell — it's the notification control, not a readout of the level; the level
+ *  lives in the menu it opens (and the row's own BellOff marks a muted room). */
 function RoomLevelMenu({
   room,
   level,
@@ -309,7 +310,6 @@ function RoomLevelMenu({
   onSet: (room: string, level: RoomLevel) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const Current = LEVEL_OPTIONS.find((o) => o.level === level)?.Icon ?? Bell;
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
@@ -317,7 +317,7 @@ function RoomLevelMenu({
         onClick={(e) => e.preventDefault()}
         className="flex size-5 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-surface hover:text-text"
       >
-        <Current className="size-3.5" />
+        <Bell className="size-3.5" />
       </PopoverTrigger>
       <PopoverContent className="w-48 p-1">
         {LEVEL_OPTIONS.map(({ level: l, label, hint, Icon }) => (
