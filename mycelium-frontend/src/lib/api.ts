@@ -557,6 +557,11 @@ export interface AgentSummary {
   owner: string | null;
   team: string | null;
   allow_from: string[];
+  /** For `adapter === "a2a"` agents: the agent card base URL, resolved endpoint,
+   *  and advertised skills. Null/empty for every other adapter. */
+  a2a_card?: string | null;
+  a2a_endpoint?: string | null;
+  a2a_skills?: string[];
 }
 
 /** List addressable agents in a room. Used to drive `@`-mention autocomplete. */
@@ -578,6 +583,20 @@ export async function createEngine(
   data: { handle: string; kind: EngineKind; description?: string; created_by?: string },
 ): Promise<AgentSummary> {
   return apiFetch<AgentSummary>(`/api/rooms/${roomName}/engines`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+/** Register an external A2A agent as a room member. The backend resolves the
+ *  agent card at `card` (a base URL) to discover its endpoint + skills; a
+ *  bad/unreachable card surfaces as a 502 whose detail we let propagate. */
+export async function registerA2aAgent(
+  roomName: string,
+  data: { handle: string; card: string; description?: string },
+): Promise<AgentSummary> {
+  return apiFetch<AgentSummary>(`/api/rooms/${roomName}/a2a-agents`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),

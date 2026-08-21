@@ -5,7 +5,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Users } from "lucide-react";
-import { createEngine, type EngineKind, type PresenceMember } from "@/lib/api";
+import { createEngine, registerA2aAgent, type EngineKind, type PresenceMember } from "@/lib/api";
 import { useRoomRoster } from "@/lib/room-data";
 import { Button } from "@/components/ui/button";
 import { Chip } from "@/components/ui/chip";
@@ -78,7 +78,7 @@ export function AgentsPanel({
   onFocusConsumed,
 }: Props) {
   const [mineOnly, setMineOnly] = useState(false);
-  const [addTab, setAddTab] = useState<"agents" | "engines">("agents");
+  const [addTab, setAddTab] = useState<"agents" | "engines" | "a2a">("agents");
   const [addOpen, setAddOpen] = useState(false);
   const { principal } = useCurrentUser();
 
@@ -163,11 +163,12 @@ export function AgentsPanel({
                 Add an agent or engine
               </DialogTitle>
               <DialogDescription className="text-label text-muted-foreground leading-relaxed">
-                <span className="text-text">Engines</span> are backend-owned, so
-                you can invite one right here. <span className="text-text">Agents</span>{" "}
-                are registered from the CLI, because they have machine-local side
-                effects (resident session, workspace assets) the web UI can&apos;t
-                perform.
+                <span className="text-text">Engines</span> are backend-owned and{" "}
+                <span className="text-text">A2A agents</span> are external services,
+                so you can register either right here.{" "}
+                <span className="text-text">Agents</span> are registered from the
+                CLI, because they have machine-local side effects (resident session,
+                workspace assets) the web UI can&apos;t perform.
               </DialogDescription>
             </DialogHeader>
             <div className="flex items-center gap-1.5 mt-2">
@@ -187,8 +188,16 @@ export function AgentsPanel({
               >
                 Engines
               </Chip>
+              <Chip
+                variant="accent"
+                active={addTab === "a2a"}
+                onClick={() => setAddTab("a2a")}
+                className="px-2.5 py-0.5 text-micro"
+              >
+                A2A agent
+              </Chip>
             </div>
-            {addTab === "agents" ? (
+            {addTab === "agents" && (
               <div className="space-y-6 mt-2">
                 <section>
                   <div className="text-label font-semibold text-text mb-1.5">
@@ -222,10 +231,20 @@ export function AgentsPanel({
                   </p>
                 </section>
               </div>
-            ) : (
+            )}
+            {addTab === "engines" && (
               <EngineInviteForm
                 roomName={roomName}
                 createdBy={principal}
+                onCreated={() => {
+                  refresh();
+                  setAddOpen(false);
+                }}
+              />
+            )}
+            {addTab === "a2a" && (
+              <A2aAgentForm
+                roomName={roomName}
                 onCreated={() => {
                   refresh();
                   setAddOpen(false);
@@ -330,12 +349,22 @@ export function AgentsPanel({
                       · {a.team}
                     </span>
                   )}
+                  {a.adapter === "a2a" && (
+                    <span
+                      className="inline-flex items-center rounded-md border border-accent/30 bg-accent-soft/40 px-1.5 py-0 text-micro font-medium text-accent"
+                      title={a.a2a_endpoint ?? a.a2a_card ?? "external A2A agent"}
+                    >
+                      a2a
+                    </span>
+                  )}
                 </div>
                 <div className="mt-0.5 truncate text-micro text-muted-foreground">
                   {subtext(
                     a.adapter === "engine" && a.kind ? `engine · ${a.kind}` : a.adapter,
                     presenceNote(memberPresence),
-                    a.description,
+                    a.adapter === "a2a" && a.a2a_skills && a.a2a_skills.length > 0
+                      ? a.a2a_skills.join(", ")
+                      : a.description,
                   )}
                 </div>
               </div>
@@ -469,6 +498,107 @@ function EngineInviteForm({
         <span className="text-micro text-muted-foreground">
           or <code className="font-mono">mycelium engine create</code> from the CLI
         </span>
+      </div>
+    </div>
+  );
+}
+
+/** Register an external A2A agent by its agent-card base URL — the backend
+ *  resolves the card to discover the endpoint + skills, so a bad/unreachable
+ *  card comes back as a 502 whose detail we surface verbatim. */
+function A2aAgentForm({
+  roomName,
+  onCreated,
+}: {
+  roomName: string;
+  onCreated: () => void;
+}) {
+  const [handle, setHandle] = useState("");
+  const [card, setCard] = useState("");
+  const [description, setDescription] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const trimmedHandle = handle.trim().replace(/^@/, "");
+  const trimmedCard = card.trim();
+  const canSubmit = trimmedHandle.length > 0 && trimmedCard.length > 0 && !submitting;
+
+  const submit = async () => {
+    if (!canSubmit) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await registerA2aAgent(roomName, {
+        handle: trimmedHandle,
+        card: trimmedCard,
+        description: description.trim(),
+      });
+      onCreated();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to register A2A agent");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4 mt-2">
+      <div className="space-y-1.5">
+        <label className="text-label font-medium text-text">Handle</label>
+        <Input
+          value={handle}
+          onChange={(e) => setHandle(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") submit();
+          }}
+          placeholder="researcher"
+          autoCapitalize="none"
+          spellCheck={false}
+          aria-invalid={!!error}
+        />
+        <p className="text-micro text-muted-foreground leading-snug">
+          Address it in the channel with{" "}
+          <code className="font-mono text-accent">@{trimmedHandle || "handle"}</code>.
+          Lowercase slug.
+        </p>
+      </div>
+
+      <div className="space-y-1.5">
+        <label className="text-label font-medium text-text">Agent card URL</label>
+        <Input
+          value={card}
+          onChange={(e) => setCard(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") submit();
+          }}
+          placeholder="https://agent.example.com"
+          autoCapitalize="none"
+          spellCheck={false}
+          aria-invalid={!!error}
+        />
+        <p className="text-micro text-muted-foreground leading-snug">
+          The base URL of the agent&apos;s A2A agent card. The hub resolves it to
+          discover the endpoint and advertised skills.
+        </p>
+      </div>
+
+      <div className="space-y-1.5">
+        <label className="text-label font-medium text-text">
+          Description <span className="text-faint">(optional)</span>
+        </label>
+        <Input
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="What this agent does in the room"
+        />
+      </div>
+
+      {error && <p className="text-micro text-[#f87171] leading-snug">{error}</p>}
+
+      <div className="flex items-center gap-2">
+        <Button variant="default" size="sm" onClick={submit} disabled={!canSubmit}>
+          {submitting ? "Registering…" : "Register A2A agent"}
+        </Button>
       </div>
     </div>
   );
