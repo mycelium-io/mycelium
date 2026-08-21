@@ -201,6 +201,11 @@ export function KeymapProvider({ children }: { children: ReactNode }) {
   const commands = useMemo(
     // Recomputed when the palette opens, so it reflects what's mounted then.
     () => (paletteOpen ? collectCommands(scopes) : []),
+    // commandEpoch is a cache-bust counter: it increments whenever a scope
+    // registers or unregisters, but collectCommands reads commandSources via a
+    // ref (stable identity) so the epoch is the only signal that new commands
+    // are available. It is intentionally not referenced in the callback body.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [paletteOpen, commandEpoch, scopes, collectCommands],
   );
 

@@ -20,7 +20,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
       <head>
+        {/* Google Fonts loaded here intentionally: fonts are referenced by name
+            in globals.css, so next/font variable injection isn't wired yet.
+            The @next/next/no-page-custom-font rule targets pages/_document.js
+            (Pages Router); layout.tsx is correct for the App Router. */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
+        {/* eslint-disable-next-line @next/next/no-page-custom-font */}
         <link
           href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@1,600&family=IBM+Plex+Sans:wght@400;500;600&family=Geist+Mono:wght@400;500;600;700&display=swap"
           rel="stylesheet"
