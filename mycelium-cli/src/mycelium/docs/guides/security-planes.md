@@ -9,7 +9,7 @@ most common hub-and-spoke misconfiguration.
 | Plane | Port (default) | Who uses it | What it protects | Default | Upgrade |
 |-------|----------------|-------------|------------------|---------|---------|
 | **HTTP API** | 8000 | Spokes, humans, agents (`memory`, `await`, `respond`) | Memory, participation, handle attribution | Open (no token) | [Authentication](#auth) (`auth.enabled`) |
-| **SLIM / MLS** | 46357 | Hub backend (moderator); dev `slim send`; future native connectors | Native SLIM group membership on the coordination fabric | Shared-secret **PSK** (hub only) | [SignerJwt](#spire-identity) / [SPIRE](#spire-identity) |
+| **SLIM / MLS** | 46357 | Hub backend (moderator); dev `slim send`; future native connectors | Native SLIM group membership on the coordination fabric | Shared-secret **PSK** (hub only) | SignerJwt (`slim.identity`) |
 
 **Spokes do not use the SLIM plane for normal work.** A spoke is a thin HTTP
 client: it points `server.api_url` at the hub backend and never needs
@@ -59,7 +59,7 @@ any `@handle` — **even if the hub uses a private SLIM master secret.**
 |---------|----------|------------|--------------|
 | **Solo dev** | Open | Dev PSK literal (fallback if no config secret) | N/A (all-in-one) |
 | **LAN team** | JWT on | Auto-generated `[slim].master_secret` on hub | `server.api_url` → hub:8000 only |
-| **Hosted** | JWT required | Private hub secret + SignerJwt or SPIRE | Same; no master secret on spokes |
+| **Hosted** | JWT required | Private hub secret + SignerJwt | Same; no master secret on spokes |
 
 `mycelium doctor` reports HTTP auth status from the hub's `/health` endpoint.
 In **hub** mode it also warns when `[slim].master_secret` is missing or still
@@ -71,7 +71,6 @@ the public dev literal.
 |------|-------|-----------------|
 | `psk` | SLIM | No (hub backend only today) |
 | `signerjwt` | SLIM | Only if the spoke runs a native SLIM connector |
-| `spire` | SLIM | Same |
 
 `mycelium config set slim.identity signerjwt` changes **SLIM channel identity** on
 machines that open native SLIM connections. It does **not** turn on HTTP API auth.
@@ -81,4 +80,3 @@ Configure `[auth]` separately.
 
 - [Hub & Spoke Setup](#hub-and-spoke) — topology and spoke checklist
 - [Authentication](#auth) — HTTP JWT gate (spokes and hub API)
-- [Attested Identity (SPIRE)](#spire-identity) — hardened SLIM plane

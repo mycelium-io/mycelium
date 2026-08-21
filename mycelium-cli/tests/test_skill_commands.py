@@ -161,6 +161,29 @@ def test_skill_get_missing(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "Not found" in result.output
 
 
+def test_skill_set_403_surfaces_backend_detail(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A 403 from the hub must show the backend's ``detail`` message, not just the code."""
+    import json
+
+    detail_msg = (
+        "handle 'cli-user' is not the authenticated principal '@julvalen@cisco.com' "
+        "and has granted it no access"
+    )
+
+    def _sync(*, room_name, client, body):
+        raise UnexpectedStatus(403, json.dumps({"detail": detail_msg}).encode())
+
+    monkeypatch.setattr(
+        "mycelium_backend_client.api.skills.create_skill_api_rooms_room_name_skills_post.sync",
+        _sync,
+    )
+    result = runner.invoke(skill_cmd.app, ["set", "alpha", "do something", "--room", "demo"])
+    assert result.exit_code == 1
+    assert "HTTP 403" in result.output
+    assert "cli-user" in result.output
+    assert "julvalen@cisco.com" in result.output
+
+
 def test_skill_rm(monkeypatch: pytest.MonkeyPatch) -> None:
     class _Resp:
         status_code = 204

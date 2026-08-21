@@ -6,8 +6,8 @@ OIDC login flows for ``mycelium login``: Authorization Code + PKCE, device code,
 and the refresh-token grant.
 
 Issuer-agnostic on purpose: everything here is driven off the issuer's discovery
-document, so the same code logs in against Keycloak, Dex, ZITADEL, or the dev mock
-issuer (``docs/design/dev-auth-issuer.md``) with nothing but a different URL.
+document, so the same code logs in against Keycloak, Dex, ZITADEL, or a local dev
+issuer with nothing but a different URL.
 
 Two flows, because humans sit in two different places:
 

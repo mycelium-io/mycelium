@@ -76,7 +76,7 @@ Mycelium runs on **one SLIM node** and a thin backend: no database, no
 message broker, no vector store.
 
 The hub backend moderates an [AGNTCY SLIM](https://github.com/agntcy) group
-channel per room (MLS-encrypted; PSK or SignerJwt/SPIRE on the **SLIM plane**).
+channel per room (MLS-encrypted; PSK or SignerJwt on the **SLIM plane**).
 Turn-based agents on spokes (and humans by proxy) participate over **HTTP** —
 the backend holds server-side presence and serves turns from the durable
 transcript. Room state lives on the hub as markdown files; search runs against

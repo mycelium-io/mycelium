@@ -2,7 +2,8 @@
 #
 # ⚠️  DEV / TEST ONLY. This mock issuer mints a valid-looking JWT for ANY client
 # with ANY secret and performs no real authentication. Never run it in a
-# deployment that anything trusts. Production issuers: Keycloak / SPIRE (#565).
+# deployment that anything trusts. Production issuers: Keycloak / a real OIDC
+# provider (#565).
 #
 # Purpose: give the HTTP-API JWT gate (#561) a real issuer + JWKS to validate
 # against locally, so the identity tickets can be built and tested end-to-end

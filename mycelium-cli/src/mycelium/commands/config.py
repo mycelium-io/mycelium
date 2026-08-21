@@ -134,10 +134,7 @@ def set_config(
             f"Set {key} = {value[:20]}{'...' if len(value) > 20 else ''}",
             fg=typer.colors.GREEN,
         )
-        if key == "slim.identity" and str(parsed_value).lower() in (
-            "signerjwt",
-            "spire",
-        ):
+        if key == "slim.identity" and str(parsed_value).lower() == "signerjwt":
             typer.echo(
                 "[dim]SLIM channel identity (native SLIM clients on the hub). "
                 "Does not enable HTTP API auth — configure auth.enabled separately "

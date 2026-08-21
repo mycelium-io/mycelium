@@ -22,7 +22,7 @@ from pydantic import ValidationError
 from rich.console import Console
 from rich.table import Table
 
-from mycelium.client import hub_client, typed_client
+from mycelium.client import hub_client, hub_error_detail, typed_client
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
 from mycelium.filesystem import (
@@ -68,7 +68,11 @@ def _hub_session() -> Iterator[Any]:
             )
             raise typer.Exit(1) from exc
         except UnexpectedStatus as exc:
-            console.print(f"[red]Error:[/red] hub at {_hub_url()} returned HTTP {exc.status_code}.")
+            detail = hub_error_detail(exc.content)
+            suffix = f": {detail}" if detail else "."
+            console.print(
+                f"[red]Error:[/red] hub at {_hub_url()} returned HTTP {exc.status_code}{suffix}"
+            )
             raise typer.Exit(1) from exc
 
 

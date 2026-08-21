@@ -26,10 +26,8 @@ turn the strength up only when you need it:
 2. **Per-member credentials.** Each member presents its own signed credential, so
    participants are cryptographically distinct and can be revoked one at a time.
    An `owner` is now backed by a key, not just a convention.
-3. **Attested identity.** Each member presents a SPIRE-attested credential from
-   the workload API: the tightest guarantee, and the heaviest to deploy.
 
-Every tier is opt-in, and a higher tier falls back cleanly when its material
+Both tiers are opt-in, and the higher one falls back cleanly when its material
 isn't present, so the ceremony is never forced on a setup that doesn't want it.
 Separately, you can turn on an API gate that requires a verified login (off by
 default) when a hosted or multi-user deployment needs writes tied to a real

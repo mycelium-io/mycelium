@@ -169,9 +169,8 @@ separate realms; list each as its own `[[auth.issuers]]` block (a human root wit
 `role = "user"`, an agent root with `role = "agent"`), matched by exact `iss` and
 never interchangeable.
 
-For the tightest, individually-attested agent identity on the SLIM channel itself,
-see [Attested Identity (SPIRE)](#spire-identity), a different, heavier tier from
-this HTTP-API gate.
+For per-agent identity on the SLIM channel itself, see
+[Security Planes](#security-planes) — a different tier from this HTTP-API gate.
 
 ## Browser login (the frontend)
 
