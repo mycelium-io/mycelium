@@ -999,7 +999,7 @@ def _head(title: str, description: str, file_name: str) -> str:
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>{html.escape(title)}</title>
 <meta name="description" content="{html.escape(description)}">
 <meta property="og:title" content="{html.escape(title)}">
