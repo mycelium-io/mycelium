@@ -12,8 +12,9 @@ and gets its own sidebar entries derived from its sections.
 Run from repo root:
     cd mycelium-cli && uv run python ../docs/generate_docs.py
 
-Regenerate one page only:
-    cd mycelium-cli && uv run python ../docs/generate_docs.py --page concepts
+Write one page only (all three are still assembled, since the persistent nav and
+the search index span the whole site):
+    cd mycelium-cli && uv run python ../docs/generate_docs.py --page reference
 """
 
 from __future__ import annotations
@@ -1208,7 +1209,7 @@ def _render_page(
 
 
 def _edit_link(md_file: str) -> str:
-    """"Edit this page" affordance pointing at the markdown this section came from."""
+    """Link a section back to the markdown file it was rendered from."""
     return (
         f'      <p class="edit-page"><a href="{EDIT_BASE_URL}{md_file}" '
         f'target="_blank" rel="noopener">{PENCIL_SVG}Edit this page on GitHub</a></p>'
@@ -1463,6 +1464,9 @@ def _write_search_index(records: list[dict]) -> None:
     keeps the payload off the critical path.
     """
     payload = json.dumps(records, separators=(",", ":"), ensure_ascii=False)
+    # Legal in JSON, a line break in JS source: escape them or a page with one
+    # in its prose takes the whole index down.
+    payload = payload.replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
     out = OUT_DIR / "search-index.js"
     out.write_text(f"window.MYCELIUM_SEARCH_INDEX = {payload};\n")
     print(f"  wrote {out.name} ({out.stat().st_size:,} bytes, {len(records)} records)")
@@ -1530,7 +1534,7 @@ def main() -> None:
         print(f"  {file_name}: {n} subsections in {len(sidebar_groups)} groups")
 
     print("Rendering pages...")
-    for page, content, sidebar_groups in built:
+    for page, content, _groups in built:
         page_id, file_name, title, _label, sheet_no, plate_title, description = page
         if args.page and page_id != args.page:
             continue
