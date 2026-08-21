@@ -20,6 +20,7 @@ from pathlib import Path
 import httpx
 import typer
 
+from mycelium.client import hub_error_detail
 from mycelium.config import MyceliumConfig, ServerConfig
 from mycelium.doc_ref import doc_ref
 from mycelium.error_handler import print_error
@@ -666,7 +667,13 @@ def status(ctx: typer.Context) -> None:
                 elif isinstance(exc, httpx.TimeoutException):
                     backend_error = f"Timeout connecting to {config.server.api_url}"
                 elif isinstance(exc, httpx.HTTPStatusError):
-                    backend_error = f"Backend returned HTTP {exc.response.status_code}"
+                    detail = hub_error_detail(exc.response.content)
+                    if detail:
+                        backend_error = (
+                            f"Backend returned HTTP {exc.response.status_code}: {detail}"
+                        )
+                    else:
+                        backend_error = f"Backend returned HTTP {exc.response.status_code}"
                 else:
                     backend_error = str(exc)
 
