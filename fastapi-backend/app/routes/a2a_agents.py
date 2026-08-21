@@ -38,6 +38,13 @@ class A2aAgentCreate(BaseModel):
     handle: str = Field(..., min_length=1, max_length=64)
     card: str = Field(..., description="Base URL serving the remote agent's Agent Card.")
     description: str = Field("", description="Overrides the card's description when set.")
+    auth_env: str | None = Field(
+        None,
+        description=(
+            "Name of a backend env var holding the bearer token for the remote agent. "
+            "Only the var name is stored (in room memory); the secret stays in the env."
+        ),
+    )
     allow_from: list[str] = Field(
         default_factory=list, description="Sender handles allowed to summon (empty = anyone)."
     )
@@ -93,6 +100,8 @@ async def create_a2a_agent(room_name: str, payload: A2aAgentCreate, request: Req
         "a2a_card_path": card.card_path,
         "a2a_streaming": card.streaming,
         "a2a_skills": card.skill_ids,
+        # Only the env var NAME lands in room memory; the token stays in the env.
+        "a2a_auth_env": payload.auth_env.strip() if payload.auth_env else None,
         "allow_from": [h for h in (_norm(a) for a in payload.allow_from) if h],
         "owner": _norm(payload.owner),
         "team": _norm(payload.team),

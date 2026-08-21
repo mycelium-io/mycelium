@@ -17,12 +17,25 @@ Two pieces:
 The send path carries the #712 spike findings: resolve the card (dual well-known
 path), then build a client with ``accepted_output_modes`` set — without it,
 older servers reject the send with a pydantic ``-32600``.
+
+**Honest scope boundary (keep it honest here + in the user-facing docs).** A
+bridged A2A agent is **not** a member of the room's MLS group channel — it never
+holds a group key. It is proxied by this backend seat, which reads the room's
+plaintext (as moderator/custodian) and calls the remote agent out-of-band. Today
+that hop is plain HTTPS; it *can* be moved onto SLIM (SLIMRPC, SLIM-identity
+authenticated + encrypted) via ``agntcy/slim-a2a-python`` — but even then it is
+point-to-point RPC to a distinct SLIM identity, **not** room-group membership
+(see #726). Either way the hub is the translation boundary and sees plaintext,
+so this is **NOT** E2E-from-the-hub. Auth to the remote is a bearer token whose
+value lives in the backend env (``a2a_auth_env`` names the var); the room
+manifest never stores the secret.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -50,12 +63,23 @@ def _norm(handle: str | None) -> str:
     return (handle or "").strip().lstrip("@").lower()
 
 
-def registered_a2a_card(room: str, handle: str) -> str | None:
-    """The card URL if ``handle`` is a registered ``a2a`` agent in ``room``.
+@dataclass(frozen=True)
+class A2aAgentRef:
+    """A registered a2a agent's call config: where to reach it and how to auth."""
+
+    card: str
+    #: Name of the backend env var holding the bearer token, if the remote needs
+    #: auth. The secret itself is NEVER stored in the room manifest (it's readable
+    #: room memory) — only the env var name is, and it's resolved at send time.
+    auth_env: str | None = None
+
+
+def resolve_a2a_agent(room: str, handle: str) -> A2aAgentRef | None:
+    """Call config if ``handle`` is a registered ``a2a`` agent in ``room``, else None.
 
     Mirrors the aligner's engine gate: reads the ``agents/<handle>`` manifest and
-    returns its ``a2a_card`` only for an ``adapter: a2a`` manifest, else ``None``
-    — so summoning a teammate, engine, or unknown handle never fires the bridge.
+    acts only for an ``adapter: a2a`` manifest, so summoning a teammate, engine,
+    or unknown handle never fires the bridge.
     """
     from app.services.filesystem import get_room_dir, read_memory_file
 
@@ -67,10 +91,19 @@ def registered_a2a_card(room: str, handle: str) -> str | None:
         data = yaml.safe_load(body) or {}
     except yaml.YAMLError:
         return None
-    if isinstance(data, dict) and data.get("adapter") == "a2a":
-        card = data.get("a2a_card")
-        return card if isinstance(card, str) and card else None
-    return None
+    if not (isinstance(data, dict) and data.get("adapter") == "a2a"):
+        return None
+    card = data.get("a2a_card")
+    if not (isinstance(card, str) and card):
+        return None
+    env = data.get("a2a_auth_env")
+    return A2aAgentRef(card=card, auth_env=env if isinstance(env, str) and env else None)
+
+
+def registered_a2a_card(room: str, handle: str) -> str | None:
+    """The card URL if ``handle`` is a registered ``a2a`` agent, else None."""
+    ref = resolve_a2a_agent(room, handle)
+    return ref.card if ref else None
 
 
 class A2aSendError(Exception):
@@ -122,18 +155,22 @@ async def send_to_a2a(
     text: str,
     *,
     context_id: str | None = None,
+    auth_token: str | None = None,
     http: httpx.AsyncClient | None = None,
     timeout_s: float = _SEND_TIMEOUT_S,
 ) -> A2aReply:
     """Send ``text`` to the A2A agent at ``card_url`` and return its reply.
 
     Pass ``context_id`` (from a prior :class:`A2aReply`) to continue the same
-    conversation, so the remote agent keeps its own memory of the thread. Raises
-    :class:`A2aSendError` on an unresolvable card or a failed exchange, so the
-    caller can fall back faithfully (silence, never a fabricated reply).
+    conversation, so the remote agent keeps its own memory of the thread. Pass
+    ``auth_token`` to send it as a bearer credential (for agents whose card
+    declares a security scheme). Raises :class:`A2aSendError` on an unresolvable
+    card or a failed exchange, so the caller can fall back faithfully (silence,
+    never a fabricated reply).
     """
     owns_client = http is None
-    client_http = http or httpx.AsyncClient(timeout=timeout_s)
+    headers = {"Authorization": f"Bearer {auth_token}"} if auth_token else None
+    client_http = http or httpx.AsyncClient(timeout=timeout_s, headers=headers)
     try:
         try:
             card, _path = await resolve_raw_card(card_url, http=client_http)
@@ -208,8 +245,8 @@ class A2aResponder:
         co_summons: list[str] | None = None,
         message_text: str = "",
     ) -> None:
-        card = registered_a2a_card(room, handle)
-        if card is None:
+        ref = resolve_a2a_agent(room, handle)
+        if ref is None:
             return  # not an a2a agent — let the engines / a teammate handle it
         sender = envelope_sender(envelope)
         if _norm(sender) == _norm(handle):
@@ -222,7 +259,12 @@ class A2aResponder:
         if key in self._active:
             return
         self._active.add(key)
-        task = asyncio.create_task(self._run_and_release(room, handle, card, prompt, envelope, key))
+        # Resolve the bearer credential from the backend env (the manifest holds
+        # only the var name), so the secret never lives in room memory.
+        token = os.environ.get(ref.auth_env) if ref.auth_env else None
+        task = asyncio.create_task(
+            self._run_and_release(room, handle, ref.card, prompt, envelope, key, token)
+        )
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
 
@@ -234,6 +276,7 @@ class A2aResponder:
         prompt: str,
         envelope: L9,
         key: tuple[str, str, str],
+        auth_token: str | None = None,
     ) -> None:
         thread_key = (room, _norm(handle))
         summoner = envelope_sender(envelope)
@@ -245,6 +288,7 @@ class A2aResponder:
                 card,
                 addressed,
                 context_id=self._threads.get(thread_key),
+                auth_token=auth_token,
                 timeout_s=self._timeout_s,
             )
             if reply.context_id:

@@ -300,6 +300,20 @@ is no litellm dependency.
   `openclaw` and `hermes` are **gone**, not deprecated — they rode the removed
   SSE/coordination-tick model and their packages were deleted (#503). Don't
   reintroduce them as adapter options.
+- **A2A bridge is proxied, not an MLS member (be honest).** The A2A bridge (epic
+  #719) makes a room speak Agent2Agent both ways: `adapter: a2a` registers a
+  remote endpoint as a room member (`a2a_bridge.py` answers its `@`-mentions by
+  calling it — event-driven off the summon seam, chat-first, not negotiation-
+  scoped), and `a2a_server.py` exposes a room *as* an A2A agent via the a2a-sdk
+  server (card + JSON-RPC). **Honest boundary:** a bridged A2A agent is **not** a
+  member of the room's MLS group — it's proxied by a backend seat that reads
+  plaintext and calls the remote out-of-band. The hop is plain HTTPS today; it
+  can ride SLIM (SLIMRPC) via `agntcy/slim-a2a-python`, but that's point-to-point
+  RPC to a SLIM identity, still not room-group membership, and slima2a pins
+  `a2a-sdk==1.1.0` (HTTP-vs-SLIM decision: #726). Either way the hub sees
+  plaintext, so it is **NOT** E2E-from-the-hub. Remote auth is a bearer token
+  named by `a2a_auth_env` and resolved from the backend env — the secret never
+  lands in room memory.
 
 ## Local development
 

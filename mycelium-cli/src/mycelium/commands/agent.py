@@ -673,6 +673,7 @@ def _create_a2a_agent(
     room: str | None,
     handle: str,
     card: str | None,
+    card_auth_env: str | None,
     description: str,
     allow_from: str | None,
     owner: str | None,
@@ -698,6 +699,7 @@ def _create_a2a_agent(
         "handle": handle,
         "card": card.strip(),
         "description": description,
+        "auth_env": card_auth_env.strip() if card_auth_env else None,
         "allow_from": allow_list,
         "owner": _default_owner(owner, handle_flag),
         "team": team,
@@ -755,6 +757,14 @@ def agent_create(
         help=(
             "a2a: base URL serving the external agent's Agent Card "
             "(the host of its /.well-known/agent-card.json). Required for --adapter a2a."
+        ),
+    ),
+    card_auth_env: str | None = typer.Option(
+        None,
+        "--card-auth-env",
+        help=(
+            "a2a: name of a backend env var holding the remote agent's bearer token. "
+            "Only the var name is stored; the secret stays in the hub's environment."
         ),
     ),
     room: str | None = typer.Option(
@@ -840,6 +850,7 @@ def agent_create(
                 room=room,
                 handle=handle,
                 card=card,
+                card_auth_env=card_auth_env,
                 description=description,
                 allow_from=allow_from,
                 owner=owner,
