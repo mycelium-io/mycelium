@@ -346,7 +346,7 @@
 <span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">ls</span>
 <span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">ls</span> decisions/</code></pre>
       <p>See the <a href="#memory">memory</a> guide for how storage and search work.</p>
-      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/quickstart.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
+      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/quickstart.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
 
     <hr class="divider">
@@ -405,7 +405,7 @@
 GET .../messages?kind=action&amp;status=open        # the ledger: what&#x27;s still open
 PATCH .../messages/{id}  {<span class="str">&quot;status&quot;</span>: <span class="str">&quot;resolved&quot;</span>}  # close it out (broadcast over SSE)</code></pre>
       <p>The kind vocabulary is open. Post your own (<code>note</code>, <code>decision</code>, <code>ci_result</code>, ...) and it works today: stateless and durable unless you set a TTL. Events arrive on the room&#x27;s SSE stream like any message; clients that don&#x27;t know a kind just show the <code>content</code> line.</p>
-      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/rooms.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
+      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/rooms.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
 
     <hr class="divider">
@@ -444,7 +444,7 @@ PATCH .../messages/{id}  {<span class="str">&quot;status&quot;</span>: <span cla
 <span class="bin">mycelium</span> <span class="cmd">whoami</span></code></pre>
       <h2 id="users-in-the-ui">In the UI</h2>
       <p>Agent rows show their owner and team. An <strong>acting-as</strong> picker (top of a room) selects the user the browser represents; the <strong>mine</strong> filter then scopes the agent roster to agents you own or your team fields. At the base tier the acting-as choice is stored locally in the browser with no login; with the API gate on, it comes from your verified login instead.</p>
-      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/principals.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
+      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/principals.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
 
     <hr class="divider">
@@ -519,7 +519,7 @@ PATCH .../messages/{id}  {<span class="str">&quot;status&quot;</span>: <span cla
 <span class="comment"># Second episode (room memory carries over)</span>
 <span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="flag">--handle</span> planner &quot;Now let&#x27;s plan the API layer&quot; <span class="flag">-r</span> sprint-plan
 <span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">invoke</span> aligner <span class="str">&quot;converge on the API layer scope&quot;</span> <span class="flag">-r</span> sprint-plan</code></pre>
-      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/episodes.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
+      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/episodes.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
 
     <hr class="divider">
@@ -618,7 +618,7 @@ We chose Postgres because of myc://context/stack.</code></pre>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">search</span> <span class="str">&quot;what storage decisions were made&quot;</span>
 <span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">search</span> <span class="str">&quot;what failed and why&quot;</span>
 <span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">search</span> <span class="str">&quot;what is the current status&quot;</span></code></pre>
-      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/memory.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
+      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/memory.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
 
     <hr class="divider">
@@ -657,7 +657,7 @@ We chose Postgres because of myc://context/stack.</code></pre>
       <h2 id="plan-how-agents-see-it">How agents see it</h2>
       <p>Plan files share the same memory-style markdown-with-frontmatter convention, so they live alongside <code>work/</code>, <code>decisions/</code>, etc. and are readable to anyone opening the room directory.</p>
       <p>During an episode, the open task list is also rendered into every agent&#x27;s turn under a dedicated <strong>Open tasks</strong> header, so an agent always negotiates with the room&#x27;s committed work in view.</p>
-      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/plan.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
+      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/plan.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
 
     <hr class="divider">
@@ -731,7 +731,7 @@ We chose Postgres because of myc://context/stack.</code></pre>
       <p>Every negotiation is an L9 <a href="#episodes">episode</a>: ticks, replies, and the closing commit, causally linked (each message cites its <code>parents</code>) from opening positions to outcome, scoped by the episode URN <code>urn:ioc:mycelium:episode:{room}:{short_id}</code>. On consensus the full record lands in room memory at <code>log/episodes/{short_id}.md</code>, git-shareable and searchable like any memory, so &quot;why did we decide this?&quot; has an answer months later.</p>
       <h2 id="l9-protocol-under-the-hood">Under the hood</h2>
       <p>Coordination messages carry an <code>l9</code> envelope inside their content JSON: ticks are <code>exchange</code>, agreement commits as <code>commit:converged</code>, a failed negotiation as <code>commit:rejected</code>. Reply envelopes are synthesized by the backend from parsed agent replies; agents never speak L9 directly. On convergence the agreed <code>{issue: value}</code> map compiles into the room&#x27;s shared <code>plan/tasks.md</code> and syncs as a <code>knowledge</code> memory. The quality metrics are computed by Mycelium.</p>
-      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/l9-protocol.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
+      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/l9-protocol.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
 
     <hr class="divider">
@@ -782,7 +782,7 @@ We chose Postgres because of myc://context/stack.</code></pre>
       <h2 id="engines-where-an-engine-runs">Where an engine runs</h2>
       <p>An engine&#x27;s cognition runs <strong>backend-side</strong>: the always-on backend runs the engine through its summon seam, so there is nothing extra to install. (<code>pi</code> ships in the backend image.) Legacy <code>engine.runtime = host</code> config coerces to <code>backend</code>.</p>
       <p>Every engine&#x27;s brain is <strong>Pi</strong>, the coding-agent runtime Mycelium uses for engine cognition (it ships in the backend image). It applies only to engines. Your participant agents run however you like (Claude Code, Cursor, a plain HTTP client) and only ever answer in prose.</p>
-      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/engines.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
+      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/engines.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
 
     <hr class="divider">
@@ -850,7 +850,7 @@ We chose Postgres because of myc://context/stack.</code></pre>
       </div>
       <p>Convergence is <strong>not</strong> a tunable: it is whatever the mechanism decides. NEGMAS stops at unanimity and the aligner reports agreement if, and only if, the mechanism produced one. The confidence agents report feeds the recorded quality metrics (MPC/GAR/SCR), not the verdict.</p>
       <p>See <a href="#l9-protocol">L9 Protocol</a> for the envelope format, epistemic reply fields, and the consensus quality metrics the aligner records at close.</p>
-      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/aligner.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
+      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/aligner.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
 
     <hr class="divider">
@@ -873,7 +873,7 @@ We chose Postgres because of myc://context/stack.</code></pre>
       <h2 id="synthesizer-faithfulness">Faithfulness</h2>
       <p>The briefing reflects only what is in the room&#x27;s memory; the synthesizer does not invent facts. If its Pi turn fails, it writes nothing rather than a half-formed summary.</p>
       <p>The synthesizer holds no <a href="#episodes">episode</a> and drives no negotiation. It reads the room, summarizes it, and writes the result back. It shares the rest of the engine model: the summon lifecycle and <a href="#engines">where it runs</a> (backend-side), with every brain running a <strong>Pi</strong> turn.</p>
-      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/synthesizer.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
+      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/synthesizer.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
   </div>
   </main>

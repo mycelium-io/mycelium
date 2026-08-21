@@ -60,6 +60,6 @@ The generator skips namespaces typed as bare `dict` (e.g. `adapters`) — see `C
 
 ## Markdown source
 
-Markdown files in `mycelium-cli/src/mycelium/docs/` are converted to HTML and embedded in the right `<section>` of `docs/index.html`. Sections in the existing HTML marked with `<!-- keep -->` are preserved verbatim (used for hand-crafted interactive components).
+Markdown files in `mycelium-cli/src/mycelium/docs/` (`concepts/`, `guides/`, `reference/`) are converted to HTML and embedded in the right `<section>` of the page `SECTION_CONFIG` assigns them to. Sections in the existing HTML marked with `<!-- keep -->` are preserved verbatim (used for hand-crafted interactive components).
 
 Then re-run the generator.

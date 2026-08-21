@@ -49,33 +49,33 @@ PAGES: list[tuple[str, str, str, str, str, str, str]] = [
 # If md_file is set AND a kept section with the same id exists, the kept HTML wins.
 SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
     # ── start (index.html), overview + quickstart ──
-    ("overview.md",                 "overview",           "start",       "Get Started",  "Overview"),
-    ("quickstart.md",               "quickstart",         "start",       "Get Started",  "Quick Start"),
+    ("overview.md",                   "overview",           "start",       "Get Started",  "Overview"),
+    ("guides/quickstart.md",          "quickstart",         "start",       "Get Started",  "Quick Start"),
     # ── concepts (now on the start page, grouped in the sidebar) ──
-    ("rooms.md",                    "rooms",              "start",       "Concepts",     "Rooms"),
-    ("principals.md",               "users",              "start",       "Concepts",     "Users & Teams"),
-    ("episodes.md",                 "episodes",           "start",       "Concepts",     "Episodes"),
-    ("memory.md",                   "memory",             "start",       "Concepts",     "Memory"),
-    ("plan.md",                     "plan",               "start",       "Concepts",     "Plan"),
-    ("l9-protocol.md",              "l9-protocol",        "start",       "Concepts",     "L9 Protocol"),
+    ("concepts/rooms.md",             "rooms",              "start",       "Concepts",     "Rooms"),
+    ("concepts/principals.md",        "users",              "start",       "Concepts",     "Users & Teams"),
+    ("concepts/episodes.md",          "episodes",           "start",       "Concepts",     "Episodes"),
+    ("concepts/memory.md",            "memory",             "start",       "Concepts",     "Memory"),
+    ("concepts/plan.md",              "plan",               "start",       "Concepts",     "Plan"),
+    ("concepts/l9-protocol.md",       "l9-protocol",        "start",       "Concepts",     "L9 Protocol"),
     # Engines are a nested group: the overview, then one page per kind.
-    ("engines.md",                  "engines",            "start",       "Engines",      "Overview"),
-    ("aligner.md",                  "aligner",            "start",       "Engines",      "Aligner"),
-    ("synthesizer.md",              "synthesizer",        "start",       "Engines",      "Synthesizer"),
+    ("concepts/engines.md",           "engines",            "start",       "Engines",      "Overview"),
+    ("concepts/aligner.md",           "aligner",            "start",       "Engines",      "Aligner"),
+    ("concepts/synthesizer.md",       "synthesizer",        "start",       "Engines",      "Synthesizer"),
     # ── adapters (adapters.html), all hand-coded ──
-    (None,                          "adapters",           "adapters",  "Adapters",     "Overview"),
-    (None,                          "adapter-claude-code","adapters",  "Adapters",     "Claude Code"),
-    (None,                          "adapter-cursor",     "adapters",  "Adapters",     "Cursor"),
-    (None,                          "adapter-api",        "adapters",  "Adapters",     "REST API"),
+    (None,                            "adapters",           "adapters",  "Adapters",     "Overview"),
+    (None,                            "adapter-claude-code","adapters",  "Adapters",     "Claude Code"),
+    (None,                            "adapter-cursor",     "adapters",  "Adapters",     "Cursor"),
+    (None,                            "adapter-api",        "adapters",  "Adapters",     "REST API"),
     # ── reference (reference.html) ──
-    ("architecture.md",             "architecture",       "reference", "Architecture", "Architecture"),
+    ("reference/architecture.md",     "architecture",       "reference", "Architecture", "Architecture"),
     # CLI + Config blocks injected after architecture, before guides/troubleshooting.
-    ("guides/structured-memory.md", "structured-memory",  "reference", "Guides",       "Structured Memory"),
-    ("guides/hub-and-spoke.md",     "hub-and-spoke",      "reference", "Guides",       "Hub & Spoke"),
-    ("guides/security-planes.md",   "security-planes",    "reference", "Guides",       "Security Planes"),
-    ("guides/auth.md",              "auth",               "reference", "Guides",       "Authentication"),
-    ("guides/keycloak-oidc.md",     "keycloak-oidc",      "reference", "Guides",       "Keycloak / OIDC Setup"),
-    ("troubleshooting.md",          "troubleshooting",    "reference", "Help",         "Troubleshooting"),
+    ("guides/structured-memory.md",   "structured-memory",  "reference", "Guides",       "Structured Memory"),
+    ("guides/hub-and-spoke.md",       "hub-and-spoke",      "reference", "Guides",       "Hub & Spoke"),
+    ("guides/security-planes.md",     "security-planes",    "reference", "Guides",       "Security Planes"),
+    ("guides/auth.md",                "auth",               "reference", "Guides",       "Authentication"),
+    ("guides/keycloak-oidc.md",       "keycloak-oidc",      "reference", "Guides",       "Keycloak / OIDC Setup"),
+    ("guides/troubleshooting.md",     "troubleshooting",    "reference", "Help",         "Troubleshooting"),
 ]
 
 # The CLI/config/dependency blocks are generated rather than listed in
