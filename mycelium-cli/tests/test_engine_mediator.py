@@ -16,6 +16,8 @@ import json
 
 import pytest
 
+pytest.importorskip("negmas", reason="negmas not installed; install mycelium[engine]")
+
 from mycelium.engine import mediator
 
 
