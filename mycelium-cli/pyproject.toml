@@ -42,7 +42,7 @@ dependencies = [
     "slim-bindings>=2.1,<2.2",
     # ES256 keypair + JWK for the SignerJwt-floor SLIM identity (#476). A member
     # mints/holds its own signing key locally, mirroring the backend module.
-    "cryptography>=42,<47",
+    "cryptography>=50.0.0,<51",
 ]
 
 [project.optional-dependencies]
