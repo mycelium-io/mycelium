@@ -38,3 +38,8 @@ pnpm-lock.yaml
 # portman per-worktree dev-server port leases (machine-local)
 .ports.lock
 .ports.toml
+
+# Editor swap / backup files
+*.swp
+*.swo
+*~

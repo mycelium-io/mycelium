@@ -3,7 +3,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { ArrowRight, Terminal } from "lucide-react";
 import { CopyField } from "@/components/ui/copy-field";
@@ -82,15 +82,23 @@ export function InstallPanel({ className }: Props) {
 
   // Server-rendered markup can't know the OS or this page's own origin, so
   // both land after mount to avoid a hydration mismatch. Until then, no
-  // platform tab is preselected and the config command shows a placeholder
-  // host. The origin is only a first guess, since some deployments front
-  // the API on a different port than the UI, so it's there to edit.
-  const [platform, setPlatform] = useState<Platform>(
-    () => typeof window !== "undefined" ? detectPlatform(navigator.userAgent) : "unknown",
+  // useSyncExternalStore gives a server snapshot of "unknown"/"<this-hub-url>"
+  // and the real browser values on the client, so the hydration pass updates
+  // the component without a useEffect. Platform is also mutable (user tab clicks),
+  // so an override layer sits on top of the detected value.
+  const noSubscribe = () => () => {};
+  const detectedPlatform = useSyncExternalStore(
+    noSubscribe,
+    () => detectPlatform(navigator.userAgent) as Platform,
+    () => "unknown" as Platform,
   );
-  const [hubUrl] = useState(
-    () => typeof window !== "undefined" ? window.location.origin : "<this-hub-url>",
+  const hubUrl = useSyncExternalStore(
+    noSubscribe,
+    () => window.location.origin,
+    () => "<this-hub-url>",
   );
+  const [platformOverride, setPlatform] = useState<Platform | null>(null);
+  const platform = platformOverride ?? detectedPlatform;
   const note = PLATFORMS.find(p => p.id === platform)?.note;
 
   // "Prompt" is a fourth tab alongside the OS ones, not a fifth platform: it

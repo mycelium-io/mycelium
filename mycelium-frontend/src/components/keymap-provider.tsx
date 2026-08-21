@@ -374,11 +374,14 @@ export function useKeyReveal(): boolean {
   const api = useContext(KeymapContext);
   // useSyncExternalStore is the idiomatic fit: subscribe to an external signal
   // (the hold/release of the reveal modifier) and snapshot its current value.
-  return useSyncExternalStore(
-    (listener) => api?.subscribeReveal(listener) ?? (() => {}),
-    () => api?.revealed() ?? false,
-    () => false,
+  // Stabilise subscribe/getSnapshot with useCallback so React doesn't
+  // unsubscribe and resubscribe on every render.
+  const subscribe = useCallback(
+    (listener: () => void) => api?.subscribeReveal(listener) ?? (() => {}),
+    [api],
   );
+  const getSnapshot = useCallback(() => api?.revealed() ?? false, [api]);
+  return useSyncExternalStore(subscribe, getSnapshot, () => false);
 }
 
 /** The status-bar affordances that make `?` and ⌘K findable without knowing
