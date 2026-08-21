@@ -393,13 +393,29 @@ def _conversational_text(content: dict[str, Any]) -> str | None:
     return text
 
 
-def stored_message_from_record(room: str, record: TranscriptRecord) -> StoredMessage | None:
+def parse_recorded_at(recorded_at: str) -> datetime | None:
+    """Read a record's ``recorded_at`` back as a datetime, or ``None`` if unusable."""
+    try:
+        return datetime.fromisoformat(recorded_at)
+    except (ValueError, TypeError):
+        return None
+
+
+def stored_message_from_record(
+    room: str, record: TranscriptRecord, *, fallback: datetime | None = None
+) -> StoredMessage | None:
     """Project a transcript record into the ``StoredMessage`` the list/UI reads.
 
     Returns None for a non-conversational, non-raise-up record. The synthetic id is
     derived from the envelope id so it's stable across reads, and ``message_id``
     carries that envelope id as the cross-store correlation key (dedup against
     ``local_state``).
+
+    ``fallback`` stands in when a record carries no readable ``recorded_at`` —
+    :func:`conversational_messages` passes the neighbouring record's stamp, the
+    tightest true bound the append-ordered transcript offers. Without one the row
+    keeps ``StoredMessage``'s read-time default, which sorts it to the newest end
+    of the feed no matter when it was actually recorded.
     """
     from app.services.local_state import StoredMessage
 
@@ -427,8 +443,9 @@ def stored_message_from_record(room: str, record: TranscriptRecord) -> StoredMes
         message_id=record.message_id or None,
         id=uuid.uuid5(_MESSAGE_ID_NS, seed),
     )
-    with contextlib.suppress(ValueError, TypeError):
-        msg.created_at = datetime.fromisoformat(record.recorded_at)
+    recorded = parse_recorded_at(record.recorded_at) or fallback
+    if recorded is not None:
+        msg.created_at = recorded
     return msg
 
 
@@ -445,6 +462,34 @@ def _stat_stamp(path: Path) -> tuple[int, int] | None:
     except OSError:
         return None
     return (st.st_mtime_ns, st.st_size)
+
+
+def _project_transcript(room: str, records: list[TranscriptRecord]) -> list[StoredMessage]:
+    """Project a whole transcript, healing records whose ``recorded_at`` is unusable.
+
+    An unstamped record inherits the nearest stamp around it in append order —
+    the record before it, or, for a leading run, the first stamped record after.
+    That keeps it where it was written instead of letting a read-time default
+    date it to now and float it to the end of the feed.
+    """
+    stamps = [parse_recorded_at(r.recorded_at) for r in records]
+    earlier: datetime | None = None
+    for i, stamp in enumerate(stamps):
+        if stamp is None:
+            stamps[i] = earlier
+        else:
+            earlier = stamp
+    later: datetime | None = None
+    for i in reversed(range(len(stamps))):
+        if stamps[i] is None:
+            stamps[i] = later
+        else:
+            later = stamps[i]
+    projected = [
+        stored_message_from_record(room, record, fallback=stamp)
+        for record, stamp in zip(records, stamps, strict=True)
+    ]
+    return [m for m in projected if m is not None]
 
 
 def conversational_messages(room: str) -> list[StoredMessage]:
@@ -465,9 +510,7 @@ def conversational_messages(room: str) -> list[StoredMessage]:
     cached = _conversational_cache.get(room)
     if cached is not None and cached[0] == stamp:
         return list(cached[1])
-    messages = [
-        m for r in load_transcript(room) if (m := stored_message_from_record(room, r)) is not None
-    ]
+    messages = _project_transcript(room, load_transcript(room))
     _conversational_cache[room] = (stamp, messages)
     return list(messages)
 

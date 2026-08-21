@@ -63,6 +63,11 @@ def _build_record(room_name: str, key: str, content: str, meta: dict) -> dict:
         "expandable": links.is_expandable(meta),
         "created_at": _iso(meta.get("created_at"), now),
         "updated_at": _iso(meta.get("updated_at"), now),
+        # When this record was built, which is what the unchanged-file check
+        # compares against the file's mtime. ``updated_at`` can't stand in for
+        # it: a memory synced from another store carries *that* store's write
+        # time, which is older than the mtime of the file it just landed in.
+        "indexed_at": now.isoformat(),
         "file_path": f"rooms/{room_name}/{key}.md",
     }
 
@@ -91,7 +96,7 @@ async def index_room(room_name: str, *, force: bool = False) -> dict:
             prior = existing.get(key)
             if not force and prior is not None:
                 mtime = _file_mtime(room_dir, key)
-                indexed_at = parse_timestamp(prior.get("updated_at"))
+                indexed_at = parse_timestamp(prior.get("indexed_at") or prior.get("updated_at"))
                 if indexed_at and indexed_at >= mtime:
                     records.append(prior)
                     stats["skipped"] += 1
