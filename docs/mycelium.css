@@ -341,44 +341,28 @@ a.topnav-page:hover { color: var(--text); text-decoration: none; }
 .copy-page-btn.copied,
 .copy-docs-btn.copied { color: var(--green); border-color: var(--green); }
 
-/* ── PAGE TABS (the app's segmented control) ── */
+/* ── TOP BAR LINK ──
+ * Page navigation lives in the persistent rail, so the only thing left in the
+ * bar's left half is the one link that leaves the site. */
 .sectionnav {
   display: flex;
   align-items: center;
   margin-left: 12px;
 }
-.sectionnav-inner {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  padding: 3px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--bg);
-}
 .sectionnav a {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  padding: 6px 14px;
+  padding: 6px 10px;
   border-radius: var(--radius-md);
   color: var(--muted-foreground);
   text-decoration: none;
   font-family: var(--font-sans);
-  font-size: var(--text-body);
+  font-size: var(--text-label);
   font-weight: 500;
+  white-space: nowrap;
   transition: color 0.15s, background 0.15s;
 }
-.sectionnav a:hover { color: var(--text); text-decoration: none; }
-.sectionnav a.active {
-  background: var(--elevated);
-  color: var(--text);
-  box-shadow: inset 0 0 0 1px var(--border), 0 1px 2px rgba(0, 0, 0, 0.06);
-}
-.sectionnav a .square-dot { display: none; }
-/* The external link sits outside the segmented control. */
-.sectionnav-right { display: flex; align-items: center; margin-left: 8px; }
-.sectionnav-right a { color: var(--muted-foreground); }
+.sectionnav a:hover { color: var(--text); background: var(--hairline); text-decoration: none; }
 
 .caps-mono {
   font-family: var(--font-mono);
@@ -1190,18 +1174,24 @@ h3:hover .header-anchor,
 }
 .docsearch-field input::placeholder { color: var(--faint); }
 .docsearch-field input::-webkit-search-cancel-button { display: none; }
-.docsearch-hint {
+/* One key cap, wherever a key is named: the field's shortcut hint and the
+ * legend under the results. min-width squares up the single-glyph caps so a
+ * row of them sits on an even rhythm. */
+.docsearch kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
   min-width: 18px;
-  padding: 1px 0;
+  height: 18px;
+  padding: 0 4px;
   border: 1px solid var(--border);
   border-radius: 4px;
-  background: var(--surface);
+  background: var(--elevated);
   color: var(--faint);
   font-family: var(--font-mono);
   font-size: 11px;
-  line-height: 1.4;
-  text-align: center;
+  line-height: 1;
 }
 .docsearch-field:focus-within .docsearch-hint { visibility: hidden; }
 
@@ -1240,13 +1230,16 @@ h3:hover .header-anchor,
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent);
   text-decoration: none;
 }
+.docsearch-crumb,
+.docsearch-hit.cmd .docsearch-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .docsearch-crumb {
   font-size: var(--text-micro);
   color: var(--faint);
   line-height: 1.4;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 .docsearch-title {
   font-size: var(--text-body);
@@ -1258,9 +1251,6 @@ h3:hover .header-anchor,
   font-family: var(--font-mono);
   font-size: var(--text-label);
   color: var(--accent);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 .docsearch-snippet {
   margin-top: 1px;
@@ -1289,26 +1279,24 @@ h3:hover .header-anchor,
 .docsearch-legend {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 14px;
   padding: 7px 12px;
   border-top: 1px solid var(--border);
   background: var(--surface);
   font-size: var(--text-micro);
   color: var(--faint);
 }
-.docsearch-legend kbd {
-  padding: 0 4px;
-  border: 1px solid var(--border);
-  border-radius: 3px;
-  background: var(--elevated);
-  font-family: var(--font-mono);
-  font-size: 11px;
+/* Grouping is spacing, not punctuation: one gap inside a pairing, a wider one
+ * between pairings. */
+.docsearch-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
 }
-.docsearch-legend .sep { margin: 0 2px; }
+.docsearch-legend kbd + kbd { margin-left: -1px; }
 
 /* ── RESPONSIVE ── */
 @media (max-width: 1080px) {
-  .sectionnav a span:not(.square-dot) { font-size: var(--text-micro); }
   .docsearch-field input { width: 130px; }
   .main { padding: 24px 20px calc(var(--statusbar-height) + 32px); }
 }
@@ -1339,9 +1327,13 @@ h3:hover .header-anchor,
   body { overflow-x: hidden; }
   .sectionnav { display: none; }
   .topnav-cell { padding: 0 12px; }
+  /* The bar sheds the wordmark before it sheds the search field: the mark still
+     carries the brand and its link, and a field squeezed to nothing is worse
+     than a smaller logo. The min-width is the floor that squeeze stops at. */
+  .topnav-brand .brand-word { display: none; }
   .docsearch-field input { width: 100%; }
   .docsearch-hint { display: none; }
-  .docsearch { flex: 1; min-width: 0; }
+  .docsearch { flex: 1; min-width: 140px; }
   /* Too narrow to anchor to the field without overhanging the viewport, so the
      panel spans the screen instead. */
   .docsearch-panel {
@@ -1357,6 +1349,16 @@ h3:hover .header-anchor,
   h2 { font-size: 1.2rem; }
   pre { padding: 14px; }
   .cmd-ref-header code { font-size: var(--text-label); word-break: break-all; }
+}
+
+/* iOS Safari zooms the viewport when a focused input's text is under 16px, and
+ * never zooms back out. Only touch devices have the problem, and only they pay
+ * for the larger text, so gate it on the pointer rather than on width. The
+ * alternative fix, pinning maximum-scale in the viewport meta, would disable
+ * pinch-zoom for everyone. */
+@media (pointer: coarse) {
+  .docsearch-field { height: 32px; }
+  .docsearch-field input { font-size: 16px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
