@@ -35,4 +35,4 @@ async def test_send_raises_on_unresolvable_card():
 @pytest.mark.asyncio
 async def test_send_to_live_public_agent():
     reply = await send_to_a2a("https://hello-world-gxfr.onrender.com", "hello from the seat")
-    assert reply == "Hello World"
+    assert reply.text == "Hello World"
