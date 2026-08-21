@@ -7,7 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { AtSign, BarChart3, Bell, BellOff, Boxes, Check, Plus, Search, SearchX, type LucideIcon } from "lucide-react";
+import { BarChart3, Bell, BellOff, BellRing, Boxes, Check, Plus, Search, SearchX, type LucideIcon } from "lucide-react";
 import { getAppEventsSSEUrl, type Room } from "@/lib/api";
 import { useRooms } from "@/lib/room-data";
 import { roomLevel, type RoomLevel } from "@/lib/notifications";
@@ -291,9 +291,11 @@ export function RoomsSidebar({ activeRoom = null }: Props) {
   );
 }
 
+// Every level wears a bell: the glyph is a notification control, not a mention
+// marker, so the row reads as "notifications for this room" at a glance.
 const LEVEL_OPTIONS: { level: RoomLevel; label: string; hint: string; Icon: LucideIcon }[] = [
-  { level: "all", label: "All messages", hint: "badge + bell + sound", Icon: Bell },
-  { level: "mentions", label: "Only mentions", hint: "badge; bell on @you", Icon: AtSign },
+  { level: "all", label: "All messages", hint: "badge + bell + sound", Icon: BellRing },
+  { level: "mentions", label: "Only mentions", hint: "badge; bell on @you", Icon: Bell },
   { level: "muted", label: "Muted", hint: "nothing", Icon: BellOff },
 ];
 
