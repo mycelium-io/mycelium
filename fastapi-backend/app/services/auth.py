@@ -51,6 +51,12 @@ ALLOWED_ALGORITHMS = frozenset(
 #: describe the API rather than exposing any of it.
 PUBLIC_PATHS = frozenset({"/", "/health", "/healthz", "/docs", "/redoc", "/openapi.json"})
 
+#: The A2A Agent Card is per-room, so it can't be a fixed PUBLIC_PATHS entry; it's
+#: matched by suffix. The A2A spec serves the card to unauthenticated GET (like
+#: /.well-known/openid-configuration) — it's discovery metadata (room name +
+#: advertised skills), not room content. The room's RPC endpoint stays gated.
+A2A_CARD_SUFFIX = "/.well-known/agent-card.json"
+
 #: Shortest gap between forced JWKS re-fetches triggered by an unknown ``kid``.
 #: Rotation is picked up within this bound; without it, a flood of junk ``kid``s
 #: would be an amplified request generator pointed at the issuer.
@@ -368,6 +374,8 @@ async def auth_gate(request: Request) -> Principal | None:
         return None
     path = request.url.path
     if path in PUBLIC_PATHS or path.rstrip("/") in PUBLIC_PATHS:
+        return None
+    if path.endswith(A2A_CARD_SUFFIX):
         return None
     if settings.AUTH_LOCALHOST_BYPASS and is_loopback_client(request):
         return None

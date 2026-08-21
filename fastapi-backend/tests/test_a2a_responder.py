@@ -23,9 +23,17 @@ from tests.fakes import FakeChannel, FakeManaged, FakeManager, FakePersister
 _ROOM = "portfolio"
 
 
-def _register_a2a(handle: str = "researcher", card: str = "https://remote.example") -> None:
-    body = yaml.safe_dump({"adapter": "a2a", "a2a_card": card, "description": "does research"})
-    write_memory_file(get_room_dir(_ROOM), f"agents/{handle}", body, created_by="web-ui")
+def _register_a2a(
+    handle: str = "researcher",
+    card: str = "https://remote.example",
+    auth_env: str | None = None,
+) -> None:
+    manifest = {"adapter": "a2a", "a2a_card": card, "description": "does research"}
+    if auth_env:
+        manifest["a2a_auth_env"] = auth_env
+    write_memory_file(
+        get_room_dir(_ROOM), f"agents/{handle}", yaml.safe_dump(manifest), created_by="web-ui"
+    )
 
 
 def _register_engine(handle: str = "aligner") -> None:
@@ -55,8 +63,10 @@ def _responder(monkeypatch, *, reply: str = "the remote reply"):
 
     calls: list[dict] = []
 
-    async def _fake_send(card_url, text, *, context_id=None, **_kwargs):
-        calls.append({"card": card_url, "text": text, "context_id": context_id})
+    async def _fake_send(card_url, text, *, context_id=None, auth_token=None, **_kwargs):
+        calls.append(
+            {"card": card_url, "text": text, "context_id": context_id, "auth_token": auth_token}
+        )
         if reply is None:
             raise a2a_bridge.A2aSendError("dead remote")
         return A2aReply(text=reply, context_id="ctx-1")
@@ -109,6 +119,29 @@ async def test_thread_continues_across_mentions(monkeypatch):
 
     assert calls[0]["context_id"] is None  # cold start
     assert calls[1]["context_id"] == "ctx-1"  # threaded from the first reply
+
+
+@pytest.mark.asyncio
+async def test_auth_token_resolved_from_env_not_manifest(monkeypatch):
+    monkeypatch.setenv("RESEARCHER_TOKEN", "s3cret")
+    _register_a2a(auth_env="RESEARCHER_TOKEN")
+    responder, _channel, _persister, calls = _responder(monkeypatch)
+
+    responder.handle_summon(_ROOM, "researcher", _summon_envelope("avery"), [], "hi")
+    await _drain(responder)
+
+    assert calls[0]["auth_token"] == "s3cret"
+
+
+@pytest.mark.asyncio
+async def test_no_auth_env_means_no_token(monkeypatch):
+    _register_a2a()  # no a2a_auth_env
+    responder, _channel, _persister, calls = _responder(monkeypatch)
+
+    responder.handle_summon(_ROOM, "researcher", _summon_envelope("avery"), [], "hi")
+    await _drain(responder)
+
+    assert calls[0]["auth_token"] is None
 
 
 @pytest.mark.asyncio
