@@ -271,9 +271,7 @@ def test_memory_set_403_surfaces_backend_detail(monkeypatch: pytest.MonkeyPatch)
         _sync,
     )
 
-    result = runner.invoke(
-        memory_cmd.app, ["set", "context/notes", "hello", "--room", "demo"]
-    )
+    result = runner.invoke(memory_cmd.app, ["set", "context/notes", "hello", "--room", "demo"])
     assert result.exit_code == 1
     assert "HTTP 403" in result.output
     assert "cli-user" in result.output
