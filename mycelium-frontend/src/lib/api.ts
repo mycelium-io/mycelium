@@ -193,8 +193,13 @@ export async function createMemories(
   });
 }
 
+/** `fetchMemories`'s page size — exported so a caller showing a raw count
+ *  (the dashboard's room cards) can tell "exactly this many" apart from
+ *  "at least this many" instead of reporting the cap as a true total. */
+export const MEMORIES_PAGE_LIMIT = 50;
+
 export async function fetchMemories(roomName: string, prefix?: string): Promise<Memory[]> {
-  const params = new URLSearchParams({ limit: "50" });
+  const params = new URLSearchParams({ limit: String(MEMORIES_PAGE_LIMIT) });
   if (prefix) params.set("prefix", prefix);
   return apiFetch<Memory[]>(`/api/rooms/${roomName}/memory?${params}`, {
     cache: "no-store",
