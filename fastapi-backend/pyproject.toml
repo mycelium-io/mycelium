@@ -17,8 +17,9 @@ dependencies = [
     "slim-bindings>=2.1,<2.2",
     "negmas>=0.15.7",
     "pyjwt[crypto]>=2.10,<3",
-    "a2a-sdk==1.1.2",
+    "a2a-sdk==1.1.0",
     "sse-starlette>=3.4.8",
+    "slima2a",
 ]
 
 [dependency-groups]
@@ -35,6 +36,9 @@ dev = [
 
 [tool.uv]
 package = false
+
+[tool.uv.sources]
+slima2a = { git = "https://github.com/agntcy/slim-a2a-python" }
 
 [build-system]
 requires = ["uv_build"]
