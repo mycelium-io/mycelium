@@ -126,6 +126,31 @@ async def test_non_http_card_scheme_rejected():
         await a2a_card.resolve_card("ftp://nope")
 
 
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://127.0.0.1:8080",
+        "http://169.254.169.254/latest/meta-data",  # cloud metadata endpoint
+        "http://localhost:9000",
+        "http://[::1]:8080",
+    ],
+)
+@pytest.mark.asyncio
+async def test_private_host_card_rejected_ssrf(url):
+    """SSRF guard: a card host resolving to a non-public address is refused."""
+    with pytest.raises(A2aCardError, match="SSRF|non-public|did not resolve"):
+        await a2a_card.resolve_card(url)
+
+
+@pytest.mark.asyncio
+async def test_ssrf_guard_can_be_opted_out(monkeypatch):
+    """A trusted internal deployment can allow private hosts; then the guard is a no-op
+    and resolution proceeds (and fails later on the unreachable host, not the guard)."""
+    monkeypatch.setattr("app.config.settings.A2A_ALLOW_PRIVATE_HOSTS", True)
+    with pytest.raises(A2aCardError, match="no Agent Card|did not resolve"):
+        await a2a_card.resolve_card("http://127.0.0.1:9")
+
+
 @pytest.mark.skipif(
     os.getenv("MYCELIUM_A2A_LIVE") != "1",
     reason="live A2A wire test; set MYCELIUM_A2A_LIVE=1 to run",

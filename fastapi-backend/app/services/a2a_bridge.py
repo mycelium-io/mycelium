@@ -251,6 +251,13 @@ class A2aResponder:
         sender = envelope_sender(envelope)
         if _norm(sender) == _norm(handle):
             return  # never answer our own message (loop guard)
+        # Runaway guard: an a2a agent's auto-reply must not summon another a2a
+        # agent. Two agents that mention each other would otherwise ping-pong
+        # forever, each hop a real remote call. Humans, the aligner, and resident
+        # agents still trigger a reply; only registered-a2a -> registered-a2a is cut.
+        if sender and resolve_a2a_agent(room, sender) is not None:
+            logger.debug("a2a responder: skip @%s summoned by a2a agent @%s", handle, sender)
+            return
         prompt = (message_text or "").strip()
         if not prompt:
             return
