@@ -2043,11 +2043,8 @@ JWKS key can never be replayed as an HMAC secret.
 
 ## Trying it locally
 
-A dev OIDC issuer ships for exactly this, so you can exercise the gate without
-standing up Keycloak. See `docs/design/dev-auth-issuer.md`.
-
-For the real thing (a Keycloak realm, client, and human `mycelium login`, wired
-end-to-end) follow the [Keycloak / OIDC Setup](#keycloak-oidc) guide.
+Follow the [Keycloak / OIDC Setup](#keycloak-oidc) guide to stand up a realm,
+client, and human `mycelium login`, wired end-to-end.
 
 
 ---

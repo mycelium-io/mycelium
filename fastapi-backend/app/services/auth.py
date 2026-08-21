@@ -7,7 +7,7 @@ The backend's HTTP surface is otherwise unauthenticated: whoever reaches ``:8000
 can read and write every room. This module closes that, **as an opt-in**. With
 ``AUTH_ENABLED`` false (the shipped default) the gate is inert and every request
 is anonymous, which is the whole point — auth must never be a wall between
-someone and trying the app (``docs/design/identity-and-auth.md``).
+someone and trying the app.
 
 It is deliberately **issuer-agnostic**: trust is a list of ``TrustedIssuer``
 entries matched by exact ``iss``, each with its own keys. Nothing here knows or

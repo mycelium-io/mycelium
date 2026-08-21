@@ -1716,8 +1716,7 @@ role   = &quot;agent&quot;</code></pre>
       </div>
       <p>Only asymmetric signatures are accepted (<code>RS<em></code>, <code>PS</em></code>, <code>ES<em></code>). The <code>none</code> algorithm and the whole <code>HS</em></code> family are refused before verification, so a public JWKS key can never be replayed as an HMAC secret.</p>
       <h2 id="auth-trying-it-locally">Trying it locally</h2>
-      <p>A dev OIDC issuer ships for exactly this, so you can exercise the gate without standing up Keycloak. See <code>docs/design/dev-auth-issuer.md</code>.</p>
-      <p>For the real thing (a Keycloak realm, client, and human <code>mycelium login</code>, wired end-to-end) follow the <a href="#keycloak-oidc">Keycloak / OIDC Setup</a> guide.</p>
+      <p>Follow the <a href="#keycloak-oidc">Keycloak / OIDC Setup</a> guide to stand up a realm, client, and human <code>mycelium login</code>, wired end-to-end.</p>
     </section>
 
     <hr class="divider">

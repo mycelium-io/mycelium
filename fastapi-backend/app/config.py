@@ -169,9 +169,9 @@ class Settings(BaseSettings):
 
     # ── HTTP-API JWT gate ────────────────────────────────────────────────────
     # Off by default, and that is a hard requirement rather than a default worth
-    # revisiting: auth must never stand between someone and trying the app
-    # (docs/design/identity-and-auth.md). With AUTH_ENABLED false the gate is
-    # inert and every request is anonymous — exactly today's behavior.
+    # revisiting: auth must never stand between someone and trying the app.
+    # With AUTH_ENABLED false the gate is inert and every request is anonymous
+    # — exactly today's behavior.
     AUTH_ENABLED: bool = False
     # Trust roots, as JSON over env:
     #   AUTH_ISSUERS=[{"issuer":"https://idp/realm","jwks_url":"…","role":"user"}]

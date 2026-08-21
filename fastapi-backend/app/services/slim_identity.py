@@ -3,8 +3,7 @@
 
 """SignerJwt-floor SLIM channel identity (issue #476).
 
-The per-agent identity path (topology B in
-``docs/design/slim-identity-svid-delivery.md``): each member mints its *own*
+The per-agent identity path: each member mints its *own*
 credential locally. It generates an ES256 keypair (PKCS#8 PEM), self-signs a
 short-lived JWT that embeds its public key, and presents it as
 ``IdentityProviderConfig.JWT`` (SignerJwt) — the only external-signing provider that
@@ -16,8 +15,7 @@ Peer verification rests on a **static roster JWKS**: each member's verifier
 registered agents, keyed by ``kid = @handle``. A self-signed token is accepted iff its
 key is on the roster. That roster **is the registration surface** — the mycelium
 analogue of ``mycelium agent credential set``, one JWK per agent, written when the
-agent is registered. This module ports the proven spike
-``docs/design/signerjwt-floor-spike/`` (PASS on the matched 2.1.0 stack).
+agent is registered.
 
 **Honest ceiling.** The floor authenticates *possession of a registered key*, not a
 machine-attested workload; the handle→key binding is only as trustworthy as the
