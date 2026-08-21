@@ -4,11 +4,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { MarkdownEditor, type MarkdownEditorHandle } from "@fedoup/markdown-editor";
 import { ApiError, createMemories, type Memory, type MemoryCreate } from "@/lib/api";
 import { TagInput } from "@/components/ui/tag-input";
 import { useRoomMemories } from "@/lib/room-data";
-import { wikilinkCompletions } from "@/lib/wikilink-completions";
+import { wikilinkDetector, type WikilinkMatch } from "@/lib/wikilink-completions";
 
 interface Props {
   memory: Memory;
@@ -42,18 +43,100 @@ function extractExpandable(mem: Memory): boolean {
   return v["expandable"] === true;
 }
 
+// ---------------------------------------------------------------------------
+// Wikilink autocomplete dropdown
+// ---------------------------------------------------------------------------
+
+/**
+ * Keyboard-navigable completion list rendered as a React portal in
+ * `document.body`, bypassing any overflow/z-index constraints on the editor's
+ * ancestor elements.
+ */
+function WikilinkDropdown({
+  match,
+  candidates,
+  onSelect,
+  onDismiss,
+}: {
+  match: WikilinkMatch;
+  candidates: string[];
+  onSelect: (key: string) => void;
+  onDismiss: () => void;
+}) {
+  const [activeIdx, setActiveIdx] = useState(0);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => setActiveIdx(0), [candidates]);
+
+  // Keyboard nav in capture phase so we intercept before CM6 keymaps.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault(); e.stopPropagation(); onDismiss();
+      } else if (e.key === "ArrowDown") {
+        e.preventDefault(); e.stopPropagation();
+        setActiveIdx(i => Math.min(i + 1, candidates.length - 1));
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault(); e.stopPropagation();
+        setActiveIdx(i => Math.max(i - 1, 0));
+      } else if (e.key === "Enter" || e.key === "Tab") {
+        const chosen = candidates[activeIdx];
+        if (chosen) { e.preventDefault(); e.stopPropagation(); onSelect(chosen); }
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [candidates, activeIdx, onSelect, onDismiss]);
+
+  // Dismiss on click outside.
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      if (listRef.current && !listRef.current.contains(e.target as Node)) onDismiss();
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [onDismiss]);
+
+  if (candidates.length === 0) return null;
+
+  return (
+    <div
+      ref={listRef}
+      style={{ position: "fixed", left: match.x, top: match.y + 4, zIndex: 9999 }}
+      className="min-w-[200px] max-w-xs max-h-52 overflow-y-auto rounded-md border border-border bg-background shadow-lg"
+      onMouseDown={e => e.preventDefault()}
+    >
+      {candidates.map((k, i) => (
+        <button
+          key={k}
+          type="button"
+          className={`w-full text-left px-3 py-1.5 text-label font-mono truncate ${
+            i === activeIdx ? "bg-accent text-white" : "text-text hover:bg-hairline"
+          }`}
+          onMouseDown={e => { e.preventDefault(); onSelect(k); }}
+        >
+          {k}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// MemoryEditor
+// ---------------------------------------------------------------------------
+
 /**
  * Inline editor for a memory: a structured frontmatter panel (tags,
- * expandable) above a fedoup Live Preview body editor.
- *
- * The body is uncontrolled — fedoup owns the CM6 state. We pull the current
- * value via `editorRef.current.getValue()` at save time.
+ * expandable) above a fedoup Live Preview body editor with wikilink
+ * autocomplete rendered as a React portal.
  */
 export function MemoryEditor({ memory, roomName, onSaved, onCancel, actor }: Props) {
   const [tags, setTags] = useState<string[]>(extractTags(memory));
   const [expandable, setExpandable] = useState(extractExpandable(memory));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [wikilinkMatch, setWikilinkMatch] = useState<WikilinkMatch | null>(null);
 
   const editorRef = useRef<MarkdownEditorHandle | null>(null);
 
@@ -66,16 +149,40 @@ export function MemoryEditor({ memory, roomName, onSaved, onCancel, actor }: Pro
     }).map(m => m.key),
     [memories],
   );
+
+  // Stable extension created once — wikilinkDetector fires a React state
+  // update whenever the cursor enters or leaves a [[…]] token.
+  const setMatchRef = useRef(setWikilinkMatch);
+  setMatchRef.current = setWikilinkMatch;
   const extensions = useMemo(
-    () => [wikilinkCompletions(allKeys, expandableKeys)],
-    [allKeys, expandableKeys],
+    () => [wikilinkDetector(m => setMatchRef.current(m))],
+    [], // eslint-disable-line react-hooks/exhaustive-deps
   );
+
+  const wikilinkCandidates = useMemo(() => {
+    if (!wikilinkMatch) return [];
+    const pool = wikilinkMatch.sigil === "![[" ? expandableKeys : allKeys;
+    return pool.filter(k => k.toLowerCase().includes(wikilinkMatch.query.toLowerCase()));
+  }, [wikilinkMatch, allKeys, expandableKeys]);
+
+  const applyWikilink = useCallback((key: string) => {
+    const view = editorRef.current?.view;
+    if (!view || !wikilinkMatch) return;
+    const insert = `${wikilinkMatch.sigil}${key}]]`;
+    view.dispatch({
+      changes: { from: wikilinkMatch.from, to: wikilinkMatch.to, insert },
+      selection: { anchor: wikilinkMatch.from + insert.length },
+    });
+    setWikilinkMatch(null);
+    view.focus();
+  }, [wikilinkMatch]);
 
   // Keep tags/expandable in sync if the parent switches to a different memory.
   useEffect(() => {
     setTags(extractTags(memory));
     setExpandable(extractExpandable(memory));
     setError(null);
+    setWikilinkMatch(null);
   }, [memory.key]);
 
   const handleSave = useCallback(async () => {
@@ -167,6 +274,19 @@ export function MemoryEditor({ memory, roomName, onSaved, onCancel, actor }: Pro
           className="min-h-[200px] w-full px-5 py-4"
         />
       </div>
+
+      {/* Wikilink dropdown — portal so overflow/z-index can't clip it */}
+      {typeof document !== "undefined" && wikilinkMatch && wikilinkCandidates.length > 0 &&
+        createPortal(
+          <WikilinkDropdown
+            match={wikilinkMatch}
+            candidates={wikilinkCandidates}
+            onSelect={applyWikilink}
+            onDismiss={() => setWikilinkMatch(null)}
+          />,
+          document.body,
+        )
+      }
     </div>
   );
 }

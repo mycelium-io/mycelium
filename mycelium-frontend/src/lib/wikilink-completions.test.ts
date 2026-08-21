@@ -10,9 +10,12 @@ function makeCtx(doc: string, cursor: number, keys: string[], expandableKeys?: s
   const state = EditorState.create({
     doc,
     selection: { anchor: cursor },
-    extensions: [wikilinkCompletions(keys, expandableKeys)],
+    extensions: [wikilinkCompletions(() => keys, expandableKeys ? () => expandableKeys : undefined)],
   });
-  return { ctx: new CompletionContext(state, cursor, false), source: wikilinkSource(keys, expandableKeys) };
+  return {
+    ctx: new CompletionContext(state, cursor, false),
+    source: wikilinkSource(() => keys, expandableKeys ? () => expandableKeys : undefined),
+  };
 }
 
 function complete(doc: string, cursor: number, keys: string[], expandableKeys?: string[]): string[] {
@@ -73,5 +76,23 @@ describe("wikilink completions", () => {
     expect(result!.from).toBe(text.indexOf("[["));
     // The apply string already contains the sigil.
     expect(result!.options[0].apply).toBe("[[decisions/db]]");
+  });
+
+  it("reads keys from getter so late-arriving keys are seen", () => {
+    // Simulates the SWR async-load scenario: the getter returns an updated
+    // array after the source closure was already created.
+    const liveKeys = ["context/overview"];
+    const getKeys = () => liveKeys;
+    const source = wikilinkSource(getKeys);
+    const state = EditorState.create({ doc: "[[con", selection: { anchor: 5 } });
+    const ctx = new CompletionContext(state, 5, false);
+
+    const before = source(ctx);
+    expect(before?.options.map(o => o.label)).toEqual(["context/overview"]);
+
+    // Simulate SWR updating the keys array.
+    liveKeys.push("context/deep-dive");
+    const after = source(ctx);
+    expect(after?.options.map(o => o.label)).toEqual(["context/overview", "context/deep-dive"]);
   });
 });
