@@ -82,12 +82,15 @@ export function AuthSessionProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(() => {
     const returnTo = window.location.pathname + window.location.search;
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
     window.location.href = `/api/auth/login?return_to=${encodeURIComponent(returnTo)}`;
   }, []);
 
   const logout = useCallback(async () => {
     await fetch("/api/auth/logout", { method: "POST" });
     setPrincipal("");
+    // Full page reload on logout to clear all React + SWR state.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
     window.location.href = "/";
   }, [setPrincipal]);
 

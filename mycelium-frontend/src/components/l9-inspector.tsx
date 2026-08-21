@@ -462,7 +462,7 @@ export function L9Inspector({ roomName }: Props) {
   const toggleKind = useCallback((kind: string) => {
     setHiddenKinds((prev) => {
       const next = new Set(prev);
-      next.has(kind) ? next.delete(kind) : next.add(kind);
+      if (next.has(kind)) { next.delete(kind); } else { next.add(kind); }
       return next;
     });
   }, []);

@@ -423,7 +423,7 @@ export function MemoryGraph({ graph, onNavigate, roomName, className }: Props) {
       // one handler even when it outruns the circle it grabbed.
       capturePointer(svgRef.current, e.pointerId);
     },
-    [positions],
+    [positions, toSvgPoint],
   );
 
   /** Drops whatever gesture this pointer owned, without activating anything. */
@@ -473,7 +473,7 @@ export function MemoryGraph({ graph, onNavigate, roomName, className }: Props) {
       pan.last = to;
       setView(prev => ({ ...prev, x: prev.x + dx, y: prev.y + dy }));
     },
-    [toSvgPoint, view.scale],
+    [toSvgPoint, view.scale, abandonGesture],
   );
 
   // Opening is decided here on pointerup, not by a `click` handler on the node.
