@@ -20,12 +20,14 @@ boundary.
 
 from __future__ import annotations
 
+from mycelium.integrations.a2a import A2aIntegration
 from mycelium.integrations.base import AddOptions, AgentAdapter, Integration
 from mycelium.integrations.claude_code import ClaudeCodeIntegration
 from mycelium.integrations.cursor import CursorIntegration
 from mycelium.integrations.engine import EngineIntegration
 
 __all__ = [
+    "A2aIntegration",
     "AddOptions",
     "AgentAdapter",
     "Integration",
@@ -58,6 +60,7 @@ def get_integration(
     *,
     cwd: str | None = None,
     engine_kind: str | None = None,
+    card: str | None = None,
 ) -> Integration:
     """Return an integration instance for *name* (any accepted spelling).
 
@@ -76,6 +79,10 @@ def get_integration(
         # First-party cognition-engine family; ``engine_kind`` selects the CE
         # (aligner today). The other kwargs are irrelevant here.
         return EngineIntegration(kind=engine_kind)
+    if canonical == "a2a":
+        # External Agent2Agent endpoint; ``card`` locates its Agent Card. The
+        # backend resolves it and holds the seat.
+        return A2aIntegration(card=card)
     raise ValueError(f"unknown integration: {name!r}")
 
 

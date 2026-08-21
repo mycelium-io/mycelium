@@ -480,6 +480,11 @@ class AgentRead(BaseModel):
     owner: str | None = None
     team: str | None = None
     allow_from: list[str] = Field(default_factory=list)
+    # a2a adapter: the remote Agent Card locator, resolved endpoint, and the
+    # skills it advertises. None/empty for every other adapter.
+    a2a_card: str | None = None
+    a2a_endpoint: str | None = None
+    a2a_skills: list[str] = Field(default_factory=list)
 
 
 class SubscriptionCreate(BaseModel):
