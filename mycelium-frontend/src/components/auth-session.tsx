@@ -69,6 +69,9 @@ export function AuthSessionProvider({ children }: { children: ReactNode }) {
   }, [setPrincipal]);
 
   useEffect(() => {
+    // refresh() is an async fetch; setState is called only inside its .then()
+    // callback, not synchronously in the effect body.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     refresh();
   }, [refresh]);
 

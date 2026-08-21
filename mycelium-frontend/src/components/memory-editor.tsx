@@ -79,10 +79,15 @@ function WikilinkDropdown({
   onSelect: (key: string) => void;
   onDismiss: () => void;
 }) {
+  // React's idiomatic "reset when prop changes" — store previous candidates and
+  // update in-render (a second render pass fires immediately, no layout effect).
+  const [prevCandidates, setPrevCandidates] = useState(candidates);
   const [activeIdx, setActiveIdx] = useState(0);
+  if (prevCandidates !== candidates) {
+    setPrevCandidates(candidates);
+    setActiveIdx(0);
+  }
   const listRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => setActiveIdx(0), [candidates]);
 
   // Keep the highlighted row visible when arrowing past the scroll fold.
   useEffect(() => {

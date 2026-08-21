@@ -3,12 +3,12 @@
 
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useState, type ReactNode } from "react";
+import { useIsMac } from "@/lib/client-hooks";
 import { useRouter } from "next/navigation";
 import { SearchPalette } from "@/components/search-palette";
 import { useKeyAction } from "@/components/keymap-provider";
 import { searchEverything } from "@/lib/api";
-import { isMacPlatform } from "@/lib/keymap";
 import { resultHref, type SearchHit } from "@/lib/search";
 
 const OpenSearchContext = createContext<(() => void) | null>(null);
@@ -26,8 +26,7 @@ export function GlobalSearch({ children }: { children?: ReactNode }) {
   const [open, setOpen] = useState(false);
   // Resolved after mount: the server has no platform to read, and a guess would
   // hydrate a ⌘ over a Ctrl.
-  const [mac, setMac] = useState(false);
-  useEffect(() => setMac(isMacPlatform()), []);
+  const mac = useIsMac();
 
   const openSearch = useCallback(() => setOpen(true), []);
   useKeyAction("search.open", openSearch);

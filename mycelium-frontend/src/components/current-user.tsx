@@ -33,7 +33,12 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (typeof window === "undefined") return;
     const saved = window.localStorage.getItem(STORAGE_KEY);
-    if (saved) setPrincipalState(saved);
+    if (saved) {
+      // SSR hydration: localStorage unavailable on server; lazy init would produce
+      // a hydration mismatch (server "" ≠ client stored value) on the first render.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setPrincipalState(saved);
+    }
   }, []);
 
   const value = useMemo<CurrentUser>(

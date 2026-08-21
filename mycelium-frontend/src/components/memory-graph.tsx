@@ -151,12 +151,16 @@ export function MemoryGraph({ graph, onNavigate, roomName, className }: Props) {
   const [legendOpen, setLegendOpen] = useState(false);
   const filtered = hiddenNamespaces.size > 0 || hiddenTypes.size > 0;
 
-  useEffect(() => {
-    // Guarded so a mount with nothing filtered doesn't hand React two fresh
-    // (unequal) Sets and buy an extra render of every node for no change.
+  // Reset filters when the graph changes. Guard preserves the same Set identity
+  // when nothing was filtered, avoiding a spurious re-render of every node.
+  // Uses the derived-state-during-render pattern (React fires a second pass
+  // immediately, like getDerivedStateFromProps).
+  const [prevGraph, setPrevGraph] = useState(graph);
+  if (prevGraph !== graph) {
+    setPrevGraph(graph);
     setHiddenNamespaces(prev => (prev.size === 0 ? prev : new Set()));
     setHiddenTypes(prev => (prev.size === 0 ? prev : new Set()));
-  }, [graph]);
+  }
 
   const visibleKeys = useMemo(
     () => new Set(graph.nodes.filter(n => !hiddenNamespaces.has(namespaceOf(n.key))).map(n => n.key)),
@@ -272,7 +276,7 @@ export function MemoryGraph({ graph, onNavigate, roomName, className }: Props) {
   // Read by the deferred writes below, so they always persist the newest
   // arrangement rather than the one captured when their timer was armed.
   const latestPlaced = useRef(placed);
-  latestPlaced.current = placed;
+  useLayoutEffect(() => { latestPlaced.current = placed; }, [placed]);
 
   // Only a drag or a reset may write. Persisting on any change to `placed`
   // instead — mirroring state outward — silently wiped the saved arrangement
@@ -295,6 +299,10 @@ export function MemoryGraph({ graph, onNavigate, roomName, className }: Props) {
   useLayoutEffect(() => {
     dirty.current = false;
     if (!roomName) {
+      // Placement load/clear is a storage-read side effect tied to the graph
+      // identity changing; it belongs in a layout effect because it must run
+      // before the first paint of the new graph layout.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setPlaced({});
       return;
     }

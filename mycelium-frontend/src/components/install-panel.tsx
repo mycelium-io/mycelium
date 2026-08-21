@@ -3,7 +3,7 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { ArrowRight, Terminal } from "lucide-react";
 import { CopyField } from "@/components/ui/copy-field";
@@ -85,12 +85,12 @@ export function InstallPanel({ className }: Props) {
   // platform tab is preselected and the config command shows a placeholder
   // host. The origin is only a first guess, since some deployments front
   // the API on a different port than the UI, so it's there to edit.
-  const [platform, setPlatform] = useState<Platform>("unknown");
-  const [hubUrl, setHubUrl] = useState("<this-hub-url>");
-  useEffect(() => {
-    setPlatform(detectPlatform(navigator.userAgent));
-    setHubUrl(window.location.origin);
-  }, []);
+  const [platform, setPlatform] = useState<Platform>(
+    () => typeof window !== "undefined" ? detectPlatform(navigator.userAgent) : "unknown",
+  );
+  const [hubUrl] = useState(
+    () => typeof window !== "undefined" ? window.location.origin : "<this-hub-url>",
+  );
   const note = PLATFORMS.find(p => p.id === platform)?.note;
 
   // "Prompt" is a fourth tab alongside the OS ones, not a fifth platform: it

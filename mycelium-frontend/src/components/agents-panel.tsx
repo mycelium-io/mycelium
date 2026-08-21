@@ -89,6 +89,9 @@ export function AgentsPanel({
 
   useEffect(() => {
     if (!engineInvite) return;
+    // Prop-triggered one-shot: parent signals "open the engine tab" by flipping
+    // engineInvite; the handler clears it after this effect fires.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setAddTab("engines");
     setAddOpen(true);
     onEngineInviteShown?.();
@@ -101,6 +104,10 @@ export function AgentsPanel({
   const highlightRow = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!focusHandle) return;
+    // Focus-consumed pattern: parent supplies a handle to highlight, then this
+    // effect marks the request consumed. The highlight state must persist past
+    // the parameter being cleared, so it cannot be derived from the prop alone.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setHighlight(focusHandle);
     onFocusConsumed?.();
   }, [focusHandle, onFocusConsumed]);

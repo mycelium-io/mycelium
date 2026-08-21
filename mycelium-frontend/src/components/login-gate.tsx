@@ -61,6 +61,9 @@ function useAuthError(): string | null {
     const url = new URL(window.location.href);
     const e = url.searchParams.get("auth_error");
     if (e) {
+      // URL cleanup side effect (history.replaceState) must co-locate with the
+      // state update — a lazy initializer can't call history.replaceState safely.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setErr(e);
       url.searchParams.delete("auth_error");
       window.history.replaceState({}, "", url.toString());

@@ -52,16 +52,14 @@ function RoomWorkspace() {
   const [inspectorOpen, setInspectorOpen] = useState(true);
   const [editorView, setEditorView] = useState<View>("channel");
   const [negPhase, setNegPhase] = useState<NegotiationPhase>("idle");
-  const [tourActive, setTourActive] = useState(false);
+  // useSearchParams is read here before the hook is declared later on line 97;
+  // moved forward so tourActive can be initialized from the URL in one render.
+  const searchParamsEarly = useSearchParams();
+  // Lazy initializer reads the URL once on mount; setTourActive(false) in the
+  // exit handler still works. No effect needed — the param is client-only state.
+  const [tourActive, setTourActive] = useState(() => searchParamsEarly.get("tour") === "1");
   const [inviteEngine, setInviteEngine] = useState(false);
   const [focusMemory, setFocusMemory] = useState<{ key: string; nonce: number } | null>(null);
-
-  // Start the coached tour when arriving via "Run a sample coordination".
-  useEffect(() => {
-    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("tour") === "1") {
-      setTourActive(true);
-    }
-  }, []);
 
   const handleTourExit = useCallback(() => {
     setTourActive(false);
@@ -94,7 +92,7 @@ function RoomWorkspace() {
   // row — a result opens the item, not just the room it is in. The parameter is
   // consumed on arrival so returning to a rail later doesn't re-select, and so
   // jumping to the same item twice is a change the panel sees both times.
-  const searchParams = useSearchParams();
+  const searchParams = searchParamsEarly;
   const router = useRouter();
   const focusParam = searchParams.get("focus");
   const [focus, setFocus] = useState<FocusTarget | null>(null);
@@ -112,6 +110,10 @@ function RoomWorkspace() {
       router.replace(memoryHref(roomName, target.id));
       return;
     }
+    // Focus-dispatch: the effect consumes one URL parameter and translates it
+    // into the appropriate panel open + item selected. Lifting this into the
+    // caller would require threading focus state through every page entry point.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setFocus(target);
     if (target.type === "episode") openTab("episodes");
     else if (target.type === "agent") openTab("agents");

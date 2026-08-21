@@ -61,6 +61,9 @@ export function EpisodeDetail({ roomName, shortId }: { roomName: string; shortId
 
   useEffect(() => {
     let cancelled = false;
+    // Async fetch: setState calls are all inside .then()/.catch() callbacks, not
+    // synchronously in the effect body. setLoading(true) is a loading-gate reset.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     fetchEpisode(roomName, shortId)
       .then(d => { if (!cancelled) { setDetail(d); setLoading(false); } })

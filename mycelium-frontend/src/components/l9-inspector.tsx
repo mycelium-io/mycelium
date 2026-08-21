@@ -391,6 +391,9 @@ export function L9Inspector({ roomName }: Props) {
   useEffect(() => {
     let cancelled = false;
     seenIds.current = new Set();
+    // Async fetch: setState calls are in the .then() callback. setFrames([]) here
+    // is a guard reset before the fetch resolves — intentional, not cascading.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setFrames([]);
     fetchL9History(roomName).then((rows) => {
       if (cancelled) return;
@@ -451,13 +454,10 @@ export function L9Inspector({ roomName }: Props) {
     () => Array.from(new Set(frames.map((f) => f.episode).filter((e): e is string => Boolean(e)))),
     [frames],
   );
-  // Reset filters that no longer apply to any frame (e.g. the selected episode
-  // scrolled out of the MAX_FRAMES window).
-  useEffect(() => {
-    if (episodeFilter !== "all" && !episodesPresent.includes(episodeFilter)) {
-      setEpisodeFilter("all");
-    }
-  }, [episodeFilter, episodesPresent]);
+  // Fall back to "all" when the selected episode scrolls out of the MAX_FRAMES
+  // window; derive rather than resetting in an effect so there is no extra render.
+  const effectiveEpisodeFilter =
+    episodeFilter === "all" || episodesPresent.includes(episodeFilter) ? episodeFilter : "all";
 
   const toggleKind = useCallback((kind: string) => {
     setHiddenKinds((prev) => {
@@ -470,9 +470,9 @@ export function L9Inspector({ roomName }: Props) {
   const wire = useMemo(
     () =>
       frames.filter(
-        (f) => !hiddenKinds.has(f.kind) && (episodeFilter === "all" || f.episode === episodeFilter),
+        (f) => !hiddenKinds.has(f.kind) && (effectiveEpisodeFilter === "all" || f.episode === effectiveEpisodeFilter),
       ),
-    [frames, hiddenKinds, episodeFilter],
+    [frames, hiddenKinds, effectiveEpisodeFilter],
   );
 
   useEffect(() => {
@@ -526,7 +526,7 @@ export function L9Inspector({ roomName }: Props) {
           {episodesPresent.length > 0 && (
             <select
               aria-label="Filter by episode"
-              value={episodeFilter}
+              value={effectiveEpisodeFilter}
               onChange={(e) => setEpisodeFilter(e.target.value)}
               className="ml-auto rounded-md border border-border bg-surface px-2 py-1 font-mono text-micro text-muted-foreground focus:border-accent focus:text-text focus:outline-none"
             >

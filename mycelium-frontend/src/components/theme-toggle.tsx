@@ -4,6 +4,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useIsClient } from "@/lib/client-hooks";
 import { useTheme } from "next-themes";
 import { Monitor, Moon, Sun, type LucideIcon } from "lucide-react";
 import { useCommands } from "@/components/keymap-provider";
@@ -18,9 +19,8 @@ const OPTIONS: { value: string; label: string; icon: LucideIcon }[] = [
 export function ThemeToggle() {
   const { theme, resolvedTheme, setTheme } = useTheme();
   const [open, setOpen] = useState(false);
-  const [mounted, setMounted] = useState(false);
+  const mounted = useIsClient();
   const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => setMounted(true), []);
 
   useEffect(() => {
     if (!open) return;

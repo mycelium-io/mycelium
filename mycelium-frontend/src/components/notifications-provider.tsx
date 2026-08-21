@@ -8,6 +8,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -64,16 +65,19 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   );
 
   const settingsRef = useRef(settings);
-  settingsRef.current = settings;
   const principalRef = useRef(principal);
-  principalRef.current = principal;
+  useLayoutEffect(() => { settingsRef.current = settings; }, [settings]);
+  useLayoutEffect(() => { principalRef.current = principal; }, [principal]);
   const seenIds = useRef<Set<string>>(new Set());
   const isLeader = useRef(false);
   const channelRef = useRef<ReturnType<typeof openCrossTabChannel> | null>(null);
 
-  // Hydrate from localStorage once the DOM is available (SSR has none).
+  // Hydrate from localStorage once the DOM is available (SSR has none). The three
+  // setStates are one logical "hydrate from client storage" step. Lazy initializers
+  // would mismatch the SSR render (server "" ≠ client stored value on first pass).
   useEffect(() => {
     const stored = loadNotifications();
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setNotifications(stored);
     seenIds.current = new Set(stored.map((n) => n.id));
     setSettingsState(loadSettings());

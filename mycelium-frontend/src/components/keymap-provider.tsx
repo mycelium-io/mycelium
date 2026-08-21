@@ -11,8 +11,10 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
+import { useIsMac } from "@/lib/client-hooks";
 import { CommandPalette } from "@/components/command-palette";
 import { KeymapCheatsheet } from "@/components/keymap-cheatsheet";
 import { loadRecent, pushRecent, saveRecent, type PaletteCommand } from "@/lib/commands";
@@ -21,7 +23,6 @@ import {
   eventToChord,
   formatChord,
   isCommandChord,
-  isMacPlatform,
   isModifierKey,
   matchBinding,
   paletteBindings,
@@ -85,14 +86,16 @@ export function KeymapProvider({ children }: { children: ReactNode }) {
   const [scopeCounts, setScopeCounts] = useState<Partial<Record<KeyScope, number>>>({ global: 1 });
   const [helpOpen, setHelpOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
-  // Which commands ran, most recent first. Read after mount: the server has no
-  // storage, and the palette's ordering isn't worth a hydration mismatch.
+  // Which commands ran, most recent first. Hydrated from localStorage after mount
+  // so that SSR and the first hydration render both produce [] (no mismatch).
   const [recent, setRecent] = useState<string[]>([]);
-  useEffect(() => setRecent(loadRecent()), []);
-  // Resolved after mount: the server has no platform to read, and a guess would
-  // hydrate a ⌘ over a Ctrl.
-  const [mac, setMac] = useState(false);
-  useEffect(() => setMac(isMacPlatform()), []);
+  useEffect(() => {
+    // SSR hydration: localStorage unavailable on server; useSyncExternalStore would
+    // still need a separate setRecent for command-use writes, so this is simpler.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setRecent(loadRecent());
+  }, []);
+  const mac = useIsMac();
 
   // Reveal is pushed to subscribers rather than held in state: holding ⌥ would
   // otherwise re-render the whole app through the context value.
@@ -199,8 +202,17 @@ export function KeymapProvider({ children }: { children: ReactNode }) {
   }, [dispatch]);
 
   const commands = useMemo(
-    // Recomputed when the palette opens, so it reflects what's mounted then.
-    () => (paletteOpen ? collectCommands(scopes) : []),
+    () => {
+      // collectCommands reads commandSources.current and handlers.current (refs).
+      // Moving this into useEffect + setState would introduce set-state-in-effect;
+      // the refs are intentionally stable mutable registries — reading them here is safe.
+      // eslint-disable-next-line react-hooks/refs
+      return paletteOpen ? collectCommands(scopes) : [];
+    },
+    // commandEpoch is a cache-bust epoch that increments on registration changes;
+    // it is not referenced in the callback body (refs are read via collectCommands)
+    // but IS required so the list recomputes when registrations change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [paletteOpen, commandEpoch, scopes, collectCommands],
   );
 
@@ -360,13 +372,13 @@ export function useKeyCapture(): KeymapApi["captureKeys"] {
  *  never reveals. */
 export function useKeyReveal(): boolean {
   const api = useContext(KeymapContext);
-  const [revealed, setRevealed] = useState(false);
-  useEffect(() => {
-    if (!api) return;
-    setRevealed(api.revealed());
-    return api.subscribeReveal(setRevealed);
-  }, [api]);
-  return revealed;
+  // useSyncExternalStore is the idiomatic fit: subscribe to an external signal
+  // (the hold/release of the reveal modifier) and snapshot its current value.
+  return useSyncExternalStore(
+    (listener) => api?.subscribeReveal(listener) ?? (() => {}),
+    () => api?.revealed() ?? false,
+    () => false,
+  );
 }
 
 /** The status-bar affordances that make `?` and ⌘K findable without knowing
@@ -403,10 +415,3 @@ export function CommandPaletteButton() {
   );
 }
 
-/** Resolved after mount, like the provider's own copy: rendering ⌘ on a server
- *  that has no platform would hydrate over a Ctrl. */
-function useIsMac(): boolean {
-  const [mac, setMac] = useState(false);
-  useEffect(() => setMac(isMacPlatform()), []);
-  return mac;
-}

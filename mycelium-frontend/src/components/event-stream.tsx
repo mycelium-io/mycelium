@@ -443,6 +443,9 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
   const highlightRow = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!focusMessageId) return;
+    // Focus-consumed: parent supplies a message ID to highlight; the handler
+    // clears it. Highlight must outlive the cleared prop, so it can't be derived.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setHighlight(focusMessageId);
     onFocusConsumed?.();
   }, [focusMessageId, onFocusConsumed]);
