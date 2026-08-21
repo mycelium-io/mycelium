@@ -9,6 +9,7 @@ import { RoomsSidebar } from "@/components/rooms-sidebar";
 import { GlobalSearch, GlobalSearchButton } from "@/components/global-search";
 import { CommandPaletteButton, KeymapHelpButton } from "@/components/keymap-provider";
 import { InstallModalProvider, useOpenInstallModal } from "@/components/install-modal";
+import { MetricsStatusLink } from "@/components/status-items";
 import { Button } from "@/components/ui/button";
 
 interface Props {
@@ -70,6 +71,7 @@ export function AppShell({
             {statusLeft}
             <div className="ml-auto flex items-center gap-3">
               {statusRight}
+              <MetricsStatusLink />
               <GlobalSearchButton />
               <CommandPaletteButton />
               <KeymapHelpButton />
