@@ -1052,16 +1052,15 @@ def _theme_toggle() -> str:
     </div>"""
 
 
-def _topnav(active_page_id: str) -> str:
-    """The app's shell header: brand over the rail, page tabs, right-hand actions.
+def _topnav() -> str:
+    """The app's shell header: brand over the rail, search, right-hand actions.
 
     The brand cell is sidebar-width so the rail reads as one column, matching
-    RoomsSidebar sitting under the workspace header in the app.
+    RoomsSidebar sitting under the workspace header in the app. Page navigation
+    lives in the persistent rail, which carries every page at every width, so the
+    bar holds only what the rail cannot: search, the page actions, and the one
+    link that leaves the site.
     """
-    tabs = []
-    for page_id, file_name, _, label, *_ in PAGES:
-        cls = "active" if page_id == active_page_id else ""
-        tabs.append(f'      <a href="{file_name}" class="{cls}">{html.escape(label)}</a>')
     return f"""<!-- TOP BAR -->
 <nav class="topnav">
   <button class="nav-toggle" aria-label="Menu" onclick="toggleDrawer(event)"><i data-lucide="menu"></i></button>
@@ -1070,15 +1069,12 @@ def _topnav(active_page_id: str) -> str:
     <span class="brand-word">mycelium</span>
   </a>
   <nav class="sectionnav">
-    <div class="sectionnav-inner">
-{chr(10).join(tabs)}
-    </div>
-    <div class="sectionnav-right">
-      <a href="{SKILL_MD_URL}" target="_blank" rel="noopener">SKILL.md ↗</a>
-    </div>
+    <a href="{SKILL_MD_URL}" target="_blank" rel="noopener">SKILL.md ↗</a>
   </nav>
   <div class="topnav-right">
     <div class="docsearch" id="docsearch">
+      <button class="docsearch-toggle" id="docsearch-toggle" type="button"
+              aria-label="Search docs" aria-expanded="false">{SEARCH_SVG}</button>
       <div class="docsearch-field">
         {SEARCH_SVG}
         <input type="search" id="docsearch-input" placeholder="Search docs"
@@ -1089,9 +1085,9 @@ def _topnav(active_page_id: str) -> str:
       <div class="docsearch-panel" id="docsearch-panel">
         <div class="docsearch-results" id="docsearch-results" role="listbox"></div>
         <div class="docsearch-legend">
-          <kbd>&uarr;</kbd><kbd>&darr;</kbd> navigate<span class="sep">&middot;</span>
-          <kbd>&crarr;</kbd> open<span class="sep">&middot;</span>
-          <kbd>esc</kbd> close
+          <span><kbd>&uarr;</kbd><kbd>&darr;</kbd> navigate</span>
+          <span><kbd>&crarr;</kbd> open</span>
+          <span><kbd>esc</kbd> close</span>
         </div>
       </div>
     </div>
@@ -1197,7 +1193,7 @@ def _render_page(
     sidebar_html = _sidebar(nav, page_id)
     return (
         _head(title, description, file_name)
-        + _topnav(page_id)
+        + _topnav()
         + _layout_open(sidebar_html)
         + content_html
         + "\n"
@@ -1450,7 +1446,16 @@ def _build_search_index(
         if not rec["t"]:
             continue
         rec["p"] = page_label
-        if not rec["s"]:
+        # The rendered breadcrumb is page + crumb, so a group named after its own
+        # page would read "Adapters › Adapters › Cursor".
+        crumb = rec["s"]
+        if crumb == page_label:
+            crumb = ""
+        elif crumb.startswith(f"{page_label} › "):
+            crumb = crumb[len(page_label) + 3 :]
+        if crumb:
+            rec["s"] = crumb
+        else:
             rec.pop("s")
         out.append(rec)
     return out

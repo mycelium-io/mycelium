@@ -62,6 +62,7 @@
     const bd = document.getElementById('nav-backdrop');
     const open = sb && sb.classList.toggle('open');
     if (bd) bd.classList.toggle('open', !!open);
+    if (open) closeSearchField();
   }
   function closeDrawer() {
     const sb = document.getElementById('sidebar');
@@ -117,6 +118,8 @@
   // ── Client-side search ──
   // Index is generated with the pages (docs/search-index.js) and pulled in on
   // first use, so it costs nothing until someone actually searches.
+  const searchBox = document.getElementById('docsearch');
+  const searchToggle = document.getElementById('docsearch-toggle');
   const searchInput = document.getElementById('docsearch-input');
   const searchPanel = document.getElementById('docsearch-panel');
   const searchResults = document.getElementById('docsearch-results');
@@ -220,6 +223,35 @@
     searchSelected = -1;
   }
 
+  // Below the layout breakpoint the field is not in the bar at all: the bar has
+  // a search icon, and the field drops to a row beneath it. Above it, the field
+  // is always there and these are no-ops beyond focusing.
+  function openSearchField() {
+    closeDrawer();
+    if (searchBox) searchBox.classList.add('open');
+    if (searchToggle) searchToggle.setAttribute('aria-expanded', 'true');
+    if (searchInput) searchInput.focus();
+  }
+
+  function closeSearchField() {
+    closeSearch();
+    if (searchBox) searchBox.classList.remove('open');
+    if (searchToggle) searchToggle.setAttribute('aria-expanded', 'false');
+    if (searchInput) { searchInput.value = ''; searchInput.blur(); }
+  }
+
+  if (searchToggle) {
+    searchToggle.addEventListener('click', e => {
+      e.stopPropagation();
+      if (searchBox.classList.contains('open')) closeSearchField();
+      else openSearchField();
+    });
+  }
+  // The row is a small-screen affordance; growing past it must not strand it open.
+  window.addEventListener('resize', () => {
+    if (window.innerWidth > 640 && searchBox) searchBox.classList.remove('open');
+  });
+
   function runSearch() {
     const query = searchInput.value.trim().toLowerCase();
     if (!query) { closeSearch(); return; }
@@ -257,10 +289,12 @@
       else if (e.key === 'Enter') {
         const hit = searchResults.querySelector('.docsearch-hit.selected');
         if (hit) { e.preventDefault(); window.location.href = hit.getAttribute('href'); closeSearch(); }
-      } else if (e.key === 'Escape') { closeSearch(); searchInput.blur(); }
+      } else if (e.key === 'Escape') { closeSearchField(); }
     });
     document.addEventListener('click', e => {
-      if (!e.target.closest('#docsearch')) closeSearch();
+      if (e.target.closest('#docsearch')) return;
+      closeSearch();
+      if (searchBox && searchBox.classList.contains('open')) closeSearchField();
     });
     // Same-page hits only move the hash, so close the panel by hand.
     searchResults.addEventListener('click', () => closeSearch());
@@ -269,9 +303,9 @@
       const el = document.activeElement;
       const typing = !!el && (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) || el.isContentEditable);
       if ((e.key === 'k' || e.key === 'K') && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault(); searchInput.focus(); searchInput.select();
+        e.preventDefault(); openSearchField(); searchInput.select();
       } else if (e.key === '/' && !typing && !e.metaKey && !e.ctrlKey && !e.altKey) {
-        e.preventDefault(); searchInput.focus();
+        e.preventDefault(); openSearchField();
       }
     });
   }
