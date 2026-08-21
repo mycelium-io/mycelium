@@ -157,6 +157,22 @@ async def test_non_a2a_handle_is_ignored(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_a2a_agent_does_not_summon_another_a2a(monkeypatch):
+    # Runaway guard: @alpha (a registered a2a agent) posting a message that
+    # mentions @beta must NOT trigger beta's remote call — else two agents that
+    # mention each other ping-pong forever.
+    _register_a2a("beta", card="https://beta.example")
+    _register_a2a("alpha", card="https://alpha.example")
+    responder, channel, _persister, calls = _responder(monkeypatch)
+
+    responder.handle_summon(_ROOM, "beta", _summon_envelope("alpha"), [], "hey @beta")
+    await _drain(responder)
+
+    assert calls == []
+    assert channel.sent == []
+
+
+@pytest.mark.asyncio
 async def test_self_message_does_not_loop(monkeypatch):
     _register_a2a()
     responder, channel, _persister, calls = _responder(monkeypatch)

@@ -19,13 +19,19 @@ Two drift facts, proven by the #712 spike against a live agent, are baked in:
 
 from __future__ import annotations
 
+import asyncio
+import ipaddress
 import logging
+import socket
 from dataclasses import dataclass, field
+from urllib.parse import urlparse
 
 import httpx
 from a2a.client import A2ACardResolver
 from a2a.client.errors import A2AClientError
 from a2a.types import AgentCard
+
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +44,34 @@ _RESOLVE_TIMEOUT_S = 20.0
 
 class A2aCardError(Exception):
     """The remote agent's card could not be resolved or is unusable."""
+
+
+async def _guard_public_host(base: str) -> None:
+    """Refuse a card host that resolves to a non-public address (SSRF guard).
+
+    Registering or summoning an a2a agent makes the backend dial the card's
+    host, so a caller-supplied ``http://169.254.169.254/...`` or an internal
+    address would otherwise let an (unauthenticated, under the default gate-off)
+    user reach the backend's own network. We resolve the host and reject any
+    non-global IP. Best-effort against DNS rebinding: httpx re-resolves at
+    connect time, so this narrows the window rather than closing it fully.
+    """
+    if settings.A2A_ALLOW_PRIVATE_HOSTS:
+        return
+    host = urlparse(base).hostname
+    if not host:
+        raise A2aCardError(f"card URL has no host: {base!r}")
+    try:
+        infos = await asyncio.get_running_loop().getaddrinfo(host, None)
+    except socket.gaierror as exc:
+        raise A2aCardError(f"card host {host!r} did not resolve: {exc}") from exc
+    for info in infos:
+        ip = ipaddress.ip_address(info[4][0])
+        if not ip.is_global:
+            raise A2aCardError(
+                f"card host {host!r} resolves to a non-public address {ip} (SSRF guard); "
+                "set A2A_ALLOW_PRIVATE_HOSTS=1 only for a trusted internal deployment"
+            )
 
 
 @dataclass(frozen=True)
@@ -93,6 +127,7 @@ async def resolve_raw_card(
     base = base_url.strip().rstrip("/")
     if not base.startswith(("http://", "https://")):
         raise A2aCardError(f"card URL must be http(s): {base_url!r}")
+    await _guard_public_host(base)
 
     owns_client = http is None
     client = http or httpx.AsyncClient(timeout=_RESOLVE_TIMEOUT_S)
