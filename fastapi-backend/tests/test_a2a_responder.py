@@ -1,0 +1,148 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Mycelium Contributors
+
+"""The A2A responder (#714) — answer @-mentions by calling the remote agent.
+
+Node-free: the remote call (`send_to_a2a`) is patched, so these exercise the
+summon gate, the loop guards, and that the reply is posted back as the handle.
+"""
+
+from __future__ import annotations
+
+import asyncio
+
+import pytest
+import yaml
+
+from app.services import a2a_bridge, l9
+from app.services.filesystem import get_room_dir, write_memory_file
+from app.services.l9_models import Kind
+from tests.fakes import FakeChannel, FakeManaged, FakeManager, FakePersister
+
+_ROOM = "portfolio"
+
+
+def _register_a2a(handle: str = "researcher", card: str = "https://remote.example") -> None:
+    body = yaml.safe_dump({"adapter": "a2a", "a2a_card": card, "description": "does research"})
+    write_memory_file(get_room_dir(_ROOM), f"agents/{handle}", body, created_by="web-ui")
+
+
+def _register_engine(handle: str = "aligner") -> None:
+    body = yaml.safe_dump({"adapter": "engine", "kind": "aligner"})
+    write_memory_file(get_room_dir(_ROOM), f"agents/{handle}", body, created_by="web-ui")
+
+
+def _summon_envelope(sender: str, *, message_id: str = "m1"):
+    return l9.build_envelope(
+        kind=Kind.exchange,
+        episode=l9.episode_urn(_ROOM, "live"),
+        sender=sender,
+        sender_role="human",
+        recipients=["researcher"],
+        topic=l9.topic_urn(_ROOM),
+        payload_type="message",
+        message_id=message_id,
+    )
+
+
+def _responder(monkeypatch, *, reply: str = "the remote reply"):
+    persister = FakePersister()
+    channel = FakeChannel(persister)
+    managed = FakeManaged(room=_ROOM, channel=channel, persister=persister)
+    manager = FakeManager(managed, ["avery", "researcher"])
+    responder = a2a_bridge.A2aResponder(manager)  # type: ignore[arg-type]
+
+    calls: list[tuple[str, str]] = []
+
+    async def _fake_send(card_url, text, **_kwargs):
+        calls.append((card_url, text))
+        if reply is None:
+            raise a2a_bridge.A2aSendError("dead remote")
+        return reply
+
+    monkeypatch.setattr(a2a_bridge, "send_to_a2a", _fake_send)
+    return responder, channel, persister, calls
+
+
+async def _drain(responder):
+    if responder._tasks:
+        await asyncio.gather(*list(responder._tasks))
+
+
+@pytest.mark.asyncio
+async def test_mention_calls_remote_and_posts_reply(monkeypatch):
+    _register_a2a()
+    responder, channel, persister, calls = _responder(monkeypatch)
+
+    responder.handle_summon(
+        _ROOM, "researcher", _summon_envelope("avery"), [], "what do you think?"
+    )
+    await _drain(responder)
+
+    # It called the remote with the message text…
+    assert calls == [("https://remote.example", "what do you think?")]
+    # …and posted the reply back into the room as the handle.
+    assert len(channel.sent) == 1
+    env, extra = channel.sent[0]
+    assert extra["content"] == "the remote reply"
+    assert env.header.participants.actors[0].id == "researcher"
+    assert persister.ingested
+
+
+@pytest.mark.asyncio
+async def test_non_a2a_handle_is_ignored(monkeypatch):
+    _register_engine("aligner")  # an engine, not a2a
+    responder, channel, _persister, calls = _responder(monkeypatch)
+
+    responder.handle_summon(_ROOM, "aligner", _summon_envelope("avery"), [], "mediate us")
+    await _drain(responder)
+
+    assert calls == []
+    assert channel.sent == []
+
+
+@pytest.mark.asyncio
+async def test_self_message_does_not_loop(monkeypatch):
+    _register_a2a()
+    responder, channel, _persister, calls = _responder(monkeypatch)
+
+    # The summoner IS the a2a agent — its own post must not trigger a reply.
+    responder.handle_summon(_ROOM, "researcher", _summon_envelope("researcher"), [], "hi all")
+    await _drain(responder)
+
+    assert calls == []
+    assert channel.sent == []
+
+
+@pytest.mark.asyncio
+async def test_empty_prompt_is_ignored(monkeypatch):
+    _register_a2a()
+    responder, _channel, _persister, calls = _responder(monkeypatch)
+
+    responder.handle_summon(_ROOM, "researcher", _summon_envelope("avery"), [], "   ")
+    await _drain(responder)
+    assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_same_mention_runs_once(monkeypatch):
+    _register_a2a()
+    responder, _channel, _persister, calls = _responder(monkeypatch)
+
+    env = _summon_envelope("avery", message_id="dup")
+    responder.handle_summon(_ROOM, "researcher", env, [], "hello")
+    responder.handle_summon(_ROOM, "researcher", env, [], "hello")
+    await _drain(responder)
+    assert len(calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_dead_remote_posts_nothing(monkeypatch):
+    _register_a2a()
+    responder, channel, _persister, calls = _responder(monkeypatch, reply=None)
+
+    responder.handle_summon(_ROOM, "researcher", _summon_envelope("avery"), [], "you there?")
+    await _drain(responder)
+
+    assert calls  # it tried
+    assert channel.sent == []  # fail-faithful: no fabricated reply
