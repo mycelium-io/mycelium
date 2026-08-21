@@ -323,6 +323,9 @@ function FrameRow({
           aria-hidden
           className={`size-3.5 text-faint transition-transform group-hover:text-muted-foreground ${expanded ? "rotate-90" : ""}`}
         />
+        {/* frameIcon picks from a fixed table of imported Lucide components,
+            so nothing is defined here — the rule cannot see through the call. */}
+        {/* eslint-disable-next-line react-hooks/static-components */}
         <Icon aria-hidden className="size-3.5" style={{ color: tone }} />
         <KindBadge kind={frame.kind} subkind={frame.subkind} />
         <span className="truncate font-mono text-muted-foreground">{frame.sender}</span>

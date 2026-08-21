@@ -378,6 +378,33 @@ body {
 .driver-popover.mycelium-tour .driver-popover-arrow-side-top.driver-popover-arrow { border-top-color: var(--elevated); }
 .driver-popover.mycelium-tour .driver-popover-arrow-side-bottom.driver-popover-arrow { border-bottom-color: var(--elevated); }
 
+/* fedoup markdown editor token bridge: maps --me-* variables onto the app's
+ * own palette so the CM6 editor inherits both light and dark themes without
+ * any inline style overrides in the component. */
+:root, .dark {
+  --me-fg:         var(--text);
+  --me-fg-muted:   var(--muted-foreground);
+  --me-border:     var(--border2);
+  --me-font-mono:  "Geist Mono", "SF Mono", "JetBrains Mono", Menlo, monospace;
+  --me-font-prose: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+  --me-font-size:  13px;
+}
+
+/* CM6 editor surface: transparent so the parent panel background shows
+ * through; cursor and selection use app tokens. */
+.cm-editor {
+  background: transparent !important;
+  color: var(--text);
+}
+.cm-editor .cm-content { caret-color: var(--accent); }
+.cm-editor .cm-cursor { border-left-color: var(--accent) !important; }
+.cm-editor.cm-focused { outline: none; }
+.cm-editor .cm-selectionBackground,
+.cm-editor.cm-focused .cm-selectionBackground {
+  background: color-mix(in srgb, var(--accent) 22%, transparent) !important;
+}
+.cm-editor .cm-line { color: var(--text); }
+
 /* shadcn/ui token bridge: maps shadcn's semantic tokens onto the app palette
  * so <Dialog>/<Button>/<DropdownMenu> render in-theme (light + dark). Only
  * shadcn token names live here; the app's own --color-* are defined above. ── */

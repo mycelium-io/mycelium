@@ -11,8 +11,8 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CreateRoomDialog } from "@/components/create-room-dialog";
 import { useOpenInstallModal } from "@/components/install-modal";
-import { type EpisodeSummary, type Room } from "@/lib/api";
-import { useRoomAgents, useRoomEpisodes, useRooms, type RoomQueryOptions } from "@/lib/room-data";
+import { MEMORIES_PAGE_LIMIT, type EpisodeSummary, type Room } from "@/lib/api";
+import { useRoomAgents, useRoomEpisodes, useRoomMemories, useRooms, type RoomQueryOptions } from "@/lib/room-data";
 import { useBackendHealth } from "@/lib/use-status";
 
 /** The cards read the shared caches but don't drive them: a grid of rooms is a
@@ -183,8 +183,17 @@ function RoomCard({ room }: { room: Room }) {
   // and opening a room is what starts watching it.
   const { agents, loading: agentsLoading } = useRoomAgents(room.name, NO_POLL);
   const { episodes } = useRoomEpisodes(room.name, NO_POLL);
+  const { memories, loading: memoriesLoading } = useRoomMemories(room.name, NO_POLL);
 
   const agentCount = agentsLoading ? null : agents.length;
+  // A room card is a glance, not a paginated view: a count that hit the fetch's
+  // own page cap is "at least this many," not "exactly this many," so it reads
+  // as a floor rather than a false total.
+  const memoryCount = memoriesLoading
+    ? null
+    : memories.length >= MEMORIES_PAGE_LIMIT
+      ? `${memories.length}+`
+      : String(memories.length);
   const live = episodes.map(episodeState).filter(s => s.live).length;
   const latest = episodes[0];
   const latestState = latest ? episodeState(latest) : null;
@@ -219,6 +228,9 @@ function RoomCard({ room }: { room: Room }) {
         </span>
         <span className="tabular">
           <span className="text-text">{episodes?.length ?? "-"}</span> episode{episodes?.length === 1 ? "" : "s"}
+        </span>
+        <span className="tabular">
+          <span className="text-text">{memoryCount ?? "-"}</span> memor{memories.length === 1 ? "y" : "ies"}
         </span>
         {latestState && !latestState.live && (
           <span className="ml-auto flex items-center gap-1.5 capitalize" style={{ color: latestState.color }}>
