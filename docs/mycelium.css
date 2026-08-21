@@ -429,6 +429,8 @@ a.topnav-page:hover { color: var(--text); text-decoration: none; }
 .layout {
   display: flex;
   padding-top: var(--topbar-height);
+  padding-left: var(--safe-left);
+  padding-right: var(--safe-right);
   min-height: 100vh;
   min-height: 100dvh;
 }
@@ -1332,6 +1334,14 @@ h3:hover .header-anchor,
   .main { padding: 24px 20px calc(var(--statusbar-total) + 32px); }
 }
 @media (max-width: 860px) {
+  /* iOS does not repaint fixed elements in step with Safari's toolbar
+     collapsing, so the rail detaches and floats mid-page with content showing
+     beneath it. It carries decoration — repo link, licence, tagline — and the
+     repo link is already in the top bar, so the mobile layout drops it rather
+     than fighting the browser chrome. Zeroing the total is what reclaims the
+     space every offset was reserving for it. */
+  .docs-footer { display: none; }
+  :root { --statusbar-total: 0px; }
   .main { margin-left: 0; }
   .topnav-brand { width: auto; }
   .copy-page-btn, .copy-docs-btn { display: none; }
