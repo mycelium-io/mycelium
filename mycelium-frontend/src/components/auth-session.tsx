@@ -85,12 +85,18 @@ export function AuthSessionProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(() => {
     const returnTo = window.location.pathname + window.location.search;
+    // Full-page navigation is required: the server sets auth cookies on the
+    // callback URL, and router.push() would not trigger that round-trip.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
     window.location.href = `/api/auth/login?return_to=${encodeURIComponent(returnTo)}`;
   }, []);
 
   const logout = useCallback(async () => {
     await fetch("/api/auth/logout", { method: "POST" });
     setPrincipal("");
+    // Full-page reload clears all React state after the session cookie is
+    // cleared server-side — router.push("/") would leave stale state behind.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
     window.location.href = "/";
   }, [setPrincipal]);
 

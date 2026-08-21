@@ -243,7 +243,6 @@ function parseEvent(msg: Record<string, unknown>): Event {
       // A message type nothing above handles would otherwise vanish from the
       // channel view without a trace (exactly how l9_exchange hid). Surface it
       // loudly so an unsupported/renamed type can't fail silently again.
-      // eslint-disable-next-line no-console
       console.warn(
         `[mycelium] EventStream: unhandled message_type "${mtype}" — ` +
           "rendered as a raw fallback and likely hidden from the channel view",
@@ -270,45 +269,6 @@ function parseEvent(msg: Record<string, unknown>): Event {
     episode,
     raw,
   };
-}
-
-// Per-event-type styling. Tone drives the accent color of the label + bar.
-const typeStyles: Record<string, { tone: "accent" | "ok" | "warn" | "muted" | "ink"; label: string }> = {
-  broadcast:              { tone: "ink",    label: "BROADCAST" },
-  direct:                 { tone: "accent", label: "DIRECT" },
-  announce:               { tone: "ink",    label: "ANNOUNCE" },
-  delegate:               { tone: "accent", label: "DELEGATE" },
-  coordination_join:      { tone: "accent", label: "JOIN" },
-  coordination_leave:     { tone: "muted",  label: "LEAVE" },
-  coordination_start:     { tone: "accent", label: "START" },
-  coordination_tick:      { tone: "muted",  label: "TICK" },
-  coordination_consensus: { tone: "ok",     label: "CONSENSUS" },
-  memory_changed:         { tone: "warn",   label: "MEMORY" },
-  l9_knowledge:           { tone: "warn",   label: "KNOWLEDGE" },
-};
-const defaultStyle = { tone: "muted" as const, label: "MSG" };
-
-function toneColor(t: "accent" | "ok" | "warn" | "muted" | "ink"): string {
-  return t === "accent" ? "var(--accent)"
-       : t === "ok"     ? "var(--green)"
-       : t === "warn"   ? "var(--yellow)"
-       : t === "ink"    ? "var(--text)"
-                        : "var(--muted-foreground)";
-}
-
-const MENTION_RE = /(@[\w-]+)/g;
-
-function renderWithMentions(text: string): React.ReactNode {
-  // split() with a capturing group returns alternating [non-match, match, ...].
-  // Odd indices are the @handles; this avoids the stateful .test() gotcha.
-  const parts = text.split(MENTION_RE);
-  return parts.map((part, i) =>
-    i % 2 === 1 ? (
-      <span key={i} className="text-accent font-semibold">{part}</span>
-    ) : (
-      <span key={i}>{part}</span>
-    ),
-  );
 }
 
 export type View = "channel" | "negotiate" | "plan" | "network";
