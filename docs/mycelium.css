@@ -297,7 +297,7 @@ a.topnav-page:hover { color: var(--text); text-decoration: none; }
   gap: 6px;
   padding: 0 12px;
 }
-.topnav-right a {
+.topnav-right > a {
   color: var(--muted-foreground);
   text-decoration: none;
   display: flex;
@@ -306,7 +306,7 @@ a.topnav-page:hover { color: var(--text); text-decoration: none; }
   padding: 6px;
   transition: color 0.15s, background 0.15s;
 }
-.topnav-right a:hover { color: var(--text); background: var(--hairline); text-decoration: none; }
+.topnav-right > a:hover { color: var(--text); background: var(--hairline); text-decoration: none; }
 
 /* Human register: sentence-case sans labels, modest radius, quiet neutrals.
  * One primary accent exists in the app; docs chrome has no primary action, so
@@ -478,9 +478,85 @@ a.topnav-page:hover { color: var(--text); text-decoration: none; }
   background: var(--elevated);
   box-shadow: inset 0 0 0 1px var(--border);
 }
-.nav-link.sub { padding-left: 8px; }
-.nav-link.page { font-weight: 500; color: var(--text); margin-top: 6px; }
-.nav-link.page:first-of-type { margin-top: 0; }
+
+/* ── PERSISTENT NAV TREE ──
+ * One rail for the whole site: every page, every group, on every page. The page
+ * being read is marked and its groups start open; the rest fold away so the
+ * whole map stays in view without becoming a wall of links. */
+.nav-tree { padding: 0 10px; }
+.nav-page-group { margin-bottom: 18px; }
+.nav-page-link {
+  display: block;
+  padding: 5px 10px;
+  border-radius: var(--radius-md);
+  color: var(--muted-foreground);
+  text-decoration: none;
+  font-size: var(--text-label);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  transition: color 0.15s, background 0.15s;
+}
+.nav-page-link:hover { color: var(--text); background: var(--hairline); text-decoration: none; }
+.nav-page-link.active { color: var(--text); }
+.nav-page-link.active::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 7px;
+  vertical-align: middle;
+  background: var(--accent);
+}
+
+.nav-group { margin-top: 2px; }
+.nav-group-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 10px;
+  background: none;
+  border: 0;
+  border-radius: var(--radius-md);
+  color: var(--muted-foreground);
+  font-family: var(--font-sans);
+  font-size: var(--text-label);
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+.nav-group-toggle:hover { color: var(--text); background: var(--hairline); }
+.nav-chevron {
+  flex-shrink: 0;
+  color: var(--faint);
+  transform: rotate(90deg);
+  transition: transform 0.15s;
+}
+.nav-group.collapsed .nav-chevron { transform: rotate(0deg); }
+.nav-group.collapsed .nav-group-items { display: none; }
+.nav-group-items {
+  margin-left: 9px;
+  padding-left: 8px;
+  border-left: 1px solid var(--border);
+}
+.nav-link.sub { padding: 5px 10px; font-size: var(--text-label); }
+
+.nav-external {
+  margin: 4px 10px 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.nav-external a {
+  display: block;
+  padding: 6px 10px;
+  border-radius: var(--radius-md);
+  color: var(--muted-foreground);
+  font-size: var(--text-label);
+  text-decoration: none;
+}
+.nav-external a:hover { color: var(--text); background: var(--hairline); text-decoration: none; }
 
 /* ── WORKSPACE ── */
 .main {
@@ -1069,7 +1145,6 @@ h3:hover .header-anchor,
 }
 .nav-toggle:hover { color: var(--text); border-color: var(--border2); }
 .nav-toggle svg { width: 18px; height: 18px; stroke: currentColor; }
-.nav-pages { display: none; }
 .nav-backdrop {
   display: none;
   position: fixed;
@@ -1079,18 +1154,171 @@ h3:hover .header-anchor,
 }
 .nav-backdrop.open { display: block; }
 
+/* ── DOCS SEARCH ──
+ * Client-side, over an index generated alongside the pages. The field sits in
+ * the top bar; hits drop below it as a popover anchored to the field's right
+ * edge, so it never overhangs the viewport. */
+.docsearch { position: relative; }
+.docsearch-field {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 28px;
+  padding: 0 6px 0 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  color: var(--faint);
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.docsearch-field:hover { color: var(--muted-foreground); border-color: var(--border2); }
+.docsearch-field:focus-within {
+  color: var(--muted-foreground);
+  border-color: var(--accent);
+  background: var(--elevated);
+}
+.docsearch-field svg { flex-shrink: 0; }
+.docsearch-field input {
+  width: 180px;
+  min-width: 0;
+  border: 0;
+  background: none;
+  outline: none;
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--text-label);
+}
+.docsearch-field input::placeholder { color: var(--faint); }
+.docsearch-field input::-webkit-search-cancel-button { display: none; }
+.docsearch-hint {
+  flex-shrink: 0;
+  min-width: 18px;
+  padding: 1px 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--faint);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.4;
+  text-align: center;
+}
+.docsearch-field:focus-within .docsearch-hint { visibility: hidden; }
+
+.docsearch-panel {
+  display: none;
+  position: absolute;
+  top: calc(100% + 9px);
+  right: 0;
+  width: min(520px, calc(100vw - 32px));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--elevated);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.30);
+  overflow: hidden;
+  z-index: 120;
+}
+.docsearch-panel.open { display: block; }
+.docsearch-results {
+  display: block;
+  max-height: min(64vh, 480px);
+  overflow-y: auto;
+  padding: 6px;
+}
+
+/* Each hit is three stacked lines: where it lives, what it is, why it matched. */
+.docsearch-hit {
+  display: block;
+  padding: 7px 10px;
+  border-radius: var(--radius-md);
+  color: var(--text);
+  text-decoration: none;
+}
+.docsearch-hit:hover { background: var(--surface); text-decoration: none; }
+.docsearch-hit.selected {
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent);
+  text-decoration: none;
+}
+.docsearch-crumb {
+  font-size: var(--text-micro);
+  color: var(--faint);
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.docsearch-title {
+  font-size: var(--text-body);
+  font-weight: 500;
+  color: var(--text);
+  line-height: 1.4;
+}
+.docsearch-hit.cmd .docsearch-title {
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  color: var(--accent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.docsearch-snippet {
+  margin-top: 1px;
+  font-size: var(--text-label);
+  color: var(--muted-foreground);
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.docsearch-hit mark {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: var(--text);
+  border-radius: 3px;
+  padding: 0 1px;
+}
+.docsearch-empty {
+  padding: 16px 12px;
+  font-size: var(--text-label);
+  color: var(--muted-foreground);
+  text-align: center;
+}
+/* Keyboard legend, so the arrow/enter behaviour is discoverable. */
+.docsearch-legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  font-size: var(--text-micro);
+  color: var(--faint);
+}
+.docsearch-legend kbd {
+  padding: 0 4px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--elevated);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.docsearch-legend .sep { margin: 0 2px; }
+
 /* ── RESPONSIVE ── */
 @media (max-width: 1080px) {
   .sectionnav a span:not(.square-dot) { font-size: var(--text-micro); }
+  .docsearch-field input { width: 130px; }
   .main { padding: 24px 20px calc(var(--statusbar-height) + 32px); }
 }
 @media (max-width: 860px) {
   .main { margin-left: 0; }
   .topnav-brand { width: auto; }
   .copy-page-btn, .copy-docs-btn { display: none; }
+  .docsearch-field input { width: 150px; }
   .docs-footer .tagline { display: none; }
   .nav-toggle { display: inline-flex; }
-  .nav-pages { display: block; }
   /* Sidebar becomes a slide-in drawer. */
   .sidebar {
     display: block;
@@ -1111,6 +1339,18 @@ h3:hover .header-anchor,
   body { overflow-x: hidden; }
   .sectionnav { display: none; }
   .topnav-cell { padding: 0 12px; }
+  .docsearch-field input { width: 100%; }
+  .docsearch-hint { display: none; }
+  .docsearch { flex: 1; min-width: 0; }
+  /* Too narrow to anchor to the field without overhanging the viewport, so the
+     panel spans the screen instead. */
+  .docsearch-panel {
+    position: fixed;
+    top: calc(var(--topbar-height) + 6px);
+    left: 12px;
+    right: 12px;
+    width: auto;
+  }
   .main { padding: 20px 14px calc(var(--statusbar-height) + 28px); }
   .main-inner { padding: 24px 18px 32px; border-radius: var(--radius-lg); }
   h1 { font-size: 1.6rem; }
@@ -1123,3 +1363,26 @@ h3:hover .header-anchor,
   html { scroll-behavior: auto; }
   * { transition: none !important; }
 }
+
+/* ── EDIT THIS PAGE ──
+ * Closing affordance on every markdown-backed section: a quiet link back to
+ * the source file, so a reader who spots a mistake lands in the right editor. */
+.edit-page {
+  margin-top: 28px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--border);
+  font-size: var(--text-label);
+}
+.edit-page a {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted-foreground);
+  text-decoration: none;
+  border-radius: var(--radius-md);
+  padding: 4px 8px;
+  margin-left: -8px;
+  transition: color 0.15s, background 0.15s;
+}
+.edit-page a:hover { color: var(--text); background: var(--hairline); text-decoration: none; }
+.edit-page svg { flex-shrink: 0; }
