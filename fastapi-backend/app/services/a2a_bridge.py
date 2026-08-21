@@ -23,13 +23,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import httpx
 import yaml
 from a2a.client import ClientConfig, ClientFactory
 from a2a.client.errors import A2AClientError
-from a2a.types import Message, Part, Role, SendMessageRequest
+from a2a.types import Message, Part, Role, SendMessageRequest, StreamResponse
 
 from app.services import l9
 from app.services.a2a_card import A2aCardError, resolve_raw_card
@@ -76,26 +77,60 @@ class A2aSendError(Exception):
     """A round-trip to the remote A2A agent failed."""
 
 
-def _reply_text(response: object) -> str:
-    """Pull the text parts out of one A2A stream response, if any."""
-    message = getattr(response, "message", None)
-    if message is None or not getattr(response, "HasField", lambda _f: False)("message"):
-        return ""
-    parts = getattr(message, "parts", []) or []
-    return "".join(p.text for p in parts if p.HasField("text"))
+@dataclass(frozen=True)
+class A2aReply:
+    """A remote agent's answer plus the conversation id to thread the next turn."""
+
+    text: str
+    context_id: str | None = None
+
+
+def _parts_text(parts: Any) -> str:
+    return "".join(p.text for p in (parts or []) if p.HasField("text"))
+
+
+def _collect(response: StreamResponse) -> tuple[str, str | None]:
+    """Text + context id from one A2A stream response, across all payload shapes.
+
+    A remote agent may answer as a bare ``message``, or as a ``task`` (text in
+    its artifacts / status message), or stream ``status_update`` /
+    ``artifact_update`` events. We read text from whichever arrived and pick up
+    the ``context_id`` so the next turn threads the same conversation.
+    """
+    has = getattr(response, "HasField", lambda _f: False)
+    if has("message"):
+        m = response.message
+        return _parts_text(m.parts), (m.context_id or None)
+    if has("task"):
+        tk = response.task
+        chunks = [_parts_text(a.parts) for a in (tk.artifacts or [])]
+        if tk.status.HasField("message"):
+            chunks.append(_parts_text(tk.status.message.parts))
+        return " ".join(c for c in chunks if c), (tk.context_id or None)
+    if has("status_update"):
+        su = response.status_update
+        text = _parts_text(su.status.message.parts) if su.status.HasField("message") else ""
+        return text, (su.context_id or None)
+    if has("artifact_update"):
+        au = response.artifact_update
+        return _parts_text(au.artifact.parts), (au.context_id or None)
+    return "", None
 
 
 async def send_to_a2a(
     card_url: str,
     text: str,
     *,
+    context_id: str | None = None,
     http: httpx.AsyncClient | None = None,
     timeout_s: float = _SEND_TIMEOUT_S,
-) -> str:
-    """Send ``text`` to the A2A agent at ``card_url`` and return its reply prose.
+) -> A2aReply:
+    """Send ``text`` to the A2A agent at ``card_url`` and return its reply.
 
-    Raises :class:`A2aSendError` on an unresolvable card or a failed exchange, so
-    the seat can fall back faithfully (silence, never a fabricated reply).
+    Pass ``context_id`` (from a prior :class:`A2aReply`) to continue the same
+    conversation, so the remote agent keeps its own memory of the thread. Raises
+    :class:`A2aSendError` on an unresolvable card or a failed exchange, so the
+    caller can fall back faithfully (silence, never a fabricated reply).
     """
     owns_client = http is None
     client_http = http or httpx.AsyncClient(timeout=timeout_s)
@@ -117,20 +152,25 @@ async def send_to_a2a(
             role=Role.ROLE_USER,
             parts=[Part(text=text)],
         )
+        if context_id:
+            message.context_id = context_id
 
         chunks: list[str] = []
+        thread: str | None = context_id
         try:
             async for response in client.send_message(SendMessageRequest(message=message)):
-                chunk = _reply_text(response)
+                chunk, ctx = _collect(response)
                 if chunk:
                     chunks.append(chunk)
+                if ctx:
+                    thread = ctx
         except (A2AClientError, httpx.HTTPError) as exc:
             raise A2aSendError(f"send failed: {exc}") from exc
 
-        reply = "".join(chunks).strip()
+        reply = " ".join(c for c in chunks if c).strip()
         if not reply:
             raise A2aSendError("remote agent returned no text")
-        return reply
+        return A2aReply(text=reply, context_id=thread)
     finally:
         if owns_client:
             await client_http.aclose()
@@ -153,6 +193,10 @@ class A2aResponder:
         # (room, handle, message_id) currently in flight — a re-fire is ignored.
         self._active: set[tuple[str, str, str]] = set()
         self._tasks: set[asyncio.Task[Any]] = set()
+        # (room, handle) -> A2A context id, so each mention continues the same
+        # remote conversation instead of starting cold. In-memory: a restart
+        # resets threads (the room transcript is still the durable record).
+        self._threads: dict[tuple[str, str], str] = {}
 
     # -- the summon seam (sync; called from the persister's on_summon) --
 
@@ -191,9 +235,21 @@ class A2aResponder:
         envelope: L9,
         key: tuple[str, str, str],
     ) -> None:
+        thread_key = (room, _norm(handle))
+        summoner = envelope_sender(envelope)
+        # Name the speaker so the remote agent can follow a multi-party room; the
+        # threaded context id carries the rest of the history on the remote side.
+        addressed = f"@{_norm(summoner)}: {prompt}" if summoner else prompt
         try:
-            reply = await send_to_a2a(card, prompt, timeout_s=self._timeout_s)
-            await self._respond(room, handle, reply, envelope)
+            reply = await send_to_a2a(
+                card,
+                addressed,
+                context_id=self._threads.get(thread_key),
+                timeout_s=self._timeout_s,
+            )
+            if reply.context_id:
+                self._threads[thread_key] = reply.context_id
+            await self._respond(room, handle, reply.text, envelope)
         except A2aSendError:
             # Fail-faithful: a dead/unreadable remote posts nothing rather than a
             # fabricated reply. The caller (human or aligner) sees silence.

@@ -15,6 +15,7 @@ import pytest
 import yaml
 
 from app.services import a2a_bridge, l9
+from app.services.a2a_bridge import A2aReply
 from app.services.filesystem import get_room_dir, write_memory_file
 from app.services.l9_models import Kind
 from tests.fakes import FakeChannel, FakeManaged, FakeManager, FakePersister
@@ -52,13 +53,13 @@ def _responder(monkeypatch, *, reply: str = "the remote reply"):
     manager = FakeManager(managed, ["avery", "researcher"])
     responder = a2a_bridge.A2aResponder(manager)  # type: ignore[arg-type]
 
-    calls: list[tuple[str, str]] = []
+    calls: list[dict] = []
 
-    async def _fake_send(card_url, text, **_kwargs):
-        calls.append((card_url, text))
+    async def _fake_send(card_url, text, *, context_id=None, **_kwargs):
+        calls.append({"card": card_url, "text": text, "context_id": context_id})
         if reply is None:
             raise a2a_bridge.A2aSendError("dead remote")
-        return reply
+        return A2aReply(text=reply, context_id="ctx-1")
 
     monkeypatch.setattr(a2a_bridge, "send_to_a2a", _fake_send)
     return responder, channel, persister, calls
@@ -79,14 +80,35 @@ async def test_mention_calls_remote_and_posts_reply(monkeypatch):
     )
     await _drain(responder)
 
-    # It called the remote with the message text…
-    assert calls == [("https://remote.example", "what do you think?")]
+    # It called the remote with the attributed message text…
+    assert len(calls) == 1
+    assert calls[0]["card"] == "https://remote.example"
+    assert calls[0]["text"] == "@avery: what do you think?"
     # …and posted the reply back into the room as the handle.
     assert len(channel.sent) == 1
     env, extra = channel.sent[0]
     assert extra["content"] == "the remote reply"
     assert env.header.participants.actors[0].id == "researcher"
     assert persister.ingested
+
+
+@pytest.mark.asyncio
+async def test_thread_continues_across_mentions(monkeypatch):
+    _register_a2a()
+    responder, _channel, _persister, calls = _responder(monkeypatch)
+
+    # First mention starts a thread; the second continues the same context id.
+    responder.handle_summon(
+        _ROOM, "researcher", _summon_envelope("avery", message_id="m1"), [], "one"
+    )
+    await _drain(responder)
+    responder.handle_summon(
+        _ROOM, "researcher", _summon_envelope("avery", message_id="m2"), [], "two"
+    )
+    await _drain(responder)
+
+    assert calls[0]["context_id"] is None  # cold start
+    assert calls[1]["context_id"] == "ctx-1"  # threaded from the first reply
 
 
 @pytest.mark.asyncio
