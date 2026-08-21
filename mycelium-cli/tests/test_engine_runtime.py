@@ -17,6 +17,8 @@ from typing import Any
 
 import pytest
 
+pytest.importorskip("negmas", reason="negmas not installed; install mycelium[engine]")
+
 from mycelium.engine.runtime import EngineDrive
 from mycelium.slim import l9
 
