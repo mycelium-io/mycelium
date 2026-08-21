@@ -73,7 +73,6 @@ SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
     ("guides/security-planes.md",   "security-planes",    "reference", "Guides",       "Security Planes"),
     ("guides/auth.md",              "auth",               "reference", "Guides",       "Authentication"),
     ("guides/keycloak-oidc.md",     "keycloak-oidc",      "reference", "Guides",       "Keycloak / OIDC Setup"),
-    ("guides/spire-identity.md",    "spire-identity",     "reference", "Guides",       "Attested Identity (SPIRE)"),
     ("troubleshooting.md",          "troubleshooting",    "reference", "Help",         "Troubleshooting"),
 ]
 

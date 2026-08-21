@@ -215,8 +215,8 @@ For a container that runs exactly one agent and has no config file,
 
 `MYCELIUM_AGENT_AUTH_TOKEN` supplies a bearer token directly, used as-is and never
 renewed here. That is the seam for a token minted elsewhere: a CI job, or a JWT
-issued by a workload-identity system such as SPIRE. Trusting one is a config
-entry on the hub side too: another `[[auth.issuers]]` block with `role = "agent"`.
+issued by a workload-identity system. Trusting one is a config entry on the hub
+side too: another `[[auth.issuers]]` block with `role = "agent"`.
 Nothing about it is required, and nothing about it is on by default.
 
 ### Configuration
@@ -366,8 +366,5 @@ JWKS key can never be replayed as an HMAC secret.
 
 ## Trying it locally
 
-A dev OIDC issuer ships for exactly this, so you can exercise the gate without
-standing up Keycloak. See `docs/design/dev-auth-issuer.md`.
-
-For the real thing (a Keycloak realm, client, and human `mycelium login`, wired
-end-to-end) follow the [Keycloak / OIDC Setup](#keycloak-oidc) guide.
+Follow the [Keycloak / OIDC Setup](#keycloak-oidc) guide to stand up a realm,
+client, and human `mycelium login`, wired end-to-end.

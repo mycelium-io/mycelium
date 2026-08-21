@@ -3,12 +3,12 @@
 
 """SignerJwt-floor SLIM channel identity (daemon side, issue #476).
 
-A **byte-for-byte mirror** of ``fastapi-backend/app/services/slim_identity.py``;
-only this docstring differs. The thin ``uv tool`` CLI can't import the backend, so
-a resident member (the CLI side of a room channel) reproduces the SignerJwt-floor
-primitives here: generate a local ES256 keypair, self-sign a JWT that embeds its
-public key, present it as ``IdentityProviderConfig.JWT`` (SignerJwt), and verify its
-peers against the room roster JWKS (``DECODING`` + ``JWKS``).
+A **mirror** of ``fastapi-backend/app/services/slim_identity.py``; only this
+docstring differs. The thin ``uv tool`` CLI can't import the backend, so a resident
+member (the CLI side of a room channel) reproduces the SignerJwt-floor primitives
+here: generate a local ES256 keypair, self-sign a JWT that embeds its public key,
+present it as ``IdentityProviderConfig.JWT`` (SignerJwt), and verify its peers
+against the room roster JWKS (``DECODING`` + ``JWKS``).
 
 Keep the wire constants (mode names, issuer/audience labels, algorithm/curve, the
 ``kid = @handle`` convention) identical to the backend copy; they are frozen in
@@ -16,13 +16,8 @@ Keep the wire constants (mode names, issuer/audience labels, algorithm/curve, th
 copies. A member deriving a different issuer/audience or JWK shape silently fails
 peer verification against the moderator, exactly the failure the contract test
 guards. ``psk`` stays the default (#567); ``MYCELIUM_SLIM_IDENTITY=signerjwt`` opts
-into the floor and ``=spire`` into SPIRE, and missing material (a key/roster, or a
-Workload API socket) degrades to the PSK unless ``MYCELIUM_SLIM_IDENTITY_REQUIRE=1``
-fails closed.
-
-The ``spire`` mode (#579) sources a JWT-SVID from the SPIFFE Workload API instead of
-a self-minted key: same connect seam, tightest attestation. See the backend
-module's docstring for the full design and the honest ceiling.
+into the floor, and missing material (a key or roster) degrades to the PSK unless
+``MYCELIUM_SLIM_IDENTITY_REQUIRE=1`` fails closed.
 """
 
 from __future__ import annotations
@@ -50,8 +45,7 @@ _REQUIRE_ENV = "MYCELIUM_SLIM_IDENTITY_REQUIRE"
 
 MODE_PSK = "psk"
 MODE_SIGNERJWT = "signerjwt"
-MODE_SPIRE = "spire"
-VALID_MODES = (MODE_PSK, MODE_SIGNERJWT, MODE_SPIRE)
+VALID_MODES = (MODE_PSK, MODE_SIGNERJWT)
 
 # ── Self-issued floor labels ─────────────────────────────────────────────────
 # A self-issued floor has no OIDC discovery endpoint: issuer/audience are labels
@@ -68,36 +62,12 @@ TOKEN_DURATION_S = 3600
 # ── On-disk layout (under the mycelium data dir) ─────────────────────────────
 _DATA_DIR_ENV = "MYCELIUM_DATA_DIR"
 # A caller-owned roster file (e.g. a spoke that fetched the hub roster, or a
-# hand-provisioned bundle). Passthrough: the same shape the SPIRE seam (#579)
-# will reuse for a caller-owned JWT-SVID source.
+# hand-provisioned bundle). Passthrough: the roster is read as-is.
 _ROSTER_FILE_ENV = "MYCELIUM_SLIM_ROSTER_FILE"
 
 IDENTITY_SUBDIR = "slim-identity"
 _KEYS_SUBDIR = "keys"
 _ROSTER_SUBDIR = "roster"
-
-# ── SPIRE / SPIFFE (the hardened upgrade, #579) ──────────────────────────────
-# The SPIRE mode sources a JWT-SVID from the SPIFFE Workload API instead of a
-# self-minted key: the trust domain attests the workload and signs the SVID, so
-# peers verify against the SPIRE bundle rather than a hand-distributed roster.
-# It is env-configured (no on-disk keys, SPIRE owns the key material) and, like
-# ``signerjwt``, off by default (#567): ``MYCELIUM_SLIM_IDENTITY=spire`` opts in.
-#
-# ``socket_path`` is the Workload API socket the co-located SPIRE agent exposes;
-# absent it (no agent to mint the SVID) the mode degrades to PSK or fails closed
-# exactly like a missing signing key. We read our own env first, then the
-# SPIFFE-standard ``SPIRE_AGENT_SOCKET`` the dev quickstart sets.
-_SPIRE_SOCKET_ENV = "MYCELIUM_SLIM_SPIRE_SOCKET"
-_SPIRE_SOCKET_ENV_FALLBACK = "SPIRE_AGENT_SOCKET"
-_SPIRE_TRUST_DOMAIN_ENV = "MYCELIUM_SLIM_SPIRE_TRUST_DOMAIN"
-# The audience the SVID is minted/verified for: the MLS channel label, shared
-# with the SignerJwt floor so a mixed room agrees on the ``aud`` claim.
-SPIRE_AUDIENCE = SIGNERJWT_AUDIENCE
-SPIRE_DEFAULT_TRUST_DOMAIN = "mycelium.dev"
-# A member's SPIFFE ID is ``spiffe://{trust_domain}/{prefix}/{handle}``: the
-# handle↔SPIFFE binding that makes ``@handle`` the identity spine (#589):
-# :func:`spiffe_id_for` mints it, :func:`handle_from_spiffe_id` reconciles it back.
-SPIRE_WORKLOAD_PATH_PREFIX = "agent"
 
 
 class SlimIdentityError(RuntimeError):
@@ -109,7 +79,7 @@ def _truthy(value: str | None) -> bool:
 
 
 def resolve_identity_mode() -> str:
-    """The SLIM channel identity mode: ``psk`` (default), ``signerjwt``, or ``spire``.
+    """The SLIM channel identity mode: ``psk`` (default) or ``signerjwt``.
 
     An unset or unrecognized value is ``psk`` (the off-by-default posture, #567).
     """
@@ -121,7 +91,7 @@ def identity_required() -> bool:
     """True when a selected identity mode must fail closed rather than degrade.
 
     Mirrors ``MYCELIUM_SLIM_REQUIRE_SECRET``: absent resolvable material (a
-    ``signerjwt`` key/roster or a ``spire`` Workload API socket) the default is to
+    ``signerjwt`` signing key or roster) the default is to
     degrade to the PSK (try-it path unchanged), but a host that has committed to
     identity sets this so a missing credential refuses instead.
     """
@@ -376,109 +346,11 @@ def resolve_signerjwt_material(
     return build_signerjwt_identity(handle, key_path.read_text(), roster)
 
 
-# ── SPIRE / SPIFFE provider / verifier (#579) ────────────────────────────────
-def resolve_spire_socket() -> str | None:
-    """The Workload API socket path, or ``None`` when no SPIRE agent is configured.
-
-    Prefers ``MYCELIUM_SLIM_SPIRE_SOCKET``; falls back to the SPIFFE-standard
-    ``SPIRE_AGENT_SOCKET`` the dev quickstart exports. ``None`` means "no SPIRE
-    here": the connect seam degrades to PSK or fails closed per
-    :func:`identity_required`.
-    """
-    for env in (_SPIRE_SOCKET_ENV, _SPIRE_SOCKET_ENV_FALLBACK):
-        value = os.getenv(env, "").strip()
-        if value:
-            return value
-    return None
-
-
-def resolve_spire_trust_domain() -> str:
-    """The SPIFFE trust domain (``MYCELIUM_SLIM_SPIRE_TRUST_DOMAIN`` or default)."""
-    return os.getenv(_SPIRE_TRUST_DOMAIN_ENV, "").strip() or SPIRE_DEFAULT_TRUST_DOMAIN
-
-
-def spiffe_id_for(handle: str, trust_domain: str) -> str:
-    """The member's SPIFFE ID: ``spiffe://{trust_domain}/agent/{handle}``.
-
-    The handle↔SPIFFE binding on the SLIM plane, where we own the credential:
-    the leaf *is* the ``@handle``. :func:`handle_from_spiffe_id` is the inverse a
-    peer uses to reconcile an observed SVID back to its handle.
-    """
-    return f"spiffe://{trust_domain}/{SPIRE_WORKLOAD_PATH_PREFIX}/{handle}"
-
-
-def _spire_socket_present(socket_path: str) -> bool:
-    """True if the Workload API socket actually exists on disk.
-
-    The path may carry a ``unix://`` scheme (SPIFFE convention); strip it before
-    the filesystem check. A configured-but-absent socket means no agent is up to
-    mint the SVID, so it degrades/fails-closed like a missing signing key.
-    """
-    path = socket_path
-    for scheme in ("unix://", "tcp://"):
-        if path.startswith(scheme):
-            path = path[len(scheme) :]
-            break
-    return Path(path).exists()
-
-
-def build_spire_identity(
-    handle: str,
-    socket_path: str,
-    trust_domain: str,
-) -> tuple[slim_bindings.IdentityProviderConfig, slim_bindings.IdentityVerifierConfig]:
-    """Build the SPIRE ``(provider, verifier)`` pair for one attested member.
-
-    Provider: our own JWT-SVID from the Workload API, addressed by our SPIFFE ID
-    (``target_spiffe_id``) and minted for the MLS audience.
-    Verifier: accept any peer whose SVID chains to the room's ``trust_domains``
-    (``target_spiffe_id=None``; the trust domain is the boundary, not a single
-    peer), verified against the SPIRE bundle the same socket serves.
-
-    Same MLS mechanics as the SignerJwt floor; only the provider/verifier variant
-    differs (``IdentityProviderConfig.SPIRE`` / ``IdentityVerifierConfig.SPIRE``).
-    """
-    sb = _require_bindings()
-    provider = sb.IdentityProviderConfig.SPIRE(
-        config=sb.SpireConfig(
-            socket_path=socket_path,
-            target_spiffe_id=spiffe_id_for(handle, trust_domain),
-            jwt_audiences=[SPIRE_AUDIENCE],
-            trust_domains=[trust_domain],
-        )
-    )
-    verifier = sb.IdentityVerifierConfig.SPIRE(
-        config=sb.SpireConfig(
-            socket_path=socket_path,
-            target_spiffe_id=None,
-            jwt_audiences=[SPIRE_AUDIENCE],
-            trust_domains=[trust_domain],
-        )
-    )
-    return provider, verifier
-
-
-def resolve_spire_material(
-    handle: str,
-) -> tuple[slim_bindings.IdentityProviderConfig, slim_bindings.IdentityVerifierConfig] | None:
-    """Build the SPIRE identity pair from the configured Workload API socket.
-
-    Returns ``None`` when no socket is configured or the socket isn't present (no
-    co-located SPIRE agent), so the connect seam degrades to PSK or fails closed
-    per :func:`identity_required`. Unlike the SignerJwt floor there is no on-disk
-    key to mint: SPIRE owns the key material and mints the SVID on demand.
-    """
-    socket_path = resolve_spire_socket()
-    if not socket_path or not _spire_socket_present(socket_path):
-        return None
-    return build_spire_identity(handle, socket_path, resolve_spire_trust_domain())
-
-
 # ── Handle ↔ channel-identity reconciliation (the identity spine, #589) ───────
 # ``@handle`` is the single logical identity across both planes. On the SLIM plane
 # we own the credential, so the handle binds *directly*: the SignerJwt JWK ``kid``
-# and the SPIFFE-ID leaf both carry the raw ``@handle``, and a peer reconciles an
-# observed credential back to its handle with the two inverses below. On the HTTP
+# carries the raw ``@handle``, and a peer reconciles an observed credential back to
+# its handle with the inverse below. On the HTTP
 # plane the OIDC ``sub`` is opaque — handle↔sub is a binding table (the token's
 # handle claim plus the actor-authz in ``app.services.actor``), not an equality.
 def handle_from_jwk(jwk: dict[str, str]) -> str | None:
@@ -489,30 +361,6 @@ def handle_from_jwk(jwk: dict[str, str]) -> str | None:
     """
     kid = jwk.get("kid")
     return kid or None
-
-
-def handle_from_spiffe_id(spiffe_id: str, trust_domain: str | None = None) -> str | None:
-    """The ``@handle`` a SPIFFE-ID names, or ``None`` if it isn't one of ours.
-
-    The inverse of :func:`spiffe_id_for`: parse ``spiffe://{td}/agent/{handle}`` and
-    return ``handle`` iff the path prefix is our workload convention (``agent``) and
-    (when ``trust_domain`` is supplied) the ID sits in that trust domain. A foreign
-    or malformed ID reconciles to nothing rather than a fabricated handle (the same
-    faithful-interpretation posture the offer snapper takes), which is what lets a
-    peer trust that a resolved handle is really the credential's handle.
-    """
-    prefix = "spiffe://"
-    if not spiffe_id.startswith(prefix):
-        return None
-    authority, _, path = spiffe_id[len(prefix) :].partition("/")
-    if not authority or not path:
-        return None
-    if trust_domain is not None and authority != trust_domain:
-        return None
-    segments = path.split("/")
-    if len(segments) != 2 or segments[0] != SPIRE_WORKLOAD_PATH_PREFIX:
-        return None
-    return segments[1] or None
 
 
 def provision_channel_identity(
@@ -528,10 +376,6 @@ def provision_channel_identity(
     * ``psk``: no per-agent credential exists; a no-op.
     * ``signerjwt``: mint+register the local ES256 keypair (:func:`ensure_agent_keypair`),
       whose public JWK's ``kid`` is the ``@handle``. Returns the key/roster paths + ``kid``.
-    * ``spire``: the SVID is minted by the trust domain, not us: return the member's
-      SPIFFE-ID and the operator step to register it. Entry creation needs the SPIRE
-      server and is out of the CLI's reach, so it stays a documented operator step
-      (``provisioned`` is False).
 
     Every result carries ``mode``, ``handle``, and ``provisioned``.
     """
@@ -545,20 +389,6 @@ def provision_channel_identity(
             "kid": jwk["kid"],
             "key_path": str(key_path),
             "roster_path": str(public_jwk_path(handle, data_dir)),
-        }
-    if resolved == MODE_SPIRE:
-        trust_domain = resolve_spire_trust_domain()
-        spiffe_id = spiffe_id_for(handle, trust_domain)
-        return {
-            "mode": MODE_SPIRE,
-            "handle": handle,
-            "provisioned": False,
-            "spiffe_id": spiffe_id,
-            "trust_domain": trust_domain,
-            "operator_step": (
-                f"spire-server entry create -spiffeID {spiffe_id} "
-                "-parentID <agent-node-id> -selector <workload-selector>"
-            ),
         }
     return {"mode": MODE_PSK, "handle": handle, "provisioned": False}
 
@@ -582,11 +412,6 @@ def revoke_channel_identity(
       off the roster, peers' static-JWKS verifiers reject its self-signed tokens, so
       it can't rejoin with the old credential: per-agent, no room-wide rotation.
       Returns the removed paths (empty on a second/idempotent revoke).
-    * ``spire``: the SVID is minted by the trust domain, so revocation is deleting
-      the SPIRE registration entry (``spire-server entry delete``), external to the
-      CLI's on-disk state. Return the member's SPIFFE-ID + the operator step; the
-      appliance path (``spire_registry.revoke_workload``) runs it when the server is
-      reachable. ``revoked`` is False; there is no local material to remove.
 
     Every result carries ``mode``, ``handle``, and ``revoked``.
     """
@@ -607,17 +432,6 @@ def revoke_channel_identity(
             "roster_path": str(jwk_path),
             "key_path": str(key_path),
         }
-    if resolved == MODE_SPIRE:
-        trust_domain = resolve_spire_trust_domain()
-        spiffe_id = spiffe_id_for(handle, trust_domain)
-        return {
-            "mode": MODE_SPIRE,
-            "handle": handle,
-            "revoked": False,
-            "spiffe_id": spiffe_id,
-            "trust_domain": trust_domain,
-            "operator_step": (f"spire-server entry delete -entryID <entry-id for {spiffe_id}>"),
-        }
     return {"mode": MODE_PSK, "handle": handle, "revoked": False}
 
 
@@ -628,12 +442,9 @@ def resolve_identity_material(
 ) -> tuple[slim_bindings.IdentityProviderConfig, slim_bindings.IdentityVerifierConfig] | None:
     """Dispatch to the selected mode's provider/verifier builder.
 
-    Returns ``None`` for ``psk`` (or any mode whose material is absent) so the one
-    connect seam handles degrade/fail-closed uniformly across ``signerjwt`` and
-    ``spire``.
+    Returns ``None`` for ``psk`` (or when the selected mode's material is absent) so
+    the one connect seam handles degrade/fail-closed uniformly.
     """
     if mode == MODE_SIGNERJWT:
         return resolve_signerjwt_material(handle, data_dir)
-    if mode == MODE_SPIRE:
-        return resolve_spire_material(handle)
     return None

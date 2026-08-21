@@ -15,9 +15,8 @@ different credentials, and revoking one client leaves the other untouched.
 Three sources, most specific first:
 
 * **A pre-minted token** (``MYCELIUM_AGENT_AUTH_TOKEN``). The seam for a
-  credential this CLI didn't obtain: a token from CI, or a JWT-SVID a SPIRE
-  sidecar wrote out. Nothing here mints or renews it; the writer owns its
-  lifetime.
+  credential this CLI didn't obtain: a token from CI, or one a sidecar wrote
+  out. Nothing here mints or renews it; the writer owns its lifetime.
 * **The environment** (``MYCELIUM_AGENT_AUTH_CLIENT_ID`` / ``…_CLIENT_SECRET``),
   for a container that runs exactly one agent and has no config file.
 * **The credential store**, ``~/.mycelium/agent-credentials.json``, written by
@@ -109,7 +108,7 @@ class AgentCredential:
     issuer: str | None = None
     scopes: str | None = None
     audience: str | None = None
-    #: A token obtained elsewhere (CI, a SPIRE sidecar). Used as-is, never minted.
+    #: A token obtained elsewhere (CI, a sidecar). Used as-is, never minted.
     token: str | None = None
 
     def redacted(self) -> dict[str, Any]:

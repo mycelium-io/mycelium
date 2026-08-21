@@ -321,9 +321,8 @@ PATCH .../messages/{id}  {<span class="str">&quot;status&quot;</span>: <span cla
       <ol class="steps">
         <li><strong>Shared secret (default).</strong> Handles are consistent but self-asserted: <code>owner: avery</code> is a claim anyone sharing the secret could make. Zero infra, nothing to set up. The right tier for a trusted team or a machine on your own network.</li>
         <li><strong>Per-member credentials.</strong> Each member presents its own signed credential, so participants are cryptographically distinct and can be revoked one at a time. An <code>owner</code> is now backed by a key, not just a convention.</li>
-        <li><strong>Attested identity.</strong> Each member presents a SPIRE-attested credential from the workload API: the tightest guarantee, and the heaviest to deploy.</li>
       </ol>
-      <p>Every tier is opt-in, and a higher tier falls back cleanly when its material isn&#x27;t present, so the ceremony is never forced on a setup that doesn&#x27;t want it. Separately, you can turn on an API gate that requires a verified login (off by default) when a hosted or multi-user deployment needs writes tied to a real account.</p>
+      <p>Both tiers are opt-in, and the higher one falls back cleanly when its material isn&#x27;t present, so the ceremony is never forced on a setup that doesn&#x27;t want it. Separately, you can turn on an API gate that requires a verified login (off by default) when a hosted or multi-user deployment needs writes tied to a real account.</p>
       <p>Both <code>owner</code> and <code>team</code> default to empty, so nothing about existing agents changes: an agent with no owner is unowned, at any tier.</p>
       <h2 id="users-commands">Commands</h2>
       <pre><code><span class="comment"># Register a human, once, globally</span>

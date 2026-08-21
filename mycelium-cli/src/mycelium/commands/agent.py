@@ -418,16 +418,15 @@ def _provision_channel_identity(manifest: AgentManifest, mode: str) -> None:
     """Provision the agent's SLIM channel identity for the active mode (#589).
 
     Registration is where ``@handle`` becomes a usable channel identity: under
-    ``signerjwt`` this mints+registers the local keypair (``kid = @handle``); under
-    ``spire`` it registers the SVID entry against the appliance SPIRE server. Under
+    ``signerjwt`` this mints+registers the local keypair (``kid = @handle``). Under
     the ``psk`` default it is a silent no-op (off by default, #567); the try-it
     path never sees identity machinery. A provisioning failure is a warning, not a
     hard error: the manifest is already written and the agent still works on the PSK.
 
-    *mode* is the effective tier from ``config.slim.identity``, the "one switch"
-    (#588). The runtime resolves the mode from ``MYCELIUM_SLIM_IDENTITY`` (env-only),
-    but a fresh CLI process doesn't inherit that env, so registration must read the
-    config the user actually set, not just the environment.
+    *mode* is the effective tier from ``config.slim.identity``. The runtime resolves
+    the mode from ``MYCELIUM_SLIM_IDENTITY`` (env-only), but a fresh CLI process
+    doesn't inherit that env, so registration must read the config the user actually
+    set, not just the environment.
     """
     from mycelium.slim import identity as slim_identity
 
@@ -444,39 +443,7 @@ def _provision_channel_identity(manifest: AgentManifest, mode: str) -> None:
             f"[dim](signerjwt · kid {result['kid']})[/dim]"
         )
         console.print(f"[dim]Public JWK on the roster: {result['roster_path']}.[/dim]")
-    elif result_mode == slim_identity.MODE_SPIRE:
-        _register_spire_workload(manifest.handle, result)
     # psk: no per-agent identity, stay silent (off by default, #567).
-
-
-def _register_spire_workload(handle: str, result: dict) -> None:
-    """Register ``@handle``'s SVID entry against the appliance SPIRE server (#588).
-
-    The clean end-state of the #589/#603 printed operator step: when the ``spire``
-    compose profile is up, ``agent create`` registers the entry itself, so the user
-    types zero SPIRE commands. If the server isn't reachable (spire selected but the
-    stack isn't up, or a bespoke external SPIRE), we fall back to printing the
-    operator step, the honest interim, never a silent failure.
-    """
-    from mycelium import spire_registry
-
-    outcome = spire_registry.register_workload(handle)
-    if outcome.ok:
-        console.print(
-            f"[green]SLIM channel identity[/green] [dim](spire · {outcome.spiffe_id})[/dim]"
-        )
-        console.print(f"[dim]SPIRE entry {outcome.message}.[/dim]")
-        return
-
-    console.print(
-        f"[green]SLIM channel identity[/green] [dim](spire · {result['spiffe_id']})[/dim]"
-    )
-    console.print(f"[yellow]Could not auto-register the SVID entry: {outcome.message}[/yellow]")
-    console.print(
-        "[dim]Bring the appliance SPIRE up (mycelium up with slim.identity=spire), "
-        "or register manually:[/dim]\n"
-        f"[dim]  {result['operator_step']}[/dim]"
-    )
 
 
 def _revoke_channel_identity(handle: str, mode: str) -> None:
@@ -486,21 +453,14 @@ def _revoke_channel_identity(handle: str, mode: str) -> None:
     per-agent credential so a removed member can't rejoin, *without re-keying the
     room* (the payoff per-member identity has over the shared-secret PSK: @alice and
     the rest keep working, no rotation). Dispatches by the effective tier
-    (``config.slim.identity``, the "one switch"), best-effort: a failure warns rather
-    than aborting, since the manifest is already gone.
+    (``config.slim.identity``), best-effort: a failure warns rather than aborting,
+    since the manifest is already gone.
 
     * ``signerjwt``: drop the member's JWK from the roster + delete its local key.
-    * ``spire``: delete the SVID entry against the appliance SPIRE server
-      (:func:`_revoke_spire_workload`), falling back to the operator step when the
-      server isn't reachable.
     * ``psk``: no per-agent credential exists; note that rotating the shared secret
       is the only (blunt, room-wide) lever this tier has.
     """
     from mycelium.slim import identity as slim_identity
-
-    if mode == slim_identity.MODE_SPIRE:
-        _revoke_spire_workload(handle, mode)
-        return
 
     try:
         result = slim_identity.revoke_channel_identity(handle, mode=mode)
@@ -518,29 +478,6 @@ def _revoke_channel_identity(handle: str, mode: str) -> None:
             "[dim]psk has no per-agent revocation; to fully exclude a removed member "
             "you must rotate MYCELIUM_SLIM_MASTER_SECRET (a room-wide re-key).[/dim]"
         )
-
-
-def _revoke_spire_workload(handle: str, mode: str) -> None:
-    """Revoke ``@handle``'s SPIRE SVID entry on ``agent rm`` (spire mode only).
-
-    Silent unless *mode* is ``spire``: under psk/signerjwt there is no SPIRE entry,
-    so this must not print or shell out. When spire is active but the server isn't
-    reachable, the registry treats it as a no-op (nothing to revoke). *mode* is the
-    effective tier from ``config.slim.identity`` (the "one switch", #588), read
-    from config, not env, since a fresh CLI process doesn't inherit
-    ``MYCELIUM_SLIM_IDENTITY``.
-    """
-    from mycelium import spire_registry
-    from mycelium.slim import identity as slim_identity
-
-    if mode != slim_identity.MODE_SPIRE:
-        return
-    outcome = spire_registry.revoke_workload(handle)
-    if outcome.ok:
-        if outcome.entry_ids:
-            console.print(f"[dim]Revoked SPIRE identity: {outcome.message}.[/dim]")
-    else:
-        console.print(f"[yellow]Could not revoke SPIRE identity: {outcome.message}[/yellow]")
 
 
 def _prompt_for_credential(config: MyceliumConfig, manifest: AgentManifest) -> None:
@@ -1170,8 +1107,8 @@ def agent_rm(
             local.unlink()
 
         # 3. Revoke the agent's per-agent channel credential for the active tier
-        # (#590): signerjwt drops its JWK from the roster + deletes its local key,
-        # spire deletes the SVID entry, psk notes the room-wide-rotation limitation.
+        # (#590): signerjwt drops its JWK from the roster + deletes its local key;
+        # psk notes the room-wide-rotation limitation.
         # The key property: the removed member can't rejoin, and the others keep
         # working with no re-key. Best-effort: a failure is a warning, not a hard
         # error (the manifest is already gone).

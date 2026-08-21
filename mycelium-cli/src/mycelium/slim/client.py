@@ -46,10 +46,6 @@ _IDENTITY_MISSING_HINT = {
     slim_identity.MODE_SIGNERJWT: (
         "no signing key/roster resolved; register the agent's key (ensure_agent_keypair)"
     ),
-    slim_identity.MODE_SPIRE: (
-        "no SPIRE Workload API socket present; start the co-located SPIRE agent "
-        "and set MYCELIUM_SLIM_SPIRE_SOCKET"
-    ),
 }
 
 
@@ -200,10 +196,9 @@ class SlimClient:
 
         Twin of the backend seam: ``psk`` is the shared-secret credential, the
         try-it path. ``signerjwt`` presents this member's per-agent self-signed
-        ES256 identity; ``spire`` presents a SPIRE-attested JWT-SVID. Both resolve
-        to a provider/verifier pair through one dispatcher and share one
-        degrade/fail-closed path: absent the mode's material it degrades to PSK with
-        a one-time warning unless ``MYCELIUM_SLIM_IDENTITY_REQUIRE=1`` fails closed.
+        ES256 identity, resolving to a provider/verifier pair through the same
+        dispatcher: absent that material it degrades to PSK with a one-time warning
+        unless ``MYCELIUM_SLIM_IDENTITY_REQUIRE=1`` fails closed.
         """
         assert self._local_name is not None
         mode = slim_identity.resolve_identity_mode()
