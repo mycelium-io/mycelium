@@ -3,6 +3,37 @@
 
 import "@testing-library/jest-dom/vitest";
 
+// Node 25 ships an incomplete native `localStorage` stub on `globalThis`
+// (no `clear`, `getItem`, etc.) that shadows jsdom's working Storage because
+// jsdom skips re-installing globals that already exist.  Detect the broken
+// stub and replace it with an in-memory Storage before any test code runs.
+// See https://github.com/vitest-dev/vitest/issues/8757
+if (typeof window !== "undefined") {
+  const candidate = (globalThis as { localStorage?: Storage }).localStorage;
+  const isBroken = !candidate || typeof candidate.getItem !== "function";
+  if (isBroken) {
+    // Each name gets its own backing map — sharing one would let a write to
+    // localStorage be read back out of sessionStorage.
+    const makeStorage = (): Storage => {
+      const data = new Map<string, string>();
+      return {
+        get length() { return data.size; },
+        clear()                           { data.clear(); },
+        getItem(key: string)              { return data.get(key) ?? null; },
+        setItem(key: string, val: string) { data.set(key, String(val)); },
+        removeItem(key: string)           { data.delete(key); },
+        key(index: number)                { return Array.from(data.keys())[index] ?? null; },
+      };
+    };
+    const local = makeStorage();
+    const session = makeStorage();
+    for (const target of [globalThis, window] as unknown[]) {
+      Object.defineProperty(target, "localStorage", { configurable: true, writable: true, value: local });
+      Object.defineProperty(target, "sessionStorage", { configurable: true, writable: true, value: session });
+    }
+  }
+}
+
 // jsdom doesn't implement these DOM APIs the components lean on (scroll
 // helpers, ResizeObserver for base-ui's dialog, matchMedia). Stub them so
 // component tests exercise real render paths instead of tripping on the

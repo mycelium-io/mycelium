@@ -15,7 +15,6 @@ import { encodeMemoryKeyPath } from "@/lib/memory-routes";
 export const logFetchError =
   (label: string) =>
   (err: unknown): undefined => {
-    // eslint-disable-next-line no-console
     console.error(`[mycelium] fetch failed: ${label}`, err);
     return undefined;
   };
@@ -157,8 +156,41 @@ export interface Memory {
   content_text?: string;
   version: number;
   created_by: string;
+  updated_by?: string | null;
   updated_at: string;
   file_path?: string;
+  tags?: string[];
+  /** Mirrors the `expandable` frontmatter flag that opts a memory into `![[…]]`. */
+  expandable?: boolean;
+}
+
+/** Shape sent to POST /api/rooms/{room}/memory to create or upsert a memory. */
+export interface MemoryCreate {
+  key: string;
+  /**
+   * Prose, or an object for a memory that carries fields beyond its text
+   * (a category entry's `logged_at`/`category`, or an arbitrary JSON value).
+   */
+  value: string | Record<string, unknown>;
+  /** Text used for the embedding; derived from `value` when omitted. */
+  content_text?: string;
+  tags?: string[];
+  embed?: boolean;
+  created_by: string;
+  base_version?: number;
+  meta?: Record<string, unknown>;
+}
+
+/** Create or upsert one or more memories. Throws `ApiError` on failure. */
+export async function createMemories(
+  roomName: string,
+  items: MemoryCreate[],
+): Promise<void> {
+  await apiFetch<unknown>(`/api/rooms/${roomName}/memory`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ items }),
+  });
 }
 
 export async function fetchMemories(roomName: string, prefix?: string): Promise<Memory[]> {

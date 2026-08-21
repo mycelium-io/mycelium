@@ -103,3 +103,66 @@ describe("mock links handlers (#599)", () => {
     expect(status).toBe(404);
   });
 });
+
+describe("mock memory write handler", () => {
+  async function post(room: string, items: unknown[]) {
+    const res = await handleMock(new Request(`http://localhost/api/rooms/${room}/memory`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items }),
+    }));
+    if (!res) throw new Error("handleMock returned null for the memory write");
+    return { status: res.status, body: await res.json() };
+  }
+
+  it("upserts a memory and bumps its version", async () => {
+    const before = await mockGet("/api/rooms/atlas-migration/memory");
+    const first = (before.body as { key: string; version: number }[])[0];
+
+    const { status, body } = await post("atlas-migration", [
+      { key: first.key, value: "rewritten", created_by: "alice" },
+    ]);
+    expect(status).toBe(201);
+    expect((body as { version: number }[])[0].version).toBe(first.version + 1);
+  });
+
+  it("rejects a stale base_version with 409", async () => {
+    const { body } = await mockGet("/api/rooms/atlas-migration/memory");
+    const target = (body as { key: string; version: number }[])[0];
+
+    const res = await post("atlas-migration", [
+      { key: target.key, value: "x", created_by: "alice", base_version: target.version + 99 },
+    ]);
+    expect(res.status).toBe(409);
+    expect((res.body as { error: string }).error).toBe("stale_base");
+  });
+
+  it("round-trips tags and the expandable flag", async () => {
+    await post("atlas-migration", [{
+      key: "context/mock-write-probe",
+      value: "body text",
+      created_by: "alice",
+      tags: ["alpha", "beta"],
+      meta: { expandable: true },
+    }]);
+
+    const { body } = await mockGet("/api/rooms/atlas-migration/memory/context/mock-write-probe");
+    const mem = body as { tags?: string[]; expandable?: boolean };
+    expect(mem.tags).toEqual(["alpha", "beta"]);
+    expect(mem.expandable).toBe(true);
+  });
+
+  it("clears the expandable flag when the write says false", async () => {
+    await post("atlas-migration", [{
+      key: "context/mock-clear-probe", value: "b", created_by: "alice",
+      meta: { expandable: true },
+    }]);
+    await post("atlas-migration", [{
+      key: "context/mock-clear-probe", value: "b", created_by: "alice",
+      meta: { expandable: false },
+    }]);
+
+    const { body } = await mockGet("/api/rooms/atlas-migration/memory/context/mock-clear-probe");
+    expect((body as { expandable?: boolean }).expandable).toBe(false);
+  });
+});

@@ -29,6 +29,7 @@ node_modules/
 tsconfig.tsbuildinfo
 next-env.d.ts
 pnpm-lock.yaml
+.pnpm-store/
 .docker-dev/
 
 # Claude Code harness state (per-session worktrees, transcripts)

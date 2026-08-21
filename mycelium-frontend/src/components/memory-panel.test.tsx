@@ -45,6 +45,10 @@ vi.mock("@/components/detail-drawer", () => ({
   }) => (open ? <div data-testid="memory-drawer">{children}</div> : null),
 }));
 
+vi.mock("@/components/current-user", () => ({
+  useCurrentUser: () => ({ principal: "alice" }),
+}));
+
 vi.mock("@/lib/api", () => ({
   fetchMemories: vi.fn(),
   fetchMemory: vi.fn(),
