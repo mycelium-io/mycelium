@@ -30,6 +30,7 @@ on the machine.
 
 from __future__ import annotations
 
+import json
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 
@@ -153,6 +154,23 @@ def typed_client(config: MyceliumConfig | None = None, *, handle: str | None = N
     client = Client(base_url=cfg.server.api_url, raise_on_unexpected_status=True)
     headers = auth_headers(cfg, handle=handle)
     return client.with_headers(headers) if headers else client
+
+
+def hub_error_detail(content: bytes) -> str:
+    """Extract a human-readable message from a hub HTTP error response body.
+
+    FastAPI serialises ``HTTPException`` as ``{"detail": "..."}``; we surface
+    that string so the caller sees the backend's actual message rather than a
+    bare status code.  Falls back to the raw decoded body, and to an empty
+    string for truly empty responses.
+    """
+    try:
+        body = json.loads(content)
+        if isinstance(body, dict) and "detail" in body:
+            return str(body["detail"])
+    except (ValueError, KeyError):
+        pass
+    return content.decode(errors="replace").strip()
 
 
 def hub_client(
