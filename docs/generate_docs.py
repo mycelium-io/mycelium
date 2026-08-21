@@ -1073,6 +1073,8 @@ def _topnav() -> str:
   </nav>
   <div class="topnav-right">
     <div class="docsearch" id="docsearch">
+      <button class="docsearch-toggle" id="docsearch-toggle" type="button"
+              aria-label="Search docs" aria-expanded="false">{SEARCH_SVG}</button>
       <div class="docsearch-field">
         {SEARCH_SVG}
         <input type="search" id="docsearch-input" placeholder="Search docs"

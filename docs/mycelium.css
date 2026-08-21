@@ -144,6 +144,8 @@
   --sidebar-width: 260px;
   --topbar-height: 60px;
   --statusbar-height: 26px;
+  /* The row the search field drops to on small screens. */
+  --searchbar-height: 46px;
 
   /* spacing scale */
   --space-1: 4px;
@@ -1112,10 +1114,10 @@ h3:hover .header-anchor,
 .resources-menu a:hover { background: var(--surface); color: var(--text); text-decoration: none; }
 
 /* Hamburger + off-canvas drawer (mobile only). */
-.nav-toggle {
+.nav-toggle,
+.docsearch-toggle {
   display: none;
   align-self: center;
-  margin-left: 12px;
   align-items: center;
   justify-content: center;
   width: 34px;
@@ -1127,8 +1129,12 @@ h3:hover .header-anchor,
   cursor: pointer;
   transition: color 0.15s, border-color 0.15s;
 }
-.nav-toggle:hover { color: var(--text); border-color: var(--border2); }
+.nav-toggle { margin-left: 12px; }
+.nav-toggle:hover,
+.docsearch-toggle:hover { color: var(--text); border-color: var(--border2); }
 .nav-toggle svg { width: 18px; height: 18px; stroke: currentColor; }
+.docsearch-toggle svg { width: 17px; height: 17px; stroke: currentColor; }
+.docsearch.open .docsearch-toggle { color: var(--text); border-color: var(--accent); }
 .nav-backdrop {
   display: none;
   position: fixed;
@@ -1295,6 +1301,16 @@ h3:hover .header-anchor,
 }
 .docsearch-legend kbd + kbd { margin-left: -1px; }
 
+/* iOS Safari zooms the viewport when a focused input's text is under 16px, and
+ * never zooms back out. Only touch devices have the problem, and only they pay
+ * for the larger text, so gate it on the pointer rather than on width. The
+ * alternative fix, pinning maximum-scale in the viewport meta, would disable
+ * pinch-zoom for everyone. */
+@media (pointer: coarse) {
+  .docsearch-field { height: 32px; }
+  .docsearch-field input { font-size: 16px; }
+}
+
 /* ── RESPONSIVE ── */
 @media (max-width: 1080px) {
   .docsearch-field input { width: 130px; }
@@ -1327,18 +1343,33 @@ h3:hover .header-anchor,
   body { overflow-x: hidden; }
   .sectionnav { display: none; }
   .topnav-cell { padding: 0 12px; }
-  /* The bar sheds the wordmark before it sheds the search field: the mark still
-     carries the brand and its link, and a field squeezed to nothing is worse
-     than a smaller logo. The min-width is the floor that squeeze stops at. */
-  .topnav-brand .brand-word { display: none; }
-  .docsearch-field input { width: 100%; }
+  /* There is no room for a live text field beside the brand at these widths, so
+     the bar carries only a search icon and the field drops to a row of its own
+     beneath it. Nothing in the bar has to shrink to make space. */
+  .docsearch-toggle { display: inline-flex; }
   .docsearch-hint { display: none; }
-  .docsearch { flex: 1; min-width: 140px; }
-  /* Too narrow to anchor to the field without overhanging the viewport, so the
-     panel spans the screen instead. */
+  .docsearch-field {
+    display: none;
+    position: fixed;
+    top: var(--topbar-height);
+    left: 0;
+    right: 0;
+    height: var(--searchbar-height);
+    padding: 0 12px;
+    border: 0;
+    border-bottom: 1px solid var(--border);
+    border-radius: 0;
+    background: color-mix(in srgb, var(--surface) 96%, transparent);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    z-index: 110;
+  }
+  .docsearch.open .docsearch-field { display: flex; }
+  .docsearch-field input { width: 100%; }
+  /* Anchored under the field's row, spanning the screen. */
   .docsearch-panel {
     position: fixed;
-    top: calc(var(--topbar-height) + 6px);
+    top: calc(var(--topbar-height) + var(--searchbar-height) + 6px);
     left: 12px;
     right: 12px;
     width: auto;
@@ -1349,16 +1380,6 @@ h3:hover .header-anchor,
   h2 { font-size: 1.2rem; }
   pre { padding: 14px; }
   .cmd-ref-header code { font-size: var(--text-label); word-break: break-all; }
-}
-
-/* iOS Safari zooms the viewport when a focused input's text is under 16px, and
- * never zooms back out. Only touch devices have the problem, and only they pay
- * for the larger text, so gate it on the pointer rather than on width. The
- * alternative fix, pinning maximum-scale in the viewport meta, would disable
- * pinch-zoom for everyone. */
-@media (pointer: coarse) {
-  .docsearch-field { height: 32px; }
-  .docsearch-field input { font-size: 16px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
