@@ -130,7 +130,7 @@ export function RoomSlimView({
       </section>
 
       {/* SLIM channel identity — the tier this hub's MLS members are minted
-          under, and for spire whether the Workload API socket is really there. */}
+          under, and whether the tier it's set to actually stood up. */}
       <section className="overflow-hidden rounded-xl border border-border bg-surface/40">
         <SectionHeader
           title="Channel identity"
@@ -144,16 +144,6 @@ export function RoomSlimView({
           <Stat label="State">
             <span style={{ color: identityDot(identity) }}>{identity?.message ?? "—"}</span>
           </Stat>
-          {identity?.socket !== undefined && (
-            <Stat label="Workload API socket">
-              <span className="font-mono text-text">
-                {identity.socket ?? "not configured"}
-                {identity.socket_present === false && (
-                  <span style={{ color: "var(--red)" }}> · absent</span>
-                )}
-              </span>
-            </Stat>
-          )}
         </div>
       </section>
 
@@ -271,9 +261,10 @@ export function RoomSlimView({
   );
 }
 
-/** Dot color for the identity tier, mirroring `/health`'s own verdict — a spire
- *  hub with no Workload API socket is degraded (or failing closed). The tier
- *  being selected is not the tier being in force, and the dot says which. */
+/** Dot color for the identity tier, mirroring `/health`'s own verdict — a
+ *  `signerjwt` hub with no resolvable signing key/roster is degraded (or
+ *  failing closed). The tier being selected is not the tier being in force,
+ *  and the dot says which. */
 function identityDot(identity: IdentityStatus | null): string {
   if (!identity) return "var(--yellow)";
   if (identity.status === "error") return "var(--red)";

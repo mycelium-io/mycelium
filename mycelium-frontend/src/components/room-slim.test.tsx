@@ -73,18 +73,16 @@ describe("RoomSlimView identity + auth", () => {
     expect(screen.queryByText("trusts")).toBeNull();
   });
 
-  it("spells the degrade out on the rail when spire is not actually in force", async () => {
+  it("spells the degrade out on the rail when signerjwt is not actually in force", async () => {
     await draw("rail", {
       ...net(),
       identity: {
         status: "degraded",
-        mode: "spire",
-        message: "spire selected but no Workload API socket — degrading to PSK",
-        socket: null,
-        socket_present: false,
+        mode: "signerjwt",
+        message: "signerjwt selected but no resolvable signing key/roster — degrading to PSK",
       },
     });
-    expect(screen.getByText("spire")).toBeTruthy();
+    expect(screen.getByText("signerjwt")).toBeTruthy();
     expect(screen.getByText(/degrading to PSK/)).toBeTruthy();
   });
 
@@ -133,20 +131,17 @@ describe("RoomSlimView identity + auth", () => {
     expect(screen.getByText("any")).toBeTruthy();
   });
 
-  it("reports a spire hub with no Workload API socket as degraded, not attested", async () => {
+  it("reports a signerjwt hub with no resolvable key/roster as degraded, not in force", async () => {
     await draw("full", {
       ...net(),
       identity: {
         status: "degraded",
-        mode: "spire",
-        message: "spire selected but no Workload API socket — degrading to PSK",
-        socket: "/run/spire/sockets/agent.sock",
-        socket_present: false,
+        mode: "signerjwt",
+        message: "signerjwt selected but no resolvable signing key/roster — degrading to PSK",
       },
     });
     expect(screen.getByText("degraded")).toBeTruthy();
     expect(screen.getByText(/degrading to PSK/)).toBeTruthy();
-    expect(screen.getByText("· absent")).toBeTruthy();
   });
 
   it("falls back to the unreachable notice when /health does not answer", async () => {

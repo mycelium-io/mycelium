@@ -823,16 +823,14 @@ export interface CoordinationStatus {
   rooms: CoordinationRoom[];
 }
 
-/** The SLIM channel identity tier this hub runs on (`psk` / `signerjwt` /
- *  `spire`). `socket`/`socket_present` are reported for `spire` only, and
- *  `status` carries the honest degrade: `spire` with no Workload API socket is
- *  `degraded` (falling back to the PSK) or `error` (required, failing closed). */
+/** The SLIM channel identity tier this hub runs on (`psk` / `signerjwt`).
+ *  `status` carries the honest degrade: a selected tier with no resolvable
+ *  signing key/roster is `degraded` (falling back to the PSK) or `error`
+ *  (required, failing closed). */
 export interface IdentityStatus {
   status: string;
   mode: string;
   message: string;
-  socket?: string | null;
-  socket_present?: boolean;
 }
 
 /** The HTTP-API JWT gate: whether this hub is gated at all, and against what.
