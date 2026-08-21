@@ -316,10 +316,8 @@ turn the strength up only when you need it:
 2. **Per-member credentials.** Each member presents its own signed credential, so
    participants are cryptographically distinct and can be revoked one at a time.
    An `owner` is now backed by a key, not just a convention.
-3. **Attested identity.** Each member presents a SPIRE-attested credential from
-   the workload API: the tightest guarantee, and the heaviest to deploy.
 
-Every tier is opt-in, and a higher tier falls back cleanly when its material
+Both tiers are opt-in, and the higher one falls back cleanly when its material
 isn't present, so the ceremony is never forced on a setup that doesn't want it.
 Separately, you can turn on an API gate that requires a verified login (off by
 default) when a hosted or multi-user deployment needs writes tied to a real
@@ -1109,7 +1107,7 @@ Mycelium runs on **one SLIM node** and a thin backend: no database, no
 message broker, no vector store.
 
 The hub backend moderates an [AGNTCY SLIM](https://github.com/agntcy) group
-channel per room (MLS-encrypted; PSK or SignerJwt/SPIRE on the **SLIM plane**).
+channel per room (MLS-encrypted; PSK or SignerJwt on the **SLIM plane**).
 Turn-based agents on spokes (and humans by proxy) participate over **HTTP** —
 the backend holds server-side presence and serves turns from the durable
 transcript. Room state lives on the hub as markdown files; search runs against
@@ -1602,7 +1600,7 @@ most common hub-and-spoke misconfiguration.
 | Plane | Port (default) | Who uses it | What it protects | Default | Upgrade |
 |-------|----------------|-------------|------------------|---------|---------|
 | **HTTP API** | 8000 | Spokes, humans, agents (`memory`, `await`, `respond`) | Memory, participation, handle attribution | Open (no token) | [Authentication](#auth) (`auth.enabled`) |
-| **SLIM / MLS** | 46357 | Hub backend (moderator); dev `slim send`; future native connectors | Native SLIM group membership on the coordination fabric | Shared-secret **PSK** (hub only) | [SignerJwt](#spire-identity) / [SPIRE](#spire-identity) |
+| **SLIM / MLS** | 46357 | Hub backend (moderator); dev `slim send`; future native connectors | Native SLIM group membership on the coordination fabric | Shared-secret **PSK** (hub only) | SignerJwt (`slim.identity`) |
 
 **Spokes do not use the SLIM plane for normal work.** A spoke is a thin HTTP
 client: it points `server.api_url` at the hub backend and never needs
@@ -1652,7 +1650,7 @@ any `@handle` — **even if the hub uses a private SLIM master secret.**
 |---------|----------|------------|--------------|
 | **Solo dev** | Open | Dev PSK literal (fallback if no config secret) | N/A (all-in-one) |
 | **LAN team** | JWT on | Auto-generated `[slim].master_secret` on hub | `server.api_url` → hub:8000 only |
-| **Hosted** | JWT required | Private hub secret + SignerJwt or SPIRE | Same; no master secret on spokes |
+| **Hosted** | JWT required | Private hub secret + SignerJwt | Same; no master secret on spokes |
 
 `mycelium doctor` reports HTTP auth status from the hub's `/health` endpoint.
 In **hub** mode it also warns when `[slim].master_secret` is missing or still
@@ -1664,7 +1662,6 @@ the public dev literal.
 |------|-------|-----------------|
 | `psk` | SLIM | No (hub backend only today) |
 | `signerjwt` | SLIM | Only if the spoke runs a native SLIM connector |
-| `spire` | SLIM | Same |
 
 `mycelium config set slim.identity signerjwt` changes **SLIM channel identity** on
 machines that open native SLIM connections. It does **not** turn on HTTP API auth.
@@ -1674,7 +1671,6 @@ Configure `[auth]` separately.
 
 - [Hub & Spoke Setup](#hub-and-spoke) — topology and spoke checklist
 - [Authentication](#auth) — HTTP JWT gate (spokes and hub API)
-- [Attested Identity (SPIRE)](#spire-identity) — hardened SLIM plane
 
 
 ---
@@ -1896,8 +1892,8 @@ For a container that runs exactly one agent and has no config file,
 
 `MYCELIUM_AGENT_AUTH_TOKEN` supplies a bearer token directly, used as-is and never
 renewed here. That is the seam for a token minted elsewhere: a CI job, or a JWT
-issued by a workload-identity system such as SPIRE. Trusting one is a config
-entry on the hub side too: another `[[auth.issuers]]` block with `role = "agent"`.
+issued by a workload-identity system. Trusting one is a config entry on the hub
+side too: another `[[auth.issuers]]` block with `role = "agent"`.
 Nothing about it is required, and nothing about it is on by default.
 
 ### Configuration
@@ -2227,9 +2223,8 @@ separate realms; list each as its own `[[auth.issuers]]` block (a human root wit
 `role = "user"`, an agent root with `role = "agent"`), matched by exact `iss` and
 never interchangeable.
 
-For the tightest, individually-attested agent identity on the SLIM channel itself,
-see [Attested Identity (SPIRE)](#spire-identity), a different, heavier tier from
-this HTTP-API gate.
+For per-agent identity on the SLIM channel itself, see
+[Security Planes](#security-planes) — a different tier from this HTTP-API gate.
 
 ## Browser login (the frontend)
 
@@ -2275,108 +2270,6 @@ tokens against a real JWKS (enough to build and prove against) but it is **not**
 hardened production Keycloak. For a real deployment, run your own Keycloak over TLS
 with a persistent datastore and real users, then point the same three config values
 (`issuer`, `jwks_url`, `login.issuer`) at it. Nothing else changes.
-
-
----
-
-<!-- SPDX-License-Identifier: Apache-2.0 -->
-# Attested identity (SPIRE)
-
-Mycelium's default channel identity is a shared-secret PSK: zero infrastructure,
-every room member derives the same group key. That's the try-it path, and it never
-changes. **SPIRE identity** is an optional, off-by-default upgrade: each member
-presents a SPIRE-attested JWT-SVID as its MLS identity, so members are
-cryptographically distinct, individually attested, and individually revocable:
-the tightest attestation tier, and the heaviest to deploy.
-
-Turning it on is **one switch**. You never touch a SPIFFE socket path, a trust
-domain, or type `spire-server entry create` by hand.
-
-## What "distinct members" actually means
-
-With any channel-identity tier on (`signerjwt` or `spire`), each actor participates
-as its **own MLS member**: a *custodial session* the hub holds on the actor's
-behalf, server-side. A message is then cryptographically attributable to the actor
-on the wire (not stamped by the backend after the fact), and room access is enforced
-by **MLS group membership**, not application logic. These sessions survive a backend
-restart; they're revived from encrypted local state with no re-invite. Under the
-`psk` default there are no custodial sessions: the backend is the single member and
-nothing here applies.
-
-**Honest boundary: this is not E2E from the hub.** Custodial sessions live *in the
-hub process*, so the hub still holds every actor's key and reads all plaintext. That
-is what lets the aligner, plan compiler, and memory sync work at all. Turning on
-identity hardens **attribution and access** and makes per-agent identity real at the
-MLS layer; it does **not** mean the hub can no longer read your messages. It means
-the hub represents each actor as a distinct, verifiable member, not that the room is
-end-to-end encrypted away from the hub.
-
-## Turn it on
-
-```bash
-mycelium config set slim.identity spire
-mycelium config apply
-mycelium up
-```
-
-`mycelium up` reads `slim.identity` and, when it's `spire`, brings a co-located
-SPIRE **server + node daemon** up alongside the hub automatically; the compose
-`spire` profile is an implementation detail the config drives. You do **not** pass
-`--profile spire` by hand. On the default (`psk`) nothing extra starts and the
-stack is byte-for-byte unchanged.
-
-> The SPIRE **node daemon** (upstream image `spire-agent`, container
-> `mycelium-spire-noded`) is SPIRE's per-node identity daemon: it serves the
-> Workload API socket and fetches SVIDs. It is unrelated to mycelium coordination
-> **agents** (`@alice` etc.); the shared word is an upstream-SPIRE coincidence.
-
-## Registration is automatic
-
-```bash
-mycelium agent create @alice
-```
-
-With SPIRE on, `agent create` registers the SVID entry
-(`spiffe://<trust-domain>/agent/alice`) against the running SPIRE server itself,
-with no printed copy-paste operator step. `agent rm @alice` deletes the entry, revoking
-the identity. Both go through the normal mycelium CLI.
-
-## Check it
-
-```bash
-mycelium doctor
-```
-
-When SPIRE is on, doctor shows a legible line (`SPIRE up, @alice attested`) so a
-misconfiguration is a clear message rather than a member silently hanging at
-"Initializing spire identity manager."
-
-## Trust domain
-
-The trust domain defaults to `mycelium.dev`. Override it (server, agent, backend
-MLS identity, and registration all read the same value) with:
-
-```bash
-export MYCELIUM_SLIM_SPIRE_TRUST_DOMAIN=corp.example.com
-```
-
-Set it in `~/.mycelium/.env` (or the shell that runs `mycelium up`) before bringing
-the stack up.
-
-## Limitations
-
-The appliance uses SPIRE's `unix` workload attestor, which identifies a workload by
-its process credentials. That requires the SPIRE node daemon to share the workload's
-PID namespace, which the shipped compose does for the **backend** (the always-on
-moderator that holds membership for turn-based agents). A **resident** Claude or
-Cursor session on a user's own machine is *not* co-located with a SPIRE node daemon,
-so it cannot be `unix`-attested; on a spoke, identity degrades to the PSK unless you
-front it with a non-`unix` attestor (k8s, docker, x509pop, join-token). This is why
-SPIRE is off by default and never lands on the default path.
-
-The appliance SPIRE profile is **dev-grade** (SQLite datastore, join-token node
-attestation, short SVID TTLs): a real product surface for attested identity, not
-yet a hardened production deployment.
 
 
 ---

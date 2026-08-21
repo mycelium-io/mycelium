@@ -78,17 +78,12 @@ def test_signerjwt_identity_constants_match_contract():
     assert g["curve"] == slim_identity.SIGNERJWT_CURVE
 
 
-def test_spire_identity_constants_match_contract():
-    """The CLI's SPIRE mode labels match the backend's frozen contract (#579)."""
-    s = _contract()["identity"]["spire"]
-    assert slim_identity.MODE_SPIRE in slim_identity.VALID_MODES
-    assert s["socket_env"] == slim_identity._SPIRE_SOCKET_ENV
-    assert s["socket_env_fallback"] == slim_identity._SPIRE_SOCKET_ENV_FALLBACK
-    assert s["trust_domain_env"] == slim_identity._SPIRE_TRUST_DOMAIN_ENV
-    assert s["trust_domain_default"] == slim_identity.SPIRE_DEFAULT_TRUST_DOMAIN
-    assert s["workload_path_prefix"] == slim_identity.SPIRE_WORKLOAD_PATH_PREFIX
-    # The SVID audience is the shared MLS audience label, not a separate constant.
-    assert _contract()["identity"]["audience"] == slim_identity.SPIRE_AUDIENCE
+def test_retired_spire_tier_is_absent_from_contract():
+    """The SPIRE tier is retired: neither copy may reintroduce it (#668)."""
+    identity = _contract()["identity"]
+    assert "spire" not in identity
+    assert "spire" not in identity["modes"]
+    assert "spire" not in slim_identity.VALID_MODES
 
 
 def test_episode_and_topic_urns_match_contract():

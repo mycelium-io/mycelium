@@ -24,24 +24,16 @@
   "node_port": 46357,
 
   "identity": {
-    "_comment": "SignerJwt-floor SLIM channel identity constants (#476), keyed byte-for-byte by both copies: backend app.services.slim_identity, CLI mycelium.slim.identity. issuer/audience/alg/curve MUST agree across members or peer verification fails inside the MLS handshake; jwk_kid_is_handle records that a roster JWK's `kid` is the raw @handle. mode_default=psk is the off-by-default posture (#567).",
+    "_comment": "SignerJwt-floor SLIM channel identity constants (#476), keyed byte-for-byte by both copies: backend app.services.slim_identity, CLI mycelium.slim.identity. issuer/audience/alg/curve MUST agree across members or peer verification fails inside the MLS handshake; jwk_kid_is_handle records that a roster JWK's `kid` is the raw @handle. mode_default=psk is the off-by-default posture (#567). The ladder has two rungs, psk and signerjwt.",
     "mode_env": "MYCELIUM_SLIM_IDENTITY",
     "require_env": "MYCELIUM_SLIM_IDENTITY_REQUIRE",
     "mode_default": "psk",
-    "modes": ["psk", "signerjwt", "spire"],
+    "modes": ["psk", "signerjwt"],
     "issuer": "mycelium-resident",
     "audience": "mycelium-slim",
     "alg": "ES256",
     "curve": "P-256",
-    "jwk_kid_is_handle": true,
-    "spire": {
-      "_comment": "SPIRE/SPIFFE mode (#579): both copies build IdentityProviderConfig.SPIRE / IdentityVerifierConfig.SPIRE from SpireConfig(socket_path, target_spiffe_id, jwt_audiences, trust_domains). socket_env selects the Workload API socket (falling back to the SPIFFE-standard SPIRE_AGENT_SOCKET); a member's SPIFFE ID is spiffe://{trust_domain}/{workload_path_prefix}/{handle} and the SVID audience is the shared MLS `audience` above. These must agree across members or peer verification fails inside the MLS handshake.",
-      "socket_env": "MYCELIUM_SLIM_SPIRE_SOCKET",
-      "socket_env_fallback": "SPIRE_AGENT_SOCKET",
-      "trust_domain_env": "MYCELIUM_SLIM_SPIRE_TRUST_DOMAIN",
-      "trust_domain_default": "mycelium.dev",
-      "workload_path_prefix": "agent"
-    }
+    "jwk_kid_is_handle": true
   },
 
   "valid_subkinds": {

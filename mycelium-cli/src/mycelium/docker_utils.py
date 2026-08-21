@@ -192,10 +192,9 @@ def generate_env_file(
         f"AUTH_JWKS_TTL_S={config.auth.jwks_ttl_s}",
         "",
         "# ── SLIM channel identity (off by default, #567) ─────────────────────────",
-        # 'psk' | 'signerjwt' | 'spire'. The backend + CLI both read
-        # MYCELIUM_SLIM_IDENTITY; the shared master secret is authored in
-        # config.toml ([slim].master_secret) and rendered here. SPIRE socket/trust-
-        # domain envs stay operator-managed (out of band). See slim_identity.py.
+        # 'psk' | 'signerjwt'. The backend + CLI both read MYCELIUM_SLIM_IDENTITY;
+        # the shared master secret is authored in config.toml ([slim].master_secret)
+        # and rendered here. See slim_identity.py.
         f"MYCELIUM_SLIM_IDENTITY={config.slim.identity}",
         f"MYCELIUM_SLIM_MASTER_SECRET={config.slim.master_secret or ''}",
         "",

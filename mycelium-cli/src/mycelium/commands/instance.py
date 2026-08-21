@@ -105,7 +105,6 @@ def _compose_base_cmd(
     include_cfn_profile: bool = True,
     include_metrics_profile: bool = True,
     include_ui_profile: bool = True,
-    include_spire_profile: bool = True,
 ) -> list[str]:
     """Build the docker compose prefix with consistent project name.
 
@@ -121,12 +120,6 @@ def _compose_base_cmd(
     is running, ``--profile ui`` is appended so stop/logs/down/status include
     it too; otherwise the profile-gated frontend is invisible to those
     commands (its logs don't show up, and it's left running on ``down``).
-
-    When *include_spire_profile* is True (the default) and ``slim.identity=spire``
-    is set in the user's .env, ``--profile spire`` is appended so the SPIRE
-    server + node daemon come up with the stack (#588). This is the one control: the
-    config drives the profile, the user never passes ``--profile spire`` by hand.
-    On the default ``psk`` it's a silent no-op; the try-it stack is unchanged.
     """
     if compose_path is None:
         compose_path = _get_compose_path()
@@ -141,8 +134,6 @@ def _compose_base_cmd(
         cmd += ["--profile", "metrics"]
     if include_ui_profile and _frontend_container_running():
         cmd += ["--profile", "ui"]
-    if include_spire_profile and _spire_enabled():
-        cmd += ["--profile", "spire"]
     return cmd
 
 
@@ -242,46 +233,6 @@ def _cfn_enabled() -> bool:
         return False
 
 
-def _spire_enabled() -> bool:
-    """Return True if ``slim.identity=spire`` in ~/.mycelium/.env (#588).
-
-    Reads the same ``MYCELIUM_SLIM_IDENTITY`` key that ``config apply`` writes,
-    so the config is the single source of truth for whether the ``spire`` compose
-    profile comes up; the user never toggles the profile separately. Any other
-    value (``psk``/``signerjwt``/unset) leaves SPIRE out of the stack.
-    """
-    env_path = _get_env_path()
-    if not env_path or not env_path.exists():
-        return False
-    try:
-        from dotenv import dotenv_values
-
-        val = dotenv_values(env_path).get("MYCELIUM_SLIM_IDENTITY", "")
-        return (val or "").strip().lower() == "spire"
-    except Exception:
-        return False
-
-
-def _spire_trust_domain() -> str:
-    """The SPIFFE trust domain the appliance boots with (default ``mycelium.dev``).
-
-    Read from ``.env`` so the token minted host-side lands under the *same* trust
-    domain the compose server config booted with (both resolve
-    ``MYCELIUM_SLIM_SPIRE_TRUST_DOMAIN`` → ``mycelium.dev``).
-    """
-    env_path = _get_env_path()
-    if env_path and env_path.exists():
-        try:
-            from dotenv import dotenv_values
-
-            val = dotenv_values(env_path).get("MYCELIUM_SLIM_SPIRE_TRUST_DOMAIN", "")
-            if val and val.strip():
-                return val.strip()
-        except Exception:
-            pass
-    return "mycelium.dev"
-
-
 def _container_running(name: str) -> bool:
     """Return True if the named container is running."""
     try:
@@ -295,70 +246,6 @@ def _container_running(name: str) -> bool:
         return result.returncode == 0 and result.stdout.strip().lower() == "true"
     except Exception:
         return False
-
-
-def bootstrap_spire_node(base: list[str]) -> bool:
-    """Mint a join token host-side and start the SPIRE node daemon (#588).
-
-    The "node daemon" is SPIRE's per-node identity daemon (upstream `spire-agent`),
-    not a mycelium coordination agent. The SPIRE images are distroless (no shell), so
-    the one-time node join token can't be handed between the two shell-less
-    containers inline. Instead, once the server is up, we mint the token against it
-    (``spire_registry.mint_join_token``) and inject it as ``SPIRE_JOIN_TOKEN``.
-    Idempotent: if the node daemon is already running we leave it (re-minting would
-    churn its attestation).
-
-    *base* is a ``docker compose`` prefix that already carries ``--profile spire``.
-    Returns True on success; every failure is a warning (the rest of the stack is
-    up and usable on the PSK floor).
-    """
-    import os
-    import time
-
-    from mycelium import spire_registry
-
-    if _container_running("mycelium-spire-noded"):
-        typer.echo("  SPIRE node daemon already running.")
-        return True
-
-    typer.echo("Bootstrapping SPIRE attestation...")
-    deadline = time.time() + 60
-    while time.time() < deadline:
-        if spire_registry.server_healthy():
-            break
-        time.sleep(2)
-    else:
-        typer.secho(
-            "  ⚠ SPIRE server not healthy in time; node daemon not started. Re-run 'mycelium up'.",
-            fg=typer.colors.YELLOW,
-        )
-        return False
-
-    token = spire_registry.mint_join_token(_spire_trust_domain())
-    if not token:
-        typer.secho(
-            "  ⚠ Could not mint a SPIRE join token; node daemon not started.",
-            fg=typer.colors.YELLOW,
-        )
-        return False
-
-    env = {**os.environ, "SPIRE_JOIN_TOKEN": token}
-    result = subprocess.run(
-        [*base, "up", "-d", "spire-node"], env=env, capture_output=True, text=True
-    )
-    if result.returncode != 0:
-        if result.stdout:
-            typer.echo(result.stdout)
-        if result.stderr:
-            typer.echo(result.stderr, err=True)
-        typer.secho("  ⚠ SPIRE node daemon failed to start.", fg=typer.colors.YELLOW)
-        return False
-
-    typer.secho(
-        "  ✓ SPIRE node daemon started (run 'mycelium doctor' to confirm attestation).",
-        fg=typer.colors.GREEN,
-    )
-    return True
 
 
 def _collector_container_running() -> bool:
@@ -613,18 +500,6 @@ def start(
                 )
             up_args.append("--build")
 
-        # SPIRE two-phase (#588): the node daemon needs a join token minted against
-        # the *live* server, so phase 1 brings up everything *except* it by listing
-        # services explicitly; bootstrap_spire_node starts it afterwards.
-        # (base already carries --profile spire via _compose_base_cmd.)
-        spire = _spire_enabled()
-        if spire:
-            up_args += ["slim", "mycelium-backend", "spire-server"]
-            if ui:
-                up_args.append("mycelium-frontend")
-            if metrics:
-                up_args.append("mycelium-collector")
-
         typer.echo("Starting Mycelium...")
 
         quiet_cmd = base[:2] + ["--progress=plain"] + base[2:] + up_args
@@ -657,11 +532,6 @@ def start(
             if result.stderr:
                 typer.echo(result.stderr, err=True)
 
-        # Phase 2: mint the join token against the now-running server and start the
-        # SPIRE node daemon (distroless images can't self-bootstrap the token; #588).
-        if spire:
-            bootstrap_spire_node(base)
-
         # Pull the configured ports from .env so the summary matches reality
         # (MYCELIUM_BACKEND_PORT / MYCELIUM_UI_PORT / MYCELIUM_METRICS_PORT are
         # written by `config apply`).
@@ -684,10 +554,6 @@ def start(
             typer.echo(f"  mycelium-frontend   → http://localhost:{ui_port}")
         if metrics:
             typer.echo(f"  mycelium-collector  → http://localhost:{metrics_port}")
-        if _spire_enabled():
-            # SPIRE is config-driven, not a flag; surface it so the extra weight
-            # on the stack is legible (#588). Registration happens on agent create.
-            typer.echo("  spire-server/node   → attested identity (slim.identity=spire)")
 
     except typer.Exit:
         raise

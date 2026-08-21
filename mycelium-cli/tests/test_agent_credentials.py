@@ -291,7 +291,7 @@ def test_replacing_a_credential_drops_the_token_it_minted(mint: _Mint) -> None:
 
 
 def test_a_static_token_is_used_as_is(mint: _Mint, monkeypatch: pytest.MonkeyPatch) -> None:
-    """The SPIRE / CI seam: a credential this CLI didn't obtain and doesn't renew."""
+    """The pre-minted seam: a credential this CLI didn't obtain and doesn't renew."""
     monkeypatch.setenv(agent_credentials.STATIC_TOKEN_ENV, "svid-from-sidecar")
 
     assert agent_credentials.access_token(_config(), "release-agent") == "svid-from-sidecar"

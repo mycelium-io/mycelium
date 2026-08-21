@@ -51,8 +51,8 @@ DEFAULT_CHANNEL_TOPIC = "room"
 # ``MYCELIUM_SLIM_MASTER_SECRET`` to a private value; every host that shares rooms
 # must set the **same** value (it's shared, not per-host). Both the env var name
 # and the literal match the backend's ``slim_client`` so moderator and members
-# reconstruct the identical credential offline (MVP identity tier; JWT/SPIRE is
-# the production path). ``MYCELIUM_SLIM_REQUIRE_SECRET=1`` hard-refuses the dev
+# reconstruct the identical credential offline (MVP identity tier; the SignerJwt
+# floor is the per-member path). ``MYCELIUM_SLIM_REQUIRE_SECRET=1`` hard-refuses the dev
 # default so a misconfigured host fails closed.
 _MASTER_SECRET_ENV = "MYCELIUM_SLIM_MASTER_SECRET"
 _REQUIRE_SECRET_ENV = "MYCELIUM_SLIM_REQUIRE_SECRET"

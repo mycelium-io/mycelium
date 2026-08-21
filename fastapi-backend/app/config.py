@@ -20,8 +20,8 @@ class TrustedIssuer(BaseModel):
     """One trust root the HTTP-API gate accepts tokens from.
 
     Trust is a *list* of these, matched by exact ``iss``, because more than one
-    root is the normal case: the human OIDC issuer alongside (later) the SPIRE
-    trust domain. Each entry carries its own keys, audience, and default role,
+    root is the normal case: the human OIDC issuer alongside (later) a workload
+    trust root. Each entry carries its own keys, audience, and default role,
     so a new root is config, never issuer-specific code.
     """
 

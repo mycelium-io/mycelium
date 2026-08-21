@@ -24,7 +24,14 @@ def test_mode_defaults_to_psk_when_unset(monkeypatch):
 
 
 def test_mode_unknown_value_falls_back_to_psk(monkeypatch):
-    monkeypatch.setenv("MYCELIUM_SLIM_IDENTITY", "spire-maybe")
+    monkeypatch.setenv("MYCELIUM_SLIM_IDENTITY", "not-a-tier")
+    assert slim_identity.resolve_identity_mode() == slim_identity.MODE_PSK
+
+
+def test_retired_spire_tier_is_not_selectable(monkeypatch):
+    """The retired SPIRE tier reads as any other unknown value: psk (#668)."""
+    monkeypatch.setenv("MYCELIUM_SLIM_IDENTITY", "spire")
+    assert "spire" not in slim_identity.VALID_MODES
     assert slim_identity.resolve_identity_mode() == slim_identity.MODE_PSK
 
 
@@ -153,67 +160,6 @@ def test_material_built_when_key_and_roster_present(tmp_path):
     assert verifier is not None
 
 
-# SPIRE mode: socket / trust-domain / SPIFFE-ID resolution
-def test_spire_mode_selected(monkeypatch):
-    monkeypatch.setenv("MYCELIUM_SLIM_IDENTITY", "SPIRE")
-    assert slim_identity.resolve_identity_mode() == slim_identity.MODE_SPIRE
-
-
-def test_resolve_spire_socket_none_when_unset(monkeypatch):
-    monkeypatch.delenv("MYCELIUM_SLIM_SPIRE_SOCKET", raising=False)
-    monkeypatch.delenv("SPIRE_AGENT_SOCKET", raising=False)
-    assert slim_identity.resolve_spire_socket() is None
-
-
-def test_resolve_spire_socket_prefers_mycelium_env(monkeypatch):
-    monkeypatch.setenv("MYCELIUM_SLIM_SPIRE_SOCKET", "unix:///a.sock")
-    monkeypatch.setenv("SPIRE_AGENT_SOCKET", "unix:///b.sock")
-    assert slim_identity.resolve_spire_socket() == "unix:///a.sock"
-
-
-def test_resolve_spire_socket_falls_back_to_standard_env(monkeypatch):
-    monkeypatch.delenv("MYCELIUM_SLIM_SPIRE_SOCKET", raising=False)
-    monkeypatch.setenv("SPIRE_AGENT_SOCKET", "unix:///b.sock")
-    assert slim_identity.resolve_spire_socket() == "unix:///b.sock"
-
-
-def test_resolve_spire_trust_domain_default_and_override(monkeypatch):
-    monkeypatch.delenv("MYCELIUM_SLIM_SPIRE_TRUST_DOMAIN", raising=False)
-    assert slim_identity.resolve_spire_trust_domain() == slim_identity.SPIRE_DEFAULT_TRUST_DOMAIN
-    monkeypatch.setenv("MYCELIUM_SLIM_SPIRE_TRUST_DOMAIN", "acme.example")
-    assert slim_identity.resolve_spire_trust_domain() == "acme.example"
-
-
-def test_spiffe_id_for_builds_expected_path():
-    assert (
-        slim_identity.spiffe_id_for("alice", "mycelium.dev") == "spiffe://mycelium.dev/agent/alice"
-    )
-
-
-def test_spire_material_none_without_socket(monkeypatch):
-    monkeypatch.delenv("MYCELIUM_SLIM_SPIRE_SOCKET", raising=False)
-    monkeypatch.delenv("SPIRE_AGENT_SOCKET", raising=False)
-    assert slim_identity.resolve_spire_material("alice") is None
-
-
-def test_spire_material_none_when_socket_absent(monkeypatch, tmp_path):
-    # Configured but the socket file does not exist → no agent to mint the SVID.
-    monkeypatch.setenv("MYCELIUM_SLIM_SPIRE_SOCKET", str(tmp_path / "missing.sock"))
-    assert slim_identity.resolve_spire_material("alice") is None
-
-
-def test_spire_material_built_when_socket_present(monkeypatch, tmp_path):
-    pytest.importorskip("slim_bindings")
-    sock = tmp_path / "agent.sock"
-    sock.write_text("")  # _spire_socket_present only checks existence
-    monkeypatch.setenv("MYCELIUM_SLIM_SPIRE_SOCKET", f"unix://{sock}")
-    material = slim_identity.resolve_spire_material("alice")
-    assert material is not None
-    provider, verifier = material
-    assert provider is not None
-    assert verifier is not None
-
-
 # ── resolve_identity_material: the shared connect-seam dispatcher ─────────────
 def test_identity_material_dispatch_psk_is_none(tmp_path):
     assert (
@@ -230,15 +176,6 @@ def test_identity_material_dispatch_signerjwt(tmp_path):
     assert material is not None
 
 
-def test_identity_material_dispatch_spire(monkeypatch, tmp_path):
-    pytest.importorskip("slim_bindings")
-    sock = tmp_path / "agent.sock"
-    sock.write_text("")
-    monkeypatch.setenv("MYCELIUM_SLIM_SPIRE_SOCKET", str(sock))
-    material = slim_identity.resolve_identity_material(slim_identity.MODE_SPIRE, "alice")
-    assert material is not None
-
-
 # handle ↔ channel-identity reconciliation (the identity spine)
 def test_handle_from_jwk_is_the_kid():
     _, public_pem = slim_identity.generate_es256_keypair()
@@ -248,29 +185,6 @@ def test_handle_from_jwk_is_the_kid():
 
 def test_handle_from_jwk_none_without_kid():
     assert slim_identity.handle_from_jwk({"kty": "EC"}) is None
-
-
-def test_handle_from_spiffe_id_roundtrips():
-    spiffe_id = slim_identity.spiffe_id_for("alice", "mycelium.dev")
-    assert slim_identity.handle_from_spiffe_id(spiffe_id) == "alice"
-    # Trust-domain-scoped: a matching domain resolves, a mismatched one refuses.
-    assert slim_identity.handle_from_spiffe_id(spiffe_id, "mycelium.dev") == "alice"
-    assert slim_identity.handle_from_spiffe_id(spiffe_id, "other.example") is None
-
-
-@pytest.mark.parametrize(
-    "spiffe_id",
-    [
-        "https://mycelium.dev/agent/alice",  # not a SPIFFE URI
-        "spiffe://mycelium.dev",  # no workload path
-        "spiffe://mycelium.dev/user/alice",  # foreign path prefix
-        "spiffe://mycelium.dev/agent/alice/extra",  # over-deep path
-        "spiffe://mycelium.dev/agent/",  # empty handle
-    ],
-)
-def test_handle_from_spiffe_id_refuses_foreign_or_malformed(spiffe_id):
-    # Faithful interpretation: reconcile to nothing, never a fabricated handle.
-    assert slim_identity.handle_from_spiffe_id(spiffe_id) is None
 
 
 # provision_channel_identity: registration-time credential minting
@@ -303,16 +217,6 @@ def test_provision_signerjwt_is_idempotent(tmp_path):
     # No key churn on re-provision (never regenerated — that would churn identity).
     assert slim_identity.signing_key_path("alice", tmp_path).read_text() == key
     assert first == second
-
-
-def test_provision_spire_returns_spiffe_and_operator_step(tmp_path, monkeypatch):
-    monkeypatch.setenv("MYCELIUM_SLIM_SPIRE_TRUST_DOMAIN", "acme.example")
-    result = slim_identity.provision_channel_identity("alice", slim_identity.MODE_SPIRE, tmp_path)
-    assert result["mode"] == "spire"
-    # SVID entry creation is an external operator step, so nothing is provisioned here.
-    assert result["provisioned"] is False
-    assert result["spiffe_id"] == "spiffe://acme.example/agent/alice"
-    assert "spire-server entry create" in result["operator_step"]
 
 
 def test_provision_defaults_to_active_mode(tmp_path, monkeypatch):
@@ -365,16 +269,6 @@ def test_revoke_signerjwt_is_idempotent(tmp_path):
     second = slim_identity.revoke_channel_identity("bob", slim_identity.MODE_SIGNERJWT, tmp_path)
     assert second["revoked"] is False
     assert second["removed"] == []
-
-
-def test_revoke_spire_returns_spiffe_and_operator_step(tmp_path, monkeypatch):
-    monkeypatch.setenv("MYCELIUM_SLIM_SPIRE_TRUST_DOMAIN", "acme.example")
-    result = slim_identity.revoke_channel_identity("alice", slim_identity.MODE_SPIRE, tmp_path)
-    assert result["mode"] == "spire"
-    # Entry deletion is external (needs the SPIRE server), so nothing is removed here.
-    assert result["revoked"] is False
-    assert result["spiffe_id"] == "spiffe://acme.example/agent/alice"
-    assert "spire-server entry delete" in result["operator_step"]
 
 
 def test_revoke_defaults_to_active_mode(tmp_path, monkeypatch):
