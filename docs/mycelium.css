@@ -144,6 +144,16 @@
   --sidebar-width: 260px;
   --topbar-height: 60px;
   --statusbar-height: 26px;
+
+  /* Device safe areas. iOS reports these only when the viewport meta opts into
+   * viewport-fit=cover; everywhere else the fallback keeps them at zero, so the
+   * same expressions hold on every platform. --statusbar-total is what the rest
+   * of the layout offsets against: the bar plus whatever it has to reach down
+   * through to sit flush with the physical bottom of the screen. */
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --statusbar-total: calc(var(--statusbar-height) + var(--safe-bottom));
   /* The row the search field drops to on small screens. */
   --searchbar-height: 46px;
 
@@ -200,6 +210,7 @@ body {
   font-size: var(--text-prose);
   line-height: 1.65;
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 ::selection { background: var(--accent-soft); color: var(--text); }
@@ -245,6 +256,8 @@ html { scrollbar-color: var(--border2) transparent; scrollbar-width: thin; }
   position: fixed;
   top: 0; left: 0; right: 0;
   height: var(--topbar-height);
+  padding-left: var(--safe-left);
+  padding-right: var(--safe-right);
   background: color-mix(in srgb, var(--surface) 88%, transparent);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
@@ -387,11 +400,11 @@ a.topnav-page:hover { color: var(--text); text-decoration: none; }
 .docs-footer {
   position: fixed;
   left: 0; right: 0; bottom: 0;
-  height: var(--statusbar-height);
+  height: var(--statusbar-total);
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 0 12px;
+  padding: 0 calc(12px + var(--safe-right)) var(--safe-bottom) calc(12px + var(--safe-left));
   border-top: 1px solid var(--border);
   background: color-mix(in srgb, var(--surface) 88%, transparent);
   backdrop-filter: blur(14px);
@@ -417,15 +430,17 @@ a.topnav-page:hover { color: var(--text); text-decoration: none; }
   display: flex;
   padding-top: var(--topbar-height);
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 /* ── SIDEBAR (the app's Explorer rail) ── */
 .sidebar {
-  width: var(--sidebar-width);
+  width: calc(var(--sidebar-width) + var(--safe-left));
+  padding-left: var(--safe-left);
   flex-shrink: 0;
   position: fixed;
   top: var(--topbar-height);
-  bottom: var(--statusbar-height);
+  bottom: var(--statusbar-total);
   overflow-y: auto;
   padding: 18px 0 28px;
   border-right: 1px solid var(--border);
@@ -548,7 +563,7 @@ a.topnav-page:hover { color: var(--text); text-decoration: none; }
 .main {
   margin-left: var(--sidebar-width);
   flex: 1;
-  padding: 28px 32px calc(var(--statusbar-height) + 40px);
+  padding: 28px 32px calc(var(--statusbar-total) + 40px);
   min-width: 0;
 }
 /* The reading pane. Near-solid so prose stays crisp; the mycelial network
@@ -1314,7 +1329,7 @@ h3:hover .header-anchor,
 /* ── RESPONSIVE ── */
 @media (max-width: 1080px) {
   .docsearch-field input { width: 130px; }
-  .main { padding: 24px 20px calc(var(--statusbar-height) + 32px); }
+  .main { padding: 24px 20px calc(var(--statusbar-total) + 32px); }
 }
 @media (max-width: 860px) {
   .main { margin-left: 0; }
@@ -1374,7 +1389,7 @@ h3:hover .header-anchor,
     right: 12px;
     width: auto;
   }
-  .main { padding: 20px 14px calc(var(--statusbar-height) + 28px); }
+  .main { padding: 20px 14px calc(var(--statusbar-total) + 28px); }
   .main-inner { padding: 24px 18px 32px; border-radius: var(--radius-lg); }
   h1 { font-size: 1.6rem; }
   h2 { font-size: 1.2rem; }
