@@ -101,6 +101,7 @@ def _memory_read_from_file(room_name: str, key: str, meta: dict, content: str) -
         updated_by=meta.get("updated_by"),
         version=meta.get("version", 1),
         tags=meta.get("tags"),
+        expandable=links.is_expandable(meta),
         created_at=meta.get("created_at", now),
         updated_at=meta.get("updated_at", now),
         file_path=f"rooms/{room_name}/{key}.md",
@@ -302,6 +303,7 @@ async def upsert_memories(room_name: str, payload: MemoryBatchCreate) -> list[Me
                 "updated_by": item.created_by,
                 "version": new_version,
                 "tags": item.tags,
+                "expandable": links.is_expandable(extra_meta),
                 "created_at": created_at.isoformat()
                 if isinstance(created_at, datetime)
                 else str(created_at),
@@ -322,6 +324,7 @@ async def upsert_memories(room_name: str, payload: MemoryBatchCreate) -> list[Me
                 updated_by=item.created_by,
                 version=new_version,
                 tags=item.tags,
+                expandable=links.is_expandable(extra_meta),
                 created_at=created_at if isinstance(created_at, datetime) else now,
                 updated_at=now,
                 file_path=f"rooms/{room_name}/{item.key}.md",
@@ -419,6 +422,7 @@ async def search_memories(room_name: str, payload: MemorySearchRequest):
             updated_by=rec.get("updated_by"),
             version=rec.get("version", 1),
             tags=rec.get("tags"),
+            expandable=bool(rec.get("expandable")),
             created_at=rec.get("created_at", now),
             updated_at=rec.get("updated_at", now),
             file_path=rec.get("file_path"),

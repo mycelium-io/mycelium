@@ -9,7 +9,11 @@ import { MarkdownEditor, type MarkdownEditorHandle } from "@fedoup/markdown-edit
 import { ApiError, createMemories, type Memory, type MemoryCreate } from "@/lib/api";
 import { TagInput } from "@/components/ui/tag-input";
 import { useRoomMemories } from "@/lib/room-data";
-import { wikilinkDetector, type WikilinkMatch } from "@/lib/wikilink-completions";
+import {
+  filterWikilinkCandidates,
+  wikilinkDetector,
+  type WikilinkMatch,
+} from "@/lib/wikilink-completions";
 
 interface Props {
   memory: Memory;
@@ -36,13 +40,6 @@ function extractTags(mem: Memory): string[] {
   return mem.tags ?? [];
 }
 
-/** Extract `expandable` flag from the memory's value when it's an object. */
-function extractExpandable(mem: Memory): boolean {
-  if (!mem.value || typeof mem.value !== "object") return false;
-  const v = mem.value as Record<string, unknown>;
-  return v["expandable"] === true;
-}
-
 // ---------------------------------------------------------------------------
 // Wikilink autocomplete dropdown
 // ---------------------------------------------------------------------------
@@ -67,6 +64,11 @@ function WikilinkDropdown({
   const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => setActiveIdx(0), [candidates]);
+
+  // Keep the highlighted row visible when arrowing past the scroll fold.
+  useEffect(() => {
+    listRef.current?.children[activeIdx]?.scrollIntoView({ block: "nearest" });
+  }, [activeIdx]);
 
   // Keyboard nav in capture phase so we intercept before CM6 keymaps.
   useEffect(() => {
@@ -133,7 +135,7 @@ function WikilinkDropdown({
  */
 export function MemoryEditor({ memory, roomName, onSaved, onCancel, actor }: Props) {
   const [tags, setTags] = useState<string[]>(extractTags(memory));
-  const [expandable, setExpandable] = useState(extractExpandable(memory));
+  const [expandable, setExpandable] = useState(memory.expandable ?? false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [wikilinkMatch, setWikilinkMatch] = useState<WikilinkMatch | null>(null);
@@ -143,10 +145,7 @@ export function MemoryEditor({ memory, roomName, onSaved, onCancel, actor }: Pro
   const { memories } = useRoomMemories(roomName);
   const allKeys = useMemo(() => memories.map(m => m.key), [memories]);
   const expandableKeys = useMemo(
-    () => memories.filter(m => {
-      if (!m.value || typeof m.value !== "object") return false;
-      return (m.value as Record<string, unknown>)["expandable"] === true;
-    }).map(m => m.key),
+    () => memories.filter(m => m.expandable).map(m => m.key),
     [memories],
   );
 
@@ -162,15 +161,19 @@ export function MemoryEditor({ memory, roomName, onSaved, onCancel, actor }: Pro
   const wikilinkCandidates = useMemo(() => {
     if (!wikilinkMatch) return [];
     const pool = wikilinkMatch.sigil === "![[" ? expandableKeys : allKeys;
-    return pool.filter(k => k.toLowerCase().includes(wikilinkMatch.query.toLowerCase()));
+    return filterWikilinkCandidates(pool, wikilinkMatch.query);
   }, [wikilinkMatch, allKeys, expandableKeys]);
 
   const applyWikilink = useCallback((key: string) => {
     const view = editorRef.current?.view;
     if (!view || !wikilinkMatch) return;
     const insert = `${wikilinkMatch.sigil}${key}]]`;
+    // Replace through the live cursor rather than the position captured when
+    // the match was made — a keystroke landing between the two would otherwise
+    // be left stranded after the inserted link.
+    const to = Math.max(view.state.selection.main.head, wikilinkMatch.from);
     view.dispatch({
-      changes: { from: wikilinkMatch.from, to: wikilinkMatch.to, insert },
+      changes: { from: wikilinkMatch.from, to, insert },
       selection: { anchor: wikilinkMatch.from + insert.length },
     });
     setWikilinkMatch(null);
@@ -180,7 +183,7 @@ export function MemoryEditor({ memory, roomName, onSaved, onCancel, actor }: Pro
   // Keep tags/expandable in sync if the parent switches to a different memory.
   useEffect(() => {
     setTags(extractTags(memory));
-    setExpandable(extractExpandable(memory));
+    setExpandable(memory.expandable ?? false);
     setError(null);
     setWikilinkMatch(null);
   }, [memory.key]);
@@ -196,7 +199,10 @@ export function MemoryEditor({ memory, roomName, onSaved, onCancel, actor }: Pro
       created_by: actor || memory.created_by,
       base_version: memory.version,
       ...(tags.length > 0 && { tags }),
-      ...(expandable && { meta: { expandable: true } }),
+      // Always sent, both true and false: the backend carries unmanaged
+      // frontmatter forward across writes, so omitting the flag when unchecked
+      // would leave a previously-set `expandable: true` on disk.
+      meta: { expandable },
     };
 
     try {

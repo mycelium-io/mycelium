@@ -12,18 +12,24 @@ if (typeof window !== "undefined") {
   const candidate = (globalThis as { localStorage?: Storage }).localStorage;
   const isBroken = !candidate || typeof candidate.getItem !== "function";
   if (isBroken) {
-    const data = new Map<string, string>();
-    const memoryStorage: Storage = {
-      get length() { return data.size; },
-      clear()                        { data.clear(); },
-      getItem(key: string)           { return data.has(key) ? (data.get(key) ?? null) : null; },
-      setItem(key: string, val: string) { data.set(key, String(val)); },
-      removeItem(key: string)        { data.delete(key); },
-      key(index: number)             { return Array.from(data.keys())[index] ?? null; },
+    // Each name gets its own backing map — sharing one would let a write to
+    // localStorage be read back out of sessionStorage.
+    const makeStorage = (): Storage => {
+      const data = new Map<string, string>();
+      return {
+        get length() { return data.size; },
+        clear()                           { data.clear(); },
+        getItem(key: string)              { return data.get(key) ?? null; },
+        setItem(key: string, val: string) { data.set(key, String(val)); },
+        removeItem(key: string)           { data.delete(key); },
+        key(index: number)                { return Array.from(data.keys())[index] ?? null; },
+      };
     };
+    const local = makeStorage();
+    const session = makeStorage();
     for (const target of [globalThis, window] as unknown[]) {
-      Object.defineProperty(target, "localStorage", { configurable: true, writable: true, value: memoryStorage });
-      Object.defineProperty(target, "sessionStorage", { configurable: true, writable: true, value: memoryStorage });
+      Object.defineProperty(target, "localStorage", { configurable: true, writable: true, value: local });
+      Object.defineProperty(target, "sessionStorage", { configurable: true, writable: true, value: session });
     }
   }
 }

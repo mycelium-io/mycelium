@@ -68,6 +68,7 @@ def _build_record(room_name: str, key: str, content: str, meta: dict) -> dict:
         "updated_by": meta.get("updated_by", created_by),
         "version": meta.get("version", 1),
         "tags": meta.get("tags"),
+        "expandable": links.is_expandable(meta),
         "created_at": _iso(meta.get("created_at"), now),
         "updated_at": _iso(meta.get("updated_at"), now),
         "file_path": f"rooms/{room_name}/{key}.md",

@@ -330,3 +330,56 @@ async def test_structured_memory_upsert_preserves_category(client: AsyncClient):
     resp = await client.get("/api/rooms/struct-upsert/memory", params={"prefix": "status/"})
     assert len(resp.json()) == 1
     assert resp.json()[0]["value"]["text"] == "ACTIVE"
+
+
+@pytest.mark.asyncio
+async def test_expandable_flag_round_trips(client: AsyncClient):
+    """The expandable frontmatter flag is readable back off the memory API."""
+    await client.post("/api/rooms", json={"name": "expand-rt"})
+
+    await client.post(
+        "/api/rooms/expand-rt/memory",
+        json={
+            "items": [
+                {
+                    "key": "context/glossary",
+                    "value": "SLO: service level objective",
+                    "created_by": "tester",
+                    "embed": False,
+                    "meta": {"expandable": True},
+                }
+            ]
+        },
+    )
+
+    resp = await client.get("/api/rooms/expand-rt/memory/context/glossary")
+    assert resp.status_code == 200
+    assert resp.json()["expandable"] is True
+
+
+@pytest.mark.asyncio
+async def test_expandable_flag_can_be_cleared(client: AsyncClient):
+    """Writing expandable=False clears a previously-set flag.
+
+    Unmanaged frontmatter is carried forward across writes, so a client that
+    omitted the flag would silently leave the memory expandable.
+    """
+    await client.post("/api/rooms", json={"name": "expand-clear"})
+    body = {
+        "key": "context/glossary",
+        "value": "SLO: service level objective",
+        "created_by": "tester",
+        "embed": False,
+    }
+
+    await client.post(
+        "/api/rooms/expand-clear/memory",
+        json={"items": [{**body, "meta": {"expandable": True}}]},
+    )
+    await client.post(
+        "/api/rooms/expand-clear/memory",
+        json={"items": [{**body, "meta": {"expandable": False}}]},
+    )
+
+    resp = await client.get("/api/rooms/expand-clear/memory/context/glossary")
+    assert resp.json()["expandable"] is False

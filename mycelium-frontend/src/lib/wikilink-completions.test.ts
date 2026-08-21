@@ -2,97 +2,75 @@
 // Copyright 2026 Mycelium Contributors
 
 import { describe, expect, it } from "vitest";
-import { EditorState } from "@codemirror/state";
-import { CompletionContext } from "@codemirror/autocomplete";
-import { wikilinkSource, wikilinkCompletions } from "@/lib/wikilink-completions";
+import { filterWikilinkCandidates, matchWikilinkAt } from "@/lib/wikilink-completions";
 
-function makeCtx(doc: string, cursor: number, keys: string[], expandableKeys?: string[]) {
-  const state = EditorState.create({
-    doc,
-    selection: { anchor: cursor },
-    extensions: [wikilinkCompletions(() => keys, expandableKeys ? () => expandableKeys : undefined)],
-  });
-  return {
-    ctx: new CompletionContext(state, cursor, false),
-    source: wikilinkSource(() => keys, expandableKeys ? () => expandableKeys : undefined),
-  };
-}
-
-function complete(doc: string, cursor: number, keys: string[], expandableKeys?: string[]): string[] {
-  const { ctx, source } = makeCtx(doc, cursor, keys, expandableKeys);
-  const result = source(ctx);
-  return result?.options.map(o => o.label) ?? [];
-}
-
-describe("wikilink completions", () => {
-  const keys = ["context/overview", "decisions/db", "plan/tasks", "skills/summarize"];
-  const expandableKeys = ["context/overview", "skills/summarize"];
-
-  it("matches all keys when the query is empty after [[", () => {
-    const labels = complete("some text [[ ", "some text [[".length, keys);
-    expect(labels).toEqual(keys);
+describe("matchWikilinkAt", () => {
+  it("matches a bare sigil with no query yet", () => {
+    expect(matchWikilinkAt("see [[")).toEqual({ offset: 4, query: "", sigil: "[[" });
   });
 
-  it("filters by partial match", () => {
-    const text = "see [[dec";
-    const labels = complete(text, text.length, keys);
-    expect(labels).toEqual(["decisions/db"]);
+  it("captures the partial key typed after the sigil", () => {
+    expect(matchWikilinkAt("see [[context/anch")).toEqual({
+      offset: 4,
+      query: "context/anch",
+      sigil: "[[",
+    });
   });
 
-  it("returns nothing when no keys match", () => {
-    const text = "[[zzznomatch";
-    const labels = complete(text, text.length, keys);
-    expect(labels).toHaveLength(0);
+  it("distinguishes a transclusion sigil", () => {
+    expect(matchWikilinkAt("![[glossary")).toEqual({
+      offset: 0,
+      query: "glossary",
+      sigil: "![[",
+    });
   });
 
-  it("uses expandableKeys for the ![[  sigil", () => {
-    const text = "![[";
-    const labels = complete(text, text.length, keys, expandableKeys);
-    expect(labels).toEqual(expandableKeys);
+  it("returns null when the cursor is not inside a wikilink", () => {
+    expect(matchWikilinkAt("just some prose")).toBeNull();
+    expect(matchWikilinkAt("")).toBeNull();
   });
 
-  it("filters expandable keys by partial query", () => {
-    const text = "![[skills";
-    const labels = complete(text, text.length, keys, expandableKeys);
-    expect(labels).toEqual(["skills/summarize"]);
+  it("returns null once the link is closed", () => {
+    expect(matchWikilinkAt("see [[context/anchor]]")).toBeNull();
   });
 
-  it("returns nothing for ![[  when no expandableKeys are provided", () => {
-    const text = "![[";
-    const labels = complete(text, text.length, keys);
-    expect(labels).toHaveLength(0);
+  it("does not reach back to a closed link earlier on the line", () => {
+    expect(matchWikilinkAt("see [[a]] and then some prose")).toBeNull();
   });
 
-  it("sets from to the start of the [[ sigil so the apply string replaces it, not appends to it", () => {
-    // Regression: `from` was previously set to `before.from + sigilLen`,
-    // causing the [[key]] apply text to be inserted *after* the already-typed
-    // [[ rather than replacing it, producing [[[[key]].
-    const text = "text [[dec";
-    const cursor = text.length;
-    const { ctx, source } = makeCtx(text, cursor, keys);
-    const result = source(ctx);
-    expect(result).not.toBeNull();
-    // `from` should be at the position of the first `[`, not after `[[`.
-    expect(result!.from).toBe(text.indexOf("[["));
-    // The apply string already contains the sigil.
-    expect(result!.options[0].apply).toBe("[[decisions/db]]");
+  it("stops at a space, so prose after a stray bracket does not match", () => {
+    expect(matchWikilinkAt("[[ not a key")).toBeNull();
   });
 
-  it("reads keys from getter so late-arriving keys are seen", () => {
-    // Simulates the SWR async-load scenario: the getter returns an updated
-    // array after the source closure was already created.
-    const liveKeys = ["context/overview"];
-    const getKeys = () => liveKeys;
-    const source = wikilinkSource(getKeys);
-    const state = EditorState.create({ doc: "[[con", selection: { anchor: 5 } });
-    const ctx = new CompletionContext(state, 5, false);
+  it("reports the offset of the sigil, not of the query", () => {
+    // The offset drives the replacement range: starting it after the sigil
+    // would append the inserted `[[key]]` to the `[[` already typed.
+    const token = matchWikilinkAt("prefix ![[ctx");
+    expect(token?.offset).toBe(7);
+    expect("prefix ![[ctx".slice(token!.offset)).toBe("![[ctx");
+  });
+});
 
-    const before = source(ctx);
-    expect(before?.options.map(o => o.label)).toEqual(["context/overview"]);
+describe("filterWikilinkCandidates", () => {
+  const keys = ["context/anchor", "context/overview", "decisions/db-choice"];
 
-    // Simulate SWR updating the keys array.
-    liveKeys.push("context/deep-dive");
-    const after = source(ctx);
-    expect(after?.options.map(o => o.label)).toEqual(["context/overview", "context/deep-dive"]);
+  it("returns every key for an empty query", () => {
+    expect(filterWikilinkCandidates(keys, "")).toEqual(keys);
+  });
+
+  it("matches on any substring, not just a prefix", () => {
+    expect(filterWikilinkCandidates(keys, "anchor")).toEqual(["context/anchor"]);
+  });
+
+  it("is case insensitive", () => {
+    expect(filterWikilinkCandidates(keys, "DB-CHOICE")).toEqual(["decisions/db-choice"]);
+  });
+
+  it("returns nothing when no key matches", () => {
+    expect(filterWikilinkCandidates(keys, "nope")).toEqual([]);
+  });
+
+  it("handles an empty pool", () => {
+    expect(filterWikilinkCandidates([], "anything")).toEqual([]);
   });
 });

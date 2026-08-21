@@ -149,17 +149,29 @@ describe("MemoryEditor", () => {
     });
   });
 
-  it("includes expandable: true in meta when the checkbox is checked", async () => {
-    const user = userEvent.setup();
-    const memWithExpandable: Memory = {
-      ...baseMemory,
-      value: { expandable: true, text: "Hello" },
-      content_text: "Hello",
-    };
-    renderEditor({ memory: memWithExpandable });
-    // Checkbox should start checked.
+  it("reflects the memory's expandable flag in the checkbox", () => {
+    renderEditor({ memory: { ...baseMemory, expandable: true } });
     expect(screen.getByRole("checkbox", { name: /expandable/i })).toBeChecked();
-    // Save — meta should carry expandable.
+  });
+
+  it("sends expandable: false when the flag is cleared", async () => {
+    const user = userEvent.setup();
+    renderEditor({ memory: { ...baseMemory, expandable: true } });
+    await user.click(screen.getByRole("checkbox", { name: /expandable/i }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    // Sent explicitly rather than omitted: the backend preserves unmanaged
+    // frontmatter, so an absent flag would leave `expandable: true` on disk.
+    await waitFor(() => {
+      expect(createMemories).toHaveBeenCalledWith("test-room", [
+        expect.objectContaining({ meta: { expandable: false } }),
+      ]);
+    });
+  });
+
+  it("sends expandable: true when the flag is set", async () => {
+    const user = userEvent.setup();
+    renderEditor();
+    await user.click(screen.getByRole("checkbox", { name: /expandable/i }));
     await user.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => {
       expect(createMemories).toHaveBeenCalledWith("test-room", [

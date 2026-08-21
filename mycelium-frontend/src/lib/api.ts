@@ -161,6 +161,8 @@ export interface Memory {
   updated_at: string;
   file_path?: string;
   tags?: string[];
+  /** Mirrors the `expandable` frontmatter flag that opts a memory into `![[…]]`. */
+  expandable?: boolean;
 }
 
 /** Shape sent to POST /api/rooms/{room}/memory to create or upsert a memory. */
