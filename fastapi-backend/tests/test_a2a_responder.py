@@ -54,7 +54,7 @@ def _summon_envelope(sender: str, *, message_id: str = "m1"):
     )
 
 
-def _responder(monkeypatch, *, reply: str = "the remote reply"):
+def _responder(monkeypatch, *, reply: str | None = "the remote reply"):
     persister = FakePersister()
     channel = FakeChannel(persister)
     managed = FakeManaged(room=_ROOM, channel=channel, persister=persister)
