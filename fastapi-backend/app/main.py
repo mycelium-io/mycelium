@@ -105,20 +105,27 @@ async def lifespan(app: FastAPI):
     # Wire the SIEP aligner into every room's summon seam before any
     # channel is provisioned, so all persisters pick it up. Dormant until an
     # @-summon of its reserved handle arrives — zero idle cost.
+    # Several handlers share the one summon seam: two engine kinds (aligner,
+    # synthesizer) plus the A2A responder. Each self-selects by the summoned
+    # handle's manifest (kind for engines, adapter=a2a for the responder), so a
+    # fan-out dispatcher is enough — no central table. Only one ever acts per
+    # summon since a handle maps to a single runtime.
+    from app.services.a2a_bridge import A2aResponder
     from app.services.aligner import AlignerEngine
     from app.services.plan_sync import PlanSyncEngine
     from app.services.room_channels import manager as room_channel_manager
     from app.services.synthesizer import SynthesizerEngine
 
-    # Two engine kinds share the one summon seam. Each engine self-selects by the
-    # summoned handle's manifest kind (and the aligner's reserved-handle
-    # fallback), so a fan-out dispatcher is enough — no central kind table. Only
-    # one engine ever acts per summon since a handle maps to a single kind.
     app.state.aligner = AlignerEngine(room_channel_manager)
     app.state.synthesizer = SynthesizerEngine(room_channel_manager)
+    # The A2A responder shares the seam too: it answers @-mentions of a
+    # registered a2a agent by calling the remote endpoint, gating on the manifest
+    # like the engines gate on their kind, so only one handler ever acts.
+    app.state.a2a_responder = A2aResponder(room_channel_manager)
     _engine_handlers = (
         app.state.aligner.handle_summon,
         app.state.synthesizer.handle_summon,
+        app.state.a2a_responder.handle_summon,
     )
 
     def _dispatch_summon(
