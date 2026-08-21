@@ -25,6 +25,7 @@ from dataclasses import dataclass, field
 import httpx
 from a2a.client import A2ACardResolver
 from a2a.client.errors import A2AClientError
+from a2a.types import AgentCard
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +75,21 @@ async def resolve_card(
     Tries the new well-known path then the old one. Raises
     :class:`A2aCardError` with a human-readable reason if neither resolves.
     """
+    raw, path = await resolve_raw_card(base_url, http=http)
+    return _project(raw, base=base_url.strip().rstrip("/"), card_path=path)
+
+
+async def resolve_raw_card(
+    base_url: str,
+    *,
+    http: httpx.AsyncClient | None = None,
+) -> tuple[AgentCard, str]:
+    """Resolve the raw proto ``AgentCard`` + the well-known path that served it.
+
+    The dual-path probe shared by registration (which projects the card) and the
+    seat driver (which needs the raw card to build a send client). Raises
+    :class:`A2aCardError` if neither path resolves.
+    """
     base = base_url.strip().rstrip("/")
     if not base.startswith(("http://", "https://")):
         raise A2aCardError(f"card URL must be http(s): {base_url!r}")
@@ -89,7 +105,7 @@ async def resolve_card(
                 last_error = exc
                 logger.debug("a2a card probe %s%s failed: %r", base, path, exc)
                 continue
-            return _project(card, base=base, card_path=path)
+            return card, path
         raise A2aCardError(
             f"no Agent Card at {base}{NEW_CARD_PATH} or {OLD_CARD_PATH}: {last_error}"
         )
