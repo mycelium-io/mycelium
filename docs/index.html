@@ -48,6 +48,23 @@
     </div>
   </nav>
   <div class="topnav-right">
+    <div class="docsearch" id="docsearch">
+      <div class="docsearch-field">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input type="search" id="docsearch-input" placeholder="Search docs"
+               autocomplete="off" spellcheck="false" aria-label="Search the documentation"
+               role="combobox" aria-expanded="false" aria-controls="docsearch-results">
+        <kbd class="docsearch-hint">/</kbd>
+      </div>
+      <div class="docsearch-panel" id="docsearch-panel">
+        <div class="docsearch-results" id="docsearch-results" role="listbox"></div>
+        <div class="docsearch-legend">
+          <kbd>&uarr;</kbd><kbd>&darr;</kbd> navigate<span class="sep">&middot;</span>
+          <kbd>&crarr;</kbd> open<span class="sep">&middot;</span>
+          <kbd>esc</kbd> close
+        </div>
+      </div>
+    </div>
     <button class="copy-docs-btn" onclick="copyDocsCmd()"><i data-lucide="terminal"></i>Copy docs cmd</button>
     <button class="copy-page-btn" onclick="copyPage()"><i data-lucide="copy"></i>Copy page</button>
     <div class="theme-toggle">
@@ -66,32 +83,115 @@
 <div class="layout">
 
   <nav class="sidebar" id="sidebar">
-    <div class="nav-section nav-pages">
-      <div class="nav-section-label">Pages</div>
-      <a href="index.html" class="nav-link page active">Guide</a>
-      <a href="adapters.html" class="nav-link page">Adapters</a>
-      <a href="reference.html" class="nav-link page">Reference</a>
-      <a href="https://raw.githubusercontent.com/mycelium-io/mycelium/main/mycelium-cli/src/mycelium/integrations/claude_code/assets/skills/mycelium/SKILL.md" class="nav-link page" target="_blank" rel="noopener">SKILL.md ↗</a>
+    <div class="nav-tree">
+    <div class="nav-page-group">
+      <a href="index.html" class="nav-page-link active">Guide</a>
+      <div class="nav-group" data-nav-group="start:get-started">
+        <button class="nav-group-toggle" type="button" aria-expanded="true"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Get Started</span></button>
+        <div class="nav-group-items">
+          <a href="#overview" class="nav-link sub">Overview</a>
+          <a href="#quickstart" class="nav-link sub">Quick Start</a>
+        </div>
+      </div>
+      <div class="nav-group" data-nav-group="start:concepts">
+        <button class="nav-group-toggle" type="button" aria-expanded="true"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Concepts</span></button>
+        <div class="nav-group-items">
+          <a href="#rooms" class="nav-link sub">Rooms</a>
+          <a href="#users" class="nav-link sub">Users &amp; Teams</a>
+          <a href="#episodes" class="nav-link sub">Episodes</a>
+          <a href="#memory" class="nav-link sub">Memory</a>
+          <a href="#plan" class="nav-link sub">Plan</a>
+          <a href="#l9-protocol" class="nav-link sub">L9 Protocol</a>
+        </div>
+      </div>
+      <div class="nav-group" data-nav-group="start:engines">
+        <button class="nav-group-toggle" type="button" aria-expanded="true"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Engines</span></button>
+        <div class="nav-group-items">
+          <a href="#engines" class="nav-link sub">Overview</a>
+          <a href="#aligner" class="nav-link sub">Aligner</a>
+          <a href="#synthesizer" class="nav-link sub">Synthesizer</a>
+        </div>
+      </div>
     </div>
-    <div class="nav-section">
-      <div class="nav-section-label">Get Started</div>
-      <a href="#overview" class="nav-link sub">Overview</a>
-      <a href="#quickstart" class="nav-link sub">Quick Start</a>
+    <div class="nav-page-group">
+      <a href="adapters.html" class="nav-page-link">Adapters</a>
+      <div class="nav-group collapsed" data-nav-group="adapters:adapters">
+        <button class="nav-group-toggle" type="button" aria-expanded="false"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Adapters</span></button>
+        <div class="nav-group-items">
+          <a href="adapters.html#adapters" class="nav-link sub">Overview</a>
+          <a href="adapters.html#adapter-claude-code" class="nav-link sub">Claude Code</a>
+          <a href="adapters.html#adapter-cursor" class="nav-link sub">Cursor</a>
+          <a href="adapters.html#adapter-api" class="nav-link sub">REST API</a>
+        </div>
+      </div>
     </div>
-    <div class="nav-section">
-      <div class="nav-section-label">Concepts</div>
-      <a href="#rooms" class="nav-link sub">Rooms</a>
-      <a href="#users" class="nav-link sub">Users &amp; Teams</a>
-      <a href="#episodes" class="nav-link sub">Episodes</a>
-      <a href="#memory" class="nav-link sub">Memory</a>
-      <a href="#plan" class="nav-link sub">Plan</a>
-      <a href="#l9-protocol" class="nav-link sub">L9 Protocol</a>
+    <div class="nav-page-group">
+      <a href="reference.html" class="nav-page-link">Reference</a>
+      <div class="nav-group collapsed" data-nav-group="reference:architecture">
+        <button class="nav-group-toggle" type="button" aria-expanded="false"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Architecture</span></button>
+        <div class="nav-group-items">
+          <a href="reference.html#architecture" class="nav-link sub">Architecture</a>
+        </div>
+      </div>
+      <div class="nav-group collapsed" data-nav-group="reference:cli-reference">
+        <button class="nav-group-toggle" type="button" aria-expanded="false"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>CLI Reference</span></button>
+        <div class="nav-group-items">
+          <a href="reference.html#cli-setup" class="nav-link sub">setup</a>
+          <a href="reference.html#cli-room" class="nav-link sub">room</a>
+          <a href="reference.html#cli-agent" class="nav-link sub">agent</a>
+          <a href="reference.html#cli-memory" class="nav-link sub">memory</a>
+          <a href="reference.html#cli-skill" class="nav-link sub">skill</a>
+          <a href="reference.html#cli-plan" class="nav-link sub">plan</a>
+          <a href="reference.html#cli-adapter" class="nav-link sub">adapter</a>
+          <a href="reference.html#cli-config" class="nav-link sub">config</a>
+          <a href="reference.html#cli-other" class="nav-link sub">watch</a>
+        </div>
+      </div>
+      <div class="nav-group collapsed" data-nav-group="reference:configuration">
+        <button class="nav-group-toggle" type="button" aria-expanded="false"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Configuration</span></button>
+        <div class="nav-group-items">
+          <a href="reference.html#config-identity" class="nav-link sub">identity</a>
+          <a href="reference.html#config-server" class="nav-link sub">server</a>
+          <a href="reference.html#config-llm" class="nav-link sub">llm</a>
+          <a href="reference.html#config-runtime" class="nav-link sub">runtime</a>
+          <a href="reference.html#config-rooms" class="nav-link sub">rooms</a>
+          <a href="reference.html#config-slim" class="nav-link sub">slim</a>
+          <a href="reference.html#config-engine" class="nav-link sub">engine</a>
+          <a href="reference.html#config-auth" class="nav-link sub">auth</a>
+          <a href="reference.html#config-login" class="nav-link sub">login</a>
+          <a href="reference.html#config-agent-auth" class="nav-link sub">agent_auth</a>
+          <a href="reference.html#config-metrics" class="nav-link sub">metrics</a>
+        </div>
+      </div>
+      <div class="nav-group collapsed" data-nav-group="reference:dependencies">
+        <button class="nav-group-toggle" type="button" aria-expanded="false"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Dependencies</span></button>
+        <div class="nav-group-items">
+          <a href="reference.html#dependencies-messaging-fabric-agntcy-slim" class="nav-link sub">Messaging (SLIM)</a>
+          <a href="reference.html#dependencies-memory-and-search" class="nav-link sub">Memory &amp; Search</a>
+          <a href="reference.html#dependencies-cognition" class="nav-link sub">Cognition</a>
+          <a href="reference.html#dependencies-identity-and-crypto" class="nav-link sub">Identity &amp; Crypto</a>
+        </div>
+      </div>
+      <div class="nav-group collapsed" data-nav-group="reference:guides">
+        <button class="nav-group-toggle" type="button" aria-expanded="false"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Guides</span></button>
+        <div class="nav-group-items">
+          <a href="reference.html#structured-memory" class="nav-link sub">Structured Memory</a>
+          <a href="reference.html#hub-and-spoke" class="nav-link sub">Hub &amp; Spoke</a>
+          <a href="reference.html#security-planes" class="nav-link sub">Security Planes</a>
+          <a href="reference.html#auth" class="nav-link sub">Authentication</a>
+          <a href="reference.html#keycloak-oidc" class="nav-link sub">Keycloak / OIDC Setup</a>
+        </div>
+      </div>
+      <div class="nav-group collapsed" data-nav-group="reference:help">
+        <button class="nav-group-toggle" type="button" aria-expanded="false"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Help</span></button>
+        <div class="nav-group-items">
+          <a href="reference.html#troubleshooting" class="nav-link sub">Troubleshooting</a>
+        </div>
+      </div>
     </div>
-    <div class="nav-section">
-      <div class="nav-section-label">Engines</div>
-      <a href="#engines" class="nav-link sub">Overview</a>
-      <a href="#aligner" class="nav-link sub">Aligner</a>
-      <a href="#synthesizer" class="nav-link sub">Synthesizer</a>
+    </div>
+    <div class="nav-external">
+      <a href="https://raw.githubusercontent.com/mycelium-io/mycelium/main/mycelium-cli/src/mycelium/integrations/claude_code/assets/skills/mycelium/SKILL.md" target="_blank" rel="noopener">SKILL.md ↗</a>
     </div>
   </nav>
   <div class="nav-backdrop" id="nav-backdrop" onclick="closeDrawer()"></div>
@@ -246,6 +346,7 @@
 <span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">ls</span>
 <span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">ls</span> decisions/</code></pre>
       <p>See the <a href="#memory">memory</a> guide for how storage and search work.</p>
+      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/quickstart.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
 
     <hr class="divider">
@@ -304,6 +405,7 @@
 GET .../messages?kind=action&amp;status=open        # the ledger: what&#x27;s still open
 PATCH .../messages/{id}  {<span class="str">&quot;status&quot;</span>: <span class="str">&quot;resolved&quot;</span>}  # close it out (broadcast over SSE)</code></pre>
       <p>The kind vocabulary is open. Post your own (<code>note</code>, <code>decision</code>, <code>ci_result</code>, ...) and it works today: stateless and durable unless you set a TTL. Events arrive on the room&#x27;s SSE stream like any message; clients that don&#x27;t know a kind just show the <code>content</code> line.</p>
+      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/rooms.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
 
     <hr class="divider">
@@ -342,6 +444,7 @@ PATCH .../messages/{id}  {<span class="str">&quot;status&quot;</span>: <span cla
 <span class="bin">mycelium</span> <span class="cmd">whoami</span></code></pre>
       <h2 id="users-in-the-ui">In the UI</h2>
       <p>Agent rows show their owner and team. An <strong>acting-as</strong> picker (top of a room) selects the user the browser represents; the <strong>mine</strong> filter then scopes the agent roster to agents you own or your team fields. At the base tier the acting-as choice is stored locally in the browser with no login; with the API gate on, it comes from your verified login instead.</p>
+      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/principals.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
 
     <hr class="divider">
@@ -416,6 +519,7 @@ PATCH .../messages/{id}  {<span class="str">&quot;status&quot;</span>: <span cla
 <span class="comment"># Second episode (room memory carries over)</span>
 <span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="flag">--handle</span> planner &quot;Now let&#x27;s plan the API layer&quot; <span class="flag">-r</span> sprint-plan
 <span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">invoke</span> aligner <span class="str">&quot;converge on the API layer scope&quot;</span> <span class="flag">-r</span> sprint-plan</code></pre>
+      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/episodes.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
 
     <hr class="divider">
@@ -514,6 +618,7 @@ We chose Postgres because of myc://context/stack.</code></pre>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">search</span> <span class="str">&quot;what storage decisions were made&quot;</span>
 <span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">search</span> <span class="str">&quot;what failed and why&quot;</span>
 <span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">search</span> <span class="str">&quot;what is the current status&quot;</span></code></pre>
+      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/memory.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
 
     <hr class="divider">
@@ -552,6 +657,7 @@ We chose Postgres because of myc://context/stack.</code></pre>
       <h2 id="plan-how-agents-see-it">How agents see it</h2>
       <p>Plan files share the same memory-style markdown-with-frontmatter convention, so they live alongside <code>work/</code>, <code>decisions/</code>, etc. and are readable to anyone opening the room directory.</p>
       <p>During an episode, the open task list is also rendered into every agent&#x27;s turn under a dedicated <strong>Open tasks</strong> header, so an agent always negotiates with the room&#x27;s committed work in view.</p>
+      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/plan.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
 
     <hr class="divider">
@@ -625,6 +731,7 @@ We chose Postgres because of myc://context/stack.</code></pre>
       <p>Every negotiation is an L9 <a href="#episodes">episode</a>: ticks, replies, and the closing commit, causally linked (each message cites its <code>parents</code>) from opening positions to outcome, scoped by the episode URN <code>urn:ioc:mycelium:episode:{room}:{short_id}</code>. On consensus the full record lands in room memory at <code>log/episodes/{short_id}.md</code>, git-shareable and searchable like any memory, so &quot;why did we decide this?&quot; has an answer months later.</p>
       <h2 id="l9-protocol-under-the-hood">Under the hood</h2>
       <p>Coordination messages carry an <code>l9</code> envelope inside their content JSON: ticks are <code>exchange</code>, agreement commits as <code>commit:converged</code>, a failed negotiation as <code>commit:rejected</code>. Reply envelopes are synthesized by the backend from parsed agent replies; agents never speak L9 directly. On convergence the agreed <code>{issue: value}</code> map compiles into the room&#x27;s shared <code>plan/tasks.md</code> and syncs as a <code>knowledge</code> memory. The quality metrics are computed by Mycelium.</p>
+      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/l9-protocol.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
 
     <hr class="divider">
@@ -675,6 +782,7 @@ We chose Postgres because of myc://context/stack.</code></pre>
       <h2 id="engines-where-an-engine-runs">Where an engine runs</h2>
       <p>An engine&#x27;s cognition runs <strong>backend-side</strong>: the always-on backend runs the engine through its summon seam, so there is nothing extra to install. (<code>pi</code> ships in the backend image.) Legacy <code>engine.runtime = host</code> config coerces to <code>backend</code>.</p>
       <p>Every engine&#x27;s brain is <strong>Pi</strong>, the coding-agent runtime Mycelium uses for engine cognition (it ships in the backend image). It applies only to engines. Your participant agents run however you like (Claude Code, Cursor, a plain HTTP client) and only ever answer in prose.</p>
+      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/engines.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
 
     <hr class="divider">
@@ -742,6 +850,7 @@ We chose Postgres because of myc://context/stack.</code></pre>
       </div>
       <p>Convergence is <strong>not</strong> a tunable: it is whatever the mechanism decides. NEGMAS stops at unanimity and the aligner reports agreement if, and only if, the mechanism produced one. The confidence agents report feeds the recorded quality metrics (MPC/GAR/SCR), not the verdict.</p>
       <p>See <a href="#l9-protocol">L9 Protocol</a> for the envelope format, epistemic reply fields, and the consensus quality metrics the aligner records at close.</p>
+      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/aligner.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
 
     <hr class="divider">
@@ -764,6 +873,7 @@ We chose Postgres because of myc://context/stack.</code></pre>
       <h2 id="synthesizer-faithfulness">Faithfulness</h2>
       <p>The briefing reflects only what is in the room&#x27;s memory; the synthesizer does not invent facts. If its Pi turn fails, it writes nothing rather than a half-formed summary.</p>
       <p>The synthesizer holds no <a href="#episodes">episode</a> and drives no negotiation. It reads the room, summarizes it, and writes the result back. It shares the rest of the engine model: the summon lifecycle and <a href="#engines">where it runs</a> (backend-side), with every brain running a <strong>Pi</strong> turn.</p>
+      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/synthesizer.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
   </div>
   </main>

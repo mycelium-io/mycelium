@@ -48,6 +48,23 @@
     </div>
   </nav>
   <div class="topnav-right">
+    <div class="docsearch" id="docsearch">
+      <div class="docsearch-field">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input type="search" id="docsearch-input" placeholder="Search docs"
+               autocomplete="off" spellcheck="false" aria-label="Search the documentation"
+               role="combobox" aria-expanded="false" aria-controls="docsearch-results">
+        <kbd class="docsearch-hint">/</kbd>
+      </div>
+      <div class="docsearch-panel" id="docsearch-panel">
+        <div class="docsearch-results" id="docsearch-results" role="listbox"></div>
+        <div class="docsearch-legend">
+          <kbd>&uarr;</kbd><kbd>&darr;</kbd> navigate<span class="sep">&middot;</span>
+          <kbd>&crarr;</kbd> open<span class="sep">&middot;</span>
+          <kbd>esc</kbd> close
+        </div>
+      </div>
+    </div>
     <button class="copy-docs-btn" onclick="copyDocsCmd()"><i data-lucide="terminal"></i>Copy docs cmd</button>
     <button class="copy-page-btn" onclick="copyPage()"><i data-lucide="copy"></i>Copy page</button>
     <div class="theme-toggle">
@@ -66,61 +83,115 @@
 <div class="layout">
 
   <nav class="sidebar" id="sidebar">
-    <div class="nav-section nav-pages">
-      <div class="nav-section-label">Pages</div>
-      <a href="index.html" class="nav-link page">Guide</a>
-      <a href="adapters.html" class="nav-link page">Adapters</a>
-      <a href="reference.html" class="nav-link page active">Reference</a>
-      <a href="https://raw.githubusercontent.com/mycelium-io/mycelium/main/mycelium-cli/src/mycelium/integrations/claude_code/assets/skills/mycelium/SKILL.md" class="nav-link page" target="_blank" rel="noopener">SKILL.md ↗</a>
+    <div class="nav-tree">
+    <div class="nav-page-group">
+      <a href="index.html" class="nav-page-link">Guide</a>
+      <div class="nav-group collapsed" data-nav-group="start:get-started">
+        <button class="nav-group-toggle" type="button" aria-expanded="false"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Get Started</span></button>
+        <div class="nav-group-items">
+          <a href="index.html#overview" class="nav-link sub">Overview</a>
+          <a href="index.html#quickstart" class="nav-link sub">Quick Start</a>
+        </div>
+      </div>
+      <div class="nav-group collapsed" data-nav-group="start:concepts">
+        <button class="nav-group-toggle" type="button" aria-expanded="false"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Concepts</span></button>
+        <div class="nav-group-items">
+          <a href="index.html#rooms" class="nav-link sub">Rooms</a>
+          <a href="index.html#users" class="nav-link sub">Users &amp; Teams</a>
+          <a href="index.html#episodes" class="nav-link sub">Episodes</a>
+          <a href="index.html#memory" class="nav-link sub">Memory</a>
+          <a href="index.html#plan" class="nav-link sub">Plan</a>
+          <a href="index.html#l9-protocol" class="nav-link sub">L9 Protocol</a>
+        </div>
+      </div>
+      <div class="nav-group collapsed" data-nav-group="start:engines">
+        <button class="nav-group-toggle" type="button" aria-expanded="false"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Engines</span></button>
+        <div class="nav-group-items">
+          <a href="index.html#engines" class="nav-link sub">Overview</a>
+          <a href="index.html#aligner" class="nav-link sub">Aligner</a>
+          <a href="index.html#synthesizer" class="nav-link sub">Synthesizer</a>
+        </div>
+      </div>
     </div>
-    <div class="nav-section">
-      <div class="nav-section-label">Architecture</div>
-      <a href="#architecture" class="nav-link sub">Architecture</a>
+    <div class="nav-page-group">
+      <a href="adapters.html" class="nav-page-link">Adapters</a>
+      <div class="nav-group collapsed" data-nav-group="adapters:adapters">
+        <button class="nav-group-toggle" type="button" aria-expanded="false"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Adapters</span></button>
+        <div class="nav-group-items">
+          <a href="adapters.html#adapters" class="nav-link sub">Overview</a>
+          <a href="adapters.html#adapter-claude-code" class="nav-link sub">Claude Code</a>
+          <a href="adapters.html#adapter-cursor" class="nav-link sub">Cursor</a>
+          <a href="adapters.html#adapter-api" class="nav-link sub">REST API</a>
+        </div>
+      </div>
     </div>
-    <div class="nav-section">
-      <div class="nav-section-label">CLI Reference</div>
-      <a href="#cli-setup" class="nav-link sub">setup</a>
-      <a href="#cli-room" class="nav-link sub">room</a>
-      <a href="#cli-agent" class="nav-link sub">agent</a>
-      <a href="#cli-memory" class="nav-link sub">memory</a>
-      <a href="#cli-skill" class="nav-link sub">skill</a>
-      <a href="#cli-plan" class="nav-link sub">plan</a>
-      <a href="#cli-adapter" class="nav-link sub">adapter</a>
-      <a href="#cli-config" class="nav-link sub">config</a>
-      <a href="#cli-other" class="nav-link sub">watch</a>
+    <div class="nav-page-group">
+      <a href="reference.html" class="nav-page-link active">Reference</a>
+      <div class="nav-group" data-nav-group="reference:architecture">
+        <button class="nav-group-toggle" type="button" aria-expanded="true"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Architecture</span></button>
+        <div class="nav-group-items">
+          <a href="#architecture" class="nav-link sub">Architecture</a>
+        </div>
+      </div>
+      <div class="nav-group" data-nav-group="reference:cli-reference">
+        <button class="nav-group-toggle" type="button" aria-expanded="true"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>CLI Reference</span></button>
+        <div class="nav-group-items">
+          <a href="#cli-setup" class="nav-link sub">setup</a>
+          <a href="#cli-room" class="nav-link sub">room</a>
+          <a href="#cli-agent" class="nav-link sub">agent</a>
+          <a href="#cli-memory" class="nav-link sub">memory</a>
+          <a href="#cli-skill" class="nav-link sub">skill</a>
+          <a href="#cli-plan" class="nav-link sub">plan</a>
+          <a href="#cli-adapter" class="nav-link sub">adapter</a>
+          <a href="#cli-config" class="nav-link sub">config</a>
+          <a href="#cli-other" class="nav-link sub">watch</a>
+        </div>
+      </div>
+      <div class="nav-group" data-nav-group="reference:configuration">
+        <button class="nav-group-toggle" type="button" aria-expanded="true"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Configuration</span></button>
+        <div class="nav-group-items">
+          <a href="#config-identity" class="nav-link sub">identity</a>
+          <a href="#config-server" class="nav-link sub">server</a>
+          <a href="#config-llm" class="nav-link sub">llm</a>
+          <a href="#config-runtime" class="nav-link sub">runtime</a>
+          <a href="#config-rooms" class="nav-link sub">rooms</a>
+          <a href="#config-slim" class="nav-link sub">slim</a>
+          <a href="#config-engine" class="nav-link sub">engine</a>
+          <a href="#config-auth" class="nav-link sub">auth</a>
+          <a href="#config-login" class="nav-link sub">login</a>
+          <a href="#config-agent-auth" class="nav-link sub">agent_auth</a>
+          <a href="#config-metrics" class="nav-link sub">metrics</a>
+        </div>
+      </div>
+      <div class="nav-group" data-nav-group="reference:dependencies">
+        <button class="nav-group-toggle" type="button" aria-expanded="true"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Dependencies</span></button>
+        <div class="nav-group-items">
+          <a href="#dependencies-messaging-fabric-agntcy-slim" class="nav-link sub">Messaging (SLIM)</a>
+          <a href="#dependencies-memory-and-search" class="nav-link sub">Memory &amp; Search</a>
+          <a href="#dependencies-cognition" class="nav-link sub">Cognition</a>
+          <a href="#dependencies-identity-and-crypto" class="nav-link sub">Identity &amp; Crypto</a>
+        </div>
+      </div>
+      <div class="nav-group" data-nav-group="reference:guides">
+        <button class="nav-group-toggle" type="button" aria-expanded="true"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Guides</span></button>
+        <div class="nav-group-items">
+          <a href="#structured-memory" class="nav-link sub">Structured Memory</a>
+          <a href="#hub-and-spoke" class="nav-link sub">Hub &amp; Spoke</a>
+          <a href="#security-planes" class="nav-link sub">Security Planes</a>
+          <a href="#auth" class="nav-link sub">Authentication</a>
+          <a href="#keycloak-oidc" class="nav-link sub">Keycloak / OIDC Setup</a>
+        </div>
+      </div>
+      <div class="nav-group" data-nav-group="reference:help">
+        <button class="nav-group-toggle" type="button" aria-expanded="true"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Help</span></button>
+        <div class="nav-group-items">
+          <a href="#troubleshooting" class="nav-link sub">Troubleshooting</a>
+        </div>
+      </div>
     </div>
-    <div class="nav-section">
-      <div class="nav-section-label">Configuration</div>
-      <a href="#config-identity" class="nav-link sub">identity</a>
-      <a href="#config-server" class="nav-link sub">server</a>
-      <a href="#config-llm" class="nav-link sub">llm</a>
-      <a href="#config-runtime" class="nav-link sub">runtime</a>
-      <a href="#config-rooms" class="nav-link sub">rooms</a>
-      <a href="#config-slim" class="nav-link sub">slim</a>
-      <a href="#config-engine" class="nav-link sub">engine</a>
-      <a href="#config-auth" class="nav-link sub">auth</a>
-      <a href="#config-login" class="nav-link sub">login</a>
-      <a href="#config-agent-auth" class="nav-link sub">agent_auth</a>
-      <a href="#config-metrics" class="nav-link sub">metrics</a>
     </div>
-    <div class="nav-section">
-      <div class="nav-section-label">Dependencies</div>
-      <a href="#dependencies-messaging-fabric-agntcy-slim" class="nav-link sub">Messaging (SLIM)</a>
-      <a href="#dependencies-memory-and-search" class="nav-link sub">Memory &amp; Search</a>
-      <a href="#dependencies-cognition" class="nav-link sub">Cognition</a>
-      <a href="#dependencies-identity-and-crypto" class="nav-link sub">Identity &amp; Crypto</a>
-    </div>
-    <div class="nav-section">
-      <div class="nav-section-label">Guides</div>
-      <a href="#structured-memory" class="nav-link sub">Structured Memory</a>
-      <a href="#hub-and-spoke" class="nav-link sub">Hub &amp; Spoke</a>
-      <a href="#security-planes" class="nav-link sub">Security Planes</a>
-      <a href="#auth" class="nav-link sub">Authentication</a>
-      <a href="#keycloak-oidc" class="nav-link sub">Keycloak / OIDC Setup</a>
-    </div>
-    <div class="nav-section">
-      <div class="nav-section-label">Help</div>
-      <a href="#troubleshooting" class="nav-link sub">Troubleshooting</a>
+    <div class="nav-external">
+      <a href="https://raw.githubusercontent.com/mycelium-io/mycelium/main/mycelium-cli/src/mycelium/integrations/claude_code/assets/skills/mycelium/SKILL.md" target="_blank" rel="noopener">SKILL.md ↗</a>
     </div>
   </nav>
   <div class="nav-backdrop" id="nav-backdrop" onclick="closeDrawer()"></div>
@@ -296,6 +367,7 @@
     <span class="flag">--cwd</span> ~/repos/my-frontend <span class="flag">--room</span> my-project</code></pre>
       <h3 id="architecture-backend-api">Backend API</h3>
       <p>Any agent that can make HTTP requests can use the REST API directly. Interactive API docs are available at <code>http://localhost:8000/docs</code> when the backend is running.</p>
+      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/reference/architecture.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
 
     <hr class="divider">
@@ -1166,6 +1238,7 @@ procedures/  Reusable how-to steps (do this again later)</code></pre>
         <li><code>custom/anything</code> (passes through, no slug check)</li>
         <li><code>research/index-perf</code> (passes through)</li>
       </ul>
+      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/structured-memory.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
 
     <hr class="divider">
@@ -1315,6 +1388,7 @@ procedures/  Reusable how-to steps (do this again later)</code></pre>
       <p><code>mycelium doctor</code> infers mode from <code>server.api_url</code>. If it points at a non-local address, doctor assumes spoke mode. If you&#x27;re running the backend locally on a non-default address, set <code>server.api_url</code> to <code>http://localhost:8000</code> in <code>~/.mycelium/config.toml</code>, or force hub mode:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">doctor</span> <span class="flag">--mode</span> hub</code></pre>
       <p>See <a href="#troubleshooting">Troubleshooting</a> for the full runbook and <a href="#security-planes">Security Planes</a> for HTTP vs SLIM protection.</p>
+      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/hub-and-spoke.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
 
     <hr class="divider">
@@ -1438,6 +1512,7 @@ procedures/  Reusable how-to steps (do this again later)</code></pre>
         <li><a href="#hub-and-spoke">Hub &amp; Spoke Setup</a> — topology and spoke checklist</li>
         <li><a href="#auth">Authentication</a> — HTTP JWT gate (spokes and hub API)</li>
       </ul>
+      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/security-planes.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
 
     <hr class="divider">
@@ -1717,6 +1792,7 @@ role   = &quot;agent&quot;</code></pre>
       <p>Only asymmetric signatures are accepted (<code>RS<em></code>, <code>PS</em></code>, <code>ES<em></code>). The <code>none</code> algorithm and the whole <code>HS</em></code> family are refused before verification, so a public JWKS key can never be replayed as an HMAC secret.</p>
       <h2 id="auth-trying-it-locally">Trying it locally</h2>
       <p>Follow the <a href="#keycloak-oidc">Keycloak / OIDC Setup</a> guide to stand up a realm, client, and human <code>mycelium login</code>, wired end-to-end.</p>
+      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/auth.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
 
     <hr class="divider">
@@ -1830,6 +1906,7 @@ export AUTH_SESSION_SECRET=$(openssl rand <span class="flag">-hex</span> 32)
       </div>
       <h2 id="keycloak-oidc-limitations">Limitations</h2>
       <p>The shipped overlay is <strong>dev-grade</strong>: Keycloak in <code>start-dev</code> (in-memory H2, HTTP, a demo user with a weak password). It is a real OIDC provider minting real RS256 tokens against a real JWKS (enough to build and prove against) but it is <strong>not</strong> a hardened production Keycloak. For a real deployment, run your own Keycloak over TLS with a persistent datastore and real users, then point the same three config values (<code>issuer</code>, <code>jwks_url</code>, <code>login.issuer</code>) at it. Nothing else changes.</p>
+      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/keycloak-oidc.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
 
     <hr class="divider">
@@ -2067,6 +2144,7 @@ rm <span class="flag">-rf</span> ~/.mycelium        # remove all config and room
       <hr class="divider">
       <h2 id="troubleshooting-getting-help">Getting Help</h2>
       <p>Report issues at <strong>https://github.com/mycelium-io/mycelium/issues</strong></p>
+      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/troubleshooting.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
   </div>
   </main>

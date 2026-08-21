@@ -12,18 +12,21 @@ and gets its own sidebar entries derived from its sections.
 Run from repo root:
     cd mycelium-cli && uv run python ../docs/generate_docs.py
 
-Regenerate one page only:
-    cd mycelium-cli && uv run python ../docs/generate_docs.py --page concepts
+Write one page only (all three are still assembled, since the persistent nav and
+the search index span the whole site):
+    cd mycelium-cli && uv run python ../docs/generate_docs.py --page reference
 """
 
 from __future__ import annotations
 
 import argparse
 import html
+import json
 import re
 import sys
 import tomllib
 from collections import defaultdict
+from html.parser import HTMLParser
 from pathlib import Path
 
 # ── Page layout ──
@@ -47,34 +50,47 @@ PAGES: list[tuple[str, str, str, str, str, str, str]] = [
 # If md_file is set AND a kept section with the same id exists, the kept HTML wins.
 SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
     # ── start (index.html), overview + quickstart ──
-    ("overview.md",                 "overview",           "start",       "Get Started",  "Overview"),
-    ("quickstart.md",               "quickstart",         "start",       "Get Started",  "Quick Start"),
+    ("overview.md",                   "overview",           "start",       "Get Started",  "Overview"),
+    ("guides/quickstart.md",          "quickstart",         "start",       "Get Started",  "Quick Start"),
     # ── concepts (now on the start page, grouped in the sidebar) ──
-    ("rooms.md",                    "rooms",              "start",       "Concepts",     "Rooms"),
-    ("principals.md",               "users",              "start",       "Concepts",     "Users & Teams"),
-    ("episodes.md",                 "episodes",           "start",       "Concepts",     "Episodes"),
-    ("memory.md",                   "memory",             "start",       "Concepts",     "Memory"),
-    ("plan.md",                     "plan",               "start",       "Concepts",     "Plan"),
-    ("l9-protocol.md",              "l9-protocol",        "start",       "Concepts",     "L9 Protocol"),
+    ("concepts/rooms.md",             "rooms",              "start",       "Concepts",     "Rooms"),
+    ("concepts/principals.md",        "users",              "start",       "Concepts",     "Users & Teams"),
+    ("concepts/episodes.md",          "episodes",           "start",       "Concepts",     "Episodes"),
+    ("concepts/memory.md",            "memory",             "start",       "Concepts",     "Memory"),
+    ("concepts/plan.md",              "plan",               "start",       "Concepts",     "Plan"),
+    ("concepts/l9-protocol.md",       "l9-protocol",        "start",       "Concepts",     "L9 Protocol"),
     # Engines are a nested group: the overview, then one page per kind.
-    ("engines.md",                  "engines",            "start",       "Engines",      "Overview"),
-    ("aligner.md",                  "aligner",            "start",       "Engines",      "Aligner"),
-    ("synthesizer.md",              "synthesizer",        "start",       "Engines",      "Synthesizer"),
+    ("concepts/engines.md",           "engines",            "start",       "Engines",      "Overview"),
+    ("concepts/aligner.md",           "aligner",            "start",       "Engines",      "Aligner"),
+    ("concepts/synthesizer.md",       "synthesizer",        "start",       "Engines",      "Synthesizer"),
     # ── adapters (adapters.html), all hand-coded ──
-    (None,                          "adapters",           "adapters",  "Adapters",     "Overview"),
-    (None,                          "adapter-claude-code","adapters",  "Adapters",     "Claude Code"),
-    (None,                          "adapter-cursor",     "adapters",  "Adapters",     "Cursor"),
-    (None,                          "adapter-api",        "adapters",  "Adapters",     "REST API"),
+    (None,                            "adapters",           "adapters",  "Adapters",     "Overview"),
+    (None,                            "adapter-claude-code","adapters",  "Adapters",     "Claude Code"),
+    (None,                            "adapter-cursor",     "adapters",  "Adapters",     "Cursor"),
+    (None,                            "adapter-api",        "adapters",  "Adapters",     "REST API"),
     # ── reference (reference.html) ──
-    ("architecture.md",             "architecture",       "reference", "Architecture", "Architecture"),
+    ("reference/architecture.md",     "architecture",       "reference", "Architecture", "Architecture"),
     # CLI + Config blocks injected after architecture, before guides/troubleshooting.
-    ("guides/structured-memory.md", "structured-memory",  "reference", "Guides",       "Structured Memory"),
-    ("guides/hub-and-spoke.md",     "hub-and-spoke",      "reference", "Guides",       "Hub & Spoke"),
-    ("guides/security-planes.md",   "security-planes",    "reference", "Guides",       "Security Planes"),
-    ("guides/auth.md",              "auth",               "reference", "Guides",       "Authentication"),
-    ("guides/keycloak-oidc.md",     "keycloak-oidc",      "reference", "Guides",       "Keycloak / OIDC Setup"),
-    ("troubleshooting.md",          "troubleshooting",    "reference", "Help",         "Troubleshooting"),
+    ("guides/structured-memory.md",   "structured-memory",  "reference", "Guides",       "Structured Memory"),
+    ("guides/hub-and-spoke.md",       "hub-and-spoke",      "reference", "Guides",       "Hub & Spoke"),
+    ("guides/security-planes.md",     "security-planes",    "reference", "Guides",       "Security Planes"),
+    ("guides/auth.md",                "auth",               "reference", "Guides",       "Authentication"),
+    ("guides/keycloak-oidc.md",       "keycloak-oidc",      "reference", "Guides",       "Keycloak / OIDC Setup"),
+    ("guides/troubleshooting.md",     "troubleshooting",    "reference", "Help",         "Troubleshooting"),
 ]
+
+# The CLI/config/dependency blocks are generated rather than listed in
+# SECTION_CONFIG, so their section ids carry no sidebar label to borrow. The
+# search index reads its breadcrumbs from here instead.
+GENERATED_SECTION_LABELS: dict[str, tuple[str, str]] = {
+    "cli-reference": ("CLI Reference", "CLI Reference"),
+    "configuration": ("Configuration", "Configuration"),
+    "dependencies": ("Dependencies", "Dependencies"),
+}
+
+# One entry per page in the persistent nav:
+# (page_id, file_name, top_nav_label, [(group_label, [(anchor, label), ...]), ...])
+NavPage = tuple[str, str, str, list[tuple[str, list[tuple[str, str]]]]]
 
 # IDs that should be looked up in kept HTML (have <!-- keep --> markers, or rescued by id).
 _KEPT_IDS: set[str] = {
@@ -952,6 +968,31 @@ SKILL_MD_URL = (
     "mycelium/SKILL.md"
 )
 
+# Every markdown-backed section links back to the file it was rendered from, so
+# a reader who spots a mistake can fix it where the source of truth lives.
+EDIT_BASE_URL = (
+    "https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/"
+)
+
+SEARCH_SVG = (
+    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+    'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+    '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>'
+)
+
+CHEVRON_SVG = (
+    '<svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" '
+    'stroke="currentColor" stroke-width="2.5" stroke-linecap="round" '
+    'stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>'
+)
+
+PENCIL_SVG = (
+    '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+    'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+    '<path d="M12 20h9"/>'
+    '<path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>'
+)
+
 
 def _head(title: str, description: str, file_name: str) -> str:
     return f"""<!DOCTYPE html>
@@ -1037,6 +1078,23 @@ def _topnav(active_page_id: str) -> str:
     </div>
   </nav>
   <div class="topnav-right">
+    <div class="docsearch" id="docsearch">
+      <div class="docsearch-field">
+        {SEARCH_SVG}
+        <input type="search" id="docsearch-input" placeholder="Search docs"
+               autocomplete="off" spellcheck="false" aria-label="Search the documentation"
+               role="combobox" aria-expanded="false" aria-controls="docsearch-results">
+        <kbd class="docsearch-hint">/</kbd>
+      </div>
+      <div class="docsearch-panel" id="docsearch-panel">
+        <div class="docsearch-results" id="docsearch-results" role="listbox"></div>
+        <div class="docsearch-legend">
+          <kbd>&uarr;</kbd><kbd>&darr;</kbd> navigate<span class="sep">&middot;</span>
+          <kbd>&crarr;</kbd> open<span class="sep">&middot;</span>
+          <kbd>esc</kbd> close
+        </div>
+      </div>
+    </div>
     <button class="copy-docs-btn" onclick="copyDocsCmd()"><i data-lucide="terminal"></i>Copy docs cmd</button>
     <button class="copy-page-btn" onclick="copyPage()"><i data-lucide="copy"></i>Copy page</button>
 {_theme_toggle()}
@@ -1046,34 +1104,48 @@ def _topnav(active_page_id: str) -> str:
 """
 
 
-def _sidebar(
-    groups: list[tuple[str, list[tuple[str, str]]]],
-    active_page_id: str = "",
-) -> str:
-    """Render a grouped sidebar: [(group_label, [(anchor, label), ...]), ...]."""
-    out = ['  <nav class="sidebar" id="sidebar">']
-    # Mobile-only page links, so the drawer doubles as the full menu on phones.
-    out.append('    <div class="nav-section nav-pages">')
-    out.append('      <div class="nav-section-label">Pages</div>')
-    for page_id, file_name, _t, label, *_ in PAGES:
-        cls = "nav-link page" + (" active" if page_id == active_page_id else "")
-        out.append(f'      <a href="{file_name}" class="{cls}">{html.escape(label)}</a>')
+def _sidebar(nav: list[NavPage], active_page_id: str) -> str:
+    """Render the persistent nav: every page's groups, on every page.
+
+    Groups belonging to the page being read start expanded and link to bare
+    anchors; the rest start collapsed and link across files. site.js layers the
+    reader's own expand/collapse choices on top.
+    """
+    out = ['  <nav class="sidebar" id="sidebar">', '    <div class="nav-tree">']
+    for page_id, file_name, label, groups in nav:
+        current = page_id == active_page_id
+        page_cls = "nav-page-link" + (" active" if current else "")
+        out.append('    <div class="nav-page-group">')
+        out.append(
+            f'      <a href="{file_name}" class="{page_cls}">{html.escape(label)}</a>'
+        )
+        for group_label, items in groups:
+            if not items:
+                continue
+            key = f"{page_id}:{_slugify(group_label)}"
+            group_cls = "nav-group" + ("" if current else " collapsed")
+            out.append(f'      <div class="{group_cls}" data-nav-group="{key}">')
+            out.append(
+                f'        <button class="nav-group-toggle" type="button" '
+                f'aria-expanded="{"true" if current else "false"}">'
+                f'{CHEVRON_SVG}<span>{html.escape(group_label)}</span></button>'
+            )
+            out.append('        <div class="nav-group-items">')
+            for anchor, item_label in items:
+                href = f"#{anchor}" if current else f"{file_name}#{anchor}"
+                out.append(
+                    f'          <a href="{href}" class="nav-link sub">'
+                    f"{html.escape(item_label)}</a>"
+                )
+            out.append("        </div>")
+            out.append("      </div>")
+        out.append("    </div>")
+    out.append("    </div>")
+    out.append('    <div class="nav-external">')
     out.append(
-        f'      <a href="{SKILL_MD_URL}" class="nav-link page" '
-        f'target="_blank" rel="noopener">SKILL.md ↗</a>'
+        f'      <a href="{SKILL_MD_URL}" target="_blank" rel="noopener">SKILL.md ↗</a>'
     )
     out.append("    </div>")
-    for group_label, items in groups:
-        out.append('    <div class="nav-section">')
-        out.append(
-            f'      <div class="nav-section-label">{html.escape(group_label)}</div>'
-        )
-        for anchor, label in items:
-            out.append(
-                f'      <a href="#{anchor}" class="nav-link sub">'
-                f'{html.escape(label)}</a>'
-            )
-        out.append("    </div>")
     out.append("  </nav>")
     return "\n".join(out)
 
@@ -1118,11 +1190,11 @@ def _render_page(
     title: str,
     description: str,
     content_html: str,
-    sidebar_groups: list[tuple[str, list[tuple[str, str]]]],
+    nav: list[NavPage],
     sheet_no: str,
     plate_title: str,
 ) -> str:
-    sidebar_html = _sidebar(sidebar_groups, page_id)
+    sidebar_html = _sidebar(nav, page_id)
     return (
         _head(title, description, file_name)
         + _topnav(page_id)
@@ -1136,6 +1208,14 @@ def _render_page(
 # ── Page content builders ──
 
 
+def _edit_link(md_file: str) -> str:
+    """Link a section back to the markdown file it was rendered from."""
+    return (
+        f'      <p class="edit-page"><a href="{EDIT_BASE_URL}{md_file}" '
+        f'target="_blank" rel="noopener">{PENCIL_SVG}Edit this page on GitHub</a></p>'
+    )
+
+
 def _md_section_html(md_file: str, section_id: str) -> str:
     md_path = DOCS_DIR / md_file
     if not md_path.exists():
@@ -1146,6 +1226,7 @@ def _md_section_html(md_file: str, section_id: str) -> str:
     return (
         f'    <section class="doc-section" id="{section_id}">\n'
         f"{body}\n"
+        f"{_edit_link(md_file)}\n"
         f"    </section>"
     )
 
@@ -1216,6 +1297,181 @@ def _build_page(
     return content, sidebar_groups
 
 
+# ── Search index ──
+#
+# The index is derived from the rendered HTML rather than from the markdown, so
+# it covers every source the pages are assembled from — markdown sections, the
+# hand-coded adapter blocks, and the generated CLI/config/dependency reference —
+# through one code path.
+
+_INDEX_SKIP_TAGS = {"script", "style"}
+_SNIPPET_CHARS = 420
+
+
+def _collapse(text: str) -> str:
+    return re.sub(r"\s+", " ", text).strip()
+
+
+class _SearchIndexExtractor(HTMLParser):
+    """Collect one search record per anchor from a page's rendered content."""
+
+    def __init__(self, file_name: str, labels: dict[str, tuple[str, str]]) -> None:
+        super().__init__(convert_charrefs=True)
+        self.file_name = file_name
+        self.labels = labels
+        self.records: list[dict] = []
+        self._cur: dict | None = None
+        self._crumb = ""
+        self._heading: dict | None = None
+        self._skipped: list[str] = []
+        self._divs: list[str | None] = []
+        self._cmd: dict | None = None
+        self._cmd_part: str | None = None
+
+    # -- record lifecycle --
+
+    def _open(self, anchor: str, title: str, crumb: str) -> None:
+        self._cur = {"u": f"{self.file_name}#{anchor}", "t": title, "s": crumb, "x": []}
+        self.records.append(self._cur)
+
+    def _flush_cmd(self) -> None:
+        cmd, self._cmd = self._cmd, None
+        if cmd is None or self._cur is None:
+            return
+        title = _collapse("".join(cmd["t"]))
+        if title:
+            self.records.append({
+                "u": self._cur["u"],
+                "t": title,
+                "s": self._crumb,
+                "x": [_collapse("".join(cmd["x"]))],
+                "k": "cmd",
+            })
+
+    # -- parser hooks --
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        attr = {k: v or "" for k, v in attrs}
+        classes = attr.get("class", "").split()
+        if tag in _INDEX_SKIP_TAGS or "edit-page" in classes:
+            self._skipped.append(tag)
+            return
+        if self._skipped:
+            return
+
+        if tag == "section" and attr.get("id"):
+            sid = attr["id"]
+            group, label = self.labels.get(sid, ("", sid.replace("-", " ").title()))
+            self._crumb = f"{group} › {label}" if group and group != label else label
+            self._open(sid, label, group or "")
+            return
+
+        # An h1 names the section it opens; capturing it keeps the section's
+        # own title from leading its snippet.
+        if tag == "h1":
+            self._heading = {"anchor": None, "text": []}
+            return
+
+        if tag in ("h2", "h3") and attr.get("id"):
+            self._heading = {"anchor": attr["id"], "text": []}
+            return
+
+        if tag == "div":
+            role = None
+            if "cmd-ref" in classes:
+                role = "cmd"
+            elif "cmd-ref-header" in classes:
+                role = "t"
+            elif "cmd-ref-body" in classes:
+                role = "x"
+            self._divs.append(role)
+            if role == "cmd":
+                self._cmd = {"t": [], "x": []}
+            elif role in ("t", "x") and self._cmd is not None:
+                self._cmd_part = role
+
+    def handle_endtag(self, tag: str) -> None:
+        if self._skipped:
+            if self._skipped[-1] == tag:
+                self._skipped.pop()
+            return
+
+        if tag == "div":
+            role = self._divs.pop() if self._divs else None
+            if role == "cmd":
+                self._flush_cmd()
+            elif role in ("t", "x"):
+                self._cmd_part = None
+            return
+
+        if tag in ("h1", "h2", "h3") and self._heading is not None:
+            heading, self._heading = self._heading, None
+            title = _collapse("".join(heading["text"]))
+            if not title:
+                return
+            if heading["anchor"] is None:
+                if self._cur is not None and not self._cur["t"]:
+                    self._cur["t"] = title
+                return
+            self._open(heading["anchor"], title, self._crumb)
+
+    def handle_data(self, data: str) -> None:
+        if self._skipped:
+            return
+        if self._heading is not None:
+            self._heading["text"].append(data)
+            return
+        if self._cmd is not None and self._cmd_part:
+            self._cmd[self._cmd_part].append(data)
+            return
+        if self._cur is not None and len("".join(self._cur["x"])) < _SNIPPET_CHARS * 3:
+            self._cur["x"].append(data)
+
+
+def _build_search_index(
+    file_name: str,
+    page_label: str,
+    content_html: str,
+    sidebar_groups: list[tuple[str, list[tuple[str, str]]]],
+) -> list[dict]:
+    labels = dict(GENERATED_SECTION_LABELS)
+    labels.update({
+        anchor: (group, label)
+        for group, items in sidebar_groups
+        for anchor, label in items
+    })
+    parser = _SearchIndexExtractor(file_name, labels)
+    parser.feed(content_html)
+    parser.close()
+
+    out: list[dict] = []
+    for rec in parser.records:
+        rec["x"] = _collapse("".join(rec["x"]))[:_SNIPPET_CHARS]
+        if not rec["t"]:
+            continue
+        rec["p"] = page_label
+        if not rec["s"]:
+            rec.pop("s")
+        out.append(rec)
+    return out
+
+
+def _write_search_index(records: list[dict]) -> None:
+    """Emit the index as a script that assigns a global.
+
+    A plain .json fetched at runtime would be blocked opening the site straight
+    off disk; a script tag injected on first use works from file:// too and
+    keeps the payload off the critical path.
+    """
+    payload = json.dumps(records, separators=(",", ":"), ensure_ascii=False)
+    # Legal in JSON, a line break in JS source: escape them or a page with one
+    # in its prose takes the whole index down.
+    payload = payload.replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
+    out = OUT_DIR / "search-index.js"
+    out.write_text(f"window.MYCELIUM_SEARCH_INDEX = {payload};\n")
+    print(f"  wrote {out.name} ({out.stat().st_size:,} bytes, {len(records)} records)")
+
+
 # ── Main ──
 
 
@@ -1225,61 +1481,76 @@ def _render_and_write(
     title: str,
     description: str,
     content_html: str,
-    sidebar_groups: list[tuple[str, list[tuple[str, str]]]],
+    nav: list[NavPage],
     sheet_no: str,
     plate_title: str,
 ) -> None:
     page_html = _render_page(
-        page_id, file_name, title, description, content_html, sidebar_groups,
+        page_id, file_name, title, description, content_html, nav,
         sheet_no, plate_title,
     )
     (OUT_DIR / file_name).write_text(page_html)
-    n = sum(len(items) for _, items in sidebar_groups)
-    print(f"  wrote {file_name} ({len(page_html):,} bytes, {n} subsections in {len(sidebar_groups)} groups)")
+    print(f"  wrote {file_name} ({len(page_html):,} bytes)")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--page",
-        help="Regenerate a single page by id (start|concepts|adapters|reference).",
+        help="Write a single page by id (start|adapters|reference). Every page is "
+             "still assembled, since the persistent nav lists them all.",
     )
     args = parser.parse_args()
 
-    pages_to_build = {p[0] for p in PAGES}
-    if args.page:
-        if args.page not in pages_to_build:
-            raise SystemExit(f"Unknown page '{args.page}'. Choices: {sorted(pages_to_build)}")
-        pages_to_build = {args.page}
+    page_ids = {p[0] for p in PAGES}
+    if args.page and args.page not in page_ids:
+        raise SystemExit(f"Unknown page '{args.page}'. Choices: {sorted(page_ids)}")
 
     print("Loading kept sections from existing HTML...")
     kept = _all_kept_sections()
     print(f"  found {len(kept)} kept section(s): {sorted(kept)}")
 
-    cli_block: tuple[str, list[tuple[str, str]]] | None = None
-    config_block: tuple[str, list[tuple[str, str]]] | None = None
-    deps_block: tuple[str, list[tuple[str, str]]] | None = None
-    if "reference" in pages_to_build:
-        print("Generating CLI reference from @doc_ref decorators...")
-        cli_block = _generate_cli_reference()
-        print("Generating config reference from pydantic schema...")
-        config_block = _generate_config_reference()
-        print("Generating dependency reference from pyproject + compose pins...")
-        deps_block = _generate_dependencies_reference()
+    print("Generating CLI reference from @doc_ref decorators...")
+    cli_block = _generate_cli_reference()
+    print("Generating config reference from pydantic schema...")
+    config_block = _generate_config_reference()
+    print("Generating dependency reference from pyproject + compose pins...")
+    deps_block = _generate_dependencies_reference()
 
-    print("Rendering pages...")
-    for page_id, file_name, title, _label, sheet_no, plate_title, description in PAGES:
-        if page_id not in pages_to_build:
-            continue
+    # Assemble every page before writing any of them: the persistent nav and the
+    # search index are both whole-site views, so a partial build would emit a
+    # sidebar and an index missing the pages that were skipped.
+    print("Assembling pages...")
+    built: list[tuple[tuple, str, list[tuple[str, list[tuple[str, str]]]]]] = []
+    nav: list[NavPage] = []
+    for page in PAGES:
+        page_id, file_name, _title, label, *_rest = page
         content, sidebar_groups = _build_page(
             page_id, kept, cli_block, config_block, deps_block
         )
+        built.append((page, content, sidebar_groups))
+        nav.append((page_id, file_name, label, sidebar_groups))
+        n = sum(len(items) for _, items in sidebar_groups)
+        print(f"  {file_name}: {n} subsections in {len(sidebar_groups)} groups")
+
+    print("Rendering pages...")
+    for page, content, _groups in built:
+        page_id, file_name, title, _label, sheet_no, plate_title, description = page
+        if args.page and page_id != args.page:
+            continue
         _render_and_write(
-            page_id, file_name, title, description, content, sidebar_groups,
+            page_id, file_name, title, description, content, nav,
             sheet_no, plate_title,
         )
 
     if not args.page:
+        records: list[dict] = []
+        for page, content, sidebar_groups in built:
+            page_id, file_name, _title, label, *_rest = page
+            records.extend(
+                _build_search_index(file_name, label, content, sidebar_groups)
+            )
+        _write_search_index(records)
         _write_llms_full()
 
     print("\nDone.")
