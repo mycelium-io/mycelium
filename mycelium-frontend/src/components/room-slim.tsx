@@ -3,15 +3,8 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
-import {
-  fetchNetworkStatus,
-  logFetchError,
-  type AuthStatus,
-  type CoordinationRoom,
-  type IdentityStatus,
-  type NetworkStatus,
-} from "@/lib/api";
+import { type AuthStatus, type CoordinationRoom, type IdentityStatus } from "@/lib/api";
+import { useNetworkStatus } from "@/lib/room-data";
 import { Skeleton } from "@/components/ui/skeleton";
 
 /** This room's SLIM channel status — the node it rides, who is present (SLIM
@@ -31,29 +24,8 @@ export function RoomSlimView({
   roomName: string;
   layout?: "full" | "rail";
 }) {
-  const [net, setNet] = useState<NetworkStatus | null>(null);
-  const [loaded, setLoaded] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    const load = () =>
-      fetchNetworkStatus()
-        .then((n) => {
-          if (cancelled) return;
-          setNet(n);
-          setLoaded(true);
-        })
-        .catch((err) => {
-          logFetchError("fetchNetworkStatus")(err);
-          if (!cancelled) setLoaded(true);
-        });
-    load();
-    const t = setInterval(load, 20_000);
-    return () => {
-      cancelled = true;
-      clearInterval(t);
-    };
-  }, []);
+  const { network: net, loading } = useNetworkStatus();
+  const loaded = !loading;
 
   const coord = net?.coordination ?? null;
   const identity = net?.identity ?? null;

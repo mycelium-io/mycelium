@@ -25,6 +25,7 @@ import {
   fetchMemories,
   fetchMemoryIntegrity,
   fetchMessages,
+  fetchNetworkStatus,
   fetchPlan,
   fetchRoom,
   fetchRoomAgents,
@@ -36,6 +37,7 @@ import {
   type EpisodeSummary,
   type Memory,
   type MemoryLinksIntegrity,
+  type NetworkStatus,
   type PlanResponse,
   type PresenceMember,
   type Room,
@@ -218,6 +220,15 @@ export function useRoomEpisodes(room: string, opts: RoomQueryOptions = {}) {
     room, "episodes", fetchEpisodes, NO_EPISODES, POLL.episodes, opts,
   );
   return { episodes: data, loading, refresh };
+}
+
+/** Fabric-wide `/health` diagnostics — SLIM telemetry plus the hub's identity
+ *  tier and auth gate — as one read shared by every reader. */
+export function useNetworkStatus(opts: RoomQueryOptions = {}) {
+  const { data, isLoading } = useSWR<NetworkStatus | null>("network-status", fetchNetworkStatus, {
+    refreshInterval: opts.refreshInterval ?? POLL.coordination,
+  });
+  return { network: data ?? null, loading: isLoading };
 }
 
 // ── Revalidation ─────────────────────────────────────────────────────────────

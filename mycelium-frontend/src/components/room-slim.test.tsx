@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Mycelium Contributors
 
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { renderWithSWR } from "@/test/swr";
 
 vi.mock("@/lib/api", () => ({
   fetchNetworkStatus: vi.fn(),
@@ -51,8 +52,8 @@ function net(overrides: Partial<NetworkStatus> = {}): NetworkStatus {
 
 async function draw(layout: "full" | "rail", status: NetworkStatus | null) {
   mocked.mockResolvedValue(status);
-  render(<RoomSlimView roomName="sprint" layout={layout} />);
-  // Let the polled load settle before asserting on what it rendered.
+  renderWithSWR(<RoomSlimView roomName="sprint" layout={layout} />);
+  // Let the shared /health read settle before asserting on what it rendered.
   await screen.findByText(layout === "rail" ? "identity" : "Channel identity");
 }
 
@@ -150,7 +151,7 @@ describe("RoomSlimView identity + auth", () => {
 
   it("falls back to the unreachable notice when /health does not answer", async () => {
     mocked.mockResolvedValue(null);
-    render(<RoomSlimView roomName="sprint" layout="full" />);
+    renderWithSWR(<RoomSlimView roomName="sprint" layout="full" />);
     expect(await screen.findByText("Backend unreachable.")).toBeTruthy();
   });
 });
