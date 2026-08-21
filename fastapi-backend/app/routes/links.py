@@ -6,7 +6,7 @@ Memory link API — the graph over a room's markdown.
 
 GET /rooms/{room}/links?key=…      — one memory's outbound edges + backlinks
 GET /rooms/{room}/links/graph      — the room's whole link graph (nodes + edges)
-GET /rooms/{room}/links/integrity  — broken links + orphans
+GET /rooms/{room}/links/integrity  — broken links + orphans/roots/leaves
 GET /rooms/{room}/links/expand?key=… — a body with its ![[…]] markers expanded
 
 A sibling router rather than routes under ``/memory``: the memory router ends in
@@ -53,7 +53,7 @@ async def get_graph(room_name: str):
 
 @router.get("/integrity")
 async def get_integrity(room_name: str):
-    """Broken links and orphaned memories across the room."""
+    """Broken links, orphans, roots, and leaves across the room."""
     _require_room(room_name)
     return links.integrity(room_name)
 

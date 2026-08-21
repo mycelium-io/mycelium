@@ -5,8 +5,7 @@
 """
 Generate the CLI Reference HTML section for docs/index.html.
 
-This is a backward-compatible wrapper, the full generator is now
-generate_docs.py which also handles markdown content sections.
+Backward-compatible wrapper; the full generator is generate_docs.py (also handles markdown).
 
 Run from repo root:
     cd mycelium-cli && uv run python ../docs/generate_cli_reference.py

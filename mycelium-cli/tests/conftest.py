@@ -150,7 +150,7 @@ class _FakeHTTPXBase:
 
 
 class FakeAsyncHTTPXClient(_FakeHTTPXBase):
-    """Stand-in for ``httpx.AsyncClient`` (the connector/daemon path)."""
+    """Mock for httpx.AsyncClient with request recording."""
 
     async def __aenter__(self) -> FakeAsyncHTTPXClient:
         return self
@@ -166,7 +166,7 @@ class FakeAsyncHTTPXClient(_FakeHTTPXBase):
 
 
 class FakeSyncHTTPXClient(_FakeHTTPXBase):
-    """Stand-in for ``httpx.Client`` (a command's ``with httpx.Client()``)."""
+    """Mock for httpx.Client (sync version) with request recording."""
 
     def __enter__(self) -> FakeSyncHTTPXClient:
         return self

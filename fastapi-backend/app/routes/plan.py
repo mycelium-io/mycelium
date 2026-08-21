@@ -107,13 +107,7 @@ async def get_plan(room_name: str) -> PlanOut:
 
 
 def _emit_plan_updated(room_name: str, payload: dict) -> None:
-    """Record a ``plan_updated`` message and publish it on the room channel.
-
-    Used by the API-driven plan mutators (title set, task add, task toggle) so
-    the chat-channel narrates plan edits the same way it narrates joins and
-    consensus. Non-fatal: the mutation on disk has already succeeded by the time
-    we reach this helper.
-    """
+    """Record and broadcast plan_updated message. Non-fatal (disk write succeeded)."""
     content = json.dumps(payload)
     local_state.add_message(
         room_name,

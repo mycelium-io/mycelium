@@ -24,7 +24,6 @@ const TABS: { id: Tab; label: string; icon: LucideIcon }[] = [
 interface Props {
   roomName: string;
   masId?: string | null;
-  memoryRefresh: number;
   /** Optional controlled tab + open state (e.g. driven from the status bar). */
   tab?: Tab;
   onTabChange?: (tab: Tab) => void;
@@ -41,12 +40,10 @@ interface Props {
   focusMemory?: { key: string; nonce: number } | null;
 }
 
-/** The room's context, consolidated: agents, episodes, and memory behind one
- *  tabbed right rail (Model B) instead of sprawling across both sides. */
+/** The room's context: agents, episodes, and memory behind one tabbed right rail. */
 export function RoomInspector({
   roomName,
   masId,
-  memoryRefresh,
   tab: tabProp,
   onTabChange,
   open: openProp,
@@ -130,7 +127,6 @@ export function RoomInspector({
         {tab === "agents" && (
           <AgentsPanel
             roomName={roomName}
-            refreshKey={memoryRefresh}
             engineInvite={engineInvite}
             onEngineInviteShown={onEngineInviteShown}
             focusHandle={focused("agent")}
@@ -148,7 +144,6 @@ export function RoomInspector({
           <MemoryPanel
             roomName={roomName}
             masId={masId ?? null}
-            refreshTrigger={memoryRefresh}
             focusKey={focused("memory")}
             onFocusConsumed={onFocusConsumed}
             focusMemory={focusMemory}

@@ -67,8 +67,6 @@ class ProviderMetadata:
 
 @dataclass(frozen=True)
 class TokenResponse:
-    """A successful token grant, normalized."""
-
     access_token: str
     refresh_token: str | None = None
     expires_at: float | None = None
@@ -77,8 +75,6 @@ class TokenResponse:
 
 @dataclass(frozen=True)
 class DevicePrompt:
-    """What the user has to do to finish a device-code login."""
-
     user_code: str
     verification_uri: str
     verification_uri_complete: str | None = None
@@ -86,7 +82,6 @@ class DevicePrompt:
 
 
 def discover(issuer: str, *, timeout_s: float = _HTTP_TIMEOUT_S) -> ProviderMetadata:
-    """Fetch an issuer's OIDC discovery document."""
     url = issuer.rstrip("/") + _DISCOVERY_PATH
     try:
         resp = httpx.get(url, timeout=timeout_s, follow_redirects=True)
@@ -120,7 +115,6 @@ def _open_browser(url: str) -> None:
 
 
 def _pkce_pair() -> tuple[str, str]:
-    """A PKCE ``(verifier, S256 challenge)`` pair."""
     verifier = secrets.token_urlsafe(64)
     digest = hashlib.sha256(verifier.encode("ascii")).digest()
     challenge = base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
@@ -369,11 +363,7 @@ def client_credentials_grant(
     scope: str | None = None,
     audience: str | None = None,
 ) -> TokenResponse:
-    """Mint a token for a workload's own OIDC client (RFC 6749 §4.4).
-
-    The agent path: no human, no browser, no refresh token; the client *is* the
-    identity, so an expired token is re-minted rather than renewed.
-    """
+    """RFC 6749 §4.4: client *is* the identity, so tokens are re-minted not renewed."""
     form = {"grant_type": "client_credentials", "client_id": client_id}
     if client_secret:
         form["client_secret"] = client_secret
@@ -392,7 +382,6 @@ def refresh_grant(
     client_secret: str | None = None,
     scope: str | None = None,
 ) -> TokenResponse:
-    """Exchange a refresh token for a fresh access token."""
     form = {
         "grant_type": "refresh_token",
         "refresh_token": refresh_token,

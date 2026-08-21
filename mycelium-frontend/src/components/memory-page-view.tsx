@@ -10,10 +10,9 @@ import { ChevronLeft } from "lucide-react";
 import {
   fetchMemory,
   fetchMemoryExpanded,
-  fetchMemoryIntegrity,
   type Memory,
-  type MemoryLinksIntegrity,
 } from "@/lib/api";
+import { useRoomMemoryIntegrity } from "@/lib/room-data";
 import { memoryHref } from "@/lib/memory-routes";
 import { MemoryDetail } from "@/components/memory-detail";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -23,12 +22,12 @@ interface Props {
   memoryKey: string;
 }
 
-/** Full-page wiki view for one memory (#614). */
+/** Full-page wiki view for one memory. */
 export function MemoryPageView({ roomName, memoryKey }: Props) {
   const router = useRouter();
   const [memory, setMemory] = useState<Memory | null | undefined>(undefined);
   const [renderedBody, setRenderedBody] = useState<string | null>(null);
-  const [integrity, setIntegrity] = useState<MemoryLinksIntegrity | null>(null);
+  const { integrity } = useRoomMemoryIntegrity(roomName);
 
   useEffect(() => {
     let live = true;
@@ -41,9 +40,6 @@ export function MemoryPageView({ roomName, memoryKey }: Props) {
     fetchMemoryExpanded(roomName, memoryKey).then(exp => {
       if (!live || !exp.found || !exp.rendered) return;
       setRenderedBody(exp.rendered);
-    });
-    fetchMemoryIntegrity(roomName).then(report => {
-      if (live) setIntegrity(report);
     });
     return () => {
       live = false;

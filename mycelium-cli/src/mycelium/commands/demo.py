@@ -510,8 +510,7 @@ def demo(
 
     _provision(chosen, adapter, room_name)
 
-    # The payoff: once positions are in, summon the aligner so the negotiation
-    # actually converges → compiles plan/tasks.md → syncs a knowledge memory.
+    # Summon the aligner to assess convergence and compile the plan.
     handles = [a["handle"] for a in chosen["agents"]]
     _drive_consensus(_config, room_name, handles)
 

@@ -3,20 +3,21 @@
 
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
-import { Boxes, Plus, Sparkles } from "lucide-react";
+import { AlertTriangle, Boxes, Plus, Sparkles, Terminal } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CreateRoomDialog } from "@/components/create-room-dialog";
-import {
-  fetchRooms,
-  fetchRoomAgents,
-  fetchEpisodes,
-  type EpisodeSummary,
-  type Room,
-} from "@/lib/api";
+import { useOpenInstallModal } from "@/components/install-modal";
+import { type EpisodeSummary, type Room } from "@/lib/api";
+import { useRoomAgents, useRoomEpisodes, useRooms, type RoomQueryOptions } from "@/lib/room-data";
+import { useBackendHealth } from "@/lib/use-status";
+
+/** The cards read the shared caches but don't drive them: a grid of rooms is a
+ *  glance, not a watch. */
+const NO_POLL: RoomQueryOptions = { refreshInterval: 0 };
 
 // The seeded sample room the "Run a sample coordination" onboarding routes into.
 const SAMPLE_TOUR_HREF = "/room/pricing-model?tour=1";
@@ -31,6 +32,22 @@ function RunSampleLink({ className = "" }: { className?: string }) {
       <Sparkles className="size-4 text-accent" />
       Run a sample
     </Link>
+  );
+}
+
+/** Onboarding escape hatch from a connected workspace: the install flow, for a
+ *  second machine or an agent that still needs the CLI. */
+function InstallLink() {
+  const openInstallModal = useOpenInstallModal();
+  return (
+    <button
+      type="button"
+      onClick={openInstallModal}
+      className="inline-flex items-center gap-1.5 text-label font-medium text-muted-foreground transition-colors hover:text-text"
+    >
+      <Terminal className="size-3.5" />
+      Install the CLI
+    </button>
   );
 }
 
@@ -62,26 +79,16 @@ function episodeState(ep: EpisodeSummary): { label: string; color: string; live:
   return { label: "live", color: "var(--accent)", live: true };
 }
 
-/** The landing view: every room as a card. Named for where it sits, not for the
- *  heading it wears — "command palette" and "command center" are two different
- *  things, and only one of them is a command surface. */
+/** The landing view: every room as a card. */
 export function HomeDashboard() {
-  const [rooms, setRooms] = useState<Room[]>([]);
-  const [loaded, setLoaded] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
-
-  // fetchRooms degrades to [] on failure (fire-and-forget list), so no
-  // .catch is needed — `loaded` still flips so the skeleton clears either way.
-  const load = useCallback(
-    () => fetchRooms().then((data) => { setRooms(data); setLoaded(true); }),
-    [],
-  );
-
-  useEffect(() => {
-    load();
-    const t = setInterval(load, 10_000);
-    return () => clearInterval(t);
-  }, [load]);
+  const { rooms, loading, refresh } = useRooms();
+  // A room list read off an unreachable backend is empty rather than absent, so
+  // the health probe, not the list, is what tells "nothing here yet" apart
+  // from "nothing to talk to". This page is served by a hub, so an unreachable
+  // backend is an operator problem, not something the viewer's own CLI can
+  // fix. It's an error state, not onboarding.
+  const disconnected = useBackendHealth() === false;
 
   return (
     <div className="flex-1 overflow-y-auto">
@@ -90,19 +97,29 @@ export function HomeDashboard() {
           <div className="min-w-0">
             <h1 className="text-2xl font-semibold text-text">Command center</h1>
             <p className="mt-1 text-label text-muted-foreground">
-              Every coordination workspace, at a glance. Open one to negotiate, plan, and remember.
+              {disconnected ? "Hub unreachable." : "Your rooms. Open one to coordinate."}
             </p>
           </div>
-          <div className="mt-1 flex flex-shrink-0 items-center gap-2">
-            <RunSampleLink />
-            <Button onClick={() => setShowCreate(true)}>
-              <Plus className="size-4" />
-              New room
-            </Button>
-          </div>
+          {!disconnected && (
+            <div className="mt-1 flex flex-shrink-0 items-center gap-2">
+              <RunSampleLink />
+              <Button onClick={() => setShowCreate(true)}>
+                <Plus className="size-4" />
+                New room
+              </Button>
+            </div>
+          )}
         </header>
 
-        {!loaded ? (
+        {disconnected ? (
+          <div className="rounded-xl border border-dashed border-border2">
+            <EmptyState
+              icon={AlertTriangle}
+              title="Hub unreachable"
+              description="The hub isn't answering right now, so the CLI may not be able to connect."
+            />
+          </div>
+        ) : loading ? (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {Array.from({ length: 4 }, (_, i) => (
               <RoomCardSkeleton key={i} />
@@ -115,12 +132,15 @@ export function HomeDashboard() {
               title="No rooms yet"
               description="Create your first coordination room, or run a guided sample to see it work."
               action={
-                <div className="flex items-center gap-2">
-                  <Button onClick={() => setShowCreate(true)}>
-                    <Plus className="size-4" />
-                    New room
-                  </Button>
-                  <RunSampleLink />
+                <div className="flex flex-col items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <Button onClick={() => setShowCreate(true)}>
+                      <Plus className="size-4" />
+                      New room
+                    </Button>
+                    <RunSampleLink />
+                  </div>
+                  <InstallLink />
                 </div>
               }
             />
@@ -134,7 +154,7 @@ export function HomeDashboard() {
         )}
       </div>
 
-      <CreateRoomDialog open={showCreate} onClose={() => setShowCreate(false)} onCreated={load} />
+      <CreateRoomDialog open={showCreate} onClose={() => setShowCreate(false)} onCreated={refresh} />
     </div>
   );
 }
@@ -159,22 +179,14 @@ function RoomCardSkeleton() {
 }
 
 function RoomCard({ room }: { room: Room }) {
-  const [agentCount, setAgentCount] = useState<number | null>(null);
-  const [episodes, setEpisodes] = useState<EpisodeSummary[] | null>(null);
+  // A card per room, so these read once and don't poll: the grid is a glance,
+  // and opening a room is what starts watching it.
+  const { agents, loading: agentsLoading } = useRoomAgents(room.name, NO_POLL);
+  const { episodes } = useRoomEpisodes(room.name, NO_POLL);
 
-  useEffect(() => {
-    let cancelled = false;
-    fetchRoomAgents(room.name)
-      .then(a => { if (!cancelled) setAgentCount(a.length); })
-      .catch(() => { if (!cancelled) setAgentCount(0); });
-    fetchEpisodes(room.name)
-      .then(e => { if (!cancelled) setEpisodes(e); })
-      .catch(() => { if (!cancelled) setEpisodes([]); });
-    return () => { cancelled = true; };
-  }, [room.name]);
-
-  const live = (episodes ?? []).map(episodeState).filter(s => s.live).length;
-  const latest = (episodes ?? [])[0];
+  const agentCount = agentsLoading ? null : agents.length;
+  const live = episodes.map(episodeState).filter(s => s.live).length;
+  const latest = episodes[0];
   const latestState = latest ? episodeState(latest) : null;
 
   return (

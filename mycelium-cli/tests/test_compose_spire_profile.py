@@ -3,7 +3,7 @@
 
 """`_compose_base_cmd` must enable the `spire` profile when slim.identity=spire.
 
-SPIRE is the one-switch attested-identity tier (#588): the config drives the
+SPIRE is the one-switch attested-identity tier: the config drives the
 compose profile, so `mycelium up` / `down` / `logs` all include the SPIRE
 server+agent when — and only when — `MYCELIUM_SLIM_IDENTITY=spire` is set in the
 user's .env. On the default `psk` the profile is absent and the stack is unchanged.

@@ -7,12 +7,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   getSSEUrl,
   fetchMessages,
-  fetchRoomAgents,
   fetchPendingInvites,
   respondToInvite,
   logFetchError,
   type PendingInvite,
 } from "@/lib/api";
+import { useRoomAgents } from "@/lib/room-data";
 import { MarkdownContent } from "@/components/markdown-content";
 import { RoomPlanHeader } from "@/components/room-plan-header";
 import { ConsentDialog } from "@/components/consent-dialog";
@@ -73,7 +73,7 @@ const CHANNEL_VIEW_TYPES = new Set([...CHAT_TYPES, ...L9_RAISE_UP_TYPES]);
 // when no system notice interrupts the run.
 const SYSTEM_TYPES = new Set(L9_RAISE_UP_TYPES);
 
-/** Loading placeholder shaped like a short run of chat rows (avatar + lines). */
+/** Skeleton loader for chat rows. */
 function ChannelSkeleton() {
   const widths = ["w-3/5", "w-2/5", "w-1/2"];
   return (
@@ -210,11 +210,8 @@ function parseEvent(msg: Record<string, unknown>): Event {
       mtype = recipient ? "direct" : "broadcast";
       break;
     case "l9_commit": {
-      // The aligner's verdict rides as an L9 "commit" envelope, not the legacy
-      // `coordination_consensus` message_type nothing on the live wire actually
-      // emits anymore. Unwrap it into the shape the (still-live)
-      // "coordination_consensus" render path and NegotiationView expect, so a
-      // real consensus renders instead of hitting the unhandled-type fallback.
+      // Unwrap the L9 commit envelope into the coordination_consensus shape
+      // so NegotiationView can render it.
       const l9env = (raw.l9 as Record<string, unknown> | undefined) ?? {};
       const header = (l9env.header as Record<string, unknown> | undefined) ?? {};
       const payload = (l9env.payload as Record<string, unknown> | undefined) ?? {};
@@ -322,7 +319,6 @@ interface Props {
   onMemoryChanged?: () => void;
   onConnectionChange?: (connected: boolean) => void;
   onNegotiationPhaseChange?: (phase: NegotiationPhase) => void;
-  planRefreshTrigger?: number;
   /** Open a memory by key — wired to `[[wikilinks]]` in chat so a message can
    *  link a room's memory and a reader (or agent author) can jump straight to it. */
   onOpenMemory?: (key: string) => void;
@@ -337,47 +333,31 @@ interface Props {
   onFocusConsumed?: () => void;
 }
 
-export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onNegotiationPhaseChange, planRefreshTrigger = 0, onOpenMemory, view: viewProp, onViewChange, suppressInvites = false, focusMessageId = null, onFocusConsumed }: Props) {
+export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onNegotiationPhaseChange, onOpenMemory, view: viewProp, onViewChange, suppressInvites = false, focusMessageId = null, onFocusConsumed }: Props) {
   const [events, setEvents] = useState<Event[]>([]);
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [connected, setConnected] = useState(false);
 
-  // Surface connection state to the shell's status bar (editor-style), so the
-  // chat header stays clean and the live/reconnecting signal has one home.
+  // Surface connection state to status bar; one home for the signal.
   useEffect(() => {
     onConnectionChange?.(connected);
   }, [connected, onConnectionChange]);
   const [viewInternal, setViewInternal] = useState<View>("channel");
   const view = viewProp ?? viewInternal;
   const setView = (v: View) => { if (viewProp === undefined) setViewInternal(v); onViewChange?.(v); };
-  const [agentHandles, setAgentHandles] = useState<Set<string>>(new Set());
-  const [agentOwners, setAgentOwners] = useState<Map<string, string>>(new Map());
   const [invites, setInvites] = useState<PendingInvite[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Know which senders are registered agents (to badge their replies) and whom
-  // each belongs to (to attribute them inline). Self-fetched (mirrors the chat
-  // box) so the page doesn't have to thread it; owner is resolved at render time
+  // each belongs to (to attribute them inline). Off the room's shared agent
+  // read, so this costs no request of its own; owner is resolved at render time
   // so it always reflects the current manifest, never a stale stamp.
-  useEffect(() => {
-    let cancelled = false;
-    const load = () =>
-      fetchRoomAgents(roomName)
-        .then((a) => {
-          if (cancelled) return;
-          setAgentHandles(new Set(a.map((x) => x.handle)));
-          setAgentOwners(
-            new Map(a.filter((x) => x.owner).map((x) => [x.handle, x.owner as string])),
-          );
-        })
-        .catch(logFetchError("fetchRoomAgents"));
-    load();
-    const t = setInterval(load, 30_000);
-    return () => {
-      cancelled = true;
-      clearInterval(t);
-    };
-  }, [roomName]);
+  const { agents } = useRoomAgents(roomName);
+  const agentHandles = useMemo(() => new Set(agents.map((a) => a.handle)), [agents]);
+  const agentOwners = useMemo(
+    () => new Map(agents.filter((a) => a.owner).map((a) => [a.handle, a.owner as string])),
+    [agents],
+  );
 
   // Load initial messages
   useEffect(() => {
@@ -515,7 +495,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
         onDecline={(invite) => respond(invite, "decline")}
       />
       <div className="flex items-center gap-3 border-b border-border shrink-0 h-[48px] bg-paper px-4">
-        {/* Connection state lives in the shell status bar now, not here. */}
+        {/* Connection state lives in the shell status bar. */}
         <div className="ml-auto flex items-center gap-0.5 rounded-lg border border-border bg-surface p-0.5">
           {([
             { id: "channel" as const,   label: "Channel",   count: channelCount as number | null, dot: false },
@@ -567,7 +547,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
       ) : (
       <ScrollArea className="flex-1 min-h-0" viewportRef={scrollRef}>
         {view === "plan" ? (
-          <RoomPlanHeader roomName={roomName} refreshTrigger={planRefreshTrigger} />
+          <RoomPlanHeader roomName={roomName} />
         ) : !historyLoaded ? (
           <ChannelSkeleton />
         ) : visible.length === 0 ? (
@@ -718,8 +698,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
                     marked ? "bg-accent/15" : ""
                   }`}
                 >
-                  {/* Timestamp is low-signal: keep it out of the way in the right
-                      gutter, revealed on hover, faint. */}
+                  {/* Timestamp low-signal: right gutter, hover-revealed. */}
                   <span className="pointer-events-none absolute right-5 top-1.5 text-micro tabular text-faint opacity-0 transition-opacity group-hover:opacity-100">
                     {ev.time.slice(0, 5)}
                   </span>

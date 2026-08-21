@@ -45,7 +45,6 @@ def test_parse_mentions_maps_tokens_and_ignores_emails():
 def _manager_with_channel(
     members: set[str] | None = None,
 ) -> tuple[RoomChannelManager, ManagedRoomChannel]:
-    """A manager whose room has a faked, always-'live' channel + persister."""
     manager = RoomChannelManager(endpoint="http://127.0.0.1:46357", default_workspace="mycelium")
     channel = MagicMock()
     channel.send = AsyncMock()
@@ -72,10 +71,10 @@ async def test_publish_human_maps_recipients_wakes_present_invites_absent():
     result = await manager.publish_human(_ROOM, sender="avery", text="@agent-x @agent-y ship it")
 
     assert result is not None
-    # Both mentions become L9 recipients (the semantic "to").
+    # Mentions map to L9 recipients.
     assert result.recipients == ["agent-x", "agent-y"]
 
-    # The broadcast carried an exchange whose recipients are exactly the mentions.
+    # Exchange recipients match the mentions.
     channel_send = cast(MagicMock, managed.channel.send)
     channel_send.assert_awaited_once()
     envelope = channel_send.await_args.args[0]

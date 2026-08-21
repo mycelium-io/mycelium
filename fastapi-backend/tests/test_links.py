@@ -143,15 +143,33 @@ def test_rebuild_reconstructs_the_index_from_markdown():
     assert {link.source for link in links.backlinks("r", "context/stack")} == {"decisions/db"}
 
 
-def test_integrity_reports_broken_links_and_orphans():
+def test_integrity_reports_broken_links_and_graph_roles():
+    # decisions/db → context/stack (resolved) and → gone (broken)
+    # context/stack: inbound=1, outbound=0 → leaf
+    # decisions/db:  inbound=0, outbound=2 → root  (has outbound intent)
     _write("r", "context/stack", "The stack.")
     _write("r", "decisions/db", "See [[context/stack]] and [[gone]].")
 
     report = links.integrity("r")
 
     assert [b["target"] for b in report["broken"]] == ["gone"]
-    assert report["orphans"] == ["decisions/db"]
+    assert report["orphans"] == []  # no memory is fully isolated
+    assert report["roots"] == ["decisions/db"]  # inbound=0, has outbound
+    assert report["leaves"] == ["context/stack"]  # inbound=1, outbound=0
     assert report["total_memories"] == 2
+
+
+def test_integrity_reports_true_orphan():
+    # A memory with no links at all — no inbound, no outbound.
+    _write("r", "context/stack", "See [[decisions/db]].")
+    _write("r", "decisions/db", "The decision.")
+    _write("r", "status/lonely", "Just sitting here.")
+
+    report = links.integrity("r")
+
+    assert report["orphans"] == ["status/lonely"]
+    assert report["roots"] == ["context/stack"]
+    assert report["leaves"] == ["decisions/db"]
 
 
 def test_graph_counts_both_directions():

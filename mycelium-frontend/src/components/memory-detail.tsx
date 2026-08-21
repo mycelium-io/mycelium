@@ -9,7 +9,12 @@ import { highlightJson } from "@/components/l9-inspector";
 import { MarkdownContent } from "@/components/markdown-content";
 import { fetchMemoryLinks, type MemoryLink, type MemoryLinksIntegrity } from "@/lib/api";
 import { isJsonRawText, prettyPrintJsonRawText } from "@/lib/json-text";
-import { integrityNotesForMemory, neighborKeys, type MemoryIntegrityNotes } from "@/lib/memory-links";
+import {
+  integrityNotesForMemory,
+  linkErrorLabel,
+  neighborKeys,
+  type MemoryIntegrityNotes,
+} from "@/lib/memory-links";
 
 export interface MemoryLike {
   key: string;
@@ -21,15 +26,6 @@ export interface MemoryLike {
   updated_at?: string;
   file_path?: string;
 }
-
-// Why a link doesn't resolve, in words. The API reports codes; only the UI has
-// to phrase them.
-const LINK_ERRORS: Record<string, string> = {
-  not_found: "no such memory",
-  no_anchor: "no such section",
-  not_expandable: "target is not expandable",
-  cross_room: "cross-room links are not supported",
-};
 
 function formatValue(v: unknown): string {
   if (typeof v === "string") return v;
@@ -70,7 +66,7 @@ function LinkRow({
       <span className="font-mono text-label truncate">{label}</span>
       <span className="ml-auto flex-shrink-0 text-micro text-faint">{kind}</span>
       {error && (
-        <span className="flex-shrink-0 text-micro text-red">{LINK_ERRORS[error] ?? error}</span>
+        <span className="flex-shrink-0 text-micro text-red">{linkErrorLabel(error)}</span>
       )}
     </>
   );
@@ -144,10 +140,10 @@ interface Props {
   /** Rail peek vs full-page wiki layout. */
   variant?: "rail" | "page";
   /** When set, Rendered mode shows expanded transclusions instead of raw
-   *  `![[…]]` markers (#614 full page, #599 rail drawer). */
+   *  `![[…]]` markers. */
   renderedBody?: string | null;
-  /** Room integrity report; surfaces this memory's broken-link/orphan notes
-   *  in either variant when supplied. */
+  /** Room integrity report; surfaces this memory's broken-link / graph-role
+   *  notes in either variant when supplied. */
   integrity?: MemoryLinksIntegrity | null;
 }
 
@@ -158,7 +154,8 @@ function IntegrityBanner({ notes }: { notes: MemoryIntegrityNotes }) {
       `${notes.brokenOutbound} broken outbound link${notes.brokenOutbound === 1 ? "" : "s"}`,
     );
   }
-  if (notes.isOrphan) parts.push("nothing links here yet (orphan)");
+  if (notes.isOrphan) parts.push("no connections at all (orphan)");
+  else if (notes.isLeaf) parts.push("nothing is reachable from here (leaf)");
   return (
     <div
       role="status"
@@ -279,9 +276,7 @@ export function MemoryDetail({
     () => (variant === "page" ? neighborKeys(memory.key, outbound, backlinks) : []),
     [variant, memory.key, outbound, backlinks],
   );
-  // Integrity banner shows in both variants when a report is supplied — the
-  // rail drawer is a valid place to notice a broken link before opening the
-  // full page (#599).
+  // Integrity banner shows in both variants when a report is supplied.
   const integrityNotes = useMemo(
     () => integrityNotesForMemory(memory.key, integrity),
     [memory.key, integrity],

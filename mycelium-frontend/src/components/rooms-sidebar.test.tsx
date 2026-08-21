@@ -2,7 +2,8 @@
 // Copyright 2026 Mycelium Contributors
 
 import { act } from "react";
-import { render, screen, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
+import { renderWithSWR } from "@/test/swr";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeEventSource } from "@/test/fake-event-source";
@@ -18,6 +19,7 @@ vi.mock("@/lib/api", () => ({
 }));
 
 import { CurrentUserProvider } from "@/components/current-user";
+import { InstallModalProvider } from "@/components/install-modal";
 import { KeymapProvider } from "@/components/keymap-provider";
 import { NotificationsProvider } from "@/components/notifications-provider";
 import { RoomsSidebar } from "@/components/rooms-sidebar";
@@ -29,11 +31,13 @@ function rooms(...names: string[]) {
 
 async function renderSidebar(names: string[], activeRoom: string | null = null) {
   vi.mocked(fetchRooms).mockResolvedValue(rooms(...names) as never);
-  render(
+  renderWithSWR(
     <CurrentUserProvider>
       <NotificationsProvider>
         <KeymapProvider>
-          <RoomsSidebar activeRoom={activeRoom} />
+          <InstallModalProvider>
+            <RoomsSidebar activeRoom={activeRoom} />
+          </InstallModalProvider>
         </KeymapProvider>
       </NotificationsProvider>
     </CurrentUserProvider>,

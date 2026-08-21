@@ -42,7 +42,6 @@ async def _create(args: argparse.Namespace) -> int:
 
     cs = await custody.create_session(args.endpoint, _WS, args.room, args.handle)
     join = asyncio.create_task(custody.join_session(cs))
-    # Tell the moderator the session is awaiting its invite (listen task scheduled).
     _touch(args.workdir, "listening")
     await join
     await cs.publish(f"phase1: {args.handle} live over MLS".encode())

@@ -94,8 +94,6 @@ class ClaudeCodeIntegration(Integration):
         return lines
 
     # ── install facet ───────────────────────────────────────────────────────
-    # Behaviour relocated verbatim from the old ``commands/adapter.py`` add/
-    # remove/status bodies; the command layer just dispatches here now.
 
     STEPS = _CLAUDE_CODE_STEPS
 

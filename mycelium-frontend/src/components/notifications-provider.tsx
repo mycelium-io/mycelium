@@ -133,7 +133,6 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     return () => channel.close();
   }, []);
 
-  // Persist to localStorage whenever the list changes.
   useEffect(() => {
     saveNotifications(notifications);
   }, [notifications]);

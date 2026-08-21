@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Mycelium Contributors
 
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import { renderWithSWR } from "@/test/swr";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -52,7 +53,7 @@ describe("<RoomChatBox /> composer triggers", () => {
   });
 
   it("autocompletes a memory on [[ and inserts [[key]]", async () => {
-    render(<RoomChatBox roomName="demo" />);
+    renderWithSWR(<RoomChatBox roomName="demo" />);
     const box = await textarea();
     await userEvent.click(box);
     // `[` is a special char in userEvent.type — double it to type a literal `[[`.
@@ -65,7 +66,7 @@ describe("<RoomChatBox /> composer triggers", () => {
   });
 
   it("autocompletes a skill on / and inserts /name", async () => {
-    render(<RoomChatBox roomName="demo" />);
+    renderWithSWR(<RoomChatBox roomName="demo" />);
     const box = await textarea();
     await userEvent.click(box);
     await userEvent.type(box, "/sum");
@@ -77,7 +78,7 @@ describe("<RoomChatBox /> composer triggers", () => {
   });
 
   it("still autocompletes an @agent mention", async () => {
-    render(<RoomChatBox roomName="demo" />);
+    renderWithSWR(<RoomChatBox roomName="demo" />);
     const box = await textarea();
     await userEvent.click(box);
     await userEvent.type(box, "@ali");
@@ -89,7 +90,7 @@ describe("<RoomChatBox /> composer triggers", () => {
   });
 
   it("also autocompletes a person (present member), not just agents", async () => {
-    render(<RoomChatBox roomName="demo" />);
+    renderWithSWR(<RoomChatBox roomName="demo" />);
     const box = await textarea();
     await userEvent.click(box);
     await userEvent.type(box, "@wat");
@@ -101,7 +102,7 @@ describe("<RoomChatBox /> composer triggers", () => {
   });
 
   it("autocompletes a poster who isn't currently present (Members-panel parity)", async () => {
-    render(<RoomChatBox roomName="demo" />);
+    renderWithSWR(<RoomChatBox roomName="demo" />);
     const box = await textarea();
     await userEvent.click(box);
     await userEvent.type(box, "@sam");
@@ -113,7 +114,7 @@ describe("<RoomChatBox /> composer triggers", () => {
   });
 
   it("does not open a skill popover for a slash inside a word (e.g. a path)", async () => {
-    render(<RoomChatBox roomName="demo" />);
+    renderWithSWR(<RoomChatBox roomName="demo" />);
     const box = await textarea();
     await userEvent.click(box);
     await userEvent.type(box, "path/sum");

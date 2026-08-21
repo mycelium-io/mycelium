@@ -113,10 +113,11 @@ see issue #446.)
 engine, the **aligner** (`app/services/aligner.py`), summoned by `@`-mention. It
 runs a real **NEGMAS Stacked Alternating Offers** mechanism (`mediator.py`); its
 brain is a persistent **Pi** coding-agent session (`pi_brain.py`) so it keeps memory
-across rounds. It discovers issues from the agents' opening positions, brokers each
-round, `@`-addresses one agent at a time over SLIM, interprets each reply into an
-SAO move (`offer_snap.py` snaps near-misses / nearest numeric grid point), and
-**NEGMAS owns termination**: it stops the instant the agents agree.
+across rounds. It checks the opening positions for a term the agents are using in
+different senses (one clarifying round if so, none otherwise), discovers issues from
+those positions, brokers each round, `@`-addresses one agent at a time over SLIM,
+interprets each reply into an SAO move (`offer_snap.py` snaps near-misses / nearest
+numeric grid point), and **NEGMAS owns termination**: it stops the instant the agents agree.
 
 **Episodes.** A summon opens an **episode**, a tagged, membership-scoped negotiation
 on the room's channel (a tag over the existing channel, not a separate one), 1:1 with
@@ -285,6 +286,16 @@ is no litellm dependency.
   code + the user-facing SPIRE identity guide):** custodial means the hub still holds
   every key + plaintext; this hardens the wire + attribution + access-by-membership,
   and it is **NOT** E2E-from-the-hub.
+- **GUI server state is one SWR cache; client state stays local.** Every room
+  read in the frontend goes through `mycelium-frontend/src/lib/room-data.ts` —
+  typed SWR hooks keyed `["room", name, resource]`, so N panels reading the same
+  resource make one request and share one cache entry (the composer's `@`
+  popover and the Members rail are two views of one `useRoomRoster`). SWR owns
+  polling, refocus and dedup, so components hold no `setInterval` and no
+  fetched-data `useState`; a pushed SSE event calls `useRoomRevalidate(room)`
+  rather than threading a refresh counter down as a prop. A store (Zustand) is
+  reserved for genuine client state — which rail is open, what's selected — not
+  for anything the hub owns.
 - **Adapter capability (be honest).** `claude_code` is proven; `cursor` is untested.
   `openclaw` and `hermes` are **gone**, not deprecated — they rode the removed
   SSE/coordination-tick model and their packages were deleted (#503). Don't

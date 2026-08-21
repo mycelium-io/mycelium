@@ -104,7 +104,6 @@ app.command(name="respond")(participate.respond)
 # point, so listing them shouldn't need the `room` prefix.
 app.command(name="ls")(room.list_rooms)
 
-# Command groups
 app.add_typer(room.app, name="room")
 app.add_typer(memory.app, name="memory")
 app.add_typer(skill.app, name="skill")

@@ -12,12 +12,7 @@ import {
   type ReactNode,
 } from "react";
 
-/**
- * The principal the browser is acting as — the self-asserted "me" that scopes
- * "my agents" / "my team" views. There's no auth at this tier, so identity is a
- * locally-persisted handle the user picks from the global user store. Verified
- * identity arrives with per-member SLIM binding.
- */
+/** Browser principal: self-asserted user handle from localStorage. */
 const STORAGE_KEY = "mycelium.principal";
 
 interface CurrentUser {

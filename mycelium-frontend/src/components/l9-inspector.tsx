@@ -187,9 +187,7 @@ export function envelopeJson(raw: Record<string, unknown>): string {
 // else value), literals, and numbers. Punctuation/whitespace fall between matches.
 const JSON_TOKENS = /("(?:\\.|[^"\\])*")(\s*:)?|\b(true|false|null)\b|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g;
 
-/** Dependency-free JSON syntax highlight for the expanded envelope. Colors keys,
- *  strings, numbers, and literals with the app palette; everything else inherits.
- *  Operates on the printed string, so the visible text is byte-for-byte unchanged. */
+/** JSON syntax highlight: colors keys, strings, numbers, literals. */
 export function highlightJson(src: string): ReactNode[] {
   const out: ReactNode[] = [];
   let last = 0;
@@ -369,8 +367,7 @@ const MAX_FRAMES = 200;
 export function L9Inspector({ roomName }: Props) {
   const [frames, setFrames] = useState<L9Frame[]>([]);
   const [connected, setConnected] = useState(false);
-  // Kinds toggled off by the filter chips. Empty by default (nothing hidden) so a
-  // newly-seen kind shows up automatically instead of needing to be opted in.
+  // Kinds toggled off; empty by default so new kinds auto-show.
   const [hiddenKinds, setHiddenKinds] = useState<Set<string>>(new Set());
   const [episodeFilter, setEpisodeFilter] = useState<string>("all");
   const wireRef = useRef<HTMLDivElement>(null);
@@ -408,9 +405,7 @@ export function L9Inspector({ roomName }: Props) {
     return () => { cancelled = true; };
   }, [roomName]);
 
-  // Live L9 wire: same EventSource pattern as the room feed. (Episodes have
-  // their own home in the inspector's Episodes tab + review drawer; this tab is
-  // purely the live protocol feed.)
+  // Live L9 wire: same EventSource pattern as the room feed.
   useEffect(() => {
     const url = getSSEUrl(roomName);
     let es: EventSource;
@@ -486,9 +481,7 @@ export function L9Inspector({ roomName }: Props) {
 
   return (
     <div className="flex flex-col h-full" data-testid="l9-inspector">
-      {/* No "L9 PROTOCOL" title bar: the pane tab already reads "Network" and the
-          SLIM diagnostics rail sits right above. Only the transient reconnecting
-          state needs a strip of its own. */}
+      {/* No title bar; pane tab already reads "Network". */}
       {!connected && (
         <div className="flex items-center gap-1.5 px-4 shrink-0 h-[28px] border-b border-border bg-paper caps-mono-sm text-yellow">
           <span aria-hidden className="inline-block size-1.5 rounded-full bg-yellow" />
@@ -521,8 +514,7 @@ export function L9Inspector({ roomName }: Props) {
                     className="inline-block size-1.5 rounded-full"
                     style={{ background: active ? kindTone(kind) : "var(--muted-foreground)" }}
                   />
-                  {/* Lowercase text node; caps-mono-sm uppercases it visually. Keeps this text
-                      distinct from KindBadge's literal-uppercase text for the same kind. */}
+                  {/* Lowercase; caps-mono-sm uppercases visually. */}
                   {kind}
                 </button>
               );

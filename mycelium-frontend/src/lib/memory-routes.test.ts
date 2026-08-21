@@ -2,13 +2,11 @@
 // Copyright 2026 Mycelium Contributors
 
 import { describe, expect, it } from "vitest";
-import { encodeMemoryKeyPath, memoryHref, parseMemoryKeyParam } from "@/lib/memory-routes";
+import { encodeMemoryKeyPath, memoryGraphHref, memoryHref, parseMemoryKeyParam } from "@/lib/memory-routes";
 
 describe("encodeMemoryKeyPath", () => {
   it("encodes each slash segment separately", () => {
-    expect(encodeMemoryKeyPath("decisions/db choice")).toBe(
-      "decisions/db%20choice",
-    );
+    expect(encodeMemoryKeyPath("decisions/db choice")).toBe("decisions/db%20choice");
   });
 
   it("round-trips through parseMemoryKeyParam", () => {
@@ -24,8 +22,16 @@ describe("memoryHref", () => {
   });
 
   it("encodes room names with spaces", () => {
-    expect(memoryHref("atlas migration", "plan/title")).toBe(
-      "/room/atlas%20migration/memory/plan/title",
-    );
+    expect(memoryHref("atlas migration", "plan/title")).toBe("/room/atlas%20migration/memory/plan/title");
+  });
+});
+
+describe("memoryGraphHref", () => {
+  it("points at the room's full-page graph route", () => {
+    expect(memoryGraphHref("atlas")).toBe("/room/atlas/graph");
+  });
+
+  it("escapes a room name so a space can't end the path", () => {
+    expect(memoryGraphHref("atlas migration")).toBe("/room/atlas%20migration/graph");
   });
 });

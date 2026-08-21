@@ -6,18 +6,25 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Brain, ChevronRight, ExternalLink, Folder, FolderOpen, FileText, AlertCircle } from "lucide-react";
 import {
-  fetchMemories,
+  Brain,
+  ChevronRight,
+  ExternalLink,
+  Folder,
+  FolderOpen,
+  FileText,
+  AlertCircle,
+  Network,
+} from "lucide-react";
+import {
   fetchMemory,
   fetchMemoryExpanded,
-  fetchMemoryIntegrity,
   searchMemories,
   type Memory,
-  type MemoryLinksIntegrity,
   type MemorySearchResult,
 } from "@/lib/api";
-import { memoryHref } from "@/lib/memory-routes";
+import { useRoomMemories, useRoomMemoryIntegrity } from "@/lib/room-data";
+import { memoryGraphHref, memoryHref } from "@/lib/memory-routes";
 import { expandedPathsForKey, resolveMemoryPeekNavigation } from "@/lib/memory-panel-nav";
 import { DetailDrawer } from "@/components/detail-drawer";
 import { EmptyState } from "@/components/empty-state";
@@ -34,7 +41,6 @@ interface TreeNode {
 interface Props {
   roomName: string;
   masId?: string | null;
-  refreshTrigger: number;
   /** A memory key to open, arrived at from search. */
   focusKey?: string | null;
   onFocusConsumed?: () => void;
@@ -156,8 +162,7 @@ function TreeRows({ nodes, depth, collapsed, onToggle, onSelect, selected }: Tre
                   {isFolder ? node.name : fileName(node)}
                 </span>
 
-                {/* dot indicator when node is both a file and a folder */}
-                {isFolder && node.memory && (
+                  {isFolder && node.memory && (
                   <span className="flex-shrink-0 w-1 h-1 rounded-full bg-accent opacity-60" />
                 )}
               </button>
@@ -169,7 +174,6 @@ function TreeRows({ nodes, depth, collapsed, onToggle, onSelect, selected }: Tre
                 </span>
               )}
 
-              {/* version badge — files only */}
               {node.memory && !isFolder && (
                 <span className="flex-shrink-0 font-mono text-[10px] tabular text-faint">
                   v{node.memory.version}
@@ -194,40 +198,23 @@ function TreeRows({ nodes, depth, collapsed, onToggle, onSelect, selected }: Tre
   );
 }
 
-export function MemoryPanel({ roomName, refreshTrigger, focusKey = null, onFocusConsumed, focusMemory }: Props) {
+export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusMemory }: Props) {
   const router = useRouter();
-  const [memories, setMemories] = useState<Memory[]>([]);
-  const [loaded, setLoaded] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<MemorySearchResult[] | null>(null);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Memory | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  const [integrity, setIntegrity] = useState<MemoryLinksIntegrity | null>(null);
   const [renderedBody, setRenderedBody] = useState<string | null>(null);
+
+  // The tree, plus the room-wide integrity report the drawer reads to flag a
+  // broken or orphaned memory without a per-open round trip. Both revalidate
+  // when a memory write reaches the room, so neither needs a refresh prop.
+  const { memories, loading } = useRoomMemories(roomName);
+  const { integrity } = useRoomMemoryIntegrity(roomName);
   const memoriesRef = useRef(memories);
   memoriesRef.current = memories;
-
-  // fetchMemories degrades to [] on failure (fire-and-forget list), so no
-  // try/catch is needed here — a failed load just shows the empty state.
-  const loadData = useCallback(async () => {
-    setMemories(await fetchMemories(roomName));
-    setLoaded(true);
-  }, [roomName]);
-
-  // Room-wide integrity report, refreshed alongside the tree — cheap enough
-  // to fetch unconditionally so the drawer can flag a broken/orphaned memory
-  // without a per-open round trip (#599).
-  useEffect(() => {
-    let live = true;
-    fetchMemoryIntegrity(roomName).then(report => {
-      if (live) setIntegrity(report);
-    });
-    return () => {
-      live = false;
-    };
-  }, [roomName, refreshTrigger]);
 
   // Expanded transclusions for whichever memory is open in the drawer, so the
   // rail peek matches the full page instead of leaving `![[…]]` markers as
@@ -251,8 +238,6 @@ export function MemoryPanel({ roomName, refreshTrigger, focusKey = null, onFocus
     () => Array.from(new Set(memories.map(m => m.created_by).filter(Boolean))),
     [memories],
   );
-
-  useEffect(() => { loadData(); }, [loadData, refreshTrigger]);
 
   const revealKeyInTree = useCallback((key: string, clearSearch = false) => {
     if (clearSearch) setSearchResults(null);
@@ -330,6 +315,14 @@ export function MemoryPanel({ roomName, refreshTrigger, focusKey = null, onFocus
           <span className="text-faint px-1">·</span>
           <span className="text-text font-semibold tabular">{contributors.length}</span>
           <span>contributors</span>
+          <Link
+            href={memoryGraphHref(roomName)}
+            className="ml-auto inline-flex items-center gap-1 rounded-md px-2 py-1 text-micro font-medium text-accent transition-colors hover:bg-hairline"
+            title="Open the memory link graph"
+          >
+            <Network className="size-3.5" />
+            Graph
+          </Link>
         </div>
         {contributors.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mt-2.5">
@@ -409,7 +402,7 @@ export function MemoryPanel({ roomName, refreshTrigger, focusKey = null, onFocus
         {/* File tree */}
         {!searchResults && (
           <div className="py-1">
-            {!loaded ? (
+            {loading ? (
               ["w-24", "w-32", "w-20", "w-28"].map((w, i) => (
                 <div key={i} className="flex items-center gap-1.5 pr-3" style={{ height: ROW_H, paddingLeft: 8 }}>
                   <Skeleton className="size-3 rounded-sm" />

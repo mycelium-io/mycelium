@@ -2,7 +2,8 @@
 // Copyright 2026 Mycelium Contributors
 
 import { act } from "react";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
+import { renderWithSWR } from "@/test/swr";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeEventSource } from "@/test/fake-event-source";
 
@@ -19,8 +20,7 @@ import { EventStream } from "@/components/event-stream";
 
 const CREATED = "2026-08-04T10:00:00.000000+00:00";
 
-/** The live SSE stream wraps a human/agent message as an L9 exchange envelope —
- *  the shape that was silently dropped before (issue #490). */
+/** The live SSE stream wraps a human/agent message as an L9 exchange envelope. */
 function l9Exchange(text: string) {
   return {
     message_type: "l9_exchange",
@@ -43,7 +43,7 @@ describe("<EventStream /> live message rendering", () => {
   });
 
   it("renders an l9_exchange streamed over SSE as a chat message", async () => {
-    render(<EventStream roomName="sprint" />);
+    renderWithSWR(<EventStream roomName="sprint" />);
     await act(async () => {});
     const es = FakeEventSource.latest();
 
@@ -59,7 +59,7 @@ describe("<EventStream /> live message rendering", () => {
 
   it("auto-scrolls the ScrollArea viewport, not the outer wrapper, on new messages", async () => {
     const scrollTo = vi.spyOn(Element.prototype, "scrollTo");
-    render(<EventStream roomName="sprint" />);
+    renderWithSWR(<EventStream roomName="sprint" />);
     await act(async () => {});
     const es = FakeEventSource.latest();
 
@@ -77,7 +77,7 @@ describe("<EventStream /> live message rendering", () => {
 
   it("renders an l9_commit streamed over SSE as a consensus notice, not the unhandled fallback", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    render(<EventStream roomName="sprint" />);
+    renderWithSWR(<EventStream roomName="sprint" />);
     await act(async () => {});
     const es = FakeEventSource.latest();
 
@@ -110,7 +110,7 @@ describe("<EventStream /> live message rendering", () => {
 
   it("renders an l9_knowledge streamed over SSE as a knowledge notice, not the unhandled fallback", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    render(<EventStream roomName="sprint" />);
+    renderWithSWR(<EventStream roomName="sprint" />);
     await act(async () => {});
     const es = FakeEventSource.latest();
 
@@ -139,7 +139,7 @@ describe("<EventStream /> live message rendering", () => {
 
   it("warns loudly on an unhandled message_type instead of dropping it silently", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    render(<EventStream roomName="sprint" />);
+    renderWithSWR(<EventStream roomName="sprint" />);
     await act(async () => {});
     const es = FakeEventSource.latest();
 

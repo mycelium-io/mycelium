@@ -65,8 +65,8 @@ The release pipeline's "promote to latest" steps (Docker `:latest` tags, GH "Lat
    To upgrade:
    mycelium upgrade && mycelium pull
    mycelium migrate              # if this release includes new migrations
-   mycelium adapter add openclaw --reinstall   # if using openclaw
    mycelium adapter add claude-code --reinstall  # if using claude-code
+   mycelium adapter add cursor --reinstall        # if using cursor
    mycelium doctor  # to check health of services
    ```
    Include `mycelium migrate` only if step 3 found new migration files. Omit the line otherwise.

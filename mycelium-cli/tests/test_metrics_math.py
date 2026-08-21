@@ -84,7 +84,6 @@ def test_oc_token_totals_splits_heartbeat_from_foreground() -> None:
 
 
 def test_oc_token_totals_include_background_folds_back_in() -> None:
-    """include_background=True produces the old combined total."""
     otel = {
         "counters": {
             "tokens": {

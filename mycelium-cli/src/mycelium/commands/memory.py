@@ -265,8 +265,8 @@ def memory_set(
             tags=tag_list,
         )
 
-    # Extra frontmatter rides as an additional property: the generated client
-    # passes unknown fields straight through, so this needs no client regen.
+    # Extra frontmatter rides as an additional property; the generated client
+    # passes unknown fields through, so no client regen is needed.
     frontmatter = _parse_meta_pairs(meta)
     if expandable:
         frontmatter["expandable"] = True
@@ -275,8 +275,7 @@ def memory_set(
 
     batch = MemoryBatchCreate(items=[item])
 
-    # The write goes to the hub, which owns the store (files + index). A spoke
-    # keeps no local copy; reads resolve against the hub (see memory_get/ls).
+    # Write to hub (single store; spoke has no local copy)
     with _hub_session() as client:
         result = create_api.sync(room_name=room_name, client=client, body=batch)
         if result and isinstance(result, list) and len(result) > 0:
@@ -514,10 +513,18 @@ def _print_expanded(room_name: str, key: str) -> None:
 
 
 def _print_integrity(room_name: str) -> None:
-    """Room-wide link health: what's broken, and what nothing points at."""
+    """Room-wide link health: broken links, orphans, roots, and leaves.
+
+    Terminology:
+    - orphan: no inbound links AND no outbound links — fully isolated.
+    - root:   no inbound links but has outbound links — an entry point.
+    - leaf:   has inbound links but no outbound links — a dead end.
+    """
     report = _fetch_links(room_name, "/integrity")
     broken = report.get("broken") or []
     orphans = report.get("orphans") or []
+    roots = report.get("roots") or []
+    leaves = report.get("leaves") or []
 
     console.print(
         f"[bold]{room_name}[/bold]  [dim]{report.get('total_memories', 0)} memories, "
@@ -537,14 +544,26 @@ def _print_integrity(room_name: str) -> None:
         console.print("[green]No broken links[/green]\n")
 
     if orphans:
-        console.print(f"[dim]Orphans ({len(orphans)}): nothing links here[/dim]")
+        console.print(f"[yellow]Orphans ({len(orphans)})[/yellow]: no links in or out")
         for key in orphans:
+            console.print(f"  [cyan]{key}[/cyan]")
+        console.print()
+
+    if roots:
+        console.print(f"[dim]Roots ({len(roots)}): nothing links here yet[/dim]")
+        for key in roots:
+            console.print(f"  [cyan]{key}[/cyan]")
+        console.print()
+
+    if leaves:
+        console.print(f"[dim]Leaves ({len(leaves)}): links arrive but go no further[/dim]")
+        for key in leaves:
             console.print(f"  [cyan]{key}[/cyan]")
 
 
 @doc_ref(
     usage="mycelium memory links <key> [--check]",
-    desc="Show a memory's links: what it points at and what points back at it. Links are <code>myc://key</code> or <code>[[key]]</code> in the body, plus typed frontmatter relations (<code>supersedes</code>, <code>depends-on</code>, <code>part-of</code>, <code>relates-to</code>). <code>--check</code> reports broken links and orphans across the whole room.",
+    desc="Show a memory's links: what it points at and what points back at it. Links are <code>myc://key</code> or <code>[[key]]</code> in the body, plus typed frontmatter relations (<code>supersedes</code>, <code>depends-on</code>, <code>part-of</code>, <code>relates-to</code>). <code>--check</code> reports broken links, orphans (no connections), roots (no inbound), and leaves (no outbound) across the whole room.",
     group="memory",
 )
 @app.command(name="links")
@@ -552,7 +571,7 @@ def memory_links(
     key: str | None = typer.Argument(None, help="Memory key to inspect"),
     room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
     check: bool = typer.Option(
-        False, "--check", help="Report broken links and orphans across the room"
+        False, "--check", help="Report broken links, orphans, roots, and leaves across the room"
     ),
     as_json: bool = typer.Option(False, "--json", help="Emit raw JSON"),
 ) -> None:

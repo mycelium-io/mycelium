@@ -139,7 +139,6 @@ class TestOpenTaskSummary:
         monkeypatch.setattr("app.config.settings.MYCELIUM_DATA_DIR", str(tmp_path))
         for i in range(3):
             plan_service.add_task("r", f"task {i}")
-        # complete one
         _, tasks = plan_service.load_plan("r")
         plan_service.toggle_task("r", tasks[0].id, done=True)
 

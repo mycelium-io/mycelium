@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""HTTP-API JWT gate (#561).
+"""HTTP-API JWT gate.
 
 Tokens are signed with RSA keys generated in-process and served through a
 stubbed JWKS endpoint, so the whole gate — signature, claims, issuer matching,
@@ -198,7 +198,7 @@ async def test_role_claim_overrides_the_issuer_default(auth_on, signing_key):
 
 @pytest.mark.asyncio
 async def test_unsupported_role_claim_is_rejected(auth_on, signing_key):
-    """Better a 401 than a principal silently labelled something it didn't claim."""
+    """An unsupported role claim is rejected with 401."""
     with pytest.raises(auth_service.AuthError):
         await auth_service.verify_token(_sign(signing_key, mycelium_role="superuser"))
 
@@ -314,8 +314,7 @@ async def test_unsigned_token_is_refused(client: AsyncClient, auth_on):
 
 @pytest.mark.asyncio
 async def test_health_stays_public_when_enabled(client: AsyncClient, auth_on):
-    """Orchestrator probes are unauthenticated by nature — compose's healthcheck
-    curls this, so gating it would mark a correctly-secured hub unhealthy."""
+    """Health endpoint stays public even when auth is enabled."""
     resp = await client.get(PUBLIC_PATH)
     assert resp.status_code == 200
     assert resp.json()["auth"]["enabled"] is True
@@ -392,8 +391,7 @@ async def test_unknown_kid_still_401s_after_refresh(auth_on, jwks_server):
 async def test_stale_keys_serve_through_an_issuer_outage(
     monkeypatch, auth_on, signing_key, jwks_server
 ):
-    """An IdP blip must not take the hub down — cached keys are still the
-    issuer's keys, only their freshness is in doubt."""
+    """Cached keys serve through an issuer outage."""
     await auth_service.verify_token(_sign(signing_key))
 
     # Expire the cache so the next call must re-fetch, then break the issuer.

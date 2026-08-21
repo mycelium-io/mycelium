@@ -22,7 +22,6 @@ export function ThemeToggle() {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => setMounted(true), []);
 
-  // Close on outside click / Escape.
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => {
@@ -37,8 +36,7 @@ export function ThemeToggle() {
     };
   }, [open]);
 
-  // One command per theme rather than a toggle: the palette is searched by name,
-  // and "Dark" says what you'll get where "Toggle theme" doesn't.
+  // Separate commands so palette search finds "Dark" instead of "Toggle theme".
   const commands = useMemo<PaletteCommand[]>(
     () =>
       OPTIONS.map(({ value, label }) => ({

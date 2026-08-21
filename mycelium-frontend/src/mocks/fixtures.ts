@@ -23,6 +23,9 @@ import type {
   EpisodeSummary,
   HostInfo,
   L9Envelope,
+  MemoryGraph,
+  MemoryGraphEdge,
+  MemoryGraphNode,
   PendingInvite,
   PlanResponse,
 } from "@/lib/api";
@@ -71,6 +74,40 @@ export interface RoomFixture {
   episodes: EpisodeSummary[];
   episodeDetails: Record<string, EpisodeDetail>;
   invites: PendingInvite[];
+  /** The room's link graph (#599/#611) — undefined means "no link index yet",
+   *  the same degrade-to-empty case the real backend serves for an unlinked room. */
+  links?: MemoryGraph;
+  // Wire frames served at GET /messages/l9, feeding the Network pane's L9 feed.
+  // Shaped like the persister's bus frames (a bare `{header, payload}` envelope
+  // under `content`, plus the flat fields the inspector reads).
+  l9?: Record<string, unknown>[];
+}
+
+/**
+ * Builds a `MemoryGraph` from a room's memories plus a hand-authored edge list,
+ * deriving each node's `inbound`/`outbound` the same way the backend does
+ * (`app/services/links.py:graph`): `outbound` counts every parsed link from that
+ * memory, `inbound` counts only the edges that actually resolved — so a memory
+ * that is only the *target* of a broken link still reads as a root (inbound=0,
+ * outbound=0 → orphan; inbound=0, outbound>0 → root).
+ */
+function buildMockGraph(
+  memories: MockMemory[],
+  edges: MemoryGraphEdge[],
+): MemoryGraph {
+  const outbound = new Map<string, number>();
+  const inbound = new Map<string, number>();
+  for (const edge of edges) {
+    outbound.set(edge.source, (outbound.get(edge.source) ?? 0) + 1);
+    if (edge.resolved) inbound.set(edge.target, (inbound.get(edge.target) ?? 0) + 1);
+  }
+  const nodes: MemoryGraphNode[] = memories.map((m) => ({
+    key: m.key,
+    expandable: false,
+    outbound: outbound.get(m.key) ?? 0,
+    inbound: inbound.get(m.key) ?? 0,
+  }));
+  return { nodes, edges };
 }
 
 // ── agent manifests (YAML strings — the UI parses description/adapter) ─────────
@@ -82,30 +119,62 @@ const agentManifest = (description: string, adapter = "claude_code"): string =>
 
 const ATLAS_EPISODE = "urn:ioc:mycelium:episode:atlas-migration:e4f1a2";
 
+// The negotiation the aligner brokered: growth (big-bang, fast) vs risk
+// (phased, safe), converging over four rounds of Stacked Alternating Offers.
+//
+// This models the real flow faithfully: the *chat* is the source. Each agent
+// posts a reply in the channel (`say`), and the aligner reads it and emits the
+// structured L9 it implies. So one move drives three things — the agent's chat
+// broadcast, the coordination_tick the Negotiate pane reconstructs, and the L9
+// envelope the Network feed shows — and they can't disagree. `ask` is the
+// aligner's prompt that precedes a reply (it @-addresses one agent at a time).
+const ATLAS_CONSENSUS = { cutover: "phased", window: "48h" };
+interface AtlasMove {
+  round: number;
+  who: string;
+  action: string;
+  offer: Record<string, string>;
+  say: string;
+  ask?: string;
+}
+const atlasMoves: AtlasMove[] = [
+  { round: 1, who: "growth", action: "propose", offer: { cutover: "big-bang", window: "24h" },
+    ask: "Brokering. Two issues: cutover approach and window. @growth, opening offer?",
+    say: "Big-bang cutover, 24h window. It's simpler to reason about." },
+  { round: 1, who: "risk", action: "counter", offer: { cutover: "phased", window: "72h" },
+    ask: "@risk, your counter?",
+    say: "Phased with dual-write, 72h. Big-bang risks data loss." },
+  { round: 2, who: "growth", action: "counter", offer: { cutover: "phased", window: "24h" },
+    ask: "@growth, risk won't take big-bang. Move?",
+    say: "Fine, phased — but 24h. I don't want to dual-write for days." },
+  { round: 2, who: "risk", action: "counter", offer: { cutover: "phased", window: "60h" },
+    say: "24h is too tight to verify parity. 60h." },
+  { round: 3, who: "growth", action: "counter", offer: { cutover: "phased", window: "48h" },
+    say: "Split the difference: 48h." },
+  { round: 3, who: "risk", action: "counter", offer: { cutover: "phased", window: "48h" },
+    say: "48h works if reads stay behind a flag through the soak." },
+  { round: 4, who: "growth", action: "accept", offer: ATLAS_CONSENSUS,
+    ask: "Standing offer: phased, 48h. @growth @risk — accept?",
+    say: "Agreed. ✅" },
+  { round: 4, who: "risk", action: "accept", offer: ATLAS_CONSENSUS,
+    say: "Agreed." },
+];
+
 const atlasL9Chain: L9Envelope[] = [
-  {
+  ...atlasMoves.map((m, i) => ({
     header: {
       protocol: "ioc",
       kind: "exchange",
       subkind: "tick",
-      participants: { actors: [{ id: "aligner", role: "mediator" }, { id: "growth", role: "agent" }] },
-      message: { id: "m1", parents: [], episode: ATLAS_EPISODE },
+      participants: { actors: [{ id: "aligner", role: "mediator" }, { id: m.who, role: "agent" }] },
+      message: { id: `m${i + 1}`, parents: i ? [`m${i}`] : [], episode: ATLAS_EPISODE },
       context: { topic: "urn:concept:mycelium:atlas-migration" },
     },
-    payload: { type: "propose", data: { cutover: "phased", offer: { cutover: "phased" } } },
-  },
+    payload: { type: m.action, data: { round: m.round, offer: m.offer } },
+  })),
   {
     header: {
-      kind: "exchange",
-      subkind: "tick",
-      participants: { actors: [{ id: "aligner", role: "mediator" }, { id: "risk", role: "agent" }] },
-      message: { id: "m2", parents: ["m1"], episode: ATLAS_EPISODE },
-      context: { topic: "urn:concept:mycelium:atlas-migration" },
-    },
-    payload: { type: "respond", data: { action: "counter", offer: { cutover: "phased", window: "48h" } } },
-  },
-  {
-    header: {
+      protocol: "ioc",
       kind: "commit",
       subkind: "converged",
       participants: {
@@ -115,15 +184,50 @@ const atlasL9Chain: L9Envelope[] = [
           { id: "risk", role: "agent" },
         ],
       },
-      message: { id: "m3", parents: ["m2"], episode: ATLAS_EPISODE },
+      message: { id: `m${atlasMoves.length + 1}`, parents: [`m${atlasMoves.length}`], episode: ATLAS_EPISODE },
       context: { topic: "urn:concept:mycelium:atlas-migration" },
     },
     payload: {
       type: "consensus",
-      data: { assignments: { cutover: "phased", window: "48h" }, metrics: { mpc: 0.86, gar: 0.79 } },
+      data: { assignments: ATLAS_CONSENSUS, metrics: { mpc: 0.86, gar: 0.79, scr: 0.0 } },
     },
   },
 ];
+
+// The mediated negotiation as it appears on the wire: for each move, the
+// aligner's optional prompt and the agent's reply (both chat broadcasts, shown
+// in the channel), then the coordination_tick the aligner emits from that reply
+// (feeds Negotiate + Network, filtered out of the channel). Interleaved and
+// timestamped so the transcript reads in order — the chat drives the L9.
+const atlasNegotiation: MockMessage[] = (() => {
+  const out: MockMessage[] = [];
+  let at = 46; // minutes ago; ticks down as the exchange proceeds
+  const step = () => iso((at -= 0.2));
+  atlasMoves.forEach((m, i) => {
+    if (m.ask) {
+      out.push({ id: `neg-ask-${i}`, sender_handle: "aligner", message_type: "broadcast", content: m.ask, created_at: step() });
+    }
+    out.push({ id: `neg-say-${i}`, sender_handle: m.who, message_type: "broadcast", content: m.say, created_at: step() });
+    out.push({
+      id: `tick-${i + 1}`,
+      sender_handle: "aligner",
+      message_type: "coordination_tick",
+      content: JSON.stringify({ round: m.round, participant_id: m.who, action: m.action, current_offer: m.offer, episode: ATLAS_EPISODE }),
+      created_at: step(),
+      episode: ATLAS_EPISODE,
+    });
+  });
+  return out;
+})();
+
+// The L9 chain as persister bus frames: bare `{header, payload}` under content,
+// with the flat sender_handle/message_type/created_at the inspector reads.
+const atlasL9Frames: Record<string, unknown>[] = atlasL9Chain.map((env, i) => ({
+  message_type: `l9_${env.header.kind}`,
+  sender_handle: env.header.participants?.actors?.[0]?.id ?? "aligner",
+  created_at: iso(44 - i),
+  content: env,
+}));
 
 const atlasEpisodeSummary: EpisodeSummary = {
   short_id: "e4f1a2",
@@ -212,7 +316,8 @@ const atlas: RoomFixture = {
         "**Goal.** Move the Atlas catalog off the legacy store with zero downtime.\n\n" +
         "_Owners:_ @growth drives delivery; @risk guards reliability.",
       content_text:
-        "Atlas migration briefing: phased 48h cutover (dual-write then flip); rehearsal green, flip Thursday; zero-downtime goal.",
+        "Atlas migration briefing: phased 48h cutover (dual-write then flip); rehearsal green, flip Thursday; zero-downtime goal.\n\n" +
+        "The goal this all serves, embedded verbatim:\n\n![[context/goal]]",
       created_by: "synthesizer",
       version: 1,
       updated_at: iso(38),
@@ -247,18 +352,38 @@ const atlas: RoomFixture = {
     done_count: 2,
   },
   messages: [
-    { id: "a1", sender_handle: "operator", message_type: "broadcast", content: "@growth @risk let's settle the cutover strategy. Summon the aligner when ready.", created_at: iso(48) },
+    { id: "a1", sender_handle: "operator", message_type: "broadcast", content: "@growth @risk let's settle the cutover strategy — approach and window. @aligner, broker it.", created_at: iso(48) },
     { id: "a2", sender_handle: "growth", message_type: "coordination_join", content: JSON.stringify({ handle: "growth", intent: "ship the migration this week", episode: ATLAS_EPISODE }), created_at: iso(47), episode: ATLAS_EPISODE },
     { id: "a3", sender_handle: "risk", message_type: "coordination_join", content: JSON.stringify({ handle: "risk", intent: "no downtime, no data loss", episode: ATLAS_EPISODE }), created_at: iso(47), episode: ATLAS_EPISODE },
-    { id: "a4", sender_handle: "growth", message_type: "broadcast", content: "I want a big-bang cutover — it's simpler to reason about.", created_at: iso(46) },
-    { id: "a5", sender_handle: "risk", message_type: "broadcast", content: "Too risky. Phased, dual-write, then flip reads. @growth", created_at: iso(45) },
-    { id: "a6", sender_handle: "backend", message_type: "coordination_consensus", content: JSON.stringify({ plan: "phased cutover agreed", assignments: { cutover: "phased", window: "48h" }, plan_file: "plan/tasks.md", episode: ATLAS_EPISODE, metrics: { gar: 0.79 } }), created_at: iso(42), episode: ATLAS_EPISODE },
-    { id: "a7", sender_handle: "growth", message_type: "broadcast", content: "Works for me. Dual-write is live in staging. ✅", created_at: iso(30) },
+    // The aligner brokers four rounds of alternating offers. Each agent reply is
+    // a chat broadcast; the aligner reads it and emits the coordination_tick the
+    // Negotiate/Network panes reconstruct. The chat is the source (see atlasMoves).
+    ...atlasNegotiation,
+    { id: "a6", sender_handle: "aligner", message_type: "coordination_consensus", content: JSON.stringify({ plan: "phased cutover agreed", assignments: { cutover: "phased", window: "48h" }, plan_file: "plan/tasks.md", episode: ATLAS_EPISODE, metrics: { gar: 0.79 } }), created_at: iso(41), episode: ATLAS_EPISODE },
+    { id: "a7", sender_handle: "growth", message_type: "broadcast", content: "Dual-write is live in staging. ✅", created_at: iso(30) },
   ],
   episodes: [atlasEpisodeSummary],
   episodeDetails: { e4f1a2: { ...atlasEpisodeSummary, messages: atlasL9Chain } },
   invites: [],
+  l9: atlasL9Frames,
 };
+
+// The synthesized briefing links out to the three memories it summarizes; the
+// decision itself relates to the goal and wikilinks a plan file that isn't a
+// memory (so it can't resolve) — a deliberate broken-link example. The four
+// `agents/*` manifests and the briefing itself are never linked *to*, so they
+// render as roots (inbound=0, outbound>0) in the graph — entry points with no
+// referrers yet (#599's graph and #611's rail integrity banner agree on this by
+// construction, since both read the same edge list).
+const ATLAS_LINK_EDGES: MemoryGraphEdge[] = [
+  { source: "context/synthesis", target: "decisions/cutover", kind: "wikilink", resolved: true },
+  { source: "context/synthesis", target: "status/sprint", kind: "wikilink", resolved: true },
+  { source: "context/synthesis", target: "context/goal", kind: "transclusion", resolved: true },
+  { source: "status/sprint", target: "decisions/cutover", kind: "wikilink", resolved: true },
+  { source: "decisions/cutover", target: "context/goal", kind: "relation", relation: "depends-on", resolved: true },
+  { source: "decisions/cutover", target: "plan/tasks", kind: "wikilink", resolved: false, error: "not_found" },
+];
+atlas.links = buildMockGraph(atlas.memories, ATLAS_LINK_EDGES);
 
 // ── pricing-model: an in-progress negotiation, no plan yet ─────────────────────
 

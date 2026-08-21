@@ -1,14 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Unit tests for the server-side custodial sessions (#666), node-independent half.
+"""Unit tests for server-side custodial sessions (node-independent half).
 
 The live MLS path (a custodial session as a distinct member, cryptographic wire
 attribution, and a within-process ``restore_sessions`` resume) needs a running
 SLIM node and lives in ``test_custody_roundtrip.py`` (guarded, skips without one).
-These cover the offline surface: the off-by-default gate (#567), the at-rest
-passphrase boundary, the per-session store layout, and store enumeration/deletion
-for restart + revocation.
+These cover the offline surface: the off-by-default gate, the at-rest passphrase
+boundary, the per-session store layout, and store enumeration/deletion for
+restart + revocation.
 """
 
 import pytest
@@ -17,7 +17,7 @@ from app.services import custody, slim_identity
 from app.services.slim_client import SlimError
 
 
-# ── off by default (#567): custody engages only under an identity tier ────────
+# ── off by default: custody engages only under an identity tier ────────────────
 def test_custody_disabled_under_psk_default(monkeypatch):
     monkeypatch.delenv("MYCELIUM_SLIM_IDENTITY", raising=False)
     monkeypatch.delenv("MYCELIUM_CUSTODY_DISABLE", raising=False)
@@ -42,7 +42,7 @@ def test_custody_disable_escape_hatch_overrides_identity(monkeypatch):
     assert custody.custody_enabled() is False
 
 
-# ── at-rest passphrase boundary (Q4) ──────────────────────────────────────────
+# ── at-rest passphrase boundary ────────────────────────────────────────────────
 def test_store_passphrase_is_deterministic(monkeypatch):
     monkeypatch.setenv("MYCELIUM_CUSTODY_STORE_SECRET", "secret-A")
     assert custody.store_passphrase("ws", "room", "alice") == custody.store_passphrase(

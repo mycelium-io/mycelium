@@ -53,12 +53,12 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-# Two shape rules, deliberately distinct. A *handle* is an identity and can be
-# minted by a real IdP, so it allows the `@` a corporate SSO `preferred_username`
-# carries (e.g. `user@example.com`). A *slug* is a filename / composer trigger
-# token (memory keys, skill names) and stays clean. Keep this backend-side copy
-# (`app/schemas.py`, `app/routes/engines.py`) and the frontend copy
-# (`acting-as-picker.tsx`) in agreement; the thin CLI can't import the backend.
+# Two shape rules. A *handle* is an identity and can be minted by a real IdP, so it
+# allows the `@` a corporate SSO `preferred_username` carries (e.g.
+# `user@example.com`). A *slug* is a filename / composer trigger token (memory keys,
+# skill names) and stays clean. Keep this copy in agreement with the backend
+# (`app/schemas.py`, `app/routes/engines.py`) and the frontend
+# (`acting-as-picker.tsx`); the thin CLI can't import the backend.
 HANDLE_PATTERN = r"^[a-z0-9][a-z0-9._@-]*$"
 SLUG_PATTERN = r"^[a-z0-9][a-z0-9._-]*$"
 
@@ -72,9 +72,7 @@ RevisionCause = Literal[
     "repair_resolution",
 ]
 
-# Where a registered engine runs its NEGMAS drive. The ``host`` runtime rode the
-# (now-removed) daemon; engines run backend-side only. Retained as a single-value
-# type so config plumbing stays stable and legacy ``host`` coerces to ``backend``.
+# Engines run backend-side only. ``host`` coerces to ``backend`` for legacy config.
 EngineRuntime = Literal["backend"]
 
 

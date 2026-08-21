@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Assemble the room-roster JWKS from members' ES256 public-key PEMs (spike #587).
+"""Assemble the room-roster JWKS from members' ES256 public-key PEMs.
 
 The roster JWKS is the SignerJwt floor's trust surface: the set of public keys a
 member's verifier will accept a self-signed token from. In a real mycelium

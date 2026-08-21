@@ -142,11 +142,9 @@ def _broadcast_memory_write(
 ) -> None:
     """Schedule an ``extraction`` knowledge push mirroring a direct memory write.
 
-    Fire-and-forget — the write has already landed on disk and in the index by
-    the time this runs, so a broadcast failure must never surface as a write
-    failure. Scoped to shared rooms: a room with no live channel
-    (``RoomChannelManager.get`` returns ``None`` — not yet provisioned, or
-    purely local) is a silent no-op, same as the plan-sync consumer.
+    Fire-and-forget: the write has already landed on disk and in the index, so a
+    broadcast failure must never surface as a write failure. A room with no live
+    channel is a silent no-op, same as the plan-sync consumer.
     """
     from app.services import room_channels
 
@@ -173,10 +171,8 @@ async def _send_memory_write_knowledge(
 ) -> None:
     """Broadcast ``write`` on the room channel and record it locally.
 
-    Mirrors ``plan_sync.PlanSyncEngine._broadcast_knowledge``: send over SLIM,
-    then ``ingest_local`` so the transcript/UI bus see it even if SLIM never
-    loops the broadcast back to the moderator. ``ingest_local`` only records —
-    it never re-enters this write path, so this cannot re-trigger itself.
+    ``ingest_local`` makes the transcript/UI bus see it even if SLIM never loops
+    the broadcast back; it only records, so it cannot re-enter this write path.
     """
     from app.services.l9_slim import serialize_content
 

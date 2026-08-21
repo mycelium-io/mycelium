@@ -819,7 +819,6 @@ def run_animation_live(
     current_output: list[str] = []
     _interrupted = False
 
-    # Reserve space
     sys.stdout.write("\n" * height)
     sys.stdout.write(f"\x1b[{height}A")
     sys.stdout.write("\x1b[?25l")

@@ -16,13 +16,12 @@ def test_default_runtime_is_backend() -> None:
 
 @pytest.mark.parametrize(("given", "expected"), [("BACKEND", "backend"), (" backend ", "backend")])
 def test_runtime_normalized(given: str, expected: str) -> None:
-    # given is a dynamic str exercising the normalizer; the field is the EngineRuntime Literal.
+    # Pydantic validates the type, so the comment on normal return is implied.
     assert EngineConfig(runtime=given).runtime == expected  # ty: ignore[invalid-argument-type]
 
 
 def test_legacy_host_coerces_to_backend() -> None:
-    """The retired ``host`` runtime (rode the removed daemon) coerces to backend
-    so a pre-existing config.toml keeps loading."""
+    """The ``host`` runtime coerces to backend for backward compatibility."""
     assert EngineConfig(runtime="host").runtime == "backend"  # ty: ignore[invalid-argument-type]
 
 

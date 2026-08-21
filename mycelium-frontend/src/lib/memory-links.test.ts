@@ -30,7 +30,9 @@ describe("integrityNotesForMemory", () => {
   const integrity: MemoryLinksIntegrity = {
     broken: [{ source: "here", target: "gone", kind: "wikilink", raw: "[[gone]]", resolved: false }],
     orphans: ["lonely"],
-    total_memories: 2,
+    roots: ["top"],
+    leaves: ["bottom"],
+    total_memories: 4,
     total_links: 1,
   };
 
@@ -38,17 +40,51 @@ describe("integrityNotesForMemory", () => {
     expect(integrityNotesForMemory("ok", integrity)).toBeNull();
   });
 
+  it("returns null for a root with no broken links (roots are intentional entry points)", () => {
+    expect(integrityNotesForMemory("top", integrity)).toBeNull();
+  });
+
   it("counts broken outbound from this key", () => {
     expect(integrityNotesForMemory("here", integrity)).toEqual({
       brokenOutbound: 1,
       isOrphan: false,
+      isRoot: false,
+      isLeaf: false,
     });
   });
 
-  it("flags orphans", () => {
+  it("flags orphans (no connections at all)", () => {
     expect(integrityNotesForMemory("lonely", integrity)).toEqual({
       brokenOutbound: 0,
       isOrphan: true,
+      isRoot: false,
+      isLeaf: false,
+    });
+  });
+
+  it("flags leaves (links arrive but go no further)", () => {
+    expect(integrityNotesForMemory("bottom", integrity)).toEqual({
+      brokenOutbound: 0,
+      isOrphan: false,
+      isRoot: false,
+      isLeaf: true,
+    });
+  });
+
+  it("tolerates an integrity report without roots/leaves (older backend)", () => {
+    const legacyIntegrity: MemoryLinksIntegrity = {
+      broken: [],
+      orphans: ["lonely"],
+      roots: [],
+      leaves: [],
+      total_memories: 1,
+      total_links: 0,
+    };
+    expect(integrityNotesForMemory("lonely", legacyIntegrity)).toEqual({
+      brokenOutbound: 0,
+      isOrphan: true,
+      isRoot: false,
+      isLeaf: false,
     });
   });
 });

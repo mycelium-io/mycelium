@@ -136,7 +136,6 @@ export function RoomSlimView({
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-6 p-6">
-      {/* SLIM node — the fabric this room's channel rides. */}
       <section className="overflow-hidden rounded-xl border border-border bg-surface/40">
         <SectionHeader
           title="SLIM node"

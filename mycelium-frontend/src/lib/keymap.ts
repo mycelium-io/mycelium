@@ -53,10 +53,7 @@ export const KEYMAP: Binding[] = [
     // The palette can't offer itself a way in.
     palette: false,
   },
-  // The other half of the pair: ⌘K runs actions, `/` finds content. A bare key
-  // because that is what `/` means everywhere else, and the palette carries a
-  // row for it — which is how it stays reachable from inside the composer,
-  // where bare keys are inert.
+  // The other half of the pair: ⌘K runs actions, `/` finds content (bare key).
   {
     id: "search.open",
     keys: ["/"],
@@ -150,9 +147,7 @@ export function isRevealChord(chord: string): boolean {
   return chord.startsWith("alt+");
 }
 
-/** True for a ⌘/Ctrl chord. These are the bindings that stay live while a text
- *  input has focus: holding ⌘ is not typing, where a bare letter is and ⌥ is
- *  composing a character. It's why ⌘K reaches the palette from the composer. */
+/** True for a ⌘/Ctrl chord (stays live when text input has focus). */
 export function isCommandChord(chord: string): boolean {
   return chord.startsWith("mod+");
 }
@@ -218,10 +213,7 @@ export function findConflicts(bindings: readonly Binding[] = KEYMAP): string[] {
   return conflicts;
 }
 
-/** Vimium-style hint labels, one per target in nav order. Labels are uniform
- *  width — single home-row chars while the list fits the alphabet, widening to
- *  2 chars (then 3) past it — so no label is a prefix of another and a typed
- *  label is never ambiguous. */
+/** Vimium-style hint labels: uniform width, prefix-free (single char to multi-char as count grows). */
 export function hintLabels(count: number, alphabet: string = HINT_ALPHABET): string[] {
   const chars = [...alphabet];
   if (count <= 0) return [];

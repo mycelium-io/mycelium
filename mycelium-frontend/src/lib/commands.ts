@@ -41,11 +41,7 @@ export interface PaletteSection {
 export const RECENT_LIMIT = 24;
 export const RECENT_SHOWN = 5;
 
-/** How many rooms the Rooms group shows at rest. A hub accrues many rooms; the
- *  standing palette shouldn't be a wall of them, so it lists the most-recent few
- *  (room commands arrive in recency order) and leaves the rest to the search —
- *  typing a query drops this cap and cmdk scores every room. Only `room:*`
- *  commands count; the Rooms *actions* (Next room, Create a room…) always show. */
+/** Rooms shown at rest; remaining rooms found via search. */
 export const ROOMS_SHOWN = 8;
 
 export const RECENT_HEADING = "Recent";
@@ -71,7 +67,7 @@ export function saveRecent(ids: readonly string[]): void {
   try {
     localStorage.setItem(RECENT_KEY, JSON.stringify(ids));
   } catch {
-    // A full or blocked store costs the ordering, not the palette.
+    // Ignore storage failures; they don't block the palette.
   }
 }
 
@@ -80,15 +76,14 @@ export function pushRecent(recent: readonly string[], id: string): string[] {
   return [id, ...recent.filter(r => r !== id)].slice(0, RECENT_LIMIT);
 }
 
-/** How much being recently run is worth, decaying to nothing at the tail. */
+/** Recency bonus (decays across history). */
 export function recencyBonus(recent: readonly string[], id: string): number {
   const i = recent.indexOf(id);
   if (i < 0) return 0;
   return (RECENCY_BONUS * (recent.length - i)) / recent.length;
 }
 
-/** cmdk's fuzzy filter with that bonus folded in. Items cmdk scores at zero stay
- *  hidden however recently they ran: a command the query rules out is out. */
+/** cmdk's fuzzy filter + recency bonus; zero score always hides. */
 export function paletteFilter(recent: readonly string[]) {
   return (value: string, search: string, keywords?: string[]): number => {
     const base = defaultFilter(value, search, keywords);
