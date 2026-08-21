@@ -52,6 +52,141 @@
         }
       }
     },
+    "/api/rooms/{room_name}/a2a-agents": {
+      "post": {
+        "tags": [
+          "a2a"
+        ],
+        "summary": "Create A2A Agent",
+        "description": "Resolve the remote card, register the manifest, return the room view.",
+        "operationId": "create_a2a_agent_api_rooms__room_name__a2a_agents_post",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/A2aAgentCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms/{room_name}/.well-known/agent-card.json": {
+      "get": {
+        "tags": [
+          "a2a"
+        ],
+        "summary": "A2A Agent Card",
+        "description": "Serve the room's A2A Agent Card (the discovery half).",
+        "operationId": "a2a_agent_card_api_rooms__room_name___well_known_agent_card_json_get",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms/{room_name}/a2a": {
+      "post": {
+        "tags": [
+          "a2a"
+        ],
+        "summary": "A2A Rpc",
+        "description": "Handle A2A JSON-RPC (``message/send``) for the room.",
+        "operationId": "a2a_rpc_api_rooms__room_name__a2a_post",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/rooms/{room_name}/engines": {
       "post": {
         "tags": [
@@ -2933,6 +3068,88 @@
   },
   "components": {
     "schemas": {
+      "A2aAgentCreate": {
+        "properties": {
+          "handle": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Handle"
+          },
+          "card": {
+            "type": "string",
+            "title": "Card",
+            "description": "Base URL serving the remote agent's Agent Card."
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "description": "Overrides the card's description when set.",
+            "default": ""
+          },
+          "auth_env": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auth Env",
+            "description": "Name of a backend env var holding the bearer token for the remote agent. Only the var name is stored (in room memory); the secret stays in the env."
+          },
+          "allow_from": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Allow From",
+            "description": "Sender handles allowed to summon (empty = anyone)."
+          },
+          "owner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner"
+          },
+          "team": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By",
+            "description": "Who registered the agent; defaults to the web UI."
+          }
+        },
+        "type": "object",
+        "required": [
+          "handle",
+          "card"
+        ],
+        "title": "A2aAgentCreate",
+        "description": "Request body to invite an external A2A agent into a room."
+      },
       "AgentContextOut": {
         "properties": {
           "room": {
@@ -3038,6 +3255,35 @@
             },
             "type": "array",
             "title": "Allow From"
+          },
+          "a2a_card": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "A2A Card"
+          },
+          "a2a_endpoint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "A2A Endpoint"
+          },
+          "a2a_skills": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "A2A Skills"
           }
         },
         "type": "object",
