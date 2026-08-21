@@ -24,6 +24,8 @@ interface Props {
   onCancel: () => void;
   /** Acting-as handle (falls back to memory.created_by). */
   actor?: string;
+  /** Reports whether the editor holds edits that have not been saved. */
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -38,6 +40,23 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 /** Read existing tags from the top-level `memory.tags` field. */
 function extractTags(mem: Memory): string[] {
   return mem.tags ?? [];
+}
+
+/**
+ * The memory's value when it carries fields beyond its prose, else `null`.
+ *
+ * The API returns every value as an object, so a plain memory arrives as
+ * `{text}` and only a genuinely structured one has more — category entries
+ * written by the CLI keep `logged_at` and `category`, and a JSON memory keeps
+ * whatever shape it was given. This matches how the store decides whether to
+ * persist `value` as frontmatter. Those extra fields have to be written back
+ * untouched: `value` is managed, so a previous one is never carried forward.
+ */
+function structuredValue(mem: Memory): Record<string, unknown> | null {
+  const v = mem.value;
+  if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+  const fields = v as Record<string, unknown>;
+  return Object.keys(fields).some(k => k !== "text") ? fields : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -132,8 +151,18 @@ function WikilinkDropdown({
  * Inline editor for a memory: a structured frontmatter panel (tags,
  * expandable) above a fedoup Live Preview body editor with wikilink
  * autocomplete rendered as a React portal.
+ *
+ * All edit state is seeded on mount, so callers must pass `key={memory.key}`
+ * to get a fresh editor when they switch memories.
  */
-export function MemoryEditor({ memory, roomName, onSaved, onCancel, actor }: Props) {
+export function MemoryEditor({
+  memory,
+  roomName,
+  onSaved,
+  onCancel,
+  actor,
+  onDirtyChange,
+}: Props) {
   const [tags, setTags] = useState<string[]>(extractTags(memory));
   const [expandable, setExpandable] = useState(memory.expandable ?? false);
   const [saving, setSaving] = useState(false);
@@ -142,6 +171,11 @@ export function MemoryEditor({ memory, roomName, onSaved, onCancel, actor }: Pro
 
   const editorRef = useRef<MarkdownEditorHandle | null>(null);
 
+  // The body is uncontrolled (fedoup owns the CM6 state), so dirtiness is a
+  // flag set on the first edit rather than a diff against the original text.
+  const [dirty, setDirty] = useState(false);
+  useEffect(() => onDirtyChange?.(dirty), [dirty, onDirtyChange]);
+
   const { memories } = useRoomMemories(roomName);
   const allKeys = useMemo(() => memories.map(m => m.key), [memories]);
   const expandableKeys = useMemo(
@@ -149,14 +183,10 @@ export function MemoryEditor({ memory, roomName, onSaved, onCancel, actor }: Pro
     [memories],
   );
 
-  // Stable extension created once — wikilinkDetector fires a React state
-  // update whenever the cursor enters or leaves a [[…]] token.
-  const setMatchRef = useRef(setWikilinkMatch);
-  setMatchRef.current = setWikilinkMatch;
-  const extensions = useMemo(
-    () => [wikilinkDetector(m => setMatchRef.current(m))],
-    [], // eslint-disable-line react-hooks/exhaustive-deps
-  );
+  // Built once and never rebuilt: a new extension array would reconfigure CM6
+  // mid-edit. Safe because the state setter identity is stable for the life of
+  // the component.
+  const extensions = useMemo(() => [wikilinkDetector(setWikilinkMatch)], []);
 
   const wikilinkCandidates = useMemo(() => {
     if (!wikilinkMatch) return [];
@@ -180,22 +210,18 @@ export function MemoryEditor({ memory, roomName, onSaved, onCancel, actor }: Pro
     view.focus();
   }, [wikilinkMatch]);
 
-  // Keep tags/expandable in sync if the parent switches to a different memory.
-  useEffect(() => {
-    setTags(extractTags(memory));
-    setExpandable(memory.expandable ?? false);
-    setError(null);
-    setWikilinkMatch(null);
-  }, [memory.key]);
-
   const handleSave = useCallback(async () => {
     const body = editorRef.current?.getValue() ?? memory.content_text ?? "";
     setSaving(true);
     setError(null);
 
+    const structured = structuredValue(memory);
     const item: MemoryCreate = {
       key: memory.key,
-      value: body,
+      value: structured ? { ...structured, text: body } : body,
+      // Without this the store would derive the embedding text from the whole
+      // value object, indexing a JSON dump instead of the prose.
+      content_text: body,
       created_by: actor || memory.created_by,
       base_version: memory.version,
       ...(tags.length > 0 && { tags }),
@@ -207,6 +233,7 @@ export function MemoryEditor({ memory, roomName, onSaved, onCancel, actor }: Pro
 
     try {
       await createMemories(roomName, [item]);
+      setDirty(false);
       onSaved();
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
@@ -232,7 +259,7 @@ export function MemoryEditor({ memory, roomName, onSaved, onCancel, actor }: Pro
         <Field label="Tags">
           <TagInput
             value={tags}
-            onChange={setTags}
+            onChange={next => { setTags(next); setDirty(true); }}
             placeholder="Add tag…"
             ariaLabel="Memory tags"
           />
@@ -242,7 +269,7 @@ export function MemoryEditor({ memory, roomName, onSaved, onCancel, actor }: Pro
           <input
             type="checkbox"
             checked={expandable}
-            onChange={e => setExpandable(e.target.checked)}
+            onChange={e => { setExpandable(e.target.checked); setDirty(true); }}
             className="rounded border-border text-accent accent-accent"
           />
           <span className="text-label text-text">Expandable (allow transclusion)</span>
@@ -276,6 +303,7 @@ export function MemoryEditor({ memory, roomName, onSaved, onCancel, actor }: Pro
         <MarkdownEditor
           ref={editorRef}
           initialValue={body}
+          onChange={() => setDirty(true)}
           extraExtensions={extensions}
           className="min-h-[200px] w-full px-5 py-4"
         />

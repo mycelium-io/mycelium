@@ -46,6 +46,7 @@ from app.services.filesystem import (
     delete_memory_file,
     get_room_dir,
     list_memory_files,
+    parse_timestamp,
     read_memory_file,
     room_exists,
     value_to_content,
@@ -252,7 +253,7 @@ async def upsert_memories(room_name: str, payload: MemoryBatchCreate) -> list[Me
         if existing:
             new_version = current_version + 1
             created_by = existing_meta.get("created_by", item.created_by)
-            created_at = existing_meta.get("created_at", now)
+            created_at = parse_timestamp(existing_meta.get("created_at")) or now
         else:
             new_version = 1
             created_by = item.created_by
@@ -281,7 +282,7 @@ async def upsert_memories(room_name: str, payload: MemoryBatchCreate) -> list[Me
             updated_by=item.created_by,
             version=new_version,
             tags=item.tags,
-            created_at=created_at if isinstance(created_at, datetime) else now,
+            created_at=created_at,
             updated_at=now,
             extra_meta=extra_meta or None,
         )
@@ -304,9 +305,7 @@ async def upsert_memories(room_name: str, payload: MemoryBatchCreate) -> list[Me
                 "version": new_version,
                 "tags": item.tags,
                 "expandable": links.is_expandable(extra_meta),
-                "created_at": created_at.isoformat()
-                if isinstance(created_at, datetime)
-                else str(created_at),
+                "created_at": created_at.isoformat(),
                 "updated_at": now.isoformat(),
                 "file_path": f"rooms/{room_name}/{item.key}.md",
             },
@@ -325,7 +324,7 @@ async def upsert_memories(room_name: str, payload: MemoryBatchCreate) -> list[Me
                 version=new_version,
                 tags=item.tags,
                 expandable=links.is_expandable(extra_meta),
-                created_at=created_at if isinstance(created_at, datetime) else now,
+                created_at=created_at,
                 updated_at=now,
                 file_path=f"rooms/{room_name}/{item.key}.md",
             )

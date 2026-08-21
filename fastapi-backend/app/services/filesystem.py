@@ -89,6 +89,23 @@ def _key_from_path(file_path: Path, base_dir: Path) -> str:
 # ── Markdown format ──────────────────────────────────────────────────────────
 
 
+def parse_timestamp(value: object) -> datetime | None:
+    """Read a frontmatter timestamp back as a datetime, or ``None``.
+
+    ``serialize_memory`` writes timestamps with ``.isoformat()``, so YAML quotes
+    them and returns a string on the next read. Hand-written or older files may
+    carry a bare timestamp that YAML parses as a datetime, hence both branches.
+    """
+    if isinstance(value, datetime):
+        return value
+    if value is None:
+        return None
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return None
+
+
 def serialize_memory(
     content: str,
     *,

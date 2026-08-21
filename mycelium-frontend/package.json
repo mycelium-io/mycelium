@@ -7,7 +7,7 @@
     "dev:mock": "MYCELIUM_UI_MOCK=1 next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "tsc --noEmit",
+    "lint": "tsc --noEmit && eslint .",
     "test": "vitest run",
     "screenshots": "node --experimental-strip-types screenshots/capture.ts"
   },
@@ -49,6 +49,8 @@
     "@types/node": "^26.2.0",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.0.0",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^16.3.2",
     "jsdom": "^30.0.1",
     "playwright": "^1.62.1",
     "postcss": "^8.5.26",

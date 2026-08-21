@@ -70,7 +70,7 @@ interface ByModel {
 }
 
 interface AgentTokens { input: number; output: number; cache_read: number; cache_write: number; total: number }
-interface ModelTokens extends AgentTokens {}
+type ModelTokens = AgentTokens;
 
 interface CollectorMetrics {
   counters?: {

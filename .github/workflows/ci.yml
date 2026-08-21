@@ -178,7 +178,7 @@ jobs:
           docker run --rm --entrypoint python mycelium-collector:ci -m mycelium.collector_main --help
 
   build-frontend:
-    name: Frontend typecheck + build
+    name: Frontend typecheck + lint + build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -197,6 +197,10 @@ jobs:
       - name: Typecheck
         working-directory: mycelium-frontend
         run: npx tsc --noEmit
+
+      - name: Lint (eslint)
+        working-directory: mycelium-frontend
+        run: npx eslint .
 
       - name: Component tests (vitest)
         working-directory: mycelium-frontend

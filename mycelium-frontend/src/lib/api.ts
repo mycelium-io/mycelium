@@ -15,7 +15,6 @@ import { encodeMemoryKeyPath } from "@/lib/memory-routes";
 export const logFetchError =
   (label: string) =>
   (err: unknown): undefined => {
-    // eslint-disable-next-line no-console
     console.error(`[mycelium] fetch failed: ${label}`, err);
     return undefined;
   };
@@ -168,7 +167,13 @@ export interface Memory {
 /** Shape sent to POST /api/rooms/{room}/memory to create or upsert a memory. */
 export interface MemoryCreate {
   key: string;
-  value: string;
+  /**
+   * Prose, or an object for a memory that carries fields beyond its text
+   * (a category entry's `logged_at`/`category`, or an arbitrary JSON value).
+   */
+  value: string | Record<string, unknown>;
+  /** Text used for the embedding; derived from `value` when omitted. */
+  content_text?: string;
   tags?: string[];
   embed?: boolean;
   created_by: string;

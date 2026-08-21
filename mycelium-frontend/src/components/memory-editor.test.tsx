@@ -44,9 +44,11 @@ vi.mock("@/lib/room-data", () => ({
 
 import { createMemories } from "@/lib/api";
 
+// The API wraps every value in an object, so even plain prose arrives as
+// `{text}` — the fixtures mirror that rather than using a bare string.
 const baseMemory: Memory = {
   key: "context/overview",
-  value: "Hello world",
+  value: { text: "Hello world" },
   content_text: "Hello world",
   version: 3,
   created_by: "alice",
@@ -56,10 +58,12 @@ const baseMemory: Memory = {
 function renderEditor(overrides?: {
   onSaved?: () => void;
   onCancel?: () => void;
+  onDirtyChange?: (dirty: boolean) => void;
   memory?: Memory;
 }) {
   const onSaved = overrides?.onSaved ?? vi.fn();
   const onCancel = overrides?.onCancel ?? vi.fn();
+  const onDirtyChange = overrides?.onDirtyChange ?? vi.fn();
   const memory = overrides?.memory ?? baseMemory;
   render(
     <SWRTestCache>
@@ -69,10 +73,11 @@ function renderEditor(overrides?: {
         actor="alice"
         onSaved={onSaved}
         onCancel={onCancel}
+        onDirtyChange={onDirtyChange}
       />
     </SWRTestCache>,
   );
-  return { onSaved, onCancel };
+  return { onSaved, onCancel, onDirtyChange };
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────────────
@@ -145,6 +150,90 @@ describe("MemoryEditor", () => {
     await waitFor(() => {
       expect(createMemories).toHaveBeenCalledWith("test-room", [
         expect.objectContaining({ tags: ["important"] }),
+      ]);
+    });
+  });
+
+  it("reports clean until something is edited", async () => {
+    const user = userEvent.setup();
+    const { onDirtyChange } = renderEditor();
+    expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+
+    await user.type(screen.getByTestId("md-editor"), "!");
+    await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(true));
+  });
+
+  it("reports dirty when only a tag changes", async () => {
+    const user = userEvent.setup();
+    const { onDirtyChange } = renderEditor();
+    await user.click(screen.getByRole("textbox", { name: /memory tags/i }));
+    await user.keyboard("urgent{Enter}");
+    await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(true));
+  });
+
+  it("reports dirty when only the expandable flag changes", async () => {
+    const user = userEvent.setup();
+    const { onDirtyChange } = renderEditor();
+    await user.click(screen.getByRole("checkbox", { name: /expandable/i }));
+    await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(true));
+  });
+
+  it("reports clean again once the save succeeds", async () => {
+    const user = userEvent.setup();
+    const { onDirtyChange } = renderEditor();
+    await user.click(screen.getByRole("checkbox", { name: /expandable/i }));
+    await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(true));
+
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(false));
+  });
+
+  it("stays dirty when the save fails", async () => {
+    vi.mocked(createMemories).mockRejectedValueOnce(new Error("network down"));
+    const user = userEvent.setup();
+    const { onDirtyChange } = renderEditor();
+    await user.click(screen.getByRole("checkbox", { name: /expandable/i }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(screen.getByText("network down")).toBeInTheDocument());
+    expect(onDirtyChange).toHaveBeenLastCalledWith(true);
+  });
+
+  it("flattens a text-only memory back to a bare string", async () => {
+    const user = userEvent.setup();
+    renderEditor();
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => {
+      expect(createMemories).toHaveBeenCalledWith("test-room", [
+        expect.objectContaining({ value: "Hello world" }),
+      ]);
+    });
+  });
+
+  it("preserves the extra fields of a structured memory", async () => {
+    const user = userEvent.setup();
+    // A category entry as the CLI writes it: prose plus bookkeeping fields
+    // that the editor never shows and must not drop.
+    const structured: Memory = {
+      ...baseMemory,
+      value: {
+        text: "We chose Postgres.",
+        logged_at: "2026-08-21T14:02:00Z",
+        category: "decisions",
+      },
+      content_text: "We chose Postgres.",
+    };
+    renderEditor({ memory: structured });
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => {
+      expect(createMemories).toHaveBeenCalledWith("test-room", [
+        expect.objectContaining({
+          value: {
+            text: "We chose Postgres.",
+            logged_at: "2026-08-21T14:02:00Z",
+            category: "decisions",
+          },
+        }),
       ]);
     });
   });

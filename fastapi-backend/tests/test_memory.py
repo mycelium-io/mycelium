@@ -383,3 +383,30 @@ async def test_expandable_flag_can_be_cleared(client: AsyncClient):
 
     resp = await client.get("/api/rooms/expand-clear/memory/context/glossary")
     assert resp.json()["expandable"] is False
+
+
+@pytest.mark.asyncio
+async def test_created_at_survives_an_edit(client: AsyncClient):
+    """created_at pins the first write; updated_at/updated_by track the last."""
+    await client.post("/api/rooms", json={"name": "audit-room"})
+    await client.post(
+        "/api/rooms/audit-room/memory",
+        json={
+            "items": [{"key": "notes/one", "value": "first", "created_by": "alice", "embed": False}]
+        },
+    )
+    first = (await client.get("/api/rooms/audit-room/memory/notes/one")).json()
+
+    await client.post(
+        "/api/rooms/audit-room/memory",
+        json={
+            "items": [{"key": "notes/one", "value": "second", "created_by": "bob", "embed": False}]
+        },
+    )
+    second = (await client.get("/api/rooms/audit-room/memory/notes/one")).json()
+
+    assert second["created_at"] == first["created_at"]
+    assert second["updated_at"] > first["updated_at"]
+    assert second["created_by"] == "alice"
+    assert second["updated_by"] == "bob"
+    assert second["version"] == 2

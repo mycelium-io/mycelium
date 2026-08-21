@@ -11,8 +11,19 @@
  */
 
 import { BACKEND_METRICS, COLLECTOR_METRICS, HOSTS, ROOMS, ROOM_FIXTURES, getRoomFixture } from "./fixtures";
+import type { MockMemory } from "./fixtures";
 import type { MemoryGraph, MemoryGraphEdge, MemoryLink } from "@/lib/api";
 import type { SearchHit, SearchResultType } from "@/lib/search";
+
+/** One item of a POST /memory batch, as the editor sends it. */
+interface MockMemoryWrite {
+  key: string;
+  value: string | Record<string, unknown>;
+  content_text?: string;
+  tags?: string[];
+  base_version?: number;
+  meta?: Record<string, unknown>;
+}
 
 const EMPTY_GRAPH: MemoryGraph = { nodes: [], edges: [] };
 
@@ -157,24 +168,46 @@ export async function handleMock(req: Request): Promise<Response | null> {
         const chosen = hits.length ? hits : fx.memories.slice(0, 3).map((m, i) => ({ memory: m, score: 0.7 - i * 0.1 }));
         return json({ results: chosen.map((r) => ({ memory: r.memory, similarity: r.score })), total: chosen.length });
       }
-      // POST /memory — create or upsert one or more memories.
+      // POST /memory — create or upsert one or more memories. Mirrors the real
+      // route closely enough to exercise the editor: optimistic-concurrency
+      // rejection, tag replacement, and the expandable frontmatter flag.
       if (sub.length === 1 && method === "POST") {
-        const body = await req.json() as { items?: Array<{ key: string; value: string; base_version?: number }> };
+        const body = await req.json() as { items?: MockMemoryWrite[] };
         const items = body.items ?? [];
-        const updated: Array<{ key: string; version: number }> = [];
+
         for (const item of items) {
-          const idx = fx.memories.findIndex((m) => m.key === item.key);
-          const now = new Date().toISOString();
-          if (idx >= 0) {
-            fx.memories[idx] = { ...fx.memories[idx], value: item.value, content_text: item.value, version: (fx.memories[idx].version ?? 1) + 1, updated_at: now };
-            updated.push({ key: item.key, version: fx.memories[idx].version as number });
-          } else {
-            const newMem = { key: item.key, value: item.value, content_text: item.value, version: 1, created_by: "user", updated_at: now };
-            fx.memories.push(newMem);
-            updated.push({ key: item.key, version: 1 });
+          const existing = fx.memories.find((m) => m.key === item.key);
+          const currentVersion = existing?.version ?? 0;
+          if (item.base_version !== undefined && item.base_version !== currentVersion) {
+            return json({
+              error: "stale_base",
+              message: `Write for '${item.key}' expected version ${item.base_version} but current version is ${currentVersion}`,
+              key: item.key,
+              current_version: currentVersion,
+            }, 409);
           }
         }
-        return json(updated);
+
+        const written: MockMemory[] = [];
+        for (const item of items) {
+          const text = typeof item.value === "string" ? item.value : (item.value.text as string ?? "");
+          const idx = fx.memories.findIndex((m) => m.key === item.key);
+          const now = new Date().toISOString();
+          const next: MockMemory = {
+            ...(idx >= 0 ? fx.memories[idx] : { key: item.key, created_by: "user", version: 0 }),
+            value: text,
+            content_text: item.content_text ?? text,
+            version: (idx >= 0 ? fx.memories[idx].version : 0) + 1,
+            updated_at: now,
+            // tags and expandable are replaced on every write, not merged —
+            // the real store treats both as managed frontmatter.
+            tags: item.tags,
+            expandable: Boolean(item.meta?.expandable),
+          };
+          if (idx >= 0) fx.memories[idx] = next; else fx.memories.push(next);
+          written.push(next);
+        }
+        return json(written, 201);
       }
       if (method !== "GET") return null;
       // GET /memory/:key — the key is a path, so it spans the remaining segments.
