@@ -21,11 +21,11 @@
 import { useCallback, useMemo } from "react";
 import useSWR, { useSWRConfig, type SWRConfiguration } from "swr";
 import {
-  fetchCoordination,
   fetchEpisodes,
   fetchMemories,
   fetchMemoryIntegrity,
   fetchMessages,
+  fetchNetworkStatus,
   fetchPlan,
   fetchRoom,
   fetchRoomAgents,
@@ -34,10 +34,10 @@ import {
   fetchSkills,
   logFetchError,
   type AgentSummary,
-  type CoordinationStatus,
   type EpisodeSummary,
   type Memory,
   type MemoryLinksIntegrity,
+  type NetworkStatus,
   type PlanResponse,
   type PresenceMember,
   type Room,
@@ -222,12 +222,13 @@ export function useRoomEpisodes(room: string, opts: RoomQueryOptions = {}) {
   return { episodes: data, loading, refresh };
 }
 
-/** Fabric-wide SLIM telemetry — one `/health` read shared by every reader. */
-export function useCoordination(opts: RoomQueryOptions = {}) {
-  const { data, isLoading } = useSWR<CoordinationStatus | null>("coordination", fetchCoordination, {
+/** Fabric-wide `/health` diagnostics — SLIM telemetry plus the hub's identity
+ *  tier and auth gate — as one read shared by every reader. */
+export function useNetworkStatus(opts: RoomQueryOptions = {}) {
+  const { data, isLoading } = useSWR<NetworkStatus | null>("network-status", fetchNetworkStatus, {
     refreshInterval: opts.refreshInterval ?? POLL.coordination,
   });
-  return { coordination: data ?? null, loading: isLoading };
+  return { network: data ?? null, loading: isLoading };
 }
 
 // ── Revalidation ─────────────────────────────────────────────────────────────
