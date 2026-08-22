@@ -20,7 +20,8 @@ import {
   SearchX,
   type LucideIcon,
 } from "lucide-react";
-import { getAppEventsSSEUrl, type Room } from "@/lib/api";
+import { type Room } from "@/lib/api";
+import { useAppStream } from "@/lib/stream-hub";
 import { useRooms } from "@/lib/room-data";
 import { roomLevel, type RoomLevel } from "@/lib/notifications";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -70,24 +71,11 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
   const { rooms, refresh } = useRooms();
 
   // Push keeps the list instant; the hook's slow poll is the fail-soft fallback
-  // for a dropped SSE connection.
-  useEffect(() => {
-    let es: EventSource | undefined;
-    let retry: ReturnType<typeof setTimeout>;
-    function connect() {
-      es = new EventSource(getAppEventsSSEUrl());
-      es.onmessage = (e) => {
-        try {
-          const msg = JSON.parse(e.data);
-          if (msg.type === "room_created" || msg.type === "room_deleted") refresh();
-        } catch {}
-      };
-      es.onerror = () => { es?.close(); retry = setTimeout(connect, 5000); };
-    }
-    connect();
-
-    return () => { es?.close(); clearTimeout(retry); };
-  }, [refresh]);
+  // for a dropped connection.
+  useAppStream((data) => {
+    const msg = data as { type?: string };
+    if (msg.type === "room_created" || msg.type === "room_deleted") refresh();
+  });
 
   // Unread activity per room, from the same client-side notification store the
   // bell reads. Any non-muted message counts (broadcasts badge here even though
