@@ -187,6 +187,13 @@ sort, filter and colour by without knowing what a pull request is:
 job is keeping them apart: an approved pull request is `ok` right up until it
 merges, and `done` the moment it does.
 
+That answer will land on the row under its own `live` field, never the row's own
+`status`. A row already uses `status` for its lifecycle (`open`, `claimed`,
+`in_progress`, `blocked`, `resolved`), and both sets of words contain `blocked`
+meaning different things: a person has blocked the row, versus the pull request
+is waiting on a person. Keeping the provider's reading in a separate field is
+what stops the two from being read as one.
+
 GitHub maps onto the six more narrowly than you might guess. `ok` needs an
 approval, so green checks with no review yet are `pending` / `awaiting review`.
 Changes requested is `blocked` and red CI is `failed` — a person is the fix in
@@ -219,9 +226,6 @@ mycelium board --watch                    # keep it open, re-reading
 mycelium board resolve t3                 # resolve a row
 mycelium board log --last-week            # what the room did, by day and by who
 ```
-
-Add `--demo` to see the shape of a busy board before your room is one; those
-rows are always marked, and never mixed up with yours.
 
 ## Related
 

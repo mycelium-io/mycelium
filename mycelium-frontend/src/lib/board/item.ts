@@ -26,8 +26,6 @@ export interface LiveItem {
   source: ItemSource;
   /** The frontmatter. Typed views project over exactly this and nothing else. */
   fields: Record<string, unknown>;
-  /** Synthetic row from the demo layer, never mistaken for room state. */
-  demo?: boolean;
 }
 
 /** The three lenses. "Needs you" is the default; the firehose is opt-in. */

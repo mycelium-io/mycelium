@@ -18,11 +18,14 @@ runtime paces it.
 
 from __future__ import annotations
 
+import json
 import re
 from datetime import datetime, timedelta
 from typing import Any
 
-from app.services.status.types import Context, Err, Ok, Outcome, Ref, Status
+import httpx
+
+from app.services.status.types import Context, Err, Liveness, Ok, Outcome, Ref
 
 #: ``owner/repo#123`` and the pasted browser URL, which is what people have on
 #: their clipboard when they are talking about a pull request.
@@ -40,20 +43,35 @@ _STATE = {
     "ERROR": "failed",
 }
 
-_QUERY = """
-query($q: String!) {
-  search(query: $q, type: ISSUE, first: 50) {
-    nodes {
-      ... on PullRequest {
-        number url title state isDraft updatedAt
-        repository { nameWithOwner }
-        reviewDecision
-        commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
-      }
-    }
-  }
+#: The fields one pull request contributes. Shared by every alias in a batch.
+_FRAGMENT = """
+fragment pr on PullRequest {
+  url title state isDraft updatedAt
+  reviewDecision
+  commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
 }
 """
+
+
+def _document(refs: list[Ref]) -> str:
+    """One aliased ``repository/pullRequest`` lookup per ref, in a single query.
+
+    Each ref is asked for by identity ``(owner, name, number)``, not by search.
+    GitHub's issue search has no "number equals" qualifier, so a bare number
+    there matches free text in title and body and several ``repo:`` qualifiers
+    OR together; a batch built that way answers the wrong question. Aliases ask
+    for each pull request exactly, still in one request, and a ref the token
+    cannot see comes back as a null alias rather than a missing search hit.
+    """
+    aliases = []
+    for i, ref in enumerate(refs):
+        repo_part, number = ref.id.split("#")
+        owner, name = repo_part.split("/")
+        aliases.append(
+            f"  r{i}: repository(owner: {json.dumps(owner)}, name: {json.dumps(name)}) "
+            f"{{ pullRequest(number: {int(number)}) {{ ...pr }} }}"
+        )
+    return "query {\n" + "\n".join(aliases) + "\n}\n" + _FRAGMENT
 
 
 class GitHubProvider:
@@ -62,7 +80,8 @@ class GitHubProvider:
     #: Named, never read. The runtime resolves it and hands back a transport
     #: that already carries it; this class never sees the value.
     credential = "GITHUB_TOKEN"
-    #: GitHub's search node cap. Chunking to it is the runtime's job.
+    #: Kept modest so one aliased document stays well inside GitHub's query node
+    #: and complexity limits. Chunking to it is the runtime's job.
     max_batch = 50
     #: A pull request people are actively looking at moves on the order of
     #: minutes; a minute of staleness is cheaper than the rate limit.
@@ -91,35 +110,33 @@ class GitHubProvider:
     async def fetch(self, refs: list[Ref], ctx: Context) -> list[Outcome]:
         # No auth here: a provider that is called at all has its credential, and
         # ``ctx.http`` is already bound to ``base_url`` carrying it.
-        query = " ".join(f"repo:{r.id.split('#')[0]} {r.id.split('#')[1]}" for r in refs)
-        response = await ctx.http.post(
-            "/graphql",
-            json={"query": _QUERY, "variables": {"q": query}},
-        )
+        response = await ctx.http.post("/graphql", json={"query": _document(refs)})
 
-        if response.status_code == 403 and "rate limit" in response.text.lower():
-            reset = response.headers.get("x-ratelimit-reset")
-            wait = _until(reset) or timedelta(minutes=5)
+        # GraphQL reports its primary rate limit as a 200 with a RATE_LIMITED
+        # error, and secondary limits as 403/429; both are honoured, not sniffed
+        # from body text alone.
+        if _is_rate_limited(response):
+            wait = _retry_after(response) or timedelta(minutes=5)
             return [Err(ref=ref, reason="rate limited", retry_after=wait) for ref in refs]
         if response.status_code >= 400:
             return [Err(ref=ref, reason=f"github {response.status_code}") for ref in refs]
 
-        nodes = (response.json().get("data") or {}).get("search", {}).get("nodes") or []
-        found = {f"{n['repository']['nameWithOwner']}#{n['number']}": n for n in nodes if n}
-
+        data = response.json().get("data") or {}
         outcomes: list[Outcome] = []
-        for ref in refs:
-            node = found.get(ref.id)
-            if node is None:
-                # Private, deleted, or outside the token's reach — all the same
-                # to the reader, and none of them "no CI".
+        for i, ref in enumerate(refs):
+            alias = data.get(f"r{i}")
+            node = alias.get("pullRequest") if isinstance(alias, dict) else None
+            if not isinstance(node, dict):
+                # A null alias: private, deleted, or outside the token's reach,
+                # sometimes with a per-alias GraphQL error beside it. None of
+                # them is "no CI", so none is answered as a value.
                 outcomes.append(Err(ref=ref, reason="not visible to this token"))
                 continue
-            outcomes.append(Ok(ref=ref, status=_status(node), ttl=_ttl_for(node)))
+            outcomes.append(Ok(ref=ref, liveness=_liveness(node), ttl=_ttl_for(node)))
         return outcomes
 
 
-def _status(node: dict[str, Any]) -> Status:
+def _liveness(node: dict[str, Any]) -> Liveness:
     rollup = _rollup(node)
     if node.get("state") in ("MERGED", "CLOSED"):
         state, label = _STATE[node["state"]], node["state"].lower()
@@ -136,7 +153,7 @@ def _status(node: dict[str, Any]) -> Status:
     else:
         state, label = "pending", "awaiting review"
 
-    return Status(
+    return Liveness(
         state=state,  # type: ignore[arg-type]
         label=label,
         url=node.get("url"),
@@ -164,6 +181,40 @@ def _parse(raw: str | None) -> datetime | None:
         return datetime.fromisoformat(raw.replace("Z", "+00:00"))
     except ValueError:
         return None
+
+
+def _errors(response: httpx.Response) -> list[dict[str, Any]]:
+    try:
+        return response.json().get("errors") or []
+    except (ValueError, AttributeError):
+        return []
+
+
+def _is_rate_limited(response: httpx.Response) -> bool:
+    """True for both the primary GraphQL limit and a secondary/abuse limit.
+
+    The primary GraphQL limit arrives as a 200 whose ``errors`` carry a
+    ``RATE_LIMITED`` type; a secondary limit arrives as 403 or 429 with a
+    ``Retry-After`` or an exhausted ``x-ratelimit-remaining``. Body-text alone
+    would miss the first and half of the second.
+    """
+    if response.status_code in (403, 429):
+        return (
+            "rate limit" in response.text.lower()
+            or response.headers.get("retry-after") is not None
+            or response.headers.get("x-ratelimit-remaining") == "0"
+        )
+    if response.status_code == 200:
+        return any(error.get("type") == "RATE_LIMITED" for error in _errors(response))
+    return False
+
+
+def _retry_after(response: httpx.Response) -> timedelta | None:
+    """When the server said to come back, taken from its own headers."""
+    header = response.headers.get("retry-after")
+    if header and header.isdigit():
+        return timedelta(seconds=int(header))
+    return _until(response.headers.get("x-ratelimit-reset"))
 
 
 def _until(epoch: str | None) -> timedelta | None:

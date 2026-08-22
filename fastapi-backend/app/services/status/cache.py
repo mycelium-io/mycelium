@@ -20,14 +20,14 @@ import asyncio
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 
-from app.services.status.types import Freshness, Known, Ref, Status
+from app.services.status.types import Freshness, Known, Liveness, Ref
 
 
 @dataclass(slots=True)
 class Entry:
     ref: Ref
     fetched_at: datetime
-    status: Status | None = None
+    liveness: Liveness | None = None
     error: str | None = None
     #: A provider may extend its own answer's life (a merged PR stops moving).
     ttl_override: timedelta | None = None
@@ -70,7 +70,7 @@ class StatusCache:
         return Known(
             ref=ref,
             freshness=freshness,
-            status=entry.status,
+            liveness=entry.liveness,
             fetched_at=entry.fetched_at,
             error=entry.error,
         )
@@ -78,10 +78,10 @@ class StatusCache:
     # ── writes ───────────────────────────────────────────────────────────────
 
     def put_ok(
-        self, ref: Ref, status: Status, now: datetime, ttl_override: timedelta | None = None
+        self, ref: Ref, liveness: Liveness, now: datetime, ttl_override: timedelta | None = None
     ) -> None:
         self._entries[ref] = Entry(
-            ref=ref, fetched_at=now, status=status, ttl_override=ttl_override
+            ref=ref, fetched_at=now, liveness=liveness, ttl_override=ttl_override
         )
 
     def put_err(
@@ -93,7 +93,7 @@ class StatusCache:
             fetched_at=now,
             # A failed refresh must not erase the last thing that worked; it
             # ages out on its own schedule instead.
-            status=previous.status if previous else None,
+            liveness=previous.liveness if previous else None,
             error=reason,
             retry_after=now + retry_after if retry_after else None,
         )

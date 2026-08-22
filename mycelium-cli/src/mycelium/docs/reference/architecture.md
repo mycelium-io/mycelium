@@ -272,3 +272,12 @@ Map your tool's vocabulary onto the six states in the
 [board's table](#board) — `ok`, `pending`, `blocked`, `failed`, `done`,
 `unknown` — and keep your own wording as the label. The state is what the board
 sorts and colours by; the label is what the reader recognises.
+
+Your answer will land on a row under a `live` field, never the row's own
+`status`. The two vocabularies both contain `blocked` and mean different things
+by it, so they are kept in separate fields rather than one shadowing the other.
+In the backend the answer is a `Liveness`, named for the same reason.
+
+The host bound is enforced, not merely declared: `ctx.http` refuses any request
+to a host other than your `base_url`, so a redirect or a hand-written absolute
+URL cannot carry your credential somewhere it was never meant to go.
