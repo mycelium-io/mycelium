@@ -11,6 +11,7 @@ import {
   Rows3,
   ScrollText,
   Search,
+  SlidersHorizontal,
   Table as TableIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -247,7 +248,7 @@ export function RoomBoard({ roomName }: Props) {
   const groupBy = view.groupBy;
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-bg">
+    <div className="@container flex h-full min-h-0 flex-col bg-bg">
       <BoardHeader
         title={title}
         summary={summarize(items)}
@@ -437,7 +438,7 @@ function BoardHeader(props: {
                 )}
               >
                 <Icon className="size-3.5" strokeWidth={1.8} />
-                <span className="hidden sm:inline">{mode.label}</span>
+                <span className="hidden @[46rem]:inline">{mode.label}</span>
               </button>
             );
           })}
@@ -461,7 +462,8 @@ function BoardHeader(props: {
             showOptions ? "text-accent" : "text-faint hover:text-muted-foreground",
           )}
         >
-          views &amp; fields
+          <span className="hidden @[40rem]:inline">views &amp; fields</span>
+          <SlidersHorizontal className="size-3.5 @[40rem]:hidden" strokeWidth={1.9} />
         </button>
       </div>
 
@@ -522,7 +524,7 @@ function BoardFooter({
 }) {
   return (
     <footer className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-t border-border px-5 py-1.5">
-      <span className="flex items-center gap-2 font-mono text-micro text-faint">
+      <span className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-micro text-faint">
         <Key k="j/k" /> move
         <Key k="c" /> claim
         <Key k="r" /> resolve
