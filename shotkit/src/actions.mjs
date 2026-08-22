@@ -21,38 +21,52 @@ const ENGINE_PREFIX = /^(css|text|role|xpath|id|data-testid|internal:[a-z-]+)[=:
 /** Punctuation that only appears in a CSS selector, never in a visible label. */
 const CSS_PUNCTUATION = /[.#\[\]>+~*]|::/;
 
-/**
- * Resolve one element argument.
- *
- * Order matters, and the interesting case is the bare word. `--do click:Save`
- * means the button labelled Save, but "Save" is also a syntactically valid CSS
- * type selector, so handing it to `locator()` silently looks for a `<save>`
- * element and times out. A bare word is therefore matched by what it is on
- * screen: its accessible name first — buttons, links and tabs are what
- * navigation actually targets — and its visible text as the fallback.
- *
- * @param {import("playwright").Page} page
- */
-export function locate(page, spec) {
-  if (ENGINE_PREFIX.test(spec) || spec.startsWith("//") || spec.startsWith("(")) return page.locator(spec).first();
-  if (CSS_PUNCTUATION.test(spec) || /\s/.test(spec) === false && /^[a-z]+$/.test(spec) && HTML_TAGS.has(spec)) {
-    return page.locator(spec).first();
-  }
-  return page
+/** Lowercase bare words that could plausibly be meant as element selectors. */
+const HTML_TAGS = new Set([
+  "a", "article", "aside", "body", "button", "canvas", "code", "dialog", "div", "footer",
+  "form", "h1", "h2", "h3", "header", "img", "input", "li", "main", "nav", "ol", "p", "pre",
+  "section", "select", "span", "svg", "table", "tbody", "td", "textarea", "th", "tr", "ul", "video",
+]);
+
+/** A bare word, matched the way a person means it: by what it says on screen. */
+const byLabel = (page, spec) =>
+  page
     .getByRole("button", { name: spec })
     .or(page.getByRole("link", { name: spec }))
     .or(page.getByRole("tab", { name: spec }))
     .or(page.getByRole("menuitem", { name: spec }))
     .or(page.getByText(spec, { exact: true }))
     .first();
-}
 
-/** Lowercase bare words that really are element selectors rather than labels. */
-const HTML_TAGS = new Set([
-  "a", "article", "aside", "body", "button", "canvas", "code", "dialog", "div", "footer",
-  "form", "h1", "h2", "h3", "header", "img", "input", "li", "main", "nav", "ol", "p", "pre",
-  "section", "select", "span", "svg", "table", "tbody", "td", "textarea", "th", "tr", "ul", "video",
-]);
+/**
+ * Resolve one element argument.
+ *
+ * The interesting case is the bare word. `--do click:Save` means the button
+ * labelled Save, but "Save" is also a syntactically valid CSS type selector, so
+ * handing it to `locator()` looks for a `<save>` element and times out. Labels
+ * win: a word is matched by accessible name, then by visible text.
+ *
+ * Some labels collide with real tag names — "table", "select", "code", "header",
+ * "form", "nav" are all things a button might say — so the tag reading is a
+ * fallback rather than a rule. It is used only when the word names a tag, no
+ * label matches it, and an element of that tag is actually on the page. When
+ * neither matches (the usual "not there yet" case) the label locator is
+ * returned, so Playwright's auto-waiting applies and any error names the label
+ * the caller actually typed.
+ *
+ * @param {import("playwright").Page} page
+ * @returns {Promise<import("playwright").Locator>}
+ */
+export async function locate(page, spec) {
+  if (ENGINE_PREFIX.test(spec) || spec.startsWith("//") || spec.startsWith("(")) return page.locator(spec).first();
+  if (CSS_PUNCTUATION.test(spec) || /\s/.test(spec)) return page.locator(spec).first();
+
+  const label = byLabel(page, spec);
+  if (!HTML_TAGS.has(spec.toLowerCase())) return label;
+  if ((await label.count()) > 0) return label;
+  const tag = page.locator(spec).first();
+  return (await tag.count()) > 0 ? tag : label;
+}
 
 /** Split `verb:rest` on the first colon. `back` and `reload` take no argument. */
 export function parseAction(raw) {
@@ -81,31 +95,31 @@ export async function runActions(page, actions, ctx = {}) {
     const { verb, arg } = parseAction(raw);
     switch (verb) {
       case "click":
-        await locate(page, arg).click({ timeout });
+        await (await locate(page, arg)).click({ timeout });
         break;
       case "dblclick":
-        await locate(page, arg).dblclick({ timeout });
+        await (await locate(page, arg)).dblclick({ timeout });
         break;
       case "hover":
-        await locate(page, arg).hover({ timeout });
+        await (await locate(page, arg)).hover({ timeout });
         break;
       case "focus":
-        await locate(page, arg).focus({ timeout });
+        await (await locate(page, arg)).focus({ timeout });
         break;
       case "check":
-        await locate(page, arg).check({ timeout });
+        await (await locate(page, arg)).check({ timeout });
         break;
       case "uncheck":
-        await locate(page, arg).uncheck({ timeout });
+        await (await locate(page, arg)).uncheck({ timeout });
         break;
       case "fill": {
         const [sel, value] = splitPair(arg);
-        await locate(page, sel).fill(value, { timeout });
+        await (await locate(page, sel)).fill(value, { timeout });
         break;
       }
       case "select": {
         const [sel, value] = splitPair(arg);
-        await locate(page, sel).selectOption(value, { timeout });
+        await (await locate(page, sel)).selectOption(value, { timeout });
         break;
       }
       case "press":
@@ -133,7 +147,7 @@ export async function runActions(page, actions, ctx = {}) {
         if (arg === "bottom") await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
         else if (arg === "top") await page.evaluate(() => window.scrollTo(0, 0));
         else if (/^-?\d+$/.test(arg)) await page.evaluate((y) => window.scrollBy(0, y), Number(arg));
-        else await locate(page, arg).scrollIntoViewIfNeeded({ timeout });
+        else await (await locate(page, arg)).scrollIntoViewIfNeeded({ timeout });
         break;
       case "wait":
         await page.locator(arg).first().waitFor({ state: "visible", timeout });

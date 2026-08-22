@@ -17,7 +17,7 @@ import { splitHighlightedLines, guessLanguage } from "../src/code.mjs";
 import { parse } from "../src/args.mjs";
 import { policyArgs, policyKey } from "../src/network.mjs";
 import { resolveViewport, viewportList } from "../src/viewports.mjs";
-import { parseAction } from "../src/actions.mjs";
+import { locate, parseAction } from "../src/actions.mjs";
 import { backdrop, palette } from "../src/theme.mjs";
 import { CANVAS_VARS, VEIL, networkDocument } from "../src/mycelial.mjs";
 import { cardDocument } from "../src/card.mjs";
@@ -200,6 +200,71 @@ test("a card grows an artwork layer only when there is artwork", () => {
   assert.ok(art.includes('id="art"'));
   assert.ok(art.includes("image-rendering:pixelated"), "the cells must not blur when upscaled");
 });
+
+/**
+ * A stand-in for a Playwright page. Each locator records how it was built and
+ * reports a count from `present`, whose entries are `"<kind>:<arg>"` — `label`
+ * for the accessible-name/text chain, `css` for a plain selector. Counts are all
+ * `locate` consults.
+ */
+function fakePage(present) {
+  const mk = (kind, arg) => ({
+    kind,
+    arg,
+    first: () => mk(kind, arg),
+    or: (other) => ({ ...mk("label", arg), alternatives: [kind, other.kind], first: () => mk("label", arg) }),
+    count: async () => (present.includes(`${kind}:${arg}`) ? 1 : 0),
+  });
+  return {
+    locator: (sel) => mk("css", sel),
+    getByRole: (role, o) => mk("role", o.name),
+    getByText: (t) => mk("text", t),
+  };
+}
+
+await (async () => {
+  const acount = async (name, fn) => {
+    try {
+      await fn();
+      process.stdout.write(`  \x1b[32m✓\x1b[0m ${name}\n`);
+    } catch (err) {
+      failures += 1;
+      process.stdout.write(`  \x1b[31m✗\x1b[0m ${name}\n    ${err.message}\n`);
+    }
+  };
+
+  await acount("a selector with punctuation stays CSS", async () => {
+    const r = await locate(fakePage([]), ".offer-grid");
+    assert.equal(r.kind, "css");
+  });
+
+  await acount("a selector-engine prefix is passed through", async () => {
+    const r = await locate(fakePage([]), 'role=button[name="Save"]');
+    assert.equal(r.kind, "css");
+  });
+
+  await acount("a bare word that is not a tag name resolves by label", async () => {
+    const r = await locate(fakePage([]), "Negotiate");
+    assert.equal(r.kind, "label");
+  });
+
+  await acount("a label wins over the same word as a tag name", async () => {
+    // A button labelled "table" and a <table> both on the page: the label is
+    // what the caller typed and what they meant.
+    const r = await locate(fakePage(["label:table", "css:table"]), "table");
+    assert.equal(r.kind, "label");
+  });
+
+  await acount("the tag is used only when no label matches it", async () => {
+    const r = await locate(fakePage(["css:select"]), "select");
+    assert.equal(r.kind, "css");
+  });
+
+  await acount("neither present falls back to the label, for a legible error", async () => {
+    const r = await locate(fakePage([]), "form");
+    assert.equal(r.kind, "label");
+  });
+})();
 
 process.stdout.write(failures ? `\n${failures} failing\n` : "\nall passing\n");
 process.exit(failures ? 1 : 0);

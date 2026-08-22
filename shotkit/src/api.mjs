@@ -145,7 +145,15 @@ export async function capture(spec, ctx = {}) {
       const tCap = Date.now();
       const raw = await eng.capturePage({ ...pageSpec, ...(frame ?? {}) });
       const buf = await wrapChrome(eng, raw.buf, spec, prettyAddress(spec, url));
-      const meta = { url, baseUrl, viewport: frames[0]?.name, trace: raw.trace, chrome: Boolean(spec.chrome) };
+      const captureMs = Date.now() - tCap;
+      const meta = {
+        url,
+        baseUrl,
+        viewport: frames[0]?.name,
+        trace: raw.trace,
+        chrome: Boolean(spec.chrome),
+        hint: slowCaptureHint(spec, captureMs),
+      };
       return finish(
         { ...base, meta, ms: { total: Date.now() - t0, capture: Date.now() - tCap } },
         spec,
@@ -193,6 +201,19 @@ async function wrapChrome(eng, buf, spec, address) {
   });
   // Same scale as the capture, so one image pixel lands on one device pixel.
   return eng.captureStatic({ html, ...pickStatic(spec), theme, scale, width: 2600, height: 2000 });
+}
+
+/**
+ * A capture this slow is almost always a page waiting on an unreachable CDN,
+ * which is silent by construction: the shot still succeeds, just late and in
+ * fallback fonts. Surfaced through the result rather than a log because the
+ * daemon does the work in another process, where stderr goes nowhere useful.
+ */
+const SLOW_CAPTURE_MS = 6000;
+
+function slowCaptureHint(spec, ms) {
+  if (spec.offline || ms < SLOW_CAPTURE_MS) return undefined;
+  return `capture took ${(ms / 1000).toFixed(1)}s — if the app links a CDN this host cannot reach, --offline skips the wait (shot doctor checks)`;
 }
 
 /** app/url/session ops all need to know where the app is. */
@@ -278,7 +299,10 @@ async function renderCard(spec, eng) {
       prompt: typeof spec.prompt === "string" ? spec.prompt : undefined,
       exitCode: meta.exitCode,
       showExit: spec.showExit !== false,
-      title: spec.title ?? (spec.argv ? spec.argv[0] : "terminal"),
+      // The title names what the card claims to show. With --command relabelling
+      // the prompt (`mycelium …` for a line that really ran `uv run mycelium …`),
+      // taking it from argv would caption the card with the wrong binary.
+      title: spec.title ?? binaryOf(command) ?? "terminal",
     });
     html = doc.html;
     meta.rows = doc.rows;
@@ -310,6 +334,12 @@ async function renderCard(spec, eng) {
 function prettyAddress(spec, url) {
   if (spec.op === "app" && spec.route) return spec.route;
   return url;
+}
+
+/** The program name from a shell line, for use as a card title. */
+function binaryOf(commandLine) {
+  const first = String(commandLine ?? "").trim().split(/\s+/)[0];
+  return first ? first.replace(/^.*\//, "").replace(/^['"]|['"]$/g, "") : null;
 }
 
 const pickCode = (spec) => ({

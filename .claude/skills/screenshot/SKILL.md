@@ -24,8 +24,13 @@ node shotkit/bin/shot.mjs doctor
 ```
 
 It reports the browser, `script(1)`, whether the frontend's deps are installed,
-and whether an app is already listening. Fix anything it marks `✗` before
-capturing. Terminal and code cards need no app at all.
+whether an app is already listening, and whether webfonts load here. Fix
+anything it marks `✗` before capturing. Terminal and code cards need no app at
+all.
+
+**If the webfont check warns, add `--offline` to every app capture** and don't
+publish shots taken on this machine — they will render in fallback fonts. A
+capture that takes more than a few seconds prints the same hint.
 
 ## Screenshot the app
 
@@ -76,9 +81,11 @@ node shotkit/bin/shot.mjs shoot --session r --name negotiate   # ~250ms
 node shotkit/bin/shot.mjs close --session r
 ```
 
-A bare word (`click:Negotiate`) matches an accessible name, then visible text.
-For anything else use a Playwright selector: `#id`, `.class`,
-`role=button[name="Save"]`, `text=Save`. `shot help shoot` lists every verb.
+A bare word (`click:Negotiate`) matches an accessible name, then visible text —
+including words that are also tag names, so `click:table` finds a button
+labelled "table" before it considers a `<table>`. For anything else use a
+Playwright selector: `#id`, `.class`, `role=button[name="Save"]`, `text=Save`.
+`shot help shoot` lists every verb.
 
 ## Screenshot CLI output
 
