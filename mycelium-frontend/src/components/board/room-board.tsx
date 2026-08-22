@@ -444,27 +444,29 @@ function BoardHeader(props: {
           })}
         </div>
 
-        <div className="flex min-w-[140px] flex-1 items-center gap-1.5 rounded-md border border-border px-2 py-1">
-          <Search className="size-3 shrink-0 text-faint" />
-          <input
-            value={props.query}
-            onChange={e => props.onQuery(e.target.value)}
-            placeholder="Filter rows…"
-            className="min-w-0 flex-1 bg-transparent text-label text-text outline-none placeholder:text-faint"
-          />
-        </div>
+        <div className="flex min-w-[140px] flex-1 items-center gap-2">
+          <div className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md border border-border px-2 py-1">
+            <Search className="size-3 shrink-0 text-faint" />
+            <input
+              value={props.query}
+              onChange={e => props.onQuery(e.target.value)}
+              placeholder="Filter rows…"
+              className="min-w-0 flex-1 bg-transparent text-label text-text outline-none placeholder:text-faint"
+            />
+          </div>
 
-        <button
-          onClick={props.onOptions}
-          title="Saved views, grouping, and the inferred schema"
-          className={cn(
-            "shrink-0 rounded-md px-2 py-1 font-mono text-micro transition-colors",
-            showOptions ? "text-accent" : "text-faint hover:text-muted-foreground",
-          )}
-        >
-          <span className="hidden @[40rem]:inline">views &amp; fields</span>
-          <SlidersHorizontal className="size-3.5 @[40rem]:hidden" strokeWidth={1.9} />
-        </button>
+            <button
+            onClick={props.onOptions}
+            title="Saved views, grouping, and the inferred schema"
+            className={cn(
+              "shrink-0 rounded-md px-2 py-1 font-mono text-micro transition-colors",
+              showOptions ? "text-accent" : "text-faint hover:text-muted-foreground",
+            )}
+          >
+            <span className="hidden @[40rem]:inline">views &amp; fields</span>
+            <SlidersHorizontal className="size-3.5 @[40rem]:hidden" strokeWidth={1.9} />
+          </button>
+        </div>
       </div>
 
       <div className={cn("flex flex-wrap items-center gap-x-3 gap-y-1.5", showOptions ? "mt-2 pb-2.5" : "hidden")}>
@@ -524,7 +526,7 @@ function BoardFooter({
 }) {
   return (
     <footer className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-t border-border px-5 py-1.5">
-      <span className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-micro text-faint">
+      <span className="hidden flex-wrap items-center gap-x-2 gap-y-1 font-mono text-micro text-faint @[34rem]:flex">
         <Key k="j/k" /> move
         <Key k="c" /> claim
         <Key k="r" /> resolve
