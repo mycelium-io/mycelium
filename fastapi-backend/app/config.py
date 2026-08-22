@@ -161,9 +161,11 @@ class Settings(BaseSettings):
     # Short: this sits between a message and an agent's turn, so a slow
     # classification is worse than a fail-open wake.
     SUMMONGUARD_PI_TIMEOUT_S: float = 20.0
-    # How long an ``await`` long-poll waits for an in-flight classification before
-    # serving the turn anyway. Absorbed by the poll, invisible to the caller.
-    SUMMONGUARD_WAKE_TIMEOUT_S: float = 8.0
+    # How long an ``await`` long-poll waits for an in-flight summon-filter
+    # judgement before serving the turn anyway. A property of the seam rather than
+    # of any one guard, so it is named for the extension point. Absorbed by the
+    # poll, invisible to the caller.
+    SUMMON_FILTER_WAIT_S: float = 8.0
     # Kill switch: registered guards stay listed but classify everything as a wake,
     # so a misbehaving guard is disarmed without editing a room's manifests.
     SUMMONGUARD_DISABLE: bool = False

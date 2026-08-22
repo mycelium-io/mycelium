@@ -36,6 +36,7 @@ from __future__ import annotations
 import logging
 from collections import defaultdict
 from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
@@ -72,9 +73,9 @@ class RoomEventContext:
 Listener = Callable[[RoomEventContext], None]
 
 #: Extension point: filter which ``@``-mentions in a message are genuine summons.
-#: Signature ``(SummonContext) -> Awaitable[Mapping[str, str]]``, mapping each
-#: candidate handle to ``"wake"`` or ``"mention"`` (see
-#: :mod:`app.services.summonguard`).
+#: The contract — signature, verdict vocabulary, how several filters merge —
+#: lives in :mod:`app.services.summon_filter`, which is what the room's summon
+#: path calls; this module only names the slot.
 SUMMON_FILTER = "summon.filter"
 
 
@@ -93,11 +94,22 @@ class RoomLifecycle:
 
     # -- events --
 
-    def subscribe(self, event: RoomEvent, listener: Listener) -> None:
-        """Register ``listener`` for ``event``. Idempotent per callable."""
+    def subscribe(self, event: RoomEvent, listener: Listener) -> Callable[[], None]:
+        """Register ``listener`` for ``event``; return a callable that removes it.
+
+        Idempotent per callable. The disposer exists so a subscription can be
+        paired with its own teardown at the point it is made; engines built at
+        the composition root live as long as the process and drop it.
+        """
         listeners = self._listeners[event]
         if listener not in listeners:
             listeners.append(listener)
+
+        def dispose() -> None:
+            with suppress(ValueError):
+                self._listeners[event].remove(listener)
+
+        return dispose
 
     def emit(
         self, event: RoomEvent, room: str, *, handle: str | None = None, kind: str | None = None

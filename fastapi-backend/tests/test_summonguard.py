@@ -19,19 +19,20 @@ import asyncio
 
 import pytest
 
-from app.services import summonguard
-from app.services.engine_events import SUMMON_FILTER, lifecycle
-from app.services.summonguard import MENTION, WAKE, SummonContext, SummonGuardEngine
+from app.services import summon_filter, summonguard
+from app.services.engine_events import lifecycle
+from app.services.summon_filter import MENTION, WAKE, SummonContext
+from app.services.summonguard import SummonGuardEngine
 
 
 @pytest.fixture(autouse=True)
 def _reset_guard_state():
     """The lifecycle bus and verdict store are process-wide; isolate each test."""
     lifecycle.clear()
-    summonguard.verdicts.clear()
+    summon_filter.verdicts.clear()
     yield
     lifecycle.clear()
-    summonguard.verdicts.clear()
+    summon_filter.verdicts.clear()
 
 
 @pytest.fixture
@@ -55,12 +56,12 @@ def _classifier(answer: str):
 
 
 def _install(engine: SummonGuardEngine, room: str = "r", owner: str = "watcher") -> None:
-    lifecycle.install(room, SUMMON_FILTER, owner, engine.classify)
+    summon_filter.install(room, owner, engine.classify)
 
 
-def _verdict(room: str = "r", message_id: str = "m1") -> summonguard.SummonVerdict:
+def _verdict(room: str = "r", message_id: str = "m1") -> summon_filter.SummonVerdict:
     """The published verdict for a message; fails the test if none landed."""
-    verdict = summonguard.verdicts.get(room, message_id)
+    verdict = summon_filter.verdicts.get(room, message_id)
     assert verdict is not None, f"no verdict published for {room}/{message_id}"
     return verdict
 
@@ -174,7 +175,7 @@ async def test_the_kill_switch_disarms_a_registered_guard(engine, monkeypatch):
 
 
 def test_a_verdict_that_never_saw_a_handle_wakes_it():
-    verdict = summonguard.SummonVerdict(
+    verdict = summon_filter.SummonVerdict(
         room="r", message_id="m1", sender="avery", text="", decisions={"alice": MENTION}
     )
     assert verdict.wakes("alice") is False
@@ -203,93 +204,6 @@ def test_the_prompt_carries_the_message_and_every_candidate():
     assert "- @alice" in prompt and "- @bob" in prompt
 
 
-# ── the room-level filter ────────────────────────────────────────────────────
-
-
-@pytest.mark.asyncio
-async def test_an_unguarded_room_wakes_everything_without_classifying(monkeypatch):
-    def _explode(_prompt, _timeout):
-        raise AssertionError("an unguarded room must not classify")
-
-    monkeypatch.setattr(summonguard, "_pi_complete", _explode)
-    assert summonguard.guarded("r") is False
-    assert await summonguard.decide(_ctx("credit to @alice", "alice")) == {"alice": WAKE}
-
-
-@pytest.mark.asyncio
-async def test_a_filter_that_raises_fails_the_room_open(engine):
-    async def _broken(_ctx):
-        raise RuntimeError("guard is broken")
-
-    lifecycle.install("r", SUMMON_FILTER, "watcher", _broken)
-    assert await summonguard.decide(_ctx("credit to @alice", "alice")) == {"alice": WAKE}
-
-
-@pytest.mark.asyncio
-async def test_two_guards_suppress_only_when_both_agree():
-    async def _suppress(_ctx):
-        return {"alice": MENTION}
-
-    async def _wake(_ctx):
-        return {"alice": WAKE}
-
-    lifecycle.install("r", SUMMON_FILTER, "one", _suppress)
-    lifecycle.install("r", SUMMON_FILTER, "two", _suppress)
-    assert await summonguard.decide(_ctx("thanks @alice", "alice")) == {"alice": MENTION}
-
-    lifecycle.install("r", SUMMON_FILTER, "two", _wake)
-    assert await summonguard.decide(_ctx("thanks @alice", "alice", message_id="m2")) == {
-        "alice": WAKE
-    }
-
-
-# ── the await-side gate ──────────────────────────────────────────────────────
-
-
-@pytest.mark.asyncio
-async def test_wakes_is_true_in_an_unguarded_room_without_waiting():
-    assert await summonguard.wakes("r", "m1", "alice") is True
-
-
-@pytest.mark.asyncio
-async def test_wakes_reads_the_verdict_the_ingest_side_published(engine, monkeypatch):
-    monkeypatch.setattr(summonguard, "_pi_complete", _classifier('{"alice": "mention"}'))
-    _install(engine)
-    await summonguard.decide(_ctx("shipped, thanks @alice", "alice"))
-    assert await summonguard.wakes("r", "m1", "alice") is False
-    # A handle that message never mentioned is unaffected.
-    assert await summonguard.wakes("r", "m1", "bob") is True
-
-
-@pytest.mark.asyncio
-async def test_wakes_waits_for_an_in_flight_classification(engine, monkeypatch):
-    """The long-poll absorbs the guard's latency rather than serving a turn it
-    was about to suppress."""
-    started = asyncio.Event()
-
-    def _slow(_prompt, _timeout):
-        started.set()
-        import time
-
-        time.sleep(0.2)
-        return '{"alice": "mention"}'
-
-    monkeypatch.setattr(summonguard, "_pi_complete", _slow)
-    _install(engine)
-    task = asyncio.create_task(summonguard.decide(_ctx("shipped, thanks @alice", "alice")))
-    await started.wait()
-    assert await summonguard.wakes("r", "m1", "alice") is False
-    await task
-
-
-@pytest.mark.asyncio
-async def test_a_classification_that_overruns_the_wait_wakes(engine, monkeypatch):
-    monkeypatch.setattr(summonguard.settings, "SUMMONGUARD_WAKE_TIMEOUT_S", 0.05)
-    _install(engine)
-    summonguard.verdicts.begin("r", "m1")
-    assert await summonguard.wakes("r", "m1", "alice") is True
-
-
 # ── registration installs the filter ─────────────────────────────────────────
 
 
@@ -297,17 +211,17 @@ async def test_a_classification_that_overruns_the_wait_wakes(engine, monkeypatch
 async def test_registering_a_guard_installs_the_rooms_summon_filter(client, engine):
     engine.wire()
     await client.post("/api/rooms", json={"name": "portfolio"})
-    assert summonguard.guarded("portfolio") is False
+    assert summon_filter.guarded("portfolio") is False
 
     resp = await client.post(
         "/api/rooms/portfolio/engines",
         json={"handle": "watcher", "kind": "summonguard", "description": "guard our summons"},
     )
     assert resp.status_code == 201
-    assert summonguard.guarded("portfolio") is True
-    assert lifecycle.owners("portfolio", SUMMON_FILTER) == ["watcher"]
+    assert summon_filter.guarded("portfolio") is True
+    assert summon_filter.owners("portfolio") == ["watcher"]
     # …and only that room's.
-    assert summonguard.guarded("other") is False
+    assert summon_filter.guarded("other") is False
 
 
 @pytest.mark.asyncio
@@ -315,7 +229,7 @@ async def test_registering_a_different_engine_kind_installs_nothing(client, engi
     engine.wire()
     await client.post("/api/rooms", json={"name": "portfolio"})
     await client.post("/api/rooms/portfolio/engines", json={"handle": "med", "kind": "aligner"})
-    assert summonguard.guarded("portfolio") is False
+    assert summon_filter.guarded("portfolio") is False
 
 
 @pytest.mark.asyncio
@@ -325,11 +239,11 @@ async def test_a_removed_guard_drops_its_filter_on_the_next_sync(client, engine)
     await client.post(
         "/api/rooms/portfolio/engines", json={"handle": "watcher", "kind": "summonguard"}
     )
-    assert summonguard.guarded("portfolio") is True
+    assert summon_filter.guarded("portfolio") is True
 
     await client.delete("/api/rooms/portfolio/memory/agents/watcher")
     engine.sync_room("portfolio")
-    assert summonguard.guarded("portfolio") is False
+    assert summon_filter.guarded("portfolio") is False
 
 
 @pytest.mark.asyncio
@@ -344,7 +258,7 @@ async def test_status_route_reports_the_guard_and_its_verdicts(client, engine, m
         "_pi_complete",
         _classifier('{"alice": {"decision": "mention", "reason": "credited only"}}'),
     )
-    await summonguard.decide(_ctx("shipped, credit to @alice", "alice", room="portfolio"))
+    await summon_filter.decide(_ctx("shipped, credit to @alice", "alice", room="portfolio"))
 
     body = (await client.get("/api/rooms/portfolio/summonguard")).json()
     assert body["installed"] is True
@@ -428,7 +342,7 @@ async def test_a_guarded_room_withholds_the_summon_for_a_provenance_mention(engi
     await _ingest(_persister("r", summoned), "m1", "shipped it, credit to @alice")
     assert summoned == []
     # …and the same verdict is what await will read.
-    assert await summonguard.wakes("r", "m1", "alice") is False
+    assert await summon_filter.wakes("r", "m1", "alice") is False
 
 
 @pytest.mark.asyncio

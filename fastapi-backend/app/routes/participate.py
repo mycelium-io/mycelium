@@ -31,7 +31,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from app.services import actor, l9, principals, room_channels, summonguard
+from app.services import actor, l9, principals, room_channels, summon_filter
 from app.services.filesystem import room_exists
 from app.services.l9_models import Kind
 from app.services.l9_slim import serialize_content, serialize_envelope
@@ -175,7 +175,7 @@ async def await_message(room_name: str, request: Request, handle: str, timeout: 
             # A protocol-addressed tick is a turn by construction; only a bare
             # ``@handle`` in prose is the guard's to judge. In an unguarded room
             # this returns True without waiting, so the poll is unchanged.
-            if kind == "mention" and not await summonguard.wakes(
+            if kind == "mention" and not await summon_filter.wakes(
                 room_name, record.message_id, handle
             ):
                 continue

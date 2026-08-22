@@ -64,7 +64,7 @@ _MESSAGE_ID_NS = uuid.UUID("6f1d2c3b-4a59-6e7d-8c9b-0a1b2c3d4e5f")
 if TYPE_CHECKING:
     import slim_bindings
 
-    from app.services import summonguard
+    from app.services import summon_filter
     from app.services.l9_models import L9
     from app.services.l9_slim import L9SlimChannel
     from app.services.local_state import StoredMessage
@@ -993,7 +993,7 @@ class RoomPersister:
     ) -> None:
         """Fire the summon hook for each ``@``-mention, past any installed guard.
 
-        A room with no summon filter installed (:mod:`app.services.summonguard`)
+        A room with no summon filter installed (:mod:`app.services.summon_filter`)
         takes the direct path — every mention fires the hook inline, exactly as
         before. A guarded room classifies first, off the ingest path since
         cognition can't run inline in a sync ingest; the mentions judged
@@ -1005,13 +1005,13 @@ class RoomPersister:
         the verdict — a scoped ``@aligner @a @b`` negotiates @a and @b whether or
         not they were each summoned in their own right.
         """
-        from app.services import summonguard
+        from app.services import summon_filter
 
-        if not summonguard.guarded(self.room):
+        if not summon_filter.guarded(self.room):
             self._fire_summons(summons, envelope, summons, message_text)
             return
         message_id = envelope_message_id(envelope) or ""
-        ctx = summonguard.SummonContext(
+        ctx = summon_filter.SummonContext(
             room=self.room,
             message_id=message_id,
             sender=sender,
@@ -1030,14 +1030,14 @@ class RoomPersister:
 
     async def _guarded_summons(
         self,
-        ctx: summonguard.SummonContext,
+        ctx: summon_filter.SummonContext,
         envelope: L9,
         summons: list[str],
         message_text: str,
     ) -> None:
-        from app.services import summonguard
+        from app.services import summon_filter
 
-        decisions = await summonguard.decide(ctx)
+        decisions = await summon_filter.decide(ctx)
         woken = [h for h in summons if decisions.get(h.strip().lstrip("@").lower()) != "mention"]
         self._fire_summons(woken, envelope, summons, message_text)
 

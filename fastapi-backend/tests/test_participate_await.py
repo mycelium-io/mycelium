@@ -131,7 +131,7 @@ async def test_await_ignores_turns_addressed_to_others(wired):
     assert result["message"] is None
 
 
-# ── the summon guard's wake gate (#summonguard) ──────────────────────────────
+# ── the summon-filter wake gate ──────────────────────────────────────────────
 
 
 def _mention_record(message_id: str, *, text: str, sender: str = "avery"):
@@ -155,13 +155,13 @@ def _mention_record(message_id: str, *, text: str, sender: str = "avery"):
 @pytest.fixture
 def guarded(monkeypatch):
     """Install a summon filter returning a fixed decision map."""
-    from app.services import summonguard
-    from app.services.engine_events import SUMMON_FILTER, lifecycle
+    from app.services import summon_filter
+    from app.services.engine_events import lifecycle
 
     def _install(decisions: dict[str, str]) -> None:
         async def _filter(ctx):
-            summonguard.verdicts.put(
-                summonguard.SummonVerdict(
+            summon_filter.verdicts.put(
+                summon_filter.SummonVerdict(
                     room=ctx.room,
                     message_id=ctx.message_id,
                     sender=ctx.sender,
@@ -171,17 +171,17 @@ def guarded(monkeypatch):
             )
             return decisions
 
-        lifecycle.install("r", SUMMON_FILTER, "watcher", _filter)
+        summon_filter.install("r", "watcher", _filter)
 
     yield _install
     lifecycle.clear()
-    summonguard.verdicts.clear()
+    summon_filter.verdicts.clear()
 
 
 @pytest.mark.asyncio
 async def test_await_skips_a_mention_the_guard_called_provenance(wired, guarded):
     """The guard's whole point: being named in passing is not a turn."""
-    from app.services import summonguard
+    from app.services import summon_filter
 
     log = persister.DeliveryLog()
     log.record(
@@ -191,8 +191,8 @@ async def test_await_skips_a_mention_the_guard_called_provenance(wired, guarded)
     )
     wired(log)
     guarded({"claude-code-agent": "mention"})
-    await summonguard.decide(
-        summonguard.SummonContext(
+    await summon_filter.decide(
+        summon_filter.SummonContext(
             room="r",
             message_id="m1",
             sender="avery",
@@ -210,7 +210,7 @@ async def test_await_skips_a_mention_the_guard_called_provenance(wired, guarded)
 
 @pytest.mark.asyncio
 async def test_await_serves_a_mention_the_guard_called_a_summon(wired, guarded):
-    from app.services import summonguard
+    from app.services import summon_filter
 
     text = "@claude-code-agent can you cost this out?"
     log = persister.DeliveryLog()
@@ -219,8 +219,8 @@ async def test_await_serves_a_mention_the_guard_called_a_summon(wired, guarded):
     )
     wired(log)
     guarded({"claude-code-agent": "wake"})
-    await summonguard.decide(
-        summonguard.SummonContext(
+    await summon_filter.decide(
+        summon_filter.SummonContext(
             room="r", message_id="m1", sender="avery", text=text, handles=("claude-code-agent",)
         )
     )

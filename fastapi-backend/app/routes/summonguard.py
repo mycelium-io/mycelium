@@ -15,7 +15,7 @@ audit log. The transcript remains the durable record of what was said.
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from app.services import summonguard
+from app.services import summon_filter
 from app.services.filesystem import room_exists
 
 router = APIRouter(prefix="/rooms/{room_name}/summonguard", tags=["engines"])
@@ -51,12 +51,11 @@ async def summonguard_status(
     if not room_exists(room_name):
         raise HTTPException(status_code=404, detail="Room not found")
     from app.config import settings
-    from app.services.engine_events import SUMMON_FILTER, lifecycle
 
     return SummonGuardStatus(
         room=room_name,
-        installed=summonguard.guarded(room_name),
-        guards=lifecycle.owners(room_name, SUMMON_FILTER),
+        installed=summon_filter.guarded(room_name),
+        guards=summon_filter.owners(room_name),
         disabled=settings.SUMMONGUARD_DISABLE,
         verdicts=[
             SummonVerdictRead(
@@ -68,6 +67,6 @@ async def summonguard_status(
                 source=v.source,
                 decided_at=v.decided_at,
             )
-            for v in summonguard.verdicts.recent(room_name, limit=limit)
+            for v in summon_filter.verdicts.recent(room_name, limit=limit)
         ],
     )

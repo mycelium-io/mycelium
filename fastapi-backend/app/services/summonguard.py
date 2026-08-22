@@ -9,13 +9,13 @@ for ``@alice can you cost this out?`` and wrong for ``we shipped it, credit to
 @alice`` — the second is *provenance*, and waking a resident agent for it burns
 a turn (and, for an engine, can restart a negotiation that already converged).
 
-The summonguard is the engine kind that tells the two apart. Registering it in a
-room installs a :data:`~app.services.engine_events.SUMMON_FILTER` hook (see
-:mod:`app.services.engine_events`); the room's summon path then asks that hook
-before waking anyone. No guard registered → no hook → the room behaves exactly
-as it did.
+This is the engine that tells the two apart: the cognition, and nothing else.
+The contract it implements — the verdict vocabulary, the verdict store, how
+several filters merge — belongs to :mod:`app.services.summon_filter`, which is
+what the room's summon path actually calls. Registering a guard in a room
+installs its :func:`classify` there; the room never imports this module.
 
-Three properties hold it together:
+Three properties hold the classification together:
 
 * **Fail open, always.** Every failure mode — Pi missing, timed out, empty,
   unparseable, a handle the classifier forgot — resolves to ``wake``. A guard
@@ -26,10 +26,8 @@ Three properties hold it together:
   summon shape — the mention opening the message — so the hot path costs no
   cognition. Suppression is only ever a model's judgement, never a pattern's.
 * **One classification per message.** The persister classifies at ingest, for
-  every mentioned handle at once, and the verdict is stored by message id. The
-  ``await`` long-poll reads that verdict rather than classifying again, so the
-  two paths can never disagree, and the poll simply absorbs the latency it takes
-  to produce.
+  every mentioned handle at once, and the verdict is published to the store the
+  ``await`` long-poll reads, so the two paths can never disagree.
 
 Like the synthesizer, cognition is one throwaway ``pi`` turn off the event loop
 — no session, no memory between messages.
@@ -43,16 +41,15 @@ import logging
 import re
 import tempfile
 import uuid
-from collections import OrderedDict
-from dataclasses import dataclass, field, replace
-from datetime import UTC, datetime
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from app.config import settings
-from app.services import l9
-from app.services.engine_events import SUMMON_FILTER, RoomEvent, RoomEventContext, lifecycle
+from app.services import l9, summon_filter
+from app.services.engine_events import RoomEvent, RoomEventContext, lifecycle
 from app.services.l9_slim import serialize_content
+from app.services.summon_filter import MENTION, WAKE, SummonContext, SummonVerdict, norm
 
 if TYPE_CHECKING:
     from app.services.l9_models import L9
@@ -63,76 +60,11 @@ logger = logging.getLogger(__name__)
 #: The engine kind this module owns.
 ENGINE_KIND = "summonguard"
 
-#: The two verdicts. ``wake`` serves the message as the handle's turn (today's
-#: behaviour); ``mention`` records it and lets the handle sleep.
-WAKE = "wake"
-MENTION = "mention"
-
 #: Handles that are room infrastructure rather than wakeable participants.
 _NEVER_CLASSIFIED = frozenset({"system", "backend", "everyone", "here", "room", "all"})
 
-#: How many verdicts per room the introspection surface keeps. Small on purpose:
-#: this is a "why didn't @alice wake?" window, not an audit log — the transcript
-#: is the durable record.
-_VERDICT_HISTORY = 100
-
 _LEADING_MENTION_RE = re.compile(r"^\s*(?:@[A-Za-z0-9][\w-]*[\s,:]*)+")
 _MENTION_RE = re.compile(r"(?:^|(?<=[\s(<]))@([A-Za-z0-9][\w-]*)")
-
-
-# ── Verdict types (pure) ─────────────────────────────────────────────────────
-
-
-@dataclass(frozen=True)
-class SummonContext:
-    """What the filter is asked to judge: one message, its mentioned handles."""
-
-    room: str
-    message_id: str
-    sender: str
-    text: str
-    handles: tuple[str, ...]
-
-
-@dataclass
-class SummonVerdict:
-    """One message's decisions, plus how they were reached."""
-
-    room: str
-    message_id: str
-    sender: str
-    text: str
-    #: handle -> ``wake`` | ``mention``
-    decisions: dict[str, str]
-    #: handle -> one-line justification (empty for short-circuited wakes)
-    reasons: dict[str, str] = field(default_factory=dict)
-    #: ``pi`` | ``leading-mention`` | ``fail-open`` | ``disabled`` | ``mixed``
-    source: str = "pi"
-    decided_at: str = ""
-
-    def wakes(self, handle: str) -> bool:
-        """True unless this verdict explicitly classified ``handle`` as provenance."""
-        return self.decisions.get(_norm(handle), WAKE) != MENTION
-
-    def as_dict(self) -> dict[str, Any]:
-        return {
-            "room": self.room,
-            "message_id": self.message_id,
-            "sender": self.sender,
-            "text": self.text,
-            "decisions": dict(self.decisions),
-            "reasons": dict(self.reasons),
-            "source": self.source,
-            "decided_at": self.decided_at,
-        }
-
-
-def _norm(handle: str) -> str:
-    return handle.strip().lstrip("@").lower()
-
-
-def _now() -> str:
-    return datetime.now(UTC).isoformat()
 
 
 def _leading_mention_is_wake(text: str, handle: str) -> bool:
@@ -146,8 +78,8 @@ def _leading_mention_is_wake(text: str, handle: str) -> bool:
     match = _LEADING_MENTION_RE.match(text or "")
     if match is None:
         return False
-    lead = {_norm(h) for h in _MENTION_RE.findall(match.group(0))}
-    return _norm(handle) in lead
+    lead = {norm(h) for h in _MENTION_RE.findall(match.group(0))}
+    return norm(handle) in lead
 
 
 def parse_decisions(raw: str, handles: tuple[str, ...]) -> tuple[dict[str, str], dict[str, str]]:
@@ -169,11 +101,11 @@ def parse_decisions(raw: str, handles: tuple[str, ...]) -> tuple[dict[str, str],
     if not isinstance(data, dict):
         return {}, {}
 
-    wanted = {_norm(h) for h in handles}
+    wanted = {norm(h) for h in handles}
     decisions: dict[str, str] = {}
     reasons: dict[str, str] = {}
     for key, value in data.items():
-        handle = _norm(str(key))
+        handle = norm(str(key))
         if handle not in wanted:
             continue
         if isinstance(value, str):
@@ -239,70 +171,6 @@ def _pi_complete(prompt: str, timeout_s: float) -> str:
     return brain(prompt)
 
 
-# ── Verdict store ────────────────────────────────────────────────────────────
-
-
-class VerdictStore:
-    """Per-room verdicts by message id, with waiters for the classification.
-
-    The persister classifies on ingest; ``await`` needs the answer for the same
-    message a moment later. Rather than have the poll classify again (and risk
-    the two paths disagreeing), it waits here on the event this store sets.
-    """
-
-    def __init__(self, history: int = _VERDICT_HISTORY) -> None:
-        self._history = history
-        self._by_room: dict[str, OrderedDict[str, SummonVerdict]] = {}
-        self._waiters: dict[tuple[str, str], asyncio.Event] = {}
-
-    def _event(self, room: str, message_id: str) -> asyncio.Event:
-        return self._waiters.setdefault((room, message_id), asyncio.Event())
-
-    def begin(self, room: str, message_id: str) -> None:
-        """Mark a classification in flight so a waiter blocks instead of failing open."""
-        self._event(room, message_id)
-
-    def put(self, verdict: SummonVerdict) -> None:
-        room = self._by_room.setdefault(verdict.room, OrderedDict())
-        room[verdict.message_id] = verdict
-        while len(room) > self._history:
-            room.popitem(last=False)
-        self._event(verdict.room, verdict.message_id).set()
-
-    def get(self, room: str, message_id: str) -> SummonVerdict | None:
-        return self._by_room.get(room, {}).get(message_id)
-
-    def pending(self, room: str, message_id: str) -> bool:
-        """True when a classification was started for this message and hasn't landed."""
-        event = self._waiters.get((room, message_id))
-        return event is not None and not event.is_set()
-
-    async def wait(self, room: str, message_id: str, timeout_s: float) -> SummonVerdict | None:
-        """The verdict for a message, waiting up to ``timeout_s`` for one in flight."""
-        existing = self.get(room, message_id)
-        if existing is not None:
-            return existing
-        if not self.pending(room, message_id):
-            return None
-        try:
-            await asyncio.wait_for(self._event(room, message_id).wait(), timeout=timeout_s)
-        except TimeoutError:
-            return None
-        return self.get(room, message_id)
-
-    def recent(self, room: str, limit: int = 20) -> list[SummonVerdict]:
-        """Most recent verdicts for ``room``, newest first."""
-        return list(reversed(list(self._by_room.get(room, {}).values())))[:limit]
-
-    def clear(self) -> None:
-        self._by_room.clear()
-        self._waiters.clear()
-
-
-#: Process-wide store — the persister writes, ``await`` and the route read.
-verdicts = VerdictStore()
-
-
 # ── The engine ───────────────────────────────────────────────────────────────
 
 
@@ -311,8 +179,8 @@ class SummonGuardEngine:
 
     Unlike the aligner and the synthesizer — engines that *act* when summoned —
     this one's work happens on registration: it subscribes to the room lifecycle
-    and keeps each room's :data:`SUMMON_FILTER` hook in sync with that room's
-    manifests. Summoning it directly just asks it what it has been deciding.
+    and keeps each room's summon filter in sync with that room's manifests.
+    Summoning it directly just asks it what it has been deciding.
     """
 
     def __init__(
@@ -328,7 +196,12 @@ class SummonGuardEngine:
     # -- lifecycle wiring --
 
     def wire(self) -> None:
-        """Subscribe to the lifecycle events that install/remove the hook."""
+        """Subscribe to the lifecycle events that install/remove the filter.
+
+        The returned disposers are dropped: this engine is built at the
+        composition root and lives as long as the process, so there is no unmount
+        to tear down. An engine that becomes dynamically loadable would hold them.
+        """
         for event in (
             RoomEvent.ENGINE_REGISTERED,
             RoomEvent.ENGINE_REMOVED,
@@ -345,14 +218,17 @@ class SummonGuardEngine:
         Reads the room's engine manifests rather than trusting the event
         payload, so it is idempotent and self-healing: a guard registered while
         the backend was down installs on the room's next provision, and one
-        deleted from the room drops out on the next lifecycle event.
+        deleted from the room drops out on the next lifecycle event. The manifest
+        set is the authority — an in-memory hook never outlives it.
         """
         guards = self._registered_guards(room)
+        installed = summon_filter.owners(room)
         for owner in guards:
-            lifecycle.install(room, SUMMON_FILTER, owner, self.classify)
-        for owner in lifecycle.owners(room, SUMMON_FILTER):
+            if owner not in installed:
+                summon_filter.install(room, owner, self.classify)
+        for owner in installed:
             if owner not in guards:
-                lifecycle.uninstall(room, SUMMON_FILTER, owner)
+                summon_filter.uninstall(room, owner)
         return guards
 
     @staticmethod
@@ -372,12 +248,12 @@ class SummonGuardEngine:
     async def classify(self, ctx: SummonContext) -> dict[str, str]:
         """Decide each mentioned handle in one message; publish the verdict.
 
-        Returns the ``{handle: wake|mention}`` map, and stores the full verdict
-        (with reasons) so ``await`` and the introspection route read the same
-        decision rather than re-deriving it.
+        Returns the ``{handle: wake|mention}`` map, and publishes the full
+        verdict (with reasons) so ``await`` and the introspection route read the
+        same decision rather than re-deriving it.
         """
         candidates = tuple(
-            h for h in dict.fromkeys(_norm(h) for h in ctx.handles) if h not in _NEVER_CLASSIFIED
+            h for h in dict.fromkeys(norm(h) for h in ctx.handles) if h not in _NEVER_CLASSIFIED
         )
         decisions: dict[str, str] = {}
         reasons: dict[str, str] = {}
@@ -414,17 +290,18 @@ class SummonGuardEngine:
         for handle in candidates:
             decisions.setdefault(handle, WAKE)
 
-        verdict = SummonVerdict(
-            room=ctx.room,
-            message_id=ctx.message_id,
-            sender=ctx.sender,
-            text=ctx.text,
-            decisions=decisions,
-            reasons=reasons,
-            source=source,
-            decided_at=_now(),
+        summon_filter.verdicts.put(
+            SummonVerdict(
+                room=ctx.room,
+                message_id=ctx.message_id,
+                sender=ctx.sender,
+                text=ctx.text,
+                decisions=decisions,
+                reasons=reasons,
+                source=source,
+                decided_at=summon_filter.now(),
+            )
         )
-        verdicts.put(verdict)
         suppressed = [h for h, d in decisions.items() if d == MENTION]
         if suppressed:
             logger.info(
@@ -482,7 +359,7 @@ class SummonGuardEngine:
         if _registered_engine_kind(room, handle) != ENGINE_KIND:
             return
         sender = envelope_sender(envelope)
-        if sender is not None and _norm(sender) == _norm(handle):
+        if sender is not None and norm(sender) == norm(handle):
             return
         task = asyncio.create_task(self._report(room, handle))
         self._tasks.add(task)
@@ -492,7 +369,7 @@ class SummonGuardEngine:
         managed = self._manager.get(room)
         if managed is None:
             return
-        recent = verdicts.recent(room, limit=5)
+        recent = summon_filter.verdicts.recent(room, limit=5)
         if not recent:
             body = "Guarding this room's summons. Nothing classified yet."
         else:
@@ -519,56 +396,3 @@ class SummonGuardEngine:
             logger.warning("summonguard failed to broadcast on room %s", room)
         if managed.persister is not None:
             managed.persister.ingest_local(env, content)
-
-
-# ── The two consumer-facing helpers ──────────────────────────────────────────
-
-
-def guarded(room: str) -> bool:
-    """True when some engine installed a summon filter in ``room``."""
-    return bool(lifecycle.hooks(room, SUMMON_FILTER))
-
-
-async def decide(ctx: SummonContext) -> dict[str, str]:
-    """Run ``ctx`` through every summon filter installed in its room.
-
-    With no filter installed every handle wakes — today's behaviour. With
-    several, a handle is suppressed only when **all** of them call it provenance:
-    the guards are advisory, and the fail-open bias holds across them too.
-    """
-    filters = lifecycle.hooks(ctx.room, SUMMON_FILTER)
-    if not filters:
-        return {_norm(h): WAKE for h in ctx.handles}
-    verdicts.begin(ctx.room, ctx.message_id)
-    merged: dict[str, str] = {}
-    for fn in filters:
-        try:
-            result = await fn(ctx)
-        except Exception:
-            logger.exception("summon filter failed on room %s — failing open", ctx.room)
-            return {_norm(h): WAKE for h in ctx.handles}
-        for handle, decision in (result or {}).items():
-            key = _norm(handle)
-            if merged.get(key, MENTION) == MENTION and decision == MENTION:
-                merged[key] = MENTION
-            else:
-                merged[key] = WAKE
-    for handle in ctx.handles:
-        merged.setdefault(_norm(handle), WAKE)
-    return merged
-
-
-async def wakes(room: str, message_id: str, handle: str) -> bool:
-    """Whether ``handle`` should be woken by ``message_id`` (the ``await`` gate).
-
-    Waits out an in-flight classification — the long-poll has the time, and the
-    alternative is delivering a turn the guard was about to suppress. An
-    unguarded room, an unclassified message, or a classification that overruns
-    the wait all answer ``True``.
-    """
-    if not guarded(room):
-        return True
-    verdict = await verdicts.wait(room, message_id, settings.SUMMONGUARD_WAKE_TIMEOUT_S)
-    if verdict is None:
-        return True
-    return verdict.wakes(handle)
