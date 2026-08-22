@@ -968,6 +968,11 @@ SKILL_MD_URL = (
     "mycelium/SKILL.md"
 )
 
+AGENTS_MD_URL = (
+    "https://raw.githubusercontent.com/mycelium-io/mycelium/main/"
+    "mycelium-cli/src/mycelium/integrations/cursor/assets/AGENTS.md"
+)
+
 # Every markdown-backed section links back to the file it was rendered from, so
 # a reader who spots a mistake can fix it where the source of truth lives.
 EDIT_BASE_URL = (
@@ -1069,7 +1074,7 @@ def _topnav() -> str:
     <span class="brand-word">mycelium</span>
   </a>
   <nav class="sectionnav">
-    <a href="{SKILL_MD_URL}" target="_blank" rel="noopener">SKILL.md ↗</a>
+    <a href="{AGENTS_MD_URL}" target="_blank" rel="noopener">AGENTS.md ↗</a>
   </nav>
   <div class="topnav-right">
     <div class="docsearch" id="docsearch">
@@ -1140,6 +1145,9 @@ def _sidebar(nav: list[NavPage], active_page_id: str) -> str:
     out.append('    <div class="nav-external">')
     out.append(
         f'      <a href="{SKILL_MD_URL}" target="_blank" rel="noopener">SKILL.md ↗</a>'
+    )
+    out.append(
+        f'      <a href="{AGENTS_MD_URL}" target="_blank" rel="noopener">AGENTS.md ↗</a>'
     )
     out.append("    </div>")
     out.append("  </nav>")
