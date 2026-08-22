@@ -198,6 +198,10 @@ function RoomWorkspace() {
   const statusLeft = (
     <>
       <span
+        // A stable hook for anything that has to wait until the room is
+        // actually connected — the screenshot pipeline gates on this rather
+        // than on the label text, which is a translation away from breaking.
+        data-connection={connected ? "live" : "reconnecting"}
         className="rounded px-1.5 py-0.5 text-micro font-medium"
         style={{
           color: connected ? "var(--green)" : "var(--yellow)",

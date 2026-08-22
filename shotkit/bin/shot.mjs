@@ -236,6 +236,7 @@ function report(result, flags) {
   const size = result.width ? ` · ${result.width}x${result.height}` : "";
   err(`[shot] ${result.op} · ${bits.join(" · ")} · ${result.mode ?? "daemon"}${size}`);
   if (result.meta?.exitCode) err(`[shot] command exited ${result.meta.exitCode}`);
+  if (result.meta?.hint) err(`[shot] ${result.meta.hint}`);
   for (const step of result.trace ?? []) err(`[shot]   ${step.action} (${step.ms}ms)`);
   for (const shot of result.shots ?? []) err(`[shot]   ${shot.viewport} · ${shot.ms}ms · ${shot.width}x${shot.height}`);
 
