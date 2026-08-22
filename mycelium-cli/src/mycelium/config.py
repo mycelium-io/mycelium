@@ -17,6 +17,7 @@ Load priority (highest to lowest):
 """
 
 import os
+import warnings
 from pathlib import Path
 from typing import Any
 
@@ -92,13 +93,8 @@ class SlimConfig(BaseModel):
             "per-agent identity). 'signerjwt' opts into the SignerJwt floor (#476): "
             "each member presents a per-agent self-signed ES256 identity so members "
             "are cryptographically distinct, individually revocable MLS "
-            "participants. 'spire' opts into SPIRE/SPIFFE (#579): each member "
-            "presents a SPIRE-attested JWT-SVID from the Workload API (tightest "
-            "attestation, heaviest deploy: a co-located SPIRE server + node daemon, "
-            "brought up automatically by 'mycelium up' via the shipped 'spire' compose "
-            "profile; #588. Selecting 'signerjwt'/'spire' with no "
-            "resolvable material degrades to 'psk' unless "
-            "MYCELIUM_SLIM_IDENTITY_REQUIRE=1 fails closed."
+            "participants. Selecting 'signerjwt' with no resolvable material "
+            "degrades to 'psk' unless MYCELIUM_SLIM_IDENTITY_REQUIRE=1 fails closed."
         ),
     )
 
@@ -128,10 +124,22 @@ class SlimConfig(BaseModel):
     @field_validator("identity")
     @classmethod
     def _validate_identity(cls, v: str) -> str:
-        """Only ``psk`` / ``signerjwt`` / ``spire`` are valid identity tiers."""
+        """Only ``psk`` / ``signerjwt`` are valid identity tiers.
+
+        The retired ``spire`` tier (#668) degrades to ``psk`` with a warning rather
+        than raising: a config written before the removal would otherwise fail every
+        command, including the ``config set`` needed to correct it.
+        """
         normalized = v.strip().lower()
-        if normalized not in ("psk", "signerjwt", "spire"):
-            raise ValueError(f"slim.identity must be 'psk', 'signerjwt', or 'spire', got {v!r}")
+        if normalized == "spire":
+            warnings.warn(
+                "slim.identity='spire' has been retired; falling back to 'psk'. "
+                "Set slim.identity to 'psk' or 'signerjwt' to silence this.",
+                stacklevel=2,
+            )
+            return "psk"
+        if normalized not in ("psk", "signerjwt"):
+            raise ValueError(f"slim.identity must be 'psk' or 'signerjwt', got {v!r}")
         return normalized
 
     @field_validator("node_endpoint")
@@ -370,7 +378,7 @@ class RuntimeConfig(BaseModel):
         description=(
             "Comma-separated origins the Next.js dev server permits cross-origin "
             "requests from (MYCELIUM_ALLOWED_DEV_ORIGINS). Add your public IP or "
-            "hostname when running `mycelium up --ui` (or pnpm dev) behind a reverse "
+            "hostname when running `mycelium up` (or pnpm dev) behind a reverse "
             "proxy or NAT and accessing the UI from a browser on a different host. "
             "Production Docker builds do not use this — the browser always hits its "
             "own origin. Example: mycelium config set runtime.allowed_dev_origins "

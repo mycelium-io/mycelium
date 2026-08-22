@@ -7,21 +7,43 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { AtSign, BarChart3, Bell, BellOff, Boxes, Check, Plus, Search, SearchX, type LucideIcon } from "lucide-react";
+import {
+  Bell,
+  BellOff,
+  BellRing,
+  Boxes,
+  Check,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Plus,
+  Search,
+  SearchX,
+  type LucideIcon,
+} from "lucide-react";
 import { getAppEventsSSEUrl, type Room } from "@/lib/api";
 import { useRooms } from "@/lib/room-data";
 import { roomLevel, type RoomLevel } from "@/lib/notifications";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CreateRoomDialog } from "@/components/create-room-dialog";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { NotificationBell } from "@/components/notification-bell";
+import { ActingAsPicker } from "@/components/acting-as-picker";
 import { useNotifications } from "@/components/notifications-provider";
 import { EmptyState } from "@/components/empty-state";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tooltip } from "@/components/ui/tooltip";
 import { KeyBadge } from "@/components/key-badge";
 import { useCommands, useKeyAction } from "@/components/keymap-provider";
 import { useOpenInstallModal } from "@/components/install-modal";
+import { chordFor, chordKey } from "@/lib/keymap";
 import type { PaletteCommand } from "@/lib/commands";
+
+/** "Collapse the rooms rail (⌥B)" — spelled into the title so the strip says
+ *  how to get back without holding the reveal modifier first. */
+function railToggleTitle(expanded: boolean): string {
+  const chord = chordFor("rooms.toggle");
+  const suffix = chord ? ` (${chordKey(chord)})` : "";
+  return `${expanded ? "Collapse" : "Expand"} the rooms rail${suffix}`;
+}
 
 /** Two-letter monogram from a room name (mirrors the agent avatars). */
 function monogram(name: string): string {
@@ -33,9 +55,12 @@ function monogram(name: string): string {
 interface Props {
   /** The room currently open, so its row is highlighted. Null on the home view. */
   activeRoom?: string | null;
+  /** Draw the rail as a strip of room monograms rather than a list of names. */
+  collapsed?: boolean;
+  onCollapsedChange?: (collapsed: boolean) => void;
 }
 
-export function RoomsSidebar({ activeRoom = null }: Props) {
+export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsedChange }: Props) {
   const [query, setQuery] = useState("");
   const [showCreate, setShowCreate] = useState(false);
 
@@ -163,8 +188,91 @@ export function RoomsSidebar({ activeRoom = null }: Props) {
   );
   useCommands(commands);
 
+  // Collapsed: the same rail as a strip of room monograms — every room still
+  // one click away, the filter and the names traded for the 48px the window
+  // can spare. The dialogs stay mounted here so the create/notification flows
+  // work from the strip too.
+  if (collapsed) {
+    return (
+      <aside data-tour="rooms" className="flex w-full min-w-0 flex-col items-center overflow-hidden bg-surface/50">
+        <Tooltip content="Command center" side="right">
+          <Link
+            href="/"
+            className="relative flex h-[52px] w-full flex-shrink-0 items-center justify-center border-b border-border transition-colors hover:bg-hairline"
+          >
+            <Image src="/logo.png" alt="Mycelium" width={20} height={20} className="opacity-90" />
+            <KeyBadge action="nav.home" />
+          </Link>
+        </Tooltip>
+
+        <Tooltip content={railToggleTitle(false)} side="right">
+          <button
+            onClick={() => onCollapsedChange?.(false)}
+            aria-label={railToggleTitle(false)}
+            className="relative mt-2 flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-surface hover:text-text"
+          >
+            <PanelLeftOpen className="size-[18px]" />
+            <KeyBadge action="rooms.toggle" overlay />
+          </button>
+        </Tooltip>
+        <div className="mt-1 h-px w-5 bg-border" />
+
+        <ScrollArea className="min-h-0 w-full flex-1">
+          <nav className="flex flex-col items-center gap-1 py-2">
+            {filtered.map((room, i) => {
+              const active = room.name === activeRoom;
+              const unread = active ? 0 : unreadByRoom.get(room.name) ?? 0;
+              return (
+                <Tooltip
+                  key={room.name}
+                  content={unread > 0 ? `${room.name} — ${unread} unread` : room.name}
+                  side="right"
+                >
+                  <Link
+                    href={`/room/${encodeURIComponent(room.name)}`}
+                    className={`relative flex size-8 flex-shrink-0 items-center justify-center rounded-md font-mono text-micro font-semibold transition-colors ${
+                      active
+                        ? "bg-accent text-accent-fg"
+                        : "bg-surface text-muted-foreground hover:text-text"
+                    }`}
+                  >
+                    <span aria-hidden>{monogram(room.name)}</span>
+                    <span className="sr-only">{room.name}</span>
+                    {unread > 0 && (
+                      <span
+                        aria-label={`${unread} unread`}
+                        className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-accent ring-2 ring-surface"
+                      />
+                    )}
+                    {i < 9 && <KeyBadge chord={`alt+${i + 1}`} overlay />}
+                  </Link>
+                </Tooltip>
+              );
+            })}
+          </nav>
+        </ScrollArea>
+
+        <Tooltip content="New room" side="right">
+          <button
+            onClick={() => setShowCreate(true)}
+            aria-label="New room"
+            className="mb-1 flex size-8 flex-shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface hover:text-text"
+          >
+            <Plus className="size-4" />
+          </button>
+        </Tooltip>
+        <div className="flex w-full flex-col items-center gap-1 border-t border-border py-2">
+          <ActingAsPicker compact />
+          <NotificationBell />
+        </div>
+
+        <CreateRoomDialog open={showCreate} onClose={() => setShowCreate(false)} onCreated={refresh} />
+      </aside>
+    );
+  }
+
   return (
-    <aside data-tour="rooms" className="flex w-[236px] flex-shrink-0 flex-col border-r border-border bg-surface/50">
+    <aside data-tour="rooms" className="flex min-w-0 flex-1 flex-col overflow-hidden bg-surface/50">
       <Link
         href="/"
         className="relative flex h-[52px] flex-shrink-0 items-center gap-2.5 border-b border-border px-4 transition-colors hover:bg-hairline"
@@ -186,14 +294,25 @@ export function RoomsSidebar({ activeRoom = null }: Props) {
       <div className="flex items-center gap-2 px-3 pt-3 pb-2">
         <span className="text-micro font-semibold uppercase tracking-wide text-muted-foreground">Rooms</span>
         <span className="text-micro tabular text-muted-foreground">{rooms.length}</span>
-        <button
-          onClick={() => setShowCreate(true)}
-          aria-label="New room"
-          title="New room"
-          className="ml-auto flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface hover:text-text"
-        >
-          <Plus className="size-4" />
-        </button>
+        <Tooltip content="New room">
+          <button
+            onClick={() => setShowCreate(true)}
+            aria-label="New room"
+            className="ml-auto flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface hover:text-text"
+          >
+            <Plus className="size-4" />
+          </button>
+        </Tooltip>
+        <Tooltip content={railToggleTitle(true)}>
+          <button
+            onClick={() => onCollapsedChange?.(true)}
+            aria-label={railToggleTitle(true)}
+            className="relative flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface hover:text-text"
+          >
+            <PanelLeftClose className="size-4" />
+            <KeyBadge action="rooms.toggle" overlay />
+          </button>
+        </Tooltip>
       </div>
       <div className="px-3 pb-2">
         <div className="flex items-center gap-2 rounded-lg border border-border bg-bg px-2.5 py-1.5 focus-within:border-accent">
@@ -272,17 +391,13 @@ export function RoomsSidebar({ activeRoom = null }: Props) {
         </nav>
       </ScrollArea>
 
-      <div className="flex items-center gap-1 border-t border-border px-3 py-2">
-        <Link
-          href="/metrics"
-          className="flex items-center gap-2 rounded-md px-2 py-1.5 text-label font-medium text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
-        >
-          <BarChart3 className="size-4" />
-          Metrics
-        </Link>
-        <div className="ml-auto flex items-center gap-0.5">
+      {/* The account corner: who you're acting as, with your unread activity
+          beside it — one place on every screen, rather than a picker riding
+          the room header. */}
+      <div className="flex items-center gap-1 border-t border-border px-2 py-2">
+        <ActingAsPicker />
+        <div className="flex flex-shrink-0 items-center">
           <NotificationBell />
-          <ThemeToggle />
         </div>
       </div>
 
@@ -292,13 +407,14 @@ export function RoomsSidebar({ activeRoom = null }: Props) {
 }
 
 const LEVEL_OPTIONS: { level: RoomLevel; label: string; hint: string; Icon: LucideIcon }[] = [
-  { level: "all", label: "All messages", hint: "badge + bell + sound", Icon: Bell },
-  { level: "mentions", label: "Only mentions", hint: "badge; bell on @you", Icon: AtSign },
+  { level: "all", label: "All messages", hint: "badge + bell + sound", Icon: BellRing },
+  { level: "mentions", label: "Only mentions", hint: "badge; bell on @you", Icon: Bell },
   { level: "muted", label: "Muted", hint: "nothing", Icon: BellOff },
 ];
 
-/** Discord-style notification level picker for one room. The trigger wears the
- *  current level's glyph; the menu sets it. */
+/** Discord-style notification level picker for one room. The trigger is always a
+ *  bell — it's the notification control, not a readout of the level; the level
+ *  lives in the menu it opens (and the row's own BellOff marks a muted room). */
 function RoomLevelMenu({
   room,
   level,
@@ -309,7 +425,6 @@ function RoomLevelMenu({
   onSet: (room: string, level: RoomLevel) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const Current = LEVEL_OPTIONS.find((o) => o.level === level)?.Icon ?? Bell;
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
@@ -317,7 +432,7 @@ function RoomLevelMenu({
         onClick={(e) => e.preventDefault()}
         className="flex size-5 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-surface hover:text-text"
       >
-        <Current className="size-3.5" />
+        <Bell className="size-3.5" />
       </PopoverTrigger>
       <PopoverContent className="w-48 p-1">
         {LEVEL_OPTIONS.map(({ level: l, label, hint, Icon }) => (

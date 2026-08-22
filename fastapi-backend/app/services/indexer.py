@@ -22,7 +22,13 @@ from pathlib import Path
 
 from app.services import links, search_index
 from app.services.embedding import embed_text
-from app.services.filesystem import get_data_dir, list_memory_files, parse_memory
+from app.services.filesystem import (
+    get_data_dir,
+    list_memory_files,
+    parse_memory,
+    parse_timestamp,
+    unmanaged_meta,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -34,22 +40,9 @@ def _file_mtime(base_dir: Path, key: str) -> datetime:
     return datetime.fromtimestamp(os.path.getmtime(path), tz=UTC)
 
 
-def _parse_datetime(value: str | datetime | None) -> datetime | None:
-    """Parse a datetime from a YAML frontmatter value."""
-    if value is None:
-        return None
-    if isinstance(value, datetime):
-        return value
-    try:
-        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-    except (ValueError, TypeError):
-        return None
-
-
 def _iso(value: str | datetime | None, default: datetime) -> str:
     """Normalize a frontmatter timestamp to an ISO-8601 string."""
-    parsed = _parse_datetime(value)
-    return (parsed or default).isoformat()
+    return (parse_timestamp(value) or default).isoformat()
 
 
 def _build_record(room_name: str, key: str, content: str, meta: dict) -> dict:
@@ -68,8 +61,15 @@ def _build_record(room_name: str, key: str, content: str, meta: dict) -> dict:
         "updated_by": meta.get("updated_by", created_by),
         "version": meta.get("version", 1),
         "tags": meta.get("tags"),
+        "meta": unmanaged_meta(meta) or None,
+        "expandable": links.is_expandable(meta),
         "created_at": _iso(meta.get("created_at"), now),
         "updated_at": _iso(meta.get("updated_at"), now),
+        # When this record was built, which is what the unchanged-file check
+        # compares against the file's mtime. ``updated_at`` can't stand in for
+        # it: a memory synced from another store carries *that* store's write
+        # time, which is older than the mtime of the file it just landed in.
+        "indexed_at": now.isoformat(),
         "file_path": f"rooms/{room_name}/{key}.md",
     }
 
@@ -98,7 +98,7 @@ async def index_room(room_name: str, *, force: bool = False) -> dict:
             prior = existing.get(key)
             if not force and prior is not None:
                 mtime = _file_mtime(room_dir, key)
-                indexed_at = _parse_datetime(prior.get("updated_at"))
+                indexed_at = parse_timestamp(prior.get("indexed_at") or prior.get("updated_at"))
                 if indexed_at and indexed_at >= mtime:
                     records.append(prior)
                     stats["skipped"] += 1

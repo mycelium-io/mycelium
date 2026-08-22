@@ -22,9 +22,10 @@ export interface MemoryLike {
   content_text?: string;
   version: number;
   created_by: string;
-  updated_by?: string;
+  updated_by?: string | null;
   updated_at?: string;
   file_path?: string;
+  tags?: string[];
 }
 
 function formatValue(v: unknown): string {
@@ -225,12 +226,10 @@ export function MemoryDetail({
   const text = memory.content_text ?? formatValue(memory.value);
   const displayText = !raw && renderedBody ? renderedBody : text;
   const rawIsJson = useMemo(() => isJsonRawText(text), [text]);
+  // jsonView only means anything in raw mode.
+  const effectiveJsonView = raw && jsonView;
   const rawDisplay =
-    jsonView && rawIsJson ? (prettyPrintJsonRawText(text) ?? text) : text;
-
-  useEffect(() => {
-    if (!raw) setJsonView(false);
-  }, [raw]);
+    effectiveJsonView && rawIsJson ? (prettyPrintJsonRawText(text) ?? text) : text;
 
   useEffect(() => {
     if (!roomName) return;
@@ -306,6 +305,21 @@ export function MemoryDetail({
             <span className="break-all font-mono text-micro text-muted-foreground">{memory.file_path}</span>
           </Meta>
         )}
+        {memory.tags && memory.tags.length > 0 && (
+          <div className="col-span-2 flex flex-col gap-0.5">
+            <span className="text-micro uppercase tracking-wide text-faint">Tags</span>
+            <div className="flex flex-wrap gap-1">
+              {memory.tags.map(tag => (
+                <span
+                  key={tag}
+                  className="rounded border border-border bg-surface px-1.5 py-0.5 font-mono text-micro text-muted-foreground"
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className={`flex flex-wrap items-center gap-2 ${pad} pt-4`}>
@@ -325,11 +339,11 @@ export function MemoryDetail({
         {raw && rawIsJson && (
           <button
             type="button"
-            aria-pressed={jsonView}
+            aria-pressed={effectiveJsonView}
             aria-label="Pretty-print JSON"
             onClick={() => setJsonView(on => !on)}
             className={`rounded-lg border px-2.5 py-1 text-micro font-medium transition-colors ${
-              jsonView
+              effectiveJsonView
                 ? "border-accent/40 bg-accent-soft/40 text-accent"
                 : "border-border bg-surface text-muted-foreground hover:text-text"
             }`}
@@ -342,7 +356,7 @@ export function MemoryDetail({
       <div className={`${pad} py-4`}>
         {raw ? (
           <pre className="overflow-x-auto rounded-lg border border-border bg-surface p-3 font-mono text-micro leading-relaxed text-text whitespace-pre-wrap break-words">
-            {jsonView ? highlightJson(rawDisplay) : rawDisplay}
+            {effectiveJsonView ? highlightJson(rawDisplay) : rawDisplay}
           </pre>
         ) : (
           <MarkdownContent

@@ -5,6 +5,7 @@
 
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useDefaultLayout } from "react-resizable-panels";
 import { type EpisodeSummary } from "@/lib/api";
 import { useRoom, useRoomRevalidate } from "@/lib/room-data";
 import { parseFocus, type FocusTarget } from "@/lib/search";
@@ -15,10 +16,22 @@ import { RoomChatBox } from "@/components/room-chat-box";
 import { RoomInspector, type Tab } from "@/components/room-inspector";
 import { RoomTour } from "@/components/room-tour";
 import { GlobalStatusItems, StatusButton } from "@/components/status-items";
-import { ActingAsPicker } from "@/components/acting-as-picker";
+import { Tooltip } from "@/components/ui/tooltip";
 import { useCommands, useKeyAction, useKeyScope } from "@/components/keymap-provider";
 import type { PaletteCommand } from "@/lib/commands";
 import { useRoomStatus } from "@/lib/use-status";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
+import {
+  INSPECTOR_FOLD_WIDTH,
+  INSPECTOR_PANEL,
+  MAIN_PANEL,
+  PANEL_INSPECTOR,
+  PANEL_MAIN,
+  ROOM_GROUP_ID,
+  ROOM_PANEL_IDS,
+  layoutStorage,
+} from "@/lib/panel-layout";
+import { useCollapsibleRail } from "@/lib/use-collapsible-rail";
 
 function episodeSummaryLabel(episodes: EpisodeSummary[] | null): { text: string; color: string } | null {
   if (!episodes || episodes.length === 0) return null;
@@ -52,16 +65,13 @@ function RoomWorkspace() {
   const [inspectorOpen, setInspectorOpen] = useState(true);
   const [editorView, setEditorView] = useState<View>("channel");
   const [negPhase, setNegPhase] = useState<NegotiationPhase>("idle");
-  const [tourActive, setTourActive] = useState(false);
+  // Hoisted above the state below so the tour flag can be seeded from the URL.
+  const searchParamsEarly = useSearchParams();
+  // `?tour=1` seeds the tour once on mount; exiting is client-only state after that.
+  const [tourActive, setTourActive] = useState(() => searchParamsEarly.get("tour") === "1");
   const [inviteEngine, setInviteEngine] = useState(false);
   const [focusMemory, setFocusMemory] = useState<{ key: string; nonce: number } | null>(null);
-
-  // Start the coached tour when arriving via "Run a sample coordination".
-  useEffect(() => {
-    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("tour") === "1") {
-      setTourActive(true);
-    }
-  }, []);
+  const [focusEpisode, setFocusEpisode] = useState<{ shortId: string; nonce: number } | null>(null);
 
   const handleTourExit = useCallback(() => {
     setTourActive(false);
@@ -87,6 +97,13 @@ function RoomWorkspace() {
     setFocusMemory(prev => ({ key, nonce: (prev?.nonce ?? 0) + 1 }));
   }, []);
 
+  // An episode tag clicked in chat opens the Episodes rail on that episode.
+  const openEpisode = useCallback((shortId: string) => {
+    setInspectorTab("episodes");
+    setInspectorOpen(true);
+    setFocusEpisode(prev => ({ shortId, nonce: (prev?.nonce ?? 0) + 1 }));
+  }, []);
+
   const handleEngineInviteShown = useCallback(() => setInviteEngine(false), []);
 
   // Arriving from search: `?focus=<type>:<id>` names one item in this room.
@@ -94,7 +111,7 @@ function RoomWorkspace() {
   // row — a result opens the item, not just the room it is in. The parameter is
   // consumed on arrival so returning to a rail later doesn't re-select, and so
   // jumping to the same item twice is a change the panel sees both times.
-  const searchParams = useSearchParams();
+  const searchParams = searchParamsEarly;
   const router = useRouter();
   const focusParam = searchParams.get("focus");
   const [focus, setFocus] = useState<FocusTarget | null>(null);
@@ -112,6 +129,9 @@ function RoomWorkspace() {
       router.replace(memoryHref(roomName, target.id));
       return;
     }
+    // The focus target is consumed here rather than derived: it has to outlive
+    // the parameter, which is cleared as soon as it has been acted on.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setFocus(target);
     if (target.type === "episode") openTab("episodes");
     else if (target.type === "agent") openTab("agents");
@@ -155,9 +175,41 @@ function RoomWorkspace() {
 
   const episodeLabel = useMemo(() => episodeSummaryLabel(episodes), [episodes]);
 
+  // Chat vs. inspector is a reading preference, so the split is remembered per
+  // browser rather than reset on every visit.
+  // Both callbacks: `onLayoutChanged` fires when a drag is committed, but these
+  // are nested groups — widening the rooms rail resizes this group's container
+  // without anyone touching its own seam, and only `onLayoutChange` sees that.
+  // Saving on the commit alone leaves the stored percentages describing a
+  // container width that no longer exists, and the rail comes back a few dozen
+  // pixels off after a reload.
+  const { defaultLayout, onLayoutChange, onLayoutChanged } = useDefaultLayout({
+    id: ROOM_GROUP_ID,
+    storage: layoutStorage,
+    panelIds: ROOM_PANEL_IDS,
+  });
+
+  // Folded, the inspector is a plain strip beside the group rather than a panel
+  // inside it: a panel that isn't there can't be squeezed, and it comes back at
+  // the width it left at.
+  const {
+    panelRef: inspectorPanelRef,
+    size: inspectorSize,
+    onResize: onInspectorResize,
+  } = useCollapsibleRail({
+    foldWidth: INSPECTOR_FOLD_WIDTH,
+    defaultWidth: INSPECTOR_PANEL.default,
+    open: inspectorOpen,
+    onOpenChange: setInspectorOpen,
+  });
+
   const statusLeft = (
     <>
       <span
+        // A stable hook for anything that has to wait until the room is
+        // actually connected — the screenshot pipeline gates on this rather
+        // than on the label text, which is a translation away from breaking.
+        data-connection={connected ? "live" : "reconnecting"}
         className="rounded px-1.5 py-0.5 text-micro font-medium"
         style={{
           color: connected ? "var(--green)" : "var(--yellow)",
@@ -169,7 +221,7 @@ function RoomWorkspace() {
         {connected ? "Live" : "Reconnecting…"}
       </span>
       {episodeLabel && (
-        <StatusButton onClick={() => openTab("episodes")} title="View episodes">
+        <StatusButton onClick={() => openTab("episodes")} tooltip="View episodes">
           <span style={{ color: episodeLabel.color }}>{episodeLabel.text}</span>
         </StatusButton>
       )}
@@ -182,7 +234,7 @@ function RoomWorkspace() {
   const statusRight = (
     <>
       {agents !== null && (
-        <StatusButton onClick={() => openTab("agents")} title="View agents">
+        <StatusButton onClick={() => openTab("agents")} tooltip="View agents">
           <span className="tabular">{agents} agent{agents === 1 ? "" : "s"}</span>
         </StatusButton>
       )}
@@ -194,7 +246,9 @@ function RoomWorkspace() {
     <>
       <span className="text-ui font-semibold text-text truncate">{roomName}</span>
       {room?.mas_id && (
-        <span className="font-mono text-micro text-faint truncate" title="MAS id">{room.mas_id}</span>
+        <Tooltip content="MAS id" side="bottom">
+          <span className="font-mono text-micro text-faint truncate">{room.mas_id}</span>
+        </Tooltip>
       )}
     </>
   );
@@ -203,42 +257,90 @@ function RoomWorkspace() {
     <AppShell
       activeRoom={roomName}
       header={header}
-      headerRight={<ActingAsPicker />}
       statusLeft={statusLeft}
       statusRight={statusRight}
     >
-      <div className="flex flex-1 overflow-hidden">
-        <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          <div className="flex-1 overflow-hidden">
-            <EventStream
-              roomName={roomName}
-              onMemoryChanged={handleMemoryChanged}
-              onConnectionChange={setConnected}
-              onNegotiationPhaseChange={setNegPhase}
-              onOpenMemory={openMemory}
-              view={editorView}
-              onViewChange={setEditorView}
-              suppressInvites={tourActive}
-              focusMessageId={focus?.type === "message" ? focus.id : null}
-              onFocusConsumed={clearFocus}
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        <ResizablePanelGroup
+          className="min-h-0 flex-1"
+          defaultLayout={defaultLayout}
+          // Only while both panels are here: a one-panel layout saved over the
+          // split would be the rail's remembered width, gone.
+          onLayoutChange={inspectorOpen ? onLayoutChange : undefined}
+          onLayoutChanged={inspectorOpen ? onLayoutChanged : undefined}
+        >
+          <ResizablePanel id={PANEL_MAIN} minSize={MAIN_PANEL.min} className="flex min-w-0">
+            <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
+              <div className="flex-1 overflow-hidden">
+                <EventStream
+                  roomName={roomName}
+                  onMemoryChanged={handleMemoryChanged}
+                  onConnectionChange={setConnected}
+                  onNegotiationPhaseChange={setNegPhase}
+                  onOpenMemory={openMemory}
+                  onOpenEpisode={openEpisode}
+                  view={editorView}
+                  onViewChange={setEditorView}
+                  suppressInvites={tourActive}
+                  focusMessageId={focus?.type === "message" ? focus.id : null}
+                  onFocusConsumed={clearFocus}
+                />
+              </div>
+              <RoomChatBox roomName={roomName} className={editorView !== "channel" ? "hidden" : undefined} />
+            </main>
+          </ResizablePanel>
+          {inspectorOpen && (
+            <>
+              <ResizableHandle withHandle />
+              <ResizablePanel
+                id={PANEL_INSPECTOR}
+                panelRef={inspectorPanelRef}
+                collapsible
+                collapsedSize={INSPECTOR_PANEL.collapsed}
+                defaultSize={inspectorSize}
+                minSize={INSPECTOR_PANEL.min}
+                maxSize={INSPECTOR_PANEL.max}
+                groupResizeBehavior="preserve-pixel-size"
+                className="flex"
+                onResize={onInspectorResize}
+              >
+                <RoomInspector
+                  roomName={roomName}
+                  masId={room?.mas_id ?? null}
+                  tab={inspectorTab}
+                  onTabChange={setInspectorTab}
+                  open={inspectorOpen}
+                  onOpenChange={setInspectorOpen}
+                  engineInvite={inviteEngine}
+                  onEngineInviteShown={handleEngineInviteShown}
+                  focus={focus}
+                  onFocusConsumed={clearFocus}
+                  focusMemory={focusMemory}
+                  focusEpisode={focusEpisode}
+                />
+              </ResizablePanel>
+            </>
+          )}
+        </ResizablePanelGroup>
+
+        {!inspectorOpen && (
+          <div className="flex w-12 flex-none border-l border-border">
+            <RoomInspector
+            roomName={roomName}
+            masId={room?.mas_id ?? null}
+            tab={inspectorTab}
+            onTabChange={setInspectorTab}
+            open={inspectorOpen}
+            onOpenChange={setInspectorOpen}
+            engineInvite={inviteEngine}
+            onEngineInviteShown={handleEngineInviteShown}
+            focus={focus}
+            onFocusConsumed={clearFocus}
+            focusMemory={focusMemory}
+            focusEpisode={focusEpisode}
             />
           </div>
-          <RoomChatBox roomName={roomName} className={editorView !== "channel" ? "hidden" : undefined} />
-        </main>
-
-        <RoomInspector
-          roomName={roomName}
-          masId={room?.mas_id ?? null}
-          tab={inspectorTab}
-          onTabChange={setInspectorTab}
-          open={inspectorOpen}
-          onOpenChange={setInspectorOpen}
-          engineInvite={inviteEngine}
-          onEngineInviteShown={handleEngineInviteShown}
-          focus={focus}
-          onFocusConsumed={clearFocus}
-          focusMemory={focusMemory}
-        />
+        )}
       </div>
 
       <RoomTour

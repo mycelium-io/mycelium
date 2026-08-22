@@ -7,12 +7,12 @@ The backend's HTTP surface is otherwise unauthenticated: whoever reaches ``:8000
 can read and write every room. This module closes that, **as an opt-in**. With
 ``AUTH_ENABLED`` false (the shipped default) the gate is inert and every request
 is anonymous, which is the whole point — auth must never be a wall between
-someone and trying the app (``docs/design/identity-and-auth.md``).
+someone and trying the app.
 
 It is deliberately **issuer-agnostic**: trust is a list of ``TrustedIssuer``
 entries matched by exact ``iss``, each with its own keys. Nothing here knows or
-cares whether the root is Keycloak, Dex, the dev mock issuer, or a SPIRE trust
-domain, so adding the agent trust root later (#564/#476) is a config entry.
+cares whether the root is Keycloak, Dex, the dev mock issuer, or a workload-identity
+trust domain, so adding the agent trust root later (#564/#476) is a config entry.
 
 Scope is authentication only. Resolving a validated token into the *authoritative*
 actor for a write — replacing body-supplied ``created_by`` / ``sender_handle`` —
@@ -256,8 +256,8 @@ def _resolve_role(claims: dict[str, Any], entry: TrustedIssuer) -> PrincipalRole
     """Token role claim, else the issuer's default role.
 
     Which trust root signed a token is usually the whole answer to user-vs-agent
-    (humans from the OIDC issuer, workloads from the service-account issuer or
-    SPIRE), so the issuer default carries the common case and the claim is the
+    (humans from the OIDC issuer, workloads from the service-account issuer), so
+    the issuer default carries the common case and the claim is the
     escape hatch for one issuer serving both.
     """
     raw = claims.get(settings.AUTH_ROLE_CLAIM)

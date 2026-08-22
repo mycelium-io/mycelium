@@ -37,6 +37,21 @@ ROOM_META_FILENAME = ".room.json"
 # Sentinel for "no default" so we can distinguish None from missing
 _MISSING = object()
 
+# Last-resort stamp for a memory with no recoverable time (see recover_timestamps).
+_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
+
+# Frontmatter the store owns. Everything else in a memory's frontmatter is user
+# data: it survives a rewrite, a caller can set it via ``MemoryCreate.meta``, and
+# it is returned as ``MemoryRead.meta``.
+MANAGED_META = frozenset(
+    {"key", "created_by", "updated_by", "version", "created_at", "updated_at", "tags", "value"}
+)
+
+
+def unmanaged_meta(meta: dict[str, Any]) -> dict[str, Any]:
+    """The user-owned half of a memory's frontmatter — everything outside MANAGED_META."""
+    return {k: v for k, v in meta.items() if k not in MANAGED_META}
+
 
 def get_data_dir() -> Path:
     """Get the .mycelium data directory, creating it if needed."""
@@ -87,6 +102,57 @@ def _key_from_path(file_path: Path, base_dir: Path) -> str:
 
 
 # ── Markdown format ──────────────────────────────────────────────────────────
+
+
+def parse_timestamp(value: object) -> datetime | None:
+    """Read a frontmatter timestamp back as a datetime, or ``None``.
+
+    ``serialize_memory`` writes timestamps with ``.isoformat()``, so YAML quotes
+    them and returns a string on the next read. Hand-written or older files may
+    carry a bare timestamp that YAML parses as a datetime, hence both branches.
+    A naive value is read as UTC, so every stamp this returns is comparable with
+    every other one — a mixed list of aware and naive stamps raises on sort.
+    """
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=UTC)
+    if value is None:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+
+
+def _file_mtime(path: Path | None) -> datetime | None:
+    """``path``'s modification time as an aware UTC datetime, or ``None``."""
+    if path is None:
+        return None
+    try:
+        return datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
+    except OSError:
+        return None
+
+
+def recover_timestamps(meta: dict[str, Any], path: Path | None = None) -> tuple[datetime, datetime]:
+    """A memory's ``(created_at, updated_at)``, recovered — never invented.
+
+    Frontmatter first; then the other stamp; then the file's mtime; only an
+    unreadable file with no stamps at all falls back to the epoch. Read time is
+    not a candidate: "now" is always the newest value there is, so substituting
+    it re-dates the memory on every read and pins it to whichever end of a
+    time-sorted list "newest" lands on.
+    """
+    created = parse_timestamp(meta.get("created_at"))
+    updated = parse_timestamp(meta.get("updated_at"))
+    if created is None or updated is None:
+        mtime = _file_mtime(path)
+        created = created or updated or mtime or _EPOCH
+        if updated is None:
+            # A restore or `cp -p` can leave an mtime behind the created stamp;
+            # never report a memory as last updated before it existed.
+            updated = max(mtime, created) if mtime else created
+    return created, updated
 
 
 def serialize_memory(
@@ -220,21 +286,26 @@ def list_memory_files(
     else:
         files = list(base_dir.rglob("*.md"))
 
-    results = []
+    dated: list[tuple[datetime, tuple[str, dict[str, Any], str]]] = []
     for f in files:
         try:
             text = f.read_text(encoding="utf-8")
             meta, content = parse_memory(text)
             key = _key_from_path(f, base_dir)
-            results.append((key, meta, content))
         except Exception:
             logger.warning("Failed to read memory file: %s", f)
+            continue
+        # Normalize the stamps into the meta every caller reads, so a file
+        # missing one (or carrying a bare timestamp YAML hands back as a
+        # datetime rather than a string) can neither sort to an end it doesn't
+        # belong at nor raise comparing a str against a datetime.
+        created, updated = recover_timestamps(meta, f)
+        meta["created_at"] = created.isoformat()
+        meta["updated_at"] = updated.isoformat()
+        dated.append((updated, (key, meta, content)))
 
-    def sort_key(item: tuple[str, dict[str, Any], str]) -> str:
-        return item[1].get("updated_at", "")
-
-    results.sort(key=sort_key, reverse=True)
-    return results[:limit]
+    dated.sort(key=lambda item: item[0], reverse=True)
+    return [entry for _, entry in dated[:limit]]
 
 
 def _cleanup_empty_dirs(directory: Path, stop_at: Path) -> None:

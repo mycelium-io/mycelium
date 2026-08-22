@@ -6,7 +6,32 @@ on:
   pull_request:
     branches: [main]
 
+# Read-only by default; the timing job asks for `actions: read` on top of this.
+permissions:
+  contents: read
+
+# A branch only needs its newest commit checked. Superseded runs are cancelled
+# rather than left to finish, which keeps queue time (and therefore the wall
+# clock a human waits on) from backing up behind a push that no longer matters.
+# Never on main: those runs are the record of what landed.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
+  hygiene:
+    # Repo-level contracts that have no other home: actions pinned to SHAs,
+    # workflows declaring their permissions, budgets that still name real jobs.
+    # No toolchain install — it's stdlib Python over the workflow files, so it
+    # finishes long before the jobs that build something.
+    name: Repo hygiene
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Workflow contracts
+        run: python3 scripts/check_workflows.py
+
   test-backend:
     name: Backend tests
     runs-on: ubuntu-latest
@@ -178,7 +203,7 @@ jobs:
           docker run --rm --entrypoint python mycelium-collector:ci -m mycelium.collector_main --help
 
   build-frontend:
-    name: Frontend typecheck + build
+    name: Frontend typecheck + lint + build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -198,6 +223,10 @@ jobs:
         working-directory: mycelium-frontend
         run: npx tsc --noEmit
 
+      - name: Lint (eslint)
+        working-directory: mycelium-frontend
+        run: npx eslint .
+
       - name: Component tests (vitest)
         working-directory: mycelium-frontend
         run: npx vitest run
@@ -205,6 +234,51 @@ jobs:
       - name: Build
         working-directory: mycelium-frontend
         run: npx next build
+
+  build-frontend-image:
+    name: Frontend docker build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+
+      - name: Detect frontend-relevant changes
+        id: changed
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            base="HEAD~1"
+          else
+            base="origin/${{ github.base_ref }}"
+            git fetch --depth=1 origin "${{ github.base_ref }}"
+          fi
+          if git diff --name-only "$base"...HEAD | grep -E '^(mycelium-frontend/|\.github/workflows/(ci|release)\.yml$)' > /dev/null; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "No frontend files changed; skipping image build."
+          fi
+
+      - name: Set up Docker Buildx
+        if: steps.changed.outputs.run == 'true'
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+
+      # The typecheck job above runs in the full checkout, where a file under
+      # mycelium-frontend/ can reach sideways into a sibling directory and
+      # resolve. The image build cannot: its context is mycelium-frontend/
+      # alone, so an import that leaves it fails here and only here.
+      - name: Build mycelium-frontend image (no push)
+        if: steps.changed.outputs.run == 'true'
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: mycelium-frontend
+          file: mycelium-frontend/Dockerfile
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: mycelium-frontend:ci
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,scope=frontend,mode=max
 
   integration-slim:
     # Debt D12: the guarded live-node slices are the real regression guard for the
@@ -277,3 +351,33 @@ jobs:
       - name: SLIM node logs (on failure)
         if: failure()
         run: docker logs mycelium-slim || true
+
+  timing:
+    # Reports what the run cost, per job, against .github/ci-budgets.json. It
+    # runs last because it reads the other jobs' durations back from the API,
+    # and `always()` so a red run still gets its timing (a job that fails slowly
+    # is the interesting case). It never fails: timing is information, not a
+    # gate, and a warning that can block a merge stops being read.
+    name: CI timing
+    runs-on: ubuntu-latest
+    # Not `always()`: a run cancelled by the concurrency group above has nothing
+    # worth timing, and shouldn't spend a runner saying so.
+    if: ${{ !cancelled() }}
+    needs:
+      - hygiene
+      - test-backend
+      - test-cli
+      - build-collector
+      - build-frontend
+      - build-frontend-image
+      - integration-slim
+    permissions:
+      contents: read
+      actions: read   # list this run's jobs
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Report job durations
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 scripts/ci_timing.py

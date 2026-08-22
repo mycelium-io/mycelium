@@ -43,11 +43,15 @@ from app.schemas import (
 from app.services import actor, links, local_state, memory_sync, search_index
 from app.services.embedding import embed_text
 from app.services.filesystem import (
+    MANAGED_META,
     delete_memory_file,
     get_room_dir,
     list_memory_files,
+    parse_timestamp,
     read_memory_file,
+    recover_timestamps,
     room_exists,
+    unmanaged_meta,
     value_to_content,
     write_memory_file,
 )
@@ -56,12 +60,6 @@ from app.services.search_index import stable_memory_id
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/rooms/{room_name}/memory", tags=["memory"])
-
-# Frontmatter the store owns. Everything else in a memory's frontmatter is user
-# data: it survives a rewrite, and a caller can set it via ``MemoryCreate.meta``.
-MANAGED_META = frozenset(
-    {"key", "created_by", "updated_by", "version", "created_at", "updated_at", "tags", "value"}
-)
 
 
 def _require_room(room_name: str) -> None:
@@ -89,8 +87,14 @@ def _reconstruct_value(meta: dict, content: str) -> dict | str:
 
 
 def _memory_read_from_file(room_name: str, key: str, meta: dict, content: str) -> MemoryRead:
-    """Build a MemoryRead from a memory file's frontmatter + body."""
-    now = datetime.now(UTC)
+    """Build a MemoryRead from a memory file's frontmatter + body.
+
+    Stamps come from :func:`recover_timestamps`, which falls back to the file's
+    mtime rather than to read time — a memory whose frontmatter lost its
+    ``updated_at`` would otherwise report a different, always-newest timestamp on
+    every read and drift to the end of any time-ordered view.
+    """
+    created_at, updated_at = recover_timestamps(meta, get_room_dir(room_name) / f"{key}.md")
     return MemoryRead(
         id=stable_memory_id(room_name, key),
         room_name=room_name,
@@ -101,8 +105,10 @@ def _memory_read_from_file(room_name: str, key: str, meta: dict, content: str) -
         updated_by=meta.get("updated_by"),
         version=meta.get("version", 1),
         tags=meta.get("tags"),
-        created_at=meta.get("created_at", now),
-        updated_at=meta.get("updated_at", now),
+        meta=unmanaged_meta(meta) or None,
+        expandable=links.is_expandable(meta),
+        created_at=created_at,
+        updated_at=updated_at,
         file_path=f"rooms/{room_name}/{key}.md",
     )
 
@@ -251,7 +257,7 @@ async def upsert_memories(room_name: str, payload: MemoryBatchCreate) -> list[Me
         if existing:
             new_version = current_version + 1
             created_by = existing_meta.get("created_by", item.created_by)
-            created_at = existing_meta.get("created_at", now)
+            created_at = parse_timestamp(existing_meta.get("created_at")) or now
         else:
             new_version = 1
             created_by = item.created_by
@@ -260,9 +266,7 @@ async def upsert_memories(room_name: str, payload: MemoryBatchCreate) -> list[Me
         # Frontmatter the store doesn't manage is user data — carry it forward so
         # a content update doesn't silently drop a page's `expandable: true` or
         # its typed relations — then overlay whatever this write supplies.
-        extra_meta: dict[str, Any] = {
-            k: v for k, v in existing_meta.items() if k not in MANAGED_META
-        }
+        extra_meta: dict[str, Any] = unmanaged_meta(existing_meta)
         if item.meta:
             extra_meta.update({k: v for k, v in item.meta.items() if k not in MANAGED_META})
 
@@ -280,7 +284,7 @@ async def upsert_memories(room_name: str, payload: MemoryBatchCreate) -> list[Me
             updated_by=item.created_by,
             version=new_version,
             tags=item.tags,
-            created_at=created_at if isinstance(created_at, datetime) else now,
+            created_at=created_at,
             updated_at=now,
             extra_meta=extra_meta or None,
         )
@@ -302,9 +306,9 @@ async def upsert_memories(room_name: str, payload: MemoryBatchCreate) -> list[Me
                 "updated_by": item.created_by,
                 "version": new_version,
                 "tags": item.tags,
-                "created_at": created_at.isoformat()
-                if isinstance(created_at, datetime)
-                else str(created_at),
+                "meta": unmanaged_meta(extra_meta) or None,
+                "expandable": links.is_expandable(extra_meta),
+                "created_at": created_at.isoformat(),
                 "updated_at": now.isoformat(),
                 "file_path": f"rooms/{room_name}/{item.key}.md",
             },
@@ -322,7 +326,9 @@ async def upsert_memories(room_name: str, payload: MemoryBatchCreate) -> list[Me
                 updated_by=item.created_by,
                 version=new_version,
                 tags=item.tags,
-                created_at=created_at if isinstance(created_at, datetime) else now,
+                meta=unmanaged_meta(extra_meta) or None,
+                expandable=links.is_expandable(extra_meta),
+                created_at=created_at,
                 updated_at=now,
                 file_path=f"rooms/{room_name}/{item.key}.md",
             )
@@ -362,7 +368,7 @@ async def list_memories(
     room_dir = get_room_dir(room_name)
     file_entries = list_memory_files(room_dir, prefix=prefix, limit=limit + offset)
 
-    latest_ts = max((meta.get("updated_at", "") for _, meta, _ in file_entries), default="")
+    latest_ts = max((str(meta.get("updated_at", "")) for _, meta, _ in file_entries), default="")
     etag = '"' + hashlib.md5(str(latest_ts).encode()).hexdigest() + '"' if latest_ts else '"empty"'
     if request.headers.get("if-none-match") == etag:
         return Response(status_code=304, headers={"ETag": etag})
@@ -403,12 +409,15 @@ async def search_memories(room_name: str, payload: MemorySearchRequest):
         min_similarity=payload.min_similarity,
     )
 
-    now = datetime.now(UTC)
+    room_dir = get_room_dir(room_name)
     results = []
     for rec, similarity in hits:
         value = rec.get("value")
         if value is None:
             value = {"text": rec.get("content_text")} if rec.get("content_text") else {}
+        # An index record predating a stamp resolves against the file it points
+        # at, never against read time (see _memory_read_from_file).
+        created_at, updated_at = recover_timestamps(rec, room_dir / f"{rec['key']}.md")
         memory_read = MemoryRead(
             id=stable_memory_id(room_name, rec["key"]),
             room_name=room_name,
@@ -419,8 +428,10 @@ async def search_memories(room_name: str, payload: MemorySearchRequest):
             updated_by=rec.get("updated_by"),
             version=rec.get("version", 1),
             tags=rec.get("tags"),
-            created_at=rec.get("created_at", now),
-            updated_at=rec.get("updated_at", now),
+            meta=rec.get("meta") or None,
+            expandable=bool(rec.get("expandable")),
+            created_at=created_at,
+            updated_at=updated_at,
             file_path=rec.get("file_path"),
         )
         results.append(MemorySearchResult(memory=memory_read, similarity=similarity))

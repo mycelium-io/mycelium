@@ -72,6 +72,7 @@ def serialize_memory(
     tags: list[str] | None = None,
     created_at: datetime | None = None,
     updated_at: datetime | None = None,
+    extra_meta: dict[str, Any] | None = None,
 ) -> str:
     """Serialize a memory to markdown with YAML frontmatter."""
     now = datetime.now(UTC)
@@ -86,9 +87,52 @@ def serialize_memory(
         meta["updated_by"] = updated_by
     if tags:
         meta["tags"] = tags
+    if extra_meta:
+        meta.update(extra_meta)
 
     frontmatter = yaml.dump(meta, default_flow_style=False, sort_keys=False).strip()
     return f"---\n{frontmatter}\n---\n{content}\n"
+
+
+def parse_timestamp(value: object) -> datetime | None:
+    """Read a frontmatter timestamp back as a datetime, or ``None``.
+
+    ``serialize_memory`` writes ``.isoformat()``, so YAML quotes the value and
+    hands back a string; a hand-written or older file may carry a bare timestamp
+    YAML parses as a datetime. A naive value is read as UTC so every stamp
+    returned here is comparable with every other one.
+    """
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=UTC)
+    if value is None:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+
+
+def recover_updated_at(meta: dict[str, Any], path: Path) -> datetime:
+    """When a memory was last written — from frontmatter, else the file's mtime.
+
+    Read time is deliberately not a candidate, and neither is an empty sort key:
+    the first re-dates the memory every time it is looked at, the second parks
+    every unstamped memory at the bottom of the list regardless of its age.
+
+    The CLI's counterpart to the backend's ``recover_timestamps``, holding the
+    same never-read-time rule over a narrower surface: this store only orders
+    memories, so it resolves one stamp where the backend resolves the
+    ``(created_at, updated_at)`` pair a read model needs. Keep the rule in step
+    across the two; the shapes differ on purpose.
+    """
+    stamp = parse_timestamp(meta.get("updated_at")) or parse_timestamp(meta.get("created_at"))
+    if stamp is not None:
+        return stamp
+    try:
+        return datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
+    except OSError:
+        return datetime(1970, 1, 1, tzinfo=UTC)
 
 
 def parse_memory(text: str) -> tuple[dict[str, Any], str]:
@@ -176,6 +220,7 @@ def apply_knowledge(
     version: int,
     created_by: str = "system",
     updated_by: str = "system",
+    updated_at: str | None = None,
 ) -> KnowledgeApplyResult:
     """Write a carried ``knowledge`` memory locally (last-write-wins).
 
@@ -213,6 +258,10 @@ def apply_knowledge(
                     "updated_at": meta.get("updated_at"),
                 },
             )
+    # Replicate the write's own ``updated_at`` where the message carries one,
+    # rather than dating the memory to whenever this store caught up.
+    written_at = parse_timestamp(updated_at)
+    created_at = parse_timestamp(existing[0].get("created_at")) if existing else None
     write_memory(
         base_dir,
         key,
@@ -220,6 +269,8 @@ def apply_knowledge(
         created_by=created_by,
         updated_by=updated_by,
         version=version,
+        created_at=created_at or written_at,
+        updated_at=written_at,
     )
     return KnowledgeApplyResult(
         key=key, applied=True, conflict=False, reason="applied", version=version
@@ -244,7 +295,7 @@ def list_memories(
     else:
         files = list(base_dir.rglob("*.md"))
 
-    results = []
+    dated: list[tuple[datetime, tuple[str, dict[str, Any], str]]] = []
     for f in files:
         try:
             text = f.read_text(encoding="utf-8")
@@ -252,10 +303,9 @@ def list_memories(
             key = str(f.relative_to(base_dir))
             if key.endswith(".md"):
                 key = key[:-3]
-            results.append((key, meta, content))
         except Exception:
-            pass
+            continue
+        dated.append((recover_updated_at(meta, f), (key, meta, content)))
 
-    # Sort by updated_at descending (normalize to str to handle datetime objects from YAML)
-    results.sort(key=lambda x: str(x[1].get("updated_at", "")), reverse=True)
-    return results[:limit]
+    dated.sort(key=lambda item: item[0], reverse=True)
+    return [entry for _, entry in dated[:limit]]

@@ -4,7 +4,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronLeft, Pencil, Plus, UserRound } from "lucide-react";
+import { ChevronLeft, ChevronsUpDown, Pencil, Plus, UserRound } from "lucide-react";
 import {
   createUser,
   fetchTeams,
@@ -18,6 +18,7 @@ import { useCommands } from "@/components/keymap-provider";
 import type { PaletteCommand } from "@/lib/commands";
 import { useAuthSession } from "@/components/auth-session";
 import { Monogram } from "@/components/ui/monogram";
+import { Tooltip } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { TagInput } from "@/components/ui/tag-input";
@@ -70,8 +71,17 @@ function iamCommand(u: BoundUser): string {
  * that scopes "my agents"/"my team" and stamps the chat sender), and manage the
  * user records inline — no CLI round-trip. Two views: a lightweight switcher and
  * a full editor (name, teams, notify). Saved locally via the current-user context.
+ *
+ * It lives in the bottom-left of the rooms rail — the account corner every
+ * editor and SaaS app puts it in — so identity reads the same on every screen
+ * instead of riding one page's header.
  */
-export function ActingAsPicker() {
+interface Props {
+  /** Trigger as the avatar alone, for the collapsed rooms rail. */
+  compact?: boolean;
+}
+
+export function ActingAsPicker({ compact = false }: Props) {
   const { principal, setPrincipal } = useCurrentUser();
   const { signedIn, handle: sessionHandle, logout } = useAuthSession();
   const [open, setOpen] = useState(false);
@@ -92,7 +102,9 @@ export function ActingAsPicker() {
 
   useEffect(() => {
     if (open) {
-      refresh();
+      refresh(); // async fetch; setState only in its .then() callback
+      // Opening resets the picker to its default view.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setView("switch");
       setError(null);
     }
@@ -165,20 +177,51 @@ export function ActingAsPicker() {
     form.isNew ? users.find((u) => u.handle === normHandle(form.handle)) : undefined;
 
   const teamSuggestions = teams.map((t) => t.team);
+  const actingLabel = principal
+    ? `Acting as @${principal}`
+    : "Choose the user you're acting as";
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger
-        render={<Button variant="ghost" size="sm" />}
-        title="Choose the user you're acting as"
-      >
-        {principal ? (
-          <Monogram handle={principal} color="var(--muted-foreground)" className="size-5" />
-        ) : (
-          <UserRound className="size-3.5" />
-        )}
-        <span className="font-mono">{principal ? `@${principal}` : "acting as…"}</span>
-      </DialogTrigger>
+      {/* Collapsed to an avatar, the trigger has no text of its own, so
+          the label does the naming there and the tooltip only ever
+          restates it. */}
+      <Tooltip content={actingLabel} side="right">
+        <DialogTrigger
+          aria-label={compact ? actingLabel : undefined}
+          className={
+            compact
+              ? "group flex size-8 items-center justify-center rounded-md transition-colors hover:bg-hairline"
+              : "group flex min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 py-1 text-left transition-colors hover:bg-hairline"
+          }
+        >
+          {principal ? (
+            <Monogram handle={principal} color="var(--muted-foreground)" className="size-7" />
+          ) : (
+            <span
+              aria-hidden
+              className="flex size-7 flex-shrink-0 items-center justify-center rounded-full bg-surface text-muted-foreground"
+            >
+              <UserRound className="size-3.5" />
+            </span>
+          )}
+          {/* The handle and the switcher affordance are what the 48px strip
+              can't hold; the avatar carries the identity on its own there. */}
+          {!compact && (
+            <>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-mono text-label text-text">
+                  {principal ? `@${principal}` : "Anonymous"}
+                </span>
+                <span className="block truncate text-micro text-muted-foreground">
+                  {principal ? (signedIn ? "signed in" : "acting as") : "pick a user"}
+                </span>
+              </span>
+              <ChevronsUpDown className="size-3.5 flex-shrink-0 text-faint transition-colors group-hover:text-muted-foreground" />
+            </>
+          )}
+        </DialogTrigger>
+      </Tooltip>
 
       <DialogContent className="sm:max-w-sm">
         {view === "switch" && (

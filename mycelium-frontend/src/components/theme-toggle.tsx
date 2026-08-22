@@ -4,6 +4,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useIsClient } from "@/lib/client-hooks";
 import { useTheme } from "next-themes";
 import { Monitor, Moon, Sun, type LucideIcon } from "lucide-react";
 import { useCommands } from "@/components/keymap-provider";
@@ -18,9 +19,8 @@ const OPTIONS: { value: string; label: string; icon: LucideIcon }[] = [
 export function ThemeToggle() {
   const { theme, resolvedTheme, setTheme } = useTheme();
   const [open, setOpen] = useState(false);
-  const [mounted, setMounted] = useState(false);
+  const mounted = useIsClient();
   const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => setMounted(true), []);
 
   useEffect(() => {
     if (!open) return;
@@ -63,7 +63,7 @@ export function ThemeToggle() {
         {mounted ? <Active className="size-4" /> : <span className="size-4" />}
       </button>
       {open && (
-        <div className="absolute right-0 bottom-full z-30 mb-1.5 w-36 overflow-hidden rounded-xl border border-border bg-elevated p-1 shadow-xl">
+        <div className="absolute right-0 top-full z-30 mt-1.5 w-36 overflow-hidden rounded-xl border border-border bg-elevated p-1 shadow-xl">
           {OPTIONS.map(({ value, label, icon: Icon }) => (
             <button
               key={value}

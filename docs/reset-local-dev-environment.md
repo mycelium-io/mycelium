@@ -46,8 +46,7 @@ That removes **`rooms/`** (all room markdown, memory, and plans), **`config.toml
 
 ## 3. Start again (short checklist)
 
-1. Run **`mycelium install`** to bring the SLIM node + backend back up, then
-   **`mycelium up --ui`** if you want the room UI (the frontend is opt-in).
+1. Run **`mycelium install`** to bring the SLIM node, backend and room UI back up.
 2. Register agents with **`mycelium agent create`**. The `claude_code` adapter is the
    proven path; `cursor` is present but unverified.
 3. For multi-machine wiring, run **`mycelium hub host`** on the hub and **`mycelium

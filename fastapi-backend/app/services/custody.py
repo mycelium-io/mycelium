@@ -7,7 +7,7 @@ Under the PSK default the backend is a single MLS member per room and acts for e
 actor: attribution ("@alice said this") is added application-side and is forgeable,
 and access control is application logic. This module is the alternative proven in the
 #662/#665 spike: the backend holds one genuine MLS-member session per ``(room,
-actor)``, keeping that actor's own SignerJwt/SPIRE key and MLS state on its behalf.
+actor)``, keeping that actor's own SignerJwt key and MLS state on its behalf.
 ``respond(@alice, ...)`` sends through @alice's session, so the wire sender is
 @alice's own MLS identity, and room access is enforced by MLS group membership rather
 than application logic.
@@ -17,8 +17,7 @@ actor's behalf (server-side). A native client holding its own session would be t
 non-custodial case, which is out of scope here.
 
 Off by default (#567): custodial sessions engage only when ``slim.identity`` is
-``signerjwt`` or ``spire``, never under the PSK default, where the try-it path is
-unchanged. This is structural, not just policy: ``create_app_with_persistence_async``
+``signerjwt``, never under the PSK default, where the try-it path is unchanged. This is structural, not just policy: ``create_app_with_persistence_async``
 requires the identity provider/verifier pair, so a custodial session cannot run on
 the PSK tier.
 
@@ -101,7 +100,7 @@ def _truthy(value: str | None) -> bool:
 def custody_enabled() -> bool:
     """True when per-actor custodial sessions should carry room traffic.
 
-    They engage only under a real identity tier (``signerjwt``/``spire``): the PSK
+    They engage only under a real identity tier (``signerjwt``): the PSK
     default is untouched (#567), and persistence structurally requires the identity
     provider/verifier pair anyway (spike finding C). ``MYCELIUM_CUSTODY_DISABLE``
     forces the single-moderator path even under identity, so the migration stays
@@ -243,9 +242,8 @@ def _resolve_material(
     A custodial session is a genuine MLS member carrying the *actor's* credential,
     so — under ``signerjwt`` — the backend custodies the actor's signing key: mint+
     register it if absent (idempotent) so the backend can sign as the actor and the
-    roster includes it. ``spire`` resolves the actor's SVID from the Workload API.
-    Raises :class:`SlimError` when no material resolves (persistence cannot run on
-    the PSK tier, so there is no degrade path here).
+    roster includes it. Raises :class:`SlimError` when no material resolves
+    (persistence cannot run on the PSK tier, so there is no degrade path here).
     """
     mode = slim_identity.resolve_identity_mode()
     if mode == slim_identity.MODE_SIGNERJWT:
@@ -254,15 +252,10 @@ def _resolve_material(
         slim_identity.ensure_agent_keypair(handle)
     material = slim_identity.resolve_identity_material(mode, handle)
     if material is None:
-        hint = (
-            "no SPIRE Workload API socket present"
-            if mode == slim_identity.MODE_SPIRE
-            else "no signing key/roster resolved"
-        )
         raise SlimError(
             f"cannot open a custodial session for {handle!r}: MYCELIUM_SLIM_IDENTITY={mode} "
-            f"but {hint}. Custody requires signerjwt/spire material (persistence cannot run "
-            "on the PSK tier)."
+            "but no signing key/roster resolved. Custody requires signerjwt material "
+            "(persistence cannot run on the PSK tier)."
         )
     return material
 

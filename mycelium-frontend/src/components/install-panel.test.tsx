@@ -91,16 +91,35 @@ describe("<InstallPanel />", () => {
     expect(screen.queryByDisplayValue(PROMPT_COMMAND)).not.toBeInTheDocument();
   });
 
-  it("preselects the platform it detects, underneath the default Prompt tab", async () => {
+  it("highlights one tab at a time, and drops into the detected OS when Prompt is switched off", async () => {
+    const user = userEvent.setup();
     stubHub(false);
     vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
     );
     renderWithSWR(<InstallPanel />);
 
-    expect(screen.getByRole("button", { name: "Prompt" })).toHaveAttribute("aria-pressed", "true");
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: "macOS" })).toHaveAttribute("aria-pressed", "true"),
-    );
+    const prompt = screen.getByRole("button", { name: "Prompt" });
+    const macos = screen.getByRole("button", { name: "macOS" });
+    expect(prompt).toHaveAttribute("aria-pressed", "true");
+    expect(macos).toHaveAttribute("aria-pressed", "false");
+
+    // Switching Prompt off lands on the detected OS, and only that one.
+    await user.click(prompt);
+    await waitFor(() => expect(macos).toHaveAttribute("aria-pressed", "true"));
+    expect(prompt).toHaveAttribute("aria-pressed", "false");
+    expect(commandField(CLI_INSTALL_COMMAND)).toBeInTheDocument();
+  });
+
+  it("deselects Prompt when an OS tab is picked", async () => {
+    const user = userEvent.setup();
+    stubHub(false);
+    renderWithSWR(<InstallPanel />);
+
+    await user.click(screen.getByRole("button", { name: "Linux" }));
+
+    expect(screen.getByRole("button", { name: "Prompt" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: "Linux" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "macOS" })).toHaveAttribute("aria-pressed", "false");
   });
 });

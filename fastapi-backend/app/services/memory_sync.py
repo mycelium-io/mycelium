@@ -183,7 +183,7 @@ def apply_knowledge_to_dir(base_dir: Any, write: KnowledgeWrite) -> ApplyResult:
     the (heavier) index. Returns an :class:`ApplyResult`; never raises on a
     conflict — a stale-base write is a *result*, not an error.
     """
-    from app.services.filesystem import read_memory_file, write_memory_file
+    from app.services.filesystem import parse_timestamp, read_memory_file, write_memory_file
 
     existing = read_memory_file(base_dir, write.key)
     if existing is not None:
@@ -218,6 +218,13 @@ def apply_knowledge_to_dir(base_dir: Any, write: KnowledgeWrite) -> ApplyResult:
                 },
             )
 
+    # Replicate the write's own timestamps rather than the applier's clock: a
+    # knowledge message carries when the write happened, so stamping it "now"
+    # re-dates every synced memory to whenever this store caught up — a restart
+    # re-serving a backlog would land the lot at one instant. ``created_at``
+    # stays whatever the local file already had; this is an update.
+    written_at = parse_timestamp(write.updated_at)
+    created_at = parse_timestamp(existing[0].get("created_at")) if existing else None
     write_memory_file(
         base_dir,
         write.key,
@@ -225,6 +232,8 @@ def apply_knowledge_to_dir(base_dir: Any, write: KnowledgeWrite) -> ApplyResult:
         created_by=write.created_by,
         updated_by=write.updated_by,
         version=write.version,
+        created_at=created_at or written_at,
+        updated_at=written_at,
     )
     return ApplyResult(
         key=write.key,

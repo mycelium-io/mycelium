@@ -22,7 +22,7 @@ from pydantic import ValidationError
 from rich.console import Console
 from rich.table import Table
 
-from mycelium.client import hub_client, typed_client
+from mycelium.client import hub_client, hub_error_detail, typed_client
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
 from mycelium.filesystem import (
@@ -68,7 +68,11 @@ def _hub_session() -> Iterator[Any]:
             )
             raise typer.Exit(1) from exc
         except UnexpectedStatus as exc:
-            console.print(f"[red]Error:[/red] hub at {_hub_url()} returned HTTP {exc.status_code}.")
+            detail = hub_error_detail(exc.content)
+            suffix = f": {detail}" if detail else "."
+            console.print(
+                f"[red]Error:[/red] hub at {_hub_url()} returned HTTP {exc.status_code}{suffix}"
+            )
             raise typer.Exit(1) from exc
 
 
@@ -77,6 +81,14 @@ def _unset_to_none(field: Any) -> Any:
     from mycelium_backend_client.types import UNSET
 
     return None if isinstance(field, type(UNSET)) else field
+
+
+def _meta_dict(field: Any) -> dict[str, Any]:
+    """A memory's unmanaged frontmatter as a plain dict (empty when it has none)."""
+    field = _unset_to_none(field)
+    if hasattr(field, "to_dict"):
+        field = field.to_dict()
+    return field if isinstance(field, dict) else {}
 
 
 def _value_text(value: Any) -> str:
@@ -338,6 +350,7 @@ def memory_get(
                 tags=_unset_to_none(mem.tags),
                 created_at=mem.created_at,
                 updated_at=mem.updated_at,
+                extra_meta=_meta_dict(mem.meta) or None,
             )
         )
         return

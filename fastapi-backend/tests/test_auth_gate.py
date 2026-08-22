@@ -5,8 +5,7 @@
 
 Tokens are signed with RSA keys generated in-process and served through a
 stubbed JWKS endpoint, so the whole gate — signature, claims, issuer matching,
-caching, rotation — is exercised without a live issuer. The end-to-end pass
-against the real dev issuer lives in ``docs/design/dev-auth-issuer.md``.
+caching, rotation — is exercised without a live issuer.
 
 The default posture is its own assertion: with ``AUTH_ENABLED`` off, every
 request must behave exactly as it did before this gate existed.

@@ -19,7 +19,8 @@ silently breaking the wire.
   teach that runtime how to participate.
 - `src/mycelium/slim/` — the CLI's copy of the SLIM + L9 wire primitives.
 - `src/mycelium/docs/` — markdown that is the **source of truth** for the docs
-  site; the HTML in `docs/` is generated from it.
+  site; the HTML in `docs/` is generated from it. A topic is addressed by
+  filename stem (`mycelium docs rooms`) whichever subdirectory holds it.
 - `src/mycelium/docker/` — the compose files `mycelium up` / `install` drive.
 
 ## Boundaries worth knowing

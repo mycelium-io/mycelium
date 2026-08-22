@@ -21,6 +21,20 @@ mycelium-client/    Generated OpenAPI client (openapi-python-client)
 mycelium-frontend/  Next.js frontend (TypeScript, Tailwind)
 docs/               Docs site (generated from mycelium-cli/src/mycelium/docs/),
                     demo script, design notes
+shotkit/            The repo's camera: fast screenshots of the running app and of
+                    CLI output, for coding agents. A daemon holds a browser open,
+                    so a shot is ~150ms rather than ~2s. `node shotkit/bin/shot.mjs`
+                    — `app` (a route, with --mock booting dev:mock), `term` (a
+                    command under a pty, so Rich keeps its colors, rendered as a
+                    Carbon-style card), `code`, plus --responsive/--sheet for
+                    breakpoints and open/do/shoot for driving a held page. `video`
+                    records the same `--do` flow as a short clip with a drawn
+                    cursor, click rings and a camera that pushes in (--auto-zoom),
+                    encoded by whatever ffmpeg is on the machine — mp4 with a full
+                    one, webm off the build Playwright ships. See the
+                    `screenshot` skill. Captures land in gitignored `.shotkit/`;
+                    the committed docs assets are still `pnpm screenshots`, which
+                    now runs on this engine.
 mycelium-promo/     HyperFrames promo video, a code-defined HTML→MP4 walkthrough
                     (CLI install → app install → room → adapter → post positions →
                     summon the aligner → await/respond → consensus → plan → work →
@@ -52,9 +66,9 @@ MYCELIUM_SLIM_ENDPOINT=http://127.0.0.1:46357 uv run pytest tests/test_slim_roun
 # the spec). CI + the wheel/binary builds run this themselves.
 SPEC_FILE=openapi.json ./scripts/gen-mycelium-client.sh
 
-# Regenerate the docs site (docs/*.html + docs/llms-full.txt) from the markdown
-# under mycelium-cli/src/mycelium/docs/, the @doc_ref decorators, and the config
-# schema. Needs the OpenAPI client above. Run it in any PR that touches those
+# Regenerate the docs site (docs/*.html + docs/search-index.js + docs/llms-full.txt)
+# from the markdown under mycelium-cli/src/mycelium/docs/ (concepts/, guides/,
+# reference/), the @doc_ref decorators, and the config schema. Needs the OpenAPI client above. Run it in any PR that touches those
 # sources — CI fails on drift.
 cd mycelium-cli && uv run python ../docs/generate_docs.py
 
@@ -67,6 +81,10 @@ cd mycelium-cli && uv run ruff check . && uv run ruff format --check . \
 
 # Frontend
 cd mycelium-frontend && pnpm install && pnpm dev
+
+# Screenshots (see shotkit/README.md; `shot doctor` checks the machine)
+node shotkit/bin/shot.mjs app /room/atlas-migration --mock --offline
+node shotkit/bin/shot.mjs term --cols 84 -- mycelium memory --help
 ```
 
 ## Architecture
@@ -164,8 +182,9 @@ is no litellm dependency.
   plan → work. This is the value add; don't change it to an augmentation layer.
 - **memory set always upserts.** `memory set` overwrites existing keys automatically
   (version increments). Frontmatter the store doesn't manage is user data: it
-  survives a rewrite rather than being dropped, and `MemoryCreate.meta` (CLI:
-  `--meta k=v`, `--expandable`) writes it.
+  survives a rewrite rather than being dropped, `MemoryCreate.meta` (CLI:
+  `--meta k=v`, `--expandable`) writes it, and `MemoryRead.meta` reads it back —
+  every frontmatter key outside `MANAGED_META` (`services/filesystem.py`).
 - **Memories interlink; the link index is derived.** `myc://key` (canonical) and
   `[[key]]` (shorthand) are the same edge, plus `![[key]]` transclusions and typed
   frontmatter relations (`supersedes`, `depends-on`, `part-of`, `relates-to`).
@@ -238,16 +257,15 @@ is no litellm dependency.
   validates a bearer JWT against configured issuers + JWKS (`[auth]` in
   config.toml → `AUTH_*` env). It's an app-wide FastAPI dependency, so a new route
   is gated by default; health/docs stay public. Trust is a list of issuers matched
-  by exact `iss`, each with its own keys and default role — that's how the SPIRE
-  trust domain slots in later without issuer-specific code. Off by default is a
+  by exact `iss`, each with its own keys and default role — that's how a workload
+  trust root slots in later without issuer-specific code. Off by default is a
   hard requirement, not a default worth revisiting: auth must never block the
   try-it path. The localhost bypass reads the request's peer address, so it does
   **not** fire for a containerized backend (published-port traffic looks like LAN
   traffic) — the local tier is served by leaving auth off.
-- **SLIM channel identity is a three-tier ladder, and it starts off.** `slim.identity` /
-  `SLIM_IDENTITY` selects the tier; all three are implemented (`slim_identity.py` + its
-  byte-for-byte CLI mirror), and the constants are frozen in
-  `contracts/slim-l9-wire.json`.
+- **SLIM channel identity is a two-rung ladder, and it starts off.** `slim.identity` /
+  `SLIM_IDENTITY` selects the tier; both are implemented (`slim_identity.py` + its
+  CLI mirror), and the constants are frozen in `contracts/slim-l9-wire.json`.
   - `psk` (**default**, #567) — the group key derives from
     `MYCELIUM_SLIM_MASTER_SECRET`, set the same on every host that shares rooms. Zero
     infra, no per-member identity. `MYCELIUM_SLIM_REQUIRE_SECRET=1` makes a host fail
@@ -255,19 +273,25 @@ is no litellm dependency.
   - `signerjwt` (#476) — the floor: each member mints its own self-signed ES256
     credential and registers its public JWK on the room roster, so members are
     cryptographically distinct MLS participants with no external infra.
-  - `spire` (#579) — each member presents a SPIRE-attested JWT-SVID from the Workload
-    API. Tightest attestation, heaviest deploy (a co-located SPIRE node daemon). Ships
-    as an optional appliance profile (#588): `slim.identity=spire` brings SPIRE up via
-    `mycelium up`, and `mycelium agent create`/`rm` register/revoke the SVID entry — see
-    the SPIRE identity operator guide.
 
-  Selecting `signerjwt`/`spire` with no resolvable material degrades to `psk` with a
-  one-time warning unless `MYCELIUM_SLIM_IDENTITY_REQUIRE=1` fails closed. Per-member
-  revocation (#590 — drop the JWK / delete the SPIRE entry, no room-wide re-key) and the
-  optional appliance SPIRE profile (#588) both ship. What still gates anything hosted /
-  multi-user is turning identity on at all — not a missing capability.
+  Selecting `signerjwt` with no resolvable material degrades to `psk` with a one-time
+  warning unless `MYCELIUM_SLIM_IDENTITY_REQUIRE=1` fails closed. Per-member
+  revocation (#590 — drop the JWK, no room-wide re-key) ships. What still gates
+  anything hosted / multi-user is turning identity on at all — not a missing
+  capability.
+- **The SPIRE tier is gone, not deprecated (#668).** `slim.identity=spire`, the
+  `spire_registry` module, the `spire` compose profile and its server/node-daemon
+  services were removed outright, matching the openclaw/hermes precedent (#503).
+  It attested the backend to itself on one box — SPIRE server and node daemon
+  co-located with the workload they vouched for — so it bought short-lived
+  process-bound credentials, not the cross-trust-domain attestation the name
+  signals, and it was the stack's biggest source of operational breakage
+  (recreating the backend orphaned the daemon's PID-namespace link). Don't
+  reintroduce it as an identity option; the conditions for reviving it are #669,
+  and they start with a real client-held multi-party topology (#662) for it to
+  attest across.
 - **Custodial sessions are server-side, and off by default (#666).** Under an
-  identity tier (`signerjwt`/`spire`) the backend stops impersonating actors and
+  identity tier (`signerjwt`) the backend stops impersonating actors and
   becomes the **custodian of N per-actor MLS sessions** — one genuine MLS member per
   `(room, actor)`, keyed by handle (`app/services/custody.py`). The name is the term
   of art: *custodial* (the custodian holds your keys for you, like a custodial
@@ -283,9 +307,16 @@ is no litellm dependency.
   SQLite store (passphrase = `HMAC(MYCELIUM_CUSTODY_STORE_SECRET, ws/room/handle)`);
   on restart `restore_sessions` revives every session with **no re-invite** (proven
   across a real two-process kill/restart). **Honest scope boundary (keep it honest in
-  code + the user-facing SPIRE identity guide):** custodial means the hub still holds
+  code + the user-facing guides):** custodial means the hub still holds
   every key + plaintext; this hardens the wire + attribution + access-by-membership,
   and it is **NOT** E2E-from-the-hub.
+- **The UI is part of the stack, not an opt-in profile.** `mycelium-frontend` has
+  no compose profile: `mycelium install` and `mycelium up` bring it up alongside
+  the SLIM node and the backend, and `mycelium down` / `logs` / `status` see it
+  without any profile plumbing. The app *is* the product surface — the CLI is the
+  agent-facing protocol, the browser is where a human works — so there is no
+  `--ui` / `--no-ui` flag and no install prompt to decline it. The collector
+  (`profiles: [metrics]`) is still the one opt-in service.
 - **GUI server state is one SWR cache; client state stays local.** Every room
   read in the frontend goes through `mycelium-frontend/src/lib/room-data.ts` —
   typed SWR hooks keyed `["room", name, resource]`, so N panels reading the same
@@ -314,6 +345,23 @@ is no litellm dependency.
   plaintext, so it is **NOT** E2E-from-the-hub. Remote auth is a bearer token
   named by `a2a_auth_env` and resolved from the backend env — the secret never
   lands in room memory.
+- **CI is fast on purpose; timing is reported, never enforced.** A PR run's
+  critical path is ~95s, and that is a property worth defending — it erodes
+  twenty seconds at a time, invisibly. The `timing` job reads the run's own job
+  durations back from the Actions API, writes them into the run summary, and
+  warns against the budgets in `.github/ci-budgets.json`. It cannot fail a run:
+  a slow PR should merge and say it was slow. Raise a budget deliberately, in
+  the PR that makes the job slower. `scripts/check_workflows.py` (the `hygiene`
+  job) keeps the budgets naming real jobs, every `uses:` pinned to a commit SHA,
+  and every workflow declaring its own `permissions:`.
+- **Screenshots publish through a workflow, and it is additive.** The capture
+  pipeline (`pnpm screenshots`) is the same one that runs locally; the
+  `Screenshots` workflow runs it on a runner on manual dispatch and opens PRs
+  against `docs/` and the splash repo rather than pushing. The splash half needs
+  `SPLASH_REPO_TOKEN`, a PAT scoped to `mycelium-io/mycelium-io.github.io`
+  alone; without it the docs half still runs. Nothing on the PR path gets
+  slower, and a runner-rendered PNG differs subtly from a laptop-rendered one —
+  which is exactly why it lands as a reviewable diff.
 
 ## Local development
 
@@ -328,7 +376,8 @@ The normal `mycelium up` / `mycelium install` flow uses `compose.yml` with
 `pull_policy: always` (released images), the correct path for end users. For dev,
 add `compose-dev.yml`, which builds `mycelium-backend` from local source and wires
 `~/.mycelium/.env` into the containers. The stack is a SLIM node + the backend (+
-optional frontend/collector), with **no database**. Always run from the repo root.
+the frontend, plus an optional collector), with **no database**. Always run
+from the repo root.
 
 ```bash
 docker compose \
@@ -337,8 +386,8 @@ docker compose \
   up -d --build
 ```
 
-On subsequent runs, drop `--build` unless you've changed backend code. Add
-`--profile ui` for the frontend.
+On subsequent runs, drop `--build` unless you've changed backend code. The
+frontend comes up with the stack; add `--profile metrics` for the collector.
 
 ### LLM config
 

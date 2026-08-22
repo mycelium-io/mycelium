@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Monogram } from "@/components/ui/monogram";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip } from "@/components/ui/tooltip";
 import { useCurrentUser } from "@/components/current-user";
 import {
   Dialog,
@@ -89,6 +90,8 @@ export function AgentsPanel({
 
   useEffect(() => {
     if (!engineInvite) return;
+    // One-shot: the parent flips engineInvite, and clears it once the tab is shown.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setAddTab("engines");
     setAddOpen(true);
     onEngineInviteShown?.();
@@ -101,6 +104,8 @@ export function AgentsPanel({
   const highlightRow = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!focusHandle) return;
+    // The highlight outlives focusHandle, which is cleared as soon as it is consumed.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setHighlight(focusHandle);
     onFocusConsumed?.();
   }, [focusHandle, onFocusConsumed]);
@@ -336,18 +341,25 @@ export function AgentsPanel({
                     {a.handle}
                   </span>
                   {a.owner && (
-                    <span
-                      className="truncate font-mono text-micro"
-                      style={{ color: mine ? "var(--accent)" : "var(--muted-foreground)" }}
-                      title={`owner: @${a.owner}`}
-                    >
-                      @{a.owner}
-                    </span>
+                    <Tooltip content={`owner: @${a.owner}`}>
+                      <span
+                        className="truncate font-mono text-micro"
+                        style={{ color: mine ? "var(--accent)" : "var(--muted-foreground)" }}
+                        aria-description={`owner: @${a.owner}`}
+                      >
+                        @{a.owner}
+                      </span>
+                    </Tooltip>
                   )}
                   {a.team && (
-                    <span className="truncate text-micro text-muted-foreground" title={`team: ${a.team}`}>
-                      · {a.team}
-                    </span>
+                    <Tooltip content={`team: ${a.team}`}>
+                      <span
+                        className="truncate text-micro text-muted-foreground"
+                        aria-description={`team: ${a.team}`}
+                      >
+                        · {a.team}
+                      </span>
+                    </Tooltip>
                   )}
                   {a.adapter === "a2a" && (
                     <span

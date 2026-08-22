@@ -286,10 +286,7 @@ async def root(
 
     result["auth"] = auth_service.status()
 
-    # SLIM channel identity tier — psk (default) / signerjwt / spire (#588). For
-    # spire, report whether the Workload API socket is actually present, so a
-    # member stuck at "Initializing spire identity manager" (no co-located daemon)
-    # is legible from /health, not just from the logs.
+    # SLIM channel identity tier — psk (default) or signerjwt (#567).
     result["identity"] = _check_slim_identity()
 
     # Embedding model
@@ -456,34 +453,15 @@ def _check_storage() -> dict:
 
 
 def _check_slim_identity() -> dict:
-    """Report the SLIM channel identity tier and, for spire, socket presence (#588).
+    """Report the SLIM channel identity tier the hub is running (#567).
 
-    ``psk``/``signerjwt`` report just the mode. ``spire`` additionally reports
-    whether the SPIFFE Workload API socket is present — the difference between an
-    attested member and one degrading to the PSK (or hanging at "Initializing spire
-    identity manager" when it's required but absent). Backend-observable only: entry
-    counts live behind the SPIRE server's admin API, surfaced by ``mycelium doctor``.
+    Which tier a hub is on is otherwise only visible in its env, so /health answers
+    it in one GET.
     """
     from app.services import slim_identity
 
     mode = slim_identity.resolve_identity_mode()
-    result: dict = {"status": "ok", "mode": mode, "message": mode}
-    if mode != slim_identity.MODE_SPIRE:
-        return result
-
-    socket_path = slim_identity.resolve_spire_socket()
-    socket_present = bool(socket_path) and slim_identity._spire_socket_present(socket_path)
-    result["socket"] = socket_path
-    result["socket_present"] = socket_present
-    if socket_present:
-        result["message"] = "spire (Workload API socket present)"
-    elif slim_identity.identity_required():
-        result["status"] = "error"
-        result["message"] = "spire required but no Workload API socket — failing closed"
-    else:
-        result["status"] = "degraded"
-        result["message"] = "spire selected but no Workload API socket — degrading to PSK"
-    return result
+    return {"status": "ok", "mode": mode, "message": mode}
 
 
 def _check_embedding() -> dict:

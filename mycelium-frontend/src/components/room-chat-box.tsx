@@ -5,8 +5,8 @@
 
 import { useCallback, useMemo, useRef, useState } from "react";
 import TextareaAutosize from "react-textarea-autosize";
-import { ArrowUp } from "lucide-react";
 import { sendRoomMessage, type Memory } from "@/lib/api";
+import { SendPlaneIcon } from "@/components/send-plane-icon";
 import { useRoomMemories, useRoomRoster, useRoomSkills } from "@/lib/room-data";
 import { useKeyAction } from "@/components/keymap-provider";
 import { useCurrentUser } from "@/components/current-user";
@@ -205,6 +205,11 @@ export function RoomChatBox({ roomName, onSent, className }: Props) {
     }
   }, [content, onSent, roomName, principal, sending]);
 
+  // The button carries no chrome at rest — the composer's own border is the
+  // affordance and Enter is the primary path. It only colors up, and only
+  // grows a hover surface, once there is something to send.
+  const armed = content.trim().length > 0 && !sending;
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (trigger !== null && candidates.length > 0) {
       if (e.key === "ArrowDown") {
@@ -286,11 +291,17 @@ export function RoomChatBox({ roomName, onSent, className }: Props) {
             <button
               type="button"
               onClick={submit}
-              disabled={!content.trim() || sending}
+              disabled={!armed}
               aria-label="Send message"
-              className="ml-auto flex size-8 items-center justify-center rounded-full bg-accent text-accent-fg transition-opacity hover:opacity-90 disabled:opacity-30 disabled:cursor-not-allowed"
+              className={`group ml-auto grid size-8 place-items-center rounded-xl transition-colors ${
+                armed ? "text-accent hover:bg-accent-soft" : "cursor-not-allowed text-faint"
+              }`}
             >
-              <ArrowUp className="size-4" strokeWidth={2.5} />
+              <SendPlaneIcon
+                className={`size-[17px] transition-[transform,opacity] duration-200 ease-out ${
+                  sending ? "translate-x-1.5 -translate-y-1.5 opacity-0" : ""
+                } ${armed ? "group-hover:-translate-y-px group-hover:translate-x-px group-active:scale-90" : ""}`}
+              />
             </button>
           </div>
         </div>
