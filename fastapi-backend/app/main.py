@@ -44,6 +44,7 @@ from app.routes.search import router as search_router
 from app.routes.sessions import router as sessions_router
 from app.routes.skills import router as skills_router
 from app.routes.stream import router as stream_router
+from app.routes.summonguard import router as summonguard_router
 from app.routes.users import router as users_router
 from app.services.auth import auth_gate
 
@@ -107,17 +108,25 @@ async def lifespan(app: FastAPI):
     from app.services.aligner import AlignerEngine
     from app.services.plan_sync import PlanSyncEngine
     from app.services.room_channels import manager as room_channel_manager
+    from app.services.summonguard import SummonGuardEngine
     from app.services.synthesizer import SynthesizerEngine
 
-    # Two engine kinds share the one summon seam. Each engine self-selects by the
+    # The engine kinds share the one summon seam. Each engine self-selects by the
     # summoned handle's manifest kind (and the aligner's reserved-handle
     # fallback), so a fan-out dispatcher is enough — no central kind table. Only
     # one engine ever acts per summon since a handle maps to a single kind.
     app.state.aligner = AlignerEngine(room_channel_manager)
     app.state.synthesizer = SynthesizerEngine(room_channel_manager)
+    app.state.summonguard = SummonGuardEngine(room_channel_manager)
+    # The summonguard is the first engine that also acts on *registration*: its
+    # lifecycle subscription installs a room's summon filter when a guard manifest
+    # lands (and takes it back out when one goes). Subscribing costs nothing until
+    # a room actually registers one.
+    app.state.summonguard.wire()
     _engine_handlers = (
         app.state.aligner.handle_summon,
         app.state.synthesizer.handle_summon,
+        app.state.summonguard.handle_summon,
     )
 
     def _dispatch_summon(
@@ -135,7 +144,7 @@ async def lifespan(app: FastAPI):
 
     room_channel_manager.on_summon = _dispatch_summon
     logger.info(
-        "engines wired (aligner @%s, synthesizer @%s; brain=pi via %s)",
+        "engines wired (aligner @%s, synthesizer @%s, summonguard; brain=pi via %s)",
         app.state.aligner.handle,
         app.state.synthesizer.handle,
         settings.ALIGNER_PI_BINARY,
@@ -240,6 +249,7 @@ app.include_router(agent_context_router, prefix="/api")
 app.include_router(users_router, prefix="/api")
 app.include_router(search_router, prefix="/api")
 app.include_router(skills_router, prefix="/api")
+app.include_router(summonguard_router, prefix="/api")
 
 
 @app.get("/", tags=["health"])

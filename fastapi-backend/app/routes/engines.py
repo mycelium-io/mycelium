@@ -3,7 +3,7 @@
 
 """POST /rooms/{room_name}/engines — register a first-party cognition engine.
 
-Engines (``aligner``, ``synthesizer``) are backend-owned: registration is purely
+Engines (``aligner``, ``synthesizer``, ``summonguard``) are backend-owned: registration is purely
 a manifest write with *no* machine-local side effects, so — unlike
 ``claude_code``/``cursor`` agents, which need a resident session and workspace
 assets on the user's box — the web UI can invite one natively. The manifest lands
@@ -30,7 +30,7 @@ router = APIRouter(prefix="/rooms/{room_name}/engines", tags=["engines"])
 
 # The engine kinds the backend knows how to run. Mirrors the CLI's
 # ``mycelium.protocol.ENGINE_KINDS``; the summon seam self-selects by ``kind``.
-ENGINE_KINDS = frozenset({"aligner", "synthesizer"})
+ENGINE_KINDS = frozenset({"aligner", "synthesizer", "summonguard"})
 
 _HANDLE_RE = re.compile(HANDLE_PATTERN)
 

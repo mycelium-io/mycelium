@@ -31,7 +31,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from app.services import actor, l9, principals, room_channels
+from app.services import actor, l9, principals, room_channels, summon_filter
 from app.services.filesystem import room_exists
 from app.services.l9_models import Kind
 from app.services.l9_slim import serialize_content, serialize_envelope
@@ -89,33 +89,40 @@ def _parse_marker(text: str) -> tuple[dict[str, Any], str]:
     return payload, clean
 
 
-def _addressed_to(content: dict[str, Any], handle: str) -> bool:
-    """True when a transcript record is an exchange addressed to ``handle``.
+def _addressed_kind(content: dict[str, Any], handle: str) -> str | None:
+    """How a transcript record addresses ``handle``: ``recipient``, ``mention``, or not.
 
-    Addressed = the handle is an L9 recipient, or ``@handle`` appears in the human
-    text — and the sender is not the handle itself (loop guard). Presence/keepalive
-    are never addressed turns.
+    ``recipient`` — the handle is an L9 recipient: the protocol addressed it (a
+    mediator tick, a targeted reply), so it is a turn by construction.
+    ``mention`` — only ``@handle`` in the human text, which is the wake a summon
+    guard is allowed to second-guess. Either way the sender is never itself (loop
+    guard), and presence/keepalive are never addressed turns.
     """
     env = content.get("l9") or {}
     header = env.get("header") or {}
     if header.get("kind") != "exchange":
-        return False
+        return None
     if ((env.get("payload") or {}).get("type")) in ("presence", "keepalive"):
-        return False
+        return None
     actors = (header.get("participants") or {}).get("actors") or []
     sender = actors[0].get("id") if actors and isinstance(actors[0], dict) else None
     if sender and _norm(sender) == _norm(handle):
-        return False
+        return None
     recipients = [a.get("id") for a in actors[1:] if isinstance(a, dict)]
     if any(_norm(r) == _norm(handle) for r in recipients if r):
-        return True
+        return "recipient"
     text = (content.get("content") or "").lower()
     needle = f"@{handle.lower()}"
     idx = text.find(needle)
     if idx == -1:
-        return False
+        return None
     nxt = text[idx + len(needle)] if idx + len(needle) < len(text) else ""
-    return not (nxt.isalnum() or nxt in "_-")
+    return None if (nxt.isalnum() or nxt in "_-") else "mention"
+
+
+def _addressed_to(content: dict[str, Any], handle: str) -> bool:
+    """True when a record addresses ``handle`` at all (either way)."""
+    return _addressed_kind(content, handle) is not None
 
 
 def _describe(room: str, handle: str, record: Any) -> dict[str, Any]:
@@ -162,11 +169,20 @@ async def await_message(room_name: str, request: Request, handle: str, timeout: 
         while i < len(records):
             record = records[i]
             i += 1
-            if _addressed_to(record.content, handle):
-                persister.advance_cursor(handle, i)
-                _last_tick[key] = record.content
-                room_channels.manager.refresh_lease(room_name, handle)
-                return _describe(room_name, handle, record)
+            kind = _addressed_kind(record.content, handle)
+            if kind is None:
+                continue
+            # A protocol-addressed tick is a turn by construction; only a bare
+            # ``@handle`` in prose is the guard's to judge. In an unguarded room
+            # this returns True without waiting, so the poll is unchanged.
+            if kind == "mention" and not await summon_filter.wakes(
+                room_name, record.message_id, handle
+            ):
+                continue
+            persister.advance_cursor(handle, i)
+            _last_tick[key] = record.content
+            room_channels.manager.refresh_lease(room_name, handle)
+            return _describe(room_name, handle, record)
         # Nothing addressed in the scanned range: consume it (advance past the
         # observer/broadcast turns this handle doesn't await) and keep polling.
         persister.advance_cursor(handle, len(records))

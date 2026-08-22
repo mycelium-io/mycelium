@@ -152,6 +152,23 @@ class Settings(BaseSettings):
     SYNTHESIZER_HANDLE: str = "synthesizer"
     # Per-turn wall-clock bound (seconds) on the synthesizer's one-shot pi call.
     SYNTHESIZER_PI_TIMEOUT_S: float = 120.0
+    # Summonguard engine (kind ``summonguard``) — classifies each ``@``-mention as
+    # a summon or provenance, so a room stops waking agents that were merely named.
+    # Dormant like the others: nothing runs until a guard is registered in a room,
+    # and every failure path wakes rather than suppresses.
+    SUMMONGUARD_HANDLE: str = "summonguard"
+    # Per-message wall-clock bound (seconds) on the guard's one-shot pi call.
+    # Short: this sits between a message and an agent's turn, so a slow
+    # classification is worse than a fail-open wake.
+    SUMMONGUARD_PI_TIMEOUT_S: float = 20.0
+    # How long an ``await`` long-poll waits for an in-flight summon-filter
+    # judgement before serving the turn anyway. A property of the seam rather than
+    # of any one guard, so it is named for the extension point. Absorbed by the
+    # poll, invisible to the caller.
+    SUMMON_FILTER_WAIT_S: float = 8.0
+    # Kill switch: registered guards stay listed but classify everything as a wake,
+    # so a misbehaving guard is disarmed without editing a room's manifests.
+    SUMMONGUARD_DISABLE: bool = False
 
     # Where a registered `engine` (kind aligner) runs its NEGMAS drive — selects
     # the engine runtime. "backend" (default):
