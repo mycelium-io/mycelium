@@ -43,7 +43,7 @@ from a2a.types import (
 from fastapi import APIRouter, HTTPException, Request
 from starlette.responses import JSONResponse, Response
 
-from app.services import l9
+from app.services import a2a_activity, l9
 from app.services.filesystem import room_exists
 from app.services.l9_slim import serialize_content
 from app.services.skills import list_room_skills
@@ -55,7 +55,7 @@ router = APIRouter(prefix="/rooms/{room_name}", tags=["a2a"])
 _GUEST_HANDLE = "a2a-guest"
 
 
-def _build_room_card(room: str, request: Request) -> AgentCard:
+def build_room_card(room: str, request: Request) -> AgentCard:
     """The A2A Agent Card for a room, skills drawn from its ``skills/`` namespace."""
     base = str(request.base_url).rstrip("/")
     rpc_url = f"{base}/api/rooms/{room}/a2a"
@@ -79,13 +79,23 @@ def _build_room_card(room: str, request: Request) -> AgentCard:
     )
 
 
+def room_card_url(room: str, request: Request) -> str:
+    """Where this room's Agent Card is served — the discovery URL clients fetch."""
+    base = str(request.base_url).rstrip("/")
+    return f"{base}/api/rooms/{room}/.well-known/agent-card.json"
+
+
 async def _inject_into_room(room: str, text: str) -> str:
     """Post ``text`` into the room as the a2a guest; return an ack line."""
     from app.services.room_channels import manager
 
     managed = manager.get(room)
     if managed is None:
-        return f"Room '{room}' is not active."
+        ack = f"Room '{room}' is not active."
+        a2a_activity.record_inbound(
+            room, handle=_GUEST_HANDLE, status="error", prompt=text, detail=ack
+        )
+        return ack
     env = l9.build_envelope(
         kind=l9.Kind.exchange,
         episode=l9.episode_urn(room, "live"),
@@ -101,7 +111,9 @@ async def _inject_into_room(room: str, text: str) -> str:
         logger.warning("a2a-server: failed to broadcast inbound message to room %s", room)
     if managed.persister is not None:
         managed.persister.ingest_local(env, content, list_write=True)
-    return f"Delivered to room '{room}'."
+    ack = f"Delivered to room '{room}'."
+    a2a_activity.record_inbound(room, handle=_GUEST_HANDLE, status="ok", prompt=text, reply=ack)
+    return ack
 
 
 class _RoomAgentExecutor(AgentExecutor):
@@ -136,7 +148,8 @@ async def a2a_agent_card(room_name: str, request: Request) -> Response:
     """Serve the room's A2A Agent Card (the discovery half)."""
     if not room_exists(room_name):
         raise HTTPException(status_code=404, detail="Room not found")
-    card = _build_room_card(room_name, request)
+    card = build_room_card(room_name, request)
+    a2a_activity.record_card_fetch(room_name)
     return JSONResponse(agent_card_to_dict(card))
 
 
@@ -145,7 +158,7 @@ async def a2a_rpc(room_name: str, request: Request) -> Response:
     """Handle A2A JSON-RPC (``message/send``) for the room."""
     if not room_exists(room_name):
         raise HTTPException(status_code=404, detail="Room not found")
-    card = _build_room_card(room_name, request)
+    card = build_room_card(room_name, request)
     handler = DefaultRequestHandler(_RoomAgentExecutor(room_name), InMemoryTaskStore(), card)
     dispatcher = JsonRpcDispatcher(handler, enable_v0_3_compat=True)
     return await dispatcher.handle_requests(request)

@@ -187,6 +187,59 @@
         }
       }
     },
+    "/api/rooms/{room_name}/a2a/state": {
+      "get": {
+        "tags": [
+          "a2a"
+        ],
+        "summary": "A2A State",
+        "description": "The room's A2A bridge state: bridged members, exposure, recent exchanges.",
+        "operationId": "a2a_state_api_rooms__room_name__a2a_state_get",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 25,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/A2aBridgeState"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/rooms/{room_name}/engines": {
       "post": {
         "tags": [
@@ -3149,6 +3202,272 @@
         ],
         "title": "A2aAgentCreate",
         "description": "Request body to invite an external A2A agent into a room."
+      },
+      "A2aBridgeState": {
+        "properties": {
+          "room": {
+            "type": "string",
+            "title": "Room"
+          },
+          "agents": {
+            "items": {
+              "$ref": "#/components/schemas/A2aBridgedAgentRead"
+            },
+            "type": "array",
+            "title": "Agents"
+          },
+          "exposure": {
+            "$ref": "#/components/schemas/A2aExposureRead"
+          },
+          "exchanges": {
+            "items": {
+              "$ref": "#/components/schemas/A2aExchangeRead"
+            },
+            "type": "array",
+            "title": "Exchanges"
+          },
+          "outbound_ok": {
+            "type": "integer",
+            "title": "Outbound Ok",
+            "default": 0
+          },
+          "outbound_failed": {
+            "type": "integer",
+            "title": "Outbound Failed",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "room",
+          "exposure"
+        ],
+        "title": "A2aBridgeState",
+        "description": "Everything the Network views show about a room's A2A bridge."
+      },
+      "A2aBridgedAgentRead": {
+        "properties": {
+          "handle": {
+            "type": "string",
+            "title": "Handle"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          },
+          "card": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Card"
+          },
+          "endpoint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Endpoint"
+          },
+          "skills": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Skills"
+          },
+          "calls_ok": {
+            "type": "integer",
+            "title": "Calls Ok",
+            "default": 0
+          },
+          "calls_failed": {
+            "type": "integer",
+            "title": "Calls Failed",
+            "default": 0
+          },
+          "last_call_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Call At"
+          },
+          "proxied": {
+            "type": "boolean",
+            "title": "Proxied",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "handle"
+        ],
+        "title": "A2aBridgedAgentRead",
+        "description": "A room member reached over A2A rather than the room's SLIM channel."
+      },
+      "A2aExchangeRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "handle": {
+            "type": "string",
+            "title": "Handle"
+          },
+          "direction": {
+            "type": "string",
+            "title": "Direction"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "At"
+          },
+          "endpoint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Endpoint"
+          },
+          "peer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Peer"
+          },
+          "prompt": {
+            "type": "string",
+            "title": "Prompt",
+            "default": ""
+          },
+          "reply": {
+            "type": "string",
+            "title": "Reply",
+            "default": ""
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "duration_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Ms"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "handle",
+          "direction",
+          "status",
+          "at"
+        ],
+        "title": "A2aExchangeRead",
+        "description": "One bridged turn: a call we made out, or a message that arrived in."
+      },
+      "A2aExposureRead": {
+        "properties": {
+          "card_url": {
+            "type": "string",
+            "title": "Card Url"
+          },
+          "rpc_url": {
+            "type": "string",
+            "title": "Rpc Url"
+          },
+          "skills": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Skills"
+          },
+          "card_fetches": {
+            "type": "integer",
+            "title": "Card Fetches",
+            "default": 0
+          },
+          "messages": {
+            "type": "integer",
+            "title": "Messages",
+            "default": 0
+          },
+          "last_card_fetch_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Card Fetch At"
+          },
+          "last_message_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Message At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "card_url",
+          "rpc_url"
+        ],
+        "title": "A2aExposureRead",
+        "description": "The inbound half: this room served as an A2A agent of its own."
       },
       "AgentContextOut": {
         "properties": {

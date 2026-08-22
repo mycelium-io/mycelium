@@ -21,6 +21,7 @@
 import { useCallback, useMemo } from "react";
 import useSWR, { useSWRConfig, type SWRConfiguration } from "swr";
 import {
+  fetchA2aBridge,
   fetchCoordination,
   fetchEpisodes,
   fetchMemories,
@@ -33,6 +34,7 @@ import {
   fetchRooms,
   fetchSkills,
   logFetchError,
+  type A2aBridgeState,
   type AgentSummary,
   type CoordinationStatus,
   type EpisodeSummary,
@@ -62,6 +64,7 @@ const POLL = {
   plan: 8_000,
   episodes: 5_000,
   coordination: 20_000,
+  a2a: 15_000,
 } as const;
 
 /** Messages are read here only to find who has posted; one page is plenty. */
@@ -85,7 +88,8 @@ type RoomResource =
   | "skills"
   | "plan"
   | "episodes"
-  | "integrity";
+  | "integrity"
+  | "a2a";
 
 /** A null key parks the hook: a room-less render fetches nothing. */
 function roomKey(room: string, resource: RoomResource, ...rest: (string | number)[]) {
@@ -220,6 +224,15 @@ export function useRoomEpisodes(room: string, opts: RoomQueryOptions = {}) {
     room, "episodes", fetchEpisodes, NO_EPISODES, POLL.episodes, opts,
   );
   return { episodes: data, loading, refresh };
+}
+
+/** The room's A2A bridge: bridged members, exposure, and recent exchanges.
+ *  Null until it loads, and for a hub that can't serve it. */
+export function useA2aBridge(room: string, opts: RoomQueryOptions = {}) {
+  const { data, loading, refresh } = useRoomQuery(
+    room, "a2a", fetchA2aBridge, null as A2aBridgeState | null, POLL.a2a, opts,
+  );
+  return { bridge: data, loading, refresh };
 }
 
 /** Fabric-wide SLIM telemetry — one `/health` read shared by every reader. */

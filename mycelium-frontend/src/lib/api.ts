@@ -603,6 +603,72 @@ export async function registerA2aAgent(
   });
 }
 
+// ── A2A bridge (the Network pane's off-channel half) ─────────────────────────
+//
+// A bridged agent is reached over HTTP by the hub, not over the room's SLIM
+// channel, so none of it shows up in the coordination telemetry above. This is
+// the read that makes a bridged turn legible next to SLIM traffic.
+
+/** A room member the hub reaches over A2A instead of the room's channel. */
+export interface A2aBridgedAgent {
+  handle: string;
+  description: string;
+  card: string | null;
+  endpoint: string | null;
+  skills: string[];
+  calls_ok: number;
+  calls_failed: number;
+  last_call_at: string | null;
+  /** Always true, and stated rather than implied: proxied by the hub, so it
+   *  holds no group key and is not a member of the room's MLS group. */
+  proxied: boolean;
+}
+
+/** One bridged turn: a call the hub made out, or a message that arrived in. */
+export interface A2aExchange {
+  id: string;
+  handle: string;
+  direction: "outbound" | "inbound";
+  status: "ok" | "error";
+  at: string;
+  endpoint: string | null;
+  /** Whose `@`-mention triggered the call (outbound only). */
+  peer: string | null;
+  prompt: string;
+  reply: string;
+  detail: string | null;
+  duration_ms: number | null;
+}
+
+/** The inbound half: this room served as an A2A agent of its own. */
+export interface A2aExposure {
+  card_url: string;
+  rpc_url: string;
+  skills: string[];
+  card_fetches: number;
+  messages: number;
+  last_card_fetch_at: string | null;
+  last_message_at: string | null;
+}
+
+export interface A2aBridgeState {
+  room: string;
+  agents: A2aBridgedAgent[];
+  exposure: A2aExposure;
+  exchanges: A2aExchange[];
+  outbound_ok: number;
+  outbound_failed: number;
+}
+
+/** Read a room's A2A bridge state. Fail-soft: null when the hub is unreachable
+ *  or too old to serve the route, which the pane renders as "no bridge". */
+export async function fetchA2aBridge(roomName: string): Promise<A2aBridgeState | null> {
+  return apiFetch<A2aBridgeState | null>(`/api/rooms/${roomName}/a2a/state`, {
+    cache: "no-store",
+    fallback: null,
+  });
+}
+
 export type PresenceKind = "slim" | "lease";
 
 export interface PresenceMember {

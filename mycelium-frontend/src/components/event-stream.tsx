@@ -18,6 +18,7 @@ import { RoomPlanHeader } from "@/components/room-plan-header";
 import { ConsentDialog } from "@/components/consent-dialog";
 import { L9Inspector } from "@/components/l9-inspector";
 import { NegotiationView } from "@/components/negotiation-view";
+import { RoomA2aView } from "@/components/room-a2a";
 import { RoomSlimView } from "@/components/room-slim";
 import { EmptyState } from "@/components/empty-state";
 import { KeyBadge } from "@/components/key-badge";
@@ -531,10 +532,14 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
       </div>
       {view === "network" ? (
         // Unified Network pane: SLIM channel diagnostics as a rail on top, the
-        // live L9 protocol feed filling the rest.
+        // A2A bridge (the room's off-channel traffic) beneath it when there is
+        // one, and the live L9 protocol feed filling the rest.
         <div className="flex flex-1 min-h-0 flex-col">
           <div className="shrink-0 border-b border-border bg-surface/40">
             <RoomSlimView roomName={roomName} layout="rail" />
+          </div>
+          <div className="shrink-0">
+            <RoomA2aView roomName={roomName} />
           </div>
           <div className="flex-1 min-h-0">
             <L9Inspector roomName={roomName} />

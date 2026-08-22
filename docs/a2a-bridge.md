@@ -59,6 +59,32 @@ The card endpoint is public (discovery is unauthenticated by the A2A spec, like
 `/.well-known/openid-configuration`). The room's message endpoint is gated by the
 hub's auth when auth is enabled.
 
+## Watch the bridge
+
+The bridge is the one hop that doesn't ride SLIM, so it has its own place in the
+coordination views rather than being folded into the channel telemetry.
+
+In the web UI, the **Network** pane carries an A2A strip beneath the SLIM rail
+whenever a room has a bridge: the bridged members with their endpoint and
+advertised skills, the room's own card and how often it has been read, and the
+recent exchanges either way — an answered call with what came back, a failed one
+with why. A room without a bridge shows no strip.
+
+From the CLI, `mycelium network [room]` prints the same thing per room under the
+fabric table, and `mycelium network --json` carries it as an `a2a` block on each
+room.
+
+Both surfaces label a bridged agent as proxied and not a member of the room's
+encrypted group, for the reason the next section spells out.
+
+The counters are process-lifetime and in-memory: a hub restart zeroes them. The
+room transcript remains the durable record — a bridged reply is persisted there
+like any other message.
+
+```
+GET /api/rooms/{room}/a2a/state
+```
+
 ## What the bridge is, and what it is not
 
 A bridged A2A agent is a member of the room in the coordination sense: it is on
