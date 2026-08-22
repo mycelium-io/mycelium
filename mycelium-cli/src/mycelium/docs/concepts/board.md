@@ -30,7 +30,9 @@ Review 1
 
 > **Experimental.** The board reads real room state today. The triage verbs act
 > on your own view: `resolve` writes through to a plan task, and the rest change
-> what you see without yet writing back to the room.
+> what you see without yet writing back to the room. Live status for linked pull
+> requests is landing: the hub can resolve them, and the rows are being wired to
+> show it.
 
 ## Nothing to fill in
 
@@ -145,6 +147,58 @@ is a link, it's a link and not a copy:
 
 If it should outlive the work, it belongs in GitHub and Mycelium just points at
 it. The board holds what's live right now.
+
+### Mention a pull request and the row tracks it
+
+There is nothing to attach and no per-row setting. Write the link where the work
+is already described — a plan task, a memory, a message in the room — and the
+row that comes from it carries that pull request's state:
+
+```bash
+mycelium plan task add "land the custody seam — mycelium-io/mycelium#504"
+mycelium memory set work/thin-spoke \
+  "Blocked behind https://github.com/mycelium-io/mycelium/pull/502"
+```
+
+Both forms count: the `owner/repo#123` shorthand, and the URL you have on your
+clipboard when you're talking about a pull request. Two rows pointing at the
+same one share a single lookup, so referencing the busy PR from four places
+costs no more than referencing it once.
+
+### What you see on the row
+
+The row shows GitHub's own words — `CI failing`, `changes requested`, `draft`,
+`merged` — because that's the phrasing you already recognise. Underneath, each
+one is filed as one of six states, and that's what grouping, filtering and
+colour work from:
+
+| State | What it is for a pull request |
+|---|---|
+| `ok` | approved, checks green |
+| `pending` | draft, checks running, or waiting on a first review |
+| `blocked` | changes requested — a person is the fix |
+| `failed` | checks failing — a machine is the fix |
+| `done` | merged or closed |
+| `unknown` | the tool said something Mycelium can't map |
+
+So `mycelium board --group status` puts everything blocked together whether it's
+a room decision nobody has answered or a pull request somebody has to revise.
+
+### How current it is
+
+Every status carries the moment it was fetched, and the row shows its age
+(`CI green · 4m`). The board never waits on GitHub to draw: it shows what it
+last knew and refreshes behind you. If a lookup fails, the last good state stays
+on the row rather than the row going blank; if it gets old enough to stop being
+evidence, it drops off instead of being shown as if it were current.
+
+Only rows in your **needs you** and **in flight** lenses are kept live. A pull
+request nobody is currently looking at costs nothing until someone looks, which
+is what keeps a large room from turning into a polling loop against GitHub.
+
+If a status never appears, the hub has no credential for the tool: see
+[Status providers](#architecture) for the token and for teaching Mycelium a
+tracker other than GitHub.
 
 ## CLI
 

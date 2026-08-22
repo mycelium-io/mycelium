@@ -679,7 +679,7 @@ Review 1
          @agent-z   feat/custody-seam   CI green   #504       12m</code></pre>
       <div class="callout callout-note">
         <div class="callout-bar"></div>
-        <div class="callout-body"><strong>Experimental.</strong> The board reads real room state today. The triage verbs act on your own view: <code>resolve</code> writes through to a plan task, and the rest change what you see without yet writing back to the room.</div>
+        <div class="callout-body"><strong>Experimental.</strong> The board reads real room state today. The triage verbs act on your own view: <code>resolve</code> writes through to a plan task, and the rest change what you see without yet writing back to the room. Live status for linked pull requests is landing: the hub can resolve them, and the rows are being wired to show it.</div>
       </div>
       <h2 id="board-nothing-to-fill-in">Nothing to fill in</h2>
       <p>You never add anything to the board. It&#x27;s assembled from what the room already has: the tasks in its plan, the negotiations running in it, the memories under <code>decisions/</code>, <code>status/</code>, <code>work/</code> and <code>failed/</code>, and which agents are actually resident right now. Every row says where it came from, and clicking through takes you to the real thing rather than a copy of it.</p>
@@ -747,6 +747,55 @@ Review 1
         <li>Most rows point at a branch or a pull request instead.</li>
       </ul>
       <p>If it should outlive the work, it belongs in GitHub and Mycelium just points at it. The board holds what&#x27;s live right now.</p>
+      <h3 id="board-mention-a-pull-request-and-the-row-tracks-it">Mention a pull request and the row tracks it</h3>
+      <p>There is nothing to attach and no per-row setting. Write the link where the work is already described — a plan task, a memory, a message in the room — and the row that comes from it carries that pull request&#x27;s state:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">plan</span> <span class="cmd">task</span> add <span class="str">&quot;land the custody seam — mycelium-io/mycelium#504&quot;</span>
+<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> work/thin-spoke \
+  <span class="str">&quot;Blocked behind <span class="url">https://github.com/mycelium-io/mycelium/pull/502</span>&quot;</span></code></pre>
+      <p>Both forms count: the <code>owner/repo#123</code> shorthand, and the URL you have on your clipboard when you&#x27;re talking about a pull request. Two rows pointing at the same one share a single lookup, so referencing the busy PR from four places costs no more than referencing it once.</p>
+      <h3 id="board-what-you-see-on-the-row">What you see on the row</h3>
+      <p>The row shows GitHub&#x27;s own words — <code>CI failing</code>, <code>changes requested</code>, <code>draft</code>, <code>merged</code> — because that&#x27;s the phrasing you already recognise. Underneath, each one is filed as one of six states, and that&#x27;s what grouping, filtering and colour work from:</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>State</th>
+              <th>What it is for a pull request</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>ok</code></td>
+              <td>approved, checks green</td>
+            </tr>
+            <tr>
+              <td><code>pending</code></td>
+              <td>draft, checks running, or waiting on a first review</td>
+            </tr>
+            <tr>
+              <td><code>blocked</code></td>
+              <td>changes requested — a person is the fix</td>
+            </tr>
+            <tr>
+              <td><code>failed</code></td>
+              <td>checks failing — a machine is the fix</td>
+            </tr>
+            <tr>
+              <td><code>done</code></td>
+              <td>merged or closed</td>
+            </tr>
+            <tr>
+              <td><code>unknown</code></td>
+              <td>the tool said something Mycelium can&#x27;t map</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>So <code>mycelium board --group status</code> puts everything blocked together whether it&#x27;s a room decision nobody has answered or a pull request somebody has to revise.</p>
+      <h3 id="board-how-current-it-is">How current it is</h3>
+      <p>Every status carries the moment it was fetched, and the row shows its age (<code>CI green · 4m</code>). The board never waits on GitHub to draw: it shows what it last knew and refreshes behind you. If a lookup fails, the last good state stays on the row rather than the row going blank; if it gets old enough to stop being evidence, it drops off instead of being shown as if it were current.</p>
+      <p>Only rows in your <strong>needs you</strong> and <strong>in flight</strong> lenses are kept live. A pull request nobody is currently looking at costs nothing until someone looks, which is what keeps a large room from turning into a polling loop against GitHub.</p>
+      <p>If a status never appears, the hub has no credential for the tool: see <a href="#architecture">Status providers</a> for the token and for teaching Mycelium a tracker other than GitHub.</p>
       <h2 id="board-cli">CLI</h2>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span>                            # what needs you
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="flag">--lens</span> in-flight           # claimed work, who holds it, CI
