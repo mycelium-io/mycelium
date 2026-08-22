@@ -515,11 +515,18 @@ _CWD_PROMPT_BY_ADAPTER: dict[str, str] = {
 
 
 @doc_ref(
-    usage="mycelium agent create <handle> --adapter <name> [--cwd <path>]",
+    usage=(
+        "mycelium agent create <handle> --adapter <name> [--cwd <path>] "
+        "[--card <url>] [--card-auth-env <var>]"
+    ),
     desc=(
         "Create a new, Mycelium-controlled agent in a room. "
         "<code>claude_code</code> and <code>cursor</code> agents are resident "
-        "sessions the user keeps woken with <code>mycelium await --loop</code>."
+        "sessions the user keeps woken with <code>mycelium await --loop</code>. "
+        "<code>--adapter a2a</code> instead registers a remote Agent2Agent "
+        "endpoint given by <code>--card</code> (its Agent Card host, resolved at "
+        "registration); <code>--card-auth-env</code> names a backend env var "
+        "holding its bearer token, so only the var name is stored in the room."
     ),
     group="agent",
 )
