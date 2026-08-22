@@ -38,6 +38,7 @@ SECTIONS: list[tuple[str, str]] = [
     ("architecture", "Architecture"),
     ("structured-memory", "Structured Memory"),
     ("hub-and-spoke", "Hub & Spoke"),
+    ("ephemeral-agents", "Ephemeral Agents"),
     ("security-planes", "Security Planes"),
     ("auth", "Authentication"),
     ("keycloak-oidc", "Keycloak / OIDC Setup"),

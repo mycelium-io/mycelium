@@ -12,6 +12,11 @@ REPO="mycelium-io/mycelium"
 PACKAGE_NAME="mycelium-cli"
 BINARY_NAME="mycelium"
 PINNED_VERSION="${MYCELIUM_VERSION:-}"
+# Install just the CLI, for a machine that talks to a hub someone else runs —
+# a spoke, a CI job, an ephemeral cloud session. There is no local stack to
+# bring up, so Docker is not a prerequisite.
+CLIENT_ONLY="${MYCELIUM_CLIENT_ONLY:-}"
+IMPLIED_CLIENT_ONLY=""
 
 # Parse CLI args (curl | bash -s -- --version X)
 while [ $# -gt 0 ]; do
@@ -24,20 +29,29 @@ while [ $# -gt 0 ]; do
       PINNED_VERSION="${1#--version=}"
       shift
       ;;
+    --client-only)
+      CLIENT_ONLY=1
+      shift
+      ;;
     -h|--help)
       cat <<'HELP'
 Mycelium CLI installer
 
 Usage:
-  install.sh [--version <version>]
+  install.sh [--version <version>] [--client-only]
 
 Options:
   --version <version>   Install a specific release (e.g. 0.1.83).
                         Defaults to latest. Also settable via MYCELIUM_VERSION env var.
+  --client-only         Install only the CLI, for a machine that talks to a hub
+                        someone else runs. Skips Docker. Also settable via
+                        MYCELIUM_CLIENT_ONLY=1, and implied when MYCELIUM_API_URL
+                        names a non-local hub.
 
 Examples:
   curl -fsSL .../install.sh | bash
   curl -fsSL .../install.sh | bash -s -- --version 0.1.83
+  curl -fsSL .../install.sh | bash -s -- --client-only
   MYCELIUM_VERSION=0.1.83 curl -fsSL .../install.sh | bash
 HELP
       exit 0
@@ -53,6 +67,15 @@ done
 # Normalize: strip a leading v if the user passed --version v0.1.83
 if [ -n "$PINNED_VERSION" ]; then
   PINNED_VERSION="${PINNED_VERSION#v}"
+fi
+
+# Naming a hub that isn't on this machine says what this machine is: a client of
+# someone else's stack.
+if [ -z "$CLIENT_ONLY" ] && [ -n "${MYCELIUM_API_URL:-}" ]; then
+  case "$MYCELIUM_API_URL" in
+    *localhost*|*127.0.0.1*|*0.0.0.0*) ;;
+    *) CLIENT_ONLY=1; IMPLIED_CLIENT_ONLY=1 ;;
+  esac
 fi
 
 # ── Colors ────────────────────────────────────────────────────────────────────
@@ -104,50 +127,56 @@ for candidate in python3.13 python3.12 python3; do
   fi
 done
 
-if [ -z "$PYTHON_CMD" ]; then
-  if command -v python3 &>/dev/null; then
-    found=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
-    die "Python 3.12+ required (found $found as python3). Install from https://python.org"
-  else
-    die "python3 is required. Install Python 3.12+ from https://python.org"
-  fi
-fi
-
 if ! command -v curl &>/dev/null; then
   die "curl is required"
 fi
 
-ok "Prerequisites OK (Python $PYTHON_VERSION via $PYTHON_CMD)"
+# No 3.12+ on the box is not fatal: uv fetches a managed one below.
+if [ -n "$PYTHON_CMD" ]; then
+  ok "Prerequisites OK (Python $PYTHON_VERSION via $PYTHON_CMD)"
+else
+  ok "Prerequisites OK (no Python 3.12+ yet — uv will fetch one)"
+fi
 
 # ── Check Docker ──────────────────────────────────────────────────────────────
-step "Checking Docker..."
-
-OS=$(uname -s)
-if ! command -v docker &>/dev/null; then
-  if [ "$OS" = "Darwin" ]; then
-    die "Docker is required. Install Docker Desktop from https://www.docker.com/products/docker-desktop"
+# Only the full stack needs a daemon; a client install talks to a hub over HTTP.
+if [ -n "$CLIENT_ONLY" ]; then
+  step "Client-only install — skipping Docker..."
+  if [ -n "$IMPLIED_CLIENT_ONLY" ]; then
+    ok "Client-only install (MYCELIUM_API_URL names a remote hub) — Docker not needed"
   else
-    warn "Docker not found — installing..."
-    curl -fsSL https://get.docker.com | sh >/dev/null 2>&1
-    if ! command -v docker &>/dev/null; then
-      die "Docker install failed. Install manually: https://docs.docker.com/engine/install/"
-    fi
-    ok "Docker installed"
-  fi
-elif ! docker info >/dev/null 2>&1; then
-  if [ "$OS" = "Darwin" ]; then
-    die "Docker Desktop is installed but not running. Start Docker Desktop and try again."
-  else
-    warn "Docker daemon not running — attempting to start..."
-    sudo systemctl start docker >/dev/null 2>&1 || true
-    if ! docker info >/dev/null 2>&1; then
-      die "Docker daemon could not be started. Run: sudo systemctl start docker"
-    fi
-    ok "Docker daemon started"
+    ok "Client-only install — Docker not needed"
   fi
 else
-  DOCKER_VERSION=$(docker version --format '{{.Server.Version}}' 2>/dev/null || echo "unknown")
-  ok "Docker found ($DOCKER_VERSION)"
+  step "Checking Docker..."
+
+  OS=$(uname -s)
+  if ! command -v docker &>/dev/null; then
+    if [ "$OS" = "Darwin" ]; then
+      die "Docker is required. Install Docker Desktop from https://www.docker.com/products/docker-desktop"
+    else
+      warn "Docker not found — installing..."
+      curl -fsSL https://get.docker.com | sh >/dev/null 2>&1
+      if ! command -v docker &>/dev/null; then
+        die "Docker install failed. Install manually: https://docs.docker.com/engine/install/"
+      fi
+      ok "Docker installed"
+    fi
+  elif ! docker info >/dev/null 2>&1; then
+    if [ "$OS" = "Darwin" ]; then
+      die "Docker Desktop is installed but not running. Start Docker Desktop and try again."
+    else
+      warn "Docker daemon not running — attempting to start..."
+      sudo systemctl start docker >/dev/null 2>&1 || true
+      if ! docker info >/dev/null 2>&1; then
+        die "Docker daemon could not be started. Run: sudo systemctl start docker"
+      fi
+      ok "Docker daemon started"
+    fi
+  else
+    DOCKER_VERSION=$(docker version --format '{{.Server.Version}}' 2>/dev/null || echo "unknown")
+    ok "Docker found ($DOCKER_VERSION)"
+  fi
 fi
 
 # ── Install uv if not present ─────────────────────────────────────────────────
@@ -162,6 +191,16 @@ if ! command -v uv &>/dev/null; then
   ok "uv installed"
 else
   ok "uv found ($(uv --version 2>/dev/null | head -1))"
+fi
+
+# The CLI needs 3.12+. With none on the box, let uv fetch a managed one rather
+# than failing — an ephemeral container usually ships an older system Python and
+# has no way to add one.
+UV_PYTHON_FLAG=""
+if [ -z "$PYTHON_CMD" ]; then
+  step "Fetching a managed Python 3.12 for the CLI..."
+  UV_PYTHON_FLAG="--python 3.12"
+  ok "Using a uv-managed Python 3.12"
 fi
 
 # ── Resolve release version ──────────────────────────────────────────────────
@@ -186,28 +225,21 @@ else
   ok "Latest version: $LATEST"
 fi
 
-INSTALL_FROM="github"
-
 # ── Install ───────────────────────────────────────────────────────────────────
 step "Installing mycelium CLI..."
 
-if [ "$INSTALL_FROM" = "github" ]; then
-  WHEEL_FILENAME="mycelium_cli-${WHEEL_VERSION}-py3-none-any.whl"
-  WHEEL_URL="https://github.com/${REPO}/releases/download/${LATEST}/${WHEEL_FILENAME}"
-  WHEEL_TMP="/tmp/${WHEEL_FILENAME}"
+WHEEL_FILENAME="mycelium_cli-${WHEEL_VERSION}-py3-none-any.whl"
+WHEEL_URL="https://github.com/${REPO}/releases/download/${LATEST}/${WHEEL_FILENAME}"
+WHEEL_TMP="/tmp/${WHEEL_FILENAME}"
 
-  if curl -fsSL "$WHEEL_URL" -o "$WHEEL_TMP" 2>/dev/null; then
-    uv tool install "$WHEEL_TMP" --force 2>&1 | sed 's/^/  /'
-    rm -f "$WHEEL_TMP"
-  else
-    warn "Could not download wheel, falling back to PyPI"
-    INSTALL_FROM="pypi"
-  fi
+# The release wheel is the only source. `mycelium-cli` on PyPI is an unrelated
+# project, so falling back to it installs someone else's package under our name.
+if ! curl -fsSL "$WHEEL_URL" -o "$WHEEL_TMP" 2>/dev/null; then
+  die "Could not download $WHEEL_FILENAME from $LATEST. See https://github.com/${REPO}/releases"
 fi
-
-if [ "$INSTALL_FROM" = "pypi" ]; then
-  uv tool install mycelium-cli --force 2>&1 | sed 's/^/  /'
-fi
+# shellcheck disable=SC2086 - UV_PYTHON_FLAG is deliberately word-split (empty = no flag)
+uv tool install $UV_PYTHON_FLAG "$WHEEL_TMP" --force 2>&1 | sed 's/^/  /'
+rm -f "$WHEEL_TMP"
 
 ok "mycelium CLI installed"
 
@@ -253,7 +285,16 @@ echo ""
 echo -e "  ${BOLD}echo 'export PATH=\"$UV_BIN_DIR:\$PATH\"' >> $RC_FILE && source $RC_FILE${NC}"
 echo ""
 echo -e "Then:"
-echo -e "  ${BOLD}mycelium --help${NC}               — show all commands"
-echo -e "  ${BOLD}mycelium install${NC}              — spin up the full stack (Docker)"
-echo -e "  ${BOLD}mycelium agent create <handle>${NC}   — wire a claude_code agent"
+if [ -n "$CLIENT_ONLY" ]; then
+  echo -e "  ${BOLD}mycelium --help${NC}               — show all commands"
+  echo -e "  ${BOLD}mycelium room send \"…\"${NC}         — announce into a room on the hub"
+  echo ""
+  echo -e "${DIM}  Point it at the hub with MYCELIUM_API_URL, MYCELIUM_ACTIVE_ROOM and${NC}"
+  echo -e "${DIM}  MYCELIUM_AGENT_HANDLE:${NC}"
+  echo -e "${DIM}  https://mycelium-io.github.io/mycelium/reference.html#ephemeral-agents${NC}"
+else
+  echo -e "  ${BOLD}mycelium --help${NC}               — show all commands"
+  echo -e "  ${BOLD}mycelium install${NC}              — spin up the full stack (Docker)"
+  echo -e "  ${BOLD}mycelium agent create <handle>${NC}   — wire a claude_code agent"
+fi
 echo ""

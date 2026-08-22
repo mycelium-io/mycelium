@@ -53,6 +53,8 @@ def _is_local_backend(api_url: str) -> bool:
 
 def _check_config_files() -> CheckResult:
     """Check that ~/.mycelium/.env and config.toml exist."""
+    import os
+
     env_path = Path.home() / ".mycelium" / ".env"
     config_path = Path.home() / ".mycelium" / "config.toml"
 
@@ -61,6 +63,16 @@ def _check_config_files() -> CheckResult:
         missing.append(".env")
     if not config_path.exists():
         missing.append("config.toml")
+
+    # A client configured from the environment — an ephemeral container, a CI
+    # job — has no config files by design, and `mycelium install` is the wrong
+    # advice for a machine with no stack to install.
+    if missing and os.environ.get("MYCELIUM_API_URL"):
+        return CheckResult(
+            name="Config files",
+            status="ok",
+            message="configured from the environment (MYCELIUM_API_URL)",
+        )
 
     if missing:
         return CheckResult(
