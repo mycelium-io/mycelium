@@ -507,10 +507,6 @@ export async function fetchMessages(roomName: string, limit?: number): Promise<M
   });
 }
 
-export function getSSEUrl(roomName: string) {
-  return `/api/rooms/${roomName}/messages/stream`;
-}
-
 /** The room's L9 wire history (transcript replay), for backfilling the live
  *  inspector on mount. Frames match the SSE bus shape, so the client projects
  *  backfill + live identically. Returns [] on any error (best-effort). */
@@ -523,18 +519,6 @@ export async function fetchL9History(
     fallback: [],
     guard: isArray as (d: unknown) => d is Record<string, unknown>[],
   });
-}
-
-/** SSE endpoint for global app events (room create/delete). */
-export function getAppEventsSSEUrl() {
-  return `/api/events/stream`;
-}
-
-/** SSE endpoint aggregating every room's activity into one stream — the
- *  notification center's feed, so it doesn't have to open one connection per
- *  room the user participates in. */
-export function getNotificationsSSEUrl() {
-  return `/api/notifications/stream`;
 }
 
 export async function sendRoomMessage(

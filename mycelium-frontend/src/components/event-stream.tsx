@@ -5,7 +5,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  getSSEUrl,
   fetchMessages,
   fetchPendingInvites,
   respondToInvite,
@@ -13,6 +12,7 @@ import {
   type PendingInvite,
 } from "@/lib/api";
 import { useRoomAgents } from "@/lib/room-data";
+import { useRoomConnected, useRoomStream } from "@/lib/stream-hub";
 import { MarkdownContent } from "@/components/markdown-content";
 import { RoomPlanHeader } from "@/components/room-plan-header";
 import { ConsentDialog } from "@/components/consent-dialog";
@@ -302,7 +302,7 @@ interface Props {
 export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onNegotiationPhaseChange, onOpenMemory, onOpenEpisode, view: viewProp, onViewChange, suppressInvites = false, focusMessageId = null, onFocusConsumed }: Props) {
   const [events, setEvents] = useState<Event[]>([]);
   const [historyLoaded, setHistoryLoaded] = useState(false);
-  const [connected, setConnected] = useState(false);
+  const connected = useRoomConnected(roomName);
 
   // Surface connection state to status bar; one home for the signal.
   useEffect(() => {
@@ -350,52 +350,32 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
     respondToInvite(roomName, invite.id, decision).catch(logFetchError("respondToInvite"));
   };
 
-  // SSE connection
-  useEffect(() => {
-    const url = getSSEUrl(roomName);
-    let es: EventSource;
-    let retryTimeout: NodeJS.Timeout;
-
-    function connect() {
-      es = new EventSource(url);
-      es.onopen = () => setConnected(true);
-      es.onmessage = (e) => {
-        try {
-          const msg = JSON.parse(e.data);
-          // Consent prompts drive the accept/decline dialog, not the feed.
-          if (msg.message_type === "consent_request") {
-            try {
-              const invite = JSON.parse(msg.content as string) as PendingInvite;
-              setInvites((prev) =>
-                prev.some((i) => i.id === invite.id) ? prev : [...prev, invite],
-              );
-            } catch {}
-            return;
-          }
-          const event = parseEvent(msg);
-          setEvents(prev => [...prev, event]);
-          if (event.type === "memory_changed") onMemoryChanged?.();
-          // A consensus compiles the negotiation into plan/tasks.md, so nudge
-          // the plan header to refetch so the checklist surfaces immediately.
-          if (event.type === "coordination_consensus" && event.raw.broken !== true) {
-            onMemoryChanged?.();
-          }
-          // Presence changes: refresh the room's derived state (agent roster/count).
-          if (event.type === "coordination_join" || event.type === "coordination_leave") {
-            onMemoryChanged?.();
-          }
-        } catch {}
-      };
-      es.onerror = () => {
-        setConnected(false);
-        es.close();
-        retryTimeout = setTimeout(connect, 5000);
-      };
+  // Live room messages, off the app's one multiplexed connection.
+  useRoomStream(roomName, (data) => {
+    const msg = data as Record<string, unknown>;
+    // Consent prompts drive the accept/decline dialog, not the feed.
+    if (msg.message_type === "consent_request") {
+      try {
+        const invite = JSON.parse(msg.content as string) as PendingInvite;
+        setInvites((prev) =>
+          prev.some((i) => i.id === invite.id) ? prev : [...prev, invite],
+        );
+      } catch {}
+      return;
     }
-
-    connect();
-    return () => { es?.close(); clearTimeout(retryTimeout); };
-  }, [roomName, onMemoryChanged]);
+    const event = parseEvent(msg);
+    setEvents(prev => [...prev, event]);
+    if (event.type === "memory_changed") onMemoryChanged?.();
+    // A consensus compiles the negotiation into plan/tasks.md, so nudge
+    // the plan header to refetch so the checklist surfaces immediately.
+    if (event.type === "coordination_consensus" && event.raw.broken !== true) {
+      onMemoryChanged?.();
+    }
+    // Presence changes: refresh the room's derived state (agent roster/count).
+    if (event.type === "coordination_join" || event.type === "coordination_leave") {
+      onMemoryChanged?.();
+    }
+  });
 
   const visible = useMemo(
     () => events.filter(e => CHANNEL_VIEW_TYPES.has(e.type)),
