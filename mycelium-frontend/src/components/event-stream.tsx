@@ -642,9 +642,10 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
                 !SYSTEM_TYPES.has(prev.type) &&
                 prev.sender === ev.sender;
               const isAgent = agentHandles.has(ev.sender);
-              // Agents wear the accent; humans stay neutral. Consistent with the
-              // agents panel so one agent isn't two colors in two places.
-              const color = isAgent ? "var(--accent)" : "var(--muted-foreground)";
+              // Match the members panel so one sender isn't two colours in two
+              // places: an agent wears its own stable tint (Monogram's default),
+              // a human the neutral seat.
+              const color = isAgent ? undefined : "var(--avatar-neutral)";
               const marked = highlight !== null && ev.messageId === highlight;
               const owner = isAgent ? agentOwners.get(ev.sender) : undefined;
               return (

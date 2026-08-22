@@ -40,11 +40,11 @@ function halo(presence: Presence): Halo {
 
 /** Circular monogram avatar; shared across roster, stream, and picker.
  *
- *  The disc is a soft gradient in the handle's own colour rather than a flat
- *  wash, so a roster reads as distinct people at a glance instead of a column
- *  of identical chips. Presence rides as a **halo** around it — colour for the
- *  tier, a breathing ring for a poll in flight — plus a corner dot that carries
- *  the tier on its own for anyone the ring's colour doesn't reach. */
+ *  The disc is a solid fill in the handle's own colour with near-white
+ *  initials, so a roster reads as distinct people at a glance instead of a
+ *  column of identical chips. Presence rides as a **halo** around it — colour
+ *  for the tier, a breathing ring for a poll in flight — plus a corner dot that
+ *  carries the tier on its own for anyone the ring's colour doesn't reach. */
 export function Monogram({ handle, color, className, presence }: Props) {
   const tint = color ?? avatarTint(handle);
   const ring = presence ? halo(presence) : null;
@@ -58,16 +58,15 @@ export function Monogram({ handle, color, className, presence }: Props) {
           ring?.pulse && "pulse",
           className,
         )}
-        // Mixed into `--paper` rather than into transparency: the pile in the
-        // command centre overlaps these, and translucent discs stacked on each
-        // other turn to mud. Opaque also means the disc holds its colour over a
-        // hover highlight instead of shifting with it.
+        // Solid, opaque fill: the pile in the command centre overlaps these, and
+        // translucent discs stacked on each other turn to mud. Opaque also holds
+        // the colour over a hover highlight instead of shifting with it. The
+        // border is the same tint darkened; the glyph is white so it reads
+        // crisply against a deep disc rather than blending into the tint.
         style={{
-          background: `linear-gradient(140deg,
-            color-mix(in srgb, ${tint} 20%, var(--paper)),
-            color-mix(in srgb, ${tint} 11%, var(--paper)))`,
-          borderColor: `color-mix(in srgb, ${tint} 30%, var(--paper))`,
-          color: tint,
+          background: tint,
+          borderColor: `color-mix(in srgb, ${tint} 70%, #000)`,
+          color: "#fff",
           ...(ring ? ({ "--halo": ring.color } as React.CSSProperties) : {}),
         }}
       >

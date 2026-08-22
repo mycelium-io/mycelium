@@ -214,9 +214,14 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
                     href={`/room/${encodeURIComponent(room.name)}`}
                     className="relative flex size-8 flex-shrink-0 items-center justify-center"
                   >
+                    {active && (
+                      <span
+                        aria-hidden
+                        className="absolute -left-2 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-accent"
+                      />
+                    )}
                     <RoomAvatar
                       name={room.name}
-                      active={active}
                       className="size-8 rounded-md hover:brightness-125"
                     />
                     <span className="sr-only">{room.name}</span>
@@ -331,7 +336,7 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
                   active ? "bg-elevated ring-1 ring-border" : "hover:bg-hairline"
                 }`}
               >
-                <RoomAvatar name={room.name} active={active} className="size-7 rounded-md">
+                <RoomAvatar name={room.name} className="size-7 rounded-md">
                   {i < 9 && <KeyBadge chord={`alt+${i + 1}`} overlay />}
                 </RoomAvatar>
                 <span

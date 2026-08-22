@@ -196,7 +196,7 @@ export function ActingAsPicker({ compact = false }: Props) {
           }
         >
           {principal ? (
-            <Monogram handle={principal} color="var(--muted-foreground)" className="size-7" />
+            <Monogram handle={principal} color="var(--avatar-neutral)" className="size-7" />
           ) : (
             <span
               aria-hidden
@@ -269,7 +269,7 @@ export function ActingAsPicker({ compact = false }: Props) {
                     onClick={() => bindTo(u)}
                     className="flex min-w-0 flex-1 items-center gap-2.5 text-left text-label"
                   >
-                    <Monogram handle={u.handle} color="var(--muted-foreground)" className="size-7" />
+                    <Monogram handle={u.handle} color="var(--avatar-neutral)" className="size-7" />
                     <span className="min-w-0">
                       <span
                         className={`block truncate font-mono ${principal === u.handle ? "text-accent" : "text-text"}`}

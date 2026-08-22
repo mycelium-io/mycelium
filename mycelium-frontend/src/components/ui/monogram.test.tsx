@@ -73,7 +73,9 @@ describe("<Monogram />", () => {
   it("keeps the disc opaque, so a pile of them does not go muddy", () => {
     const { container } = render(<Monogram handle="growth" />);
     const disc = container.querySelector("[aria-hidden]") as HTMLElement;
-    expect(disc.style.background).toContain("var(--paper)");
+    // A solid tint fill, not a translucent wash — stacked discs in the command
+    // centre pile would otherwise turn to mud.
+    expect(disc.style.background).toMatch(/^var\(--avatar-[1-6]\)$/);
     expect(disc.style.background).not.toContain("transparent");
   });
 });
@@ -89,10 +91,13 @@ describe("<RoomAvatar />", () => {
     expect(container.firstElementChild).toHaveAttribute("aria-hidden");
   });
 
-  it("lifts the tile when it is the open room", () => {
-    const { container: resting } = render(<RoomAvatar name="scratch" />);
-    const { container: active } = render(<RoomAvatar name="scratch" active />);
+  it("fills the tile with the room's stable tint", () => {
+    const { container: a } = render(<RoomAvatar name="scratch" />);
+    const { container: b } = render(<RoomAvatar name="scratch" />);
     const bg = (c: Element) => (c.firstElementChild as HTMLElement).style.background;
-    expect(bg(active)).not.toBe(bg(resting));
+    // The tint is derived from the name, so it is the same across renders and
+    // carries no selection state of its own (the row owns that).
+    expect(bg(a)).toBe(bg(b));
+    expect(bg(a)).toBeTruthy();
   });
 });
