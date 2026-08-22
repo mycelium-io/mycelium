@@ -26,7 +26,7 @@ seconds doing the same three things every time. shotkit pays them once:
 | **A daemon holds the browser.** | First shot ~2s, every later shot ~150ms. It starts itself, and shuts down after 15 idle minutes. |
 | **Cards never touch the network.** | `term`, `code` and `html` render a self-contained document into a page that stays open. No navigation, no fetches. |
 | **`--mock` boots the app once.** | The Next dev server is held by the daemon, not by the request, so six shots of six routes boot it once. |
-| **`--offline` skips dead CDNs.** | The frontend links Google Fonts. Where those are unreachable, waiting on them costs ~13s *per navigation* — more than everything else combined. |
+| **`--offline` skips dead CDNs.** | The frontend links Google Fonts. Where those are unreachable, waiting on them costs ~13s *per navigation* — more than everything else combined. `shot doctor` probes for this, and a slow capture says so. |
 
 ```
 $ shot bench
@@ -48,6 +48,9 @@ speedup: 13.1x
 | `shot open` / `do` / `shoot` / `close` | drive a page held open — see **Navigation** |
 | `shot warm` / `status` / `stop` / `serve` | the daemon |
 | `shot doctor` / `bench` | check and time this machine |
+
+`--backdrop` takes `mycelial` (the site's network — see **The desktop**),
+`mycelium`, `dusk`, `ink`, `paper`, `none`, or any CSS.
 
 `shot help <command>` lists every flag. stdout carries the path and nothing
 else, so it composes: `open "$(shot app / --mock)"`.
@@ -105,7 +108,9 @@ shot sessions ; shot close --session r
 Element arguments accept any Playwright selector engine (`text=`,
 `role=button[name="Save"]`, `#id`, `//xpath`). A bare word is matched by
 accessible name, then by visible text — `click:Save` means the button labelled
-Save, not a `<save>` element.
+Save, not a `<save>` element. Words that are also tag names are no exception:
+`click:table` prefers a control labelled "table", and only falls back to the
+`<table>` element when nothing carries that label.
 
 ## Browser chrome
 
@@ -121,6 +126,39 @@ shot app / --chrome --theme dark --chrome-theme light
 `--theme` drives the app's own theme, not just the browser's `prefers-color-scheme`:
 next-themes reads `localStorage` before first paint and would otherwise ignore it.
 
+## The desktop
+
+`--backdrop mycelial` puts the docs site's own hypha network behind the window,
+so a framed screenshot sits on the product's background rather than a gradient:
+
+```bash
+shot app /room/atlas --chrome --backdrop mycelial --padding 90
+shot term --backdrop mycelial -- mycelium memory ls --room atlas
+```
+
+It is the same network in both senses. The algorithm is the one the live site
+runs — read from `scripts/banner-assets/mycelial-canvas.js`, the copy
+`docs/banner.png` is already cut from, rather than a third transcription of it
+— and the colors are the site's `--canvas-*` values, cream and quiet in light,
+near-black and teal in dark.
+
+A vignette in the ground's own color veils it, lightly in the middle and
+heavily at the edges. The site can run the network at full strength because
+prose sits on near-solid paper above it; a screenshot has no such pane, and an
+unveiled network pulls the eye into the corners and away from the window. Light
+is veiled less than dark, since the site already runs it quieter.
+
+One network is grown per theme and held for the life of the daemon, so a run of
+shots shares one desktop and only the first pays to grow it — about 150ms once,
+after which a framed shot costs what any other does. It grows from a fixed seed,
+so the same command gives the same background tomorrow and a committed asset
+does not churn on every re-render; `--backdrop-seed <n>` asks for a different
+one.
+
+The other backdrops (`mycelium`, `dusk`, `ink`, `paper`, `none`, or any CSS you
+pass) are unchanged, and are what to reach for when a shot wants quiet behind
+it: the network is texture, and texture competes with a busy screen.
+
 ## The library
 
 ```js
@@ -135,6 +173,17 @@ r.shots;     // one entry per breakpoint
 the committed docs assets and uses this engine for the browser work, keeping
 only what is publication's business — the shot manifest, the `sharp` pass, and
 where files land.
+
+## Waiting
+
+An app capture waits for a *populated* frame, not a mounted one: the shell hook,
+then the loading skeletons clearing, then the room's `data-connection` badge
+reading live. That last step is the difference between a screenshot and a
+publishable one — a shot taken a moment early catches the status bar mid
+"Reconnecting…", which reads as a broken app.
+
+`--settle full` raises every budget for a slow backend; `--settle none` skips the
+lot when you want the frame exactly as it loads.
 
 ## Notes
 

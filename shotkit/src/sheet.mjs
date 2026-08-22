@@ -19,7 +19,7 @@ const MAX_SHEET_WIDTH = 2400;
 
 /**
  * @param {{label:string, base64:string, width:number, height:number, scale:number}[]} frames
- * @param {{theme?:"dark"|"light", backdrop?:string, title?:string, gap?:number, padding?:number}} opts
+ * @param {{theme?:"dark"|"light", backdrop?:string, art?:string, title?:string, gap?:number, padding?:number}} opts
  */
 export function sheetDocument(frames, opts = {}) {
   const theme = opts.theme ?? "dark";
@@ -51,10 +51,14 @@ export function sheetDocument(frames, opts = {}) {
 *{box-sizing:border-box}
 html,body{margin:0;padding:0;background:transparent}
 #canvas{
+  position:relative;
   display:inline-block;width:max-content;padding:${pad}px;
   background:${backdrop(opts.backdrop ?? "mycelium", theme)};
   font-family:${UI_STACK};
 }
+/* The backdrop artwork, if there is any; see card.mjs for why it is a layer. */
+#art{position:absolute;inset:0;image-rendering:pixelated;background:${opts.art ?? "none"}}
+h1,.row{position:relative}
 h1{
   margin:0 0 22px;font-size:15px;font-weight:600;letter-spacing:.01em;
   color:${pal.text};
@@ -69,7 +73,7 @@ img{
 figcaption{
   font-size:11.5px;letter-spacing:.02em;color:${pal.muted};text-align:center;
 }
-</style></head><body><div id="canvas">${heading}<div class="row">${cards}</div></div></body></html>`;
+</style></head><body><div id="canvas">${opts.art ? '<div id="art"></div>' : ""}${heading}<div class="row">${cards}</div></div></body></html>`;
 }
 
 const escapeHtml = (s) =>

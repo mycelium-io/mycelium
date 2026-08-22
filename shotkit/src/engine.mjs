@@ -340,22 +340,45 @@ async function shootPage(page, opts) {
  * The shell renders before its fetches resolve, so gating on the ready hook
  * alone reliably captures loading skeletons and a "Reconnecting…" badge. Every
  * placeholder in the app is the same `.animate-pulse` Skeleton, which makes
- * their absence a dependable "content is in" signal.
+ * their absence a dependable "content is in" signal, and the status bar carries
+ * a `data-connection` hook for the stream.
+ *
+ * The connection wait is not an extra: a shot taken a moment early shows the
+ * room mid-"Reconnecting…", which reads as a broken app in a published image.
+ * It costs a second or two when the stream is coming up and nothing at all on a
+ * page that has no indicator, so both levels wait — `full` just waits longer.
  *
  * Each step is best-effort: this also runs against a real backend, where a rail
  * may legitimately stay empty, and an empty rail is not a reason to fail a shot.
  */
+const SETTLE_BUDGET = {
+  fast: { shell: 15_000, skeleton: 4_000, connection: 6_000 },
+  full: { shell: 15_000, skeleton: 15_000, connection: 12_000 },
+};
+
 async function settle(page, level) {
   const soft = (p) => p.catch(() => {});
-  await soft(page.waitForSelector('[data-app-shell="ready"]', { state: "visible", timeout: 15_000 }));
+  const budget = SETTLE_BUDGET[level] ?? SETTLE_BUDGET.fast;
+
+  await soft(page.waitForSelector('[data-app-shell="ready"]', { state: "visible", timeout: budget.shell }));
   await soft(
     page.waitForFunction(() => document.querySelectorAll(".animate-pulse").length === 0, null, {
-      timeout: level === "full" ? 15_000 : 4_000,
+      timeout: budget.skeleton,
     }),
   );
-  if (level === "full") {
-    await soft(page.waitForFunction(() => document.body.innerText.includes("Live"), null, { timeout: 8_000 }));
-  }
+  await soft(
+    page.waitForFunction(
+      () => {
+        const badge = document.querySelector("[data-connection]");
+        // No indicator on this route means there is no stream to wait for; the
+        // text check is the fallback for a page that predates the hook.
+        if (!badge) return !document.body.innerText.includes("Reconnecting");
+        return badge.getAttribute("data-connection") === "live";
+      },
+      null,
+      { timeout: budget.connection },
+    ),
+  );
   await soft(page.evaluate(() => document.fonts.ready));
 }
 
