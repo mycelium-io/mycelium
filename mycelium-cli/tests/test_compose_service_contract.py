@@ -3,22 +3,14 @@
 
 """compose.yml and the CLI must agree on what the stack is made of.
 
-`mycelium up/down/logs/status/doctor` and `mycelium hub host` all name compose
-services and containers as strings. compose.yml is the only place those names
-are actually defined, and nothing connected the two: a service renamed, added,
-or dropped there left the CLI addressing something that no longer exists, and
-the failure surfaced as a container that `down` quietly left running or a
-`--force-recreate` that hit a name conflict.
-
-So this derives both directions from the compose file itself:
-
-  * every container the CLI addresses is one compose declares, and
-  * every container compose declares is one the CLI can clean up.
+`mycelium up/down/logs/status/doctor` and `hub host` name compose services and
+containers as strings; compose.yml is where those names are defined. Both
+directions are derived from it: every container the CLI addresses is one compose
+declares, and every container compose declares is one the CLI can clean up.
 
 The second direction is the one that bites. `docker compose down` only reaches
-containers in *its* project; the managed-container list is the net for the ones
-started under a different project name or outside compose entirely, and a
-service missing from it is a leftover nobody removes.
+containers in *its* project; the managed-container list is the net for the rest,
+so a service missing from it is a leftover nobody removes.
 """
 
 from __future__ import annotations

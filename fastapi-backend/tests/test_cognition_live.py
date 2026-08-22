@@ -3,27 +3,20 @@
 
 """Live-LLM slice for the product's cognition: negotiate, then compile a plan.
 
-The aligner's Pi brain and the plan compiler are what mycelium *is*, and every
-other test exercises them against fakes — a canned brain returning canned
-issues, a patched compiler returning a canned checklist. So the parts that can
-actually regress (whether the brain structures real prose into issues, whether
-it reads an agreement as an agreement, whether NEGMAS stops at unanimity rather
-than running to the step cap, whether the compiler emits an owned checklist)
-have never been run in CI at all.
+``test_smoke.py`` with the fakes taken out of the cognition path — the brain is
+a real ``pi`` session and the compiler a real one-shot ``pi`` turn, so this
+covers what only a live model can: structuring prose into issues, reading an
+agreement as an agreement, and emitting an owned checklist.
 
-This is ``test_smoke.py`` with the fakes taken out of the cognition path. The
-brain is a real ``pi`` session and the compiler is a real one-shot ``pi`` turn.
-What stays scripted is the *participants*: two agents whose replies are prose
-written in advance, conceding toward each other and ending in plain acceptance.
-That is the honest boundary — simulating the counterparties with a second model
-would test that model's agreeableness, not this one's mediation.
+The *participants* stay scripted: two agents whose replies are prose written in
+advance, conceding toward each other and ending in plain acceptance. Simulating
+them with a second model would test that model's agreeableness, not this one's
+mediation.
 
-The anti-theatre property is the assertion that matters: agreement must come
-from the mechanism terminating at unanimity, not from exhausting the cap and
-calling the last offer a consensus.
+The assertion that matters is the anti-theatre property — agreement from the
+mechanism terminating at unanimity, not from exhausting the cap.
 
 Guarded by ``MYCELIUM_LLM_TESTS=1`` (costs tokens) and needs ``pi`` on PATH.
-Runs nightly, never on the PR path.
 """
 
 from __future__ import annotations
@@ -40,11 +33,10 @@ from tests.fakes import FakeChannel, FakeManaged, FakeManager, FakePersister, po
 
 _ROOM = "cognition-live"
 
-# Two agents with a real disagreement — scope against timeline — and a scripted
-# path to agreement. Each list is consumed one line per tick, and the last line
-# is an unambiguous acceptance so a converged run means the brain read a real
-# agreement rather than the mediator running out of rounds. The tail repeats, so
-# an extra round asks a question that is still answered in the same terms.
+# Two agents disagreeing over scope against timeline, with a scripted path to
+# agreement. One line is consumed per tick; the last is an unambiguous
+# acceptance, and the tail repeats so an extra round is still answered in the
+# same terms.
 _SCRIPTS: dict[str, list[str]] = {
     "growth": [
         "Ship the full catalog cutover in one 3-month push. Adoption is the whole "
@@ -68,10 +60,9 @@ _SCRIPTS: dict[str, list[str]] = {
 class ScriptedAgents(FakeChannel):
     """Participants that answer each `@`-mention with the next line of a script.
 
-    ``FakeChannel``'s ``reply_conf`` mode answers with a stub, which is all a
-    canned brain needs. A live brain reads the prose — it discovers the issues
-    from it and interprets each reply as an offer — so the reply has to be a
-    sentence somebody could have written.
+    ``FakeChannel``'s ``reply_conf`` mode answers with a stub. A live brain reads
+    the prose — discovering issues from it and interpreting each reply as an
+    offer — so a reply has to be a sentence somebody could have written.
     """
 
     def __init__(self, persister: FakePersister, scripts: dict[str, list[str]]) -> None:
@@ -118,15 +109,15 @@ async def test_negotiation_converges_and_compiles_a_plan(monkeypatch: pytest.Mon
     managed = FakeManaged(_ROOM, "mycelium", channel, persister)
     manager = FakeManager(managed, [*_SCRIPTS, "aligner"])
 
-    # Opening positions, on the transcript before the summon — this is what the
-    # brain reads to discover the issues.
+    # Opening positions, on the transcript before the summon: what the brain
+    # reads to discover the issues.
     for handle, script in _SCRIPTS.items():
         persister.log.record(
             position_record(handle, confidence=0.9, message_id=f"open-{handle}", prose=script[0]),
             delivered_to=set(),
         )
 
-    # No brain_factory: the engine builds its real Pi session.
+    # No brain_factory, so the engine builds its real Pi session.
     engine = aligner.AlignerEngine(
         manager,  # type: ignore[arg-type]
         handle="aligner",
@@ -144,7 +135,7 @@ async def test_negotiation_converges_and_compiles_a_plan(monkeypatch: pytest.Mon
     assignments = verdict["payload"]["data"]["assignments"]
     assert assignments, "converged with an empty agreement"
 
-    # The brain structured free prose into issues rather than being handed them.
+    # Rounds were actually brokered.
     assert len(channel.sent) > 2, "no rounds were brokered"
 
     # ── plan ── the real compiler, against the real agreement.

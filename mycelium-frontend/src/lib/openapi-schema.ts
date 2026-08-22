@@ -4,17 +4,14 @@
 /**
  * A small JSON Schema validator for the subset of OpenAPI 3.1 that FastAPI emits.
  *
- * Test-only. It exists so the mock fixtures can be checked against the committed
- * `openapi.json` without pulling a schema library into the app's dependency tree
- * — the same reasoning that keeps `scripts/check_workflows.py` on the standard
- * library. The subset is what the spec actually uses: `$ref`, `anyOf`, `allOf`,
- * `type`, `properties`/`required`, `items`, `additionalProperties`, `enum`.
- * Anything outside it (`format`, `minLength`, numeric bounds) is presentation or
- * a constraint a fixture can't plausibly get wrong, and is ignored on purpose.
+ * Test-only, and hand-rolled so checking the mocks against `openapi.json` needs
+ * no schema library in the app's dependency tree. The subset is what the spec
+ * uses: `$ref`, `anyOf`, `allOf`, `type`, `properties`/`required`, `items`,
+ * `additionalProperties`, `enum`. `format`, `minLength` and numeric bounds are
+ * ignored — presentation, or constraints a fixture can't plausibly get wrong.
  *
- * Errors accumulate with the JSON path that produced them, because "the mock is
- * wrong" is not an actionable failure — "`nodes[0].inbound` is a string, the
- * spec says integer" is.
+ * Errors carry the JSON path that produced them: "`nodes[0].inbound` is a
+ * string, the spec says integer" is actionable where "the mock is wrong" isn't.
  */
 
 export interface Schema {
@@ -40,15 +37,15 @@ export interface ValidateOptions {
   /**
    * Report properties the schema doesn't declare. The spec permits them
    * (pydantic models don't set `additionalProperties: false`), but a mock
-   * carrying a field the backend never sends is a field the UI can be built
-   * against and then lose in production — which is the drift worth catching.
+   * carrying a field the backend never sends is one the UI can be built against
+   * and then lose in production.
    */
   rejectUnknownProperties?: boolean;
 }
 
 function deref(schema: Schema, spec: Spec): Schema {
   let current = schema;
-  // Nested `$ref`s are legal; the spec's are one deep, but follow the chain.
+  // Nested `$ref`s are legal, so follow the chain.
   while (current.$ref) {
     const name = current.$ref.replace("#/components/schemas/", "");
     const target = spec.components?.schemas?.[name];
@@ -91,8 +88,8 @@ export function validate(
 
   const union = node.anyOf ?? node.oneOf;
   if (union) {
-    // A union is satisfied by any branch; report only that none matched, since
-    // the per-branch errors of a 6-way `anyOf` are noise, not a diagnosis.
+    // Report only that no branch matched: the per-branch errors of a 6-way
+    // `anyOf` are noise, not a diagnosis.
     const matched = union.some((s) => validate(value, s, spec, options, path).length === 0);
     return matched ? [] : [`${path}: matches no branch of anyOf (got ${typeName(value)})`];
   }

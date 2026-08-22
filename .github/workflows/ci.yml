@@ -133,21 +133,11 @@ jobs:
         working-directory: mycelium-cli
         run: uv run pytest tests/ -q
 
-      # scripts/ sits outside both lint roots (fastapi-backend and mycelium-cli
-      # each check only their own tree), so the maintainer scripts — including
-      # the CI gates themselves — were checked by nobody. They ride along in this
-      # job because it is already warm, but they are checked in isolation
-      # (`--no-project`) rather than against the CLI's environment.
-      #
-      # That isolation is the point, not a detail. A script here declares no
-      # dependencies — it is standalone, run by hand from whatever env has what
-      # it needs — so checking it inside a neighbouring project's venv makes the
-      # result depend on which optional extras that project happens to pull in.
-      # It does not resolve the same way twice: `--extra engine` brings Pillow
-      # in transitively, so `scripts/gen-banner-network.py` type-checks against
-      # real Pillow stubs on CI and against nothing on a contributor's machine.
-      # Stdlib-only is the environment these scripts actually document, so it is
-      # the one they are checked in — the same answer everywhere.
+      # scripts/ sits outside both lint roots, so it rides along in this job.
+      # `--no-project` checks it against the standard library alone: a script
+      # here declares no dependencies, so an ambient venv would make the result
+      # depend on which optional extras that project pulls in (`--extra engine`
+      # brings Pillow in transitively).
       - name: Lint maintainer scripts
         run: |
           uv run --no-project --with ruff ruff check --config ruff.toml scripts
@@ -224,11 +214,9 @@ jobs:
           docker run --rm --entrypoint python mycelium-collector:ci -m mycelium.collector_main --help
 
   build-backend:
-    # The backend image is the one this stack cannot run without — it ships
-    # `pi` (the aligner's brain), `slim-bindings` (the fabric), and the
-    # embedding model — and it was the only image never built before release
-    # day. The collector and the frontend both get smoke builds; this closes
-    # the gap, path-filtered so it costs nothing on a PR that doesn't touch it.
+    # Smoke-build the backend image, which ships `pi` (the aligner's brain),
+    # `slim-bindings` and the embedding model. Path-filtered, so it costs
+    # nothing on a PR that doesn't touch its inputs.
     name: Backend docker build
     runs-on: ubuntu-latest
     steps:
@@ -269,14 +257,10 @@ jobs:
           cache-from: type=gha,scope=backend
           cache-to: type=gha,scope=backend,mode=max
 
-      # Building proves the layers resolve. This proves the image can do the two
-      # things the backend has no fallback for: the aligner's brain is Pi and
-      # only Pi, and every room is a SLIM channel. An image missing either
-      # starts cleanly and then fails at the first summon.
-      #
-      # `pi` is looked up the way pi_brain.py looks it up, rather than by
-      # running it with a flag — the check should fail for the reason the
-      # backend would, not because a CLI spells its version flag differently.
+      # The backend has no fallback for either of these: an image missing `pi`
+      # or slim-bindings starts cleanly and fails at the first summon. `pi` is
+      # looked up the way pi_brain.py looks it up, so a failure here means what
+      # a failure at runtime would.
       - name: Smoke-test the runtime the backend has no fallback for
         if: steps.changed.outputs.run == 'true'
         run: |
@@ -368,12 +352,9 @@ jobs:
           cache-to: type=gha,scope=frontend,mode=max
 
   docs-links:
-    # Every internal link and anchor in docs/ and the repo's markdown. Anchors in
-    # the generated site move as a side effect of rewording a heading, so this
-    # reports rather than gates: a docs PR shouldn't go red over a jump target
-    # its author never touched. The warnings land in the run summary, which is
-    # the point — the breakage becomes visible in the run that caused it.
-    # Stdlib Python, no toolchain, path-filtered to the trees it reads.
+    # Every internal link and anchor in docs/ and the repo's markdown. Generated
+    # anchors move as a side effect of rewording a heading, so this warns into
+    # the run summary rather than gating. Stdlib Python, no toolchain.
     name: Docs links
     runs-on: ubuntu-latest
     steps:

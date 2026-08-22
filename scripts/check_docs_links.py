@@ -4,33 +4,24 @@
 """Resolve every internal link in the docs and the repo's markdown.
 
 `docs/*.html` is generated from the markdown under
-`mycelium-cli/src/mycelium/docs/`, and the generator decides where the anchors
-land. So a heading reworded in a source file moves an `#anchor` that something
-else still points at, and nothing notices: the page loads, the jump does
-nothing, and the reader is left at the top wondering what they missed. The same
-goes for a doc renamed or a section dropped.
+`mycelium-cli/src/mycelium/docs/`, and the generator places the anchors. So
+rewording a heading moves an `#anchor` something else still points at, and
+nothing notices: the page loads and the jump does nothing.
 
-Two kinds of target are checked, both purely local:
+Two kinds of target, both local: a relative path (the file must exist) and a
+fragment (the target document must declare that `id` or `name`). External
+`http(s)` links are skipped — checking them needs the network, and a
+rate-limited GitHub is no reason to redden a docs PR.
 
-  * a relative path — the file must exist,
-  * a fragment — the target document must declare that `id` (or `name`).
+Docs *sources* resolve as what they become. A bare `#aligner` in
+`concepts/rooms.md` is a link into the generated site, not within that file, so
+source links resolve against the built `docs/` tree. The built pages are then
+checked one at a time, which is what catches a cross-page `#anchor` the
+generator emitted without its filename.
 
-The docs *sources* are resolved as what they become. A bare `#aligner` in
-`concepts/rooms.md` is not a link within that file; it is a link into the
-generated site, where the generator has laid every concept out on one page. So
-a link in the source tree resolves against the built `docs/` directory and the
-anchors it declares, which is where the reader actually follows it. The built
-pages are then checked as themselves, one page at a time — that is what catches
-a cross-page `#anchor` the generator emitted without its filename.
-
-External `http(s)` links are skipped. Checking them needs the network, which
-makes the result depend on someone else's uptime; a rate-limited GitHub is not
-a reason to redden a docs PR.
-
-**This warns; it does not fail.** Generated anchors move as a side effect of
-editing prose, so a hard gate here blocks PRs on something the author did not
-mean to change and cannot see. The point is to make the breakage visible in the
-run that caused it. `--strict` exits non-zero, for running it deliberately.
+**This warns; it does not fail** — generated anchors move as a side effect of
+editing prose, so a hard gate would block PRs on something the author cannot
+see. `--strict` exits non-zero, for running it deliberately.
 
     python3 scripts/check_docs_links.py            # report, always exits 0
     python3 scripts/check_docs_links.py --strict   # exit 1 if anything is broken
@@ -47,8 +38,7 @@ from urllib.parse import unquote, urlparse
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# Trees to read links out of. Everything else (node_modules, generated clients,
-# the promo build) is either vendored or not prose.
+# Trees to read links out of; everything else is vendored or not prose.
 MARKDOWN_ROOTS = (
     Path("."),
     Path("docs"),
@@ -57,8 +47,7 @@ MARKDOWN_ROOTS = (
 )
 SKIP_DIRS = {".git", "node_modules", ".venv", "renders", ".shotkit", "dist", ".next"}
 
-# The generated site, and the markdown tree it is generated from. A link in the
-# source tree is written for the built page, so that's what it resolves against.
+# The generated site, and the markdown tree it is generated from.
 SITE_DIR = REPO_ROOT / "docs"
 DOCS_SOURCE_DIR = REPO_ROOT / "mycelium-cli" / "src" / "mycelium" / "docs"
 
@@ -110,7 +99,7 @@ def documents() -> list[Path]:
             continue
         for dirpath, dirnames, filenames in os.walk(base):
             dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
-            # The repo root itself: its markdown only, not every tree under it.
+            # The repo root: its own markdown only, not every tree under it.
             if root == Path(".") and Path(dirpath) != base:
                 dirnames[:] = []
                 continue
@@ -152,8 +141,8 @@ def problems_in(path: Path, cache: dict[Path, set[str]]) -> list[str]:
         page = unquote(parsed.path)
 
         if page:
-            # A source link may name either its neighbour in the source tree or
-            # the page that neighbour becomes; either resolving is enough.
+            # A source link may name its neighbour in the source tree or the
+            # page that neighbour becomes; either resolving is enough.
             candidates = [(base / page).resolve()]
             if published:
                 candidates.append((path.parent / page).resolve())

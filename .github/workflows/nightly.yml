@@ -1,9 +1,8 @@
 name: Nightly
 
-# Tier 2: everything too slow, too paid, or too dependent on a real stack to sit
-# on the PR path. The PR run is ~95s and that is a property worth defending, so
-# the checks that would eat it live here instead — once a night, against `main`,
-# where a failure opens an issue rather than blocking a person.
+# Tier 2: the checks too slow, too paid, or too dependent on a real stack for
+# the PR path. Once a night against `main`; a failure opens an issue rather than
+# blocking a person.
 on:
   schedule:
     # 04:00 UTC — after the day's merges, before anyone reads the result.
@@ -19,11 +18,9 @@ concurrency:
 
 jobs:
   install-path:
-    # The one flow every user takes and no test covers: install the CLI, bring
-    # the whole stack up from compose, and use it. Unit tests run against temp
-    # directories and fakes, so the class of bug this catches — the compose
-    # topology changing and the CLI's view of it not following — is invisible to
-    # them right up until someone's `mycelium up` half-works.
+    # Install the CLI, bring the whole stack up from compose, and use it. Unit
+    # tests run against temp directories and fakes, so compose topology drifting
+    # from the CLI's view of it is invisible to them.
     name: Install path (full stack)
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -39,9 +36,8 @@ jobs:
       - name: Generate OpenAPI client
         run: SPEC_FILE=openapi.json bash scripts/gen-mycelium-client.sh
 
-      # From source, not from the published release: the point is to check this
-      # commit's CLI against this commit's compose file. install.sh's own job is
-      # fetching a release, which is release.yml's business.
+      # From source, so this commit's CLI is checked against this commit's
+      # compose file. Fetching a release is release.yml's business.
       - name: Install the CLI
         run: |
           uv tool install -e ./mycelium-cli \
@@ -53,9 +49,8 @@ jobs:
 
       - name: Backend answers /health
         run: |
-          # Read the port back rather than assuming 8000: install picks the next
-          # free one when 8000 is taken, and a runner is not guaranteed to be
-          # quiet. `.env` is the generated file every container reads.
+          # Install picks the next free port when 8000 is taken, so read it
+          # back from the generated `.env` rather than assuming.
           port=$(grep '^MYCELIUM_BACKEND_PORT=' "$HOME/.mycelium/.env" | cut -d= -f2)
           echo "MYCELIUM_API=http://localhost:${port:-8000}" >> "$GITHUB_ENV"
           for _ in $(seq 1 60); do
@@ -71,8 +66,7 @@ jobs:
           exit 1
 
       # `--json` reports every check and exits 0, so the run decides what is
-      # fatal. LLM connectivity is not: no key is configured here, and failing
-      # the nightly over that would train everyone to ignore it.
+      # fatal. LLM connectivity is not — no key is configured here.
       - name: mycelium doctor
         run: |
           mycelium --json doctor > /tmp/doctor.json || true
@@ -107,8 +101,7 @@ jobs:
         if: always()
         run: |
           mycelium down
-          # `down` is only done when nothing is left behind; a container that
-          # survives it is exactly the drift the compose contract test guards.
+          # `down` is only done when nothing is left behind.
           if docker ps --format '{{.Names}}' | grep -E '^mycelium-'; then
             echo '::error::containers survived mycelium down'
             exit 1
@@ -119,14 +112,10 @@ jobs:
         run: docker logs mycelium-backend 2>&1 | tail -100 || true
 
   cognition:
-    # The aligner's Pi brain and the plan compiler, run for real. Everywhere else
-    # they are faked, so the behaviour that defines the product — structuring
+    # The aligner's Pi brain and the plan compiler, run for real: structuring
     # prose into issues, reading an agreement as an agreement, stopping at
-    # unanimity instead of the step cap — has never been exercised in CI.
-    #
-    # Costs tokens, so it needs a key. Without one it reports and passes rather
-    # than failing: a fork has no secrets, and a red nightly nobody can fix is
-    # worse than an honest skip.
+    # unanimity instead of the step cap. Costs tokens, so it needs a key; without
+    # one it reports and passes, since a fork has no secrets.
     name: Cognition (live LLM)
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -151,8 +140,8 @@ jobs:
         with:
           node-version: "22"
 
-      # The aligner's brain is this binary; the backend image ships it, and a
-      # host-run backend (which is what this job is) needs it on PATH.
+      # The aligner's brain. The backend image ships it; a host-run backend
+      # needs it on PATH.
       - name: Install the Pi coding agent
         if: steps.key.outputs.run == 'true'
         run: npm install -g @mariozechner/pi-coding-agent
@@ -186,9 +175,8 @@ jobs:
           tests/test_synthesizer_live.py
 
   report:
-    # A nightly that fails silently is a nightly nobody reads, and one that opens
-    # a fresh issue every night is one everybody mutes. So: one open issue,
-    # commented on each time it recurs, closed by hand when it is fixed.
+    # One open issue, commented on each time the failure recurs, closed by hand
+    # when it is fixed — a fresh issue per night gets muted.
     name: Report failures
     runs-on: ubuntu-latest
     needs: [install-path, cognition]

@@ -65,10 +65,9 @@ def position_record(
 ) -> TranscriptRecord:
     """An agent-position transcript record carrying an epistemic payload.
 
-    ``prose`` is the body the mediator reads: issue discovery and offer
-    interpretation both work off what the agent actually said, so a test driving
-    a real brain has to supply real sentences. It defaults to a stub, which is
-    all a test with a canned brain needs.
+    ``prose`` is the body the mediator reads — issue discovery and offer
+    interpretation both work off what the agent said — so a test driving a real
+    brain supplies real sentences. It defaults to a stub.
     """
     data: dict[str, Any] = {"action": action}
     if confidence is not None:

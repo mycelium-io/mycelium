@@ -36,16 +36,12 @@ _OPERATOR_MANAGED_KEYS: tuple[str, ...] = ("MYCELIUM_IMAGE_TAG",)
 
 _MASTER_SECRET_ENV = "MYCELIUM_SLIM_MASTER_SECRET"
 
-# Config fields that deliberately never reach a container, and why. `.env` is the
-# only transport from config.toml into the stack, so a field that is neither
-# rendered by ``generate_env_file`` nor listed here is a setting a user can write
-# and watch do nothing — which reads as working. Adding a field to MyceliumConfig
-# therefore means rendering it or naming it here;
+# Config fields that never reach a container, and why. `.env` is the only
+# transport from config.toml into the stack, so a field neither rendered by
+# ``generate_env_file`` nor listed here is a setting that silently does nothing.
 # tests/test_config_env_coverage.py holds the two in step.
 LOCAL_ONLY_FIELDS: dict[str, str] = {
     # ── Read straight from the bind-mounted config.toml ─────────────────────
-    # The data dir is mounted into the backend and the collector, so these
-    # containers load config.toml themselves rather than via env.
     "metrics.scrape": "collector_main.py reads it from the mounted config.toml",
     "metrics.collector_url": "spoke-side: which collector `mycelium metrics show` reads",
     # ── CLI-side only: never leaves the host ────────────────────────────────

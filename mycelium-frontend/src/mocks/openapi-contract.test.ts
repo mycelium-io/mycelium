@@ -4,21 +4,18 @@
 /**
  * The mock fixtures must answer in the shapes the backend declares.
  *
- * `src/mocks/` is what the UI is *developed* against: `pnpm dev:mock` and every
- * screenshot run resolve `/api/*` here rather than against a backend. So when a
- * fixture drifts from the real response shape, the app is built against a
- * fiction — and the divergence surfaces in production, where the field the panel
- * reads is simply absent.
+ * `src/mocks/` is what the UI is *developed* against — `pnpm dev:mock` and every
+ * screenshot run resolve `/api/*` here — so a drifted fixture means the app is
+ * built against a fiction, and the field the panel reads is absent in
+ * production.
  *
- * `api-contract.test.ts` proves the frontend only fetches paths the backend
- * declares. This proves the bodies behind those paths are the ones it declares
- * too. Both read the committed `openapi.json`, which CI separately asserts is
- * current, so neither can pass against a stale spec.
+ * Where `api-contract.test.ts` proves the frontend only fetches paths the
+ * backend declares, this proves the bodies behind them match too. Both read the
+ * committed `openapi.json`, which CI separately asserts is current.
  *
- * The request list is derived from the spec, not hand-written: every GET the
- * mock answers is validated. A route the mock doesn't serve is skipped (the
- * proxy 404s it, which is honest), so this grows coverage on its own as mocks
- * are added.
+ * The request list is derived from the spec: every GET the mock answers is
+ * validated, and a route the mock doesn't serve is skipped, so coverage grows
+ * as mocks are added.
  */
 
 import { readFileSync } from "node:fs";
@@ -38,8 +35,8 @@ const ROOM = "atlas-migration";
 const FIXTURE = ROOM_FIXTURES[ROOM];
 
 /**
- * Concrete values for the spec's path parameters, chosen from the fixtures so a
- * request resolves to real mock data rather than a 404. `key:path` is FastAPI's
+ * Values for the spec's path parameters, taken from the fixtures so a request
+ * resolves to real mock data rather than a 404. `key:path` is FastAPI's
  * slash-swallowing converter, which is how a namespaced memory key travels.
  */
 const PATH_PARAMS: Record<string, string> = {
@@ -61,16 +58,12 @@ function fill(path: string): string | null {
   for (const [param, value] of Object.entries(PATH_PARAMS)) {
     filled = filled.split(param).join(encodeURI(value));
   }
-  // A path with a parameter we have no fixture value for can't be requested
-  // honestly; skip it rather than invent one.
+  // A parameter with no fixture value can't be filled honestly; skip it.
   return /\{[^}]+\}/.test(filled) ? null : filled + (QUERY[path] ?? "");
 }
 
-/**
- * Writes the UI makes, with a body each. A POST can't be derived from the spec
- * the way a GET can — it needs something plausible to send — so these are
- * listed, and the response is still checked against whatever the spec declares.
- */
+/** Writes the UI makes. A POST needs a body, so unlike the GETs these are
+ *  listed by hand; the response is still checked against the spec. */
 const WRITES: { path: string; body: unknown }[] = [
   {
     path: "/api/rooms/{room_name}/memory",
@@ -111,8 +104,7 @@ async function mockedRoutes(): Promise<Route[]> {
 
   const answered: Route[] = [];
   for (const route of candidates) {
-    // A route the mock doesn't serve falls through to a 404 in the browser too,
-    // which is honest; there is no shape to check.
+    // A route the mock doesn't serve 404s in the browser too — no shape to check.
     const response = await handleMock(request(route));
     if (response && response.status < 300) answered.push(route);
   }
@@ -123,8 +115,8 @@ const ROUTES = await mockedRoutes();
 
 describe("mock fixtures against the backend spec", () => {
   it("finds the mocked surface to check", () => {
-    // Guards the derivation: a change that made every request fall through
-    // would leave an empty, green suite rather than a red one.
+    // Guards the derivation: a change that made every request fall through would
+    // leave an empty, green suite.
     expect(ROUTES.length).toBeGreaterThan(12);
   });
 
@@ -132,8 +124,7 @@ describe("mock fixtures against the backend spec", () => {
     const response = (await handleMock(request(route)))!;
     const operation = SPEC.paths[route.path][route.method.toLowerCase()];
     const schema = statusSchema(operation, response.status);
-    // A mock that answers 201 where the spec only documents 200 is itself drift,
-    // so the status has to resolve to a declared response.
+    // A status the spec doesn't document is itself drift.
     expect(schema, `${route.method} ${route.url}: no ${response.status} in the spec`).not.toBeNull();
     const errors = validate(await response.json(), schema!, SPEC, {
       rejectUnknownProperties: true,

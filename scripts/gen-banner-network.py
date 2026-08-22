@@ -20,8 +20,7 @@ from pathlib import Path
 
 # Pillow and Playwright aren't in any lockfile: this is an asset builder run by
 # hand from an env that has them (see scripts/README.md). scripts/ is type-checked
-# against the standard library alone, so these are unresolvable by construction —
-# suppressed here rather than pinning a toolchain to lint two files with.
+# against the standard library alone, so these are unresolvable by construction.
 from PIL import Image  # ty: ignore[unresolved-import]
 from playwright.sync_api import sync_playwright  # ty: ignore[unresolved-import]
 

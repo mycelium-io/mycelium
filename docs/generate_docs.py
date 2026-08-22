@@ -1490,14 +1490,11 @@ def _resolve_cross_page_anchors(
 ) -> list[tuple[tuple, str, list[tuple[str, list[tuple[str, str]]]]]]:
     """Point body links at the page that actually holds the anchor.
 
-    A source doc writes `[the aligner](#aligner)` because on one long page that
-    is where the aligner is. Split across files, the same link on reference.html
-    scrolls nowhere: the id lives on index.html. The sidebar already qualifies
-    its hrefs with a file name; prose didn't, because a markdown author has no
-    way to know which page their section lands on.
-
-    Which is a whole-site fact, so it is resolved here, where every page has
-    been assembled and none written. An anchor on the current page stays bare.
+    A source doc writes `[the aligner](#aligner)` without knowing which page its
+    section lands on, so once split across files that link scrolls nowhere: the
+    id lives on index.html, not reference.html. The sidebar already qualifies its
+    hrefs with a file name; prose does it here, where every page is assembled and
+    none written. An anchor on the current page stays bare.
     """
     owner: dict[str, str] = {}
     for page, content, _groups in built:

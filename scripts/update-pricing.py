@@ -27,7 +27,7 @@ PRICING_OUTPUT = (
     / "pricing.json"
 )
 
-# The aligned columns make the table scannable; keep the formatter off it.
+# Keep the formatter off the aligned columns.
 # fmt: off
 TRACKED_MODELS: list[dict] = [
     # Anthropic

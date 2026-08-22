@@ -29,8 +29,7 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 
-# The compose service `mycelium hub host` starts on its own. Named rather than
-# inlined so tests/test_compose_service_contract.py can check it still exists.
+# The compose service `mycelium hub host` starts on its own.
 SLIM_SERVICE = "slim"
 
 

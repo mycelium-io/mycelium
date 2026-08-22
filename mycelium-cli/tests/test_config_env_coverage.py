@@ -4,21 +4,15 @@
 """Every config field either reaches a container or says why it doesn't.
 
 ``mycelium config apply`` regenerates ``~/.mycelium/.env`` from ``config.toml``,
-and the containers read only that. So a field added to :class:`MyceliumConfig`
-without a line in ``generate_env_file`` is a setting a user can write, see
-accepted, and watch do nothing — the worst failure mode available, because it
-looks like it worked.
+and the containers read only that. Both directions can strand a value:
 
-Both directions are checked, because both can strand a value:
+  * a config field that neither renders nor is declared local-only — a setting a
+    user writes, sees accepted, and watches do nothing;
+  * a ``${VAR}`` compose substitutes that nothing renders — ``config apply``
+    rewrites .env wholesale, so a key with no source disappears on the next run.
 
-  * a config field that neither renders nor is declared local-only, and
-  * a ``${VAR}`` compose substitutes that nothing renders (``config apply``
-    rewrites .env wholesale, so a key with no source is a key that disappears
-    the next time anyone runs it).
-
-The render side is read out of ``generate_env_file``'s own source rather than
-from a hand-kept list of env names: the mapping is the code, so that is what the
-check reads.
+The render side is read out of ``generate_env_file``'s own source: the mapping
+is the code, so that is what the check reads.
 """
 
 from __future__ import annotations
