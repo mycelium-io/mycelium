@@ -48,6 +48,7 @@ from app.services.filesystem import (
     list_memory_files,
     parse_timestamp,
     read_memory_file,
+    recover_timestamps,
     room_exists,
     value_to_content,
     write_memory_file,
@@ -90,8 +91,14 @@ def _reconstruct_value(meta: dict, content: str) -> dict | str:
 
 
 def _memory_read_from_file(room_name: str, key: str, meta: dict, content: str) -> MemoryRead:
-    """Build a MemoryRead from a memory file's frontmatter + body."""
-    now = datetime.now(UTC)
+    """Build a MemoryRead from a memory file's frontmatter + body.
+
+    Stamps come from :func:`recover_timestamps`, which falls back to the file's
+    mtime rather than to read time — a memory whose frontmatter lost its
+    ``updated_at`` would otherwise report a different, always-newest timestamp on
+    every read and drift to the end of any time-ordered view.
+    """
+    created_at, updated_at = recover_timestamps(meta, get_room_dir(room_name) / f"{key}.md")
     return MemoryRead(
         id=stable_memory_id(room_name, key),
         room_name=room_name,
@@ -103,8 +110,8 @@ def _memory_read_from_file(room_name: str, key: str, meta: dict, content: str) -
         version=meta.get("version", 1),
         tags=meta.get("tags"),
         expandable=links.is_expandable(meta),
-        created_at=meta.get("created_at", now),
-        updated_at=meta.get("updated_at", now),
+        created_at=created_at,
+        updated_at=updated_at,
         file_path=f"rooms/{room_name}/{key}.md",
     )
 
@@ -364,7 +371,7 @@ async def list_memories(
     room_dir = get_room_dir(room_name)
     file_entries = list_memory_files(room_dir, prefix=prefix, limit=limit + offset)
 
-    latest_ts = max((meta.get("updated_at", "") for _, meta, _ in file_entries), default="")
+    latest_ts = max((str(meta.get("updated_at", "")) for _, meta, _ in file_entries), default="")
     etag = '"' + hashlib.md5(str(latest_ts).encode()).hexdigest() + '"' if latest_ts else '"empty"'
     if request.headers.get("if-none-match") == etag:
         return Response(status_code=304, headers={"ETag": etag})
@@ -405,12 +412,15 @@ async def search_memories(room_name: str, payload: MemorySearchRequest):
         min_similarity=payload.min_similarity,
     )
 
-    now = datetime.now(UTC)
+    room_dir = get_room_dir(room_name)
     results = []
     for rec, similarity in hits:
         value = rec.get("value")
         if value is None:
             value = {"text": rec.get("content_text")} if rec.get("content_text") else {}
+        # An index record predating a stamp resolves against the file it points
+        # at, never against read time (see _memory_read_from_file).
+        created_at, updated_at = recover_timestamps(rec, room_dir / f"{rec['key']}.md")
         memory_read = MemoryRead(
             id=stable_memory_id(room_name, rec["key"]),
             room_name=room_name,
@@ -422,8 +432,8 @@ async def search_memories(room_name: str, payload: MemorySearchRequest):
             version=rec.get("version", 1),
             tags=rec.get("tags"),
             expandable=bool(rec.get("expandable")),
-            created_at=rec.get("created_at", now),
-            updated_at=rec.get("updated_at", now),
+            created_at=created_at,
+            updated_at=updated_at,
             file_path=rec.get("file_path"),
         )
         results.append(MemorySearchResult(memory=memory_read, similarity=similarity))

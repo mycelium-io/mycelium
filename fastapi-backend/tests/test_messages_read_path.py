@@ -9,6 +9,8 @@ merge/dedup directly, node-free: they seed the transcript + list store and asser
 what ``_read_messages`` returns.
 """
 
+from datetime import UTC, datetime
+
 from app.routes.messages import _read_messages
 from app.services import l9, local_state, persister
 from app.services.filesystem import get_room_dir
@@ -83,3 +85,89 @@ def test_read_merges_event_ledger_rows_that_only_live_in_memory(tmp_path, monkey
 
     served = _read_messages(room, None)
     assert {m.content for m in served} == {"chat", "a PR opened"}
+
+
+def _knowledge_record(message_id: str, *, key: str, recorded_at: str | None):
+    """A raise-up ``knowledge`` record, optionally with its ``recorded_at`` stripped."""
+    from app.services import memory_sync
+
+    write = memory_sync.KnowledgeWrite(
+        key=key,
+        content="note",
+        version=1,
+        created_by="julia",
+        updated_by="julia",
+        updated_at="2026-08-19T09:48:00+00:00",
+    )
+    env = memory_sync.build_knowledge_envelope(
+        room="r",
+        write=write,
+        recipients=[l9.SYSTEM_ACTOR_ID],
+        subkind=memory_sync.MEMORY_WRITE_SUBKIND,
+    )
+    record = persister.record_from(
+        env, serialize_content(env, extra={"content": f"memory updated → {key}"})
+    )
+    record.message_id = message_id
+    record.recorded_at = recorded_at or ""
+    return record
+
+
+def _stamped(message_id: str, *, text: str, recorded_at: str):
+    record = _record(message_id, sender="julia", text=text)
+    record.recorded_at = recorded_at
+    return record
+
+
+def test_a_record_with_no_stamp_holds_its_place_instead_of_dating_to_now(tmp_path, monkeypatch):
+    """A transcript line the read path can't get a time out of used to fall back to
+    read time — always the newest value there is, so the row jumped to the end of
+    the feed and reported a different time on every read."""
+    monkeypatch.setattr("app.config.settings.MYCELIUM_DATA_DIR", str(tmp_path / ".mycelium"))
+    local_state.clear_all()
+    room = "unstamped-room"
+    get_room_dir(room)
+    for record in (
+        _stamped("c-1", text="morning", recorded_at="2026-08-19T09:00:00+00:00"),
+        _knowledge_record("k-1", key="agents/590", recorded_at=None),
+        _stamped("c-2", text="evening", recorded_at="2026-08-20T22:17:00+00:00"),
+    ):
+        persister.append_transcript(room, record)
+
+    served = sorted(_read_messages(room, None), key=lambda m: m.created_at)
+
+    # Beside the record it was appended after, not below the newest message.
+    assert [m.message_type for m in served] == ["broadcast", "l9_knowledge", "broadcast"]
+    assert served[1].created_at == served[0].created_at
+
+
+def test_an_unstamped_record_reports_the_same_time_on_every_read(tmp_path, monkeypatch):
+    monkeypatch.setattr("app.config.settings.MYCELIUM_DATA_DIR", str(tmp_path / ".mycelium"))
+    local_state.clear_all()
+    room = "unstamped-stable-room"
+    get_room_dir(room)
+    persister.append_transcript(
+        room, _stamped("c-1", text="morning", recorded_at="2026-08-19T09:00:00+00:00")
+    )
+    persister.append_transcript(room, _knowledge_record("k-1", key="agents/590", recorded_at=None))
+
+    first = _read_messages(room, None)
+    persister._conversational_cache.clear()
+    second = _read_messages(room, None)
+
+    assert [m.created_at for m in first] == [m.created_at for m in second]
+
+
+def test_a_leading_unstamped_record_inherits_the_first_stamp_that_follows(tmp_path, monkeypatch):
+    monkeypatch.setattr("app.config.settings.MYCELIUM_DATA_DIR", str(tmp_path / ".mycelium"))
+    local_state.clear_all()
+    room = "leading-unstamped-room"
+    get_room_dir(room)
+    persister.append_transcript(room, _knowledge_record("k-1", key="agents/590", recorded_at=None))
+    persister.append_transcript(
+        room, _stamped("c-1", text="morning", recorded_at="2026-08-19T09:00:00+00:00")
+    )
+
+    served = _read_messages(room, None)
+
+    assert {m.created_at for m in served} == {datetime(2026, 8, 19, 9, 0, tzinfo=UTC)}
