@@ -20,7 +20,6 @@ import { waitingOn, type ItemGroup } from "@/lib/board/view";
 import {
   AgeTag,
   BlocksNote,
-  DemoTag,
   KindGlyph,
   LiveDot,
   OwnerChip,
@@ -113,7 +112,6 @@ function CockpitRow({
       className={cn(
         "group relative flex cursor-default items-start gap-2.5 rounded-lg px-2.5 py-2 transition-colors",
         selected ? "bg-elevated ring-1 ring-border" : "hover:bg-hairline",
-        item.demo && "border border-dashed border-border/70",
         resolved && "opacity-60",
       )}
     >
@@ -135,7 +133,6 @@ function CockpitRow({
           {urgent && (
             <span className="shrink-0 rounded bg-red/10 px-1.5 font-mono text-micro text-red">urgent</span>
           )}
-          {item.demo && <DemoTag />}
         </div>
 
         <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1">

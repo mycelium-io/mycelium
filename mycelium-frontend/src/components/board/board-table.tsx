@@ -8,7 +8,7 @@ import { Check, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { lensOf, type LiveItem } from "@/lib/board/item";
 import type { FieldSchema } from "@/lib/board/schema";
-import { DemoTag, KindGlyph } from "./board-bits";
+import { KindGlyph } from "./board-bits";
 
 interface Props {
   items: LiveItem[];
@@ -71,7 +71,6 @@ export function BoardTable({ items, schema, selectedId, onSelect, onEdit, sort, 
                 <span className="flex items-center gap-2">
                   <KindGlyph item={item} />
                   <span className="min-w-0 flex-1 truncate text-text">{item.title}</span>
-                  {item.demo && <DemoTag />}
                 </span>
               </td>
               {columns.map(field => (

@@ -309,11 +309,6 @@ function ActorLane({
             </span>
             <span className="shrink-0 font-mono text-micro text-muted-foreground">{event.verb}</span>
             <span className="min-w-0 flex-1 truncate text-label text-text">{event.title}</span>
-            {event.demo && (
-              <span className="shrink-0 rounded border border-dashed border-border2 px-1 font-mono text-micro text-faint">
-                demo
-              </span>
-            )}
           </li>
         ))}
         {events.length > 8 && (
