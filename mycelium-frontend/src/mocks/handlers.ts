@@ -12,7 +12,7 @@
 
 import { BACKEND_METRICS, COLLECTOR_METRICS, HOSTS, ROOMS, ROOM_FIXTURES, getRoomFixture } from "./fixtures";
 import type { MockMemory } from "./fixtures";
-import type { MemoryGraph, MemoryGraphEdge, MemoryLink } from "@/lib/api";
+import type { A2aBridgeState, MemoryGraph, MemoryGraphEdge, MemoryLink } from "@/lib/api";
 import type { SearchHit, SearchResultType } from "@/lib/search";
 
 /** One item of a POST /memory batch, as the editor sends it. */
@@ -49,10 +49,9 @@ const notFound = (detail: string): Response => json({ detail }, 404);
 const MOCK_EPOCH = new Date(0).toISOString();
 
 /**
- * A UUID derived from a string, so the same memory keeps the same id across
- * requests without every fixture having to carry one. Not cryptographic and
- * not meant to be: it only has to be stable, distinct, and shaped like the
- * UUIDs the store issues.
+ * A UUID derived from a string, so a memory keeps the same id across requests
+ * without every fixture carrying one. Not cryptographic — it only has to be
+ * stable, distinct, and shaped like the ids the store issues.
  */
 function stableUuid(seed: string): string {
   let hash = 0x811c9dc5;
@@ -67,12 +66,9 @@ function stableUuid(seed: string): string {
 }
 
 /**
- * A fixture memory in the backend's `MemoryRead` shape.
- *
- * `id`, `room_name` and `created_at` are required by the spec and derived here
- * rather than repeated across every fixture — which is how they would drift.
- * The real store derives them the same way: the room comes from the path, and a
- * memory written once has created_at == updated_at.
+ * A fixture memory in the backend's `MemoryRead` shape. `id`, `room_name` and
+ * `created_at` are required by the spec and derived here rather than repeated
+ * across every fixture, the same way the real store derives them.
  */
 function memoryRead(room: string, memory: MockMemory): Record<string, unknown> {
   const updated = memory.updated_at ?? MOCK_EPOCH;
@@ -82,6 +78,27 @@ function memoryRead(room: string, memory: MockMemory): Record<string, unknown> {
     room_name: memory.room_name ?? room,
     created_at: updated,
     updated_at: updated,
+  };
+}
+
+/** A room with no A2A bridge: no bridged members, no traffic — but still served
+ *  as an A2A agent of its own, since every room's card is reachable. */
+function emptyBridge(room: string): A2aBridgeState {
+  return {
+    room,
+    agents: [],
+    exchanges: [],
+    outbound_ok: 0,
+    outbound_failed: 0,
+    exposure: {
+      card_url: `http://localhost:8000/api/rooms/${room}/.well-known/agent-card.json`,
+      rpc_url: `http://localhost:8000/api/rooms/${room}/a2a`,
+      skills: [],
+      card_fetches: 0,
+      messages: 0,
+      last_card_fetch_at: null,
+      last_message_at: null,
+    },
   };
 }
 
@@ -169,8 +186,7 @@ export async function handleMock(req: Request): Promise<Response | null> {
     if (method === "POST") {
       const body = await readJson(req);
       const name = String(body.name ?? "new-room");
-      // 201, like the real route: a mock that answers 200 to a create teaches
-      // the UI a status the backend never sends.
+      // 201, like the real route.
       return json(
         {
           id: ROOMS.length + 1,
@@ -345,8 +361,23 @@ export async function handleMock(req: Request): Promise<Response | null> {
           owner: /owner:\s*@?(\S+)/.exec(m.value)?.[1] ?? null,
           team: /team:\s*(\S+)/.exec(m.value)?.[1] ?? null,
           allow_from: [],
+          a2a_card: /a2a_card:\s*(\S+)/.exec(m.value)?.[1] ?? null,
+          a2a_endpoint: /a2a_endpoint:\s*(\S+)/.exec(m.value)?.[1] ?? null,
+          a2a_skills:
+            /a2a_skills:\s*\[([^\]]*)\]/
+              .exec(m.value)?.[1]
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean) ?? [],
         }));
       return json(agents);
+    }
+
+    case "a2a": {
+      // GET /a2a/state — the Network pane's bridge strip. A room with no
+      // bridge answers with an empty one, exactly like the backend does.
+      if (sub[1] !== "state" || method !== "GET") return null;
+      return json(fx.a2a ?? emptyBridge(roomName));
     }
 
     case "links": {

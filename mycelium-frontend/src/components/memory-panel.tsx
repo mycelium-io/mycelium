@@ -5,7 +5,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   Brain,
   ChevronRight,
@@ -276,16 +276,24 @@ export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusM
   const { memories, loading } = useRoomMemories(roomName);
   const { integrity } = useRoomMemoryIntegrity(roomName);
   const memoriesRef = useRef(memories);
-  memoriesRef.current = memories;
+  useLayoutEffect(() => { memoriesRef.current = memories; }, [memories]);
 
-  // Exit edit mode whenever the selected memory changes.
-  useEffect(() => { setIsEditing(false); }, [selected?.key]);
+  // Exit edit mode whenever the selection changes. Compared in render rather
+  // than reset in an effect, so the new selection never flashes in edit mode.
+  const [prevSelectedKey, setPrevSelectedKey] = useState(selected?.key);
+  if (prevSelectedKey !== selected?.key) {
+    setPrevSelectedKey(selected?.key);
+    setIsEditing(false);
+  }
 
   // Expanded transclusions for whichever memory is open in the drawer, so the
   // rail peek matches the full page instead of leaving `![[…]]` markers as
   // unexpanded chips (#599).
   useEffect(() => {
     if (!selected) {
+      // Clear the body when the selection clears, so the previous memory's
+      // never shows under the next one.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setRenderedBody(null);
       return;
     }

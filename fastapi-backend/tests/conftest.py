@@ -16,7 +16,7 @@ from httpx import ASGITransport, AsyncClient
 
 from app.config import PrincipalRole
 from app.main import app
-from app.services import local_state
+from app.services import a2a_activity, local_state
 from app.services.auth import Principal, auth_gate
 
 
@@ -32,6 +32,14 @@ def _reset_local_state():
     local_state.clear_all()
     yield
     local_state.clear_all()
+
+
+@pytest.fixture(autouse=True)
+def _reset_a2a_activity():
+    """Isolate the in-process A2A bridge telemetry per test."""
+    a2a_activity.clear()
+    yield
+    a2a_activity.clear()
 
 
 @pytest_asyncio.fixture()

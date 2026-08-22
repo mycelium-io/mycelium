@@ -7,9 +7,9 @@ import userEvent from "@testing-library/user-event";
 import { renderWithSWR } from "@/test/swr";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeEventSource } from "@/test/fake-event-source";
+import { resetStreamHub } from "@/lib/stream-hub";
 
 vi.mock("@/lib/api", () => ({
-  getSSEUrl: (room: string) => `/api/rooms/${room}/messages/stream`,
   fetchMessages: vi.fn().mockResolvedValue({ messages: [] }),
   fetchRoomAgents: vi.fn().mockResolvedValue([]),
   fetchPendingInvites: vi.fn().mockResolvedValue([]),
@@ -39,6 +39,7 @@ function l9Exchange(text: string) {
 
 describe("<EventStream /> live message rendering", () => {
   beforeEach(() => {
+    resetStreamHub();
     FakeEventSource.reset();
     vi.stubGlobal("EventSource", FakeEventSource);
   });

@@ -152,12 +152,14 @@ export function MemoryGraph({ graph, onNavigate, roomName, className }: Props) {
   const [legendOpen, setLegendOpen] = useState(false);
   const filtered = hiddenNamespaces.size > 0 || hiddenTypes.size > 0;
 
-  useEffect(() => {
-    // Guarded so a mount with nothing filtered doesn't hand React two fresh
-    // (unequal) Sets and buy an extra render of every node for no change.
+  // Reset the filters when the graph changes. The guard keeps the same Set
+  // identity when nothing was filtered, so every node doesn't re-render.
+  const [prevGraph, setPrevGraph] = useState(graph);
+  if (prevGraph !== graph) {
+    setPrevGraph(graph);
     setHiddenNamespaces(prev => (prev.size === 0 ? prev : new Set()));
     setHiddenTypes(prev => (prev.size === 0 ? prev : new Set()));
-  }, [graph]);
+  }
 
   const visibleKeys = useMemo(
     () => new Set(graph.nodes.filter(n => !hiddenNamespaces.has(namespaceOf(n.key))).map(n => n.key)),
@@ -273,7 +275,7 @@ export function MemoryGraph({ graph, onNavigate, roomName, className }: Props) {
   // Read by the deferred writes below, so they always persist the newest
   // arrangement rather than the one captured when their timer was armed.
   const latestPlaced = useRef(placed);
-  latestPlaced.current = placed;
+  useLayoutEffect(() => { latestPlaced.current = placed; }, [placed]);
 
   // Only a drag or a reset may write. Persisting on any change to `placed`
   // instead — mirroring state outward — silently wiped the saved arrangement
@@ -296,6 +298,9 @@ export function MemoryGraph({ graph, onNavigate, roomName, className }: Props) {
   useLayoutEffect(() => {
     dirty.current = false;
     if (!roomName) {
+      // Placements are read from storage, so they land in a layout effect —
+      // before the new layout's first paint.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setPlaced({});
       return;
     }
@@ -424,7 +429,7 @@ export function MemoryGraph({ graph, onNavigate, roomName, className }: Props) {
       // one handler even when it outruns the circle it grabbed.
       capturePointer(svgRef.current, e.pointerId);
     },
-    [positions],
+    [positions, toSvgPoint],
   );
 
   /** Drops whatever gesture this pointer owned, without activating anything. */
@@ -474,7 +479,7 @@ export function MemoryGraph({ graph, onNavigate, roomName, className }: Props) {
       pan.last = to;
       setView(prev => ({ ...prev, x: prev.x + dx, y: prev.y + dy }));
     },
-    [toSvgPoint, view.scale],
+    [abandonGesture, toSvgPoint, view.scale],
   );
 
   // Opening is decided here on pointerup, not by a `click` handler on the node.

@@ -28,7 +28,7 @@ Both Next route handlers consult the mock layer first when `MYCELIUM_UI_MOCK=1`:
 - `src/app/api/[...path]/route.ts` → `handleMock(req)` serves fixtures for any
   `/api/*` request it recognizes; unrecognized routes return `null` and fall
   through to the real backend (so it degrades, never hangs).
-- `src/app/api/rooms/[name]/messages/stream/route.ts` → `mockStream(name)` replays
+- `src/app/api/stream/route.ts` → `mockStream(name)` on the room channel replays
   a scripted SSE negotiation.
 
 Files:

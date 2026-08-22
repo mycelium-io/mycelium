@@ -102,7 +102,9 @@ export function ActingAsPicker({ compact = false }: Props) {
 
   useEffect(() => {
     if (open) {
-      refresh();
+      refresh(); // async fetch; setState only in its .then() callback
+      // Opening resets the picker to its default view.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setView("switch");
       setError(null);
     }

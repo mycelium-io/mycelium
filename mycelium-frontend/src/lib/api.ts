@@ -507,10 +507,6 @@ export async function fetchMessages(roomName: string, limit?: number): Promise<M
   });
 }
 
-export function getSSEUrl(roomName: string) {
-  return `/api/rooms/${roomName}/messages/stream`;
-}
-
 /** The room's L9 wire history (transcript replay), for backfilling the live
  *  inspector on mount. Frames match the SSE bus shape, so the client projects
  *  backfill + live identically. Returns [] on any error (best-effort). */
@@ -523,18 +519,6 @@ export async function fetchL9History(
     fallback: [],
     guard: isArray as (d: unknown) => d is Record<string, unknown>[],
   });
-}
-
-/** SSE endpoint for global app events (room create/delete). */
-export function getAppEventsSSEUrl() {
-  return `/api/events/stream`;
-}
-
-/** SSE endpoint aggregating every room's activity into one stream — the
- *  notification center's feed, so it doesn't have to open one connection per
- *  room the user participates in. */
-export function getNotificationsSSEUrl() {
-  return `/api/notifications/stream`;
 }
 
 export async function sendRoomMessage(
@@ -596,6 +580,11 @@ export interface AgentSummary {
   owner: string | null;
   team: string | null;
   allow_from: string[];
+  /** For `adapter === "a2a"` agents: the agent card base URL, resolved endpoint,
+   *  and advertised skills. Null/empty for every other adapter. */
+  a2a_card?: string | null;
+  a2a_endpoint?: string | null;
+  a2a_skills?: string[];
 }
 
 /** List addressable agents in a room. Used to drive `@`-mention autocomplete. */
@@ -620,6 +609,86 @@ export async function createEngine(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
+  });
+}
+
+/** Register an external A2A agent as a room member. The backend resolves the
+ *  agent card at `card` (a base URL) to discover its endpoint + skills; a
+ *  bad/unreachable card surfaces as a 502 whose detail we let propagate. */
+export async function registerA2aAgent(
+  roomName: string,
+  data: { handle: string; card: string; description?: string },
+): Promise<AgentSummary> {
+  return apiFetch<AgentSummary>(`/api/rooms/${roomName}/a2a-agents`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+// ── A2A bridge (the Network pane's off-channel half) ─────────────────────────
+//
+// A bridged agent is reached over HTTP by the hub, not over the room's SLIM
+// channel, so none of it shows up in the coordination telemetry above. This is
+// the read that makes a bridged turn legible next to SLIM traffic.
+
+/** A room member the hub reaches over A2A instead of the room's channel. */
+export interface A2aBridgedAgent {
+  handle: string;
+  description: string;
+  card: string | null;
+  endpoint: string | null;
+  skills: string[];
+  calls_ok: number;
+  calls_failed: number;
+  last_call_at: string | null;
+  /** Always true, and stated rather than implied: proxied by the hub, so it
+   *  holds no group key and is not a member of the room's MLS group. */
+  proxied: boolean;
+}
+
+/** One bridged turn: a call the hub made out, or a message that arrived in. */
+export interface A2aExchange {
+  id: string;
+  handle: string;
+  direction: "outbound" | "inbound";
+  status: "ok" | "error";
+  at: string;
+  endpoint: string | null;
+  /** Whose `@`-mention triggered the call (outbound only). */
+  peer: string | null;
+  prompt: string;
+  reply: string;
+  detail: string | null;
+  duration_ms: number | null;
+}
+
+/** The inbound half: this room served as an A2A agent of its own. */
+export interface A2aExposure {
+  card_url: string;
+  rpc_url: string;
+  skills: string[];
+  card_fetches: number;
+  messages: number;
+  last_card_fetch_at: string | null;
+  last_message_at: string | null;
+}
+
+export interface A2aBridgeState {
+  room: string;
+  agents: A2aBridgedAgent[];
+  exposure: A2aExposure;
+  exchanges: A2aExchange[];
+  outbound_ok: number;
+  outbound_failed: number;
+}
+
+/** Read a room's A2A bridge state. Fail-soft: null when the hub is unreachable
+ *  or too old to serve the route, which the pane renders as "no bridge". */
+export async function fetchA2aBridge(roomName: string): Promise<A2aBridgeState | null> {
+  return apiFetch<A2aBridgeState | null>(`/api/rooms/${roomName}/a2a/state`, {
+    cache: "no-store",
+    fallback: null,
   });
 }
 
