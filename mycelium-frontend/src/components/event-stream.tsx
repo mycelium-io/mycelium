@@ -24,6 +24,7 @@ import { KeyBadge } from "@/components/key-badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Monogram } from "@/components/ui/monogram";
+import { Tooltip } from "@/components/ui/tooltip";
 import { Bot, MessagesSquare } from "lucide-react";
 
 interface Event {
@@ -639,7 +640,9 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
                   >
                     <span>in</span>
                     {shortId ? (
-                      <span className="font-mono text-accent" title={episodeUrn}>{shortId}</span>
+                      <Tooltip content={episodeUrn}>
+                        <span className="font-mono text-accent" aria-description={episodeUrn}>{shortId}</span>
+                      </Tooltip>
                     ) : (
                       <span className="font-mono">episode</span>
                     )}
@@ -649,9 +652,14 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
                       <>
                         <span>· {issueCount} issue{issueCount === 1 ? "" : "s"} agreed</span>
                         {gar !== undefined ? (
-                          <span className="font-mono" title="genuine agreement ratio: how many agents actually moved toward the outcome">
-                            · GAR {gar.toFixed(2)}
-                          </span>
+                          <Tooltip content="Genuine agreement ratio: how many agents actually moved toward the outcome">
+                            <span
+                              className="font-mono"
+                              aria-description="Genuine agreement ratio: how many agents actually moved toward the outcome"
+                            >
+                              · GAR {gar.toFixed(2)}
+                            </span>
+                          </Tooltip>
                         ) : null}
                         {planFile ? (
                           <span>→ <span className="font-mono text-accent">{planFile}</span></span>
@@ -671,7 +679,9 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
                     <span className="font-medium text-muted-foreground">@{handle}</span>
                     <span>joined</span>
                     {shortId ? (
-                      <span className="font-mono text-accent" title={episodeUrn}>{shortId}</span>
+                      <Tooltip content={episodeUrn}>
+                        <span className="font-mono text-accent" aria-description={episodeUrn}>{shortId}</span>
+                      </Tooltip>
                     ) : null}
                     {intent ? <span>· &ldquo;{intent}&rdquo;</span> : null}
                   </SystemNotice>
@@ -705,9 +715,11 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
 
                   <div className="w-7 flex-shrink-0">
                     {!grouped && (
-                      <span title={owner ? `@${ev.sender} · owned by @${owner}` : ev.sender}>
-                        <Monogram handle={ev.sender} color={color} className="size-7 text-micro" />
-                      </span>
+                      <Tooltip content={owner ? `@${ev.sender} · owned by @${owner}` : ev.sender}>
+                        <span role="img" aria-label={owner ? `@${ev.sender} · owned by @${owner}` : ev.sender}>
+                          <Monogram handle={ev.sender} color={color} className="size-7 text-micro" />
+                        </span>
+                      </Tooltip>
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
