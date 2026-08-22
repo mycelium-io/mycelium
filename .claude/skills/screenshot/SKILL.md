@@ -1,6 +1,6 @@
 ---
 name: screenshot
-description: Take a screenshot of the running Mycelium app, or of CLI output rendered as a terminal card. Use when you need to SEE the UI — verifying a frontend change, checking a layout at phone/tablet/desktop widths, driving a multi-step flow and looking at each step, or producing an image of a `mycelium` command's output for a doc or PR. Triggers on "screenshot", "show me the app", "what does it look like", "check the layout", "responsive", "capture the terminal".
+description: Take a screenshot of the running Mycelium app, or of CLI output rendered as a terminal card, or record a short video of a flow with a visible cursor and click/zoom animations. Use when you need to SEE the UI — verifying a frontend change, checking a layout at phone/tablet/desktop widths, driving a multi-step flow and looking at each step, producing an image of a `mycelium` command's output for a doc or PR, or showing a flow in motion. Triggers on "screenshot", "show me the app", "what does it look like", "check the layout", "responsive", "capture the terminal", "record a video", "screen recording", "demo clip", "show it in motion".
 ---
 
 # Screenshot the app or the CLI
@@ -86,6 +86,27 @@ including words that are also tag names, so `click:table` finds a button
 labelled "table" before it considers a `<table>`. For anything else use a
 Playwright selector: `#id`, `.class`, `role=button[name="Save"]`, `text=Save`.
 `shot help shoot` lists every verb.
+
+## Record a short video
+
+When the thing to show is a *flow* rather than a state — a demo clip for a PR or
+a doc, or checking that an interaction feels right:
+
+```bash
+node shotkit/bin/shot.mjs video /room/atlas-migration --mock --offline \
+  --do click:Negotiate --do wait:.offer-grid --auto-zoom
+```
+
+Same `--do` verbs as a screenshot. The recording adds what a still does not
+need: the pointer travels to each target (moving the real mouse, so hover states
+fire), a ring marks each click, and `--auto-zoom` pushes the camera in on what is
+being pressed and back out after. `zoom:<sel>`, `zoom:<sel>@2.2` and `zoomout`
+place the camera by hand.
+
+The output path on stdout is an **.mp4 where the machine has a full ffmpeg, and
+a .webm otherwise** — Playwright's bundled build is webm-only. `shot doctor`
+says which. You cannot watch it: hand the path to the user, or pull a frame out
+of it to look at. Keep takes short (a few actions); `--max-seconds` caps one.
 
 ## Screenshot CLI output
 

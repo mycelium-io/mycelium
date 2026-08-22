@@ -21,6 +21,8 @@ import { locate, parseAction } from "../src/actions.mjs";
 import { backdrop, palette } from "../src/theme.mjs";
 import { CANVAS_VARS, VEIL, networkDocument } from "../src/mycelial.mjs";
 import { cardDocument } from "../src/card.mjs";
+import { encodeArgs, jpegSize } from "../src/encode.mjs";
+import { parseZoom } from "../src/video.mjs";
 
 let failures = 0;
 function test(name, fn) {
@@ -165,6 +167,37 @@ test("--responsive expands to the breakpoint ladder", () => {
 test("an action splits on its first colon only", () => {
   assert.deepEqual(parseAction("fill:#q=a:b"), { verb: "fill", arg: "#q=a:b" });
   assert.deepEqual(parseAction("reload"), { verb: "reload", arg: "" });
+});
+
+test("a zoom argument splits into a target and a factor", () => {
+  assert.deepEqual(parseZoom("out", 1.6), { target: "", z: 1 });
+  assert.deepEqual(parseZoom("2", 1.6), { target: "", z: 2 });
+  assert.deepEqual(parseZoom("#panel", 1.6), { target: "#panel", z: 1.6 });
+  assert.deepEqual(parseZoom("#panel@2.2", 1.6), { target: "#panel", z: 2.2 });
+  // A selector may hold digits and colons; only the tail after @ is a factor.
+  assert.deepEqual(parseZoom("text=Save 2", 1.6), { target: "text=Save 2", z: 1.6 });
+});
+
+test("the encoder is fed frames on a pipe and writes even dimensions", () => {
+  const args = encodeArgs({ format: "mp4", fps: 30, width: 1281, height: 801, out: "/tmp/a.mp4" });
+  // A bare "-" is not a protocol Playwright's stripped ffmpeg registers.
+  assert.ok(args.includes("pipe:0"));
+  assert.ok(args.includes("scale=1280:800"), "4:2:0 refuses odd dimensions");
+  assert.ok(args.includes("libx264"));
+  assert.equal(encodeArgs({ format: "webm", fps: 30, width: 640, height: 400, out: "/tmp/a.webm" })
+    .includes("libvpx"), true);
+  assert.throws(() => encodeArgs({ format: "mov", fps: 30, width: 2, height: 2, out: "x" }), /unknown video format/);
+});
+
+test("a jpeg's size comes out of its frame header", () => {
+  // SOI, an APP0 whose length must be skipped, then SOF0 carrying 200x100.
+  const jpeg = Buffer.from([
+    0xff, 0xd8,
+    0xff, 0xe0, 0x00, 0x04, 0x00, 0x00,
+    0xff, 0xc0, 0x00, 0x11, 0x08, 0x00, 0x64, 0x00, 0xc8, 0x03, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  ]);
+  assert.deepEqual(jpegSize(jpeg), { width: 200, height: 100 });
+  assert.deepEqual(jpegSize(Buffer.from([0xff, 0xd8])), { width: 0, height: 0 });
 });
 
 test("a backdrop preset resolves per theme, and unknown values pass through", () => {

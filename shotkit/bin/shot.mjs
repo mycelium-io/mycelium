@@ -62,6 +62,27 @@ const RESPONSIVE = {
   "sheet-title": { type: "string", help: "heading on the contact sheet" },
 };
 
+const VIDEO = {
+  fps: { type: "number", help: "frames per second (default 30)" },
+  format: { type: "string", value: "mp4|webm|gif", help: "container (default: the best this ffmpeg writes)" },
+  quality: { type: "number", help: "frame jpeg quality, 1-100 (default 92)" },
+  crf: { type: "number", help: "encoder quality; lower is better" },
+  zoom: { type: "number", help: "push-in factor for zoom: and --auto-zoom (default 1.6)" },
+  "auto-zoom": { type: "boolean", help: "push in on every click, and back out after" },
+  cursor: { type: "boolean", help: "draw the pointer (default on)" },
+  "cursor-size": { type: "number", help: "pointer height in px (default 30)" },
+  accent: { type: "string", value: "<css>", help: "click-ring color (default: the theme's accent)" },
+  "move-ms": { type: "number", help: "how long the pointer takes to travel (default 620)" },
+  dwell: { type: "number", value: "<ms>", help: "beat after each action (default 620)" },
+  "zoom-ms": { type: "number", help: "push-in duration (default 620)" },
+  "lead-in": { type: "number", value: "<ms>", help: "still frames before the first action (default 500)" },
+  tail: { type: "number", value: "<ms>", help: "still frames after the last one (default 1000)" },
+  "max-seconds": { type: "number", help: "stop the take at N seconds (default 90)" },
+  capture: { type: "string", value: "screencast|shots", help: "frame source (default screencast)" },
+  scale: { type: "number", help: "device pixel ratio (default 1, even for a preset that implies 2)" },
+  viewport: { type: "string", value: "<preset|WxH@S>", help: "phone|tablet|laptop|desktop|wide, or 1280x800@2" },
+};
+
 const DAEMON = {
   daemon: { type: "boolean", help: "use the warm background browser (default on)" },
   idle: { type: "number", value: "<ms>", help: "daemon idle timeout when starting one" },
@@ -129,6 +150,11 @@ const APP = {
   mock: { type: "boolean", help: "boot pnpm dev:mock and keep it warm in the daemon" },
 };
 
+// A take has no still-image business: nothing is clipped to an element, masked,
+// or made transparent, so those flags stay out of `shot help video`.
+const { "full-page": _fullPage, element: _element, mask: _mask, ...VIDEO_PAGE } = PAGE;
+const { transparent: _transparent, ...VIDEO_FRAME } = FRAME;
+
 const err = (m) => process.stderr.write(`${m}\n`);
 
 const USAGE = `shot — fast screenshots of the app and of CLI output
@@ -140,6 +166,9 @@ one-shot
   shot text <file|->      render an existing text/ANSI capture as a terminal
   shot code <file>        a syntax-highlighted code card
   shot html <file|->      render an HTML document
+
+video
+  shot video [route] --do click:X --auto-zoom      a short take, cursor and all
 
 responsive
   shot app / --responsive --sheet     every breakpoint, plus one image of all of them
@@ -171,9 +200,16 @@ const COMMAND_HELP = {
   open: ["shot open <route|url> [options]   — hold a page open under a name", { ...SESSION, ...APP, ...PAGE, ...RESPONSIVE, ...FRAME, ...DAEMON }],
   do: ["shot do <verb:arg…> [options]       — drive the held page", { ...SESSION, ...PAGE, ...DAEMON }],
   shoot: ["shot shoot [verb:arg…] [options]   — shoot the held page as it stands", { ...SESSION, ...PAGE, ...CHROME, ...FRAME, ...OUTPUT, ...DAEMON }],
+  video: [
+    "shot video [route|url] [options]   — a recorded take, with a visible cursor",
+    { ...APP, ...VIDEO_PAGE, ...VIDEO_FRAME, ...OUTPUT, ...DAEMON, ...VIDEO },
+  ],
   resize: ["shot resize --viewport <v> [options] — reframe the held page in place", { ...SESSION, ...RESPONSIVE, ...DAEMON }],
   close: ["shot close [options]", { ...SESSION, ...DAEMON }],
 };
+
+/** `/room/atlas` is a route; anything with a scheme is a URL. */
+const isUrl = (s) => /^[a-z][a-z0-9+.-]*:\/\//i.test(s);
 
 async function readStdin() {
   const chunks = [];
@@ -206,7 +242,10 @@ async function runSpec(spec, flags) {
     try {
       const { ensureDaemon, send } = await import("../src/ipc.mjs");
       await ensureDaemon({ idleMs: flags.idle });
-      return await send(isSession ? "session" : "shot", { spec });
+      // A take runs for as long as it runs; the default request timeout is
+      // sized for a screenshot and would cut one short.
+      const timeout = spec.op === "video" ? Math.max(180_000, (spec.maxSeconds ?? 90) * 1000 + 120_000) : undefined;
+      return await send(isSession ? "session" : "shot", { spec }, timeout ? { timeout } : {});
     } catch (e) {
       // A failure the daemon reported is this shot's failure — retrying it in
       // this process would only lose the daemon's state (a booted mock server,
@@ -234,6 +273,10 @@ function report(result, flags) {
   if (t.command) bits.push(`cmd ${t.command}ms`);
   if (t.capture) bits.push(`capture ${t.capture}ms`);
   const size = result.width ? ` · ${result.width}x${result.height}` : "";
+  if (result.op === "video") {
+    bits.push(`${(result.durationMs / 1000).toFixed(1)}s`, `${result.frames} frames @ ${result.fps}fps`);
+    if (result.meta?.truncated) bits.push("truncated at --max-seconds");
+  }
   err(`[shot] ${result.op} · ${bits.join(" · ")} · ${result.mode ?? "daemon"}${size}`);
   if (result.meta?.exitCode) err(`[shot] command exited ${result.meta.exitCode}`);
   if (result.meta?.hint) err(`[shot] ${result.meta.hint}`);
@@ -345,7 +388,7 @@ async function main() {
   } else if (command === "open") {
     spec = toSpec("open", flags);
     const target = rest[0] ?? "/";
-    if (target.startsWith("http")) spec.url = target;
+    if (isUrl(target)) spec.url = target;
     else spec.route = target;
   } else if (command === "do" || command === "shoot") {
     spec = toSpec(command === "do" ? "act" : "shoot", flags);
@@ -373,6 +416,11 @@ async function main() {
     spec = toSpec("html", flags);
     if (src === "-") spec.html = await readStdin();
     else spec.file = resolve(src);
+  } else if (command === "video") {
+    spec = toSpec("video", flags);
+    const target = rest[0] ?? "/";
+    if (isUrl(target)) spec.url = target;
+    else spec.route = target;
   } else if (command === "url") {
     if (!rest[0]) throw new Error("shot url needs a URL");
     spec = toSpec("url", flags);
