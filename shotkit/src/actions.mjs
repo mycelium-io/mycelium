@@ -181,4 +181,5 @@ export const ACTION_HELP = `
   eval:<js>            run JS in the page
 
   Selectors take any Playwright engine: text=Save, role=button[name="Save"],
-  #id, .class, //xpath. A bare word is matched as visible text.`;
+  #id, .class, //xpath. A bare word is matched by accessible name, then by
+  visible text — click:Save means the button labelled Save.`;

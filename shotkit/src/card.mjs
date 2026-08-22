@@ -34,7 +34,7 @@ const escapeHtml = (s) =>
  * @property {number} [fontSize]
  * @property {number} [lineHeight]
  * @property {string} [font] CSS font-family override
- * @property {number} [cols] fix the body width to N characters
+ * @property {number} [cols] floor the body width at N characters
  * @property {number} [maxWidth] px cap on the shrink-wrapped card
  */
 
@@ -59,7 +59,10 @@ export function cardDocument(bodyHtml, opts = {}, extraCss = "") {
         ? "0 22px 50px -12px rgba(0,0,0,.72), 0 2px 8px rgba(0,0,0,.5)"
         : "0 22px 50px -14px rgba(17,20,24,.28), 0 2px 8px rgba(17,20,24,.10)";
 
-  const bodyWidth = opts.cols ? `width:${opts.cols}ch;` : "";
+  // A floor, not a fixed width: `--cols` sets what the command was given for
+  // COLUMNS, and output can still exceed it (an unwrappable path, a table). A
+  // fixed width would clip that off the right edge silently, so the card grows.
+  const bodyWidth = opts.cols ? `min-width:${opts.cols}ch;` : "";
   const maxWidth = opts.maxWidth ? `max-width:${opts.maxWidth}px;` : "";
 
   const lights =
