@@ -59,6 +59,7 @@ async function freePort() {
   });
 }
 
+/** @param {string} url @param {number} timeoutMs @param {() => void} [check] */
 async function waitForServer(url, timeoutMs, check) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -88,6 +89,9 @@ const ALREADY_RUNNING = /Another next dev server is already running[\s\S]*?(http
  * rather than pick another port. Treating that refusal as an address — it names
  * the running server's URL — turns the one failure mode this has into the
  * fast path.
+ *
+ * @param {{log?: (message: string) => void}} [opts]
+ * @returns {Promise<string>} the base URL of a dev server that is answering
  */
 export async function ensureMockServer({ log = () => {} } = {}) {
   if (mockServer && (mockServer.adopted || !mockServer.proc?.killed)) {

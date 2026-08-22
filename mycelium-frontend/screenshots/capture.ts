@@ -26,9 +26,10 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import sharp from "sharp";
-// @ts-expect-error — shotkit is plain ESM JavaScript with JSDoc types.
+// shotkit is plain ESM JavaScript; `allowJs` means its JSDoc types are checked
+// here, so a signature change over there fails this typecheck rather than this
+// pipeline at runtime.
 import { capture, shutdown } from "../../shotkit/src/api.mjs";
-// @ts-expect-error — see above.
 import { ensureMockServer, stopMockServer } from "../../shotkit/src/app.mjs";
 import { SHOTS, VIEWPORTS, type Shot } from "./shots.ts";
 import { TARGETS } from "./targets.ts";
