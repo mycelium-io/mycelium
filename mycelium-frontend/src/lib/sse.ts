@@ -27,9 +27,10 @@ export interface StreamEnvelope {
   data: unknown;
 }
 
-/** Emitted at open so `EventSource.onopen` fires even while every upstream is
- *  down — the connection is the multiplexer's, not any one feed's. */
-export const STREAM_READY_EVENT = "ready";
+/** Carries `StreamStatus`: whether one upstream feed is actually delivering.
+ *  The connection being up says only that the multiplexer answered, so health
+ *  is reported per feed rather than inferred from the socket. */
+export const STREAM_STATUS_EVENT = "status";
 
 /** How long the server waits before redialling a dropped upstream feed, and
  *  the `retry:` hint handed to the browser for the connection itself. */
@@ -37,6 +38,18 @@ export const STREAM_RETRY_MS = 5000;
 
 export function encodeSseFrame(event: string, payload: unknown): string {
   return `event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`;
+}
+
+/** One feed's health, as the multiplexer sees it. */
+export interface StreamStatus {
+  channel: StreamChannel;
+  room: string | null;
+  up: boolean;
+}
+
+/** Identifies a feed across the wire and the client's health map. */
+export function feedKey(channel: StreamChannel, room: string | null): string {
+  return `${channel}:${room ?? ""}`;
 }
 
 export interface SseEvent {
@@ -86,11 +99,24 @@ export function createSseDecoder(): (chunk: string) => SseEvent[] {
   };
 }
 
-/** The decoder above, driven off a response body. Ends when the body does. */
+/**
+ * The decoder above, driven off a response body. Ends when the body does, or
+ * when `signal` aborts.
+ *
+ * Cancellation goes through the reader, not the stream: reading holds a lock,
+ * and `ReadableStream.cancel()` on a locked stream throws rather than stopping
+ * anything. Cancelling the reader propagates to the underlying source, so a
+ * feed's timers and sockets are released instead of parked on a read that will
+ * never resolve.
+ */
 export async function* readSseEvents(
   body: ReadableStream<Uint8Array>,
+  signal?: AbortSignal,
 ): AsyncGenerator<SseEvent> {
   const reader = body.getReader();
+  const cancel = () => void reader.cancel().catch(() => {});
+  if (signal?.aborted) cancel();
+  signal?.addEventListener("abort", cancel, { once: true });
   const decoder = new TextDecoder();
   const decode = createSseDecoder();
   try {
@@ -100,6 +126,9 @@ export async function* readSseEvents(
       for (const event of decode(decoder.decode(value, { stream: true }))) yield event;
     }
   } finally {
+    signal?.removeEventListener("abort", cancel);
+    // Also covers the caller breaking out of the loop early.
+    await reader.cancel().catch(() => {});
     reader.releaseLock();
   }
 }

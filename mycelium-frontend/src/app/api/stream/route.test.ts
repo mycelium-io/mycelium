@@ -5,22 +5,28 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSseDecoder, type SseEvent } from "@/lib/sse";
 
 vi.mock("@/lib/backend", () => ({ getBackendUrl: () => "http://backend:8000" }));
-vi.mock("@/lib/session", () => ({ upstreamSseHeaders: async () => ({}) }));
+
+const upstreamSseHeaders = vi.fn(async () => ({ Authorization: "Bearer t0" }));
+vi.mock("@/lib/session", () => ({ upstreamSseHeaders: () => upstreamSseHeaders() }));
 vi.mock("@/mocks", () => ({ isMockMode: () => false, mockStream: () => new Response() }));
 
 import { GET } from "@/app/api/stream/route";
 
-/** An SSE response body a test can push frames into and later end. */
-function upstream() {
+/** An SSE response body a test can push frames into, end, and inspect for
+ *  whether the runtime actually released it. */
+function upstream(status = 200) {
   let controller: ReadableStreamDefaultController<Uint8Array>;
   const encoder = new TextEncoder();
+  const cancelled = vi.fn();
   const body = new ReadableStream<Uint8Array>({
     start(c) {
       controller = c;
     },
+    cancel: cancelled,
   });
   return {
-    response: new Response(body, { status: 200 }),
+    response: new Response(body, { status }),
+    cancelled,
     push: (payload: unknown) =>
       controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`)),
     ping: () => controller.enqueue(encoder.encode("event: ping\ndata: {}\n\n")),
@@ -30,7 +36,7 @@ function upstream() {
 }
 
 /** Stub `fetch` so each feed gets its own body — a Response can only be read
- *  once, and the three sources are three separate upstream connections. */
+ *  once, and the feeds are separate upstream connections. */
 function serve(feeds: {
   app?: () => Response;
   notification?: () => Response;
@@ -49,7 +55,8 @@ function serve(feeds: {
   );
 }
 
-/** Read frames off the multiplexed response until `want` of them have landed. */
+/** Read frames off the multiplexed response until `want` have landed, or the
+ *  response ends. */
 async function collect(res: Response, want: number): Promise<SseEvent[]> {
   const reader = res.body!.getReader();
   const decoder = new TextDecoder();
@@ -65,11 +72,12 @@ async function collect(res: Response, want: number): Promise<SseEvent[]> {
 }
 
 const envelopes = (frames: SseEvent[]) =>
-  frames.map((f) => ({ channel: f.event, ...JSON.parse(f.data) }));
+  frames.map((f) => ({ event: f.event, ...JSON.parse(f.data) }));
 
 describe("GET /api/stream", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    upstreamSseHeaders.mockClear();
   });
 
   afterEach(() => {
@@ -77,168 +85,283 @@ describe("GET /api/stream", () => {
     vi.restoreAllMocks();
   });
 
-  it("merges every upstream feed onto one response, tagged by channel", async () => {
-    const app = upstream();
-    const notifications = upstream();
-    const room = upstream();
-    serve({
-      app: () => app.response,
-      notification: () => notifications.response,
-      room: () => room.response,
+  describe("feed selection", () => {
+    // The global feeds must not ride the room's lifecycle: opening another room
+    // re-dials only the room request, so notifications are never interrupted.
+    it("serves only the global feeds when no room is asked for", async () => {
+      const dialled: string[] = [];
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string) => {
+          dialled.push(url);
+          return upstream().response;
+        }),
+      );
+
+      const res = await GET(new Request("http://ui/api/stream"));
+      await collect(res, 2);
+
+      expect(dialled).toEqual([
+        "http://backend:8000/api/events/stream",
+        "http://backend:8000/api/notifications/stream",
+      ]);
     });
 
-    const res = await GET(new Request("http://ui/api/stream?room=sprint"));
-    expect(res.headers.get("Content-Type")).toBe("text/event-stream");
+    it("serves only the room feeds when rooms are asked for", async () => {
+      const dialled: string[] = [];
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string) => {
+          dialled.push(url);
+          return upstream().response;
+        }),
+      );
 
-    const frames = collect(res, 4);
-    await vi.advanceTimersByTimeAsync(0);
-    app.push({ type: "room_created" });
-    notifications.push({ id: "n1" });
-    room.push({ id: "m1" });
+      const res = await GET(new Request("http://ui/api/stream?room=sprint&room=atlas"));
+      await collect(res, 2);
 
-    expect(envelopes(await frames)).toEqual([
-      // The connection is live before any upstream has spoken.
-      { channel: "ready", rooms: ["sprint"] },
-      { channel: "app", room: null, data: { type: "room_created" } },
-      { channel: "notification", room: null, data: { id: "n1" } },
-      { channel: "room", room: "sprint", data: { id: "m1" } },
-    ]);
-  });
+      expect(dialled).toEqual([
+        "http://backend:8000/api/rooms/sprint/messages/stream",
+        "http://backend:8000/api/rooms/atlas/messages/stream",
+      ]);
+    });
 
-  it("carries one channel per open room", async () => {
-    const rooms = new Map([
-      ["sprint", upstream()],
-      ["atlas", upstream()],
-    ]);
-    serve({ room: (name) => rooms.get(name)!.response });
+    it("deduplicates and caps the rooms a single request can open", async () => {
+      const opened: string[] = [];
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string) => {
+          opened.push(url);
+          return upstream().response;
+        }),
+      );
 
-    const res = await GET(new Request("http://ui/api/stream?room=sprint&room=atlas"));
-    const frames = collect(res, 3);
-    await vi.advanceTimersByTimeAsync(0);
-    rooms.get("atlas")!.push({ id: "a1" });
-    rooms.get("sprint")!.push({ id: "s1" });
+      const many = Array.from({ length: 12 }, (_, i) => `room=r${i}`).join("&");
+      const res = await GET(new Request(`http://ui/api/stream?room=dup&room=dup&${many}`));
+      await collect(res, 1);
 
-    expect(envelopes(await frames).slice(1)).toEqual([
-      { channel: "room", room: "atlas", data: { id: "a1" } },
-      { channel: "room", room: "sprint", data: { id: "s1" } },
-    ]);
-  });
-
-  it("swallows an upstream's own open marker", async () => {
-    const room = upstream();
-    serve({ room: () => room.response });
-
-    const res = await GET(new Request("http://ui/api/stream?room=sprint"));
-    const frames = collect(res, 2);
-    await vi.advanceTimersByTimeAsync(0);
-    room.ping();
-    room.push({ id: "m1" });
-
-    expect(envelopes(await frames)[1]).toEqual({
-      channel: "room",
-      room: "sprint",
-      data: { id: "m1" },
+      expect(opened).toHaveLength(8);
+      expect(opened.filter((u) => u.includes("/rooms/dup/"))).toHaveLength(1);
     });
   });
 
-  it("redials a feed that drops, without dropping the client's connection", async () => {
-    const first = upstream();
-    const second = upstream();
-    let dialled = 0;
-    serve({ room: () => (++dialled === 1 ? first : second).response });
+  describe("framing", () => {
+    it("tags each frame with the channel and room it came off", async () => {
+      const rooms = new Map([
+        ["sprint", upstream()],
+        ["atlas", upstream()],
+      ]);
+      serve({ room: (name) => rooms.get(name)!.response });
 
-    const res = await GET(new Request("http://ui/api/stream?room=sprint"));
-    const frames = collect(res, 2);
-    await vi.advanceTimersByTimeAsync(0);
-    first.end();
+      const res = await GET(new Request("http://ui/api/stream?room=sprint&room=atlas"));
+      const frames = collect(res, 4);
+      await vi.advanceTimersByTimeAsync(0);
+      rooms.get("atlas")!.push({ id: "a1" });
+      rooms.get("sprint")!.push({ id: "s1" });
 
-    // The client's stream stays open across the gap; the feed comes back on the
-    // retry delay and its next frame lands on the same connection.
-    await vi.advanceTimersByTimeAsync(5000);
-    second.push({ id: "after-reconnect" });
+      expect(envelopes(await frames).filter((f) => f.event === "room")).toEqual([
+        { event: "room", room: "atlas", data: { id: "a1" } },
+        { event: "room", room: "sprint", data: { id: "s1" } },
+      ]);
+    });
 
-    expect(envelopes(await frames)[1]).toEqual({
-      channel: "room",
-      room: "sprint",
-      data: { id: "after-reconnect" },
+    it("swallows an upstream's own open marker", async () => {
+      const room = upstream();
+      serve({ room: () => room.response });
+
+      const res = await GET(new Request("http://ui/api/stream?room=sprint"));
+      const frames = collect(res, 2);
+      await vi.advanceTimersByTimeAsync(0);
+      room.ping();
+      room.push({ id: "m1" });
+
+      expect(envelopes(await frames).filter((f) => f.event === "room")).toEqual([
+        { event: "room", room: "sprint", data: { id: "m1" } },
+      ]);
+    });
+
+    it("drops a frame whose payload isn't JSON rather than forwarding it", async () => {
+      const room = upstream();
+      serve({ room: () => room.response });
+
+      const res = await GET(new Request("http://ui/api/stream?room=sprint"));
+      const frames = collect(res, 2);
+      await vi.advanceTimersByTimeAsync(0);
+      room.raw("data: <html>a proxy error page</html>\n\n");
+      room.push({ id: "m1" });
+
+      expect(envelopes(await frames).filter((f) => f.event === "room")).toEqual([
+        { event: "room", room: "sprint", data: { id: "m1" } },
+      ]);
     });
   });
 
-  it("stays open when an upstream is unreachable from the start", async () => {
-    const room = upstream();
-    serve({
-      app: () => {
-        throw new Error("connection refused");
-      },
-      notification: () => new Response("nope", { status: 502 }),
-      room: () => room.response,
+  describe("feed health", () => {
+    // The response is served whether or not the backend answers, so the client
+    // is told per feed rather than left to infer it from the socket.
+    it("reports a feed up once it is delivering", async () => {
+      const room = upstream();
+      serve({ room: () => room.response });
+
+      const res = await GET(new Request("http://ui/api/stream?room=sprint"));
+      const frames = collect(res, 1);
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(envelopes(await frames)).toEqual([
+        { event: "status", channel: "room", room: "sprint", up: true },
+      ]);
     });
 
-    const res = await GET(new Request("http://ui/api/stream?room=sprint"));
-    const frames = collect(res, 2);
-    await vi.advanceTimersByTimeAsync(0);
-    room.push({ id: "m1" });
+    it("reports a feed down when its upstream is unreachable", async () => {
+      serve({
+        room: () => {
+          throw new Error("connection refused");
+        },
+      });
 
-    expect(envelopes(await frames)).toEqual([
-      { channel: "ready", rooms: ["sprint"] },
-      { channel: "room", room: "sprint", data: { id: "m1" } },
-    ]);
-  });
+      const res = await GET(new Request("http://ui/api/stream?room=sprint"));
+      const frames = collect(res, 1);
+      await vi.advanceTimersByTimeAsync(0);
 
-  it("drops a frame whose payload isn't JSON rather than forwarding it", async () => {
-    const room = upstream();
-    serve({ room: () => room.response });
+      expect(envelopes(await frames)).toEqual([
+        { event: "status", channel: "room", room: "sprint", up: false },
+      ]);
+    });
 
-    const res = await GET(new Request("http://ui/api/stream?room=sprint"));
-    const frames = collect(res, 2);
-    await vi.advanceTimersByTimeAsync(0);
-    room.raw("data: <html>a proxy error page</html>\n\n");
-    room.push({ id: "m1" });
+    it("reports a feed down when its upstream drops, then up on redial", async () => {
+      const first = upstream();
+      const second = upstream();
+      let dialled = 0;
+      serve({ room: () => (++dialled === 1 ? first : second).response });
 
-    expect(envelopes(await frames)[1]).toEqual({
-      channel: "room",
-      room: "sprint",
-      data: { id: "m1" },
+      const res = await GET(new Request("http://ui/api/stream?room=sprint"));
+      const frames = collect(res, 4);
+      await vi.advanceTimersByTimeAsync(0);
+      first.end();
+      await vi.advanceTimersByTimeAsync(5000);
+      second.push({ id: "after-reconnect" });
+
+      expect(envelopes(await frames)).toEqual([
+        { event: "status", channel: "room", room: "sprint", up: true },
+        { event: "status", channel: "room", room: "sprint", up: false },
+        { event: "status", channel: "room", room: "sprint", up: true },
+        { event: "room", room: "sprint", data: { id: "after-reconnect" } },
+      ]);
     });
   });
 
-  it("deduplicates and caps the rooms a single request can open", async () => {
-    const opened: string[] = [];
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (url: string) => {
-        opened.push(url);
-        return upstream().response;
-      }),
-    );
+  describe("lifecycle", () => {
+    // `bearer()` persists a refreshed session to a cookie, which only lands
+    // while the request is still assembling its response. A redial minutes in
+    // cannot write one, so it must reuse what the request scope resolved.
+    it("resolves the upstream auth headers once, not per redial", async () => {
+      const first = upstream();
+      let dialled = 0;
+      serve({ room: () => (++dialled === 1 ? first.response : upstream().response) });
 
-    const many = Array.from({ length: 12 }, (_, i) => `room=r${i}`).join("&");
-    const res = await GET(new Request(`http://ui/api/stream?room=dup&room=dup&${many}`));
-    const frames = collect(res, 1);
-    await vi.advanceTimersByTimeAsync(0);
-    await frames;
+      const res = await GET(new Request("http://ui/api/stream?room=sprint"));
+      const frames = collect(res, 3);
+      await vi.advanceTimersByTimeAsync(0);
+      first.end();
+      await vi.advanceTimersByTimeAsync(5000);
+      await frames;
 
-    const roomFeeds = opened.filter((u) => u.includes("/rooms/"));
-    expect(roomFeeds).toHaveLength(8);
-    expect(roomFeeds.filter((u) => u.includes("/rooms/dup/"))).toHaveLength(1);
-  });
+      expect(dialled).toBeGreaterThan(1);
+      expect(upstreamSseHeaders).toHaveBeenCalledOnce();
+    });
 
-  it("tears the upstream feeds down when the client goes away", async () => {
-    const aborted: boolean[] = [];
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (_url: string, init: RequestInit) => {
-        init.signal?.addEventListener("abort", () => aborted.push(true));
-        return upstream().response;
-      }),
-    );
+    it("sends the resolved bearer on every upstream dial", async () => {
+      serve({ room: () => upstream().response });
 
-    const res = await GET(new Request("http://ui/api/stream?room=sprint"));
-    const reader = res.body!.getReader();
-    await reader.read();
-    await reader.cancel();
-    await vi.advanceTimersByTimeAsync(0);
+      const res = await GET(new Request("http://ui/api/stream?room=sprint"));
+      await collect(res, 1);
 
-    expect(aborted).toHaveLength(3);
+      expect(vi.mocked(fetch)).toHaveBeenCalledWith(
+        "http://backend:8000/api/rooms/sprint/messages/stream",
+        expect.objectContaining({ headers: { Authorization: "Bearer t0" } }),
+      );
+    });
+
+    // The token this request was built with cannot be refreshed from here, so
+    // the response ends and the browser reconnects into a fresh request scope.
+    it("ends the response when an upstream rejects the token", async () => {
+      const unauthorized = upstream(401);
+      serve({ room: () => unauthorized.response });
+
+      const res = await GET(new Request("http://ui/api/stream?room=sprint"));
+      const reader = res.body!.getReader();
+      await vi.advanceTimersByTimeAsync(0);
+
+      // Drain to the end of the response rather than hanging on it.
+      for (;;) {
+        const { done } = await reader.read();
+        if (done) break;
+      }
+      expect(unauthorized.cancelled).toHaveBeenCalled();
+    });
+
+    it("releases the body of an upstream it will not read", async () => {
+      const notFound = upstream(404);
+      let dialled = 0;
+      serve({ room: () => (++dialled === 1 ? notFound.response : upstream().response) });
+
+      const res = await GET(new Request("http://ui/api/stream?room=sprint"));
+      const frames = collect(res, 1);
+      await vi.advanceTimersByTimeAsync(0);
+      await frames;
+
+      // Otherwise one body leaks per redial for as long as the tab is open.
+      expect(notFound.cancelled).toHaveBeenCalled();
+    });
+
+    // Reading holds a lock, and cancelling the stream itself throws on a locked
+    // stream — so cancellation has to go through the reader to reach the source.
+    it("cancels an in-flight upstream read when the client goes away", async () => {
+      const room = upstream();
+      serve({ room: () => room.response });
+
+      const res = await GET(new Request("http://ui/api/stream?room=sprint"));
+      const reader = res.body!.getReader();
+      await reader.read();
+      await vi.advanceTimersByTimeAsync(0);
+      await reader.cancel();
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(room.cancelled).toHaveBeenCalled();
+    });
+
+    it("leaves no timers running once the client goes away", async () => {
+      serve({ room: () => upstream().response });
+
+      const res = await GET(new Request("http://ui/api/stream?room=sprint"));
+      const reader = res.body!.getReader();
+      await reader.read();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(vi.getTimerCount()).toBeGreaterThan(0); // the heartbeat
+
+      await reader.cancel();
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("aborts the upstream fetches when the client goes away", async () => {
+      const aborted: boolean[] = [];
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (_url: string, init: RequestInit) => {
+          init.signal?.addEventListener("abort", () => aborted.push(true));
+          return upstream().response;
+        }),
+      );
+
+      const res = await GET(new Request("http://ui/api/stream"));
+      const reader = res.body!.getReader();
+      await reader.read();
+      await reader.cancel();
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(aborted).toHaveLength(2);
+    });
   });
 });

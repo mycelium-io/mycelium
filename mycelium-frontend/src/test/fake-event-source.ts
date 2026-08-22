@@ -7,7 +7,7 @@
 // a frame names its channel and carries a `{room, data}` envelope. The emit
 // helpers build that framing, taking the room from the URL the hub dialled.
 
-import type { StreamChannel } from "@/lib/sse";
+import { STREAM_STATUS_EVENT, type StreamChannel } from "@/lib/sse";
 
 type Listener = (e: { data: string }) => void;
 
@@ -73,6 +73,22 @@ export class FakeEventSource {
 
   emitNotification(payload: unknown): void {
     this.emitChannel("notification", payload, null);
+  }
+
+  /** The server's health report for one feed — what drives the Live badge. */
+  emitStatus(channel: StreamChannel, up: boolean, room: string | null = null): void {
+    this.emitRaw(STREAM_STATUS_EVENT, JSON.stringify({ channel, room, up }));
+  }
+
+  /** This connection's room feed reporting healthy, the common test setup. */
+  goLive(): void {
+    this.open();
+    const room = this.room();
+    if (room) this.emitStatus("room", true, room);
+    else {
+      this.emitStatus("app", true);
+      this.emitStatus("notification", true);
+    }
   }
 
   /** The first room in the dialled URL — what `emit()` addresses. */

@@ -2,24 +2,30 @@
 // Copyright 2026 Mycelium Contributors
 
 /**
- * The UI's one held SSE connection.
+ * The UI's held SSE connections.
  *
- * `GET /api/stream?room=<name>&room=<other>` merges every feed the page needs —
- * global app events, the notification aggregate, and one stream per open room —
- * into a single response, tagging each frame with the channel it came off (see
- * `src/lib/sse.ts`). That leaves the browser's ~6-connections-per-origin cap
- * over HTTP/1.1 to be spent on the page's REST calls.
+ * `GET /api/stream` serves the global feeds — app events and the notification
+ * aggregate. `GET /api/stream?room=<name>&room=<other>` serves those rooms'
+ * message feeds. Either way the response is one stream carrying many feeds,
+ * each frame tagged with the channel it came off (see `src/lib/sse.ts`), so the
+ * browser's ~6-connections-per-origin cap over HTTP/1.1 is left for the page's
+ * REST calls.
+ *
+ * The split is what keeps the global feeds off the room's lifecycle: opening a
+ * different room re-dials only the room request, so notifications — which the
+ * backend does not replay — are not interrupted by navigation.
  *
  * Each upstream feed is supervised independently: one that fails or ends is
- * redialled on a delay while the others keep flowing, so a backend hiccup on
- * one feed costs neither the client's connection nor the other feeds.
+ * redialled on a delay while the others keep flowing, and its health is
+ * reported to the client as a `status` frame rather than inferred from whether
+ * the connection is up.
  */
 
 import { getBackendUrl } from "@/lib/backend";
 import { upstreamSseHeaders } from "@/lib/session";
 import {
-  STREAM_READY_EVENT,
   STREAM_RETRY_MS,
+  STREAM_STATUS_EVENT,
   encodeSseFrame,
   readSseEvents,
   type StreamChannel,
@@ -38,6 +44,10 @@ const SSE_HEADERS = {
 /** Idle upstreams still have to be held open, or an intermediary reaps them. */
 const HEARTBEAT_MS = 15_000;
 
+/** Rooms are a query parameter, so cap the fan-out a single request can ask
+ *  the backend for. The UI opens one room at a time; this is the guard rail. */
+const MAX_ROOMS = 8;
+
 /** A feed to merge in: which channel it lands on, and how to (re)open it. */
 interface Source {
   channel: StreamChannel;
@@ -45,45 +55,38 @@ interface Source {
   open: (signal: AbortSignal) => Promise<Response>;
 }
 
-/** Rooms are a query parameter, so cap the fan-out a single request can ask
- *  the backend for. The UI opens one room at a time; this is the guard rail. */
-const MAX_ROOMS = 8;
-
-function sources(rooms: string[]): Source[] {
+/**
+ * The feeds this request carries. Auth headers are resolved once, by the
+ * caller, and reused for every redial: `bearer()` writes a refreshed session
+ * back to a cookie, which only lands while the request is still assembling its
+ * response. A redial minutes into a stream cannot persist one, so it must not
+ * try — an upstream 401 ends the response instead, and the browser's reconnect
+ * refreshes the token in a request scope where the write survives.
+ */
+function sources(rooms: string[], headers: Record<string, string>): Source[] {
   const backend = getBackendUrl();
-  const upstream = (path: string) => async (signal: AbortSignal) => {
-    return fetch(`${backend}${path}`, {
-      headers: await upstreamSseHeaders(),
-      cache: "no-store",
-      signal,
-    });
-  };
+  const upstream = (path: string) => (signal: AbortSignal) =>
+    fetch(`${backend}${path}`, { headers, cache: "no-store", signal });
 
   const mock = isMockMode();
-  const list: Source[] = [
-    {
-      channel: "app",
-      room: null,
-      open: mock ? idleStream : upstream("/api/events/stream"),
-    },
+  if (rooms.length > 0) {
+    return rooms.map((room) => ({
+      channel: "room" as const,
+      room,
+      // Fake-backend mode replays a scripted negotiation on the room channel.
+      open: mock
+        ? async () => mockStream(room)
+        : upstream(`/api/rooms/${encodeURIComponent(room)}/messages/stream`),
+    }));
+  }
+  return [
+    { channel: "app", room: null, open: mock ? idleStream : upstream("/api/events/stream") },
     {
       channel: "notification",
       room: null,
       open: mock ? idleStream : upstream("/api/notifications/stream"),
     },
   ];
-  for (const room of rooms) {
-    list.push({
-      channel: "room",
-      room,
-      // Fake-backend mode replays a scripted negotiation on the room channel;
-      // the global channels have nothing to say, so they idle.
-      open: mock
-        ? async () => mockStream(room)
-        : upstream(`/api/rooms/${encodeURIComponent(room)}/messages/stream`),
-    });
-  }
-  return list;
 }
 
 /** A stream that opens and then says nothing — the mock stand-in for a feed
@@ -106,67 +109,78 @@ export async function GET(req: Request): Promise<Response> {
     ),
   ].slice(0, MAX_ROOMS);
 
+  // Resolved here, in the request scope, where a refreshed session can still be
+  // written back to a cookie. See `sources`.
+  const headers = await upstreamSseHeaders();
+
   const encoder = new TextEncoder();
   const abort = new AbortController();
+  let controller: ReadableStreamDefaultController<Uint8Array> | undefined;
   let closed = false;
   let heartbeat: ReturnType<typeof setInterval> | undefined;
-  // Every redial in flight, so cancelling the response wakes them immediately
-  // instead of leaving a timer holding the whole pipeline open.
+  // Every redial in flight, so tearing down wakes them immediately instead of
+  // leaving a timer holding the whole pipeline open.
   const waiting = new Set<() => void>();
-  // Upstream bodies currently being read. `abort` ends the fetched ones; a mock
-  // feed isn't fetched at all, so teardown cancels these directly.
-  const bodies = new Set<ReadableStream<Uint8Array>>();
 
   const stream = new ReadableStream<Uint8Array>({
-    start(controller) {
+    start(c) {
+      controller = c;
       const send = (chunk: string) => {
         if (closed) return;
         try {
-          controller.enqueue(encoder.encode(chunk));
+          c.enqueue(encoder.encode(chunk));
         } catch {
-          // The client went away between the disconnect and our next write.
-          closed = true;
+          // The client went away between its disconnect and this write; the
+          // pumps, heartbeat and upstream sockets still have to be released.
+          teardown();
         }
       };
 
-      // Open the connection before any upstream answers: the client's stream is
-      // live as soon as the multiplexer is, and stays live across upstream churn.
-      send(`retry: ${STREAM_RETRY_MS}\n\n`);
-      send(encodeSseFrame(STREAM_READY_EVENT, { rooms }));
+      const report = (source: Source, up: boolean) =>
+        send(
+          encodeSseFrame(STREAM_STATUS_EVENT, { channel: source.channel, room: source.room, up }),
+        );
 
+      send(`retry: ${STREAM_RETRY_MS}\n\n`);
       heartbeat = setInterval(() => send(": keep-alive\n\n"), HEARTBEAT_MS);
 
-      for (const source of sources(rooms)) void pump(source, send);
+      for (const source of sources(rooms, headers)) void pump(source);
 
-      async function pump(source: Source, emit: (chunk: string) => void) {
+      async function pump(source: Source) {
         while (!closed) {
           try {
             const res = await source.open(abort.signal);
+            if (res.status === 401) {
+              // The token this request was built with has expired. End the
+              // response so the browser reconnects and mints a fresh one.
+              await res.body?.cancel().catch(() => {});
+              teardown();
+              return;
+            }
             if (res.ok && res.body) {
-              const body = res.body;
-              bodies.add(body);
-              try {
-                for await (const event of readSseEvents(body)) {
-                  if (closed) break;
-                  // Upstream's own open marker isn't news to the client.
-                  if (event.event === "ping") continue;
-                  let data: unknown;
-                  try {
-                    data = JSON.parse(event.data);
-                  } catch {
-                    continue;
-                  }
-                  emit(encodeSseFrame(source.channel, { room: source.room, data }));
+              report(source, true);
+              for await (const event of readSseEvents(res.body, abort.signal)) {
+                if (closed) break;
+                // Upstream's own open marker isn't news to the client.
+                if (event.event === "ping") continue;
+                let data: unknown;
+                try {
+                  data = JSON.parse(event.data);
+                } catch {
+                  continue;
                 }
-              } finally {
-                bodies.delete(body);
-                await body.cancel().catch(() => {});
+                send(encodeSseFrame(source.channel, { room: source.room, data }));
               }
+            } else {
+              // Nothing will read this body; release it rather than leak one
+              // per redial for as long as the tab stays open.
+              await res.body?.cancel().catch(() => {});
             }
           } catch {
             // Unreachable or torn-down upstream: fall through and redial.
           }
           if (closed) break;
+          report(source, false);
           await sleep(STREAM_RETRY_MS);
         }
       }
@@ -180,11 +194,18 @@ export async function GET(req: Request): Promise<Response> {
     if (closed) return;
     closed = true;
     clearInterval(heartbeat);
+    // Ends the fetched upstreams, and cancels the readers on mock feeds, which
+    // are never fetched and so have no request to abort.
     abort.abort();
-    for (const body of bodies) body.cancel().catch(() => {});
-    bodies.clear();
     for (const wake of waiting) wake();
     waiting.clear();
+    // End the client's stream too, or a teardown we initiated (an upstream 401)
+    // leaves the browser holding a response that will never say another word.
+    try {
+      controller?.close();
+    } catch {
+      // Already closed or errored by the client's own disconnect.
+    }
   }
 
   function sleep(ms: number): Promise<void> {

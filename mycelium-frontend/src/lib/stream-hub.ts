@@ -4,12 +4,12 @@
 "use client";
 
 /**
- * The browser's single live connection.
+ * The browser's live connections.
  *
  * Every pushed update in the UI — room messages, the L9 wire, app events,
- * notifications — arrives over one `EventSource` against `/api/stream`, which
- * this module owns and fans out to subscribers by channel. Components ask for
- * the feed they care about and never touch `EventSource` themselves.
+ * notifications — arrives over a connection this module owns and fans out to
+ * subscribers by channel. Components ask for the feed they care about and never
+ * touch `EventSource` themselves.
  *
  * This is the connection-count analogue of `room-data.ts`: that module makes N
  * readers of a resource share one request, this one makes N live consumers
@@ -18,21 +18,26 @@
  * lifetime: every stream the app parks is one the page's REST calls can't have,
  * and an exhausted pool stalls both.
  *
- * The set of open rooms is part of the URL, so subscribing to a room the
- * connection doesn't already carry reconnects it — but subscriptions are
- * deduped into that URL, so the room feed and the L9 inspector both watching
- * the same room is one connection, opened once. Navigating between rooms
- * therefore reconnects, which the room view covers by replaying the transcript
- * over REST on arrival.
+ * There are two. Global feeds (app events, notifications) ride a connection
+ * whose URL never changes, so it is never re-dialled; the open rooms ride a
+ * second one, whose URL they are part of. The notification feed has no replay,
+ * so its connection must survive navigation; the room feed is replayed over
+ * REST when a room opens, so re-dialling that one costs nothing.
+ *
+ * Health is per feed, reported by the server, not inferred from the socket: the
+ * multiplexer answers even when the backend behind it is down, so "the
+ * connection is open" is not the same claim as "this feed is delivering".
  */
 
-import { useEffect, useRef, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import {
-  STREAM_READY_EVENT,
-  STREAM_RETRY_MS,
   STREAM_CHANNELS,
+  STREAM_RETRY_MS,
+  STREAM_STATUS_EVENT,
+  feedKey,
   type StreamChannel,
   type StreamEnvelope,
+  type StreamStatus,
 } from "@/lib/sse";
 
 export type StreamHandler = (data: unknown) => void;
@@ -44,33 +49,40 @@ interface Subscription {
   handler: StreamHandler;
 }
 
+interface Connection {
+  source: EventSource;
+  /** Feeds this connection carries, and whether each is delivering. Dropped
+   *  wholesale when the connection goes, so health never outlives its wire. */
+  health: Map<string, boolean>;
+}
+
+const GLOBAL_URL = "/api/stream";
+
 const subscriptions = new Set<Subscription>();
-const statusListeners = new Set<() => void>();
+const healthListeners = new Set<() => void>();
+const connections = new Map<string, Connection>();
+/** Redials pending after a drop, keyed by the URL they will reopen. */
+const retries = new Map<string, ReturnType<typeof setTimeout>>();
 
-let source: EventSource | null = null;
-let sourceUrl: string | null = null;
-let retryTimer: ReturnType<typeof setTimeout> | undefined;
-let connected = false;
-
-function streamUrl(rooms: string[]): string {
-  const params = new URLSearchParams();
-  for (const room of rooms) params.append("room", room);
-  const query = params.toString();
-  return query ? `/api/stream?${query}` : "/api/stream";
-}
-
-/** The rooms currently subscribed, in a stable order so an unchanged set
- *  produces an unchanged URL and never triggers a reconnect. */
-function activeRooms(): string[] {
+/** The URLs the current subscriptions call for: the global feeds, and the open
+ *  rooms. Room order is stable so an unchanged set is an unchanged URL. */
+function desiredUrls(): Set<string> {
+  const urls = new Set<string>();
   const rooms = new Set<string>();
-  for (const sub of subscriptions) if (sub.room) rooms.add(sub.room);
-  return [...rooms].sort();
+  for (const sub of subscriptions) {
+    if (sub.room) rooms.add(sub.room);
+    else urls.add(GLOBAL_URL);
+  }
+  if (rooms.size > 0) {
+    const params = new URLSearchParams();
+    for (const room of [...rooms].sort()) params.append("room", room);
+    urls.add(`${GLOBAL_URL}?${params}`);
+  }
+  return urls;
 }
 
-function setConnected(next: boolean): void {
-  if (connected === next) return;
-  connected = next;
-  for (const listener of statusListeners) listener();
+function notifyHealth(): void {
+  for (const listener of healthListeners) listener();
 }
 
 function dispatch(channel: StreamChannel, raw: string): void {
@@ -95,54 +107,72 @@ function dispatch(channel: StreamChannel, raw: string): void {
   }
 }
 
-function close(): void {
-  clearTimeout(retryTimer);
-  retryTimer = undefined;
-  source?.close();
-  source = null;
-  sourceUrl = null;
-  setConnected(false);
+function cancelRetry(url: string): void {
+  clearTimeout(retries.get(url));
+  retries.delete(url);
 }
 
-function open(url: string): void {
-  clearTimeout(retryTimer);
-  const es = new EventSource(url);
-  source = es;
-  sourceUrl = url;
-  es.onopen = () => setConnected(true);
-  // The multiplexer's own open marker: the connection is up even while an
-  // upstream feed behind it is still redialling.
-  es.addEventListener(STREAM_READY_EVENT, () => setConnected(true));
+function closeConnection(url: string): void {
+  cancelRetry(url);
+  const conn = connections.get(url);
+  if (!conn) return;
+  conn.source.close();
+  connections.delete(url);
+  if (conn.health.size > 0) notifyHealth();
+}
+
+function openConnection(url: string): void {
+  cancelRetry(url);
+  const conn: Connection = { source: new EventSource(url), health: new Map() };
+  connections.set(url, conn);
+
+  conn.source.addEventListener(STREAM_STATUS_EVENT, (e) => {
+    let status: StreamStatus;
+    try {
+      status = JSON.parse((e as MessageEvent).data) as StreamStatus;
+    } catch {
+      return;
+    }
+    conn.health.set(feedKey(status.channel, status.room), status.up);
+    notifyHealth();
+  });
+
   for (const channel of STREAM_CHANNELS) {
-    es.addEventListener(channel, (e) => dispatch(channel, (e as MessageEvent).data));
+    conn.source.addEventListener(channel, (e) => dispatch(channel, (e as MessageEvent).data));
   }
-  es.onerror = () => {
-    es.close();
-    if (source !== es) return; // already superseded by a newer connection
-    setConnected(false);
-    source = null;
-    sourceUrl = null;
-    // Redial through `sync` rather than reopening `url`: the open room may have
-    // changed while the connection was down.
-    retryTimer = setTimeout(sync, STREAM_RETRY_MS);
+
+  conn.source.onerror = () => {
+    conn.source.close();
+    if (connections.get(url) !== conn) return; // already superseded
+    connections.delete(url);
+    // Its feeds are unreachable now, whatever they last reported.
+    if (conn.health.size > 0) notifyHealth();
+    // Redial through `sync`: the open rooms may have changed while it was down,
+    // and a connection nothing subscribes to any more is not reopened at all.
+    retries.set(
+      url,
+      setTimeout(() => {
+        retries.delete(url);
+        sync();
+      }, STREAM_RETRY_MS),
+    );
   };
 }
 
 /**
- * Reconcile the connection with what is subscribed: the URL is a pure function
- * of the subscribed rooms, so a subscription that doesn't change it — a second
- * consumer of a room already on the wire — costs nothing.
+ * Reconcile the open connections with what is subscribed. Each URL is a pure
+ * function of the subscriptions, so one that doesn't change — the global feeds,
+ * or a room already on the wire — is left strictly alone.
  */
 function sync(): void {
   if (typeof window === "undefined") return;
-  if (subscriptions.size === 0) {
-    close();
-    return;
+  const wanted = desiredUrls();
+  for (const url of [...connections.keys()]) {
+    if (!wanted.has(url)) closeConnection(url);
   }
-  const url = streamUrl(activeRooms());
-  if (url === sourceUrl) return;
-  close();
-  open(url);
+  for (const url of wanted) {
+    if (!connections.has(url)) openConnection(url);
+  }
 }
 
 function subscribe(sub: Subscription): () => void {
@@ -154,11 +184,21 @@ function subscribe(sub: Subscription): () => void {
   };
 }
 
-/** Drop the connection and every subscription. For tests. */
+/** Whether one feed is delivering, as last reported by the server. */
+function isFeedUp(channel: StreamChannel, room: string | null): boolean {
+  const key = feedKey(channel, room);
+  for (const conn of connections.values()) {
+    if (conn.health.get(key)) return true;
+  }
+  return false;
+}
+
+/** Drop every connection and subscription. For tests. */
 export function resetStreamHub(): void {
   subscriptions.clear();
-  close();
-  statusListeners.clear();
+  for (const url of [...retries.keys()]) cancelRetry(url);
+  for (const url of [...connections.keys()]) closeConnection(url);
+  healthListeners.clear();
 }
 
 /**
@@ -191,18 +231,28 @@ export function useNotificationStream(handler: StreamHandler): void {
   useStream("notification", null, handler);
 }
 
-/** Whether the one connection is up — what every "Live / Reconnecting…"
- *  indicator in the app now reflects, since they all ride the same stream.
- *  Rendered as disconnected on the server, where there is no connection yet. */
-export function useStreamConnected(): boolean {
+function useFeedConnected(channel: StreamChannel, room: string | null): boolean {
+  const subscribeHealth = useCallback((onChange: () => void) => {
+    healthListeners.add(onChange);
+    return () => {
+      healthListeners.delete(onChange);
+    };
+  }, []);
   return useSyncExternalStore(
-    (onChange) => {
-      statusListeners.add(onChange);
-      return () => {
-        statusListeners.delete(onChange);
-      };
-    },
-    () => connected,
+    subscribeHealth,
+    () => isFeedUp(channel, room),
     () => false,
   );
+}
+
+/** Whether this room's messages are actually arriving — what the room view's
+ *  "Live / Reconnecting…" badge reports. False while the backend behind the
+ *  multiplexer is unreachable, even though the connection itself is up. */
+export function useRoomConnected(room: string): boolean {
+  return useFeedConnected("room", room);
+}
+
+/** Whether the cross-room activity feed is arriving. */
+export function useNotificationsConnected(): boolean {
+  return useFeedConnected("notification", null);
 }

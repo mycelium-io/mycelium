@@ -9,8 +9,9 @@ import {
   resetStreamHub,
   useAppStream,
   useNotificationStream,
+  useNotificationsConnected,
+  useRoomConnected,
   useRoomStream,
-  useStreamConnected,
 } from "@/lib/stream-hub";
 
 /** Connections opened and not since closed — the number the browser's ~6-per-
@@ -19,23 +20,60 @@ function live(): FakeEventSource[] {
   return FakeEventSource.instances.filter((es) => !es.closed);
 }
 
-function RoomFeed({ room, onFrame }: { room: string; onFrame: (d: unknown) => void }) {
+function liveUrls(): string[] {
+  return live().map((es) => es.url).sort();
+}
+
+/** The one connection carrying a room, for tests that drive room traffic. */
+function roomConnection(): FakeEventSource {
+  const found = live().find((es) => es.url.includes("room="));
+  if (!found) throw new Error("no room connection is open");
+  return found;
+}
+
+function globalConnection(): FakeEventSource {
+  const found = live().find((es) => !es.url.includes("room="));
+  if (!found) throw new Error("no global connection is open");
+  return found;
+}
+
+const noop = () => {};
+
+function RoomFeed({ room, onFrame = noop }: { room: string; onFrame?: (d: unknown) => void }) {
   useRoomStream(room, onFrame);
   return null;
 }
 
-function AppFeed({ onFrame }: { onFrame: (d: unknown) => void }) {
+function AppFeed({ onFrame = noop }: { onFrame?: (d: unknown) => void }) {
   useAppStream(onFrame);
   return null;
 }
 
-function Notifications({ onFrame }: { onFrame: (d: unknown) => void }) {
+function Notifications({ onFrame = noop }: { onFrame?: (d: unknown) => void }) {
   useNotificationStream(onFrame);
   return null;
 }
 
-function Badge() {
-  return <span data-testid="badge">{useStreamConnected() ? "live" : "reconnecting"}</span>;
+function RoomBadge({ room }: { room: string }) {
+  return <span data-testid="badge">{useRoomConnected(room) ? "live" : "reconnecting"}</span>;
+}
+
+function NotificationsBadge() {
+  return (
+    <span data-testid="notif-badge">{useNotificationsConnected() ? "live" : "reconnecting"}</span>
+  );
+}
+
+/** The app's steady state: notifications mounted in the root layout, a room
+ *  open beneath it. */
+function Shell({ room }: { room: string | null }) {
+  return (
+    <>
+      <Notifications />
+      <AppFeed />
+      {room ? <RoomFeed room={room} /> : null}
+    </>
+  );
 }
 
 describe("stream hub", () => {
@@ -45,22 +83,19 @@ describe("stream hub", () => {
     vi.stubGlobal("EventSource", FakeEventSource);
   });
 
-  it("holds one connection for every consumer on the page", () => {
-    const noop = () => {};
+  it("holds two connections for every consumer on the page", () => {
     render(
       <>
-        <RoomFeed room="sprint" onFrame={noop} />
-        <RoomFeed room="sprint" onFrame={noop} />
-        <AppFeed onFrame={noop} />
-        <Notifications onFrame={noop} />
-        <Badge />
+        <RoomFeed room="sprint" />
+        <RoomFeed room="sprint" />
+        <AppFeed />
+        <Notifications />
       </>,
     );
 
     // Four feeds — the room channel, the L9 inspector's view of it, app events
-    // and notifications — on one connection, carrying the room in its URL.
-    expect(live()).toHaveLength(1);
-    expect(live()[0].url).toBe("/api/stream?room=sprint");
+    // and notifications — on two connections: the globals, and the open room.
+    expect(liveUrls()).toEqual(["/api/stream", "/api/stream?room=sprint"]);
   });
 
   it("routes each channel to the consumers that asked for it", () => {
@@ -74,12 +109,11 @@ describe("stream hub", () => {
         <Notifications onFrame={notification} />
       </>,
     );
-    const es = FakeEventSource.latest();
 
     act(() => {
-      es.emit({ id: "m1" });
-      es.emitApp({ type: "room_created" });
-      es.emitNotification({ id: "n1" });
+      roomConnection().emit({ id: "m1" });
+      globalConnection().emitApp({ type: "room_created" });
+      globalConnection().emitNotification({ id: "n1" });
     });
 
     expect(room).toHaveBeenCalledExactlyOnceWith({ id: "m1" });
@@ -96,7 +130,7 @@ describe("stream hub", () => {
         <RoomFeed room="atlas" onFrame={atlas} />
       </>,
     );
-    const es = FakeEventSource.latest();
+    const es = roomConnection();
     expect(es.url).toBe("/api/stream?room=atlas&room=sprint");
 
     act(() => es.emitChannel("room", { id: "m1" }, "atlas"));
@@ -105,24 +139,59 @@ describe("stream hub", () => {
     expect(sprint).not.toHaveBeenCalled();
   });
 
-  it("reconnects against the new room when the open room changes", () => {
-    const { rerender } = render(<RoomFeed room="sprint" onFrame={() => {}} />);
-    expect(FakeEventSource.latest().url).toBe("/api/stream?room=sprint");
+  // The notification feed has no replay, so a re-dial loses whatever was
+  // published while it was down. Navigation must not touch it.
+  it("leaves the global connection untouched when the open room changes", () => {
+    const { rerender } = render(<Shell room="sprint" />);
+    const globals = globalConnection();
 
-    rerender(<RoomFeed room="atlas" onFrame={() => {}} />);
+    rerender(<Shell room="atlas" />);
 
-    expect(live()).toHaveLength(1);
-    expect(live()[0].url).toBe("/api/stream?room=atlas");
+    expect(globals.closed).toBe(false);
+    expect(globalConnection()).toBe(globals);
+    expect(liveUrls()).toEqual(["/api/stream", "/api/stream?room=atlas"]);
   });
 
-  it("keeps the connection when a second consumer of the same room mounts", () => {
-    const { rerender } = render(<RoomFeed room="sprint" onFrame={() => {}} />);
-    const first = FakeEventSource.latest();
+  it("dials the room connection exactly once across a navigation", () => {
+    const { rerender } = render(<Shell room="sprint" />);
+    const before = FakeEventSource.instances.length;
+
+    rerender(<Shell room="atlas" />);
+
+    // One new connection — the room's. No intermediate roomless re-dial.
+    expect(FakeEventSource.instances.length).toBe(before + 1);
+    expect(FakeEventSource.latest().url).toBe("/api/stream?room=atlas");
+  });
+
+  it("keeps a notification arriving mid-navigation", () => {
+    const notification = vi.fn();
+    const { rerender } = render(
+      <>
+        <Notifications onFrame={notification} />
+        <RoomFeed room="sprint" />
+      </>,
+    );
+    const globals = globalConnection();
 
     rerender(
       <>
-        <RoomFeed room="sprint" onFrame={() => {}} />
-        <RoomFeed room="sprint" onFrame={() => {}} />
+        <Notifications onFrame={notification} />
+        <RoomFeed room="atlas" />
+      </>,
+    );
+    act(() => globals.emitNotification({ id: "n1" }));
+
+    expect(notification).toHaveBeenCalledExactlyOnceWith({ id: "n1" });
+  });
+
+  it("keeps the connection when a second consumer of the same room mounts", () => {
+    const { rerender } = render(<RoomFeed room="sprint" />);
+    const first = roomConnection();
+
+    rerender(
+      <>
+        <RoomFeed room="sprint" />
+        <RoomFeed room="sprint" />
       </>,
     );
 
@@ -134,10 +203,9 @@ describe("stream hub", () => {
     const first = vi.fn();
     const second = vi.fn();
     const { rerender } = render(<RoomFeed room="sprint" onFrame={first} />);
-    const es = FakeEventSource.latest();
 
     rerender(<RoomFeed room="sprint" onFrame={second} />);
-    act(() => es.emit({ id: "m1" }));
+    act(() => roomConnection().emit({ id: "m1" }));
 
     expect(FakeEventSource.instances).toHaveLength(1);
     expect(first).not.toHaveBeenCalled();
@@ -145,8 +213,8 @@ describe("stream hub", () => {
   });
 
   it("closes the connection once the last consumer unmounts", () => {
-    const { unmount } = render(<RoomFeed room="sprint" onFrame={() => {}} />);
-    const es = FakeEventSource.latest();
+    const { unmount } = render(<RoomFeed room="sprint" />);
+    const es = roomConnection();
 
     unmount();
 
@@ -165,57 +233,102 @@ describe("stream hub", () => {
     );
     rerender(<RoomFeed room="sprint" onFrame={stays} />);
 
-    act(() => FakeEventSource.latest().emit({ id: "m1" }));
+    act(() => roomConnection().emit({ id: "m1" }));
 
     expect(gone).not.toHaveBeenCalled();
     expect(stays).toHaveBeenCalledOnce();
   });
 
-  it("reports one connection state to every indicator", () => {
-    const { getByTestId } = render(
-      <>
-        <RoomFeed room="sprint" onFrame={() => {}} />
-        <Badge />
-      </>,
-    );
-    expect(getByTestId("badge")).toHaveTextContent("reconnecting");
-
-    act(() => FakeEventSource.latest().open());
-    expect(getByTestId("badge")).toHaveTextContent("live");
-  });
-
-  it("goes live on the multiplexer's ready frame, before any upstream speaks", () => {
-    const { getByTestId } = render(
-      <>
-        <RoomFeed room="sprint" onFrame={() => {}} />
-        <Badge />
-      </>,
-    );
-
-    act(() => FakeEventSource.latest().emitRaw("ready", JSON.stringify({ rooms: ["sprint"] })));
-
-    expect(getByTestId("badge")).toHaveTextContent("live");
-  });
-
-  it("redials after a drop, and reports reconnecting in between", () => {
-    vi.useFakeTimers();
-    try {
+  describe("health", () => {
+    // The multiplexer answers even when the backend behind it does not, so an
+    // open socket is not evidence that anything is being delivered.
+    it("stays reconnecting while the connection is open but the feed is down", () => {
       const { getByTestId } = render(
         <>
-          <RoomFeed room="sprint" onFrame={() => {}} />
-          <Badge />
+          <RoomFeed room="sprint" />
+          <RoomBadge room="sprint" />
         </>,
       );
-      const es = FakeEventSource.latest();
-      act(() => es.open());
+
+      act(() => roomConnection().open());
+      expect(getByTestId("badge")).toHaveTextContent("reconnecting");
+
+      act(() => roomConnection().emitStatus("room", false, "sprint"));
+      expect(getByTestId("badge")).toHaveTextContent("reconnecting");
+    });
+
+    it("goes live when the server reports the feed delivering", () => {
+      const { getByTestId } = render(
+        <>
+          <RoomFeed room="sprint" />
+          <RoomBadge room="sprint" />
+        </>,
+      );
+
+      act(() => roomConnection().goLive());
+
+      expect(getByTestId("badge")).toHaveTextContent("live");
+    });
+
+    it("reports each feed's own health, not one shared verdict", () => {
+      const { getByTestId } = render(
+        <>
+          <Shell room="sprint" />
+          <RoomBadge room="sprint" />
+          <NotificationsBadge />
+        </>,
+      );
+
+      act(() => roomConnection().goLive());
+
+      // The room is delivering; the global feeds have said nothing yet.
+      expect(getByTestId("badge")).toHaveTextContent("live");
+      expect(getByTestId("notif-badge")).toHaveTextContent("reconnecting");
+
+      act(() => globalConnection().goLive());
+      expect(getByTestId("notif-badge")).toHaveTextContent("live");
+    });
+
+    it("drops a feed's health when its connection goes", () => {
+      const { getByTestId } = render(
+        <>
+          <RoomFeed room="sprint" />
+          <RoomBadge room="sprint" />
+        </>,
+      );
+      act(() => roomConnection().goLive());
+      expect(getByTestId("badge")).toHaveTextContent("live");
+
+      act(() => FakeEventSource.latest().onerror?.());
+
+      expect(getByTestId("badge")).toHaveTextContent("reconnecting");
+    });
+
+    it("does not report health for a room the connection isn't carrying", () => {
+      const { getByTestId } = render(
+        <>
+          <RoomFeed room="sprint" />
+          <RoomBadge room="atlas" />
+        </>,
+      );
+
+      act(() => roomConnection().goLive());
+
+      expect(getByTestId("badge")).toHaveTextContent("reconnecting");
+    });
+  });
+
+  it("redials after a drop", () => {
+    vi.useFakeTimers();
+    try {
+      render(<RoomFeed room="sprint" />);
+      const es = roomConnection();
 
       act(() => es.onerror?.());
-      expect(getByTestId("badge")).toHaveTextContent("reconnecting");
       expect(live()).toHaveLength(0);
 
       act(() => void vi.advanceTimersByTime(5000));
-      expect(live()).toHaveLength(1);
-      expect(live()[0].url).toBe("/api/stream?room=sprint");
+      expect(liveUrls()).toEqual(["/api/stream?room=sprint"]);
     } finally {
       vi.useRealTimers();
     }
@@ -224,8 +337,8 @@ describe("stream hub", () => {
   it("does not redial once the last consumer is gone", () => {
     vi.useFakeTimers();
     try {
-      const { unmount } = render(<RoomFeed room="sprint" onFrame={() => {}} />);
-      act(() => FakeEventSource.latest().onerror?.());
+      const { unmount } = render(<RoomFeed room="sprint" />);
+      act(() => roomConnection().onerror?.());
       unmount();
 
       act(() => void vi.advanceTimersByTime(5000));
@@ -249,7 +362,7 @@ describe("stream hub", () => {
       </>,
     );
 
-    act(() => FakeEventSource.latest().emit({ id: "m1" }));
+    act(() => roomConnection().emit({ id: "m1" }));
 
     expect(thrower).toHaveBeenCalledOnce();
     expect(other).toHaveBeenCalledExactlyOnceWith({ id: "m1" });
@@ -258,10 +371,11 @@ describe("stream hub", () => {
   it("drops a malformed frame without disturbing the connection", () => {
     const room = vi.fn();
     render(<RoomFeed room="sprint" onFrame={room} />);
-    const es = FakeEventSource.latest();
+    const es = roomConnection();
 
     act(() => {
       es.emitRaw("room", "not json");
+      es.emitRaw("status", "not json");
       es.emit({ id: "m1" });
     });
 

@@ -13,7 +13,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useNotificationStream, useStreamConnected } from "@/lib/stream-hub";
+import { useNotificationStream, useNotificationsConnected } from "@/lib/stream-hub";
 import { useCurrentUser } from "@/components/current-user";
 import { ping, primeAudio } from "@/lib/audio-ping";
 import {
@@ -58,7 +58,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   const { principal } = useCurrentUser();
   const [notifications, setNotifications] = useState<StoredNotification[]>([]);
   const [settings, setSettingsState] = useState<NotificationSettings>(DEFAULT_SETTINGS);
-  const connected = useStreamConnected();
+  const connected = useNotificationsConnected();
   const [desktopPermission, setDesktopPermission] = useState<NotificationPermission | "unsupported">(
     "unsupported",
   );

@@ -24,7 +24,7 @@ import {
   type EpisodeMetrics,
   type L9Envelope,
 } from "@/lib/api";
-import { useRoomStream, useStreamConnected } from "@/lib/stream-hub";
+import { useRoomConnected, useRoomStream } from "@/lib/stream-hub";
 
 // The L9 protocol inspector renders the AOP layer legibly: the live L9 payloads
 // crossing a room's channel (exchange ticks/replies, commit verdicts with
@@ -369,7 +369,7 @@ const MAX_FRAMES = 200;
 
 export function L9Inspector({ roomName }: Props) {
   const [frames, setFrames] = useState<L9Frame[]>([]);
-  const connected = useStreamConnected();
+  const connected = useRoomConnected(roomName);
   // Kinds toggled off; empty by default so new kinds auto-show.
   const [hiddenKinds, setHiddenKinds] = useState<Set<string>>(new Set());
   const [episodeFilter, setEpisodeFilter] = useState<string>("all");

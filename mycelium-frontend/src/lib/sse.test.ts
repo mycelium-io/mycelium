@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Mycelium Contributors
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createSseDecoder, encodeSseFrame, readSseEvents } from "@/lib/sse";
 
 describe("createSseDecoder", () => {
@@ -86,6 +86,55 @@ describe("readSseEvents", () => {
       { event: "room", data: "1" },
       { event: "app", data: "2" },
     ]);
+  });
+});
+
+describe("readSseEvents cancellation", () => {
+  // Reading holds a lock, and cancelling the stream itself throws on a locked
+  // stream — so cancellation has to reach the source through the reader.
+  it("releases the underlying source when the signal aborts", async () => {
+    const cancelled = vi.fn();
+    const body = new ReadableStream<Uint8Array>({ start() {}, cancel: cancelled });
+    const abort = new AbortController();
+
+    const drained = (async () => {
+      for await (const _event of readSseEvents(body, abort.signal)) {
+        // parked on a read that only cancellation will end
+      }
+    })();
+    abort.abort();
+    await drained;
+
+    expect(cancelled).toHaveBeenCalled();
+  });
+
+  it("releases the underlying source when the caller stops reading early", async () => {
+    const encoder = new TextEncoder();
+    const cancelled = vi.fn();
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode("data: 1\n\ndata: 2\n\n"));
+      },
+      cancel: cancelled,
+    });
+
+    for await (const event of readSseEvents(body)) {
+      expect(event.data).toBe("1");
+      break;
+    }
+
+    expect(cancelled).toHaveBeenCalled();
+  });
+
+  it("does not start reading a body whose signal has already aborted", async () => {
+    const cancelled = vi.fn();
+    const body = new ReadableStream<Uint8Array>({ start() {}, cancel: cancelled });
+
+    const seen = [];
+    for await (const event of readSseEvents(body, AbortSignal.abort())) seen.push(event);
+
+    expect(seen).toEqual([]);
+    expect(cancelled).toHaveBeenCalled();
   });
 });
 

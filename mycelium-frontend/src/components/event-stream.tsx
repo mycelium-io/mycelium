@@ -12,7 +12,7 @@ import {
   type PendingInvite,
 } from "@/lib/api";
 import { useRoomAgents } from "@/lib/room-data";
-import { useRoomStream, useStreamConnected } from "@/lib/stream-hub";
+import { useRoomConnected, useRoomStream } from "@/lib/stream-hub";
 import { MarkdownContent } from "@/components/markdown-content";
 import { RoomPlanHeader } from "@/components/room-plan-header";
 import { ConsentDialog } from "@/components/consent-dialog";
@@ -336,7 +336,7 @@ interface Props {
 export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onNegotiationPhaseChange, onOpenMemory, view: viewProp, onViewChange, suppressInvites = false, focusMessageId = null, onFocusConsumed }: Props) {
   const [events, setEvents] = useState<Event[]>([]);
   const [historyLoaded, setHistoryLoaded] = useState(false);
-  const connected = useStreamConnected();
+  const connected = useRoomConnected(roomName);
 
   // Surface connection state to status bar; one home for the signal.
   useEffect(() => {
