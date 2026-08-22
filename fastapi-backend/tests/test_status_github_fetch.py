@@ -4,11 +4,16 @@
 """``GitHubProvider.fetch`` executed end to end against a fake transport.
 
 Every other status test drives ``RecordingProvider`` or the pure mapping helpers.
-The fetch path itself (building the GraphQL search query, binding the variable,
-walking ``data.search.nodes`` back to one outcome per ref, and the rate-limit and
-not-visible branches) had never run. These are the file every future provider is
-copied from, so they run it here, with a fake ``httpx`` transport rather than the
-network. The response shapes are the shapes GitHub's GraphQL API actually returns.
+The fetch path itself (building the aliased GraphQL document, walking each alias
+back to one outcome per ref, and the rate-limit and not-visible branches) had
+never run. These are the file every future provider is copied from, so they run
+it here, with a fake ``httpx`` transport rather than the network.
+
+A fake transport can only prove the code walks a response, not that GitHub
+answers the document the way we think. So one test pins the *document*: it must
+ask for each pull request by identity, never regress to the free-text issue
+search a batch built from bare numbers would send. Settling that against the live
+API still needs a real token.
 """
 
 from __future__ import annotations
@@ -26,13 +31,16 @@ from app.services.status.types import Err, Ok, Ref
 
 NOW = datetime(2026, 8, 22, 12, 0, tzinfo=UTC)
 
+#: An alias whose repository itself did not resolve (``data.rN`` is null), as
+#: opposed to one whose repository resolved but the pull request did not.
+REPO_NULL = object()
+
 
 def ref(ident: str) -> Ref:
     return Ref(provider="github", kind="pull_request", id=ident)
 
 
 def pr_node(
-    ident: str,
     *,
     state: str = "OPEN",
     is_draft: bool = False,
@@ -40,28 +48,39 @@ def pr_node(
     rollup: str | None = None,
     updated_at: str = "2026-08-22T11:30:00Z",
 ) -> dict:
-    """A single PullRequest node, shaped like GitHub's GraphQL search result."""
-    owner_repo, number = ident.split("#")
+    """A PullRequest node shaped like GitHub's GraphQL result for one alias."""
     commits = (
         {"nodes": [{"commit": {"statusCheckRollup": {"state": rollup}}}]}
         if rollup is not None
         else {"nodes": []}
     )
     return {
-        "number": int(number),
-        "url": f"https://github.com/{owner_repo}/pull/{number}",
-        "title": f"PR {number}",
+        "url": "https://github.com/o/r/pull/1",
+        "title": "a pull request",
         "state": state,
         "isDraft": is_draft,
         "updatedAt": updated_at,
-        "repository": {"nameWithOwner": owner_repo},
         "reviewDecision": review,
         "commits": commits,
     }
 
 
-def search_response(nodes: list[dict], status: int = 200) -> httpx.Response:
-    return httpx.Response(status, json={"data": {"search": {"nodes": nodes}}})
+def aliased_response(
+    entries: list, *, status: int = 200, errors: list | None = None
+) -> httpx.Response:
+    """Build ``{"data": {"r0": ..., "r1": ...}}`` aligned to the refs' order.
+
+    Each entry is a node dict (the pull request resolved), ``None`` (the repo
+    resolved but the pull request did not), or ``REPO_NULL`` (the repo itself
+    did not resolve, so the whole alias is null).
+    """
+    data: dict = {}
+    for i, entry in enumerate(entries):
+        data[f"r{i}"] = None if entry is REPO_NULL else {"pullRequest": entry}
+    body: dict = {"data": data}
+    if errors is not None:
+        body["errors"] = errors
+    return httpx.Response(status, json=body)
 
 
 def context_returning(handler) -> HttpContext:
@@ -73,22 +92,43 @@ def context_returning(handler) -> HttpContext:
 
 
 @pytest.mark.asyncio
+async def test_the_document_asks_for_each_pull_request_by_identity_not_search():
+    # The guard for the whole batching claim: identity lookups, one alias per
+    # ref, never the free-text issue search that matches a number as body text.
+    refs = [ref("mycelium-io/mycelium#504"), ref("acme/tools#502")]
+    seen: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["doc"] = json.loads(request.content)["query"]
+        return aliased_response([pr_node(review="APPROVED"), pr_node()])
+
+    ctx = context_returning(handler)
+    await GitHubProvider().fetch(refs, ctx)
+    await ctx.aclose()
+
+    doc = seen["doc"]
+    assert 'repository(owner: "mycelium-io", name: "mycelium")' in doc
+    assert "pullRequest(number: 504)" in doc
+    assert 'repository(owner: "acme", name: "tools")' in doc
+    assert "pullRequest(number: 502)" in doc
+    assert "search(" not in doc
+    assert "type: ISSUE" not in doc
+
+
+@pytest.mark.asyncio
 async def test_the_happy_path_answers_one_outcome_per_ref_with_states_mapped():
     refs = [
         ref("mycelium-io/mycelium#504"),
         ref("mycelium-io/mycelium#502"),
         ref("mycelium-io/mycelium#500"),
     ]
-    seen: dict = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
-        seen["url"] = str(request.url)
-        seen["body"] = json.loads(request.content)
-        return search_response(
+        return aliased_response(
             [
-                pr_node("mycelium-io/mycelium#504", review="APPROVED", rollup="SUCCESS"),
-                pr_node("mycelium-io/mycelium#502", review="CHANGES_REQUESTED"),
-                pr_node("mycelium-io/mycelium#500", state="MERGED"),
+                pr_node(review="APPROVED", rollup="SUCCESS"),
+                pr_node(review="CHANGES_REQUESTED"),
+                pr_node(state="MERGED"),
             ]
         )
 
@@ -96,18 +136,12 @@ async def test_the_happy_path_answers_one_outcome_per_ref_with_states_mapped():
     outcomes = await GitHubProvider().fetch(refs, ctx)
     await ctx.aclose()
 
-    # The query is one GraphQL document with the search string bound as a variable.
-    assert seen["url"].endswith("/graphql")
-    assert seen["body"]["variables"]["q"] == (
-        "repo:mycelium-io/mycelium 504 repo:mycelium-io/mycelium 502 repo:mycelium-io/mycelium 500"
-    )
-
-    by_ref = {o.ref: o for o in outcomes}
-    assert all(isinstance(o, Ok) for o in outcomes)
-    approved, changes, merged = by_ref[refs[0]], by_ref[refs[1]], by_ref[refs[2]]
+    approved, changes, merged = outcomes
     assert isinstance(approved, Ok)
     assert isinstance(changes, Ok)
     assert isinstance(merged, Ok)
+    # Outcomes stay aligned to the refs they were asked for.
+    assert [o.ref for o in outcomes] == refs
     assert approved.liveness.state == "ok"
     assert approved.liveness.label == "approved"
     assert changes.liveness.state == "blocked"
@@ -118,26 +152,44 @@ async def test_the_happy_path_answers_one_outcome_per_ref_with_states_mapped():
 
 
 @pytest.mark.asyncio
-async def test_a_ref_the_search_did_not_return_is_erred_not_the_whole_batch():
+async def test_a_ref_the_token_cannot_see_is_erred_not_the_whole_batch():
     refs = [ref("mycelium-io/mycelium#504"), ref("acme/private#7")]
 
     def handler(request: httpx.Request) -> httpx.Response:
-        # The private one is outside this token's reach, so GitHub simply omits it.
-        return search_response([pr_node("mycelium-io/mycelium#504", review="APPROVED")])
+        # The public one resolves; the private repo's alias comes back null.
+        return aliased_response([pr_node(review="APPROVED"), REPO_NULL])
 
     ctx = context_returning(handler)
     outcomes = await GitHubProvider().fetch(refs, ctx)
     await ctx.aclose()
 
-    by_ref = {o.ref: o for o in outcomes}
-    assert isinstance(by_ref[refs[0]], Ok)
-    missing = by_ref[refs[1]]
+    assert isinstance(outcomes[0], Ok)
+    missing = outcomes[1]
     assert isinstance(missing, Err)
     assert "not visible" in missing.reason
 
 
 @pytest.mark.asyncio
-async def test_a_rate_limit_reply_sets_retry_after_from_the_response_not_a_guess():
+async def test_one_partial_node_does_not_sink_the_healthy_answers_beside_it():
+    # A structurally thin node (only a state, everything else absent) must map
+    # conservatively, never raise and take its whole chunk down with it.
+    refs = [ref("mycelium-io/mycelium#504"), ref("mycelium-io/mycelium#502")]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return aliased_response([pr_node(review="APPROVED"), {"state": "OPEN"}])
+
+    ctx = context_returning(handler)
+    outcomes = await GitHubProvider().fetch(refs, ctx)
+    await ctx.aclose()
+
+    assert isinstance(outcomes[0], Ok)
+    thin = outcomes[1]
+    assert isinstance(thin, Ok)
+    assert thin.liveness.state == "pending"
+
+
+@pytest.mark.asyncio
+async def test_a_secondary_rate_limit_sets_retry_after_from_the_reset_header():
     refs = [ref("mycelium-io/mycelium#504"), ref("mycelium-io/mycelium#502")]
     reset_at = datetime.now(UTC) + timedelta(minutes=17)
 
@@ -145,7 +197,7 @@ async def test_a_rate_limit_reply_sets_retry_after_from_the_response_not_a_guess
         return httpx.Response(
             403,
             headers={"x-ratelimit-reset": str(int(reset_at.timestamp()))},
-            text="API rate limit exceeded for installation",
+            text="You have exceeded a secondary rate limit",
         )
 
     ctx = context_returning(handler)
@@ -161,11 +213,33 @@ async def test_a_rate_limit_reply_sets_retry_after_from_the_response_not_a_guess
 
 
 @pytest.mark.asyncio
+async def test_the_primary_graphql_rate_limit_arrives_as_a_200_and_is_still_caught():
+    # The primary GraphQL limit is a 200 whose errors carry RATE_LIMITED, with a
+    # Retry-After. Sniffing body text for a 403 would miss it entirely.
+    refs = [ref("mycelium-io/mycelium#504")]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            headers={"retry-after": "120"},
+            json={"data": None, "errors": [{"type": "RATE_LIMITED", "message": "API rate limit"}]},
+        )
+
+    ctx = context_returning(handler)
+    outcomes = await GitHubProvider().fetch(refs, ctx)
+    await ctx.aclose()
+
+    outcome = outcomes[0]
+    assert isinstance(outcome, Err)
+    assert outcome.reason == "rate limited"
+    assert outcome.retry_after == timedelta(seconds=120)
+
+
+@pytest.mark.asyncio
 async def test_a_graphql_error_with_null_data_errs_every_ref_rather_than_fabricating():
     refs = [ref("mycelium-io/mycelium#504")]
 
     def handler(request: httpx.Request) -> httpx.Response:
-        # A top-level GraphQL failure: data is null, errors carries why.
         return httpx.Response(
             200, json={"data": None, "errors": [{"message": "Something went wrong"}]}
         )
@@ -200,7 +274,7 @@ async def test_a_present_but_bare_node_is_conservative_never_fabricated_as_healt
     refs = [ref("mycelium-io/mycelium#504")]
 
     def handler(request: httpx.Request) -> httpx.Response:
-        return search_response([pr_node("mycelium-io/mycelium#504")])
+        return aliased_response([pr_node()])
 
     ctx = context_returning(handler)
     outcomes = await GitHubProvider().fetch(refs, ctx)

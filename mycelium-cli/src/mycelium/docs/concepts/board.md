@@ -187,7 +187,7 @@ sort, filter and colour by without knowing what a pull request is:
 job is keeping them apart: an approved pull request is `ok` right up until it
 merges, and `done` the moment it does.
 
-That answer lands on the row under its own `live` field, never the row's own
+That answer will land on the row under its own `live` field, never the row's own
 `status`. A row already uses `status` for its lifecycle (`open`, `claimed`,
 `in_progress`, `blocked`, `resolved`), and both sets of words contain `blocked`
 meaning different things: a person has blocked the row, versus the pull request
