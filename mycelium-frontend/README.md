@@ -21,8 +21,13 @@ admin panel bolted onto the side, it is one of the two intended ways in.
 - **It holds no state of its own.** Everything displayed is the hub's; the app
   reads and writes the same API the CLI does. If the two ever disagree, the hub
   is right.
-- **Live updates arrive over a server-sent event stream**, with the transcript
-  replayed on load so a freshly opened tab is never blank.
+- **Live updates arrive over one server-sent event stream**, with the transcript
+  replayed on load so a freshly opened tab is never blank. Room messages, the L9
+  wire, app events and notifications are channels on that single connection
+  (`src/lib/sse.ts` for the framing, `src/lib/stream-hub.ts` for the fan-out) —
+  a browser allows only ~6 concurrent connections per origin over HTTP/1.1, and
+  a held stream occupies one for its whole lifetime, so how many the app holds
+  is a hard budget rather than a detail.
 - **Some actions are deliberately CLI-only.** Anything with local side effects on
   a user's machine — installing adapter assets, running a resident agent — can't
   be done from a browser, and the UI says so rather than pretending. Onboarding

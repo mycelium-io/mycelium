@@ -13,7 +13,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { getNotificationsSSEUrl } from "@/lib/api";
+import { useNotificationStream, useStreamConnected } from "@/lib/stream-hub";
 import { useCurrentUser } from "@/components/current-user";
 import { ping, primeAudio } from "@/lib/audio-ping";
 import {
@@ -58,7 +58,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   const { principal } = useCurrentUser();
   const [notifications, setNotifications] = useState<StoredNotification[]>([]);
   const [settings, setSettingsState] = useState<NotificationSettings>(DEFAULT_SETTINGS);
-  const [connected, setConnected] = useState(false);
+  const connected = useStreamConnected();
   const [desktopPermission, setDesktopPermission] = useState<NotificationPermission | "unsupported">(
     "unsupported",
   );
@@ -144,61 +144,35 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     document.title = unread > 0 ? `(${unread}) ${BASE_TITLE}` : BASE_TITLE;
   }, [notifications]);
 
-  // The single global SSE subscription — one connection for every room the
-  // user participates in, independent of which (if any) is open.
-  useEffect(() => {
-    const url = getNotificationsSSEUrl();
-    let es: EventSource;
-    let retryTimeout: ReturnType<typeof setTimeout>;
-
-    function connect() {
-      es = new EventSource(url);
-      es.onopen = () => setConnected(true);
-      es.onmessage = (e) => {
+  // Activity across every room the user participates in, independent of which
+  // (if any) is open — one channel on the app's shared connection.
+  useNotificationStream((raw) => {
+    const n = classify(raw as Record<string, unknown>, principalRef.current);
+    if (!n) return;
+    if (seenIds.current.has(n.id)) return;
+    seenIds.current.add(n.id);
+    // Muted rooms are dropped outright. Everything else is stored so it can
+    // badge the room; `alert` records whether it's also "loud" (bell inbox
+    // + sound/desktop) or badge-only.
+    if (roomLevel(settingsRef.current, n.room) === "muted") return;
+    const loud = isAlert(n, settingsRef.current);
+    setNotifications((prev) => [...prev, { ...n, read: false, alert: loud }]);
+    // Sound/desktop only for loud items, and only when this tab isn't the
+    // one you're looking at. `hasFocus()` (not visibilityState) is the right
+    // signal: it's false when you've switched to another tab, minimized, OR
+    // alt-tabbed to another app — whereas visibilityState stays "visible"
+    // for a window merely behind another app, so those pings would be lost.
+    if (loud && !settingsRef.current.dnd && isLeader.current && !document.hasFocus()) {
+      if (settingsRef.current.soundEnabled) ping(settingsRef.current.soundVolume);
+      if (settingsRef.current.desktopEnabled && "Notification" in window && window.Notification.permission === "granted") {
         try {
-          const raw = JSON.parse(e.data);
-          const n = classify(raw, principalRef.current);
-          if (!n) return;
-          if (seenIds.current.has(n.id)) return;
-          seenIds.current.add(n.id);
-          // Muted rooms are dropped outright. Everything else is stored so it can
-          // badge the room; `alert` records whether it's also "loud" (bell inbox
-          // + sound/desktop) or badge-only.
-          if (roomLevel(settingsRef.current, n.room) === "muted") return;
-          const loud = isAlert(n, settingsRef.current);
-          setNotifications((prev) => [...prev, { ...n, read: false, alert: loud }]);
-          // Sound/desktop only for loud items, and only when this tab isn't the
-          // one you're looking at. `hasFocus()` (not visibilityState) is the right
-          // signal: it's false when you've switched to another tab, minimized, OR
-          // alt-tabbed to another app — whereas visibilityState stays "visible"
-          // for a window merely behind another app, so those pings would be lost.
-          if (loud && !settingsRef.current.dnd && isLeader.current && !document.hasFocus()) {
-            if (settingsRef.current.soundEnabled) ping(settingsRef.current.soundVolume);
-            if (settingsRef.current.desktopEnabled && "Notification" in window && window.Notification.permission === "granted") {
-              try {
-                new window.Notification(`${n.room} · ${n.kind}`, { body: n.summary || n.sender });
-              } catch {
-                // Best-effort — a blocked/unsupported Notification() must never break the feed.
-              }
-            }
-          }
+          new window.Notification(`${n.room} · ${n.kind}`, { body: n.summary || n.sender });
         } catch {
-          // A malformed frame is dropped, not fatal to the connection.
+          // Best-effort — a blocked/unsupported Notification() must never break the feed.
         }
-      };
-      es.onerror = () => {
-        setConnected(false);
-        es.close();
-        retryTimeout = setTimeout(connect, 5000);
-      };
+      }
     }
-
-    connect();
-    return () => {
-      es?.close();
-      clearTimeout(retryTimeout);
-    };
-  }, []);
+  });
 
   const setSettings = useCallback((next: NotificationSettings) => {
     setSettingsState(next);

@@ -20,11 +20,11 @@ import { EmptyState } from "@/components/empty-state";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   fetchL9History,
-  getSSEUrl,
   logFetchError,
   type EpisodeMetrics,
   type L9Envelope,
 } from "@/lib/api";
+import { useRoomStream, useStreamConnected } from "@/lib/stream-hub";
 
 // The L9 protocol inspector renders the AOP layer legibly: the live L9 payloads
 // crossing a room's channel (exchange ticks/replies, commit verdicts with
@@ -369,7 +369,7 @@ const MAX_FRAMES = 200;
 
 export function L9Inspector({ roomName }: Props) {
   const [frames, setFrames] = useState<L9Frame[]>([]);
-  const [connected, setConnected] = useState(false);
+  const connected = useStreamConnected();
   // Kinds toggled off; empty by default so new kinds auto-show.
   const [hiddenKinds, setHiddenKinds] = useState<Set<string>>(new Set());
   const [episodeFilter, setEpisodeFilter] = useState<string>("all");
@@ -408,39 +408,13 @@ export function L9Inspector({ roomName }: Props) {
     return () => { cancelled = true; };
   }, [roomName]);
 
-  // Live L9 wire: same EventSource pattern as the room feed.
-  useEffect(() => {
-    const url = getSSEUrl(roomName);
-    let es: EventSource;
-    let retry: ReturnType<typeof setTimeout>;
-
-    function connect() {
-      es = new EventSource(url);
-      es.onopen = () => setConnected(true);
-      es.onmessage = (e) => {
-        try {
-          const msg = JSON.parse(e.data);
-          const frame = toL9Frame(msg);
-          if (!frame || seenIds.current.has(frame.id)) return;
-          seenIds.current.add(frame.id);
-          setFrames((prev) => [...prev, frame].slice(-MAX_FRAMES));
-        } catch {
-          /* ignore malformed frames */
-        }
-      };
-      es.onerror = () => {
-        setConnected(false);
-        es.close();
-        retry = setTimeout(connect, 5000);
-      };
-    }
-
-    connect();
-    return () => {
-      es?.close();
-      clearTimeout(retry);
-    };
-  }, [roomName]);
+  // Live L9 wire: the room feed the channel view reads, projected into envelopes.
+  useRoomStream(roomName, (data) => {
+    const frame = toL9Frame(data as Record<string, unknown>);
+    if (!frame || seenIds.current.has(frame.id)) return;
+    seenIds.current.add(frame.id);
+    setFrames((prev) => [...prev, frame].slice(-MAX_FRAMES));
+  });
 
   // Kinds + episodes actually present in the feed so far, for the filter controls.
   const kindsPresent = useMemo(

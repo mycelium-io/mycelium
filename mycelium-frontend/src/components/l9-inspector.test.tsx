@@ -5,12 +5,12 @@ import { act } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeEventSource } from "@/test/fake-event-source";
+import { resetStreamHub } from "@/lib/stream-hub";
 
 vi.mock("@/lib/api", () => ({
   fetchEpisodes: vi.fn().mockResolvedValue([]),
   fetchEpisode: vi.fn().mockResolvedValue(null),
   fetchL9History: vi.fn().mockResolvedValue([]),
-  getSSEUrl: (room: string) => `/api/rooms/${room}/messages/stream`,
   logFetchError: () => () => undefined,
 }));
 
@@ -158,6 +158,7 @@ describe("envelopeJson", () => {
 
 describe("<L9Inspector />", () => {
   beforeEach(() => {
+    resetStreamHub();
     FakeEventSource.reset();
     vi.stubGlobal("EventSource", FakeEventSource);
   });
