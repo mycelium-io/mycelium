@@ -344,13 +344,14 @@ export function makeCursor(page, opts) {
 
     /**
      * `zoom:out` | `zoom:2` (on the pointer) | `zoom:<sel>[@factor]`.
-     * `o.locate` resolves a selector the way the rest of the action list does.
+     * `o.locate` resolves a selector the way the rest of the action list does,
+     * which includes asking the page whether a bare word is a label or a tag.
      */
     async zoom(arg, o = {}) {
       const { target, z } = parseZoom(arg, opts.zoom);
       if (z === 1) return zoomOut();
       if (!target) return camera(z, at.x, at.y);
-      const p = await pointOf(o.locate(target), o);
+      const p = await pointOf(await o.locate(target), o);
       return camera(z, p.x, p.y);
     },
 

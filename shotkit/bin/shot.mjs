@@ -46,7 +46,8 @@ const CHROME = {
   chrome: { type: "boolean", help: "wrap the capture in browser window chrome" },
   address: { type: "string", help: "address-bar text (default: the route)" },
   "chrome-theme": { type: "string", value: "dark|light", help: "frame theme, when it differs from the app's" },
-  backdrop: { type: "string", value: "<preset|css>", help: "mycelium|dusk|ink|paper|none, or any CSS" },
+  backdrop: { type: "string", value: "<preset|css>", help: "mycelial|mycelium|dusk|ink|paper|none, or any CSS" },
+  "backdrop-seed": { type: "number", help: "which network --backdrop mycelial grows" },
   padding: { type: "number", help: "gutter around the frame (default 40)" },
   radius: { type: "number", help: "corner radius (default 12)" },
   shadow: { type: "boolean", help: "drop shadow (default on)" },
@@ -82,7 +83,6 @@ const VIDEO = {
   viewport: { type: "string", value: "<preset|WxH@S>", help: "phone|tablet|laptop|desktop|wide, or 1280x800@2" },
 };
 
-
 const DAEMON = {
   daemon: { type: "boolean", help: "use the warm background browser (default on)" },
   idle: { type: "number", value: "<ms>", help: "daemon idle timeout when starting one" },
@@ -90,7 +90,8 @@ const DAEMON = {
 
 const CARD = {
   title: { type: "string", help: "title bar text" },
-  backdrop: { type: "string", value: "<preset|css>", help: "mycelium|dusk|ink|paper|none, or any CSS" },
+  backdrop: { type: "string", value: "<preset|css>", help: "mycelial|mycelium|dusk|ink|paper|none, or any CSS" },
+  "backdrop-seed": { type: "number", help: "which network --backdrop mycelial grows" },
   padding: { type: "number", help: "gutter around the card (default 40)" },
   radius: { type: "number", help: "corner radius (default 12)" },
   shadow: { type: "boolean", help: "drop shadow (default on)" },
@@ -278,6 +279,7 @@ function report(result, flags) {
   }
   err(`[shot] ${result.op} · ${bits.join(" · ")} · ${result.mode ?? "daemon"}${size}`);
   if (result.meta?.exitCode) err(`[shot] command exited ${result.meta.exitCode}`);
+  if (result.meta?.hint) err(`[shot] ${result.meta.hint}`);
   for (const step of result.trace ?? []) err(`[shot]   ${step.action} (${step.ms}ms)`);
   for (const shot of result.shots ?? []) err(`[shot]   ${shot.viewport} · ${shot.ms}ms · ${shot.width}x${shot.height}`);
 
