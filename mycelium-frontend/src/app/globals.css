@@ -72,6 +72,22 @@
   --graph-ns-6: #2183ca; /* hue 205 sky */
   --graph-ns-7: #6721ca; /* hue 265 violet */
   --graph-ns-8: #ca21ca; /* hue 300 magenta */
+  /* avatar palette — a stable tint per handle/room name, so a roster reads as
+   * distinct people rather than a column of identical chips.
+   *
+   * Deliberately NOT the categorical palette above. Those hues are tuned for
+   * one graph, where a dozen nodes must be told apart at a glance and nothing
+   * else competes. Spread across every avatar in the app they read as neon.
+   * These are the same idea at a sixth of the volume: six low-chroma tints
+   * (18–31% saturation) at a matched lightness, so no avatar shouts and none
+   * outranks the accent. Audited to 4.7:1 against their own tile on paper and
+   * on the rail surface. */
+  --avatar-1: #46587a; /* slate  */
+  --avatar-2: #31605b; /* teal   */
+  --avatar-3: #4b5f40; /* sage   */
+  --avatar-4: #78503f; /* clay   */
+  --avatar-5: #5a5073; /* violet */
+  --avatar-6: #655838; /* sand   */
 }
 
 .dark {
@@ -107,6 +123,13 @@
   --graph-ns-6: #65aee2; /* hue 205 sky */
   --graph-ns-7: #9965e2; /* hue 265 violet */
   --graph-ns-8: #e265e2; /* hue 300 magenta */
+  /* avatar palette (see :root) — same six tints lifted for the dark canvas. */
+  --avatar-1: #a5b6d1; /* slate  */
+  --avatar-2: #92c0bb; /* teal   */
+  --avatar-3: #aec09e; /* sage   */
+  --avatar-4: #d4ad98; /* clay   */
+  --avatar-5: #b8aed2; /* violet */
+  --avatar-6: #cfbd94; /* sand   */
 }
 
 /* Raw-var back-compat: legacy CSS + inline styles reference var(--text2),
@@ -213,6 +236,24 @@ body {
 @keyframes myc-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }
+}
+
+/* Avatar presence halo. The ring breathes via box-shadow — spread plus a soft
+ * outer glow, at full opacity throughout — rather than fading, so the row line
+ * behind it never bleeds through the way an opacity pulse does. `--halo` is set
+ * inline per tier; the disc's own edge is a border, leaving box-shadow free. */
+.avatar-halo { box-shadow: 0 0 0 2px var(--halo); }
+.avatar-halo.pulse { animation: halo-breathe 1.8s ease-in-out infinite; }
+@keyframes halo-breathe {
+  0%, 100% { box-shadow: 0 0 0 2px var(--halo); }
+  50% {
+    box-shadow:
+      0 0 0 2.5px var(--halo),
+      0 0 7px 1px color-mix(in srgb, var(--halo) 55%, transparent);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .avatar-halo.pulse { animation: none; }
 }
 
 .tabular { font-variant-numeric: tabular-nums; }
