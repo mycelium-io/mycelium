@@ -354,6 +354,30 @@ is no litellm dependency.
   the PR that makes the job slower. `scripts/check_workflows.py` (the `hygiene`
   job) keeps the budgets naming real jobs, every `uses:` pinned to a commit SHA,
   and every workflow declaring its own `permissions:`.
+- **CI is tiered, and the tier is the design decision.** Tier 0 is per-PR and
+  must stay parallel and under ~60s (the contract tests below all live inside
+  jobs that already run). Tier 1 is per-PR but path-filtered — the three image
+  smoke builds, and the docs link check. Tier 2 is `nightly.yml`: the full
+  install path and the live-LLM cognition slice, too slow and too paid for the
+  PR path, where a failure opens one issue rather than blocking a person. Tier 3
+  is manual dispatch (the screenshots workflow). Putting a good check in the
+  wrong tier is how the ~95s baseline gets spent.
+- **The checks are derivations, not lists.** Every gate added here recomputes
+  something and fails on the drift, rather than asserting against a copy that
+  has to be maintained: `openapi.json` vs the live app, `docs/*.html` vs its
+  markdown, the frontend's `/api/*` fetches and its mock fixture *shapes* vs the
+  spec, `compose.yml`'s services vs the container names the CLI addresses,
+  `MyceliumConfig`'s fields vs what `generate_env_file` renders. Where a thing
+  legitimately can't be derived, it is declared with its reason next to the code
+  that owns it (`docker_utils.LOCAL_ONLY_FIELDS`, `ENVIRONMENT_SUPPLIED_VARS`)
+  and the check asserts the declaration is still true — a stale exemption is a
+  failure too.
+- **A config field that reaches no container is a bug, not a feature.** `.env`
+  is the only transport from `config.toml` into the stack, so a field nothing
+  renders is a setting a user writes and watches do nothing. Both directions are
+  gated (`tests/test_config_env_coverage.py`): every config leaf renders or is
+  declared local-only, and every `${VAR}` compose substitutes has something that
+  writes it — otherwise `config apply` silently drops a hand-set value.
 - **Screenshots publish through a workflow, and it is additive.** The capture
   pipeline (`pnpm screenshots`) is the same one that runs locally; the
   `Screenshots` workflow runs it on a runner on manual dispatch and opens PRs

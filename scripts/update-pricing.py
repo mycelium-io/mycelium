@@ -27,6 +27,8 @@ PRICING_OUTPUT = (
     / "pricing.json"
 )
 
+# Keep the formatter off the aligned columns.
+# fmt: off
 TRACKED_MODELS: list[dict] = [
     # Anthropic
     {"pattern": "claude-sonnet-4",   "provider": "anthropic"},
@@ -45,6 +47,7 @@ TRACKED_MODELS: list[dict] = [
     {"pattern": "o3",           "provider": "openai"},
     {"pattern": "o4-mini",      "provider": "openai"},
 ]
+# fmt: on
 
 EMBEDDING_MODEL = "text-embedding-3-small"
 
@@ -59,11 +62,7 @@ def _best_match(pattern: str, model_cost: dict) -> tuple[str, dict] | None:
       2. Has input_cost_per_token (no cache pricing)
       3. Shortest key (closest to the base model name)
     """
-    candidates = [
-        (k, v)
-        for k, v in model_cost.items()
-        if pattern in k and v.get("mode") == "chat"
-    ]
+    candidates = [(k, v) for k, v in model_cost.items() if pattern in k and v.get("mode") == "chat"]
     if not candidates:
         return None
 
@@ -80,7 +79,7 @@ def _best_match(pattern: str, model_cost: dict) -> tuple[str, dict] | None:
 
 def main() -> None:
     try:
-        import litellm
+        import litellm  # ty: ignore[unresolved-import]
     except ImportError:
         print(
             "ERROR: litellm is not installed. Run this from the fastapi-backend env:\n"
@@ -118,8 +117,7 @@ def main() -> None:
         if not output_price and input_price:
             output_price = input_price * 4
             warnings.append(
-                f"  NOTE: '{pattern}' ({key}) has no output pricing, "
-                f"defaulting to 4x input"
+                f"  NOTE: '{pattern}' ({key}) has no output pricing, defaulting to 4x input"
             )
 
         if input_price and cache_read is not None and cache_read >= 0:
@@ -146,14 +144,16 @@ def main() -> None:
             else:
                 cache_write_premium = 0.0
 
-        models.append({
-            "pattern": pattern,
-            "input_per_token": input_price,
-            "output_per_token": output_price,
-            "cache_discount": cache_discount,
-            "cache_write_premium": cache_write_premium,
-            "litellm_key": key,
-        })
+        models.append(
+            {
+                "pattern": pattern,
+                "input_per_token": input_price,
+                "output_per_token": output_price,
+                "cache_discount": cache_discount,
+                "cache_write_premium": cache_write_premium,
+                "litellm_key": key,
+            }
+        )
 
     # Embedding baseline
     embed_entry = model_cost.get(EMBEDDING_MODEL, {})
@@ -180,7 +180,9 @@ def main() -> None:
     PRICING_OUTPUT.write_text(json.dumps(output, indent=2) + "\n")
 
     print(f"Wrote {PRICING_OUTPUT}")
-    print(f"  litellm {litellm_version}  •  {len(models)} models  •  embedding baseline: {EMBEDDING_MODEL}")
+    print(
+        f"  litellm {litellm_version}  •  {len(models)} models  •  embedding baseline: {EMBEDDING_MODEL}"
+    )
     print()
 
     if warnings:
@@ -197,8 +199,8 @@ def main() -> None:
             if not old:
                 print(
                     f"  + {m['pattern']:25s}  "
-                    f"in ${m['input_per_token']*1e6:.2f}  "
-                    f"out ${m['output_per_token']*1e6:.2f}/MTok  "
+                    f"in ${m['input_per_token'] * 1e6:.2f}  "
+                    f"out ${m['output_per_token'] * 1e6:.2f}/MTok  "
                     f"{m['cache_discount']:.0%} discount"
                 )
                 changes += 1
@@ -213,15 +215,15 @@ def main() -> None:
                 ):
                     print(
                         f"  ~ {m['pattern']:25s}  "
-                        f"in ${old_input*1e6:.2f} → ${m['input_per_token']*1e6:.2f}  "
-                        f"out ${old_output*1e6:.2f} → ${m['output_per_token']*1e6:.2f}/MTok  "
+                        f"in ${old_input * 1e6:.2f} → ${m['input_per_token'] * 1e6:.2f}  "
+                        f"out ${old_output * 1e6:.2f} → ${m['output_per_token'] * 1e6:.2f}/MTok  "
                         f"{old_discount:.0%} → {m['cache_discount']:.0%} discount"
                     )
                     changes += 1
 
         old_embed = old_data.get("embedding_baseline", {}).get("input_per_token", 0)
         if abs(old_embed - embed_price) > 1e-12:
-            print(f"  ~ embedding baseline  ${old_embed*1e6:.4f} → ${embed_price*1e6:.4f}/MTok")
+            print(f"  ~ embedding baseline  ${old_embed * 1e6:.4f} → ${embed_price * 1e6:.4f}/MTok")
             changes += 1
 
         if changes == 0:

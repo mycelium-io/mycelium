@@ -109,7 +109,9 @@ def main() -> int:
     starts = [parse(job.get("started_at")) for job in jobs]
     ends = [parse(job.get("completed_at")) for job in jobs]
     known = [(s, e) for s, e in zip(starts, ends, strict=True) if s and e]
-    wall = round((max(e for _, e in known) - min(s for s, _ in known)).total_seconds()) if known else 0
+    wall = (
+        round((max(e for _, e in known) - min(s for s, _ in known)).total_seconds()) if known else 0
+    )
     wall_budget = budgets["wall_clock_seconds"]
 
     tail = f" — {slowest[1]} owns the tail at {slowest[0]}s" if slowest else ""

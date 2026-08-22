@@ -133,6 +133,17 @@ jobs:
         working-directory: mycelium-cli
         run: uv run pytest tests/ -q
 
+      # scripts/ sits outside both lint roots, so it rides along in this job.
+      # `--no-project` checks it against the standard library alone: a script
+      # here declares no dependencies, so an ambient venv would make the result
+      # depend on which optional extras that project pulls in (`--extra engine`
+      # brings Pillow in transitively).
+      - name: Lint maintainer scripts
+        run: |
+          uv run --no-project --with ruff ruff check --config ruff.toml scripts
+          uv run --no-project --with ruff ruff format --check --config ruff.toml scripts
+          uv run --no-project --with ty ty check --python-version 3.12 scripts
+
       # docs/*.html and docs/llms-full.txt are generated from the markdown under
       # mycelium-cli/src/mycelium/docs/, the @doc_ref decorators, and the pydantic
       # config schema. Same contract as the openapi.json check above: regenerate,
@@ -201,6 +212,66 @@ jobs:
         run: |
           # `--help` exits 0 if the image's Python deps and entrypoint resolve.
           docker run --rm --entrypoint python mycelium-collector:ci -m mycelium.collector_main --help
+
+  build-backend:
+    # Smoke-build the backend image, which ships `pi` (the aligner's brain),
+    # `slim-bindings` and the embedding model. Path-filtered, so it costs
+    # nothing on a PR that doesn't touch its inputs.
+    name: Backend docker build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+
+      - name: Detect backend-relevant changes
+        id: changed
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            base="HEAD~1"
+          else
+            base="origin/${{ github.base_ref }}"
+            git fetch --depth=1 origin "${{ github.base_ref }}"
+          fi
+          if git diff --name-only "$base"...HEAD | grep -E '^(fastapi-backend/(Dockerfile|pyproject\.toml|uv\.lock|start\.sh)|\.github/workflows/(ci|release)\.yml)$' > /dev/null; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "No backend image inputs changed; skipping image build."
+          fi
+
+      - name: Set up Docker Buildx
+        if: steps.changed.outputs.run == 'true'
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+
+      - name: Build mycelium-backend image (no push)
+        if: steps.changed.outputs.run == 'true'
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: fastapi-backend
+          file: fastapi-backend/Dockerfile
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: mycelium-backend:ci
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,scope=backend,mode=max
+
+      # The backend has no fallback for either of these: an image missing `pi`
+      # or slim-bindings starts cleanly and fails at the first summon. `pi` is
+      # looked up the way pi_brain.py looks it up, so a failure here means what
+      # a failure at runtime would.
+      - name: Smoke-test the runtime the backend has no fallback for
+        if: steps.changed.outputs.run == 'true'
+        run: |
+          docker run --rm --entrypoint python3 mycelium-backend:ci -c '
+          import shutil, sys
+          import slim_bindings           # the fabric
+          import app.main                # every route + service imports cleanly
+          if shutil.which("pi") is None:
+              sys.exit("pi is not on PATH: @aligner summons would fail in this image")
+          print("slim-bindings, app.main and pi all resolve")
+          '
 
   build-frontend:
     name: Frontend typecheck + lint + build
@@ -279,6 +350,37 @@ jobs:
           tags: mycelium-frontend:ci
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,scope=frontend,mode=max
+
+  docs-links:
+    # Every internal link and anchor in docs/ and the repo's markdown. Generated
+    # anchors move as a side effect of rewording a heading, so this warns into
+    # the run summary rather than gating. Stdlib Python, no toolchain.
+    name: Docs links
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+
+      - name: Detect docs changes
+        id: changed
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            base="HEAD~1"
+          else
+            base="origin/${{ github.base_ref }}"
+            git fetch --depth=1 origin "${{ github.base_ref }}"
+          fi
+          if git diff --name-only "$base"...HEAD | grep -E '^(docs/|mycelium-cli/src/mycelium/docs/|[^/]+\.md$|\.github/workflows/ci\.yml$)' > /dev/null; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "No docs changed; skipping link check."
+          fi
+
+      - name: Resolve internal links
+        if: steps.changed.outputs.run == 'true'
+        run: python3 scripts/check_docs_links.py
 
   integration-slim:
     # Debt D12: the guarded live-node slices are the real regression guard for the
@@ -365,8 +467,10 @@ jobs:
     if: ${{ !cancelled() }}
     needs:
       - hygiene
+      - docs-links
       - test-backend
       - test-cli
+      - build-backend
       - build-collector
       - build-frontend
       - build-frontend-image
