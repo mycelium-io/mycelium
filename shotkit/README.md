@@ -49,6 +49,9 @@ speedup: 13.1x
 | `shot warm` / `status` / `stop` / `serve` | the daemon |
 | `shot doctor` / `bench` | check and time this machine |
 
+`--backdrop` takes `mycelial` (the site's network — see **The desktop**),
+`mycelium`, `dusk`, `ink`, `paper`, `none`, or any CSS.
+
 `shot help <command>` lists every flag. stdout carries the path and nothing
 else, so it composes: `open "$(shot app / --mock)"`.
 
@@ -120,6 +123,33 @@ shot app / --chrome --theme dark --chrome-theme light
 
 `--theme` drives the app's own theme, not just the browser's `prefers-color-scheme`:
 next-themes reads `localStorage` before first paint and would otherwise ignore it.
+
+## The desktop
+
+`--backdrop mycelial` puts the docs site's own hypha network behind the window,
+so a framed screenshot sits on the product's background rather than a gradient:
+
+```bash
+shot app /room/atlas --chrome --backdrop mycelial --padding 90
+shot term --backdrop mycelial -- mycelium memory ls --room atlas
+```
+
+It is the same network in both senses. The algorithm is the one the live site
+runs — read from `scripts/banner-assets/mycelial-canvas.js`, the copy
+`docs/banner.png` is already cut from, rather than a third transcription of it
+— and the colors are the site's `--canvas-*` values, cream and quiet in light,
+near-black and teal in dark.
+
+One network is grown per theme and held for the life of the daemon, so a run of
+shots shares one desktop and only the first pays to grow it — about 150ms once,
+after which a framed shot costs what any other does. It grows from a fixed seed,
+so the same command gives the same background tomorrow and a committed asset
+does not churn on every re-render; `--backdrop-seed <n>` asks for a different
+one.
+
+The other backdrops (`mycelium`, `dusk`, `ink`, `paper`, `none`, or any CSS you
+pass) are unchanged, and are what to reach for when a shot wants quiet behind
+it: the network is texture, and texture competes with a busy screen.
 
 ## The library
 

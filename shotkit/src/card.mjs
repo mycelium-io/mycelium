@@ -23,6 +23,8 @@ const escapeHtml = (s) =>
  * @typedef {object} CardOptions
  * @property {"dark"|"light"} [theme]
  * @property {string} [backdrop] preset name or literal CSS
+ * @property {string} [art] a CSS background painted over the backdrop, behind
+ *   the card — the mycelial network arrives this way
  * @property {number} [padding] gutter between backdrop edge and card
  * @property {number} [radius]
  * @property {boolean} [shadow]
@@ -83,10 +85,17 @@ export function cardDocument(bodyHtml, opts = {}, extraCss = "") {
 html,body{margin:0;padding:0;background:transparent}
 body{-webkit-font-smoothing:antialiased;text-rendering:geometricPrecision}
 #canvas{
+  position:relative;
   display:inline-block;width:max-content;padding:${pad}px;
   background:${backdrop(opts.backdrop ?? "mycelium", theme)};
 }
+/* Artwork is its own layer rather than a second background on #canvas, so that
+   image-rendering reaches the network and nothing else: the card body holds a
+   page capture placed at 1:1, and pixelating that would undo the point of it. */
+#art{position:absolute;inset:0;image-rendering:pixelated;background:${opts.art ?? "none"}}
 #card{
+  /* Lifted over #art, which is positioned and would otherwise paint on top. */
+  position:relative;
   width:max-content;${maxWidth}
   background:${pal.paper};
   border:1px solid ${pal.border2};
@@ -130,7 +139,7 @@ body{-webkit-font-smoothing:antialiased;text-rendering:geometricPrecision}
   white-space:pre;tab-size:8;
 }
 ${extraCss}
-</style></head><body><div id="canvas"><div id="card">${titleBar}<div class="body">${bodyHtml}</div></div></div></body></html>`;
+</style></head><body><div id="canvas">${opts.art ? '<div id="art"></div>' : ""}<div id="card">${titleBar}<div class="body">${bodyHtml}</div></div></div></body></html>`;
 }
 
 /**

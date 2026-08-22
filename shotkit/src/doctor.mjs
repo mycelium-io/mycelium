@@ -14,6 +14,7 @@ import { platform, release } from "node:os";
 import { DEFAULT_OUT_DIR } from "./api.mjs";
 import { FRONTEND_DIR } from "./app.mjs";
 import { loadPlaywright, REPO_ROOT } from "./engine.mjs";
+import { CANVAS_SOURCE } from "./mycelial.mjs";
 import { candidates, launchChromium } from "./browser.mjs";
 import { ptyAvailable } from "./run.mjs";
 import { ping, socketPath } from "./ipc.mjs";
@@ -59,6 +60,10 @@ export async function doctor() {
   } catch {
     warn("highlight.js missing — `shot code` renders plain. Run `npm install` in shotkit/");
   }
+
+  head("backdrop");
+  if (existsSync(`${REPO_ROOT}/${CANVAS_SOURCE}`)) ok(`${CANVAS_SOURCE} present — \`--backdrop mycelial\` grows the site's network`);
+  else warn(`${CANVAS_SOURCE} missing — \`--backdrop mycelial\` errors; the other presets are unaffected`);
 
   head("app");
   if (existsSync(`${FRONTEND_DIR}/node_modules`)) ok("mycelium-frontend deps installed — --mock can boot dev:mock");

@@ -21,6 +21,7 @@ import { codeDocument } from "./code.mjs";
 import { terminalDocument } from "./terminal.mjs";
 import { cardDocument, imageCardDocument } from "./card.mjs";
 import { sheetDocument } from "./sheet.mjs";
+import { mycelialArt } from "./mycelial.mjs";
 import { resolveBaseUrl } from "./app.mjs";
 import { runCommand } from "./run.mjs";
 import { stripAnsi } from "./ansi.mjs";
@@ -50,6 +51,7 @@ import { viewportList } from "./viewports.mjs";
  * @property {string} [address] address-bar text when `chrome` is set
  * @property {"dark"|"light"} [chromeTheme] frame theme, when it should differ
  *   from the app's — a light frame around a dark app, say
+ * @property {number} [backdropSeed] which network `--backdrop mycelial` grows
  */
 
 export const DEFAULT_OUT_DIR = process.env.SHOTKIT_OUT ?? resolve(REPO_ROOT, ".shotkit");
@@ -85,6 +87,23 @@ export async function shutdown() {
 
 const CARD_KEYS = ["theme", "backdrop", "padding", "radius", "shadow", "window", "title", "fontSize", "lineHeight", "font", "cols", "maxWidth"];
 const pickCard = (spec) => Object.fromEntries(CARD_KEYS.filter((k) => spec[k] !== undefined).map((k) => [k, spec[k]]));
+
+/**
+ * The artwork layer behind the card, for the backdrops that have one.
+ *
+ * Only `mycelial` does. It is a backdrop rather than a flag of its own because
+ * that is where a caller looks for what the image sits on, but growing the
+ * network is a render and not a CSS lookup, so it resolves here — where the
+ * engine is — instead of in the string table.
+ *
+ * @param {any} eng @param {Record<string,any>} spec @param {string} theme
+ * @returns {Promise<string|undefined>}
+ */
+async function artFor(eng, spec, theme) {
+  if (spec.backdrop !== "mycelial") return undefined;
+  return mycelialArt(eng, { theme: theme === "light" ? "light" : "dark", seed: spec.backdropSeed });
+}
+
 const pickStatic = (spec) => ({
   theme: spec.theme,
   scale: spec.scale,
@@ -165,20 +184,15 @@ async function wrapChrome(eng, buf, spec, address) {
   if (!spec.chrome) return buf;
   const scale = spec.scale ?? 2;
   const { width } = pngSize(buf);
+  const theme = spec.chromeTheme ?? spec.theme ?? "dark";
   const html = imageCardDocument(buf.toString("base64"), Math.round(width / scale), {
     ...pickCard(spec),
-    theme: spec.chromeTheme ?? spec.theme ?? "dark",
+    theme,
+    art: await artFor(eng, spec, theme),
     address: spec.address ?? address,
   });
   // Same scale as the capture, so one image pixel lands on one device pixel.
-  return eng.captureStatic({
-    html,
-    ...pickStatic(spec),
-    theme: spec.chromeTheme ?? spec.theme ?? "dark",
-    scale,
-    width: 2600,
-    height: 2000,
-  });
+  return eng.captureStatic({ html, ...pickStatic(spec), theme, scale, width: 2600, height: 2000 });
 }
 
 /** app/url/session ops all need to know where the app is. */
@@ -218,6 +232,7 @@ async function captureResponsive({ base, spec, pageSpec, frames, fallbackName, e
   const html = sheetDocument(composed, {
     theme: spec.theme ?? "dark",
     backdrop: spec.backdrop,
+    art: await artFor(eng, spec, spec.theme ?? "dark"),
     title: spec.sheetTitle ?? `${spec.route ?? url} — ${frames.map((f) => f.name).join(" · ")}`,
   });
   const buf = await eng.captureStatic({ html, ...pickStatic(spec), scale: 1, width: 2600, height: 2000 });
@@ -233,6 +248,7 @@ async function renderCard(spec, eng) {
   let html;
   let selector;
   let fallbackName;
+  const card = { ...pickCard(spec), art: await artFor(eng, spec, spec.theme ?? "dark") };
 
   if (spec.op === "term") {
     let output = spec.text;
@@ -256,7 +272,7 @@ async function renderCard(spec, eng) {
       if (spec.echo) meta.plain = stripAnsi(output);
     }
     const doc = terminalDocument({
-      ...pickCard(spec),
+      ...card,
       output,
       command: spec.prompt === false ? undefined : command,
       prompt: typeof spec.prompt === "string" ? spec.prompt : undefined,
@@ -269,14 +285,14 @@ async function renderCard(spec, eng) {
     meta.cols = doc.cols;
     fallbackName = `term-${slug(command ?? "text")}`;
   } else if (spec.op === "code") {
-    const doc = await codeDocument({ ...pickCard(spec), ...pickCode(spec) });
+    const doc = await codeDocument({ ...card, ...pickCode(spec) });
     html = doc.html;
     meta.lang = doc.lang;
     meta.rows = doc.rows;
     fallbackName = `code-${slug(spec.file ? basename(spec.file) : (spec.lang ?? "snippet"))}`;
   } else {
     const source = spec.html ?? (await readFile(resolve(spec.file), "utf8"));
-    html = spec.raw === false ? cardDocument(source, pickCard(spec)) : source;
+    html = spec.raw === false ? cardDocument(source, card) : source;
     selector = spec.element ?? (html.includes('id="canvas"') ? "#canvas" : "body");
     fallbackName = spec.file ? `html-${slug(basename(spec.file))}` : "html";
   }
