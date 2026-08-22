@@ -3,12 +3,21 @@
 
 "use client";
 
-import { useState } from "react";
-import { Activity, Brain, PanelRightClose, PanelRightOpen, Users, type LucideIcon } from "lucide-react";
+import { useLayoutEffect, useRef, useState, type RefObject } from "react";
+import {
+  Activity,
+  Brain,
+  PanelRightClose,
+  PanelRightOpen,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
 import { AgentsPanel } from "@/components/agents-panel";
 import { EpisodesRail } from "@/components/episodes-rail";
 import { KeyBadge } from "@/components/key-badge";
 import { MemoryPanel } from "@/components/memory-panel";
+import { chordFor, chordKey } from "@/lib/keymap";
+import { TAB_LABELS_MIN_WIDTH } from "@/lib/panel-layout";
 import type { FocusTarget } from "@/lib/search";
 
 // Skills aren't a rail: a skill is just a `skills/…` memory, so it shows up in
@@ -20,6 +29,15 @@ const TABS: { id: Tab; label: string; icon: LucideIcon }[] = [
   { id: "episodes", label: "Episodes", icon: Activity },
   { id: "memory", label: "Memory", icon: Brain },
 ];
+
+/** "Collapse the rail (\)" — the keybind is spelled out here because `\` isn't
+ *  a reveal chord, so KeyBadge can't draw it on the button. Unmodified, so
+ *  `chordKey` reads the same on every platform and survives hydration. */
+function railToggleTitle(open: boolean): string {
+  const chord = chordFor("rail.toggle");
+  const suffix = chord ? ` (${chordKey(chord)})` : "";
+  return `${open ? "Collapse" : "Expand"} the rail${suffix}`;
+}
 
 interface Props {
   roomName: string;
@@ -38,6 +56,29 @@ interface Props {
   onFocusConsumed?: () => void;
   /** Reveal a memory by key in the Memory tab (e.g. a clicked chat wikilink). */
   focusMemory?: { key: string; nonce: number } | null;
+}
+
+/**
+ * How much of the tab strip fits. The rail is draggable down to a width that
+ * can't hold three labelled tabs, so below `TAB_LABELS_MIN_WIDTH` they drop to
+ * icons alone — the labels move into tooltips and accessible names rather than
+ * clipping or wrapping the strip onto a second row.
+ *
+ * Measured off the rail itself, not the viewport: the rail is the box the tabs
+ * have to fit inside, and it changes width without the window doing anything.
+ */
+function useCompactTabs(ref: RefObject<HTMLElement | null>): boolean {
+  const [compact, setCompact] = useState(false);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(([entry]) => {
+      setCompact(entry.contentRect.width < TAB_LABELS_MIN_WIDTH);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [ref]);
+  return compact;
 }
 
 /** The room's context: agents, episodes, and memory behind one tabbed right rail. */
@@ -62,13 +103,17 @@ export function RoomInspector({
   const setTab = (t: Tab) => { if (tabProp === undefined) setTabInternal(t); onTabChange?.(t); };
   const setOpen = (o: boolean) => { if (openProp === undefined) setOpenInternal(o); onOpenChange?.(o); };
 
+  const railRef = useRef<HTMLElement>(null);
+  const compact = useCompactTabs(railRef);
+
   // Collapsed: a slim strip of the three tab icons; clicking one expands to it.
   if (!open) {
     return (
-      <aside className="flex w-12 flex-shrink-0 flex-col items-center gap-1 border-l border-border bg-surface/40 pt-3">
+      <aside className="flex w-full min-w-0 flex-col items-center gap-1 overflow-hidden bg-surface/40 pt-3">
         <button
           onClick={() => setOpen(true)}
-          aria-label="Open inspector"
+          aria-label={railToggleTitle(false)}
+          title={railToggleTitle(false)}
           className="flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-surface hover:text-text"
         >
           <PanelRightOpen className="size-[18px]" />
@@ -93,9 +138,9 @@ export function RoomInspector({
   }
 
   return (
-    <aside className="flex w-[340px] flex-shrink-0 flex-col border-l border-border bg-surface/30">
+    <aside ref={railRef} className="flex w-full min-w-0 flex-col overflow-hidden bg-surface/30">
       <div className="flex h-[48px] flex-shrink-0 items-center gap-1 border-b border-border bg-paper px-2">
-        <div className="flex items-center gap-0.5 rounded-lg border border-border bg-surface p-0.5">
+        <div className="flex min-w-0 items-center gap-0.5 rounded-lg border border-border bg-surface p-0.5">
           {TABS.map(({ id, label, icon: Icon }) => {
             const active = tab === id;
             return (
@@ -103,21 +148,26 @@ export function RoomInspector({
                 key={id}
                 data-tour={`inspector-${id}`}
                 onClick={() => setTab(id)}
-                className={`relative flex items-center gap-1.5 rounded-md px-2.5 py-1 text-label font-medium transition-colors ${
+                aria-label={label}
+                title={compact ? label : undefined}
+                className={`relative flex items-center gap-1.5 rounded-md py-1 text-label font-medium transition-colors ${
+                  compact ? "px-2" : "px-2.5"
+                } ${
                   active ? "bg-elevated text-text shadow-sm ring-1 ring-border" : "text-muted-foreground hover:text-text"
                 }`}
               >
-                <Icon className="size-3.5" />
-                {label}
-                <KeyBadge action={`rail.${id}`} />
+                <Icon className="size-3.5 flex-shrink-0" />
+                {!compact && label}
+                <KeyBadge action={`rail.${id}`} overlay={compact} />
               </button>
             );
           })}
         </div>
         <button
           onClick={() => setOpen(false)}
-          aria-label="Collapse inspector"
-          className="ml-auto flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface hover:text-text"
+          aria-label={railToggleTitle(true)}
+          title={railToggleTitle(true)}
+          className="ml-auto flex size-7 flex-shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface hover:text-text"
         >
           <PanelRightClose className="size-4" />
         </button>

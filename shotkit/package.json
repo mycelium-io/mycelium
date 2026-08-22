@@ -1,0 +1,19 @@
+{
+  "name": "@mycelium/shotkit",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Fast screenshots of the running app and of CLI output, for coding agents.",
+  "bin": { "shot": "./bin/shot.mjs" },
+  "exports": { ".": "./src/api.mjs" },
+  "engines": { "node": ">=20.6" },
+  "scripts": {
+    "shot": "node ./bin/shot.mjs",
+    "doctor": "node ./bin/shot.mjs doctor",
+    "selftest": "node ./test/selftest.mjs"
+  },
+  "dependencies": {
+    "highlight.js": "^11.11.1",
+    "playwright": "^1.62.1"
+  }
+}

@@ -13,6 +13,7 @@ truth is the UI itself, captured in **mock mode** (`pnpm dev:mock`,
 pnpm screenshots            # boot dev:mock, capture every shot, write PNGs
 pnpm screenshots room-plan  # a subset, by shot id
 pnpm screenshots --keep     # attach to a dev:mock already running on $PORT
+pnpm screenshots --offline  # don't wait on webfont CDNs (much faster if they're unreachable)
 ```
 
 Outputs are **committed** so normal docs/splash builds never need a browser, and
@@ -25,9 +26,14 @@ the splash repo builds standalone. Re-run and commit when the UI changes.
 - **`targets.ts`** — where each shot's PNG(s) land (docs/ and/or splash), and the
   `@2x` retina variants. The splash path defaults to a sibling checkout; override
   with `MYCELIUM_SPLASH_DIR`.
-- **`capture.ts`** — boots the mock server on a free port, drives Playwright over
-  the manifest, waits for a *populated* frame (shell mounted, skeletons cleared,
-  SSE "Live", fonts loaded), optimizes with `sharp`, and fans out to targets.
+- **`capture.ts`** — maps each manifest entry to a `shotkit` spec, then optimizes
+  with `sharp` and fans out to targets. The browser work — booting the mock
+  server, finding a usable Chromium, waiting for a *populated* frame (shell
+  mounted, skeletons cleared, SSE "Live", fonts loaded), driving the page —
+  belongs to `shotkit/`, the repo's screenshot utility, because it is the same
+  problem whether the caller is this pipeline or an agent at a terminal. What
+  stays here is publication's business: which shots exist, how they're
+  optimized, and where they land.
 
 ## Adding a shot
 
@@ -35,14 +41,14 @@ the splash repo builds standalone. Re-run and commit when the UI changes.
 2. Map it to output paths in `TARGETS` in `targets.ts`.
 3. If `pnpm dev:mock` can't render that state, add/extend a fixture in
    `src/mocks/fixtures.ts` first — the pipeline can only shoot what the mock can
-   render. Interactive states (an open `@`/`[[`/`/` composer popover) are scripted
-   with a keystroke in `capture.ts`, not a fixture.
+   render. Interactive states (an open `@`/`[[`/`/` composer popover) are reached
+   with `steps`, which become shotkit actions, not with a fixture.
 4. `pnpm screenshots <id>` and eyeball the result.
 
 ## Notes
 
-- Requires the Playwright Chromium build once: `npx playwright install chromium`.
-- The capture addresses the dev server as `localhost` (not `127.0.0.1`): Next's
-  dev-server cross-origin guard only allow-lists `localhost`, so a browser 403s on
-  every `/_next/*` chunk over the IP and the app never hydrates.
+- Needs a Chromium; `node ../shotkit/bin/shot.mjs doctor` says whether one is
+  usable and how to get one.
 - Waits gate on content, never timeouts — deterministic fixtures mean no flake.
+- To iterate on a single shot interactively, `shot app <route> --mock` is the
+  faster loop: it holds the browser and the dev server open between captures.

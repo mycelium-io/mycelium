@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Mycelium Contributors
 
-import { act } from "react";
+import { act, type ComponentProps } from "react";
 import { screen, within } from "@testing-library/react";
 import { renderWithSWR } from "@/test/swr";
 import userEvent from "@testing-library/user-event";
@@ -30,7 +30,11 @@ function rooms(...names: string[]) {
   return names.map(name => ({ name }));
 }
 
-async function renderSidebar(names: string[], activeRoom: string | null = null) {
+async function renderSidebar(
+  names: string[],
+  activeRoom: string | null = null,
+  props: Partial<ComponentProps<typeof RoomsSidebar>> = {},
+) {
   vi.mocked(fetchRooms).mockResolvedValue(rooms(...names) as never);
   renderWithSWR(
     <CurrentUserProvider>
@@ -38,7 +42,7 @@ async function renderSidebar(names: string[], activeRoom: string | null = null) 
         <NotificationsProvider>
           <KeymapProvider>
             <InstallModalProvider>
-              <RoomsSidebar activeRoom={activeRoom} />
+              <RoomsSidebar activeRoom={activeRoom} {...props} />
             </InstallModalProvider>
           </KeymapProvider>
         </NotificationsProvider>
@@ -145,5 +149,41 @@ describe("<RoomsSidebar /> unread badges", () => {
     const beta = screen.getByRole("link", { name: /beta/ });
     expect(within(beta).queryByLabelText(/unread/)).toBeNull();
     expect(within(beta).getByLabelText("muted")).toBeInTheDocument();
+  });
+});
+
+describe("<RoomsSidebar /> collapsed strip", () => {
+  beforeEach(() => {
+    FakeEventSource.reset();
+    vi.stubGlobal("EventSource", FakeEventSource);
+    window.localStorage.clear();
+  });
+
+  it("keeps every room reachable as a monogram, without the filter", async () => {
+    await renderSidebar(["alpha", "beta"], "beta", { collapsed: true });
+
+    // Named for the screen reader, drawn as initials — still one click away.
+    expect(screen.getByRole("link", { name: "alpha" })).toHaveAttribute("href", "/room/alpha");
+    expect(screen.getByRole("link", { name: "beta" })).toHaveAttribute("href", "/room/beta");
+    expect(screen.getByText("AL")).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("Filter rooms…")).toBeNull();
+  });
+
+  it("still badges unread activity, and offers the way back", async () => {
+    window.localStorage.setItem(
+      "mycelium.notifications",
+      JSON.stringify([{ room: "alpha", read: false }]),
+    );
+    const onCollapsedChange = vi.fn();
+    const user = await renderSidebar(["alpha", "beta"], "beta", {
+      collapsed: true,
+      onCollapsedChange,
+    });
+
+    const alpha = screen.getByRole("link", { name: /alpha/ });
+    expect(within(alpha).getByLabelText("1 unread")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /Expand the rooms rail/ }));
+    expect(onCollapsedChange).toHaveBeenCalledWith(false);
   });
 });
