@@ -135,15 +135,24 @@ jobs:
 
       # scripts/ sits outside both lint roots (fastapi-backend and mycelium-cli
       # each check only their own tree), so the maintainer scripts — including
-      # the CI gates themselves — were checked by nobody. They ride along here
-      # rather than in their own job: the toolchain is already installed, so it
-      # costs seconds. Config is the repo-root ruff.toml.
+      # the CI gates themselves — were checked by nobody. They ride along in this
+      # job because it is already warm, but they are checked in isolation
+      # (`--no-project`) rather than against the CLI's environment.
+      #
+      # That isolation is the point, not a detail. A script here declares no
+      # dependencies — it is standalone, run by hand from whatever env has what
+      # it needs — so checking it inside a neighbouring project's venv makes the
+      # result depend on which optional extras that project happens to pull in.
+      # It does not resolve the same way twice: `--extra engine` brings Pillow
+      # in transitively, so `scripts/gen-banner-network.py` type-checks against
+      # real Pillow stubs on CI and against nothing on a contributor's machine.
+      # Stdlib-only is the environment these scripts actually document, so it is
+      # the one they are checked in — the same answer everywhere.
       - name: Lint maintainer scripts
-        working-directory: mycelium-cli
         run: |
-          uv run ruff check --config ../ruff.toml ../scripts
-          uv run ruff format --check --config ../ruff.toml ../scripts
-          uv run ty check ../scripts
+          uv run --no-project --with ruff ruff check --config ruff.toml scripts
+          uv run --no-project --with ruff ruff format --check --config ruff.toml scripts
+          uv run --no-project --with ty ty check --python-version 3.12 scripts
 
       # docs/*.html and docs/llms-full.txt are generated from the markdown under
       # mycelium-cli/src/mycelium/docs/, the @doc_ref decorators, and the pydantic

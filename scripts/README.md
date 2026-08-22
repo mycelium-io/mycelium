@@ -24,13 +24,24 @@ Each script's header comment states its prerequisites and where its output
 lands. Read that before running — several need a running backend or a font
 installed, and fail unhelpfully without them.
 
-Everything here is linted and type-checked. The rules are the repo-root
-`ruff.toml` and the checks ride along in CI's `CLI lint + tests` job, where the
-toolchain is already installed:
+Everything here is linted and type-checked, against the repo-root `ruff.toml`.
+Run it from the repo root, exactly as CI does:
 
 ```bash
-cd mycelium-cli
-uv run ruff check --config ../ruff.toml ../scripts
-uv run ruff format --check --config ../ruff.toml ../scripts
-uv run ty check ../scripts
+uv run --no-project --with ruff ruff check --config ruff.toml scripts
+uv run --no-project --with ruff ruff format --check --config ruff.toml scripts
+uv run --no-project --with ty ty check --python-version 3.12 scripts
 ```
+
+`--no-project` is deliberate. A script here declares no dependencies — it is
+standalone, run by hand from whatever environment has what it needs — so
+checking it inside a neighbouring project's venv makes the answer depend on
+which optional extras that project happens to pull in, and it stops matching
+between CI and a laptop. Stdlib-only is the environment these scripts document,
+so it is the one they are checked in.
+
+The trade is that an import from outside the standard library is unresolvable
+by construction; the three that exist (Pillow, Playwright, litellm) carry a
+`# ty: ignore[unresolved-import]` at the import site saying so. Nothing type-
+checks the *use* of those libraries, which is the honest cost of not pinning
+a toolchain nobody needs in order to run the CI gates.
