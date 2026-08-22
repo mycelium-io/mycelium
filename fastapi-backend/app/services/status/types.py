@@ -25,8 +25,27 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any, Literal, Protocol, runtime_checkable
 
-#: What the board can act on generically. A provider maps its own states onto
+#: What a surface can act on generically. A provider maps its own states onto
 #: these; anything it cannot map is ``unknown`` rather than a guess.
+#:
+#: The six are pinned down here because two different readers infer different
+#: things from the words alone, and a provider author mapping a tracker onto
+#: them needs one answer:
+#:
+#: ``ok``       nothing is wrong and nobody is needed. Healthy, **not**
+#:              finished — an approved pull request is ``ok`` until it merges.
+#: ``pending``  in motion, nobody is required. Checks running, a first review
+#:              not yet given, a draft.
+#: ``blocked``  waiting on a person: a decision, a revision, an approval.
+#: ``failed``   waiting on a fix, and a machine is what said no.
+#: ``done``     terminal, however it ended. Merged, closed, cancelled — the
+#:              distinction between a good and a bad ending is the ``label``'s
+#:              to carry, not this field's.
+#: ``unknown``  the provider met a state it cannot place. Honest ignorance,
+#:              never a default for "no information".
+#:
+#: ``ok`` and ``done`` are the pair worth getting right: ``ok`` is a healthy
+#: thing still in flight, ``done`` is a finished one.
 State = Literal["ok", "pending", "blocked", "failed", "done", "unknown"]
 
 #: How much the caller should trust what they were handed. This travels with

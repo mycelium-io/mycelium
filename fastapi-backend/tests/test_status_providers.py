@@ -16,7 +16,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from app.services.status.cache import StatusCache
-from app.services.status.providers.github import GitHubProvider
+from app.services.status.providers.github import GitHubProvider, _status
 from app.services.status.runtime import StatusRuntime
 from app.services.status.types import Err, Ok, Ref, Status
 
@@ -292,3 +292,37 @@ class TestCredentials:
         answers = await rt.resolve([ref("T-1"), other], NOW)
         assert answers[ref("T-1")].freshness == "error"
         assert answers[other].status is not None
+
+
+class TestStateVocabulary:
+    """`ok` and `done` are the pair readers conflate, so pin them down."""
+
+    def test_github_never_reports_an_open_pull_request_as_done(self):
+        node = {"state": "OPEN", "reviewDecision": "APPROVED", "commits": {"nodes": []}}
+        status = _status(node)
+        assert status.state == "ok"
+        assert status.label == "approved"
+
+    def test_a_merged_pull_request_is_done_not_ok(self):
+        assert _status({"state": "MERGED"}).state == "done"
+
+    def test_a_closed_one_is_also_done_and_the_label_carries_how_it_ended(self):
+        closed = _status({"state": "CLOSED"})
+        assert closed.state == "done"
+        assert closed.label == "closed"
+
+    def test_green_checks_alone_are_not_ok(self):
+        node = {
+            "state": "OPEN",
+            "commits": {"nodes": [{"commit": {"statusCheckRollup": {"state": "SUCCESS"}}}]},
+        }
+        assert _status(node).state == "pending"
+
+    def test_a_person_blocks_and_a_machine_fails(self):
+        person = {"state": "OPEN", "reviewDecision": "CHANGES_REQUESTED"}
+        machine = {
+            "state": "OPEN",
+            "commits": {"nodes": [{"commit": {"statusCheckRollup": {"state": "FAILURE"}}}]},
+        }
+        assert _status(person).state == "blocked"
+        assert _status(machine).state == "failed"
