@@ -182,8 +182,9 @@ is no litellm dependency.
   plan → work. This is the value add; don't change it to an augmentation layer.
 - **memory set always upserts.** `memory set` overwrites existing keys automatically
   (version increments). Frontmatter the store doesn't manage is user data: it
-  survives a rewrite rather than being dropped, and `MemoryCreate.meta` (CLI:
-  `--meta k=v`, `--expandable`) writes it.
+  survives a rewrite rather than being dropped, `MemoryCreate.meta` (CLI:
+  `--meta k=v`, `--expandable`) writes it, and `MemoryRead.meta` reads it back —
+  every frontmatter key outside `MANAGED_META` (`services/filesystem.py`).
 - **Memories interlink; the link index is derived.** `myc://key` (canonical) and
   `[[key]]` (shorthand) are the same edge, plus `![[key]]` transclusions and typed
   frontmatter relations (`supersedes`, `depends-on`, `part-of`, `relates-to`).
