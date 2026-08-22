@@ -6,6 +6,7 @@
 import { useEffect, useState } from "react";
 import { fetchEpisode, type EpisodeDetail as EpisodeDetailT, type L9Envelope } from "@/lib/api";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip } from "@/components/ui/tooltip";
 
 function outcomeColor(state: string | null): string {
   if (state === "converged" || state === "resolved") return "var(--green)";
@@ -22,12 +23,20 @@ function Meta({ label, children }: { label: string; children: React.ReactNode })
   );
 }
 
-function Stat({ label, value, title }: { label: string; value: string; title?: string }) {
+/** A quality metric tile. The label is an acronym, so the tooltip spelling it
+ *  out is the tile's only explanation — `aria-description` keeps it for readers
+ *  that never hover. */
+function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
-    <div className="flex flex-col gap-0.5 rounded-lg border border-border bg-surface px-3 py-2" title={title}>
-      <span className="text-micro uppercase tracking-wide text-faint">{label}</span>
-      <span className="font-mono text-label tabular text-text">{value}</span>
-    </div>
+    <Tooltip content={hint}>
+      <div
+        aria-description={hint}
+        className="flex flex-col gap-0.5 rounded-lg border border-border bg-surface px-3 py-2"
+      >
+        <span className="text-micro uppercase tracking-wide text-faint">{label}</span>
+        <span className="font-mono text-label tabular text-text">{value}</span>
+      </div>
+    </Tooltip>
   );
 }
 
@@ -61,6 +70,9 @@ export function EpisodeDetail({ roomName, shortId }: { roomName: string; shortId
 
   useEffect(() => {
     let cancelled = false;
+    // Async fetch; the other setState calls are in its callbacks. This one is
+    // the loading gate, which has to be raised before the fetch starts.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     fetchEpisode(roomName, shortId)
       .then(d => { if (!cancelled) { setDetail(d); setLoading(false); } })
@@ -108,9 +120,9 @@ export function EpisodeDetail({ roomName, shortId }: { roomName: string; shortId
 
       {m && (
         <div className="grid grid-cols-3 gap-2 border-b border-border px-5 py-4">
-          <Stat label="MPC" value={m.mpc.toFixed(2)} title="Mutual proposal coherence" />
-          <Stat label="GAR" value={m.gar.toFixed(2)} title="Genuine agreement ratio" />
-          <Stat label="SCR" value={m.scr.toFixed(2)} title="Self-consistency ratio" />
+          <Stat label="MPC" value={m.mpc.toFixed(2)} hint="Mutual proposal coherence" />
+          <Stat label="GAR" value={m.gar.toFixed(2)} hint="Genuine agreement ratio" />
+          <Stat label="SCR" value={m.scr.toFixed(2)} hint="Self-consistency ratio" />
         </div>
       )}
 

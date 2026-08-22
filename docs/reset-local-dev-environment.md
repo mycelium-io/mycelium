@@ -51,7 +51,7 @@ That removes **`rooms/`** (all room markdown, memory, and plans), **`config.toml
    proven path; `cursor` is present but unverified.
 3. For multi-machine wiring, run **`mycelium hub host`** on the hub and **`mycelium
    connect http://<hub-ip>:46357`** on each spoke. See
-   [Cross-machine coordination](cross-machine.html).
+   [Cross-machine coordination](cross-machine.md).
 
 ---
 

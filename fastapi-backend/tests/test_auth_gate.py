@@ -538,3 +538,30 @@ async def test_a_real_token_becomes_the_author_of_a_write(
     )
     assert resp.status_code == 201
     assert resp.json()[0]["created_by"] == "poc-agent"
+
+
+# ── A2A inbound: card is public discovery, RPC is gated (#717) ─────────────────
+
+
+@pytest.mark.asyncio
+async def test_a2a_agent_card_is_public_when_gate_on(client: AsyncClient, auth_on):
+    """The Agent Card is discovery metadata — served unauthenticated by A2A spec.
+
+    A missing room returns 404 (the route ran), not 401 (the gate blocked it),
+    which is what proves the exemption fired.
+    """
+    resp = await client.get("/api/rooms/ghost/.well-known/agent-card.json")
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_a2a_rpc_endpoint_is_gated_when_gate_on(client: AsyncClient, auth_on):
+    """The room's JSON-RPC endpoint is not exempt — no token means 401."""
+    rpc = {
+        "jsonrpc": "2.0",
+        "id": "1",
+        "method": "message/send",
+        "params": {"message": {"kind": "message", "messageId": "x", "role": "user", "parts": []}},
+    }
+    resp = await client.post("/api/rooms/ghost/a2a", json=rpc)
+    assert resp.status_code == 401

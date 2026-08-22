@@ -43,7 +43,7 @@ describe("<MarkdownContent /> memory links", () => {
     );
 
     expect(screen.queryByRole("button", { name: /gone/ })).not.toBeInTheDocument();
-    expect(screen.getByTitle("gone — no such memory")).toBeInTheDocument();
+    expect(screen.getByText("gone")).toHaveAttribute("aria-description", "gone — no such memory");
   });
 
   it("renders links inert when no click handler is supplied", () => {
@@ -93,7 +93,7 @@ describe("<MarkdownContent /> memory links", () => {
     const onLinkClick = vi.fn();
     render(<MarkdownContent onLinkClick={onLinkClick}>{"![[glossary/slim]]"}</MarkdownContent>);
 
-    expect(screen.getByTitle("Embeds glossary/slim")).toBeInTheDocument();
+    expect(screen.getByRole("button")).toHaveAttribute("aria-description", "Embeds glossary/slim");
   });
 
   it("renders a /skill reference as a chip that opens its skills/ memory", async () => {

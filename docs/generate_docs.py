@@ -37,8 +37,8 @@ PAGES: list[tuple[str, str, str, str, str, str, str]] = [
      "GET-001", "OVERVIEW · QUICK START · CONCEPTS · ENGINES",
      "A shared space for humans and agents. Install Mycelium and learn the core concepts: rooms, memory, plan, engines (the aligner and synthesizer), and the L9 protocol."),
     ("adapters", "adapters.html", "Adapters · mycelium", "Adapters",
-     "ADP-001", "ADAPTERS · CLAUDE CODE · CURSOR · REST API",
-     "Connect Claude Code, Cursor, or any HTTP client to the Mycelium coordination layer."),
+     "ADP-001", "ADAPTERS · CLAUDE CODE · CURSOR · A2A BRIDGE · REST API",
+     "Connect Claude Code, Cursor, any A2A agent, or any HTTP client to the Mycelium coordination layer."),
     ("reference", "reference.html", "Reference · mycelium", "Reference",
      "REF-001", "REFERENCE · ARCHITECTURE · CLI · CONFIG · DEPENDENCIES · GUIDES · HELP",
      "Architecture, CLI reference, configuration, dependencies and compatibility, guides, and troubleshooting for Mycelium."),
@@ -68,12 +68,14 @@ SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
     (None,                            "adapters",           "adapters",  "Adapters",     "Overview"),
     (None,                            "adapter-claude-code","adapters",  "Adapters",     "Claude Code"),
     (None,                            "adapter-cursor",     "adapters",  "Adapters",     "Cursor"),
+    ("a2a-bridge.md",                 "adapter-a2a",        "adapters",  "Adapters",     "A2A Bridge"),
     (None,                            "adapter-api",        "adapters",  "Adapters",     "REST API"),
     # ── reference (reference.html) ──
     ("reference/architecture.md",     "architecture",       "reference", "Architecture", "Architecture"),
     # CLI + Config blocks injected after architecture, before guides/troubleshooting.
     ("guides/structured-memory.md",   "structured-memory",  "reference", "Guides",       "Structured Memory"),
     ("guides/hub-and-spoke.md",       "hub-and-spoke",      "reference", "Guides",       "Hub & Spoke"),
+    ("guides/ephemeral-agents.md",    "ephemeral-agents",   "reference", "Guides",       "Ephemeral Agents"),
     ("guides/security-planes.md",     "security-planes",    "reference", "Guides",       "Security Planes"),
     ("guides/auth.md",                "auth",               "reference", "Guides",       "Authentication"),
     ("guides/keycloak-oidc.md",       "keycloak-oidc",      "reference", "Guides",       "Keycloak / OIDC Setup"),
@@ -969,6 +971,11 @@ SKILL_MD_URL = (
     "mycelium/SKILL.md"
 )
 
+AGENTS_MD_URL = (
+    "https://raw.githubusercontent.com/mycelium-io/mycelium/main/"
+    "mycelium-cli/src/mycelium/integrations/cursor/assets/AGENTS.md"
+)
+
 # Every markdown-backed section links back to the file it was rendered from, so
 # a reader who spots a mistake can fix it where the source of truth lives.
 EDIT_BASE_URL = (
@@ -1070,7 +1077,7 @@ def _topnav() -> str:
     <span class="brand-word">mycelium</span>
   </a>
   <nav class="sectionnav">
-    <a href="{SKILL_MD_URL}" target="_blank" rel="noopener">SKILL.md ↗</a>
+    <a href="{AGENTS_MD_URL}" target="_blank" rel="noopener">AGENTS.md ↗</a>
   </nav>
   <div class="topnav-right">
     <div class="docsearch" id="docsearch">
@@ -1141,6 +1148,9 @@ def _sidebar(nav: list[NavPage], active_page_id: str) -> str:
     out.append('    <div class="nav-external">')
     out.append(
         f'      <a href="{SKILL_MD_URL}" target="_blank" rel="noopener">SKILL.md ↗</a>'
+    )
+    out.append(
+        f'      <a href="{AGENTS_MD_URL}" target="_blank" rel="noopener">AGENTS.md ↗</a>'
     )
     out.append("    </div>")
     out.append("  </nav>")
@@ -1481,6 +1491,43 @@ def _write_search_index(records: list[dict]) -> None:
 # ── Main ──
 
 
+_ID_ATTR = re.compile(r'\bid="([^"]+)"')
+_BARE_FRAGMENT = re.compile(r'href="#([^"]+)"')
+
+
+def _resolve_cross_page_anchors(
+    built: list[tuple[tuple, str, list[tuple[str, list[tuple[str, str]]]]]],
+) -> list[tuple[tuple, str, list[tuple[str, list[tuple[str, str]]]]]]:
+    """Point body links at the page that actually holds the anchor.
+
+    A source doc writes `[the aligner](#aligner)` without knowing which page its
+    section lands on, so once split across files that link scrolls nowhere: the
+    id lives on index.html, not reference.html. The sidebar already qualifies its
+    hrefs with a file name; prose does it here, where every page is assembled and
+    none written. An anchor on the current page stays bare.
+    """
+    owner: dict[str, str] = {}
+    for page, content, _groups in built:
+        file_name = page[1]
+        for anchor in _ID_ATTR.findall(content):
+            owner.setdefault(anchor, file_name)
+
+    resolved = []
+    for page, content, groups in built:
+        file_name = page[1]
+        here = set(_ID_ATTR.findall(content))
+
+        def qualify(match: re.Match[str]) -> str:
+            anchor = match.group(1)
+            target = owner.get(anchor)
+            if anchor in here or target is None or target == file_name:
+                return match.group(0)
+            return f'href="{target}#{anchor}"'
+
+        resolved.append((page, _BARE_FRAGMENT.sub(qualify, content), groups))
+    return resolved
+
+
 def _render_and_write(
     page_id: str,
     file_name: str,
@@ -1538,6 +1585,8 @@ def main() -> None:
         nav.append((page_id, file_name, label, sidebar_groups))
         n = sum(len(items) for _, items in sidebar_groups)
         print(f"  {file_name}: {n} subsections in {len(sidebar_groups)} groups")
+
+    built = _resolve_cross_page_anchors(built)
 
     print("Rendering pages...")
     for page, content, _groups in built:

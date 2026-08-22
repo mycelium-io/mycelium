@@ -297,7 +297,8 @@ class MemoryLogEntry(BaseModel):
 #   claude_code → a resident Claude Code session (kept woken with `await --loop`)
 #   cursor      → a resident Cursor session (same resident lifecycle)
 #   engine      → a first-party cognition engine the backend runs
-AGENT_ADAPTERS: frozenset[str] = frozenset({"claude_code", "cursor", "engine"})
+#   a2a         → an external Agent2Agent endpoint, driven by a backend-held seat
+AGENT_ADAPTERS: frozenset[str] = frozenset({"claude_code", "cursor", "engine", "a2a"})
 
 #: Cognition-engine kinds hosted by the first-party ``engine`` runtime family.
 #: The extensibility axis: ``aligner`` (SIEP converge) and ``synthesizer`` (room
@@ -329,7 +330,7 @@ class AgentManifest(BaseModel):
     """
 
     handle: str = Field(..., min_length=1, pattern=HANDLE_PATTERN)
-    adapter: Literal["claude_code", "cursor", "engine"] = "claude_code"
+    adapter: Literal["claude_code", "cursor", "engine", "a2a"] = "claude_code"
     kind: str | None = Field(
         default=None,
         description=(
@@ -369,6 +370,18 @@ class AgentManifest(BaseModel):
             "grants no one."
         ),
     )
+    a2a_card: str | None = Field(
+        default=None,
+        description="a2a: base URL of the remote Agent Card. Required for the a2a adapter.",
+    )
+    a2a_endpoint: str | None = Field(
+        default=None,
+        description="a2a: resolved RPC endpoint the backend-held seat calls.",
+    )
+    a2a_skills: list[str] = Field(
+        default_factory=list,
+        description="a2a: skill ids advertised by the remote card (for the roster).",
+    )
 
     @model_validator(mode="before")
     @classmethod
@@ -403,6 +416,10 @@ class AgentManifest(BaseModel):
                 raise ValueError(
                     f"unknown engine kind {self.kind!r}; known: {sorted(ENGINE_KINDS)}"
                 )
+        # An a2a agent is a remote endpoint: its manifest must name the card so
+        # the backend-held seat knows who to call.
+        if self.adapter == "a2a" and not (self.a2a_card and self.a2a_card.strip()):
+            raise ValueError("a2a agents require an 'a2a_card' (the remote Agent Card URL)")
         return self
 
     @property

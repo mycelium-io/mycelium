@@ -3,12 +3,13 @@
 
 import { act } from "react";
 import { screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { renderWithSWR } from "@/test/swr";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeEventSource } from "@/test/fake-event-source";
+import { resetStreamHub } from "@/lib/stream-hub";
 
 vi.mock("@/lib/api", () => ({
-  getSSEUrl: (room: string) => `/api/rooms/${room}/messages/stream`,
   fetchMessages: vi.fn().mockResolvedValue({ messages: [] }),
   fetchRoomAgents: vi.fn().mockResolvedValue([]),
   fetchPendingInvites: vi.fn().mockResolvedValue([]),
@@ -38,6 +39,7 @@ function l9Exchange(text: string) {
 
 describe("<EventStream /> live message rendering", () => {
   beforeEach(() => {
+    resetStreamHub();
     FakeEventSource.reset();
     vi.stubGlobal("EventSource", FakeEventSource);
   });
@@ -135,6 +137,59 @@ describe("<EventStream /> live message rendering", () => {
     expect(screen.getByText("by @aligner", { exact: false })).toBeInTheDocument();
     expect(warn).not.toHaveBeenCalled();
     warn.mockRestore();
+  });
+
+  it("opens the episode a coordination notice names when its tag is clicked", async () => {
+    const onOpenEpisode = vi.fn();
+    renderWithSWR(<EventStream roomName="sprint" onOpenEpisode={onOpenEpisode} />);
+    await act(async () => {});
+    const es = FakeEventSource.latest();
+
+    await act(async () => {
+      es.open();
+      es.emit({
+        message_type: "l9_commit",
+        sender_handle: "aligner",
+        created_at: CREATED,
+        content: JSON.stringify({
+          content: "consensus reached",
+          l9: {
+            header: {
+              kind: "commit",
+              subkind: "converged",
+              message: { episode: "urn:ioc:mycelium:episode:sprint:e4f1a2" },
+            },
+            payload: { type: "consensus", data: { assignments: { stack: "next" } } },
+          },
+        }),
+      });
+    });
+
+    // The notice names the episode by its short id; the name is the way in.
+    await userEvent.click(await screen.findByRole("button", { name: /Open episode e4f1a2/ }));
+    expect(onOpenEpisode).toHaveBeenCalledWith("e4f1a2");
+  });
+
+  it("leaves the episode tag inert when nothing is listening for it", async () => {
+    renderWithSWR(<EventStream roomName="sprint" />);
+    await act(async () => {});
+    const es = FakeEventSource.latest();
+
+    await act(async () => {
+      es.open();
+      es.emit({
+        message_type: "coordination_join",
+        sender_handle: "alice",
+        created_at: CREATED,
+        content: JSON.stringify({
+          handle: "alice",
+          episode: "urn:ioc:mycelium:episode:sprint:e4f1a2",
+        }),
+      });
+    });
+
+    expect(await screen.findByText("e4f1a2")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Open episode/ })).not.toBeInTheDocument();
   });
 
   it("warns loudly on an unhandled message_type instead of dropping it silently", async () => {

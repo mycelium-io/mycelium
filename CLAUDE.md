@@ -182,8 +182,9 @@ is no litellm dependency.
   plan → work. This is the value add; don't change it to an augmentation layer.
 - **memory set always upserts.** `memory set` overwrites existing keys automatically
   (version increments). Frontmatter the store doesn't manage is user data: it
-  survives a rewrite rather than being dropped, and `MemoryCreate.meta` (CLI:
-  `--meta k=v`, `--expandable`) writes it.
+  survives a rewrite rather than being dropped, `MemoryCreate.meta` (CLI:
+  `--meta k=v`, `--expandable`) writes it, and `MemoryRead.meta` reads it back —
+  every frontmatter key outside `MANAGED_META` (`services/filesystem.py`).
 - **Memories interlink; the link index is derived.** `myc://key` (canonical) and
   `[[key]]` (shorthand) are the same edge, plus `![[key]]` transclusions and typed
   frontmatter relations (`supersedes`, `depends-on`, `part-of`, `relates-to`).
@@ -330,6 +331,61 @@ is no litellm dependency.
   `openclaw` and `hermes` are **gone**, not deprecated — they rode the removed
   SSE/coordination-tick model and their packages were deleted (#503). Don't
   reintroduce them as adapter options.
+- **A2A bridge is proxied, not an MLS member (be honest).** The A2A bridge (epic
+  #719) makes a room speak Agent2Agent both ways: `adapter: a2a` registers a
+  remote endpoint as a room member (`a2a_bridge.py` answers its `@`-mentions by
+  calling it — event-driven off the summon seam, chat-first, not negotiation-
+  scoped), and `a2a_server.py` exposes a room *as* an A2A agent via the a2a-sdk
+  server (card + JSON-RPC). **Honest boundary:** a bridged A2A agent is **not** a
+  member of the room's MLS group — it's proxied by a backend seat that reads
+  plaintext and calls the remote out-of-band. The hop is plain HTTPS today; it
+  can ride SLIM (SLIMRPC) via `agntcy/slim-a2a-python`, but that's point-to-point
+  RPC to a SLIM identity, still not room-group membership, and slima2a pins
+  `a2a-sdk==1.1.0` (HTTP-vs-SLIM decision: #726). Either way the hub sees
+  plaintext, so it is **NOT** E2E-from-the-hub. Remote auth is a bearer token
+  named by `a2a_auth_env` and resolved from the backend env — the secret never
+  lands in room memory.
+- **CI is fast on purpose; timing is reported, never enforced.** A PR run's
+  critical path is ~95s, and that is a property worth defending — it erodes
+  twenty seconds at a time, invisibly. The `timing` job reads the run's own job
+  durations back from the Actions API, writes them into the run summary, and
+  warns against the budgets in `.github/ci-budgets.json`. It cannot fail a run:
+  a slow PR should merge and say it was slow. Raise a budget deliberately, in
+  the PR that makes the job slower. `scripts/check_workflows.py` (the `hygiene`
+  job) keeps the budgets naming real jobs, every `uses:` pinned to a commit SHA,
+  and every workflow declaring its own `permissions:`.
+- **CI is tiered, and the tier is the design decision.** Tier 0 is per-PR and
+  must stay parallel and under ~60s (the contract tests below all live inside
+  jobs that already run). Tier 1 is per-PR but path-filtered — the three image
+  smoke builds, and the docs link check. Tier 2 is `nightly.yml`: the full
+  install path and the live-LLM cognition slice, too slow and too paid for the
+  PR path, where a failure opens one issue rather than blocking a person. Tier 3
+  is manual dispatch (the screenshots workflow). Putting a good check in the
+  wrong tier is how the ~95s baseline gets spent.
+- **The checks are derivations, not lists.** Every gate added here recomputes
+  something and fails on the drift, rather than asserting against a copy that
+  has to be maintained: `openapi.json` vs the live app, `docs/*.html` vs its
+  markdown, the frontend's `/api/*` fetches and its mock fixture *shapes* vs the
+  spec, `compose.yml`'s services vs the container names the CLI addresses,
+  `MyceliumConfig`'s fields vs what `generate_env_file` renders. Where a thing
+  legitimately can't be derived, it is declared with its reason next to the code
+  that owns it (`docker_utils.LOCAL_ONLY_FIELDS`, `ENVIRONMENT_SUPPLIED_VARS`)
+  and the check asserts the declaration is still true — a stale exemption is a
+  failure too.
+- **A config field that reaches no container is a bug, not a feature.** `.env`
+  is the only transport from `config.toml` into the stack, so a field nothing
+  renders is a setting a user writes and watches do nothing. Both directions are
+  gated (`tests/test_config_env_coverage.py`): every config leaf renders or is
+  declared local-only, and every `${VAR}` compose substitutes has something that
+  writes it — otherwise `config apply` silently drops a hand-set value.
+- **Screenshots publish through a workflow, and it is additive.** The capture
+  pipeline (`pnpm screenshots`) is the same one that runs locally; the
+  `Screenshots` workflow runs it on a runner on manual dispatch and opens PRs
+  against `docs/` and the splash repo rather than pushing. The splash half needs
+  `SPLASH_REPO_TOKEN`, a PAT scoped to `mycelium-io/mycelium-io.github.io`
+  alone; without it the docs half still runs. Nothing on the PR path gets
+  slower, and a runner-rendered PNG differs subtly from a laptop-rendered one —
+  which is exactly why it lands as a reviewable diff.
 
 ## Local development
 

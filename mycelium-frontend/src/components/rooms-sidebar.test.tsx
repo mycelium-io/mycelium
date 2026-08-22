@@ -7,6 +7,7 @@ import { renderWithSWR } from "@/test/swr";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeEventSource } from "@/test/fake-event-source";
+import { resetStreamHub } from "@/lib/stream-hub";
 
 const push = vi.fn();
 
@@ -14,8 +15,6 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
 
 vi.mock("@/lib/api", () => ({
   fetchRooms: vi.fn(),
-  getAppEventsSSEUrl: () => "/api/events/stream",
-  getNotificationsSSEUrl: () => "/api/notifications/stream",
 }));
 
 import { AuthSessionProvider } from "@/components/auth-session";
@@ -56,6 +55,7 @@ async function renderSidebar(
 describe("<RoomsSidebar /> keyboard navigation", () => {
   beforeEach(() => {
     push.mockClear();
+    resetStreamHub();
     FakeEventSource.reset();
     vi.stubGlobal("EventSource", FakeEventSource);
   });
@@ -108,6 +108,7 @@ describe("<RoomsSidebar /> keyboard navigation", () => {
 
 describe("<RoomsSidebar /> unread badges", () => {
   beforeEach(() => {
+    resetStreamHub();
     FakeEventSource.reset();
     vi.stubGlobal("EventSource", FakeEventSource);
     window.localStorage.clear();
@@ -154,6 +155,7 @@ describe("<RoomsSidebar /> unread badges", () => {
 
 describe("<RoomsSidebar /> collapsed strip", () => {
   beforeEach(() => {
+    resetStreamHub();
     FakeEventSource.reset();
     vi.stubGlobal("EventSource", FakeEventSource);
     window.localStorage.clear();

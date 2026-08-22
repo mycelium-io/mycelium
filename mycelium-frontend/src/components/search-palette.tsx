@@ -72,6 +72,9 @@ export function SearchPalette({ open, onClose, onPick, search, mac }: Props) {
 
   useEffect(() => {
     if (!open) return;
+    // Capturing what to restore focus to reads document.activeElement, so the
+    // rest of the on-open reset stays here with it.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setQuery("");
     setResults([]);
     setScope(EMPTY_SCOPE);
@@ -102,6 +105,8 @@ export function SearchPalette({ open, onClose, onPick, search, mac }: Props) {
     if (!open) return;
     const trimmed = query.trim();
     if (!trimmed) {
+      // Emptying the box blanks the palette rather than leaving stale rows up.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setResults([]);
       setScope(EMPTY_SCOPE);
       setPending(false);

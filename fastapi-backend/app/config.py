@@ -144,6 +144,12 @@ class Settings(BaseSettings):
     ALIGNER_PI_OPENSHELL: bool = False
     # Per-turn wall-clock bound (seconds) on one pi brain call before it is killed.
     ALIGNER_PI_TIMEOUT_S: float = 120.0
+    # A2A bridge SSRF guard: registering/summoning an a2a agent makes the backend
+    # dial the card's host, so by default a host that resolves to a private,
+    # loopback, or link-local address (e.g. the cloud metadata endpoint) is
+    # refused. Flip to True only for a trusted deployment whose a2a agents live on
+    # the internal network.
+    A2A_ALLOW_PRIVATE_HOSTS: bool = False
     # Synthesizer engine (kind ``synthesizer``) — reads a room's memory and
     # compiles a structured summary as a ``knowledge`` memory. Dormant by
     # default like the aligner: nothing runs until a registered synthesizer

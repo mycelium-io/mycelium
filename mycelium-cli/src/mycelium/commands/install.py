@@ -369,7 +369,11 @@ def _image_exists(image: str) -> bool:
     return r.returncode == 0
 
 
+# Containers `mycelium up` creates with no profile flag. A stale copy of any of
+# them fails `compose up --force-recreate` on a name conflict, so install clears
+# them first.
 _KNOWN_CONTAINERS = [
+    "mycelium-slim",
     "mycelium-backend",
     "mycelium-frontend",
 ]

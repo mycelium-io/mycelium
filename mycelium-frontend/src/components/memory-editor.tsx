@@ -79,10 +79,15 @@ function WikilinkDropdown({
   onSelect: (key: string) => void;
   onDismiss: () => void;
 }) {
+  // A fresh candidate list starts the highlight at the top. Comparing in render
+  // rather than resetting in an effect, so no stale row is ever painted.
+  const [prevCandidates, setPrevCandidates] = useState(candidates);
   const [activeIdx, setActiveIdx] = useState(0);
+  if (prevCandidates !== candidates) {
+    setPrevCandidates(candidates);
+    setActiveIdx(0);
+  }
   const listRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => setActiveIdx(0), [candidates]);
 
   // Keep the highlighted row visible when arrowing past the scroll fold.
   useEffect(() => {

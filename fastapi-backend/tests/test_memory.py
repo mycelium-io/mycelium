@@ -410,3 +410,76 @@ async def test_created_at_survives_an_edit(client: AsyncClient):
     assert second["created_by"] == "alice"
     assert second["updated_by"] == "bob"
     assert second["version"] == 2
+
+
+@pytest.mark.asyncio
+async def test_unmanaged_frontmatter_is_returned(client: AsyncClient):
+    """`meta` is user data, so a client can read back what it wrote."""
+    await client.post("/api/rooms", json={"name": "meta-rt"})
+
+    await client.post(
+        "/api/rooms/meta-rt/memory",
+        json={
+            "items": [
+                {
+                    "key": "work/x",
+                    "value": "Blocked behind the custody seam",
+                    "created_by": "julia",
+                    "embed": False,
+                    "meta": {"status": "open", "owner": "@julia", "priority": "high"},
+                }
+            ]
+        },
+    )
+
+    fields = {"status": "open", "owner": "@julia", "priority": "high"}
+    written = (await client.get("/api/rooms/meta-rt/memory/work/x")).json()
+    assert written["meta"] == fields
+    assert written["value"] == {"text": "Blocked behind the custody seam"}
+
+    listed = (await client.get("/api/rooms/meta-rt/memory", params={"prefix": "work/"})).json()
+    assert listed[0]["meta"] == fields
+
+
+@pytest.mark.asyncio
+async def test_managed_frontmatter_stays_out_of_meta(client: AsyncClient):
+    """The store's own fields have named slots; `meta` carries only user keys."""
+    await client.post("/api/rooms", json={"name": "meta-managed"})
+
+    created = (
+        await client.post(
+            "/api/rooms/meta-managed/memory",
+            json={
+                "items": [
+                    {
+                        "key": "decisions/db",
+                        "value": {"text": "Postgres", "rationale": "vector + SQL"},
+                        "created_by": "alice",
+                        "embed": False,
+                        "tags": ["backend"],
+                        "meta": {"supersedes": "decisions/db-v1"},
+                    }
+                ]
+            },
+        )
+    ).json()[0]
+    assert created["meta"] == {"supersedes": "decisions/db-v1"}
+
+    read = (await client.get("/api/rooms/meta-managed/memory/decisions/db")).json()
+    assert read["meta"] == {"supersedes": "decisions/db-v1"}
+    assert read["tags"] == ["backend"]
+    assert read["value"] == {"text": "Postgres", "rationale": "vector + SQL"}
+
+
+@pytest.mark.asyncio
+async def test_memory_without_extra_frontmatter_has_no_meta(client: AsyncClient):
+    """A plain memory reports `meta` as null rather than an empty bag."""
+    await client.post("/api/rooms", json={"name": "meta-empty"})
+    await client.post(
+        "/api/rooms/meta-empty/memory",
+        json={
+            "items": [{"key": "notes/one", "value": "plain", "created_by": "bob", "embed": False}]
+        },
+    )
+
+    assert (await client.get("/api/rooms/meta-empty/memory/notes/one")).json()["meta"] is None

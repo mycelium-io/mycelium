@@ -47,10 +47,22 @@ def test_check_config_files_errors_when_missing(
     isolated_home, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # isolated_home is an empty temp home → both files absent.
+    monkeypatch.delenv("MYCELIUM_API_URL", raising=False)
     result = doctor._check_config_files()
     assert result.status == "error"
     assert ".env" in result.message and "config.toml" in result.message
     assert any("mycelium install" in d for d in result.details)
+
+
+def test_check_config_files_ok_when_configured_from_env(
+    isolated_home, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An env-configured client has no config files by design, not by mistake."""
+    monkeypatch.setenv("MYCELIUM_API_URL", "https://mycelium.example.com")
+
+    result = doctor._check_config_files()
+    assert result.status == "ok"
+    assert "environment" in result.message
 
 
 def test_check_http_auth_gate_warns_on_remote_ungated(monkeypatch: pytest.MonkeyPatch) -> None:

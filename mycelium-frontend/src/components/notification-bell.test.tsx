@@ -6,9 +6,9 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeEventSource } from "@/test/fake-event-source";
+import { resetStreamHub } from "@/lib/stream-hub";
 
 vi.mock("@/lib/api", () => ({
-  getNotificationsSSEUrl: () => "/api/notifications/stream",
 }));
 
 import { CurrentUserProvider } from "@/components/current-user";
@@ -42,6 +42,7 @@ describe("<NotificationBell />", () => {
   beforeEach(() => {
     window.localStorage.clear();
     window.localStorage.setItem("mycelium.principal", "bob");
+    resetStreamHub();
     FakeEventSource.reset();
     vi.stubGlobal("EventSource", FakeEventSource);
   });
@@ -54,7 +55,7 @@ describe("<NotificationBell />", () => {
 
     await act(async () => {
       es.open();
-      es.emit(mention());
+      es.emitNotification(mention());
     });
 
     expect(await screen.findByLabelText("1 unread notifications")).toBeInTheDocument();
@@ -71,7 +72,7 @@ describe("<NotificationBell />", () => {
 
     await act(async () => {
       es.open();
-      es.emit({
+      es.emitNotification({
         id: "msg-2",
         room_name: "sprint",
         sender_handle: "alice",
@@ -93,13 +94,13 @@ describe("<NotificationBell />", () => {
 
     await act(async () => {
       es.open();
-      es.emit(mention());
+      es.emitNotification(mention());
     });
     await screen.findByLabelText("1 unread notifications");
 
     await user.click(screen.getByLabelText("1 unread notifications"));
     const panel = await screen.findByText("Notifications");
-    await user.click(within(panel.closest("[data-slot=popover-content]")!).getByTitle("Mark all read"));
+    await user.click(within(panel.closest("[data-slot=popover-content]")!).getByLabelText("Mark all read"));
 
     expect(screen.getByLabelText("Notifications")).toBeInTheDocument();
   });
@@ -112,12 +113,12 @@ describe("<NotificationBell />", () => {
 
     await act(async () => {
       es.open();
-      es.emit(mention());
+      es.emitNotification(mention());
     });
     await user.click(await screen.findByLabelText("1 unread notifications"));
     expect(await screen.findByText("sprint")).toBeInTheDocument();
 
-    await user.click(screen.getByTitle("Dismiss"));
+    await user.click(screen.getByLabelText("Dismiss"));
     expect(screen.queryByText("hey @bob take a look")).not.toBeInTheDocument();
   });
 });

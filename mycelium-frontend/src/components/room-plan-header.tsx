@@ -13,6 +13,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Chip } from "@/components/ui/chip";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Tooltip } from "@/components/ui/tooltip";
 
 interface Props {
   roomName: string;
@@ -122,20 +123,21 @@ export function RoomPlanHeader({ roomName }: Props) {
             }}
           />
         ) : (
-          <button
-            onClick={startEditTitle}
-            className="w-full text-left leading-[1.05] transition-colors hover:text-accent"
-            style={{
-              fontFamily: "var(--font-serif, 'Cormorant Garamond', Georgia, serif)",
-              fontStyle: "italic",
-              fontWeight: 600,
-              fontSize: "2.5rem",
-              color: titleText ? "var(--text)" : "var(--muted-foreground)",
-            }}
-            title="click to edit"
-          >
-            {titleText || "name this plan…"}
-          </button>
+          <Tooltip content="Click to rename the plan" side="bottom" align="start">
+            <button
+              onClick={startEditTitle}
+              className="w-full text-left leading-[1.05] transition-colors hover:text-accent"
+              style={{
+                fontFamily: "var(--font-serif, 'Cormorant Garamond', Georgia, serif)",
+                fontStyle: "italic",
+                fontWeight: 600,
+                fontSize: "2.5rem",
+                color: titleText ? "var(--text)" : "var(--muted-foreground)",
+              }}
+            >
+              {titleText || "name this plan…"}
+            </button>
+          </Tooltip>
         )}
       </div>
 

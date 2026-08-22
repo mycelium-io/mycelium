@@ -61,8 +61,14 @@ def position_record(
     message_id: str | None = None,
     episode: str = EPISODE,
     topic: str = TOPIC,
+    prose: str | None = None,
 ) -> TranscriptRecord:
-    """An agent-position transcript record carrying an epistemic payload."""
+    """An agent-position transcript record carrying an epistemic payload.
+
+    ``prose`` is the body the mediator reads — issue discovery and offer
+    interpretation both work off what the agent said — so a test driving a real
+    brain supplies real sentences. It defaults to a stub.
+    """
     data: dict[str, Any] = {"action": action}
     if confidence is not None:
         data["confidence"] = confidence
@@ -77,7 +83,9 @@ def position_record(
         payload_data=data,
         message_id=message_id,
     )
-    return record_from(env, serialize_content(env, extra={"content": f"{sender} position"}))
+    return record_from(
+        env, serialize_content(env, extra={"content": prose or f"{sender} position"})
+    )
 
 
 # ── L9 channel + persister (the aligner/plan-sync/mediator layer) ─────────────
@@ -123,7 +131,9 @@ class FakePersister:
         self.log = DeliveryLog(records or [])
         self.ingested: list[tuple[Any, dict[str, Any]]] = []
 
-    def ingest_local(self, envelope: Any, content: dict[str, Any]) -> None:
+    def ingest_local(
+        self, envelope: Any, content: dict[str, Any], *, list_write: bool = False
+    ) -> None:
         self.ingested.append((envelope, content))
 
 

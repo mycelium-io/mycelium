@@ -21,6 +21,7 @@
 import { useCallback, useMemo } from "react";
 import useSWR, { useSWRConfig, type SWRConfiguration } from "swr";
 import {
+  fetchA2aBridge,
   fetchEpisodes,
   fetchMemories,
   fetchMemoryIntegrity,
@@ -33,6 +34,7 @@ import {
   fetchRooms,
   fetchSkills,
   logFetchError,
+  type A2aBridgeState,
   type AgentSummary,
   type EpisodeSummary,
   type Memory,
@@ -44,6 +46,7 @@ import {
   type RoomMessage,
   type Skill,
 } from "@/lib/api";
+import { latestPreview } from "@/lib/room-preview";
 import { useCurrentUser } from "@/components/current-user";
 
 /**
@@ -63,10 +66,15 @@ const POLL = {
   plan: 8_000,
   episodes: 5_000,
   coordination: 20_000,
+  a2a: 15_000,
 } as const;
 
 /** Messages are read here only to find who has posted; one page is plenty. */
 const POSTER_LIMIT = 200;
+
+/** The command centre wants only the last thing said, and `latestPreview`
+ *  scans a short window past any protocol ticks on top of it. */
+const LATEST_LIMIT = 20;
 
 // Stable empties: a fresh `[]` per render would break every downstream memo.
 const NO_ROOMS: Room[] = [];
@@ -87,7 +95,8 @@ type RoomResource =
   | "skills"
   | "plan"
   | "episodes"
-  | "integrity";
+  | "integrity"
+  | "a2a";
 
 /** A null key parks the hook: a room-less render fetches nothing. */
 function roomKey(room: string, resource: RoomResource, ...rest: (string | number)[]) {
@@ -202,6 +211,21 @@ export function useRoomMessages(room: string, limit = 200, opts: RoomQueryOption
   return { messages: data?.messages ?? NO_MESSAGES, loading: isLoading, refresh };
 }
 
+/** The last readable line in a room, for an inbox-style row. Its own SWR key,
+ *  so it never collides with the 200-message page `useRoomPosters` holds. */
+export function useRoomLatest(room: string, opts: RoomQueryOptions = {}) {
+  const { data, isLoading, mutate } = useSWR(
+    room ? (["room", room, "messages", LATEST_LIMIT] as const) : null,
+    () => fetchMessages(room, LATEST_LIMIT),
+    { refreshInterval: opts.refreshInterval ?? POLL.messages },
+  );
+  const latest = useMemo(() => (data ? latestPreview(data.messages) : null), [data]);
+  const refresh = useCallback(() => {
+    void mutate();
+  }, [mutate]);
+  return { latest, loading: isLoading, refresh };
+}
+
 export function useRoomMemories(room: string, opts: RoomQueryOptions = {}) {
   const { data, loading, refresh } = useRoomQuery(
     room, "memories", fetchMemories, NO_MEMORIES, POLL.memories, opts,
@@ -236,6 +260,15 @@ export function useRoomEpisodes(room: string, opts: RoomQueryOptions = {}) {
     room, "episodes", fetchEpisodes, NO_EPISODES, POLL.episodes, opts,
   );
   return { episodes: data, loading, refresh };
+}
+
+/** The room's A2A bridge: bridged members, exposure, and recent exchanges.
+ *  Null until it loads, and for a hub that can't serve it. */
+export function useA2aBridge(room: string, opts: RoomQueryOptions = {}) {
+  const { data, loading, refresh } = useRoomQuery(
+    room, "a2a", fetchA2aBridge, null as A2aBridgeState | null, POLL.a2a, opts,
+  );
+  return { bridge: data, loading, refresh };
 }
 
 /** Fabric-wide `/health` diagnostics — SLIM telemetry plus the hub's identity

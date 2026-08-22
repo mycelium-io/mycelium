@@ -10,6 +10,7 @@ import { LoginGate } from "@/components/login-gate";
 import { KeymapProvider } from "@/components/keymap-provider";
 import { NotificationsProvider } from "@/components/notifications-provider";
 import { SWRProvider } from "@/components/swr-provider";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 export const metadata: Metadata = {
   title: "mycelium",
@@ -21,6 +22,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className="dark" suppressHydrationWarning>
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
+        {/* The rule wants fonts in pages/_document.js, which the App Router has no equivalent of. */}
+        {/* eslint-disable-next-line @next/next/no-page-custom-font */}
         <link
           href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@1,600&family=IBM+Plex+Sans:wght@400;500;600&family=Geist+Mono:wght@400;500;600;700&display=swap"
           rel="stylesheet"
@@ -39,10 +42,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                     the gate is off. */}
                 <LoginGate>
                   <NotificationsProvider>
-                    {/* Above the pages, not inside a page's shell: a page
-                        registers its own bindings, so it has to sit under the
-                        provider. */}
-                    <KeymapProvider>{children}</KeymapProvider>
+                    {/* Tooltips group their delay app-wide, so moving along a
+                        toolbar doesn't re-wait per control. */}
+                    <TooltipProvider>
+                      {/* Above the pages, not inside a page's shell: a page
+                          registers its own bindings, so it has to sit under
+                          the provider. */}
+                      <KeymapProvider>{children}</KeymapProvider>
+                    </TooltipProvider>
                   </NotificationsProvider>
                 </LoginGate>
               </AuthSessionProvider>
