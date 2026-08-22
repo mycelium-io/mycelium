@@ -21,6 +21,16 @@ mycelium-client/    Generated OpenAPI client (openapi-python-client)
 mycelium-frontend/  Next.js frontend (TypeScript, Tailwind)
 docs/               Docs site (generated from mycelium-cli/src/mycelium/docs/),
                     demo script, design notes
+shotkit/            The repo's camera: fast screenshots of the running app and of
+                    CLI output, for coding agents. A daemon holds a browser open,
+                    so a shot is ~150ms rather than ~2s. `node shotkit/bin/shot.mjs`
+                    — `app` (a route, with --mock booting dev:mock), `term` (a
+                    command under a pty, so Rich keeps its colors, rendered as a
+                    Carbon-style card), `code`, plus --responsive/--sheet for
+                    breakpoints and open/do/shoot for driving a held page. See the
+                    `screenshot` skill. Captures land in gitignored `.shotkit/`;
+                    the committed docs assets are still `pnpm screenshots`, which
+                    now runs on this engine.
 mycelium-promo/     HyperFrames promo video, a code-defined HTML→MP4 walkthrough
                     (CLI install → app install → room → adapter → post positions →
                     summon the aligner → await/respond → consensus → plan → work →
@@ -67,6 +77,10 @@ cd mycelium-cli && uv run ruff check . && uv run ruff format --check . \
 
 # Frontend
 cd mycelium-frontend && pnpm install && pnpm dev
+
+# Screenshots (see shotkit/README.md; `shot doctor` checks the machine)
+node shotkit/bin/shot.mjs app /room/atlas-migration --mock --offline
+node shotkit/bin/shot.mjs term --cols 84 -- mycelium memory --help
 ```
 
 ## Architecture
