@@ -299,7 +299,7 @@ export function AgentsPanel({
                     marked ? "bg-accent/15" : ""
                   }`}
                 >
-                  <Monogram handle={p.handle} color="var(--muted-foreground)" presence={memberPresence?.kind} />
+                  <Monogram handle={p.handle} color="var(--avatar-neutral)" presence={memberPresence?.kind} />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5">
                       <span className="truncate font-mono text-label font-semibold text-text">

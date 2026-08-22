@@ -33,6 +33,7 @@ import { EmptyState } from "@/components/empty-state";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip } from "@/components/ui/tooltip";
 import { KeyBadge } from "@/components/key-badge";
+import { RoomAvatar } from "@/components/ui/room-avatar";
 import { useCommands, useKeyAction } from "@/components/keymap-provider";
 import { useOpenInstallModal } from "@/components/install-modal";
 import { chordFor, chordKey } from "@/lib/keymap";
@@ -44,13 +45,6 @@ function railToggleTitle(expanded: boolean): string {
   const chord = chordFor("rooms.toggle");
   const suffix = chord ? ` (${chordKey(chord)})` : "";
   return `${expanded ? "Collapse" : "Expand"} the rooms rail${suffix}`;
-}
-
-/** Two-letter monogram from a room name (mirrors the agent avatars). */
-function monogram(name: string): string {
-  const parts = name.split(/[^a-z0-9]+/i).filter(Boolean);
-  const s = parts.length >= 2 ? parts[0][0] + parts[1][0] : (parts[0] ?? name).slice(0, 2);
-  return s.toUpperCase();
 }
 
 interface Props {
@@ -218,13 +212,18 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
                 >
                   <Link
                     href={`/room/${encodeURIComponent(room.name)}`}
-                    className={`relative flex size-8 flex-shrink-0 items-center justify-center rounded-md font-mono text-micro font-semibold transition-colors ${
-                      active
-                        ? "bg-accent text-accent-fg"
-                        : "bg-surface text-muted-foreground hover:text-text"
-                    }`}
+                    className="relative flex size-8 flex-shrink-0 items-center justify-center"
                   >
-                    <span aria-hidden>{monogram(room.name)}</span>
+                    {active && (
+                      <span
+                        aria-hidden
+                        className="absolute -left-2 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-accent"
+                      />
+                    )}
+                    <RoomAvatar
+                      name={room.name}
+                      className="size-8 rounded-md hover:brightness-125"
+                    />
                     <span className="sr-only">{room.name}</span>
                     {unread > 0 && (
                       <span
@@ -337,15 +336,9 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
                   active ? "bg-elevated ring-1 ring-border" : "hover:bg-hairline"
                 }`}
               >
-                <span
-                  className={`relative flex size-7 flex-shrink-0 items-center justify-center rounded-md font-mono text-micro font-semibold ${
-                    active ? "bg-accent text-accent-fg" : "bg-surface text-muted-foreground group-hover:text-text"
-                  }`}
-                  aria-hidden
-                >
-                  {monogram(room.name)}
+                <RoomAvatar name={room.name} className="size-7 rounded-md">
                   {i < 9 && <KeyBadge chord={`alt+${i + 1}`} overlay />}
-                </span>
+                </RoomAvatar>
                 <span
                   className={`min-w-0 flex-1 truncate text-label ${
                     active || unread > 0

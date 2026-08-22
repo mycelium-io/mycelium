@@ -45,6 +45,7 @@ import {
   type Room,
   type Skill,
 } from "@/lib/api";
+import { latestPreview } from "@/lib/room-preview";
 import { useCurrentUser } from "@/components/current-user";
 
 /**
@@ -69,6 +70,10 @@ const POLL = {
 
 /** Messages are read here only to find who has posted; one page is plenty. */
 const POSTER_LIMIT = 200;
+
+/** The command centre wants only the last thing said, and `latestPreview`
+ *  scans a short window past any protocol ticks on top of it. */
+const LATEST_LIMIT = 20;
 
 // Stable empties: a fresh `[]` per render would break every downstream memo.
 const NO_ROOMS: Room[] = [];
@@ -188,6 +193,21 @@ export function useRoomPosters(room: string, opts: RoomQueryOptions = {}) {
     void mutate();
   }, [mutate]);
   return { posters, loading: isLoading, refresh };
+}
+
+/** The last readable line in a room, for an inbox-style row. Its own SWR key,
+ *  so it never collides with the 200-message page `useRoomPosters` holds. */
+export function useRoomLatest(room: string, opts: RoomQueryOptions = {}) {
+  const { data, isLoading, mutate } = useSWR(
+    room ? (["room", room, "messages", LATEST_LIMIT] as const) : null,
+    () => fetchMessages(room, LATEST_LIMIT),
+    { refreshInterval: opts.refreshInterval ?? POLL.messages },
+  );
+  const latest = useMemo(() => (data ? latestPreview(data.messages) : null), [data]);
+  const refresh = useCallback(() => {
+    void mutate();
+  }, [mutate]);
+  return { latest, loading: isLoading, refresh };
 }
 
 export function useRoomMemories(room: string, opts: RoomQueryOptions = {}) {
