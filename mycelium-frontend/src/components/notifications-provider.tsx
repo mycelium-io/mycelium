@@ -72,9 +72,8 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   const isLeader = useRef(false);
   const channelRef = useRef<ReturnType<typeof openCrossTabChannel> | null>(null);
 
-  // Hydrate from localStorage once the DOM is available (SSR has none). The three
-  // setStates are one logical "hydrate from client storage" step. Lazy initializers
-  // would mismatch the SSR render (server "" ≠ client stored value on first pass).
+  // Load from localStorage once the DOM is there to read it: on the server
+  // there is none, and seeding at init would mismatch the SSR render.
   useEffect(() => {
     const stored = loadNotifications();
     // eslint-disable-next-line react-hooks/set-state-in-effect

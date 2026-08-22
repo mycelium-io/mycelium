@@ -232,9 +232,8 @@ export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusM
   const memoriesRef = useRef(memories);
   useLayoutEffect(() => { memoriesRef.current = memories; }, [memories]);
 
-  // Exit edit mode whenever the selected memory changes. Derived-state-during-render
-  // (the React alternative to getDerivedStateFromProps) fires a second pass immediately
-  // so the new selection never flashes in edit mode.
+  // Exit edit mode whenever the selection changes. Compared in render rather
+  // than reset in an effect, so the new selection never flashes in edit mode.
   const [prevSelectedKey, setPrevSelectedKey] = useState(selected?.key);
   if (prevSelectedKey !== selected?.key) {
     setPrevSelectedKey(selected?.key);
@@ -246,8 +245,8 @@ export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusM
   // unexpanded chips (#599).
   useEffect(() => {
     if (!selected) {
-      // Async fetch guard: clear the rendered body when selection clears so the
-      // previous memory's body never flashes during the next fetch.
+      // Clear the body when the selection clears, so the previous memory's
+      // never shows under the next one.
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setRenderedBody(null);
       return;

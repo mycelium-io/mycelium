@@ -323,8 +323,7 @@ function FrameRow({
           aria-hidden
           className={`size-3.5 text-faint transition-transform group-hover:text-muted-foreground ${expanded ? "rotate-90" : ""}`}
         />
-        {/* frameIcon picks from a fixed table of imported Lucide components,
-            so nothing is defined here — the rule cannot see through the call. */}
+        {/* frameIcon returns one of a fixed table of imported Lucide components. */}
         {/* eslint-disable-next-line react-hooks/static-components */}
         <Icon aria-hidden className="size-3.5" style={{ color: tone }} />
         <KindBadge kind={frame.kind} subkind={frame.subkind} />
@@ -391,8 +390,8 @@ export function L9Inspector({ roomName }: Props) {
   useEffect(() => {
     let cancelled = false;
     seenIds.current = new Set();
-    // Async fetch: setState calls are in the .then() callback. setFrames([]) here
-    // is a guard reset before the fetch resolves — intentional, not cascading.
+    // Async fetch; the rest of the setState calls are in its .then(). Clearing
+    // here drops the previous room's frames before the new ones arrive.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setFrames([]);
     fetchL9History(roomName).then((rows) => {
@@ -454,8 +453,7 @@ export function L9Inspector({ roomName }: Props) {
     () => Array.from(new Set(frames.map((f) => f.episode).filter((e): e is string => Boolean(e)))),
     [frames],
   );
-  // Fall back to "all" when the selected episode scrolls out of the MAX_FRAMES
-  // window; derive rather than resetting in an effect so there is no extra render.
+  // Fall back to "all" once the selected episode scrolls out of the MAX_FRAMES window.
   const effectiveEpisodeFilter =
     episodeFilter === "all" || episodesPresent.includes(episodeFilter) ? episodeFilter : "all";
 

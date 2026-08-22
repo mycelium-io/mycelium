@@ -226,7 +226,7 @@ export function MemoryDetail({
   const text = memory.content_text ?? formatValue(memory.value);
   const displayText = !raw && renderedBody ? renderedBody : text;
   const rawIsJson = useMemo(() => isJsonRawText(text), [text]);
-  // jsonView is meaningful only when raw is true; derive instead of resetting in an effect.
+  // jsonView only means anything in raw mode.
   const effectiveJsonView = raw && jsonView;
   const rawDisplay =
     effectiveJsonView && rawIsJson ? (prettyPrintJsonRawText(text) ?? text) : text;

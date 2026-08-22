@@ -34,8 +34,8 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
     if (typeof window === "undefined") return;
     const saved = window.localStorage.getItem(STORAGE_KEY);
     if (saved) {
-      // SSR hydration: localStorage unavailable on server; lazy init would produce
-      // a hydration mismatch (server "" ≠ client stored value) on the first render.
+      // localStorage is client-only: seeding this at init would mismatch the
+      // SSR render, where the principal is always "".
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setPrincipalState(saved);
     }

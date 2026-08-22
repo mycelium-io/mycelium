@@ -52,11 +52,9 @@ function RoomWorkspace() {
   const [inspectorOpen, setInspectorOpen] = useState(true);
   const [editorView, setEditorView] = useState<View>("channel");
   const [negPhase, setNegPhase] = useState<NegotiationPhase>("idle");
-  // useSearchParams is read here before the hook is declared later on line 97;
-  // moved forward so tourActive can be initialized from the URL in one render.
+  // Hoisted above the state below so the tour flag can be seeded from the URL.
   const searchParamsEarly = useSearchParams();
-  // Lazy initializer reads the URL once on mount; setTourActive(false) in the
-  // exit handler still works. No effect needed — the param is client-only state.
+  // `?tour=1` seeds the tour once on mount; exiting is client-only state after that.
   const [tourActive, setTourActive] = useState(() => searchParamsEarly.get("tour") === "1");
   const [inviteEngine, setInviteEngine] = useState(false);
   const [focusMemory, setFocusMemory] = useState<{ key: string; nonce: number } | null>(null);
@@ -110,9 +108,8 @@ function RoomWorkspace() {
       router.replace(memoryHref(roomName, target.id));
       return;
     }
-    // Focus-dispatch: the effect consumes one URL parameter and translates it
-    // into the appropriate panel open + item selected. Lifting this into the
-    // caller would require threading focus state through every page entry point.
+    // The focus target is consumed here rather than derived: it has to outlive
+    // the parameter, which is cleared as soon as it has been acted on.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setFocus(target);
     if (target.type === "episode") openTab("episodes");

@@ -48,9 +48,8 @@ export function CommandPalette({ open, onClose, commands, recent, onRun, mac }: 
 
   useEffect(() => {
     if (!open) return;
-    // Reset query and capture the element to restore focus to on close. These
-    // must run in an effect because restoreTo reads document.activeElement (a
-    // DOM side effect) and ran.current + setQuery reset the palette together.
+    // Capturing what to restore focus to reads document.activeElement, so the
+    // rest of the on-open reset stays here with it.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setQuery("");
     ran.current = false;

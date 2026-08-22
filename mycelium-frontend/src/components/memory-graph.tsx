@@ -151,10 +151,8 @@ export function MemoryGraph({ graph, onNavigate, roomName, className }: Props) {
   const [legendOpen, setLegendOpen] = useState(false);
   const filtered = hiddenNamespaces.size > 0 || hiddenTypes.size > 0;
 
-  // Reset filters when the graph changes. Guard preserves the same Set identity
-  // when nothing was filtered, avoiding a spurious re-render of every node.
-  // Uses the derived-state-during-render pattern (React fires a second pass
-  // immediately, like getDerivedStateFromProps).
+  // Reset the filters when the graph changes. The guard keeps the same Set
+  // identity when nothing was filtered, so every node doesn't re-render.
   const [prevGraph, setPrevGraph] = useState(graph);
   if (prevGraph !== graph) {
     setPrevGraph(graph);
@@ -299,9 +297,8 @@ export function MemoryGraph({ graph, onNavigate, roomName, className }: Props) {
   useLayoutEffect(() => {
     dirty.current = false;
     if (!roomName) {
-      // Placement load/clear is a storage-read side effect tied to the graph
-      // identity changing; it belongs in a layout effect because it must run
-      // before the first paint of the new graph layout.
+      // Placements are read from storage, so they land in a layout effect —
+      // before the new layout's first paint.
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setPlaced({});
       return;
