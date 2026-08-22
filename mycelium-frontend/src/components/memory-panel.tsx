@@ -373,7 +373,7 @@ export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusM
     <div ref={paneRef} className="flex flex-col h-full overflow-hidden">
       {/* Stats row */}
       <div className="px-4 py-3 border-b border-border bg-paper">
-        <div className="flex items-baseline gap-1.5 text-label text-muted-foreground">
+        <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-1 text-label text-muted-foreground">
           <span className="text-text font-semibold tabular">{memories.length}</span>
           <span>memories</span>
           <span className="text-faint px-1">·</span>
@@ -381,7 +381,7 @@ export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusM
           <span>contributors</span>
           <Link
             href={memoryGraphHref(roomName)}
-            className="ml-auto inline-flex items-center gap-1 rounded-md px-2 py-1 text-micro font-medium text-accent transition-colors hover:bg-hairline"
+            className="ml-auto inline-flex flex-shrink-0 items-center gap-1 rounded-md px-2 py-1 text-micro font-medium text-accent transition-colors hover:bg-hairline"
             title="Open the memory link graph"
           >
             <Network className="size-3.5" />
@@ -407,7 +407,7 @@ export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusM
         <div className="px-4 py-3 border-b border-border bg-paper">
           <div className="flex gap-2">
             <input
-              className="flex-1 rounded-lg bg-surface border border-border px-3 py-2 text-label text-text placeholder:text-muted-foreground focus:border-accent focus:bg-bg focus:outline-none transition-colors"
+              className="min-w-0 flex-1 rounded-lg bg-surface border border-border px-3 py-2 text-label text-text placeholder:text-muted-foreground focus:border-accent focus:bg-bg focus:outline-none transition-colors"
               placeholder="Search memory…"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
@@ -416,7 +416,7 @@ export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusM
             <button
               onClick={handleSearch}
               disabled={searching}
-              className="rounded-lg px-3.5 py-2 text-label font-medium bg-accent text-accent-fg transition-opacity hover:opacity-90 disabled:opacity-50"
+              className="flex-shrink-0 rounded-lg px-3.5 py-2 text-label font-medium bg-accent text-accent-fg transition-opacity hover:opacity-90 disabled:opacity-50"
             >
               {searching ? "…" : "Search"}
             </button>

@@ -5,6 +5,7 @@
 
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useDefaultLayout } from "react-resizable-panels";
 import { type EpisodeSummary } from "@/lib/api";
 import { useRoom, useRoomRevalidate } from "@/lib/room-data";
 import { parseFocus, type FocusTarget } from "@/lib/search";
@@ -12,12 +13,20 @@ import { memoryHref } from "@/lib/memory-routes";
 import { AppShell } from "@/components/app-shell";
 import { EventStream, type View, type NegotiationPhase } from "@/components/event-stream";
 import { RoomChatBox } from "@/components/room-chat-box";
-import { RoomInspector, type Tab } from "@/components/room-inspector";
+import { RoomInspectorPanel, type Tab } from "@/components/room-inspector";
 import { RoomTour } from "@/components/room-tour";
 import { GlobalStatusItems, StatusButton } from "@/components/status-items";
 import { useCommands, useKeyAction, useKeyScope } from "@/components/keymap-provider";
 import type { PaletteCommand } from "@/lib/commands";
 import { useRoomStatus } from "@/lib/use-status";
+import { ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
+import {
+  MAIN_PANEL,
+  PANEL_INSPECTOR,
+  PANEL_MAIN,
+  ROOM_GROUP_ID,
+  layoutStorage,
+} from "@/lib/panel-layout";
 
 function episodeSummaryLabel(episodes: EpisodeSummary[] | null): { text: string; color: string } | null {
   if (!episodes || episodes.length === 0) return null;
@@ -154,6 +163,20 @@ function RoomWorkspace() {
 
   const episodeLabel = useMemo(() => episodeSummaryLabel(episodes), [episodes]);
 
+  // Chat vs. inspector is a reading preference, so the split is remembered per
+  // browser rather than reset on every visit.
+  // Both callbacks: `onLayoutChanged` fires when a drag is committed, but these
+  // are nested groups — widening the rooms rail resizes this group's container
+  // without anyone touching its own seam, and only `onLayoutChange` sees that.
+  // Saving on the commit alone leaves the stored percentages describing a
+  // container width that no longer exists, and the rail comes back a few dozen
+  // pixels off after a reload.
+  const { defaultLayout, onLayoutChange, onLayoutChanged } = useDefaultLayout({
+    id: ROOM_GROUP_ID,
+    storage: layoutStorage,
+    panelIds: [PANEL_MAIN, PANEL_INSPECTOR],
+  });
+
   const statusLeft = (
     <>
       <span
@@ -205,26 +228,33 @@ function RoomWorkspace() {
       statusLeft={statusLeft}
       statusRight={statusRight}
     >
-      <div className="flex flex-1 overflow-hidden">
-        <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          <div className="flex-1 overflow-hidden">
-            <EventStream
-              roomName={roomName}
-              onMemoryChanged={handleMemoryChanged}
-              onConnectionChange={setConnected}
-              onNegotiationPhaseChange={setNegPhase}
-              onOpenMemory={openMemory}
-              view={editorView}
-              onViewChange={setEditorView}
-              suppressInvites={tourActive}
-              focusMessageId={focus?.type === "message" ? focus.id : null}
-              onFocusConsumed={clearFocus}
-            />
-          </div>
-          <RoomChatBox roomName={roomName} className={editorView !== "channel" ? "hidden" : undefined} />
-        </main>
+      <ResizablePanelGroup
+        className="min-h-0 flex-1"
+        defaultLayout={defaultLayout}
+        onLayoutChange={onLayoutChange}
+        onLayoutChanged={onLayoutChanged}
+      >
+        <ResizablePanel id={PANEL_MAIN} minSize={MAIN_PANEL.min} className="flex min-w-0">
+          <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
+            <div className="flex-1 overflow-hidden">
+              <EventStream
+                roomName={roomName}
+                onMemoryChanged={handleMemoryChanged}
+                onConnectionChange={setConnected}
+                onNegotiationPhaseChange={setNegPhase}
+                onOpenMemory={openMemory}
+                view={editorView}
+                onViewChange={setEditorView}
+                suppressInvites={tourActive}
+                focusMessageId={focus?.type === "message" ? focus.id : null}
+                onFocusConsumed={clearFocus}
+              />
+            </div>
+            <RoomChatBox roomName={roomName} className={editorView !== "channel" ? "hidden" : undefined} />
+          </main>
+        </ResizablePanel>
 
-        <RoomInspector
+        <RoomInspectorPanel
           roomName={roomName}
           masId={room?.mas_id ?? null}
           tab={inspectorTab}
@@ -237,7 +267,7 @@ function RoomWorkspace() {
           onFocusConsumed={clearFocus}
           focusMemory={focusMemory}
         />
-      </div>
+      </ResizablePanelGroup>
 
       <RoomTour
         active={tourActive}

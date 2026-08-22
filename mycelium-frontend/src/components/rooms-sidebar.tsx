@@ -164,7 +164,7 @@ export function RoomsSidebar({ activeRoom = null }: Props) {
   useCommands(commands);
 
   return (
-    <aside data-tour="rooms" className="flex w-[236px] flex-shrink-0 flex-col border-r border-border bg-surface/50">
+    <aside data-tour="rooms" className="flex min-w-0 flex-1 flex-col overflow-hidden bg-surface/50">
       <Link
         href="/"
         className="relative flex h-[52px] flex-shrink-0 items-center gap-2.5 border-b border-border px-4 transition-colors hover:bg-hairline"
