@@ -46,7 +46,8 @@ const CHROME = {
   chrome: { type: "boolean", help: "wrap the capture in browser window chrome" },
   address: { type: "string", help: "address-bar text (default: the route)" },
   "chrome-theme": { type: "string", value: "dark|light", help: "frame theme, when it differs from the app's" },
-  backdrop: { type: "string", value: "<preset|css>", help: "mycelium|dusk|ink|paper|none, or any CSS" },
+  backdrop: { type: "string", value: "<preset|css>", help: "mycelial|mycelium|dusk|ink|paper|none, or any CSS" },
+  "backdrop-seed": { type: "number", help: "which network --backdrop mycelial grows" },
   padding: { type: "number", help: "gutter around the frame (default 40)" },
   radius: { type: "number", help: "corner radius (default 12)" },
   shadow: { type: "boolean", help: "drop shadow (default on)" },
@@ -68,7 +69,8 @@ const DAEMON = {
 
 const CARD = {
   title: { type: "string", help: "title bar text" },
-  backdrop: { type: "string", value: "<preset|css>", help: "mycelium|dusk|ink|paper|none, or any CSS" },
+  backdrop: { type: "string", value: "<preset|css>", help: "mycelial|mycelium|dusk|ink|paper|none, or any CSS" },
+  "backdrop-seed": { type: "number", help: "which network --backdrop mycelial grows" },
   padding: { type: "number", help: "gutter around the card (default 40)" },
   radius: { type: "number", help: "corner radius (default 12)" },
   shadow: { type: "boolean", help: "drop shadow (default on)" },

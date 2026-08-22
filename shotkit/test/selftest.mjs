@@ -18,7 +18,9 @@ import { parse } from "../src/args.mjs";
 import { policyArgs, policyKey } from "../src/network.mjs";
 import { resolveViewport, viewportList } from "../src/viewports.mjs";
 import { parseAction } from "../src/actions.mjs";
-import { palette } from "../src/theme.mjs";
+import { backdrop, palette } from "../src/theme.mjs";
+import { CANVAS_VARS, VEIL, networkDocument } from "../src/mycelial.mjs";
+import { cardDocument } from "../src/card.mjs";
 
 let failures = 0;
 function test(name, fn) {
@@ -163,6 +165,40 @@ test("--responsive expands to the breakpoint ladder", () => {
 test("an action splits on its first colon only", () => {
   assert.deepEqual(parseAction("fill:#q=a:b"), { verb: "fill", arg: "#q=a:b" });
   assert.deepEqual(parseAction("reload"), { verb: "reload", arg: "" });
+});
+
+test("a backdrop preset resolves per theme, and unknown values pass through", () => {
+  assert.equal(backdrop("mycelial", "dark"), CANVAS_VARS.dark.bg);
+  assert.equal(backdrop("mycelial", "light"), CANVAS_VARS.light.bg);
+  assert.equal(backdrop("#123456", "dark"), "#123456");
+});
+
+test("the network harness carries the theme's canvas vars", () => {
+  const html = networkDocument("/* algorithm */", { theme: "light" });
+  assert.ok(html.includes(`--canvas-ink:${CANVAS_VARS.light.ink}`));
+  assert.ok(html.includes(`--canvas-alpha:${CANVAS_VARS.light.alpha}`));
+  assert.ok(html.includes('id="mycelium-bg"'), "the algorithm looks the canvas up by id");
+});
+
+test("one seed grows one network", () => {
+  const a = networkDocument("/* algorithm */", { seed: 7 });
+  assert.ok(a.includes("var s=7;"), "the seed replaces Math.random before the algorithm runs");
+  assert.notEqual(a, networkDocument("/* algorithm */", { seed: 8 }));
+  assert.equal(a, networkDocument("/* algorithm */", { seed: 7 }));
+});
+
+test("the vignette veils light less than dark", () => {
+  // The site already runs light at a lower canvas alpha; veiling both equally
+  // washes the network out of the cream entirely.
+  assert.ok(CANVAS_VARS.light.alpha < CANVAS_VARS.dark.alpha);
+  for (const [i, stop] of VEIL.light.entries()) assert.ok(stop < VEIL.dark[i], `stop ${i}`);
+});
+
+test("a card grows an artwork layer only when there is artwork", () => {
+  assert.ok(!cardDocument("hi", { backdrop: "ink" }).includes('id="art"'));
+  const art = cardDocument("hi", { backdrop: "mycelial", art: "url(data:image/png;base64,AA) center/cover" });
+  assert.ok(art.includes('id="art"'));
+  assert.ok(art.includes("image-rendering:pixelated"), "the cells must not blur when upscaled");
 });
 
 process.stdout.write(failures ? `\n${failures} failing\n` : "\nall passing\n");

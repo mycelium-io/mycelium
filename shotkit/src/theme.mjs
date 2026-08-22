@@ -68,6 +68,12 @@ export const THEMES = {
  * Backdrops the card floats on. `none` leaves the canvas transparent, which is
  * what you want when the image is going into a page that has its own
  * background; everything else pads the card so the drop shadow has room.
+ *
+ * `mycelial` is the ground the docs site paints its hypha network on. Asking
+ * for it also asks for the network itself, which is not a CSS value and so
+ * arrives separately (see mycelial.mjs); this entry is what shows if that
+ * render is unavailable, which is why it is the site's canvas color and not a
+ * gradient of its own.
  */
 export const BACKDROPS = {
   mycelium: {
@@ -78,6 +84,7 @@ export const BACKDROPS = {
     dark: "linear-gradient(135deg, #2b2140 0%, #1b1930 55%, #101019 100%)",
     light: "linear-gradient(135deg, #efe7fb 0%, #e6e9f7 55%, #dfe2ee 100%)",
   },
+  mycelial: { dark: "#0c0e11", light: "#f4ecda" },
   ink: { dark: "#08090b", light: "#eceef1" },
   paper: { dark: "#14171c", light: "#f2f4f6" },
   none: { dark: "transparent", light: "transparent" },

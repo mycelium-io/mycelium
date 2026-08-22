@@ -101,9 +101,15 @@ and `shot code <file> --range 40:80` makes a syntax-highlighted code card.
 ```bash
 node shotkit/bin/shot.mjs app /room/atlas --chrome --offline          # browser window frame
 node shotkit/bin/shot.mjs app / --chrome --theme light --backdrop dusk
+node shotkit/bin/shot.mjs app / --chrome --backdrop mycelial --padding 90
 ```
 
 `--theme` switches the app itself, not just the browser's media query.
+
+`--backdrop mycelial` is the desktop behind the window: the docs site's own
+mycelial network, the same one `docs/banner.png` is cut from. Give it padding to
+show — and prefer a quiet backdrop (`mycelium`, `ink`, `paper`) when the screen
+itself is busy.
 
 ## Rules
 
