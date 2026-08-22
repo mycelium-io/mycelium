@@ -22,7 +22,7 @@ import re
 from datetime import datetime, timedelta
 from typing import Any
 
-from app.services.status.types import Context, Err, Ok, Outcome, Ref, Status
+from app.services.status.types import Context, Err, Liveness, Ok, Outcome, Ref
 
 #: ``owner/repo#123`` and the pasted browser URL, which is what people have on
 #: their clipboard when they are talking about a pull request.
@@ -115,11 +115,11 @@ class GitHubProvider:
                 # to the reader, and none of them "no CI".
                 outcomes.append(Err(ref=ref, reason="not visible to this token"))
                 continue
-            outcomes.append(Ok(ref=ref, status=_status(node), ttl=_ttl_for(node)))
+            outcomes.append(Ok(ref=ref, liveness=_liveness(node), ttl=_ttl_for(node)))
         return outcomes
 
 
-def _status(node: dict[str, Any]) -> Status:
+def _liveness(node: dict[str, Any]) -> Liveness:
     rollup = _rollup(node)
     if node.get("state") in ("MERGED", "CLOSED"):
         state, label = _STATE[node["state"]], node["state"].lower()
@@ -136,7 +136,7 @@ def _status(node: dict[str, Any]) -> Status:
     else:
         state, label = "pending", "awaiting review"
 
-    return Status(
+    return Liveness(
         state=state,  # type: ignore[arg-type]
         label=label,
         url=node.get("url"),

@@ -13,17 +13,25 @@ Two shapes carry the whole design.
 ``Ref`` is the unit of work.  Rows reference refs, not the other way round, so
 two rows pointing at the same pull request cost one fetch between them.
 
-``Status`` is a closed vocabulary plus an open bag.  ``state`` is one of six
+``Liveness`` is a closed vocabulary plus an open bag.  ``state`` is one of six
 words the board can colour and sort by without knowing what a "ticket" is;
 ``label`` is the provider's own phrasing, kept verbatim because "Needs review"
 and "In QA" are the words the reader actually recognises.
+
+The word *liveness*, and not *status*, is deliberate.  A board row already owns
+``status`` for its own lifecycle (``open``, ``claimed``, ``in_progress`` …), a
+different closed vocabulary that happens to share the word ``blocked`` with this
+one meaning something else.  A provider answers about the *external* thing a row
+points at, not the row's own lifecycle, so its answer lands on a row under a
+separate field (``ROW_FIELD``) and is named for what it is here too, so the two
+vocabularies can never quietly shadow one another in code.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Any, Literal, Protocol, runtime_checkable
+from typing import Any, Final, Literal, Protocol, runtime_checkable
 
 #: What a surface can act on generically. A provider maps its own states onto
 #: these; anything it cannot map is ``unknown`` rather than a guess.
@@ -46,7 +54,15 @@ from typing import Any, Literal, Protocol, runtime_checkable
 #:
 #: ``ok`` and ``done`` are the pair worth getting right: ``ok`` is a healthy
 #: thing still in flight, ``done`` is a finished one.
-State = Literal["ok", "pending", "blocked", "failed", "done", "unknown"]
+LiveState = Literal["ok", "pending", "blocked", "failed", "done", "unknown"]
+
+#: The board-row field a provider's answer lands under. Not ``status``: that
+#: word is already the row's own lifecycle (a different closed vocabulary), and
+#: both contain ``blocked`` meaning different things: a person has blocked the
+#: row, versus the external thing is waiting on a person. Namespacing the
+#: provider's answer under its own field is what keeps the two apart, on the row
+#: and in the reader's head.
+ROW_FIELD: Final = "live"
 
 #: How much the caller should trust what they were handed. This travels with
 #: every value: an agent reasoning on a three-hour-old "CI green" is the failure
@@ -72,8 +88,12 @@ class Ref:
 
 
 @dataclass(frozen=True, slots=True)
-class Status:
-    state: State
+class Liveness:
+    """A provider's reading of an external thing: one of six states, plus its
+    own words for it. Lands on a board row under ``ROW_FIELD``, never ``status``.
+    """
+
+    state: LiveState
     #: The provider's own word for it, shown as-is.
     label: str
     url: str | None = None
@@ -86,7 +106,7 @@ class Status:
 @dataclass(frozen=True, slots=True)
 class Ok:
     ref: Ref
-    status: Status
+    liveness: Liveness
     #: Override the provider's default freshness window for this one answer —
     #: a merged pull request can be cached far longer than an open one.
     ttl: timedelta | None = None
@@ -111,7 +131,7 @@ class Known:
 
     ref: Ref
     freshness: Freshness
-    status: Status | None = None
+    liveness: Liveness | None = None
     fetched_at: datetime | None = None
     error: str | None = None
 
@@ -130,7 +150,11 @@ class Context(Protocol):
     There is no way to read the credential's value.  A provider names what it
     needs and is handed a transport that already carries it, which means a
     provider cannot reach a host it never declared, and cannot send a token
-    somewhere it wasn't meant to go.
+    somewhere it wasn't meant to go.  The default implementation
+    (``status.context.HttpContext``) enforces the host bound, not by convention:
+    a request to any host other than ``base_url``'s is refused by the transport
+    before it leaves the process, so a leaked token cannot follow a redirect or
+    a hand-written absolute URL to somewhere it wasn't meant for.
     """
 
     @property

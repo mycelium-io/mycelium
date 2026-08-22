@@ -25,6 +25,7 @@ from collections.abc import Mapping
 from datetime import datetime, timedelta
 
 from app.services.status.cache import StatusCache
+from app.services.status.context import ContextFactory, build_http_context
 from app.services.status.types import Context, Err, Known, Ok, Ref, StatusProvider
 
 #: How many provider chunks may be in the air at once, across all providers.
@@ -32,16 +33,26 @@ DEFAULT_CONCURRENCY = 4
 
 
 class StatusRuntime:
+    """Owns one bound ``Context`` per provider, built on first use.
+
+    The context is per provider, not one shared instance, because the protocol
+    binds ``ctx.http`` to *each* provider's own ``base_url`` and credential: a
+    single shared transport cannot be two hosts at once. The runtime resolves the
+    credential (from ``credentials``) and the factory binds it into a transport,
+    so the value crosses from here to the wire without any provider touching it.
+    """
+
     def __init__(
         self,
         providers: dict[str, StatusProvider],
-        context: Context,
+        context_factory: ContextFactory | None = None,
         cache: StatusCache | None = None,
         concurrency: int = DEFAULT_CONCURRENCY,
         credentials: Mapping[str, str] | None = None,
     ) -> None:
         self._providers = providers
-        self._context = context
+        self._context_factory = context_factory or build_http_context
+        self._contexts: dict[str, Context] = {}
         self._cache = cache or StatusCache()
         self._gate = asyncio.Semaphore(concurrency)
         self._credentials = credentials or {}
@@ -49,6 +60,30 @@ class StatusRuntime:
     def _missing_credential(self, provider: StatusProvider) -> str | None:
         name = getattr(provider, "credential", None)
         return name if name and not self._credentials.get(name) else None
+
+    def _context_for(self, provider: StatusProvider) -> Context:
+        """The provider's bound context, built once and reused.
+
+        Built only after the credential check has passed, so the factory always
+        gets a real value for a provider that declares one, never the empty
+        string a missing credential would resolve to.
+        """
+        ctx = self._contexts.get(provider.name)
+        if ctx is None:
+            name = getattr(provider, "credential", None)
+            value = self._credentials.get(name) if name else None
+            ctx = self._context_factory(provider, value)
+            self._contexts[provider.name] = ctx
+        return ctx
+
+    async def aclose(self) -> None:
+        """Close every built context. The transports own sockets; the runtime owns
+        the transports, so releasing them is the runtime's to do."""
+        for ctx in self._contexts.values():
+            closer = getattr(ctx, "aclose", None)
+            if closer is not None:
+                await closer()
+        self._contexts.clear()
 
     @property
     def cache(self) -> StatusCache:
@@ -76,7 +111,7 @@ class StatusRuntime:
                 )
                 continue
             known = self._cache.known(ref, now, provider.ttl, provider.swr)
-            if max_age is not None and known.status is not None:
+            if max_age is not None and known.liveness is not None:
                 age = known.age(now)
                 if age is not None and age > max_age:
                     known = Known(ref=ref, freshness="missing", error=f"older than {max_age}")
@@ -135,7 +170,7 @@ class StatusRuntime:
 
         async with self._gate:
             try:
-                outcomes = await provider.fetch(list(chunk), self._context)
+                outcomes = await provider.fetch(list(chunk), self._context_for(provider))
             except Exception as exc:
                 # A provider bug must not sink the sweep. Which refs in the chunk
                 # survived is unknowable from here, so all are marked errored
@@ -149,7 +184,7 @@ class StatusRuntime:
             for outcome in outcomes:
                 answered.add(outcome.ref)
                 if isinstance(outcome, Ok):
-                    self._cache.put_ok(outcome.ref, outcome.status, now, ttl_override=outcome.ttl)
+                    self._cache.put_ok(outcome.ref, outcome.liveness, now, ttl_override=outcome.ttl)
                 elif isinstance(outcome, Err):
                     self._cache.put_err(
                         outcome.ref, outcome.reason, now, retry_after=outcome.retry_after
