@@ -12,6 +12,7 @@ shot term mycelium memory ls --room atlas     # a terminal card, real ANSI color
 shot app /room/atlas-migration --mock         # the running frontend
 shot app / --responsive --sheet               # every breakpoint in one image
 shot code src/services/aligner.py --range 40:80
+shot video /room/atlas --click Negotiate --auto-zoom   # a short take, cursor and all
 ```
 
 Nothing here is on the install path or in the runtime. A user never executes it.
@@ -45,6 +46,7 @@ speedup: 13.1x
 | `shot text <file\|->` | render an existing ANSI capture |
 | `shot code <file>` | a syntax-highlighted code card |
 | `shot html <file\|->` | render an HTML document |
+| `shot video [route]` | record a short take — see **Video** |
 | `shot open` / `do` / `shoot` / `close` | drive a page held open — see **Navigation** |
 | `shot warm` / `status` / `stop` / `serve` | the daemon |
 | `shot doctor` / `bench` | check and time this machine |
@@ -107,6 +109,50 @@ Element arguments accept any Playwright selector engine (`text=`,
 accessible name, then by visible text — `click:Save` means the button labelled
 Save, not a `<save>` element.
 
+## Video
+
+`shot video` records the same flow a screenshot would take, as a short clip with
+a pointer in it:
+
+```bash
+shot video /room/atlas --do click:Negotiate --do wait:.offer-grid --auto-zoom
+shot video / --mock --do 'fill:#search=aligner' --do press:Enter --format mp4
+shot video https://example.com --do 'zoom:.pricing@2' --do zoomout --fps 24
+```
+
+The action vocabulary is the one `--do` already speaks — a recording is not a
+second script format. What changes is how each verb is performed:
+
+| | |
+|---|---|
+| **The pointer travels.** | It eases to each target and the real mouse goes with it, so hover states, tooltips and drag affordances light up on the way. |
+| **The click reads.** | A ring expands where the press lands, and the cursor dips — at 30fps a click is otherwise a frame with nothing in it. |
+| **The camera pushes in.** | `zoom:<sel>` frames an element; `--auto-zoom` does it for every click and pulls back after. It is a transform on the page, so the type is re-rasterized sharper, not scaled up. |
+| **Typing is typed.** | `fill:` clicks the field and enters the text a character at a time. |
+
+Two extra verbs, ignored outside a recording, so one action list can serve both
+a take and the stills pulled from the same flow:
+
+```
+zoom:<sel>  zoom:<sel>@2.2  zoom:2  zoomout   hold:<ms>
+```
+
+The camera crops into the frame as it stands, so it never asks the page for
+content it has not painted; a push-in near an edge slides back inside instead of
+panning off. While it is pushed in, a `position: fixed` element travels with the
+page rather than sticking, and an element the crop has cut off is brought back by
+pulling the camera out before acting on it.
+
+**Format.** `--format mp4|webm|gif`, defaulting to the best the machine's ffmpeg
+can write. Playwright ships one with its browsers — always present, but built
+webm-only — so mp4 and gif need a full ffmpeg on PATH (or `SHOTKIT_FFMPEG`).
+`shot doctor` says which you have.
+
+**Timing.** `--fps` (30), `--move-ms` (620), `--dwell` (620), `--zoom-ms` (620),
+`--lead-in` (500), `--tail` (1000), and `--max-seconds` (90) to stop a runaway
+take. Frames come from a CDP screencast — real time, the app's own transitions
+included; `--capture shots` falls back to a screenshot loop.
+
 ## Browser chrome
 
 `--chrome` re-renders a page capture inside the same window frame the terminal
@@ -147,3 +193,5 @@ where files land.
   the client replaces it when that moves, so a fix never silently runs stale.
 - **Captures land in `.shotkit/`** (gitignored) and overwrite by name; `--unique`
   timestamps instead.
+- **A take costs about what it lasts.** Encoding keeps up with capture, so a
+  ten-second video takes about ten seconds plus the flow's own waits.

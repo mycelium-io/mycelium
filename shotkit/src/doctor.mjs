@@ -17,6 +17,7 @@ import { loadPlaywright, REPO_ROOT } from "./engine.mjs";
 import { candidates, launchChromium } from "./browser.mjs";
 import { ptyAvailable } from "./run.mjs";
 import { ping, socketPath } from "./ipc.mjs";
+import { findEncoder } from "./encode.mjs";
 
 const ok = (m) => process.stdout.write(`  \x1b[32m✓\x1b[0m ${m}\n`);
 const warn = (m) => process.stdout.write(`  \x1b[33m!\x1b[0m ${m}\n`);
@@ -58,6 +59,16 @@ export async function doctor() {
     ok("highlight.js present — `shot code` highlights");
   } catch {
     warn("highlight.js missing — `shot code` renders plain. Run `npm install` in shotkit/");
+  }
+
+  head("video");
+  try {
+    const caps = await findEncoder();
+    ok(`ffmpeg (${caps.source}) ${caps.path}`);
+    if (caps.formats.includes("mp4")) ok(`writes ${caps.formats.join(", ")}`);
+    else warn(`writes ${caps.formats.join(", ") || "nothing"} — install a full ffmpeg for mp4 and gif`);
+  } catch (e) {
+    bad(e.message.split("\n")[0]);
   }
 
   head("app");

@@ -25,6 +25,7 @@ import { resolveBaseUrl } from "./app.mjs";
 import { runCommand } from "./run.mjs";
 import { stripAnsi } from "./ansi.mjs";
 import { viewportList } from "./viewports.mjs";
+import { record, resolveFormat } from "./video.mjs";
 
 /**
  * @typedef {object} PageSpec
@@ -50,6 +51,9 @@ import { viewportList } from "./viewports.mjs";
  * @property {string} [address] address-bar text when `chrome` is set
  * @property {"dark"|"light"} [chromeTheme] frame theme, when it should differ
  *   from the app's — a light frame around a dark app, say
+ * @property {number} [fps] `op: "video"` — frames per second (default 30)
+ * @property {number} [zoom] push-in factor for `zoom:` and `--auto-zoom`
+ * @property {boolean} [autoZoom] push in on every click, and back out after
  */
 
 export const DEFAULT_OUT_DIR = process.env.SHOTKIT_OUT ?? resolve(REPO_ROOT, ".shotkit");
@@ -59,12 +63,18 @@ const slug = (s) =>
 
 const stamp = () => new Date().toISOString().replace(/[-:]/g, "").replace(/\..+/, "").replace("T", "-");
 
+/** The extension a spec's output wants: an image format, or a video container. */
+function outputExt(spec) {
+  if (spec.op === "video") return spec.format ?? "webm";
+  return spec.format === "jpeg" ? "jpg" : "png";
+}
+
 /** Where this shot lands, given `--out` / `--out-dir` / `--name` / `--unique`. */
 function outputPath(spec, fallbackName, suffix = "") {
-  const ext = spec.format === "jpeg" ? "jpg" : "png";
+  const ext = outputExt(spec);
   if (spec.out && !suffix) return resolve(spec.out);
   if (spec.out) {
-    const base = resolve(spec.out).replace(/\.(png|jpg|jpeg)$/i, "");
+    const base = resolve(spec.out).replace(/\.(png|jpg|jpeg|mp4|webm|gif)$/i, "");
     return `${base}${suffix}.${ext}`;
   }
   const dir = spec.outDir ? resolve(spec.outDir) : DEFAULT_OUT_DIR;
@@ -109,6 +119,43 @@ export async function capture(spec, ctx = {}) {
     return finish({ ...base, meta, ms: { total: Date.now() - t0, ...timings } }, spec, buf, fallbackName);
   }
 
+  if (spec.op === "video") {
+    const { url, baseUrl } = await resolvePageUrl({ ...spec, op: spec.url ? "url" : "app" }, log);
+    const { format } = await resolveFormat(spec);
+    const frame = viewportList(spec)[0];
+    const isApp = Boolean(spec.route);
+    const name = `video-${slug(spec.route ?? new URL(url).pathname)}`;
+    const out = outputPath({ ...spec, format }, name);
+    const take = await record(
+      eng,
+      {
+        ...spec,
+        // A preset's own pixel ratio is for stills; a take is a viewport-sized
+        // file unless --scale asks for more, since doubling it doubles every
+        // frame for detail a video does not keep.
+        ...(frame ? { width: frame.viewport.width, height: frame.viewport.height } : {}),
+        format,
+        url,
+        baseUrl,
+        settle: spec.settle ?? (isApp ? "fast" : "none"),
+        storage: themedStorage(spec, isApp),
+      },
+      { log, out },
+    );
+    // Everything about *how* the take was made is meta; the file and its shape
+    // stay at the top level, where every other op puts them.
+    const { capture: source, encoder, truncated, ...rest } = take;
+    const result = {
+      ...base,
+      ...rest,
+      meta: { url, baseUrl, viewport: frame?.name, capture: source, encoder, truncated },
+      ms: { total: Date.now() - t0, ...take.ms },
+    };
+    if (!spec.stdout) return result;
+    const bytes = await readFile(take.path);
+    return { ...result, base64: bytes.toString("base64"), bytes: bytes.length };
+  }
+
   if (spec.op === "url" || spec.op === "app") {
     const { url, baseUrl } = await resolvePageUrl(spec, log);
     const fallbackName = spec.op === "app" ? `app-${slug(spec.route ?? "home")}` : `url-${slug(new URL(url).pathname)}`;
@@ -149,8 +196,8 @@ export async function capture(spec, ctx = {}) {
  * or it produces a light frame around an unchanged dark app. An explicit
  * `--storage theme=…` still takes precedence.
  */
-function themedStorage(spec) {
-  if (spec.op !== "app") return spec.storage;
+function themedStorage(spec, isApp = spec.op === "app") {
+  if (!isApp) return spec.storage;
   return { theme: spec.theme ?? "dark", ...(spec.storage ?? {}) };
 }
 

@@ -27,7 +27,11 @@ shotkit/            The repo's camera: fast screenshots of the running app and o
                     — `app` (a route, with --mock booting dev:mock), `term` (a
                     command under a pty, so Rich keeps its colors, rendered as a
                     Carbon-style card), `code`, plus --responsive/--sheet for
-                    breakpoints and open/do/shoot for driving a held page. See the
+                    breakpoints and open/do/shoot for driving a held page. `video`
+                    records the same `--do` flow as a short clip with a drawn
+                    cursor, click rings and a camera that pushes in (--auto-zoom),
+                    encoded by whatever ffmpeg is on the machine — mp4 with a full
+                    one, webm off the build Playwright ships. See the
                     `screenshot` skill. Captures land in gitignored `.shotkit/`;
                     the committed docs assets are still `pnpm screenshots`, which
                     now runs on this engine.
