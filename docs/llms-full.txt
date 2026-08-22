@@ -119,7 +119,7 @@ model later with `mycelium config set llm.model <model>` and
 Bring it up, check on it, or stop it:
 
 ```bash
-mycelium up       # start the server
+mycelium up       # start the stack: SLIM node, backend, and UI
 mycelium status   # health check for the backend, node, and LLM
 mycelium logs     # tail logs if something looks off
 mycelium down     # stop it
@@ -2244,8 +2244,7 @@ export MYCELIUM_OIDC_CLIENT_ID=mycelium-web
 export MYCELIUM_OIDC_AUDIENCE=mycelium
 export AUTH_SESSION_SECRET=$(openssl rand -hex 32)
 
-docker compose -f compose.yml -f compose-dev.yml -f compose-keycloak.yml \
-  --profile ui up -d
+docker compose -f compose.yml -f compose-dev.yml -f compose-keycloak.yml up -d
 ```
 
 The **issuer split is the same as the backend's**, for the same reason: the
@@ -2539,7 +2538,7 @@ Unreachable* above); the backend and the node are separate ports.
 | `LLM_BASE_URL` | Custom LLM endpoint (Ollama, vLLM) | (none) |
 | `MYCELIUM_DATA_DIR` | Data directory | `~/.mycelium` |
 | `MYCELIUM_BACKEND_PORT` | Backend API host port | `8000` |
-| `MYCELIUM_UI_PORT` | Frontend host port (`--ui`) | `3000` |
+| `MYCELIUM_UI_PORT` | Frontend host port | `3000` |
 | `MYCELIUM_METRICS_PORT` | OTLP collector host port (`--metrics`) | `4318` |
 
 All of these are written by `mycelium config apply` from the matching

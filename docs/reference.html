@@ -388,7 +388,7 @@
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="bin">mycelium</span> <span class="cmd">up</span> [<span class="flag">--build</span>] [<span class="flag">--ui</span>] [<span class="flag">--metrics</span>]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">up</span> [<span class="flag">--build</span>] [<span class="flag">--metrics</span>]</code>
         </div>
         <div class="cmd-ref-body">Start the Mycelium stack via <code>docker compose up</code>.</div>
       </div>
@@ -940,7 +940,7 @@
 <span class="comment"># Host port for the frontend UI</span>
 <span class="arg">frontend_port</span> = 3000
 
-<span class="comment"># Comma-separated origins the Next.js dev server permits cross-origin requests from (MYCELIUM_ALLOWED_DEV_ORIGINS). Add your public IP or hostname when running `mycelium up --ui` (or pnpm dev) behind a reverse proxy or NAT and accessing the UI from a browser on a different host. Production Docker builds do not use this — the browser always hits its own origin. Example: mycelium config set runtime.allowed_dev_origins &#x27;3.139.30.16&#x27; or &#x27;3.139.30.16,10.0.0.5&#x27;</span>
+<span class="comment"># Comma-separated origins the Next.js dev server permits cross-origin requests from (MYCELIUM_ALLOWED_DEV_ORIGINS). Add your public IP or hostname when running `mycelium up` (or pnpm dev) behind a reverse proxy or NAT and accessing the UI from a browser on a different host. Production Docker builds do not use this — the browser always hits its own origin. Example: mycelium config set runtime.allowed_dev_origins &#x27;3.139.30.16&#x27; or &#x27;3.139.30.16,10.0.0.5&#x27;</span>
 <span class="arg">allowed_dev_origins</span> = <span class="str">&quot;&quot;</span>
 
 <span class="comment"># Root directory for .mycelium/ data (defaults to ~/.mycelium)</span>
@@ -1892,8 +1892,7 @@ export MYCELIUM_OIDC_CLIENT_ID=mycelium-web
 export MYCELIUM_OIDC_AUDIENCE=mycelium
 export AUTH_SESSION_SECRET=$(openssl rand <span class="flag">-hex</span> 32)
 
-<span class="cmd">docker</span> compose <span class="flag">-f</span> compose.yml <span class="flag">-f</span> compose-dev.yml <span class="flag">-f</span> compose-keycloak.yml \
-  <span class="flag">--profile</span> ui up <span class="flag">-d</span></code></pre>
+<span class="cmd">docker</span> compose <span class="flag">-f</span> compose.yml <span class="flag">-f</span> compose-dev.yml <span class="flag">-f</span> compose-keycloak.yml up <span class="flag">-d</span></code></pre>
       <p>The <strong>issuer split is the same as the backend&#x27;s</strong>, for the same reason: the browser reaches Keycloak at <code>MYCELIUM_OIDC_ISSUER</code> (<code>localhost:8080</code>) and the token&#x27;s <code>iss</code> matches it, but the containerized frontend server can&#x27;t use <code>localhost</code>, so it runs discovery + token exchange against <code>MYCELIUM_OIDC_INTERNAL_ISSUER</code> (<code>keycloak:8080</code>). Running the frontend on the host with <code>pnpm dev</code> instead? Drop <code>INTERNAL_ISSUER</code>; the two coincide.</p>
       <div class="callout callout-note">
         <div class="callout-bar"></div>
@@ -2088,7 +2087,7 @@ grep api_url ~/.mycelium/config.toml  # what the spoke targets</code></pre>
             </tr>
             <tr>
               <td><code>MYCELIUM_UI_PORT</code></td>
-              <td>Frontend host port (<code>--ui</code>)</td>
+              <td>Frontend host port</td>
               <td><code>3000</code></td>
             </tr>
             <tr>

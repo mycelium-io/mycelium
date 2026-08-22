@@ -14,11 +14,11 @@ mycelium --help
 mycelium doctor
 ```
 
-`mycelium install` starts a SLIM node (the encrypted group-channel transport) and
-an always-on thin FastAPI backend that acts as each room's moderator. There is no
-database: rooms are folders, memories are markdown, and search runs against a
-local embedding index. The optional UI is at `http://localhost:3000` (the `ui`
-profile). Pick an LLM for the aligner during install.
+`mycelium install` starts a SLIM node (the encrypted group-channel transport), an
+always-on thin FastAPI backend that acts as each room's moderator, and the UI at
+`http://localhost:3000`. There is no database: rooms are folders, memories are
+markdown, and search runs against a local embedding index. Pick an LLM for the
+aligner during install.
 
 ---
 

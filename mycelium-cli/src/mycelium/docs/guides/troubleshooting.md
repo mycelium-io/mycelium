@@ -266,7 +266,7 @@ Unreachable* above); the backend and the node are separate ports.
 | `LLM_BASE_URL` | Custom LLM endpoint (Ollama, vLLM) | (none) |
 | `MYCELIUM_DATA_DIR` | Data directory | `~/.mycelium` |
 | `MYCELIUM_BACKEND_PORT` | Backend API host port | `8000` |
-| `MYCELIUM_UI_PORT` | Frontend host port (`--ui`) | `3000` |
+| `MYCELIUM_UI_PORT` | Frontend host port | `3000` |
 | `MYCELIUM_METRICS_PORT` | OTLP collector host port (`--metrics`) | `4318` |
 
 All of these are written by `mycelium config apply` from the matching
