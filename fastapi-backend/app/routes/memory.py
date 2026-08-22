@@ -27,6 +27,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
+import yaml
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import Response
 
@@ -42,6 +43,7 @@ from app.schemas import (
 )
 from app.services import actor, links, local_state, memory_sync, search_index
 from app.services.embedding import embed_text
+from app.services.engine_events import RoomEvent, lifecycle
 from app.services.filesystem import (
     delete_memory_file,
     get_room_dir,
@@ -130,6 +132,31 @@ def _notify_change(room_name: str, key: str, updated_by: str, version: int) -> N
     for sub in local_state.list_subscriptions(room_name):
         if fnmatch.fnmatch(key, sub.key_pattern):
             bus.publish(agent_channel(sub.subscriber), payload)
+
+
+def _announce_engine_manifest(room_name: str, key: str, body: str) -> None:
+    """Fire ``engine.registered`` when the write was an engine's manifest.
+
+    The manifest write is the one path both front doors share — the engines route
+    and the CLI's ``mycelium engine create`` — so an engine that installs room
+    behaviour on registration (the summonguard's summon filter) hooks in here
+    rather than in either caller. Cheap: a prefix test on every memory write, a
+    YAML parse only on the rare ``agents/<handle>`` one.
+    """
+    if not key.startswith("agents/") or "/" in key.removeprefix("agents/"):
+        return
+    try:
+        manifest = yaml.safe_load(body) or {}
+    except yaml.YAMLError:
+        return
+    if not isinstance(manifest, dict) or manifest.get("adapter") != "engine":
+        return
+    lifecycle.emit(
+        RoomEvent.ENGINE_REGISTERED,
+        room_name,
+        handle=key.removeprefix("agents/"),
+        kind=str(manifest.get("kind") or "") or None,
+    )
 
 
 # Strong refs for the fire-and-forget broadcasts below — an unreferenced
@@ -337,6 +364,7 @@ async def upsert_memories(room_name: str, payload: MemoryBatchCreate) -> list[Me
             )
         )
         _notify_change(room_name, item.key, item.created_by, new_version)
+        _announce_engine_manifest(room_name, item.key, body)
         _broadcast_memory_write(
             room_name,
             key=item.key,

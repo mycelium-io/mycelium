@@ -129,3 +129,118 @@ async def test_await_ignores_turns_addressed_to_others(wired):
     wired(log)
     result = await participate.await_message("r", _REQUEST, handle="claude-code-agent", timeout=1)
     assert result["message"] is None
+
+
+# ── the summon guard's wake gate (#summonguard) ──────────────────────────────
+
+
+def _mention_record(message_id: str, *, text: str, sender: str = "avery"):
+    """A broadcast that only *names* a handle in prose — no L9 recipient.
+
+    This is the shape a guard is allowed to judge: nothing in the protocol
+    addressed the handle, the wake comes purely from ``@handle`` in the text.
+    """
+    env = l9.build_envelope(
+        kind=Kind.exchange,
+        episode=l9.episode_urn("r", "live"),
+        sender=sender,
+        sender_role="human",
+        topic=l9.topic_urn("r"),
+        message_id=message_id,
+        payload_type="message",
+    )
+    return persister.record_from(env, serialize_content(env, extra={"content": text}))
+
+
+@pytest.fixture
+def guarded(monkeypatch):
+    """Install a summon filter returning a fixed decision map."""
+    from app.services import summonguard
+    from app.services.engine_events import SUMMON_FILTER, lifecycle
+
+    def _install(decisions: dict[str, str]) -> None:
+        async def _filter(ctx):
+            summonguard.verdicts.put(
+                summonguard.SummonVerdict(
+                    room=ctx.room,
+                    message_id=ctx.message_id,
+                    sender=ctx.sender,
+                    text=ctx.text,
+                    decisions=decisions,
+                )
+            )
+            return decisions
+
+        lifecycle.install("r", SUMMON_FILTER, "watcher", _filter)
+
+    yield _install
+    lifecycle.clear()
+    summonguard.verdicts.clear()
+
+
+@pytest.mark.asyncio
+async def test_await_skips_a_mention_the_guard_called_provenance(wired, guarded):
+    """The guard's whole point: being named in passing is not a turn."""
+    from app.services import summonguard
+
+    log = persister.DeliveryLog()
+    log.record(
+        _mention_record("m1", text="shipped it, credit to @claude-code-agent"),
+        delivered_to=set(),
+        recipients=["claude-code-agent"],
+    )
+    wired(log)
+    guarded({"claude-code-agent": "mention"})
+    await summonguard.decide(
+        summonguard.SummonContext(
+            room="r",
+            message_id="m1",
+            sender="avery",
+            text="shipped it, credit to @claude-code-agent",
+            handles=("claude-code-agent",),
+        )
+    )
+
+    result = await participate.await_message("r", _REQUEST, handle="claude-code-agent", timeout=1)
+    assert result["message"] is None
+    # The record was scanned and consumed, not merely out of the cursor's reach —
+    # otherwise this would pass for a handle the poll never looked at.
+    assert log.position("claude-code-agent") == 1
+
+
+@pytest.mark.asyncio
+async def test_await_serves_a_mention_the_guard_called_a_summon(wired, guarded):
+    from app.services import summonguard
+
+    text = "@claude-code-agent can you cost this out?"
+    log = persister.DeliveryLog()
+    log.record(
+        _mention_record("m1", text=text), delivered_to=set(), recipients=["claude-code-agent"]
+    )
+    wired(log)
+    guarded({"claude-code-agent": "wake"})
+    await summonguard.decide(
+        summonguard.SummonContext(
+            room="r", message_id="m1", sender="avery", text=text, handles=("claude-code-agent",)
+        )
+    )
+
+    result = await participate.await_message("r", _REQUEST, handle="claude-code-agent", timeout=0)
+    assert result["message_id"] == "m1"
+
+
+@pytest.mark.asyncio
+async def test_a_protocol_addressed_tick_is_never_the_guards_to_judge(wired, guarded):
+    """A mediator tick names the handle as an L9 recipient — that is a turn by
+    construction, so a guard that would suppress it does not get asked."""
+    log = persister.DeliveryLog()
+    log.record(
+        _addressed_record("m1", to="claude-code-agent"),
+        delivered_to=set(),
+        recipients=["claude-code-agent"],
+    )
+    wired(log)
+    guarded({"claude-code-agent": "mention"})
+
+    result = await participate.await_message("r", _REQUEST, handle="claude-code-agent", timeout=0)
+    assert result["message_id"] == "m1"

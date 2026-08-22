@@ -2708,6 +2708,61 @@
         }
       }
     },
+    "/api/rooms/{room_name}/summonguard": {
+      "get": {
+        "tags": [
+          "engines"
+        ],
+        "summary": "Summonguard Status",
+        "description": "The room's guard status plus its most recent verdicts, newest first.",
+        "operationId": "summonguard_status_api_rooms__room_name__summonguard_get",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SummonGuardStatus"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "tags": [
@@ -5112,6 +5167,98 @@
           "created_at"
         ],
         "title": "SubscriptionRead"
+      },
+      "SummonGuardStatus": {
+        "properties": {
+          "room": {
+            "type": "string",
+            "title": "Room"
+          },
+          "installed": {
+            "type": "boolean",
+            "title": "Installed",
+            "description": "True when a summon filter is installed."
+          },
+          "guards": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Guards",
+            "description": "Engines that installed it."
+          },
+          "disabled": {
+            "type": "boolean",
+            "title": "Disabled",
+            "description": "Kill switch: guards classify everything as a wake."
+          },
+          "verdicts": {
+            "items": {
+              "$ref": "#/components/schemas/SummonVerdictRead"
+            },
+            "type": "array",
+            "title": "Verdicts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "room",
+          "installed",
+          "disabled"
+        ],
+        "title": "SummonGuardStatus",
+        "description": "Whether a room's summons are guarded, and what the guard has been deciding."
+      },
+      "SummonVerdictRead": {
+        "properties": {
+          "message_id": {
+            "type": "string",
+            "title": "Message Id"
+          },
+          "sender": {
+            "type": "string",
+            "title": "Sender"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "decisions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Decisions",
+            "description": "handle -> 'wake' | 'mention'"
+          },
+          "reasons": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Reasons"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "description": "How it was decided: pi | leading-mention | fail-open | \u2026"
+          },
+          "decided_at": {
+            "type": "string",
+            "title": "Decided At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message_id",
+          "sender",
+          "text",
+          "decisions",
+          "source",
+          "decided_at"
+        ],
+        "title": "SummonVerdictRead",
+        "description": "One message's summon decisions."
       },
       "TaskCreate": {
         "properties": {

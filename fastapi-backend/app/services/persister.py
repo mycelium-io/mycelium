@@ -64,6 +64,7 @@ _MESSAGE_ID_NS = uuid.UUID("6f1d2c3b-4a59-6e7d-8c9b-0a1b2c3d4e5f")
 if TYPE_CHECKING:
     import slim_bindings
 
+    from app.services import summonguard
     from app.services.l9_models import L9
     from app.services.l9_slim import L9SlimChannel
     from app.services.local_state import StoredMessage
@@ -723,6 +724,9 @@ class RoomPersister:
         # IO + reindexing, so it can't run inline in the sync ``_ingest`` call);
         # without this the task could be GC'd mid-flight.
         self._knowledge_tasks: set[asyncio.Task[None]] = set()
+        # Strong refs to in-flight guarded-summon dispatches (only ever populated
+        # in a room where an engine installed a summon filter).
+        self._summon_tasks: set[asyncio.Task[None]] = set()
         # Health counters surfaced via RoomChannelManager.status(). ``receive_errors``
         # is genuine (fatal) transport faults; ``transient_errors`` is recoverable
         # membership-churn receive errors (retried, not lost) — split so the health
@@ -965,11 +969,8 @@ class RoomPersister:
         # other handles (``@aligner @a @b``) can scope the run to those co-mentions.
         summons = find_summons(content)
         message_text = content.get("content", "") if isinstance(content, dict) else ""
-        for handle in summons:
-            try:
-                self.on_summon(handle, envelope, summons, message_text)
-            except Exception:
-                logger.exception("summon hook failed for @%s", handle)
+        if summons:
+            self._dispatch_summons(summons, envelope, record.sender, message_text)
         if is_converged(envelope):
             try:
                 self.on_converged(envelope)
@@ -977,6 +978,68 @@ class RoomPersister:
                 logger.exception("converged hook failed")
         if memory_sync.is_knowledge(envelope):
             self._schedule_knowledge_apply(envelope)
+
+    def _fire_summons(
+        self, handles: list[str], envelope: L9, co_summons: list[str], message_text: str
+    ) -> None:
+        for handle in handles:
+            try:
+                self.on_summon(handle, envelope, co_summons, message_text)
+            except Exception:
+                logger.exception("summon hook failed for @%s", handle)
+
+    def _dispatch_summons(
+        self, summons: list[str], envelope: L9, sender: str, message_text: str
+    ) -> None:
+        """Fire the summon hook for each ``@``-mention, past any installed guard.
+
+        A room with no summon filter installed (:mod:`app.services.summonguard`)
+        takes the direct path — every mention fires the hook inline, exactly as
+        before. A guarded room classifies first, off the ingest path since
+        cognition can't run inline in a sync ingest; the mentions judged
+        provenance never reach the hook, and the verdict the classification
+        publishes is the same one ``await`` reads to decide whether to wake a
+        resident agent.
+
+        The full mention list still rides along as ``co_summons`` regardless of
+        the verdict — a scoped ``@aligner @a @b`` negotiates @a and @b whether or
+        not they were each summoned in their own right.
+        """
+        from app.services import summonguard
+
+        if not summonguard.guarded(self.room):
+            self._fire_summons(summons, envelope, summons, message_text)
+            return
+        message_id = envelope_message_id(envelope) or ""
+        ctx = summonguard.SummonContext(
+            room=self.room,
+            message_id=message_id,
+            sender=sender,
+            text=message_text,
+            handles=tuple(summons),
+        )
+        try:
+            task = asyncio.create_task(self._guarded_summons(ctx, envelope, summons, message_text))
+        except RuntimeError:
+            # No running loop (a sync ingest in a unit test): the guard needs one,
+            # and a guard that can't run must not swallow a summon.
+            self._fire_summons(summons, envelope, summons, message_text)
+            return
+        self._summon_tasks.add(task)
+        task.add_done_callback(self._summon_tasks.discard)
+
+    async def _guarded_summons(
+        self,
+        ctx: summonguard.SummonContext,
+        envelope: L9,
+        summons: list[str],
+        message_text: str,
+    ) -> None:
+        from app.services import summonguard
+
+        decisions = await summonguard.decide(ctx)
+        woken = [h for h in summons if decisions.get(h.strip().lstrip("@").lower()) != "mention"]
+        self._fire_summons(woken, envelope, summons, message_text)
 
     def _schedule_knowledge_apply(self, envelope: L9) -> None:
         """Apply an inbound ``knowledge`` write off the ingest path.

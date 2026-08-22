@@ -38,6 +38,7 @@ from typing import TYPE_CHECKING
 
 from app.config import settings
 from app.services import custody, l9, slim_identity
+from app.services.engine_events import RoomEvent, lifecycle
 from app.services.invites import ACCEPTED, DECLINED, QUEUED, PendingInvite, PendingInviteRegistry
 from app.services.l9_models import Kind
 from app.services.l9_slim import (
@@ -439,6 +440,9 @@ class RoomChannelManager:
             self._channels[room] = managed
             self._start_persister(managed)
             self._metrics.provisions_ok += 1
+            # Let engines that install room behaviour (a summon filter) re-attach
+            # to a room whose manifests were written while this process was down.
+            lifecycle.emit(RoomEvent.ROOM_PROVISIONED, room)
             logger.info("Provisioned SLIM channel for room %s (workspace=%s)", room, ws)
             return managed
 
