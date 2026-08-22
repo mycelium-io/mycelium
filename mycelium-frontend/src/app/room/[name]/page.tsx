@@ -67,6 +67,7 @@ function RoomWorkspace() {
   const [tourActive, setTourActive] = useState(false);
   const [inviteEngine, setInviteEngine] = useState(false);
   const [focusMemory, setFocusMemory] = useState<{ key: string; nonce: number } | null>(null);
+  const [focusEpisode, setFocusEpisode] = useState<{ shortId: string; nonce: number } | null>(null);
 
   // Start the coached tour when arriving via "Run a sample coordination".
   useEffect(() => {
@@ -97,6 +98,13 @@ function RoomWorkspace() {
     setInspectorTab("memory");
     setInspectorOpen(true);
     setFocusMemory(prev => ({ key, nonce: (prev?.nonce ?? 0) + 1 }));
+  }, []);
+
+  // An episode tag clicked in chat opens the Episodes rail on that episode.
+  const openEpisode = useCallback((shortId: string) => {
+    setInspectorTab("episodes");
+    setInspectorOpen(true);
+    setFocusEpisode(prev => ({ shortId, nonce: (prev?.nonce ?? 0) + 1 }));
   }, []);
 
   const handleEngineInviteShown = useCallback(() => setInviteEngine(false), []);
@@ -268,6 +276,7 @@ function RoomWorkspace() {
                   onConnectionChange={setConnected}
                   onNegotiationPhaseChange={setNegPhase}
                   onOpenMemory={openMemory}
+                  onOpenEpisode={openEpisode}
                   view={editorView}
                   onViewChange={setEditorView}
                   suppressInvites={tourActive}
@@ -305,6 +314,7 @@ function RoomWorkspace() {
                   focus={focus}
                   onFocusConsumed={clearFocus}
                   focusMemory={focusMemory}
+                  focusEpisode={focusEpisode}
                 />
               </ResizablePanel>
             </>
@@ -325,6 +335,7 @@ function RoomWorkspace() {
             focus={focus}
             onFocusConsumed={clearFocus}
             focusMemory={focusMemory}
+            focusEpisode={focusEpisode}
             />
           </div>
         )}
