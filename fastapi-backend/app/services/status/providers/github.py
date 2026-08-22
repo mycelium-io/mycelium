@@ -58,6 +58,10 @@ query($q: String!) {
 
 class GitHubProvider:
     name = "github"
+    base_url = "https://api.github.com"
+    #: Named, never read. The runtime resolves it and hands back a transport
+    #: that already carries it; this class never sees the value.
+    credential = "GITHUB_TOKEN"
     #: GitHub's search node cap. Chunking to it is the runtime's job.
     max_batch = 50
     #: A pull request people are actively looking at moves on the order of
@@ -85,17 +89,12 @@ class GitHubProvider:
         return refs
 
     async def fetch(self, refs: list[Ref], ctx: Context) -> list[Outcome]:
-        token = ctx.secret("GITHUB_TOKEN")
-        if not token:
-            # Refusing loudly per ref beats resolving everything to "unknown",
-            # which reads on the board as "this PR has no CI".
-            return [Err(ref=ref, reason="GITHUB_TOKEN not configured") for ref in refs]
-
+        # No auth here: a provider that is called at all has its credential, and
+        # ``ctx.http`` is already bound to ``base_url`` carrying it.
         query = " ".join(f"repo:{r.id.split('#')[0]} {r.id.split('#')[1]}" for r in refs)
         response = await ctx.http.post(
-            "https://api.github.com/graphql",
+            "/graphql",
             json={"query": _QUERY, "variables": {"q": query}},
-            headers={"Authorization": f"Bearer {token}"},
         )
 
         if response.status_code == 403 and "rate limit" in response.text.lower():

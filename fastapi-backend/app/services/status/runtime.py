@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import asyncio
 from collections import defaultdict
+from collections.abc import Mapping
 from datetime import datetime, timedelta
 
 from app.services.status.cache import StatusCache
@@ -37,11 +38,17 @@ class StatusRuntime:
         context: Context,
         cache: StatusCache | None = None,
         concurrency: int = DEFAULT_CONCURRENCY,
+        credentials: Mapping[str, str] | None = None,
     ) -> None:
         self._providers = providers
         self._context = context
         self._cache = cache or StatusCache()
         self._gate = asyncio.Semaphore(concurrency)
+        self._credentials = credentials or {}
+
+    def _missing_credential(self, provider: StatusProvider) -> str | None:
+        name = getattr(provider, "credential", None)
+        return name if name and not self._credentials.get(name) else None
 
     @property
     def cache(self) -> StatusCache:
@@ -116,6 +123,16 @@ class StatusRuntime:
         return self.read(refs, now, max_age=max_age)
 
     async def _run_chunk(self, provider: StatusProvider, chunk: list[Ref], now: datetime) -> None:
+        missing = self._missing_credential(provider)
+        if missing is not None:
+            # Refusing here rather than inside the provider keeps every provider
+            # free of credential handling, and keeps a misconfigured one from
+            # spending a request to discover it has no token.
+            for ref in chunk:
+                self._cache.put_err(ref, f"{provider.name}: {missing} not configured", now)
+            self._cache.finish(chunk)
+            return
+
         async with self._gate:
             try:
                 outcomes = await provider.fetch(list(chunk), self._context)
