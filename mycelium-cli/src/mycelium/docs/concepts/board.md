@@ -176,18 +176,22 @@ sort, filter and colour by without knowing what a pull request is:
 
 | State | What it means |
 |---|---|
-| `ok` | done with, in the affirmative sense — the thing it was waiting for happened |
-| `pending` | still moving, nobody is required |
-| `blocked` | waiting on a person |
-| `failed` | waiting on a fix |
-| `done` | closed out, however it ended |
-| `unknown` | the provider couldn't map what the tool said |
+| `ok` | nothing is wrong and nobody is needed — healthy, not finished |
+| `pending` | in motion, nobody is required |
+| `blocked` | waiting on a person: a decision, a revision, an approval |
+| `failed` | waiting on a fix, and a machine is what said no |
+| `done` | terminal, however it ended — the label carries how |
+| `unknown` | the provider met a state it couldn't place |
 
-GitHub maps onto those more narrowly than you might guess: `ok` means
-**approved**, so green checks with no review yet are `pending` /
-`awaiting review`, and changes requested is `blocked` while red CI is `failed` —
-a person is the fix in one case and a machine in the other. `unknown` exists for
-providers that meet a state they can't place; the GitHub one never emits it.
+`ok` and `done` are the pair worth reading carefully, because a board's whole
+job is keeping them apart: an approved pull request is `ok` right up until it
+merges, and `done` the moment it does.
+
+GitHub maps onto the six more narrowly than you might guess. `ok` needs an
+approval, so green checks with no review yet are `pending` / `awaiting review`.
+Changes requested is `blocked` and red CI is `failed` — a person is the fix in
+one case, a machine in the other. `unknown` is there for a provider that meets a
+state it can't place; the GitHub one never emits it.
 
 ### How current it will be
 

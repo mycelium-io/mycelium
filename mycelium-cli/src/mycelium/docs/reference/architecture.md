@@ -223,9 +223,11 @@ configure yet. One thing is worth knowing whatever it lands on: don't hand-edit
 token written in by hand disappears the next time it runs, with no error to
 explain where it went.
 
-A provider whose credential is missing refuses each reference and says why,
-rather than answering with a blank — a blank on a row reads as *this pull
-request has no CI*, which is worse than an honest gap.
+A reference whose provider has no credential is refused with the reason, rather
+than answered with a blank — a blank on a row reads as *this pull request has no
+CI*, which is worse than an honest gap. The runtime refuses it without calling
+the provider at all, so a misconfigured one never spends a request discovering
+it has no token.
 
 ### Teaching Mycelium another tracker
 
@@ -236,6 +238,7 @@ freshness, then implements two methods:
 ```python
 class JiraProvider:
     name = "jira"
+    base_url = "https://your-org.atlassian.net"   # ctx.http is bound to this host
     credential = "JIRA_TOKEN"       # resolved by the runtime; never seen by the provider
     max_batch = 50                  # most references the runtime sends in one call
     ttl = timedelta(minutes=1)      # how long an answer counts as current
@@ -249,11 +252,12 @@ class JiraProvider:
         """Resolve a batch. One Ok or Err per reference, in any order."""
 ```
 
-What you don't write is as important as what you do. `ctx.http` arrives with the
-credential, timeout and retry policy already applied, so a provider is
-request-and-parse. Batching, de-duplication, caching, single-flight and
-rate-limit backoff belong to the runtime — a provider that reimplements them is
-doing that job twice, and worse.
+What you don't write is as important as what you do. `ctx.http` arrives bound to
+the declared `base_url`, with the credential, timeout and retry policy already
+applied, so a provider is request-and-parse — it names a host and a secret and is
+handed neither. Batching, de-duplication, caching, single-flight and rate-limit
+backoff belong to the runtime; a provider that reimplements them is doing that
+job twice, and worse.
 
 Two rules the runtime enforces:
 

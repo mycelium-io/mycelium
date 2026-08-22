@@ -769,32 +769,33 @@ Review 1
           <tbody>
             <tr>
               <td><code>ok</code></td>
-              <td>done with, in the affirmative sense — the thing it was waiting for happened</td>
+              <td>nothing is wrong and nobody is needed — healthy, not finished</td>
             </tr>
             <tr>
               <td><code>pending</code></td>
-              <td>still moving, nobody is required</td>
+              <td>in motion, nobody is required</td>
             </tr>
             <tr>
               <td><code>blocked</code></td>
-              <td>waiting on a person</td>
+              <td>waiting on a person: a decision, a revision, an approval</td>
             </tr>
             <tr>
               <td><code>failed</code></td>
-              <td>waiting on a fix</td>
+              <td>waiting on a fix, and a machine is what said no</td>
             </tr>
             <tr>
               <td><code>done</code></td>
-              <td>closed out, however it ended</td>
+              <td>terminal, however it ended — the label carries how</td>
             </tr>
             <tr>
               <td><code>unknown</code></td>
-              <td>the provider couldn&#x27;t map what the tool said</td>
+              <td>the provider met a state it couldn&#x27;t place</td>
             </tr>
           </tbody>
         </table>
       </div>
-      <p>GitHub maps onto those more narrowly than you might guess: <code>ok</code> means <strong>approved</strong>, so green checks with no review yet are <code>pending</code> / <code>awaiting review</code>, and changes requested is <code>blocked</code> while red CI is <code>failed</code> — a person is the fix in one case and a machine in the other. <code>unknown</code> exists for providers that meet a state they can&#x27;t place; the GitHub one never emits it.</p>
+      <p><code>ok</code> and <code>done</code> are the pair worth reading carefully, because a board&#x27;s whole job is keeping them apart: an approved pull request is <code>ok</code> right up until it merges, and <code>done</code> the moment it does.</p>
+      <p>GitHub maps onto the six more narrowly than you might guess. <code>ok</code> needs an approval, so green checks with no review yet are <code>pending</code> / <code>awaiting review</code>. Changes requested is <code>blocked</code> and red CI is <code>failed</code> — a person is the fix in one case, a machine in the other. <code>unknown</code> is there for a provider that meets a state it can&#x27;t place; the GitHub one never emits it.</p>
       <h3 id="board-how-current-it-will-be">How current it will be</h3>
       <p>Every status will carry the moment it was fetched, and the row will show its age (<code>CI green · 4m</code>). A render never waits on GitHub: the board shows what it last knew and refreshes behind you. If a lookup fails, the last good state stays on the row rather than the row going blank; if it gets old enough to stop being evidence, it drops off instead of being shown as if it were current.</p>
       <p>Reading a room&#x27;s board never costs a request per row, either: identical references are answered once, and a tool is asked about many references in one call rather than one at a time.</p>
