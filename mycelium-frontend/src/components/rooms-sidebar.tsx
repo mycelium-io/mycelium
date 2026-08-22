@@ -13,7 +13,6 @@ import { useRooms } from "@/lib/room-data";
 import { roomLevel, type RoomLevel } from "@/lib/notifications";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CreateRoomDialog } from "@/components/create-room-dialog";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { NotificationBell } from "@/components/notification-bell";
 import { ActingAsPicker } from "@/components/acting-as-picker";
 import { useNotifications } from "@/components/notifications-provider";
@@ -273,14 +272,13 @@ export function RoomsSidebar({ activeRoom = null }: Props) {
         </nav>
       </ScrollArea>
 
-      {/* The account corner: who you're acting as, with the per-browser
-          preferences (notifications, theme) beside it — one place on every
-          screen, rather than a picker riding the room header. */}
+      {/* The account corner: who you're acting as, with your unread activity
+          beside it — one place on every screen, rather than a picker riding
+          the room header. */}
       <div className="flex items-center gap-1 border-t border-border px-2 py-2">
         <ActingAsPicker />
-        <div className="flex flex-shrink-0 items-center gap-0.5">
+        <div className="flex flex-shrink-0 items-center">
           <NotificationBell />
-          <ThemeToggle />
         </div>
       </div>
 
