@@ -29,6 +29,10 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 
+# The compose service `mycelium hub host` starts on its own. Named rather than
+# inlined so tests/test_compose_service_contract.py can check it still exists.
+SLIM_SERVICE = "slim"
+
 
 def _slim_port() -> str:
     """Resolve the node's published port from ~/.mycelium/.env (default 46357)."""
@@ -79,7 +83,7 @@ def host(ctx: typer.Context) -> None:
         env_path = _get_env_path()
         if env_path:
             cmd += ["--env-file", str(env_path)]
-        cmd += ["up", "-d", "slim"]
+        cmd += ["up", "-d", SLIM_SERVICE]
 
         typer.echo("Starting SLIM node...")
         result = subprocess.run(cmd, capture_output=True, text=True)

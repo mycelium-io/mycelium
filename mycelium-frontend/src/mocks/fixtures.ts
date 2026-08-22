@@ -42,7 +42,6 @@ export interface MockRoom {
   is_public: boolean;
   is_persistent: boolean;
   mas_id?: string | null;
-  title?: string | null;
 }
 
 export interface MockMemory {
@@ -254,7 +253,6 @@ const atlas: RoomFixture = {
     is_public: true,
     is_persistent: true,
     mas_id: "mas_7c1e9a2b",
-    title: "Atlas DB Migration",
   },
   memories: [
     {
@@ -399,7 +397,6 @@ const pricing: RoomFixture = {
     is_public: true,
     is_persistent: true,
     mas_id: "mas_31ab77c0",
-    title: null,
   },
   memories: [
     { key: "agents/finance", value: agentManifest("Protects margin; models unit economics."), created_by: "operator", version: 1, updated_at: iso(160) },
@@ -461,7 +458,7 @@ const pricing: RoomFixture = {
 // ── scratch: a brand-new empty room ───────────────────────────────────────────
 
 const scratch: RoomFixture = {
-  room: { id: 3, name: "scratch", created_at: iso(4), is_public: true, is_persistent: true, mas_id: null, title: null },
+  room: { id: 3, name: "scratch", created_at: iso(4), is_public: true, is_persistent: true, mas_id: null },
   memories: [],
   plan: { room: "scratch", title: null, files: [], tasks: [], open_count: 0, done_count: 0 },
   messages: [],

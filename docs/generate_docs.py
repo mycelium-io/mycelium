@@ -1480,6 +1480,46 @@ def _write_search_index(records: list[dict]) -> None:
 # ── Main ──
 
 
+_ID_ATTR = re.compile(r'\bid="([^"]+)"')
+_BARE_FRAGMENT = re.compile(r'href="#([^"]+)"')
+
+
+def _resolve_cross_page_anchors(
+    built: list[tuple[tuple, str, list[tuple[str, list[tuple[str, str]]]]]],
+) -> list[tuple[tuple, str, list[tuple[str, list[tuple[str, str]]]]]]:
+    """Point body links at the page that actually holds the anchor.
+
+    A source doc writes `[the aligner](#aligner)` because on one long page that
+    is where the aligner is. Split across files, the same link on reference.html
+    scrolls nowhere: the id lives on index.html. The sidebar already qualifies
+    its hrefs with a file name; prose didn't, because a markdown author has no
+    way to know which page their section lands on.
+
+    Which is a whole-site fact, so it is resolved here, where every page has
+    been assembled and none written. An anchor on the current page stays bare.
+    """
+    owner: dict[str, str] = {}
+    for page, content, _groups in built:
+        file_name = page[1]
+        for anchor in _ID_ATTR.findall(content):
+            owner.setdefault(anchor, file_name)
+
+    resolved = []
+    for page, content, groups in built:
+        file_name = page[1]
+        here = set(_ID_ATTR.findall(content))
+
+        def qualify(match: re.Match[str]) -> str:
+            anchor = match.group(1)
+            target = owner.get(anchor)
+            if anchor in here or target is None or target == file_name:
+                return match.group(0)
+            return f'href="{target}#{anchor}"'
+
+        resolved.append((page, _BARE_FRAGMENT.sub(qualify, content), groups))
+    return resolved
+
+
 def _render_and_write(
     page_id: str,
     file_name: str,
@@ -1537,6 +1577,8 @@ def main() -> None:
         nav.append((page_id, file_name, label, sidebar_groups))
         n = sum(len(items) for _, items in sidebar_groups)
         print(f"  {file_name}: {n} subsections in {len(sidebar_groups)} groups")
+
+    built = _resolve_cross_page_anchors(built)
 
     print("Rendering pages...")
     for page, content, _groups in built:

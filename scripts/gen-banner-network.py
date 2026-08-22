@@ -14,15 +14,20 @@ Requires: pip install playwright pillow && playwright install chromium
 
 Usage: gen-banner-network.py <output.png> [width] [height]
 """
+
 import sys
 from pathlib import Path
 
-from PIL import Image
-from playwright.sync_api import sync_playwright
+# Pillow and Playwright aren't in any lockfile: this is an asset builder run by
+# hand from an env that has them (see scripts/README.md). ty type-checks the file
+# in CI, where they are absent, so the imports are suppressed rather than pinned.
+from PIL import Image  # ty: ignore[unresolved-import]
+from playwright.sync_api import sync_playwright  # ty: ignore[unresolved-import]
 
 # Hero viewport dimensions; matches live site's appearance.
 RENDER_W, RENDER_H = 1600, 900
 ZOOM = 1.4  # how much of the render to crop before upscaling to output size
+
 
 def main():
     out = sys.argv[1]
@@ -34,7 +39,9 @@ def main():
 
     with sync_playwright() as p:
         browser = p.chromium.launch()
-        page = browser.new_page(viewport={"width": RENDER_W, "height": RENDER_H}, reduced_motion="reduce")
+        page = browser.new_page(
+            viewport={"width": RENDER_W, "height": RENDER_H}, reduced_motion="reduce"
+        )
         page.goto(f"file://{harness}")
         page.wait_for_timeout(300)
         page.screenshot(path=raw)
@@ -51,6 +58,7 @@ def main():
     img = img.resize((width, height), Image.NEAREST)
     img.save(out)
     raw.unlink()
+
 
 if __name__ == "__main__":
     main()

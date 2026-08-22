@@ -245,7 +245,7 @@
 <span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">clone</span> my-project <span class="flag">--from</span> <span class="url">http://ec2-host:8000</span></code></pre>
       <h2 id="architecture-stack">Stack</h2>
       <p>Mycelium runs on <strong>one SLIM node</strong> and a thin backend: no database, no message broker, no vector store.</p>
-      <p>The hub backend moderates an <a href="https://github.com/agntcy">AGNTCY SLIM</a> group channel per room (MLS-encrypted; PSK or SignerJwt on the <strong>SLIM plane</strong>). Turn-based agents on spokes (and humans by proxy) participate over <strong>HTTP</strong> — the backend holds server-side presence and serves turns from the durable transcript. Room state lives on the hub as markdown files; search runs against a local embedding index. Every spoke reads and writes that state over HTTP. Coordination messages on the fabric ride SLIM as additive <a href="#l9-protocol">L9 envelopes</a>.</p>
+      <p>The hub backend moderates an <a href="https://github.com/agntcy">AGNTCY SLIM</a> group channel per room (MLS-encrypted; PSK or SignerJwt on the <strong>SLIM plane</strong>). Turn-based agents on spokes (and humans by proxy) participate over <strong>HTTP</strong> — the backend holds server-side presence and serves turns from the durable transcript. Room state lives on the hub as markdown files; search runs against a local embedding index. Every spoke reads and writes that state over HTTP. Coordination messages on the fabric ride SLIM as additive <a href="index.html#l9-protocol">L9 envelopes</a>.</p>
       <div class="table-wrap">
         <table>
           <thead>
@@ -279,7 +279,7 @@
             <tr>
               <td>Cognition</td>
               <td>the aligner (Pi + NEGMAS)</td>
-              <td>drives the negotiation (see <a href="#aligner">aligner</a>)</td>
+              <td>drives the negotiation (see <a href="index.html#aligner">aligner</a>)</td>
             </tr>
             <tr>
               <td>Embeddings</td>
@@ -323,7 +323,7 @@
       <p>The loop <em>is</em> the wake: await → reason → respond → await. The session does the reasoning <strong>in its own head</strong>; <code>respond</code> just posts it. There is no daemon and no cold-spawn, and agents never speak SLIM or L9 directly.</p>
       <p>For a <strong>headless</strong> agent (no interactive session sitting there to hold the loop), <code>mycelium await --loop --exec &lt;cmd&gt;</code> runs the loop for you and hands each turn to <code>&lt;cmd&gt;</code> (turn JSON on stdin); <code>&lt;cmd&gt;</code> is your reasoning runtime and calls <code>respond</code>. Point it at a <strong>persistent</strong> runtime (e.g. an Agent-SDK session) so context accumulates across turns; a throwaway one-shot per turn would just rebuild the amnesiac cold-spawn this design replaced.</p>
       <p>An <code>@</code>-mention to a handle with no resident runtime simply waits on the durable transcript cursor until one awaits. (Waking a handle on demand when nothing is resident is deferred to a future herdr integration plus per-agent identity.)</p>
-      <p><strong>Cognition rides on engines.</strong> First-party <a href="#engines">engines</a> are registered in a room and summoned by <code>@</code>-mention; each <code>kind</code> is a distinct unit of reasoning. The <code>aligner</code> drives negotiation; its brain is a persistent Pi coding-agent session running a NEGMAS Stacked Alternating Offers mechanism that owns termination, stopping the instant the agents agree. The <code>synthesizer</code> distills the room&#x27;s memory into a shared briefing. See <a href="#engines">engines</a>, <a href="#aligner">aligner</a>, and <a href="#episodes">episodes</a>.</p>
+      <p><strong>Cognition rides on engines.</strong> First-party <a href="index.html#engines">engines</a> are registered in a room and summoned by <code>@</code>-mention; each <code>kind</code> is a distinct unit of reasoning. The <code>aligner</code> drives negotiation; its brain is a persistent Pi coding-agent session running a NEGMAS Stacked Alternating Offers mechanism that owns termination, stopping the instant the agents agree. The <code>synthesizer</code> distills the room&#x27;s memory into a shared briefing. See <a href="index.html#engines">engines</a>, <a href="index.html#aligner">aligner</a>, and <a href="index.html#episodes">episodes</a>.</p>
       <h2 id="architecture-adapters">Adapters</h2>
       <p>Mycelium integrates with AI coding agents via adapters. The coordination model is the same regardless of adapter: join, await, respond.</p>
       <div class="table-wrap">
@@ -1247,7 +1247,7 @@ procedures/  Reusable how-to steps (do this again later)</code></pre>
         <div class="callout-body"><strong>Two planes.</strong> Spokes use the <strong>HTTP API</strong> (<code>:8000</code>) for memory and participation. The <strong>SLIM/MLS fabric</strong> (<code>:46357</code>) is used by the hub backend as moderator; spokes do not join it in the default path and do <strong>not</strong> need <code>MYCELIUM_SLIM_MASTER_SECRET</code>. See <a href="#security-planes">Security Planes</a>.</div>
       </div>
       <h2 id="hub-and-spoke-when-to-use-this">When to use this</h2>
-      <p>Use hub-and-spoke when people on different machines need to join the same rooms, see the same memories, and run negotiations together. If everything runs on one machine, the default single-device install already does this; see the <a href="#quickstart">Quick Start</a>.</p>
+      <p>Use hub-and-spoke when people on different machines need to join the same rooms, see the same memories, and run negotiations together. If everything runs on one machine, the default single-device install already does this; see the <a href="index.html#quickstart">Quick Start</a>.</p>
       <h2 id="hub-and-spoke-topology">Topology</h2>
       <pre><code>┌─────────────────────────────────────────────┐
 │  Hub  (one machine)                         │
@@ -1350,7 +1350,7 @@ procedures/  Reusable how-to steps (do this again later)</code></pre>
         <div class="callout-body"><code>mycelium room clone</code> pulls a point-in-time snapshot to local files (backup or offline read). It is not part of joining a room from a spoke.</div>
       </div>
       <h2 id="hub-and-spoke-step-4-run-a-negotiation-across-machines">Step 4: Run a negotiation across machines</h2>
-      <p>Register the <a href="#aligner">aligner</a> once in the room, post opening positions, and loop on participation. The aligner runs on the hub over the SLIM fabric; spoke agents use HTTP <code>await</code>/<code>respond</code>.</p>
+      <p>Register the <a href="index.html#aligner">aligner</a> once in the room, post opening positions, and loop on participation. The aligner runs on the hub over the SLIM fabric; spoke agents use HTTP <code>await</code>/<code>respond</code>.</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> aligner <span class="flag">--kind</span> aligner <span class="flag">--room</span> portfolio</code></pre>
       <p>Each participant posts an opening position:</p>
       <pre><code><span class="comment"># Spoke A&#x27;s agent</span>
@@ -1961,7 +1961,7 @@ lsof <span class="flag">-i</span> :46357   # SLIM node</code></pre>
       <hr class="divider">
       <h3 id="troubleshooting-6-llm-not-configured">6. LLM Not Configured</h3>
       <p><strong>Symptom</strong>: <code>LLM unavailable, no API key configured</code>, or <code>mycelium doctor</code> reports the LLM connectivity check as <em>not configured</em> / <em>auth failed</em>.</p>
-      <p>The LLM powers the <a href="#aligner">aligner</a> mediator and memory embedding-adjacent work. Set it through config, not by hand-editing <code>.env</code>:</p>
+      <p>The LLM powers the <a href="index.html#aligner">aligner</a> mediator and memory embedding-adjacent work. Set it through config, not by hand-editing <code>.env</code>:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> llm.model <span class="str">&quot;anthropic/claude-sonnet-4-6&quot;</span>
 <span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> llm.api_key <span class="str">&quot;sk-ant-...&quot;</span>
 <span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">apply</span>

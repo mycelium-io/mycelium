@@ -42,7 +42,13 @@ app = typer.Typer(
 
 _COMPOSE_PROJECT = "mycelium"
 
+# Every container the CLI is willing to stop and remove. `docker compose down`
+# only reaches its own project, so this is the net for containers started under
+# another project name or outside compose; anything compose declares belongs
+# here or `mycelium down` leaves it running. The ioc-cfn entries are the
+# exception — a separate deployment the CLI can stop but does not define.
 _MANAGED_CONTAINERS = [
+    "mycelium-slim",
     "mycelium-backend",
     "mycelium-frontend",
     "mycelium-collector",

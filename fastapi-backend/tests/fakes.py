@@ -61,8 +61,15 @@ def position_record(
     message_id: str | None = None,
     episode: str = EPISODE,
     topic: str = TOPIC,
+    prose: str | None = None,
 ) -> TranscriptRecord:
-    """An agent-position transcript record carrying an epistemic payload."""
+    """An agent-position transcript record carrying an epistemic payload.
+
+    ``prose`` is the body the mediator reads: issue discovery and offer
+    interpretation both work off what the agent actually said, so a test driving
+    a real brain has to supply real sentences. It defaults to a stub, which is
+    all a test with a canned brain needs.
+    """
     data: dict[str, Any] = {"action": action}
     if confidence is not None:
         data["confidence"] = confidence
@@ -77,7 +84,9 @@ def position_record(
         payload_data=data,
         message_id=message_id,
     )
-    return record_from(env, serialize_content(env, extra={"content": f"{sender} position"}))
+    return record_from(
+        env, serialize_content(env, extra={"content": prose or f"{sender} position"})
+    )
 
 
 # ── L9 channel + persister (the aligner/plan-sync/mediator layer) ─────────────

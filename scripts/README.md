@@ -13,11 +13,24 @@ Three kinds live here:
 - **Asset builders.** They render the banner and social images from fonts and
   ImageMagick. Their output is committed too, so you only need the toolchain if
   you're changing the image.
-- **CI helpers.** `check_workflows.py` is the exception to "run by hand" — it is
-  a gate, and it runs locally the same way it runs in CI (stdlib only, no
-  install). `ci_timing.py` and `publish-screenshots.sh` read the Actions
-  environment and only make sense on a runner.
+- **CI helpers.** `check_workflows.py` and `check_docs_links.py` are the
+  exception to "run by hand" — they are gates, and they run locally the same
+  way they run in CI (stdlib only, no install). The docs checker reports rather
+  than fails; pass `--strict` to make it exit non-zero. `ci_timing.py` and
+  `publish-screenshots.sh` read the Actions environment and only make sense on
+  a runner.
 
 Each script's header comment states its prerequisites and where its output
 lands. Read that before running — several need a running backend or a font
 installed, and fail unhelpfully without them.
+
+Everything here is linted and type-checked. The rules are the repo-root
+`ruff.toml` and the checks ride along in CI's `CLI lint + tests` job, where the
+toolchain is already installed:
+
+```bash
+cd mycelium-cli
+uv run ruff check --config ../ruff.toml ../scripts
+uv run ruff format --check --config ../ruff.toml ../scripts
+uv run ty check ../scripts
+```
