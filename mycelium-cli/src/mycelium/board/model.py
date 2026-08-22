@@ -58,8 +58,6 @@ class LiveItem:
     title: str
     source: ItemSource
     fields: dict[str, Any] = field(default_factory=dict)
-    #: Synthetic row from the demo layer, never mistaken for room state.
-    demo: bool = False
 
     def get(self, name: str) -> Any:
         value = self.fields.get(name)

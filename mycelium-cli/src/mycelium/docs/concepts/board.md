@@ -158,9 +158,6 @@ mycelium board resolve t3                 # resolve a row
 mycelium board log --last-week            # what the room did, by day and by who
 ```
 
-Add `--demo` to see the shape of a busy board before your room is one; those
-rows are always marked, and never mixed up with yours.
-
 ## Related
 
 - [plan](#plan): the room's prose and checklists, which the board reads from.

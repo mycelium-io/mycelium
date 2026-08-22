@@ -15,7 +15,7 @@ import pytest
 
 from mycelium.board import activity, model
 from mycelium.board.model import ItemSource, LiveItem, lens_of
-from mycelium.board.projection import demo_items, project_items
+from mycelium.board.projection import project_items
 from mycelium.board.schema import groupable_fields, infer_schema
 
 CONTRACT = json.loads(
@@ -159,10 +159,6 @@ class TestProjection:
         row = next(r for r in self.project(episodes=episodes) if r.id.startswith("episode:"))
         assert row.kind == "decision"
         assert row.title.startswith("atlas migration: negotiating")
-
-    def test_the_demo_layer_stamps_every_row_it_adds(self):
-        assert all(row.demo for row in demo_items(NOW))
-        assert not any(row.demo for row in self.project())
 
 
 class TestSchema:

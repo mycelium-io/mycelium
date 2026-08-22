@@ -19,7 +19,7 @@ from mycelium.board.model import (
     lens_of,
     priority_rank,
 )
-from mycelium.board.projection import demo_items, project_items
+from mycelium.board.projection import project_items
 from mycelium.board.schema import FieldSchema, infer_schema
 
 __all__ = [
@@ -31,7 +31,6 @@ __all__ = [
     "VERBS",
     "FieldSchema",
     "LiveItem",
-    "demo_items",
     "infer_schema",
     "lens_of",
     "priority_rank",

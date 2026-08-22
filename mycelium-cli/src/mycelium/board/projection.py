@@ -11,7 +11,7 @@ the room, so a row can't be stale relative to the thing it describes.
 from __future__ import annotations
 
 import re
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
 
 from mycelium.board.model import LIVE_NAMESPACES, ItemSource, LiveItem
@@ -161,7 +161,6 @@ def project_items(
     agents: list[dict],
     members: list[dict],
     now: datetime,
-    demo: bool = False,
 ) -> list[LiveItem]:
     stamp = now.isoformat()
     items: list[LiveItem] = []
@@ -184,119 +183,4 @@ def project_items(
         if seen:
             items.append(_agent_item(agent, seen, stamp))
 
-    if demo:
-        items.extend(demo_items(now))
     return items
-
-
-def demo_items(now: datetime) -> list[LiveItem]:
-    """Rows for the sources a live board would fill itself from — herdr presence,
-    CI, PRs — which this proof of concept has no reader for yet.  Every row is
-    stamped ``demo`` so what the room holds is never confused with what the
-    surface is illustrating."""
-
-    def ago(minutes: int) -> str:
-        return (now - timedelta(minutes=minutes)).isoformat()
-
-    return [
-        LiveItem(
-            id="demo:d3f",
-            title="JWT access-token TTL: 15m or 60m?",
-            source=ItemSource("episode", "@agent-y · episode d3f"),
-            demo=True,
-            fields={
-                "status": "open",
-                "kind": "decision",
-                "owner": None,
-                "priority": "urgent",
-                "choices": ["15m", "60m"],
-                "updated": ago(6),
-                "ttl_minutes": 120,
-            },
-        ),
-        LiveItem(
-            id="demo:a91",
-            title="Enable thin-spoke join without a local replica",
-            source=ItemSource("github", "linked to #502"),
-            demo=True,
-            fields={
-                "status": "blocked",
-                "kind": "blocked",
-                "owner": "@julia",
-                "priority": "high",
-                "blocked_by": ["#502"],
-                "issue": "#502",
-                "updated": ago(40),
-                "ttl_minutes": None,
-            },
-        ),
-        LiveItem(
-            id="demo:7c2",
-            title="@agent-z opened PR #504 and wants eyes on the custody seam",
-            source=ItemSource("github", "PR #504"),
-            demo=True,
-            fields={
-                "status": "open",
-                "kind": "review",
-                "owner": "@agent-z",
-                "priority": "high",
-                "pr": "#504",
-                "ci": "green",
-                "branch": "feat/custody-seam",
-                "updated": ago(12),
-                "ttl_minutes": 720,
-            },
-        ),
-        LiveItem(
-            id="demo:b12",
-            title="Migrate auth → JWT",
-            source=ItemSource("agent", "@agent-y · claude_code"),
-            demo=True,
-            fields={
-                "status": "in_progress",
-                "kind": "action",
-                "owner": "@agent-y",
-                "priority": "high",
-                "branch": "feat/jwt-auth",
-                "pr": "#502",
-                "ci": "green",
-                "live": True,
-                "blocks": ["Enable thin-spoke join"],
-                "updated": ago(12),
-                "ttl_minutes": None,
-            },
-        ),
-        LiveItem(
-            id="demo:e45",
-            title="Cache TTL sweep across the memory index",
-            source=ItemSource("agent", "@julia · human"),
-            demo=True,
-            fields={
-                "status": "in_progress",
-                "kind": "action",
-                "owner": "@julia",
-                "priority": "normal",
-                "branch": "feat/cache",
-                "ci": "running",
-                "live": True,
-                "updated": ago(3),
-                "ttl_minutes": None,
-            },
-        ),
-        LiveItem(
-            id="demo:c01",
-            title="Fix path traversal in the memory key encoder",
-            source=ItemSource("github", "PR #499 merged"),
-            demo=True,
-            fields={
-                "status": "resolved",
-                "kind": "action",
-                "owner": "@agent-z",
-                "priority": "urgent",
-                "pr": "#499",
-                "ci": "green",
-                "updated": ago(62),
-                "ttl_minutes": 1440,
-            },
-        ),
-    ]
