@@ -215,7 +215,7 @@
           <tbody>
             <tr>
               <td><strong>Hub</strong></td>
-              <td>The SLIM node + the thin FastAPI backend (room moderator).</td>
+              <td>The SLIM node, the thin FastAPI backend (room moderator), and the UI.</td>
               <td>The team&#x27;s shared coordination server. One per team.</td>
             </tr>
             <tr>
@@ -227,7 +227,7 @@
         </table>
       </div>
       <p>Stand a hub up and point spokes at the <strong>backend</strong> (required):</p>
-      <pre><code><span class="comment"># On the hub: starts the SLIM node + backend</span>
+      <pre><code><span class="comment"># On the hub: starts the SLIM node, backend, and UI</span>
 <span class="bin">mycelium</span> <span class="cmd">hub</span> <span class="cmd">host</span>
 <span class="bin">mycelium</span> <span class="cmd">up</span>
 
@@ -304,7 +304,7 @@
             <tr>
               <td>Frontend</td>
               <td>Next.js + Tailwind</td>
-              <td>frontend UI</td>
+              <td>the human-facing app; starts with the stack</td>
             </tr>
           </tbody>
         </table>
