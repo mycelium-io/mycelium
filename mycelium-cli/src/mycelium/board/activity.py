@@ -54,7 +54,6 @@ class ActivityEvent:
     verb: str
     title: str
     source: str
-    demo: bool = False
 
 
 @dataclass

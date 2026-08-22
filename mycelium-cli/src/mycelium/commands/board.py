@@ -28,10 +28,9 @@ from rich.live import Live
 from rich.table import Table
 from rich.text import Text
 
-from mycelium.board import LiveItem, demo_items, infer_schema, project_items
+from mycelium.board import LiveItem, infer_schema, project_items
 from mycelium.board.activity import (
     DAILY_GOAL,
-    ActivityEvent,
     by_day,
     digest,
     heat_level,
@@ -152,8 +151,6 @@ def _row_lines(item: LiveItem, now: datetime) -> Text:
     head.append(title, style="dim strike" if item.lens == "resolved" else "")
     if item.priority == "urgent" and item.lens != "resolved":
         head.append("  urgent", style="red")
-    if item.demo:
-        head.append("  demo", style="dim")
 
     meta = Text("     ")
     meta.append(item.source.label, style="dim")
@@ -297,9 +294,6 @@ def board(
     ),
     group_by: str = typer.Option("kind", "--group", "-g", help="Field to group rows by"),
     view: str = typer.Option("list", "--view", help="list | table"),
-    demo: bool = typer.Option(
-        False, "--demo", help="Add the illustrative rows a live board would fill itself from"
-    ),
     watch: bool = typer.Option(
         False, "--watch", "-w", help="Re-read every few seconds until interrupted"
     ),
@@ -314,20 +308,9 @@ def board(
 
     def read() -> Group:
         name, items, reachable = _fetch(room)
-        if demo:
-            items = items + demo_items(datetime.now(UTC))
-        if not reachable and not items:
-            return Group(Text(f"  Hub unreachable. No board to draw for {name}.", style="red"))
-        rendered = _render(name, items, lens=LENS_CHOICES[lens], group_by=group_by, view=view)
         if not reachable:
-            # The demo layer stands on its own, but never silently: a board that
-            # can't read the room says so rather than looking populated.
-            return Group(
-                Text("  Hub unreachable. Showing the demo layer only.", style="yellow"),
-                Text(),
-                rendered,
-            )
-        return rendered
+            return Group(Text(f"  Hub unreachable. No board to draw for {name}.", style="red"))
+        return _render(name, items, lens=LENS_CHOICES[lens], group_by=group_by, view=view)
 
     if not watch:
         console.print(read())
@@ -410,47 +393,6 @@ ACTOR_MARK = {"agent": "🤖", "engine": "◈", "human": "🧑"}
 HEAT_BLOCKS = ["·", "░", "▒", "▓", "█"]
 
 
-def _demo_activity(end: date) -> list[ActivityEvent]:
-    """A short illustrative history, so `--demo` shows the shape of a log that
-    has been kept. Every event says it is demo."""
-    actors = [("agent-y", "agent"), ("agent-z", "agent"), ("julia", "human"), ("aligner", "engine")]
-    work = [
-        ("resolved", "flip reads behind a flag"),
-        ("posted", "48h soak looks clean"),
-        ("wrote", "decisions/cutover"),
-        ("completed", "rotate the signing key"),
-        ("converged", "cutover window · @growth @risk"),
-    ]
-    events: list[ActivityEvent] = []
-    for back in range(70):
-        day = end - timedelta(days=back)
-        seed = day.toordinal()
-        count = 0 if seed % 8 == 3 else (1 + seed % 3 if day.weekday() >= 5 else 2 + seed % 7)
-        for i in range(count):
-            actor, kind = actors[(seed + i) % len(actors)]
-            verb, title = work[(seed + i * 3) % len(work)]
-            events.append(
-                ActivityEvent(
-                    id=f"demo:{day}:{i}",
-                    at=datetime(
-                        day.year,
-                        day.month,
-                        day.day,
-                        8 + (seed + i) % 11,
-                        (seed * i) % 60,
-                        tzinfo=UTC,
-                    ),
-                    actor=actor,
-                    actor_kind=kind,
-                    verb=verb,
-                    title=title,
-                    source="demo layer",
-                    demo=True,
-                )
-            )
-    return events
-
-
 @doc_ref(
     usage="mycelium board log [--since 7d|--day YYYY-MM-DD|--week|--last-week] [--tz <zone>]",
     desc="What the room worked on, by day and by who, in whichever timezone you read it in.",
@@ -467,7 +409,6 @@ def board_log(
         None, "--tz", help="Timezone the days are read in (default: $TZ, else UTC)", envvar="TZ"
     ),
     by: str | None = typer.Option(None, "--by", help="Only this actor's lines"),
-    demo: bool = typer.Option(False, "--demo", help="Add an illustrative history, always marked"),
 ) -> None:
     """What the room worked on, by day.
 
@@ -485,8 +426,6 @@ def board_log(
         plan=sources["plan"],
         agent_handles=[a.get("handle", "") for a in sources["agents"]],
     )
-    if demo:
-        events += _demo_activity(today_local)
     if by:
         wanted = by.lstrip("@").lower()
         events = [e for e in events if e.actor.lower() == wanted]
@@ -565,8 +504,6 @@ def board_log(
             line.append(event.at.astimezone(tz).strftime("%m-%d %H:%M  "), style="dim")
             line.append(f"{event.verb} ", style="")
             line.append(event.title, style="dim")
-            if event.demo:
-                line.append("  demo", style="dim")
             console.print(line)
         if len(actor_events) > 12:
             console.print(Text(f"      +{len(actor_events) - 12} more", style="dim"))

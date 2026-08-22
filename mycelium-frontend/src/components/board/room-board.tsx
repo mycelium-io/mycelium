@@ -5,7 +5,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  FlaskConical,
   Kanban,
   ListChecks,
   Rows3,
@@ -30,7 +29,6 @@ import {
 } from "@/lib/room-data";
 import { applyVerb, LENSES, type Lens, type LiveItem, type Verb } from "@/lib/board/item";
 import { projectItems } from "@/lib/board/projection";
-import { demoActivity, demoItems } from "@/lib/board/demo";
 import { localZone, projectActivity } from "@/lib/board/activity";
 import { captureToItem, type ParsedCapture } from "@/lib/board/capture";
 import { groupableFields, inferSchema } from "@/lib/board/schema";
@@ -112,7 +110,6 @@ export function RoomBoard({ roomName }: Props) {
   const [savedView, setSavedView] = useState(SAVED_VIEWS[0].slug);
   const [overlay, setOverlay] = useState<Record<string, Record<string, unknown>>>({});
   const [captured, setCaptured] = useState<LiveItem[]>([]);
-  const [demo, setDemo] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const chooseTz = useCallback((zone: string) => {
@@ -136,8 +133,6 @@ export function RoomBoard({ roomName }: Props) {
     [settings.soundEnabled, settings.soundVolume],
   );
 
-  const demoRows = useMemo(() => (demo ? demoItems(now) : []), [demo, now]);
-
   // The log reads the same room, flattened into who did what and when.
   const activity = useMemo(
     () =>
@@ -148,9 +143,8 @@ export function RoomBoard({ roomName }: Props) {
         episodes,
         plan,
         agentHandles: agents.map(a => a.handle),
-        demo: demo && now ? demoActivity(now, tz) : [],
       }),
-    [roomName, messages, memories, episodes, plan, agents, demo, now, tz],
+    [roomName, messages, memories, episodes, plan, agents],
   );
 
   const items = useMemo(
@@ -165,9 +159,8 @@ export function RoomBoard({ roomName }: Props) {
         now: new Date(now).toISOString(),
         overlay,
         captured,
-        demo: demoRows,
       }),
-    [roomName, plan, episodes, memories, agents, presence, now, overlay, captured, demoRows],
+    [roomName, plan, episodes, memories, agents, presence, now, overlay, captured],
   );
 
   // One pass over every row's frontmatter gives the columns, the kanban's
@@ -270,7 +263,6 @@ export function RoomBoard({ roomName }: Props) {
         return;
       }
       if (key === "escape") return setSelectedId(null);
-      if (key === "d") return setDemo(d => !d);
       if (key === "v") {
         const index = MODES.findIndex(m => m.id === view.mode);
         return setMode(MODES[(index + 1) % MODES.length].id);
@@ -308,8 +300,6 @@ export function RoomBoard({ roomName }: Props) {
         counts={counts}
         lens={view.lens}
         onLens={lens => setView(v => ({ ...v, lens, showResolved: lens !== "needs_you" }))}
-        demo={demo}
-        onDemo={() => setDemo(d => !d)}
         query={view.query}
         onQuery={query => setView(v => ({ ...v, query }))}
         mode={view.mode}
@@ -398,7 +388,7 @@ export function RoomBoard({ roomName }: Props) {
         )}
       </div>
 
-      <BoardFooter echo={echo} rows={ordered.length} total={items.length} demo={demo} />
+      <BoardFooter echo={echo} rows={ordered.length} total={items.length} />
     </div>
   );
 }
@@ -409,8 +399,6 @@ function BoardHeader(props: {
   counts: Record<Lens | "all", number>;
   lens: Lens | "all";
   onLens: (lens: Lens | "all") => void;
-  demo: boolean;
-  onDemo: () => void;
   query: string;
   onQuery: (q: string) => void;
   mode: ViewMode;
@@ -440,20 +428,6 @@ function BoardHeader(props: {
         <div className="min-w-0">
           <h2 className="truncate font-serif text-display italic leading-tight text-text">{props.title}</h2>
           <p className="mt-0.5 font-mono text-micro text-muted-foreground">{props.summary}</p>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <label
-            title="Show the rows a live board would fill itself from: presence, CI, PRs"
-            className={cn(
-              "flex cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 text-micro transition-colors",
-              props.demo ? "border-accent/40 bg-accent-soft text-accent" : "border-border text-muted-foreground hover:text-text",
-            )}
-          >
-            <input type="checkbox" checked={props.demo} onChange={props.onDemo} className="sr-only" />
-            <FlaskConical className="size-3" strokeWidth={1.9} />
-            demo layer
-            <span className="font-mono text-faint">d</span>
-          </label>
         </div>
       </div>
 
@@ -574,12 +548,10 @@ function BoardFooter({
   echo,
   rows,
   total,
-  demo,
 }: {
   echo: string | null;
   rows: number;
   total: number;
-  demo: boolean;
 }) {
   return (
     <footer className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-t border-border px-5 py-1.5">
@@ -595,7 +567,7 @@ function BoardFooter({
       <span className="ml-auto flex items-center gap-2 font-mono text-micro">
         {echo && <span className="truncate text-accent" title={echo}>{echo}</span>}
         <span className="text-faint">
-          {rows}/{total} rows{demo ? " · demo layer on" : ""}
+          {rows}/{total} rows
         </span>
       </span>
     </footer>

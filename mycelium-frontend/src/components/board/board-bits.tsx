@@ -223,15 +223,6 @@ export function AgeTag({ item, now }: { item: LiveItem; now: number }) {
   );
 }
 
-/** The dashed marker every synthetic row wears. */
-export function DemoTag() {
-  return (
-    <span className="rounded border border-dashed border-border2 px-1 font-mono text-micro text-faint">
-      demo
-    </span>
-  );
-}
-
 export function BlocksNote({ item }: { item: LiveItem }) {
   const blocks = arr(item, "blocks");
   if (!blocks.length) return null;

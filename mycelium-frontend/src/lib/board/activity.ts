@@ -31,7 +31,6 @@ export interface ActivityEvent {
   title: string;
   source: string;
   href?: string;
-  demo?: boolean;
 }
 
 /** `YYYY-MM-DD`, as read in `tz`. */
@@ -161,7 +160,6 @@ export interface ActivityInput {
   episodes: EpisodeSummary[];
   plan: PlanResponse | null;
   agentHandles: string[];
-  demo?: ActivityEvent[];
 }
 
 /**
@@ -241,7 +239,6 @@ export function projectActivity(input: ActivityInput): ActivityEvent[] {
     }
   }
 
-  events.push(...(input.demo ?? []));
   return events.sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
 }
 
