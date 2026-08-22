@@ -79,8 +79,8 @@ function WikilinkDropdown({
   onSelect: (key: string) => void;
   onDismiss: () => void;
 }) {
-  // React's idiomatic "reset when prop changes" — store previous candidates and
-  // update in-render (a second render pass fires immediately, no layout effect).
+  // A fresh candidate list starts the highlight at the top. Comparing in render
+  // rather than resetting in an effect, so no stale row is ever painted.
   const [prevCandidates, setPrevCandidates] = useState(candidates);
   const [activeIdx, setActiveIdx] = useState(0);
   if (prevCandidates !== candidates) {

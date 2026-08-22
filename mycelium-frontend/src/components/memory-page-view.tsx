@@ -38,8 +38,8 @@ export function MemoryPageView({ roomName, memoryKey }: Props) {
 
   useEffect(() => {
     let live = true;
-    // Async fetch: remaining setState calls are in .then() callbacks. The two
-    // resets here are pre-fetch guard clears, not cascading renders from props.
+    // Async fetch; the rest of the setState calls are in its .then(). Clearing
+    // here keeps the previous memory from showing under the new key.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setMemory(undefined);
     setRenderedBody(null);

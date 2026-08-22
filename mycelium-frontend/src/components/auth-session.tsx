@@ -69,8 +69,7 @@ export function AuthSessionProvider({ children }: { children: ReactNode }) {
   }, [setPrincipal]);
 
   useEffect(() => {
-    // refresh() is an async fetch; setState is called only inside its .then()
-    // callback, not synchronously in the effect body.
+    // Async fetch; setState happens in refresh()'s .then(), not the effect body.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     refresh();
   }, [refresh]);
@@ -85,8 +84,7 @@ export function AuthSessionProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(() => {
     const returnTo = window.location.pathname + window.location.search;
-    // Full-page navigation is required: the server sets auth cookies on the
-    // callback URL, and router.push() would not trigger that round-trip.
+    // Full-page navigation: the server sets the auth cookies on the callback URL.
     // eslint-disable-next-line @next/next/no-location-assign-relative-destination
     window.location.href = `/api/auth/login?return_to=${encodeURIComponent(returnTo)}`;
   }, []);
@@ -94,8 +92,7 @@ export function AuthSessionProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(async () => {
     await fetch("/api/auth/logout", { method: "POST" });
     setPrincipal("");
-    // Full-page reload clears all React state after the session cookie is
-    // cleared server-side — router.push("/") would leave stale state behind.
+    // Full-page reload, so no React state survives the cleared session cookie.
     // eslint-disable-next-line @next/next/no-location-assign-relative-destination
     window.location.href = "/";
   }, [setPrincipal]);

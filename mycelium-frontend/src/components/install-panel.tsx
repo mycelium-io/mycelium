@@ -80,12 +80,11 @@ interface Props {
 export function InstallPanel({ className }: Props) {
   const healthy = useBackendHealth(WAITING_POLL);
 
-  // Server-rendered markup can't know the OS or this page's own origin, so
-  // both land after mount to avoid a hydration mismatch. Until then, no
-  // useSyncExternalStore gives a server snapshot of "unknown"/"<this-hub-url>"
-  // and the real browser values on the client, so the hydration pass updates
-  // the component without a useEffect. Platform is also mutable (user tab clicks),
-  // so an override layer sits on top of the detected value.
+  // Server-rendered markup can't know the OS or this page's own origin: until
+  // the client snapshot arrives, no platform tab is preselected and the config
+  // command shows a placeholder host. The origin is only a first guess, since
+  // some deployments front the API on a different port than the UI, so it's
+  // there to edit — and the OS tabs override the detected platform.
   const noSubscribe = () => () => {};
   const detectedPlatform = useSyncExternalStore(
     noSubscribe,

@@ -48,8 +48,7 @@ export function EpisodesRail({ roomName, focusShortId = null, onFocusConsumed }:
     if (!focusShortId) return;
     const known = episodes.find((ep) => ep.short_id === focusShortId);
     if (known) {
-      // Focus-consumed: parent provides a short_id to select; the handler clears
-      // it. The selection must outlive the parameter, so it can't be derived.
+      // The selection outlives focusShortId, which is cleared once consumed.
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setSelected(known);
       onFocusConsumed?.();

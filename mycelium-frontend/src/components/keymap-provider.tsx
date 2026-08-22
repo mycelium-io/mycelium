@@ -86,12 +86,12 @@ export function KeymapProvider({ children }: { children: ReactNode }) {
   const [scopeCounts, setScopeCounts] = useState<Partial<Record<KeyScope, number>>>({ global: 1 });
   const [helpOpen, setHelpOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
-  // Which commands ran, most recent first. Hydrated from localStorage after mount
-  // so that SSR and the first hydration render both produce [] (no mismatch).
+  // Which commands ran, most recent first. Seeded from localStorage after mount,
+  // so SSR and the first client render agree on an empty list.
   const [recent, setRecent] = useState<string[]>([]);
   useEffect(() => {
-    // SSR hydration: localStorage unavailable on server; useSyncExternalStore would
-    // still need a separate setRecent for command-use writes, so this is simpler.
+    // localStorage is client-only, and runCommand writes this list back, so it
+    // stays ordinary state rather than an external-store snapshot.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setRecent(loadRecent());
   }, []);
@@ -203,15 +203,13 @@ export function KeymapProvider({ children }: { children: ReactNode }) {
 
   const commands = useMemo(
     () => {
-      // collectCommands reads commandSources.current and handlers.current (refs).
-      // Moving this into useEffect + setState would introduce set-state-in-effect;
-      // the refs are intentionally stable mutable registries — reading them here is safe.
+      // collectCommands reads the registration refs, which are stable mutable
+      // registries: commandEpoch below is what says when to read them again.
       // eslint-disable-next-line react-hooks/refs
       return paletteOpen ? collectCommands(scopes) : [];
     },
-    // commandEpoch is a cache-bust epoch that increments on registration changes;
-    // it is not referenced in the callback body (refs are read via collectCommands)
-    // but IS required so the list recomputes when registrations change.
+    // commandEpoch never appears in the body — it is here to recompute the list
+    // when registrations change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [paletteOpen, commandEpoch, scopes, collectCommands],
   );
@@ -372,10 +370,8 @@ export function useKeyCapture(): KeymapApi["captureKeys"] {
  *  never reveals. */
 export function useKeyReveal(): boolean {
   const api = useContext(KeymapContext);
-  // useSyncExternalStore is the idiomatic fit: subscribe to an external signal
-  // (the hold/release of the reveal modifier) and snapshot its current value.
-  // Stabilise subscribe/getSnapshot with useCallback so React doesn't
-  // unsubscribe and resubscribe on every render.
+  // Reveal lives outside React, so it is subscribed to rather than mirrored in
+  // state. Both callbacks are memoized so React doesn't resubscribe every render.
   const subscribe = useCallback(
     (listener: () => void) => api?.subscribeReveal(listener) ?? (() => {}),
     [api],
