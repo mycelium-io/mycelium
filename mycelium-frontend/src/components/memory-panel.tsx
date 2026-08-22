@@ -33,6 +33,7 @@ import { memoryValueText } from "@/lib/memory-preview";
 import { DetailDrawer } from "@/components/detail-drawer";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip } from "@/components/ui/tooltip";
 import { MemoryDetail } from "@/components/memory-detail";
 import { MemoryEditor } from "@/components/memory-editor";
 import { useCurrentUser } from "@/components/current-user";
@@ -379,14 +380,15 @@ export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusM
           <span className="text-faint px-1">·</span>
           <span className="text-text font-semibold tabular">{contributors.length}</span>
           <span>contributors</span>
-          <Link
-            href={memoryGraphHref(roomName)}
-            className="ml-auto inline-flex flex-shrink-0 items-center gap-1 rounded-md px-2 py-1 text-micro font-medium text-accent transition-colors hover:bg-hairline"
-            title="Open the memory link graph"
-          >
-            <Network className="size-3.5" />
-            Graph
-          </Link>
+          <Tooltip content="Open the memory link graph">
+            <Link
+              href={memoryGraphHref(roomName)}
+              className="ml-auto inline-flex flex-shrink-0 items-center gap-1 rounded-md px-2 py-1 text-micro font-medium text-accent transition-colors hover:bg-hairline"
+            >
+              <Network className="size-3.5" />
+              Graph
+            </Link>
+          </Tooltip>
         </div>
         {contributors.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mt-2.5">
@@ -504,25 +506,27 @@ export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusM
         actions={
           selected ? (
             <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() =>
-                  isEditing ? guard(() => setIsEditing(false)) : setIsEditing(true)
-                }
-                title={isEditing ? "View" : "Edit"}
-                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-micro font-medium text-accent transition-colors hover:bg-hairline"
-              >
-                {isEditing ? <Eye className="size-3.5" /> : <Pencil className="size-3.5" />}
-                {isEditing ? "View" : "Edit"}
-              </button>
-              <Link
-                href={memoryHref(roomName, selected.key)}
-                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-micro font-medium text-accent transition-colors hover:bg-hairline"
-                title="Open full page"
-              >
-                <ExternalLink className="size-3.5" />
-                Full page
-              </Link>
+              <Tooltip content={isEditing ? "Back to the rendered memory" : "Edit this memory"}>
+                <button
+                  type="button"
+                  onClick={() =>
+                    isEditing ? guard(() => setIsEditing(false)) : setIsEditing(true)
+                  }
+                  className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-micro font-medium text-accent transition-colors hover:bg-hairline"
+                >
+                  {isEditing ? <Eye className="size-3.5" /> : <Pencil className="size-3.5" />}
+                  {isEditing ? "View" : "Edit"}
+                </button>
+              </Tooltip>
+              <Tooltip content="Open full page">
+                <Link
+                  href={memoryHref(roomName, selected.key)}
+                  className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-micro font-medium text-accent transition-colors hover:bg-hairline"
+                >
+                  <ExternalLink className="size-3.5" />
+                  Full page
+                </Link>
+              </Tooltip>
             </div>
           ) : undefined
         }

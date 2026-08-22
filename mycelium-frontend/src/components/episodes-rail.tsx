@@ -10,6 +10,7 @@ import { useRoomEpisodes } from "@/lib/room-data";
 import { DetailDrawer } from "@/components/detail-drawer";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip } from "@/components/ui/tooltip";
 import { EpisodeDetail } from "@/components/episode-detail";
 
 // The room's episodes at a glance: each convening of the aligner is one episode
@@ -113,12 +114,14 @@ export function EpisodesRail({ roomName, focusShortId = null, onFocusConsumed }:
                     className={`inline-block size-1.5 flex-shrink-0 rounded-full ${live ? "" : "opacity-60"}`}
                     style={{ background: color }}
                   />
-                  <span
-                    className="font-mono text-micro text-muted-foreground truncate"
-                    title={ep.episode || ep.short_id}
-                  >
-                    {ep.short_id}
-                  </span>
+                  <Tooltip content={ep.episode || ep.short_id} side="left">
+                    <span
+                      className="font-mono text-micro text-muted-foreground truncate"
+                      aria-description={ep.episode || ep.short_id}
+                    >
+                      {ep.short_id}
+                    </span>
+                  </Tooltip>
                   <span className="ml-auto text-micro text-muted-foreground tabular">{ep.message_count} msg</span>
                 </div>
                 <div className="flex items-center gap-2 pl-3.5">

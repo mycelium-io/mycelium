@@ -30,6 +30,7 @@ import { ActingAsPicker } from "@/components/acting-as-picker";
 import { useNotifications } from "@/components/notifications-provider";
 import { EmptyState } from "@/components/empty-state";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tooltip } from "@/components/ui/tooltip";
 import { KeyBadge } from "@/components/key-badge";
 import { useCommands, useKeyAction } from "@/components/keymap-provider";
 import { useOpenInstallModal } from "@/components/install-modal";
@@ -194,24 +195,26 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
   if (collapsed) {
     return (
       <aside data-tour="rooms" className="flex w-full min-w-0 flex-col items-center overflow-hidden bg-surface/50">
-        <Link
-          href="/"
-          title="Command center"
-          className="relative flex h-[52px] w-full flex-shrink-0 items-center justify-center border-b border-border transition-colors hover:bg-hairline"
-        >
-          <Image src="/logo.png" alt="Mycelium" width={20} height={20} className="opacity-90" />
-          <KeyBadge action="nav.home" />
-        </Link>
+        <Tooltip content="Command center" side="right">
+          <Link
+            href="/"
+            className="relative flex h-[52px] w-full flex-shrink-0 items-center justify-center border-b border-border transition-colors hover:bg-hairline"
+          >
+            <Image src="/logo.png" alt="Mycelium" width={20} height={20} className="opacity-90" />
+            <KeyBadge action="nav.home" />
+          </Link>
+        </Tooltip>
 
-        <button
-          onClick={() => onCollapsedChange?.(false)}
-          aria-label={railToggleTitle(false)}
-          title={railToggleTitle(false)}
-          className="relative mt-2 flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-surface hover:text-text"
-        >
-          <PanelLeftOpen className="size-[18px]" />
-          <KeyBadge action="rooms.toggle" overlay />
-        </button>
+        <Tooltip content={railToggleTitle(false)} side="right">
+          <button
+            onClick={() => onCollapsedChange?.(false)}
+            aria-label={railToggleTitle(false)}
+            className="relative mt-2 flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-surface hover:text-text"
+          >
+            <PanelLeftOpen className="size-[18px]" />
+            <KeyBadge action="rooms.toggle" overlay />
+          </button>
+        </Tooltip>
         <div className="mt-1 h-px w-5 bg-border" />
 
         <ScrollArea className="min-h-0 w-full flex-1">
@@ -220,39 +223,44 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
               const active = room.name === activeRoom;
               const unread = active ? 0 : unreadByRoom.get(room.name) ?? 0;
               return (
-                <Link
+                <Tooltip
                   key={room.name}
-                  href={`/room/${encodeURIComponent(room.name)}`}
-                  title={unread > 0 ? `${room.name} — ${unread} unread` : room.name}
-                  className={`relative flex size-8 flex-shrink-0 items-center justify-center rounded-md font-mono text-micro font-semibold transition-colors ${
-                    active
-                      ? "bg-accent text-accent-fg"
-                      : "bg-surface text-muted-foreground hover:text-text"
-                  }`}
+                  content={unread > 0 ? `${room.name} — ${unread} unread` : room.name}
+                  side="right"
                 >
-                  <span aria-hidden>{monogram(room.name)}</span>
-                  <span className="sr-only">{room.name}</span>
-                  {unread > 0 && (
-                    <span
-                      aria-label={`${unread} unread`}
-                      className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-accent ring-2 ring-surface"
-                    />
-                  )}
-                  {i < 9 && <KeyBadge chord={`alt+${i + 1}`} overlay />}
-                </Link>
+                  <Link
+                    href={`/room/${encodeURIComponent(room.name)}`}
+                    className={`relative flex size-8 flex-shrink-0 items-center justify-center rounded-md font-mono text-micro font-semibold transition-colors ${
+                      active
+                        ? "bg-accent text-accent-fg"
+                        : "bg-surface text-muted-foreground hover:text-text"
+                    }`}
+                  >
+                    <span aria-hidden>{monogram(room.name)}</span>
+                    <span className="sr-only">{room.name}</span>
+                    {unread > 0 && (
+                      <span
+                        aria-label={`${unread} unread`}
+                        className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-accent ring-2 ring-surface"
+                      />
+                    )}
+                    {i < 9 && <KeyBadge chord={`alt+${i + 1}`} overlay />}
+                  </Link>
+                </Tooltip>
               );
             })}
           </nav>
         </ScrollArea>
 
-        <button
-          onClick={() => setShowCreate(true)}
-          aria-label="New room"
-          title="New room"
-          className="mb-1 flex size-8 flex-shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface hover:text-text"
-        >
-          <Plus className="size-4" />
-        </button>
+        <Tooltip content="New room" side="right">
+          <button
+            onClick={() => setShowCreate(true)}
+            aria-label="New room"
+            className="mb-1 flex size-8 flex-shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface hover:text-text"
+          >
+            <Plus className="size-4" />
+          </button>
+        </Tooltip>
         <div className="flex w-full flex-col items-center gap-1 border-t border-border py-2">
           <ActingAsPicker compact />
           <NotificationBell />
@@ -286,23 +294,25 @@ export function RoomsSidebar({ activeRoom = null, collapsed = false, onCollapsed
       <div className="flex items-center gap-2 px-3 pt-3 pb-2">
         <span className="text-micro font-semibold uppercase tracking-wide text-muted-foreground">Rooms</span>
         <span className="text-micro tabular text-muted-foreground">{rooms.length}</span>
-        <button
-          onClick={() => setShowCreate(true)}
-          aria-label="New room"
-          title="New room"
-          className="ml-auto flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface hover:text-text"
-        >
-          <Plus className="size-4" />
-        </button>
-        <button
-          onClick={() => onCollapsedChange?.(true)}
-          aria-label={railToggleTitle(true)}
-          title={railToggleTitle(true)}
-          className="relative flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface hover:text-text"
-        >
-          <PanelLeftClose className="size-4" />
-          <KeyBadge action="rooms.toggle" overlay />
-        </button>
+        <Tooltip content="New room">
+          <button
+            onClick={() => setShowCreate(true)}
+            aria-label="New room"
+            className="ml-auto flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface hover:text-text"
+          >
+            <Plus className="size-4" />
+          </button>
+        </Tooltip>
+        <Tooltip content={railToggleTitle(true)}>
+          <button
+            onClick={() => onCollapsedChange?.(true)}
+            aria-label={railToggleTitle(true)}
+            className="relative flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface hover:text-text"
+          >
+            <PanelLeftClose className="size-4" />
+            <KeyBadge action="rooms.toggle" overlay />
+          </button>
+        </Tooltip>
       </div>
       <div className="px-3 pb-2">
         <div className="flex items-center gap-2 rounded-lg border border-border bg-bg px-2.5 py-1.5 focus-within:border-accent">

@@ -15,6 +15,7 @@ import {
 import { AgentsPanel } from "@/components/agents-panel";
 import { EpisodesRail } from "@/components/episodes-rail";
 import { KeyBadge } from "@/components/key-badge";
+import { Tooltip } from "@/components/ui/tooltip";
 import { MemoryPanel } from "@/components/memory-panel";
 import { chordFor, chordKey } from "@/lib/keymap";
 import { TAB_LABELS_MIN_WIDTH } from "@/lib/panel-layout";
@@ -110,28 +111,29 @@ export function RoomInspector({
   if (!open) {
     return (
       <aside className="flex w-full min-w-0 flex-col items-center gap-1 overflow-hidden bg-surface/40 pt-3">
-        <button
-          onClick={() => setOpen(true)}
-          aria-label={railToggleTitle(false)}
-          title={railToggleTitle(false)}
-          className="flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-surface hover:text-text"
-        >
-          <PanelRightOpen className="size-[18px]" />
-        </button>
+        <Tooltip content={railToggleTitle(false)} side="left">
+          <button
+            onClick={() => setOpen(true)}
+            aria-label={railToggleTitle(false)}
+            className="flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-surface hover:text-text"
+          >
+            <PanelRightOpen className="size-[18px]" />
+          </button>
+        </Tooltip>
         <div className="mt-1 h-px w-5 bg-border" />
         {TABS.map(({ id, label, icon: Icon }) => (
-          <button
-            key={id}
-            onClick={() => { setTab(id); setOpen(true); }}
-            aria-label={label}
-            title={label}
-            className={`relative flex size-9 items-center justify-center rounded-lg transition-colors hover:bg-surface hover:text-text ${
-              tab === id ? "text-accent" : "text-muted-foreground"
-            }`}
-          >
-            <Icon className="size-[18px]" />
-            <KeyBadge action={`rail.${id}`} overlay />
-          </button>
+          <Tooltip key={id} content={label} side="left">
+            <button
+              onClick={() => { setTab(id); setOpen(true); }}
+              aria-label={label}
+              className={`relative flex size-9 items-center justify-center rounded-lg transition-colors hover:bg-surface hover:text-text ${
+                tab === id ? "text-accent" : "text-muted-foreground"
+              }`}
+            >
+              <Icon className="size-[18px]" />
+              <KeyBadge action={`rail.${id}`} overlay />
+            </button>
+          </Tooltip>
         ))}
       </aside>
     );
@@ -144,33 +146,34 @@ export function RoomInspector({
           {TABS.map(({ id, label, icon: Icon }) => {
             const active = tab === id;
             return (
-              <button
-                key={id}
-                data-tour={`inspector-${id}`}
-                onClick={() => setTab(id)}
-                aria-label={label}
-                title={compact ? label : undefined}
-                className={`relative flex items-center gap-1.5 rounded-md py-1 text-label font-medium transition-colors ${
-                  compact ? "px-2" : "px-2.5"
-                } ${
-                  active ? "bg-elevated text-text shadow-sm ring-1 ring-border" : "text-muted-foreground hover:text-text"
-                }`}
-              >
-                <Icon className="size-3.5 flex-shrink-0" />
-                {!compact && label}
-                <KeyBadge action={`rail.${id}`} overlay={compact} />
-              </button>
+              <Tooltip key={id} content={compact ? label : undefined} side="bottom">
+                <button
+                  data-tour={`inspector-${id}`}
+                  onClick={() => setTab(id)}
+                  aria-label={label}
+                  className={`relative flex items-center gap-1.5 rounded-md py-1 text-label font-medium transition-colors ${
+                    compact ? "px-2" : "px-2.5"
+                  } ${
+                    active ? "bg-elevated text-text shadow-sm ring-1 ring-border" : "text-muted-foreground hover:text-text"
+                  }`}
+                >
+                  <Icon className="size-3.5 flex-shrink-0" />
+                  {!compact && label}
+                  <KeyBadge action={`rail.${id}`} overlay={compact} />
+                </button>
+              </Tooltip>
             );
           })}
         </div>
-        <button
-          onClick={() => setOpen(false)}
-          aria-label={railToggleTitle(true)}
-          title={railToggleTitle(true)}
-          className="ml-auto flex size-7 flex-shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface hover:text-text"
-        >
-          <PanelRightClose className="size-4" />
-        </button>
+        <Tooltip content={railToggleTitle(true)} side="bottom">
+          <button
+            onClick={() => setOpen(false)}
+            aria-label={railToggleTitle(true)}
+            className="ml-auto flex size-7 flex-shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface hover:text-text"
+          >
+            <PanelRightClose className="size-4" />
+          </button>
+        </Tooltip>
       </div>
 
       <div className="min-h-0 flex-1 overflow-hidden">

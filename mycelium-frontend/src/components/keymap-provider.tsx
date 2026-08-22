@@ -14,6 +14,7 @@ import {
   type ReactNode,
 } from "react";
 import { CommandPalette } from "@/components/command-palette";
+import { Tooltip } from "@/components/ui/tooltip";
 import { KeymapCheatsheet } from "@/components/keymap-cheatsheet";
 import { loadRecent, pushRecent, saveRecent, type PaletteCommand } from "@/lib/commands";
 import {
@@ -376,14 +377,15 @@ export function KeymapHelpButton() {
   const api = useContext(KeymapContext);
   if (!api) return null;
   return (
-    <button
-      type="button"
-      onClick={api.openHelp}
-      title="Keyboard shortcuts"
-      className="rounded px-1 text-micro text-muted-foreground transition-colors hover:text-text"
-    >
-      <kbd className="font-sans">?</kbd> keys
-    </button>
+    <Tooltip content="Keyboard shortcuts" side="top">
+      <button
+        type="button"
+        onClick={api.openHelp}
+        className="rounded px-1 text-micro text-muted-foreground transition-colors hover:text-text"
+      >
+        <kbd className="font-sans">?</kbd> keys
+      </button>
+    </Tooltip>
   );
 }
 
@@ -392,14 +394,15 @@ export function CommandPaletteButton() {
   const mac = useIsMac();
   if (!api) return null;
   return (
-    <button
-      type="button"
-      onClick={api.openPalette}
-      title="Command palette"
-      className="rounded px-1 text-micro text-muted-foreground transition-colors hover:text-text"
-    >
-      <kbd className="font-sans">{formatChord(chordFor("palette.open") ?? "", mac)}</kbd> commands
-    </button>
+    <Tooltip content="Command palette" side="top">
+      <button
+        type="button"
+        onClick={api.openPalette}
+        className="rounded px-1 text-micro text-muted-foreground transition-colors hover:text-text"
+      >
+        <kbd className="font-sans">{formatChord(chordFor("palette.open") ?? "", mac)}</kbd> commands
+      </button>
+    </Tooltip>
   );
 }
 

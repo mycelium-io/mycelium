@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tooltip } from "@/components/ui/tooltip";
 import {
   fetchL9History,
   getSSEUrl,
@@ -257,15 +258,18 @@ function frameIcon(kind: string, subkind?: string | null): LucideIcon {
 }
 
 export function KindBadge({ kind, subkind }: { kind: string; subkind?: string | null }) {
+  const full = `${kind}${subkind ? ":" + subkind : ""}`;
   return (
-    <span
-      className="block min-w-0 truncate font-mono text-label font-semibold uppercase tracking-[0.02em]"
-      style={{ color: frameTone(kind, subkind) }}
-      title={`${kind}${subkind ? ":" + subkind : ""}`}
-    >
-      {kind.toUpperCase()}
-      {subkind ? <span className="text-muted-foreground">:{subkind}</span> : null}
-    </span>
+    <Tooltip content={full}>
+      <span
+        className="block min-w-0 truncate font-mono text-label font-semibold uppercase tracking-[0.02em]"
+        style={{ color: frameTone(kind, subkind) }}
+        aria-description={full}
+      >
+        {kind.toUpperCase()}
+        {subkind ? <span className="text-muted-foreground">:{subkind}</span> : null}
+      </span>
+    </Tooltip>
   );
 }
 
@@ -277,10 +281,12 @@ export function MetricsRow({ metrics }: { metrics: EpisodeMetrics }) {
   ];
   return (
     <span className="flex items-center gap-2 font-mono text-micro tabular">
-      {items.map(([label, value, title]) => (
-        <span key={label} title={title} className="text-muted-foreground">
-          <span className="text-muted-foreground">{label}</span> {Number(value).toFixed(2)}
-        </span>
+      {items.map(([label, value, expansion]) => (
+        <Tooltip key={label} content={expansion}>
+          <span aria-description={expansion} className="text-muted-foreground">
+            <span className="text-muted-foreground">{label}</span> {Number(value).toFixed(2)}
+          </span>
+        </Tooltip>
       ))}
     </span>
   );
@@ -314,7 +320,10 @@ function FrameRow({
         type="button"
         aria-expanded={expanded}
         onClick={() => setExpanded((prev) => !prev)}
-        title={expanded ? "Collapse envelope" : "Expand full envelope JSON"}
+        // No visual tooltip: the trigger is a full-width feed row, so a bubble
+        // anchored to it would sit over its neighbours. The chevron and
+        // aria-expanded already carry the affordance.
+        aria-description={expanded ? "Collapse envelope" : "Expand full envelope JSON"}
         // Fixed columns so kind / actor / summary line up down the feed, one text
         // size throughout; timestamp + metrics ride a right-aligned meta cluster.
         className="group grid w-full cursor-pointer grid-cols-[14px_16px_176px_120px_minmax(0,1fr)_auto] items-center gap-x-2.5 px-4 py-1.5 text-left text-label transition-colors hover:bg-hairline"
@@ -333,14 +342,18 @@ function FrameRow({
         <span className="flex items-center justify-end gap-2.5 text-micro text-muted-foreground">
           {frame.metrics ? <MetricsRow metrics={frame.metrics} /> : null}
           {frame.parents.length > 0 ? (
-            <span className="font-mono tabular" title={frame.parents.join("\n")}>
-              ←{frame.parents.length}
-            </span>
+            <Tooltip content={frame.parents.join("\n")}>
+              <span className="font-mono tabular" aria-description={`parents: ${frame.parents.join(", ")}`}>
+                ←{frame.parents.length}
+              </span>
+            </Tooltip>
           ) : null}
           {frame.episode ? (
-            <span className="font-mono text-accent" title={frame.episode}>
-              {shortEpisode(frame.episode)}
-            </span>
+            <Tooltip content={frame.episode}>
+              <span className="font-mono text-accent" aria-description={frame.episode}>
+                {shortEpisode(frame.episode)}
+              </span>
+            </Tooltip>
           ) : null}
           <span className="font-mono tabular">{frame.time}</span>
         </span>

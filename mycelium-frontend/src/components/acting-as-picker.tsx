@@ -18,6 +18,7 @@ import { useCommands } from "@/components/keymap-provider";
 import type { PaletteCommand } from "@/lib/commands";
 import { useAuthSession } from "@/components/auth-session";
 import { Monogram } from "@/components/ui/monogram";
+import { Tooltip } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { TagInput } from "@/components/ui/tag-input";
@@ -174,43 +175,51 @@ export function ActingAsPicker({ compact = false }: Props) {
     form.isNew ? users.find((u) => u.handle === normHandle(form.handle)) : undefined;
 
   const teamSuggestions = teams.map((t) => t.team);
+  const actingLabel = principal
+    ? `Acting as @${principal}`
+    : "Choose the user you're acting as";
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger
-        title={principal ? `Acting as @${principal}` : "Choose the user you're acting as"}
-        className={
-          compact
-            ? "group flex size-8 items-center justify-center rounded-md transition-colors hover:bg-hairline"
-            : "group flex min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 py-1 text-left transition-colors hover:bg-hairline"
-        }
-      >
-        {principal ? (
-          <Monogram handle={principal} color="var(--muted-foreground)" className="size-7" />
-        ) : (
-          <span
-            aria-hidden
-            className="flex size-7 flex-shrink-0 items-center justify-center rounded-full bg-surface text-muted-foreground"
-          >
-            <UserRound className="size-3.5" />
-          </span>
-        )}
-        {/* The handle and the switcher affordance are what the 48px strip
-            can't hold; the avatar carries the identity on its own there. */}
-        {!compact && (
-          <>
-            <span className="min-w-0 flex-1">
-              <span className="block truncate font-mono text-label text-text">
-                {principal ? `@${principal}` : "Anonymous"}
-              </span>
-              <span className="block truncate text-micro text-muted-foreground">
-                {principal ? (signedIn ? "signed in" : "acting as") : "pick a user"}
-              </span>
+      {/* Collapsed to an avatar, the trigger has no text of its own, so
+          the label does the naming there and the tooltip only ever
+          restates it. */}
+      <Tooltip content={actingLabel} side="right">
+        <DialogTrigger
+          aria-label={compact ? actingLabel : undefined}
+          className={
+            compact
+              ? "group flex size-8 items-center justify-center rounded-md transition-colors hover:bg-hairline"
+              : "group flex min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 py-1 text-left transition-colors hover:bg-hairline"
+          }
+        >
+          {principal ? (
+            <Monogram handle={principal} color="var(--muted-foreground)" className="size-7" />
+          ) : (
+            <span
+              aria-hidden
+              className="flex size-7 flex-shrink-0 items-center justify-center rounded-full bg-surface text-muted-foreground"
+            >
+              <UserRound className="size-3.5" />
             </span>
-            <ChevronsUpDown className="size-3.5 flex-shrink-0 text-faint transition-colors group-hover:text-muted-foreground" />
-          </>
-        )}
-      </DialogTrigger>
+          )}
+          {/* The handle and the switcher affordance are what the 48px strip
+              can't hold; the avatar carries the identity on its own there. */}
+          {!compact && (
+            <>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-mono text-label text-text">
+                  {principal ? `@${principal}` : "Anonymous"}
+                </span>
+                <span className="block truncate text-micro text-muted-foreground">
+                  {principal ? (signedIn ? "signed in" : "acting as") : "pick a user"}
+                </span>
+              </span>
+              <ChevronsUpDown className="size-3.5 flex-shrink-0 text-faint transition-colors group-hover:text-muted-foreground" />
+            </>
+          )}
+        </DialogTrigger>
+      </Tooltip>
 
       <DialogContent className="sm:max-w-sm">
         {view === "switch" && (

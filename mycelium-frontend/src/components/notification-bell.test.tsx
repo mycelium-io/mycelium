@@ -99,7 +99,7 @@ describe("<NotificationBell />", () => {
 
     await user.click(screen.getByLabelText("1 unread notifications"));
     const panel = await screen.findByText("Notifications");
-    await user.click(within(panel.closest("[data-slot=popover-content]")!).getByTitle("Mark all read"));
+    await user.click(within(panel.closest("[data-slot=popover-content]")!).getByLabelText("Mark all read"));
 
     expect(screen.getByLabelText("Notifications")).toBeInTheDocument();
   });
@@ -117,7 +117,7 @@ describe("<NotificationBell />", () => {
     await user.click(await screen.findByLabelText("1 unread notifications"));
     expect(await screen.findByText("sprint")).toBeInTheDocument();
 
-    await user.click(screen.getByTitle("Dismiss"));
+    await user.click(screen.getByLabelText("Dismiss"));
     expect(screen.queryByText("hey @bob take a look")).not.toBeInTheDocument();
   });
 });

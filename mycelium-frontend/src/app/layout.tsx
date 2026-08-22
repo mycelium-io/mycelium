@@ -10,6 +10,7 @@ import { LoginGate } from "@/components/login-gate";
 import { KeymapProvider } from "@/components/keymap-provider";
 import { NotificationsProvider } from "@/components/notifications-provider";
 import { SWRProvider } from "@/components/swr-provider";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 export const metadata: Metadata = {
   title: "mycelium",
@@ -39,10 +40,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                     the gate is off. */}
                 <LoginGate>
                   <NotificationsProvider>
-                    {/* Above the pages, not inside a page's shell: a page
-                        registers its own bindings, so it has to sit under the
-                        provider. */}
-                    <KeymapProvider>{children}</KeymapProvider>
+                    {/* Tooltips group their delay app-wide, so moving along a
+                        toolbar doesn't re-wait per control. */}
+                    <TooltipProvider>
+                      {/* Above the pages, not inside a page's shell: a page
+                          registers its own bindings, so it has to sit under
+                          the provider. */}
+                      <KeymapProvider>{children}</KeymapProvider>
+                    </TooltipProvider>
                   </NotificationsProvider>
                 </LoginGate>
               </AuthSessionProvider>

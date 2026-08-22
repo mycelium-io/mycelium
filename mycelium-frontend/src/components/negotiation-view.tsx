@@ -6,6 +6,7 @@
 import { useMemo } from "react";
 import { Scale, X } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
+import { Tooltip } from "@/components/ui/tooltip";
 
 // The Negotiation instrument: the aligner's NEGMAS Stacked Alternating Offers
 // mechanism made visible. It reconstructs, purely from the coordination_tick /
@@ -119,18 +120,28 @@ function derive(events: readonly NegEvent[]): Negotiation {
   };
 }
 
+/** The SAO move as a bare shape. It carries no text, so `role="img"` +
+ *  `aria-label` is the glyph's whole accessible name; the tooltip is the
+ *  sighted reader's copy of it. */
 function MoveGlyph({ action }: { action?: MoveAction }) {
-  if (action === "propose")
-    return <span title="propose" className="inline-block size-2.5 border-[1.5px] border-accent" />;
-  if (action === "counter")
-    return <span title="counter" className="inline-block size-2.5 rotate-45 border-[1.5px] border-accent" />;
-  if (action === "accept")
-    return <span title="accept" className="inline-block size-2.5 bg-green" />;
   if (action === "reject")
     return <X className="size-3 text-yellow" strokeWidth={2.5} aria-label="reject" />;
-  if (action)
-    return <span title={action} className="inline-block size-1.5 rounded-full bg-muted-foreground" />;
-  return <span className="inline-block size-1 rounded-full bg-faint/40" aria-hidden />;
+  if (!action) return <span className="inline-block size-1 rounded-full bg-faint/40" aria-hidden />;
+
+  const shape =
+    action === "propose"
+      ? "size-2.5 border-[1.5px] border-accent"
+      : action === "counter"
+        ? "size-2.5 rotate-45 border-[1.5px] border-accent"
+        : action === "accept"
+          ? "size-2.5 bg-green"
+          : "size-1.5 rounded-full bg-muted-foreground";
+
+  return (
+    <Tooltip content={action}>
+      <span role="img" aria-label={action} className={`inline-block ${shape}`} />
+    </Tooltip>
+  );
 }
 
 const STATE_TONE: Record<Negotiation["state"], string> = {
