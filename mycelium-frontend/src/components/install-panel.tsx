@@ -3,7 +3,7 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { ArrowRight, Terminal } from "lucide-react";
 import { CopyField } from "@/components/ui/copy-field";
@@ -80,17 +80,24 @@ interface Props {
 export function InstallPanel({ className }: Props) {
   const healthy = useBackendHealth(WAITING_POLL);
 
-  // Server-rendered markup can't know the OS or this page's own origin, so
-  // both land after mount to avoid a hydration mismatch. Until then, no
-  // platform tab is preselected and the config command shows a placeholder
-  // host. The origin is only a first guess, since some deployments front
-  // the API on a different port than the UI, so it's there to edit.
-  const [platform, setPlatform] = useState<Platform>("unknown");
-  const [hubUrl, setHubUrl] = useState("<this-hub-url>");
-  useEffect(() => {
-    setPlatform(detectPlatform(navigator.userAgent));
-    setHubUrl(window.location.origin);
-  }, []);
+  // Server-rendered markup can't know the OS or this page's own origin: until
+  // the client snapshot arrives, no platform tab is preselected and the config
+  // command shows a placeholder host. The origin is only a first guess, since
+  // some deployments front the API on a different port than the UI, so it's
+  // there to edit — and the OS tabs override the detected platform.
+  const noSubscribe = () => () => {};
+  const detectedPlatform = useSyncExternalStore(
+    noSubscribe,
+    () => detectPlatform(navigator.userAgent) as Platform,
+    () => "unknown" as Platform,
+  );
+  const hubUrl = useSyncExternalStore(
+    noSubscribe,
+    () => window.location.origin,
+    () => "<this-hub-url>",
+  );
+  const [platformOverride, setPlatform] = useState<Platform | null>(null);
+  const platform = platformOverride ?? detectedPlatform;
   const note = PLATFORMS.find(p => p.id === platform)?.note;
 
   // "Prompt" is a fourth tab alongside the OS ones, not a fifth platform: it

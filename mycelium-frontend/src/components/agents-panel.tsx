@@ -90,6 +90,8 @@ export function AgentsPanel({
 
   useEffect(() => {
     if (!engineInvite) return;
+    // One-shot: the parent flips engineInvite, and clears it once the tab is shown.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setAddTab("engines");
     setAddOpen(true);
     onEngineInviteShown?.();
@@ -102,6 +104,8 @@ export function AgentsPanel({
   const highlightRow = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!focusHandle) return;
+    // The highlight outlives focusHandle, which is cleared as soon as it is consumed.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setHighlight(focusHandle);
     onFocusConsumed?.();
   }, [focusHandle, onFocusConsumed]);

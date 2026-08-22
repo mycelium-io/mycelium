@@ -65,17 +65,13 @@ function RoomWorkspace() {
   const [inspectorOpen, setInspectorOpen] = useState(true);
   const [editorView, setEditorView] = useState<View>("channel");
   const [negPhase, setNegPhase] = useState<NegotiationPhase>("idle");
-  const [tourActive, setTourActive] = useState(false);
+  // Hoisted above the state below so the tour flag can be seeded from the URL.
+  const searchParamsEarly = useSearchParams();
+  // `?tour=1` seeds the tour once on mount; exiting is client-only state after that.
+  const [tourActive, setTourActive] = useState(() => searchParamsEarly.get("tour") === "1");
   const [inviteEngine, setInviteEngine] = useState(false);
   const [focusMemory, setFocusMemory] = useState<{ key: string; nonce: number } | null>(null);
   const [focusEpisode, setFocusEpisode] = useState<{ shortId: string; nonce: number } | null>(null);
-
-  // Start the coached tour when arriving via "Run a sample coordination".
-  useEffect(() => {
-    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("tour") === "1") {
-      setTourActive(true);
-    }
-  }, []);
 
   const handleTourExit = useCallback(() => {
     setTourActive(false);
@@ -115,7 +111,7 @@ function RoomWorkspace() {
   // row — a result opens the item, not just the room it is in. The parameter is
   // consumed on arrival so returning to a rail later doesn't re-select, and so
   // jumping to the same item twice is a change the panel sees both times.
-  const searchParams = useSearchParams();
+  const searchParams = searchParamsEarly;
   const router = useRouter();
   const focusParam = searchParams.get("focus");
   const [focus, setFocus] = useState<FocusTarget | null>(null);
@@ -133,6 +129,9 @@ function RoomWorkspace() {
       router.replace(memoryHref(roomName, target.id));
       return;
     }
+    // The focus target is consumed here rather than derived: it has to outlive
+    // the parameter, which is cleared as soon as it has been acted on.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setFocus(target);
     if (target.type === "episode") openTab("episodes");
     else if (target.type === "agent") openTab("agents");

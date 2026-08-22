@@ -67,6 +67,8 @@ export function EpisodesRail({
     if (!wanted) return;
     const known = episodes.find((ep) => ep.short_id === wanted);
     if (known) {
+      // The selection outlives focusShortId, which is cleared once consumed.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSelected(known);
       setPending(null);
       onFocusConsumed?.();

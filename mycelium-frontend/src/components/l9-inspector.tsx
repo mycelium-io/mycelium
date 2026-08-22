@@ -332,8 +332,7 @@ function FrameRow({
           aria-hidden
           className={`size-3.5 text-faint transition-transform group-hover:text-muted-foreground ${expanded ? "rotate-90" : ""}`}
         />
-        {/* frameIcon picks from a fixed table of imported Lucide components,
-            so nothing is defined here — the rule cannot see through the call. */}
+        {/* frameIcon returns one of a fixed table of imported Lucide components. */}
         {/* eslint-disable-next-line react-hooks/static-components */}
         <Icon aria-hidden className="size-3.5" style={{ color: tone }} />
         <KindBadge kind={frame.kind} subkind={frame.subkind} />
@@ -404,6 +403,9 @@ export function L9Inspector({ roomName }: Props) {
   useEffect(() => {
     let cancelled = false;
     seenIds.current = new Set();
+    // Async fetch; the rest of the setState calls are in its .then(). Clearing
+    // here drops the previous room's frames before the new ones arrive.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setFrames([]);
     fetchL9History(roomName).then((rows) => {
       if (cancelled) return;
@@ -464,18 +466,15 @@ export function L9Inspector({ roomName }: Props) {
     () => Array.from(new Set(frames.map((f) => f.episode).filter((e): e is string => Boolean(e)))),
     [frames],
   );
-  // Reset filters that no longer apply to any frame (e.g. the selected episode
-  // scrolled out of the MAX_FRAMES window).
-  useEffect(() => {
-    if (episodeFilter !== "all" && !episodesPresent.includes(episodeFilter)) {
-      setEpisodeFilter("all");
-    }
-  }, [episodeFilter, episodesPresent]);
+  // Fall back to "all" once the selected episode scrolls out of the MAX_FRAMES window.
+  const effectiveEpisodeFilter =
+    episodeFilter === "all" || episodesPresent.includes(episodeFilter) ? episodeFilter : "all";
 
   const toggleKind = useCallback((kind: string) => {
     setHiddenKinds((prev) => {
       const next = new Set(prev);
-      next.has(kind) ? next.delete(kind) : next.add(kind);
+      if (next.has(kind)) next.delete(kind);
+      else next.add(kind);
       return next;
     });
   }, []);
@@ -483,9 +482,9 @@ export function L9Inspector({ roomName }: Props) {
   const wire = useMemo(
     () =>
       frames.filter(
-        (f) => !hiddenKinds.has(f.kind) && (episodeFilter === "all" || f.episode === episodeFilter),
+        (f) => !hiddenKinds.has(f.kind) && (effectiveEpisodeFilter === "all" || f.episode === effectiveEpisodeFilter),
       ),
-    [frames, hiddenKinds, episodeFilter],
+    [frames, hiddenKinds, effectiveEpisodeFilter],
   );
 
   useEffect(() => {
@@ -539,7 +538,7 @@ export function L9Inspector({ roomName }: Props) {
           {episodesPresent.length > 0 && (
             <select
               aria-label="Filter by episode"
-              value={episodeFilter}
+              value={effectiveEpisodeFilter}
               onChange={(e) => setEpisodeFilter(e.target.value)}
               className="ml-auto rounded-md border border-border bg-surface px-2 py-1 font-mono text-micro text-muted-foreground focus:border-accent focus:text-text focus:outline-none"
             >

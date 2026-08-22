@@ -33,7 +33,12 @@ export function CurrentUserProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (typeof window === "undefined") return;
     const saved = window.localStorage.getItem(STORAGE_KEY);
-    if (saved) setPrincipalState(saved);
+    if (saved) {
+      // localStorage is client-only: seeding this at init would mismatch the
+      // SSR render, where the principal is always "".
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setPrincipalState(saved);
+    }
   }, []);
 
   const value = useMemo<CurrentUser>(

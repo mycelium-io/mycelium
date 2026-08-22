@@ -38,6 +38,9 @@ export function MemoryPageView({ roomName, memoryKey }: Props) {
 
   useEffect(() => {
     let live = true;
+    // Async fetch; the rest of the setState calls are in its .then(). Clearing
+    // here keeps the previous memory from showing under the new key.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMemory(undefined);
     setRenderedBody(null);
     fetchMemory(roomName, memoryKey).then(m => {

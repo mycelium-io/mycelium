@@ -11,8 +11,10 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
+import { useIsMac } from "@/lib/client-hooks";
 import { CommandPalette } from "@/components/command-palette";
 import { Tooltip } from "@/components/ui/tooltip";
 import { KeymapCheatsheet } from "@/components/keymap-cheatsheet";
@@ -22,7 +24,6 @@ import {
   eventToChord,
   formatChord,
   isCommandChord,
-  isMacPlatform,
   isModifierKey,
   matchBinding,
   paletteBindings,
@@ -86,14 +87,16 @@ export function KeymapProvider({ children }: { children: ReactNode }) {
   const [scopeCounts, setScopeCounts] = useState<Partial<Record<KeyScope, number>>>({ global: 1 });
   const [helpOpen, setHelpOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
-  // Which commands ran, most recent first. Read after mount: the server has no
-  // storage, and the palette's ordering isn't worth a hydration mismatch.
+  // Which commands ran, most recent first. Seeded from localStorage after mount,
+  // so SSR and the first client render agree on an empty list.
   const [recent, setRecent] = useState<string[]>([]);
-  useEffect(() => setRecent(loadRecent()), []);
-  // Resolved after mount: the server has no platform to read, and a guess would
-  // hydrate a ⌘ over a Ctrl.
-  const [mac, setMac] = useState(false);
-  useEffect(() => setMac(isMacPlatform()), []);
+  useEffect(() => {
+    // localStorage is client-only, and runCommand writes this list back, so it
+    // stays ordinary state rather than an external-store snapshot.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setRecent(loadRecent());
+  }, []);
+  const mac = useIsMac();
 
   // Reveal is pushed to subscribers rather than held in state: holding ⌥ would
   // otherwise re-render the whole app through the context value.
@@ -200,8 +203,15 @@ export function KeymapProvider({ children }: { children: ReactNode }) {
   }, [dispatch]);
 
   const commands = useMemo(
-    // Recomputed when the palette opens, so it reflects what's mounted then.
-    () => (paletteOpen ? collectCommands(scopes) : []),
+    () => {
+      // collectCommands reads the registration refs, which are stable mutable
+      // registries: commandEpoch below is what says when to read them again.
+      // eslint-disable-next-line react-hooks/refs
+      return paletteOpen ? collectCommands(scopes) : [];
+    },
+    // commandEpoch never appears in the body — it is here to recompute the list
+    // when registrations change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [paletteOpen, commandEpoch, scopes, collectCommands],
   );
 
@@ -361,13 +371,14 @@ export function useKeyCapture(): KeymapApi["captureKeys"] {
  *  never reveals. */
 export function useKeyReveal(): boolean {
   const api = useContext(KeymapContext);
-  const [revealed, setRevealed] = useState(false);
-  useEffect(() => {
-    if (!api) return;
-    setRevealed(api.revealed());
-    return api.subscribeReveal(setRevealed);
-  }, [api]);
-  return revealed;
+  // Reveal lives outside React, so it is subscribed to rather than mirrored in
+  // state. Both callbacks are memoized so React doesn't resubscribe every render.
+  const subscribe = useCallback(
+    (listener: () => void) => api?.subscribeReveal(listener) ?? (() => {}),
+    [api],
+  );
+  const getSnapshot = useCallback(() => api?.revealed() ?? false, [api]);
+  return useSyncExternalStore(subscribe, getSnapshot, () => false);
 }
 
 /** The status-bar affordances that make `?` and ⌘K findable without knowing
@@ -406,10 +417,3 @@ export function CommandPaletteButton() {
   );
 }
 
-/** Resolved after mount, like the provider's own copy: rendering ⌘ on a server
- *  that has no platform would hydrate over a Ctrl. */
-function useIsMac(): boolean {
-  const [mac, setMac] = useState(false);
-  useEffect(() => setMac(isMacPlatform()), []);
-  return mac;
-}
