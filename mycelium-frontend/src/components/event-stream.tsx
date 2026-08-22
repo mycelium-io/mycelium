@@ -14,7 +14,7 @@ import {
 } from "@/lib/api";
 import { useRoomAgents } from "@/lib/room-data";
 import { MarkdownContent } from "@/components/markdown-content";
-import { RoomPlanHeader } from "@/components/room-plan-header";
+import { RoomBoard } from "@/components/board/room-board";
 import { ConsentDialog } from "@/components/consent-dialog";
 import { L9Inspector } from "@/components/l9-inspector";
 import { NegotiationView } from "@/components/negotiation-view";
@@ -500,7 +500,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
           {([
             { id: "channel" as const,   label: "Channel",   count: channelCount as number | null, dot: false },
             { id: "negotiate" as const, label: "Negotiate", count: null,                          dot: negotiating },
-            { id: "plan" as const,      label: "Plan",      count: null,                          dot: false },
+            { id: "plan" as const,      label: "Board",     count: null,                          dot: false },
             { id: "network" as const,   label: "Network",   count: null,                          dot: false },
           ]).map(t => {
             // Hold the reveal modifier and each tab wears the key that selects it.
@@ -529,7 +529,11 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
           })}
         </div>
       </div>
-      {view === "network" ? (
+      {view === "plan" ? (
+        <div className="flex-1 min-h-0">
+          <RoomBoard roomName={roomName} />
+        </div>
+      ) : view === "network" ? (
         // Unified Network pane: SLIM channel diagnostics as a rail on top, the
         // live L9 protocol feed filling the rest.
         <div className="flex flex-1 min-h-0 flex-col">
@@ -546,9 +550,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
         </div>
       ) : (
       <ScrollArea className="flex-1 min-h-0" viewportRef={scrollRef}>
-        {view === "plan" ? (
-          <RoomPlanHeader roomName={roomName} />
-        ) : !historyLoaded ? (
+        {!historyLoaded ? (
           <ChannelSkeleton />
         ) : visible.length === 0 ? (
           <EmptyState

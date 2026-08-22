@@ -78,7 +78,7 @@ export const KEYMAP: Binding[] = [
 
   { id: "pane.channel", keys: ["alt+c"], label: "Channel", group: "Panes", scope: "room" },
   { id: "pane.negotiate", keys: ["alt+n"], label: "Negotiate", group: "Panes", scope: "room" },
-  { id: "pane.plan", keys: ["alt+p"], label: "Plan", group: "Panes", scope: "room" },
+  { id: "pane.plan", keys: ["alt+p"], label: "Board", group: "Panes", scope: "room" },
   // Network = the merged SLIM diagnostics rail + L9 protocol feed. ⌥W (netWork);
   // ⌥N is taken by Negotiate.
   { id: "pane.network", keys: ["alt+w"], label: "Network", group: "Panes", scope: "room" },

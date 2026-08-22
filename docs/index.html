@@ -96,6 +96,7 @@
           <a href="#episodes" class="nav-link sub">Episodes</a>
           <a href="#memory" class="nav-link sub">Memory</a>
           <a href="#plan" class="nav-link sub">Plan</a>
+          <a href="#board" class="nav-link sub">Board</a>
           <a href="#l9-protocol" class="nav-link sub">L9 Protocol</a>
         </div>
       </div>
@@ -621,6 +622,7 @@ We chose Postgres because of myc://context/stack.</code></pre>
     <section class="doc-section" id="plan">
       <h1>Plan</h1>
       <p>A room&#x27;s <strong>plan</strong> is the place to write down what the room is for and what&#x27;s left to do. It lives in <code>~/.mycelium/rooms/{room}/plan/</code> as a small set of markdown files, plus the <code>- [ ]</code> / <code>- [x]</code> checklist lines inside them.</p>
+      <p>Open tasks also appear on the <a href="#board">board</a>, next to open decisions and whatever else currently needs a person.</p>
       <p>Plan content is surfaced to every agent in the room, both in the turn the <a href="#aligner">aligner</a> addresses to them and in every agent-context briefing, so agents weigh their behaviour against work that&#x27;s already committed.</p>
       <p>You can write the plan by hand (<code>plan set</code>, <code>plan task add</code>), but it also fills itself: when an <a href="#episodes">episode</a> converges on consensus, Mycelium compiles the agreed <code>{issue: value}</code> map into <code>plan/tasks.md</code> automatically: a <code>- [ ]</code> checklist with <code>@handle</code> owners that the whole team then executes against. The plan is compiled <em>before</em> the consensus is announced, so it exists the moment <code>await</code> returns. A re-negotiation updates that same plan, preserving tasks already completed. The arc is <strong>position → converge → plan → work</strong>.</p>
       <h2 id="plan-anatomy">Anatomy</h2>
@@ -653,6 +655,100 @@ We chose Postgres because of myc://context/stack.</code></pre>
       <p>Plan files share the same memory-style markdown-with-frontmatter convention, so they live alongside <code>work/</code>, <code>decisions/</code>, etc. and are readable to anyone opening the room directory.</p>
       <p>During an episode, the open task list is also rendered into every agent&#x27;s turn under a dedicated <strong>Open tasks</strong> header, so an agent always negotiates with the room&#x27;s committed work in view.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/plan.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
+    </section>
+
+    <hr class="divider">
+
+    <section class="doc-section" id="board">
+      <h1>Board</h1>
+      <p><strong>Orchestrate effectively across your team&#x27;s agents.</strong></p>
+      <p>When a few agents are working at once, the hard part stops being what they know and becomes what they need from you. One is waiting on a decision only you can make. One is blocked behind someone else&#x27;s pull request. One has been running for twenty minutes and is fine. The board is where a room answers that: a short list of what needs you, and the rest a keystroke away.</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span></code></pre>
+      <pre><code>atlas-migration   3 need you · 4 in flight · 6 resolved today
+
+Decisions 1
+ ? d3f   JWT access-token TTL — 15m or 60m?              urgent
+         @agent-y · episode d3f   unowned   [15m] [60m]      6m
+
+Blocked 1
+ ⊘ a91   Enable thin-spoke join without a local replica
+         linked to #502   @julia   waiting on #502           40m
+
+Review 1
+ ◉ 7c2   @agent-z opened PR #504, wants eyes on the custody seam
+         @agent-z   feat/custody-seam   CI green   #504       12m</code></pre>
+      <div class="callout callout-note">
+        <div class="callout-bar"></div>
+        <div class="callout-body"><strong>Experimental.</strong> The board reads real room state today. The triage verbs act on your own view: <code>resolve</code> writes through to a plan task, and the rest change what you see without yet writing back to the room.</div>
+      </div>
+      <h2 id="board-nothing-to-fill-in">Nothing to fill in</h2>
+      <p>You never add anything to the board. It&#x27;s assembled from what the room already has: the tasks in its plan, the negotiations running in it, the memories under <code>decisions/</code>, <code>status/</code>, <code>work/</code> and <code>failed/</code>, and which agents are actually resident right now. Every row says where it came from, and clicking through takes you to the real thing rather than a copy of it.</p>
+      <p>That means there&#x27;s no second place to keep up to date. Mark a plan task done and its row resolves. End a negotiation and its decision row closes. Nothing to groom, and nothing that can quietly disagree with the room it describes.</p>
+      <h2 id="board-three-lenses">Three lenses</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Lens</th>
+              <th>What&#x27;s in it</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Needs you</strong> (default)</td>
+              <td>Open decisions, blocked work, reviews wanting eyes</td>
+            </tr>
+            <tr>
+              <td><strong>In flight</strong></td>
+              <td>Claimed and moving: who holds it, which branch, CI state</td>
+            </tr>
+            <tr>
+              <td><strong>Resolved</strong></td>
+              <td>Closed today, then it drops off</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>You get the narrow one by default. A surface you have to watch is one you&#x27;ll stop watching, so the board shows you the handful of things waiting on a human and keeps everything else one keystroke away.</p>
+      <h2 id="board-five-ways-to-read-the-same-rows">Five ways to read the same rows</h2>
+      <p>A row is a title plus whatever its markdown frontmatter carries. Mycelium works out the shape of those fields by reading them, so you never define a schema, and each view pivots on them differently:</p>
+      <ul>
+        <li><strong>Cockpit</strong>: the short list, grouped by what kind of thing each row is.</li>
+        <li><strong>Board</strong>: a kanban, grouped by any field with a fixed set of values, such as status, owner, priority, or one your room invented.</li>
+        <li><strong>Table</strong>: the room as structured data, editable a cell at a time. A dropdown offers the values that namespace already uses.</li>
+        <li><strong>Timeline</strong>: the same rows by when they last moved, so you can see what happened while you were away.</li>
+        <li><strong>Docs</strong>: the plan&#x27;s prose, for when you want to read rather than triage.</li>
+      </ul>
+      <p>So a custom namespace becomes a tracker without you building one. Write memories under <code>issues/</code> with <code>status</code>, <code>assignee</code> and <code>priority</code> in their frontmatter and you can group them into a kanban, because those fields are in the markdown and not because anyone configured a tool.</p>
+      <h2 id="board-one-gesture-each">One gesture each</h2>
+      <p><code>claim</code> · <code>resolve</code> · <code>block</code> · <code>promote</code> · <code>dismiss</code></p>
+      <p>One keystroke each in the interface, one word each on the command line, and the same words agents use. Answering a decision is the answer itself: pick <code>15m</code> on the row and it&#x27;s settled and gone.</p>
+      <p>Captured concerns expire if nobody claims them, so the board stays a picture of now instead of turning into a backlog. Anything that should outlive the work gets <code>promote</code>d into a GitHub issue and leaves, with a link left behind.</p>
+      <h2 id="board-you-can-hear-it">You can hear it</h2>
+      <p>The board is meant to be ignored until it matters, so it makes a sound when it changes: rising when something opens and wants you, falling when something closes. Only a new row in your &quot;needs you&quot; lens interrupts. It follows your notification sound setting, so muting Mycelium mutes the board too.</p>
+      <h2 id="board-github-by-reference">GitHub, by reference</h2>
+      <p>Most rows never become issues, since they&#x27;re short-lived by nature. Where there is a link, it&#x27;s a link and not a copy:</p>
+      <ul>
+        <li>An issue being actively worked shows its live state on the row: who has it, which branch, whether CI is green.</li>
+        <li><code>promote</code> turns a row into an issue and drops it from the board.</li>
+        <li>Most rows point at a branch or a pull request instead.</li>
+      </ul>
+      <p>If it should outlive the work, it belongs in GitHub and Mycelium just points at it. The board holds what&#x27;s live right now.</p>
+      <h2 id="board-cli">CLI</h2>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span>                            # what needs you
+<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="flag">--lens</span> in-flight           # claimed work, who holds it, CI
+<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="flag">--lens</span> all <span class="flag">--view</span> table    # the room as structured data
+<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="flag">--group</span> owner              # group by any field it found
+<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="flag">--watch</span>                    # keep it open, re-reading
+<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">resolve</span> t3                 # resolve a row</code></pre>
+      <p>Add <code>--demo</code> to see the shape of a busy board before your room is one; those rows are always marked, and never mixed up with yours.</p>
+      <h2 id="board-related">Related</h2>
+      <ul>
+        <li><a href="#plan">plan</a>: the room&#x27;s prose and checklists, which the board reads from.</li>
+        <li><a href="#episodes">episodes</a>: a negotiation, which appears as a decision row.</li>
+        <li><a href="#memory">memory</a>: where a row&#x27;s fields actually live.</li>
+      </ul>
+      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/board.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
 
     <hr class="divider">

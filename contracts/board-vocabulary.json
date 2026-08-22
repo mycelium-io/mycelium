@@ -1,0 +1,20 @@
+{
+  "_comment": "Frozen vocabulary for the coordination board (PoC). The GUI (mycelium-frontend/src/lib/board/) and the CLI (mycelium-cli/src/mycelium/board/) each carry their own copy of the projection rules — the thin `uv tool` CLI can't import the frontend and vice versa — so the words they must agree on live here, the same way contracts/slim-l9-wire.json freezes the SLIM+L9 constants. A unit test on each side asserts against this file, so neither copy can drift without a red gate.",
+  "version": 1,
+  "statuses": ["open", "claimed", "in_progress", "in_review", "blocked", "resolved", "dismissed"],
+  "kinds": ["decision", "blocked", "review", "action", "concern", "signal"],
+  "priorities": ["urgent", "high", "normal", "low"],
+  "lenses": ["needs_you", "in_flight", "resolved"],
+  "lens_of_status": {
+    "open": "needs_you",
+    "blocked": "needs_you",
+    "claimed": "in_flight",
+    "in_progress": "in_flight",
+    "in_review": "in_flight",
+    "resolved": "resolved",
+    "dismissed": "resolved"
+  },
+  "verbs": ["claim", "resolve", "block", "unblock", "promote", "dismiss"],
+  "verb_keys": { "claim": "c", "resolve": "r", "block": "b", "promote": "p", "dismiss": "x" },
+  "live_namespaces": ["decisions", "status", "work", "failed"]
+}

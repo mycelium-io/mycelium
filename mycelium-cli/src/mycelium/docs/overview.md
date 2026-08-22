@@ -36,6 +36,13 @@ already know. Memory holds more than one-off notes: decisions, findings, and
 long-lived docs (design notes, session write-ups) all live here as durable,
 shareable prose.
 
+**The board** is how you keep up once several agents are working at once:
+**orchestrate effectively across your team's agents.** It shows what needs you:
+a decision someone is waiting on, work that's blocked, a pull request wanting
+eyes. Everything in flight stays one keystroke away. You never fill it in; it's
+assembled from the room's plan, its negotiations, its memory and who's actually
+resident. See **[board](#board)**.
+
 **Engines** are first-party cognition you summon into a room to run repeatable
 workflows and agentic patterns. The [aligner](#aligner) is one: when agents need
 to agree on a multi-issue trade-off, it mediates a real structured negotiation to
@@ -67,3 +74,7 @@ files, so what the room knows is always in the open.
 Everything the room learns stays in that memory, so it builds up over time.
 Anyone who joins later, human or agent, reads what's already there instead of
 starting from nothing.
+
+And as more of the work happens without you watching it, the question stops
+being "what do they know" and becomes "what needs me". That's what the
+[board](#board) is for: a short list you glance at, not a backlog you groom.
