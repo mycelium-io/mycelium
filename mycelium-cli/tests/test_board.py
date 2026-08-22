@@ -8,12 +8,12 @@ on; the rest of this file covers the rules that turn room state into rows.
 """
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import pytest
 
-from mycelium.board import model
+from mycelium.board import activity, model
 from mycelium.board.model import ItemSource, LiveItem, lens_of
 from mycelium.board.projection import demo_items, project_items
 from mycelium.board.schema import groupable_fields, infer_schema
@@ -205,3 +205,221 @@ class TestSchema:
             [item("a", status="open", headline="one"), item("b", status="blocked", headline="two")]
         )
         assert [f.name for f in groupable_fields(schema)] == ["status"]
+
+
+class TestLogContract:
+    """Day and week conventions the GUI's log carries its own copy of."""
+
+    def test_calendar_conventions_match_the_contract(self):
+        log = CONTRACT["log"]
+        assert log["week_starts_on"] == activity.WEEK_STARTS_ON
+        assert log["daily_goal"] == activity.DAILY_GOAL
+        assert log["heat_thresholds"] == activity.HEAT_THRESHOLDS
+
+    def test_heat_steps_at_the_contracted_bounds(self):
+        upper = CONTRACT["log"]["heat_thresholds"]
+        for level, bound in enumerate(upper):
+            assert activity.heat_level(bound) == level
+        assert activity.heat_level(upper[-1] + 1) == len(upper)
+
+    def test_weeks_start_on_monday(self):
+        assert activity.week_start(date(2026, 8, 22)) == date(2026, 8, 17)
+        assert activity.week_start(date(2026, 8, 17)) == date(2026, 8, 17)
+
+
+def instant(raw: str) -> datetime:
+    """Parse-or-fail, so a test never silently builds an event with no time."""
+    parsed = activity.parse_instant(raw)
+    assert parsed is not None
+    return parsed
+
+
+class TestActivity:
+    def project(self, **over):
+        kwargs = {
+            "messages": [],
+            "memories": [],
+            "episodes": [],
+            "plan": None,
+            "agent_handles": ["growth"],
+        }
+        kwargs.update(over)
+        return activity.project_activity(**kwargs)
+
+    def test_an_instant_lands_on_a_different_day_depending_on_the_clock(self):
+        at = activity.parse_instant("2026-08-22T03:30:00Z")
+        assert at is not None
+        assert activity.day_of(at, activity.zone("UTC")) == date(2026, 8, 22)
+        assert activity.day_of(at, activity.zone("America/Los_Angeles")) == date(2026, 8, 21)
+        assert activity.day_of(at, activity.zone("Asia/Tokyo")) == date(2026, 8, 22)
+
+    def test_an_unknown_zone_falls_back_rather_than_failing(self):
+        assert activity.zone("Mars/Olympus").key == "UTC"
+
+    def test_chat_is_attributed_and_agents_are_told_from_people(self):
+        events = self.project(
+            messages=[
+                {
+                    "id": "1",
+                    "message_type": "broadcast",
+                    "sender_handle": "growth",
+                    "content": "dual-write is live",
+                    "created_at": "2026-08-22T10:00:00Z",
+                },
+                {
+                    "id": "2",
+                    "message_type": "broadcast",
+                    "sender_handle": "julia",
+                    "content": "nice",
+                    "created_at": "2026-08-22T10:05:00Z",
+                },
+                {
+                    "id": "3",
+                    "message_type": "broadcast",
+                    "sender_handle": "aligner",
+                    "content": "standing offer",
+                    "created_at": "2026-08-22T10:06:00Z",
+                },
+            ]
+        )
+        assert [(e.actor, e.actor_kind) for e in events] == [
+            ("aligner", "engine"),
+            ("julia", "human"),
+            ("growth", "agent"),
+        ]
+
+    def test_a_coordination_payload_is_read_by_type_not_printed(self):
+        events = self.project(
+            messages=[
+                {
+                    "id": "1",
+                    "message_type": "coordination_tick",
+                    "sender_handle": "aligner",
+                    "content": json.dumps(
+                        {"payload": {"round": 4, "participant_id": "risk", "action": "accept"}}
+                    ),
+                    "created_at": "2026-08-22T10:00:00Z",
+                }
+            ]
+        )
+        assert events[0].verb == "negotiated"
+        assert events[0].title == "round 4 · @risk accept"
+        assert "{" not in events[0].title
+
+    def test_the_same_work_is_not_logged_from_both_the_wire_and_the_store(self):
+        events = self.project(
+            messages=[
+                {
+                    "id": "1",
+                    "message_type": "memory_changed",
+                    "sender_handle": "growth",
+                    "content": "{}",
+                    "created_at": "2026-08-22T10:00:00Z",
+                },
+                {
+                    "id": "2",
+                    "message_type": "coordination_consensus",
+                    "sender_handle": "aligner",
+                    "content": "{}",
+                    "created_at": "2026-08-22T10:01:00Z",
+                },
+            ],
+            memories=[
+                {
+                    "key": "decisions/cutover",
+                    "value": "phased",
+                    "version": 2,
+                    "created_by": "aligner",
+                    "updated_by": "growth",
+                    "updated_at": "2026-08-22T10:00:00Z",
+                },
+            ],
+        )
+        assert len(events) == 1
+        assert (events[0].actor, events[0].verb) == ("growth", "revised")
+
+    def test_a_finished_task_is_credited_to_its_owner(self):
+        plan = {
+            "files": [
+                {
+                    "slug": "tasks",
+                    "updated_at": "2026-08-21T09:00:00Z",
+                    "tasks": [
+                        {"id": "t1", "text": "dual-write to the new store @growth", "done": True},
+                        {"id": "t2", "text": "flip reads @risk", "done": False},
+                    ],
+                }
+            ]
+        }
+        events = self.project(plan=plan)
+        assert [(e.actor, e.verb, e.title) for e in events] == [
+            ("growth", "completed", "dual-write to the new store")
+        ]
+
+    def test_anything_unattributed_or_untimed_is_dropped(self):
+        events = self.project(
+            messages=[
+                {
+                    "id": "1",
+                    "message_type": "broadcast",
+                    "content": "who said this?",
+                    "created_at": "2026-08-22T10:00:00Z",
+                },
+                {
+                    "id": "2",
+                    "message_type": "broadcast",
+                    "sender_handle": "julia",
+                    "content": "when?",
+                },
+            ]
+        )
+        assert events == []
+
+    def test_a_streak_tolerates_a_day_that_has_not_started(self):
+        tz = activity.zone("UTC")
+        events = [
+            activity.ActivityEvent(
+                "a",
+                instant("2026-08-22T10:00:00Z"),
+                "julia",
+                "human",
+                "posted",
+                "x",
+                "t",
+            ),
+            activity.ActivityEvent(
+                "b",
+                instant("2026-08-21T10:00:00Z"),
+                "julia",
+                "human",
+                "posted",
+                "x",
+                "t",
+            ),
+        ]
+        days = activity.by_day(events, tz)
+        assert activity.streaks(days, date(2026, 8, 22)) == (2, 2)
+        assert activity.streaks(days, date(2026, 8, 23))[0] == 2
+        assert activity.streaks(days, date(2026, 8, 24))[0] == 0
+
+    def test_a_digest_lanes_actors_busiest_first(self):
+        tz = activity.zone("UTC")
+        events = [
+            activity.ActivityEvent(
+                str(i),
+                instant("2026-08-22T10:00:00Z"),
+                actor,
+                "human",
+                "posted",
+                "x",
+                "t",
+            )
+            for i, actor in enumerate(["julia", "julia", "growth"])
+        ]
+        summary = activity.digest(activity.by_day(events, tz), date(2026, 8, 22), date(2026, 8, 22))
+        assert [(actor, len(rows)) for actor, _, rows in summary.by_actor] == [
+            ("julia", 2),
+            ("growth", 1),
+        ]
+        assert summary.active_days == 1
+        assert summary.by_verb == [("posted", 3)]

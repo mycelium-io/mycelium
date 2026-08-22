@@ -749,7 +749,7 @@ mycelium board
 atlas-migration   3 need you · 4 in flight · 6 resolved today
 
 Decisions 1
- ? d3f   JWT access-token TTL — 15m or 60m?              urgent
+ ? d3f   JWT access-token TTL: 15m or 60m?              urgent
          @agent-y · episode d3f   unowned   [15m] [60m]      6m
 
 Blocked 1
@@ -802,12 +802,50 @@ each view pivots on them differently:
   offers the values that namespace already uses.
 - **Timeline**: the same rows by when they last moved, so you can see what
   happened while you were away.
+- **Daily**: the log, described below.
 - **Docs**: the plan's prose, for when you want to read rather than triage.
 
 So a custom namespace becomes a tracker without you building one. Write memories
 under `issues/` with `status`, `assignee` and `priority` in their frontmatter and
 you can group them into a kanban, because those fields are in the markdown and
 not because anyone configured a tool.
+
+## The daily log
+
+The board is about now. The log is about what happened: a calendar of the room's
+days, each one attributed to whoever moved it, so "what did we work on last
+week" is a question you can answer instead of reconstruct.
+
+```bash
+mycelium board log                    # the last week
+mycelium board log --last-week        # the week before
+mycelium board log --day 2026-08-19   # one day
+mycelium board log --by @agent-y      # one worker's lines
+```
+
+Agents and people share the log, and each gets a lane: an agent that spent
+Tuesday on a migration is as legible as the person who reviewed it. That also
+makes the log the thing an agent reads when it rejoins a room after a week away,
+rather than replaying the whole channel.
+
+Nothing is written to it. It is assembled from what already carries a time and a
+name: messages, memory writes and revisions, finished plan tasks, and
+negotiations. A fact recorded in two places is counted once.
+
+### Whose day is it
+
+A day only means something in some timezone. Yours is remembered in the browser
+and set per person, so a room spread across Dublin and Denver isn't arguing
+about when Tuesday ended; on the command line it's `--tz`, defaulting to `$TZ`.
+Weeks start Monday.
+
+### Filling it in
+
+Each day shows how full it is against a modest target, with the current streak
+and the longest one beside it. The heat calendar goes back ten weeks. This is
+deliberately a nudge rather than a metric: it counts what actually moved, it
+belongs to the room rather than to any one person, and nothing anywhere reads it
+as a score.
 
 ## One gesture each
 
@@ -850,6 +888,7 @@ mycelium board --lens all --view table    # the room as structured data
 mycelium board --group owner              # group by any field it found
 mycelium board --watch                    # keep it open, re-reading
 mycelium board resolve t3                 # resolve a row
+mycelium board log --last-week            # what the room did, by day and by who
 ```
 
 Add `--demo` to see the shape of a busy board before your room is one; those

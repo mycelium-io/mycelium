@@ -41,6 +41,7 @@ import {
   type PlanResponse,
   type PresenceMember,
   type Room,
+  type RoomMessage,
   type Skill,
 } from "@/lib/api";
 import { useCurrentUser } from "@/components/current-user";
@@ -71,6 +72,7 @@ const POSTER_LIMIT = 200;
 const NO_ROOMS: Room[] = [];
 const NO_AGENTS: AgentSummary[] = [];
 const NO_MEMBERS: PresenceMember[] = [];
+const NO_MESSAGES: RoomMessage[] = [];
 const NO_POSTERS: string[] = [];
 const NO_MEMORIES: Memory[] = [];
 const NO_SKILLS: Skill[] = [];
@@ -184,6 +186,20 @@ export function useRoomPosters(room: string, opts: RoomQueryOptions = {}) {
     void mutate();
   }, [mutate]);
   return { posters, loading: isLoading, refresh };
+}
+
+/** Recent chat, for surfaces that read the room's history rather than tail it.
+ *  Shares one cache entry with every other reader of the same page size. */
+export function useRoomMessages(room: string, limit = 200, opts: RoomQueryOptions = {}) {
+  const { data, isLoading, mutate } = useSWR(
+    room ? (["room", room, "messages", limit] as const) : null,
+    () => fetchMessages(room, limit),
+    { refreshInterval: opts.refreshInterval ?? POLL.messages },
+  );
+  const refresh = useCallback(() => {
+    void mutate();
+  }, [mutate]);
+  return { messages: data?.messages ?? NO_MESSAGES, loading: isLoading, refresh };
 }
 
 export function useRoomMemories(room: string, opts: RoomQueryOptions = {}) {

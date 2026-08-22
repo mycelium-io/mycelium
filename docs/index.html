@@ -667,7 +667,7 @@ We chose Postgres because of myc://context/stack.</code></pre>
       <pre><code>atlas-migration   3 need you · 4 in flight · 6 resolved today
 
 Decisions 1
- ? d3f   JWT access-token TTL — 15m or 60m?              urgent
+ ? d3f   JWT access-token TTL: 15m or 60m?              urgent
          @agent-y · episode d3f   unowned   [15m] [60m]      6m
 
 Blocked 1
@@ -717,9 +717,22 @@ Review 1
         <li><strong>Board</strong>: a kanban, grouped by any field with a fixed set of values, such as status, owner, priority, or one your room invented.</li>
         <li><strong>Table</strong>: the room as structured data, editable a cell at a time. A dropdown offers the values that namespace already uses.</li>
         <li><strong>Timeline</strong>: the same rows by when they last moved, so you can see what happened while you were away.</li>
+        <li><strong>Daily</strong>: the log, described below.</li>
         <li><strong>Docs</strong>: the plan&#x27;s prose, for when you want to read rather than triage.</li>
       </ul>
       <p>So a custom namespace becomes a tracker without you building one. Write memories under <code>issues/</code> with <code>status</code>, <code>assignee</code> and <code>priority</code> in their frontmatter and you can group them into a kanban, because those fields are in the markdown and not because anyone configured a tool.</p>
+      <h2 id="board-the-daily-log">The daily log</h2>
+      <p>The board is about now. The log is about what happened: a calendar of the room&#x27;s days, each one attributed to whoever moved it, so &quot;what did we work on last week&quot; is a question you can answer instead of reconstruct.</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">log</span>                    # the last week
+<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">log</span> <span class="flag">--last-week</span>        # the week before
+<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">log</span> <span class="flag">--day</span> 2026-08-19   # one day
+<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">log</span> <span class="flag">--by</span> @agent-y      # one worker&#x27;s lines</code></pre>
+      <p>Agents and people share the log, and each gets a lane: an agent that spent Tuesday on a migration is as legible as the person who reviewed it. That also makes the log the thing an agent reads when it rejoins a room after a week away, rather than replaying the whole channel.</p>
+      <p>Nothing is written to it. It is assembled from what already carries a time and a name: messages, memory writes and revisions, finished plan tasks, and negotiations. A fact recorded in two places is counted once.</p>
+      <h3 id="board-whose-day-is-it">Whose day is it</h3>
+      <p>A day only means something in some timezone. Yours is remembered in the browser and set per person, so a room spread across Dublin and Denver isn&#x27;t arguing about when Tuesday ended; on the command line it&#x27;s <code>--tz</code>, defaulting to <code>$TZ</code>. Weeks start Monday.</p>
+      <h3 id="board-filling-it-in">Filling it in</h3>
+      <p>Each day shows how full it is against a modest target, with the current streak and the longest one beside it. The heat calendar goes back ten weeks. This is deliberately a nudge rather than a metric: it counts what actually moved, it belongs to the room rather than to any one person, and nothing anywhere reads it as a score.</p>
       <h2 id="board-one-gesture-each">One gesture each</h2>
       <p><code>claim</code> · <code>resolve</code> · <code>block</code> · <code>promote</code> · <code>dismiss</code></p>
       <p>One keystroke each in the interface, one word each on the command line, and the same words agents use. Answering a decision is the answer itself: pick <code>15m</code> on the row and it&#x27;s settled and gone.</p>
@@ -740,7 +753,8 @@ Review 1
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="flag">--lens</span> all <span class="flag">--view</span> table    # the room as structured data
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="flag">--group</span> owner              # group by any field it found
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="flag">--watch</span>                    # keep it open, re-reading
-<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">resolve</span> t3                 # resolve a row</code></pre>
+<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">resolve</span> t3                 # resolve a row
+<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">log</span> <span class="flag">--last-week</span>            # what the room did, by day and by who</code></pre>
       <p>Add <code>--demo</code> to see the shape of a busy board before your room is one; those rows are always marked, and never mixed up with yours.</p>
       <h2 id="board-related">Related</h2>
       <ul>

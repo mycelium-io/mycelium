@@ -10,6 +10,7 @@ import {
   ListChecks,
   Rows3,
   ScrollText,
+  CalendarDays,
   Search,
   SlidersHorizontal,
   Table as TableIcon,
@@ -20,10 +21,17 @@ import { useNotifications } from "@/components/notifications-provider";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { EmptyState } from "@/components/empty-state";
 import { RoomPlanHeader } from "@/components/room-plan-header";
-import { useRoomEpisodes, useRoomMemories, useRoomPlan, useRoomRoster } from "@/lib/room-data";
+import {
+  useRoomEpisodes,
+  useRoomMemories,
+  useRoomMessages,
+  useRoomPlan,
+  useRoomRoster,
+} from "@/lib/room-data";
 import { applyVerb, LENSES, type Lens, type LiveItem, type Verb } from "@/lib/board/item";
 import { projectItems } from "@/lib/board/projection";
-import { demoItems } from "@/lib/board/demo";
+import { demoActivity, demoItems } from "@/lib/board/demo";
+import { localZone, projectActivity } from "@/lib/board/activity";
 import { captureToItem, type ParsedCapture } from "@/lib/board/capture";
 import { groupableFields, inferSchema } from "@/lib/board/schema";
 import { applyView, filterItems, lensCounts, SAVED_VIEWS, sortItems, type ViewConfig, type ViewMode } from "@/lib/board/view";
@@ -32,6 +40,7 @@ import { BoardKanban } from "./board-kanban";
 import { BoardTable } from "./board-table";
 import { BoardTimeline } from "./board-timeline";
 import { BoardCapture } from "./board-capture";
+import { BoardDaily } from "./board-daily";
 import { earcon, type Earcon } from "@/lib/board/earcons";
 
 const MODES: { id: ViewMode; label: string; icon: typeof Rows3 }[] = [
@@ -39,11 +48,17 @@ const MODES: { id: ViewMode; label: string; icon: typeof Rows3 }[] = [
   { id: "board", label: "Board", icon: Kanban },
   { id: "table", label: "Table", icon: TableIcon },
   { id: "timeline", label: "Timeline", icon: ListChecks },
+  { id: "daily", label: "Daily", icon: CalendarDays },
   { id: "docs", label: "Docs", icon: ScrollText },
 ];
 
 /** The board's clock ticks slowly: ages and TTL bars, not a stopwatch. */
 const TICK_MS = 30_000;
+
+/** How much chat the log reads back through. */
+const MESSAGE_HISTORY = 300;
+
+const TZ_KEY = "mycelium.board.tz";
 
 interface Props {
   roomName: string;
@@ -62,15 +77,30 @@ export function RoomBoard({ roomName }: Props) {
   const { episodes } = useRoomEpisodes(roomName);
   const { memories } = useRoomMemories(roomName);
   const { agents, presence } = useRoomRoster(roomName);
+  const { messages } = useRoomMessages(roomName, MESSAGE_HISTORY);
   const { principal } = useCurrentUser();
   const actor = principal.replace(/^@/, "") || "you";
+
+  // A day boundary is only meaningful in some zone, and which one is the
+  // reader's business — so it is remembered per browser, not per room.
+  const [tz, setTz] = useState(localZone);
 
   // The clock starts on the client. Ages and TTLs are relative to *now*, which
   // the server render can't know without the two disagreeing on the markup.
   const [now, setNow] = useState(0);
   useEffect(() => {
     const tick = () => setNow(Date.now());
-    const first = setTimeout(tick, 0);
+    // Both the clock and the saved zone are facts only the client has; reading
+    // them after mount keeps the server's render and the browser's agreeing.
+    const first = setTimeout(() => {
+      tick();
+      try {
+        const saved = window.localStorage.getItem(TZ_KEY);
+        if (saved) setTz(saved);
+      } catch {
+        // A browser refusing storage just keeps the host's zone.
+      }
+    }, 0);
     const id = setInterval(tick, TICK_MS);
     return () => {
       clearTimeout(first);
@@ -85,6 +115,14 @@ export function RoomBoard({ roomName }: Props) {
   const [demo, setDemo] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [optionsOpen, setOptionsOpen] = useState(false);
+  const chooseTz = useCallback((zone: string) => {
+    setTz(zone);
+    try {
+      window.localStorage.setItem(TZ_KEY, zone);
+    } catch {
+      // A browser refusing storage still gets the zone for this session.
+    }
+  }, []);
   const [echo, setEcho] = useState<string | null>(null);
   const captureRef = useRef<HTMLInputElement>(null);
 
@@ -99,6 +137,21 @@ export function RoomBoard({ roomName }: Props) {
   );
 
   const demoRows = useMemo(() => (demo ? demoItems(now) : []), [demo, now]);
+
+  // The log reads the same room, flattened into who did what and when.
+  const activity = useMemo(
+    () =>
+      projectActivity({
+        room: roomName,
+        messages,
+        memories,
+        episodes,
+        plan,
+        agentHandles: agents.map(a => a.handle),
+        demo: demo && now ? demoActivity(now, tz) : [],
+      }),
+    [roomName, messages, memories, episodes, plan, agents, demo, now, tz],
+  );
 
   const items = useMemo(
     () =>
@@ -281,7 +334,7 @@ export function RoomBoard({ roomName }: Props) {
           <ScrollArea className="h-full">
             <RoomPlanHeader roomName={roomName} />
           </ScrollArea>
-        ) : ordered.length === 0 ? (
+        ) : ordered.length === 0 && view.mode !== "daily" ? (
           <EmptyState
             className="h-full"
             icon={ListChecks}
@@ -292,6 +345,10 @@ export function RoomBoard({ roomName }: Props) {
                 : "Loosen the filters, or capture a concern to start one."
             }
           />
+        ) : view.mode === "daily" ? (
+          <ScrollArea className="h-full">
+            <BoardDaily events={activity} tz={tz} onTz={chooseTz} now={now} />
+          </ScrollArea>
         ) : view.mode === "board" && groupBy ? (
           <BoardKanban
             groups={groups}

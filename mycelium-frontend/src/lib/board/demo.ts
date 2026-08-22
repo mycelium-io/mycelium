@@ -10,6 +10,7 @@
  */
 
 import type { LiveItem } from "./item";
+import { DAILY_GOAL, daysEnding, today, weekdayIndex, type ActivityEvent, type ActorKind } from "./activity";
 
 const minutesAgo = (now: number, minutes: number): string =>
   new Date(now - minutes * 60000).toISOString();
@@ -152,4 +153,90 @@ export function demoItems(now: number): LiveItem[] {
     },
   ];
   return rows;
+}
+
+// ── Demo history ─────────────────────────────────────────────────────────────
+
+/** Deterministic per-day pseudo-randomness: the same day always draws the same
+ *  history, so the grid doesn't reshuffle itself on every render. */
+function seeded(key: string): () => number {
+  let h = 2166136261;
+  for (let i = 0; i < key.length; i += 1) {
+    h ^= key.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return () => {
+    h += 0x6d2b79f5;
+    let t = h;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const DEMO_ACTORS: { actor: string; actorKind: ActorKind; share: number }[] = [
+  { actor: "agent-y", actorKind: "agent", share: 0.34 },
+  { actor: "agent-z", actorKind: "agent", share: 0.28 },
+  { actor: "julia", actorKind: "human", share: 0.24 },
+  { actor: "aligner", actorKind: "engine", share: 0.14 },
+];
+
+const DEMO_WORK: { verb: string; titles: string[] }[] = [
+  { verb: "resolved", titles: ["flip reads behind a flag", "retire the legacy store", "backfill parity check"] },
+  { verb: "posted", titles: ["48h soak looks clean", "custody seam needs a second pass", "reads are behind the flag now"] },
+  { verb: "wrote", titles: ["decisions/cutover", "status/sprint", "work/custody-notes"] },
+  { verb: "converged", titles: ["cutover window · @growth @risk", "token ttl · @agent-y @julia"] },
+  { verb: "completed", titles: ["dual-write to the new store", "rotate the signing key", "drain the old index"] },
+];
+
+/**
+ * Ten weeks of plausible history, so the grid and the streaks have something to
+ * show in a room that hasn't lived that long yet. Weekdays run busier than
+ * weekends, and every event is stamped `demo` like the rest of the layer.
+ */
+export function demoActivity(now: number, tz: string): ActivityEvent[] {
+  const end = today(tz, now);
+  const events: ActivityEvent[] = [];
+
+  const window = daysEnding(end, 70);
+  for (const key of window) {
+    const rand = seeded(key);
+    const weekend = weekdayIndex(key) >= 5;
+    const base = weekend ? rand() * 3 : 2 + rand() * 9;
+    // Roughly one day in eight is quiet, the way a real one is.
+    const drawn = Math.round(rand() > 0.88 ? 0 : base);
+    // The last few days always carry something: the point of the demo layer is
+    // to show what a lived-in log looks like, and a run that happens to end on
+    // an empty today shows the opposite. Today lands short of the goal, because
+    // a day you can still fill is the one worth looking at.
+    const recent = window.length - window.indexOf(key) - 1;
+    const count =
+      recent === 0
+        ? Math.max(3, Math.min(DAILY_GOAL - 2, drawn))
+        : recent <= 2
+          ? Math.max(2, drawn)
+          : drawn;
+
+    for (let i = 0; i < count; i += 1) {
+      const roll = rand();
+      let cumulative = 0;
+      const who = DEMO_ACTORS.find(a => (cumulative += a.share) >= roll) ?? DEMO_ACTORS[0];
+      const work = DEMO_WORK[Math.floor(rand() * DEMO_WORK.length)];
+      const title = work.titles[Math.floor(rand() * work.titles.length)];
+      const hour = 8 + Math.floor(rand() * 11);
+      const minute = Math.floor(rand() * 60);
+      events.push({
+        id: `demo-act:${key}:${i}`,
+        at: `${key}T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00Z`,
+        actor: who.actor,
+        actorKind: who.actorKind,
+        verb: work.verb,
+        title,
+        source: "demo layer",
+        demo: true,
+      });
+    }
+  }
+
+  return events;
 }

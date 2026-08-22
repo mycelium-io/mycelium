@@ -19,7 +19,8 @@ would write rather than pretending.
 from __future__ import annotations
 
 import time
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
+from typing import Any
 
 import typer
 from rich.console import Console, Group, RenderableType
@@ -28,6 +29,17 @@ from rich.table import Table
 from rich.text import Text
 
 from mycelium.board import LiveItem, demo_items, infer_schema, project_items
+from mycelium.board.activity import (
+    DAILY_GOAL,
+    ActivityEvent,
+    by_day,
+    digest,
+    heat_level,
+    project_activity,
+    streaks,
+    week_start,
+    zone,
+)
 from mycelium.board.model import KINDS, PRIORITIES, STATUSES, format_age
 from mycelium.board.schema import groupable_fields
 from mycelium.client import hub_client
@@ -75,9 +87,8 @@ TITLE_WIDTH = 50
 # ── data ─────────────────────────────────────────────────────────────────────
 
 
-def _fetch(room: str | None) -> tuple[str, list[LiveItem], bool]:
-    """Read every source the board projects.  A source that isn't reachable
-    contributes nothing rather than failing the whole board."""
+def _fetch_raw(room: str | None) -> tuple[str, dict[str, Any], bool]:
+    """Every source the log and the board share, read once."""
     cfg = MyceliumConfig.load()
     name = _resolve_room(cfg, room)
 
@@ -95,18 +106,37 @@ def _fetch(room: str | None) -> tuple[str, list[LiveItem], bool]:
         memories = get(f"/api/rooms/{name}/memory?limit=50", [])
         agents = get(f"/api/rooms/{name}/agents", [])
         members = get(f"/api/rooms/{name}/sessions/members", {})
+        messages = get(f"/api/rooms/{name}/messages?limit=300", {})
 
     return (
         name,
+        {
+            "plan": plan,
+            "episodes": (episodes or {}).get("episodes", []) if isinstance(episodes, dict) else [],
+            "memories": memories if isinstance(memories, list) else [],
+            "agents": agents if isinstance(agents, list) else [],
+            "members": (members or {}).get("members", []) if isinstance(members, dict) else [],
+            "messages": (messages or {}).get("messages", []) if isinstance(messages, dict) else [],
+        },
+        plan is not None,
+    )
+
+
+def _fetch(room: str | None) -> tuple[str, list[LiveItem], bool]:
+    """Read every source the board projects.  A source that isn't reachable
+    contributes nothing rather than failing the whole board."""
+    name, sources, reachable = _fetch_raw(room)
+    return (
+        name,
         project_items(
-            plan=plan,
-            episodes=(episodes or {}).get("episodes", []) if isinstance(episodes, dict) else [],
-            memories=memories if isinstance(memories, list) else [],
-            agents=agents if isinstance(agents, list) else [],
-            members=(members or {}).get("members", []) if isinstance(members, dict) else [],
+            plan=sources["plan"],
+            episodes=sources["episodes"],
+            memories=sources["memories"],
+            agents=sources["agents"],
+            members=sources["members"],
             now=datetime.now(UTC),
         ),
-        plan is not None,
+        reachable,
     )
 
 
@@ -372,3 +402,172 @@ def _verb(verb: str, row_id: str, room: str | None, *, owner: str | None = None)
         "[dim]  Not written. Rows from episodes, memory and presence can't be "
         "changed from here yet; plan-sourced rows write through today.[/dim]"
     )
+
+
+# ── the log ──────────────────────────────────────────────────────────────────
+
+ACTOR_MARK = {"agent": "🤖", "engine": "◈", "human": "🧑"}
+HEAT_BLOCKS = ["·", "░", "▒", "▓", "█"]
+
+
+def _demo_activity(end: date) -> list[ActivityEvent]:
+    """A short illustrative history, so `--demo` shows the shape of a log that
+    has been kept. Every event says it is demo."""
+    actors = [("agent-y", "agent"), ("agent-z", "agent"), ("julia", "human"), ("aligner", "engine")]
+    work = [
+        ("resolved", "flip reads behind a flag"),
+        ("posted", "48h soak looks clean"),
+        ("wrote", "decisions/cutover"),
+        ("completed", "rotate the signing key"),
+        ("converged", "cutover window · @growth @risk"),
+    ]
+    events: list[ActivityEvent] = []
+    for back in range(70):
+        day = end - timedelta(days=back)
+        seed = day.toordinal()
+        count = 0 if seed % 8 == 3 else (1 + seed % 3 if day.weekday() >= 5 else 2 + seed % 7)
+        for i in range(count):
+            actor, kind = actors[(seed + i) % len(actors)]
+            verb, title = work[(seed + i * 3) % len(work)]
+            events.append(
+                ActivityEvent(
+                    id=f"demo:{day}:{i}",
+                    at=datetime(
+                        day.year,
+                        day.month,
+                        day.day,
+                        8 + (seed + i) % 11,
+                        (seed * i) % 60,
+                        tzinfo=UTC,
+                    ),
+                    actor=actor,
+                    actor_kind=kind,
+                    verb=verb,
+                    title=title,
+                    source="demo layer",
+                    demo=True,
+                )
+            )
+    return events
+
+
+@doc_ref(
+    usage="mycelium board log [--since 7d|--day YYYY-MM-DD|--week|--last-week] [--tz <zone>]",
+    desc="What the room worked on, by day and by who, in whichever timezone you read it in.",
+    group="board",
+)
+@app.command(name="log")
+def board_log(
+    room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
+    since: str = typer.Option("7d", "--since", "-s", help="Window: 7d, 30d, today"),
+    day: str | None = typer.Option(None, "--day", help="One day, as YYYY-MM-DD"),
+    week: bool = typer.Option(False, "--week", help="This week, Monday to Sunday"),
+    last_week: bool = typer.Option(False, "--last-week", help="The week before this one"),
+    tz_name: str | None = typer.Option(
+        None, "--tz", help="Timezone the days are read in (default: $TZ, else UTC)", envvar="TZ"
+    ),
+    by: str | None = typer.Option(None, "--by", help="Only this actor's lines"),
+    demo: bool = typer.Option(False, "--demo", help="Add an illustrative history, always marked"),
+) -> None:
+    """What the room worked on, by day.
+
+    The board says what needs you now; the log says what got done, which is the
+    half an agent needs when it comes back to a room after a week away.
+    """
+    tz = zone(tz_name)
+    name, sources, reachable = _fetch_raw(room)
+    today_local = datetime.now(tz).date()
+
+    events = project_activity(
+        messages=sources["messages"],
+        memories=sources["memories"],
+        episodes=sources["episodes"],
+        plan=sources["plan"],
+        agent_handles=[a.get("handle", "") for a in sources["agents"]],
+    )
+    if demo:
+        events += _demo_activity(today_local)
+    if by:
+        wanted = by.lstrip("@").lower()
+        events = [e for e in events if e.actor.lower() == wanted]
+
+    if not events and not reachable:
+        console.print(f"[red]  Hub unreachable. No log to draw for {name}.[/red]")
+        return
+
+    if day:
+        try:
+            frm = to = date.fromisoformat(day)
+        except ValueError:
+            console.print(f"[red]Not a date:[/red] {day}")
+            raise typer.Exit(1) from None
+    elif week:
+        frm = week_start(today_local)
+        to = frm + timedelta(days=6)
+    elif last_week:
+        frm = week_start(today_local) - timedelta(days=7)
+        to = frm + timedelta(days=6)
+    elif since == "today":
+        frm = to = today_local
+    else:
+        days_back = int(since.rstrip("d")) if since.rstrip("d").isdigit() else 7
+        frm, to = today_local - timedelta(days=days_back - 1), today_local
+
+    days = by_day(events, tz)
+    current, longest = streaks(days, today_local)
+    summary = digest(days, frm, to)
+    logged_today = len(days.get(today_local, []))
+
+    console.print()
+    header = Text()
+    header.append(f"{name}  ", style="bold")
+    header.append(f"{frm} to {to}" if frm != to else str(frm), style="")
+    header.append(f"  ·  {tz.key}", style="dim")
+    console.print(header)
+
+    stats = Text("  ")
+    stats.append(
+        f"{logged_today}/{DAILY_GOAL} today",
+        style="green" if logged_today >= DAILY_GOAL else "cyan",
+    )
+    stats.append(
+        f"  ·  {current}-day streak (longest {longest})"
+        f"  ·  {len(summary.events)} logged over {summary.active_days} active "
+        f"{'day' if summary.active_days == 1 else 'days'}",
+        style="dim",
+    )
+    console.print(stats)
+    console.print()
+
+    # A fortnight of heat, so a glance shows the rhythm before any of the lines.
+    spark = Text("  ")
+    cursor = to - timedelta(days=13)
+    while cursor <= to:
+        spark.append(HEAT_BLOCKS[heat_level(len(days.get(cursor, [])))], style="cyan")
+        cursor += timedelta(days=1)
+    spark.append(f"   {to - timedelta(days=13)} → {to}", style="dim")
+    console.print(spark)
+    console.print()
+
+    if not summary.events:
+        console.print("[dim]  Nothing logged in this window.[/dim]\n")
+        return
+
+    for actor, kind, actor_events in summary.by_actor:
+        lane = Text("  ")
+        lane.append(
+            f"{ACTOR_MARK.get(kind, '·')} @{actor}", style="cyan" if kind != "human" else "white"
+        )
+        lane.append(f"  {kind}  {len(actor_events)} logged", style="dim")
+        console.print(lane)
+        for event in actor_events[:12]:
+            line = Text("      ")
+            line.append(event.at.astimezone(tz).strftime("%m-%d %H:%M  "), style="dim")
+            line.append(f"{event.verb} ", style="")
+            line.append(event.title, style="dim")
+            if event.demo:
+                line.append("  demo", style="dim")
+            console.print(line)
+        if len(actor_events) > 12:
+            console.print(Text(f"      +{len(actor_events) - 12} more", style="dim"))
+        console.print()

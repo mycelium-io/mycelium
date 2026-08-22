@@ -17,6 +17,7 @@ import {
   type LiveItem,
 } from "@/lib/board/item";
 import { parseCapture } from "@/lib/board/capture";
+import { DAILY_GOAL, heatLevel, weekdayIndex } from "@/lib/board/activity";
 import type { PlanResponse } from "@/lib/api";
 
 const item = (id: string, fields: Record<string, unknown>): LiveItem => ({
@@ -270,6 +271,16 @@ describe("shared vocabulary contract", () => {
   it("binds each verb to the contracted key", () => {
     expect(Object.fromEntries(VERBS.map(v => [v.id, v.key]))).toEqual(contract.verb_keys);
     for (const verb of VERBS) expect(contract.verbs).toContain(verb.id);
+  });
+
+  it("keeps the log's calendar conventions the CLI also asserts", () => {
+    const log = (contract as unknown as { log: { week_starts_on: string; daily_goal: number; heat_thresholds: number[] } }).log;
+    expect(log.week_starts_on).toBe("monday");
+    expect(DAILY_GOAL).toBe(log.daily_goal);
+    // Monday is column zero, and each threshold is the last count at its level.
+    expect(weekdayIndex("2026-08-17")).toBe(0);
+    log.heat_thresholds.forEach((bound, level) => expect(heatLevel(bound)).toBe(level));
+    expect(heatLevel(log.heat_thresholds[log.heat_thresholds.length - 1] + 1)).toBe(log.heat_thresholds.length);
   });
 
   it("offers the contracted status vocabulary as select options", () => {

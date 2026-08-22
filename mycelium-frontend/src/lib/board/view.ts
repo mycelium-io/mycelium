@@ -25,7 +25,7 @@ import {
 } from "./item";
 import { fieldByName, humanize, type FieldSchema } from "./schema";
 
-export type ViewMode = "cockpit" | "board" | "table" | "timeline" | "docs";
+export type ViewMode = "cockpit" | "board" | "table" | "timeline" | "daily" | "docs";
 
 export interface ViewConfig {
   mode: ViewMode;
@@ -92,6 +92,12 @@ export const SAVED_VIEWS: SavedView[] = [
     label: "Table",
     hint: "the namespace as typed data, inline-editable",
     config: { ...DEFAULT_VIEW, mode: "table", lens: "all", groupBy: null, showResolved: true },
+  },
+  {
+    slug: "daily",
+    label: "Daily log",
+    hint: "what the room did, by day, in your own timezone",
+    config: { ...DEFAULT_VIEW, mode: "daily", lens: "all", groupBy: null, showResolved: true },
   },
   {
     slug: "timeline",

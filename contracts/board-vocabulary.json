@@ -1,10 +1,34 @@
 {
-  "_comment": "Frozen vocabulary for the coordination board (PoC). The GUI (mycelium-frontend/src/lib/board/) and the CLI (mycelium-cli/src/mycelium/board/) each carry their own copy of the projection rules — the thin `uv tool` CLI can't import the frontend and vice versa — so the words they must agree on live here, the same way contracts/slim-l9-wire.json freezes the SLIM+L9 constants. A unit test on each side asserts against this file, so neither copy can drift without a red gate.",
+  "_comment": "Frozen vocabulary for the coordination board (PoC). The GUI (mycelium-frontend/src/lib/board/) and the CLI (mycelium-cli/src/mycelium/board/) each carry their own copy of the projection rules \u2014 the thin `uv tool` CLI can't import the frontend and vice versa \u2014 so the words they must agree on live here, the same way contracts/slim-l9-wire.json freezes the SLIM+L9 constants. A unit test on each side asserts against this file, so neither copy can drift without a red gate.",
   "version": 1,
-  "statuses": ["open", "claimed", "in_progress", "in_review", "blocked", "resolved", "dismissed"],
-  "kinds": ["decision", "blocked", "review", "action", "concern", "signal"],
-  "priorities": ["urgent", "high", "normal", "low"],
-  "lenses": ["needs_you", "in_flight", "resolved"],
+  "statuses": [
+    "open",
+    "claimed",
+    "in_progress",
+    "in_review",
+    "blocked",
+    "resolved",
+    "dismissed"
+  ],
+  "kinds": [
+    "decision",
+    "blocked",
+    "review",
+    "action",
+    "concern",
+    "signal"
+  ],
+  "priorities": [
+    "urgent",
+    "high",
+    "normal",
+    "low"
+  ],
+  "lenses": [
+    "needs_you",
+    "in_flight",
+    "resolved"
+  ],
   "lens_of_status": {
     "open": "needs_you",
     "blocked": "needs_you",
@@ -14,7 +38,37 @@
     "resolved": "resolved",
     "dismissed": "resolved"
   },
-  "verbs": ["claim", "resolve", "block", "unblock", "promote", "dismiss"],
-  "verb_keys": { "claim": "c", "resolve": "r", "block": "b", "promote": "p", "dismiss": "x" },
-  "live_namespaces": ["decisions", "status", "work", "failed"]
+  "verbs": [
+    "claim",
+    "resolve",
+    "block",
+    "unblock",
+    "promote",
+    "dismiss"
+  ],
+  "verb_keys": {
+    "claim": "c",
+    "resolve": "r",
+    "block": "b",
+    "promote": "p",
+    "dismiss": "x"
+  },
+  "live_namespaces": [
+    "decisions",
+    "status",
+    "work",
+    "failed"
+  ],
+  "log": {
+    "_comment": "The daily log's calendar conventions. A day is a calendar date in the reader's timezone; weeks start Monday; the heat scale steps at these upper bounds.",
+    "week_starts_on": "monday",
+    "day_key_format": "YYYY-MM-DD",
+    "daily_goal": 6,
+    "heat_thresholds": [
+      0,
+      2,
+      5,
+      9
+    ]
+  }
 }
