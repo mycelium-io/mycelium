@@ -46,14 +46,22 @@ function relativeTime(iso: string): string {
  *  to the left of the memories pane. */
 export function MemoryPreviewCard({ memory, anchor }: Props) {
   const ref = useRef<HTMLDivElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
   const [top, setTop] = useState<number | null>(null);
+  const [clipped, setClipped] = useState(false);
   const preview = memoryPreview(memory);
 
-  // Centre on the row once the card's real height is known — before paint, so
-  // the card never appears at the provisional position first.
+  // The excerpt's height is CSS's to decide, so whether it overflowed is read
+  // off the laid-out element rather than predicted from the text. Both reads
+  // happen before paint, so the card never shows a provisional state first.
   useLayoutEffect(() => {
     const el = ref.current;
+    const body = bodyRef.current;
     if (!el) return;
+    if (body) {
+      const overflows = (n: Element) => n.scrollHeight > n.clientHeight + 1;
+      setClipped(overflows(body) || Array.from(body.children).some(overflows));
+    }
     setTop(
       previewCardTop(anchor.top, anchor.height, el.offsetHeight, window.innerHeight, MARGIN),
     );
@@ -91,25 +99,32 @@ export function MemoryPreviewCard({ memory, anchor }: Props) {
         )}
       </div>
 
-      <div className="px-3 py-2">
-        {preview.empty ? (
-          <p className="text-label italic text-faint">Empty memory</p>
-        ) : (
-          <div className="space-y-1">
+      {preview.empty ? (
+        <p className="px-3 py-2 text-label italic text-faint">Empty memory</p>
+      ) : (
+        <div className="relative">
+          {/* The excerpt's height is capped here, in CSS: `max-h` bounds the
+              block and `line-clamp` bounds any one runaway paragraph, both in
+              text units that follow the reader's font size. */}
+          <div ref={bodyRef} className="max-h-52 space-y-1 overflow-hidden px-3 py-2">
             {preview.lines.map((line, i) => (
               <p
                 key={i}
-                className={`text-label leading-snug ${line ? "text-muted-foreground" : "h-1"}`}
+                className={`text-label leading-snug ${
+                  line ? "line-clamp-4 break-words text-muted-foreground" : "h-1"
+                }`}
               >
                 {line}
               </p>
             ))}
-            {preview.truncated && (
-              <p className="pt-0.5 text-micro text-faint">Click to read the rest…</p>
-            )}
           </div>
-        )}
-      </div>
+          {/* A cut excerpt fades out, so it reads as clipped rather than as a
+              sentence that happens to stop. */}
+          {(clipped || preview.truncated) && (
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-elevated to-transparent" />
+          )}
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 border-t border-border px-3 py-1.5 text-micro text-faint">
         <span className="tabular">v{memory.version}</span>
@@ -123,6 +138,12 @@ export function MemoryPreviewCard({ memory, anchor }: Props) {
           <>
             <span>·</span>
             <span className="tabular">{when}</span>
+          </>
+        )}
+        {(clipped || preview.truncated) && (
+          <>
+            <span>·</span>
+            <span>more…</span>
           </>
         )}
         {memory.tags && memory.tags.length > 0 && (

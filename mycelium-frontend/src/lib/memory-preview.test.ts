@@ -53,6 +53,11 @@ describe("flattenMarkdown", () => {
   it("collapses blank runs and drops horizontal rules", () => {
     expect(flattenMarkdown("a\n\n\n---\n\nb\n\n")).toEqual(["a", "", "b"]);
   });
+
+  it("stops early rather than walking a body far past the budget", () => {
+    const body = Array.from({ length: 5000 }, (_, i) => `line ${i}`).join("\n");
+    expect(flattenMarkdown(body, 3).length).toBeLessThanOrEqual(5);
+  });
 });
 
 describe("memoryPreview", () => {
@@ -67,13 +72,19 @@ describe("memoryPreview", () => {
     expect(preview.truncated).toBe(true);
   });
 
-  it("clips a long line at a word boundary", () => {
-    const preview = memoryPreview({ value: "alpha beta gamma delta" }, { maxChars: 14 });
-    expect(preview.lines).toEqual(["alpha beta…"]);
-    expect(preview.truncated).toBe(true);
+  it("hands a long line over whole — how much of it shows is the card's CSS", () => {
+    const line = "alpha beta gamma delta ".repeat(20).trim();
+    const preview = memoryPreview({ value: line });
+    expect(preview.lines).toEqual([line]);
+    expect(preview.truncated).toBe(false);
   });
 
-  it("leaves a body inside both budgets whole", () => {
+  it("caps a pathological line so the DOM never takes an unbounded string", () => {
+    const preview = memoryPreview({ value: "x".repeat(10_000) });
+    expect(preview.lines[0]).toHaveLength(2000);
+  });
+
+  it("leaves a body inside the line budget whole", () => {
     const preview = memoryPreview({ value: "short body" });
     expect(preview.lines).toEqual(["short body"]);
     expect(preview.truncated).toBe(false);
