@@ -15,6 +15,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from app.services.status.auth import Bearer
 from app.services.status.cache import StatusCache
 from app.services.status.providers.github import GitHubProvider, _liveness
 from app.services.status.runtime import StatusRuntime
@@ -34,7 +35,7 @@ class FakeContext:
         self.logs.append(message)
 
 
-def fake_factory(provider: object, credential: str | None) -> FakeContext:
+def fake_factory(provider: object, auth: object) -> FakeContext:
     """Stand in for the real per-provider context factory. The provider under
     test here never touches ``ctx.http``; what matters is the runtime asks for
     one context per provider and passes it down, not what it holds."""
@@ -46,7 +47,7 @@ class RecordingProvider:
 
     name = "fake"
     base_url = "https://example.invalid"
-    credential = None
+    auth = None
     ttl = timedelta(minutes=5)
     swr = timedelta(minutes=30)
 
@@ -251,7 +252,9 @@ class TestClaims:
 
     def test_the_provider_declares_its_credential_rather_than_reading_one(self):
         provider = GitHubProvider()
-        assert provider.credential == "GITHUB_TOKEN"
+        # The provider names its credential through a scheme, never a value: the
+        # scheme says GitHub takes a bearer token called GITHUB_TOKEN.
+        assert provider.auth.names() == ("GITHUB_TOKEN",)
         # A provider that cannot read a credential cannot leak one, and the
         # file people copy shouldn't teach them to handle auth at all.
         source = (
@@ -265,7 +268,7 @@ class TestCredentials:
     """A declared credential is the runtime's to resolve, and to refuse."""
 
     class Guarded(RecordingProvider):
-        credential = "FAKE_TOKEN"
+        auth = Bearer("FAKE_TOKEN")
 
     @pytest.mark.asyncio
     async def test_a_provider_missing_its_credential_is_never_called(self):

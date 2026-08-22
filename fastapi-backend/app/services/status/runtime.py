@@ -58,21 +58,37 @@ class StatusRuntime:
         self._credentials = credentials or {}
 
     def _missing_credential(self, provider: StatusProvider) -> str | None:
-        name = getattr(provider, "credential", None)
-        return name if name and not self._credentials.get(name) else None
+        """The credential name(s) a provider needs but does not have, or ``None``.
+
+        A scheme may need more than one name (``Basic`` needs an identity and a
+        secret), so "configured" is all-of, not any-of: a Jira provider with the
+        email set but the token missing is still refused. The joined names go
+        straight into the caller's error, so an operator is told which value is
+        absent, not merely that something is.
+        """
+        auth = getattr(provider, "auth", None)
+        if auth is None:
+            return None
+        missing = [name for name in auth.names() if not self._credentials.get(name)]
+        return ", ".join(missing) if missing else None
 
     def _context_for(self, provider: StatusProvider) -> Context:
         """The provider's bound context, built once and reused.
 
-        Built only after the credential check has passed, so the factory always
-        gets a real value for a provider that declares one, never the empty
-        string a missing credential would resolve to.
+        Built only after the credential check has passed, so every name the
+        scheme declares resolves to a real value here, never the empty string a
+        missing credential would resolve to. The scheme renders the resolved
+        values into headers; the factory only binds them.
         """
         ctx = self._contexts.get(provider.name)
         if ctx is None:
-            name = getattr(provider, "credential", None)
-            value = self._credentials.get(name) if name else None
-            ctx = self._context_factory(provider, value)
+            auth = getattr(provider, "auth", None)
+            rendered = (
+                auth.headers({name: self._credentials[name] for name in auth.names()})
+                if auth
+                else None
+            )
+            ctx = self._context_factory(provider, rendered)
             self._contexts[provider.name] = ctx
         return ctx
 

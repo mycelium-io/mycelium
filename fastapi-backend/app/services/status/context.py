@@ -26,8 +26,9 @@ The two guarantees the protocol makes are both enforced here rather than trusted
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import timedelta
+from typing import Protocol
 
 import httpx
 
@@ -35,12 +36,47 @@ from app.services.status.types import Context, StatusProvider
 
 logger = logging.getLogger("mycelium.status")
 
-#: Built once per provider by the runtime, given the provider and the resolved
-#: value of its declared credential (``None`` when the provider declares none).
-#: The runtime owns credential *resolution*; the factory owns *binding* it into a
-#: transport, so the value passes from runtime to transport without a provider
-#: ever being a party to it.
-ContextFactory = Callable[[StatusProvider, str | None], Context]
+
+class _Bound(Protocol):
+    """All the factory needs of a provider: the one host to bind to.
+
+    ``build_http_context`` reads nothing else off the provider (the credential
+    arrives already resolved), so it asks for nothing else. Every
+    ``StatusProvider`` satisfies this, so the factory is still a valid
+    ``ContextFactory``.
+    """
+
+    base_url: str
+
+
+#: What the runtime hands the factory: the credential already rendered into the
+#: headers that go on the wire (``Bearer`` derives one, ``Basic`` base64-encodes
+#: two, ``Header`` prefixes one), ``None`` for a provider that declares no auth,
+#: or a bare token string as Bearer shorthand. The scheme owns the transform, so
+#: the factory only binds the result; the value passes from runtime to transport
+#: without a provider ever being a party to it.
+ResolvedAuth = str | Mapping[str, str] | None
+
+#: Built once per provider by the runtime, given the provider and its resolved
+#: auth. The runtime owns credential *resolution and rendering*; the factory owns
+#: *binding* the rendered headers into a transport.
+ContextFactory = Callable[[StatusProvider, ResolvedAuth], Context]
+
+
+def _auth_headers(auth: ResolvedAuth) -> dict[str, str]:
+    """The default headers for a client, from whatever the runtime resolved.
+
+    A ``Mapping`` is already the rendered headers (the scheme did the work); a
+    bare ``str`` is Bearer shorthand for a single opaque token; ``None`` is no
+    auth. The shorthand keeps a plain token a one-liner without routing every
+    caller through a scheme object.
+    """
+    if auth is None:
+        return {}
+    if isinstance(auth, str):
+        return {"Authorization": f"Bearer {auth}"}
+    return dict(auth)
+
 
 DEFAULT_TIMEOUT = timedelta(seconds=10)
 #: httpx retries connection failures only (never a request that got a response),
@@ -93,28 +129,36 @@ class HttpContext:
 
 
 def build_http_context(
-    provider: StatusProvider,
-    credential: str | None,
+    provider: _Bound,
+    credential: ResolvedAuth,
     *,
     timeout: timedelta = DEFAULT_TIMEOUT,
     retries: int = DEFAULT_RETRIES,
+    transport: httpx.AsyncBaseTransport | None = None,
 ) -> HttpContext:
-    """The default factory: a client bound to ``provider.base_url`` with its token.
+    """The default factory: a client bound to ``provider.base_url`` carrying its auth.
 
-    ``credential`` is the *value* the runtime resolved for ``provider.credential``,
-    passed in rather than read here so credential resolution stays in one place.
-    A provider that declares no credential is handed an unauthenticated client;
-    the runtime already refuses to call one whose declared credential is missing,
-    so an empty string never reaches this path for a provider that needs one.
+    ``credential`` is what the runtime resolved for this provider's ``auth``: the
+    rendered headers (a mapping), a bare token as Bearer shorthand, or ``None``.
+    It is passed in rather than read here so credential resolution and rendering
+    stay in one place. A provider that declares no auth is handed an
+    unauthenticated client; the runtime already refuses to call one whose
+    declared credentials are missing, so an empty value never reaches this path
+    for a provider that needs one.
+
+    ``transport`` overrides only the *inner* transport; it is still wrapped by the
+    host bound, so a caller (a test) can read the request off a fake transport
+    while the host refusal stays in the path exactly as in production.
     """
 
-    headers = {"Authorization": f"Bearer {credential}"} if credential else {}
+    headers = _auth_headers(credential)
     base = httpx.URL(provider.base_url)
-    transport = _HostBoundTransport(httpx.AsyncHTTPTransport(retries=retries), base.host)
+    inner = transport or httpx.AsyncHTTPTransport(retries=retries)
+    bound = _HostBoundTransport(inner, base.host)
     client = httpx.AsyncClient(
         base_url=base,
         headers=headers,
         timeout=timeout.total_seconds(),
-        transport=transport,
+        transport=bound,
     )
     return HttpContext(client)

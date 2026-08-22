@@ -149,17 +149,17 @@ it. The board holds what's live right now.
 ### Live status: how it will work
 
 > **Not built yet.** The rest of this section describes what linked pull requests
-> *will* do. The backend has the resolver that answers for a reference — see
-> [status providers](#architecture) — but nothing attaches its answers to a row,
+> *will* do. The backend has the resolver that answers for a reference (see
+> [status providers](#architecture)), but nothing attaches its answers to a row,
 > so no row shows a pull request's state today.
 
 Mentioning the pull request will be the whole of it. Write the link where the
-work is already described — a plan task, a memory, a message in the room — and
-the row that comes from it will carry that pull request's state, with nothing to
-attach and no per-row setting:
+work is already described, whether a plan task, a memory, or a message in the
+room, and the row that comes from it will carry that pull request's state, with
+nothing to attach and no per-row setting:
 
 ```bash
-mycelium plan task add "land the custody seam — mycelium-io/mycelium#504"
+mycelium plan task add "land the custody seam: mycelium-io/mycelium#504"
 mycelium memory set work/thin-spoke \
   "Blocked behind https://github.com/mycelium-io/mycelium/pull/502"
 ```
@@ -169,18 +169,18 @@ your clipboard when you're talking about a pull request. Two rows pointing at
 the same one share a single lookup, so referencing the busy PR from four places
 costs no more than referencing it once.
 
-The row will show GitHub's own words — `CI failing`, `changes requested`,
-`draft`, `merged` — because that's the phrasing you already recognise.
+The row will show GitHub's own words (`CI failing`, `changes requested`,
+`draft`, `merged`) because that's the phrasing you already recognise.
 Underneath, each is filed as one of six states, which is what a surface can
 sort, filter and colour by without knowing what a pull request is:
 
 | State | What it means |
 |---|---|
-| `ok` | nothing is wrong and nobody is needed — healthy, not finished |
+| `ok` | nothing is wrong and nobody is needed; healthy, not finished |
 | `pending` | in motion, nobody is required |
 | `blocked` | waiting on a person: a decision, a revision, an approval |
 | `failed` | waiting on a fix, and a machine is what said no |
-| `done` | terminal, however it ended — the label carries how |
+| `done` | terminal, however it ended; the label carries how |
 | `unknown` | the provider met a state it couldn't place |
 
 `ok` and `done` are the pair worth reading carefully, because a board's whole
@@ -196,7 +196,7 @@ what stops the two from being read as one.
 
 GitHub maps onto the six more narrowly than you might guess. `ok` needs an
 approval, so green checks with no review yet are `pending` / `awaiting review`.
-Changes requested is `blocked` and red CI is `failed` — a person is the fix in
+Changes requested is `blocked` and red CI is `failed`: a person is the fix in
 one case, a machine in the other. `unknown` is there for a provider that meets a
 state it can't place; the GitHub one never emits it.
 
