@@ -24,12 +24,56 @@ from collections import defaultdict
 from collections.abc import Mapping
 from datetime import datetime, timedelta
 
+from app.services.status.auth import AuthScheme
 from app.services.status.cache import StatusCache
 from app.services.status.context import ContextFactory, build_http_context
 from app.services.status.types import Context, Err, Known, Ok, Ref, StatusProvider
 
 #: How many provider chunks may be in the air at once, across all providers.
 DEFAULT_CONCURRENCY = 4
+
+
+class ProviderConformanceError(ValueError):
+    """A provider whose ``auth`` declaration is malformed, refused at registration.
+
+    ``StatusProvider`` is a structural ``Protocol``, so nothing forces a provider
+    to declare ``auth`` at all, nor to declare it as an ``AuthScheme``. Two ways
+    to get it wrong both fail worse than loudly:
+
+    * a provider that *forgets* ``auth`` reads as ``None`` (no auth) and goes
+      silently unauthenticated;
+    * a provider that declares ``auth`` in the wrong shape (the pre-scheme
+      ``auth = "GITHUB_TOKEN"`` string, say) raises ``AttributeError`` deep in
+      the sweep, in ``_missing_credential`` which runs *outside* ``_run_chunk``'s
+      ``try``, so the exception propagates through ``refresh``'s ``gather`` and
+      sinks every provider's chunk, not just the offender's.
+
+    Catching it here, at construction, converts both into a clear error naming
+    the provider before a single ref is fetched.
+    """
+
+
+def _check_conformance(providers: dict[str, StatusProvider]) -> None:
+    """Refuse any provider whose ``auth`` is missing or not an ``AuthScheme``.
+
+    Registration is the one choke point every provider passes through, and the
+    check is cheap because ``AuthScheme`` is ``runtime_checkable``. Validating
+    here rather than defensively on every sweep means the invariant "every
+    provider in ``self._providers`` has a well-formed ``auth``" holds for the
+    whole life of the runtime, so the hot path never re-checks it.
+    """
+    for name, provider in providers.items():
+        if not hasattr(provider, "auth"):
+            raise ProviderConformanceError(
+                f"provider {name!r} declares no 'auth'; write 'auth = None' to mean no "
+                "authentication, so the absence is a decision rather than an oversight"
+            )
+        auth = provider.auth
+        if auth is not None and not isinstance(auth, AuthScheme):
+            raise ProviderConformanceError(
+                f"provider {name!r} has auth={auth!r}, which is not an AuthScheme "
+                "(expected Bearer, Basic, Header, or None)"
+            )
 
 
 class StatusRuntime:
@@ -50,6 +94,7 @@ class StatusRuntime:
         concurrency: int = DEFAULT_CONCURRENCY,
         credentials: Mapping[str, str] | None = None,
     ) -> None:
+        _check_conformance(providers)
         self._providers = providers
         self._context_factory = context_factory or build_http_context
         self._contexts: dict[str, Context] = {}
@@ -58,19 +103,28 @@ class StatusRuntime:
         self._credentials = credentials or {}
 
     def _missing_credential(self, provider: StatusProvider) -> str | None:
-        """The credential name(s) a provider needs but does not have, or ``None``.
+        """Why a provider cannot be called for want of a credential, or ``None``.
 
         A scheme may need more than one name (``Basic`` needs an identity and a
         secret), so "configured" is all-of, not any-of: a Jira provider with the
-        email set but the token missing is still refused. The joined names go
-        straight into the caller's error, so an operator is told which value is
-        absent, not merely that something is.
+        email set but the token missing is still refused. The reason goes straight
+        into the caller's error, and it names not just *which* value is absent but
+        *how*: a name the resolver never saw is ``not configured``, while a name
+        present with an empty value is ``set but empty``. Both are unusable, but an
+        operator fixes them differently, so the distinction the resolver preserves
+        (absent from the mapping versus present as ``""``) is carried through here
+        rather than collapsed back into a single "missing".
         """
         auth = getattr(provider, "auth", None)
         if auth is None:
             return None
-        missing = [name for name in auth.names() if not self._credentials.get(name)]
-        return ", ".join(missing) if missing else None
+        problems: list[str] = []
+        for name in auth.names():
+            if name not in self._credentials:
+                problems.append(f"{name} not configured")
+            elif not self._credentials[name]:
+                problems.append(f"{name} set but empty")
+        return ", ".join(problems) if problems else None
 
     def _context_for(self, provider: StatusProvider) -> Context:
         """The provider's bound context, built once and reused.
@@ -180,7 +234,7 @@ class StatusRuntime:
             # free of credential handling, and keeps a misconfigured one from
             # spending a request to discover it has no token.
             for ref in chunk:
-                self._cache.put_err(ref, f"{provider.name}: {missing} not configured", now)
+                self._cache.put_err(ref, f"{provider.name}: {missing}", now)
             self._cache.finish(chunk)
             return
 

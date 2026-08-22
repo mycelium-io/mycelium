@@ -18,6 +18,8 @@ would write rather than pretending.
 
 from __future__ import annotations
 
+import json
+import sys
 import time
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
@@ -508,3 +510,151 @@ def board_log(
         if len(actor_events) > 12:
             console.print(Text(f"      +{len(actor_events) - 12} more", style="dim"))
         console.print()
+
+
+# ── status-provider credentials ───────────────────────────────────────────────
+#
+# A status provider keeps a board row's external pointer live (a pull request's
+# review state, a ticket's status). To reach the tool it needs a credential, and
+# the provider only *names* it: the hub resolves the name and renders it onto the
+# wire. These verbs write the value the hub resolves, into a 0600 file outside
+# config.toml (which `config apply` would otherwise clobber). See
+# `mycelium.status_credentials` and `app/services/status/credentials.py`.
+#
+# Providers run hub-side, so these are hub-operator commands: run them where the
+# backend runs. Nothing here can print a value.
+
+credential_app = typer.Typer(
+    help=(
+        "Give the hub the credentials its status providers need to keep board "
+        "rows live (a GitHub token, a Jira email + token). Stored 0600 outside "
+        "config.toml; the value is never printed."
+    ),
+    no_args_is_help=True,
+)
+app.add_typer(credential_app, name="credential")
+
+
+@doc_ref(
+    usage="mycelium board credential set <name> [--stdin]",
+    desc=(
+        "Store a status-provider credential value under the name a provider "
+        "declares (e.g. <code>GITHUB_TOKEN</code>). Read from a prompt or stdin, "
+        "never argv; saved 0600 outside <code>config.toml</code>."
+    ),
+    group="board",
+)
+@credential_app.command("set")
+def credential_set(
+    ctx: typer.Context,
+    name: str = typer.Argument(..., help="Credential name a provider declares, e.g. GITHUB_TOKEN"),
+    stdin: bool = typer.Option(
+        False, "--stdin", help="Read the value from stdin instead of a prompt."
+    ),
+) -> None:
+    """Store the value for a credential a status provider names.
+
+    The name is the provider's, not yours: GitHub's provider declares
+    ``GITHUB_TOKEN``, Jira's declares ``JIRA_EMAIL`` and ``JIRA_TOKEN``. The value
+    is read from stdin (``--stdin``) or a hidden prompt, never from the command
+    line, so it never lands in shell history or ``ps`` output.
+
+    Examples:
+        mycelium board credential set GITHUB_TOKEN --stdin < token.txt
+        mycelium board credential set GITHUB_TOKEN   # prompts, hidden
+    """
+    from mycelium import status_credentials
+
+    try:
+        json_output = ctx.obj.get("json", False) if ctx.obj else False
+
+        if stdin:
+            value = sys.stdin.read().strip()
+        elif sys.stdin.isatty():
+            value = typer.prompt(f"Value for {name}", hide_input=True)
+        else:
+            console.print(
+                "[red]No value given.[/red] Pass --stdin to read one, or run it "
+                "interactively for a hidden prompt."
+            )
+            raise typer.Exit(1)
+
+        path = status_credentials.set_credential(name, value)
+
+        if json_output:
+            typer.echo(json.dumps({"name": name, "stored": str(path), "empty": not value}))
+            return
+
+        console.print(f"[green]Stored[/green] [cyan]{name}[/cyan] [dim](value not shown)[/dim].")
+        console.print(f"[dim]Saved to {path} (mode 0600).[/dim]")
+        if not value:
+            console.print(
+                "[yellow]The value is empty[/yellow]; the hub will report it as set-but-empty "
+                "and still refuse the provider until it has a real value."
+            )
+    except typer.Exit:
+        raise
+    except Exception as e:  # noqa: BLE001
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1) from None
+
+
+@doc_ref(
+    usage="mycelium board credential ls",
+    desc="List the status-provider credential names the hub has, and whether each is set. Never the values.",
+    group="board",
+)
+@credential_app.command("ls")
+def credential_ls(ctx: typer.Context) -> None:
+    """List stored status-provider credential names, never their values."""
+    from mycelium import status_credentials
+
+    try:
+        names = status_credentials.list_names()
+        json_output = ctx.obj.get("json", False) if ctx.obj else False
+
+        if json_output:
+            typer.echo(json.dumps(names, indent=2, sort_keys=True))
+            return
+
+        if not names:
+            console.print("[dim]No status-provider credentials on this hub.[/dim]")
+            return
+
+        table = Table(title="Status-provider credentials")
+        table.add_column("name", style="cyan")
+        table.add_column("value")
+        for name, is_set in names.items():
+            table.add_row(name, "set" if is_set else "[yellow]empty[/yellow]")
+        console.print(table)
+    except Exception as e:  # noqa: BLE001
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1) from None
+
+
+@doc_ref(
+    usage="mycelium board credential rm <name>",
+    desc="Forget a status-provider credential on this hub.",
+    group="board",
+)
+@credential_app.command("rm")
+def credential_rm(
+    ctx: typer.Context,
+    name: str = typer.Argument(..., help="Credential name to forget"),
+) -> None:
+    """Drop a stored status-provider credential."""
+    from mycelium import status_credentials
+
+    try:
+        existed = status_credentials.remove_credential(name)
+        json_output = ctx.obj.get("json", False) if ctx.obj else False
+        if json_output:
+            typer.echo(json.dumps({"removed": existed}))
+            return
+        if existed:
+            console.print(f"[green]Removed[/green] [cyan]{name}[/cyan].")
+        else:
+            console.print(f"[dim]No credential named {name} on this hub; nothing to do.[/dim]")
+    except Exception as e:  # noqa: BLE001
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1) from None
