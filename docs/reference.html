@@ -367,7 +367,7 @@
       <p>Adapters connect <strong>agents</strong> to a room. Status providers connect the <strong>tools your work already lives in</strong>, so that a <a href="#board">board</a> row pointing at a pull request can report whether it&#x27;s approved, blocked or failing instead of someone copying that state into Mycelium.</p>
       <div class="callout callout-note">
         <div class="callout-bar"></div>
-        <div class="callout-body"><strong>Experimental.</strong> The contract, the GitHub provider, and the credential store live in the backend (<code>app/services/status/</code>), and you can give the hub a credential today (below). What is not wired yet is the part that <em>spends</em> it: no route, no schedule, no field on a board row constructs the runtime, so nothing polls a provider on its own. Read this section as what a provider will implement, and check the module before writing one.</div>
+        <div class="callout-body"><strong>Experimental.</strong> The contract, the GitHub provider, the credential store and the API below all work: give the hub a token and <code>GET /api/rooms/{room}/status</code> answers for every reference your room&#x27;s text mentions. What is not wired yet is the surface: no board row carries the answer, and nothing refreshes on a schedule, so a reference goes stale until someone reads it again. Check the module before writing a provider.</div>
       </div>
       <div class="table-wrap">
         <table>
@@ -388,6 +388,32 @@
         </table>
       </div>
       <p>Providers run on the hub only. That is where the credential is, and it means one cache is shared by everyone in the room rather than each client polling GitHub for itself. A spoke never holds a service token.</p>
+      <h3 id="architecture-asking-what-the-tools-say">Asking what the tools say</h3>
+      <pre><code>GET /api/rooms/{room}/status</code></pre>
+      <p>You never tell Mycelium which pull requests to watch. Write a plan task that says <code>land the custody seam: mycelium-io/mycelium#504</code> and the reference is already there; the hub reads the room&#x27;s own plan tasks and its <code>decisions/</code>, <code>status/</code>, <code>work/</code> and <code>failed/</code> memories, and asks each provider what it recognises. Nothing in the hub matches <code>#504</code>: a provider is the only thing that knows its own shapes, so teaching Mycelium about Jira ticket keys is adding a provider, not editing a parser.</p>
+      <p>The response carries one entry per reference, each with the state, the provider&#x27;s own label, and the board row ids whose text mentioned it, so a surface attaches an answer to a row by matching an id it already has.</p>
+      <p><strong>Reading does not fetch.</strong> Opening a board must not become a burst of calls to GitHub, so a read answers from cache, says how fresh each answer is, and starts a refresh in the background for whatever is due. The next read sees it. Two query parameters are the exceptions worth knowing:</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Parameter</th>
+              <th>What it does</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>?refresh=true</code></td>
+              <td>Fetch before answering. The blocking path, for a one-shot caller with nowhere to come back to.</td>
+            </tr>
+            <tr>
+              <td><code>?max_age=&lt;seconds&gt;</code></td>
+              <td>Anything older is reported <code>missing</code> rather than handed over. Recency you can demand instead of hope for.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>A reference whose provider has no credential comes back with the reason (<code>github: GITHUB_TOKEN not configured</code>), never as a blank.</p>
       <h3 id="architecture-giving-the-hub-a-credential">Giving the hub a credential</h3>
       <p>Resolving pull requests takes a GitHub token; read-only is enough, plus <code>repo</code> scope for private repositories. A provider <strong>declares</strong> which credential it needs and how it is presented (a scheme: bearer token, basic auth, a raw key in a header), and never handles the value. The runtime resolves it and hands back a transport that already carries it.</p>
       <p>You give the hub the value by name, on the machine the backend runs on:</p>
@@ -423,7 +449,7 @@
         <li><strong>Failure is per reference.</strong> A batch where three links 404 still answers for the other forty-seven. A link your token can&#x27;t see is marked unreachable, not reported as green.</li>
       </ul>
       <p>Map your tool&#x27;s vocabulary onto the six states in the <a href="#board">board&#x27;s table</a>, being <code>ok</code>, <code>pending</code>, <code>blocked</code>, <code>failed</code>, <code>done</code> and <code>unknown</code>, and keep your own wording as the label. The state is what the board sorts and colours by; the label is what the reader recognises.</p>
-      <p>Your answer will land on a row under a <code>live</code> field, never the row&#x27;s own <code>status</code>. The two vocabularies both contain <code>blocked</code> and mean different things by it, so they are kept in separate fields rather than one shadowing the other. In the backend the answer is a <code>Liveness</code>, named for the same reason.</p>
+      <p>Your answer will land on a row under an <code>upstream</code> field, and on neither field a row already owns. Not <code>status</code>, the row&#x27;s own lifecycle, whose vocabulary shares the word <code>blocked</code> with yours and means something else by it. Not <code>live</code> either, which is a yes-or-no for whether an agent is resident on the row. In the backend the answer is a <code>Liveness</code>, kept apart from both for the same reason.</p>
       <p>The host bound is enforced, not merely declared: <code>ctx.http</code> refuses any request to a host other than your <code>base_url</code>, so a redirect or a hand-written absolute URL cannot carry your credential somewhere it was never meant to go.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/reference/architecture.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>

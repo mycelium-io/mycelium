@@ -24,7 +24,9 @@ different closed vocabulary that happens to share the word ``blocked`` with this
 one meaning something else.  A provider answers about the *external* thing a row
 points at, not the row's own lifecycle, so its answer lands on a row under a
 separate field (``ROW_FIELD``) and is named for what it is here too, so the two
-vocabularies can never quietly shadow one another in code.
+vocabularies can never quietly shadow one another in code.  The row field is
+``upstream`` rather than ``live`` for the same reason: ``live`` is a boolean the
+board already uses for agent presence.
 """
 
 from __future__ import annotations
@@ -58,13 +60,22 @@ from app.services.status.auth import AuthScheme
 #: thing still in flight, ``done`` is a finished one.
 LiveState = Literal["ok", "pending", "blocked", "failed", "done", "unknown"]
 
-#: The board-row field a provider's answer lands under. Not ``status``: that
-#: word is already the row's own lifecycle (a different closed vocabulary), and
-#: both contain ``blocked`` meaning different things: a person has blocked the
-#: row, versus the external thing is waiting on a person. Namespacing the
-#: provider's answer under its own field is what keeps the two apart, on the row
-#: and in the reader's head.
-ROW_FIELD: Final = "live"
+#: The board-row field a provider's answer lands under. Two names it cannot have:
+#:
+#: ``status`` is the row's own lifecycle (``open``, ``claimed``, ``in_progress``
+#: …), a different closed vocabulary, and both contain ``blocked`` meaning
+#: different things: a person has blocked the row, versus the external thing is
+#: waiting on a person.
+#:
+#: ``live`` is already taken too, by a boolean the projections put on a row to
+#: say an agent is resident on it. The board reads it as ``fields.live === true``
+#: to light the presence dot beside an owner, and infers it as a ``checkbox``.
+#: An object landed there would read as falsy presence and as the wrong field
+#: type, which is the ``status`` collision again one field over.
+#:
+#: ``upstream`` is neither, and says what the value is: the answer from the tool
+#: the row points at, upstream of this room.
+ROW_FIELD: Final = "upstream"
 
 #: How much the caller should trust what they were handed. This travels with
 #: every value: an agent reasoning on a three-hour-old "CI green" is the failure
@@ -92,7 +103,8 @@ class Ref:
 @dataclass(frozen=True, slots=True)
 class Liveness:
     """A provider's reading of an external thing: one of six states, plus its
-    own words for it. Lands on a board row under ``ROW_FIELD``, never ``status``.
+    own words for it. Lands on a board row under ``ROW_FIELD``, never ``status``
+    and never ``live`` (both are the row's own, meaning something else).
     """
 
     state: LiveState
