@@ -278,7 +278,7 @@ def _check_llm_connectivity() -> CheckResult:
 
 def _check_docker_containers() -> CheckResult:
     """Check that expected containers are running and healthy."""
-    expected = ["mycelium-backend"]
+    expected = ["mycelium-backend", "mycelium-frontend"]
 
     try:
         r = subprocess.run(

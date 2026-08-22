@@ -19,7 +19,7 @@ Mycelium is a multi-component monorepo. When you describe "the architecture" you
 - [`fastapi-backend/`](fastapi-backend/) — the coordination engine (Python 3.12, FastAPI). No database: state is local markdown files + a JSONL search index. Runs the SLIM messaging node's counterpart services: room moderation, the aligner/synthesizer engines, L9 envelope construction, the persister.
 - [`mycelium-cli/`](mycelium-cli/) — the user-facing CLI (typer + Rich). The primary surface most users touch, and the whole agent-side participation surface (`await`/`respond`). Hosts adapter logic for Claude Code (proven) and Cursor (untested).
 - [`mycelium-client/`](mycelium-client/) — auto-generated OpenAPI client. Treat as build output; don't document its internals.
-- [`mycelium-frontend/`](mycelium-frontend/) — Next.js + Tailwind UI shipped via `mycelium up --ui`.
+- [`mycelium-frontend/`](mycelium-frontend/) — Next.js + Tailwind UI, part of the stack `mycelium up` brings up.
 - [`mycelium-promo/`](mycelium-promo/) — HyperFrames promo video (HTML→MP4). Out of scope for the wiki.
 - [`docs/`](docs/) — presentation site + demo script + agent-facing setup runbook (`docs/agents.md`).
 
