@@ -30,7 +30,6 @@ import typer
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
 from mycelium.error_handler import print_error
-from mycelium.exceptions import ConfigNotFoundError
 from mycelium.http_client import MyceliumHTTPClient
 from mycelium.ui_status import print_title
 
@@ -138,9 +137,6 @@ def network(
     try:
         json_output = ctx.obj.get("json", False) if ctx.obj else False
 
-        config_path = MyceliumConfig.get_config_path()
-        if not config_path.exists():
-            raise ConfigNotFoundError(str(config_path))
         config = MyceliumConfig.load()
 
         with MyceliumHTTPClient(config=config) as client:
@@ -208,8 +204,6 @@ def network(
             _print_a2a(name, a2a[name])
 
     except (typer.Exit, typer.Abort):
-        raise
-    except ConfigNotFoundError:
         raise
     except httpx.HTTPError as exc:
         cfg = MyceliumConfig.load()

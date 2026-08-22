@@ -19,17 +19,6 @@ class ConfigError(MyceliumError):
     pass
 
 
-class ConfigNotFoundError(ConfigError):
-    """Configuration file not found."""
-
-    def __init__(self, config_path: str) -> None:
-        super().__init__(
-            message=f"Configuration file not found: {config_path}",
-            suggestion="Run 'mycelium init' to create a new configuration file",
-        )
-        self.config_path = config_path
-
-
 class ConfigValidationError(ConfigError):
     """Configuration validation failed."""
 
