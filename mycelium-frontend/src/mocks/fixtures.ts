@@ -32,8 +32,11 @@ import type {
 } from "@/lib/api";
 
 // A fixed "now" so relative timestamps render deterministically. Callers offset
-// from this; nothing here calls Date.now(), so snapshots stay stable.
-const NOW = Date.parse("2026-08-12T17:30:00Z");
+// from this; nothing here calls Date.now(), so snapshots stay stable. The board
+// ages rows against the reader's real clock, so a stale anchor makes a lively
+// room look abandoned (drained TTL bars, "seen 10d ago") — pull this forward
+// when it drifts too far behind the present.
+const NOW = Date.parse("2026-08-22T17:30:00Z");
 const iso = (minsAgo: number): string => new Date(NOW - minsAgo * 60_000).toISOString();
 
 export interface MockRoom {
@@ -48,10 +51,13 @@ export interface MockRoom {
 
 export interface MockMemory {
   key: string;
-  /** Prose (most memories) or a frontmatter object — the board projects a row's
-   *  typed fields straight from an object value, the way the real store serves
-   *  parsed frontmatter. Object-valued memories must also set `content_text` so
-   *  search and previews have a string to read. */
+  /** Prose (most memories) or an object — the board projects a row's typed
+   *  fields straight from an object value. This is the store's *structured
+   *  value* shape (a memory whose `value:` frontmatter key holds a mapping —
+   *  what `MemoryCreate.value` as an object round-trips to), a real
+   *  client-reachable shape. It is NOT arbitrary markdown frontmatter, which the
+   *  read path drops (#772). Object-valued memories must also set `content_text`
+   *  so search and previews have a string to read. */
   value: string | Record<string, unknown>;
   content_text?: string;
   created_by: string;
@@ -256,11 +262,13 @@ const atlasEpisodeSummary: EpisodeSummary = {
 };
 
 // Coordination-state memories the board projects into rows. Each value is a
-// frontmatter object, so the board reads its typed fields (status, owner,
-// priority, ci, pr, branch, blocks, choices) straight through — the same path a
-// real room's `decisions/ status/ work/ failed/` memories take. Together they
-// give the board something in every lens (needs-you, in-flight, resolved) and a
-// column for every inferred field, without any in-app demo layer.
+// structured object — the store's `value:`-key mapping shape (what
+// `MemoryCreate.value` as an object round-trips to, a real client-reachable
+// path), not arbitrary markdown frontmatter, which the read path drops (#772).
+// The board reads its typed fields (status, owner, priority, ci, pr, branch,
+// blocks, choices) straight from that object. Together they give the board
+// something in every lens (needs-you, in-flight, resolved) and a column for
+// every inferred field, without any in-app demo layer.
 const atlasBoardRows: MockMemory[] = [
   {
     key: "decisions/token-ttl",
