@@ -378,7 +378,7 @@ class RuntimeConfig(BaseModel):
         description=(
             "Comma-separated origins the Next.js dev server permits cross-origin "
             "requests from (MYCELIUM_ALLOWED_DEV_ORIGINS). Add your public IP or "
-            "hostname when running `mycelium up --ui` (or pnpm dev) behind a reverse "
+            "hostname when running `mycelium up` (or pnpm dev) behind a reverse "
             "proxy or NAT and accessing the UI from a browser on a different host. "
             "Production Docker builds do not use this — the browser always hits its "
             "own origin. Example: mycelium config set runtime.allowed_dev_origins "

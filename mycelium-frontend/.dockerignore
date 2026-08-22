@@ -12,6 +12,12 @@ out
 # TypeScript incremental build info
 tsconfig.tsbuildinfo
 
+# Screenshot/video tooling. Dev-only: nothing under src/ imports it, and it
+# reaches sideways into ../../shotkit, which is outside this build context —
+# `next build` type-checks whatever is here, so leaving it in fails the image
+# build on a module the app never uses. The full checkout still typechecks it.
+screenshots
+
 # Test and coverage
 **/*.test.ts
 **/*.test.tsx

@@ -19,7 +19,7 @@ import { existsSync, readdirSync } from "node:fs";
 import { homedir, platform } from "node:os";
 import { join } from "node:path";
 
-const BROWSERS_DIR = process.env.PLAYWRIGHT_BROWSERS_PATH ||
+export const BROWSERS_DIR = process.env.PLAYWRIGHT_BROWSERS_PATH ||
   (platform() === "darwin" ? join(homedir(), "Library/Caches/ms-playwright") : join(homedir(), ".cache/ms-playwright"));
 
 /** Per-platform binary path inside one downloaded browser directory. */

@@ -87,12 +87,13 @@ services:
       retries: 6
       start_period: 15s
 
-  # ── Frontend (profile: ui) ───────────────────────────────────────────────
+  # ── Frontend (always started) ────────────────────────────────────────────
   #
   # Next.js frontend for browsing rooms, sessions, memory, and live negotiation.
-  # Opt-in via `mycelium up --ui` (or `--profile ui` directly). The browser
-  # only ever talks to its own origin (port MYCELIUM_UI_PORT) — the Next.js
-  # server proxies /api/* to the backend internally over the compose network.
+  # Part of the stack, not an opt-in profile: `mycelium up` always brings it up
+  # alongside the node and the backend. The browser only ever talks to its own
+  # origin (port MYCELIUM_UI_PORT) — the Next.js server proxies /api/* to the
+  # backend internally over the compose network.
 
   mycelium-frontend:
     build:
@@ -102,7 +103,6 @@ services:
     pull_policy: always
     container_name: mycelium-frontend
     restart: unless-stopped
-    profiles: [ui]
     env_file:
       - path: ../.env
         required: false

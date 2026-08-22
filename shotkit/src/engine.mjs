@@ -287,7 +287,7 @@ export function frameOf(opts) {
   };
 }
 
-async function seedStorage(context, storage) {
+export async function seedStorage(context, storage) {
   await context.addInitScript((entries) => {
     for (const [k, v] of entries) {
       try {
@@ -300,7 +300,7 @@ async function seedStorage(context, storage) {
 }
 
 /** Waits, ordered actions, and the cosmetic fixes every shot wants. */
-async function preparePage(page, opts) {
+export async function preparePage(page, opts) {
   const timeout = opts.timeout ?? 30_000;
   if (opts.waitFor) await page.waitForSelector(opts.waitFor, { state: "visible", timeout });
   if (opts.waitForText) {
