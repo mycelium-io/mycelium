@@ -24,9 +24,9 @@ runner = CliRunner()
 def _isolate(isolated_home, monkeypatch: pytest.MonkeyPatch) -> None:
     """A real (empty) config on a temp home, plus a no-op typed client.
 
-    ``room`` reads ``config.get_active_room()`` and requires a config file to
-    exist, so it needs the real ``MyceliumConfig`` (not the SimpleNamespace the
-    shared ``backend`` fixture installs) — only the typed client is stubbed.
+    ``room`` reads ``config.get_active_room()``, so it needs the real
+    ``MyceliumConfig`` (not the SimpleNamespace the shared ``backend`` fixture
+    installs) — only the typed client is stubbed.
     """
     from unittest.mock import MagicMock, Mock
 
