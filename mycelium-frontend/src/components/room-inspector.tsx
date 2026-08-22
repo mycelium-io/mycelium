@@ -57,6 +57,9 @@ interface Props {
   onFocusConsumed?: () => void;
   /** Reveal a memory by key in the Memory tab (e.g. a clicked chat wikilink). */
   focusMemory?: { key: string; nonce: number } | null;
+  /** Reveal an episode by short id in the Episodes tab (e.g. a clicked chat
+   *  episode tag). */
+  focusEpisode?: { shortId: string; nonce: number } | null;
 }
 
 /**
@@ -95,6 +98,7 @@ export function RoomInspector({
   focus = null,
   onFocusConsumed,
   focusMemory,
+  focusEpisode,
 }: Props) {
   const focused = (type: FocusTarget["type"]) => (focus?.type === type ? focus.id : null);
   const [tabInternal, setTabInternal] = useState<Tab>("agents");
@@ -191,6 +195,7 @@ export function RoomInspector({
             roomName={roomName}
             focusShortId={focused("episode")}
             onFocusConsumed={onFocusConsumed}
+            focusEpisode={focusEpisode}
           />
         )}
         {tab === "memory" && (

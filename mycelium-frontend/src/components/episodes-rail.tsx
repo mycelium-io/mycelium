@@ -34,33 +34,53 @@ interface EpisodesRailProps {
   /** An episode short id to open, arrived at from search. */
   focusShortId?: string | null;
   onFocusConsumed?: () => void;
+  /** Open an episode by short id (e.g. a clicked chat episode tag). The nonce
+   *  makes a second click on the same tag a request of its own, so reopening a
+   *  drawer you just closed works. */
+  focusEpisode?: { shortId: string; nonce: number } | null;
 }
 
-export function EpisodesRail({ roomName, focusShortId = null, onFocusConsumed }: EpisodesRailProps) {
+export function EpisodesRail({
+  roomName,
+  focusShortId = null,
+  onFocusConsumed,
+  focusEpisode = null,
+}: EpisodesRailProps) {
   const [selected, setSelected] = useState<EpisodeSummary | null>(null);
+  const [pending, setPending] = useState<string | null>(null);
   const { episodes, loading } = useRoomEpisodes(roomName);
 
-  // Arriving from search: open the named episode's drawer. The list is the
-  // primary source because an episode still *running* has no `log/episodes/*`
-  // record yet — it exists only in the moderator's lifecycle, which the list
-  // synthesizes and the detail endpoint has nothing to serve for. The fetch is
-  // the fallback for a closed episode sitting past the list's limit.
+  // A clicked episode tag holds until the list can answer it; `focusEpisode`
+  // changes identity only when the parent bumps the nonce.
   useEffect(() => {
-    if (!focusShortId) return;
-    const known = episodes.find((ep) => ep.short_id === focusShortId);
+    if (focusEpisode) setPending(focusEpisode.shortId);
+  }, [focusEpisode]);
+
+  const wanted = focusShortId ?? pending;
+
+  // Open the named episode's drawer. The list is the primary source because an
+  // episode still *running* has no `log/episodes/*` record yet — it exists only
+  // in the moderator's lifecycle, which the list synthesizes and the detail
+  // endpoint has nothing to serve for. The fetch is the fallback for a closed
+  // episode sitting past the list's limit.
+  useEffect(() => {
+    if (!wanted) return;
+    const known = episodes.find((ep) => ep.short_id === wanted);
     if (known) {
       setSelected(known);
+      setPending(null);
       onFocusConsumed?.();
       return;
     }
     if (loading) return;
-    fetchEpisode(roomName, focusShortId).then((detail) => {
+    fetchEpisode(roomName, wanted).then((detail) => {
       if (detail) setSelected(detail);
       // Answered either way: a since-deleted episode leaves you in the room
       // rather than leaving the request pending forever.
+      setPending(null);
       onFocusConsumed?.();
     });
-  }, [roomName, focusShortId, episodes, loading, onFocusConsumed]);
+  }, [roomName, wanted, episodes, loading, onFocusConsumed]);
 
   const counts = useMemo(() => {
     const live = episodes.filter(isLive).length;

@@ -16,6 +16,7 @@ import { useRoomAgents } from "@/lib/room-data";
 import { MarkdownContent } from "@/components/markdown-content";
 import { RoomPlanHeader } from "@/components/room-plan-header";
 import { ConsentDialog } from "@/components/consent-dialog";
+import { EpisodeTag } from "@/components/episode-tag";
 import { L9Inspector } from "@/components/l9-inspector";
 import { NegotiationView } from "@/components/negotiation-view";
 import { RoomSlimView } from "@/components/room-slim";
@@ -323,6 +324,9 @@ interface Props {
   /** Open a memory by key — wired to `[[wikilinks]]` in chat so a message can
    *  link a room's memory and a reader (or agent author) can jump straight to it. */
   onOpenMemory?: (key: string) => void;
+  /** Open an episode by short id — wired to the episode tags on coordination
+   *  notices, so the episode a notice names is one click from its record. */
+  onOpenEpisode?: (shortId: string) => void;
   /** Optional controlled tab (e.g. driven by the onboarding tour). */
   view?: View;
   onViewChange?: (view: View) => void;
@@ -334,7 +338,7 @@ interface Props {
   onFocusConsumed?: () => void;
 }
 
-export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onNegotiationPhaseChange, onOpenMemory, view: viewProp, onViewChange, suppressInvites = false, focusMessageId = null, onFocusConsumed }: Props) {
+export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onNegotiationPhaseChange, onOpenMemory, onOpenEpisode, view: viewProp, onViewChange, suppressInvites = false, focusMessageId = null, onFocusConsumed }: Props) {
   const [events, setEvents] = useState<Event[]>([]);
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [connected, setConnected] = useState(false);
@@ -640,9 +644,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
                   >
                     <span>in</span>
                     {shortId ? (
-                      <Tooltip content={episodeUrn}>
-                        <span className="font-mono text-accent" aria-description={episodeUrn}>{shortId}</span>
-                      </Tooltip>
+                      <EpisodeTag urn={episodeUrn} shortId={shortId} onOpen={onOpenEpisode} />
                     ) : (
                       <span className="font-mono">episode</span>
                     )}
@@ -679,9 +681,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
                     <span className="font-medium text-muted-foreground">@{handle}</span>
                     <span>joined</span>
                     {shortId ? (
-                      <Tooltip content={episodeUrn}>
-                        <span className="font-mono text-accent" aria-description={episodeUrn}>{shortId}</span>
-                      </Tooltip>
+                      <EpisodeTag urn={episodeUrn} shortId={shortId} onOpen={onOpenEpisode} />
                     ) : null}
                     {intent ? <span>· &ldquo;{intent}&rdquo;</span> : null}
                   </SystemNotice>
