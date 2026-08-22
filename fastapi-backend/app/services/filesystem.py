@@ -136,7 +136,10 @@ def recover_timestamps(meta: dict[str, Any], path: Path | None = None) -> tuple[
     if created is None or updated is None:
         mtime = _file_mtime(path)
         created = created or updated or mtime or _EPOCH
-        updated = updated or mtime or created
+        if updated is None:
+            # A restore or `cp -p` can leave an mtime behind the created stamp;
+            # never report a memory as last updated before it existed.
+            updated = max(mtime, created) if mtime else created
     return created, updated
 
 

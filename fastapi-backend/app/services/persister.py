@@ -394,11 +394,14 @@ def _conversational_text(content: dict[str, Any]) -> str | None:
 
 
 def parse_recorded_at(recorded_at: str) -> datetime | None:
-    """Read a record's ``recorded_at`` back as a datetime, or ``None`` if unusable."""
-    try:
-        return datetime.fromisoformat(recorded_at)
-    except (ValueError, TypeError):
-        return None
+    """Read a record's ``recorded_at`` back as an aware datetime, or ``None``.
+
+    Naive input is read as UTC. Every other timestamp the message list sorts
+    against is aware, and mixing the two raises rather than misordering.
+    """
+    from app.services.filesystem import parse_timestamp
+
+    return parse_timestamp(recorded_at)
 
 
 def stored_message_from_record(

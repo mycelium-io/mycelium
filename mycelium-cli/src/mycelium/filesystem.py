@@ -116,7 +116,12 @@ def recover_updated_at(meta: dict[str, Any], path: Path) -> datetime:
     Read time is deliberately not a candidate, and neither is an empty sort key:
     the first re-dates the memory every time it is looked at, the second parks
     every unstamped memory at the bottom of the list regardless of its age.
-    Mirrors the backend's ``recover_timestamps``.
+
+    The CLI's counterpart to the backend's ``recover_timestamps``, holding the
+    same never-read-time rule over a narrower surface: this store only orders
+    memories, so it resolves one stamp where the backend resolves the
+    ``(created_at, updated_at)`` pair a read model needs. Keep the rule in step
+    across the two; the shapes differ on purpose.
     """
     stamp = parse_timestamp(meta.get("updated_at")) or parse_timestamp(meta.get("created_at"))
     if stamp is not None:

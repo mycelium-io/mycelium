@@ -71,6 +71,17 @@ class TestRecoverTimestamps:
         assert created == mtime
         assert updated == mtime
 
+    def test_updated_never_predates_created(self, tmp_path):
+        path = tmp_path / "note.md"
+        path.write_text("---\nkey: note\n---\nbody\n")
+        mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
+        # A restore or `cp -p` can leave the file older than its created stamp.
+        created_stamp = (mtime + timedelta(days=1)).isoformat()
+
+        created, updated = recover_timestamps({"created_at": created_stamp}, path)
+
+        assert updated >= created
+
     def test_a_naive_stamp_is_read_as_utc_so_it_stays_comparable(self, tmp_path):
         created, updated = recover_timestamps({"updated_at": datetime(2026, 8, 19, 9, 48)}, None)
         assert updated.tzinfo is not None
@@ -192,3 +203,47 @@ class TestIndexSkipCheck:
 
         assert stats["indexed"] == 0
         assert stats["skipped"] == 1
+
+
+class TestSkillTimestamps:
+    """A skill is a memory under ``skills/``, read through the same frontmatter —
+    so ``GET /skills/{name}`` (a direct file read) must recover its stamps the way
+    the list endpoint does, not report the time it was called."""
+
+    async def test_get_skill_does_not_report_the_time_it_was_read(self, client):
+        room_dir = get_room_dir(ROOM)
+        _unstamped(room_dir, "skills/deploy")
+
+        first = await client.get(f"/api/rooms/{ROOM}/skills/deploy")
+        second = await client.get(f"/api/rooms/{ROOM}/skills/deploy")
+
+        assert first.status_code == 200
+        assert first.json()["updated_at"] == second.json()["updated_at"]
+
+    async def test_get_and_list_agree_on_a_skill_s_stamps(self, client):
+        room_dir = get_room_dir(ROOM)
+        _unstamped(room_dir, "skills/deploy")
+
+        listed = (await client.get(f"/api/rooms/{ROOM}/skills")).json()["skills"][0]
+        fetched = (await client.get(f"/api/rooms/{ROOM}/skills/deploy")).json()
+
+        assert listed["updated_at"] == fetched["updated_at"]
+        assert listed["created_at"] == fetched["created_at"]
+
+
+class TestTranscriptStampParsing:
+    def test_a_naive_recorded_at_comes_back_aware(self):
+        """Every other stamp the message list sorts against is aware; mixing the
+        two raises rather than misordering."""
+        from app.services.persister import parse_recorded_at
+
+        parsed = parse_recorded_at("2026-08-19T09:48:00")
+
+        assert parsed is not None
+        assert parsed.tzinfo is not None
+
+    def test_an_unusable_recorded_at_is_none(self):
+        from app.services.persister import parse_recorded_at
+
+        assert parse_recorded_at("") is None
+        assert parse_recorded_at("not a time") is None

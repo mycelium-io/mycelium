@@ -16,7 +16,6 @@ DELETE /rooms/{room}/skills/{name}   — delete a skill
 """
 
 import logging
-from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException, Request
 
@@ -28,7 +27,12 @@ from app.schemas import (
     SkillRead,
 )
 from app.services import actor, links, search_index, skills
-from app.services.filesystem import delete_memory_file, get_room_dir, room_exists
+from app.services.filesystem import (
+    delete_memory_file,
+    get_room_dir,
+    recover_timestamps,
+    room_exists,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -40,8 +44,18 @@ def _require_room(room_name: str) -> None:
         raise HTTPException(status_code=404, detail="Room not found")
 
 
-def _skill_read(name: str, meta: dict, body: str) -> SkillRead:
-    now = datetime.now(UTC)
+def _skill_read(room_name: str, name: str, meta: dict, body: str) -> SkillRead:
+    """Build a SkillRead from a skill memory's frontmatter + body.
+
+    A skill is a memory under ``skills/``, so its stamps are recovered the same
+    way a memory's are — off the frontmatter, else the file — never off read
+    time. ``get_skill`` reads the file directly, so without this it would report
+    a different time on each request while ``list_skills`` (which goes through
+    ``list_memory_files``) reported the recovered one.
+    """
+    created_at, updated_at = recover_timestamps(
+        meta, get_room_dir(room_name) / f"{skills.skill_key(name)}.md"
+    )
     return SkillRead(
         name=name,
         description=meta.get("description", ""),
@@ -50,8 +64,8 @@ def _skill_read(name: str, meta: dict, body: str) -> SkillRead:
         created_by=meta.get("created_by", "unknown"),
         updated_by=meta.get("updated_by"),
         version=meta.get("version", 1),
-        created_at=meta.get("created_at", now),
-        updated_at=meta.get("updated_at", now),
+        created_at=created_at,
+        updated_at=updated_at,
     )
 
 
@@ -93,7 +107,8 @@ async def list_skills(room_name: str) -> SkillListResponse:
     """List a room's skills, newest-updated first."""
     _require_room(room_name)
     items = [
-        _skill_read(name, meta, body) for name, meta, body in skills.list_room_skills(room_name)
+        _skill_read(room_name, name, meta, body)
+        for name, meta, body in skills.list_room_skills(room_name)
     ]
     return SkillListResponse(skills=items, total=len(items))
 
@@ -106,7 +121,7 @@ async def get_skill(room_name: str, name: str) -> SkillRead:
     if found is None:
         raise HTTPException(status_code=404, detail="Skill not found")
     meta, body = found
-    return _skill_read(name, meta, body)
+    return _skill_read(room_name, name, meta, body)
 
 
 @router.delete("/{name}", status_code=204)
