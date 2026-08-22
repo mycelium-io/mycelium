@@ -56,6 +56,10 @@ def room_agents(room_name: str) -> list[AgentRead]:
         if not isinstance(allow_from, list):
             allow_from = []
 
+        skills = data.get("a2a_skills") or []
+        if not isinstance(skills, list):
+            skills = []
+
         agents.append(
             AgentRead(
                 handle=handle,
@@ -66,6 +70,9 @@ def room_agents(room_name: str) -> list[AgentRead]:
                 owner=_norm(data.get("owner")),
                 team=_norm(data.get("team")),
                 allow_from=[str(h) for h in allow_from if h],
+                a2a_card=str(data["a2a_card"]) if data.get("a2a_card") else None,
+                a2a_endpoint=str(data["a2a_endpoint"]) if data.get("a2a_endpoint") else None,
+                a2a_skills=[str(s) for s in skills if s],
             )
         )
 

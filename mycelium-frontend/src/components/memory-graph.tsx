@@ -17,6 +17,7 @@ import { AlertTriangle, ChevronDown, ChevronUp, ExternalLink, Filter, Link2, Rot
 import type { MemoryGraph as MemoryGraphData, MemoryGraphNode } from "@/lib/api";
 import { computeForceLayout, type GraphLayoutEdge, type GraphLayoutNode } from "@/lib/memory-graph-layout";
 import { isBrokenLinkError, linkErrorLabel, LINK_ERRORS } from "@/lib/memory-links";
+import { Tooltip } from "@/components/ui/tooltip";
 import {
   loadPlacements,
   savePlacements,
@@ -151,12 +152,14 @@ export function MemoryGraph({ graph, onNavigate, roomName, className }: Props) {
   const [legendOpen, setLegendOpen] = useState(false);
   const filtered = hiddenNamespaces.size > 0 || hiddenTypes.size > 0;
 
-  useEffect(() => {
-    // Guarded so a mount with nothing filtered doesn't hand React two fresh
-    // (unequal) Sets and buy an extra render of every node for no change.
+  // Reset the filters when the graph changes. The guard keeps the same Set
+  // identity when nothing was filtered, so every node doesn't re-render.
+  const [prevGraph, setPrevGraph] = useState(graph);
+  if (prevGraph !== graph) {
+    setPrevGraph(graph);
     setHiddenNamespaces(prev => (prev.size === 0 ? prev : new Set()));
     setHiddenTypes(prev => (prev.size === 0 ? prev : new Set()));
-  }, [graph]);
+  }
 
   const visibleKeys = useMemo(
     () => new Set(graph.nodes.filter(n => !hiddenNamespaces.has(namespaceOf(n.key))).map(n => n.key)),
@@ -272,7 +275,7 @@ export function MemoryGraph({ graph, onNavigate, roomName, className }: Props) {
   // Read by the deferred writes below, so they always persist the newest
   // arrangement rather than the one captured when their timer was armed.
   const latestPlaced = useRef(placed);
-  latestPlaced.current = placed;
+  useLayoutEffect(() => { latestPlaced.current = placed; }, [placed]);
 
   // Only a drag or a reset may write. Persisting on any change to `placed`
   // instead — mirroring state outward — silently wiped the saved arrangement
@@ -295,6 +298,9 @@ export function MemoryGraph({ graph, onNavigate, roomName, className }: Props) {
   useLayoutEffect(() => {
     dirty.current = false;
     if (!roomName) {
+      // Placements are read from storage, so they land in a layout effect —
+      // before the new layout's first paint.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setPlaced({});
       return;
     }
@@ -423,7 +429,7 @@ export function MemoryGraph({ graph, onNavigate, roomName, className }: Props) {
       // one handler even when it outruns the circle it grabbed.
       capturePointer(svgRef.current, e.pointerId);
     },
-    [positions],
+    [positions, toSvgPoint],
   );
 
   /** Drops whatever gesture this pointer owned, without activating anything. */
@@ -473,7 +479,7 @@ export function MemoryGraph({ graph, onNavigate, roomName, className }: Props) {
       pan.last = to;
       setView(prev => ({ ...prev, x: prev.x + dx, y: prev.y + dy }));
     },
-    [toSvgPoint, view.scale],
+    [abandonGesture, toSvgPoint, view.scale],
   );
 
   // Opening is decided here on pointerup, not by a `click` handler on the node.
@@ -521,20 +527,35 @@ export function MemoryGraph({ graph, onNavigate, roomName, className }: Props) {
           {linkCount === 1 ? "" : "s"}
         </span>
         {orphanCount > 0 && (
-          <span className="flex items-center gap-1 text-yellow" title="Fully isolated — no inbound or outbound links">
-            <Unlink className="size-3.5" />
-            <span className="font-semibold tabular">{orphanCount}</span> orphan{orphanCount === 1 ? "" : "s"}
-          </span>
+          <Tooltip content="Fully isolated — no inbound or outbound links" side="bottom">
+            <span
+              className="flex items-center gap-1 text-yellow"
+              aria-description="Fully isolated — no inbound or outbound links"
+            >
+              <Unlink className="size-3.5" />
+              <span className="font-semibold tabular">{orphanCount}</span> orphan{orphanCount === 1 ? "" : "s"}
+            </span>
+          </Tooltip>
         )}
         {rootCount > 0 && (
-          <span className="flex items-center gap-1 text-muted-foreground" title="Entry points — nothing links here yet">
-            <span className="font-semibold tabular">{rootCount}</span> root{rootCount === 1 ? "" : "s"}
-          </span>
+          <Tooltip content="Entry points — nothing links here yet" side="bottom">
+            <span
+              className="flex items-center gap-1 text-muted-foreground"
+              aria-description="Entry points — nothing links here yet"
+            >
+              <span className="font-semibold tabular">{rootCount}</span> root{rootCount === 1 ? "" : "s"}
+            </span>
+          </Tooltip>
         )}
         {leafCount > 0 && (
-          <span className="flex items-center gap-1 text-muted-foreground" title="Dead ends — links arrive but go no further">
-            <span className="font-semibold tabular">{leafCount}</span> lea{leafCount === 1 ? "f" : "ves"}
-          </span>
+          <Tooltip content="Dead ends — links arrive but go no further" side="bottom">
+            <span
+              className="flex items-center gap-1 text-muted-foreground"
+              aria-description="Dead ends — links arrive but go no further"
+            >
+              <span className="font-semibold tabular">{leafCount}</span> lea{leafCount === 1 ? "f" : "ves"}
+            </span>
+          </Tooltip>
         )}
         {brokenCount > 0 && (
           <span className="flex items-center gap-1 text-red">
@@ -543,37 +564,45 @@ export function MemoryGraph({ graph, onNavigate, roomName, className }: Props) {
           </span>
         )}
         {crossRoomCount > 0 && (
-          <span
-            className="flex items-center gap-1 text-muted-foreground"
-            title={LINK_ERRORS.cross_room}
-          >
-            <ExternalLink className="size-3.5" />
-            <span className="font-semibold tabular">{crossRoomCount}</span> cross-room
-          </span>
+          <Tooltip content={LINK_ERRORS.cross_room} side="bottom">
+            <span
+              className="flex items-center gap-1 text-muted-foreground"
+              aria-description={LINK_ERRORS.cross_room}
+            >
+              <ExternalLink className="size-3.5" />
+              <span className="font-semibold tabular">{crossRoomCount}</span> cross-room
+            </span>
+          </Tooltip>
         )}
         <div className="ml-auto flex items-center gap-1">
           {filtered && (
-            <button
-              onClick={clearFilters}
-              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-micro font-medium text-accent transition-colors hover:bg-hairline"
-              title="Show every namespace and link type again"
-            >
-              <Filter className="size-3.5" />
-              Clear filters
-            </button>
+            <Tooltip content="Show every namespace and link type again" side="bottom" align="end">
+              <button
+                onClick={clearFilters}
+                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-micro font-medium text-accent transition-colors hover:bg-hairline"
+              >
+                <Filter className="size-3.5" />
+                Clear filters
+              </button>
+            </Tooltip>
           )}
           {hasPlacements && (
-            <button
-              onClick={() => {
-                dirty.current = true;
-                setPlaced({});
-              }}
-              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-micro font-medium text-accent transition-colors hover:bg-hairline"
-              title="Put every hand-moved memory back where the force layout placed it, and forget the saved arrangement"
+            <Tooltip
+              content="Put every hand-moved memory back where the force layout placed it, and forget the saved arrangement"
+              side="bottom"
+              align="end"
             >
-              <RotateCcw className="size-3.5" />
-              Reset layout
-            </button>
+              <button
+                onClick={() => {
+                  dirty.current = true;
+                  setPlaced({});
+                }}
+                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-micro font-medium text-accent transition-colors hover:bg-hairline"
+              >
+                <RotateCcw className="size-3.5" />
+                Reset layout
+              </button>
+            </Tooltip>
           )}
         </div>
       </div>
@@ -647,22 +676,22 @@ export function MemoryGraph({ graph, onNavigate, roomName, className }: Props) {
               {namespaces.map(ns => {
                 const hidden = hiddenNamespaces.has(ns);
                 return (
-                  <button
-                    key={ns}
-                    onClick={() => toggle(setHiddenNamespaces, ns)}
-                    aria-pressed={!hidden}
-                    aria-label={hidden ? `Show ${ns}` : `Hide ${ns}`}
-                    title={hidden ? `Show ${ns}` : `Hide ${ns}`}
-                    className={`flex items-center gap-1.5 rounded px-1 py-0.5 text-left transition-colors hover:bg-hairline ${
-                      hidden ? "opacity-40" : ""
-                    }`}
-                  >
-                    <span
-                      className="size-2 flex-shrink-0 rounded-full"
-                      style={{ background: hidden ? "transparent" : colorFor(ns), boxShadow: `inset 0 0 0 1px ${colorFor(ns)}` }}
-                    />
-                    <span className={`font-mono ${hidden ? "line-through" : ""}`}>{ns}</span>
-                  </button>
+                  <Tooltip key={ns} content={hidden ? `Show ${ns}` : `Hide ${ns}`} side="right">
+                    <button
+                      onClick={() => toggle(setHiddenNamespaces, ns)}
+                      aria-pressed={!hidden}
+                      aria-label={hidden ? `Show ${ns}` : `Hide ${ns}`}
+                      className={`flex items-center gap-1.5 rounded px-1 py-0.5 text-left transition-colors hover:bg-hairline ${
+                        hidden ? "opacity-40" : ""
+                      }`}
+                    >
+                      <span
+                        className="size-2 flex-shrink-0 rounded-full"
+                        style={{ background: hidden ? "transparent" : colorFor(ns), boxShadow: `inset 0 0 0 1px ${colorFor(ns)}` }}
+                      />
+                      <span className={`font-mono ${hidden ? "line-through" : ""}`}>{ns}</span>
+                    </button>
+                  </Tooltip>
                 );
               })}
 
@@ -672,19 +701,23 @@ export function MemoryGraph({ graph, onNavigate, roomName, className }: Props) {
                   {edgeTypes.map(type => {
                     const hidden = hiddenTypes.has(type);
                     return (
-                      <button
+                      <Tooltip
                         key={type}
-                        onClick={() => toggle(setHiddenTypes, type)}
-                        aria-pressed={!hidden}
-                        aria-label={hidden ? `Show ${type} edges` : `Hide ${type} edges`}
-                        title={hidden ? `Show ${type} edges` : `Hide ${type} edges`}
-                        className={`flex items-center gap-1.5 rounded px-1 py-0.5 text-left transition-colors hover:bg-hairline ${
-                          hidden ? "opacity-40" : ""
-                        }`}
+                        content={hidden ? `Show ${type} edges` : `Hide ${type} edges`}
+                        side="right"
                       >
-                        <Link2 className="size-3 flex-shrink-0" />
-                        <span className={`font-mono ${hidden ? "line-through" : ""}`}>{type}</span>
-                      </button>
+                        <button
+                          onClick={() => toggle(setHiddenTypes, type)}
+                          aria-pressed={!hidden}
+                          aria-label={hidden ? `Show ${type} edges` : `Hide ${type} edges`}
+                          className={`flex items-center gap-1.5 rounded px-1 py-0.5 text-left transition-colors hover:bg-hairline ${
+                            hidden ? "opacity-40" : ""
+                          }`}
+                        >
+                          <Link2 className="size-3 flex-shrink-0" />
+                          <span className={`font-mono ${hidden ? "line-through" : ""}`}>{type}</span>
+                        </button>
+                      </Tooltip>
                     );
                   })}
                 </>

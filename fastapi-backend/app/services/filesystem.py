@@ -40,6 +40,18 @@ _MISSING = object()
 # Last-resort stamp for a memory with no recoverable time (see recover_timestamps).
 _EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 
+# Frontmatter the store owns. Everything else in a memory's frontmatter is user
+# data: it survives a rewrite, a caller can set it via ``MemoryCreate.meta``, and
+# it is returned as ``MemoryRead.meta``.
+MANAGED_META = frozenset(
+    {"key", "created_by", "updated_by", "version", "created_at", "updated_at", "tags", "value"}
+)
+
+
+def unmanaged_meta(meta: dict[str, Any]) -> dict[str, Any]:
+    """The user-owned half of a memory's frontmatter — everything outside MANAGED_META."""
+    return {k: v for k, v in meta.items() if k not in MANAGED_META}
+
 
 def get_data_dir() -> Path:
     """Get the .mycelium data directory, creating it if needed."""

@@ -39,6 +39,11 @@ from mycelium.ui_status import (
     print_verdict,
 )
 
+# Containers `mycelium doctor` expects to find running on a hub. These are the
+# always-started compose services; the collector is profile-gated, so its
+# absence is normal rather than a finding.
+EXPECTED_CONTAINERS = ("mycelium-backend", "mycelium-frontend")
+
 # ── Topology detection ────────────────────────────────────────────────────────
 
 
@@ -53,6 +58,8 @@ def _is_local_backend(api_url: str) -> bool:
 
 def _check_config_files() -> CheckResult:
     """Check that ~/.mycelium/.env and config.toml exist."""
+    import os
+
     env_path = Path.home() / ".mycelium" / ".env"
     config_path = Path.home() / ".mycelium" / "config.toml"
 
@@ -61,6 +68,16 @@ def _check_config_files() -> CheckResult:
         missing.append(".env")
     if not config_path.exists():
         missing.append("config.toml")
+
+    # A client configured from the environment — an ephemeral container, a CI
+    # job — has no config files by design, and `mycelium install` is the wrong
+    # advice for a machine with no stack to install.
+    if missing and os.environ.get("MYCELIUM_API_URL"):
+        return CheckResult(
+            name="Config files",
+            status="ok",
+            message="configured from the environment (MYCELIUM_API_URL)",
+        )
 
     if missing:
         return CheckResult(
@@ -278,7 +295,7 @@ def _check_llm_connectivity() -> CheckResult:
 
 def _check_docker_containers() -> CheckResult:
     """Check that expected containers are running and healthy."""
-    expected = ["mycelium-backend", "mycelium-frontend"]
+    expected = list(EXPECTED_CONTAINERS)
 
     try:
         r = subprocess.run(

@@ -6,6 +6,7 @@
 import { type AuthStatus, type CoordinationRoom, type IdentityStatus } from "@/lib/api";
 import { useNetworkStatus } from "@/lib/room-data";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip } from "@/components/ui/tooltip";
 
 /** This room's SLIM channel status — the node it rides, who is present (SLIM
  *  members plus server-held `await` participants), episode state, and
@@ -37,67 +38,74 @@ export function RoomSlimView({
     if (loaded && !net) {
       return (
         <div className="flex items-center gap-1.5 px-4 py-2 text-micro text-muted-foreground">
-          <span style={{ color: "var(--red)" }}>●</span> SLIM · backend unreachable
+          <StateDot color="var(--red)" /> SLIM · backend unreachable
         </div>
       );
     }
     const notes = railNotes(identity, auth);
+    // Three groups, each on its own line behind a fixed label column: the node
+    // this room rides, the hub's posture, and this room's own channel. The
+    // stats used to run together as one wrapping strip, which put the label
+    // column nowhere and let a group break across lines mid-thought.
     return (
-      <div className="flex flex-col gap-1 px-4 py-2 text-micro">
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+      <div className="grid grid-cols-[4.5rem_minmax(0,1fr)] items-baseline gap-x-3 gap-y-1.5 px-4 py-2.5 text-micro">
+        <RailGroup label="Node">
           <RailStat
             dot={coord ? (enabled ? "var(--green)" : "var(--red)") : "var(--yellow)"}
-            label="SLIM"
-          >
-            <span className="font-mono text-text">{coord?.endpoint ?? "…"}</span>
-          </RailStat>
-          <RailStat label="channels">{coord?.channels_live ?? "—"}</RailStat>
-          <RailStat label="provisions">
-            {coord ? `${coord.provisions_ok}✓ / ${coord.provisions_failed}✗` : "—"}
-          </RailStat>
-          <RailStat dot={identity ? identityDot(identity) : undefined} label="identity">
-            <span title={identity?.message}>{identity?.mode ?? "—"}</span>
-          </RailStat>
-          <RailStat dot={auth?.enabled ? "var(--green)" : undefined} label="auth">
-            <span title={authDetail(auth)}>{auth ? (auth.enabled ? "on" : "off") : "—"}</span>
-          </RailStat>
-          <span className="h-3 w-px bg-border" aria-hidden />
+            value={coord?.endpoint ?? "…"}
+            mono
+          />
+          <RailStat label="channels" value={coord?.channels_live ?? "—"} />
+          <RailStat
+            label="provisions"
+            value={coord ? `${coord.provisions_ok}✓ / ${coord.provisions_failed}✗` : "—"}
+          />
+        </RailGroup>
+
+        <RailGroup label="Posture">
+          <Tooltip content={identity?.message} side="bottom">
+            <span aria-description={identity?.message}>
+              <RailStat
+                dot={identity ? identityDot(identity) : undefined}
+                label="identity"
+                value={identity?.mode ?? "—"}
+              />
+            </span>
+          </Tooltip>
+          <Tooltip content={authDetail(auth)} side="bottom">
+            <span aria-description={authDetail(auth)}>
+              <RailStat
+                dot={auth ? (auth.enabled ? "var(--green)" : "var(--faint)") : undefined}
+                label="auth"
+                value={auth ? (auth.enabled ? "on" : "off") : "—"}
+              />
+            </span>
+          </Tooltip>
+          {notes.map((n) => (
+            <RailStat key={n.label} label={n.label} value={n.text} color={n.color} />
+          ))}
+        </RailGroup>
+
+        <RailGroup label="Channel">
           <RailStat
             dot={room?.provisioned ? "var(--green)" : "var(--yellow)"}
-            label={`channel · ${roomName}`}
-          >
-            {room ? (room.provisioned ? "live" : "pending") : loaded ? "none" : "…"}
-          </RailStat>
-          <RailStat label="members">{room?.members.length ?? 0}</RailStat>
-          <RailStat label="episode">
-            <span style={{ color: room?.episode_active ? "var(--accent)" : undefined }}>
-              {room?.episode_active ? "active" : "idle"}
-            </span>
-          </RailStat>
-          <RailStat label="invites">
-            <span style={{ color: (room?.pending_invites ?? 0) > 0 ? "var(--yellow)" : undefined }}>
-              {room?.pending_invites ?? 0}
-            </span>
-          </RailStat>
+            value={room ? (room.provisioned ? "live" : "pending") : loaded ? "none" : "…"}
+          />
+          <RailStat label="members" value={room?.members.length ?? 0} />
+          <RailStat
+            label="episode"
+            value={room?.episode_active ? "active" : "idle"}
+            color={room?.episode_active ? "var(--accent)" : undefined}
+          />
+          <RailStat
+            label="invites"
+            value={room?.pending_invites ?? 0}
+            color={(room?.pending_invites ?? 0) > 0 ? "var(--yellow)" : undefined}
+          />
           {(room?.receive_errors ?? 0) > 0 && (
-            <RailStat label="recv-err">
-              <span style={{ color: "var(--red)" }}>{room?.receive_errors}</span>
-            </RailStat>
+            <RailStat label="recv-err" value={room?.receive_errors ?? 0} color="var(--red)" />
           )}
-        </div>
-        {/* A second line appears only when the two posture stats above leave
-            something unsaid — a tier that is selected but not in force, or a live
-            gate whose trusted issuers the operator would otherwise curl for. */}
-        {notes.length > 0 && (
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-muted-foreground">
-            {notes.map((n) => (
-              <span key={n.label} className="flex items-center gap-1.5">
-                <span>{n.label}</span>
-                <span style={{ color: n.color }}>{n.text}</span>
-              </span>
-            ))}
-          </div>
-        )}
+        </RailGroup>
       </div>
     );
   }
@@ -313,31 +321,60 @@ function SectionHeader({ title, dot, dotLabel }: { title: string; dot: string; d
     <div className="flex items-center gap-2 border-b border-border bg-paper px-4 py-2.5">
       <span className="text-label font-semibold text-text">{title}</span>
       <span className="ml-auto flex items-center gap-1.5 text-micro text-muted-foreground">
-        <span style={{ color: dot }}>●</span>
+        <StateDot color={dot} />
         {dotLabel}
       </span>
     </div>
   );
 }
 
+/** A status dot. Drawn rather than typed: the ● glyph sat on the text baseline
+ *  and picked up the font's own metrics, so it landed at a different height in
+ *  every row it appeared in. */
+function StateDot({ color, pulse = false }: { color: string; pulse?: boolean }) {
+  return (
+    <span
+      aria-hidden
+      className={`inline-block size-1.5 flex-shrink-0 rounded-full ${pulse ? "animate-pulse" : ""}`}
+      style={{ background: color }}
+    />
+  );
+}
+
+/** One labelled line of the rail: a caps label in its own column, then the
+ *  group's stats. The label column is fixed by the parent grid, so all three
+ *  groups' stats start at the same x. */
+function RailGroup({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <>
+      <span className="caps-mono-sm text-faint">{label}</span>
+      <span className="flex flex-wrap items-center gap-x-3 gap-y-1">{children}</span>
+    </>
+  );
+}
+
+/** One stat. The label is optional — the first stat in a group is the group's
+ *  headline value and is already named by the group label beside it. */
 function RailStat({
   label,
+  value,
   dot,
-  children,
+  color,
+  mono = false,
 }: {
-  label: string;
+  label?: string;
+  value: React.ReactNode;
   dot?: string;
-  children: React.ReactNode;
+  color?: string;
+  mono?: boolean;
 }) {
   return (
     <span className="flex items-center gap-1.5">
-      {dot && (
-        <span style={{ color: dot }} aria-hidden>
-          ●
-        </span>
-      )}
-      <span className="text-muted-foreground">{label}</span>
-      <span className="tabular text-text">{children}</span>
+      {dot && <StateDot color={dot} />}
+      {label && <span className="text-muted-foreground">{label}</span>}
+      <span className={mono ? "font-mono text-text" : "tabular text-text"} style={{ color }}>
+        {value}
+      </span>
     </span>
   );
 }

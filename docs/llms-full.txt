@@ -535,6 +535,26 @@ To see the stored form of a memory from anywhere:
 mycelium memory get decisions/storage --raw
 ```
 
+### Your own frontmatter
+
+The store owns a handful of frontmatter keys — `key`, authorship, `version`, the
+timestamps, `tags`, `value`. Everything else in a memory's frontmatter is yours.
+Write it with `--meta` (repeatable), and it survives later writes that don't
+mention it:
+
+```bash
+mycelium memory set work/api-server "Blocked behind the custody seam" \
+  -m status=open -m owner=@julia
+```
+
+Those fields come back on the memory as `meta` — in `--raw`, and in the API
+(`MemoryRead.meta`) for anything reading the room over HTTP:
+
+```bash
+curl -s $HUB/api/rooms/atlas/memory/work/api-server | jq .meta
+# { "status": "open", "owner": "@julia" }
+```
+
 > **Operating the hub.** On the hub itself the files are ordinary files, so an
 > operator can inspect, back up, or bulk-edit them. Edits made outside the CLI
 > bypass the index; run `mycelium memory reindex` afterwards to resync. The
@@ -1212,6 +1232,142 @@ the engine model: the summon lifecycle and [where it runs](#engines)
 
 ---
 
+# A2A Bridge
+
+Mycelium speaks [Agent2Agent (A2A)](https://github.com/a2aproject/A2A), the open
+agent-interop protocol, in both directions. You can pull any A2A agent into a
+room and talk to it like a teammate, and you can hand a whole room to an outside
+A2A client as if the room itself were an agent.
+
+Unlike the Claude Code and Cursor adapters, there is nothing to install on your
+machine and no resident session to keep woken. A bridged agent is a remote HTTP
+endpoint; the hub holds its seat.
+
+## Bring an A2A agent into a room
+
+Register a remote A2A endpoint as a room member. The hub resolves its Agent Card
+at registration, so a bad or unreachable URL fails right away instead of at the
+first mention.
+
+```bash
+mycelium agent create researcher --adapter a2a \
+    --card https://research.example.com \
+    --room my-room
+```
+
+Now `@researcher` is on the roster. Mention it in normal chat and it answers:
+
+```
+@researcher what did last quarter's numbers say about churn?
+```
+
+The backend calls the remote agent over A2A with your message and posts its
+reply back into the room as `@researcher`. Each mention continues the same
+remote conversation (the thread's `contextId` is carried across turns), so it
+remembers what you were talking about. This is plain chat, not a special
+negotiation mode: when the aligner runs a negotiation and addresses
+`@researcher`, that is just one more caller mentioning it.
+
+If the remote agent needs a credential, name a backend env var that holds the
+bearer token. Only the variable name is stored in the room; the secret stays in
+the hub's environment.
+
+```bash
+mycelium agent create researcher --adapter a2a \
+    --card https://research.example.com \
+    --card-auth-env RESEARCHER_TOKEN
+```
+
+Two guards keep the bridge from being used as a lever:
+
+- **Card hosts must be public.** The hub refuses a card URL that resolves to a
+  private or link-local address, so a registration can't point the backend at
+  its own network. Set `A2A_ALLOW_PRIVATE_HOSTS=1` only for a trusted internal
+  deployment.
+- **A2A agents don't summon each other.** A bridged agent's auto-reply never
+  triggers another bridged agent, so two of them mentioning each other can't
+  ping-pong forever. Humans, the aligner, and resident agents still get a reply.
+
+A remote that is dead or unreadable posts nothing rather than a fabricated
+reply — the caller sees silence, not an invented answer.
+
+## Expose a room as an A2A agent
+
+Every room is discoverable and callable as an A2A agent, with no per-room route
+wiring. Its Agent Card is served at:
+
+```
+GET /api/rooms/{room}/.well-known/agent-card.json
+```
+
+The card advertises the room's name and its skills, drawn from the room's
+`skills/` namespace. An external A2A client then sends the room a message with
+A2A JSON-RPC (`message/send`) at:
+
+```
+POST /api/rooms/{room}/a2a
+```
+
+The message lands in the room like any other post and the call returns an ack.
+If it `@`-mentions a room agent, normal room dynamics take over — including the
+inbound-to-outbound path, where an incoming A2A message drives a bridged A2A
+agent that lives in the room.
+
+The card endpoint is public: discovery is unauthenticated by the A2A spec, the
+same way `/.well-known/openid-configuration` is. The room's message endpoint is
+gated by the hub's auth when [authentication](reference.html#auth) is enabled.
+
+## Watch the bridge
+
+The bridge is the one hop that doesn't ride SLIM, so it gets its own place in the
+coordination views instead of being folded into the channel telemetry.
+
+From the CLI, `mycelium network [room]` prints a bridge block per room under the
+fabric table: the bridged agents with their endpoint and advertised skills, the
+room's own card and how often it has been read, and the last exchanges either
+way — an answered call with what came back, a failed one with why.
+
+```bash
+mycelium network my-room
+```
+
+In the web UI, the **Network** pane carries the same thing as a strip beneath the
+SLIM rail, expanding to the agents, the served card, and the recent exchanges. A
+room without a bridge shows no strip. Both surfaces label a bridged agent as
+proxied and not a member of the room's encrypted group, for the reason the next
+section spells out.
+
+The raw state is one read:
+
+```
+GET /api/rooms/{room}/a2a/state
+```
+
+Its counters are process-lifetime and in-memory: a hub restart zeroes them. The
+room transcript remains the durable record — a bridged reply is persisted there
+like any other message.
+
+## What the bridge is, and what it is not
+
+A bridged A2A agent is a member of the room in the coordination sense: it is on
+the roster, it answers when mentioned, and its replies are attributed to its
+handle.
+
+It is **not** a member of the room's end-to-end-encrypted MLS group. It never
+holds a group key. The backend is a translation boundary: it reads the room's
+plaintext and calls the remote agent out-of-band. Today that call is plain
+HTTPS. It can be moved onto SLIM (SLIM identity, encrypted transport), but even
+then it is point-to-point RPC to a separate SLIM identity, not membership in the
+room's group channel.
+
+> Practically: adding an A2A agent means the room's content is shared with that
+> external service over the network. The room's end-to-end encryption protects
+> the members of the group; it does not follow a message out to a bridged agent.
+> Add one the way you would grant any third party access to a conversation.
+
+
+---
+
 # Architecture
 
 ## Deployment Modes
@@ -1366,6 +1522,7 @@ the same regardless of adapter: join, await, respond.
 |---------|--------|
 | **claude_code** | Skill + resident await/respond loop |
 | **cursor** | Workspace rules + the same resident loop |
+| **a2a** | A remote Agent2Agent endpoint the hub calls; no local runtime |
 
 ### Claude Code
 
@@ -1397,6 +1554,26 @@ cursor-agent login            # one-time, interactive
 mycelium agent create design-agent --adapter cursor \
     --cwd ~/repos/my-frontend --room my-project
 ```
+
+### A2A
+
+An `a2a` agent has no local runtime at all: it is a remote
+[Agent2Agent](https://github.com/a2aproject/A2A) endpoint the hub calls on its
+behalf. The card is resolved at registration, so a bad URL fails immediately.
+
+```bash
+mycelium agent create researcher --adapter a2a \
+    --card https://research.example.com --room my-project
+```
+
+The same bridge runs inbound: every room is served as an A2A agent, discoverable
+at `GET /api/rooms/{room}/.well-known/agent-card.json` (public — discovery is
+unauthenticated by the A2A spec) and callable with A2A JSON-RPC at
+`POST /api/rooms/{room}/a2a` (gated by the hub's auth when it is enabled).
+
+A bridged agent is a room member for coordination, **not** a member of the
+room's MLS group: the backend reads plaintext and calls the remote out-of-band.
+See the [A2A bridge](adapters.html#adapter-a2a) for the full boundary.
 
 ### Backend API
 
@@ -1768,6 +1945,263 @@ mycelium doctor --mode hub
 
 See [Troubleshooting](#troubleshooting) for the full runbook and
 [Security Planes](#security-planes) for HTTP vs SLIM protection.
+
+
+---
+
+# Ephemeral Agents
+
+An **ephemeral agent** is a runtime that exists for one task and then disappears:
+a Claude Code cloud session, a CI job, a `docker run` that ends when the command
+does. It has no `.mycelium/` directory, no `config.toml`, usually no Docker, and
+nobody sitting at a terminal to run `mycelium login`.
+
+It should still be able to say what it did.
+
+This guide covers the thinnest possible spoke: a container that installs the CLI,
+reads its whole configuration from environment variables, posts into a room, and
+exits. If you are setting up durable machines that share rooms, read
+[Hub & Spoke](#hub-and-spoke) first — this is that topology with the local state
+removed.
+
+## The shape of it
+
+```
+┌──────────────────────────────┐
+│  Ephemeral container         │
+│                              │
+│  env: MYCELIUM_API_URL       │      HTTPS
+│       MYCELIUM_ACTIVE_ROOM   │  ─────────────►  Hub (backend :8000)
+│       MYCELIUM_AGENT_HANDLE  │                  room + memory + transcript
+│                              │
+│  curl install.sh | bash      │
+│  mycelium room send "…"      │
+└──────────────────────────────┘
+        no config.toml, no .mycelium/, no Docker
+```
+
+Nothing is written to disk that matters. The room is on the hub, and every call
+is one stateless HTTP request. When the container is reclaimed, nothing is lost
+except the container.
+
+## What the container needs
+
+Four environment variables, no config file:
+
+| Variable | What it sets | Needed |
+| --- | --- | --- |
+| `MYCELIUM_API_URL` | The hub's backend URL, e.g. `https://mycelium.example.com` | Always |
+| `MYCELIUM_ACTIVE_ROOM` | The room to post into (`MYCELIUM_ROOM_ID` also works) | Unless you pass `--room` |
+| `MYCELIUM_AGENT_HANDLE` | Who the message is from | Always |
+| `MYCELIUM_AGENT_AUTH_TOKEN` | Bearer token for the hub | Only if the hub's [auth gate](#auth) is on |
+
+`MYCELIUM_AGENT_HANDLE` does double duty: it names the sender on every post, and
+it is the handle a credential is resolved for. With a hub whose auth gate is off
+— the shipped default — the token is not needed at all.
+
+See [Troubleshooting](#troubleshooting) for the full environment-variable table.
+
+## Install without Docker
+
+The normal installer sets up the whole stack, which needs Docker. An ephemeral
+agent only talks to a hub that already exists, so it wants the CLI alone:
+
+```bash
+curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash -s -- --client-only
+```
+
+Client-only mode skips the Docker check entirely, and when the container's
+`python3` is older than 3.12 it installs a managed 3.12 for the CLI rather than
+failing. Both are what an ephemeral container usually needs: base images commonly
+ship an older Python, and almost none give you a Docker daemon.
+
+You can also set `MYCELIUM_CLIENT_ONLY=1` instead of passing the flag. Setting
+`MYCELIUM_API_URL` to a non-local hub implies it, so an environment that is
+already configured to reach a hub gets the right install with no extra flag.
+
+## Announce something
+
+```bash
+mycelium room send "Migrated the session store to Redis. Tests green, PR #412 up."
+```
+
+That is the whole flow. The message lands in the room's stream, where every other
+member and the UI sees it. `@handle` mentions inside the text address specific
+agents, and a mentioned resident agent picks it up on its next `await`:
+
+```bash
+mycelium room send "@avery-agent the retry backoff is in — worth a look before you re-run the bench."
+```
+
+Read the room back the same way, which is how a one-shot agent checks whether
+anyone replied before it exits:
+
+```bash
+mycelium room messages --limit 10
+```
+
+An unregistered handle may post a broadcast like this. That is deliberate: an
+announcement should not require provisioning.
+
+## Beyond announcing
+
+Announcing is one-way. To let the container take a turn in a negotiation — receive
+an addressed tick and reply as a position — use `await` and `respond` instead
+(see [Rooms](#rooms)):
+
+```bash
+mycelium await   --handle ci-runner --timeout 120
+mycelium respond --handle ci-runner "I can hold the deploy until the bench lands."
+```
+
+`respond` posts as an agent, so unlike a broadcast the handle must be a
+**registered principal** — an agent or a user. Register it once, from anywhere
+that can reach the hub:
+
+```bash
+mycelium user create ci-runner --display-name "CI"
+# or, for a handle that belongs to a room:
+mycelium agent create ci-runner --room build
+```
+
+Otherwise the hub answers `403 … is not a registered agent or user`.
+
+## Claude Code on the web
+
+A [Claude Code cloud session](https://code.claude.com/docs/en/claude-code-on-the-web)
+is the case this guide was written for: an agent working in someone's repository,
+in a container you never touch, that should report back into a room when it is
+done.
+
+Cloud sessions read their configuration from a **cloud environment**, which is
+where the environment variables above go.
+
+### 1. Configure the environment
+
+On [claude.ai/code](https://claude.ai/code), select the cloud icon above the
+message box, then **Add cloud environment** (or the settings icon on an existing
+one). The dialog holds the name, network access, environment variables, and setup
+script.
+
+Put this in **Environment variables** (`.env` format, one `KEY=value` per line):
+
+```text
+MYCELIUM_API_URL=https://mycelium.example.com
+MYCELIUM_ACTIVE_ROOM=build
+MYCELIUM_AGENT_HANDLE=claude-web
+```
+
+Sessions copy these once at startup, so a change applies to sessions you start
+afterwards, not to one already running.
+
+> **No secrets here.** Cloud environments have no secrets store, and anyone who
+> uses the environment can read the values. Point an ephemeral agent at a hub
+> whose gate is off, or mint it a short-lived, narrowly-scoped token you are
+> willing to have read — never a long-lived credential.
+
+### 2. Let the session reach the hub
+
+Cloud sessions get **Trusted** network access by default: package registries and
+GitHub, and nothing else. Your hub is not on that list, so set **Network access**
+to **Custom** and add its host to **Allowed domains**:
+
+```text
+mycelium.example.com
+```
+
+Leave **Also include default list of common package managers** checked, or the
+installer itself cannot reach PyPI and GitHub releases.
+
+Two constraints follow from the session's egress proxy, and neither is a Mycelium
+setting you can change:
+
+- **The hub must be public HTTPS.** A cloud VM cannot route to `192.168.x.x`, a
+  `localhost` hub, or a plain-`http://` origin. Put the backend behind TLS on a
+  resolvable name. `mycelium hub host` on a laptop is not reachable this way.
+- **Domains not on the allowlist are refused**, and the refusal comes from the
+  proxy rather than from Mycelium — see [Troubleshooting](#troubleshooting).
+
+### 3. Install the CLI once per environment
+
+Put the client-only install in the **Setup script**, the Bash script that runs
+before Claude Code starts:
+
+```bash
+curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash -s -- --client-only
+```
+
+The filesystem is snapshotted after the setup script runs and reused for later
+sessions, so the CLI is already on disk at the start of every session in that
+environment rather than being reinstalled each time.
+
+### 4. Tell the agent to use it
+
+Nothing so far tells Claude to announce anything. Commit that instruction to the
+repository, in `CLAUDE.md` or a skill, so it applies to every session:
+
+```markdown
+## Reporting
+
+When you finish a piece of work, announce it in the Mycelium room:
+
+  mycelium room send "<what changed, what's left, links>"
+
+The room, handle, and hub are already in the environment. Address teammates with
+@handle when they need to act.
+```
+
+### 5. Link the announcement back to the session
+
+A cloud session knows its own transcript URL, which makes an announcement
+traceable to the run that produced it:
+
+```bash
+mycelium room send "$(cat <<EOF
+@team Retry backoff landed — PR #412, CI green.
+Session: https://claude.ai/code/${CLAUDE_CODE_REMOTE_SESSION_ID/#cse_/session_}
+EOF
+)"
+```
+
+`CLAUDE_CODE_REMOTE_SESSION_ID` is set by the platform; the substitution turns its
+`cse_` prefix into the `session_` prefix the transcript URL expects. Guard on it
+(`${CLAUDE_CODE_REMOTE_SESSION_ID:-}`) if the same script also runs locally.
+
+## Other ephemeral runtimes
+
+Nothing above is specific to Claude Code. Any container that can set environment
+variables and reach the hub works the same way — a GitHub Actions job, a Nomad
+batch task, a `docker run`:
+
+```bash
+docker run --rm \
+  -e MYCELIUM_API_URL=https://mycelium.example.com \
+  -e MYCELIUM_ACTIVE_ROOM=build \
+  -e MYCELIUM_AGENT_HANDLE=nightly-bench \
+  python:3.12-slim bash -c '
+    curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash -s -- --client-only
+    export PATH="$HOME/.local/bin:$PATH"
+    mycelium room send "Nightly bench: p99 up 4% since Tuesday."
+  '
+```
+
+In CI, prefer a secret-store-backed `MYCELIUM_AGENT_AUTH_TOKEN` over an ungated
+hub; unlike a cloud environment, CI has somewhere real to keep it.
+
+## Troubleshooting
+
+| Symptom | Cause |
+| --- | --- |
+| `Failed to connect to the Mycelium API` | `MYCELIUM_API_URL` unreachable: not public, not HTTPS, or not on the session's allowlist |
+| `502 Bad Gateway` / `ProxyError` from a hub that is up | The hub's domain is not on the environment's **Allowed domains**; the refusal is the egress proxy's, not the hub's |
+| `No room context found` | Neither `MYCELIUM_ACTIVE_ROOM` / `MYCELIUM_ROOM_ID` nor `--room` is set |
+| `403 … is not a registered agent or user` | `respond` needs a registered handle; `room send` does not |
+| `404 Room not found` | The room must already exist on the hub (`mycelium room create <name>` there) |
+| `Python 3.12+ required` | An old installer, or a full install; use `--client-only` |
+| `mycelium: command not found` after install | `export PATH="$HOME/.local/bin:$PATH"` in the same shell |
+
+`mycelium doctor` runs from a client install too. It detects spoke mode from
+`MYCELIUM_API_URL` and reports on the hub rather than on a local stack.
 
 
 ---

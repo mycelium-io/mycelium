@@ -43,6 +43,7 @@ from app.schemas import (
 from app.services import actor, links, local_state, memory_sync, search_index
 from app.services.embedding import embed_text
 from app.services.filesystem import (
+    MANAGED_META,
     delete_memory_file,
     get_room_dir,
     list_memory_files,
@@ -50,6 +51,7 @@ from app.services.filesystem import (
     read_memory_file,
     recover_timestamps,
     room_exists,
+    unmanaged_meta,
     value_to_content,
     write_memory_file,
 )
@@ -58,12 +60,6 @@ from app.services.search_index import stable_memory_id
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/rooms/{room_name}/memory", tags=["memory"])
-
-# Frontmatter the store owns. Everything else in a memory's frontmatter is user
-# data: it survives a rewrite, and a caller can set it via ``MemoryCreate.meta``.
-MANAGED_META = frozenset(
-    {"key", "created_by", "updated_by", "version", "created_at", "updated_at", "tags", "value"}
-)
 
 
 def _require_room(room_name: str) -> None:
@@ -109,6 +105,7 @@ def _memory_read_from_file(room_name: str, key: str, meta: dict, content: str) -
         updated_by=meta.get("updated_by"),
         version=meta.get("version", 1),
         tags=meta.get("tags"),
+        meta=unmanaged_meta(meta) or None,
         expandable=links.is_expandable(meta),
         created_at=created_at,
         updated_at=updated_at,
@@ -269,9 +266,7 @@ async def upsert_memories(room_name: str, payload: MemoryBatchCreate) -> list[Me
         # Frontmatter the store doesn't manage is user data — carry it forward so
         # a content update doesn't silently drop a page's `expandable: true` or
         # its typed relations — then overlay whatever this write supplies.
-        extra_meta: dict[str, Any] = {
-            k: v for k, v in existing_meta.items() if k not in MANAGED_META
-        }
+        extra_meta: dict[str, Any] = unmanaged_meta(existing_meta)
         if item.meta:
             extra_meta.update({k: v for k, v in item.meta.items() if k not in MANAGED_META})
 
@@ -311,6 +306,7 @@ async def upsert_memories(room_name: str, payload: MemoryBatchCreate) -> list[Me
                 "updated_by": item.created_by,
                 "version": new_version,
                 "tags": item.tags,
+                "meta": unmanaged_meta(extra_meta) or None,
                 "expandable": links.is_expandable(extra_meta),
                 "created_at": created_at.isoformat(),
                 "updated_at": now.isoformat(),
@@ -330,6 +326,7 @@ async def upsert_memories(room_name: str, payload: MemoryBatchCreate) -> list[Me
                 updated_by=item.created_by,
                 version=new_version,
                 tags=item.tags,
+                meta=unmanaged_meta(extra_meta) or None,
                 expandable=links.is_expandable(extra_meta),
                 created_at=created_at,
                 updated_at=now,
@@ -431,6 +428,7 @@ async def search_memories(room_name: str, payload: MemorySearchRequest):
             updated_by=rec.get("updated_by"),
             version=rec.get("version", 1),
             tags=rec.get("tags"),
+            meta=rec.get("meta") or None,
             expandable=bool(rec.get("expandable")),
             created_at=created_at,
             updated_at=updated_at,

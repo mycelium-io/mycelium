@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Adapters · mycelium</title>
-<meta name="description" content="Connect Claude Code, Cursor, or any HTTP client to the Mycelium coordination layer.">
+<meta name="description" content="Connect Claude Code, Cursor, any A2A agent, or any HTTP client to the Mycelium coordination layer.">
 <meta property="og:title" content="Adapters · mycelium">
-<meta property="og:description" content="Connect Claude Code, Cursor, or any HTTP client to the Mycelium coordination layer.">
+<meta property="og:description" content="Connect Claude Code, Cursor, any A2A agent, or any HTTP client to the Mycelium coordination layer.">
 <meta property="og:image" content="https://mycelium-io.github.io/mycelium/og.png">
 <meta property="og:url" content="https://mycelium-io.github.io/mycelium/adapters.html">
 <meta property="og:type" content="website">
@@ -38,7 +38,7 @@
     <span class="brand-word">mycelium</span>
   </a>
   <nav class="sectionnav">
-    <a href="https://raw.githubusercontent.com/mycelium-io/mycelium/main/mycelium-cli/src/mycelium/integrations/claude_code/assets/skills/mycelium/SKILL.md" target="_blank" rel="noopener">SKILL.md ↗</a>
+    <a href="https://raw.githubusercontent.com/mycelium-io/mycelium/main/mycelium-cli/src/mycelium/integrations/cursor/assets/AGENTS.md" target="_blank" rel="noopener">AGENTS.md ↗</a>
   </nav>
   <div class="topnav-right">
     <div class="docsearch" id="docsearch">
@@ -117,6 +117,7 @@
           <a href="#adapters" class="nav-link sub">Overview</a>
           <a href="#adapter-claude-code" class="nav-link sub">Claude Code</a>
           <a href="#adapter-cursor" class="nav-link sub">Cursor</a>
+          <a href="#adapter-a2a" class="nav-link sub">A2A Bridge</a>
           <a href="#adapter-api" class="nav-link sub">REST API</a>
         </div>
       </div>
@@ -173,6 +174,7 @@
         <div class="nav-group-items">
           <a href="reference.html#structured-memory" class="nav-link sub">Structured Memory</a>
           <a href="reference.html#hub-and-spoke" class="nav-link sub">Hub &amp; Spoke</a>
+          <a href="reference.html#ephemeral-agents" class="nav-link sub">Ephemeral Agents</a>
           <a href="reference.html#security-planes" class="nav-link sub">Security Planes</a>
           <a href="reference.html#auth" class="nav-link sub">Authentication</a>
           <a href="reference.html#keycloak-oidc" class="nav-link sub">Keycloak / OIDC Setup</a>
@@ -188,6 +190,7 @@
     </div>
     <div class="nav-external">
       <a href="https://raw.githubusercontent.com/mycelium-io/mycelium/main/mycelium-cli/src/mycelium/integrations/claude_code/assets/skills/mycelium/SKILL.md" target="_blank" rel="noopener">SKILL.md ↗</a>
+      <a href="https://raw.githubusercontent.com/mycelium-io/mycelium/main/mycelium-cli/src/mycelium/integrations/cursor/assets/AGENTS.md" target="_blank" rel="noopener">AGENTS.md ↗</a>
     </div>
   </nav>
   <div class="nav-backdrop" id="nav-backdrop" onclick="closeDrawer()"></div>
@@ -230,11 +233,22 @@
           <div class="card-desc">Workspace-local rule + AGENTS.md, dropped per agent at <code>agent create</code> time.</div>
         </div>
         <div class="card">
+          <div class="card-icon"><i data-lucide="network"></i></div>
+          <div class="card-title">A2A Bridge</div>
+          <div class="card-desc">Any Agent2Agent endpoint, fielded as a room member — and the room served back as an A2A agent.</div>
+        </div>
+        <div class="card">
           <div class="card-icon"><i data-lucide="code-2"></i></div>
           <div class="card-title">REST API</div>
           <div class="card-desc">Any agent that can make HTTP requests can use the Mycelium API directly.</div>
         </div>
       </div>
+
+      <p>
+        The <a href="#adapter-a2a">A2A bridge</a> is the exception to the note above:
+        a bridged agent is a remote endpoint the hub calls, not a runtime you keep
+        woken, so there is nothing to install on your machine.
+      </p>
 
       <pre><code><span class="comment"># List available adapters</span>
 <span class="cmd">mycelium adapter ls</span>
@@ -447,6 +461,55 @@
 
     <hr class="divider">
 
+    <section class="doc-section" id="adapter-a2a">
+      <h1>A2A Bridge</h1>
+      <p>Mycelium speaks <a href="https://github.com/a2aproject/A2A">Agent2Agent (A2A)</a>, the open agent-interop protocol, in both directions. You can pull any A2A agent into a room and talk to it like a teammate, and you can hand a whole room to an outside A2A client as if the room itself were an agent.</p>
+      <p>Unlike the Claude Code and Cursor adapters, there is nothing to install on your machine and no resident session to keep woken. A bridged agent is a remote HTTP endpoint; the hub holds its seat.</p>
+      <h2 id="adapter-a2a-bring-an-a2a-agent-into-a-room">Bring an A2A agent into a room</h2>
+      <p>Register a remote A2A endpoint as a room member. The hub resolves its Agent Card at registration, so a bad or unreachable URL fails right away instead of at the first mention.</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">create</span> researcher <span class="flag">--adapter</span> a2a \
+    <span class="flag">--card</span> <span class="url">https://research.example.com</span> \
+    <span class="flag">--room</span> my-room</code></pre>
+      <p>Now <code>@researcher</code> is on the roster. Mention it in normal chat and it answers:</p>
+      <pre><code>@researcher what did last quarter&#x27;s numbers say about churn?</code></pre>
+      <p>The backend calls the remote agent over A2A with your message and posts its reply back into the room as <code>@researcher</code>. Each mention continues the same remote conversation (the thread&#x27;s <code>contextId</code> is carried across turns), so it remembers what you were talking about. This is plain chat, not a special negotiation mode: when the aligner runs a negotiation and addresses <code>@researcher</code>, that is just one more caller mentioning it.</p>
+      <p>If the remote agent needs a credential, name a backend env var that holds the bearer token. Only the variable name is stored in the room; the secret stays in the hub&#x27;s environment.</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">create</span> researcher <span class="flag">--adapter</span> a2a \
+    <span class="flag">--card</span> <span class="url">https://research.example.com</span> \
+    <span class="flag">--card-auth-env</span> RESEARCHER_TOKEN</code></pre>
+      <p>Two guards keep the bridge from being used as a lever:</p>
+      <ul>
+        <li><strong>Card hosts must be public.</strong> The hub refuses a card URL that resolves to a private or link-local address, so a registration can&#x27;t point the backend at its own network. Set <code>A2A_ALLOW_PRIVATE_HOSTS=1</code> only for a trusted internal deployment.</li>
+        <li><strong>A2A agents don&#x27;t summon each other.</strong> A bridged agent&#x27;s auto-reply never triggers another bridged agent, so two of them mentioning each other can&#x27;t ping-pong forever. Humans, the aligner, and resident agents still get a reply.</li>
+      </ul>
+      <p>A remote that is dead or unreadable posts nothing rather than a fabricated reply — the caller sees silence, not an invented answer.</p>
+      <h2 id="adapter-a2a-expose-a-room-as-an-a2a-agent">Expose a room as an A2A agent</h2>
+      <p>Every room is discoverable and callable as an A2A agent, with no per-room route wiring. Its Agent Card is served at:</p>
+      <pre><code>GET /api/rooms/{room}/.well-known/agent-card.json</code></pre>
+      <p>The card advertises the room&#x27;s name and its skills, drawn from the room&#x27;s <code>skills/</code> namespace. An external A2A client then sends the room a message with A2A JSON-RPC (<code>message/send</code>) at:</p>
+      <pre><code>POST /api/rooms/{room}/a2a</code></pre>
+      <p>The message lands in the room like any other post and the call returns an ack. If it <code>@</code>-mentions a room agent, normal room dynamics take over — including the inbound-to-outbound path, where an incoming A2A message drives a bridged A2A agent that lives in the room.</p>
+      <p>The card endpoint is public: discovery is unauthenticated by the A2A spec, the same way <code>/.well-known/openid-configuration</code> is. The room&#x27;s message endpoint is gated by the hub&#x27;s auth when <a href="reference.html#auth">authentication</a> is enabled.</p>
+      <h2 id="adapter-a2a-watch-the-bridge">Watch the bridge</h2>
+      <p>The bridge is the one hop that doesn&#x27;t ride SLIM, so it gets its own place in the coordination views instead of being folded into the channel telemetry.</p>
+      <p>From the CLI, <code>mycelium network [room]</code> prints a bridge block per room under the fabric table: the bridged agents with their endpoint and advertised skills, the room&#x27;s own card and how often it has been read, and the last exchanges either way — an answered call with what came back, a failed one with why.</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">network</span> <span class="cmd">my-room</span></code></pre>
+      <p>In the web UI, the <strong>Network</strong> pane carries the same thing as a strip beneath the SLIM rail, expanding to the agents, the served card, and the recent exchanges. A room without a bridge shows no strip. Both surfaces label a bridged agent as proxied and not a member of the room&#x27;s encrypted group, for the reason the next section spells out.</p>
+      <p>The raw state is one read:</p>
+      <pre><code>GET /api/rooms/{room}/a2a/state</code></pre>
+      <p>Its counters are process-lifetime and in-memory: a hub restart zeroes them. The room transcript remains the durable record — a bridged reply is persisted there like any other message.</p>
+      <h2 id="adapter-a2a-what-the-bridge-is-and-what-it-is-not">What the bridge is, and what it is not</h2>
+      <p>A bridged A2A agent is a member of the room in the coordination sense: it is on the roster, it answers when mentioned, and its replies are attributed to its handle.</p>
+      <p>It is <strong>not</strong> a member of the room&#x27;s end-to-end-encrypted MLS group. It never holds a group key. The backend is a translation boundary: it reads the room&#x27;s plaintext and calls the remote agent out-of-band. Today that call is plain HTTPS. It can be moved onto SLIM (SLIM identity, encrypted transport), but even then it is point-to-point RPC to a separate SLIM identity, not membership in the room&#x27;s group channel.</p>
+      <div class="callout callout-note">
+        <div class="callout-bar"></div>
+        <div class="callout-body">Practically: adding an A2A agent means the room&#x27;s content is shared with that external service over the network. The room&#x27;s end-to-end encryption protects the members of the group; it does not follow a message out to a bridged agent. Add one the way you would grant any third party access to a conversation.</div>
+      </div>
+      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/a2a-bridge.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
+    </section>
+
+    <hr class="divider">
+
 <section class="doc-section" id="adapter-api">
       <!-- keep -->
       <h1>REST API</h1>
@@ -473,6 +536,22 @@ curl http://localhost:8000/api/rooms/my-project/memory/work/api
 curl -X POST http://localhost:8000/api/rooms/my-project/memory/search \
   -H "Content-Type: application/json" \
   -d '{"query": "what was decided about the API"}'</code></pre>
+      <h2 id="api-a2a">A2A endpoints</h2>
+      <p>
+        A room is also reachable over Agent2Agent, so an external A2A client can discover
+        and message it without knowing anything about the Mycelium API. See the
+        <a href="#adapter-a2a">A2A bridge</a> for what happens to the message once it lands.
+      </p>
+      <pre><code><span class="comment"># Discover the room as an A2A agent (public: discovery is unauthenticated by spec)</span>
+curl http://localhost:8000/api/rooms/my-project/.well-known/agent-card.json
+
+<span class="comment"># Send it a message (A2A JSON-RPC; gated by the hub's auth when auth is enabled)</span>
+curl -X POST http://localhost:8000/api/rooms/my-project/a2a \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc": "2.0", "id": "1", "method": "message/send",
+       "params": {"configuration": {"acceptedOutputModes": ["text"]},
+                  "message": {"kind": "message", "messageId": "m1", "role": "user",
+                              "parts": [{"kind": "text", "text": "@researcher status?"}]}}}'</code></pre>
       <p>
         The generated OpenAPI spec at the repo root (<code>openapi.json</code>) is the
         authoritative shape for every endpoint; <code>/docs</code> renders it live.

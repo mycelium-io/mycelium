@@ -1,0 +1,18 @@
+# Ruff configuration for the maintainer scripts in scripts/.
+#
+# `fastapi-backend` and `mycelium-cli` each carry their own config; scripts/ sat
+# outside both, so the tooling the repo lints everything else with had nothing to
+# say about the CI gates, regenerators, and asset builders that live here. This
+# is the CLI's rule set, minus the package-shaped rules that don't apply to
+# standalone scripts.
+line-length = 100
+target-version = "py312"
+
+[lint]
+select = ["E", "W", "F", "I", "B", "C4", "UP", "ARG", "SIM"]
+ignore = [
+    "E501",
+    "SIM102",
+    "SIM105",
+    "SIM108",
+]

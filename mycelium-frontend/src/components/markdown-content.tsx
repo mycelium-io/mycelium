@@ -6,6 +6,7 @@
 import React from "react";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { Tooltip } from "@/components/ui/tooltip";
 
 // Mentions, memory links, transclusions, and skill references, in one pass so a
 // body is split once. `![[…]]` is listed before `[[…]]` so the transclusion form
@@ -86,13 +87,15 @@ function MemoryLinkChip({ link, broken, onClick }: LinkProps) {
 
   if (broken) {
     return (
-      <span
-        title={`${link.target} — no such memory`}
-        className={`${base} text-muted-foreground line-through decoration-red/60`}
-      >
-        {link.transclusion && <span aria-hidden className="not-italic">⧉</span>}
-        {text}
-      </span>
+      <Tooltip content={`${link.target} — no such memory`}>
+        <span
+          aria-description={`${link.target} — no such memory`}
+          className={`${base} text-muted-foreground line-through decoration-red/60`}
+        >
+          {link.transclusion && <span aria-hidden className="not-italic">⧉</span>}
+          {text}
+        </span>
+      </Tooltip>
     );
   }
 
@@ -106,15 +109,18 @@ function MemoryLinkChip({ link, broken, onClick }: LinkProps) {
   if (!onClick) {
     return <span className={`${base} text-accent`}>{body}</span>;
   }
+  const action = link.transclusion ? `Embeds ${link.target}` : `Open ${link.target}`;
   return (
-    <button
-      type="button"
-      onClick={() => onClick(link.target)}
-      title={link.transclusion ? `Embeds ${link.target}` : `Open ${link.target}`}
-      className={`${base} text-accent hover:bg-accent-soft hover:underline`}
-    >
-      {body}
-    </button>
+    <Tooltip content={action}>
+      <button
+        type="button"
+        onClick={() => onClick(link.target)}
+        aria-description={action}
+        className={`${base} text-accent hover:bg-accent-soft hover:underline`}
+      >
+        {body}
+      </button>
+    </Tooltip>
   );
 }
 

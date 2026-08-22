@@ -226,12 +226,10 @@ export function MemoryDetail({
   const text = memory.content_text ?? formatValue(memory.value);
   const displayText = !raw && renderedBody ? renderedBody : text;
   const rawIsJson = useMemo(() => isJsonRawText(text), [text]);
+  // jsonView only means anything in raw mode.
+  const effectiveJsonView = raw && jsonView;
   const rawDisplay =
-    jsonView && rawIsJson ? (prettyPrintJsonRawText(text) ?? text) : text;
-
-  useEffect(() => {
-    if (!raw) setJsonView(false);
-  }, [raw]);
+    effectiveJsonView && rawIsJson ? (prettyPrintJsonRawText(text) ?? text) : text;
 
   useEffect(() => {
     if (!roomName) return;
@@ -341,11 +339,11 @@ export function MemoryDetail({
         {raw && rawIsJson && (
           <button
             type="button"
-            aria-pressed={jsonView}
+            aria-pressed={effectiveJsonView}
             aria-label="Pretty-print JSON"
             onClick={() => setJsonView(on => !on)}
             className={`rounded-lg border px-2.5 py-1 text-micro font-medium transition-colors ${
-              jsonView
+              effectiveJsonView
                 ? "border-accent/40 bg-accent-soft/40 text-accent"
                 : "border-border bg-surface text-muted-foreground hover:text-text"
             }`}
@@ -358,7 +356,7 @@ export function MemoryDetail({
       <div className={`${pad} py-4`}>
         {raw ? (
           <pre className="overflow-x-auto rounded-lg border border-border bg-surface p-3 font-mono text-micro leading-relaxed text-text whitespace-pre-wrap break-words">
-            {jsonView ? highlightJson(rawDisplay) : rawDisplay}
+            {effectiveJsonView ? highlightJson(rawDisplay) : rawDisplay}
           </pre>
         ) : (
           <MarkdownContent
