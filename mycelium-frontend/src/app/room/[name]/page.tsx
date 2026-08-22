@@ -16,6 +16,7 @@ import { RoomChatBox } from "@/components/room-chat-box";
 import { RoomInspector, type Tab } from "@/components/room-inspector";
 import { RoomTour } from "@/components/room-tour";
 import { GlobalStatusItems, StatusButton } from "@/components/status-items";
+import { Tooltip } from "@/components/ui/tooltip";
 import { useCommands, useKeyAction, useKeyScope } from "@/components/keymap-provider";
 import type { PaletteCommand } from "@/lib/commands";
 import { useRoomStatus } from "@/lib/use-status";
@@ -221,7 +222,7 @@ function RoomWorkspace() {
         {connected ? "Live" : "Reconnecting…"}
       </span>
       {episodeLabel && (
-        <StatusButton onClick={() => openTab("episodes")} title="View episodes">
+        <StatusButton onClick={() => openTab("episodes")} tooltip="View episodes">
           <span style={{ color: episodeLabel.color }}>{episodeLabel.text}</span>
         </StatusButton>
       )}
@@ -234,7 +235,7 @@ function RoomWorkspace() {
   const statusRight = (
     <>
       {agents !== null && (
-        <StatusButton onClick={() => openTab("agents")} title="View agents">
+        <StatusButton onClick={() => openTab("agents")} tooltip="View agents">
           <span className="tabular">{agents} agent{agents === 1 ? "" : "s"}</span>
         </StatusButton>
       )}
@@ -246,7 +247,9 @@ function RoomWorkspace() {
     <>
       <span className="text-ui font-semibold text-text truncate">{roomName}</span>
       {room?.mas_id && (
-        <span className="font-mono text-micro text-faint truncate" title="MAS id">{room.mas_id}</span>
+        <Tooltip content="MAS id" side="bottom">
+          <span className="font-mono text-micro text-faint truncate">{room.mas_id}</span>
+        </Tooltip>
       )}
     </>
   );

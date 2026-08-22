@@ -562,6 +562,13 @@ PATCH .../messages/{id}  {<span class="str">&quot;status&quot;</span>: <span cla
       <p>The hub keeps each memory as a markdown file with YAML frontmatter at <code>~/.mycelium/rooms/{room}/{key}.md</code>, plus a JSONL embedding index beside it. That is internal storage, not a surface you work in; clients see it through <code>mycelium memory</code>, which is the same on the hub and on every spoke.</p>
       <p>To see the stored form of a memory from anywhere:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">get</span> decisions/storage <span class="flag">--raw</span></code></pre>
+      <h3 id="memory-your-own-frontmatter">Your own frontmatter</h3>
+      <p>The store owns a handful of frontmatter keys — <code>key</code>, authorship, <code>version</code>, the timestamps, <code>tags</code>, <code>value</code>. Everything else in a memory&#x27;s frontmatter is yours. Write it with <code>--meta</code> (repeatable), and it survives later writes that don&#x27;t mention it:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> work/api-server <span class="str">&quot;Blocked behind the custody seam&quot;</span> \
+  <span class="flag">-m</span> status=open <span class="flag">-m</span> owner=@julia</code></pre>
+      <p>Those fields come back on the memory as <code>meta</code> — in <code>--raw</code>, and in the API (<code>MemoryRead.meta</code>) for anything reading the room over HTTP:</p>
+      <pre><code><span class="cmd">curl</span> <span class="flag">-s</span> $HUB/api/rooms/atlas/memory/work/api-server | jq .meta
+<span class="comment"># { &quot;status&quot;: &quot;open&quot;, &quot;owner&quot;: &quot;@julia&quot; }</span></code></pre>
       <div class="callout callout-note">
         <div class="callout-bar"></div>
         <div class="callout-body"><strong>Operating the hub.</strong> On the hub itself the files are ordinary files, so an operator can inspect, back up, or bulk-edit them. Edits made outside the CLI bypass the index; run <code>mycelium memory reindex</code> afterwards to resync. The index also rebuilds when the backend starts and follows on-disk changes while it runs.</div>

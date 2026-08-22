@@ -6,6 +6,7 @@
 import { type AuthStatus, type CoordinationRoom, type IdentityStatus } from "@/lib/api";
 import { useNetworkStatus } from "@/lib/room-data";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip } from "@/components/ui/tooltip";
 
 /** This room's SLIM channel status — the node it rides, who is present (SLIM
  *  members plus server-held `await` participants), episode state, and
@@ -56,10 +57,14 @@ export function RoomSlimView({
             {coord ? `${coord.provisions_ok}✓ / ${coord.provisions_failed}✗` : "—"}
           </RailStat>
           <RailStat dot={identity ? identityDot(identity) : undefined} label="identity">
-            <span title={identity?.message}>{identity?.mode ?? "—"}</span>
+            <Tooltip content={identity?.message} side="bottom">
+              <span aria-description={identity?.message}>{identity?.mode ?? "—"}</span>
+            </Tooltip>
           </RailStat>
           <RailStat dot={auth?.enabled ? "var(--green)" : undefined} label="auth">
-            <span title={authDetail(auth)}>{auth ? (auth.enabled ? "on" : "off") : "—"}</span>
+            <Tooltip content={authDetail(auth)} side="bottom">
+              <span aria-description={authDetail(auth)}>{auth ? (auth.enabled ? "on" : "off") : "—"}</span>
+            </Tooltip>
           </RailStat>
           <span className="h-3 w-px bg-border" aria-hidden />
           <RailStat

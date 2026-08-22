@@ -6,6 +6,7 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { SearchPalette } from "@/components/search-palette";
+import { Tooltip } from "@/components/ui/tooltip";
 import { useKeyAction } from "@/components/keymap-provider";
 import { searchEverything } from "@/lib/api";
 import { isMacPlatform } from "@/lib/keymap";
@@ -60,13 +61,14 @@ export function GlobalSearchButton() {
   const openSearch = useContext(OpenSearchContext);
   if (!openSearch) return null;
   return (
-    <button
-      type="button"
-      onClick={openSearch}
-      title="Search everything"
-      className="rounded px-1 text-micro text-muted-foreground transition-colors hover:text-text"
-    >
-      <kbd className="font-sans">/</kbd> search
-    </button>
+    <Tooltip content="Search everything" side="top">
+      <button
+        type="button"
+        onClick={openSearch}
+        className="rounded px-1 text-micro text-muted-foreground transition-colors hover:text-text"
+      >
+        <kbd className="font-sans">/</kbd> search
+      </button>
+    </Tooltip>
   );
 }

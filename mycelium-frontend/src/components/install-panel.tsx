@@ -96,9 +96,12 @@ export function InstallPanel({ className }: Props) {
   // "Prompt" is a fourth tab alongside the OS ones, not a fifth platform: it
   // swaps the manual steps for one line to hand a coding agent instead, same
   // as the landing page's prompt/curl toggle. Selected by default, same as
-  // there. The detected OS tab stays highlighted underneath it (its own
-  // independent toggle), so it's already right the moment you switch off Prompt.
+  // there. Pressing it again drops into the manual steps for the detected OS,
+  // which is what makes the detection above worth doing.
   const [usePrompt, setUsePrompt] = useState(true);
+
+  // One row, one selection: an OS tab reads as active only while Prompt isn't.
+  const osSelected = (id: Platform) => !usePrompt && platform === id;
 
   return (
     <section className={cn("rounded-xl border border-border bg-paper p-5", className)}>
@@ -121,7 +124,7 @@ export function InstallPanel({ className }: Props) {
         <button
           type="button"
           aria-pressed={usePrompt}
-          onClick={() => setUsePrompt(true)}
+          onClick={() => setUsePrompt(prev => !prev)}
           className={cn(
             "rounded-md border px-2.5 py-1 text-micro font-medium transition-colors",
             usePrompt
@@ -135,14 +138,14 @@ export function InstallPanel({ className }: Props) {
           <button
             key={p.id}
             type="button"
-            aria-pressed={platform === p.id}
+            aria-pressed={osSelected(p.id)}
             onClick={() => {
               setUsePrompt(false);
               setPlatform(p.id);
             }}
             className={cn(
               "rounded-md border px-2.5 py-1 text-micro font-medium transition-colors",
-              platform === p.id
+              osSelected(p.id)
                 ? "border-border2 bg-surface text-text"
                 : "border-transparent text-muted-foreground hover:bg-hairline hover:text-text",
             )}

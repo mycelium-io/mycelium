@@ -4044,10 +4044,23 @@
             ],
             "title": "Tags"
           },
+          "meta": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Meta",
+            "description": "The memory's unmanaged frontmatter \u2014 every key the store doesn't own (so not key, authorship, version, timestamps, tags or value). This is what ``MemoryCreate.meta`` wrote, read back."
+          },
           "expandable": {
             "type": "boolean",
             "title": "Expandable",
-            "description": "Whether this memory opts in to transclusion via ``![[key]]``. Mirrors the ``expandable`` frontmatter flag.",
+            "description": "Whether this memory opts in to transclusion via ``![[key]]``. Mirrors the ``expandable`` frontmatter flag, which is also in ``meta``.",
             "default": false
           },
           "created_at": {

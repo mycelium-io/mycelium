@@ -2,6 +2,7 @@
 // Copyright 2026 Mycelium Contributors
 
 import { cn } from "@/lib/utils";
+import { Tooltip } from "@/components/ui/tooltip";
 
 /** Two-letter monogram from a handle: "backend-lead" → BL, "oc-test2" → OT,
  *  "main" → MA. Splits on non-alphanumerics, else first two chars. */
@@ -46,17 +47,23 @@ export function Monogram({ handle, color = "var(--accent)", className, presence 
   );
 }
 
-/** Presence badge: solid for live socket, pulsing for server lease. */
+/** Presence badge: solid for live socket, pulsing for server lease. The dot is
+ *  the only carrier of the tier, so it names itself for screen readers rather
+ *  than leaning on the tooltip a pointer reveals. */
 function PresenceBadge({ presence }: { presence: Presence }) {
   const slim = presence === "slim";
+  const label = slim ? "SLIM connected" : "server-held lease (awaiting)";
   return (
-    <span
-      className={cn(
-        "absolute -bottom-0.5 -right-0.5 block size-2.5 rounded-full ring-2 ring-paper",
-        !slim && "animate-pulse",
-      )}
-      style={{ background: slim ? "var(--accent)" : "var(--muted-foreground)" }}
-      title={slim ? "SLIM connected" : "server-held lease (awaiting)"}
-    />
+    <Tooltip content={label}>
+      <span
+        role="img"
+        aria-label={label}
+        className={cn(
+          "absolute -bottom-0.5 -right-0.5 block size-2.5 rounded-full ring-2 ring-paper",
+          !slim && "animate-pulse",
+        )}
+        style={{ background: slim ? "var(--accent)" : "var(--muted-foreground)" }}
+      />
+    </Tooltip>
   );
 }

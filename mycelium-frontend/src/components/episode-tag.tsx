@@ -3,6 +3,8 @@
 
 "use client";
 
+import { Tooltip } from "@/components/ui/tooltip";
+
 interface Props {
   /** The episode's full URN, e.g. `urn:ioc:mycelium:episode:atlas-migration:e4f1a2`. */
   urn?: string;
@@ -23,17 +25,25 @@ interface Props {
 export function EpisodeTag({ urn, shortId, onOpen }: Props) {
   const base = "rounded font-mono transition-colors";
   if (!onOpen) {
-    return <span className={`${base} text-accent`} title={urn}>{shortId}</span>;
+    return (
+      <Tooltip content={urn}>
+        <span className={`${base} text-accent`} aria-description={urn}>{shortId}</span>
+      </Tooltip>
+    );
   }
+  // The URN rides along under the action: the tooltip is where a reader checks
+  // which episode a bare six characters is.
+  const action = urn ? `Open episode ${shortId}\n${urn}` : `Open episode ${shortId}`;
   return (
-    <button
-      type="button"
-      onClick={() => onOpen(shortId)}
-      aria-label={`Open episode ${shortId}`}
-      title={urn ? `Open episode ${shortId}\n${urn}` : `Open episode ${shortId}`}
-      className={`${base} px-1 text-accent hover:bg-accent-soft hover:underline`}
-    >
-      {shortId}
-    </button>
+    <Tooltip content={action}>
+      <button
+        type="button"
+        onClick={() => onOpen(shortId)}
+        aria-label={`Open episode ${shortId}`}
+        className={`${base} px-1 text-accent hover:bg-accent-soft hover:underline`}
+      >
+        {shortId}
+      </button>
+    </Tooltip>
   );
 }
