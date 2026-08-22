@@ -28,6 +28,7 @@ import type {
   MemoryGraphNode,
   PendingInvite,
   PlanResponse,
+  PresenceMember,
 } from "@/lib/api";
 
 // A fixed "now" so relative timestamps render deterministically. Callers offset
@@ -47,7 +48,11 @@ export interface MockRoom {
 
 export interface MockMemory {
   key: string;
-  value: string;
+  /** Prose (most memories) or a frontmatter object — the board projects a row's
+   *  typed fields straight from an object value, the way the real store serves
+   *  parsed frontmatter. Object-valued memories must also set `content_text` so
+   *  search and previews have a string to read. */
+  value: string | Record<string, unknown>;
   content_text?: string;
   created_by: string;
   updated_by?: string;
@@ -76,6 +81,10 @@ export interface RoomFixture {
   episodes: EpisodeSummary[];
   episodeDetails: Record<string, EpisodeDetail>;
   invites: PendingInvite[];
+  /** Live presence set, served at GET /sessions/members. A resident agent
+   *  (one whose handle appears here) projects a board row; without a SLIM node
+   *  there is otherwise no presence, so the board's resident rows come from here. */
+  presence?: PresenceMember[];
   /** The room's link graph (#599/#611) — undefined means "no link index yet",
    *  the same degrade-to-empty case the real backend serves for an unlinked room. */
   links?: MemoryGraph;
@@ -246,6 +255,159 @@ const atlasEpisodeSummary: EpisodeSummary = {
   updated_by: "aligner",
 };
 
+// Coordination-state memories the board projects into rows. Each value is a
+// frontmatter object, so the board reads its typed fields (status, owner,
+// priority, ci, pr, branch, blocks, choices) straight through — the same path a
+// real room's `decisions/ status/ work/ failed/` memories take. Together they
+// give the board something in every lens (needs-you, in-flight, resolved) and a
+// column for every inferred field, without any in-app demo layer.
+const atlasBoardRows: MockMemory[] = [
+  {
+    key: "decisions/token-ttl",
+    value: {
+      title: "JWT access-token TTL: 15m or 60m?",
+      status: "open",
+      kind: "decision",
+      owner: null,
+      priority: "urgent",
+      choices: ["15m", "60m"],
+      asked_by: "@risk",
+      ttl_minutes: 120,
+    },
+    content_text: "JWT access-token TTL: 15m or 60m? Risk wants 15m; growth wants 60m to cut re-auth churn.",
+    created_by: "risk",
+    updated_by: "risk",
+    version: 1,
+    updated_at: iso(6),
+  },
+  {
+    key: "failed/thin-spoke",
+    value: {
+      title: "Enable thin-spoke join without a local replica",
+      status: "blocked",
+      kind: "blocked",
+      owner: "@julia",
+      priority: "high",
+      blocked_by: ["#502"],
+      issue: "#502",
+    },
+    content_text: "Thin-spoke join is blocked on the custody seam in #502.",
+    created_by: "julia",
+    updated_by: "julia",
+    version: 1,
+    updated_at: iso(40),
+  },
+  {
+    key: "work/custody-review",
+    value: {
+      title: "@risk opened PR #504 — eyes on the custody seam",
+      status: "in_review",
+      kind: "review",
+      owner: "@risk",
+      priority: "high",
+      pr: "#504",
+      ci: "green",
+      branch: "feat/custody-seam",
+      ttl_minutes: 720,
+    },
+    content_text: "PR #504 opened on feat/custody-seam; CI green; wants a review.",
+    created_by: "risk",
+    updated_by: "risk",
+    version: 1,
+    updated_at: iso(12),
+  },
+  {
+    key: "work/jwt-auth",
+    value: {
+      title: "Migrate auth → JWT",
+      status: "in_progress",
+      kind: "action",
+      owner: "@growth",
+      priority: "high",
+      branch: "feat/jwt-auth",
+      pr: "#502",
+      ci: "green",
+      blocks: ["Enable thin-spoke join"],
+    },
+    content_text: "Auth migration to JWT in progress on feat/jwt-auth; PR #502; CI green.",
+    created_by: "growth",
+    updated_by: "growth",
+    version: 2,
+    updated_at: iso(12),
+  },
+  {
+    key: "work/cache-sweep",
+    value: {
+      title: "Cache TTL sweep across the memory index",
+      status: "in_progress",
+      kind: "action",
+      owner: "@julia",
+      priority: "normal",
+      branch: "feat/cache",
+      ci: "running",
+    },
+    content_text: "Sweeping cache TTLs across the memory index on feat/cache; CI running.",
+    created_by: "julia",
+    updated_by: "julia",
+    version: 1,
+    updated_at: iso(3),
+  },
+  {
+    key: "failed/offer-snap",
+    value: {
+      title: "Aligner stalls when a proposer replies with prose only",
+      status: "in_review",
+      kind: "concern",
+      owner: "@risk",
+      priority: "normal",
+      ci: "red",
+      branch: "fix/offer-snap",
+      ttl_minutes: 1440,
+    },
+    content_text: "Aligner stalls on prose-only replies; fix on fix/offer-snap; CI red.",
+    created_by: "risk",
+    updated_by: "risk",
+    version: 1,
+    updated_at: iso(55),
+  },
+  {
+    key: "work/path-traversal",
+    value: {
+      title: "Fix path traversal in the memory key encoder",
+      status: "resolved",
+      kind: "action",
+      owner: "@risk",
+      priority: "urgent",
+      pr: "#499",
+      ci: "green",
+      ttl_minutes: 1440,
+    },
+    content_text: "Path traversal in the memory key encoder fixed and merged (PR #499).",
+    created_by: "risk",
+    updated_by: "risk",
+    version: 2,
+    updated_at: iso(62),
+  },
+  {
+    key: "decisions/spire-retire",
+    value: {
+      title: "Retire the SPIRE identity tier",
+      status: "resolved",
+      kind: "concern",
+      owner: "@julia",
+      priority: "normal",
+      issue: "#668",
+      promoted: true,
+      ttl_minutes: 1440,
+    },
+    content_text: "SPIRE identity tier retired; promoted to #668.",
+    created_by: "julia",
+    updated_by: "julia",
+    version: 1,
+    updated_at: iso(200),
+  },
+];
+
 const atlas: RoomFixture = {
   room: {
     id: 1,
@@ -324,6 +486,7 @@ const atlas: RoomFixture = {
       version: 1,
       updated_at: iso(38),
     },
+    ...atlasBoardRows,
   ],
   plan: {
     room: "atlas-migration",
@@ -367,6 +530,13 @@ const atlas: RoomFixture = {
   episodes: [atlasEpisodeSummary],
   episodeDetails: { e4f1a2: { ...atlasEpisodeSummary, messages: atlasL9Chain } },
   invites: [],
+  // growth holds an open SLIM socket; risk is present on a server-held await
+  // lease. Both are agents in the roster, so the board projects a resident row
+  // for each — the presence signal that a live SLIM node would otherwise supply.
+  presence: [
+    { handle: "growth", kind: "slim", last_seen: null },
+    { handle: "risk", kind: "lease", last_seen: iso(1) },
+  ],
   l9: atlasL9Frames,
 };
 

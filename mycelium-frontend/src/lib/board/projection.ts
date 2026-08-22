@@ -182,8 +182,6 @@ export interface ProjectionInput {
   overlay?: Record<string, Record<string, unknown>>;
   /** Rows captured in this session, before any backend write exists for them. */
   captured?: LiveItem[];
-  /** Synthetic rows, shown only while the demo layer is on. */
-  demo?: LiveItem[];
 }
 
 export function projectItems(input: ProjectionInput): LiveItem[] {
@@ -200,7 +198,6 @@ export function projectItems(input: ProjectionInput): LiveItem[] {
     if (presence) items.push(agentItem(agent, presence, input.now));
   }
   items.push(...(input.captured ?? []));
-  items.push(...(input.demo ?? []));
 
   const overlay = input.overlay ?? {};
   return items.map(item =>

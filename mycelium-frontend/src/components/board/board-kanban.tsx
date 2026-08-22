@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { lensOf, ownerOf, type LiveItem } from "@/lib/board/item";
 import type { ItemGroup } from "@/lib/board/view";
 import { humanize } from "@/lib/board/schema";
-import { AgeTag, DemoTag, KindGlyph, OwnerChip, PriorityMeter, SourceTag, TtlBar, WorkLinks } from "./board-bits";
+import { AgeTag, KindGlyph, OwnerChip, PriorityMeter, SourceTag, TtlBar, WorkLinks } from "./board-bits";
 
 interface Props {
   groups: ItemGroup[];
@@ -73,7 +73,6 @@ export function BoardKanban({ groups, groupBy, now, selectedId, onSelect, onMove
                   className={cn(
                     "cursor-grab rounded-lg border bg-paper p-2.5 shadow-sm transition-colors active:cursor-grabbing",
                     item.id === selectedId ? "border-accent/50 ring-1 ring-accent/30" : "border-border hover:border-border2",
-                    item.demo && "border-dashed",
                     dragging?.id === item.id && "opacity-40",
                     lensOf(item) === "resolved" && "opacity-70",
                   )}
@@ -90,7 +89,6 @@ export function BoardKanban({ groups, groupBy, now, selectedId, onSelect, onMove
                   <div className="mt-2 flex items-center justify-between gap-2">
                     <SourceTag item={item} />
                     <span className="flex items-center gap-1.5">
-                      {item.demo && <DemoTag />}
                       <TtlBar item={item} now={now} />
                       <AgeTag item={item} now={now} />
                     </span>
