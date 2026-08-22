@@ -37,9 +37,42 @@ export const CANVAS_SOURCE = "scripts/banner-assets/mycelial-canvas.js";
  * site's, kept rather than re-tuned.
  */
 export const CANVAS_VARS = {
-  dark: { bg: "#0c0e11", ink: "92, 199, 210", alpha: 1 },
-  light: { bg: "#f4ecda", ink: "12, 125, 143", alpha: 0.72 },
+  dark: { bg: "#0c0e11", rgb: "12, 14, 17", ink: "92, 199, 210", alpha: 1 },
+  light: { bg: "#f4ecda", rgb: "244, 236, 218", ink: "12, 125, 143", alpha: 0.72 },
 };
+
+/**
+ * How hard the vignette veils the network, per theme: center, midpoint, edge.
+ *
+ * Light is veiled less than dark, not more. The site already runs light at
+ * `--canvas-alpha: 0.72` against dark's 1, so an equal veil quiets it twice and
+ * the network disappears into the cream — the same asymmetry the site tunes for,
+ * applied on this side of it.
+ */
+export const VEIL = {
+  dark: [0.3, 0.58, 0.9],
+  light: [0.12, 0.32, 0.68],
+};
+
+/**
+ * A vignette over the network, in the ground's own color.
+ *
+ * The site can run the network at full strength because prose sits on near-solid
+ * paper above it. A screenshot has no such pane: the network is next to the
+ * window rather than under it, and at full strength the corners pull the eye off
+ * the thing being shown. So it is veiled a little everywhere and a lot at the
+ * edges — enough to read as a desktop, not enough to compete with one.
+ *
+ * @param {"dark"|"light"} theme
+ */
+function vignette(theme) {
+  const g = CANVAS_VARS[theme].rgb;
+  const [center, mid, edge] = VEIL[theme];
+  return (
+    `radial-gradient(125% 125% at 50% 40%, rgba(${g},${center}) 0%, ` +
+    `rgba(${g},${mid}) 45%, rgba(${g},${edge}) 100%)`
+  );
+}
 
 /**
  * Hero-page proportions, the same ones `gen-banner-network.py` renders at. The
@@ -141,7 +174,11 @@ export async function mycelialArt(eng, opts = {}) {
       width: RENDER_W,
       height: RENDER_H,
     });
-    return `url("data:image/png;base64,${buf.toString("base64")}") center/cover no-repeat`;
+    // One value, two background layers: CSS paints the first over the second, so
+    // the vignette rides on the network without a second element to position.
+    // `image-rendering` leaves a gradient alone — nothing is being rescaled —
+    // so the veil stays smooth while the cells below it stay hard-edged.
+    return `${vignette(theme)}, url("data:image/png;base64,${buf.toString("base64")}") center/cover no-repeat`;
   })();
   // A failed render must not become the cached answer for the rest of the
   // process — the next shot should get another go at it.

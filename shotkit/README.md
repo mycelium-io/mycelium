@@ -140,6 +140,12 @@ runs — read from `scripts/banner-assets/mycelial-canvas.js`, the copy
 — and the colors are the site's `--canvas-*` values, cream and quiet in light,
 near-black and teal in dark.
 
+A vignette in the ground's own color veils it, lightly in the middle and
+heavily at the edges. The site can run the network at full strength because
+prose sits on near-solid paper above it; a screenshot has no such pane, and an
+unveiled network pulls the eye into the corners and away from the window. Light
+is veiled less than dark, since the site already runs it quieter.
+
 One network is grown per theme and held for the life of the daemon, so a run of
 shots shares one desktop and only the first pays to grow it — about 150ms once,
 after which a framed shot costs what any other does. It grows from a fixed seed,

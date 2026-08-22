@@ -19,7 +19,7 @@ import { policyArgs, policyKey } from "../src/network.mjs";
 import { resolveViewport, viewportList } from "../src/viewports.mjs";
 import { parseAction } from "../src/actions.mjs";
 import { backdrop, palette } from "../src/theme.mjs";
-import { CANVAS_VARS, networkDocument } from "../src/mycelial.mjs";
+import { CANVAS_VARS, VEIL, networkDocument } from "../src/mycelial.mjs";
 import { cardDocument } from "../src/card.mjs";
 
 let failures = 0;
@@ -185,6 +185,13 @@ test("one seed grows one network", () => {
   assert.ok(a.includes("var s=7;"), "the seed replaces Math.random before the algorithm runs");
   assert.notEqual(a, networkDocument("/* algorithm */", { seed: 8 }));
   assert.equal(a, networkDocument("/* algorithm */", { seed: 7 }));
+});
+
+test("the vignette veils light less than dark", () => {
+  // The site already runs light at a lower canvas alpha; veiling both equally
+  // washes the network out of the cream entirely.
+  assert.ok(CANVAS_VARS.light.alpha < CANVAS_VARS.dark.alpha);
+  for (const [i, stop] of VEIL.light.entries()) assert.ok(stop < VEIL.dark[i], `stop ${i}`);
 });
 
 test("a card grows an artwork layer only when there is artwork", () => {
