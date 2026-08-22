@@ -210,6 +210,51 @@ jobs:
         working-directory: mycelium-frontend
         run: npx next build
 
+  build-frontend-image:
+    name: Frontend docker build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+
+      - name: Detect frontend-relevant changes
+        id: changed
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            base="HEAD~1"
+          else
+            base="origin/${{ github.base_ref }}"
+            git fetch --depth=1 origin "${{ github.base_ref }}"
+          fi
+          if git diff --name-only "$base"...HEAD | grep -E '^(mycelium-frontend/|\.github/workflows/(ci|release)\.yml$)' > /dev/null; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "No frontend files changed; skipping image build."
+          fi
+
+      - name: Set up Docker Buildx
+        if: steps.changed.outputs.run == 'true'
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+
+      # The typecheck job above runs in the full checkout, where a file under
+      # mycelium-frontend/ can reach sideways into a sibling directory and
+      # resolve. The image build cannot: its context is mycelium-frontend/
+      # alone, so an import that leaves it fails here and only here.
+      - name: Build mycelium-frontend image (no push)
+        if: steps.changed.outputs.run == 'true'
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: mycelium-frontend
+          file: mycelium-frontend/Dockerfile
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: mycelium-frontend:ci
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,scope=frontend,mode=max
+
   integration-slim:
     # Debt D12: the guarded live-node slices are the real regression guard for the
     # SLIM coordination path, but they used to run only manually (skip-if-no-node),

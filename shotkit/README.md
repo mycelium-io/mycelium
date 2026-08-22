@@ -156,9 +156,12 @@ webm-only — so mp4 and gif need a full ffmpeg on PATH (or `SHOTKIT_FFMPEG`).
 `shot doctor` says which you have.
 
 **Timing.** `--fps` (30), `--move-ms` (620), `--dwell` (620), `--zoom-ms` (620),
-`--lead-in` (500), `--tail` (1000), and `--max-seconds` (90) to stop a runaway
-take. Frames come from a CDP screencast — real time, the app's own transitions
-included; `--capture shots` falls back to a screenshot loop.
+`--press-ms` (110), `--lead-in` (500), `--tail` (1000), and `--max-seconds` (90)
+to stop a runaway take. Frames come from a CDP screencast — real time, the app's
+own transitions included; `--capture shots` falls back to a screenshot loop.
+Whichever it is, a frame is written every 1/fps whether the page changed or not,
+so the file's timeline is wall-clock and a still stretch costs repeats of one
+JPEG.
 
 ## Browser chrome
 
