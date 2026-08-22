@@ -495,6 +495,77 @@ class AgentRead(BaseModel):
     owner: str | None = None
     team: str | None = None
     allow_from: list[str] = Field(default_factory=list)
+    # a2a adapter: the remote Agent Card locator, resolved endpoint, and the
+    # skills it advertises. None/empty for every other adapter.
+    a2a_card: str | None = None
+    a2a_endpoint: str | None = None
+    a2a_skills: list[str] = Field(default_factory=list)
+
+
+# ── A2A bridge state (the Network views) ─────────────────────────────────────
+#
+# What the GUI's Network pane and `mycelium network` need to render the bridge
+# next to SLIM traffic: who is bridged, whether the room is discoverable as an
+# A2A agent, and the recent exchanges. The honest boundary — a bridged agent is
+# proxied by this hub, never a member of the room's MLS group — is carried by
+# `proxied` so both surfaces state it from the same field rather than each
+# inventing its own copy.
+
+
+class A2aExchangeRead(BaseModel):
+    """One bridged turn: a call we made out, or a message that arrived in."""
+
+    id: str
+    handle: str
+    direction: str  # outbound | inbound
+    status: str  # ok | error
+    at: datetime
+    endpoint: str | None = None
+    #: Whose ``@``-mention triggered the call (outbound only).
+    peer: str | None = None
+    prompt: str = ""
+    reply: str = ""
+    detail: str | None = None
+    duration_ms: int | None = None
+
+
+class A2aBridgedAgentRead(BaseModel):
+    """A room member reached over A2A rather than the room's SLIM channel."""
+
+    handle: str
+    description: str = ""
+    card: str | None = None
+    endpoint: str | None = None
+    skills: list[str] = Field(default_factory=list)
+    calls_ok: int = 0
+    calls_failed: int = 0
+    last_call_at: datetime | None = None
+    #: Always true, and stated rather than implied: the hub proxies this agent
+    #: over HTTP, so it holds no group key and is not an MLS group member.
+    proxied: bool = True
+
+
+class A2aExposureRead(BaseModel):
+    """The inbound half: this room served as an A2A agent of its own."""
+
+    card_url: str
+    rpc_url: str
+    skills: list[str] = Field(default_factory=list)
+    card_fetches: int = 0
+    messages: int = 0
+    last_card_fetch_at: datetime | None = None
+    last_message_at: datetime | None = None
+
+
+class A2aBridgeState(BaseModel):
+    """Everything the Network views show about a room's A2A bridge."""
+
+    room: str
+    agents: list[A2aBridgedAgentRead] = Field(default_factory=list)
+    exposure: A2aExposureRead
+    exchanges: list[A2aExchangeRead] = Field(default_factory=list)
+    outbound_ok: int = 0
+    outbound_failed: int = 0
 
 
 class SubscriptionCreate(BaseModel):

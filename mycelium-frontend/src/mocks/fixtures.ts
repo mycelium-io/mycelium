@@ -19,6 +19,7 @@
  */
 
 import type {
+  A2aBridgeState,
   EpisodeDetail,
   EpisodeSummary,
   HostInfo,
@@ -83,6 +84,9 @@ export interface RoomFixture {
   // Shaped like the persister's bus frames (a bare `{header, payload}` envelope
   // under `content`, plus the flat fields the inspector reads).
   l9?: Record<string, unknown>[];
+  /** The room's A2A bridge, served at GET /a2a/state. Undefined means "no
+   *  bridge" — the handler answers with an empty one, like the backend. */
+  a2a?: A2aBridgeState;
 }
 
 /**
@@ -116,6 +120,13 @@ function buildMockGraph(
 
 const agentManifest = (description: string, adapter = "claude_code"): string =>
   `adapter: ${adapter}\ndescription: "${description}"\n`;
+
+/** An external A2A agent's manifest: the card the hub resolved plus what it
+ *  advertises, the fields the roster and the Network pane read. */
+const a2aManifest = (description: string, card: string, skills: string[]): string =>
+  `adapter: a2a\ndescription: "${description}"\n` +
+  `a2a_card: ${card}\na2a_endpoint: ${card}/a2a\n` +
+  `a2a_skills: [${skills.join(", ")}]\n`;
 
 // ── atlas-migration: the rich, converged room ─────────────────────────────────
 
@@ -406,6 +417,7 @@ const pricing: RoomFixture = {
     { key: "agents/growth", value: agentManifest("Wants adoption; favors a low entry price."), created_by: "operator", version: 1, updated_at: iso(160) },
     { key: "agents/aligner", value: agentManifest("First-party mediator (NEGMAS SAO).", "engine"), created_by: "operator", version: 1, updated_at: iso(160) },
     { key: "agents/synthesizer", value: agentManifest("Distills room memory into a shared briefing.", "engine"), created_by: "operator", version: 1, updated_at: iso(160) },
+    { key: "agents/market-data", value: a2aManifest("External competitor pricing feed.", "https://market-data.example", ["quote", "benchmark"]), created_by: "operator", version: 1, updated_at: iso(30) },
     { key: "context/goal", value: "Pick a launch price for the Pro tier.", content_text: "Pick a launch price for the Pro tier.", created_by: "operator", version: 1, updated_at: iso(175) },
     {
       key: "context/synthesis",
@@ -456,6 +468,77 @@ const pricing: RoomFixture = {
       created_at: iso(3),
     },
   ],
+  // The bridge state to design against: one external A2A agent consulted during
+  // the negotiation (one answered call, one dead one), and the room's own card
+  // having been read from outside.
+  a2a: {
+    room: "pricing-model",
+    agents: [
+      {
+        handle: "market-data",
+        description: "External competitor pricing feed.",
+        card: "https://market-data.example",
+        endpoint: "https://market-data.example/a2a",
+        skills: ["quote", "benchmark"],
+        calls_ok: 2,
+        calls_failed: 1,
+        last_call_at: iso(8),
+        proxied: true,
+      },
+    ],
+    exchanges: [
+      {
+        id: "a2a-1",
+        handle: "market-data",
+        direction: "outbound",
+        status: "ok",
+        at: iso(10),
+        endpoint: "https://market-data.example/a2a",
+        peer: "finance",
+        prompt: "@finance: what are comparable Pro tiers charging per seat?",
+        reply: "Comparable Pro tiers cluster at $35–$45/seat, median $39.",
+        detail: null,
+        duration_ms: 812,
+      },
+      {
+        id: "a2a-2",
+        handle: "a2a-guest",
+        direction: "inbound",
+        status: "ok",
+        at: iso(9),
+        endpoint: null,
+        peer: null,
+        prompt: "Partner desk asks: is the annual term negotiable below 75 seats?",
+        reply: "Delivered to room 'pricing-model'.",
+        detail: null,
+        duration_ms: null,
+      },
+      {
+        id: "a2a-3",
+        handle: "market-data",
+        direction: "outbound",
+        status: "error",
+        at: iso(8),
+        endpoint: "https://market-data.example/a2a",
+        peer: "growth",
+        prompt: "@growth: churn at $29 vs $39?",
+        reply: "",
+        detail: "send failed: timeout after 120s",
+        duration_ms: 120_004,
+      },
+    ],
+    outbound_ok: 2,
+    outbound_failed: 1,
+    exposure: {
+      card_url: "http://localhost:8000/api/rooms/pricing-model/.well-known/agent-card.json",
+      rpc_url: "http://localhost:8000/api/rooms/pricing-model/a2a",
+      skills: [],
+      card_fetches: 4,
+      messages: 1,
+      last_card_fetch_at: iso(9),
+      last_message_at: iso(9),
+    },
+  },
 };
 
 // ── scratch: a brand-new empty room ───────────────────────────────────────────

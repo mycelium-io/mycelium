@@ -37,8 +37,8 @@ PAGES: list[tuple[str, str, str, str, str, str, str]] = [
      "GET-001", "OVERVIEW · QUICK START · CONCEPTS · ENGINES",
      "A shared space for humans and agents. Install Mycelium and learn the core concepts: rooms, memory, plan, engines (the aligner and synthesizer), and the L9 protocol."),
     ("adapters", "adapters.html", "Adapters · mycelium", "Adapters",
-     "ADP-001", "ADAPTERS · CLAUDE CODE · CURSOR · REST API",
-     "Connect Claude Code, Cursor, or any HTTP client to the Mycelium coordination layer."),
+     "ADP-001", "ADAPTERS · CLAUDE CODE · CURSOR · A2A BRIDGE · REST API",
+     "Connect Claude Code, Cursor, any A2A agent, or any HTTP client to the Mycelium coordination layer."),
     ("reference", "reference.html", "Reference · mycelium", "Reference",
      "REF-001", "REFERENCE · ARCHITECTURE · CLI · CONFIG · DEPENDENCIES · GUIDES · HELP",
      "Architecture, CLI reference, configuration, dependencies and compatibility, guides, and troubleshooting for Mycelium."),
@@ -67,6 +67,7 @@ SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
     (None,                            "adapters",           "adapters",  "Adapters",     "Overview"),
     (None,                            "adapter-claude-code","adapters",  "Adapters",     "Claude Code"),
     (None,                            "adapter-cursor",     "adapters",  "Adapters",     "Cursor"),
+    ("a2a-bridge.md",                 "adapter-a2a",        "adapters",  "Adapters",     "A2A Bridge"),
     (None,                            "adapter-api",        "adapters",  "Adapters",     "REST API"),
     # ── reference (reference.html) ──
     ("reference/architecture.md",     "architecture",       "reference", "Architecture", "Architecture"),

@@ -123,7 +123,9 @@ class FakePersister:
         self.log = DeliveryLog(records or [])
         self.ingested: list[tuple[Any, dict[str, Any]]] = []
 
-    def ingest_local(self, envelope: Any, content: dict[str, Any]) -> None:
+    def ingest_local(
+        self, envelope: Any, content: dict[str, Any], *, list_write: bool = False
+    ) -> None:
         self.ingested.append((envelope, content))
 
 
