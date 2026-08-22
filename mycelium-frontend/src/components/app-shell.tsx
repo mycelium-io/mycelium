@@ -9,6 +9,8 @@ import { RoomsSidebar } from "@/components/rooms-sidebar";
 import { GlobalSearch, GlobalSearchButton } from "@/components/global-search";
 import { CommandPaletteButton, KeymapHelpButton } from "@/components/keymap-provider";
 import { InstallModalProvider, useOpenInstallModal } from "@/components/install-modal";
+import { MetricsStatusLink } from "@/components/status-items";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 
 interface Props {
@@ -58,9 +60,12 @@ export function AppShell({
             <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
               <header className="flex h-[52px] flex-shrink-0 items-center gap-3 border-b border-border bg-surface/50 px-5">
                 {header}
+                {/* Appearance sits top-right, the corner every app puts it in,
+                    rather than crowding the identity row at the other end. */}
                 <div className="ml-auto flex flex-shrink-0 items-center gap-3">
                   {headerRight}
                   <InstallCliButton />
+                  <ThemeToggle />
                 </div>
               </header>
               <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{children}</div>
@@ -70,6 +75,7 @@ export function AppShell({
             {statusLeft}
             <div className="ml-auto flex items-center gap-3">
               {statusRight}
+              <MetricsStatusLink />
               <GlobalSearchButton />
               <CommandPaletteButton />
               <KeymapHelpButton />

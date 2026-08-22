@@ -20,24 +20,46 @@ app = typer.Typer(
     invoke_without_command=True,
 )
 
-# Ordered list of top-level doc sections (filename stem → display name).
-# Order matches the GUI sidebar.
+# Ordered list of doc sections (topic → display name). Order matches the GUI
+# sidebar. A topic is the stem alone regardless of which subdirectory holds the
+# file, so "mycelium docs rooms" is stable across a source reorganisation.
 SECTIONS: list[tuple[str, str]] = [
     ("overview", "Overview"),
     ("quickstart", "Quick Start"),
     ("rooms", "Rooms"),
+    ("principals", "Users & Teams"),
     ("episodes", "Episodes"),
     ("memory", "Memory"),
     ("plan", "Plan"),
-    ("aligner", "The Aligner"),
     ("l9-protocol", "L9 Protocol"),
-    ("cli-reference", "CLI Reference"),
+    ("engines", "Engines"),
+    ("aligner", "The Aligner"),
+    ("synthesizer", "The Synthesizer"),
     ("architecture", "Architecture"),
+    ("structured-memory", "Structured Memory"),
+    ("hub-and-spoke", "Hub & Spoke"),
+    ("security-planes", "Security Planes"),
+    ("auth", "Authentication"),
+    ("keycloak-oidc", "Keycloak / OIDC Setup"),
+    ("metrics", "Metrics"),
     ("troubleshooting", "Troubleshooting"),
 ]
 
-# Legacy section dirs still searched for backward compat
-_LEGACY_DIRS = ("concepts", "commands", "guides", "examples")
+# Subdirectories the docs tree is organised into, in lookup order. "commands"
+# and "examples" are older layouts that some installs may still carry.
+_DOC_DIRS = ("concepts", "guides", "reference", "adapters", "commands", "examples")
+
+
+def _resolve_topic(docs_root: Path, topic: str) -> Path | None:
+    """Find a topic's markdown file, wherever the tree currently keeps it."""
+    direct = docs_root / f"{topic}.md"
+    if direct.exists():
+        return direct
+    for dir_name in _DOC_DIRS:
+        candidate = docs_root / dir_name / f"{topic}.md"
+        if candidate.exists():
+            return candidate
+    return None
 
 
 def _get_docs_root() -> Path:
@@ -72,18 +94,19 @@ def _list_docs(docs_root: Path, section: str | None = None) -> list[tuple[str, s
                 results.append((section, f.stem, _extract_title(f)))
         return results
 
-    # Top-level sections
+    named = {stem for stem, _ in SECTIONS}
     for stem, display_name in SECTIONS:
-        md_path = docs_root / f"{stem}.md"
-        if md_path.exists():
+        if _resolve_topic(docs_root, stem):
             results.append(("", stem, display_name))
 
-    # Legacy subdirectories
-    for section_name in _LEGACY_DIRS:
-        section_path = docs_root / section_name
-        if section_path.is_dir():
-            for f in sorted(section_path.glob("*.md")):
-                results.append((section_name, f.stem, _extract_title(f)))
+    # Anything in the tree that SECTIONS does not name, so nothing is invisible.
+    for dir_name in _DOC_DIRS:
+        section_path = docs_root / dir_name
+        if not section_path.is_dir():
+            continue
+        for f in sorted(section_path.glob("*.md")):
+            if f.stem not in named:
+                results.append((dir_name, f.stem, _extract_title(f)))
 
     return results
 
@@ -97,7 +120,8 @@ def _find_doc(docs_root: Path, section: str, topic: str) -> Path | None:
         index_path = docs_root / "index.md"
         if index_path.exists():
             return index_path
-    return None
+    # A stale section name should not hide a topic that simply moved.
+    return _resolve_topic(docs_root, topic)
 
 
 def _render_markdown(content: str, full: bool = False) -> str:
@@ -131,8 +155,8 @@ def _concat_all(docs_root: Path) -> str:
     """Concatenate all section markdown files in order."""
     parts = []
     for stem, _ in SECTIONS:
-        md_path = docs_root / f"{stem}.md"
-        if md_path.exists():
+        md_path = _resolve_topic(docs_root, stem)
+        if md_path:
             parts.append(md_path.read_text().rstrip())
     return "\n\n---\n\n".join(parts) + "\n"
 
@@ -145,19 +169,20 @@ def _search_docs(
     query_lower = query.lower()
     query_pattern = re.compile(re.escape(query), re.IGNORECASE)
 
-    # Search top-level section files
     search_files: list[tuple[str, Path]] = []
+    seen: set[Path] = set()
     for stem, _ in SECTIONS:
-        md_path = docs_root / f"{stem}.md"
-        if md_path.exists():
+        md_path = _resolve_topic(docs_root, stem)
+        if md_path:
             search_files.append(("", md_path))
+            seen.add(md_path)
 
-    # Search legacy dirs
-    for section_name in _LEGACY_DIRS:
-        section_path = docs_root / section_name
+    for dir_name in _DOC_DIRS:
+        section_path = docs_root / dir_name
         if section_path.is_dir():
-            for f in section_path.glob("*.md"):
-                search_files.append((section_name, f))
+            for f in sorted(section_path.glob("*.md")):
+                if f not in seen:
+                    search_files.append((dir_name, f))
 
     # Also search index
     index_path = docs_root / "index.md"
@@ -246,11 +271,11 @@ def docs_main(
             _print_doc_list(docs_root)
         return
 
-    # Try top-level section file first (e.g. "mycelium docs rooms")
+    # A bare topic ("mycelium docs rooms") resolves wherever the file lives.
     if not topic:
-        top_level = docs_root / f"{section}.md"
-        if top_level.exists():
-            content = top_level.read_text()
+        resolved = _resolve_topic(docs_root, section)
+        if resolved:
+            content = resolved.read_text()
             if full:
                 typer.echo(content)
             else:
@@ -290,17 +315,19 @@ def _print_doc_list(docs_root: Path) -> None:
 
     typer.secho("SECTIONS", fg=typer.colors.CYAN)
     for stem, display_name in SECTIONS:
-        md_path = docs_root / f"{stem}.md"
-        if md_path.exists():
+        if _resolve_topic(docs_root, stem):
             typer.echo(f"  mycelium docs {stem:<24} {display_name}")
 
-    # Legacy subdirectories
-    for section_name in _LEGACY_DIRS:
+    named = {stem for stem, _ in SECTIONS}
+    for section_name in _DOC_DIRS:
         section_path = docs_root / section_name
-        if section_path.is_dir() and any(section_path.glob("*.md")):
+        extra = sorted(section_path.glob("*.md")) if section_path.is_dir() else []
+        if any(f.stem not in named for f in extra):
             typer.echo("")
             typer.secho(section_name.upper(), fg=typer.colors.CYAN)
-            for f in sorted(section_path.glob("*.md")):
+            for f in extra:
+                if f.stem in named:
+                    continue
                 title = _extract_title(f)
                 cmd = f"mycelium docs {section_name} {f.stem}"
                 typer.echo(f"  {cmd:<40} {title}")

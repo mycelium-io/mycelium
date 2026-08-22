@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Reference · mycelium</title>
 <meta name="description" content="Architecture, CLI reference, configuration, dependencies and compatibility, guides, and troubleshooting for Mycelium.">
 <meta property="og:title" content="Reference · mycelium">
@@ -38,16 +38,28 @@
     <span class="brand-word">mycelium</span>
   </a>
   <nav class="sectionnav">
-    <div class="sectionnav-inner">
-      <a href="index.html" class="">Guide</a>
-      <a href="adapters.html" class="">Adapters</a>
-      <a href="reference.html" class="active">Reference</a>
-    </div>
-    <div class="sectionnav-right">
-      <a href="https://raw.githubusercontent.com/mycelium-io/mycelium/main/mycelium-cli/src/mycelium/integrations/claude_code/assets/skills/mycelium/SKILL.md" target="_blank" rel="noopener">SKILL.md ↗</a>
-    </div>
+    <a href="https://raw.githubusercontent.com/mycelium-io/mycelium/main/mycelium-cli/src/mycelium/integrations/claude_code/assets/skills/mycelium/SKILL.md" target="_blank" rel="noopener">SKILL.md ↗</a>
   </nav>
   <div class="topnav-right">
+    <div class="docsearch" id="docsearch">
+      <button class="docsearch-toggle" id="docsearch-toggle" type="button"
+              aria-label="Search docs" aria-expanded="false"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></button>
+      <div class="docsearch-field">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input type="search" id="docsearch-input" placeholder="Search docs"
+               autocomplete="off" spellcheck="false" aria-label="Search the documentation"
+               role="combobox" aria-expanded="false" aria-controls="docsearch-results">
+        <kbd class="docsearch-hint">/</kbd>
+      </div>
+      <div class="docsearch-panel" id="docsearch-panel">
+        <div class="docsearch-results" id="docsearch-results" role="listbox"></div>
+        <div class="docsearch-legend">
+          <span><kbd>&uarr;</kbd><kbd>&darr;</kbd> navigate</span>
+          <span><kbd>&crarr;</kbd> open</span>
+          <span><kbd>esc</kbd> close</span>
+        </div>
+      </div>
+    </div>
     <button class="copy-docs-btn" onclick="copyDocsCmd()"><i data-lucide="terminal"></i>Copy docs cmd</button>
     <button class="copy-page-btn" onclick="copyPage()"><i data-lucide="copy"></i>Copy page</button>
     <div class="theme-toggle">
@@ -66,62 +78,115 @@
 <div class="layout">
 
   <nav class="sidebar" id="sidebar">
-    <div class="nav-section nav-pages">
-      <div class="nav-section-label">Pages</div>
-      <a href="index.html" class="nav-link page">Guide</a>
-      <a href="adapters.html" class="nav-link page">Adapters</a>
-      <a href="reference.html" class="nav-link page active">Reference</a>
-      <a href="https://raw.githubusercontent.com/mycelium-io/mycelium/main/mycelium-cli/src/mycelium/integrations/claude_code/assets/skills/mycelium/SKILL.md" class="nav-link page" target="_blank" rel="noopener">SKILL.md ↗</a>
+    <div class="nav-tree">
+    <div class="nav-page-group">
+      <a href="index.html" class="nav-page-link">Guide</a>
+      <div class="nav-group collapsed" data-nav-group="start:get-started">
+        <button class="nav-group-toggle" type="button" aria-expanded="false"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Get Started</span></button>
+        <div class="nav-group-items">
+          <a href="index.html#overview" class="nav-link sub">Overview</a>
+          <a href="index.html#quickstart" class="nav-link sub">Quick Start</a>
+        </div>
+      </div>
+      <div class="nav-group collapsed" data-nav-group="start:concepts">
+        <button class="nav-group-toggle" type="button" aria-expanded="false"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Concepts</span></button>
+        <div class="nav-group-items">
+          <a href="index.html#rooms" class="nav-link sub">Rooms</a>
+          <a href="index.html#users" class="nav-link sub">Users &amp; Teams</a>
+          <a href="index.html#episodes" class="nav-link sub">Episodes</a>
+          <a href="index.html#memory" class="nav-link sub">Memory</a>
+          <a href="index.html#plan" class="nav-link sub">Plan</a>
+          <a href="index.html#l9-protocol" class="nav-link sub">L9 Protocol</a>
+        </div>
+      </div>
+      <div class="nav-group collapsed" data-nav-group="start:engines">
+        <button class="nav-group-toggle" type="button" aria-expanded="false"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Engines</span></button>
+        <div class="nav-group-items">
+          <a href="index.html#engines" class="nav-link sub">Overview</a>
+          <a href="index.html#aligner" class="nav-link sub">Aligner</a>
+          <a href="index.html#synthesizer" class="nav-link sub">Synthesizer</a>
+        </div>
+      </div>
     </div>
-    <div class="nav-section">
-      <div class="nav-section-label">Architecture</div>
-      <a href="#architecture" class="nav-link sub">Architecture</a>
+    <div class="nav-page-group">
+      <a href="adapters.html" class="nav-page-link">Adapters</a>
+      <div class="nav-group collapsed" data-nav-group="adapters:adapters">
+        <button class="nav-group-toggle" type="button" aria-expanded="false"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Adapters</span></button>
+        <div class="nav-group-items">
+          <a href="adapters.html#adapters" class="nav-link sub">Overview</a>
+          <a href="adapters.html#adapter-claude-code" class="nav-link sub">Claude Code</a>
+          <a href="adapters.html#adapter-cursor" class="nav-link sub">Cursor</a>
+          <a href="adapters.html#adapter-api" class="nav-link sub">REST API</a>
+        </div>
+      </div>
     </div>
-    <div class="nav-section">
-      <div class="nav-section-label">CLI Reference</div>
-      <a href="#cli-setup" class="nav-link sub">setup</a>
-      <a href="#cli-room" class="nav-link sub">room</a>
-      <a href="#cli-agent" class="nav-link sub">agent</a>
-      <a href="#cli-memory" class="nav-link sub">memory</a>
-      <a href="#cli-skill" class="nav-link sub">skill</a>
-      <a href="#cli-plan" class="nav-link sub">plan</a>
-      <a href="#cli-adapter" class="nav-link sub">adapter</a>
-      <a href="#cli-config" class="nav-link sub">config</a>
-      <a href="#cli-other" class="nav-link sub">watch</a>
+    <div class="nav-page-group">
+      <a href="reference.html" class="nav-page-link active">Reference</a>
+      <div class="nav-group" data-nav-group="reference:architecture">
+        <button class="nav-group-toggle" type="button" aria-expanded="true"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Architecture</span></button>
+        <div class="nav-group-items">
+          <a href="#architecture" class="nav-link sub">Architecture</a>
+        </div>
+      </div>
+      <div class="nav-group" data-nav-group="reference:cli-reference">
+        <button class="nav-group-toggle" type="button" aria-expanded="true"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>CLI Reference</span></button>
+        <div class="nav-group-items">
+          <a href="#cli-setup" class="nav-link sub">setup</a>
+          <a href="#cli-room" class="nav-link sub">room</a>
+          <a href="#cli-agent" class="nav-link sub">agent</a>
+          <a href="#cli-memory" class="nav-link sub">memory</a>
+          <a href="#cli-skill" class="nav-link sub">skill</a>
+          <a href="#cli-plan" class="nav-link sub">plan</a>
+          <a href="#cli-adapter" class="nav-link sub">adapter</a>
+          <a href="#cli-config" class="nav-link sub">config</a>
+          <a href="#cli-other" class="nav-link sub">watch</a>
+        </div>
+      </div>
+      <div class="nav-group" data-nav-group="reference:configuration">
+        <button class="nav-group-toggle" type="button" aria-expanded="true"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Configuration</span></button>
+        <div class="nav-group-items">
+          <a href="#config-identity" class="nav-link sub">identity</a>
+          <a href="#config-server" class="nav-link sub">server</a>
+          <a href="#config-llm" class="nav-link sub">llm</a>
+          <a href="#config-runtime" class="nav-link sub">runtime</a>
+          <a href="#config-rooms" class="nav-link sub">rooms</a>
+          <a href="#config-slim" class="nav-link sub">slim</a>
+          <a href="#config-engine" class="nav-link sub">engine</a>
+          <a href="#config-auth" class="nav-link sub">auth</a>
+          <a href="#config-login" class="nav-link sub">login</a>
+          <a href="#config-agent-auth" class="nav-link sub">agent_auth</a>
+          <a href="#config-metrics" class="nav-link sub">metrics</a>
+        </div>
+      </div>
+      <div class="nav-group" data-nav-group="reference:dependencies">
+        <button class="nav-group-toggle" type="button" aria-expanded="true"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Dependencies</span></button>
+        <div class="nav-group-items">
+          <a href="#dependencies-messaging-fabric-agntcy-slim" class="nav-link sub">Messaging (SLIM)</a>
+          <a href="#dependencies-memory-and-search" class="nav-link sub">Memory &amp; Search</a>
+          <a href="#dependencies-cognition" class="nav-link sub">Cognition</a>
+          <a href="#dependencies-identity-and-crypto" class="nav-link sub">Identity &amp; Crypto</a>
+        </div>
+      </div>
+      <div class="nav-group" data-nav-group="reference:guides">
+        <button class="nav-group-toggle" type="button" aria-expanded="true"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Guides</span></button>
+        <div class="nav-group-items">
+          <a href="#structured-memory" class="nav-link sub">Structured Memory</a>
+          <a href="#hub-and-spoke" class="nav-link sub">Hub &amp; Spoke</a>
+          <a href="#security-planes" class="nav-link sub">Security Planes</a>
+          <a href="#auth" class="nav-link sub">Authentication</a>
+          <a href="#keycloak-oidc" class="nav-link sub">Keycloak / OIDC Setup</a>
+        </div>
+      </div>
+      <div class="nav-group" data-nav-group="reference:help">
+        <button class="nav-group-toggle" type="button" aria-expanded="true"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Help</span></button>
+        <div class="nav-group-items">
+          <a href="#troubleshooting" class="nav-link sub">Troubleshooting</a>
+        </div>
+      </div>
     </div>
-    <div class="nav-section">
-      <div class="nav-section-label">Configuration</div>
-      <a href="#config-identity" class="nav-link sub">identity</a>
-      <a href="#config-server" class="nav-link sub">server</a>
-      <a href="#config-llm" class="nav-link sub">llm</a>
-      <a href="#config-runtime" class="nav-link sub">runtime</a>
-      <a href="#config-rooms" class="nav-link sub">rooms</a>
-      <a href="#config-slim" class="nav-link sub">slim</a>
-      <a href="#config-engine" class="nav-link sub">engine</a>
-      <a href="#config-auth" class="nav-link sub">auth</a>
-      <a href="#config-login" class="nav-link sub">login</a>
-      <a href="#config-agent-auth" class="nav-link sub">agent_auth</a>
-      <a href="#config-metrics" class="nav-link sub">metrics</a>
     </div>
-    <div class="nav-section">
-      <div class="nav-section-label">Dependencies</div>
-      <a href="#dependencies-messaging-fabric-agntcy-slim" class="nav-link sub">Messaging (SLIM)</a>
-      <a href="#dependencies-memory-and-search" class="nav-link sub">Memory &amp; Search</a>
-      <a href="#dependencies-cognition" class="nav-link sub">Cognition</a>
-      <a href="#dependencies-identity-and-crypto" class="nav-link sub">Identity &amp; Crypto</a>
-    </div>
-    <div class="nav-section">
-      <div class="nav-section-label">Guides</div>
-      <a href="#structured-memory" class="nav-link sub">Structured Memory</a>
-      <a href="#hub-and-spoke" class="nav-link sub">Hub &amp; Spoke</a>
-      <a href="#security-planes" class="nav-link sub">Security Planes</a>
-      <a href="#auth" class="nav-link sub">Authentication</a>
-      <a href="#keycloak-oidc" class="nav-link sub">Keycloak / OIDC Setup</a>
-      <a href="#spire-identity" class="nav-link sub">Attested Identity (SPIRE)</a>
-    </div>
-    <div class="nav-section">
-      <div class="nav-section-label">Help</div>
-      <a href="#troubleshooting" class="nav-link sub">Troubleshooting</a>
+    <div class="nav-external">
+      <a href="https://raw.githubusercontent.com/mycelium-io/mycelium/main/mycelium-cli/src/mycelium/integrations/claude_code/assets/skills/mycelium/SKILL.md" target="_blank" rel="noopener">SKILL.md ↗</a>
     </div>
   </nav>
   <div class="nav-backdrop" id="nav-backdrop" onclick="closeDrawer()"></div>
@@ -180,7 +245,7 @@
 <span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">clone</span> my-project <span class="flag">--from</span> <span class="url">http://ec2-host:8000</span></code></pre>
       <h2 id="architecture-stack">Stack</h2>
       <p>Mycelium runs on <strong>one SLIM node</strong> and a thin backend: no database, no message broker, no vector store.</p>
-      <p>The hub backend moderates an <a href="https://github.com/agntcy">AGNTCY SLIM</a> group channel per room (MLS-encrypted; PSK or SignerJwt/SPIRE on the <strong>SLIM plane</strong>). Turn-based agents on spokes (and humans by proxy) participate over <strong>HTTP</strong> — the backend holds server-side presence and serves turns from the durable transcript. Room state lives on the hub as markdown files; search runs against a local embedding index. Every spoke reads and writes that state over HTTP. Coordination messages on the fabric ride SLIM as additive <a href="#l9-protocol">L9 envelopes</a>.</p>
+      <p>The hub backend moderates an <a href="https://github.com/agntcy">AGNTCY SLIM</a> group channel per room (MLS-encrypted; PSK or SignerJwt on the <strong>SLIM plane</strong>). Turn-based agents on spokes (and humans by proxy) participate over <strong>HTTP</strong> — the backend holds server-side presence and serves turns from the durable transcript. Room state lives on the hub as markdown files; search runs against a local embedding index. Every spoke reads and writes that state over HTTP. Coordination messages on the fabric ride SLIM as additive <a href="#l9-protocol">L9 envelopes</a>.</p>
       <div class="table-wrap">
         <table>
           <thead>
@@ -297,6 +362,7 @@
     <span class="flag">--cwd</span> ~/repos/my-frontend <span class="flag">--room</span> my-project</code></pre>
       <h3 id="architecture-backend-api">Backend API</h3>
       <p>Any agent that can make HTTP requests can use the REST API directly. Interactive API docs are available at <code>http://localhost:8000/docs</code> when the backend is running.</p>
+      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/reference/architecture.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
 
     <hr class="divider">
@@ -892,7 +958,7 @@
 <span class="comment"># SLIM node endpoint (host:port), e.g. http://127.0.0.1:46357</span>
 <span class="arg">node_endpoint</span> = <span class="str">&quot;http://127.0.0.1:46357&quot;</span>
 
-<span class="comment"># SLIM channel identity tier: &#x27;psk&#x27; (default, off-by-default #567) is the shared-secret credential every room member derives (zero infra, no per-agent identity). &#x27;signerjwt&#x27; opts into the SignerJwt floor (#476): each member presents a per-agent self-signed ES256 identity so members are cryptographically distinct, individually revocable MLS participants. &#x27;spire&#x27; opts into SPIRE/SPIFFE (#579): each member presents a SPIRE-attested JWT-SVID from the Workload API (tightest attestation, heaviest deploy: a co-located SPIRE server + node daemon, brought up automatically by &#x27;mycelium up&#x27; via the shipped &#x27;spire&#x27; compose profile; #588. Selecting &#x27;signerjwt&#x27;/&#x27;spire&#x27; with no resolvable material degrades to &#x27;psk&#x27; unless MYCELIUM_SLIM_IDENTITY_REQUIRE=1 fails closed.</span>
+<span class="comment"># SLIM channel identity tier: &#x27;psk&#x27; (default, off-by-default #567) is the shared-secret credential every room member derives (zero infra, no per-agent identity). &#x27;signerjwt&#x27; opts into the SignerJwt floor (#476): each member presents a per-agent self-signed ES256 identity so members are cryptographically distinct, individually revocable MLS participants. Selecting &#x27;signerjwt&#x27; with no resolvable material degrades to &#x27;psk&#x27; unless MYCELIUM_SLIM_IDENTITY_REQUIRE=1 fails closed.</span>
 <span class="arg">identity</span> = <span class="str">&quot;psk&quot;</span>
 
 <span class="comment"># Hub-only SLIM PSK master secret. Auto-generated on first ``mycelium config apply`` / install when unset; rendered to ``MYCELIUM_SLIM_MASTER_SECRET`` in ~/.mycelium/.env for the backend container. Spokes do not need this. Override with ``mycelium config set slim.master_secret …`` to rotate.</span>
@@ -1167,6 +1233,7 @@ procedures/  Reusable how-to steps (do this again later)</code></pre>
         <li><code>custom/anything</code> (passes through, no slug check)</li>
         <li><code>research/index-perf</code> (passes through)</li>
       </ul>
+      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/structured-memory.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
 
     <hr class="divider">
@@ -1316,6 +1383,7 @@ procedures/  Reusable how-to steps (do this again later)</code></pre>
       <p><code>mycelium doctor</code> infers mode from <code>server.api_url</code>. If it points at a non-local address, doctor assumes spoke mode. If you&#x27;re running the backend locally on a non-default address, set <code>server.api_url</code> to <code>http://localhost:8000</code> in <code>~/.mycelium/config.toml</code>, or force hub mode:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">doctor</span> <span class="flag">--mode</span> hub</code></pre>
       <p>See <a href="#troubleshooting">Troubleshooting</a> for the full runbook and <a href="#security-planes">Security Planes</a> for HTTP vs SLIM protection.</p>
+      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/hub-and-spoke.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
 
     <hr class="divider">
@@ -1351,7 +1419,7 @@ procedures/  Reusable how-to steps (do this again later)</code></pre>
               <td>Hub backend (moderator); dev <code>slim send</code>; future native connectors</td>
               <td>Native SLIM group membership on the coordination fabric</td>
               <td>Shared-secret <strong>PSK</strong> (hub only)</td>
-              <td><a href="#spire-identity">SignerJwt</a> / <a href="#spire-identity">SPIRE</a></td>
+              <td>SignerJwt (<code>slim.identity</code>)</td>
             </tr>
           </tbody>
         </table>
@@ -1402,7 +1470,7 @@ procedures/  Reusable how-to steps (do this again later)</code></pre>
             <tr>
               <td><strong>Hosted</strong></td>
               <td>JWT required</td>
-              <td>Private hub secret + SignerJwt or SPIRE</td>
+              <td>Private hub secret + SignerJwt</td>
               <td>Same; no master secret on spokes</td>
             </tr>
           </tbody>
@@ -1430,11 +1498,6 @@ procedures/  Reusable how-to steps (do this again later)</code></pre>
               <td>SLIM</td>
               <td>Only if the spoke runs a native SLIM connector</td>
             </tr>
-            <tr>
-              <td><code>spire</code></td>
-              <td>SLIM</td>
-              <td>Same</td>
-            </tr>
           </tbody>
         </table>
       </div>
@@ -1443,8 +1506,8 @@ procedures/  Reusable how-to steps (do this again later)</code></pre>
       <ul>
         <li><a href="#hub-and-spoke">Hub &amp; Spoke Setup</a> — topology and spoke checklist</li>
         <li><a href="#auth">Authentication</a> — HTTP JWT gate (spokes and hub API)</li>
-        <li><a href="#spire-identity">Attested Identity (SPIRE)</a> — hardened SLIM plane</li>
       </ul>
+      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/security-planes.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
 
     <hr class="divider">
@@ -1615,7 +1678,7 @@ role     = &quot;user&quot;</code></pre>
       <p>In <code>~/.mycelium/agent-credentials.json</code>, mode <code>0600</code>, alongside a cached token per agent under <code>~/.mycelium/agent-tokens/</code>. Client secrets are secrets, so they stay out of <code>config.toml</code> for the same reason your session does. <code>client_credentials</code> issues no refresh token; an expired agent token is simply re-minted from the client.</p>
       <p>For a container that runs exactly one agent and has no config file, <code>MYCELIUM_AGENT_AUTH_ISSUER</code>, <code>MYCELIUM_AGENT_AUTH_CLIENT_ID</code>, <code>MYCELIUM_AGENT_AUTH_CLIENT_SECRET</code>, <code>MYCELIUM_AGENT_AUTH_SCOPES</code> and <code>MYCELIUM_AGENT_AUTH_AUDIENCE</code> say the same thing in environment variables, and <code>MYCELIUM_AGENT_HANDLE</code> names the agent it is running as.</p>
       <h3 id="auth-a-credential-mycelium-didnt-mint">A credential Mycelium didn&#x27;t mint</h3>
-      <p><code>MYCELIUM_AGENT_AUTH_TOKEN</code> supplies a bearer token directly, used as-is and never renewed here. That is the seam for a token minted elsewhere: a CI job, or a JWT issued by a workload-identity system such as SPIRE. Trusting one is a config entry on the hub side too: another <code>[[auth.issuers]]</code> block with <code>role = &quot;agent&quot;</code>. Nothing about it is required, and nothing about it is on by default.</p>
+      <p><code>MYCELIUM_AGENT_AUTH_TOKEN</code> supplies a bearer token directly, used as-is and never renewed here. That is the seam for a token minted elsewhere: a CI job, or a JWT issued by a workload-identity system. Trusting one is a config entry on the hub side too: another <code>[[auth.issuers]]</code> block with <code>role = &quot;agent&quot;</code>. Nothing about it is required, and nothing about it is on by default.</p>
       <h3 id="auth-configuration">Configuration</h3>
       <div class="table-wrap">
         <table>
@@ -1723,8 +1786,8 @@ role   = &quot;agent&quot;</code></pre>
       </div>
       <p>Only asymmetric signatures are accepted (<code>RS<em></code>, <code>PS</em></code>, <code>ES<em></code>). The <code>none</code> algorithm and the whole <code>HS</em></code> family are refused before verification, so a public JWKS key can never be replayed as an HMAC secret.</p>
       <h2 id="auth-trying-it-locally">Trying it locally</h2>
-      <p>A dev OIDC issuer ships for exactly this, so you can exercise the gate without standing up Keycloak. See <code>docs/design/dev-auth-issuer.md</code>.</p>
-      <p>For the real thing (a Keycloak realm, client, and human <code>mycelium login</code>, wired end-to-end) follow the <a href="#keycloak-oidc">Keycloak / OIDC Setup</a> guide.</p>
+      <p>Follow the <a href="#keycloak-oidc">Keycloak / OIDC Setup</a> guide to stand up a realm, client, and human <code>mycelium login</code>, wired end-to-end.</p>
+      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/auth.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
 
     <hr class="divider">
@@ -1818,7 +1881,7 @@ TOKEN=$(curl <span class="flag">-s</span> <span class="flag">-X</span> POST \
       <p>An <strong>expired</strong> token is refused the same way: the response is <code>401</code> with <code>token rejected: Signature has expired</code> once it ages past <code>exp</code> plus <code>auth.leeway_s</code> (default 60s).</p>
       <h2 id="keycloak-oidc-agents-and-more-than-one-issuer">Agents, and more than one issuer</h2>
       <p>This guide is the <strong>human</strong> tier. Agents authenticate as workloads with the <code>client_credentials</code> grant from their own Keycloak client; see <a href="#auth">Authentication → Agents sign in as themselves</a>. Humans and agents are often separate realms; list each as its own <code>[[auth.issuers]]</code> block (a human root with <code>role = &quot;user&quot;</code>, an agent root with <code>role = &quot;agent&quot;</code>), matched by exact <code>iss</code> and never interchangeable.</p>
-      <p>For the tightest, individually-attested agent identity on the SLIM channel itself, see <a href="#spire-identity">Attested Identity (SPIRE)</a>, a different, heavier tier from this HTTP-API gate.</p>
+      <p>For per-agent identity on the SLIM channel itself, see <a href="#security-planes">Security Planes</a> — a different tier from this HTTP-API gate.</p>
       <h2 id="keycloak-oidc-browser-login-the-frontend">Browser login (the frontend)</h2>
       <p>The Next.js frontend does the same OIDC flow for humans in a browser. With the gate <strong>off</strong> it is unchanged: the localStorage handle-picker, no login. With the gate <strong>on</strong>, the app shows a <strong>Sign in</strong> screen and redirects to Keycloak; after you authenticate it carries your token on every <code>/api/*</code> call (sealed in an httpOnly cookie, injected server-side by the proxy; it never reaches browser JS).</p>
       <p>The realm import ships a second public client, <strong><code>mycelium-web</code></strong>, with the web redirect <code>http://localhost:3000/api/auth/callback</code> (the CLI&#x27;s <code>mycelium-cli</code> client uses a loopback redirect instead: separate clients, separately revocable).</p>
@@ -1838,40 +1901,7 @@ export AUTH_SESSION_SECRET=$(openssl rand <span class="flag">-hex</span> 32)
       </div>
       <h2 id="keycloak-oidc-limitations">Limitations</h2>
       <p>The shipped overlay is <strong>dev-grade</strong>: Keycloak in <code>start-dev</code> (in-memory H2, HTTP, a demo user with a weak password). It is a real OIDC provider minting real RS256 tokens against a real JWKS (enough to build and prove against) but it is <strong>not</strong> a hardened production Keycloak. For a real deployment, run your own Keycloak over TLS with a persistent datastore and real users, then point the same three config values (<code>issuer</code>, <code>jwks_url</code>, <code>login.issuer</code>) at it. Nothing else changes.</p>
-    </section>
-
-    <hr class="divider">
-
-    <section class="doc-section" id="spire-identity">
-      <p>&lt;!-- SPDX-License-Identifier: Apache-2.0 --&gt;</p>
-      <h1>Attested identity (SPIRE)</h1>
-      <p>Mycelium&#x27;s default channel identity is a shared-secret PSK: zero infrastructure, every room member derives the same group key. That&#x27;s the try-it path, and it never changes. <strong>SPIRE identity</strong> is an optional, off-by-default upgrade: each member presents a SPIRE-attested JWT-SVID as its MLS identity, so members are cryptographically distinct, individually attested, and individually revocable: the tightest attestation tier, and the heaviest to deploy.</p>
-      <p>Turning it on is <strong>one switch</strong>. You never touch a SPIFFE socket path, a trust domain, or type <code>spire-server entry create</code> by hand.</p>
-      <h2 id="spire-identity-what-distinct-members-actually-means">What &quot;distinct members&quot; actually means</h2>
-      <p>With any channel-identity tier on (<code>signerjwt</code> or <code>spire</code>), each actor participates as its <strong>own MLS member</strong>: a <em>custodial session</em> the hub holds on the actor&#x27;s behalf, server-side. A message is then cryptographically attributable to the actor on the wire (not stamped by the backend after the fact), and room access is enforced by <strong>MLS group membership</strong>, not application logic. These sessions survive a backend restart; they&#x27;re revived from encrypted local state with no re-invite. Under the <code>psk</code> default there are no custodial sessions: the backend is the single member and nothing here applies.</p>
-      <p><strong>Honest boundary: this is not E2E from the hub.</strong> Custodial sessions live <em>in the hub process</em>, so the hub still holds every actor&#x27;s key and reads all plaintext. That is what lets the aligner, plan compiler, and memory sync work at all. Turning on identity hardens <strong>attribution and access</strong> and makes per-agent identity real at the MLS layer; it does <strong>not</strong> mean the hub can no longer read your messages. It means the hub represents each actor as a distinct, verifiable member, not that the room is end-to-end encrypted away from the hub.</p>
-      <h2 id="spire-identity-turn-it-on">Turn it on</h2>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> slim.identity spire
-<span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">apply</span>
-<span class="bin">mycelium</span> <span class="cmd">up</span></code></pre>
-      <p><code>mycelium up</code> reads <code>slim.identity</code> and, when it&#x27;s <code>spire</code>, brings a co-located SPIRE <strong>server + node daemon</strong> up alongside the hub automatically; the compose <code>spire</code> profile is an implementation detail the config drives. You do <strong>not</strong> pass <code>--profile spire</code> by hand. On the default (<code>psk</code>) nothing extra starts and the stack is byte-for-byte unchanged.</p>
-      <div class="callout callout-note">
-        <div class="callout-bar"></div>
-        <div class="callout-body">The SPIRE <strong>node daemon</strong> (upstream image <code>spire-agent</code>, container <code>mycelium-spire-noded</code>) is SPIRE&#x27;s per-node identity daemon: it serves the Workload API socket and fetches SVIDs. It is unrelated to mycelium coordination <strong>agents</strong> (<code>@alice</code> etc.); the shared word is an upstream-SPIRE coincidence.</div>
-      </div>
-      <h2 id="spire-identity-registration-is-automatic">Registration is automatic</h2>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">create</span> @alice</code></pre>
-      <p>With SPIRE on, <code>agent create</code> registers the SVID entry (<code>spiffe://&lt;trust-domain&gt;/agent/alice</code>) against the running SPIRE server itself, with no printed copy-paste operator step. <code>agent rm @alice</code> deletes the entry, revoking the identity. Both go through the normal mycelium CLI.</p>
-      <h2 id="spire-identity-check-it">Check it</h2>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">doctor</span></code></pre>
-      <p>When SPIRE is on, doctor shows a legible line (<code>SPIRE up, @alice attested</code>) so a misconfiguration is a clear message rather than a member silently hanging at &quot;Initializing spire identity manager.&quot;</p>
-      <h2 id="spire-identity-trust-domain">Trust domain</h2>
-      <p>The trust domain defaults to <code>mycelium.dev</code>. Override it (server, agent, backend MLS identity, and registration all read the same value) with:</p>
-      <pre><code>export MYCELIUM_SLIM_SPIRE_TRUST_DOMAIN=corp.example.com</code></pre>
-      <p>Set it in <code>~/.mycelium/.env</code> (or the shell that runs <code>mycelium up</code>) before bringing the stack up.</p>
-      <h2 id="spire-identity-limitations">Limitations</h2>
-      <p>The appliance uses SPIRE&#x27;s <code>unix</code> workload attestor, which identifies a workload by its process credentials. That requires the SPIRE node daemon to share the workload&#x27;s PID namespace, which the shipped compose does for the <strong>backend</strong> (the always-on moderator that holds membership for turn-based agents). A <strong>resident</strong> Claude or Cursor session on a user&#x27;s own machine is <em>not</em> co-located with a SPIRE node daemon, so it cannot be <code>unix</code>-attested; on a spoke, identity degrades to the PSK unless you front it with a non-<code>unix</code> attestor (k8s, docker, x509pop, join-token). This is why SPIRE is off by default and never lands on the default path.</p>
-      <p>The appliance SPIRE profile is <strong>dev-grade</strong> (SQLite datastore, join-token node attestation, short SVID TTLs): a real product surface for attested identity, not yet a hardened production deployment.</p>
+      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/keycloak-oidc.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
 
     <hr class="divider">
@@ -2109,6 +2139,7 @@ rm <span class="flag">-rf</span> ~/.mycelium        # remove all config and room
       <hr class="divider">
       <h2 id="troubleshooting-getting-help">Getting Help</h2>
       <p>Report issues at <strong>https://github.com/mycelium-io/mycelium/issues</strong></p>
+      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/guides/troubleshooting.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
   </div>
   </main>

@@ -112,9 +112,8 @@ def _prebuild_signerjwt_roster(room: str) -> None:
     A SignerJwt moderator snapshots the roster JWKS into its verifier at app
     creation, so a session whose JWK is absent then can't be MLS-verified when it is
     later admitted. Registering the backend + every registered agent up front makes
-    the verifier complete for the room's known members. (Spire needs no pre-build —
-    its verifier trusts any peer in the trust domain, not a static roster.) A session
-    for an agent registered *after* provisioning still self-registers on admit; the
+    the verifier complete for the room's known members. A session for an agent
+    registered *after* provisioning still self-registers on admit; the
     moderator picks up such late arrivals on its next channel (re)provision.
     """
     slim_identity.ensure_agent_keypair(BACKEND_AGENT)

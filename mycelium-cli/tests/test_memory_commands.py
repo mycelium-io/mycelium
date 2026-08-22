@@ -253,6 +253,31 @@ def test_memory_get_hub_error_status_reports_cleanly(monkeypatch: pytest.MonkeyP
     assert "HTTP 500" in result.output
 
 
+def test_memory_set_403_surfaces_backend_detail(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A 403 from the hub must show the backend's ``detail`` message, not just the code."""
+    detail_msg = (
+        "handle 'cli-user' is not the authenticated principal '@julvalen@cisco.com' "
+        "and has granted it no access; add 'julvalen@cisco.com' to that handle's "
+        "owner or allow_from to act on its behalf."
+    )
+
+    def _sync(**_kw: Any):
+        import json
+
+        raise UnexpectedStatus(403, json.dumps({"detail": detail_msg}).encode())
+
+    monkeypatch.setattr(
+        "mycelium_backend_client.api.memory.create_memories_api_rooms_room_name_memory_post.sync",
+        _sync,
+    )
+
+    result = runner.invoke(memory_cmd.app, ["set", "context/notes", "hello", "--room", "demo"])
+    assert result.exit_code == 1
+    assert "HTTP 403" in result.output
+    assert "cli-user" in result.output
+    assert "julvalen@cisco.com" in result.output
+
+
 # ── ls ───────────────────────────────────────────────────────────────────────
 
 

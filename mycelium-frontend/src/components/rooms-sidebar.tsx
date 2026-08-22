@@ -7,14 +7,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { AtSign, BarChart3, Bell, BellOff, Boxes, Check, Plus, Search, SearchX, type LucideIcon } from "lucide-react";
+import { Bell, BellOff, BellRing, Boxes, Check, Plus, Search, SearchX, type LucideIcon } from "lucide-react";
 import { getAppEventsSSEUrl, type Room } from "@/lib/api";
 import { useRooms } from "@/lib/room-data";
 import { roomLevel, type RoomLevel } from "@/lib/notifications";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CreateRoomDialog } from "@/components/create-room-dialog";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { NotificationBell } from "@/components/notification-bell";
+import { ActingAsPicker } from "@/components/acting-as-picker";
 import { useNotifications } from "@/components/notifications-provider";
 import { EmptyState } from "@/components/empty-state";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -272,17 +272,13 @@ export function RoomsSidebar({ activeRoom = null }: Props) {
         </nav>
       </ScrollArea>
 
-      <div className="flex items-center gap-1 border-t border-border px-3 py-2">
-        <Link
-          href="/metrics"
-          className="flex items-center gap-2 rounded-md px-2 py-1.5 text-label font-medium text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
-        >
-          <BarChart3 className="size-4" />
-          Metrics
-        </Link>
-        <div className="ml-auto flex items-center gap-0.5">
+      {/* The account corner: who you're acting as, with your unread activity
+          beside it — one place on every screen, rather than a picker riding
+          the room header. */}
+      <div className="flex items-center gap-1 border-t border-border px-2 py-2">
+        <ActingAsPicker />
+        <div className="flex flex-shrink-0 items-center">
           <NotificationBell />
-          <ThemeToggle />
         </div>
       </div>
 
@@ -292,13 +288,14 @@ export function RoomsSidebar({ activeRoom = null }: Props) {
 }
 
 const LEVEL_OPTIONS: { level: RoomLevel; label: string; hint: string; Icon: LucideIcon }[] = [
-  { level: "all", label: "All messages", hint: "badge + bell + sound", Icon: Bell },
-  { level: "mentions", label: "Only mentions", hint: "badge; bell on @you", Icon: AtSign },
+  { level: "all", label: "All messages", hint: "badge + bell + sound", Icon: BellRing },
+  { level: "mentions", label: "Only mentions", hint: "badge; bell on @you", Icon: Bell },
   { level: "muted", label: "Muted", hint: "nothing", Icon: BellOff },
 ];
 
-/** Discord-style notification level picker for one room. The trigger wears the
- *  current level's glyph; the menu sets it. */
+/** Discord-style notification level picker for one room. The trigger is always a
+ *  bell — it's the notification control, not a readout of the level; the level
+ *  lives in the menu it opens (and the row's own BellOff marks a muted room). */
 function RoomLevelMenu({
   room,
   level,
@@ -309,7 +306,6 @@ function RoomLevelMenu({
   onSet: (room: string, level: RoomLevel) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const Current = LEVEL_OPTIONS.find((o) => o.level === level)?.Icon ?? Bell;
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
@@ -317,7 +313,7 @@ function RoomLevelMenu({
         onClick={(e) => e.preventDefault()}
         className="flex size-5 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-surface hover:text-text"
       >
-        <Current className="size-3.5" />
+        <Bell className="size-3.5" />
       </PopoverTrigger>
       <PopoverContent className="w-48 p-1">
         {LEVEL_OPTIONS.map(({ level: l, label, hint, Icon }) => (

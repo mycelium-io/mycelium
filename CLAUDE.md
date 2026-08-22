@@ -52,9 +52,9 @@ MYCELIUM_SLIM_ENDPOINT=http://127.0.0.1:46357 uv run pytest tests/test_slim_roun
 # the spec). CI + the wheel/binary builds run this themselves.
 SPEC_FILE=openapi.json ./scripts/gen-mycelium-client.sh
 
-# Regenerate the docs site (docs/*.html + docs/llms-full.txt) from the markdown
-# under mycelium-cli/src/mycelium/docs/, the @doc_ref decorators, and the config
-# schema. Needs the OpenAPI client above. Run it in any PR that touches those
+# Regenerate the docs site (docs/*.html + docs/search-index.js + docs/llms-full.txt)
+# from the markdown under mycelium-cli/src/mycelium/docs/ (concepts/, guides/,
+# reference/), the @doc_ref decorators, and the config schema. Needs the OpenAPI client above. Run it in any PR that touches those
 # sources — CI fails on drift.
 cd mycelium-cli && uv run python ../docs/generate_docs.py
 
@@ -238,16 +238,15 @@ is no litellm dependency.
   validates a bearer JWT against configured issuers + JWKS (`[auth]` in
   config.toml → `AUTH_*` env). It's an app-wide FastAPI dependency, so a new route
   is gated by default; health/docs stay public. Trust is a list of issuers matched
-  by exact `iss`, each with its own keys and default role — that's how the SPIRE
-  trust domain slots in later without issuer-specific code. Off by default is a
+  by exact `iss`, each with its own keys and default role — that's how a workload
+  trust root slots in later without issuer-specific code. Off by default is a
   hard requirement, not a default worth revisiting: auth must never block the
   try-it path. The localhost bypass reads the request's peer address, so it does
   **not** fire for a containerized backend (published-port traffic looks like LAN
   traffic) — the local tier is served by leaving auth off.
-- **SLIM channel identity is a three-tier ladder, and it starts off.** `slim.identity` /
-  `SLIM_IDENTITY` selects the tier; all three are implemented (`slim_identity.py` + its
-  byte-for-byte CLI mirror), and the constants are frozen in
-  `contracts/slim-l9-wire.json`.
+- **SLIM channel identity is a two-rung ladder, and it starts off.** `slim.identity` /
+  `SLIM_IDENTITY` selects the tier; both are implemented (`slim_identity.py` + its
+  CLI mirror), and the constants are frozen in `contracts/slim-l9-wire.json`.
   - `psk` (**default**, #567) — the group key derives from
     `MYCELIUM_SLIM_MASTER_SECRET`, set the same on every host that shares rooms. Zero
     infra, no per-member identity. `MYCELIUM_SLIM_REQUIRE_SECRET=1` makes a host fail
@@ -255,19 +254,25 @@ is no litellm dependency.
   - `signerjwt` (#476) — the floor: each member mints its own self-signed ES256
     credential and registers its public JWK on the room roster, so members are
     cryptographically distinct MLS participants with no external infra.
-  - `spire` (#579) — each member presents a SPIRE-attested JWT-SVID from the Workload
-    API. Tightest attestation, heaviest deploy (a co-located SPIRE node daemon). Ships
-    as an optional appliance profile (#588): `slim.identity=spire` brings SPIRE up via
-    `mycelium up`, and `mycelium agent create`/`rm` register/revoke the SVID entry — see
-    the SPIRE identity operator guide.
 
-  Selecting `signerjwt`/`spire` with no resolvable material degrades to `psk` with a
-  one-time warning unless `MYCELIUM_SLIM_IDENTITY_REQUIRE=1` fails closed. Per-member
-  revocation (#590 — drop the JWK / delete the SPIRE entry, no room-wide re-key) and the
-  optional appliance SPIRE profile (#588) both ship. What still gates anything hosted /
-  multi-user is turning identity on at all — not a missing capability.
+  Selecting `signerjwt` with no resolvable material degrades to `psk` with a one-time
+  warning unless `MYCELIUM_SLIM_IDENTITY_REQUIRE=1` fails closed. Per-member
+  revocation (#590 — drop the JWK, no room-wide re-key) ships. What still gates
+  anything hosted / multi-user is turning identity on at all — not a missing
+  capability.
+- **The SPIRE tier is gone, not deprecated (#668).** `slim.identity=spire`, the
+  `spire_registry` module, the `spire` compose profile and its server/node-daemon
+  services were removed outright, matching the openclaw/hermes precedent (#503).
+  It attested the backend to itself on one box — SPIRE server and node daemon
+  co-located with the workload they vouched for — so it bought short-lived
+  process-bound credentials, not the cross-trust-domain attestation the name
+  signals, and it was the stack's biggest source of operational breakage
+  (recreating the backend orphaned the daemon's PID-namespace link). Don't
+  reintroduce it as an identity option; the conditions for reviving it are #669,
+  and they start with a real client-held multi-party topology (#662) for it to
+  attest across.
 - **Custodial sessions are server-side, and off by default (#666).** Under an
-  identity tier (`signerjwt`/`spire`) the backend stops impersonating actors and
+  identity tier (`signerjwt`) the backend stops impersonating actors and
   becomes the **custodian of N per-actor MLS sessions** — one genuine MLS member per
   `(room, actor)`, keyed by handle (`app/services/custody.py`). The name is the term
   of art: *custodial* (the custodian holds your keys for you, like a custodial
@@ -283,7 +288,7 @@ is no litellm dependency.
   SQLite store (passphrase = `HMAC(MYCELIUM_CUSTODY_STORE_SECRET, ws/room/handle)`);
   on restart `restore_sessions` revives every session with **no re-invite** (proven
   across a real two-process kill/restart). **Honest scope boundary (keep it honest in
-  code + the user-facing SPIRE identity guide):** custodial means the hub still holds
+  code + the user-facing guides):** custodial means the hub still holds
   every key + plaintext; this hardens the wire + attribution + access-by-membership,
   and it is **NOT** E2E-from-the-hub.
 - **GUI server state is one SWR cache; client state stays local.** Every room

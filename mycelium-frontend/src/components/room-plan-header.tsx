@@ -82,10 +82,10 @@ export function RoomPlanHeader({ roomName }: Props) {
 
   const toggleOpen = (next: Open) => {
     setOpen(cur => {
-      if (cur.kind === next.kind && (cur.kind !== "file" || cur.slug === (next as any).slug)) {
-        return { kind: "none" };
-      }
-      return next;
+      const sameTarget =
+        cur.kind === next.kind &&
+        (cur.kind !== "file" || next.kind !== "file" || cur.slug === next.slug);
+      return sameTarget ? { kind: "none" } : next;
     });
   };
 

@@ -4290,6 +4290,12 @@
             ],
             "title": "Tags"
           },
+          "expandable": {
+            "type": "boolean",
+            "title": "Expandable",
+            "description": "Whether this memory opts in to transclusion via ``![[key]]``. Mirrors the ``expandable`` frontmatter flag.",
+            "default": false
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",

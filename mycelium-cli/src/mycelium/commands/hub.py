@@ -79,20 +79,7 @@ def host(ctx: typer.Context) -> None:
         env_path = _get_env_path()
         if env_path:
             cmd += ["--env-file", str(env_path)]
-        services = ["slim"]
-        # When attested identity is on (slim.identity=spire), bring the SPIRE server
-        # up alongside the node, one control, config-driven (#588). The agent is
-        # co-located with the backend (shared PID namespace), so it pulls the backend
-        # in too; that's intended, SPIRE needs a workload to attest. The node daemon
-        # itself starts in a second phase (it needs a join token minted against the
-        # live server). On the default psk this is a no-op and only `slim` starts.
-        from mycelium.commands.instance import _spire_enabled, bootstrap_spire_node
-
-        spire = _spire_enabled()
-        if spire:
-            cmd += ["--profile", "spire"]
-            services += ["mycelium-backend", "spire-server"]
-        cmd += ["up", "-d", *services]
+        cmd += ["up", "-d", "slim"]
 
         typer.echo("Starting SLIM node...")
         result = subprocess.run(cmd, capture_output=True, text=True)
@@ -102,14 +89,6 @@ def host(ctx: typer.Context) -> None:
             if result.stderr:
                 typer.echo(result.stderr, err=True)
             raise typer.Exit(result.returncode)
-
-        if spire:
-            # Rebuild the compose prefix (without the up args) for phase-2 bootstrap.
-            base = ["docker", "compose", "-p", _COMPOSE_PROJECT, "-f", str(compose_path)]
-            if env_path:
-                base += ["--env-file", str(env_path)]
-            base += ["--profile", "spire"]
-            bootstrap_spire_node(base)
 
         port = _slim_port()
         local_endpoint = f"http://127.0.0.1:{port}"

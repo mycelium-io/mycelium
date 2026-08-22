@@ -170,12 +170,12 @@ export function InstallPanel({ className }: Props) {
               <CopyField value={CLI_INSTALL_COMMAND} className="mt-2" />
             </Step>
             <Step n={2} title="Point it at this hub">
-              <p className="mt-0.5 text-micro text-muted-foreground">This hub's address.</p>
+              <p className="mt-0.5 text-micro text-muted-foreground">This hub&apos;s address.</p>
               <CopyField value={configSetCommand(hubUrl)} className="mt-2" />
             </Step>
             <Step n={3} title="Sign in">
               <p className="mt-0.5 text-micro text-muted-foreground">
-                Only needed if this hub requires it. The CLI will tell you if it doesn't.
+                Only needed if this hub requires it. The CLI will tell you if it doesn&apos;t.
               </p>
               <CopyField value={LOGIN_COMMAND} className="mt-2" />
             </Step>

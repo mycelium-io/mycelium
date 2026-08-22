@@ -18,6 +18,7 @@ vi.mock("@/lib/api", () => ({
   getNotificationsSSEUrl: () => "/api/notifications/stream",
 }));
 
+import { AuthSessionProvider } from "@/components/auth-session";
 import { CurrentUserProvider } from "@/components/current-user";
 import { InstallModalProvider } from "@/components/install-modal";
 import { KeymapProvider } from "@/components/keymap-provider";
@@ -33,13 +34,15 @@ async function renderSidebar(names: string[], activeRoom: string | null = null) 
   vi.mocked(fetchRooms).mockResolvedValue(rooms(...names) as never);
   renderWithSWR(
     <CurrentUserProvider>
-      <NotificationsProvider>
-        <KeymapProvider>
-          <InstallModalProvider>
-            <RoomsSidebar activeRoom={activeRoom} />
-          </InstallModalProvider>
-        </KeymapProvider>
-      </NotificationsProvider>
+      <AuthSessionProvider>
+        <NotificationsProvider>
+          <KeymapProvider>
+            <InstallModalProvider>
+              <RoomsSidebar activeRoom={activeRoom} />
+            </InstallModalProvider>
+          </KeymapProvider>
+        </NotificationsProvider>
+      </AuthSessionProvider>
     </CurrentUserProvider>,
   );
   await act(async () => {});

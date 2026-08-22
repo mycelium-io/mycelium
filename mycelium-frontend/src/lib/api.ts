@@ -15,7 +15,6 @@ import { encodeMemoryKeyPath } from "@/lib/memory-routes";
 export const logFetchError =
   (label: string) =>
   (err: unknown): undefined => {
-    // eslint-disable-next-line no-console
     console.error(`[mycelium] fetch failed: ${label}`, err);
     return undefined;
   };
@@ -157,12 +156,50 @@ export interface Memory {
   content_text?: string;
   version: number;
   created_by: string;
+  updated_by?: string | null;
   updated_at: string;
   file_path?: string;
+  tags?: string[];
+  /** Mirrors the `expandable` frontmatter flag that opts a memory into `![[…]]`. */
+  expandable?: boolean;
 }
 
+/** Shape sent to POST /api/rooms/{room}/memory to create or upsert a memory. */
+export interface MemoryCreate {
+  key: string;
+  /**
+   * Prose, or an object for a memory that carries fields beyond its text
+   * (a category entry's `logged_at`/`category`, or an arbitrary JSON value).
+   */
+  value: string | Record<string, unknown>;
+  /** Text used for the embedding; derived from `value` when omitted. */
+  content_text?: string;
+  tags?: string[];
+  embed?: boolean;
+  created_by: string;
+  base_version?: number;
+  meta?: Record<string, unknown>;
+}
+
+/** Create or upsert one or more memories. Throws `ApiError` on failure. */
+export async function createMemories(
+  roomName: string,
+  items: MemoryCreate[],
+): Promise<void> {
+  await apiFetch<unknown>(`/api/rooms/${roomName}/memory`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ items }),
+  });
+}
+
+/** `fetchMemories`'s page size — exported so a caller showing a raw count
+ *  (the dashboard's room cards) can tell "exactly this many" apart from
+ *  "at least this many" instead of reporting the cap as a true total. */
+export const MEMORIES_PAGE_LIMIT = 50;
+
 export async function fetchMemories(roomName: string, prefix?: string): Promise<Memory[]> {
-  const params = new URLSearchParams({ limit: "50" });
+  const params = new URLSearchParams({ limit: String(MEMORIES_PAGE_LIMIT) });
   if (prefix) params.set("prefix", prefix);
   return apiFetch<Memory[]>(`/api/rooms/${roomName}/memory?${params}`, {
     cache: "no-store",
@@ -775,7 +812,7 @@ export async function fetchEpisode(
   );
 }
 
-// ── SLIM coordination fabric (the `/health` coordination block) ──────────────
+// ── Network diagnostics (the `/health` coordination + identity + auth blocks) ─
 
 /** Per-room channel telemetry: present members (SLIM + server-held `await`
  *  leases), open consent invites, episode state, and durable-inbox counters. */
@@ -805,12 +842,52 @@ export interface CoordinationStatus {
   rooms: CoordinationRoom[];
 }
 
-/** Read the SLIM coordination telemetry from the backend `/health` endpoint.
- *  Fail-soft: returns null when the backend is unreachable or has no block. */
-export async function fetchCoordination(): Promise<CoordinationStatus | null> {
-  const data = await apiFetch<{ coordination?: CoordinationStatus }>(`/api/health`, {
+/** The SLIM channel identity tier this hub runs on (`psk` / `signerjwt`).
+ *  `status` carries the honest degrade: a selected tier with no resolvable
+ *  signing key/roster is `degraded` (falling back to the PSK) or `error`
+ *  (required, failing closed). */
+export interface IdentityStatus {
+  status: string;
+  mode: string;
+  message: string;
+}
+
+/** The HTTP-API JWT gate: whether this hub is gated at all, and against what.
+ *  `warnings` carries the backend's own configuration complaints (e.g. no
+ *  audience set), so an operator sees the same text `/health` reports. */
+export interface AuthStatus {
+  enabled: boolean;
+  issuers: string[];
+  localhost_bypass: boolean;
+  audience?: string | null;
+  warnings?: string[];
+}
+
+/** The three `/health` blocks the Network tab reads. They arrive in one
+ *  response, so the deployment's posture (identity tier, auth gate) costs no
+ *  extra call beyond the coordination telemetry the tab already polls. */
+export interface NetworkStatus {
+  coordination: CoordinationStatus | null;
+  identity: IdentityStatus | null;
+  auth: AuthStatus | null;
+}
+
+/** Read the network diagnostics blocks from the backend `/health` endpoint.
+ *  Fail-soft: returns null when the backend is unreachable; an individual block
+ *  the backend didn't report is null rather than fabricated. */
+export async function fetchNetworkStatus(): Promise<NetworkStatus | null> {
+  const data = await apiFetch<{
+    coordination?: CoordinationStatus;
+    identity?: IdentityStatus;
+    auth?: AuthStatus;
+  } | null>(`/api/health`, {
     cache: "no-store",
-    fallback: {},
+    fallback: null,
   });
-  return data.coordination ?? null;
+  if (!data) return null;
+  return {
+    coordination: data.coordination ?? null,
+    identity: data.identity ?? null,
+    auth: data.auth ?? null,
+  };
 }

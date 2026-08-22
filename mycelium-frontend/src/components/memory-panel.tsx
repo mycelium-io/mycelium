@@ -15,6 +15,8 @@ import {
   FileText,
   AlertCircle,
   Network,
+  Pencil,
+  Eye,
 } from "lucide-react";
 import {
   fetchMemory,
@@ -23,13 +25,18 @@ import {
   type Memory,
   type MemorySearchResult,
 } from "@/lib/api";
-import { useRoomMemories, useRoomMemoryIntegrity } from "@/lib/room-data";
+import { useRoomMemories, useRoomMemoryIntegrity, useRoomRevalidate } from "@/lib/room-data";
 import { memoryGraphHref, memoryHref } from "@/lib/memory-routes";
 import { expandedPathsForKey, resolveMemoryPeekNavigation } from "@/lib/memory-panel-nav";
+import { MemoryPreviewCard, type PreviewAnchor } from "@/components/memory-preview-card";
+import { memoryValueText } from "@/lib/memory-preview";
 import { DetailDrawer } from "@/components/detail-drawer";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MemoryDetail } from "@/components/memory-detail";
+import { MemoryEditor } from "@/components/memory-editor";
+import { useCurrentUser } from "@/components/current-user";
+import { useUnsavedGuard } from "@/components/unsaved-changes";
 
 interface TreeNode {
   name: string;
@@ -82,16 +89,6 @@ function buildTree(memories: Memory[]): TreeNode[] {
   return root.children;
 }
 
-function formatValue(v: unknown): string {
-  if (typeof v === "string") return v;
-  if (typeof v === "object" && v !== null) {
-    const obj = v as Record<string, unknown>;
-    if ("text" in obj) return obj.text as string;
-    return JSON.stringify(v, null, 0);
-  }
-  return String(v);
-}
-
 // Filename for a memory leaf, with its extension. Keys usually omit it (they're
 // stored as markdown); a structured value with no `text` field is really JSON.
 // A key that already carries an extension is shown as-is.
@@ -104,6 +101,7 @@ function fileName(node: TreeNode): string {
 
 const ROW_H = 22; // px, matches vscode compact density
 const INDENT = 12; // px per depth level
+const PEEK_DELAY = 350; // ms of hover intent before the preview card opens
 
 interface TreeRowsProps {
   nodes: TreeNode[];
@@ -112,9 +110,20 @@ interface TreeRowsProps {
   onToggle: (path: string) => void;
   onSelect: (mem: Memory) => void;
   selected: Memory | null;
+  onPeek: (mem: Memory, row: HTMLElement) => void;
+  onPeekEnd: () => void;
 }
 
-function TreeRows({ nodes, depth, collapsed, onToggle, onSelect, selected }: TreeRowsProps) {
+function TreeRows({
+  nodes,
+  depth,
+  collapsed,
+  onToggle,
+  onSelect,
+  selected,
+  onPeek,
+  onPeekEnd,
+}: TreeRowsProps) {
   return (
     <>
       {nodes.map(node => {
@@ -127,6 +136,10 @@ function TreeRows({ nodes, depth, collapsed, onToggle, onSelect, selected }: Tre
           <div key={node.path}>
             <div
               style={{ paddingLeft, height: ROW_H }}
+              onMouseEnter={e => node.memory && onPeek(node.memory, e.currentTarget)}
+              onMouseLeave={onPeekEnd}
+              onFocus={e => node.memory && onPeek(node.memory, e.currentTarget)}
+              onBlur={onPeekEnd}
               className={`flex w-full items-center gap-1.5 pr-3 transition-colors
                 ${isSelected ? "bg-accent/15 text-text" : "hover:bg-muted text-muted-foreground hover:text-text"}`}
             >
@@ -189,6 +202,8 @@ function TreeRows({ nodes, depth, collapsed, onToggle, onSelect, selected }: Tre
                 onToggle={onToggle}
                 onSelect={onSelect}
                 selected={selected}
+                onPeek={onPeek}
+                onPeekEnd={onPeekEnd}
               />
             )}
           </div>
@@ -207,6 +222,52 @@ export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusM
   const [selected, setSelected] = useState<Memory | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [renderedBody, setRenderedBody] = useState<string | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [peek, setPeek] = useState<{ memory: Memory; anchor: PreviewAnchor } | null>(null);
+  const paneRef = useRef<HTMLDivElement>(null);
+  const peekTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { principal } = useCurrentUser();
+  const revalidate = useRoomRevalidate(roomName);
+
+  // Hovering a row opens a preview card after a beat of hover intent. It is
+  // anchored to the pane's left edge rather than the row, so it never covers
+  // the list the reader is scanning.
+  const endPeek = useCallback(() => {
+    if (peekTimer.current) {
+      clearTimeout(peekTimer.current);
+      peekTimer.current = null;
+    }
+    setPeek(null);
+  }, []);
+
+  const startPeek = useCallback((memory: Memory, row: HTMLElement) => {
+    if (peekTimer.current) clearTimeout(peekTimer.current);
+    peekTimer.current = setTimeout(() => {
+      const rect = row.getBoundingClientRect();
+      const pane = paneRef.current?.getBoundingClientRect();
+      setPeek({
+        memory,
+        anchor: {
+          top: rect.top,
+          height: rect.height,
+          paneLeft: pane?.left ?? rect.left,
+        },
+      });
+    }, PEEK_DELAY);
+  }, []);
+
+  useEffect(() => endPeek, [endPeek]);
+
+  // Anything that would replace or unmount the editor goes through `guard`,
+  // so in-progress edits are never dropped without asking.
+  const { setDirty, guard, dialog: unsavedDialog } = useUnsavedGuard();
+  const selectMemory = useCallback(
+    (m: Memory | null) => {
+      endPeek();
+      guard(() => setSelected(m));
+    },
+    [endPeek, guard],
+  );
 
   // The tree, plus the room-wide integrity report the drawer reads to flag a
   // broken or orphaned memory without a per-open round trip. Both revalidate
@@ -215,6 +276,9 @@ export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusM
   const { integrity } = useRoomMemoryIntegrity(roomName);
   const memoriesRef = useRef(memories);
   memoriesRef.current = memories;
+
+  // Exit edit mode whenever the selected memory changes.
+  useEffect(() => { setIsEditing(false); }, [selected?.key]);
 
   // Expanded transclusions for whichever memory is open in the drawer, so the
   // rail peek matches the full page instead of leaving `![[…]]` markers as
@@ -257,13 +321,13 @@ export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusM
         fetchMemory,
       );
       if (nav.action === "drawer") {
-        setSelected(nav.memory);
+        selectMemory(nav.memory);
         revealKeyInTree(key, true);
         return;
       }
       router.push(nav.href);
     },
-    [roomName, revealKeyInTree, router],
+    [roomName, revealKeyInTree, router, selectMemory],
   );
 
   // Arriving from search: open the named memory and reveal its folder. The tree
@@ -301,12 +365,12 @@ export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusM
   const toggleNs = useCallback((path: string) =>
     setCollapsed(prev => {
       const next = new Set(prev);
-      next.has(path) ? next.delete(path) : next.add(path);
+      if (next.has(path)) next.delete(path); else next.add(path);
       return next;
     }), []);
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div ref={paneRef} className="flex flex-col h-full overflow-hidden">
       {/* Stats row */}
       <div className="px-4 py-3 border-b border-border bg-paper">
         <div className="flex items-baseline gap-1.5 text-label text-muted-foreground">
@@ -338,7 +402,7 @@ export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusM
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto" onScroll={endPeek}>
         {/* Search */}
         <div className="px-4 py-3 border-b border-border bg-paper">
           <div className="flex gap-2">
@@ -382,7 +446,7 @@ export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusM
             {searchResults.map((r, i) => (
               <button
                 key={i}
-                onClick={() => setSelected(r.memory)}
+                onClick={() => selectMemory(r.memory)}
                 className="block w-full text-left px-4 py-2.5 border-b border-border last:border-b-0 transition-colors hover:bg-hairline"
               >
                 <div className="flex items-baseline gap-2 mb-1">
@@ -392,7 +456,7 @@ export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusM
                   </span>
                 </div>
                 <p className="text-label text-muted-foreground line-clamp-2 leading-snug">
-                  {formatValue(r.memory.value)}
+                  {memoryValueText(r.memory.value)}
                 </p>
               </button>
             ))}
@@ -422,8 +486,10 @@ export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusM
                 depth={0}
                 collapsed={collapsed}
                 onToggle={toggleNs}
-                onSelect={setSelected}
+                onSelect={selectMemory}
                 selected={selected}
+                onPeek={startPeek}
+                onPeekEnd={endPeek}
               />
             )}
           </div>
@@ -432,32 +498,66 @@ export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusM
 
       <DetailDrawer
         open={selected !== null}
-        onClose={() => setSelected(null)}
+        onClose={() => guard(() => { setSelected(null); setIsEditing(false); })}
         title={selected?.key}
         subtitle={selected ? `v${selected.version} · ${selected.created_by}` : undefined}
         actions={
           selected ? (
-            <Link
-              href={memoryHref(roomName, selected.key)}
-              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-micro font-medium text-accent transition-colors hover:bg-hairline"
-              title="Open full page"
-            >
-              <ExternalLink className="size-3.5" />
-              Full page
-            </Link>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() =>
+                  isEditing ? guard(() => setIsEditing(false)) : setIsEditing(true)
+                }
+                title={isEditing ? "View" : "Edit"}
+                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-micro font-medium text-accent transition-colors hover:bg-hairline"
+              >
+                {isEditing ? <Eye className="size-3.5" /> : <Pencil className="size-3.5" />}
+                {isEditing ? "View" : "Edit"}
+              </button>
+              <Link
+                href={memoryHref(roomName, selected.key)}
+                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-micro font-medium text-accent transition-colors hover:bg-hairline"
+                title="Open full page"
+              >
+                <ExternalLink className="size-3.5" />
+                Full page
+              </Link>
+            </div>
           ) : undefined
         }
       >
         {selected && (
-          <MemoryDetail
-            memory={selected}
-            roomName={roomName}
-            onNavigate={openMemoryByKey}
-            renderedBody={renderedBody}
-            integrity={integrity}
-          />
+          isEditing ? (
+            <MemoryEditor
+              key={selected.key}
+              memory={selected}
+              roomName={roomName}
+              actor={principal}
+              onDirtyChange={setDirty}
+              onSaved={() => {
+                revalidate();
+                setIsEditing(false);
+                // Refresh the selected memory to show updated content.
+                fetchMemory(roomName, selected.key).then(m => { if (m) setSelected(m); });
+              }}
+              onCancel={() => guard(() => setIsEditing(false))}
+            />
+          ) : (
+            <MemoryDetail
+              memory={selected}
+              roomName={roomName}
+              onNavigate={openMemoryByKey}
+              renderedBody={renderedBody}
+              integrity={integrity}
+            />
+          )
         )}
       </DetailDrawer>
+
+      {peek && !selected && <MemoryPreviewCard memory={peek.memory} anchor={peek.anchor} />}
+
+      {unsavedDialog}
     </div>
   );
 }

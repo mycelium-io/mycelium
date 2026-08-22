@@ -8,10 +8,12 @@ apply-to-local-store write + reindex, and the last-write-wins conflict policy
 (idempotent same-version loopback; stale-base rejection with details, no merge).
 """
 
+from datetime import UTC, datetime
+
 import pytest
 
 from app.services import memory_sync, search_index
-from app.services.filesystem import get_room_dir, read_memory_file
+from app.services.filesystem import get_room_dir, parse_timestamp, read_memory_file
 from app.services.l9_models import Kind
 
 
@@ -112,6 +114,43 @@ class TestApplyKnowledge:
         assert res.applied
         got = read_memory_file(get_room_dir("r"), "plan/tasks")
         assert got is not None and "v2 wins" in got[1] and got[0]["version"] == 2
+
+
+class TestAppliedTimestamps:
+    """A knowledge message carries when the write happened; the applier replicates
+    that stamp rather than dating the memory to whenever this store caught up.
+    A restart re-serving a backlog would otherwise land the whole backlog at one
+    instant and re-sort every synced memory to the same end of the list."""
+
+    async def test_apply_keeps_the_write_s_own_updated_at(self):
+        await memory_sync.apply_knowledge("r", _write(version=1))
+
+        got = read_memory_file(get_room_dir("r"), "plan/tasks")
+
+        assert got is not None
+        assert got[0]["updated_at"] == "2026-08-04T00:00:00+00:00"
+
+    async def test_apply_does_not_stamp_the_memory_with_the_applier_s_clock(self):
+        before = datetime.now(UTC)
+
+        await memory_sync.apply_knowledge("r", _write(version=1))
+
+        got = read_memory_file(get_room_dir("r"), "plan/tasks")
+        assert got is not None
+        applied_at = parse_timestamp(got[0]["updated_at"])
+        assert applied_at is not None and applied_at < before
+
+    async def test_an_update_keeps_the_created_at_already_on_disk(self):
+        await memory_sync.apply_knowledge("r", _write(version=1))
+        first = read_memory_file(get_room_dir("r"), "plan/tasks")
+        assert first is not None
+        created = first[0]["created_at"]
+
+        await memory_sync.apply_knowledge("r", _write(version=2, base=1, content="# v2"))
+
+        got = read_memory_file(get_room_dir("r"), "plan/tasks")
+        assert got is not None
+        assert got[0]["created_at"] == created
 
 
 class TestConflictPolicy:

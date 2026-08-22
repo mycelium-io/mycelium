@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Adapters · mycelium</title>
 <meta name="description" content="Connect Claude Code, Cursor, or any HTTP client to the Mycelium coordination layer.">
 <meta property="og:title" content="Adapters · mycelium">
@@ -38,16 +38,28 @@
     <span class="brand-word">mycelium</span>
   </a>
   <nav class="sectionnav">
-    <div class="sectionnav-inner">
-      <a href="index.html" class="">Guide</a>
-      <a href="adapters.html" class="active">Adapters</a>
-      <a href="reference.html" class="">Reference</a>
-    </div>
-    <div class="sectionnav-right">
-      <a href="https://raw.githubusercontent.com/mycelium-io/mycelium/main/mycelium-cli/src/mycelium/integrations/claude_code/assets/skills/mycelium/SKILL.md" target="_blank" rel="noopener">SKILL.md ↗</a>
-    </div>
+    <a href="https://raw.githubusercontent.com/mycelium-io/mycelium/main/mycelium-cli/src/mycelium/integrations/claude_code/assets/skills/mycelium/SKILL.md" target="_blank" rel="noopener">SKILL.md ↗</a>
   </nav>
   <div class="topnav-right">
+    <div class="docsearch" id="docsearch">
+      <button class="docsearch-toggle" id="docsearch-toggle" type="button"
+              aria-label="Search docs" aria-expanded="false"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></button>
+      <div class="docsearch-field">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input type="search" id="docsearch-input" placeholder="Search docs"
+               autocomplete="off" spellcheck="false" aria-label="Search the documentation"
+               role="combobox" aria-expanded="false" aria-controls="docsearch-results">
+        <kbd class="docsearch-hint">/</kbd>
+      </div>
+      <div class="docsearch-panel" id="docsearch-panel">
+        <div class="docsearch-results" id="docsearch-results" role="listbox"></div>
+        <div class="docsearch-legend">
+          <span><kbd>&uarr;</kbd><kbd>&darr;</kbd> navigate</span>
+          <span><kbd>&crarr;</kbd> open</span>
+          <span><kbd>esc</kbd> close</span>
+        </div>
+      </div>
+    </div>
     <button class="copy-docs-btn" onclick="copyDocsCmd()"><i data-lucide="terminal"></i>Copy docs cmd</button>
     <button class="copy-page-btn" onclick="copyPage()"><i data-lucide="copy"></i>Copy page</button>
     <div class="theme-toggle">
@@ -66,19 +78,115 @@
 <div class="layout">
 
   <nav class="sidebar" id="sidebar">
-    <div class="nav-section nav-pages">
-      <div class="nav-section-label">Pages</div>
-      <a href="index.html" class="nav-link page">Guide</a>
-      <a href="adapters.html" class="nav-link page active">Adapters</a>
-      <a href="reference.html" class="nav-link page">Reference</a>
-      <a href="https://raw.githubusercontent.com/mycelium-io/mycelium/main/mycelium-cli/src/mycelium/integrations/claude_code/assets/skills/mycelium/SKILL.md" class="nav-link page" target="_blank" rel="noopener">SKILL.md ↗</a>
+    <div class="nav-tree">
+    <div class="nav-page-group">
+      <a href="index.html" class="nav-page-link">Guide</a>
+      <div class="nav-group collapsed" data-nav-group="start:get-started">
+        <button class="nav-group-toggle" type="button" aria-expanded="false"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Get Started</span></button>
+        <div class="nav-group-items">
+          <a href="index.html#overview" class="nav-link sub">Overview</a>
+          <a href="index.html#quickstart" class="nav-link sub">Quick Start</a>
+        </div>
+      </div>
+      <div class="nav-group collapsed" data-nav-group="start:concepts">
+        <button class="nav-group-toggle" type="button" aria-expanded="false"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Concepts</span></button>
+        <div class="nav-group-items">
+          <a href="index.html#rooms" class="nav-link sub">Rooms</a>
+          <a href="index.html#users" class="nav-link sub">Users &amp; Teams</a>
+          <a href="index.html#episodes" class="nav-link sub">Episodes</a>
+          <a href="index.html#memory" class="nav-link sub">Memory</a>
+          <a href="index.html#plan" class="nav-link sub">Plan</a>
+          <a href="index.html#l9-protocol" class="nav-link sub">L9 Protocol</a>
+        </div>
+      </div>
+      <div class="nav-group collapsed" data-nav-group="start:engines">
+        <button class="nav-group-toggle" type="button" aria-expanded="false"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Engines</span></button>
+        <div class="nav-group-items">
+          <a href="index.html#engines" class="nav-link sub">Overview</a>
+          <a href="index.html#aligner" class="nav-link sub">Aligner</a>
+          <a href="index.html#synthesizer" class="nav-link sub">Synthesizer</a>
+        </div>
+      </div>
     </div>
-    <div class="nav-section">
-      <div class="nav-section-label">Adapters</div>
-      <a href="#adapters" class="nav-link sub">Overview</a>
-      <a href="#adapter-claude-code" class="nav-link sub">Claude Code</a>
-      <a href="#adapter-cursor" class="nav-link sub">Cursor</a>
-      <a href="#adapter-api" class="nav-link sub">REST API</a>
+    <div class="nav-page-group">
+      <a href="adapters.html" class="nav-page-link active">Adapters</a>
+      <div class="nav-group" data-nav-group="adapters:adapters">
+        <button class="nav-group-toggle" type="button" aria-expanded="true"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Adapters</span></button>
+        <div class="nav-group-items">
+          <a href="#adapters" class="nav-link sub">Overview</a>
+          <a href="#adapter-claude-code" class="nav-link sub">Claude Code</a>
+          <a href="#adapter-cursor" class="nav-link sub">Cursor</a>
+          <a href="#adapter-api" class="nav-link sub">REST API</a>
+        </div>
+      </div>
+    </div>
+    <div class="nav-page-group">
+      <a href="reference.html" class="nav-page-link">Reference</a>
+      <div class="nav-group collapsed" data-nav-group="reference:architecture">
+        <button class="nav-group-toggle" type="button" aria-expanded="false"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Architecture</span></button>
+        <div class="nav-group-items">
+          <a href="reference.html#architecture" class="nav-link sub">Architecture</a>
+        </div>
+      </div>
+      <div class="nav-group collapsed" data-nav-group="reference:cli-reference">
+        <button class="nav-group-toggle" type="button" aria-expanded="false"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>CLI Reference</span></button>
+        <div class="nav-group-items">
+          <a href="reference.html#cli-setup" class="nav-link sub">setup</a>
+          <a href="reference.html#cli-room" class="nav-link sub">room</a>
+          <a href="reference.html#cli-agent" class="nav-link sub">agent</a>
+          <a href="reference.html#cli-memory" class="nav-link sub">memory</a>
+          <a href="reference.html#cli-skill" class="nav-link sub">skill</a>
+          <a href="reference.html#cli-plan" class="nav-link sub">plan</a>
+          <a href="reference.html#cli-adapter" class="nav-link sub">adapter</a>
+          <a href="reference.html#cli-config" class="nav-link sub">config</a>
+          <a href="reference.html#cli-other" class="nav-link sub">watch</a>
+        </div>
+      </div>
+      <div class="nav-group collapsed" data-nav-group="reference:configuration">
+        <button class="nav-group-toggle" type="button" aria-expanded="false"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Configuration</span></button>
+        <div class="nav-group-items">
+          <a href="reference.html#config-identity" class="nav-link sub">identity</a>
+          <a href="reference.html#config-server" class="nav-link sub">server</a>
+          <a href="reference.html#config-llm" class="nav-link sub">llm</a>
+          <a href="reference.html#config-runtime" class="nav-link sub">runtime</a>
+          <a href="reference.html#config-rooms" class="nav-link sub">rooms</a>
+          <a href="reference.html#config-slim" class="nav-link sub">slim</a>
+          <a href="reference.html#config-engine" class="nav-link sub">engine</a>
+          <a href="reference.html#config-auth" class="nav-link sub">auth</a>
+          <a href="reference.html#config-login" class="nav-link sub">login</a>
+          <a href="reference.html#config-agent-auth" class="nav-link sub">agent_auth</a>
+          <a href="reference.html#config-metrics" class="nav-link sub">metrics</a>
+        </div>
+      </div>
+      <div class="nav-group collapsed" data-nav-group="reference:dependencies">
+        <button class="nav-group-toggle" type="button" aria-expanded="false"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Dependencies</span></button>
+        <div class="nav-group-items">
+          <a href="reference.html#dependencies-messaging-fabric-agntcy-slim" class="nav-link sub">Messaging (SLIM)</a>
+          <a href="reference.html#dependencies-memory-and-search" class="nav-link sub">Memory &amp; Search</a>
+          <a href="reference.html#dependencies-cognition" class="nav-link sub">Cognition</a>
+          <a href="reference.html#dependencies-identity-and-crypto" class="nav-link sub">Identity &amp; Crypto</a>
+        </div>
+      </div>
+      <div class="nav-group collapsed" data-nav-group="reference:guides">
+        <button class="nav-group-toggle" type="button" aria-expanded="false"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Guides</span></button>
+        <div class="nav-group-items">
+          <a href="reference.html#structured-memory" class="nav-link sub">Structured Memory</a>
+          <a href="reference.html#hub-and-spoke" class="nav-link sub">Hub &amp; Spoke</a>
+          <a href="reference.html#security-planes" class="nav-link sub">Security Planes</a>
+          <a href="reference.html#auth" class="nav-link sub">Authentication</a>
+          <a href="reference.html#keycloak-oidc" class="nav-link sub">Keycloak / OIDC Setup</a>
+        </div>
+      </div>
+      <div class="nav-group collapsed" data-nav-group="reference:help">
+        <button class="nav-group-toggle" type="button" aria-expanded="false"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Help</span></button>
+        <div class="nav-group-items">
+          <a href="reference.html#troubleshooting" class="nav-link sub">Troubleshooting</a>
+        </div>
+      </div>
+    </div>
+    </div>
+    <div class="nav-external">
+      <a href="https://raw.githubusercontent.com/mycelium-io/mycelium/main/mycelium-cli/src/mycelium/integrations/claude_code/assets/skills/mycelium/SKILL.md" target="_blank" rel="noopener">SKILL.md ↗</a>
     </div>
   </nav>
   <div class="nav-backdrop" id="nav-backdrop" onclick="closeDrawer()"></div>

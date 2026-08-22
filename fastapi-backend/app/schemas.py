@@ -349,6 +349,13 @@ class MemoryRead(BaseModel):
     updated_by: str | None = None
     version: int
     tags: list[str] | None = None
+    expandable: bool = Field(
+        False,
+        description=(
+            "Whether this memory opts in to transclusion via ``![[key]]``. "
+            "Mirrors the ``expandable`` frontmatter flag."
+        ),
+    )
     created_at: datetime
     updated_at: datetime
     file_path: str | None = None

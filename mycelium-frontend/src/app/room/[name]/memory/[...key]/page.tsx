@@ -8,7 +8,6 @@ import { useParams } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { MemoryPageView } from "@/components/memory-page-view";
 import { GlobalStatusItems } from "@/components/status-items";
-import { ActingAsPicker } from "@/components/acting-as-picker";
 import { parseMemoryKeyParam } from "@/lib/memory-routes";
 
 function MemoryPageBody() {
@@ -31,12 +30,7 @@ export default function MemoryPage() {
     <AppShell
       activeRoom={roomName}
       statusLeft={<span className="text-micro text-muted-foreground">Memory</span>}
-      statusRight={
-        <>
-          <ActingAsPicker />
-          <GlobalStatusItems />
-        </>
-      }
+      statusRight={<GlobalStatusItems />}
     >
       <Suspense fallback={null}>
         <MemoryPageBody />

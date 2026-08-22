@@ -1,8 +1,7 @@
 # Inline SLIM node config (Compose `configs.content`, no external file to ship).
 # Minimal single standalone hub: one dataplane server on :46357, TLS disabled
-# for local dev (the SLIM node is a blind ciphertext forwarder — attestation is
-# app-level MLS identity, so the node itself never inspects identity even when the
-# `spire` profile is on; see the `spire` block at the bottom of this file).
+# for local dev (the SLIM node is a blind ciphertext forwarder — identity is
+# app-level MLS identity, so the node itself never inspects it).
 configs:
   slim-node-config:
     content: |
@@ -22,63 +21,6 @@ configs:
                   insecure: true
             clients: []
 
-  # ── SPIRE server config (only mounted by the `spire` profile) ────────────────
-  # Dev-grade appliance SPIRE: SQLite datastore, join-token node attestation, short
-  # JWT-SVID TTLs. The trust domain rides ${MYCELIUM_SLIM_SPIRE_TRUST_DOMAIN} so the
-  # node, the backend's MLS identity, and `mycelium agent create` all agree on it.
-  spire-server-config:
-    content: |
-      server {
-        bind_address = "0.0.0.0"
-        bind_port    = "8081"
-        trust_domain = "${MYCELIUM_SLIM_SPIRE_TRUST_DOMAIN:-mycelium.dev}"
-        data_dir     = "/opt/spire/data/server"
-        log_level    = "INFO"
-        jwt_issuer   = "${MYCELIUM_SLIM_SPIRE_TRUST_DOMAIN:-mycelium.dev}"
-        ca_ttl       = "24h"
-        default_jwt_svid_ttl = "5m"
-      }
-      plugins {
-        DataStore "sql" {
-          plugin_data {
-            database_type = "sqlite3"
-            connection_string = "/opt/spire/data/server/datastore.sqlite3"
-          }
-        }
-        NodeAttestor "join_token" { plugin_data {} }
-        KeyManager "disk" {
-          plugin_data { keys_path = "/opt/spire/data/server/keys.json" }
-        }
-      }
-
-  # ── SPIRE node-daemon config (only mounted by the `spire` profile) ───────────
-  # "Node daemon" is SPIRE's per-node identity daemon (upstream image `spire-agent`)
-  # — it has nothing to do with mycelium coordination agents (@alice); it serves the
-  # Workload API socket and fetches SVIDs. The `unix` workload attestor identifies a
-  # caller by its SO_PEERCRED PID, so the daemon shares the backend's PID namespace
-  # (see `spire-node` below) and serves the Workload API over a NAMED VOLUME — a host
-  # bind-mount drops peer creds on Docker Desktop (#584). Disk KeyManager + a
-  # persisted data dir let it reuse its node SVID across restarts instead of
-  # re-consuming the one-time join token.
-  spire-node-config:
-    content: |
-      agent {
-        data_dir       = "/opt/spire/data/agent"
-        log_level      = "INFO"
-        server_address = "mycelium-spire-server"
-        server_port    = "8081"
-        trust_domain   = "${MYCELIUM_SLIM_SPIRE_TRUST_DOMAIN:-mycelium.dev}"
-        socket_path    = "/run/spire/sockets/agent.sock"
-        insecure_bootstrap = true
-      }
-      plugins {
-        NodeAttestor "join_token" { plugin_data {} }
-        WorkloadAttestor "unix" { plugin_data {} }
-        KeyManager "disk" {
-          plugin_data { directory = "/opt/spire/data/agent" }
-        }
-      }
-
 services:
 
   # ── SLIM node (always started) ───────────────────────────────────────────────
@@ -93,11 +35,9 @@ services:
     # `slim-bindings` wheel the backend/daemon use (`>=2.1,<2.2` in both
     # pyprojects). Mixing versions fails the handshake with "public key length
     # is invalid", so node + bindings move in lockstep. 2.1.x is the first
-    # MLS-with-external-identity-capable stack (the SPIRE JWT-SVID -> MLS spike
-    # in docs/design/spire-mls-spike proved it), the prereq for #476/#579.
+    # MLS-with-external-identity-capable stack, the prereq for #476.
     # Node 2.2.0 exists but has no matching PyPI bindings yet — stay on 2.1.x
-    # until 2.2.x bindings publish, then bump both in lockstep and re-run the
-    # spike run.sh.
+    # until 2.2.x bindings publish, then bump both in lockstep.
     image: ghcr.io/agntcy/slim:${SLIM_IMAGE_TAG:-2.1.0}
     pull_policy: always
     container_name: mycelium-slim
@@ -136,19 +76,8 @@ services:
       # env var is read separately by docker compose to resolve the volume
       # source path; the two values are different by design.)
       MYCELIUM_DATA_DIR: /home/mycelium/.mycelium
-      # SPIRE Workload API socket + trust domain. Inert on the default `psk` path:
-      # slim_identity only consults these when MYCELIUM_SLIM_IDENTITY=spire *and* the
-      # socket exists on disk, and the socket only appears once the `spire` profile's
-      # co-located node daemon is up (shares this container's PID namespace). Setting
-      # them unconditionally keeps the backend service structurally identical across
-      # profiles — the `spire` profile adds services, it never rewrites the backend.
-      MYCELIUM_SLIM_SPIRE_SOCKET: unix:///run/spire/sockets/agent.sock
-      MYCELIUM_SLIM_SPIRE_TRUST_DOMAIN: ${MYCELIUM_SLIM_SPIRE_TRUST_DOMAIN:-mycelium.dev}
     volumes:
       - ${MYCELIUM_DATA_DIR:-~/.mycelium}:/home/mycelium/.mycelium
-      # Named volume for the SPIRE Workload API socket (empty on `psk`; the `spire`
-      # agent populates it). Named, not a host bind — a bind drops peer creds (#584).
-      - spire-socket:/run/spire/sockets
     ports:
       - "${MYCELIUM_BACKEND_PORT:-8000}:8000"
     healthcheck:
@@ -233,87 +162,3 @@ services:
       timeout: 5s
       retries: 3
       start_period: 5s
-
-  # ── SPIRE server (profile: spire) ────────────────────────────────────────────
-  #
-  # Optional attested-identity tier (#588). Off the try-it path by design: the
-  # `spire` profile is added automatically by `mycelium up` / `hub host` only when
-  # `slim.identity=spire` — the user never passes `--profile spire` by hand. On the
-  # default (`psk`) nothing here is created; the stack is byte-for-byte as before.
-  #
-  # SPIRE (server + node daemon + attestation) is the heaviest identity tier: it
-  # mints per-member JWT-SVIDs the backend presents as MLS identity. `mycelium agent
-  # create`/`rm` register/revoke the workload entries against this server itself
-  # (via `docker compose exec`), so there is no hand-typed `spire-server entry
-  # create`. See mycelium.spire_registry.
-  #
-  # The SPIRE images are DISTROLESS (no shell) with a fixed
-  # ENTRYPOINT=[".../spire-server","run"], so the bring-up can't self-bootstrap via
-  # an inline shell script. Instead `mycelium up` orchestrates it host-side (the
-  # same seam spire_registry uses): start the server, wait healthy, mint a join
-  # token bound to the fixed `agent-node` SPIFFE ID, then start the node daemon with
-  # SPIRE_JOIN_TOKEN. `command:` only appends flags to the image entrypoint.
-  spire-server:
-    image: ghcr.io/spiffe/spire-server:1.9.6
-    pull_policy: always
-    container_name: mycelium-spire-server
-    hostname: mycelium-spire-server
-    restart: unless-stopped
-    profiles: [spire]
-    configs:
-      - source: spire-server-config
-        target: /opt/spire/conf/server/server.conf
-    volumes:
-      - spire-server-data:/opt/spire/data/server
-    command: ["-config", "/opt/spire/conf/server/server.conf"]
-    healthcheck:
-      test: ["CMD", "/opt/spire/bin/spire-server", "healthcheck"]
-      interval: 10s
-      timeout: 5s
-      retries: 6
-      start_period: 10s
-
-  # ── SPIRE node daemon (profile: spire) ───────────────────────────────────────
-  #
-  # SPIRE's per-node identity daemon (upstream image `spire-agent`) — NOT a mycelium
-  # coordination agent. Co-located with the backend: shares the backend's PID
-  # namespace so the `unix` workload attestor can read the backend's SO_PEERCRED, and
-  # serves the Workload API on the shared `spire-socket` named volume the backend
-  # mounts. These are the two #584 gotchas baked in — cross-namespace or a host-bind
-  # socket yields "could not resolve caller information" and a member stuck at
-  # "Initializing spire identity manager."
-  #
-  # SPIRE_JOIN_TOKEN is injected by `mycelium up` after minting it against the live
-  # server (distroless images can't hand the token off between two shell-less
-  # containers). The disk KeyManager + persisted data dir let a restart reuse the
-  # stored node SVID rather than re-consuming the spent one-time token.
-  spire-node:
-    image: ghcr.io/spiffe/spire-agent:1.9.6
-    pull_policy: always
-    container_name: mycelium-spire-noded
-    restart: unless-stopped
-    profiles: [spire]
-    depends_on:
-      spire-server:
-        condition: service_healthy
-    # Join the backend's PID namespace so the unix attestor can introspect it.
-    pid: "service:mycelium-backend"
-    configs:
-      - source: spire-node-config
-        target: /opt/spire/conf/agent/agent.conf
-    volumes:
-      - spire-node-data:/opt/spire/data/agent
-      - spire-socket:/run/spire/sockets
-    command:
-      - "-config"
-      - "/opt/spire/conf/agent/agent.conf"
-      - "-joinToken"
-      - "${SPIRE_JOIN_TOKEN:-}"
-
-volumes:
-  spire-server-data:
-  spire-node-data:
-  # The Workload API socket dir, shared backend ⇄ node daemon. Always declared
-  # (compose requires it for the backend's mount); populated when the `spire` profile
-  # brings the agent up.
-  spire-socket:

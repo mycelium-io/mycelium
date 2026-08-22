@@ -4,6 +4,8 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { BarChart3 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useGlobalStatus } from "@/lib/use-status";
 
@@ -61,5 +63,26 @@ export function GlobalStatusItems() {
         </StatusLink>
       )}
     </>
+  );
+}
+
+/** Metrics lives in the status bar, beside the model/spend cells that already
+ *  deep-link into it — telemetry reads as a footer concern (editor-style), not
+ *  a peer of the rooms in the navigation rail. */
+export function MetricsStatusLink() {
+  const pathname = usePathname();
+  const active = pathname === "/metrics";
+  return (
+    <Link
+      href="/metrics"
+      title="Metrics"
+      aria-current={active ? "page" : undefined}
+      className={`flex items-center gap-1.5 rounded px-1.5 py-0.5 -my-0.5 transition-colors hover:bg-hairline hover:text-text ${
+        active ? "text-text" : ""
+      }`}
+    >
+      <BarChart3 className="size-3.5" />
+      metrics
+    </Link>
   );
 }

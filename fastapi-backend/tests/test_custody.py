@@ -30,10 +30,11 @@ def test_custody_enabled_under_signerjwt(monkeypatch):
     assert custody.custody_enabled() is True
 
 
-def test_custody_enabled_under_spire(monkeypatch):
+def test_custody_stays_off_for_the_retired_spire_tier(monkeypatch):
+    """``spire`` resolves to psk now, so it cannot switch custody on (#668)."""
     monkeypatch.setenv("MYCELIUM_SLIM_IDENTITY", "spire")
     monkeypatch.delenv("MYCELIUM_CUSTODY_DISABLE", raising=False)
-    assert custody.custody_enabled() is True
+    assert custody.custody_enabled() is False
 
 
 def test_custody_disable_escape_hatch_overrides_identity(monkeypatch):

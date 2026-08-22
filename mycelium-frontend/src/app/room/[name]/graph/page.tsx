@@ -9,7 +9,6 @@ import { ArrowLeft } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { MemoryGraphView } from "@/components/memory-graph-view";
 import { GlobalStatusItems } from "@/components/status-items";
-import { ActingAsPicker } from "@/components/acting-as-picker";
 
 /** Dedicated full-page memory graph route: `/room/{room}/graph` (#599). */
 export default function MemoryGraphPage() {
@@ -23,9 +22,8 @@ export default function MemoryGraphPage() {
       statusRight={<GlobalStatusItems />}
     >
       {/* Mirrors the room page's header so the graph reads as a surface of this
-          room rather than a page of its own — same height, same identity line,
-          same trailing actor picker — plus the way back the sidebar alone
-          doesn't offer. */}
+          room rather than a page of its own — same height, same identity line —
+          plus the way back the sidebar alone doesn't offer. */}
       <header className="flex h-[52px] flex-shrink-0 items-center gap-3 border-b border-border bg-surface/50 px-5">
         <Link
           href={`/room/${encodeURIComponent(roomName)}`}
@@ -36,9 +34,6 @@ export default function MemoryGraphPage() {
         </Link>
         <span className="truncate text-ui font-semibold text-text">{roomName}</span>
         <span className="truncate text-label text-faint">memory graph</span>
-        <div className="ml-auto flex-shrink-0">
-          <ActingAsPicker />
-        </div>
       </header>
 
       <div className="min-h-0 flex-1">

@@ -54,6 +54,8 @@ export interface MockMemory {
   version: number;
   updated_at?: string;
   room_name?: string;
+  tags?: string[];
+  expandable?: boolean;
 }
 
 export interface MockMessage {

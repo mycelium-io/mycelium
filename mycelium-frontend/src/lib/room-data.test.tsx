@@ -16,7 +16,7 @@ vi.mock("@/lib/api", () => ({
   fetchEpisodes: vi.fn(),
   fetchRoom: vi.fn(),
   fetchRooms: vi.fn(),
-  fetchCoordination: vi.fn(),
+  fetchNetworkStatus: vi.fn(),
   logFetchError: () => () => undefined,
 }));
 

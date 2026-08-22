@@ -64,7 +64,7 @@ DEFAULT_CHANNEL_TOPIC = "room"
 # derived, so every agent on a room's channel and the always-on backend
 # independently reconstruct the same credential (which seeds the group key)
 # without a key-exchange round-trip. The shared secret is the MVP identity tier;
-# JWT/SPIRE is the production path (debt D1) and is out of scope here.
+# the SignerJwt floor is the per-member path (debt D1) and is out of scope here.
 #
 # The built-in literal below is a **public dev default** — anyone with the repo
 # can derive it, so it protects nothing on its own (debt D1). A real deployment
@@ -87,10 +87,6 @@ _identity_degraded_warned: set[tuple[str, str]] = set()
 _IDENTITY_MISSING_HINT = {
     slim_identity.MODE_SIGNERJWT: (
         "no signing key/roster resolved — register the agent's key (ensure_agent_keypair)"
-    ),
-    slim_identity.MODE_SPIRE: (
-        "no SPIRE Workload API socket present — start the co-located SPIRE agent "
-        "and set MYCELIUM_SLIM_SPIRE_SOCKET"
     ),
 }
 
@@ -392,11 +388,11 @@ class SlimClient:
 
         ``psk`` (default, #567) is the shared-secret credential — the try-it path,
         untouched. ``signerjwt`` (the floor, #476) presents a per-member self-signed
-        ES256 identity; ``spire`` (#579) presents a SPIRE-attested JWT-SVID. Both
-        resolve to an ``IdentityProviderConfig``/``IdentityVerifierConfig`` pair so
-        members are cryptographically distinct MLS participants; both share one
-        degrade/fail-closed path. Absent the mode's material it degrades to PSK with
-        a one-time warning, unless ``MYCELIUM_SLIM_IDENTITY_REQUIRE=1`` fails closed.
+        ES256 identity, resolving to an
+        ``IdentityProviderConfig``/``IdentityVerifierConfig`` pair so members are
+        cryptographically distinct MLS participants. Absent that material it degrades
+        to PSK with a one-time warning, unless ``MYCELIUM_SLIM_IDENTITY_REQUIRE=1``
+        fails closed.
         """
         assert self._local_name is not None
         mode = slim_identity.resolve_identity_mode()

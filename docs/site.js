@@ -62,6 +62,7 @@
     const bd = document.getElementById('nav-backdrop');
     const open = sb && sb.classList.toggle('open');
     if (bd) bd.classList.toggle('open', !!open);
+    if (open) closeSearchField();
   }
   function closeDrawer() {
     const sb = document.getElementById('sidebar');
@@ -78,6 +79,236 @@
   });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDrawer(); });
   window.addEventListener('resize', () => { if (window.innerWidth > 860) closeDrawer(); });
+
+  // ── Persistent nav tree ──
+  // Every page's groups render on every page. The page being read starts open;
+  // the reader's own expand/collapse choices win from there and follow them
+  // across pages.
+  const NAV_KEY = 'mycelium-nav-open';
+
+  function navState() {
+    try { return JSON.parse(localStorage.getItem(NAV_KEY) || '{}'); } catch (e) { return {}; }
+  }
+
+  function setNavState(key, open) {
+    const state = navState();
+    state[key] = open;
+    try { localStorage.setItem(NAV_KEY, JSON.stringify(state)); } catch (e) {}
+  }
+
+  (function initNav() {
+    const state = navState();
+    document.querySelectorAll('.nav-group').forEach(group => {
+      const key = group.getAttribute('data-nav-group');
+      const toggle = group.querySelector('.nav-group-toggle');
+      if (key in state) {
+        group.classList.toggle('collapsed', !state[key]);
+      }
+      if (toggle) {
+        toggle.setAttribute('aria-expanded', String(!group.classList.contains('collapsed')));
+        toggle.addEventListener('click', () => {
+          const open = group.classList.toggle('collapsed') === false;
+          toggle.setAttribute('aria-expanded', String(open));
+          setNavState(key, open);
+        });
+      }
+    });
+  })();
+
+  // ── Client-side search ──
+  // Index is generated with the pages (docs/search-index.js) and pulled in on
+  // first use, so it costs nothing until someone actually searches.
+  const searchBox = document.getElementById('docsearch');
+  const searchToggle = document.getElementById('docsearch-toggle');
+  const searchInput = document.getElementById('docsearch-input');
+  const searchPanel = document.getElementById('docsearch-panel');
+  const searchResults = document.getElementById('docsearch-results');
+  let searchIndex = null;
+  let searchLoading = null;
+  let searchHits = [];
+  let searchSelected = -1;
+
+  function loadSearchIndex() {
+    if (searchIndex) return Promise.resolve(searchIndex);
+    if (searchLoading) return searchLoading;
+    searchLoading = new Promise(resolve => {
+      const s = document.createElement('script');
+      s.src = 'search-index.js';
+      s.onload = () => { searchIndex = window.MYCELIUM_SEARCH_INDEX || []; resolve(searchIndex); };
+      s.onerror = () => { searchIndex = []; resolve(searchIndex); };
+      document.head.appendChild(s);
+    });
+    return searchLoading;
+  }
+
+  // Every token must land somewhere (AND), and where it lands sets its weight:
+  // a title beats a breadcrumb beats body prose.
+  function scoreRecord(rec, tokens, query) {
+    const title = rec.t.toLowerCase();
+    const crumb = (rec.s || '').toLowerCase();
+    const body = (rec.x || '').toLowerCase();
+    let total = 0;
+    for (let i = 0; i < tokens.length; i++) {
+      const tok = tokens[i];
+      const ti = title.indexOf(tok);
+      let s;
+      if (ti === 0) s = 120;
+      else if (ti > 0) s = title[ti - 1] === ' ' ? 90 : 60;
+      else if (crumb.indexOf(tok) >= 0) s = 40;
+      else {
+        const bi = body.indexOf(tok);
+        if (bi < 0) return 0;
+        s = 22 - Math.min(12, bi / 40);
+      }
+      total += s;
+    }
+    if (title.indexOf(query) >= 0) total += 60;
+    if (rec.k === 'cmd') total += 15;
+    return total;
+  }
+
+  function escapeHtml(text) {
+    return text.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  }
+
+  // Match on the raw text, then escape each piece, so a query like "amp" can't
+  // find itself inside an entity this function just wrote.
+  function highlight(text, tokens) {
+    const pattern = tokens
+      .filter(Boolean)
+      .map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+      .join('|');
+    if (!pattern) return escapeHtml(text);
+    const re = new RegExp('(' + pattern + ')', 'gi');
+    return text
+      .split(re)
+      .map((part, i) => (i % 2 ? '<mark>' + escapeHtml(part) + '</mark>' : escapeHtml(part)))
+      .join('');
+  }
+
+  // A hit's snippet starts at the first matched token, not at the top of the
+  // section, so the reader sees the sentence that matched.
+  function snippet(rec, tokens) {
+    const body = rec.x || '';
+    if (!body) return '';
+    let at = -1;
+    for (let i = 0; i < tokens.length; i++) {
+      const j = body.toLowerCase().indexOf(tokens[i]);
+      if (j >= 0 && (at < 0 || j < at)) at = j;
+    }
+    let start = at > 60 ? body.lastIndexOf(' ', at - 50) + 1 : 0;
+    const text = (start > 0 ? '…' : '') + body.slice(start, start + 180);
+    return highlight(text, tokens);
+  }
+
+  function renderHits(tokens) {
+    if (!searchHits.length) {
+      searchResults.innerHTML = '<div class="docsearch-empty">No matches.</div>';
+      return;
+    }
+    searchResults.innerHTML = searchHits.map((rec, i) => {
+      const cls = 'docsearch-hit' + (rec.k === 'cmd' ? ' cmd' : '') + (i === searchSelected ? ' selected' : '');
+      const crumb = escapeHtml(rec.p + (rec.s ? ' › ' + rec.s : ''));
+      return '<a class="' + cls + '" href="' + rec.u + '" role="option" data-hit="' + i + '">'
+        + '<div class="docsearch-crumb">' + crumb + '</div>'
+        + '<div class="docsearch-title">' + highlight(rec.t, tokens) + '</div>'
+        + '<div class="docsearch-snippet">' + snippet(rec, tokens) + '</div>'
+        + '</a>';
+    }).join('');
+  }
+
+  function closeSearch() {
+    if (searchPanel) searchPanel.classList.remove('open');
+    if (searchInput) searchInput.setAttribute('aria-expanded', 'false');
+    searchSelected = -1;
+  }
+
+  // Below the layout breakpoint the field is not in the bar at all: the bar has
+  // a search icon, and the field drops to a row beneath it. Above it, the field
+  // is always there and these are no-ops beyond focusing.
+  function openSearchField() {
+    closeDrawer();
+    if (searchBox) searchBox.classList.add('open');
+    if (searchToggle) searchToggle.setAttribute('aria-expanded', 'true');
+    if (searchInput) searchInput.focus();
+  }
+
+  function closeSearchField() {
+    closeSearch();
+    if (searchBox) searchBox.classList.remove('open');
+    if (searchToggle) searchToggle.setAttribute('aria-expanded', 'false');
+    if (searchInput) { searchInput.value = ''; searchInput.blur(); }
+  }
+
+  if (searchToggle) {
+    searchToggle.addEventListener('click', e => {
+      e.stopPropagation();
+      if (searchBox.classList.contains('open')) closeSearchField();
+      else openSearchField();
+    });
+  }
+  // The row is a small-screen affordance; growing past it must not strand it open.
+  window.addEventListener('resize', () => {
+    if (window.innerWidth > 640 && searchBox) searchBox.classList.remove('open');
+  });
+
+  function runSearch() {
+    const query = searchInput.value.trim().toLowerCase();
+    if (!query) { closeSearch(); return; }
+    const tokens = query.split(/\s+/).filter(Boolean);
+    loadSearchIndex().then(index => {
+      if (searchInput.value.trim().toLowerCase() !== query) return;
+      searchHits = index
+        .map(rec => ({ rec: rec, score: scoreRecord(rec, tokens, query) }))
+        .filter(h => h.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 12)
+        .map(h => h.rec);
+      searchSelected = searchHits.length ? 0 : -1;
+      renderHits(tokens);
+      searchPanel.classList.add('open');
+      searchInput.setAttribute('aria-expanded', 'true');
+    });
+  }
+
+  function moveSelection(delta) {
+    if (!searchHits.length) return;
+    searchSelected = (searchSelected + delta + searchHits.length) % searchHits.length;
+    searchResults.querySelectorAll('.docsearch-hit').forEach((el, i) => {
+      el.classList.toggle('selected', i === searchSelected);
+      if (i === searchSelected) el.scrollIntoView({ block: 'nearest' });
+    });
+  }
+
+  if (searchInput) {
+    searchInput.addEventListener('focus', loadSearchIndex);
+    searchInput.addEventListener('input', runSearch);
+    searchInput.addEventListener('keydown', e => {
+      if (e.key === 'ArrowDown') { e.preventDefault(); moveSelection(1); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); moveSelection(-1); }
+      else if (e.key === 'Enter') {
+        const hit = searchResults.querySelector('.docsearch-hit.selected');
+        if (hit) { e.preventDefault(); window.location.href = hit.getAttribute('href'); closeSearch(); }
+      } else if (e.key === 'Escape') { closeSearchField(); }
+    });
+    document.addEventListener('click', e => {
+      if (e.target.closest('#docsearch')) return;
+      closeSearch();
+      if (searchBox && searchBox.classList.contains('open')) closeSearchField();
+    });
+    // Same-page hits only move the hash, so close the panel by hand.
+    searchResults.addEventListener('click', () => closeSearch());
+    // "/" and ⌘K / Ctrl+K jump to the field from anywhere on the page.
+    document.addEventListener('keydown', e => {
+      const el = document.activeElement;
+      const typing = !!el && (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) || el.isContentEditable);
+      if ((e.key === 'k' || e.key === 'K') && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault(); openSearchField(); searchInput.select();
+      } else if (e.key === '/' && !typing && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault(); openSearchField();
+      }
+    });
+  }
 
   function copyPage() {
     const text = document.querySelector('.main').innerText;
