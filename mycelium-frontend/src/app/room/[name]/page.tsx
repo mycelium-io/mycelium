@@ -5,6 +5,7 @@
 
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useDefaultLayout } from "react-resizable-panels";
 import { type EpisodeSummary } from "@/lib/api";
 import { useRoom, useRoomRevalidate } from "@/lib/room-data";
 import { parseFocus, type FocusTarget } from "@/lib/search";
@@ -18,6 +19,18 @@ import { GlobalStatusItems, StatusButton } from "@/components/status-items";
 import { useCommands, useKeyAction, useKeyScope } from "@/components/keymap-provider";
 import type { PaletteCommand } from "@/lib/commands";
 import { useRoomStatus } from "@/lib/use-status";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
+import {
+  INSPECTOR_FOLD_WIDTH,
+  INSPECTOR_PANEL,
+  MAIN_PANEL,
+  PANEL_INSPECTOR,
+  PANEL_MAIN,
+  ROOM_GROUP_ID,
+  ROOM_PANEL_IDS,
+  layoutStorage,
+} from "@/lib/panel-layout";
+import { useCollapsibleRail } from "@/lib/use-collapsible-rail";
 
 function episodeSummaryLabel(episodes: EpisodeSummary[] | null): { text: string; color: string } | null {
   if (!episodes || episodes.length === 0) return null;
@@ -154,6 +167,34 @@ function RoomWorkspace() {
 
   const episodeLabel = useMemo(() => episodeSummaryLabel(episodes), [episodes]);
 
+  // Chat vs. inspector is a reading preference, so the split is remembered per
+  // browser rather than reset on every visit.
+  // Both callbacks: `onLayoutChanged` fires when a drag is committed, but these
+  // are nested groups — widening the rooms rail resizes this group's container
+  // without anyone touching its own seam, and only `onLayoutChange` sees that.
+  // Saving on the commit alone leaves the stored percentages describing a
+  // container width that no longer exists, and the rail comes back a few dozen
+  // pixels off after a reload.
+  const { defaultLayout, onLayoutChange, onLayoutChanged } = useDefaultLayout({
+    id: ROOM_GROUP_ID,
+    storage: layoutStorage,
+    panelIds: ROOM_PANEL_IDS,
+  });
+
+  // Folded, the inspector is a plain strip beside the group rather than a panel
+  // inside it: a panel that isn't there can't be squeezed, and it comes back at
+  // the width it left at.
+  const {
+    panelRef: inspectorPanelRef,
+    size: inspectorSize,
+    onResize: onInspectorResize,
+  } = useCollapsibleRail({
+    foldWidth: INSPECTOR_FOLD_WIDTH,
+    defaultWidth: INSPECTOR_PANEL.default,
+    open: inspectorOpen,
+    onOpenChange: setInspectorOpen,
+  });
+
   const statusLeft = (
     <>
       <span
@@ -205,38 +246,84 @@ function RoomWorkspace() {
       statusLeft={statusLeft}
       statusRight={statusRight}
     >
-      <div className="flex flex-1 overflow-hidden">
-        <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          <div className="flex-1 overflow-hidden">
-            <EventStream
-              roomName={roomName}
-              onMemoryChanged={handleMemoryChanged}
-              onConnectionChange={setConnected}
-              onNegotiationPhaseChange={setNegPhase}
-              onOpenMemory={openMemory}
-              view={editorView}
-              onViewChange={setEditorView}
-              suppressInvites={tourActive}
-              focusMessageId={focus?.type === "message" ? focus.id : null}
-              onFocusConsumed={clearFocus}
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        <ResizablePanelGroup
+          className="min-h-0 flex-1"
+          defaultLayout={defaultLayout}
+          // Only while both panels are here: a one-panel layout saved over the
+          // split would be the rail's remembered width, gone.
+          onLayoutChange={inspectorOpen ? onLayoutChange : undefined}
+          onLayoutChanged={inspectorOpen ? onLayoutChanged : undefined}
+        >
+          <ResizablePanel id={PANEL_MAIN} minSize={MAIN_PANEL.min} className="flex min-w-0">
+            <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
+              <div className="flex-1 overflow-hidden">
+                <EventStream
+                  roomName={roomName}
+                  onMemoryChanged={handleMemoryChanged}
+                  onConnectionChange={setConnected}
+                  onNegotiationPhaseChange={setNegPhase}
+                  onOpenMemory={openMemory}
+                  view={editorView}
+                  onViewChange={setEditorView}
+                  suppressInvites={tourActive}
+                  focusMessageId={focus?.type === "message" ? focus.id : null}
+                  onFocusConsumed={clearFocus}
+                />
+              </div>
+              <RoomChatBox roomName={roomName} className={editorView !== "channel" ? "hidden" : undefined} />
+            </main>
+          </ResizablePanel>
+          {inspectorOpen && (
+            <>
+              <ResizableHandle withHandle />
+              <ResizablePanel
+                id={PANEL_INSPECTOR}
+                panelRef={inspectorPanelRef}
+                collapsible
+                collapsedSize={INSPECTOR_PANEL.collapsed}
+                defaultSize={inspectorSize}
+                minSize={INSPECTOR_PANEL.min}
+                maxSize={INSPECTOR_PANEL.max}
+                groupResizeBehavior="preserve-pixel-size"
+                className="flex"
+                onResize={onInspectorResize}
+              >
+                <RoomInspector
+                  roomName={roomName}
+                  masId={room?.mas_id ?? null}
+                  tab={inspectorTab}
+                  onTabChange={setInspectorTab}
+                  open={inspectorOpen}
+                  onOpenChange={setInspectorOpen}
+                  engineInvite={inviteEngine}
+                  onEngineInviteShown={handleEngineInviteShown}
+                  focus={focus}
+                  onFocusConsumed={clearFocus}
+                  focusMemory={focusMemory}
+                />
+              </ResizablePanel>
+            </>
+          )}
+        </ResizablePanelGroup>
+
+        {!inspectorOpen && (
+          <div className="flex w-12 flex-none border-l border-border">
+            <RoomInspector
+            roomName={roomName}
+            masId={room?.mas_id ?? null}
+            tab={inspectorTab}
+            onTabChange={setInspectorTab}
+            open={inspectorOpen}
+            onOpenChange={setInspectorOpen}
+            engineInvite={inviteEngine}
+            onEngineInviteShown={handleEngineInviteShown}
+            focus={focus}
+            onFocusConsumed={clearFocus}
+            focusMemory={focusMemory}
             />
           </div>
-          <RoomChatBox roomName={roomName} className={editorView !== "channel" ? "hidden" : undefined} />
-        </main>
-
-        <RoomInspector
-          roomName={roomName}
-          masId={room?.mas_id ?? null}
-          tab={inspectorTab}
-          onTabChange={setInspectorTab}
-          open={inspectorOpen}
-          onOpenChange={setInspectorOpen}
-          engineInvite={inviteEngine}
-          onEngineInviteShown={handleEngineInviteShown}
-          focus={focus}
-          onFocusConsumed={clearFocus}
-          focusMemory={focusMemory}
-        />
+        )}
       </div>
 
       <RoomTour

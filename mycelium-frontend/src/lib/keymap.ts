@@ -74,6 +74,13 @@ export const KEYMAP: Binding[] = [
   },
   { id: "rooms.next", keys: ["]", "J"], label: "Next room", group: "Rooms", scope: "global" },
   { id: "rooms.prev", keys: ["[", "K"], label: "Previous room", group: "Rooms", scope: "global" },
+  {
+    id: "rooms.toggle",
+    keys: ["alt+b"],
+    label: "Collapse / expand the rooms rail",
+    group: "Rooms",
+    scope: "global",
+  },
   { id: "nav.home", keys: ["alt+h"], label: "Command center", group: "Navigate", scope: "global" },
 
   { id: "pane.channel", keys: ["alt+c"], label: "Channel", group: "Panes", scope: "room" },

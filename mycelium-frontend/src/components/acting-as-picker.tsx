@@ -75,7 +75,12 @@ function iamCommand(u: BoundUser): string {
  * editor and SaaS app puts it in — so identity reads the same on every screen
  * instead of riding one page's header.
  */
-export function ActingAsPicker() {
+interface Props {
+  /** Trigger as the avatar alone, for the collapsed rooms rail. */
+  compact?: boolean;
+}
+
+export function ActingAsPicker({ compact = false }: Props) {
   const { principal, setPrincipal } = useCurrentUser();
   const { signedIn, handle: sessionHandle, logout } = useAuthSession();
   const [open, setOpen] = useState(false);
@@ -173,8 +178,12 @@ export function ActingAsPicker() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger
-        title="Choose the user you're acting as"
-        className="group flex min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 py-1 text-left transition-colors hover:bg-hairline"
+        title={principal ? `Acting as @${principal}` : "Choose the user you're acting as"}
+        className={
+          compact
+            ? "group flex size-8 items-center justify-center rounded-md transition-colors hover:bg-hairline"
+            : "group flex min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 py-1 text-left transition-colors hover:bg-hairline"
+        }
       >
         {principal ? (
           <Monogram handle={principal} color="var(--muted-foreground)" className="size-7" />
@@ -186,15 +195,21 @@ export function ActingAsPicker() {
             <UserRound className="size-3.5" />
           </span>
         )}
-        <span className="min-w-0 flex-1">
-          <span className="block truncate font-mono text-label text-text">
-            {principal ? `@${principal}` : "Anonymous"}
-          </span>
-          <span className="block truncate text-micro text-muted-foreground">
-            {principal ? (signedIn ? "signed in" : "acting as") : "pick a user"}
-          </span>
-        </span>
-        <ChevronsUpDown className="size-3.5 flex-shrink-0 text-faint transition-colors group-hover:text-muted-foreground" />
+        {/* The handle and the switcher affordance are what the 48px strip
+            can't hold; the avatar carries the identity on its own there. */}
+        {!compact && (
+          <>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate font-mono text-label text-text">
+                {principal ? `@${principal}` : "Anonymous"}
+              </span>
+              <span className="block truncate text-micro text-muted-foreground">
+                {principal ? (signedIn ? "signed in" : "acting as") : "pick a user"}
+              </span>
+            </span>
+            <ChevronsUpDown className="size-3.5 flex-shrink-0 text-faint transition-colors group-hover:text-muted-foreground" />
+          </>
+        )}
       </DialogTrigger>
 
       <DialogContent className="sm:max-w-sm">
