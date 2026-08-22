@@ -28,6 +28,8 @@ import {
 import { useRoomMemories, useRoomMemoryIntegrity, useRoomRevalidate } from "@/lib/room-data";
 import { memoryGraphHref, memoryHref } from "@/lib/memory-routes";
 import { expandedPathsForKey, resolveMemoryPeekNavigation } from "@/lib/memory-panel-nav";
+import { MemoryPreviewCard, type PreviewAnchor } from "@/components/memory-preview-card";
+import { memoryValueText } from "@/lib/memory-preview";
 import { DetailDrawer } from "@/components/detail-drawer";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -87,16 +89,6 @@ function buildTree(memories: Memory[]): TreeNode[] {
   return root.children;
 }
 
-function formatValue(v: unknown): string {
-  if (typeof v === "string") return v;
-  if (typeof v === "object" && v !== null) {
-    const obj = v as Record<string, unknown>;
-    if ("text" in obj) return obj.text as string;
-    return JSON.stringify(v, null, 0);
-  }
-  return String(v);
-}
-
 // Filename for a memory leaf, with its extension. Keys usually omit it (they're
 // stored as markdown); a structured value with no `text` field is really JSON.
 // A key that already carries an extension is shown as-is.
@@ -109,6 +101,7 @@ function fileName(node: TreeNode): string {
 
 const ROW_H = 22; // px, matches vscode compact density
 const INDENT = 12; // px per depth level
+const PEEK_DELAY = 350; // ms of hover intent before the preview card opens
 
 interface TreeRowsProps {
   nodes: TreeNode[];
@@ -117,9 +110,20 @@ interface TreeRowsProps {
   onToggle: (path: string) => void;
   onSelect: (mem: Memory) => void;
   selected: Memory | null;
+  onPeek: (mem: Memory, row: HTMLElement) => void;
+  onPeekEnd: () => void;
 }
 
-function TreeRows({ nodes, depth, collapsed, onToggle, onSelect, selected }: TreeRowsProps) {
+function TreeRows({
+  nodes,
+  depth,
+  collapsed,
+  onToggle,
+  onSelect,
+  selected,
+  onPeek,
+  onPeekEnd,
+}: TreeRowsProps) {
   return (
     <>
       {nodes.map(node => {
@@ -132,6 +136,10 @@ function TreeRows({ nodes, depth, collapsed, onToggle, onSelect, selected }: Tre
           <div key={node.path}>
             <div
               style={{ paddingLeft, height: ROW_H }}
+              onMouseEnter={e => node.memory && onPeek(node.memory, e.currentTarget)}
+              onMouseLeave={onPeekEnd}
+              onFocus={e => node.memory && onPeek(node.memory, e.currentTarget)}
+              onBlur={onPeekEnd}
               className={`flex w-full items-center gap-1.5 pr-3 transition-colors
                 ${isSelected ? "bg-accent/15 text-text" : "hover:bg-muted text-muted-foreground hover:text-text"}`}
             >
@@ -194,6 +202,8 @@ function TreeRows({ nodes, depth, collapsed, onToggle, onSelect, selected }: Tre
                 onToggle={onToggle}
                 onSelect={onSelect}
                 selected={selected}
+                onPeek={onPeek}
+                onPeekEnd={onPeekEnd}
               />
             )}
           </div>
@@ -213,15 +223,50 @@ export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusM
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [renderedBody, setRenderedBody] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [peek, setPeek] = useState<{ memory: Memory; anchor: PreviewAnchor } | null>(null);
+  const paneRef = useRef<HTMLDivElement>(null);
+  const peekTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { principal } = useCurrentUser();
   const revalidate = useRoomRevalidate(roomName);
+
+  // Hovering a row opens a preview card after a beat of hover intent. It is
+  // anchored to the pane's left edge rather than the row, so it never covers
+  // the list the reader is scanning.
+  const endPeek = useCallback(() => {
+    if (peekTimer.current) {
+      clearTimeout(peekTimer.current);
+      peekTimer.current = null;
+    }
+    setPeek(null);
+  }, []);
+
+  const startPeek = useCallback((memory: Memory, row: HTMLElement) => {
+    if (peekTimer.current) clearTimeout(peekTimer.current);
+    peekTimer.current = setTimeout(() => {
+      const rect = row.getBoundingClientRect();
+      const pane = paneRef.current?.getBoundingClientRect();
+      setPeek({
+        memory,
+        anchor: {
+          top: rect.top,
+          height: rect.height,
+          paneLeft: pane?.left ?? rect.left,
+        },
+      });
+    }, PEEK_DELAY);
+  }, []);
+
+  useEffect(() => endPeek, [endPeek]);
 
   // Anything that would replace or unmount the editor goes through `guard`,
   // so in-progress edits are never dropped without asking.
   const { setDirty, guard, dialog: unsavedDialog } = useUnsavedGuard();
   const selectMemory = useCallback(
-    (m: Memory | null) => guard(() => setSelected(m)),
-    [guard],
+    (m: Memory | null) => {
+      endPeek();
+      guard(() => setSelected(m));
+    },
+    [endPeek, guard],
   );
 
   // The tree, plus the room-wide integrity report the drawer reads to flag a
@@ -325,7 +370,7 @@ export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusM
     }), []);
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div ref={paneRef} className="flex flex-col h-full overflow-hidden">
       {/* Stats row */}
       <div className="px-4 py-3 border-b border-border bg-paper">
         <div className="flex items-baseline gap-1.5 text-label text-muted-foreground">
@@ -357,7 +402,7 @@ export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusM
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto" onScroll={endPeek}>
         {/* Search */}
         <div className="px-4 py-3 border-b border-border bg-paper">
           <div className="flex gap-2">
@@ -411,7 +456,7 @@ export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusM
                   </span>
                 </div>
                 <p className="text-label text-muted-foreground line-clamp-2 leading-snug">
-                  {formatValue(r.memory.value)}
+                  {memoryValueText(r.memory.value)}
                 </p>
               </button>
             ))}
@@ -443,6 +488,8 @@ export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusM
                 onToggle={toggleNs}
                 onSelect={selectMemory}
                 selected={selected}
+                onPeek={startPeek}
+                onPeekEnd={endPeek}
               />
             )}
           </div>
@@ -507,6 +554,8 @@ export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusM
           )
         )}
       </DetailDrawer>
+
+      {peek && !selected && <MemoryPreviewCard memory={peek.memory} anchor={peek.anchor} />}
 
       {unsavedDialog}
     </div>
