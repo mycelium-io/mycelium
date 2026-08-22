@@ -1,0 +1,250 @@
+# Point real agent-harness binaries at the participation contract and report what
+# happened. Mycelium claims a harness works when a resident loop has actually
+# answered a mention through it, and this is where that claim is earned — see
+# `scripts/harness_conformance.py` for the rungs and `mycelium/integrations/
+# harness_specs.py` for the family table both this workflow and the integrations
+# read.
+#
+# Nothing here gates a PR. Harness vendors ship breaking CLI changes on their own
+# schedule (GitHub removed `copilot --headless --stdio` with no deprecation), so a
+# red run means "a harness moved", which is news, not a broken pull request. The
+# job to watch is the report in the step summary.
+name: Harness conformance
+
+on:
+  schedule:
+    # Weekly, Monday 06:00 UTC: often enough to catch a vendor's breaking release
+    # within a sprint, rare enough not to burn API credit on every push.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+    inputs:
+      families:
+        description: "Space-separated families to grade (default: all)"
+        required: false
+        default: ""
+  pull_request:
+    # Only when the harness surface itself changes: the spec table, the runner, or
+    # an integration. A frontend PR has nothing to learn from a Kiro binary.
+    paths:
+      - "mycelium-cli/src/mycelium/integrations/**"
+      - "scripts/harness_conformance.py"
+      - ".github/workflows/harness-conformance.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  # ── rungs 1–3: does the binary reason? ──────────────────────────────────────
+  #
+  # No hub, no SLIM node, no adapter needed — which is the point. A candidate
+  # family with no integration still grades to `oneshot` here, so the harness is
+  # de-risked before any adapter code is written.
+  oneshot:
+    name: "oneshot: ${{ matrix.family }}"
+    runs-on: ubuntu-latest
+    # A missing binary or credential is a SKIP, not a failure; a genuine FAIL is
+    # reported without `--strict` so one broken vendor CLI doesn't mask the rest.
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - family: claude_code
+            install: npm install -g @anthropic-ai/claude-code
+          - family: cursor
+            install: curl https://cursor.com/install -fsS | bash
+          - family: codex
+            install: npm install -g @openai/codex
+          - family: copilot
+            install: npm install -g @github/copilot
+          - family: kiro
+            install: curl -fsSL https://cli.kiro.dev/install | bash
+          # antigravity has no API-key env var: headless mode reuses a cached
+          # interactive login, so a cold runner cannot authenticate it. It is
+          # installed anyway so the `binary` rung tracks the CLI's availability,
+          # and `oneshot` reports the auth wall rather than pretending.
+          - family: antigravity
+            install: 'curl -fsSL https://antigravity.google/install.sh | bash || echo "installer unavailable; binary rung will skip"'
+          # perplexity is graded from the table alone: `pplx` is a Search API
+          # client, not a harness, so there is no turn to run and nothing to install.
+          - family: perplexity
+            install: "true"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      # The OpenAPI client is a build artifact, not committed (#613); the runner
+      # imports `mycelium.integrations.harness_specs`, which pulls the package in.
+      - name: Generate OpenAPI client
+        run: SPEC_FILE=openapi.json bash scripts/gen-mycelium-client.sh
+
+      - name: Install CLI deps
+        working-directory: mycelium-cli
+        run: uv sync --group dev
+
+      - name: Install ${{ matrix.family }}
+        # Vendor installers break; a failed install must leave the binary rung to
+        # report "not on PATH" rather than killing the job before it can say so.
+        continue-on-error: true
+        run: |
+          ${{ matrix.install }}
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Grade ${{ matrix.family }}
+        env:
+          # Each is optional. An absent key SKIPs that family's turn with a
+          # reason; it never fails the run, so a fork without secrets still gets
+          # a truthful binary-rung report.
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+          KIRO_API_KEY: ${{ secrets.KIRO_API_KEY }}
+        run: >-
+          uv run --project mycelium-cli python scripts/harness_conformance.py
+          --family ${{ matrix.family }}
+          --max-level oneshot
+          --json-report "harness-${{ matrix.family }}.json"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: harness-conformance-${{ matrix.family }}
+          path: harness-*.json
+          if-no-files-found: ignore
+
+  # ── rung 4: does a resident loop answer a mention? ──────────────────────────
+  #
+  # The full contract, and the only rung that proves an integration. It needs a
+  # live hub, and a hub needs a SLIM node — a room *is* a SLIM group channel, so
+  # without one the backend cannot provision the channel and `await` never serves
+  # a turn. Restricted to families that have an integration: `participate` needs a
+  # registered manifest, and that is what an integration provides.
+  participate:
+    name: "participate: ${{ matrix.family }}"
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        family: [claude_code, cursor]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+
+      # Same shape as ci.yml's integration-slim job: `services:` containers can't
+      # override the command or mount a config file, so run the node with
+      # `docker run` (single standalone dataplane hub on :46357, TLS off).
+      - name: Start SLIM node
+        run: |
+          cat > "$RUNNER_TEMP/slim-config.yaml" <<'EOF'
+          tracing:
+            log_level: info
+          runtime:
+            n_cores: 0
+            thread_name: "slim-data-plane"
+            drain_timeout: 10s
+          services:
+            slim/0:
+              node_id: mycelium-slim
+              dataplane:
+                servers:
+                  - endpoint: "0.0.0.0:46357"
+                    tls:
+                      insecure: true
+                clients: []
+          EOF
+          docker run -d --name mycelium-slim -p 46357:46357 \
+            -v "$RUNNER_TEMP/slim-config.yaml:/slim-config.yaml" \
+            ghcr.io/agntcy/slim:2.1.0 /slim --config /slim-config.yaml
+          for _ in $(seq 1 30); do
+            if (exec 3<>/dev/tcp/127.0.0.1/46357) 2>/dev/null; then
+              exec 3>&-
+              echo "SLIM node is up on :46357"
+              break
+            fi
+            sleep 1
+          done
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Generate OpenAPI client
+        run: SPEC_FILE=openapi.json bash scripts/gen-mycelium-client.sh
+
+      - name: Install backend + CLI deps
+        run: |
+          uv sync --group dev --project fastapi-backend
+          uv sync --group dev --project mycelium-cli
+
+      - name: Start hub
+        env:
+          MYCELIUM_SLIM_ENDPOINT: http://127.0.0.1:46357
+          # The embedding model is irrelevant to participation and downloading it
+          # would dominate the job; the stub keeps the memory writes indexed.
+          MYCELIUM_STUB_EMBEDDINGS: "1"
+        run: |
+          mkdir -p "$RUNNER_TEMP/mycelium-data"
+          MYCELIUM_DATA_DIR="$RUNNER_TEMP/mycelium-data" \
+            uv run --project fastapi-backend uvicorn app.main:app --port 8000 \
+            > "$RUNNER_TEMP/hub.log" 2>&1 &
+          for _ in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8000/health >/dev/null 2>&1; then
+              echo "hub is up on :8000"
+              break
+            fi
+            sleep 2
+          done
+
+      - name: Point the CLI at the hub
+        run: |
+          echo "$PWD/mycelium-cli/.venv/bin" >> "$GITHUB_PATH"
+          uv run --project mycelium-cli mycelium config set server.api_url "http://127.0.0.1:8000"
+          uv run --project mycelium-cli mycelium config set slim.node_endpoint "http://127.0.0.1:46357"
+
+      - name: Install ${{ matrix.family }}
+        continue-on-error: true
+        run: |
+          case "${{ matrix.family }}" in
+            claude_code) npm install -g @anthropic-ai/claude-code ;;
+            cursor)      curl https://cursor.com/install -fsS | bash ;;
+          esac
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Grade ${{ matrix.family }}
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+          MYCELIUM_SLIM_ENDPOINT: http://127.0.0.1:46357
+        run: >-
+          uv run --project mycelium-cli python scripts/harness_conformance.py
+          --family ${{ matrix.family }}
+          --json-report "harness-participate-${{ matrix.family }}.json"
+
+      - name: Hub + node logs (on failure)
+        if: failure()
+        run: |
+          echo "── hub ──"; tail -100 "$RUNNER_TEMP/hub.log" || true
+          echo "── slim ──"; docker logs mycelium-slim || true
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: harness-participate-${{ matrix.family }}
+          path: harness-participate-*.json
+          if-no-files-found: ignore
