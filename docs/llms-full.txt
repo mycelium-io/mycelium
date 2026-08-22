@@ -524,6 +524,26 @@ To see the stored form of a memory from anywhere:
 mycelium memory get decisions/storage --raw
 ```
 
+### Your own frontmatter
+
+The store owns a handful of frontmatter keys — `key`, authorship, `version`, the
+timestamps, `tags`, `value`. Everything else in a memory's frontmatter is yours.
+Write it with `--meta` (repeatable), and it survives later writes that don't
+mention it:
+
+```bash
+mycelium memory set work/api-server "Blocked behind the custody seam" \
+  -m status=open -m owner=@julia
+```
+
+Those fields come back on the memory as `meta` — in `--raw`, and in the API
+(`MemoryRead.meta`) for anything reading the room over HTTP:
+
+```bash
+curl -s $HUB/api/rooms/atlas/memory/work/api-server | jq .meta
+# { "status": "open", "owner": "@julia" }
+```
+
 > **Operating the hub.** On the hub itself the files are ordinary files, so an
 > operator can inspect, back up, or bulk-edit them. Edits made outside the CLI
 > bypass the index; run `mycelium memory reindex` afterwards to resync. The

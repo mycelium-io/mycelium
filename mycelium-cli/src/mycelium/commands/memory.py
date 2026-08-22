@@ -83,6 +83,14 @@ def _unset_to_none(field: Any) -> Any:
     return None if isinstance(field, type(UNSET)) else field
 
 
+def _meta_dict(field: Any) -> dict[str, Any]:
+    """A memory's unmanaged frontmatter as a plain dict (empty when it has none)."""
+    field = _unset_to_none(field)
+    if hasattr(field, "to_dict"):
+        field = field.to_dict()
+    return field if isinstance(field, dict) else {}
+
+
 def _value_text(value: Any) -> str:
     """Flatten a memory value to display text.
 
@@ -342,6 +350,7 @@ def memory_get(
                 tags=_unset_to_none(mem.tags),
                 created_at=mem.created_at,
                 updated_at=mem.updated_at,
+                extra_meta=_meta_dict(mem.meta) or None,
             )
         )
         return

@@ -122,6 +122,31 @@ async def test_search_skips_unembedded(client: AsyncClient):
     assert resp.json()["results"] == []
 
 
+@pytest.mark.asyncio
+async def test_search_results_carry_unmanaged_frontmatter(client: AsyncClient):
+    """A hit reads the same `meta` a direct get would."""
+    await client.post("/api/rooms", json={"name": "search-meta"})
+    await client.post(
+        "/api/rooms/search-meta/memory",
+        json={
+            "items": [
+                {
+                    "key": "work/x",
+                    "value": "graph databases",
+                    "created_by": "x",
+                    "embed": True,
+                    "meta": {"status": "open"},
+                }
+            ]
+        },
+    )
+
+    resp = await client.post(
+        "/api/rooms/search-meta/memory/search", json={"query": "databases", "limit": 5}
+    )
+    assert resp.json()["results"][0]["memory"]["meta"] == {"status": "open"}
+
+
 # ── reindex rebuilds the JSONL from the markdown files ────────────────────────
 
 

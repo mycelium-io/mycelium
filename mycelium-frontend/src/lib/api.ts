@@ -162,6 +162,8 @@ export interface Memory {
   tags?: string[];
   /** Mirrors the `expandable` frontmatter flag that opts a memory into `![[…]]`. */
   expandable?: boolean;
+  /** Frontmatter the store doesn't own — whatever the writer put there. */
+  meta?: Record<string, unknown> | null;
 }
 
 /** Shape sent to POST /api/rooms/{room}/memory to create or upsert a memory. */
