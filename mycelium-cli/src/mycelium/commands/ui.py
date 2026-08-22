@@ -2,12 +2,12 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-`mycelium ui`: manage the optional frontend.
+`mycelium ui`: open and inspect the frontend.
 
-The frontend ships as a separate Docker image gated behind the `ui` profile
-in the bundled compose file. It runs at http://localhost:3000 by default and
-talks to the backend at http://localhost:<backend_port> (baked into the
-image at build time; see mycelium-frontend/Dockerfile).
+The frontend ships as a separate Docker image and is part of the stack that
+`mycelium up` brings up. It runs at http://localhost:3000 by default; the
+browser only talks to that origin, and the Next.js server proxies /api/* to
+the backend over the compose network (see mycelium-frontend/Dockerfile).
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ from mycelium.doc_ref import doc_ref
 
 app = typer.Typer(
     name="ui",
-    help="Manage the optional frontend.",
+    help="Open and inspect the frontend.",
     no_args_is_help=True,
 )
 
@@ -47,7 +47,6 @@ def _ui_url() -> str:
 
 def _container_running(name: str) -> bool:
     """True if a Docker container with this name is currently running."""
-    """Check if a running Docker container matches the given name."""
     if not shutil.which("docker"):
         return False
     r = subprocess.run(
@@ -69,13 +68,13 @@ def ui_open(
         False,
         "--yes",
         "-y",
-        help="Skip the confirmation prompt and start the frontend if it isn't running",
+        help="Skip the confirmation prompt and start the stack if it isn't running",
     ),
 ) -> None:
     """Open the frontend in your default browser.
 
-    If the frontend container isn't running, offers to start it with
-    `mycelium up --ui` first. Pass `-y` to skip the prompt and start it
+    If the frontend container isn't running, offers to start the stack with
+    `mycelium up` first. Pass `-y` to skip the prompt and start it
     automatically.
 
     Examples:
@@ -88,14 +87,14 @@ def ui_open(
             f"⚠ {_FRONTEND_CONTAINER} is not running.",
             fg=typer.colors.YELLOW,
         )
-        if not yes and not typer.confirm("Start it now with 'mycelium up --ui'?", default=True):
-            typer.echo("  Start it later with: mycelium up --ui")
+        if not yes and not typer.confirm("Start it now with 'mycelium up'?", default=True):
+            typer.echo("  Start it later with: mycelium up")
             return
-        # Proxy to `mycelium up --ui`. Imported lazily to avoid a circular
-        # import between the commands modules.
+        # Proxy to `mycelium up`. Imported lazily to avoid a circular import
+        # between the commands modules.
         from mycelium.commands import instance
 
-        instance.start(ctx, build=False, ui=True)
+        instance.start(ctx, build=False)
     typer.echo(f"Opening {url}")
     webbrowser.open(url)
 
@@ -117,7 +116,7 @@ def ui_status() -> None:
         typer.echo(f"  URL: {url}")
     else:
         typer.secho(f"✗ {_FRONTEND_CONTAINER} is not running", fg=typer.colors.RED)
-        typer.echo("  Start it with: mycelium up --ui")
+        typer.echo("  Start it with: mycelium up")
         # Surface the configured backend so the user can sanity-check.
         try:
             cfg = MyceliumConfig.load()

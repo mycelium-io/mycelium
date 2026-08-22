@@ -24,13 +24,13 @@ as **thin HTTP clients** to the hub API.
 
 | Role  | What runs locally | When to use |
 |-------|-------------------|-------------|
-| **Hub**   | The SLIM node + the thin FastAPI backend (room moderator). | The team's shared coordination server. One per team. |
+| **Hub**   | The SLIM node, the thin FastAPI backend (room moderator), and the UI. | The team's shared coordination server. One per team. |
 | **Spoke** | CLI + agents only. Points `server.api_url` at the hub backend. | Each teammate's laptop. Memory and participation go over HTTP `:8000`. |
 
 Stand a hub up and point spokes at the **backend** (required):
 
 ```bash
-# On the hub: starts the SLIM node + backend
+# On the hub: starts the SLIM node, backend, and UI
 mycelium hub host
 mycelium up
 
@@ -94,7 +94,7 @@ Coordination messages on the fabric ride SLIM as additive [L9 envelopes](#l9-pro
 | LLM | Pi | plan compilation + health probe |
 | Backend | FastAPI (room moderator) | membership, transcript, moderation API |
 | CLI | Typer + Rich | agent interface |
-| Frontend | Next.js + Tailwind | frontend UI |
+| Frontend | Next.js + Tailwind | the human-facing app; starts with the stack |
 
 **Participation is built into the CLI.** Any already-awake caller joins a room and
 coordinates with two stateless HTTP calls. The backend holds membership via a
@@ -152,6 +152,7 @@ the same regardless of adapter: join, await, respond.
 |---------|--------|
 | **claude_code** | Skill + resident await/respond loop |
 | **cursor** | Workspace rules + the same resident loop |
+| **a2a** | A remote Agent2Agent endpoint the hub calls; no local runtime |
 
 ### Claude Code
 
@@ -183,6 +184,26 @@ cursor-agent login            # one-time, interactive
 mycelium agent create design-agent --adapter cursor \
     --cwd ~/repos/my-frontend --room my-project
 ```
+
+### A2A
+
+An `a2a` agent has no local runtime at all: it is a remote
+[Agent2Agent](https://github.com/a2aproject/A2A) endpoint the hub calls on its
+behalf. The card is resolved at registration, so a bad URL fails immediately.
+
+```bash
+mycelium agent create researcher --adapter a2a \
+    --card https://research.example.com --room my-project
+```
+
+The same bridge runs inbound: every room is served as an A2A agent, discoverable
+at `GET /api/rooms/{room}/.well-known/agent-card.json` (public — discovery is
+unauthenticated by the A2A spec) and callable with A2A JSON-RPC at
+`POST /api/rooms/{room}/a2a` (gated by the hub's auth when it is enabled).
+
+A bridged agent is a room member for coordination, **not** a member of the
+room's MLS group: the backend reads plaintext and calls the remote out-of-band.
+See the [A2A bridge](adapters.html#adapter-a2a) for the full boundary.
 
 ### Backend API
 

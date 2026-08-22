@@ -38,7 +38,7 @@
     <span class="brand-word">mycelium</span>
   </a>
   <nav class="sectionnav">
-    <a href="https://raw.githubusercontent.com/mycelium-io/mycelium/main/mycelium-cli/src/mycelium/integrations/claude_code/assets/skills/mycelium/SKILL.md" target="_blank" rel="noopener">SKILL.md ↗</a>
+    <a href="https://raw.githubusercontent.com/mycelium-io/mycelium/main/mycelium-cli/src/mycelium/integrations/cursor/assets/AGENTS.md" target="_blank" rel="noopener">AGENTS.md ↗</a>
   </nav>
   <div class="topnav-right">
     <div class="docsearch" id="docsearch">
@@ -116,6 +116,7 @@
           <a href="adapters.html#adapters" class="nav-link sub">Overview</a>
           <a href="adapters.html#adapter-claude-code" class="nav-link sub">Claude Code</a>
           <a href="adapters.html#adapter-cursor" class="nav-link sub">Cursor</a>
+          <a href="adapters.html#adapter-a2a" class="nav-link sub">A2A Bridge</a>
           <a href="adapters.html#adapter-api" class="nav-link sub">REST API</a>
         </div>
       </div>
@@ -188,6 +189,7 @@
     </div>
     <div class="nav-external">
       <a href="https://raw.githubusercontent.com/mycelium-io/mycelium/main/mycelium-cli/src/mycelium/integrations/claude_code/assets/skills/mycelium/SKILL.md" target="_blank" rel="noopener">SKILL.md ↗</a>
+      <a href="https://raw.githubusercontent.com/mycelium-io/mycelium/main/mycelium-cli/src/mycelium/integrations/cursor/assets/AGENTS.md" target="_blank" rel="noopener">AGENTS.md ↗</a>
     </div>
   </nav>
   <div class="nav-backdrop" id="nav-backdrop" onclick="closeDrawer()"></div>
@@ -310,7 +312,7 @@
 <span class="bin">mycelium</span> <span class="cmd">install</span></code></pre>
       <p><code>install</code> sets up the CLI and starts the stack with Docker: the messaging node agents coordinate over, and a thin backend that holds each room. There&#x27;s no database; rooms and memory are just files. It asks for an LLM provider and key along the way. Rooms and memory work without one, so you can skip it and add a model later with <code>mycelium config set llm.model &lt;model&gt;</code> and <code>mycelium config apply</code>.</p>
       <p>Bring it up, check on it, or stop it:</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">up</span>       # start the server
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">up</span>       # start the stack: SLIM node, backend, and UI
 <span class="bin">mycelium</span> <span class="cmd">status</span>   # health check for the backend, node, and LLM
 <span class="bin">mycelium</span> <span class="cmd">logs</span>     # tail logs if something looks off
 <span class="bin">mycelium</span> <span class="cmd">down</span>     # stop it</code></pre>
@@ -563,6 +565,13 @@ PATCH .../messages/{id}  {<span class="str">&quot;status&quot;</span>: <span cla
       <p>The hub keeps each memory as a markdown file with YAML frontmatter at <code>~/.mycelium/rooms/{room}/{key}.md</code>, plus a JSONL embedding index beside it. That is internal storage, not a surface you work in; clients see it through <code>mycelium memory</code>, which is the same on the hub and on every spoke.</p>
       <p>To see the stored form of a memory from anywhere:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">get</span> decisions/storage <span class="flag">--raw</span></code></pre>
+      <h3 id="memory-your-own-frontmatter">Your own frontmatter</h3>
+      <p>The store owns a handful of frontmatter keys — <code>key</code>, authorship, <code>version</code>, the timestamps, <code>tags</code>, <code>value</code>. Everything else in a memory&#x27;s frontmatter is yours. Write it with <code>--meta</code> (repeatable), and it survives later writes that don&#x27;t mention it:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> work/api-server <span class="str">&quot;Blocked behind the custody seam&quot;</span> \
+  <span class="flag">-m</span> status=open <span class="flag">-m</span> owner=@julia</code></pre>
+      <p>Those fields come back on the memory as <code>meta</code> — in <code>--raw</code>, and in the API (<code>MemoryRead.meta</code>) for anything reading the room over HTTP:</p>
+      <pre><code><span class="cmd">curl</span> <span class="flag">-s</span> $HUB/api/rooms/atlas/memory/work/api-server | jq .meta
+<span class="comment"># { &quot;status&quot;: &quot;open&quot;, &quot;owner&quot;: &quot;@julia&quot; }</span></code></pre>
       <div class="callout callout-note">
         <div class="callout-bar"></div>
         <div class="callout-body"><strong>Operating the hub.</strong> On the hub itself the files are ordinary files, so an operator can inspect, back up, or bulk-edit them. Edits made outside the CLI bypass the index; run <code>mycelium memory reindex</code> afterwards to resync. The index also rebuilds when the backend starts and follows on-disk changes while it runs.</div>

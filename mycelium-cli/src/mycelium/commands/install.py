@@ -369,8 +369,13 @@ def _image_exists(image: str) -> bool:
     return r.returncode == 0
 
 
+# Containers `mycelium up` creates with no profile flag. A stale copy of any of
+# them fails `compose up --force-recreate` on a name conflict, so install clears
+# them first.
 _KNOWN_CONTAINERS = [
+    "mycelium-slim",
     "mycelium-backend",
+    "mycelium-frontend",
 ]
 
 
@@ -391,9 +396,7 @@ def _remove_orphan_containers() -> None:
             subprocess.run(["docker", "rm", "-f", name], capture_output=True)
 
 
-def _compose_up(
-    compose_path: Path, env_path: Path, profiles: list[str] | None = None
-) -> tuple[bool, bool]:
+def _compose_up(compose_path: Path, env_path: Path) -> tuple[bool, bool]:
     """Bring the stack up.  Returns (success, needs_build)."""
     # Build context exists when running from a repo checkout. Packaged installs
     # extract compose to ~/.mycelium/docker/ where ../fastapi-backend is absent;
@@ -414,8 +417,6 @@ def _compose_up(
         "--env-file",
         str(env_path),
     ]
-    for profile in profiles or []:
-        args += ["--profile", profile]
     up_flags = ["up", "--pull", "always", "--force-recreate", "-d"]
     if can_build:
         up_flags.append("--build")
@@ -654,11 +655,6 @@ def install(
     backend_port: int = typer.Option(
         0, "--backend-port", help="Host port for backend API (0 = auto-detect, default 8000)"
     ),
-    ui: bool = typer.Option(
-        True,
-        "--ui/--no-ui",
-        help="Bring up the frontend (default: on; interactive mode prompts to confirm)",
-    ),
     force: bool = typer.Option(
         False, "--force", help="Force full reinstall even if already installed"
     ),
@@ -734,35 +730,25 @@ def install(
             if llm_api_key:
                 llm_config["LLM_API_KEY"] = llm_api_key
 
-            compose_profiles: list[str] = []
-
-            # Non-interactive: trust the --ui/--no-ui flag, never prompt.
-            enable_ui = ui
-            if enable_ui:
-                compose_profiles.append("ui")
-
             # Resolve ports: use explicit flags, or auto-detect conflicts
             default_ports: dict[str, int] = {
                 "backend": backend_port or 8000,
+                "ui": 3000,
             }
-            if enable_ui:
-                default_ports["ui"] = 3000
-            if not backend_port or enable_ui:
-                busy = _check_ports(list(default_ports.values()))
-                for label, port in list(default_ports.items()):
-                    if port in busy:
-                        new_port = port + 1
-                        while new_port in busy or new_port in default_ports.values():
-                            new_port += 1
-                        typer.secho(
-                            f"  ⚠  Port {port} ({label}) in use, using {new_port}",
-                            fg=typer.colors.YELLOW,
-                        )
-                        default_ports[label] = new_port
+            busy = _check_ports(list(default_ports.values()))
+            for label, port in list(default_ports.items()):
+                if port in busy:
+                    new_port = port + 1
+                    while new_port in busy or new_port in default_ports.values():
+                        new_port += 1
+                    typer.secho(
+                        f"  ⚠  Port {port} ({label}) in use, using {new_port}",
+                        fg=typer.colors.YELLOW,
+                    )
+                    default_ports[label] = new_port
             custom_ports = default_ports
             llm_config["MYCELIUM_BACKEND_PORT"] = str(custom_ports["backend"])
-            if enable_ui:
-                llm_config["MYCELIUM_UI_PORT"] = str(custom_ports["ui"])
+            llm_config["MYCELIUM_UI_PORT"] = str(custom_ports["ui"])
             llm_config["MYCELIUM_DATA_DIR"] = str(Path.home() / ".mycelium")
 
             typer.secho(
@@ -781,7 +767,7 @@ def install(
             compose_path = _get_compose_path()
             typer.echo(f"  ✓ Compose file → {compose_path}")
 
-            ok, needs_build = _compose_up(compose_path, env_path, profiles=compose_profiles)
+            ok, needs_build = _compose_up(compose_path, env_path)
             if not ok:
                 typer.secho("\n  ✗ docker compose up failed", fg=typer.colors.RED)
                 raise typer.Exit(1) from None
@@ -805,10 +791,8 @@ def install(
 
             typer.secho("  ✓ Done.", fg=typer.colors.GREEN, bold=True)
             typer.echo(f"  mycelium-backend  → {api_url}")
-            if enable_ui:
-                ui_url = f"http://localhost:{custom_ports['ui']}"
-                typer.echo(f"  mycelium-frontend → {ui_url}")
-                typer.echo("  Open it with: mycelium ui open")
+            typer.echo(f"  mycelium-frontend → http://localhost:{custom_ports['ui']}")
+            typer.echo("  Open it with: mycelium ui open")
             return
 
         if not sys.stdin.isatty():
@@ -958,20 +942,8 @@ def install(
         # ── Phase 2: Interactive prompts ──────────────────────────────────
         llm_config = _prompt_llm()
 
-        compose_profiles: list[str] = []
-
-        # Frontend prompt: default to the --ui flag value (True unless --no-ui).
-        enable_ui = ui and typer.confirm(
-            "  Bring up the frontend (browser at http://localhost:3000)?",
-            default=True,
-        )
-        if enable_ui:
-            compose_profiles.append("ui")
-
         # Port check: allow user to pick alternatives
-        default_ports: dict[str, int] = {"backend": 8000}
-        if enable_ui:
-            default_ports["ui"] = 3000
+        default_ports: dict[str, int] = {"backend": 8000, "ui": 3000}
         ports_to_check = list(default_ports.values())
         busy_ports = _check_ports(ports_to_check)
         custom_ports = dict(default_ports)
@@ -989,8 +961,7 @@ def install(
 
             # Update llm_config with custom ports for env file
             llm_config["MYCELIUM_BACKEND_PORT"] = str(custom_ports["backend"])
-            if enable_ui:
-                llm_config["MYCELIUM_UI_PORT"] = str(custom_ports["ui"])
+            llm_config["MYCELIUM_UI_PORT"] = str(custom_ports["ui"])
 
         # Set MYCELIUM_DATA_DIR so compose mounts the host's .mycelium/ into the container
         llm_config["MYCELIUM_DATA_DIR"] = str(Path.home() / ".mycelium")
@@ -1015,7 +986,7 @@ def install(
         compose_path = _get_compose_path()
         typer.echo(f"  ✓ Compose file → {compose_path}")
 
-        ok, needs_build = _compose_up(compose_path, env_path, profiles=compose_profiles)
+        ok, needs_build = _compose_up(compose_path, env_path)
         if not ok:
             typer.secho("\n  ✗ docker compose up failed", fg=typer.colors.RED)
             raise typer.Exit(1) from None
@@ -1063,15 +1034,12 @@ def install(
         print()
         typer.echo("  Services:")
         typer.echo(f"    mycelium-backend  → {api_url}")
-        if enable_ui:
-            ui_url = f"http://localhost:{custom_ports['ui']}"
-            typer.echo(f"    mycelium-frontend → {ui_url}")
+        typer.echo(f"    mycelium-frontend → http://localhost:{custom_ports['ui']}")
         print()
         typer.echo("  Next steps:")
         typer.echo("    mycelium adapter add claude-code  # wire your Claude Code agent")
         typer.echo("    mycelium room create <name>      # create your first room")
-        if enable_ui:
-            typer.echo("    mycelium ui open                # open the frontend in your browser")
+        typer.echo("    mycelium ui open                # open the frontend in your browser")
         print()
 
     except KeyboardInterrupt:

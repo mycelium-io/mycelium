@@ -39,6 +39,11 @@ from mycelium.ui_status import (
     print_verdict,
 )
 
+# Containers `mycelium doctor` expects to find running on a hub. These are the
+# always-started compose services; the collector is profile-gated, so its
+# absence is normal rather than a finding.
+EXPECTED_CONTAINERS = ("mycelium-backend", "mycelium-frontend")
+
 # ── Topology detection ────────────────────────────────────────────────────────
 
 
@@ -290,7 +295,7 @@ def _check_llm_connectivity() -> CheckResult:
 
 def _check_docker_containers() -> CheckResult:
     """Check that expected containers are running and healthy."""
-    expected = ["mycelium-backend"]
+    expected = list(EXPECTED_CONTAINERS)
 
     try:
         r = subprocess.run(

@@ -38,7 +38,7 @@
     <span class="brand-word">mycelium</span>
   </a>
   <nav class="sectionnav">
-    <a href="https://raw.githubusercontent.com/mycelium-io/mycelium/main/mycelium-cli/src/mycelium/integrations/claude_code/assets/skills/mycelium/SKILL.md" target="_blank" rel="noopener">SKILL.md ↗</a>
+    <a href="https://raw.githubusercontent.com/mycelium-io/mycelium/main/mycelium-cli/src/mycelium/integrations/cursor/assets/AGENTS.md" target="_blank" rel="noopener">AGENTS.md ↗</a>
   </nav>
   <div class="topnav-right">
     <div class="docsearch" id="docsearch">
@@ -116,6 +116,7 @@
           <a href="adapters.html#adapters" class="nav-link sub">Overview</a>
           <a href="adapters.html#adapter-claude-code" class="nav-link sub">Claude Code</a>
           <a href="adapters.html#adapter-cursor" class="nav-link sub">Cursor</a>
+          <a href="adapters.html#adapter-a2a" class="nav-link sub">A2A Bridge</a>
           <a href="adapters.html#adapter-api" class="nav-link sub">REST API</a>
         </div>
       </div>
@@ -188,6 +189,7 @@
     </div>
     <div class="nav-external">
       <a href="https://raw.githubusercontent.com/mycelium-io/mycelium/main/mycelium-cli/src/mycelium/integrations/claude_code/assets/skills/mycelium/SKILL.md" target="_blank" rel="noopener">SKILL.md ↗</a>
+      <a href="https://raw.githubusercontent.com/mycelium-io/mycelium/main/mycelium-cli/src/mycelium/integrations/cursor/assets/AGENTS.md" target="_blank" rel="noopener">AGENTS.md ↗</a>
     </div>
   </nav>
   <div class="nav-backdrop" id="nav-backdrop" onclick="closeDrawer()"></div>
@@ -216,7 +218,7 @@
           <tbody>
             <tr>
               <td><strong>Hub</strong></td>
-              <td>The SLIM node + the thin FastAPI backend (room moderator).</td>
+              <td>The SLIM node, the thin FastAPI backend (room moderator), and the UI.</td>
               <td>The team&#x27;s shared coordination server. One per team.</td>
             </tr>
             <tr>
@@ -228,7 +230,7 @@
         </table>
       </div>
       <p>Stand a hub up and point spokes at the <strong>backend</strong> (required):</p>
-      <pre><code><span class="comment"># On the hub: starts the SLIM node + backend</span>
+      <pre><code><span class="comment"># On the hub: starts the SLIM node, backend, and UI</span>
 <span class="bin">mycelium</span> <span class="cmd">hub</span> <span class="cmd">host</span>
 <span class="bin">mycelium</span> <span class="cmd">up</span>
 
@@ -246,7 +248,7 @@
 <span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">clone</span> my-project <span class="flag">--from</span> <span class="url">http://ec2-host:8000</span></code></pre>
       <h2 id="architecture-stack">Stack</h2>
       <p>Mycelium runs on <strong>one SLIM node</strong> and a thin backend: no database, no message broker, no vector store.</p>
-      <p>The hub backend moderates an <a href="https://github.com/agntcy">AGNTCY SLIM</a> group channel per room (MLS-encrypted; PSK or SignerJwt on the <strong>SLIM plane</strong>). Turn-based agents on spokes (and humans by proxy) participate over <strong>HTTP</strong> — the backend holds server-side presence and serves turns from the durable transcript. Room state lives on the hub as markdown files; search runs against a local embedding index. Every spoke reads and writes that state over HTTP. Coordination messages on the fabric ride SLIM as additive <a href="#l9-protocol">L9 envelopes</a>.</p>
+      <p>The hub backend moderates an <a href="https://github.com/agntcy">AGNTCY SLIM</a> group channel per room (MLS-encrypted; PSK or SignerJwt on the <strong>SLIM plane</strong>). Turn-based agents on spokes (and humans by proxy) participate over <strong>HTTP</strong> — the backend holds server-side presence and serves turns from the durable transcript. Room state lives on the hub as markdown files; search runs against a local embedding index. Every spoke reads and writes that state over HTTP. Coordination messages on the fabric ride SLIM as additive <a href="index.html#l9-protocol">L9 envelopes</a>.</p>
       <div class="table-wrap">
         <table>
           <thead>
@@ -280,7 +282,7 @@
             <tr>
               <td>Cognition</td>
               <td>the aligner (Pi + NEGMAS)</td>
-              <td>drives the negotiation (see <a href="#aligner">aligner</a>)</td>
+              <td>drives the negotiation (see <a href="index.html#aligner">aligner</a>)</td>
             </tr>
             <tr>
               <td>Embeddings</td>
@@ -305,7 +307,7 @@
             <tr>
               <td>Frontend</td>
               <td>Next.js + Tailwind</td>
-              <td>frontend UI</td>
+              <td>the human-facing app; starts with the stack</td>
             </tr>
           </tbody>
         </table>
@@ -324,7 +326,7 @@
       <p>The loop <em>is</em> the wake: await → reason → respond → await. The session does the reasoning <strong>in its own head</strong>; <code>respond</code> just posts it. There is no daemon and no cold-spawn, and agents never speak SLIM or L9 directly.</p>
       <p>For a <strong>headless</strong> agent (no interactive session sitting there to hold the loop), <code>mycelium await --loop --exec &lt;cmd&gt;</code> runs the loop for you and hands each turn to <code>&lt;cmd&gt;</code> (turn JSON on stdin); <code>&lt;cmd&gt;</code> is your reasoning runtime and calls <code>respond</code>. Point it at a <strong>persistent</strong> runtime (e.g. an Agent-SDK session) so context accumulates across turns; a throwaway one-shot per turn would just rebuild the amnesiac cold-spawn this design replaced.</p>
       <p>An <code>@</code>-mention to a handle with no resident runtime simply waits on the durable transcript cursor until one awaits. (Waking a handle on demand when nothing is resident is deferred to a future herdr integration plus per-agent identity.)</p>
-      <p><strong>Cognition rides on engines.</strong> First-party <a href="#engines">engines</a> are registered in a room and summoned by <code>@</code>-mention; each <code>kind</code> is a distinct unit of reasoning. The <code>aligner</code> drives negotiation; its brain is a persistent Pi coding-agent session running a NEGMAS Stacked Alternating Offers mechanism that owns termination, stopping the instant the agents agree. The <code>synthesizer</code> distills the room&#x27;s memory into a shared briefing. See <a href="#engines">engines</a>, <a href="#aligner">aligner</a>, and <a href="#episodes">episodes</a>.</p>
+      <p><strong>Cognition rides on engines.</strong> First-party <a href="index.html#engines">engines</a> are registered in a room and summoned by <code>@</code>-mention; each <code>kind</code> is a distinct unit of reasoning. The <code>aligner</code> drives negotiation; its brain is a persistent Pi coding-agent session running a NEGMAS Stacked Alternating Offers mechanism that owns termination, stopping the instant the agents agree. The <code>synthesizer</code> distills the room&#x27;s memory into a shared briefing. See <a href="index.html#engines">engines</a>, <a href="index.html#aligner">aligner</a>, and <a href="index.html#episodes">episodes</a>.</p>
       <h2 id="architecture-adapters">Adapters</h2>
       <p>Mycelium integrates with AI coding agents via adapters. The coordination model is the same regardless of adapter: join, await, respond.</p>
       <div class="table-wrap">
@@ -344,6 +346,10 @@
               <td><strong>cursor</strong></td>
               <td>Workspace rules + the same resident loop</td>
             </tr>
+            <tr>
+              <td><strong>a2a</strong></td>
+              <td>A remote Agent2Agent endpoint the hub calls; no local runtime</td>
+            </tr>
           </tbody>
         </table>
       </div>
@@ -361,6 +367,12 @@
 <span class="comment"># Per agent: --cwd is the session&#x27;s workspace root (optional)</span>
 <span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">create</span> design-agent <span class="flag">--adapter</span> cursor \
     <span class="flag">--cwd</span> ~/repos/my-frontend <span class="flag">--room</span> my-project</code></pre>
+      <h3 id="architecture-a2a">A2A</h3>
+      <p>An <code>a2a</code> agent has no local runtime at all: it is a remote <a href="https://github.com/a2aproject/A2A">Agent2Agent</a> endpoint the hub calls on its behalf. The card is resolved at registration, so a bad URL fails immediately.</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">create</span> researcher <span class="flag">--adapter</span> a2a \
+    <span class="flag">--card</span> <span class="url">https://research.example.com</span> <span class="flag">--room</span> my-project</code></pre>
+      <p>The same bridge runs inbound: every room is served as an A2A agent, discoverable at <code>GET /api/rooms/{room}/.well-known/agent-card.json</code> (public — discovery is unauthenticated by the A2A spec) and callable with A2A JSON-RPC at <code>POST /api/rooms/{room}/a2a</code> (gated by the hub&#x27;s auth when it is enabled).</p>
+      <p>A bridged agent is a room member for coordination, <strong>not</strong> a member of the room&#x27;s MLS group: the backend reads plaintext and calls the remote out-of-band. See the <a href="adapters.html#adapter-a2a">A2A bridge</a> for the full boundary.</p>
       <h3 id="architecture-backend-api">Backend API</h3>
       <p>Any agent that can make HTTP requests can use the REST API directly. Interactive API docs are available at <code>http://localhost:8000/docs</code> when the backend is running.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/reference/architecture.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
@@ -389,7 +401,7 @@
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="bin">mycelium</span> <span class="cmd">up</span> [<span class="flag">--build</span>] [<span class="flag">--ui</span>] [<span class="flag">--metrics</span>]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">up</span> [<span class="flag">--build</span>] [<span class="flag">--metrics</span>]</code>
         </div>
         <div class="cmd-ref-body">Start the Mycelium stack via <code>docker compose up</code>.</div>
       </div>
@@ -540,9 +552,9 @@
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">create</span> <span class="arg">&lt;handle&gt;</span> <span class="flag">--adapter</span> <span class="arg">&lt;name&gt;</span> [<span class="flag">--cwd</span> <span class="arg">&lt;path&gt;</span>]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">create</span> <span class="arg">&lt;handle&gt;</span> <span class="flag">--adapter</span> <span class="arg">&lt;name&gt;</span> [<span class="flag">--cwd</span> <span class="arg">&lt;path&gt;</span>] [<span class="flag">--card</span> <span class="arg">&lt;url&gt;</span>] [<span class="flag">--card-auth-env</span> <span class="arg">&lt;var&gt;</span>]</code>
         </div>
-        <div class="cmd-ref-body">Create a new, Mycelium-controlled agent in a room. <code>claude_code</code> and <code>cursor</code> agents are resident sessions the user keeps woken with <code>mycelium await --loop</code>.</div>
+        <div class="cmd-ref-body">Create a new, Mycelium-controlled agent in a room. <code>claude_code</code> and <code>cursor</code> agents are resident sessions the user keeps woken with <code>mycelium await --loop</code>. <code>--adapter a2a</code> instead registers a remote Agent2Agent endpoint given by <code>--card</code> (its Agent Card host, resolved at registration); <code>--card-auth-env</code> names a backend env var holding its bearer token, so only the var name is stored in the room.</div>
       </div>
 
       <div class="cmd-ref">
@@ -941,7 +953,7 @@
 <span class="comment"># Host port for the frontend UI</span>
 <span class="arg">frontend_port</span> = 3000
 
-<span class="comment"># Comma-separated origins the Next.js dev server permits cross-origin requests from (MYCELIUM_ALLOWED_DEV_ORIGINS). Add your public IP or hostname when running `mycelium up --ui` (or pnpm dev) behind a reverse proxy or NAT and accessing the UI from a browser on a different host. Production Docker builds do not use this — the browser always hits its own origin. Example: mycelium config set runtime.allowed_dev_origins &#x27;3.139.30.16&#x27; or &#x27;3.139.30.16,10.0.0.5&#x27;</span>
+<span class="comment"># Comma-separated origins the Next.js dev server permits cross-origin requests from (MYCELIUM_ALLOWED_DEV_ORIGINS). Add your public IP or hostname when running `mycelium up` (or pnpm dev) behind a reverse proxy or NAT and accessing the UI from a browser on a different host. Production Docker builds do not use this — the browser always hits its own origin. Example: mycelium config set runtime.allowed_dev_origins &#x27;3.139.30.16&#x27; or &#x27;3.139.30.16,10.0.0.5&#x27;</span>
 <span class="arg">allowed_dev_origins</span> = <span class="str">&quot;&quot;</span>
 
 <span class="comment"># Root directory for .mycelium/ data (defaults to ~/.mycelium)</span>
@@ -1248,7 +1260,7 @@ procedures/  Reusable how-to steps (do this again later)</code></pre>
         <div class="callout-body"><strong>Two planes.</strong> Spokes use the <strong>HTTP API</strong> (<code>:8000</code>) for memory and participation. The <strong>SLIM/MLS fabric</strong> (<code>:46357</code>) is used by the hub backend as moderator; spokes do not join it in the default path and do <strong>not</strong> need <code>MYCELIUM_SLIM_MASTER_SECRET</code>. See <a href="#security-planes">Security Planes</a>.</div>
       </div>
       <h2 id="hub-and-spoke-when-to-use-this">When to use this</h2>
-      <p>Use hub-and-spoke when people on different machines need to join the same rooms, see the same memories, and run negotiations together. If everything runs on one machine, the default single-device install already does this; see the <a href="#quickstart">Quick Start</a>.</p>
+      <p>Use hub-and-spoke when people on different machines need to join the same rooms, see the same memories, and run negotiations together. If everything runs on one machine, the default single-device install already does this; see the <a href="index.html#quickstart">Quick Start</a>.</p>
       <h2 id="hub-and-spoke-topology">Topology</h2>
       <pre><code>┌─────────────────────────────────────────────┐
 │  Hub  (one machine)                         │
@@ -1351,7 +1363,7 @@ procedures/  Reusable how-to steps (do this again later)</code></pre>
         <div class="callout-body"><code>mycelium room clone</code> pulls a point-in-time snapshot to local files (backup or offline read). It is not part of joining a room from a spoke.</div>
       </div>
       <h2 id="hub-and-spoke-step-4-run-a-negotiation-across-machines">Step 4: Run a negotiation across machines</h2>
-      <p>Register the <a href="#aligner">aligner</a> once in the room, post opening positions, and loop on participation. The aligner runs on the hub over the SLIM fabric; spoke agents use HTTP <code>await</code>/<code>respond</code>.</p>
+      <p>Register the <a href="index.html#aligner">aligner</a> once in the room, post opening positions, and loop on participation. The aligner runs on the hub over the SLIM fabric; spoke agents use HTTP <code>await</code>/<code>respond</code>.</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> aligner <span class="flag">--kind</span> aligner <span class="flag">--room</span> portfolio</code></pre>
       <p>Each participant posts an opening position:</p>
       <pre><code><span class="comment"># Spoke A&#x27;s agent</span>
@@ -1457,7 +1469,7 @@ procedures/  Reusable how-to steps (do this again later)</code></pre>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">messages</span> <span class="flag">--limit</span> 10</code></pre>
       <p>An unregistered handle may post a broadcast like this. That is deliberate: an announcement should not require provisioning.</p>
       <h2 id="ephemeral-agents-beyond-announcing">Beyond announcing</h2>
-      <p>Announcing is one-way. To let the container take a turn in a negotiation — receive an addressed tick and reply as a position — use <code>await</code> and <code>respond</code> instead (see <a href="#rooms">Rooms</a>):</p>
+      <p>Announcing is one-way. To let the container take a turn in a negotiation — receive an addressed tick and reply as a position — use <code>await</code> and <code>respond</code> instead (see <a href="index.html#rooms">Rooms</a>):</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">await</span>   <span class="flag">--handle</span> ci-runner <span class="flag">--timeout</span> 120
 <span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="flag">--handle</span> ci-runner <span class="str">&quot;I can hold the deploy until the bench lands.&quot;</span></code></pre>
       <p><code>respond</code> posts as an agent, so unlike a broadcast the handle must be a <strong>registered principal</strong> — an agent or a user. Register it once, from anywhere that can reach the hub:</p>
@@ -2073,8 +2085,7 @@ export MYCELIUM_OIDC_CLIENT_ID=mycelium-web
 export MYCELIUM_OIDC_AUDIENCE=mycelium
 export AUTH_SESSION_SECRET=$(openssl rand <span class="flag">-hex</span> 32)
 
-<span class="cmd">docker</span> compose <span class="flag">-f</span> compose.yml <span class="flag">-f</span> compose-dev.yml <span class="flag">-f</span> compose-keycloak.yml \
-  <span class="flag">--profile</span> ui up <span class="flag">-d</span></code></pre>
+<span class="cmd">docker</span> compose <span class="flag">-f</span> compose.yml <span class="flag">-f</span> compose-dev.yml <span class="flag">-f</span> compose-keycloak.yml up <span class="flag">-d</span></code></pre>
       <p>The <strong>issuer split is the same as the backend&#x27;s</strong>, for the same reason: the browser reaches Keycloak at <code>MYCELIUM_OIDC_ISSUER</code> (<code>localhost:8080</code>) and the token&#x27;s <code>iss</code> matches it, but the containerized frontend server can&#x27;t use <code>localhost</code>, so it runs discovery + token exchange against <code>MYCELIUM_OIDC_INTERNAL_ISSUER</code> (<code>keycloak:8080</code>). Running the frontend on the host with <code>pnpm dev</code> instead? Drop <code>INTERNAL_ISSUER</code>; the two coincide.</p>
       <div class="callout callout-note">
         <div class="callout-bar"></div>
@@ -2143,7 +2154,7 @@ lsof <span class="flag">-i</span> :46357   # SLIM node</code></pre>
       <hr class="divider">
       <h3 id="troubleshooting-6-llm-not-configured">6. LLM Not Configured</h3>
       <p><strong>Symptom</strong>: <code>LLM unavailable, no API key configured</code>, or <code>mycelium doctor</code> reports the LLM connectivity check as <em>not configured</em> / <em>auth failed</em>.</p>
-      <p>The LLM powers the <a href="#aligner">aligner</a> mediator and memory embedding-adjacent work. Set it through config, not by hand-editing <code>.env</code>:</p>
+      <p>The LLM powers the <a href="index.html#aligner">aligner</a> mediator and memory embedding-adjacent work. Set it through config, not by hand-editing <code>.env</code>:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> llm.model <span class="str">&quot;anthropic/claude-sonnet-4-6&quot;</span>
 <span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> llm.api_key <span class="str">&quot;sk-ant-...&quot;</span>
 <span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">apply</span>
@@ -2269,7 +2280,7 @@ grep api_url ~/.mycelium/config.toml  # what the spoke targets</code></pre>
             </tr>
             <tr>
               <td><code>MYCELIUM_UI_PORT</code></td>
-              <td>Frontend host port (<code>--ui</code>)</td>
+              <td>Frontend host port</td>
               <td><code>3000</code></td>
             </tr>
             <tr>

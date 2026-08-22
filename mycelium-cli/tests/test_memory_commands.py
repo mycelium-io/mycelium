@@ -228,6 +228,25 @@ def test_memory_get_raw_renders_markdown_form(monkeypatch: pytest.MonkeyPatch) -
     assert "we chose postgres" in result.output
 
 
+def test_memory_get_raw_carries_unmanaged_frontmatter(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The raw view is the file's form, so what --meta wrote shows up in it."""
+    from mycelium_backend_client.models import MemoryReadMetaType0
+
+    _stub_get(
+        monkeypatch,
+        _memory_read(
+            "work/x",
+            "blocked on the custody seam",
+            meta=MemoryReadMetaType0.from_dict({"status": "open", "owner": "@julia"}),
+        ),
+    )
+
+    result = runner.invoke(memory_cmd.app, ["get", "work/x", "--raw", "--room", "demo"])
+    assert result.exit_code == 0, result.output
+    assert "status: open" in result.output
+    assert "owner: '@julia'" in result.output
+
+
 def test_memory_get_missing_key_exits_nonzero(monkeypatch: pytest.MonkeyPatch) -> None:
     _stub_get(monkeypatch, UnexpectedStatus(404, b'{"detail":"Memory not found"}'))
 

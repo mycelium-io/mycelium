@@ -23,6 +23,10 @@ logs/
 /mycelium-client/mycelium_backend_client/
 fastapi-backend/mycelium-client/
 
+# shotkit captures — scratch images for agents and humans, never committed.
+# Published screenshots live in docs/ and are written by `pnpm screenshots`.
+.shotkit/
+
 # Frontend
 node_modules/
 .next/
@@ -38,3 +42,8 @@ pnpm-lock.yaml
 # portman per-worktree dev-server port leases (machine-local)
 .ports.lock
 .ports.toml
+
+# Editor swap / backup files
+*.swp
+*.swo
+*~

@@ -40,7 +40,7 @@ model later with `mycelium config set llm.model <model>` and
 Bring it up, check on it, or stop it:
 
 ```bash
-mycelium up       # start the server
+mycelium up       # start the stack: SLIM node, backend, and UI
 mycelium status   # health check for the backend, node, and LLM
 mycelium logs     # tail logs if something looks off
 mycelium down     # stop it

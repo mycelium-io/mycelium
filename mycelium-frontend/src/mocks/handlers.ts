@@ -12,7 +12,7 @@
 
 import { BACKEND_METRICS, COLLECTOR_METRICS, HOSTS, ROOMS, ROOM_FIXTURES, getRoomFixture } from "./fixtures";
 import type { MockMemory } from "./fixtures";
-import type { MemoryGraph, MemoryGraphEdge, MemoryLink } from "@/lib/api";
+import type { A2aBridgeState, MemoryGraph, MemoryGraphEdge, MemoryLink } from "@/lib/api";
 import type { SearchHit, SearchResultType } from "@/lib/search";
 
 /** One item of a POST /memory batch, as the editor sends it. */
@@ -44,6 +44,63 @@ function json(data: unknown, status = 200): Response {
 }
 
 const notFound = (detail: string): Response => json({ detail }, 404);
+
+/** The epoch a fixture with no timestamp of its own is dated to. */
+const MOCK_EPOCH = new Date(0).toISOString();
+
+/**
+ * A UUID derived from a string, so a memory keeps the same id across requests
+ * without every fixture carrying one. Not cryptographic — it only has to be
+ * stable, distinct, and shaped like the ids the store issues.
+ */
+function stableUuid(seed: string): string {
+  let hash = 0x811c9dc5;
+  const digits: string[] = [];
+  for (let i = 0; i < 32; i++) {
+    hash ^= seed.charCodeAt(i % seed.length) + i;
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+    digits.push((hash % 16).toString(16));
+  }
+  const hex = digits.join("");
+  return [hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16), hex.slice(16, 20), hex.slice(20, 32)].join("-");
+}
+
+/**
+ * A fixture memory in the backend's `MemoryRead` shape. `id`, `room_name` and
+ * `created_at` are required by the spec and derived here rather than repeated
+ * across every fixture, the same way the real store derives them.
+ */
+function memoryRead(room: string, memory: MockMemory): Record<string, unknown> {
+  const updated = memory.updated_at ?? MOCK_EPOCH;
+  return {
+    ...memory,
+    id: stableUuid(`${room}/${memory.key}`),
+    room_name: memory.room_name ?? room,
+    created_at: updated,
+    updated_at: updated,
+  };
+}
+
+/** A room with no A2A bridge: no bridged members, no traffic — but still served
+ *  as an A2A agent of its own, since every room's card is reachable. */
+function emptyBridge(room: string): A2aBridgeState {
+  return {
+    room,
+    agents: [],
+    exchanges: [],
+    outbound_ok: 0,
+    outbound_failed: 0,
+    exposure: {
+      card_url: `http://localhost:8000/api/rooms/${room}/.well-known/agent-card.json`,
+      rpc_url: `http://localhost:8000/api/rooms/${room}/a2a`,
+      skills: [],
+      card_fetches: 0,
+      messages: 0,
+      last_card_fetch_at: null,
+      last_message_at: null,
+    },
+  };
+}
 
 async function readJson(req: Request): Promise<Record<string, unknown>> {
   try {
@@ -129,15 +186,18 @@ export async function handleMock(req: Request): Promise<Response | null> {
     if (method === "POST") {
       const body = await readJson(req);
       const name = String(body.name ?? "new-room");
-      return json({
-        id: ROOMS.length + 1,
-        name,
-        created_at: new Date(0).toISOString(),
-        is_public: true,
-        is_persistent: true,
-        mas_id: null,
-        title: null,
-      });
+      // 201, like the real route.
+      return json(
+        {
+          id: ROOMS.length + 1,
+          name,
+          created_at: MOCK_EPOCH,
+          is_public: true,
+          is_persistent: true,
+          mas_id: null,
+        },
+        201,
+      );
     }
     return null;
   }
@@ -170,7 +230,10 @@ export async function handleMock(req: Request): Promise<Response | null> {
           .slice(0, 10);
         // Fall back to the top few so search always shows *something* to design against.
         const chosen = hits.length ? hits : fx.memories.slice(0, 3).map((m, i) => ({ memory: m, score: 0.7 - i * 0.1 }));
-        return json({ results: chosen.map((r) => ({ memory: r.memory, similarity: r.score })), total: chosen.length });
+        return json({
+          results: chosen.map((r) => ({ memory: memoryRead(roomName, r.memory), similarity: r.score })),
+          total: chosen.length,
+        });
       }
       // POST /memory — create or upsert one or more memories. Mirrors the real
       // route closely enough to exercise the editor: optimistic-concurrency
@@ -211,19 +274,27 @@ export async function handleMock(req: Request): Promise<Response | null> {
           if (idx >= 0) fx.memories[idx] = next; else fx.memories.push(next);
           written.push(next);
         }
-        return json(written, 201);
+        return json(
+          written.map((m) => memoryRead(roomName, m)),
+          201,
+        );
       }
       if (method !== "GET") return null;
       // GET /memory/:key — the key is a path, so it spans the remaining segments.
       if (sub.length > 1) {
         const key = sub.slice(1).map(decodeURIComponent).join("/");
-        const found = fx.memories.find((m) => m.key === key);
-        return found ? json(found) : notFound(`memory ${key} not found (mock)`);
+        const index = fx.memories.findIndex((m) => m.key === key);
+        return index >= 0
+          ? json(memoryRead(roomName, fx.memories[index]))
+          : notFound(`memory ${key} not found (mock)`);
       }
       // GET /memory?prefix=
       const prefix = searchParams.get("prefix");
-      const items = prefix ? fx.memories.filter((m) => m.key.startsWith(prefix)) : fx.memories;
-      return json(items);
+      return json(
+        fx.memories
+          .map((m) => memoryRead(roomName, m))
+          .filter((m) => !prefix || String(m.key).startsWith(prefix)),
+      );
     }
 
     case "plan": {
@@ -290,8 +361,23 @@ export async function handleMock(req: Request): Promise<Response | null> {
           owner: /owner:\s*@?(\S+)/.exec(m.value)?.[1] ?? null,
           team: /team:\s*(\S+)/.exec(m.value)?.[1] ?? null,
           allow_from: [],
+          a2a_card: /a2a_card:\s*(\S+)/.exec(m.value)?.[1] ?? null,
+          a2a_endpoint: /a2a_endpoint:\s*(\S+)/.exec(m.value)?.[1] ?? null,
+          a2a_skills:
+            /a2a_skills:\s*\[([^\]]*)\]/
+              .exec(m.value)?.[1]
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean) ?? [],
         }));
       return json(agents);
+    }
+
+    case "a2a": {
+      // GET /a2a/state — the Network pane's bridge strip. A room with no
+      // bridge answers with an empty one, exactly like the backend does.
+      if (sub[1] !== "state" || method !== "GET") return null;
+      return json(fx.a2a ?? emptyBridge(roomName));
     }
 
     case "links": {

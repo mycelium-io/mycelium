@@ -3,8 +3,8 @@
 How two people on two laptops run the mycelium hero flow through **one shared SLIM
 node**. This is the LAN path; the open-internet path is documented at the bottom.
 
-> **Watching it in the browser.** The flow below is headless. To watch it, start the
-> stack with the UI (`mycelium up --ui`) and see [Watching it in the
+> **Watching it in the browser.** The flow below is headless. The UI comes up with
+> the stack (`mycelium up`) — see [Watching it in the
 > browser](#watching-it-in-the-browser) at the bottom.
 
 ## Roles
