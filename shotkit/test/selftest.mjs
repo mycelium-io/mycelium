@@ -255,6 +255,23 @@ await (async () => {
     assert.equal(r.kind, "label");
   });
 
+  await acount("a multi-word label is a label, not a descendant selector", async () => {
+    // `page.locator("Save changes")` is valid CSS — a <changes> inside a <Save>
+    // — so getting this wrong fails silently rather than throwing.
+    const r = await locate(fakePage([]), "Save changes");
+    assert.equal(r.kind, "label");
+  });
+
+  await acount("a phrase of tag names is still a label", async () => {
+    const r = await locate(fakePage(["css:nav button"]), "nav button");
+    assert.equal(r.kind, "label");
+  });
+
+  await acount("an explicit css= prefix still reaches the selector engine", async () => {
+    const r = await locate(fakePage([]), "css=nav button");
+    assert.equal(r.kind, "css");
+  });
+
   await acount("the tag is used only when no label matches it", async () => {
     const r = await locate(fakePage(["css:select"]), "select");
     assert.equal(r.kind, "css");
