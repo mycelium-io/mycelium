@@ -51,31 +51,17 @@ class _Bound(Protocol):
 
 #: What the runtime hands the factory: the credential already rendered into the
 #: headers that go on the wire (``Bearer`` derives one, ``Basic`` base64-encodes
-#: two, ``Header`` prefixes one), ``None`` for a provider that declares no auth,
-#: or a bare token string as Bearer shorthand. The scheme owns the transform, so
-#: the factory only binds the result; the value passes from runtime to transport
-#: without a provider ever being a party to it.
-ResolvedAuth = str | Mapping[str, str] | None
+#: two, ``Header`` prefixes one), or ``None`` for a provider that declares no
+#: auth. A scheme is the only thing that renders a credential, so there is no
+#: second spelling here for the common case; the factory only binds the result,
+#: and the value passes from runtime to transport without a provider ever being
+#: a party to it.
+ResolvedAuth = Mapping[str, str] | None
 
 #: Built once per provider by the runtime, given the provider and its resolved
 #: auth. The runtime owns credential *resolution and rendering*; the factory owns
 #: *binding* the rendered headers into a transport.
 ContextFactory = Callable[[StatusProvider, ResolvedAuth], Context]
-
-
-def _auth_headers(auth: ResolvedAuth) -> dict[str, str]:
-    """The default headers for a client, from whatever the runtime resolved.
-
-    A ``Mapping`` is already the rendered headers (the scheme did the work); a
-    bare ``str`` is Bearer shorthand for a single opaque token; ``None`` is no
-    auth. The shorthand keeps a plain token a one-liner without routing every
-    caller through a scheme object.
-    """
-    if auth is None:
-        return {}
-    if isinstance(auth, str):
-        return {"Authorization": f"Bearer {auth}"}
-    return dict(auth)
 
 
 DEFAULT_TIMEOUT = timedelta(seconds=10)
@@ -139,9 +125,10 @@ def build_http_context(
     """The default factory: a client bound to ``provider.base_url`` carrying its auth.
 
     ``credential`` is what the runtime resolved for this provider's ``auth``: the
-    rendered headers (a mapping), a bare token as Bearer shorthand, or ``None``.
-    It is passed in rather than read here so credential resolution and rendering
-    stay in one place. A provider that declares no auth is handed an
+    headers the scheme rendered, or ``None`` for no auth. It is passed in rather
+    than read here so credential resolution and rendering stay in one place, and
+    it arrives rendered because a scheme is the only thing that turns a
+    credential into a header. A provider that declares no auth is handed an
     unauthenticated client; the runtime already refuses to call one whose
     declared credentials are missing, so an empty value never reaches this path
     for a provider that needs one.
@@ -151,7 +138,7 @@ def build_http_context(
     while the host refusal stays in the path exactly as in production.
     """
 
-    headers = _auth_headers(credential)
+    headers = dict(credential or {})
     base = httpx.URL(provider.base_url)
     inner = transport or httpx.AsyncHTTPTransport(retries=retries)
     bound = _HostBoundTransport(inner, base.host)

@@ -95,9 +95,7 @@ class _Wire:
         self.headers = httpx.Headers()
         self.called = False
 
-    def factory(
-        self, provider: StatusProvider, auth: str | Mapping[str, str] | None
-    ) -> HttpContext:
+    def factory(self, provider: StatusProvider, auth: Mapping[str, str] | None) -> HttpContext:
         def handler(request: httpx.Request) -> httpx.Response:
             self.called = True
             self.headers = request.headers
