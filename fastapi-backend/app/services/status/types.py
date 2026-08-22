@@ -25,8 +25,27 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any, Literal, Protocol, runtime_checkable
 
-#: What the board can act on generically. A provider maps its own states onto
+#: What a surface can act on generically. A provider maps its own states onto
 #: these; anything it cannot map is ``unknown`` rather than a guess.
+#:
+#: The six are pinned down here because two different readers infer different
+#: things from the words alone, and a provider author mapping a tracker onto
+#: them needs one answer:
+#:
+#: ``ok``       nothing is wrong and nobody is needed. Healthy, **not**
+#:              finished — an approved pull request is ``ok`` until it merges.
+#: ``pending``  in motion, nobody is required. Checks running, a first review
+#:              not yet given, a draft.
+#: ``blocked``  waiting on a person: a decision, a revision, an approval.
+#: ``failed``   waiting on a fix, and a machine is what said no.
+#: ``done``     terminal, however it ended. Merged, closed, cancelled — the
+#:              distinction between a good and a bad ending is the ``label``'s
+#:              to carry, not this field's.
+#: ``unknown``  the provider met a state it cannot place. Honest ignorance,
+#:              never a default for "no information".
+#:
+#: ``ok`` and ``done`` are the pair worth getting right: ``ok`` is a healthy
+#: thing still in flight, ``done`` is a finished one.
 State = Literal["ok", "pending", "blocked", "failed", "done", "unknown"]
 
 #: How much the caller should trust what they were handed. This travels with
@@ -104,15 +123,18 @@ class Known:
 class Context(Protocol):
     """What a provider is handed. Deliberately small.
 
-    ``http`` is pre-built with the provider's own credential, timeout and retry
-    policy, so a provider author writes request-and-parse and never auth or
-    backoff — and so a provider cannot quietly reach a host it never declared.
+    ``http`` is pre-built against the provider's declared ``base_url`` with its
+    credential, timeout and retry policy already applied, so a provider author
+    writes request-and-parse and never auth or backoff.
+
+    There is no way to read the credential's value.  A provider names what it
+    needs and is handed a transport that already carries it, which means a
+    provider cannot reach a host it never declared, and cannot send a token
+    somewhere it wasn't meant to go.
     """
 
     @property
     def http(self) -> Any: ...
-
-    def secret(self, name: str) -> str | None: ...
 
     def log(self, message: str, **fields: Any) -> None: ...
 
@@ -130,6 +152,15 @@ class StatusProvider(Protocol):
 
     #: Stable key. Matches the ``providers/{name}`` manifest in room memory.
     name: str
+
+    #: The one host this provider talks to. ``ctx.http`` is bound to it.
+    base_url: str
+
+    #: The credential this provider needs, named rather than read.  The runtime
+    #: resolves it and builds the transport; a provider that declares one is
+    #: never called at all while it is missing, so a misconfigured integration
+    #: reports itself instead of answering "unknown" for every row.
+    credential: str | None
 
     #: Most refs the provider will accept in one call. The runtime chunks to it.
     max_batch: int

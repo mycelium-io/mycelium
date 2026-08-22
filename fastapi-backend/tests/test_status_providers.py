@@ -10,12 +10,13 @@ and nothing is handed to a caller without its age.
 
 from __future__ import annotations
 
+import pathlib
 from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from app.services.status.cache import StatusCache
-from app.services.status.providers.github import GitHubProvider
+from app.services.status.providers.github import GitHubProvider, _status
 from app.services.status.runtime import StatusRuntime
 from app.services.status.types import Err, Ok, Ref, Status
 
@@ -23,13 +24,11 @@ NOW = datetime(2026, 8, 22, 12, 0, tzinfo=UTC)
 
 
 class FakeContext:
-    def __init__(self, secrets: dict[str, str] | None = None) -> None:
-        self._secrets = secrets or {}
-        self.logs: list[str] = []
-        self.http = None
+    """A provider is handed a transport, never a credential."""
 
-    def secret(self, name: str) -> str | None:
-        return self._secrets.get(name)
+    def __init__(self, http: object | None = None) -> None:
+        self.logs: list[str] = []
+        self.http = http
 
     def log(self, message: str, **fields: object) -> None:
         self.logs.append(message)
@@ -39,6 +38,8 @@ class RecordingProvider:
     """Counts calls, so a test can prove batching rather than assume it."""
 
     name = "fake"
+    base_url = "https://example.invalid"
+    credential = None
     ttl = timedelta(minutes=5)
     swr = timedelta(minutes=30)
 
@@ -241,11 +242,87 @@ class TestClaims:
         found = provider.claims("a/b#1 and again a/b#1")
         assert len(found) == 1
 
-    @pytest.mark.asyncio
-    async def test_a_provider_with_no_credential_refuses_per_ref(self):
+    def test_the_provider_declares_its_credential_rather_than_reading_one(self):
         provider = GitHubProvider()
-        outcomes = await provider.fetch(
-            [Ref(provider="github", kind="pull_request", id="a/b#1")], FakeContext()
+        assert provider.credential == "GITHUB_TOKEN"
+        # A provider that cannot read a credential cannot leak one, and the
+        # file people copy shouldn't teach them to handle auth at all.
+        source = (
+            pathlib.Path(__file__).resolve().parents[1] / "app/services/status/providers/github.py"
+        ).read_text()
+        assert "Authorization" not in source
+        assert "ctx.secret" not in source
+
+
+class TestCredentials:
+    """A declared credential is the runtime's to resolve, and to refuse."""
+
+    class Guarded(RecordingProvider):
+        credential = "FAKE_TOKEN"
+
+    @pytest.mark.asyncio
+    async def test_a_provider_missing_its_credential_is_never_called(self):
+        provider = self.Guarded()
+        rt = StatusRuntime(providers={provider.name: provider}, context=FakeContext())
+        answers = await rt.resolve([ref("T-1")], NOW)
+        assert provider.calls == []
+        assert answers[ref("T-1")].freshness == "error"
+        assert "FAKE_TOKEN not configured" in (answers[ref("T-1")].error or "")
+
+    @pytest.mark.asyncio
+    async def test_a_resolved_credential_lets_the_provider_run(self):
+        provider = self.Guarded()
+        rt = StatusRuntime(
+            providers={provider.name: provider},
+            context=FakeContext(),
+            credentials={"FAKE_TOKEN": "s3cret"},
         )
-        assert isinstance(outcomes[0], Err)
-        assert "GITHUB_TOKEN" in outcomes[0].reason
+        answers = await rt.resolve([ref("T-1")], NOW)
+        assert len(provider.calls) == 1
+        assert answers[ref("T-1")].status is not None
+
+    @pytest.mark.asyncio
+    async def test_one_unconfigured_provider_does_not_stop_the_others(self):
+        guarded, open_provider = self.Guarded(), RecordingProvider()
+        open_provider.name = "other"
+        rt = StatusRuntime(
+            providers={"fake": guarded, "other": open_provider}, context=FakeContext()
+        )
+        other = Ref(provider="other", kind="task", id="T-9")
+        answers = await rt.resolve([ref("T-1"), other], NOW)
+        assert answers[ref("T-1")].freshness == "error"
+        assert answers[other].status is not None
+
+
+class TestStateVocabulary:
+    """`ok` and `done` are the pair readers conflate, so pin them down."""
+
+    def test_github_never_reports_an_open_pull_request_as_done(self):
+        node = {"state": "OPEN", "reviewDecision": "APPROVED", "commits": {"nodes": []}}
+        status = _status(node)
+        assert status.state == "ok"
+        assert status.label == "approved"
+
+    def test_a_merged_pull_request_is_done_not_ok(self):
+        assert _status({"state": "MERGED"}).state == "done"
+
+    def test_a_closed_one_is_also_done_and_the_label_carries_how_it_ended(self):
+        closed = _status({"state": "CLOSED"})
+        assert closed.state == "done"
+        assert closed.label == "closed"
+
+    def test_green_checks_alone_are_not_ok(self):
+        node = {
+            "state": "OPEN",
+            "commits": {"nodes": [{"commit": {"statusCheckRollup": {"state": "SUCCESS"}}}]},
+        }
+        assert _status(node).state == "pending"
+
+    def test_a_person_blocks_and_a_machine_fails(self):
+        person = {"state": "OPEN", "reviewDecision": "CHANGES_REQUESTED"}
+        machine = {
+            "state": "OPEN",
+            "commits": {"nodes": [{"commit": {"statusCheckRollup": {"state": "FAILURE"}}}]},
+        }
+        assert _status(person).state == "blocked"
+        assert _status(machine).state == "failed"
