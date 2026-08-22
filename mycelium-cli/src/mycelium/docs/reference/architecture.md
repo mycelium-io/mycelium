@@ -214,7 +214,8 @@ for itself. A spoke never holds a service token.
 
 Resolving pull requests takes a GitHub token; read-only is enough, plus `repo`
 scope for private repositories. A provider **declares** which credential it needs
-and never handles the value — the runtime resolves it and hands back a
+and how it is presented (a scheme: bearer token, basic auth, a raw key in a
+header), and never handles the value. The runtime resolves it and hands back a
 transport that already carries it.
 
 How the hub is given that value is still being settled, so there is nothing to
@@ -224,7 +225,7 @@ token written in by hand disappears the next time it runs, with no error to
 explain where it went.
 
 A reference whose provider has no credential is refused with the reason, rather
-than answered with a blank — a blank on a row reads as *this pull request has no
+than answered with a blank. A blank on a row reads as *this pull request has no
 CI*, which is worse than an honest gap. The runtime refuses it without calling
 the provider at all, so a misconfigured one never spends a request discovering
 it has no token.
@@ -239,7 +240,7 @@ freshness, then implements two methods:
 class JiraProvider:
     name = "jira"
     base_url = "https://your-org.atlassian.net"   # ctx.http is bound to this host
-    credential = "JIRA_TOKEN"       # resolved by the runtime; never seen by the provider
+    auth = Basic("JIRA_EMAIL", "JIRA_TOKEN")  # a scheme, not a value; the runtime resolves both names
     max_batch = 50                  # most references the runtime sends in one call
     ttl = timedelta(minutes=1)      # how long an answer counts as current
     swr = timedelta(minutes=30)     # how long past that it's still shown while refreshing
@@ -252,9 +253,17 @@ class JiraProvider:
         """Resolve a batch. One Ok or Err per reference, in any order."""
 ```
 
+The `auth` line is the whole of what a provider says about credentials. It picks
+a scheme and names the value(s) it needs: `Bearer("GITHUB_TOKEN")` for GitHub,
+Asana, Sentry or Notion; `Basic("JIRA_EMAIL", "JIRA_TOKEN")` for Jira Cloud, which
+takes an identity and a secret rather than one opaque token; `Header("LINEAR_TOKEN")`
+for a raw token with no scheme word, or `Header("KEY", header="X-Api-Key")` for a
+key under a header of the tracker's own. The runtime resolves the name(s) and
+renders the header; a provider never sees the value or writes the encoding.
+
 What you don't write is as important as what you do. `ctx.http` arrives bound to
 the declared `base_url`, with the credential, timeout and retry policy already
-applied, so a provider is request-and-parse — it names a host and a secret and is
+applied, so a provider is request-and-parse: it names a host and a secret and is
 handed neither. Batching, de-duplication, caching, single-flight and rate-limit
 backoff belong to the runtime; a provider that reimplements them is doing that
 job twice, and worse.
@@ -269,8 +278,8 @@ Two rules the runtime enforces:
   reported as green.
 
 Map your tool's vocabulary onto the six states in the
-[board's table](#board) — `ok`, `pending`, `blocked`, `failed`, `done`,
-`unknown` — and keep your own wording as the label. The state is what the board
+[board's table](#board), being `ok`, `pending`, `blocked`, `failed`, `done` and
+`unknown`, and keep your own wording as the label. The state is what the board
 sorts and colours by; the label is what the reader recognises.
 
 Your answer will land on a row under a `live` field, never the row's own

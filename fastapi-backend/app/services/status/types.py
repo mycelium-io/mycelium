@@ -33,6 +33,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any, Final, Literal, Protocol, runtime_checkable
 
+from app.services.status.auth import AuthScheme
+
 #: What a surface can act on generically. A provider maps its own states onto
 #: these; anything it cannot map is ``unknown`` rather than a guess.
 #:
@@ -180,11 +182,15 @@ class StatusProvider(Protocol):
     #: The one host this provider talks to. ``ctx.http`` is bound to it.
     base_url: str
 
-    #: The credential this provider needs, named rather than read.  The runtime
-    #: resolves it and builds the transport; a provider that declares one is
-    #: never called at all while it is missing, so a misconfigured integration
-    #: reports itself instead of answering "unknown" for every row.
-    credential: str | None
+    #: How this provider's credential is presented, declared rather than read.
+    #: An ``AuthScheme`` (``Bearer``, ``Basic``, ``Header``) names the credential
+    #: name(s) it needs and how they render onto the wire; the runtime resolves
+    #: the name(s) and builds the transport, so the value never reaches the
+    #: provider. A provider that declares a scheme is never called at all while
+    #: any of its credentials are missing, so a misconfigured integration reports
+    #: itself instead of answering "unknown" for every row. ``None`` is genuinely
+    #: no auth, distinct from a raw token under ``Authorization`` (``Header``).
+    auth: AuthScheme | None
 
     #: Most refs the provider will accept in one call. The runtime chunks to it.
     max_batch: int

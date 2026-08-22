@@ -25,6 +25,7 @@ from typing import Any
 
 import httpx
 
+from app.services.status.auth import Bearer
 from app.services.status.types import Context, Err, Liveness, Ok, Outcome, Ref
 
 #: ``owner/repo#123`` and the pasted browser URL, which is what people have on
@@ -77,9 +78,10 @@ def _document(refs: list[Ref]) -> str:
 class GitHubProvider:
     name = "github"
     base_url = "https://api.github.com"
-    #: Named, never read. The runtime resolves it and hands back a transport
-    #: that already carries it; this class never sees the value.
-    credential = "GITHUB_TOKEN"
+    #: Declared, never read. GitHub takes a bearer token; the runtime resolves
+    #: ``GITHUB_TOKEN`` and hands back a transport that already carries it, so
+    #: this class never sees the value.
+    auth = Bearer("GITHUB_TOKEN")
     #: Kept modest so one aliased document stays well inside GitHub's query node
     #: and complexity limits. Chunking to it is the runtime's job.
     max_batch = 50

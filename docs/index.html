@@ -750,14 +750,14 @@ Review 1
       <h3 id="board-live-status-how-it-will-work">Live status: how it will work</h3>
       <div class="callout callout-note">
         <div class="callout-bar"></div>
-        <div class="callout-body"><strong>Not built yet.</strong> The rest of this section describes what linked pull requests <em>will</em> do. The backend has the resolver that answers for a reference — see <a href="#architecture">status providers</a> — but nothing attaches its answers to a row, so no row shows a pull request&#x27;s state today.</div>
+        <div class="callout-body"><strong>Not built yet.</strong> The rest of this section describes what linked pull requests <em>will</em> do. The backend has the resolver that answers for a reference (see <a href="#architecture">status providers</a>), but nothing attaches its answers to a row, so no row shows a pull request&#x27;s state today.</div>
       </div>
-      <p>Mentioning the pull request will be the whole of it. Write the link where the work is already described — a plan task, a memory, a message in the room — and the row that comes from it will carry that pull request&#x27;s state, with nothing to attach and no per-row setting:</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">plan</span> <span class="cmd">task</span> add <span class="str">&quot;land the custody seam — mycelium-io/mycelium#504&quot;</span>
+      <p>Mentioning the pull request will be the whole of it. Write the link where the work is already described, whether a plan task, a memory, or a message in the room, and the row that comes from it will carry that pull request&#x27;s state, with nothing to attach and no per-row setting:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">plan</span> <span class="cmd">task</span> add <span class="str">&quot;land the custody seam: mycelium-io/mycelium#504&quot;</span>
 <span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> work/thin-spoke \
   <span class="str">&quot;Blocked behind <span class="url">https://github.com/mycelium-io/mycelium/pull/502</span>&quot;</span></code></pre>
       <p>Both forms will count: the <code>owner/repo#123</code> shorthand, and the URL you have on your clipboard when you&#x27;re talking about a pull request. Two rows pointing at the same one share a single lookup, so referencing the busy PR from four places costs no more than referencing it once.</p>
-      <p>The row will show GitHub&#x27;s own words — <code>CI failing</code>, <code>changes requested</code>, <code>draft</code>, <code>merged</code> — because that&#x27;s the phrasing you already recognise. Underneath, each is filed as one of six states, which is what a surface can sort, filter and colour by without knowing what a pull request is:</p>
+      <p>The row will show GitHub&#x27;s own words (<code>CI failing</code>, <code>changes requested</code>, <code>draft</code>, <code>merged</code>) because that&#x27;s the phrasing you already recognise. Underneath, each is filed as one of six states, which is what a surface can sort, filter and colour by without knowing what a pull request is:</p>
       <div class="table-wrap">
         <table>
           <thead>
@@ -769,7 +769,7 @@ Review 1
           <tbody>
             <tr>
               <td><code>ok</code></td>
-              <td>nothing is wrong and nobody is needed — healthy, not finished</td>
+              <td>nothing is wrong and nobody is needed; healthy, not finished</td>
             </tr>
             <tr>
               <td><code>pending</code></td>
@@ -785,7 +785,7 @@ Review 1
             </tr>
             <tr>
               <td><code>done</code></td>
-              <td>terminal, however it ended — the label carries how</td>
+              <td>terminal, however it ended; the label carries how</td>
             </tr>
             <tr>
               <td><code>unknown</code></td>
@@ -796,7 +796,7 @@ Review 1
       </div>
       <p><code>ok</code> and <code>done</code> are the pair worth reading carefully, because a board&#x27;s whole job is keeping them apart: an approved pull request is <code>ok</code> right up until it merges, and <code>done</code> the moment it does.</p>
       <p>That answer will land on the row under its own <code>live</code> field, never the row&#x27;s own <code>status</code>. A row already uses <code>status</code> for its lifecycle (<code>open</code>, <code>claimed</code>, <code>in_progress</code>, <code>blocked</code>, <code>resolved</code>), and both sets of words contain <code>blocked</code> meaning different things: a person has blocked the row, versus the pull request is waiting on a person. Keeping the provider&#x27;s reading in a separate field is what stops the two from being read as one.</p>
-      <p>GitHub maps onto the six more narrowly than you might guess. <code>ok</code> needs an approval, so green checks with no review yet are <code>pending</code> / <code>awaiting review</code>. Changes requested is <code>blocked</code> and red CI is <code>failed</code> — a person is the fix in one case, a machine in the other. <code>unknown</code> is there for a provider that meets a state it can&#x27;t place; the GitHub one never emits it.</p>
+      <p>GitHub maps onto the six more narrowly than you might guess. <code>ok</code> needs an approval, so green checks with no review yet are <code>pending</code> / <code>awaiting review</code>. Changes requested is <code>blocked</code> and red CI is <code>failed</code>: a person is the fix in one case, a machine in the other. <code>unknown</code> is there for a provider that meets a state it can&#x27;t place; the GitHub one never emits it.</p>
       <h3 id="board-how-current-it-will-be">How current it will be</h3>
       <p>Every status will carry the moment it was fetched, and the row will show its age (<code>CI green · 4m</code>). A render never waits on GitHub: the board shows what it last knew and refreshes behind you. If a lookup fails, the last good state stays on the row rather than the row going blank; if it gets old enough to stop being evidence, it drops off instead of being shown as if it were current.</p>
       <p>Reading a room&#x27;s board never costs a request per row, either: identical references are answered once, and a tool is asked about many references in one call rather than one at a time.</p>
