@@ -112,7 +112,9 @@ Element arguments accept any Playwright selector engine (`text=`,
 accessible name, then by visible text — `click:Save` means the button labelled
 Save, not a `<save>` element. Words that are also tag names are no exception:
 `click:table` prefers a control labelled "table", and only falls back to the
-`<table>` element when nothing carries that label.
+`<table>` element when nothing carries that label. Phrases are labels too —
+`click:Save changes` is a button, not a descendant selector — so a selector made
+only of tag names and spaces needs saying explicitly: `css=nav button`.
 
 ## Video
 

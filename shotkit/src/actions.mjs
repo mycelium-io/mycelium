@@ -48,7 +48,8 @@ const byLabel = (page, spec) =>
  *
  * Some labels collide with real tag names — "table", "select", "code", "header",
  * "form", "nav" are all things a button might say — so the tag reading is a
- * fallback rather than a rule. It is used only when the word names a tag, no
+ * fallback rather than a rule, and it applies to single words only: a phrase
+ * with a space in it is a label, not a descendant selector. It is used only when the word names a tag, no
  * label matches it, and an element of that tag is actually on the page. When
  * neither matches (the usual "not there yet" case) the label locator is
  * returned, so Playwright's auto-waiting applies and any error names the label
@@ -59,10 +60,14 @@ const byLabel = (page, spec) =>
  */
 export async function locate(page, spec) {
   if (ENGINE_PREFIX.test(spec) || spec.startsWith("//") || spec.startsWith("(")) return page.locator(spec).first();
-  if (CSS_PUNCTUATION.test(spec) || /\s/.test(spec)) return page.locator(spec).first();
+  if (CSS_PUNCTUATION.test(spec)) return page.locator(spec).first();
 
+  // Everything left is punctuation-free, which on a UI means a label far more
+  // often than a selector: `click:Save changes` is a button, not a `<changes>`
+  // inside a `<Save>`. A space-separated selector of bare tag names is the one
+  // thing this reading loses, and `css=nav button` still says it explicitly.
   const label = byLabel(page, spec);
-  if (!HTML_TAGS.has(spec.toLowerCase())) return label;
+  if (/\s/.test(spec) || !HTML_TAGS.has(spec.toLowerCase())) return label;
   if ((await label.count()) > 0) return label;
   const tag = page.locator(spec).first();
   return (await tag.count()) > 0 ? tag : label;
@@ -245,5 +250,7 @@ export const ACTION_HELP = `
   zoom:<sel>@2.2       both                 zoomout            pull back out
 
   Selectors take any Playwright engine: text=Save, role=button[name="Save"],
-  #id, .class, //xpath. A bare word is matched by accessible name, then by
-  visible text — click:Save means the button labelled Save.`;
+  #id, .class, //xpath. Anything without CSS punctuation is matched by
+  accessible name, then visible text — click:Save changes means the button
+  labelled "Save changes". For a selector that is only tag names and spaces,
+  say so: css=nav button.`;
