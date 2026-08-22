@@ -49,9 +49,22 @@ def test_the_store_is_owner_only(_store: Path) -> None:
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
 
 
-def test_a_damaged_store_reads_as_empty(_store: Path) -> None:
-    _store.write_text("{ not json", encoding="utf-8")
+def test_a_missing_store_is_an_empty_store(_store: Path) -> None:
+    # The file was never written; that is legitimately empty, not damaged.
     assert status_credentials._read() == {}
+
+
+def test_a_damaged_store_raises_rather_than_reading_as_empty(_store: Path) -> None:
+    _store.write_text("{ not json", encoding="utf-8")
+    with pytest.raises(status_credentials.CredentialStoreError, match="not valid JSON"):
+        status_credentials._read()
+
+
+def test_ls_surfaces_a_damaged_store_instead_of_saying_none(_store: Path) -> None:
+    _store.write_text("{ not json", encoding="utf-8")
+    result = runner.invoke(app, ["board", "credential", "ls"])
+    assert result.exit_code == 1, result.output
+    assert "No status-provider credentials" not in result.output
 
 
 def test_ls_maps_a_configured_empty_name_to_not_set(_store: Path) -> None:

@@ -41,6 +41,16 @@ STORE_ENV = "MYCELIUM_STATUS_CREDENTIALS_FILE"
 _STORE_KEY = "credentials"
 
 
+class CredentialStoreError(RuntimeError):
+    """The store file exists but cannot be read as a credential store.
+
+    Distinct from an *absent* store (no file), which is legitimately empty. A
+    present-but-damaged store is surfaced rather than silently read as empty, so
+    ``ls`` reports the damage and ``set`` refuses to clobber a file it could not
+    parse instead of quietly discarding whatever was in it.
+    """
+
+
 def store_path() -> Path:
     override = os.environ.get(STORE_ENV, "").strip()
     if override:
@@ -52,14 +62,33 @@ def store_path() -> Path:
 
 
 def _read() -> dict[str, str]:
-    """Every stored ``name -> value`` (a damaged or absent store reads as empty)."""
+    """Every stored ``name -> value``.
+
+    A *missing* file is an empty store. A present-but-unparseable file is a
+    ``CredentialStoreError``, never silently empty: corrupt is not absent, and a
+    read-modify-write (``set``, ``rm``) must not merge into a file it could not
+    parse. A single non-string value is still dropped without failing the read.
+    """
     try:
-        data = json.loads(store_path().read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+        raw = store_path().read_text(encoding="utf-8")
+    except FileNotFoundError:
         return {}
-    creds = data.get(_STORE_KEY) if isinstance(data, dict) else None
+    except OSError as exc:
+        raise CredentialStoreError(f"cannot read {store_path()}: {exc}") from exc
+
+    try:
+        data = json.loads(raw)
+    except ValueError as exc:
+        raise CredentialStoreError(
+            f"{store_path()} is not valid JSON: {exc}. "
+            "Fix or remove it; a damaged store is not the same as no credentials."
+        ) from exc
+
+    creds = data.get(_STORE_KEY, {}) if isinstance(data, dict) else None
     if not isinstance(creds, dict):
-        return {}
+        raise CredentialStoreError(
+            f"{store_path()} is malformed (expected a {_STORE_KEY!r} object)."
+        )
     return {str(name): value for name, value in creds.items() if isinstance(value, str)}
 
 

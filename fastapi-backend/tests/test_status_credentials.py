@@ -4,11 +4,12 @@
 """The producer of the credential mapping, and the two ways a provider misdeclares.
 
 ``StatusRuntime`` takes ``credentials: Mapping[str, str]``; until now nothing made
-one. ``status.credentials`` does, from an env-over-file source, and it has one
-job the rest of the seam depends on: keep *absent* distinguishable from
-*configured-empty*, so the runtime's error can say which. The conformance tests
-cover the other half of the handoff: a provider that forgets ``auth`` or declares
-it in the wrong shape is refused at registration instead of sinking a sweep.
+one. ``status.credentials`` does, resolving explicit-over-ambient (a namespaced
+env override, then the store, then a bare env var), and it has one job the rest
+of the seam depends on: keep *absent* distinguishable from *configured-empty*, so
+the runtime's error can say which. The conformance tests cover the other half of
+the handoff: a provider that forgets ``auth`` or declares it in the wrong shape
+is refused at registration instead of sinking a sweep.
 """
 
 from __future__ import annotations
@@ -27,6 +28,27 @@ from app.services.status.types import Liveness, Ok, Ref, StatusProvider
 
 NOW = datetime(2026, 8, 22, 12, 0, tzinfo=UTC)
 
+#: Every credential name any test here resolves. The suite clears these (bare
+#: and namespaced) from the ambient environment so it is hermetic: a machine that
+#: exports one of them for an unrelated reason (a GITHUB_TOKEN for the GitHub
+#: proxy, say) must not decide whether these tests pass.
+_NAMES = (
+    "GITHUB_TOKEN",
+    "JIRA_EMAIL",
+    "JIRA_TOKEN",
+    "CONFIGURED_EMPTY",
+    "NEVER_SET",
+    "EMPTY_TOKEN",
+)
+
+
+@pytest.fixture(autouse=True)
+def _hermetic_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Clear every name under test, bare and namespaced, from the environment."""
+    for name in _NAMES:
+        monkeypatch.delenv(name, raising=False)
+        monkeypatch.delenv(f"{credentials.NAMESPACE_PREFIX}{name}", raising=False)
+
 
 @pytest.fixture
 def store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -40,7 +62,7 @@ def store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     return write
 
 
-# ── the resolver: env over file, and absent is not empty ──────────────────────
+# ── the resolver: explicit-over-ambient precedence ────────────────────────────
 
 
 def test_a_stored_value_resolves(store):
@@ -48,15 +70,27 @@ def test_a_stored_value_resolves(store):
     assert credentials.resolve(["GITHUB_TOKEN"]) == {"GITHUB_TOKEN": "ghp_x"}
 
 
-def test_env_wins_over_the_file(store, monkeypatch: pytest.MonkeyPatch):
+def test_the_namespaced_env_override_wins_over_the_file(store, monkeypatch: pytest.MonkeyPatch):
+    # The deliberate override: MYCELIUM_STATUS_<NAME> beats the store.
     store({"GITHUB_TOKEN": "from_file"})
-    monkeypatch.setenv("GITHUB_TOKEN", "from_env")
+    monkeypatch.setenv(f"{credentials.NAMESPACE_PREFIX}GITHUB_TOKEN", "from_env")
     assert credentials.resolve(["GITHUB_TOKEN"]) == {"GITHUB_TOKEN": "from_env"}
 
 
-def test_env_alone_resolves_with_no_store_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
-    # A container with one token and no store file still works: the name is an
-    # env var name, so it resolves from the environment directly.
+def test_the_store_beats_an_ambient_bare_env_var(store, monkeypatch: pytest.MonkeyPatch):
+    # The regression this whole precedence change exists for: an unrelated
+    # GITHUB_TOKEN in the environment must not silently override a credential the
+    # operator explicitly stored. The store wins; only the namespaced form can't.
+    store({"GITHUB_TOKEN": "explicitly_stored"})
+    monkeypatch.setenv("GITHUB_TOKEN", "ambient_proxy_token")
+    assert credentials.resolve(["GITHUB_TOKEN"]) == {"GITHUB_TOKEN": "explicitly_stored"}
+
+
+def test_a_bare_env_var_resolves_when_the_store_has_no_such_name(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    # The convenience the handoff asked for is still there: a container with a
+    # lone GITHUB_TOKEN and no store file works. It is just the lowest tier.
     monkeypatch.setenv(credentials.STORE_ENV, str(tmp_path / "does-not-exist.json"))
     monkeypatch.setenv("GITHUB_TOKEN", "ghp_env")
     assert credentials.resolve(["GITHUB_TOKEN"]) == {"GITHUB_TOKEN": "ghp_env"}
@@ -87,13 +121,21 @@ def test_an_empty_env_var_is_configured_empty_not_absent(
     assert resolved == {"EMPTY_TOKEN": ""}
 
 
-def test_a_damaged_store_reads_as_empty_rather_than_raising(
+def test_a_missing_store_file_is_an_empty_store(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    monkeypatch.setenv(credentials.STORE_ENV, str(tmp_path / "never-written.json"))
+    assert credentials.resolve(["GITHUB_TOKEN"]) == {}
+
+
+def test_a_damaged_store_raises_rather_than_reading_as_empty(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
+    # Corrupt is not absent. Reading it as empty would make every provider report
+    # "not configured" when the truth is "your store is damaged".
     path = tmp_path / "status-credentials.json"
     path.write_text("{ not json", encoding="utf-8")
     monkeypatch.setenv(credentials.STORE_ENV, str(path))
-    assert credentials.resolve(["GITHUB_TOKEN"]) == {}
+    with pytest.raises(credentials.CredentialStoreError, match="not valid JSON"):
+        credentials.resolve(["GITHUB_TOKEN"])
 
 
 def test_a_non_string_stored_value_is_dropped_not_coerced(store):
