@@ -879,6 +879,68 @@ is a link, it's a link and not a copy:
 If it should outlive the work, it belongs in GitHub and Mycelium just points at
 it. The board holds what's live right now.
 
+### Live status: how it will work
+
+> **Not built yet.** The rest of this section describes what linked pull requests
+> *will* do. The backend has the resolver that answers for a reference — see
+> [status providers](#architecture) — but nothing attaches its answers to a row,
+> so no row shows a pull request's state today.
+
+Mentioning the pull request will be the whole of it. Write the link where the
+work is already described — a plan task, a memory, a message in the room — and
+the row that comes from it will carry that pull request's state, with nothing to
+attach and no per-row setting:
+
+```bash
+mycelium plan task add "land the custody seam — mycelium-io/mycelium#504"
+mycelium memory set work/thin-spoke \
+  "Blocked behind https://github.com/mycelium-io/mycelium/pull/502"
+```
+
+Both forms will count: the `owner/repo#123` shorthand, and the URL you have on
+your clipboard when you're talking about a pull request. Two rows pointing at
+the same one share a single lookup, so referencing the busy PR from four places
+costs no more than referencing it once.
+
+The row will show GitHub's own words — `CI failing`, `changes requested`,
+`draft`, `merged` — because that's the phrasing you already recognise.
+Underneath, each is filed as one of six states, which is what a surface can
+sort, filter and colour by without knowing what a pull request is:
+
+| State | What it means |
+|---|---|
+| `ok` | nothing is wrong and nobody is needed — healthy, not finished |
+| `pending` | in motion, nobody is required |
+| `blocked` | waiting on a person: a decision, a revision, an approval |
+| `failed` | waiting on a fix, and a machine is what said no |
+| `done` | terminal, however it ended — the label carries how |
+| `unknown` | the provider met a state it couldn't place |
+
+`ok` and `done` are the pair worth reading carefully, because a board's whole
+job is keeping them apart: an approved pull request is `ok` right up until it
+merges, and `done` the moment it does.
+
+GitHub maps onto the six more narrowly than you might guess. `ok` needs an
+approval, so green checks with no review yet are `pending` / `awaiting review`.
+Changes requested is `blocked` and red CI is `failed` — a person is the fix in
+one case, a machine in the other. `unknown` is there for a provider that meets a
+state it can't place; the GitHub one never emits it.
+
+### How current it will be
+
+Every status will carry the moment it was fetched, and the row will show its age
+(`CI green · 4m`). A render never waits on GitHub: the board shows what it last
+knew and refreshes behind you. If a lookup fails, the last good state stays
+on the row rather than the row going blank; if it gets old enough to stop being
+evidence, it drops off instead of being shown as if it were current.
+
+Reading a room's board never costs a request per row, either: identical
+references are answered once, and a tool is asked about many references in one
+call rather than one at a time.
+
+For the credential a provider needs, and for teaching Mycelium a tracker other
+than GitHub, see [status providers](#architecture).
+
 ## CLI
 
 ```bash
@@ -1406,6 +1468,89 @@ mycelium agent create design-agent --adapter cursor \
 Any agent that can make HTTP requests can use the REST API directly.
 Interactive API docs are available at `http://localhost:8000/docs`
 when the backend is running.
+
+## Status providers
+
+Adapters connect **agents** to a room. Status providers connect the **tools your
+work already lives in**, so that a [board](#board) row pointing at a pull request
+can report whether it's approved, blocked or failing instead of someone copying
+that state into Mycelium.
+
+> **Experimental.** The contract and the GitHub provider live in the backend
+> (`app/services/status/`), but nothing calls them yet: no route, no schedule,
+> no field on a board row. Read this section as what a provider will implement,
+> and check the module before writing one.
+
+| Provider | Recognises | Reports |
+|----------|------------|---------|
+| **github** | `owner/repo#123` and `https://github.com/owner/repo/pull/123` | review decision, checks rollup, draft, merged/closed |
+
+Providers run on the hub only. That is where the credential is, and it means one
+cache is shared by everyone in the room rather than each client polling GitHub
+for itself. A spoke never holds a service token.
+
+### Giving the hub a credential
+
+Resolving pull requests takes a GitHub token; read-only is enough, plus `repo`
+scope for private repositories. A provider **declares** which credential it needs
+and never handles the value — the runtime resolves it and hands back a
+transport that already carries it.
+
+How the hub is given that value is still being settled, so there is nothing to
+configure yet. One thing is worth knowing whatever it lands on: don't hand-edit
+`~/.mycelium/.env`. That file is regenerated by `mycelium config apply`, and a
+token written in by hand disappears the next time it runs, with no error to
+explain where it went.
+
+A reference whose provider has no credential is refused with the reason, rather
+than answered with a blank — a blank on a row reads as *this pull request has no
+CI*, which is worse than an honest gap. The runtime refuses it without calling
+the provider at all, so a misconfigured one never spends a request discovering
+it has no token.
+
+### Teaching Mycelium another tracker
+
+A provider is one small class in `app/services/status/providers/`;
+`providers/github.py` is written to be copied. It declares its batching and
+freshness, then implements two methods:
+
+```python
+class JiraProvider:
+    name = "jira"
+    base_url = "https://your-org.atlassian.net"   # ctx.http is bound to this host
+    credential = "JIRA_TOKEN"       # resolved by the runtime; never seen by the provider
+    max_batch = 50                  # most references the runtime sends in one call
+    ttl = timedelta(minutes=1)      # how long an answer counts as current
+    swr = timedelta(minutes=30)     # how long past that it's still shown while refreshing
+
+    def claims(self, text: str) -> list[Ref]:
+        """Which references in room text are yours. Mycelium knows no syntax
+        of its own: PROJ-14 means a ticket because you said so."""
+
+    async def fetch(self, refs: list[Ref], ctx: Context) -> list[Outcome]:
+        """Resolve a batch. One Ok or Err per reference, in any order."""
+```
+
+What you don't write is as important as what you do. `ctx.http` arrives bound to
+the declared `base_url`, with the credential, timeout and retry policy already
+applied, so a provider is request-and-parse — it names a host and a secret and is
+handed neither. Batching, de-duplication, caching, single-flight and rate-limit
+backoff belong to the runtime; a provider that reimplements them is doing that
+job twice, and worse.
+
+Two rules the runtime enforces:
+
+- **Bulk only.** There is no single-reference fetch to call in a loop. A hundred
+  rows resolve in two calls at `max_batch = 50`. A tool that can only answer one
+  at a time is still fine: declare `max_batch = 1` and it gets paced.
+- **Failure is per reference.** A batch where three links 404 still answers for
+  the other forty-seven. A link your token can't see is marked unreachable, not
+  reported as green.
+
+Map your tool's vocabulary onto the six states in the
+[board's table](#board) — `ok`, `pending`, `blocked`, `failed`, `done`,
+`unknown` — and keep your own wording as the label. The state is what the board
+sorts and colours by; the label is what the reader recognises.
 
 
 ---
