@@ -4,7 +4,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronLeft, Pencil, Plus, UserRound } from "lucide-react";
+import { ChevronLeft, ChevronsUpDown, Pencil, Plus, UserRound } from "lucide-react";
 import {
   createUser,
   fetchTeams,
@@ -70,6 +70,10 @@ function iamCommand(u: BoundUser): string {
  * that scopes "my agents"/"my team" and stamps the chat sender), and manage the
  * user records inline — no CLI round-trip. Two views: a lightweight switcher and
  * a full editor (name, teams, notify). Saved locally via the current-user context.
+ *
+ * It lives in the bottom-left of the rooms rail — the account corner every
+ * editor and SaaS app puts it in — so identity reads the same on every screen
+ * instead of riding one page's header.
  */
 export function ActingAsPicker() {
   const { principal, setPrincipal } = useCurrentUser();
@@ -169,15 +173,28 @@ export function ActingAsPicker() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger
-        render={<Button variant="ghost" size="sm" />}
         title="Choose the user you're acting as"
+        className="group flex min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 py-1 text-left transition-colors hover:bg-hairline"
       >
         {principal ? (
-          <Monogram handle={principal} color="var(--muted-foreground)" className="size-5" />
+          <Monogram handle={principal} color="var(--muted-foreground)" className="size-7" />
         ) : (
-          <UserRound className="size-3.5" />
+          <span
+            aria-hidden
+            className="flex size-7 flex-shrink-0 items-center justify-center rounded-full bg-surface text-muted-foreground"
+          >
+            <UserRound className="size-3.5" />
+          </span>
         )}
-        <span className="font-mono">{principal ? `@${principal}` : "acting as…"}</span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate font-mono text-label text-text">
+            {principal ? `@${principal}` : "Anonymous"}
+          </span>
+          <span className="block truncate text-micro text-muted-foreground">
+            {principal ? (signedIn ? "signed in" : "acting as") : "pick a user"}
+          </span>
+        </span>
+        <ChevronsUpDown className="size-3.5 flex-shrink-0 text-faint transition-colors group-hover:text-muted-foreground" />
       </DialogTrigger>
 
       <DialogContent className="sm:max-w-sm">

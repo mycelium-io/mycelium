@@ -15,7 +15,6 @@ import { RoomChatBox } from "@/components/room-chat-box";
 import { RoomInspector, type Tab } from "@/components/room-inspector";
 import { RoomTour } from "@/components/room-tour";
 import { GlobalStatusItems, StatusButton } from "@/components/status-items";
-import { ActingAsPicker } from "@/components/acting-as-picker";
 import { useCommands, useKeyAction, useKeyScope } from "@/components/keymap-provider";
 import type { PaletteCommand } from "@/lib/commands";
 import { useRoomStatus } from "@/lib/use-status";
@@ -203,7 +202,6 @@ function RoomWorkspace() {
     <AppShell
       activeRoom={roomName}
       header={header}
-      headerRight={<ActingAsPicker />}
       statusLeft={statusLeft}
       statusRight={statusRight}
     >

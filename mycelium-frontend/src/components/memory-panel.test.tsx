@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Mycelium Contributors
 
-import { act, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { renderWithSWR } from "@/test/swr";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryPanel } from "@/components/memory-panel";
 
 const push = vi.fn();
@@ -170,5 +170,82 @@ describe("<MemoryPanel /> peek navigation", () => {
     await waitFor(() => expect(fetchMemoryExpanded).toHaveBeenCalledWith("demo", offTree.key));
     await waitFor(() => expect(detail).toHaveAttribute("data-has-integrity", "yes"));
     expect(detail).toHaveAttribute("data-rendered-body", "expanded transclusion body");
+  });
+});
+
+const treeMemory = {
+  key: "decisions/ship-it",
+  value: { text: "## Ship it\n\nWe agreed to **ship** on Friday." },
+  content_text: "Ship it",
+  version: 3,
+  created_by: "alice",
+  updated_by: "bob",
+  updated_at: "2026-01-01T00:00:00Z",
+  tags: ["consensus"],
+};
+
+describe("<MemoryPanel /> preview hovercard", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.mocked(fetchMemories).mockResolvedValue([treeMemory]);
+    vi.mocked(fetchMemory).mockReset();
+    vi.mocked(fetchMemoryIntegrity).mockResolvedValue(EMPTY_INTEGRITY);
+    vi.mocked(fetchMemoryExpanded).mockResolvedValue(EMPTY_EXPAND);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const hoverRow = async () => {
+    const row = (await screen.findByText("ship-it.md")).closest("div")!;
+    fireEvent.mouseEnter(row);
+    return row;
+  };
+
+  it("opens a preview of the memory body after the hover delay", async () => {
+    renderWithSWR(<MemoryPanel roomName="demo" />);
+    const row = await hoverRow();
+
+    expect(screen.queryByTestId("memory-preview-card")).toBeNull();
+    await act(async () => { vi.advanceTimersByTime(400); });
+
+    const card = screen.getByTestId("memory-preview-card");
+    expect(card).toHaveTextContent("Ship it");
+    expect(card).toHaveTextContent("We agreed to ship on Friday.");
+    expect(card).toHaveTextContent("v3");
+    expect(card).toHaveTextContent("bob");
+    expect(row).toBeInTheDocument();
+  });
+
+  it("does not open when the pointer leaves before the delay elapses", async () => {
+    renderWithSWR(<MemoryPanel roomName="demo" />);
+    const row = await hoverRow();
+
+    await act(async () => { vi.advanceTimersByTime(200); });
+    fireEvent.mouseLeave(row);
+    await act(async () => { vi.advanceTimersByTime(400); });
+
+    expect(screen.queryByTestId("memory-preview-card")).toBeNull();
+  });
+
+  it("closes the preview once the pointer leaves the row", async () => {
+    renderWithSWR(<MemoryPanel roomName="demo" />);
+    const row = await hoverRow();
+    await act(async () => { vi.advanceTimersByTime(400); });
+    expect(screen.getByTestId("memory-preview-card")).toBeInTheDocument();
+
+    fireEvent.mouseLeave(row);
+    expect(screen.queryByTestId("memory-preview-card")).toBeNull();
+  });
+
+  it("closes the preview when the row is clicked open", async () => {
+    renderWithSWR(<MemoryPanel roomName="demo" />);
+    await hoverRow();
+    await act(async () => { vi.advanceTimersByTime(400); });
+
+    fireEvent.click(screen.getByText("ship-it.md"));
+    await waitFor(() => expect(screen.getByTestId("memory-drawer")).toBeInTheDocument());
+    expect(screen.queryByTestId("memory-preview-card")).toBeNull();
   });
 });

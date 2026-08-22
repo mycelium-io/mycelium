@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Reference · mycelium</title>
 <meta name="description" content="Architecture, CLI reference, configuration, dependencies and compatibility, guides, and troubleshooting for Mycelium.">
 <meta property="og:title" content="Reference · mycelium">
@@ -38,17 +38,12 @@
     <span class="brand-word">mycelium</span>
   </a>
   <nav class="sectionnav">
-    <div class="sectionnav-inner">
-      <a href="index.html" class="">Guide</a>
-      <a href="adapters.html" class="">Adapters</a>
-      <a href="reference.html" class="active">Reference</a>
-    </div>
-    <div class="sectionnav-right">
-      <a href="https://raw.githubusercontent.com/mycelium-io/mycelium/main/mycelium-cli/src/mycelium/integrations/claude_code/assets/skills/mycelium/SKILL.md" target="_blank" rel="noopener">SKILL.md ↗</a>
-    </div>
+    <a href="https://raw.githubusercontent.com/mycelium-io/mycelium/main/mycelium-cli/src/mycelium/integrations/claude_code/assets/skills/mycelium/SKILL.md" target="_blank" rel="noopener">SKILL.md ↗</a>
   </nav>
   <div class="topnav-right">
     <div class="docsearch" id="docsearch">
+      <button class="docsearch-toggle" id="docsearch-toggle" type="button"
+              aria-label="Search docs" aria-expanded="false"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></button>
       <div class="docsearch-field">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
         <input type="search" id="docsearch-input" placeholder="Search docs"
@@ -59,9 +54,9 @@
       <div class="docsearch-panel" id="docsearch-panel">
         <div class="docsearch-results" id="docsearch-results" role="listbox"></div>
         <div class="docsearch-legend">
-          <kbd>&uarr;</kbd><kbd>&darr;</kbd> navigate<span class="sep">&middot;</span>
-          <kbd>&crarr;</kbd> open<span class="sep">&middot;</span>
-          <kbd>esc</kbd> close
+          <span><kbd>&uarr;</kbd><kbd>&darr;</kbd> navigate</span>
+          <span><kbd>&crarr;</kbd> open</span>
+          <span><kbd>esc</kbd> close</span>
         </div>
       </div>
     </div>

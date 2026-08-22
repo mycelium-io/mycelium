@@ -145,6 +145,18 @@
   --topbar-height: 60px;
   --statusbar-height: 26px;
 
+  /* Device safe areas. iOS reports these only when the viewport meta opts into
+   * viewport-fit=cover; everywhere else the fallback keeps them at zero, so the
+   * same expressions hold on every platform. --statusbar-total is what the rest
+   * of the layout offsets against: the bar plus whatever it has to reach down
+   * through to sit flush with the physical bottom of the screen. */
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --statusbar-total: calc(var(--statusbar-height) + var(--safe-bottom));
+  /* The row the search field drops to on small screens. */
+  --searchbar-height: 46px;
+
   /* spacing scale */
   --space-1: 4px;
   --space-2: 8px;
@@ -198,6 +210,7 @@ body {
   font-size: var(--text-prose);
   line-height: 1.65;
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 ::selection { background: var(--accent-soft); color: var(--text); }
@@ -243,6 +256,8 @@ html { scrollbar-color: var(--border2) transparent; scrollbar-width: thin; }
   position: fixed;
   top: 0; left: 0; right: 0;
   height: var(--topbar-height);
+  padding-left: var(--safe-left);
+  padding-right: var(--safe-right);
   background: color-mix(in srgb, var(--surface) 88%, transparent);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
@@ -341,44 +356,28 @@ a.topnav-page:hover { color: var(--text); text-decoration: none; }
 .copy-page-btn.copied,
 .copy-docs-btn.copied { color: var(--green); border-color: var(--green); }
 
-/* ── PAGE TABS (the app's segmented control) ── */
+/* ── TOP BAR LINK ──
+ * Page navigation lives in the persistent rail, so the only thing left in the
+ * bar's left half is the one link that leaves the site. */
 .sectionnav {
   display: flex;
   align-items: center;
   margin-left: 12px;
 }
-.sectionnav-inner {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  padding: 3px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--bg);
-}
 .sectionnav a {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  padding: 6px 14px;
+  padding: 6px 10px;
   border-radius: var(--radius-md);
   color: var(--muted-foreground);
   text-decoration: none;
   font-family: var(--font-sans);
-  font-size: var(--text-body);
+  font-size: var(--text-label);
   font-weight: 500;
+  white-space: nowrap;
   transition: color 0.15s, background 0.15s;
 }
-.sectionnav a:hover { color: var(--text); text-decoration: none; }
-.sectionnav a.active {
-  background: var(--elevated);
-  color: var(--text);
-  box-shadow: inset 0 0 0 1px var(--border), 0 1px 2px rgba(0, 0, 0, 0.06);
-}
-.sectionnav a .square-dot { display: none; }
-/* The external link sits outside the segmented control. */
-.sectionnav-right { display: flex; align-items: center; margin-left: 8px; }
-.sectionnav-right a { color: var(--muted-foreground); }
+.sectionnav a:hover { color: var(--text); background: var(--hairline); text-decoration: none; }
 
 .caps-mono {
   font-family: var(--font-mono);
@@ -401,11 +400,11 @@ a.topnav-page:hover { color: var(--text); text-decoration: none; }
 .docs-footer {
   position: fixed;
   left: 0; right: 0; bottom: 0;
-  height: var(--statusbar-height);
+  height: var(--statusbar-total);
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 0 12px;
+  padding: 0 calc(12px + var(--safe-right)) var(--safe-bottom) calc(12px + var(--safe-left));
   border-top: 1px solid var(--border);
   background: color-mix(in srgb, var(--surface) 88%, transparent);
   backdrop-filter: blur(14px);
@@ -430,16 +429,20 @@ a.topnav-page:hover { color: var(--text); text-decoration: none; }
 .layout {
   display: flex;
   padding-top: var(--topbar-height);
+  padding-left: var(--safe-left);
+  padding-right: var(--safe-right);
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 /* ── SIDEBAR (the app's Explorer rail) ── */
 .sidebar {
-  width: var(--sidebar-width);
+  width: calc(var(--sidebar-width) + var(--safe-left));
+  padding-left: var(--safe-left);
   flex-shrink: 0;
   position: fixed;
   top: var(--topbar-height);
-  bottom: var(--statusbar-height);
+  bottom: var(--statusbar-total);
   overflow-y: auto;
   padding: 18px 0 28px;
   border-right: 1px solid var(--border);
@@ -562,7 +565,7 @@ a.topnav-page:hover { color: var(--text); text-decoration: none; }
 .main {
   margin-left: var(--sidebar-width);
   flex: 1;
-  padding: 28px 32px calc(var(--statusbar-height) + 40px);
+  padding: 28px 32px calc(var(--statusbar-total) + 40px);
   min-width: 0;
 }
 /* The reading pane. Near-solid so prose stays crisp; the mycelial network
@@ -1128,10 +1131,10 @@ h3:hover .header-anchor,
 .resources-menu a:hover { background: var(--surface); color: var(--text); text-decoration: none; }
 
 /* Hamburger + off-canvas drawer (mobile only). */
-.nav-toggle {
+.nav-toggle,
+.docsearch-toggle {
   display: none;
   align-self: center;
-  margin-left: 12px;
   align-items: center;
   justify-content: center;
   width: 34px;
@@ -1143,8 +1146,12 @@ h3:hover .header-anchor,
   cursor: pointer;
   transition: color 0.15s, border-color 0.15s;
 }
-.nav-toggle:hover { color: var(--text); border-color: var(--border2); }
+.nav-toggle { margin-left: 12px; }
+.nav-toggle:hover,
+.docsearch-toggle:hover { color: var(--text); border-color: var(--border2); }
 .nav-toggle svg { width: 18px; height: 18px; stroke: currentColor; }
+.docsearch-toggle svg { width: 17px; height: 17px; stroke: currentColor; }
+.docsearch.open .docsearch-toggle { color: var(--text); border-color: var(--accent); }
 .nav-backdrop {
   display: none;
   position: fixed;
@@ -1190,18 +1197,24 @@ h3:hover .header-anchor,
 }
 .docsearch-field input::placeholder { color: var(--faint); }
 .docsearch-field input::-webkit-search-cancel-button { display: none; }
-.docsearch-hint {
+/* One key cap, wherever a key is named: the field's shortcut hint and the
+ * legend under the results. min-width squares up the single-glyph caps so a
+ * row of them sits on an even rhythm. */
+.docsearch kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
   min-width: 18px;
-  padding: 1px 0;
+  height: 18px;
+  padding: 0 4px;
   border: 1px solid var(--border);
   border-radius: 4px;
-  background: var(--surface);
+  background: var(--elevated);
   color: var(--faint);
   font-family: var(--font-mono);
   font-size: 11px;
-  line-height: 1.4;
-  text-align: center;
+  line-height: 1;
 }
 .docsearch-field:focus-within .docsearch-hint { visibility: hidden; }
 
@@ -1240,13 +1253,16 @@ h3:hover .header-anchor,
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent);
   text-decoration: none;
 }
+.docsearch-crumb,
+.docsearch-hit.cmd .docsearch-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .docsearch-crumb {
   font-size: var(--text-micro);
   color: var(--faint);
   line-height: 1.4;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 .docsearch-title {
   font-size: var(--text-body);
@@ -1258,9 +1274,6 @@ h3:hover .header-anchor,
   font-family: var(--font-mono);
   font-size: var(--text-label);
   color: var(--accent);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 .docsearch-snippet {
   margin-top: 1px;
@@ -1289,30 +1302,46 @@ h3:hover .header-anchor,
 .docsearch-legend {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 14px;
   padding: 7px 12px;
   border-top: 1px solid var(--border);
   background: var(--surface);
   font-size: var(--text-micro);
   color: var(--faint);
 }
-.docsearch-legend kbd {
-  padding: 0 4px;
-  border: 1px solid var(--border);
-  border-radius: 3px;
-  background: var(--elevated);
-  font-family: var(--font-mono);
-  font-size: 11px;
+/* Grouping is spacing, not punctuation: one gap inside a pairing, a wider one
+ * between pairings. */
+.docsearch-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
 }
-.docsearch-legend .sep { margin: 0 2px; }
+.docsearch-legend kbd + kbd { margin-left: -1px; }
+
+/* iOS Safari zooms the viewport when a focused input's text is under 16px, and
+ * never zooms back out. Only touch devices have the problem, and only they pay
+ * for the larger text, so gate it on the pointer rather than on width. The
+ * alternative fix, pinning maximum-scale in the viewport meta, would disable
+ * pinch-zoom for everyone. */
+@media (pointer: coarse) {
+  .docsearch-field { height: 32px; }
+  .docsearch-field input { font-size: 16px; }
+}
 
 /* ── RESPONSIVE ── */
 @media (max-width: 1080px) {
-  .sectionnav a span:not(.square-dot) { font-size: var(--text-micro); }
   .docsearch-field input { width: 130px; }
-  .main { padding: 24px 20px calc(var(--statusbar-height) + 32px); }
+  .main { padding: 24px 20px calc(var(--statusbar-total) + 32px); }
 }
 @media (max-width: 860px) {
+  /* iOS does not repaint fixed elements in step with Safari's toolbar
+     collapsing, so the rail detaches and floats mid-page with content showing
+     beneath it. It carries decoration — repo link, licence, tagline — and the
+     repo link is already in the top bar, so the mobile layout drops it rather
+     than fighting the browser chrome. Zeroing the total is what reclaims the
+     space every offset was reserving for it. */
+  .docs-footer { display: none; }
+  :root { --statusbar-total: 0px; }
   .main { margin-left: 0; }
   .topnav-brand { width: auto; }
   .copy-page-btn, .copy-docs-btn { display: none; }
@@ -1339,19 +1368,38 @@ h3:hover .header-anchor,
   body { overflow-x: hidden; }
   .sectionnav { display: none; }
   .topnav-cell { padding: 0 12px; }
-  .docsearch-field input { width: 100%; }
+  /* There is no room for a live text field beside the brand at these widths, so
+     the bar carries only a search icon and the field drops to a row of its own
+     beneath it. Nothing in the bar has to shrink to make space. */
+  .docsearch-toggle { display: inline-flex; }
   .docsearch-hint { display: none; }
-  .docsearch { flex: 1; min-width: 0; }
-  /* Too narrow to anchor to the field without overhanging the viewport, so the
-     panel spans the screen instead. */
+  .docsearch-field {
+    display: none;
+    position: fixed;
+    top: var(--topbar-height);
+    left: 0;
+    right: 0;
+    height: var(--searchbar-height);
+    padding: 0 12px;
+    border: 0;
+    border-bottom: 1px solid var(--border);
+    border-radius: 0;
+    background: color-mix(in srgb, var(--surface) 96%, transparent);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    z-index: 110;
+  }
+  .docsearch.open .docsearch-field { display: flex; }
+  .docsearch-field input { width: 100%; }
+  /* Anchored under the field's row, spanning the screen. */
   .docsearch-panel {
     position: fixed;
-    top: calc(var(--topbar-height) + 6px);
+    top: calc(var(--topbar-height) + var(--searchbar-height) + 6px);
     left: 12px;
     right: 12px;
     width: auto;
   }
-  .main { padding: 20px 14px calc(var(--statusbar-height) + 28px); }
+  .main { padding: 20px 14px calc(var(--statusbar-total) + 28px); }
   .main-inner { padding: 24px 18px 32px; border-radius: var(--radius-lg); }
   h1 { font-size: 1.6rem; }
   h2 { font-size: 1.2rem; }
