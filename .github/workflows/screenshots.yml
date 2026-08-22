@@ -1,0 +1,134 @@
+name: Screenshots
+
+# Publishes the committed app screenshots by running the real capture pipeline
+# (`pnpm screenshots` -> shotkit -> the frontend in mock mode) on a runner.
+#
+# The pipeline itself is not new; operationalizing it is. Until now the docs
+# assets and the splash repo's hero images were only refreshed when somebody
+# remembered to run the capture locally, which means they drift behind the UI
+# they are supposed to show, and the drift is invisible until someone looks at
+# a screenshot and notices it is a version old.
+#
+# Entirely additive, in two ways. It is manual (`workflow_dispatch`) — nothing
+# on the PR path gets slower. And the splash half is optional: with no
+# SPLASH_REPO_TOKEN configured the docs/ assets still refresh and the splash
+# step reports that it was skipped, rather than failing the run.
+#
+# It opens pull requests rather than pushing to a default branch. A screenshot
+# rendered on a runner is not byte-identical to one rendered on a laptop (font
+# hinting, GPU rasterization), so the diff wants a human eye before it lands.
+#
+# Setup for the splash half: a fine-grained PAT scoped to
+# mycelium-io/mycelium-io.github.io alone, with Contents: read/write and Pull
+# requests: read/write, stored as the SPLASH_REPO_TOKEN secret. That is the
+# whole grant — it can reach no other repository.
+
+on:
+  workflow_dispatch:
+    inputs:
+      shots:
+        description: "Shot ids to capture (space-separated); empty captures all"
+        required: false
+        default: ""
+      dry_run:
+        description: "Capture and upload the artifact, but open no pull requests"
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: screenshots
+  cancel-in-progress: false
+
+jobs:
+  capture:
+    name: Capture and publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write        # push the branch this repo's PR is opened from
+      pull-requests: write   # open that PR
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Secrets are not available to job-level `if:`, so the optional half is
+      # gated on a step output instead.
+      - name: Check splash repo credentials
+        id: creds
+        env:
+          SPLASH_TOKEN: ${{ secrets.SPLASH_REPO_TOKEN }}
+        run: |
+          if [ -n "$SPLASH_TOKEN" ]; then
+            echo "splash=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "splash=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::SPLASH_REPO_TOKEN is not configured — capturing docs/ assets only."
+          fi
+
+      - name: Check out the splash repo
+        if: steps.creds.outputs.splash == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: mycelium-io/mycelium-io.github.io
+          token: ${{ secrets.SPLASH_REPO_TOKEN }}
+          path: splash
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            mycelium-frontend/package-lock.json
+            shotkit/package-lock.json
+
+      # shotkit boots the mock server with `pnpm dev:mock`; the dependency tree
+      # itself comes from the committed npm lockfiles.
+      - name: Enable pnpm
+        run: corepack enable
+
+      - name: Install frontend dependencies
+        working-directory: mycelium-frontend
+        run: npm ci --no-audit --no-fund
+
+      - name: Install shotkit dependencies
+        working-directory: shotkit
+        run: npm ci --no-audit --no-fund
+
+      - name: Install Chromium
+        working-directory: mycelium-frontend
+        run: npx playwright install --with-deps chromium
+
+      # Shots whose target is the splash repo are still captured without it;
+      # send them to a scratch directory so the run stays honest about what it
+      # published rather than writing outside the workspace.
+      - name: Capture
+        working-directory: mycelium-frontend
+        env:
+          MYCELIUM_SPLASH_DIR: >-
+            ${{ steps.creds.outputs.splash == 'true'
+                && format('{0}/splash', github.workspace)
+                || format('{0}/splash-unpublished', runner.temp) }}
+          # Through the environment, never interpolated into the command line:
+          # a dispatch input is untrusted text.
+          SHOTS: ${{ inputs.shots }}
+        run: |
+          if ! printf '%s' "$SHOTS" | grep -qE '^[a-z0-9 _-]*$'; then
+            echo "::error::shot ids may only contain lowercase letters, digits, '-', '_' and spaces"
+            exit 1
+          fi
+          npm run screenshots -- $SHOTS
+
+      - name: Open the docs pull request
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash scripts/publish-screenshots.sh . docs "the docs site"
+
+      - name: Open the splash pull request
+        if: ${{ !inputs.dry_run && steps.creds.outputs.splash == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.SPLASH_REPO_TOKEN }}
+        run: bash scripts/publish-screenshots.sh splash . "the splash site"

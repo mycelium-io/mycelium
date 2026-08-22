@@ -331,6 +331,23 @@ is no litellm dependency.
   `openclaw` and `hermes` are **gone**, not deprecated — they rode the removed
   SSE/coordination-tick model and their packages were deleted (#503). Don't
   reintroduce them as adapter options.
+- **CI is fast on purpose; timing is reported, never enforced.** A PR run's
+  critical path is ~95s, and that is a property worth defending — it erodes
+  twenty seconds at a time, invisibly. The `timing` job reads the run's own job
+  durations back from the Actions API, writes them into the run summary, and
+  warns against the budgets in `.github/ci-budgets.json`. It cannot fail a run:
+  a slow PR should merge and say it was slow. Raise a budget deliberately, in
+  the PR that makes the job slower. `scripts/check_workflows.py` (the `hygiene`
+  job) keeps the budgets naming real jobs, every `uses:` pinned to a commit SHA,
+  and every workflow declaring its own `permissions:`.
+- **Screenshots publish through a workflow, and it is additive.** The capture
+  pipeline (`pnpm screenshots`) is the same one that runs locally; the
+  `Screenshots` workflow runs it on a runner on manual dispatch and opens PRs
+  against `docs/` and the splash repo rather than pushing. The splash half needs
+  `SPLASH_REPO_TOKEN`, a PAT scoped to `mycelium-io/mycelium-io.github.io`
+  alone; without it the docs half still runs. Nothing on the PR path gets
+  slower, and a runner-rendered PNG differs subtly from a laptop-rendered one —
+  which is exactly why it lands as a reviewable diff.
 
 ## Local development
 
