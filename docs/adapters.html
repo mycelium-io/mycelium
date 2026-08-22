@@ -487,6 +487,14 @@
       <pre><code>POST /api/rooms/{room}/a2a</code></pre>
       <p>The message lands in the room like any other post and the call returns an ack. If it <code>@</code>-mentions a room agent, normal room dynamics take over — including the inbound-to-outbound path, where an incoming A2A message drives a bridged A2A agent that lives in the room.</p>
       <p>The card endpoint is public: discovery is unauthenticated by the A2A spec, the same way <code>/.well-known/openid-configuration</code> is. The room&#x27;s message endpoint is gated by the hub&#x27;s auth when <a href="reference.html#auth">authentication</a> is enabled.</p>
+      <h2 id="adapter-a2a-watch-the-bridge">Watch the bridge</h2>
+      <p>The bridge is the one hop that doesn&#x27;t ride SLIM, so it gets its own place in the coordination views instead of being folded into the channel telemetry.</p>
+      <p>From the CLI, <code>mycelium network [room]</code> prints a bridge block per room under the fabric table: the bridged agents with their endpoint and advertised skills, the room&#x27;s own card and how often it has been read, and the last exchanges either way — an answered call with what came back, a failed one with why.</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">network</span> <span class="cmd">my-room</span></code></pre>
+      <p>In the web UI, the <strong>Network</strong> pane carries the same thing as a strip beneath the SLIM rail, expanding to the agents, the served card, and the recent exchanges. A room without a bridge shows no strip. Both surfaces label a bridged agent as proxied and not a member of the room&#x27;s encrypted group, for the reason the next section spells out.</p>
+      <p>The raw state is one read:</p>
+      <pre><code>GET /api/rooms/{room}/a2a/state</code></pre>
+      <p>Its counters are process-lifetime and in-memory: a hub restart zeroes them. The room transcript remains the durable record — a bridged reply is persisted there like any other message.</p>
       <h2 id="adapter-a2a-what-the-bridge-is-and-what-it-is-not">What the bridge is, and what it is not</h2>
       <p>A bridged A2A agent is a member of the room in the coordination sense: it is on the roster, it answers when mentioned, and its replies are attributed to its handle.</p>
       <p>It is <strong>not</strong> a member of the room&#x27;s end-to-end-encrypted MLS group. It never holds a group key. The backend is a translation boundary: it reads the room&#x27;s plaintext and calls the remote agent out-of-band. Today that call is plain HTTPS. It can be moved onto SLIM (SLIM identity, encrypted transport), but even then it is point-to-point RPC to a separate SLIM identity, not membership in the room&#x27;s group channel.</p>

@@ -14,7 +14,7 @@ import asyncio
 import pytest
 import yaml
 
-from app.services import a2a_bridge, l9
+from app.services import a2a_activity, a2a_bridge, l9
 from app.services.a2a_bridge import A2aReply
 from app.services.filesystem import get_room_dir, write_memory_file
 from app.services.l9_models import Kind
@@ -217,3 +217,41 @@ async def test_dead_remote_posts_nothing(monkeypatch):
 
     assert calls  # it tried
     assert channel.sent == []  # fail-faithful: no fabricated reply
+
+
+@pytest.mark.asyncio
+async def test_call_is_recorded_for_the_network_views(monkeypatch):
+    # The bridge hop leaves no trace on the channel, so the responder records it
+    # (#739) — both the answered call…
+    _register_a2a()
+    responder, _channel, _persister, _calls = _responder(monkeypatch)
+
+    responder.handle_summon(
+        _ROOM, "researcher", _summon_envelope("avery"), [], "what do you think?"
+    )
+    await _drain(responder)
+
+    exchange = a2a_activity.recent(_ROOM)[-1]
+    assert exchange.direction == "outbound"
+    assert exchange.status == "ok"
+    assert exchange.handle == "researcher"
+    assert exchange.peer == "avery"
+    assert exchange.prompt == "what do you think?"
+    assert exchange.reply == "the remote reply"
+    assert a2a_activity.totals(_ROOM).outbound_ok == 1
+
+
+@pytest.mark.asyncio
+async def test_failed_call_is_recorded_with_its_reason(monkeypatch):
+    # …and the silent one, so a dead remote reads as a failed call rather than
+    # as nothing having happened.
+    _register_a2a()
+    responder, _channel, _persister, _calls = _responder(monkeypatch, reply=None)
+
+    responder.handle_summon(_ROOM, "researcher", _summon_envelope("avery"), [], "you there?")
+    await _drain(responder)
+
+    exchange = a2a_activity.recent(_ROOM)[-1]
+    assert exchange.status == "error"
+    assert "dead remote" in (exchange.detail or "")
+    assert a2a_activity.totals(_ROOM).outbound_failed == 1

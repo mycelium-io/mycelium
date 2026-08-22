@@ -36,7 +36,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import time
 from dataclasses import dataclass
+from functools import partial
 from typing import TYPE_CHECKING, Any
 
 import httpx
@@ -45,7 +47,7 @@ from a2a.client import ClientConfig, ClientFactory
 from a2a.client.errors import A2AClientError
 from a2a.types import Message, Part, Role, SendMessageRequest, StreamResponse
 
-from app.services import l9
+from app.services import a2a_activity, l9
 from app.services.a2a_card import A2aCardError, resolve_raw_card
 from app.services.l9_slim import serialize_content
 from app.services.persister import envelope_message_id, envelope_sender
@@ -63,6 +65,10 @@ def _norm(handle: str | None) -> str:
     return (handle or "").strip().lstrip("@").lower()
 
 
+def _elapsed_ms(started: float) -> int:
+    return int((time.monotonic() - started) * 1000)
+
+
 @dataclass(frozen=True)
 class A2aAgentRef:
     """A registered a2a agent's call config: where to reach it and how to auth."""
@@ -72,6 +78,9 @@ class A2aAgentRef:
     #: auth. The secret itself is NEVER stored in the room manifest (it's readable
     #: room memory) — only the env var name is, and it's resolved at send time.
     auth_env: str | None = None
+    #: The RPC endpoint resolved from the card at registration, for telemetry —
+    #: the send path still resolves the card itself.
+    endpoint: str | None = None
 
 
 def resolve_a2a_agent(room: str, handle: str) -> A2aAgentRef | None:
@@ -97,7 +106,12 @@ def resolve_a2a_agent(room: str, handle: str) -> A2aAgentRef | None:
     if not (isinstance(card, str) and card):
         return None
     env = data.get("a2a_auth_env")
-    return A2aAgentRef(card=card, auth_env=env if isinstance(env, str) and env else None)
+    endpoint = data.get("a2a_endpoint")
+    return A2aAgentRef(
+        card=card,
+        auth_env=env if isinstance(env, str) and env else None,
+        endpoint=endpoint if isinstance(endpoint, str) and endpoint else None,
+    )
 
 
 def registered_a2a_card(room: str, handle: str) -> str | None:
@@ -270,7 +284,7 @@ class A2aResponder:
         # only the var name), so the secret never lives in room memory.
         token = os.environ.get(ref.auth_env) if ref.auth_env else None
         task = asyncio.create_task(
-            self._run_and_release(room, handle, ref.card, prompt, envelope, key, token)
+            self._run_and_release(room, handle, ref, prompt, envelope, key, token)
         )
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
@@ -279,7 +293,7 @@ class A2aResponder:
         self,
         room: str,
         handle: str,
-        card: str,
+        ref: A2aAgentRef,
         prompt: str,
         envelope: L9,
         key: tuple[str, str, str],
@@ -290,9 +304,20 @@ class A2aResponder:
         # Name the speaker so the remote agent can follow a multi-party room; the
         # threaded context id carries the rest of the history on the remote side.
         addressed = f"@{_norm(summoner)}: {prompt}" if summoner else prompt
+        # Telemetry for the Network views: the bridge hop leaves no trace on the
+        # channel, so both outcomes are recorded here (#739).
+        started = time.monotonic()
+        recorded = partial(
+            a2a_activity.record_outbound,
+            room,
+            handle,
+            endpoint=ref.endpoint or ref.card,
+            peer=summoner,
+            prompt=prompt,
+        )
         try:
             reply = await send_to_a2a(
-                card,
+                ref.card,
                 addressed,
                 context_id=self._threads.get(thread_key),
                 auth_token=auth_token,
@@ -300,12 +325,16 @@ class A2aResponder:
             )
             if reply.context_id:
                 self._threads[thread_key] = reply.context_id
+            recorded(status="ok", reply=reply.text, duration_ms=_elapsed_ms(started))
             await self._respond(room, handle, reply.text, envelope)
-        except A2aSendError:
+        except A2aSendError as exc:
             # Fail-faithful: a dead/unreadable remote posts nothing rather than a
-            # fabricated reply. The caller (human or aligner) sees silence.
+            # fabricated reply. The caller (human or aligner) sees silence — the
+            # Network pane is where that silence is legible as a failed call.
+            recorded(status="error", detail=str(exc), duration_ms=_elapsed_ms(started))
             logger.warning("a2a responder: @%s in %s did not answer", handle, room)
-        except Exception:
+        except Exception as exc:
+            recorded(status="error", detail=str(exc), duration_ms=_elapsed_ms(started))
             logger.exception("a2a responder run failed for @%s in %s", handle, room)
         finally:
             self._active.discard(key)

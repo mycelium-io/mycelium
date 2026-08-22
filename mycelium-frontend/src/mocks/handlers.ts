@@ -12,7 +12,7 @@
 
 import { BACKEND_METRICS, COLLECTOR_METRICS, HOSTS, ROOMS, ROOM_FIXTURES, getRoomFixture } from "./fixtures";
 import type { MockMemory } from "./fixtures";
-import type { MemoryGraph, MemoryGraphEdge, MemoryLink } from "@/lib/api";
+import type { A2aBridgeState, MemoryGraph, MemoryGraphEdge, MemoryLink } from "@/lib/api";
 import type { SearchHit, SearchResultType } from "@/lib/search";
 
 /** One item of a POST /memory batch, as the editor sends it. */
@@ -44,6 +44,27 @@ function json(data: unknown, status = 200): Response {
 }
 
 const notFound = (detail: string): Response => json({ detail }, 404);
+
+/** A room with no A2A bridge: no bridged members, no traffic — but still served
+ *  as an A2A agent of its own, since every room's card is reachable. */
+function emptyBridge(room: string): A2aBridgeState {
+  return {
+    room,
+    agents: [],
+    exchanges: [],
+    outbound_ok: 0,
+    outbound_failed: 0,
+    exposure: {
+      card_url: `http://localhost:8000/api/rooms/${room}/.well-known/agent-card.json`,
+      rpc_url: `http://localhost:8000/api/rooms/${room}/a2a`,
+      skills: [],
+      card_fetches: 0,
+      messages: 0,
+      last_card_fetch_at: null,
+      last_message_at: null,
+    },
+  };
+}
 
 async function readJson(req: Request): Promise<Record<string, unknown>> {
   try {
@@ -290,8 +311,23 @@ export async function handleMock(req: Request): Promise<Response | null> {
           owner: /owner:\s*@?(\S+)/.exec(m.value)?.[1] ?? null,
           team: /team:\s*(\S+)/.exec(m.value)?.[1] ?? null,
           allow_from: [],
+          a2a_card: /a2a_card:\s*(\S+)/.exec(m.value)?.[1] ?? null,
+          a2a_endpoint: /a2a_endpoint:\s*(\S+)/.exec(m.value)?.[1] ?? null,
+          a2a_skills:
+            /a2a_skills:\s*\[([^\]]*)\]/
+              .exec(m.value)?.[1]
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean) ?? [],
         }));
       return json(agents);
+    }
+
+    case "a2a": {
+      // GET /a2a/state — the Network pane's bridge strip. A room with no
+      // bridge answers with an empty one, exactly like the backend does.
+      if (sub[1] !== "state" || method !== "GET") return null;
+      return json(fx.a2a ?? emptyBridge(roomName));
     }
 
     case "links": {

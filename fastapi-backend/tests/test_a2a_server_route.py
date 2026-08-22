@@ -90,6 +90,11 @@ async def test_message_send_delivers_into_the_room(client, monkeypatch):
     assert "Delivered to room" in ack
     # the message actually reached the room channel
     assert any(extra and extra.get("content") == "hello room" for _env, extra in channel.sent)
+    # …and the Network views can see the inbound turn (#739)
+    state = (await client.get("/api/rooms/portfolio/a2a/state")).json()
+    assert state["exposure"]["messages"] == 1
+    assert state["exchanges"][-1]["direction"] == "inbound"
+    assert state["exchanges"][-1]["prompt"] == "hello room"
 
 
 @pytest.mark.asyncio
