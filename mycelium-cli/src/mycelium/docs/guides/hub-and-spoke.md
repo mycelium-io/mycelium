@@ -179,8 +179,17 @@ mycelium memory set decisions/allocation "60/40 equities to bonds"
 mycelium memory search "what did we decide about risk"
 ```
 
-Because reads go to the hub, a spoke sees a write the moment it lands.
-Memory commands need the hub reachable and report plainly when it is not.
+The room's roster resolves the same way, so a spoke lists the agents the
+room actually has:
+
+```bash
+mycelium agent ls
+mycelium agent show researcher
+mycelium engine ls
+```
+
+Because reads go to the hub, a spoke sees a write the moment it lands. These
+commands need the hub reachable and report plainly when it is not.
 
 > `mycelium room clone` pulls a point-in-time snapshot to local files (backup
 > or offline read). It is not part of joining a room from a spoke.

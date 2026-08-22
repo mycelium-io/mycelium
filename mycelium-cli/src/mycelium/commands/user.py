@@ -18,6 +18,7 @@ from __future__ import annotations
 import json as json_module
 import logging
 
+import httpx
 import typer
 import yaml
 from pydantic import ValidationError
@@ -30,6 +31,7 @@ from mycelium.doc_ref import doc_ref
 from mycelium.error_handler import print_error
 from mycelium.filesystem import get_users_dir, list_memories, read_memory, write_memory
 from mycelium.protocol import AgentManifest, UserManifest
+from mycelium_backend_client.errors import UnexpectedStatus
 
 app = typer.Typer(
     help=(
@@ -233,7 +235,9 @@ def user_show(
 
         # Roll up owned agents across every room.
         owned = _owned_agents(user.handle)
-        if owned:
+        if owned is None:
+            console.print(_hub_unreachable_note())
+        elif owned:
             console.print(f"\n[bold]owns {len(owned)} agent(s)[/bold]")
             for room_name, m in owned:
                 console.print(f"  @{m.handle} [dim]({m.adapter}, {room_name})[/dim]")
@@ -247,11 +251,27 @@ def user_show(
         raise typer.Exit(1) from None
 
 
-def _owned_agents(owner: str) -> list[tuple[str, AgentManifest]]:
-    """Every agent whose manifest owner matches, across all rooms."""
+def _owned_agents(owner: str) -> list[tuple[str, AgentManifest]] | None:
+    """Every agent whose manifest owner matches, across every room on the hub.
+
+    ``None`` means the hub couldn't be read. The roll-up is a secondary section
+    of these commands, so an unreachable hub shouldn't sink the whole answer —
+    but an empty list has to keep meaning "owns nothing", never "couldn't look".
+    """
     from mycelium.commands.agent import load_owned_agents
 
-    return load_owned_agents(owner=owner)
+    try:
+        return load_owned_agents(owner=owner)
+    except (httpx.HTTPError, UnexpectedStatus):
+        return None
+
+
+def _hub_unreachable_note() -> str:
+    """The line that stands in for an owned-agent roll-up the hub couldn't serve."""
+    return (
+        f"\n[dim]Can't reach the hub at {MyceliumConfig.load().server.api_url}; "
+        f"owned-agent roll-up unavailable.[/dim]"
+    )
 
 
 @doc_ref(
@@ -301,7 +321,11 @@ def whoami(ctx: typer.Context) -> None:
                         else None,
                         "registered": user is not None,
                         "user": user.model_dump() if user else None,
-                        "owns": [{"room": r, "handle": m.handle} for r, m in owned],
+                        "owns": (
+                            [{"room": r, "handle": m.handle} for r, m in owned]
+                            if owned is not None
+                            else None
+                        ),
                     },
                     indent=2,
                     default=str,
@@ -331,7 +355,9 @@ def whoami(ctx: typer.Context) -> None:
                 console.print(f"  name: {user.display_name}")
             if user.teams:
                 console.print(f"  teams: {', '.join(user.teams)}")
-        if owned:
+        if owned is None:
+            console.print(_hub_unreachable_note())
+        elif owned:
             console.print(f"\n[bold]owns {len(owned)} agent(s)[/bold]")
             for room_name, m in owned:
                 console.print(f"  @{m.handle} [dim]({room_name})[/dim]")

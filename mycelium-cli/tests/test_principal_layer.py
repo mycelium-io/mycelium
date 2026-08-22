@@ -1,15 +1,15 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Self-asserted principal layer: agent owner/team, the user store, roll-up."""
+"""Self-asserted principal layer: agent owner/team and the user store.
+
+The owned-agent roll-up over those fields resolves against the hub, so its
+coverage lives in ``test_agent_hub_reads.py``.
+"""
 
 from __future__ import annotations
 
-import yaml
-
 from mycelium.commands import user as user_cmd
-from mycelium.commands.agent import load_owned_agents
-from mycelium.filesystem import get_room_dir, write_memory
 from mycelium.protocol import AgentManifest, UserManifest
 
 
@@ -49,20 +49,3 @@ def test_user_store_roundtrip(isolated_home) -> None:  # noqa: ANN001
     assert loaded.display_name == "Avery"
     assert loaded.teams == ["core"]
     assert [u.handle for u in user_cmd.list_users()] == ["avery"]
-
-
-def _seed_agent(room: str, handle: str, *, owner: str | None) -> None:
-    manifest = AgentManifest(handle=handle, cwd="/tmp", owner=owner)
-    body = yaml.safe_dump(manifest.model_dump(exclude={"handle"}), sort_keys=False)
-    write_memory(get_room_dir(room), manifest.memory_key, body, created_by="tester")
-
-
-def test_load_owned_agents_collects_across_rooms(isolated_home) -> None:  # noqa: ANN001
-    """Owned agents are collected across every local room."""
-    _seed_agent("alpha", "a1", owner="avery")
-    _seed_agent("beta", "a2", owner="avery")
-    _seed_agent("beta", "a3", owner="sam")
-
-    owned = load_owned_agents(owner="@Avery")
-    handles = sorted(m.handle for _room, m in owned)
-    assert handles == ["a1", "a2"]
