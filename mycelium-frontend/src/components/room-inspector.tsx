@@ -3,7 +3,7 @@
 
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
+import { useLayoutEffect, useRef, useState, type RefObject } from "react";
 import {
   Activity,
   Brain,
@@ -12,19 +12,12 @@ import {
   Users,
   type LucideIcon,
 } from "lucide-react";
-import { usePanelRef } from "react-resizable-panels";
 import { AgentsPanel } from "@/components/agents-panel";
 import { EpisodesRail } from "@/components/episodes-rail";
 import { KeyBadge } from "@/components/key-badge";
 import { MemoryPanel } from "@/components/memory-panel";
-import { ResizableHandle, ResizablePanel } from "@/components/ui/resizable";
 import { chordFor, chordKey } from "@/lib/keymap";
-import {
-  COLLAPSED_THRESHOLD_PX,
-  INSPECTOR_PANEL,
-  PANEL_INSPECTOR,
-  TAB_LABELS_MIN_WIDTH,
-} from "@/lib/panel-layout";
+import { TAB_LABELS_MIN_WIDTH } from "@/lib/panel-layout";
 import type { FocusTarget } from "@/lib/search";
 
 // Skills aren't a rail: a skill is just a `skills/…` memory, so it shows up in
@@ -63,66 +56,6 @@ interface Props {
   onFocusConsumed?: () => void;
   /** Reveal a memory by key in the Memory tab (e.g. a clicked chat wikilink). */
   focusMemory?: { key: string; nonce: number } | null;
-}
-
-/**
- * The inspector as a resizable panel: the seam beside it, the panel that holds
- * it, and the wiring that makes the collapse button, the drag, and the `\`
- * keybind three ways of doing the same thing.
- *
- * Open/closed *is* the panel's collapsed state rather than a second flag beside
- * it. That's what lets the button reopen the rail at the width you last dragged
- * it to instead of a constant, and it's why dragging the seam past the minimum
- * shuts the rail rather than jamming against a wall. Double-clicking the seam
- * puts it back to the default width.
- */
-export function RoomInspectorPanel({ open: openProp, onOpenChange, ...rest }: Props) {
-  const [openInternal, setOpenInternal] = useState(true);
-  const open = openProp ?? openInternal;
-  const panelRef = usePanelRef();
-
-  const setOpen = useCallback(
-    (next: boolean) => {
-      if (openProp === undefined) setOpenInternal(next);
-      onOpenChange?.(next);
-    },
-    [openProp, onOpenChange],
-  );
-
-  // State → panel. `collapse`/`expand` are no-ops when already in that state,
-  // so this settles rather than ping-ponging with `onResize` below.
-  useEffect(() => {
-    const panel = panelRef.current;
-    if (!panel) return;
-    if (open && panel.isCollapsed()) panel.expand();
-    else if (!open && !panel.isCollapsed()) panel.collapse();
-  }, [open, panelRef]);
-
-  return (
-    <>
-      <ResizableHandle withHandle />
-      <ResizablePanel
-        id={PANEL_INSPECTOR}
-        panelRef={panelRef}
-        collapsible
-        collapsedSize={INSPECTOR_PANEL.collapsed}
-        defaultSize={INSPECTOR_PANEL.default}
-        minSize={INSPECTOR_PANEL.min}
-        maxSize={INSPECTOR_PANEL.max}
-        groupResizeBehavior="preserve-pixel-size"
-        className="flex"
-        // Panel → state, so a drag past the minimum reads as "closed" to the
-        // status bar and the keybind, and a restored collapsed layout doesn't
-        // come back claiming to be open.
-        onResize={size => {
-          const collapsed = size.inPixels <= COLLAPSED_THRESHOLD_PX;
-          if (collapsed === open) setOpen(!collapsed);
-        }}
-      >
-        <RoomInspector {...rest} open={open} onOpenChange={setOpen} />
-      </ResizablePanel>
-    </>
-  );
 }
 
 /**

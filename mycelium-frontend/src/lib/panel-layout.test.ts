@@ -4,9 +4,13 @@
 import { describe, expect, it } from "vitest";
 import {
   COLLAPSED_THRESHOLD_PX,
+  INSPECTOR_FOLD_WIDTH,
   INSPECTOR_PANEL,
+  MAIN_PANEL,
+  ROOMS_FOLD_WIDTH,
   ROOMS_PANEL,
   TAB_LABELS_MIN_WIDTH,
+  WORKSPACE_PANEL,
 } from "@/lib/panel-layout";
 
 const px = (value: string) => Number.parseInt(value, 10);
@@ -33,5 +37,49 @@ describe("panel sizing", () => {
   it("separates the collapsed strip from the smallest open rail", () => {
     expect(px(INSPECTOR_PANEL.collapsed)).toBeLessThan(COLLAPSED_THRESHOLD_PX);
     expect(COLLAPSED_THRESHOLD_PX).toBeLessThan(px(INSPECTOR_PANEL.min));
+  });
+});
+
+describe("folding a rail away", () => {
+  // The whole reason the fold widths carry a margin. A group whose minimums no
+  // longer fit refuses every resize, the collapse included — so each rail has
+  // to fold while its window can still hold everything, not once it can't.
+  it("folds the inspector while the room still fits around it", () => {
+    const needed =
+      px(ROOMS_PANEL.default) + px(MAIN_PANEL.min) + px(INSPECTOR_PANEL.min) + 2;
+    expect(INSPECTOR_FOLD_WIDTH).toBeGreaterThan(needed);
+  });
+
+  it("folds the rooms rail while the window still fits it beside a chat", () => {
+    const needed =
+      px(ROOMS_PANEL.min) + px(MAIN_PANEL.min) + px(INSPECTOR_PANEL.collapsed) + 2;
+    expect(ROOMS_FOLD_WIDTH).toBeGreaterThan(needed);
+  });
+
+  // One rail at a time, widest first: the inspector is the one a room can spare,
+  // and folding it has to be enough on its own before the rooms rail goes too.
+  it("folds the inspector before the rooms rail", () => {
+    expect(ROOMS_FOLD_WIDTH).toBeLessThan(INSPECTOR_FOLD_WIDTH);
+  });
+
+  // Below the last fold, both strips plus chat still fit — the narrowest laid
+  // out window is a readable one rather than a squeezed one.
+  it("leaves room for chat between two folded strips", () => {
+    const strips = px(ROOMS_PANEL.collapsed) + px(INSPECTOR_PANEL.collapsed) + 2;
+    expect(strips + px(MAIN_PANEL.min)).toBeLessThan(ROOMS_FOLD_WIDTH);
+  });
+
+  // Both strips are read back through the same pixel threshold.
+  it("reads both folded strips as collapsed", () => {
+    expect(px(ROOMS_PANEL.collapsed)).toBeLessThan(COLLAPSED_THRESHOLD_PX);
+    expect(px(INSPECTOR_PANEL.collapsed)).toBeLessThan(COLLAPSED_THRESHOLD_PX);
+  });
+
+  // The workspace's own minimum is part of the shell's constraint set at every
+  // width, so it has to be satisfiable once the rooms rail is a strip.
+  it("keeps the workspace's minimum satisfiable beside a folded rooms rail", () => {
+    expect(px(ROOMS_PANEL.collapsed) + px(WORKSPACE_PANEL.min) + 1).toBeLessThan(
+      ROOMS_FOLD_WIDTH,
+    );
   });
 });
