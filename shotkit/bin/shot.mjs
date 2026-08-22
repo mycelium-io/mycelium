@@ -75,6 +75,7 @@ const VIDEO = {
   "move-ms": { type: "number", help: "how long the pointer takes to travel (default 620)" },
   dwell: { type: "number", value: "<ms>", help: "beat after each action (default 620)" },
   "zoom-ms": { type: "number", help: "push-in duration (default 620)" },
+  "press-ms": { type: "number", help: "how long the button stays down (default 110)" },
   "lead-in": { type: "number", value: "<ms>", help: "still frames before the first action (default 500)" },
   tail: { type: "number", value: "<ms>", help: "still frames after the last one (default 1000)" },
   "max-seconds": { type: "number", help: "stop the take at N seconds (default 90)" },

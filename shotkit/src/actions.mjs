@@ -223,7 +223,9 @@ export async function runActions(page, actions, ctx = {}) {
         await page.emulateMedia({ colorScheme: arg });
         break;
       default:
-        throw new Error(`unknown action "${verb}" in "${raw}"`);
+        // With the vocabulary attached: the verbs are close enough to each
+        // other's names that a wrong guess is the likely reason to be here.
+        throw new Error(`unknown action "${verb}" in "${raw}"${ACTION_HELP}`);
     }
     if (cursor && !SELF_PACED.has(verb)) await cursor.dwell();
     trace.push({ action: raw, ms: Date.now() - started });
