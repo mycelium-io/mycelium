@@ -280,6 +280,36 @@ def backend(monkeypatch: pytest.MonkeyPatch) -> Callable[..., None]:
 # ── environment isolation ─────────────────────────────────────────────────────
 
 
+#: Agent-credential and agent-identity vars, from ``agent_credentials.py`` and the
+#: ``[agent_auth]`` env overrides in ``config.py``. A machine configured to talk to
+#: a hosted hub as an agent exports these, and the CLI's auth seam honours them:
+#: ``agent_credentials.resolve()`` would mint a real bearer mid-suite, so a test
+#: asserting an unauthenticated request would fail on that machine and pass on a
+#: bare one. The suite owns its environment, so every test starts without them.
+AGENT_AUTH_ENV_VARS = (
+    "MYCELIUM_AGENT_AUTH_TOKEN",
+    "MYCELIUM_AGENT_AUTH_CLIENT_ID",
+    "MYCELIUM_AGENT_AUTH_CLIENT_SECRET",
+    "MYCELIUM_AGENT_AUTH_ISSUER",
+    "MYCELIUM_AGENT_AUTH_SCOPES",
+    "MYCELIUM_AGENT_AUTH_AUDIENCE",
+    "MYCELIUM_AGENT_HANDLE",
+    "MYCELIUM_AGENT_CREDENTIALS_FILE",
+)
+
+
+@pytest.fixture(autouse=True)
+def _no_ambient_agent_auth(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Strip ambient agent credentials so no test inherits a real identity.
+
+    Autouse and function-scoped: the tests that exercise the agent-auth path set
+    what they need themselves, so they keep their coverage; everything else runs
+    as an anonymous caller whether or not the host is logged in as an agent.
+    """
+    for name in AGENT_AUTH_ENV_VARS:
+        monkeypatch.delenv(name, raising=False)
+
+
 @pytest.fixture
 def isolated_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Point ``Path.home()`` (and thus ``get_mycelium_dir``) at a temp dir.

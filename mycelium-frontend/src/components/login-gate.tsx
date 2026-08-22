@@ -61,6 +61,9 @@ function useAuthError(): string | null {
     const url = new URL(window.location.href);
     const e = url.searchParams.get("auth_error");
     if (e) {
+      // The error is read and the parameter consumed in one step, so the
+      // replaceState that clears it stays beside the state update.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setErr(e);
       url.searchParams.delete("auth_error");
       window.history.replaceState({}, "", url.toString());

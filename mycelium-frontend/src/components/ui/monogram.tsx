@@ -2,61 +2,93 @@
 // Copyright 2026 Mycelium Contributors
 
 import { cn } from "@/lib/utils";
+import { avatarTint, initials } from "@/lib/avatar-color";
+import { Tooltip } from "@/components/ui/tooltip";
 
-/** Two-letter monogram from a handle: "backend-lead" → BL, "oc-test2" → OT,
- *  "main" → MA. Splits on non-alphanumerics, else first two chars. */
-export function initials(handle: string): string {
-  const parts = handle.split(/[^a-z0-9]+/i).filter(Boolean);
-  const s =
-    parts.length >= 2 ? parts[0][0] + parts[1][0] : (parts[0] ?? handle).slice(0, 2);
-  return s.toUpperCase();
-}
+export { initials };
 
-/** Live-presence tier surfaced as a corner badge on the avatar. "slim" = active
- *  SLIM socket (solid accent); "lease" = server-held await/reply poll (pulsing
- *  muted). Undefined = not present, no badge. */
+/** Live-presence tier surfaced as a halo around the avatar. "slim" = active
+ *  SLIM socket (steady accent ring); "lease" = server-held await/reply poll
+ *  (breathing muted ring). Undefined = not present, no halo. */
 export type Presence = "slim" | "lease";
 
 interface Props {
   handle: string;
-  /** Glyph + tint color. Convention: accent for agents, muted for humans. */
+  /** Glyph + tint. Defaults to the handle's own stable colour; pass
+   *  `var(--muted-foreground)` for a human, who stays neutral by convention. */
   color?: string;
   /** Override the default size-8 circle (e.g. "size-5" for a compact chip). */
   className?: string;
-  /** Optional live-presence badge in the bottom-right corner (chat-app style). */
+  /** Optional live-presence halo. */
   presence?: Presence;
 }
 
-/** Circular initials avatar; shared across roster, stream, and picker. */
-export function Monogram({ handle, color = "var(--accent)", className, presence }: Props) {
+interface Halo {
+  color: string;
+  /** Breathe the ring — reserved for a poll that is genuinely mid-flight. */
+  pulse: boolean;
+  label: string;
+}
+
+/** Presence → ring colour and motion. A held socket is a steady fact and holds
+ *  a static ring; a lease is a poll in flight, so it breathes. */
+function halo(presence: Presence): Halo {
+  return presence === "slim"
+    ? { color: "var(--accent)", pulse: false, label: "SLIM connected" }
+    : { color: "var(--muted-foreground)", pulse: true, label: "server-held lease (awaiting)" };
+}
+
+/** Circular monogram avatar; shared across roster, stream, and picker.
+ *
+ *  The disc is a solid fill in the handle's own colour with near-white
+ *  initials, so a roster reads as distinct people at a glance instead of a
+ *  column of identical chips. Presence rides as a **halo** around it — colour
+ *  for the tier, a breathing ring for a poll in flight — plus a corner dot that
+ *  carries the tier on its own for anyone the ring's colour doesn't reach. */
+export function Monogram({ handle, color, className, presence }: Props) {
+  const tint = color ?? avatarTint(handle);
+  const ring = presence ? halo(presence) : null;
   return (
     <div className="relative flex-shrink-0">
       <div
         aria-hidden
         className={cn(
-          "flex size-8 items-center justify-center rounded-full font-mono text-micro font-semibold",
+          "flex size-8 items-center justify-center rounded-full border font-mono text-micro font-semibold",
+          ring && "avatar-halo",
+          ring?.pulse && "pulse",
           className,
         )}
-        style={{ background: `color-mix(in srgb, ${color} 16%, transparent)`, color }}
+        // Solid, opaque fill: the pile in the command centre overlaps these, and
+        // translucent discs stacked on each other turn to mud. Opaque also holds
+        // the colour over a hover highlight instead of shifting with it. The
+        // border is the same tint darkened; the glyph is white so it reads
+        // crisply against a deep disc rather than blending into the tint.
+        style={{
+          background: tint,
+          borderColor: `color-mix(in srgb, ${tint} 70%, #000)`,
+          color: "#fff",
+          ...(ring ? ({ "--halo": ring.color } as React.CSSProperties) : {}),
+        }}
       >
         {initials(handle)}
       </div>
-      {presence && <PresenceBadge presence={presence} />}
+      {ring && <PresenceDot halo={ring} />}
     </div>
   );
 }
 
-/** Presence badge: solid for live socket, pulsing for server lease. */
-function PresenceBadge({ presence }: { presence: Presence }) {
-  const slim = presence === "slim";
+/** The corner dot. The halo is a colour, and colour alone shouldn't be the only
+ *  carrier of a tier, so the dot names itself for screen readers rather than
+ *  leaning on the tooltip a pointer reveals. */
+function PresenceDot({ halo: ring }: { halo: Halo }) {
   return (
-    <span
-      className={cn(
-        "absolute -bottom-0.5 -right-0.5 block size-2.5 rounded-full ring-2 ring-paper",
-        !slim && "animate-pulse",
-      )}
-      style={{ background: slim ? "var(--accent)" : "var(--muted-foreground)" }}
-      title={slim ? "SLIM connected" : "server-held lease (awaiting)"}
-    />
+    <Tooltip content={ring.label}>
+      <span
+        role="img"
+        aria-label={ring.label}
+        className="absolute -bottom-0.5 -right-0.5 block size-2.5 rounded-full ring-2 ring-paper"
+        style={{ background: ring.color }}
+      />
+    </Tooltip>
   );
 }

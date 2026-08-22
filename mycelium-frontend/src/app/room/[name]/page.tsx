@@ -16,6 +16,7 @@ import { RoomChatBox } from "@/components/room-chat-box";
 import { RoomInspector, type Tab } from "@/components/room-inspector";
 import { RoomTour } from "@/components/room-tour";
 import { GlobalStatusItems, StatusButton } from "@/components/status-items";
+import { Tooltip } from "@/components/ui/tooltip";
 import { useCommands, useKeyAction, useKeyScope } from "@/components/keymap-provider";
 import type { PaletteCommand } from "@/lib/commands";
 import { useRoomStatus } from "@/lib/use-status";
@@ -64,16 +65,13 @@ function RoomWorkspace() {
   const [inspectorOpen, setInspectorOpen] = useState(true);
   const [editorView, setEditorView] = useState<View>("channel");
   const [negPhase, setNegPhase] = useState<NegotiationPhase>("idle");
-  const [tourActive, setTourActive] = useState(false);
+  // Hoisted above the state below so the tour flag can be seeded from the URL.
+  const searchParamsEarly = useSearchParams();
+  // `?tour=1` seeds the tour once on mount; exiting is client-only state after that.
+  const [tourActive, setTourActive] = useState(() => searchParamsEarly.get("tour") === "1");
   const [inviteEngine, setInviteEngine] = useState(false);
   const [focusMemory, setFocusMemory] = useState<{ key: string; nonce: number } | null>(null);
-
-  // Start the coached tour when arriving via "Run a sample coordination".
-  useEffect(() => {
-    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("tour") === "1") {
-      setTourActive(true);
-    }
-  }, []);
+  const [focusEpisode, setFocusEpisode] = useState<{ shortId: string; nonce: number } | null>(null);
 
   const handleTourExit = useCallback(() => {
     setTourActive(false);
@@ -99,6 +97,13 @@ function RoomWorkspace() {
     setFocusMemory(prev => ({ key, nonce: (prev?.nonce ?? 0) + 1 }));
   }, []);
 
+  // An episode tag clicked in chat opens the Episodes rail on that episode.
+  const openEpisode = useCallback((shortId: string) => {
+    setInspectorTab("episodes");
+    setInspectorOpen(true);
+    setFocusEpisode(prev => ({ shortId, nonce: (prev?.nonce ?? 0) + 1 }));
+  }, []);
+
   const handleEngineInviteShown = useCallback(() => setInviteEngine(false), []);
 
   // Arriving from search: `?focus=<type>:<id>` names one item in this room.
@@ -106,7 +111,7 @@ function RoomWorkspace() {
   // row — a result opens the item, not just the room it is in. The parameter is
   // consumed on arrival so returning to a rail later doesn't re-select, and so
   // jumping to the same item twice is a change the panel sees both times.
-  const searchParams = useSearchParams();
+  const searchParams = searchParamsEarly;
   const router = useRouter();
   const focusParam = searchParams.get("focus");
   const [focus, setFocus] = useState<FocusTarget | null>(null);
@@ -124,6 +129,9 @@ function RoomWorkspace() {
       router.replace(memoryHref(roomName, target.id));
       return;
     }
+    // The focus target is consumed here rather than derived: it has to outlive
+    // the parameter, which is cleared as soon as it has been acted on.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setFocus(target);
     if (target.type === "episode") openTab("episodes");
     else if (target.type === "agent") openTab("agents");
@@ -213,7 +221,7 @@ function RoomWorkspace() {
         {connected ? "Live" : "Reconnecting…"}
       </span>
       {episodeLabel && (
-        <StatusButton onClick={() => openTab("episodes")} title="View episodes">
+        <StatusButton onClick={() => openTab("episodes")} tooltip="View episodes">
           <span style={{ color: episodeLabel.color }}>{episodeLabel.text}</span>
         </StatusButton>
       )}
@@ -226,7 +234,7 @@ function RoomWorkspace() {
   const statusRight = (
     <>
       {agents !== null && (
-        <StatusButton onClick={() => openTab("agents")} title="View agents">
+        <StatusButton onClick={() => openTab("agents")} tooltip="View agents">
           <span className="tabular">{agents} agent{agents === 1 ? "" : "s"}</span>
         </StatusButton>
       )}
@@ -238,7 +246,9 @@ function RoomWorkspace() {
     <>
       <span className="text-ui font-semibold text-text truncate">{roomName}</span>
       {room?.mas_id && (
-        <span className="font-mono text-micro text-faint truncate" title="MAS id">{room.mas_id}</span>
+        <Tooltip content="MAS id" side="bottom">
+          <span className="font-mono text-micro text-faint truncate">{room.mas_id}</span>
+        </Tooltip>
       )}
     </>
   );
@@ -268,6 +278,7 @@ function RoomWorkspace() {
                   onConnectionChange={setConnected}
                   onNegotiationPhaseChange={setNegPhase}
                   onOpenMemory={openMemory}
+                  onOpenEpisode={openEpisode}
                   view={editorView}
                   onViewChange={setEditorView}
                   suppressInvites={tourActive}
@@ -305,6 +316,7 @@ function RoomWorkspace() {
                   focus={focus}
                   onFocusConsumed={clearFocus}
                   focusMemory={focusMemory}
+                  focusEpisode={focusEpisode}
                 />
               </ResizablePanel>
             </>
@@ -325,6 +337,7 @@ function RoomWorkspace() {
             focus={focus}
             onFocusConsumed={clearFocus}
             focusMemory={focusMemory}
+            focusEpisode={focusEpisode}
             />
           </div>
         )}

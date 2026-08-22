@@ -3,20 +3,23 @@
 
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { AlertTriangle, Boxes, Plus, Sparkles, Terminal } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { RoomAvatar } from "@/components/ui/room-avatar";
+import { Monogram } from "@/components/ui/monogram";
 import { CreateRoomDialog } from "@/components/create-room-dialog";
 import { useOpenInstallModal } from "@/components/install-modal";
-import { MEMORIES_PAGE_LIMIT, type EpisodeSummary, type Room } from "@/lib/api";
-import { useRoomAgents, useRoomEpisodes, useRoomMemories, useRooms, type RoomQueryOptions } from "@/lib/room-data";
+import { type EpisodeSummary, type Room } from "@/lib/api";
+import { avatarTint } from "@/lib/avatar-color";
+import { useRoomAgents, useRoomEpisodes, useRoomLatest, useRooms, type RoomQueryOptions } from "@/lib/room-data";
 import { useBackendHealth } from "@/lib/use-status";
 
-/** The cards read the shared caches but don't drive them: a grid of rooms is a
- *  glance, not a watch. */
+/** The rows read the shared caches but don't drive them: a list of rooms is a
+ *  glance, not a watch. Opening a room is what starts watching it. */
 const NO_POLL: RoomQueryOptions = { refreshInterval: 0 };
 
 // The seeded sample room the "Run a sample coordination" onboarding routes into.
@@ -52,37 +55,47 @@ function InstallLink() {
 }
 
 function relativeTime(iso: string): string {
-  if (!iso) return "-";
+  if (!iso) return "";
   const t = new Date(iso).getTime();
-  if (Number.isNaN(t)) return "-";
+  if (Number.isNaN(t)) return "";
   const min = Math.floor((Date.now() - t) / 60_000);
-  if (min < 1) return "just now";
-  if (min < 60) return `${min}m ago`;
+  if (min < 1) return "now";
+  if (min < 60) return `${min}m`;
   const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr}h ago`;
+  if (hr < 24) return `${hr}h`;
   const d = Math.floor(hr / 24);
-  if (d === 1) return "yesterday";
-  if (d < 7) return `${d}d ago`;
-  return new Date(iso).toISOString().slice(0, 10);
-}
-
-function monogram(name: string): string {
-  const parts = name.split(/[^a-z0-9]+/i).filter(Boolean);
-  const s = parts.length >= 2 ? parts[0][0] + parts[1][0] : (parts[0] ?? name).slice(0, 2);
-  return s.toUpperCase();
+  if (d < 7) return `${d}d`;
+  return new Date(iso).toISOString().slice(5, 10);
 }
 
 function episodeState(ep: EpisodeSummary): { label: string; color: string; live: boolean } {
   const state = ep.subkind ?? ep.outcome;
   if (state === "converged" || state === "resolved") return { label: "converged", color: "var(--green)", live: false };
   if (state === "rejected") return { label: "rejected", color: "var(--yellow)", live: false };
-  return { label: "live", color: "var(--accent)", live: true };
+  return { label: "negotiating", color: "var(--accent)", live: true };
 }
 
-/** The landing view: every room as a card. */
+/** The landing view: every room as a conversation.
+ *
+ *  A room *is* a conversation — with agents rather than people, but the shape
+ *  is the same — so this reads like an inbox: who is in it, what was last said,
+ *  how long ago. It was a grid of stat cards, which answered "how many
+ *  memories does this room have" (a question nobody opens a laptop with) and
+ *  not "what happened while I was away". */
 export function HomeDashboard() {
   const [showCreate, setShowCreate] = useState(false);
   const { rooms, loading, refresh } = useRooms();
+  // Newest first, the way an inbox is read. The hub serves the list in its own
+  // order, which is stable but says nothing about what moved while you were
+  // away — and that is the only thing this page is for.
+  const ordered = useMemo(
+    () =>
+      [...rooms].sort(
+        (a, b) =>
+          Date.parse(b.last_activity || b.created_at) - Date.parse(a.last_activity || a.created_at),
+      ),
+    [rooms],
+  );
   // A room list read off an unreachable backend is empty rather than absent, so
   // the health probe, not the list, is what tells "nothing here yet" apart
   // from "nothing to talk to". This page is served by a hub, so an unreachable
@@ -92,8 +105,8 @@ export function HomeDashboard() {
 
   return (
     <div className="flex-1 overflow-y-auto">
-      <div className="px-8 py-8">
-        <header className="mb-6 flex items-start justify-between gap-4">
+      <div className="mx-auto max-w-3xl px-8 py-8">
+        <header className="mb-5 flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
           <div className="min-w-0">
             <h1 className="text-2xl font-semibold text-text">Command center</h1>
             <p className="mt-1 text-label text-muted-foreground">
@@ -120,9 +133,9 @@ export function HomeDashboard() {
             />
           </div>
         ) : loading ? (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="flex flex-col gap-1.5">
             {Array.from({ length: 4 }, (_, i) => (
-              <RoomCardSkeleton key={i} />
+              <RoomRowSkeleton key={i} />
             ))}
           </div>
         ) : rooms.length === 0 ? (
@@ -146,9 +159,9 @@ export function HomeDashboard() {
             />
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {rooms.map(room => (
-              <RoomCard key={room.name} room={room} />
+          <div className="flex flex-col gap-1.5">
+            {ordered.map(room => (
+              <RoomRow key={room.name} room={room} />
             ))}
           </div>
         )}
@@ -159,85 +172,107 @@ export function HomeDashboard() {
   );
 }
 
-/** Loading placeholder mirroring RoomCard's layout, so the grid doesn't jump. */
-function RoomCardSkeleton() {
+/** Loading placeholder mirroring a row's shape, so the list doesn't jump. */
+function RoomRowSkeleton() {
   return (
-    <div className="flex flex-col rounded-xl border border-border bg-paper p-4">
-      <div className="flex items-center gap-3">
-        <Skeleton className="size-9 flex-shrink-0 rounded-lg" />
-        <div className="min-w-0 flex-1">
-          <Skeleton className="h-3.5 w-2/3" />
-          <Skeleton className="mt-1.5 h-2.5 w-1/3" />
-        </div>
+    <div className="flex items-center gap-3.5 rounded-xl border border-border bg-paper px-4 py-3.5">
+      <Skeleton className="size-10 flex-shrink-0 rounded-xl" />
+      <div className="min-w-0 flex-1">
+        <Skeleton className="h-3.5 w-40" />
+        <Skeleton className="mt-2 h-2.5 w-3/5" />
       </div>
-      <div className="mt-4 flex items-center gap-4">
-        <Skeleton className="h-2.5 w-14" />
-        <Skeleton className="h-2.5 w-16" />
-      </div>
+      <Skeleton className="h-6 w-20 rounded-full" />
     </div>
   );
 }
 
-function RoomCard({ room }: { room: Room }) {
-  // A card per room, so these read once and don't poll: the grid is a glance,
-  // and opening a room is what starts watching it.
-  const { agents, loading: agentsLoading } = useRoomAgents(room.name, NO_POLL);
-  const { episodes } = useRoomEpisodes(room.name, NO_POLL);
-  const { memories, loading: memoriesLoading } = useRoomMemories(room.name, NO_POLL);
+/** How many faces the pile shows before it starts counting instead. */
+const FACES = 4;
 
-  const agentCount = agentsLoading ? null : agents.length;
-  // A room card is a glance, not a paginated view: a count that hit the fetch's
-  // own page cap is "at least this many," not "exactly this many," so it reads
-  // as a floor rather than a false total.
-  const memoryCount = memoriesLoading
-    ? null
-    : memories.length >= MEMORIES_PAGE_LIMIT
-      ? `${memories.length}+`
-      : String(memories.length);
-  const live = episodes.map(episodeState).filter(s => s.live).length;
-  const latest = episodes[0];
-  const latestState = latest ? episodeState(latest) : null;
+/** The room's agents as an overlapping pile of their own avatars. Says who is
+ *  in the room, which is what a count of them never did. */
+function FacePile({ handles }: { handles: string[] }) {
+  if (handles.length === 0) return null;
+  const shown = handles.slice(0, FACES);
+  const rest = handles.length - shown.length;
+  return (
+    // Dropped on a phone, where it would squeeze the preview line to a few
+    // characters — what was said matters more there than who is in the room.
+    <span className="hidden flex-shrink-0 items-center sm:flex" aria-label={`${handles.length} agents`}>
+      {shown.map(handle => (
+        <span
+          key={handle}
+          // The ring cuts each face out of the one behind it, so it has to be
+          // the row's own background — including the colour it hovers to.
+          className="-ml-1.5 inline-block rounded-full ring-2 ring-paper first:ml-0 group-hover:ring-elevated"
+        >
+          <Monogram handle={handle} className="size-6 text-[10px]" />
+        </span>
+      ))}
+      {rest > 0 && <span className="ml-1.5 text-micro tabular text-muted-foreground">+{rest}</span>}
+    </span>
+  );
+}
+
+function RoomRow({ room }: { room: Room }) {
+  const { agents } = useRoomAgents(room.name, NO_POLL);
+  const { episodes } = useRoomEpisodes(room.name, NO_POLL);
+  const { latest, loading: latestLoading } = useRoomLatest(room.name, NO_POLL);
+
+  const live = episodes.some(ep => episodeState(ep).live);
+  const latestState = episodes[0] ? episodeState(episodes[0]) : null;
+  // A room mid-negotiation outranks how its last one ended: that's the row you
+  // came to this page to find.
+  const state = live ? { label: "negotiating", color: "var(--accent)", live: true } : latestState;
+  // The preview carries its own timestamp; the room's last-activity is the
+  // standby for a room whose transcript has nothing readable in it.
+  const stamp = relativeTime(latest?.at || room.last_activity || room.created_at);
 
   return (
     <Link
       href={`/room/${encodeURIComponent(room.name)}`}
-      className="group flex flex-col rounded-xl border border-border bg-paper p-4 transition-colors hover:border-border2 hover:bg-elevated"
+      className="group flex items-center gap-3.5 rounded-xl border border-border bg-paper px-4 py-3.5 transition-colors hover:border-border2 hover:bg-elevated"
     >
-      <div className="flex items-center gap-3">
-        <span
-          className="flex size-9 flex-shrink-0 items-center justify-center rounded-lg bg-surface font-mono text-label font-semibold text-muted-foreground group-hover:text-text"
-          aria-hidden
-        >
-          {monogram(room.name)}
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-ui font-medium text-text">{room.name}</div>
-          <div className="text-micro text-muted-foreground">{relativeTime(room.last_activity ?? room.created_at)}</div>
-        </div>
-        {live > 0 && (
-          <span className="flex items-center gap-1.5 text-micro text-accent">
-            <span className="inline-block size-1.5 rounded-full bg-accent" />
-            {live} live
-          </span>
-        )}
-      </div>
+      <RoomAvatar name={room.name} className="size-10 rounded-xl text-label" />
 
-      <div className="mt-4 flex items-center gap-4 text-micro text-muted-foreground">
-        <span className="tabular">
-          <span className="text-text">{agentCount ?? "-"}</span> agent{agentCount === 1 ? "" : "s"}
-        </span>
-        <span className="tabular">
-          <span className="text-text">{episodes?.length ?? "-"}</span> episode{episodes?.length === 1 ? "" : "s"}
-        </span>
-        <span className="tabular">
-          <span className="text-text">{memoryCount ?? "-"}</span> memor{memories.length === 1 ? "y" : "ies"}
-        </span>
-        {latestState && !latestState.live && (
-          <span className="ml-auto flex items-center gap-1.5 capitalize" style={{ color: latestState.color }}>
-            <span className="inline-block size-1.5 rounded-full" style={{ background: latestState.color }} />
-            {latestState.label}
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline gap-2">
+          <span className="truncate text-ui font-medium text-text">{room.name}</span>
+          {state?.live && (
+            <span
+              className="flex flex-shrink-0 items-center gap-1.5 text-micro"
+              style={{ color: state.color }}
+            >
+              <span
+                className="inline-block size-1.5 animate-pulse rounded-full"
+                style={{ background: state.color }}
+              />
+              {state.label}
+            </span>
+          )}
+          <span className="ml-auto flex-shrink-0 text-micro tabular text-faint">{stamp}</span>
+        </div>
+
+        <div className="mt-1 flex items-center gap-2">
+          <span className="min-w-0 flex-1 truncate text-label text-muted-foreground">
+            {latestLoading ? (
+              <Skeleton className="inline-block h-2.5 w-48 align-middle" />
+            ) : latest ? (
+              <>
+                {latest.sender && (
+                  <span className="font-medium" style={{ color: avatarTint(latest.sender) }}>
+                    {latest.sender}
+                  </span>
+                )}
+                {latest.sender && <span className="text-faint"> · </span>}
+                {latest.text}
+              </>
+            ) : (
+              <span className="text-faint">No messages yet</span>
+            )}
           </span>
-        )}
+          <FacePile handles={agents.map(a => a.handle)} />
+        </div>
       </div>
     </Link>
   );

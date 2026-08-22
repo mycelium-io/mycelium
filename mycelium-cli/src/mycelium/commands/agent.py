@@ -515,11 +515,18 @@ _CWD_PROMPT_BY_ADAPTER: dict[str, str] = {
 
 
 @doc_ref(
-    usage="mycelium agent create <handle> --adapter <name> [--cwd <path>]",
+    usage=(
+        "mycelium agent create <handle> --adapter <name> [--cwd <path>] "
+        "[--card <url>] [--card-auth-env <var>]"
+    ),
     desc=(
         "Create a new, Mycelium-controlled agent in a room. "
         "<code>claude_code</code> and <code>cursor</code> agents are resident "
-        "sessions the user keeps woken with <code>mycelium await --loop</code>."
+        "sessions the user keeps woken with <code>mycelium await --loop</code>. "
+        "<code>--adapter a2a</code> instead registers a remote Agent2Agent "
+        "endpoint given by <code>--card</code> (its Agent Card host, resolved at "
+        "registration); <code>--card-auth-env</code> names a backend env var "
+        "holding its bearer token, so only the var name is stored in the room."
     ),
     group="agent",
 )
@@ -604,6 +611,66 @@ def _create_wizard(
     )
 
 
+def _create_a2a_agent(
+    *,
+    config: MyceliumConfig,
+    room: str | None,
+    handle: str,
+    card: str | None,
+    card_auth_env: str | None,
+    description: str,
+    allow_from: str | None,
+    owner: str | None,
+    team: str | None,
+    handle_flag: str,
+) -> None:
+    """Register an external A2A agent by resolving its card on the hub.
+
+    Unlike claude_code/cursor, there's no local manifest to build: the backend
+    resolves the remote Agent Card (failing fast on a bad URL) and holds the
+    seat, so this is one authenticated hub call.
+    """
+    if not (card and card.strip()):
+        typer.secho(
+            "--adapter a2a needs --card <url> (the host serving the agent's Agent Card).",
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(1)
+
+    room_name = _resolve_room(config, room)
+    allow_list = [a.strip() for a in (allow_from or "").split(",") if a.strip()]
+    body = {
+        "handle": handle,
+        "card": card.strip(),
+        "description": description,
+        "auth_env": card_auth_env.strip() if card_auth_env else None,
+        "allow_from": allow_list,
+        "owner": _default_owner(owner, handle_flag),
+        "team": team,
+        "created_by": handle_flag,
+    }
+
+    with hub_client(config, timeout=30) as client:
+        resp = client.post(f"/api/rooms/{room_name}/a2a-agents", json=body)
+
+    if resp.status_code != 201:
+        detail = ""
+        try:
+            detail = resp.json().get("detail", "")
+        except ValueError:
+            detail = resp.text
+        typer.secho(
+            f"Could not register @{handle}: {detail or resp.status_code}", fg=typer.colors.RED
+        )
+        raise typer.Exit(1)
+
+    read = resp.json()
+    skills = ", ".join(read.get("a2a_skills") or []) or "(none advertised)"
+    console.print(f"[green]Created a2a agent[/green] @{read['handle']} in {room_name}")
+    console.print(f"  endpoint: {read.get('a2a_endpoint') or read.get('a2a_card')}")
+    console.print(f"  skills:   {skills}")
+
+
 @app.command("create")
 def agent_create(
     ctx: typer.Context,
@@ -626,6 +693,22 @@ def agent_create(
             "claude_code / cursor: optional working dir for the agent's session. "
             "For cursor it's also where .cursor/rules/mycelium.mdc + AGENTS.md "
             "(mycelium section) are dropped."
+        ),
+    ),
+    card: str | None = typer.Option(
+        None,
+        "--card",
+        help=(
+            "a2a: base URL serving the external agent's Agent Card "
+            "(the host of its /.well-known/agent-card.json). Required for --adapter a2a."
+        ),
+    ),
+    card_auth_env: str | None = typer.Option(
+        None,
+        "--card-auth-env",
+        help=(
+            "a2a: name of a backend env var holding the remote agent's bearer token. "
+            "Only the var name is stored; the secret stays in the hub's environment."
         ),
     ),
     room: str | None = typer.Option(
@@ -701,6 +784,24 @@ def agent_create(
             known = ", ".join(sorted(AGENT_ADAPTERS))
             typer.secho(f"Unknown adapter '{adapter}'. Known: {known}.", fg=typer.colors.RED)
             raise typer.Exit(1)
+
+        # An a2a agent is a remote endpoint with no local runtime: the backend
+        # resolves its card and holds the seat, so registration is a single hub
+        # call rather than a locally-built manifest.
+        if adapter == "a2a":
+            _create_a2a_agent(
+                config=config,
+                room=room,
+                handle=handle,
+                card=card,
+                card_auth_env=card_auth_env,
+                description=description,
+                allow_from=allow_from,
+                owner=owner,
+                team=team,
+                handle_flag=handle_flag,
+            )
+            return
 
         allow_list: list[str] = []
         if allow_from:

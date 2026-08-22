@@ -111,3 +111,20 @@ async def test_index_single_file_indexes_then_prunes() -> None:
     assert search_index.load_index("room-a") == []
     # Nothing left to prune → a repeat is a no-op (False).
     assert await indexer.index_single_file("room-a", "decisions/db") is False
+
+
+@pytest.mark.asyncio
+async def test_index_record_carries_unmanaged_frontmatter() -> None:
+    """A rebuilt index keeps user frontmatter, so search answers like a get does."""
+    write_memory_file(
+        get_room_dir("room-meta"),
+        "work/x",
+        "blocked",
+        created_by="tester",
+        extra_meta={"status": "open"},
+    )
+
+    await indexer.index_room("room-meta")
+
+    record = search_index.load_index("room-meta")[0]
+    assert record["meta"] == {"status": "open"}

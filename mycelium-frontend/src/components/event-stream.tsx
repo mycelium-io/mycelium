@@ -5,7 +5,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  getSSEUrl,
   fetchMessages,
   fetchPendingInvites,
   respondToInvite,
@@ -13,17 +12,21 @@ import {
   type PendingInvite,
 } from "@/lib/api";
 import { useRoomAgents } from "@/lib/room-data";
+import { useRoomConnected, useRoomStream } from "@/lib/stream-hub";
 import { MarkdownContent } from "@/components/markdown-content";
 import { RoomBoard } from "@/components/board/room-board";
 import { ConsentDialog } from "@/components/consent-dialog";
+import { EpisodeTag } from "@/components/episode-tag";
 import { L9Inspector } from "@/components/l9-inspector";
 import { NegotiationView } from "@/components/negotiation-view";
+import { RoomA2aView } from "@/components/room-a2a";
 import { RoomSlimView } from "@/components/room-slim";
 import { EmptyState } from "@/components/empty-state";
 import { KeyBadge } from "@/components/key-badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Monogram } from "@/components/ui/monogram";
+import { Tooltip } from "@/components/ui/tooltip";
 import { Bot, MessagesSquare } from "lucide-react";
 
 interface Event {
@@ -243,7 +246,6 @@ function parseEvent(msg: Record<string, unknown>): Event {
       // A message type nothing above handles would otherwise vanish from the
       // channel view without a trace (exactly how l9_exchange hid). Surface it
       // loudly so an unsupported/renamed type can't fail silently again.
-      // eslint-disable-next-line no-console
       console.warn(
         `[mycelium] EventStream: unhandled message_type "${mtype}" — ` +
           "rendered as a raw fallback and likely hidden from the channel view",
@@ -272,45 +274,6 @@ function parseEvent(msg: Record<string, unknown>): Event {
   };
 }
 
-// Per-event-type styling. Tone drives the accent color of the label + bar.
-const typeStyles: Record<string, { tone: "accent" | "ok" | "warn" | "muted" | "ink"; label: string }> = {
-  broadcast:              { tone: "ink",    label: "BROADCAST" },
-  direct:                 { tone: "accent", label: "DIRECT" },
-  announce:               { tone: "ink",    label: "ANNOUNCE" },
-  delegate:               { tone: "accent", label: "DELEGATE" },
-  coordination_join:      { tone: "accent", label: "JOIN" },
-  coordination_leave:     { tone: "muted",  label: "LEAVE" },
-  coordination_start:     { tone: "accent", label: "START" },
-  coordination_tick:      { tone: "muted",  label: "TICK" },
-  coordination_consensus: { tone: "ok",     label: "CONSENSUS" },
-  memory_changed:         { tone: "warn",   label: "MEMORY" },
-  l9_knowledge:           { tone: "warn",   label: "KNOWLEDGE" },
-};
-const defaultStyle = { tone: "muted" as const, label: "MSG" };
-
-function toneColor(t: "accent" | "ok" | "warn" | "muted" | "ink"): string {
-  return t === "accent" ? "var(--accent)"
-       : t === "ok"     ? "var(--green)"
-       : t === "warn"   ? "var(--yellow)"
-       : t === "ink"    ? "var(--text)"
-                        : "var(--muted-foreground)";
-}
-
-const MENTION_RE = /(@[\w-]+)/g;
-
-function renderWithMentions(text: string): React.ReactNode {
-  // split() with a capturing group returns alternating [non-match, match, ...].
-  // Odd indices are the @handles; this avoids the stateful .test() gotcha.
-  const parts = text.split(MENTION_RE);
-  return parts.map((part, i) =>
-    i % 2 === 1 ? (
-      <span key={i} className="text-accent font-semibold">{part}</span>
-    ) : (
-      <span key={i}>{part}</span>
-    ),
-  );
-}
-
 export type View = "channel" | "negotiate" | "plan" | "network";
 export type NegotiationPhase = "idle" | "negotiating" | "converged" | "rejected";
 
@@ -322,6 +285,9 @@ interface Props {
   /** Open a memory by key — wired to `[[wikilinks]]` in chat so a message can
    *  link a room's memory and a reader (or agent author) can jump straight to it. */
   onOpenMemory?: (key: string) => void;
+  /** Open an episode by short id — wired to the episode tags on coordination
+   *  notices, so the episode a notice names is one click from its record. */
+  onOpenEpisode?: (shortId: string) => void;
   /** Optional controlled tab (e.g. driven by the onboarding tour). */
   view?: View;
   onViewChange?: (view: View) => void;
@@ -333,10 +299,10 @@ interface Props {
   onFocusConsumed?: () => void;
 }
 
-export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onNegotiationPhaseChange, onOpenMemory, view: viewProp, onViewChange, suppressInvites = false, focusMessageId = null, onFocusConsumed }: Props) {
+export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onNegotiationPhaseChange, onOpenMemory, onOpenEpisode, view: viewProp, onViewChange, suppressInvites = false, focusMessageId = null, onFocusConsumed }: Props) {
   const [events, setEvents] = useState<Event[]>([]);
   const [historyLoaded, setHistoryLoaded] = useState(false);
-  const [connected, setConnected] = useState(false);
+  const connected = useRoomConnected(roomName);
 
   // Surface connection state to status bar; one home for the signal.
   useEffect(() => {
@@ -384,52 +350,32 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
     respondToInvite(roomName, invite.id, decision).catch(logFetchError("respondToInvite"));
   };
 
-  // SSE connection
-  useEffect(() => {
-    const url = getSSEUrl(roomName);
-    let es: EventSource;
-    let retryTimeout: NodeJS.Timeout;
-
-    function connect() {
-      es = new EventSource(url);
-      es.onopen = () => setConnected(true);
-      es.onmessage = (e) => {
-        try {
-          const msg = JSON.parse(e.data);
-          // Consent prompts drive the accept/decline dialog, not the feed.
-          if (msg.message_type === "consent_request") {
-            try {
-              const invite = JSON.parse(msg.content as string) as PendingInvite;
-              setInvites((prev) =>
-                prev.some((i) => i.id === invite.id) ? prev : [...prev, invite],
-              );
-            } catch {}
-            return;
-          }
-          const event = parseEvent(msg);
-          setEvents(prev => [...prev, event]);
-          if (event.type === "memory_changed") onMemoryChanged?.();
-          // A consensus compiles the negotiation into plan/tasks.md, so nudge
-          // the plan header to refetch so the checklist surfaces immediately.
-          if (event.type === "coordination_consensus" && event.raw.broken !== true) {
-            onMemoryChanged?.();
-          }
-          // Presence changes: refresh the room's derived state (agent roster/count).
-          if (event.type === "coordination_join" || event.type === "coordination_leave") {
-            onMemoryChanged?.();
-          }
-        } catch {}
-      };
-      es.onerror = () => {
-        setConnected(false);
-        es.close();
-        retryTimeout = setTimeout(connect, 5000);
-      };
+  // Live room messages, off the app's one multiplexed connection.
+  useRoomStream(roomName, (data) => {
+    const msg = data as Record<string, unknown>;
+    // Consent prompts drive the accept/decline dialog, not the feed.
+    if (msg.message_type === "consent_request") {
+      try {
+        const invite = JSON.parse(msg.content as string) as PendingInvite;
+        setInvites((prev) =>
+          prev.some((i) => i.id === invite.id) ? prev : [...prev, invite],
+        );
+      } catch {}
+      return;
     }
-
-    connect();
-    return () => { es?.close(); clearTimeout(retryTimeout); };
-  }, [roomName, onMemoryChanged]);
+    const event = parseEvent(msg);
+    setEvents(prev => [...prev, event]);
+    if (event.type === "memory_changed") onMemoryChanged?.();
+    // A consensus compiles the negotiation into plan/tasks.md, so nudge
+    // the plan header to refetch so the checklist surfaces immediately.
+    if (event.type === "coordination_consensus" && event.raw.broken !== true) {
+      onMemoryChanged?.();
+    }
+    // Presence changes: refresh the room's derived state (agent roster/count).
+    if (event.type === "coordination_join" || event.type === "coordination_leave") {
+      onMemoryChanged?.();
+    }
+  });
 
   const visible = useMemo(
     () => events.filter(e => CHANNEL_VIEW_TYPES.has(e.type)),
@@ -443,6 +389,8 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
   const highlightRow = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!focusMessageId) return;
+    // The highlight outlives focusMessageId, which is cleared once consumed.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setHighlight(focusMessageId);
     onFocusConsumed?.();
   }, [focusMessageId, onFocusConsumed]);
@@ -535,10 +483,14 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
         </div>
       ) : view === "network" ? (
         // Unified Network pane: SLIM channel diagnostics as a rail on top, the
-        // live L9 protocol feed filling the rest.
+        // A2A bridge (the room's off-channel traffic) beneath it when there is
+        // one, and the live L9 protocol feed filling the rest.
         <div className="flex flex-1 min-h-0 flex-col">
           <div className="shrink-0 border-b border-border bg-surface/40">
             <RoomSlimView roomName={roomName} layout="rail" />
+          </div>
+          <div className="shrink-0">
+            <RoomA2aView roomName={roomName} />
           </div>
           <div className="flex-1 min-h-0">
             <L9Inspector roomName={roomName} />
@@ -641,7 +593,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
                   >
                     <span>in</span>
                     {shortId ? (
-                      <span className="font-mono text-accent" title={episodeUrn}>{shortId}</span>
+                      <EpisodeTag urn={episodeUrn} shortId={shortId} onOpen={onOpenEpisode} />
                     ) : (
                       <span className="font-mono">episode</span>
                     )}
@@ -651,9 +603,14 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
                       <>
                         <span>· {issueCount} issue{issueCount === 1 ? "" : "s"} agreed</span>
                         {gar !== undefined ? (
-                          <span className="font-mono" title="genuine agreement ratio: how many agents actually moved toward the outcome">
-                            · GAR {gar.toFixed(2)}
-                          </span>
+                          <Tooltip content="Genuine agreement ratio: how many agents actually moved toward the outcome">
+                            <span
+                              className="font-mono"
+                              aria-description="Genuine agreement ratio: how many agents actually moved toward the outcome"
+                            >
+                              · GAR {gar.toFixed(2)}
+                            </span>
+                          </Tooltip>
                         ) : null}
                         {planFile ? (
                           <span>→ <span className="font-mono text-accent">{planFile}</span></span>
@@ -673,7 +630,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
                     <span className="font-medium text-muted-foreground">@{handle}</span>
                     <span>joined</span>
                     {shortId ? (
-                      <span className="font-mono text-accent" title={episodeUrn}>{shortId}</span>
+                      <EpisodeTag urn={episodeUrn} shortId={shortId} onOpen={onOpenEpisode} />
                     ) : null}
                     {intent ? <span>· &ldquo;{intent}&rdquo;</span> : null}
                   </SystemNotice>
@@ -687,9 +644,10 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
                 !SYSTEM_TYPES.has(prev.type) &&
                 prev.sender === ev.sender;
               const isAgent = agentHandles.has(ev.sender);
-              // Agents wear the accent; humans stay neutral. Consistent with the
-              // agents panel so one agent isn't two colors in two places.
-              const color = isAgent ? "var(--accent)" : "var(--muted-foreground)";
+              // Match the members panel so one sender isn't two colours in two
+              // places: an agent wears its own stable tint (Monogram's default),
+              // a human the neutral seat.
+              const color = isAgent ? undefined : "var(--avatar-neutral)";
               const marked = highlight !== null && ev.messageId === highlight;
               const owner = isAgent ? agentOwners.get(ev.sender) : undefined;
               return (
@@ -707,9 +665,11 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
 
                   <div className="w-7 flex-shrink-0">
                     {!grouped && (
-                      <span title={owner ? `@${ev.sender} · owned by @${owner}` : ev.sender}>
-                        <Monogram handle={ev.sender} color={color} className="size-7 text-micro" />
-                      </span>
+                      <Tooltip content={owner ? `@${ev.sender} · owned by @${owner}` : ev.sender}>
+                        <span role="img" aria-label={owner ? `@${ev.sender} · owned by @${owner}` : ev.sender}>
+                          <Monogram handle={ev.sender} color={color} className="size-7 text-micro" />
+                        </span>
+                      </Tooltip>
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
