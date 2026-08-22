@@ -10,27 +10,24 @@
  * can see land, and a camera that pushes in so the detail being demonstrated is
  * legible at the size a README embeds.
  *
- * Three pieces, kept apart on purpose:
+ * Four pieces, kept apart on purpose:
  *
  *   cursor.mjs   what the page draws (pointer, ripple, camera transform)
- *   this file    the take: a frame pump, and a cinematic reading of the actions
+ *   this file    the take: the cinematic reading of an action list
+ *   pump.mjs     frames out of the page, on a clock
  *   encode.mjs   frames to a file
  *
  * The action vocabulary is the one `--do` already speaks. A recording does not
  * get its own script format: `click:Negotiate` is a click in a screenshot and a
  * glide-press-settle in a take, because the difference between those is the
  * recorder's business and not the caller's.
- *
- * Frames come from a CDP screencast — the browser pushing what it composites,
- * which is a real recording of real timing, including the app's own transitions.
- * A screenshot loop is the fallback where that is unavailable; it produces the
- * same file, more slowly and with the page's animation sampled coarsely.
  */
 
 import { OVERLAY_DEFAULTS, installOverlay } from "./cursor.mjs";
-import { defaultFormat, findEncoder, jpegSize, startEncoder } from "./encode.mjs";
+import { defaultFormat, findEncoder, startEncoder } from "./encode.mjs";
 import { frameOf, policyOf, preparePage, seedStorage } from "./engine.mjs";
 import { runActions } from "./actions.mjs";
+import { frameSource, startPump } from "./pump.mjs";
 import { palette } from "./theme.mjs";
 
 /** Timing, in ms. Beats a viewer can follow rather than the fastest that works. */
@@ -42,6 +39,7 @@ export const TIMING = {
   tailMs: 1000,
   typeDelayMs: 55,
   settleMs: 130,
+  pressMs: 110,
 };
 
 export const VIDEO_DEFAULTS = {
@@ -121,6 +119,7 @@ export async function record(eng, spec, ctx) {
     ...(spec.zoomMs !== undefined ? { zoomMs: spec.zoomMs } : {}),
     ...(spec.leadIn !== undefined ? { leadInMs: spec.leadIn } : {}),
     ...(spec.tail !== undefined ? { tailMs: spec.tail } : {}),
+    ...(spec.pressMs !== undefined ? { pressMs: spec.pressMs } : {}),
   };
 
   // Motion is the point here, so two still-capture defaults invert: the app's
@@ -150,6 +149,7 @@ export async function record(eng, spec, ctx) {
   const t0 = Date.now();
   const page = await context.newPage();
   let pump = null;
+  let capTimer = null;
   try {
     await page.goto(spec.url, { waitUntil: spec.waitUntil ?? "domcontentloaded", timeout: spec.timeout ?? 30_000 });
     // Waits, hidden selectors and extra CSS, but not the actions: those are the
@@ -158,27 +158,36 @@ export async function record(eng, spec, ctx) {
     await page.mouse.move(start.x, start.y);
     await page.evaluate(([x, y]) => window.__shotkit?.snap(x, y), [start.x, start.y]).catch(() => {});
 
-    pump = await startPump(page, context, {
-      fps,
+    const source = await frameSource(page, context, {
+      capture: spec.capture,
       quality: spec.quality ?? VIDEO_DEFAULTS.quality,
       frame,
-      capture: spec.capture,
+      log,
+    });
+    pump = startPump({
+      source,
+      fps,
       maxFrames: fps * clamp(spec.maxSeconds ?? VIDEO_DEFAULTS.maxSeconds, 1, 600),
-      encoder: (size) =>
-        startEncoder({ ...size, format, fps, crf: spec.crf, out: ctx.out, ffmpeg: caps.path }),
+      encoder: (size) => startEncoder({ ...size, format, fps, crf: spec.crf, out: ctx.out, ffmpeg: caps.path }),
       log,
     });
 
     const cursor = makeCursor(page, { ...spec, log, timing, zoom: spec.zoom ?? VIDEO_DEFAULTS.zoom });
-    // The cap has to be a timer this take can cancel: an outstanding one would
-    // hold the process open long after the file is written.
-    let capTimer = null;
+    // Three ways a take ends: the flow finishes, the cap bites, or there is
+    // nothing left to record into. The cap is a timer this take can cancel —
+    // an outstanding one holds the process open long after the file is written,
+    // so it is cleared in the `finally` below, on the throwing path too.
     const cap = new Promise((r) => {
       capTimer = setTimeout(() => r("over"), pump.budgetMs);
     });
-    const trace = await Promise.race([drive(page, spec, cursor, timing), cap]);
-    clearTimeout(capTimer);
+    const flow = drive(page, spec, cursor, timing);
+    // When the cap or a dead encoder wins the race the flow is still running,
+    // and will fail into nobody's hands once the context closes under it. That
+    // rejection is this take's business, not the process's.
+    flow.catch(() => {});
+    const trace = await Promise.race([flow, cap, pump.trouble]);
     if (trace === "over") log("stopped at --max-seconds; the take is what fit");
+    if (trace === "encoder") log("the encoder stopped; ending the take");
     await sleep(timing.tailMs);
 
     const { frames, width, height } = await pump.stop();
@@ -198,6 +207,7 @@ export async function record(eng, spec, ctx) {
       ms: { total: Date.now() - t0 },
     };
   } finally {
+    clearTimeout(capTimer);
     if (pump) await pump.abort();
     await context.close().catch(() => {});
   }
@@ -291,7 +301,7 @@ export function makeCursor(page, opts) {
   async function press() {
     await page.evaluate(() => window.__shotkit?.press(true)).catch(() => {});
     await page.mouse.down();
-    await sleep(110);
+    await sleep(timing.pressMs);
     await page.mouse.up();
     await page.evaluate(() => window.__shotkit?.press(false)).catch(() => {});
   }
@@ -360,131 +370,6 @@ export function makeCursor(page, opts) {
     /** A beat after an action, so the viewer sees the result of it. */
     dwell(ms) {
       return sleep(ms ?? timing.dwellMs);
-    },
-  };
-}
-
-/* ── The frame pump ────────────────────────────────────────────────────────
- * Frames arrive when the page changes; the file needs one every 1/fps whether
- * anything changed or not. So the pump holds the newest frame and a
- * self-correcting timer writes it on the beat — a still page costs repeats of
- * one JPEG, and no drift accumulates over a long take.
- * ────────────────────────────────────────────────────────────────────────── */
-
-async function startPump(page, context, opts) {
-  const period = 1000 / opts.fps;
-  let latest = null;
-  let encoder = null;
-  let size = { width: 0, height: 0 };
-  let stopped = false;
-  let truncated = false;
-  let timer = null;
-  let failure = null;
-  let mode = opts.capture === "shots" ? "shots" : "screencast";
-  let shooter = null;
-
-  // Nothing in here may throw: it runs on a timer, where a throw is an uncaught
-  // exception in whatever process hosts the daemon rather than a failed shot.
-  // Anything that goes wrong is held and raised when the take ends.
-  const beat = (n, startedAt) => {
-    if (stopped) return;
-    try {
-      if (latest) {
-        if (!encoder) {
-          size = jpegSize(latest);
-          if (!size.width) throw new Error("the first frame was not a readable JPEG");
-          encoder = opts.encoder(size);
-          opts.log(`encoding ${size.width}x${size.height} @ ${opts.fps}fps`);
-        }
-        if (encoder.frames >= opts.maxFrames) truncated = true;
-        else encoder.write(latest);
-      }
-    } catch (err) {
-      failure ??= err;
-    }
-    const next = startedAt + (n + 1) * period - Date.now();
-    timer = setTimeout(() => beat(n + 1, startedAt), Math.max(0, next));
-  };
-
-  if (mode === "screencast") {
-    const cdp = await context.newCDPSession(page).catch(() => null);
-    if (cdp) {
-      cdp.on("Page.screencastFrame", (f) => {
-        latest = Buffer.from(f.data, "base64");
-        cdp.send("Page.screencastFrameAck", { sessionId: f.sessionId }).catch(() => {});
-      });
-      await cdp.send("Page.startScreencast", {
-        format: "jpeg",
-        quality: opts.quality,
-        maxWidth: Math.round(opts.frame.width * opts.frame.scale),
-        maxHeight: Math.round(opts.frame.height * opts.frame.scale),
-        everyNthFrame: 1,
-      });
-      for (let i = 0; i < 40 && !latest; i++) await sleep(50);
-      shooter = { stop: () => cdp.send("Page.stopScreencast").catch(() => {}) };
-    }
-    if (!latest) {
-      opts.log("no screencast frames; falling back to a screenshot loop");
-      mode = "shots";
-      await shooter?.stop();
-      shooter = null;
-    }
-  }
-
-  if (mode === "shots") {
-    // Slower and coarser, but it depends on nothing but `page.screenshot`.
-    let running = true;
-    const loop = (async () => {
-      while (running && !stopped) {
-        try {
-          latest = await page.screenshot({ type: "jpeg", quality: opts.quality, animations: "allow", caret: "hide" });
-        } catch {
-          if (!stopped) await sleep(100);
-        }
-      }
-    })();
-    shooter = {
-      stop: async () => {
-        running = false;
-        await loop.catch(() => {});
-      },
-    };
-    for (let i = 0; i < 60 && !latest; i++) await sleep(50);
-  }
-
-  const startedAt = Date.now();
-  beat(0, startedAt);
-
-  const halt = async () => {
-    if (stopped) return;
-    stopped = true;
-    if (timer) clearTimeout(timer);
-    await shooter?.stop();
-  };
-
-  return {
-    mode,
-    get truncated() {
-      return truncated;
-    },
-    /** How long the take may run before the frame cap bites. */
-    budgetMs: (opts.maxFrames / opts.fps) * 1000,
-    async stop() {
-      await halt();
-      if (failure) throw failure;
-      if (!encoder) throw new Error("nothing was captured — the page never produced a frame");
-      const { frames } = await encoder.finish();
-      return { frames, ...size };
-    },
-    /**
-     * Give up, but close the file properly: a take that failed on its third
-     * action is still the most useful thing to look at, and a half-written
-     * container is not playable.
-     */
-    async abort() {
-      await halt();
-      if (!encoder) return;
-      await Promise.race([encoder.finish().catch(() => {}), sleep(5_000).then(() => encoder.kill())]);
     },
   };
 }

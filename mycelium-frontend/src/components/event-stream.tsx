@@ -16,6 +16,7 @@ import { useRoomAgents } from "@/lib/room-data";
 import { MarkdownContent } from "@/components/markdown-content";
 import { RoomPlanHeader } from "@/components/room-plan-header";
 import { ConsentDialog } from "@/components/consent-dialog";
+import { EpisodeTag } from "@/components/episode-tag";
 import { L9Inspector } from "@/components/l9-inspector";
 import { NegotiationView } from "@/components/negotiation-view";
 import { RoomSlimView } from "@/components/room-slim";
@@ -24,6 +25,7 @@ import { KeyBadge } from "@/components/key-badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Monogram } from "@/components/ui/monogram";
+import { Tooltip } from "@/components/ui/tooltip";
 import { Bot, MessagesSquare } from "lucide-react";
 
 interface Event {
@@ -243,7 +245,6 @@ function parseEvent(msg: Record<string, unknown>): Event {
       // A message type nothing above handles would otherwise vanish from the
       // channel view without a trace (exactly how l9_exchange hid). Surface it
       // loudly so an unsupported/renamed type can't fail silently again.
-      // eslint-disable-next-line no-console
       console.warn(
         `[mycelium] EventStream: unhandled message_type "${mtype}" — ` +
           "rendered as a raw fallback and likely hidden from the channel view",
@@ -272,45 +273,6 @@ function parseEvent(msg: Record<string, unknown>): Event {
   };
 }
 
-// Per-event-type styling. Tone drives the accent color of the label + bar.
-const typeStyles: Record<string, { tone: "accent" | "ok" | "warn" | "muted" | "ink"; label: string }> = {
-  broadcast:              { tone: "ink",    label: "BROADCAST" },
-  direct:                 { tone: "accent", label: "DIRECT" },
-  announce:               { tone: "ink",    label: "ANNOUNCE" },
-  delegate:               { tone: "accent", label: "DELEGATE" },
-  coordination_join:      { tone: "accent", label: "JOIN" },
-  coordination_leave:     { tone: "muted",  label: "LEAVE" },
-  coordination_start:     { tone: "accent", label: "START" },
-  coordination_tick:      { tone: "muted",  label: "TICK" },
-  coordination_consensus: { tone: "ok",     label: "CONSENSUS" },
-  memory_changed:         { tone: "warn",   label: "MEMORY" },
-  l9_knowledge:           { tone: "warn",   label: "KNOWLEDGE" },
-};
-const defaultStyle = { tone: "muted" as const, label: "MSG" };
-
-function toneColor(t: "accent" | "ok" | "warn" | "muted" | "ink"): string {
-  return t === "accent" ? "var(--accent)"
-       : t === "ok"     ? "var(--green)"
-       : t === "warn"   ? "var(--yellow)"
-       : t === "ink"    ? "var(--text)"
-                        : "var(--muted-foreground)";
-}
-
-const MENTION_RE = /(@[\w-]+)/g;
-
-function renderWithMentions(text: string): React.ReactNode {
-  // split() with a capturing group returns alternating [non-match, match, ...].
-  // Odd indices are the @handles; this avoids the stateful .test() gotcha.
-  const parts = text.split(MENTION_RE);
-  return parts.map((part, i) =>
-    i % 2 === 1 ? (
-      <span key={i} className="text-accent font-semibold">{part}</span>
-    ) : (
-      <span key={i}>{part}</span>
-    ),
-  );
-}
-
 export type View = "channel" | "negotiate" | "plan" | "network";
 export type NegotiationPhase = "idle" | "negotiating" | "converged" | "rejected";
 
@@ -322,6 +284,9 @@ interface Props {
   /** Open a memory by key — wired to `[[wikilinks]]` in chat so a message can
    *  link a room's memory and a reader (or agent author) can jump straight to it. */
   onOpenMemory?: (key: string) => void;
+  /** Open an episode by short id — wired to the episode tags on coordination
+   *  notices, so the episode a notice names is one click from its record. */
+  onOpenEpisode?: (shortId: string) => void;
   /** Optional controlled tab (e.g. driven by the onboarding tour). */
   view?: View;
   onViewChange?: (view: View) => void;
@@ -333,7 +298,7 @@ interface Props {
   onFocusConsumed?: () => void;
 }
 
-export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onNegotiationPhaseChange, onOpenMemory, view: viewProp, onViewChange, suppressInvites = false, focusMessageId = null, onFocusConsumed }: Props) {
+export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onNegotiationPhaseChange, onOpenMemory, onOpenEpisode, view: viewProp, onViewChange, suppressInvites = false, focusMessageId = null, onFocusConsumed }: Props) {
   const [events, setEvents] = useState<Event[]>([]);
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [connected, setConnected] = useState(false);
@@ -443,6 +408,8 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
   const highlightRow = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!focusMessageId) return;
+    // The highlight outlives focusMessageId, which is cleared once consumed.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setHighlight(focusMessageId);
     onFocusConsumed?.();
   }, [focusMessageId, onFocusConsumed]);
@@ -639,7 +606,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
                   >
                     <span>in</span>
                     {shortId ? (
-                      <span className="font-mono text-accent" title={episodeUrn}>{shortId}</span>
+                      <EpisodeTag urn={episodeUrn} shortId={shortId} onOpen={onOpenEpisode} />
                     ) : (
                       <span className="font-mono">episode</span>
                     )}
@@ -649,9 +616,14 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
                       <>
                         <span>· {issueCount} issue{issueCount === 1 ? "" : "s"} agreed</span>
                         {gar !== undefined ? (
-                          <span className="font-mono" title="genuine agreement ratio: how many agents actually moved toward the outcome">
-                            · GAR {gar.toFixed(2)}
-                          </span>
+                          <Tooltip content="Genuine agreement ratio: how many agents actually moved toward the outcome">
+                            <span
+                              className="font-mono"
+                              aria-description="Genuine agreement ratio: how many agents actually moved toward the outcome"
+                            >
+                              · GAR {gar.toFixed(2)}
+                            </span>
+                          </Tooltip>
                         ) : null}
                         {planFile ? (
                           <span>→ <span className="font-mono text-accent">{planFile}</span></span>
@@ -671,7 +643,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
                     <span className="font-medium text-muted-foreground">@{handle}</span>
                     <span>joined</span>
                     {shortId ? (
-                      <span className="font-mono text-accent" title={episodeUrn}>{shortId}</span>
+                      <EpisodeTag urn={episodeUrn} shortId={shortId} onOpen={onOpenEpisode} />
                     ) : null}
                     {intent ? <span>· &ldquo;{intent}&rdquo;</span> : null}
                   </SystemNotice>
@@ -705,9 +677,11 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
 
                   <div className="w-7 flex-shrink-0">
                     {!grouped && (
-                      <span title={owner ? `@${ev.sender} · owned by @${owner}` : ev.sender}>
-                        <Monogram handle={ev.sender} color={color} className="size-7 text-micro" />
-                      </span>
+                      <Tooltip content={owner ? `@${ev.sender} · owned by @${owner}` : ev.sender}>
+                        <span role="img" aria-label={owner ? `@${ev.sender} · owned by @${owner}` : ev.sender}>
+                          <Monogram handle={ev.sender} color={color} className="size-7 text-micro" />
+                        </span>
+                      </Tooltip>
                     )}
                   </div>
                   <div className="min-w-0 flex-1">

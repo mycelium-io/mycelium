@@ -72,6 +72,7 @@ def serialize_memory(
     tags: list[str] | None = None,
     created_at: datetime | None = None,
     updated_at: datetime | None = None,
+    extra_meta: dict[str, Any] | None = None,
 ) -> str:
     """Serialize a memory to markdown with YAML frontmatter."""
     now = datetime.now(UTC)
@@ -86,6 +87,8 @@ def serialize_memory(
         meta["updated_by"] = updated_by
     if tags:
         meta["tags"] = tags
+    if extra_meta:
+        meta.update(extra_meta)
 
     frontmatter = yaml.dump(meta, default_flow_style=False, sort_keys=False).strip()
     return f"---\n{frontmatter}\n---\n{content}\n"

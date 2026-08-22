@@ -101,7 +101,7 @@ If it reports healthy services, jump to "Verify" below. If Mycelium is installed
 but services are down or misconfigured, prefer repair over reinstall:
 
 ```bash
-mycelium up        # start the SLIM node + backend
+mycelium up        # start the SLIM node, backend, and UI
 mycelium doctor    # diagnose and fix configuration issues
 ```
 

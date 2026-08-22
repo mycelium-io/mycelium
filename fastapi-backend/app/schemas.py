@@ -349,11 +349,19 @@ class MemoryRead(BaseModel):
     updated_by: str | None = None
     version: int
     tags: list[str] | None = None
+    meta: dict[str, Any] | None = Field(
+        None,
+        description=(
+            "The memory's unmanaged frontmatter — every key the store doesn't own "
+            "(so not key, authorship, version, timestamps, tags or value). This is "
+            "what ``MemoryCreate.meta`` wrote, read back."
+        ),
+    )
     expandable: bool = Field(
         False,
         description=(
             "Whether this memory opts in to transclusion via ``![[key]]``. "
-            "Mirrors the ``expandable`` frontmatter flag."
+            "Mirrors the ``expandable`` frontmatter flag, which is also in ``meta``."
         ),
     )
     created_at: datetime

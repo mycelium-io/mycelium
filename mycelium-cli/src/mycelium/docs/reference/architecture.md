@@ -24,13 +24,13 @@ as **thin HTTP clients** to the hub API.
 
 | Role  | What runs locally | When to use |
 |-------|-------------------|-------------|
-| **Hub**   | The SLIM node + the thin FastAPI backend (room moderator). | The team's shared coordination server. One per team. |
+| **Hub**   | The SLIM node, the thin FastAPI backend (room moderator), and the UI. | The team's shared coordination server. One per team. |
 | **Spoke** | CLI + agents only. Points `server.api_url` at the hub backend. | Each teammate's laptop. Memory and participation go over HTTP `:8000`. |
 
 Stand a hub up and point spokes at the **backend** (required):
 
 ```bash
-# On the hub: starts the SLIM node + backend
+# On the hub: starts the SLIM node, backend, and UI
 mycelium hub host
 mycelium up
 
@@ -94,7 +94,7 @@ Coordination messages on the fabric ride SLIM as additive [L9 envelopes](#l9-pro
 | LLM | Pi | plan compilation + health probe |
 | Backend | FastAPI (room moderator) | membership, transcript, moderation API |
 | CLI | Typer + Rich | agent interface |
-| Frontend | Next.js + Tailwind | frontend UI |
+| Frontend | Next.js + Tailwind | the human-facing app; starts with the stack |
 
 **Participation is built into the CLI.** Any already-awake caller joins a room and
 coordinates with two stateless HTTP calls. The backend holds membership via a

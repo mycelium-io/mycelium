@@ -48,6 +48,9 @@ export function CommandPalette({ open, onClose, commands, recent, onRun, mac }: 
 
   useEffect(() => {
     if (!open) return;
+    // Capturing what to restore focus to reads document.activeElement, so the
+    // rest of the on-open reset stays here with it.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setQuery("");
     ran.current = false;
     restoreTo.current = document.activeElement as HTMLElement | null;

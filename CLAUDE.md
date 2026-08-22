@@ -182,8 +182,9 @@ is no litellm dependency.
   plan → work. This is the value add; don't change it to an augmentation layer.
 - **memory set always upserts.** `memory set` overwrites existing keys automatically
   (version increments). Frontmatter the store doesn't manage is user data: it
-  survives a rewrite rather than being dropped, and `MemoryCreate.meta` (CLI:
-  `--meta k=v`, `--expandable`) writes it.
+  survives a rewrite rather than being dropped, `MemoryCreate.meta` (CLI:
+  `--meta k=v`, `--expandable`) writes it, and `MemoryRead.meta` reads it back —
+  every frontmatter key outside `MANAGED_META` (`services/filesystem.py`).
 - **Memories interlink; the link index is derived.** `myc://key` (canonical) and
   `[[key]]` (shorthand) are the same edge, plus `![[key]]` transclusions and typed
   frontmatter relations (`supersedes`, `depends-on`, `part-of`, `relates-to`).
@@ -309,6 +310,13 @@ is no litellm dependency.
   code + the user-facing guides):** custodial means the hub still holds
   every key + plaintext; this hardens the wire + attribution + access-by-membership,
   and it is **NOT** E2E-from-the-hub.
+- **The UI is part of the stack, not an opt-in profile.** `mycelium-frontend` has
+  no compose profile: `mycelium install` and `mycelium up` bring it up alongside
+  the SLIM node and the backend, and `mycelium down` / `logs` / `status` see it
+  without any profile plumbing. The app *is* the product surface — the CLI is the
+  agent-facing protocol, the browser is where a human works — so there is no
+  `--ui` / `--no-ui` flag and no install prompt to decline it. The collector
+  (`profiles: [metrics]`) is still the one opt-in service.
 - **GUI server state is one SWR cache; client state stays local.** Every room
   read in the frontend goes through `mycelium-frontend/src/lib/room-data.ts` —
   typed SWR hooks keyed `["room", name, resource]`, so N panels reading the same
@@ -337,6 +345,23 @@ is no litellm dependency.
   plaintext, so it is **NOT** E2E-from-the-hub. Remote auth is a bearer token
   named by `a2a_auth_env` and resolved from the backend env — the secret never
   lands in room memory.
+- **CI is fast on purpose; timing is reported, never enforced.** A PR run's
+  critical path is ~95s, and that is a property worth defending — it erodes
+  twenty seconds at a time, invisibly. The `timing` job reads the run's own job
+  durations back from the Actions API, writes them into the run summary, and
+  warns against the budgets in `.github/ci-budgets.json`. It cannot fail a run:
+  a slow PR should merge and say it was slow. Raise a budget deliberately, in
+  the PR that makes the job slower. `scripts/check_workflows.py` (the `hygiene`
+  job) keeps the budgets naming real jobs, every `uses:` pinned to a commit SHA,
+  and every workflow declaring its own `permissions:`.
+- **Screenshots publish through a workflow, and it is additive.** The capture
+  pipeline (`pnpm screenshots`) is the same one that runs locally; the
+  `Screenshots` workflow runs it on a runner on manual dispatch and opens PRs
+  against `docs/` and the splash repo rather than pushing. The splash half needs
+  `SPLASH_REPO_TOKEN`, a PAT scoped to `mycelium-io/mycelium-io.github.io`
+  alone; without it the docs half still runs. Nothing on the PR path gets
+  slower, and a runner-rendered PNG differs subtly from a laptop-rendered one —
+  which is exactly why it lands as a reviewable diff.
 
 ## Local development
 
@@ -351,7 +376,8 @@ The normal `mycelium up` / `mycelium install` flow uses `compose.yml` with
 `pull_policy: always` (released images), the correct path for end users. For dev,
 add `compose-dev.yml`, which builds `mycelium-backend` from local source and wires
 `~/.mycelium/.env` into the containers. The stack is a SLIM node + the backend (+
-optional frontend/collector), with **no database**. Always run from the repo root.
+the frontend, plus an optional collector), with **no database**. Always run
+from the repo root.
 
 ```bash
 docker compose \
@@ -360,8 +386,8 @@ docker compose \
   up -d --build
 ```
 
-On subsequent runs, drop `--build` unless you've changed backend code. Add
-`--profile ui` for the frontend.
+On subsequent runs, drop `--build` unless you've changed backend code. The
+frontend comes up with the stack; add `--profile metrics` for the collector.
 
 ### LLM config
 
