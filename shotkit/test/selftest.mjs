@@ -21,11 +21,24 @@ import { locate, parseAction } from "../src/actions.mjs";
 import { backdrop, palette } from "../src/theme.mjs";
 import { CANVAS_VARS, VEIL, networkDocument } from "../src/mycelial.mjs";
 import { cardDocument } from "../src/card.mjs";
+import { encodeArgs, findEncoder, forgetEncoder, jpegSize, startEncoder } from "../src/encode.mjs";
+import { parseZoom } from "../src/video.mjs";
+import { startPump } from "../src/pump.mjs";
 
 let failures = 0;
 function test(name, fn) {
   try {
     fn();
+    process.stdout.write(`  \x1b[32m✓\x1b[0m ${name}\n`);
+  } catch (err) {
+    failures += 1;
+    process.stdout.write(`  \x1b[31m✗\x1b[0m ${name}\n    ${err.message}\n`);
+  }
+}
+
+async function atest(name, fn) {
+  try {
+    await fn();
     process.stdout.write(`  \x1b[32m✓\x1b[0m ${name}\n`);
   } catch (err) {
     failures += 1;
@@ -167,6 +180,37 @@ test("an action splits on its first colon only", () => {
   assert.deepEqual(parseAction("reload"), { verb: "reload", arg: "" });
 });
 
+test("a zoom argument splits into a target and a factor", () => {
+  assert.deepEqual(parseZoom("out", 1.6), { target: "", z: 1 });
+  assert.deepEqual(parseZoom("2", 1.6), { target: "", z: 2 });
+  assert.deepEqual(parseZoom("#panel", 1.6), { target: "#panel", z: 1.6 });
+  assert.deepEqual(parseZoom("#panel@2.2", 1.6), { target: "#panel", z: 2.2 });
+  // A selector may hold digits and colons; only the tail after @ is a factor.
+  assert.deepEqual(parseZoom("text=Save 2", 1.6), { target: "text=Save 2", z: 1.6 });
+});
+
+test("the encoder is fed frames on a pipe and writes even dimensions", () => {
+  const args = encodeArgs({ format: "mp4", fps: 30, width: 1281, height: 801, out: "/tmp/a.mp4" });
+  // A bare "-" is not a protocol Playwright's stripped ffmpeg registers.
+  assert.ok(args.includes("pipe:0"));
+  assert.ok(args.includes("scale=1280:800"), "4:2:0 refuses odd dimensions");
+  assert.ok(args.includes("libx264"));
+  assert.equal(encodeArgs({ format: "webm", fps: 30, width: 640, height: 400, out: "/tmp/a.webm" })
+    .includes("libvpx"), true);
+  assert.throws(() => encodeArgs({ format: "mov", fps: 30, width: 2, height: 2, out: "x" }), /unknown video format/);
+});
+
+test("a jpeg's size comes out of its frame header", () => {
+  // SOI, an APP0 whose length must be skipped, then SOF0 carrying 200x100.
+  const jpeg = Buffer.from([
+    0xff, 0xd8,
+    0xff, 0xe0, 0x00, 0x04, 0x00, 0x00,
+    0xff, 0xc0, 0x00, 0x11, 0x08, 0x00, 0x64, 0x00, 0xc8, 0x03, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  ]);
+  assert.deepEqual(jpegSize(jpeg), { width: 200, height: 100 });
+  assert.deepEqual(jpegSize(Buffer.from([0xff, 0xd8])), { width: 0, height: 0 });
+});
+
 test("a backdrop preset resolves per theme, and unknown values pass through", () => {
   assert.equal(backdrop("mycelial", "dark"), CANVAS_VARS.dark.bg);
   assert.equal(backdrop("mycelial", "light"), CANVAS_VARS.light.bg);
@@ -223,15 +267,7 @@ function fakePage(present) {
 }
 
 await (async () => {
-  const acount = async (name, fn) => {
-    try {
-      await fn();
-      process.stdout.write(`  \x1b[32m✓\x1b[0m ${name}\n`);
-    } catch (err) {
-      failures += 1;
-      process.stdout.write(`  \x1b[31m✗\x1b[0m ${name}\n    ${err.message}\n`);
-    }
-  };
+  const acount = atest;
 
   await acount("a selector with punctuation stays CSS", async () => {
     const r = await locate(fakePage([]), ".offer-grid");
@@ -255,6 +291,23 @@ await (async () => {
     assert.equal(r.kind, "label");
   });
 
+  await acount("a multi-word label is a label, not a descendant selector", async () => {
+    // `page.locator("Save changes")` is valid CSS — a <changes> inside a <Save>
+    // — so getting this wrong fails silently rather than throwing.
+    const r = await locate(fakePage([]), "Save changes");
+    assert.equal(r.kind, "label");
+  });
+
+  await acount("a phrase of tag names is still a label", async () => {
+    const r = await locate(fakePage(["css:nav button"]), "nav button");
+    assert.equal(r.kind, "label");
+  });
+
+  await acount("an explicit css= prefix still reaches the selector engine", async () => {
+    const r = await locate(fakePage([]), "css=nav button");
+    assert.equal(r.kind, "css");
+  });
+
   await acount("the tag is used only when no label matches it", async () => {
     const r = await locate(fakePage(["css:select"]), "select");
     assert.equal(r.kind, "css");
@@ -265,6 +318,157 @@ await (async () => {
     assert.equal(r.kind, "label");
   });
 })();
+
+/* ── The recording lifecycle ────────────────────────────────────────────────
+ * The pump and the encoder are where a take can hang rather than fail, so they
+ * are exercised here with a source that is an object and an "ffmpeg" that is
+ * `/bin/false` — no browser, no codec, and every death path reachable.
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/** A 1x1 JPEG header: enough for jpegSize, which is all the pump reads. */
+const FRAME = Buffer.from([
+  0xff, 0xd8,
+  0xff, 0xc0, 0x00, 0x11, 0x08, 0x00, 0x01, 0x00, 0x01, 0x03, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0xff, 0xd9,
+]);
+
+const heldSource = (frame = FRAME) => ({ mode: "test", latest: frame, stop: async () => {} });
+
+/** An encoder that counts, without spawning anything. */
+function fakeEncoder(overrides = {}) {
+  const enc = {
+    frames: 0,
+    saturated: false,
+    failure: null,
+    finished: 0,
+    killed: 0,
+    write() {
+      enc.frames += 1;
+      return true;
+    },
+    async finish() {
+      enc.finished += 1;
+      return { frames: enc.frames };
+    },
+    kill() {
+      enc.killed += 1;
+    },
+    ...overrides,
+  };
+  return enc;
+}
+
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+await (async () => {
+  await atest("a dead ffmpeg is reported, not waited on forever", async () => {
+    // `finish()` used to register its exit listener when called. A process that
+    // died on its arguments emits `close` once, long before that, and the take
+    // hung on an event that had already happened.
+    const enc = startEncoder({ format: "webm", fps: 30, width: 64, height: 64, out: "/tmp/shotkit-dead.webm", ffmpeg: "/bin/false" });
+    await wait(200);
+    for (let i = 0; i < 3; i++) enc.write(FRAME);
+    const outcome = await Promise.race([
+      enc.finish().then(() => "resolved", (e) => e.message),
+      wait(3_000).then(() => "HUNG"),
+    ]);
+    assert.match(outcome, /ffmpeg exited/, `expected ffmpeg's exit, got: ${outcome}`);
+  });
+
+  await atest("an ffmpeg that cannot be spawned at all is reported too", async () => {
+    const enc = startEncoder({ format: "webm", fps: 30, width: 64, height: 64, out: "/tmp/x.webm", ffmpeg: "/nonexistent/ffmpeg" });
+    enc.write(FRAME);
+    const outcome = await Promise.race([
+      enc.finish().then(() => "resolved", (e) => e.code ?? e.message),
+      wait(3_000).then(() => "HUNG"),
+    ]);
+    assert.equal(outcome, "ENOENT");
+  });
+
+  await atest("finishing twice gives the same answer, not a second wait", async () => {
+    const enc = startEncoder({ format: "webm", fps: 30, width: 64, height: 64, out: "/tmp/x.webm", ffmpeg: "/bin/false" });
+    enc.write(FRAME);
+    const first = await enc.finish().catch((e) => e.message);
+    const second = await Promise.race([enc.finish().catch((e) => e.message), wait(2_000).then(() => "HUNG")]);
+    assert.equal(second, first);
+  });
+
+  await atest("the pump writes the held frame on every beat", async () => {
+    const enc = fakeEncoder();
+    const pump = startPump({ source: heldSource(), fps: 50, maxFrames: 1000, encoder: () => enc });
+    await wait(220);
+    const { frames, width, height } = await pump.stop();
+    // A still page still costs a frame per beat: the file's timeline is
+    // wall-clock, not change-driven.
+    assert.ok(frames >= 4, `expected several beats, got ${frames}`);
+    assert.deepEqual({ width, height }, { width: 1, height: 1 });
+    assert.equal(enc.finished, 1);
+  });
+
+  await atest("the frame cap stops the writing and says so", async () => {
+    const enc = fakeEncoder();
+    const pump = startPump({ source: heldSource(), fps: 50, maxFrames: 3, encoder: () => enc });
+    await wait(250);
+    const { frames } = await pump.stop();
+    assert.equal(frames, 3);
+    assert.equal(pump.truncated, true);
+  });
+
+  await atest("a beat that fails raises at the end rather than on the timer", async () => {
+    // Thrown from a setTimeout callback this would be an uncaught exception in
+    // whatever process is hosting the daemon.
+    const pump = startPump({
+      source: heldSource(Buffer.from([1, 2, 3])),
+      fps: 50,
+      maxFrames: 100,
+      encoder: () => fakeEncoder(),
+    });
+    await wait(120);
+    await assert.rejects(() => pump.stop(), /readable JPEG/);
+  });
+
+  await atest("an encoder that dies mid-take ends the take early", async () => {
+    const enc = fakeEncoder({ failure: new Error("ffmpeg exited 1") });
+    const pump = startPump({ source: heldSource(), fps: 50, maxFrames: 100, encoder: () => enc });
+    const why = await Promise.race([pump.trouble, wait(2_000).then(() => "NEVER")]);
+    assert.equal(why, "encoder");
+    await assert.rejects(() => pump.stop(), /ffmpeg exited 1/);
+  });
+
+  await atest("a page that never produced a frame is a clear failure", async () => {
+    const pump = startPump({
+      source: { mode: "test", latest: null, stop: async () => {} },
+      fps: 50,
+      maxFrames: 100,
+      encoder: () => fakeEncoder(),
+    });
+    await wait(80);
+    await assert.rejects(() => pump.stop(), /never produced a frame/);
+  });
+
+  await atest("an ffmpeg named by hand is never quietly replaced", async () => {
+    const before = process.env.SHOTKIT_FFMPEG;
+    process.env.SHOTKIT_FFMPEG = "/bin/false";
+    forgetEncoder();
+    try {
+      await assert.rejects(() => findEncoder(), /SHOTKIT_FFMPEG/);
+    } finally {
+      if (before === undefined) delete process.env.SHOTKIT_FFMPEG;
+      else process.env.SHOTKIT_FFMPEG = before;
+      forgetEncoder();
+    }
+  });
+
+  await atest("aborting still closes the file, and leaves no timer behind", async () => {
+    const enc = fakeEncoder();
+    const pump = startPump({ source: heldSource(), fps: 50, maxFrames: 100, encoder: () => enc });
+    await wait(120);
+    await pump.abort();
+    assert.equal(enc.finished, 1);
+    assert.equal(enc.killed, 0);
+  });
+})();
+
 
 process.stdout.write(failures ? `\n${failures} failing\n` : "\nall passing\n");
 process.exit(failures ? 1 : 0);

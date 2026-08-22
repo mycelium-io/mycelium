@@ -130,7 +130,7 @@ model later with `mycelium config set llm.model <model>` and
 Bring it up, check on it, or stop it:
 
 ```bash
-mycelium up       # start the server
+mycelium up       # start the stack: SLIM node, backend, and UI
 mycelium status   # health check for the backend, node, and LLM
 mycelium logs     # tail logs if something looks off
 mycelium down     # stop it
@@ -1241,13 +1241,13 @@ as **thin HTTP clients** to the hub API.
 
 | Role  | What runs locally | When to use |
 |-------|-------------------|-------------|
-| **Hub**   | The SLIM node + the thin FastAPI backend (room moderator). | The team's shared coordination server. One per team. |
+| **Hub**   | The SLIM node, the thin FastAPI backend (room moderator), and the UI. | The team's shared coordination server. One per team. |
 | **Spoke** | CLI + agents only. Points `server.api_url` at the hub backend. | Each teammate's laptop. Memory and participation go over HTTP `:8000`. |
 
 Stand a hub up and point spokes at the **backend** (required):
 
 ```bash
-# On the hub: starts the SLIM node + backend
+# On the hub: starts the SLIM node, backend, and UI
 mycelium hub host
 mycelium up
 
@@ -1311,7 +1311,7 @@ Coordination messages on the fabric ride SLIM as additive [L9 envelopes](#l9-pro
 | LLM | Pi | plan compilation + health probe |
 | Backend | FastAPI (room moderator) | membership, transcript, moderation API |
 | CLI | Typer + Rich | agent interface |
-| Frontend | Next.js + Tailwind | frontend UI |
+| Frontend | Next.js + Tailwind | the human-facing app; starts with the stack |
 
 **Participation is built into the CLI.** Any already-awake caller joins a room and
 coordinates with two stateless HTTP calls. The backend holds membership via a
@@ -2430,8 +2430,7 @@ export MYCELIUM_OIDC_CLIENT_ID=mycelium-web
 export MYCELIUM_OIDC_AUDIENCE=mycelium
 export AUTH_SESSION_SECRET=$(openssl rand -hex 32)
 
-docker compose -f compose.yml -f compose-dev.yml -f compose-keycloak.yml \
-  --profile ui up -d
+docker compose -f compose.yml -f compose-dev.yml -f compose-keycloak.yml up -d
 ```
 
 The **issuer split is the same as the backend's**, for the same reason: the
@@ -2725,7 +2724,7 @@ Unreachable* above); the backend and the node are separate ports.
 | `LLM_BASE_URL` | Custom LLM endpoint (Ollama, vLLM) | (none) |
 | `MYCELIUM_DATA_DIR` | Data directory | `~/.mycelium` |
 | `MYCELIUM_BACKEND_PORT` | Backend API host port | `8000` |
-| `MYCELIUM_UI_PORT` | Frontend host port (`--ui`) | `3000` |
+| `MYCELIUM_UI_PORT` | Frontend host port | `3000` |
 | `MYCELIUM_METRICS_PORT` | OTLP collector host port (`--metrics`) | `4318` |
 
 All of these are written by `mycelium config apply` from the matching

@@ -193,8 +193,7 @@ export MYCELIUM_OIDC_CLIENT_ID=mycelium-web
 export MYCELIUM_OIDC_AUDIENCE=mycelium
 export AUTH_SESSION_SECRET=$(openssl rand -hex 32)
 
-docker compose -f compose.yml -f compose-dev.yml -f compose-keycloak.yml \
-  --profile ui up -d
+docker compose -f compose.yml -f compose-dev.yml -f compose-keycloak.yml up -d
 ```
 
 The **issuer split is the same as the backend's**, for the same reason: the

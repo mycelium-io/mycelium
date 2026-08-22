@@ -27,7 +27,11 @@ shotkit/            The repo's camera: fast screenshots of the running app and o
                     — `app` (a route, with --mock booting dev:mock), `term` (a
                     command under a pty, so Rich keeps its colors, rendered as a
                     Carbon-style card), `code`, plus --responsive/--sheet for
-                    breakpoints and open/do/shoot for driving a held page. See the
+                    breakpoints and open/do/shoot for driving a held page. `video`
+                    records the same `--do` flow as a short clip with a drawn
+                    cursor, click rings and a camera that pushes in (--auto-zoom),
+                    encoded by whatever ffmpeg is on the machine — mp4 with a full
+                    one, webm off the build Playwright ships. See the
                     `screenshot` skill. Captures land in gitignored `.shotkit/`;
                     the committed docs assets are still `pnpm screenshots`, which
                     now runs on this engine.
@@ -305,6 +309,13 @@ is no litellm dependency.
   code + the user-facing guides):** custodial means the hub still holds
   every key + plaintext; this hardens the wire + attribution + access-by-membership,
   and it is **NOT** E2E-from-the-hub.
+- **The UI is part of the stack, not an opt-in profile.** `mycelium-frontend` has
+  no compose profile: `mycelium install` and `mycelium up` bring it up alongside
+  the SLIM node and the backend, and `mycelium down` / `logs` / `status` see it
+  without any profile plumbing. The app *is* the product surface — the CLI is the
+  agent-facing protocol, the browser is where a human works — so there is no
+  `--ui` / `--no-ui` flag and no install prompt to decline it. The collector
+  (`profiles: [metrics]`) is still the one opt-in service.
 - **GUI server state is one SWR cache; client state stays local.** Every room
   read in the frontend goes through `mycelium-frontend/src/lib/room-data.ts` —
   typed SWR hooks keyed `["room", name, resource]`, so N panels reading the same
@@ -333,7 +344,8 @@ The normal `mycelium up` / `mycelium install` flow uses `compose.yml` with
 `pull_policy: always` (released images), the correct path for end users. For dev,
 add `compose-dev.yml`, which builds `mycelium-backend` from local source and wires
 `~/.mycelium/.env` into the containers. The stack is a SLIM node + the backend (+
-optional frontend/collector), with **no database**. Always run from the repo root.
+the frontend, plus an optional collector), with **no database**. Always run
+from the repo root.
 
 ```bash
 docker compose \
@@ -342,8 +354,8 @@ docker compose \
   up -d --build
 ```
 
-On subsequent runs, drop `--build` unless you've changed backend code. Add
-`--profile ui` for the frontend.
+On subsequent runs, drop `--build` unless you've changed backend code. The
+frontend comes up with the stack; add `--profile metrics` for the collector.
 
 ### LLM config
 

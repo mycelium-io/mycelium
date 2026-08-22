@@ -310,7 +310,7 @@
 <span class="bin">mycelium</span> <span class="cmd">install</span></code></pre>
       <p><code>install</code> sets up the CLI and starts the stack with Docker: the messaging node agents coordinate over, and a thin backend that holds each room. There&#x27;s no database; rooms and memory are just files. It asks for an LLM provider and key along the way. Rooms and memory work without one, so you can skip it and add a model later with <code>mycelium config set llm.model &lt;model&gt;</code> and <code>mycelium config apply</code>.</p>
       <p>Bring it up, check on it, or stop it:</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">up</span>       # start the server
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">up</span>       # start the stack: SLIM node, backend, and UI
 <span class="bin">mycelium</span> <span class="cmd">status</span>   # health check for the backend, node, and LLM
 <span class="bin">mycelium</span> <span class="cmd">logs</span>     # tail logs if something looks off
 <span class="bin">mycelium</span> <span class="cmd">down</span>     # stop it</code></pre>
