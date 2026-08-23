@@ -1,6 +1,6 @@
 {
   "_comment": "Frozen vocabulary for the coordination board. The GUI (mycelium-frontend/src/lib/board/) and the CLI (mycelium-cli/src/mycelium/board/) each carry their own copy of the projection rules \u2014 the thin `uv tool` CLI can't import the frontend and vice versa \u2014 so the words they must agree on live here, the same way contracts/slim-l9-wire.json freezes the SLIM+L9 constants. A unit test on each side asserts against this file, so neither copy can drift without a red gate.",
-  "version": 1,
+  "version": 2,
   "statuses": [
     "open",
     "in_review",
@@ -21,18 +21,18 @@
     "normal",
     "low"
   ],
-  "lenses": [
+  "attention_filters": [
     "needs_you",
     "in_flight",
     "resolved"
   ],
-  "lens_of_status": {
+  "attention_of_status": {
     "open": "needs_you",
     "in_review": "in_flight",
     "resolved": "resolved",
     "dismissed": "resolved"
   },
-  "verbs": [
+  "row_actions": [
     "claim",
     "release",
     "resolve",
@@ -41,7 +41,7 @@
     "promote",
     "dismiss"
   ],
-  "verb_keys": {
+  "row_action_keys": {
     "claim": "c",
     "release": "e",
     "resolve": "r",
@@ -87,9 +87,9 @@
       "upstream_pending"
     ]
   },
-  "custody": {
-    "_comment": "Custody: who holds a row, and for how much longer. Separate from `status` because an ephemeral actor cannot promise the future \u2014 every claim it makes is a lease, so the board must be able to say a holder went quiet without anyone writing that down. `held` is the only state with a holder; `unclaimed` and `expired` are derived and never stored, which is why `stored_states` is the shorter list. Freshness is the same shape the upstream model already ships (fresh/stale/expired against fetched_at/ttl), pointed at claimed_at.",
-    "field": "custody",
+  "assignment": {
+    "_comment": "Assignment: who holds a row, and for how much longer. Separate from `status` because an ephemeral actor cannot promise the future \u2014 every claim it makes runs on a window, so the board must be able to say a holder went quiet without anyone writing that down. `held` is the only state with a holder; `unclaimed` and `expired` are derived and never stored, which is why `stored_states` is the shorter list. Freshness is the same shape the upstream model already ships (fresh/stale/expired against fetched_at/ttl), pointed at claimed_at. The word is `assignment` and not `custody`: `custody` is taken, by the hub holding a member's MLS keys (fastapi-backend/app/services/custody.py), which shares no concept with this.",
+    "field": "assignment",
     "states": [
       "unclaimed",
       "held",
@@ -116,29 +116,29 @@
     "companion_fields": [
       "claimed_at",
       "ttl_minutes",
-      "custody_note",
-      "custody_note_by"
+      "assignment_note",
+      "assignment_note_by"
     ],
     "runtime_author": "runtime",
-    "lens_of_custody": {
+    "attention_of_assignment": {
       "unclaimed": "needs_you",
       "held": "in_flight",
       "released": "needs_you",
       "expired": "needs_you",
       "resolved": "resolved"
     },
-    "leasable_namespaces": [
+    "assignable_namespaces": [
       "work"
     ],
     "refusals": {
-      "episode": "an episode is a recorded negotiation, and there is nothing to write a lease onto",
+      "episode": "an episode is a recorded negotiation, and there is nothing to assign",
       "agent": "presence is already a lease the runtime renews; it is not claimable",
-      "memory": "leases live on work/ memories; this row is in another namespace"
+      "memory": "assignments live on work/ memories; this row is in another namespace"
     },
     "blocked_field": "blocked_by"
   },
   "fields": {
-    "_comment": "What a board verb writes when it is not custody: frontmatter on the row's memory, through the same upsert `memory set --meta` goes through. Only a memory carries frontmatter, so every other projected row refuses in its own terms rather than accepting a write that goes nowhere. The reserved set is deliberately NOT listed here \u2014 it is derived from `custody` (its field, its companion fields, and the holder), and each implementation asserts that derivation rather than a second copy that could drift.",
+    "_comment": "What a row action writes when it is not an assignment: frontmatter on the row's memory, through the same upsert `memory set --meta` goes through. Only a memory carries frontmatter, so every other projected row refuses in its own terms rather than accepting a write that goes nowhere. The reserved set is deliberately NOT listed here \u2014 it is derived from `assignment` (its field, its companion fields, and the holder), and each implementation asserts that derivation rather than a second copy that could drift.",
     "writable_source_kinds": [
       "memory"
     ],
@@ -173,7 +173,7 @@
         "type": "select"
       },
       {
-        "name": "custody",
+        "name": "assignment",
         "values": [
           "held",
           "unclaimed"

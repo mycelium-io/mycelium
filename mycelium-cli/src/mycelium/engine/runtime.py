@@ -62,7 +62,7 @@ def _topic_urn(room: str) -> str:
     return f"urn:concept:mycelium:{room}"
 
 
-class EngineDrive:
+class NegotiationRunner:
     """Runs one SAO negotiation as ``engine_handle`` over an :class:`EngineChannel`."""
 
     def __init__(
@@ -73,7 +73,7 @@ class EngineDrive:
         episode: str,
         topic: str,
         channel: EngineChannel,
-        brain: Callable[..., str],
+        llm_session: Callable[..., str],
         max_steps: int = 20,
         round_timeout_s: float = 90.0,
     ) -> None:
@@ -82,7 +82,7 @@ class EngineDrive:
         self._episode = episode
         self._topic = topic
         self._channel = channel
-        self._brain = brain
+        self._llm_session = llm_session
         self._max_steps = max_steps
         self._round_timeout_s = round_timeout_s
 
@@ -99,7 +99,7 @@ class EngineDrive:
             mediator.discover_issues,
             "Converge on the room's open question; agree one value per issue.",
             openings,
-            llm=self._brain,
+            llm=self._llm_session,
         )
         if not issues:
             logger.info("engine %s: no issues discovered; rejecting", self._handle)
@@ -113,7 +113,7 @@ class EngineDrive:
             loop=loop,
             fetch_prose=self._slim_turn,
             turn_timeout_s=self._round_timeout_s,
-            llm=self._brain,
+            llm=self._llm_session,
         )
         mech = mediator.build_mechanism(issues, participants, negotiation, cap=self._max_steps)
         await asyncio.to_thread(mech.run)
@@ -220,7 +220,7 @@ class SlimEngineChannel:
     Wraps the CLI ``SlimClient`` (the same transport the daemon connector uses).
     This is the one part of the runtime whose correctness only shows up live (the
     wire format + real agent connectors), so it's deliberately thin: build the
-    content dicts in :class:`EngineDrive`, move bytes here.
+    content dicts in :class:`NegotiationRunner`, move bytes here.
     """
 
     def __init__(self, client: Any, session: Any) -> None:  # noqa: ANN401 - slim_bindings types
@@ -244,14 +244,14 @@ class SlimEngineChannel:
         return l9.parse(message.payload)
 
 
-async def drive_over_channel(
+async def run_negotiation_over_channel(
     *,
     handle: str,
     room: str,
     kind: str,
     participants: list[str],
     openings: dict[str, str],
-    brain: Callable[..., str],
+    llm_session: Callable[..., str],
     channel: EngineChannel,
     max_steps: int = 20,
     round_timeout_s: float = 90.0,
@@ -264,13 +264,13 @@ async def drive_over_channel(
     accepted for forward-compat (future CEs route here); only ``aligner`` runs a
     NEGMAS SAO today.
     """
-    drive = EngineDrive(
+    drive = NegotiationRunner(
         engine_handle=handle,
         room=room,
         episode=_episode_urn(room),
         topic=_topic_urn(room),
         channel=channel,
-        brain=brain,
+        llm_session=llm_session,
         max_steps=max_steps,
         round_timeout_s=round_timeout_s,
     )

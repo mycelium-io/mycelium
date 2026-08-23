@@ -2,7 +2,7 @@
 
 Unit tests run against local files + temp dirs — **no SLIM node, no Pi binary, no
 live LLM, no backend server.** `conftest.py` isolates every test (a temp
-`MYCELIUM_DATA_DIR`, a reset in-memory `local_state`); `fakes.py` gives you the
+`MYCELIUM_DATA_DIR`, a reset in-memory `in_memory_store`); `fakes.py` gives you the
 fake coordination stack.
 
 ## Test a feature without a live stack
@@ -13,21 +13,21 @@ test. There is exactly one of each fake — don't re-declare them per file.
 | You're testing… | Import | It stands in for |
 | --- | --- | --- |
 | The aligner / mediator driving a negotiation | `FakeChannel`, `FakePersister`, `FakeManaged`, `FakeManager` | the SLIM channel + persister + `RoomChannelManager` |
-| The mediator's LLM decisions | `make_fake_llm` / `fake_brain_factory` | the Pi brain (`AlignerEngine`'s `brain_factory` seam) |
+| The mediator's LLM decisions | `make_fake_llm` / `fake_llm_session_factory` | the Pi llm_session (`AlignerEngine`'s `llm_session_factory` seam) |
 | `room_channels` provisioning / membership | `FakeSlimClient`, `FakeSession` | `slim_client.SlimClient` (the `slim_bindings` transport) |
-| `PiBrain.__call__` without spawning `pi` | `patch_pi_run(monkeypatch, stdout=…)` | `subprocess.run` / `shutil.which` |
+| `PiSession.__call__` without spawning `pi` | `patch_pi_run(monkeypatch, stdout=…)` | `subprocess.run` / `shutil.which` |
 
 ### Example — drive the SAO mediator to agreement, node-free
 
 ```python
-from tests.fakes import FakeChannel, FakePersister, FakeManaged, FakeManager, fake_brain_factory
+from tests.fakes import FakeChannel, FakePersister, FakeManaged, FakeManager, fake_llm_session_factory
 
 persister = FakePersister()
 channel = FakeChannel(persister, reply_conf=0.9)   # every prompt draws a reply
 managed = FakeManaged("room", "mycelium", channel, persister)
 manager = FakeManager(managed, ["growth", "risk", "aligner"])
 
-engine = aligner.AlignerEngine(manager, handle="aligner", brain_factory=fake_brain_factory)
+engine = aligner.AlignerEngine(manager, handle="aligner", llm_session_factory=fake_llm_session_factory)
 verdict = await engine.mediate("room")   # converges without a node or an LLM
 ```
 

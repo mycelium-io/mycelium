@@ -26,7 +26,14 @@ from typing import Any
 import httpx
 
 from app.services.status.auth import Bearer
-from app.services.status.types import Context, Err, Liveness, Ok, Outcome, Ref
+from app.services.status.types import (
+    FetchFailed,
+    FetchOutcome,
+    FetchSucceeded,
+    ProviderContext,
+    Ref,
+    UpstreamState,
+)
 
 #: ``owner/repo#123`` and the pasted browser URL, which is what people have on
 #: their clipboard when they are talking about a pull request.
@@ -109,7 +116,7 @@ class GitHubProvider:
             )
         return refs
 
-    async def fetch(self, refs: list[Ref], ctx: Context) -> list[Outcome]:
+    async def fetch(self, refs: list[Ref], ctx: ProviderContext) -> list[FetchOutcome]:
         # No auth here: a provider that is called at all has its credential, and
         # ``ctx.http`` is already bound to ``base_url`` carrying it.
         response = await ctx.http.post("/graphql", json={"query": _document(refs)})
@@ -119,12 +126,12 @@ class GitHubProvider:
         # from body text alone.
         if _is_rate_limited(response):
             wait = _retry_after(response) or timedelta(minutes=5)
-            return [Err(ref=ref, reason="rate limited", retry_after=wait) for ref in refs]
+            return [FetchFailed(ref=ref, reason="rate limited", retry_after=wait) for ref in refs]
         if response.status_code >= 400:
-            return [Err(ref=ref, reason=f"github {response.status_code}") for ref in refs]
+            return [FetchFailed(ref=ref, reason=f"github {response.status_code}") for ref in refs]
 
         data = response.json().get("data") or {}
-        outcomes: list[Outcome] = []
+        outcomes: list[FetchOutcome] = []
         for i, ref in enumerate(refs):
             alias = data.get(f"r{i}")
             node = alias.get("pullRequest") if isinstance(alias, dict) else None
@@ -132,13 +139,15 @@ class GitHubProvider:
                 # A null alias: private, deleted, or outside the token's reach,
                 # sometimes with a per-alias GraphQL error beside it. None of
                 # them is "no CI", so none is answered as a value.
-                outcomes.append(Err(ref=ref, reason="not visible to this token"))
+                outcomes.append(FetchFailed(ref=ref, reason="not visible to this token"))
                 continue
-            outcomes.append(Ok(ref=ref, liveness=_liveness(node), ttl=_ttl_for(node)))
+            outcomes.append(
+                FetchSucceeded(ref=ref, upstream=_upstream_state(node), ttl=_ttl_for(node))
+            )
         return outcomes
 
 
-def _liveness(node: dict[str, Any]) -> Liveness:
+def _upstream_state(node: dict[str, Any]) -> UpstreamState:
     rollup = _rollup(node)
     if node.get("state") in ("MERGED", "CLOSED"):
         state, label = _STATE[node["state"]], node["state"].lower()
@@ -155,7 +164,7 @@ def _liveness(node: dict[str, Any]) -> Liveness:
     else:
         state, label = "pending", "awaiting review"
 
-    return Liveness(
+    return UpstreamState(
         state=state,  # type: ignore[arg-type]
         label=label,
         url=node.get("url"),

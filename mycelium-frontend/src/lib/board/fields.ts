@@ -5,9 +5,9 @@
  * Reading a row's frontmatter bag.
  *
  * Fields are untyped on purpose: a room can put anything in frontmatter, and a
- * row missing a field the cockpit likes still renders rather than crashing.
+ * row missing a field the triage likes still renders rather than crashing.
  *
- * These live below both `item` and `custody` so neither has to import the other
+ * These live below both `item` and `assignment` so neither has to import the other
  * to read a value — the derivations layer on the accessors, not on each other.
  * `item` re-exports them, so a caller still reads them where it always did.
  */
@@ -17,7 +17,7 @@ import type { LiveItem } from "./item";
 /**
  * Why a row refuses a field write, in its own terms.
  *
- * A verb that is not custody writes frontmatter, and only a memory has any. The
+ * A action that is not assignment writes frontmatter, and only a memory has any. The
  * rest of the board is projected out of state that lives elsewhere — a
  * checklist line, an episode record, a presence lease — so there is nothing to
  * write onto, and saying that beats accepting a write that goes nowhere.
@@ -46,31 +46,31 @@ export function fieldWriteRefusal(item: LiveItem): string | null {
   return FIELD_REFUSALS[item.source.kind] ?? "this row has no frontmatter to write";
 }
 
-export function str(item: LiveItem, name: string): string | null {
+export function fieldAsString(item: LiveItem, name: string): string | null {
   const v = item.fields[name];
   return typeof v === "string" && v.trim() ? v.trim() : null;
 }
 
-export function num(item: LiveItem, name: string): number | null {
+export function fieldAsNumber(item: LiveItem, name: string): number | null {
   const v = item.fields[name];
   if (typeof v === "number" && Number.isFinite(v)) return v;
   if (typeof v === "string" && v.trim() && Number.isFinite(Number(v))) return Number(v);
   return null;
 }
 
-export function arr(item: LiveItem, name: string): string[] {
+export function fieldAsList(item: LiveItem, name: string): string[] {
   const v = item.fields[name];
   if (Array.isArray(v)) return v.filter((x): x is string => typeof x === "string");
   if (typeof v === "string" && v.trim()) return [v.trim()];
   return [];
 }
 
-export function bool(item: LiveItem, name: string): boolean {
+export function fieldAsBool(item: LiveItem, name: string): boolean {
   return item.fields[name] === true;
 }
 
 /** The row's holder, without the `@`. Absent means nobody, never "unknown". */
 export function ownerOf(item: LiveItem): string | null {
-  const o = str(item, "owner");
+  const o = fieldAsString(item, "owner");
   return o ? o.replace(/^@/, "") : null;
 }

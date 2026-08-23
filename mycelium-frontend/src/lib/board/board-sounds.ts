@@ -2,9 +2,9 @@
 // Copyright 2026 Mycelium Contributors
 
 /**
- * The board's earcons: one short motif per state change.
+ * The board's sounds: one short motif per state change.
  *
- * A steer-lens is only worth having if you can stop watching it, so the surface
+ * A steer filter is only worth having if you can stop watching it, so the surface
  * is built to be heard as well as read — a row arriving that needs you sounds
  * different from one an agent just resolved, and a human's keystroke and an
  * agent's write make the same sound because they are the same write.
@@ -16,7 +16,7 @@
  */
 
 import { motif, type Note } from "@/lib/audio-ping";
-import type { Verb } from "./item";
+import type { RowAction } from "./item";
 
 /** A5 as the board's tonic; every motif is an interval off it. */
 const A = 880;
@@ -27,14 +27,14 @@ const RATIO = {
   octave: 2,
 } as const;
 
-export type Earcon =
-  | Verb
+export type BoardSound =
+  | RowAction
   | "needs_you"
   | "answer"
   | "capture"
   | "move";
 
-const MOTIFS: Record<Earcon, Note[]> = {
+const SOUNDS: Record<BoardSound, Note[]> = {
   // Rising minor third, twice: the only motif that interrupts, because it is
   // the only event that wants a human.
   needs_you: [
@@ -88,7 +88,7 @@ const MOTIFS: Record<Earcon, Note[]> = {
 /** Board sounds sit under the notification chime: ambient, never an alert. */
 const MIX = 0.45;
 
-export function earcon(name: Earcon, volume: number): void {
-  const notes = MOTIFS[name];
+export function playBoardSound(name: BoardSound, volume: number): void {
+  const notes = SOUNDS[name];
   if (notes) motif(notes, volume * MIX);
 }

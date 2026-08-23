@@ -138,9 +138,9 @@ def test_await_lease_orients_before_it_waits(fake_httpx: FakeHTTPX) -> None:
         lambda *_a: FakeResp(
             {
                 "key": "work/auth-spike",
-                "custody": "held",
+                "assignment": "held",
                 "owner": "growth",
-                "custody_note": None,
+                "assignment_note": None,
                 "since": "held|growth|2026-08-23T12:00:00+00:00|4",
                 "changed": False,
             }
@@ -149,10 +149,10 @@ def test_await_lease_orients_before_it_waits(fake_httpx: FakeHTTPX) -> None:
 
     result = runner.invoke(app, ["await", "--lease", "work/auth-spike", "--json"])
     assert result.exit_code == 0
-    assert json.loads(result.stdout)["custody"] == "held"
+    assert json.loads(result.stdout)["assignment"] == "held"
 
     method, path, params = fake_httpx.calls[0]
-    assert (method, path) == ("GET", "/api/rooms/demo/leases/await")
+    assert (method, path) == ("GET", "/api/rooms/demo/assignments/await")
     assert params["key"] == "work/auth-spike"
     # No `since` on the first call — that is what makes it orientation.
     assert "since" not in params
@@ -166,12 +166,18 @@ def test_await_lease_passes_the_token_back_so_the_next_call_blocks(
     replies = [
         {
             "key": "work/auth",
-            "custody": "unclaimed",
+            "assignment": "unclaimed",
             "owner": None,
             "since": "t0",
             "changed": False,
         },
-        {"key": "work/auth", "custody": "held", "owner": "growth", "since": "t1", "changed": True},
+        {
+            "key": "work/auth",
+            "assignment": "held",
+            "owner": "growth",
+            "since": "t1",
+            "changed": True,
+        },
     ]
 
     def responder(*_a: object) -> FakeResp:
@@ -189,7 +195,7 @@ def test_await_lease_passes_the_token_back_so_the_next_call_blocks(
 def test_await_lease_needs_no_handle(fake_httpx: FakeHTTPX) -> None:
     """Watching a row is not participating as anyone: the lease is the subject."""
     fake_httpx.respond_with(
-        lambda *_a: FakeResp({"key": "work/x", "custody": "unclaimed", "since": "t"})
+        lambda *_a: FakeResp({"key": "work/x", "assignment": "unclaimed", "since": "t"})
     )
     assert runner.invoke(app, ["await", "--lease", "work/x", "--json"]).exit_code == 0
 
@@ -201,28 +207,28 @@ def test_await_without_a_handle_or_a_lease_says_which_it_needs() -> None:
 
 
 def test_a_resident_loop_renews_the_claims_it_holds(fake_httpx: FakeHTTPX) -> None:
-    """Residency and custody are kept alive by the same loop, so an agent that
+    """Residency and assignment are kept alive by the same loop, so an agent that
     stops looping stops holding — with nobody writing that down."""
     seen: list[tuple[str, str]] = []
 
     def responder(method: str, url: str, _params: dict) -> FakeResp:
         seen.append((method, url))
-        if url.endswith("/leases/renew"):
+        if url.endswith("/assignments/renew"):
             return FakeResp({"renewed": [{"key": "work/auth-spike"}]})
         raise KeyboardInterrupt
 
     fake_httpx.respond_with(responder)
     runner.invoke(app, ["await", "--handle", "growth", "--loop"])
 
-    assert ("POST", "/api/rooms/demo/leases/renew") in seen
+    assert ("POST", "/api/rooms/demo/assignments/renew") in seen
     # The renewal happens before the wait, so a claim never lapses while its
     # holder is sitting in a long poll.
-    assert seen[0] == ("POST", "/api/rooms/demo/leases/renew")
+    assert seen[0] == ("POST", "/api/rooms/demo/assignments/renew")
 
 
 def test_a_renew_blip_does_not_drop_residency(fake_httpx: FakeHTTPX) -> None:
     def responder(_method: str, url: str, _params: dict) -> FakeResp:
-        if url.endswith("/leases/renew"):
+        if url.endswith("/assignments/renew"):
             raise httpx.ConnectError("hub hiccup")
         raise KeyboardInterrupt
 

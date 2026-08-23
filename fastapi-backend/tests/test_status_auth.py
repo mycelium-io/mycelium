@@ -25,7 +25,14 @@ import pytest
 from app.services.status.auth import AuthScheme, Basic, Bearer, Header
 from app.services.status.context import HttpContext, build_http_context
 from app.services.status.runtime import StatusRuntime
-from app.services.status.types import Context, Liveness, Ok, Outcome, Ref, StatusProvider
+from app.services.status.types import (
+    FetchOutcome,
+    FetchSucceeded,
+    ProviderContext,
+    Ref,
+    StatusProvider,
+    UpstreamState,
+)
 
 NOW = datetime(2026, 8, 22, 12, 0, tzinfo=UTC)
 
@@ -83,9 +90,9 @@ class Ping:
     def claims(self, text: str) -> list[Ref]:
         return []
 
-    async def fetch(self, refs: list[Ref], ctx: Context) -> list[Outcome]:
+    async def fetch(self, refs: list[Ref], ctx: ProviderContext) -> list[FetchOutcome]:
         await ctx.http.get("/probe")
-        return [Ok(ref=r, liveness=Liveness(state="ok", label="ok")) for r in refs]
+        return [FetchSucceeded(ref=r, upstream=UpstreamState(state="ok", label="ok")) for r in refs]
 
 
 class _Wire:

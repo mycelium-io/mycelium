@@ -89,7 +89,7 @@ their keys).
 
 A row is not a line in a shared document. It carries frontmatter, so it says
 who it is *for* (`assignee`) and, separately, whether anyone is actually
-holding it right now (`custody`, a lease that drains if nobody renews it).
+holding it right now (`assignment`, a lease that drains if nobody renews it).
 
 So when `await` returns an agreed consensus, don't stop. Take one:
 

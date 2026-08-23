@@ -27,7 +27,7 @@ export interface ActivityEvent {
   actor: string;
   actorKind: ActorKind;
   /** Past tense, one word where possible: posted, wrote, resolved, converged. */
-  verb: string;
+  action: string;
   title: string;
   source: string;
   href?: string;
@@ -184,7 +184,7 @@ export function projectActivity(input: ActivityInput): ActivityEvent[] {
       at: message.created_at,
       actor,
       actorKind: actorKind(actor, agents),
-      verb: said.verb,
+      action: said.action,
       title: said.title,
       source: "channel",
     });
@@ -198,7 +198,7 @@ export function projectActivity(input: ActivityInput): ActivityEvent[] {
       at: memory.updated_at,
       actor,
       actorKind: actorKind(actor, agents),
-      verb: memory.version > 1 ? "revised" : "wrote",
+      action: memory.version > 1 ? "revised" : "wrote",
       title: memory.key,
       source: `memory · v${memory.version}`,
       href: memoryHref(input.room, memory.key),
@@ -212,7 +212,7 @@ export function projectActivity(input: ActivityInput): ActivityEvent[] {
       at: episode.updated_at,
       actor: episode.updated_by || "aligner",
       actorKind: "engine",
-      verb: subkind === "converged" || subkind === "resolved" ? "converged" : "mediated",
+      action: subkind === "converged" || subkind === "resolved" ? "converged" : "mediated",
       title: `${episode.topic.split(":").pop()} · ${episode.participants.map(p => `@${p}`).join(" ")}`,
       source: `episode ${episode.short_id}`,
     });
@@ -303,7 +303,7 @@ export interface Digest {
   events: ActivityEvent[];
   actors: ActorDay[];
   activeDays: number;
-  byVerb: { verb: string; count: number }[];
+  byAction: { action: string; count: number }[];
 }
 
 export function digest(days: Map<DayKey, ActivityEvent[]>, from: DayKey, to: DayKey): Digest {
@@ -314,16 +314,16 @@ export function digest(days: Map<DayKey, ActivityEvent[]>, from: DayKey, to: Day
     if (forDay.length) activeDays += 1;
     events.push(...forDay);
   }
-  const verbs = new Map<string, number>();
-  for (const event of events) verbs.set(event.verb, (verbs.get(event.verb) ?? 0) + 1);
+  const rowActions = new Map<string, number>();
+  for (const event of events) rowActions.set(event.action, (rowActions.get(event.action) ?? 0) + 1);
   return {
     from,
     to,
     events: events.sort((a, b) => Date.parse(b.at) - Date.parse(a.at)),
     actors: byActor(events),
     activeDays,
-    byVerb: [...verbs.entries()]
-      .map(([verb, count]) => ({ verb, count }))
+    byAction: [...rowActions.entries()]
+      .map(([action, count]) => ({ action, count }))
       .sort((a, b) => b.count - a.count),
   };
 }
@@ -352,10 +352,10 @@ const SKIP_TYPES = new Set([
  * the wire, so they're read by type rather than printed — a log line is who did
  * what, not the envelope they did it in.
  */
-function describe(type: string, content: unknown): { verb: string; title: string } | null {
+function describe(type: string, content: unknown): { action: string; title: string } | null {
   if (CHAT_TYPES.has(type)) {
     const text = typeof content === "string" ? content : "";
-    return { verb: "posted", title: firstLine(text) || "a message" };
+    return { action: "posted", title: firstLine(text) || "a message" };
   }
   if (!type.startsWith("coordination_")) return null;
 
@@ -368,15 +368,15 @@ function describe(type: string, content: unknown): { verb: string; title: string
     const tick = (raw.payload as Record<string, unknown>) ?? raw;
     const round = tick.round ?? "?";
     const who = tick.participant_id ? `@${tick.participant_id}` : "a participant";
-    return { verb: "negotiated", title: `round ${round} · ${who} ${tick.action ?? "replied"}` };
+    return { action: "negotiated", title: `round ${round} · ${who} ${tick.action ?? "replied"}` };
   }
   if (type === "coordination_join") {
-    return { verb: "joined", title: String(raw.intent ?? "the episode") };
+    return { action: "joined", title: String(raw.intent ?? "the episode") };
   }
   if (type === "coordination_start") {
-    return { verb: "opened", title: `an episode with ${raw.agent_count ?? "?"} agents` };
+    return { action: "opened", title: `an episode with ${raw.agent_count ?? "?"} agents` };
   }
-  return { verb: type.replace("coordination_", ""), title: "" };
+  return { action: type.replace("coordination_", ""), title: "" };
 }
 
 function firstLine(text: string): string {

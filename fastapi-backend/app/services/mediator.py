@@ -23,7 +23,7 @@ negotiator's ``propose``/``respond`` bridge back to the loop with
 reply the persister records, then interpret the prose in-thread. NEGMAS keeps
 full ownership of proposer rotation and the unanimity stop; we only supply each
 agent's move when NEGMAS asks for it. LLM calls (discover/broker/interpret) run
-synchronously in-thread against the injected Pi brain (see ``pi_brain``).
+synchronously in-thread against the injected Pi llm_session (see ``pi_session``).
 
 The mediator is deliberately *interpretation over the agents' prose*: agents are
 never required to emit structured markers. The mediator restates its reading into
@@ -185,7 +185,7 @@ def discover_issues(
 ) -> list[dict[str, Any]]:
     """Mediator stage 1 — read opening prose into negotiable issues + options.
 
-    ``llm`` is the mediator's brain (the Pi agent), supplied by the caller — there
+    ``llm`` is the mediator's llm_session (the Pi agent), supplied by the caller — there
     is no built-in default. Returns a list of ``{"name": snake_case, "options":
     [token, ...]}``. An empty/degenerate result (fewer than one issue) is a signal
     to the caller to bail to a rejected verdict rather than build an empty mechanism.
@@ -409,7 +409,7 @@ class MediatedNegotiation:
         return list(self._names)
 
 
-class LiveNegotiator(SAONegotiator):
+class RemoteAgentNegotiator(SAONegotiator):
     """A NEGMAS SAO negotiator backed by a real agent's replies over SLIM.
 
     ``propose``/``respond`` mirror the proven spike's ``MediatedAgent`` — the only
@@ -539,7 +539,7 @@ def build_mechanism(
     ]
     mech = SatisfactionOrderedSAO(issues=negmas_issues, n_steps=cap, negotiation=negotiation)
     for handle in handles:
-        mech.add(LiveNegotiator(handle, negotiation))
+        mech.add(RemoteAgentNegotiator(handle, negotiation))
     return mech
 
 

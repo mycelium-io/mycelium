@@ -6,44 +6,44 @@
 import { useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import {
-  VERBS,
-  arr,
+  ROW_ACTIONS,
+  fieldAsList,
+  fieldAsString,
   kindOf,
-  lensOf,
+  attentionFilterOf,
   statusOf,
-  str,
   type LiveItem,
-  type Verb,
+  type RowAction,
 } from "@/lib/board/item";
 import { waitingOn, type ItemGroup } from "@/lib/board/view";
 import {
   AgeTag,
   BlocksNote,
-  KindGlyph,
+  KindIcon,
   LiveDot,
-  CustodyChip,
+  AssignmentChip,
   PriorityMeter,
   SourceTag,
   TtlBar,
   UpstreamChip,
   WorkLinks,
-} from "./board-bits";
+} from "./board-cells";
 
 interface Props {
   groups: ItemGroup[];
   now: number;
   selectedId: string | null;
   onSelect: (id: string) => void;
-  onVerb: (item: LiveItem, verb: Verb) => void;
+  onVerb: (item: LiveItem, action: RowAction) => void;
   onAnswer: (item: LiveItem, choice: string) => void;
 }
 
 /**
- * The steer-lens, rendered. Rows are grouped by whatever the view groups by, and
- * every row carries its own verbs — triage is one gesture from wherever the eye
+ * The steer filter, rendered. Rows are grouped by whatever the view groups by, and
+ * every row carries its own row actions — triage is one gesture from wherever the eye
  * already is, never a detour through a detail page.
  */
-export function BoardCockpit({ groups, now, selectedId, onSelect, onVerb, onAnswer }: Props) {
+export function BoardTriage({ groups, now, selectedId, onSelect, onVerb, onAnswer }: Props) {
   return (
     <div className="flex flex-col gap-6 px-5 py-4">
       {groups.map(group => (
@@ -57,13 +57,13 @@ export function BoardCockpit({ groups, now, selectedId, onSelect, onVerb, onAnsw
           </header>
           <div className="flex flex-col">
             {group.items.map(item => (
-              <CockpitRow
+              <TriageRow
                 key={item.id}
                 item={item}
                 now={now}
                 selected={item.id === selectedId}
                 onSelect={() => onSelect(item.id)}
-                onVerb={verb => onVerb(item, verb)}
+                onVerb={action => onVerb(item, action)}
                 onAnswer={choice => onAnswer(item, choice)}
               />
             ))}
@@ -74,7 +74,7 @@ export function BoardCockpit({ groups, now, selectedId, onSelect, onVerb, onAnsw
   );
 }
 
-function CockpitRow({
+function TriageRow({
   item,
   now,
   selected,
@@ -86,7 +86,7 @@ function CockpitRow({
   now: number;
   selected: boolean;
   onSelect: () => void;
-  onVerb: (verb: Verb) => void;
+  onVerb: (action: RowAction) => void;
   onAnswer: (choice: string) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -96,10 +96,10 @@ function CockpitRow({
     if (selected) ref.current?.scrollIntoView({ block: "nearest" });
   }, [selected]);
 
-  const choices = arr(item, "choices");
+  const choices = fieldAsList(item, "choices");
   const waiting = waitingOn(item);
-  const resolved = lensOf(item, now) === "resolved";
-  const urgent = str(item, "priority") === "urgent" && !resolved;
+  const resolved = attentionFilterOf(item, now) === "resolved";
+  const urgent = fieldAsString(item, "priority") === "urgent" && !resolved;
 
   return (
     <div
@@ -114,10 +114,10 @@ function CockpitRow({
         resolved && "opacity-60",
       )}
     >
-      {/* The selected row wears an accent edge; the eye keeps its place through a verb. */}
+      {/* The selected row wears an accent edge; the eye keeps its place through a action. */}
       {selected && <span className="absolute inset-y-1 left-0 w-[2px] rounded-full bg-accent" />}
 
-      <KindGlyph item={item} className="mt-[3px]" />
+      <KindIcon item={item} className="mt-[3px]" />
 
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2">
@@ -137,7 +137,7 @@ function CockpitRow({
         <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1">
           <SourceTag item={item} />
           <span className="text-faint">·</span>
-          <CustodyChip item={item} now={now} />
+          <AssignmentChip item={item} now={now} />
           <WorkLinks item={item} />
           <UpstreamChip item={item} />
           <BlocksNote item={item} />
@@ -173,7 +173,7 @@ function CockpitRow({
         <TtlBar item={item} now={now} />
       </div>
 
-      {/* Verbs stay hidden until the row is under the cursor or the caret, so a
+      {/* Row actions stay hidden until the row is under the cursor or the caret, so a
           long list reads as text rather than as a wall of buttons. */}
       <div
         className={cn(
@@ -181,18 +181,18 @@ function CockpitRow({
           selected ? "opacity-100" : "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100",
         )}
       >
-        {VERBS.filter(v => !(resolved && (v.id === "resolve" || v.id === "dismiss"))).map(verb => (
+        {ROW_ACTIONS.filter(v => !(resolved && (v.id === "resolve" || v.id === "dismiss"))).map(action => (
           <button
-            key={verb.id}
+            key={action.id}
             onClick={e => {
               e.stopPropagation();
-              onVerb(verb.id);
+              onVerb(action.id);
             }}
-            title={`${verb.label}  (${verb.key})`}
+            title={`${action.label}  (${action.key})`}
             className="rounded px-1.5 py-0.5 text-micro text-muted-foreground transition-colors hover:bg-surface hover:text-text"
           >
-            {verb.label.split(" ")[0]}
-            <span className="ml-1 font-mono text-faint">{verb.key}</span>
+            {action.label.split(" ")[0]}
+            <span className="ml-1 font-mono text-faint">{action.key}</span>
           </button>
         ))}
       </div>
@@ -202,11 +202,11 @@ function CockpitRow({
 
 /** The one-line summary the header wears, phrased the way the CLI prints it. */
 export function summarize(items: LiveItem[], now: number = Date.now()): string {
-  const needs = items.filter(i => lensOf(i, now) === "needs_you").length;
-  const flight = items.filter(i => lensOf(i, now) === "in_flight").length;
-  const resolved = items.filter(i => lensOf(i, now) === "resolved").length;
+  const needs = items.filter(i => attentionFilterOf(i, now) === "needs_you").length;
+  const flight = items.filter(i => attentionFilterOf(i, now) === "in_flight").length;
+  const resolved = items.filter(i => attentionFilterOf(i, now) === "resolved").length;
   const decisions = items.filter(
-    i => kindOf(i) === "decision" && lensOf(i, now) === "needs_you",
+    i => kindOf(i) === "decision" && attentionFilterOf(i, now) === "needs_you",
   ).length;
   const parts = [`${needs} need you`, `${flight} in flight`, `${resolved} resolved today`];
   if (decisions) parts.unshift(`${decisions} open decision${decisions === 1 ? "" : "s"}`);

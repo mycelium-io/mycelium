@@ -4,7 +4,7 @@
 """The board's row primitive and the vocabulary it is written in.
 
 A row is a stable identity plus a bag of frontmatter ``fields``.  Every view —
-the steer-lens, the kanban, the typed table — is a projection over that bag, so
+the steer-attention_filter, the kanban, the typed table — is a projection over that bag, so
 a coordination surface and a typed view over a namespace are one mechanism.
 """
 
@@ -15,7 +15,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 # Frozen in contracts/board-vocabulary.json; the GUI carries the same lists.
-#: The stage a row is at, and only that. Who holds it is ``custody`` (a lease
+#: The stage a row is at, and only that. Who holds it is ``assignment`` (a lease
 #: that drains), and whether it is blocked is derived from ``blocked_by`` — both
 #: used to be spelled here, which is how one field ended up doing three jobs.
 STATUSES = [
@@ -26,13 +26,13 @@ STATUSES = [
 ]
 KINDS = ["decision", "blocked", "review", "action", "concern", "signal"]
 PRIORITIES = ["urgent", "high", "normal", "low"]
-LENSES = ["needs_you", "in_flight", "resolved"]
-VERBS = ["claim", "release", "resolve", "block", "unblock", "promote", "dismiss"]
+ATTENTION_FILTERS = ["needs_you", "in_flight", "resolved"]
+ROW_ACTIONS = ["claim", "release", "resolve", "block", "unblock", "promote", "dismiss"]
 
-#: The lens is derived from status, never stored, so a row can't drift out of
+#: The attention filter is derived from status, never stored, so a row can't drift out of
 #: sync with the board it belongs on. This is the half for rows nobody holds;
-#: a row with a lease is lensed by its custody instead (``custody.lens_of_item``).
-LENS_OF_STATUS = {
+#: a row with a lease is lensed by its assignment instead (``assignment.attention_of_item``).
+ATTENTION_OF_STATUS = {
     "open": "needs_you",
     "in_review": "in_flight",
     "resolved": "resolved",
@@ -104,8 +104,8 @@ class LiveItem:
         return max(0, int((now - stamp).total_seconds() // 60))
 
 
-def lens_of(status: str) -> str:
-    return LENS_OF_STATUS.get(status, "needs_you")
+def attention_of_status(status: str) -> str:
+    return ATTENTION_OF_STATUS.get(status, "needs_you")
 
 
 def priority_rank(item: LiveItem) -> int:

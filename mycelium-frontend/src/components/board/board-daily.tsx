@@ -307,7 +307,7 @@ function ActorLane({
             <span className="w-14 shrink-0 whitespace-nowrap tabular text-micro text-faint">
               {formatTime(event.at, tz)}
             </span>
-            <span className="shrink-0 font-mono text-micro text-muted-foreground">{event.verb}</span>
+            <span className="shrink-0 font-mono text-micro text-muted-foreground">{event.action}</span>
             <span className="min-w-0 flex-1 truncate text-label text-text">{event.title}</span>
           </li>
         ))}

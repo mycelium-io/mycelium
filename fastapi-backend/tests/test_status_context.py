@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""The two promises the ``Context`` makes, enforced rather than trusted.
+"""The two promises the ``ProviderContext`` makes, enforced rather than trusted.
 
 ``build_http_context`` is what finally makes the contract runnable: it hands a
 provider a transport already bound to its declared host and already carrying its

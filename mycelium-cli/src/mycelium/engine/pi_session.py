@@ -1,21 +1,21 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""A Pi-backed cognitive brain for mycelium's *internal* agents.
+"""A Pi-backed LLM session for mycelium's *internal* agents.
 
 A **persistent, optionally OpenShell-sandboxed Pi session** (the SAO mediator's
-only brain) without touching the NEGMAS loop, the SLIM drive, or any *user*
+only LLM session) without touching the NEGMAS loop, the SLIM drive, or any *user*
 agent's runtime. Pi is the runtime for our own cognition agents only; participant
 agents keep whatever framework they already run.
 
-The mediator injects its brain as a callable
+The mediator injects its LLM session as a callable
 ``llm(prompt, *, system="", temperature=…) -> str`` (see ``mediator.py``:
-``discover_issues(…, llm=…)`` and ``MediatedNegotiation(…, llm=…)``); ``PiBrain``
+``discover_issues(…, llm=…)`` and ``MediatedNegotiation(…, llm=…)``); ``PiSession``
 is that callable.
-:class:`PiBrain` is a drop-in for that seam whose ``__call__`` drives one
+:class:`PiSession` is a drop-in for that seam whose ``__call__`` drives one
 long-lived ``pi -p --session <path> --mode json`` subprocess. Because one
-:class:`PiBrain` instance reuses a single ``--session`` file across every call,
-the brain accumulates **real durable memory across SAO rounds**, the natural
+:class:`PiSession` instance reuses a single ``--session`` file across every call,
+the LLM session accumulates **real durable memory across SAO rounds**, the natural
 home for the running state ``MediatedNegotiation`` threads by hand today.
 
 **Synchronous on purpose.** The mediator's LLM turns run inside NEGMAS's
@@ -25,7 +25,7 @@ can never stall the negotiation.
 
 **Serial by construction.** The mediator's turn model is strictly serial (one
 ``@handle`` at a time), so a single Pi session is never driven concurrently. Do
-not share one :class:`PiBrain` across parallel negotiations; build one per run.
+not share one :class:`PiSession` across parallel negotiations; build one per run.
 
 **OpenShell sandboxing** is wired as a command-prefix seam (``openshell=True``),
 default **off**: ``openshell`` is not guaranteed installed. Enabling it live is
@@ -46,7 +46,7 @@ from urllib.parse import urlparse
 logger = logging.getLogger(__name__)
 
 #: Pi's built-in coding tools (read/bash/edit/write) are useless to a pure
-#: interpret-and-broker brain and would let it touch the filesystem: disable
+#: interpret-and-broker session and would let it touch the filesystem: disable
 #: them so a mediator turn is cognition only.
 _NO_TOOLS = "--no-tools"
 
@@ -160,7 +160,7 @@ def _safe_prompt_arg(prompt: str) -> str:
 
     Pi treats a positional argument starting with ``@`` as an ``@file`` mention
     (it tries to *read a file* named after the prompt) and one starting with
-    ``-`` as an option (see pi ``cli/args.js``). The brain feeds arbitrary text
+    ``-`` as an option (see pi ``cli/args.js``). The session feeds arbitrary text
     (agent prose, opening positions, a mediator turn that opens with
     ``@handle``) as that positional, so a leading ``@`` or ``-`` would break the
     turn. A single leading space makes pi parse it as a message; the model does
@@ -233,12 +233,12 @@ def ensure_provider_config(
         logger.debug("could not chmod %s to 0600", models_path)
 
 
-class PiBrainError(RuntimeError):
+class PiSessionError(RuntimeError):
     """A ``pi`` invocation failed (missing binary, non-zero exit, timeout).
 
     The mediator's LLM stages already catch broadly and degrade (a failed
     ``interpret`` becomes a reject, a failed ``broker`` a no-op note), so raising
-    here keeps :class:`PiBrain` honest without special-casing the caller.
+    here keeps :class:`PiSession` honest without special-casing the caller.
     """
 
 
@@ -247,7 +247,7 @@ def _assistant_text(message: dict[str, Any]) -> str:
 
     Pi's ``--mode json`` messages carry ``content`` as either a bare string or an
     array of parts (``{"type": "text", "text": …}``, tool calls, …). We keep only
-    the text parts; tool calls are irrelevant to a ``--no-tools`` brain but the
+    the text parts; tool calls are irrelevant to a ``--no-tools`` session but the
     guard is cheap and future-proof.
     """
     content = message.get("content")
@@ -267,7 +267,7 @@ def parse_pi_json_output(stdout: str) -> str:
     also fold ``message_end``/``turn_end`` assistant messages so a truncated
     stream (no ``agent_end``) still yields the latest turn. Non-JSON lines and
     non-dict events are skipped defensively: a future Pi build adding a log line
-    to stdout must not crash the brain.
+    to stdout must not crash the session.
     """
     text = ""
     for raw in stdout.splitlines():
@@ -302,7 +302,7 @@ def parse_pi_json_output(stdout: str) -> str:
     return text.strip()
 
 
-class PiBrain:
+class PiSession:
     """A persistent ``pi`` session presented as an ``llm_sync``-compatible callable.
 
     One instance == one ``--session`` file == one negotiation's memory. Construct
@@ -395,14 +395,14 @@ class PiBrain:
     def __call__(self, prompt: str, *, system: str = "", temperature: float = 0.3) -> str:
         """Run one blocking ``pi`` turn against the persistent session.
 
-        ``temperature`` is accepted for parity with the mediator's brain-callable
+        ``temperature`` is accepted for parity with the mediator's LLM-callable
         seam but Pi exposes no temperature flag, so it is intentionally ignored
         (best-effort determinism only).
         """
-        del temperature  # no pi CLI knob; kept for brain-callable signature parity
+        del temperature  # no pi CLI knob; kept for LLM-callable signature parity
         binary = self._binary
         if shutil.which(binary) is None:
-            raise PiBrainError(
+            raise PiSessionError(
                 f"`{binary}` not found on PATH; the engine's mediator runs on Pi; "
                 "install Pi (earendil-works/pi) or set ALIGNER_PI_BINARY to its path."
             )
@@ -423,8 +423,8 @@ class PiBrain:
                 stdin=subprocess.DEVNULL,
             )
         except subprocess.TimeoutExpired as exc:
-            raise PiBrainError(f"pi turn exceeded {self._timeout_s:.0f}s and was killed") from exc
+            raise PiSessionError(f"pi turn exceeded {self._timeout_s:.0f}s and was killed") from exc
         if completed.returncode != 0:
             stderr = (completed.stderr or "").strip()
-            raise PiBrainError(f"pi exited {completed.returncode}: {stderr[:400]}")
+            raise PiSessionError(f"pi exited {completed.returncode}: {stderr[:400]}")
         return parse_pi_json_output(completed.stdout)

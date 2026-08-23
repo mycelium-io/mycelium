@@ -5,10 +5,10 @@
 
 import { useState } from "react";
 import { cn } from "@/lib/utils";
-import { lensOf, type LiveItem } from "@/lib/board/item";
+import { attentionFilterOf, type LiveItem } from "@/lib/board/item";
 import type { ItemGroup } from "@/lib/board/view";
 import { humanize } from "@/lib/board/schema";
-import { AgeTag, KindGlyph, CustodyChip, PriorityMeter, SourceTag, TtlBar, UpstreamChip, WorkLinks } from "./board-bits";
+import { AgeTag, KindIcon, AssignmentChip, PriorityMeter, SourceTag, TtlBar, UpstreamChip, WorkLinks } from "./board-cells";
 
 interface Props {
   groups: ItemGroup[];
@@ -74,16 +74,16 @@ export function BoardKanban({ groups, groupBy, now, selectedId, onSelect, onMove
                     "cursor-grab rounded-lg border bg-paper p-2.5 shadow-sm transition-colors active:cursor-grabbing",
                     item.id === selectedId ? "border-accent/50 ring-1 ring-accent/30" : "border-border hover:border-border2",
                     dragging?.id === item.id && "opacity-40",
-                    lensOf(item, now) === "resolved" && "opacity-70",
+                    attentionFilterOf(item, now) === "resolved" && "opacity-70",
                   )}
                 >
                   <div className="flex items-start gap-2">
-                    <KindGlyph item={item} className="mt-[1px]" />
+                    <KindIcon item={item} className="mt-[1px]" />
                     <span className="min-w-0 flex-1 text-label leading-snug text-text">{item.title}</span>
                     <PriorityMeter item={item} />
                   </div>
                   <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
-                    <CustodyChip item={item} now={now} />
+                    <AssignmentChip item={item} now={now} />
                     <WorkLinks item={item} />
           <UpstreamChip item={item} />
                   </div>

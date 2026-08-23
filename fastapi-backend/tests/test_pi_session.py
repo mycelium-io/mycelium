@@ -1,12 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Unit tests for the Pi mediator brain (app/services/pi_brain.py) + selection.
+"""Unit tests for the Pi mediator llm_session (app/services/pi_session.py) + selection.
 
 Node-free and Pi-free: no real ``pi`` process is ever spawned. We exercise the
-three things that must be right for the Pi-brain seam to be trustworthy without a
+three things that must be right for the Pi session seam to be trustworthy without a
 live binary — the ``pi --mode json`` output parser, the command construction
-(flags + OpenShell wrap), and the aligner's brain construction (Pi-only, or an
+(flags + OpenShell wrap), and the aligner's LLM session construction (Pi-only, or an
 injected fake) — by monkeypatching :func:`subprocess.run` / :func:`shutil.which`.
 A live Pi turn
 is a separate, guarded integration step (see the doc's honest caveats).
@@ -21,8 +21,8 @@ from typing import Any
 
 import pytest
 
-from app.services import pi_brain
-from app.services.pi_brain import PiBrain, PiBrainError, parse_pi_json_output
+from app.services import pi_session
+from app.services.pi_session import PiSession, PiSessionError, parse_pi_json_output
 from tests.fakes import patch_pi_run
 
 
@@ -97,10 +97,10 @@ def test_parse_empty_on_no_assistant_message() -> None:
 # ── command construction ────────────────────────────────────────────────────
 
 
-def _brain(tmp_path: Path, **kw: Any) -> PiBrain:
+def _brain(tmp_path: Path, **kw: Any) -> PiSession:
     kw.setdefault("session_path", tmp_path / "s.jsonl")
     kw.setdefault("model", "anthropic/claude-sonnet-4-6")
-    return PiBrain(**kw)
+    return PiSession(**kw)
 
 
 def test_build_command_core_flags(tmp_path: Path) -> None:
@@ -139,13 +139,13 @@ def test_openshell_wrap(tmp_path: Path) -> None:
 
 
 def test_split_provider_model() -> None:
-    assert pi_brain.split_provider_model("ollama/llama3.3") == ("ollama", "llama3.3")
-    assert pi_brain.split_provider_model("anthropic/claude-sonnet-4-6") == (
+    assert pi_session.split_provider_model("ollama/llama3.3") == ("ollama", "llama3.3")
+    assert pi_session.split_provider_model("anthropic/claude-sonnet-4-6") == (
         "anthropic",
         "claude-sonnet-4-6",
     )
     # A bare id (no provider prefix) is filed under "custom".
-    assert pi_brain.split_provider_model("my-model") == ("custom", "my-model")
+    assert pi_session.split_provider_model("my-model") == ("custom", "my-model")
 
 
 def test_prompt_leading_at_and_dash_are_neutralized(tmp_path: Path) -> None:
@@ -179,14 +179,14 @@ def test_standard_endpoint_stays_direct(tmp_path: Path) -> None:
     models.json override — a redundant override into a real ~/.pi (with the
     user's OAuth) conflicts and hangs pi.
     """
-    brain = _brain(
+    llm_session = _brain(
         tmp_path,
         model="anthropic/claude-haiku-4-5",
         base_url="https://api.anthropic.com",
         api_key="sk-ant-xyz",
     )
-    assert brain._endpoint_mode == "direct"
-    cmd = brain._build_command("p", system="")
+    assert llm_session._endpoint_mode == "direct"
+    cmd = llm_session._build_command("p", system="")
     assert "--provider" not in cmd
     assert cmd[cmd.index("--model") + 1] == "anthropic/claude-haiku-4-5"
     assert cmd[cmd.index("--api-key") + 1] == "sk-ant-xyz"
@@ -194,29 +194,29 @@ def test_standard_endpoint_stays_direct(tmp_path: Path) -> None:
 
 def test_builtin_provider_proxy_writes_override_keeps_model_and_key(tmp_path: Path) -> None:
     """A *proxy* base URL on a built-in provider → baseUrl override, still --model/--api-key."""
-    brain = _brain(
+    llm_session = _brain(
         tmp_path,
         model="anthropic/claude-haiku-4-5",
         base_url="https://proxy.internal.corp/anthropic",
         api_key="sk-ant-xyz",
     )
-    assert brain._endpoint_mode == "builtin"
-    cmd = brain._build_command("p", system="")
+    assert llm_session._endpoint_mode == "builtin"
+    cmd = llm_session._build_command("p", system="")
     assert "--provider" not in cmd  # keep pi's built-in catalog; just redirect endpoint
     assert cmd[cmd.index("--model") + 1] == "anthropic/claude-haiku-4-5"
     assert cmd[cmd.index("--api-key") + 1] == "sk-ant-xyz"
 
 
 def test_is_standard_endpoint() -> None:
-    assert pi_brain.is_standard_endpoint("anthropic", "https://api.anthropic.com")
-    assert pi_brain.is_standard_endpoint("anthropic", "https://api.anthropic.com/")
-    assert pi_brain.is_standard_endpoint("openai", "https://api.openai.com/v1")
-    assert not pi_brain.is_standard_endpoint("anthropic", "https://proxy.corp/anthropic")
-    assert not pi_brain.is_standard_endpoint("ollama", "http://localhost:11434")  # not built-in
+    assert pi_session.is_standard_endpoint("anthropic", "https://api.anthropic.com")
+    assert pi_session.is_standard_endpoint("anthropic", "https://api.anthropic.com/")
+    assert pi_session.is_standard_endpoint("openai", "https://api.openai.com/v1")
+    assert not pi_session.is_standard_endpoint("anthropic", "https://proxy.corp/anthropic")
+    assert not pi_session.is_standard_endpoint("ollama", "http://localhost:11434")  # not built-in
 
 
 def test_ensure_config_custom_writes_openai_compatible_entry(tmp_path: Path) -> None:
-    pi_brain.ensure_provider_config(
+    pi_session.ensure_provider_config(
         provider="ollama",
         model_id="llama3.3",
         base_url="http://host.docker.internal:11434",
@@ -232,7 +232,7 @@ def test_ensure_config_custom_writes_openai_compatible_entry(tmp_path: Path) -> 
 
 def test_ensure_config_builtin_writes_baseurl_only_override(tmp_path: Path) -> None:
     """A built-in provider gets a baseUrl-only override — pi keeps its real catalog."""
-    pi_brain.ensure_provider_config(
+    pi_session.ensure_provider_config(
         provider="anthropic",
         model_id="claude-haiku-4-5",
         base_url="https://api.anthropic.com",
@@ -247,7 +247,7 @@ def test_ensure_config_merges_existing(tmp_path: Path) -> None:
     """A pre-existing provider the user configured is preserved (merge, not clobber)."""
     models_path = tmp_path / "models.json"
     models_path.write_text(json.dumps({"providers": {"kept": {"baseUrl": "http://keep"}}}))
-    pi_brain.ensure_provider_config(
+    pi_session.ensure_provider_config(
         provider="ollama",
         model_id="qwen2.5",
         base_url="http://localhost:11434/v1",
@@ -273,14 +273,14 @@ def test_call_returns_parsed_text(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
 
 
 def test_call_raises_on_missing_binary(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(pi_brain.shutil, "which", lambda _b: None)
-    with pytest.raises(PiBrainError, match="not found on PATH"):
+    monkeypatch.setattr(pi_session.shutil, "which", lambda _b: None)
+    with pytest.raises(PiSessionError, match="not found on PATH"):
         _brain(tmp_path)("p")
 
 
 def test_call_raises_on_nonzero_exit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     patch_pi_run(monkeypatch, stdout="", returncode=2)
-    with pytest.raises(PiBrainError, match="exited 2"):
+    with pytest.raises(PiSessionError, match="exited 2"):
         _brain(tmp_path)("p")
 
 
@@ -288,14 +288,14 @@ def test_call_raises_on_timeout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     def fake_run(cmd: list[str], **_: Any) -> subprocess.CompletedProcess[str]:
         raise subprocess.TimeoutExpired(cmd, 1.0)
 
-    monkeypatch.setattr(pi_brain.shutil, "which", lambda _b: "/usr/bin/pi")
-    monkeypatch.setattr(pi_brain.subprocess, "run", fake_run)
-    with pytest.raises(PiBrainError, match="exceeded"):
+    monkeypatch.setattr(pi_session.shutil, "which", lambda _b: "/usr/bin/pi")
+    monkeypatch.setattr(pi_session.subprocess, "run", fake_run)
+    with pytest.raises(PiSessionError, match="exceeded"):
         _brain(tmp_path, timeout_s=1.0)("p")
 
 
 def test_call_ignores_temperature(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """temperature is accepted for brain-callable parity but never reaches the CLI."""
+    """temperature is accepted for LLM-callable parity but never reaches the CLI."""
     calls = patch_pi_run(
         monkeypatch,
         stdout=_stream({"type": "message_end", "message": {"role": "assistant", "content": "x"}}),
@@ -305,30 +305,30 @@ def test_call_ignores_temperature(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     assert "0.9" not in calls[0]
 
 
-# ── brain selection in the aligner ──────────────────────────────────────────
+# ── LLM session selection in the aligner ──────────────────────────────────────────
 
 
 def test_make_brain_default_builds_pi_brain(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The mediator brain is Pi-only: the default factory builds a PiBrain."""
+    """The mediator LLM session is Pi-only: the default factory builds a PiSession."""
     from app.config import settings
     from app.services import aligner
 
     monkeypatch.setattr(settings, "LLM_MODEL", "anthropic/claude-sonnet-4-6")
     monkeypatch.setattr(settings, "ALIGNER_PI_BINARY", "pi")
     engine = aligner.AlignerEngine(object())  # type: ignore[arg-type]
-    brain = engine._make_brain("urn:mycelium:episode:room:align")
-    assert isinstance(brain, PiBrain)
+    llm_session = engine._open_llm_session("urn:mycelium:episode:room:align")
+    assert isinstance(llm_session, PiSession)
     # The episode URN is slugged into a filesystem-safe per-negotiation session.
-    assert brain._session_path.name == "urn-mycelium-episode-room-align.jsonl"
-    assert brain._model == "anthropic/claude-sonnet-4-6"
+    assert llm_session._session_path.name == "urn-mycelium-episode-room-align.jsonl"
+    assert llm_session._model == "anthropic/claude-sonnet-4-6"
 
 
 def test_make_brain_uses_injected_factory() -> None:
-    """A ``brain_factory`` overrides the default (how tests run node-free)."""
+    """A ``llm_session_factory`` overrides the default (how tests run node-free)."""
     from app.services import aligner
 
     def sentinel(*_a: object, **_k: object) -> str:
         return "x"
 
-    engine = aligner.AlignerEngine(object(), brain_factory=lambda _ep: sentinel)  # type: ignore[arg-type]
-    assert engine._make_brain("urn:x:align") is sentinel
+    engine = aligner.AlignerEngine(object(), llm_session_factory=lambda _ep: sentinel)  # type: ignore[arg-type]
+    assert engine._open_llm_session("urn:x:align") is sentinel

@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""The concrete ``Context`` a provider is handed: a bound, credentialled transport.
+"""The concrete ``ProviderContext`` a provider is handed: a bound, credentialled transport.
 
-This is the keystone that makes the contract runnable.  ``types.Context`` promises
+This is the keystone that makes the contract runnable.  ``types.ProviderContext`` promises
 a provider an ``http`` already pointed at its declared ``base_url``, already
 carrying its credential, already given the timeout and retry policy, so the
 provider writes request-and-parse and never a line of auth or backoff.  Nothing
@@ -19,7 +19,7 @@ The two guarantees the protocol makes are both enforced here rather than trusted
   the request path, not a naming convention.
 
 * **A provider cannot read the credential.**  It is baked into the client's
-  default headers at construction and never surfaced on the ``Context``; there is
+  default headers at construction and never surfaced on the ``ProviderContext``; there is
   no ``ctx.secret`` and no way back to the string from ``ctx.http``.
 """
 
@@ -32,7 +32,7 @@ from typing import Protocol
 
 import httpx
 
-from app.services.status.types import Context, StatusProvider
+from app.services.status.types import ProviderContext, StatusProvider
 
 logger = logging.getLogger("mycelium.status")
 
@@ -43,7 +43,7 @@ class _Bound(Protocol):
     ``build_http_context`` reads nothing else off the provider (the credential
     arrives already resolved), so it asks for nothing else. Every
     ``StatusProvider`` satisfies this, so the factory is still a valid
-    ``ContextFactory``.
+    ``ProviderContextFactory``.
     """
 
     base_url: str
@@ -61,7 +61,7 @@ ResolvedAuth = Mapping[str, str] | None
 #: Built once per provider by the runtime, given the provider and its resolved
 #: auth. The runtime owns credential *resolution and rendering*; the factory owns
 #: *binding* the rendered headers into a transport.
-ContextFactory = Callable[[StatusProvider, ResolvedAuth], Context]
+ProviderContextFactory = Callable[[StatusProvider, ResolvedAuth], ProviderContext]
 
 
 DEFAULT_TIMEOUT = timedelta(seconds=10)
@@ -98,7 +98,7 @@ class _HostBoundTransport(httpx.AsyncBaseTransport):
 
 
 class HttpContext:
-    """A ``Context`` backed by a bound httpx client. Owns the client's lifetime."""
+    """A ``ProviderContext`` backed by a bound httpx client. Owns the client's lifetime."""
 
     def __init__(self, client: httpx.AsyncClient) -> None:
         self._client = client

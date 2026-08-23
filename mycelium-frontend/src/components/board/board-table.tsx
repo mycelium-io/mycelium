@@ -6,9 +6,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { lensOf, type LiveItem } from "@/lib/board/item";
+import { attentionFilterOf, type LiveItem } from "@/lib/board/item";
 import type { FieldSchema } from "@/lib/board/schema";
-import { KindGlyph } from "./board-bits";
+import { KindIcon } from "./board-cells";
 
 interface Props {
   items: LiveItem[];
@@ -66,12 +66,12 @@ export function BoardTable({ items, schema, now, selectedId, onSelect, onEdit, s
               className={cn(
                 "group",
                 item.id === selectedId ? "bg-elevated" : "hover:bg-hairline",
-                lensOf(item, now) === "resolved" && "opacity-65",
+                attentionFilterOf(item, now) === "resolved" && "opacity-65",
               )}
             >
               <td className="max-w-[380px] border-b border-hairline px-2 py-1.5">
                 <span className="flex items-center gap-2">
-                  <KindGlyph item={item} />
+                  <KindIcon item={item} />
                   <span className="min-w-0 flex-1 truncate text-text">{item.title}</span>
                 </span>
               </td>

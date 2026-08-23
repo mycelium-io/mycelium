@@ -17,22 +17,22 @@ import {
   UserRound,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { custodyNote, custodyOf, remainingMinutes } from "@/lib/board/custody";
+import { assignmentNote, assignmentOf, remainingMinutes } from "@/lib/board/assignment";
 import {
-  arr,
-  bool,
+  fieldAsBool,
+  fieldAsList,
+  fieldAsString,
   formatAge,
   kindOf,
   priorityOf,
   statusOf,
-  str,
-  ttlSpent,
+  ttlElapsedFraction,
   type ItemKind,
   type LiveItem,
   type Priority,
 } from "@/lib/board/item";
 
-/** One glyph + colour per row kind — the cockpit's fastest read. */
+/** One glyph + colour per row kind — the triage's fastest read. */
 const KIND_STYLE: Record<ItemKind, { icon: typeof CircleDot; color: string; label: string }> = {
   decision: { icon: CircleHelp, color: "var(--accent)", label: "decision" },
   blocked: { icon: Ban, color: "var(--red)", label: "blocked" },
@@ -42,7 +42,7 @@ const KIND_STYLE: Record<ItemKind, { icon: typeof CircleDot; color: string; labe
   signal: { icon: Radio, color: "var(--muted-foreground)", label: "signal" },
 };
 
-export function KindGlyph({ item, className }: { item: LiveItem; className?: string }) {
+export function KindIcon({ item, className }: { item: LiveItem; className?: string }) {
   const style = KIND_STYLE[kindOf(item)];
   const Icon = style.icon;
   return (
@@ -185,20 +185,20 @@ function UpstreamSkeleton({ label }: { label: string | null }) {
  * reader is never asked to trust a number without knowing how old it is.
  */
 export function UpstreamChip({ item }: { item: LiveItem }) {
-  const state = str(item, "upstream");
+  const state = fieldAsString(item, "upstream");
   // No state and a pending marker means the answer is still coming, which is a
   // different thing from a row that points nowhere (nothing at all) and from
   // `unknown`, which is a provider saying it could not place what it found.
   if (!state) {
-    return bool(item, "upstream_pending") ? (
-      <UpstreamSkeleton label={str(item, "upstream_label")} />
+    return fieldAsBool(item, "upstream_pending") ? (
+      <UpstreamSkeleton label={fieldAsString(item, "upstream_label")} />
     ) : null;
   }
-  const label = str(item, "upstream_label") ?? state;
-  const age = str(item, "upstream_age");
-  const url = str(item, "upstream_url");
+  const label = fieldAsString(item, "upstream_label") ?? state;
+  const age = fieldAsString(item, "upstream_age");
+  const url = fieldAsString(item, "upstream_url");
   const more = item.fields.upstream_count;
-  const freshness = str(item, "upstream_freshness");
+  const freshness = fieldAsString(item, "upstream_freshness");
   const tone = UPSTREAM_TONE[state] ?? "var(--muted-foreground)";
   // A stale answer is still the truth as far as anyone knows; it just has a
   // refresh running behind it. Dimming it and pulsing the dot says that without
@@ -247,10 +247,10 @@ export function UpstreamChip({ item }: { item: LiveItem }) {
 
 /** The work-links strip: branch · CI · PR · issue, only what the row carries. */
 export function WorkLinks({ item }: { item: LiveItem }) {
-  const branch = str(item, "branch");
-  const pr = str(item, "pr");
-  const issue = str(item, "issue");
-  const ci = str(item, "ci");
+  const branch = fieldAsString(item, "branch");
+  const pr = fieldAsString(item, "pr");
+  const issue = fieldAsString(item, "issue");
+  const ci = fieldAsString(item, "ci");
   if (!branch && !pr && !issue && !ci) return null;
   return (
     <span className="inline-flex flex-wrap items-center gap-x-2.5 gap-y-1">
@@ -300,25 +300,25 @@ const TTL_VISIBLE_FROM = 0.4;
 /**
  * Who holds this row, and what happened to the last person who did.
  *
- * A row with no custody axis reads as it always did — a plan task's owner is a
+ * A row with no assignment axis reads as it always did — a plan task's owner is a
  * commitment, not a lease, so it gets a plain handle and nothing that drains.
  * The states that are not `held` are the interesting ones: `released` and
  * `expired` leave the same unclaimed row behind, and only the note's author says
  * which happened, so the byline is rendered rather than summarised away.
  */
-export function CustodyChip({ item, now }: { item: LiveItem; now: number }) {
-  const state = custodyOf(item, now);
-  const holder = str(item, "owner");
+export function AssignmentChip({ item, now }: { item: LiveItem; now: number }) {
+  const state = assignmentOf(item, now);
+  const holder = fieldAsString(item, "owner");
 
   if (state === null || state === "unclaimed") {
-    return <OwnerChip handle={state === null ? holder : null} live={bool(item, "live")} />;
+    return <OwnerChip handle={state === null ? holder : null} live={fieldAsBool(item, "live")} />;
   }
 
   if (state === "held") {
     const left = remainingMinutes(item, now);
     return (
       <span className="inline-flex items-center gap-1.5">
-        <OwnerChip handle={holder} live={bool(item, "live")} />
+        <OwnerChip handle={holder} live={fieldAsBool(item, "live")} />
         {left !== null && (
           <span className="text-micro text-faint" title="until the claim drains unless renewed">
             {left}m left
@@ -328,7 +328,7 @@ export function CustodyChip({ item, now }: { item: LiveItem; now: number }) {
     );
   }
 
-  const note = custodyNote(item, now);
+  const note = assignmentNote(item, now);
   return (
     <span
       className={cn(
@@ -345,7 +345,7 @@ export function CustodyChip({ item, now }: { item: LiveItem; now: number }) {
 }
 
 export function TtlBar({ item, now }: { item: LiveItem; now: number }) {
-  const spent = ttlSpent(item, now);
+  const spent = ttlElapsedFraction(item, now);
   if (spent === null || spent < TTL_VISIBLE_FROM) return null;
   const color = spent > 0.75 ? "var(--red)" : "var(--yellow)";
   return (
@@ -368,7 +368,7 @@ export function SourceTag({ item }: { item: LiveItem }) {
 }
 
 export function AgeTag({ item, now }: { item: LiveItem; now: number }) {
-  const age = str(item, "updated") ?? str(item, "created");
+  const age = fieldAsString(item, "updated") ?? fieldAsString(item, "created");
   const minutes = age ? Math.max(0, Math.round((now - Date.parse(age)) / 60000)) : null;
   return (
     <span className="tabular text-micro text-faint" title={age ?? undefined}>
@@ -378,7 +378,7 @@ export function AgeTag({ item, now }: { item: LiveItem; now: number }) {
 }
 
 export function BlocksNote({ item }: { item: LiveItem }) {
-  const blocks = arr(item, "blocks");
+  const blocks = fieldAsList(item, "blocks");
   if (!blocks.length) return null;
   return (
     <span className="text-micro text-muted-foreground">
@@ -388,7 +388,7 @@ export function BlocksNote({ item }: { item: LiveItem }) {
 }
 
 export function LiveDot({ item }: { item: LiveItem }) {
-  if (!bool(item, "live")) return null;
+  if (!fieldAsBool(item, "live")) return null;
   return (
     <span className="inline-flex items-center gap-1 text-micro text-accent">
       <span className="size-1.5 animate-pulse rounded-full bg-accent" />

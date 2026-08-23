@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 import pytest_asyncio
 
-from app.services import local_state
+from app.services import in_memory_store
 from app.services.event_sweep import sweep_expired_events
 
 
@@ -19,8 +19,8 @@ async def room(client):
     return "platform-eng"
 
 
-def _stored(room_name: str) -> list[local_state.StoredMessage]:
-    return local_state.list_messages(room_name)
+def _stored(room_name: str) -> list[in_memory_store.StoredMessage]:
+    return in_memory_store.list_messages(room_name)
 
 
 def _event_body(**meta_overrides):

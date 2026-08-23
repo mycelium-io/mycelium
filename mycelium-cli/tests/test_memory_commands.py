@@ -236,7 +236,7 @@ def test_memory_get_raw_carries_unmanaged_frontmatter(monkeypatch: pytest.Monkey
         monkeypatch,
         _memory_read(
             "work/x",
-            "blocked on the custody seam",
+            "blocked on the assignment seam",
             meta=MemoryReadMetaType0.from_dict({"status": "open", "owner": "@julia"}),
         ),
     )

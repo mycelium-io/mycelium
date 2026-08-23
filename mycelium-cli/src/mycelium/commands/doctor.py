@@ -369,9 +369,10 @@ def _check_mediator_pi_binary() -> CheckResult:
     """The aligner's SAO mediator runs on Pi; warn if it's unreachable on a
     host-run backend.
 
-    Pi is the mediator's *brain*; without it on PATH, an ``@aligner`` summon fails
-    (``PiBrainError: pi not found``). The released **backend image already installs
-    Pi**, so the normal ``mycelium up`` path is fine and needs no host binary. The
+    Pi is the mediator's *LLM session*; without it on PATH, an ``@aligner`` summon
+    fails (``PiSessionError: pi not found``). The released **backend image already
+    installs Pi**, so the normal ``mycelium up`` path is fine and needs no host
+    binary. The
     only gap is running the backend *outside Docker* (a contributor doing
     ``uvicorn app.main:app`` on the host): there Pi must be on the host PATH. So:
     if the backend container is up, this is satisfied by the image; otherwise check
@@ -382,7 +383,7 @@ def _check_mediator_pi_binary() -> CheckResult:
 
     if _backend_container_running():
         return CheckResult(
-            name="mediator Pi brain",
+            name="mediator Pi session",
             status="ok",
             message="backend is dockerized (Pi ships in the image)",
         )
@@ -391,12 +392,12 @@ def _check_mediator_pi_binary() -> CheckResult:
     resolved = shutil.which(binary)
     if resolved is not None:
         return CheckResult(
-            name="mediator Pi brain",
+            name="mediator Pi session",
             status="ok",
             message=f"pi on PATH ({resolved})",
         )
     return CheckResult(
-        name="mediator Pi brain",
+        name="mediator Pi session",
         status="warning",
         message=f"`{binary}` not on PATH; @aligner negotiations will fail on a host-run backend",
         details=[

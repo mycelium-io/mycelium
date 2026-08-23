@@ -26,8 +26,15 @@ from datetime import datetime, timedelta
 
 from app.services.status.auth import AuthScheme
 from app.services.status.cache import StatusCache
-from app.services.status.context import ContextFactory, build_http_context
-from app.services.status.types import Context, Err, Known, Ok, Ref, StatusProvider
+from app.services.status.context import ProviderContextFactory, build_http_context
+from app.services.status.types import (
+    CachedStatus,
+    FetchFailed,
+    FetchSucceeded,
+    ProviderContext,
+    Ref,
+    StatusProvider,
+)
 
 #: How many provider chunks may be in the air at once, across all providers.
 DEFAULT_CONCURRENCY = 4
@@ -77,7 +84,7 @@ def _check_conformance(providers: dict[str, StatusProvider]) -> None:
 
 
 class StatusRuntime:
-    """Owns one bound ``Context`` per provider, built on first use.
+    """Owns one bound ``ProviderContext`` per provider, built on first use.
 
     The context is per provider, not one shared instance, because the protocol
     binds ``ctx.http`` to *each* provider's own ``base_url`` and credential: a
@@ -89,7 +96,7 @@ class StatusRuntime:
     def __init__(
         self,
         providers: dict[str, StatusProvider],
-        context_factory: ContextFactory | None = None,
+        context_factory: ProviderContextFactory | None = None,
         cache: StatusCache | None = None,
         concurrency: int = DEFAULT_CONCURRENCY,
         credentials: Mapping[str, str] | None = None,
@@ -97,7 +104,7 @@ class StatusRuntime:
         _check_conformance(providers)
         self._providers = providers
         self._context_factory = context_factory or build_http_context
-        self._contexts: dict[str, Context] = {}
+        self._contexts: dict[str, ProviderContext] = {}
         self._cache = cache or StatusCache()
         self._gate = asyncio.Semaphore(concurrency)
         self._credentials = credentials or {}
@@ -126,7 +133,7 @@ class StatusRuntime:
                 problems.append(f"{name} set but empty")
         return ", ".join(problems) if problems else None
 
-    def _context_for(self, provider: StatusProvider) -> Context:
+    def _context_for(self, provider: StatusProvider) -> ProviderContext:
         """The provider's bound context, built once and reused.
 
         Built only after the credential check has passed, so every name the
@@ -163,7 +170,7 @@ class StatusRuntime:
 
     def read(
         self, refs: list[Ref], now: datetime, max_age: timedelta | None = None
-    ) -> dict[Ref, Known]:
+    ) -> dict[Ref, CachedStatus]:
         """What we know, right now, without fetching anything.
 
         ``max_age`` is how a caller states its own tolerance instead of
@@ -172,20 +179,22 @@ class StatusRuntime:
         passes a bound and is told ``missing`` rather than handed something too
         old to be evidence.
         """
-        answers: dict[Ref, Known] = {}
+        answers: dict[Ref, CachedStatus] = {}
         for ref in refs:
             provider = self._providers.get(ref.provider)
             if provider is None:
-                answers[ref] = Known(
+                answers[ref] = CachedStatus(
                     ref=ref, freshness="missing", error=f"no provider {ref.provider!r}"
                 )
                 continue
-            known = self._cache.known(ref, now, provider.ttl, provider.swr)
-            if max_age is not None and known.liveness is not None:
-                age = known.age(now)
+            cached = self._cache.lookup(ref, now, provider.ttl, provider.swr)
+            if max_age is not None and cached.upstream is not None:
+                age = cached.age(now)
                 if age is not None and age > max_age:
-                    known = Known(ref=ref, freshness="missing", error=f"older than {max_age}")
-            answers[ref] = known
+                    cached = CachedStatus(
+                        ref=ref, freshness="missing", error=f"older than {max_age}"
+                    )
+            answers[ref] = cached
         return answers
 
     def due(self, refs: list[Ref], now: datetime) -> list[Ref]:
@@ -230,7 +239,7 @@ class StatusRuntime:
 
     async def resolve(
         self, refs: list[Ref], now: datetime, max_age: timedelta | None = None
-    ) -> dict[Ref, Known]:
+    ) -> dict[Ref, CachedStatus]:
         """Refresh, then answer. The blocking path."""
         await self.refresh(refs, now)
         return self.read(refs, now, max_age=max_age)
@@ -264,11 +273,11 @@ class StatusRuntime:
                 answered = set()
                 for outcome in outcomes:
                     answered.add(outcome.ref)
-                    if isinstance(outcome, Ok):
+                    if isinstance(outcome, FetchSucceeded):
                         self._cache.put_ok(
-                            outcome.ref, outcome.liveness, now, ttl_override=outcome.ttl
+                            outcome.ref, outcome.upstream, now, ttl_override=outcome.ttl
                         )
-                    elif isinstance(outcome, Err):
+                    elif isinstance(outcome, FetchFailed):
                         self._cache.put_err(
                             outcome.ref, outcome.reason, now, retry_after=outcome.retry_after
                         )

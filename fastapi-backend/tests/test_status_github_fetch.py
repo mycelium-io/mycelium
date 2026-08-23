@@ -27,7 +27,7 @@ import pytest
 from app.services.status.context import HttpContext
 from app.services.status.providers.github import GitHubProvider
 from app.services.status.runtime import StatusRuntime
-from app.services.status.types import Err, Ok, Ref
+from app.services.status.types import FetchFailed, FetchSucceeded, Ref
 
 NOW = datetime(2026, 8, 22, 12, 0, tzinfo=UTC)
 
@@ -137,17 +137,17 @@ async def test_the_happy_path_answers_one_outcome_per_ref_with_states_mapped():
     await ctx.aclose()
 
     approved, changes, merged = outcomes
-    assert isinstance(approved, Ok)
-    assert isinstance(changes, Ok)
-    assert isinstance(merged, Ok)
+    assert isinstance(approved, FetchSucceeded)
+    assert isinstance(changes, FetchSucceeded)
+    assert isinstance(merged, FetchSucceeded)
     # Outcomes stay aligned to the refs they were asked for.
     assert [o.ref for o in outcomes] == refs
-    assert approved.liveness.state == "ok"
-    assert approved.liveness.label == "approved"
-    assert changes.liveness.state == "blocked"
-    assert changes.liveness.label == "changes requested"
+    assert approved.upstream.state == "ok"
+    assert approved.upstream.label == "approved"
+    assert changes.upstream.state == "blocked"
+    assert changes.upstream.label == "changes requested"
     # A merged PR is done, and its answer is cached far longer than an open one.
-    assert merged.liveness.state == "done"
+    assert merged.upstream.state == "done"
     assert merged.ttl == timedelta(days=1)
 
 
@@ -163,9 +163,9 @@ async def test_a_ref_the_token_cannot_see_is_erred_not_the_whole_batch():
     outcomes = await GitHubProvider().fetch(refs, ctx)
     await ctx.aclose()
 
-    assert isinstance(outcomes[0], Ok)
+    assert isinstance(outcomes[0], FetchSucceeded)
     missing = outcomes[1]
-    assert isinstance(missing, Err)
+    assert isinstance(missing, FetchFailed)
     assert "not visible" in missing.reason
 
 
@@ -182,10 +182,10 @@ async def test_one_partial_node_does_not_sink_the_healthy_answers_beside_it():
     outcomes = await GitHubProvider().fetch(refs, ctx)
     await ctx.aclose()
 
-    assert isinstance(outcomes[0], Ok)
+    assert isinstance(outcomes[0], FetchSucceeded)
     thin = outcomes[1]
-    assert isinstance(thin, Ok)
-    assert thin.liveness.state == "pending"
+    assert isinstance(thin, FetchSucceeded)
+    assert thin.upstream.state == "pending"
 
 
 @pytest.mark.asyncio
@@ -206,7 +206,7 @@ async def test_a_secondary_rate_limit_sets_retry_after_from_the_reset_header():
 
     # Honoured from the reset header (~17m), distinctly not the 5m fallback guess.
     for outcome in outcomes:
-        assert isinstance(outcome, Err)
+        assert isinstance(outcome, FetchFailed)
         assert outcome.reason == "rate limited"
         assert outcome.retry_after is not None
         assert timedelta(minutes=15) < outcome.retry_after < timedelta(minutes=18)
@@ -230,7 +230,7 @@ async def test_the_primary_graphql_rate_limit_arrives_as_a_200_and_is_still_caug
     await ctx.aclose()
 
     outcome = outcomes[0]
-    assert isinstance(outcome, Err)
+    assert isinstance(outcome, FetchFailed)
     assert outcome.reason == "rate limited"
     assert outcome.retry_after == timedelta(seconds=120)
 
@@ -248,7 +248,7 @@ async def test_a_graphql_error_with_null_data_errs_every_ref_rather_than_fabrica
     outcomes = await GitHubProvider().fetch(refs, ctx)
     await ctx.aclose()
 
-    assert isinstance(outcomes[0], Err)
+    assert isinstance(outcomes[0], FetchFailed)
 
 
 @pytest.mark.asyncio
@@ -263,7 +263,7 @@ async def test_a_4xx_that_is_not_a_rate_limit_errs_the_batch_with_the_code():
     await ctx.aclose()
 
     outcome = outcomes[0]
-    assert isinstance(outcome, Err)
+    assert isinstance(outcome, FetchFailed)
     assert "401" in outcome.reason
 
 
@@ -281,9 +281,9 @@ async def test_a_present_but_bare_node_is_conservative_never_fabricated_as_healt
     await ctx.aclose()
 
     outcome = outcomes[0]
-    assert isinstance(outcome, Ok)
-    assert outcome.liveness.state == "pending"
-    assert outcome.liveness.state not in ("ok", "done")
+    assert isinstance(outcome, FetchSucceeded)
+    assert outcome.upstream.state == "pending"
+    assert outcome.upstream.state not in ("ok", "done")
 
 
 @pytest.mark.asyncio

@@ -6,15 +6,15 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { inferSchema, groupableFields } from "@/lib/board/schema";
 import { projectItems } from "@/lib/board/projection";
-import { applyView, filterItems, lensCounts, groupItems, UNGROUPED, DEFAULT_VIEW } from "@/lib/board/view";
-import { CUSTODY_STATES, DEFAULT_TTL_MINUTES, custodyOf } from "@/lib/board/custody";
+import { applyView, filterItems, attentionFilterCounts, groupItems, UNGROUPED, DEFAULT_VIEW } from "@/lib/board/view";
+import { ASSIGNMENT_STATES, DEFAULT_TTL_MINUTES, assignmentOf } from "@/lib/board/assignment";
 import {
-  applyVerb,
-  lensOf,
-  LENSES,
+  applyRowAction,
+  attentionFilterOf,
+  ATTENTION_FILTERS,
   PRIORITY_ORDER,
   STATUS_ORDER,
-  VERBS,
+  ROW_ACTIONS,
   type LiveItem,
 } from "@/lib/board/item";
 import { parseCapture } from "@/lib/board/capture";
@@ -87,11 +87,11 @@ describe("inferSchema", () => {
     expect(groupableFields(schema).map(f => f.name)).toEqual(["status"]);
   });
 
-  it("offers custody as a column, so a board can group by who holds what", () => {
-    const schema = inferSchema([item("a", { custody: "held" })]);
-    const custody = schema.find(f => f.name === "custody");
-    expect(custody?.type).toBe("select");
-    expect(custody?.options.map(o => o.value)).toEqual([...CUSTODY_STATES]);
+  it("offers assignment as a column, so a board can group by who holds what", () => {
+    const schema = inferSchema([item("a", { assignment: "held" })]);
+    const assignment = schema.find(f => f.name === "assignment");
+    expect(assignment?.type).toBe("select");
+    expect(assignment?.options.map(o => o.value)).toEqual([...ASSIGNMENT_STATES]);
   });
 });
 
@@ -134,7 +134,7 @@ describe("projectItems", () => {
     // takes it, so nothing asserts a holder who never agreed to hold it.
     expect(open.fields).toMatchObject({ assignee: "@growth", status: "open" });
     expect(open.fields.owner).toBeNull();
-    expect(custodyOf(open, Date.parse("2026-08-22T10:00:00Z"))).toBe("unclaimed");
+    expect(assignmentOf(open, Date.parse("2026-08-22T10:00:00Z"))).toBe("unclaimed");
     expect(open.title).toBe("flip reads behind a flag");
     expect(done.fields.status).toBe("resolved");
   });
@@ -146,7 +146,7 @@ describe("projectItems", () => {
     });
   });
 
-  it("lets a local triage overlay win over the projected value", () => {
+  it("lets a local optimistic edit win over the projected value", () => {
     const items = projectItems({
       room: "atlas",
       episodes: [],
@@ -154,42 +154,42 @@ describe("projectItems", () => {
       agents: [],
       presence: new Map(),
       now: "2026-08-22T10:00:00Z",
-      overlay: { "memory:work/flip-reads-behind-a-flag": { status: "dismissed" } },
+      optimisticEdits: { "memory:work/flip-reads-behind-a-flag": { status: "dismissed" } },
     });
     expect(items[0].fields.status).toBe("dismissed");
   });
 });
 
-describe("lenses", () => {
+describe("attention filters", () => {
   const now = Date.parse("2026-08-22T10:00:00Z");
-  const heldNow = { custody: "held", owner: "@growth", claimed_at: "2026-08-22T09:55:00Z", ttl_minutes: 30 };
+  const heldNow = { assignment: "held", owner: "@growth", claimed_at: "2026-08-22T09:55:00Z", ttl_minutes: 30 };
 
-  it("derives the lens from status where nobody holds the row", () => {
-    expect(lensOf(item("a", { status: "open" }), now)).toBe("needs_you");
-    expect(lensOf(item("d", { status: "in_review" }), now)).toBe("in_flight");
-    expect(lensOf(item("e", { status: "resolved" }), now)).toBe("resolved");
+  it("derives the attention filter from status where nobody holds the row", () => {
+    expect(attentionFilterOf(item("a", { status: "open" }), now)).toBe("needs_you");
+    expect(attentionFilterOf(item("d", { status: "in_review" }), now)).toBe("in_flight");
+    expect(attentionFilterOf(item("e", { status: "resolved" }), now)).toBe("resolved");
   });
 
-  it("puts custody ahead of the stage, because a holder is the sharper fact", () => {
-    expect(lensOf(item("b", heldNow), now)).toBe("in_flight");
-    expect(lensOf(item("c", { custody: "released" }), now)).toBe("needs_you");
+  it("puts assignment ahead of the stage, because a holder is the sharper fact", () => {
+    expect(attentionFilterOf(item("b", heldNow), now)).toBe("in_flight");
+    expect(attentionFilterOf(item("c", { assignment: "released" }), now)).toBe("needs_you");
   });
 
   it("is blocked because the row names a blocker, whoever holds it", () => {
-    expect(lensOf(item("f", { ...heldNow, blocked_by: ["#502"] }), now)).toBe("needs_you");
+    expect(attentionFilterOf(item("f", { ...heldNow, blocked_by: ["#502"] }), now)).toBe("needs_you");
   });
 
-  it("counts every lens off the unfiltered set", () => {
-    const counts = lensCounts(
+  it("counts every attentionFilter off the unfiltered set", () => {
+    const counts = attentionFilterCounts(
       [item("a", { status: "open" }), item("b", heldNow), item("c", { status: "resolved" })],
       now,
     );
     expect(counts).toEqual({ needs_you: 1, in_flight: 1, resolved: 1, all: 3 });
   });
 
-  it("shows only the lens asked for", () => {
+  it("shows only the attention filter asked for", () => {
     const items = [item("a", { status: "open" }), item("b", heldNow)];
-    expect(filterItems(items, { ...DEFAULT_VIEW, lens: "in_flight" }, now).map(i => i.id)).toEqual([
+    expect(filterItems(items, { ...DEFAULT_VIEW, attentionFilter: "in_flight" }, now).map(i => i.id)).toEqual([
       "b",
     ]);
   });
@@ -200,7 +200,7 @@ describe("applyView", () => {
     item("a", { status: "open", kind: "decision", priority: "urgent", updated: "2026-08-22T09:00:00Z" }),
     item("b", { status: "open", kind: "blocked", priority: "normal", blocked_by: ["#502"], updated: "2026-08-22T08:00:00Z" }),
     item("c", {
-      custody: "held",
+      assignment: "held",
       owner: "@growth",
       claimed_at: "2026-08-22T09:50:00Z",
       ttl_minutes: 30,
@@ -211,31 +211,31 @@ describe("applyView", () => {
   ];
   const now = Date.parse("2026-08-22T10:00:00Z");
 
-  it("groups the steer-lens by kind, urgent first", () => {
+  it("groups the steer filter by kind, urgent first", () => {
     const groups = applyView(items, DEFAULT_VIEW, inferSchema(items), now);
     expect(groups.map(g => g.label)).toEqual(["Decisions", "Blocked"]);
     expect(groups[0].items[0].id).toBe("a");
   });
 
   it("renders an empty column so a kanban is somewhere to drop work", () => {
-    const config = { ...DEFAULT_VIEW, mode: "board" as const, lens: "all" as const, groupBy: "status", showResolved: true };
+    const config = { ...DEFAULT_VIEW, mode: "board" as const, attentionFilter: "all" as const, groupBy: "status", showResolved: true };
     const groups = applyView(items, config, inferSchema(items), now);
     expect(groups.some(g => g.items.length === 0)).toBe(true);
   });
 
   it("matches a query against fields as well as the title", () => {
-    const config = { ...DEFAULT_VIEW, lens: "all" as const, query: "#502" };
+    const config = { ...DEFAULT_VIEW, attentionFilter: "all" as const, query: "#502" };
     expect(filterItems(items, config, now).map(i => i.id)).toEqual(["b"]);
   });
 });
 
-describe("applyVerb", () => {
+describe("applyRowAction", () => {
   const stamp = "2026-08-22T10:00:00Z";
 
   it("claims for the actor as a lease, not as a stage", () => {
-    const patch = applyVerb(item("a", { status: "open" }), "claim", { actor: "julia", now: stamp });
+    const patch = applyRowAction(item("a", { status: "open" }), "claim", { actor: "julia", now: stamp });
     expect(patch).toMatchObject({
-      custody: "held",
+      assignment: "held",
       owner: "@julia",
       claimed_at: stamp,
       ttl_minutes: DEFAULT_TTL_MINUTES,
@@ -245,7 +245,7 @@ describe("applyVerb", () => {
   });
 
   it("leaves the owner alone when the row already has one", () => {
-    const patch = applyVerb(item("a", { status: "open", owner: "@agent-y" }), "claim", {
+    const patch = applyRowAction(item("a", { status: "open", owner: "@agent-y" }), "claim", {
       actor: "julia",
       now: stamp,
     });
@@ -253,21 +253,21 @@ describe("applyVerb", () => {
   });
 
   it("releasing clears the holder and signs a note", () => {
-    const patch = applyVerb(item("a", { custody: "held", owner: "@julia" }), "release", {
+    const patch = applyRowAction(item("a", { assignment: "held", owner: "@julia" }), "release", {
       actor: "julia",
       now: stamp,
       note: "handing to @risk",
     });
     expect(patch).toMatchObject({
-      custody: "released",
+      assignment: "released",
       owner: null,
-      custody_note: "handing to @risk",
-      custody_note_by: "julia",
+      assignment_note: "handing to @risk",
+      assignment_note_by: "julia",
     });
   });
 
   it("blocking names the blocker rather than writing the word", () => {
-    const patch = applyVerb(item("a", { status: "open" }), "block", {
+    const patch = applyRowAction(item("a", { status: "open" }), "block", {
       actor: "julia",
       now: stamp,
       blockedBy: "#502",
@@ -277,7 +277,7 @@ describe("applyVerb", () => {
   });
 
   it("promote drops the row off the live board without inventing a back-link", () => {
-    const patch = applyVerb(item("a", { status: "open" }), "promote", { actor: "julia", now: "t" });
+    const patch = applyRowAction(item("a", { status: "open" }), "promote", { actor: "julia", now: "t" });
     expect(patch).toMatchObject({ status: "resolved", promoted: true });
     expect(patch.issue).toBeUndefined();
   });
@@ -305,8 +305,8 @@ describe("parseCapture", () => {
   });
 
   it("lifts bangs and #tags out of the title", () => {
-    const parsed = parseCapture("audit the custody store !! #security", "julia", now);
-    expect(parsed.title).toBe("audit the custody store");
+    const parsed = parseCapture("audit the assignment store !! #security", "julia", now);
+    expect(parsed.title).toBe("audit the assignment store");
     expect(parsed.fields).toMatchObject({ priority: "urgent", tags: ["security"] });
   });
 
@@ -317,35 +317,35 @@ describe("parseCapture", () => {
 
 describe("shared vocabulary contract", () => {
   // The CLI carries its own copy of these words (mycelium-cli/src/mycelium/board/)
-  // and asserts the same file, so neither surface can rename a status, a lens or
-  // a verb without turning a gate red on both sides.
+  // and asserts the same file, so neither surface can rename a status, a filter or
+  // a action without turning a gate red on both sides.
   const contract = JSON.parse(
     readFileSync(join(__dirname, "..", "..", "..", "..", "contracts", "board-vocabulary.json"), "utf8"),
   ) as {
     statuses: string[];
     kinds: string[];
     priorities: string[];
-    lenses: string[];
-    verbs: string[];
-    lens_of_status: Record<string, string>;
-    verb_keys: Record<string, string>;
+    attention_filters: string[];
+    row_actions: string[];
+    attention_of_status: Record<string, string>;
+    row_action_keys: Record<string, string>;
   };
 
-  it("uses the contracted statuses, kinds, priorities and lenses", () => {
+  it("uses the contracted statuses, kinds, priorities and attention filters", () => {
     expect(STATUS_ORDER).toEqual(contract.statuses);
     expect(PRIORITY_ORDER).toEqual(contract.priorities);
-    expect(LENSES.map(l => l.id)).toEqual(contract.lenses);
+    expect(ATTENTION_FILTERS.map(l => l.id)).toEqual(contract.attention_filters);
   });
 
-  it("derives every contracted status into the lens the contract names", () => {
-    for (const [status, lens] of Object.entries(contract.lens_of_status)) {
-      expect(lensOf(item(status, { status }))).toBe(lens);
+  it("derives every contracted status into the attention filter the contract names", () => {
+    for (const [status, attentionFilter] of Object.entries(contract.attention_of_status)) {
+      expect(attentionFilterOf(item(status, { status }))).toBe(attentionFilter);
     }
   });
 
-  it("binds each verb to the contracted key", () => {
-    expect(Object.fromEntries(VERBS.map(v => [v.id, v.key]))).toEqual(contract.verb_keys);
-    for (const verb of VERBS) expect(contract.verbs).toContain(verb.id);
+  it("binds each action to the contracted key", () => {
+    expect(Object.fromEntries(ROW_ACTIONS.map(v => [v.id, v.key]))).toEqual(contract.row_action_keys);
+    for (const action of ROW_ACTIONS) expect(contract.row_actions).toContain(action.id);
   });
 
   it("infers the type the contract names for every case, as the CLI must too", () => {

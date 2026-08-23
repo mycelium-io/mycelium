@@ -1,12 +1,18 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Custody leases: taking work, holding it, and letting it drain.
+"""Assignments: taking work, holding it, and letting it drain.
 
 An agent is resident rather than one-shot, but no session gets to announce that
 it ended — a container is reclaimed, a cloud session times out, a job is
-cancelled.  So a claim is a lease, not a fact: it has a window, the holder keeps
-it alive by saying so, and it returns to the pool when nobody does.
+cancelled.  So an assignment is a lease, not a fact: it has a window, the holder
+keeps it alive by saying so, and it returns to the pool when nobody does.
+
+The word is *assignment*, on both sides of the seam and in the frontmatter.
+Not *custody* — that names the hub holding a member's MLS keys
+(:mod:`app.services.custody`), which shares no concept with this.  The window
+below is a lease, but the room's other lease — the presence lease that holds
+membership between ``await`` calls — is a different thing again.
 
 **A lease is frontmatter on a ``work/`` memory.**  Nothing new is stored.
 ``owner`` / ``claimed_at`` / ``ttl_minutes`` go through the same upsert every
@@ -28,7 +34,7 @@ resident loop polling every few seconds must not rewrite the room's files every
 few seconds.
 
 The constants below are frozen in ``contracts/board-vocabulary.json`` under
-``custody``; the CLI and the GUI carry their own copies, and a test on each side
+``assignment``; the CLI and the GUI carry their own copies, and a test on each side
 asserts against that file so no copy can drift alone.
 """
 
@@ -44,7 +50,7 @@ from app.services.filesystem import (
     read_memory_file,
 )
 
-FIELD = "custody"
+FIELD = "assignment"
 
 STATES = ("unclaimed", "held", "released", "expired", "resolved")
 STORED_STATES = ("held", "released", "resolved")
@@ -55,7 +61,7 @@ STALE_AFTER = 0.5
 DEFAULT_TTL_MINUTES = 30
 
 RUNTIME_AUTHOR = "runtime"
-LEASABLE_NAMESPACES = ("work",)
+ASSIGNABLE_NAMESPACES = ("work",)
 
 #: How often a lease watch re-reads the row it is watching.
 POLL_INTERVAL_S = 1.0
@@ -63,7 +69,7 @@ POLL_INTERVAL_S = 1.0
 MAX_WAIT_S = 60
 
 
-class LeaseError(Exception):
+class AssignmentError(Exception):
     """A lease operation the room refuses, with the reason a reader needs."""
 
     def __init__(self, reason: str, *, status: int = 400, **detail: Any) -> None:
@@ -109,7 +115,7 @@ def freshness(meta: dict, now: datetime) -> str | None:
 
 
 def state_of(meta: dict, now: datetime) -> str:
-    """A row's custody state, read off its frontmatter and the clock.
+    """A row's assignment state, read off its frontmatter and the clock.
 
     A ``held`` lease that nobody renewed reads ``expired`` here with nothing on
     disk having changed, and one that cannot be dated at all reads the same way:
@@ -125,51 +131,51 @@ def state_of(meta: dict, now: datetime) -> str:
     return "held" if freshness(meta, now) in ("fresh", "stale") else "expired"
 
 
-def leasable(key: str) -> bool:
-    return key.split("/")[0] in LEASABLE_NAMESPACES
+def assignable(key: str) -> bool:
+    return key.split("/")[0] in ASSIGNABLE_NAMESPACES
 
 
 def _load(room: str, key: str) -> tuple[dict, str]:
-    if not leasable(key):
-        raise LeaseError(
-            f"leases live on {'/, '.join(LEASABLE_NAMESPACES)}/ memories; '{key}' is elsewhere",
+    if not assignable(key):
+        raise AssignmentError(
+            f"leases live on {'/, '.join(ASSIGNABLE_NAMESPACES)}/ memories; '{key}' is elsewhere",
             status=422,
             key=key,
         )
     found = read_memory_file(get_room_dir(room), key)
     if found is None:
-        raise LeaseError(f"no memory '{key}' in this room", status=404, key=key)
+        raise AssignmentError(f"no memory '{key}' in this room", status=404, key=key)
     return found
 
 
 def _describe(key: str, meta: dict, now: datetime) -> dict:
-    """The row's custody, as the wire says it."""
+    """The row's assignment, as the wire says it."""
     state = state_of(meta, now)
     owner = meta.get("owner")
     body = {
         "key": key,
-        "custody": state,
+        "assignment": state,
         "owner": str(owner).lstrip("@") if owner else None,
         "claimed_at": meta.get("claimed_at"),
         "ttl_minutes": meta.get("ttl_minutes"),
         "freshness": freshness(meta, now),
         "version": meta.get("version"),
-        "custody_note": meta.get("custody_note"),
-        "custody_note_by": meta.get("custody_note_by"),
+        "assignment_note": meta.get("assignment_note"),
+        "assignment_note_by": meta.get("assignment_note_by"),
     }
     if state == "expired":
         # Nobody wrote this note, because nobody was there to. It is derived from
         # the same silence that expired the lease, and signed as such — which is
         # what tells an abandoned row from a deliberately handed-back one.
-        body["custody_note"] = f"expired — @{body['owner'] or 'its holder'} stopped renewing"
-        body["custody_note_by"] = RUNTIME_AUTHOR
+        body["assignment_note"] = f"expired — @{body['owner'] or 'its holder'} stopped renewing"
+        body["assignment_note_by"] = RUNTIME_AUTHOR
     return body
 
 
 async def _write(
     room: str, key: str, meta: dict, content: str, patch: dict, handle: str, *, notify: bool = True
 ) -> dict:
-    """Put a custody change on the row, through the canonical memory upsert.
+    """Put a assignment change on the row, through the canonical memory upsert.
 
     The upsert itself is :func:`app.services.fields.upsert_patch`, shared with
     the board's field writes so a lease and a status change cannot drift in how
@@ -182,7 +188,7 @@ async def _write(
 
 
 async def claim(room: str, key: str, handle: str, ttl_minutes: int, now: datetime) -> dict:
-    """Take custody of a row, for as long as the lease runs.
+    """Take assignment of a row, for as long as the lease runs.
 
     A live claim is not stealable — that is the point of holding one — but an
     expired one is: the row is back in the pool, and refusing the next taker
@@ -193,7 +199,7 @@ async def claim(room: str, key: str, handle: str, ttl_minutes: int, now: datetim
     current = state_of(meta, now)
     holder = str(meta.get("owner") or "").lstrip("@")
     if current == "held" and holder and holder != handle.lstrip("@"):
-        raise LeaseError(
+        raise AssignmentError(
             f"'{key}' is held by @{holder}",
             status=409,
             key=key,
@@ -207,8 +213,8 @@ async def claim(room: str, key: str, handle: str, ttl_minutes: int, now: datetim
         "claimed_at": now.isoformat(),
         "ttl_minutes": ttl_minutes,
         # A new holder inherits the row, not the last holder's parting words.
-        "custody_note": None,
-        "custody_note_by": None,
+        "assignment_note": None,
+        "assignment_note_by": None,
     }
     return await _write(room, key, meta, content, patch, handle)
 
@@ -226,8 +232,8 @@ async def release(room: str, key: str, handle: str, note: str | None, now: datet
         "owner": None,
         "claimed_at": None,
         "ttl_minutes": None,
-        "custody_note": note or "released",
-        "custody_note_by": handle.lstrip("@"),
+        "assignment_note": note or "released",
+        "assignment_note_by": handle.lstrip("@"),
     }
     return await _write(room, key, meta, content, patch, handle)
 
@@ -239,8 +245,8 @@ async def resolve(room: str, key: str, handle: str, now: datetime) -> dict:
         FIELD: "resolved",
         "claimed_at": None,
         "ttl_minutes": None,
-        "custody_note": f"resolved by @{handle.lstrip('@')}",
-        "custody_note_by": handle.lstrip("@"),
+        "assignment_note": f"resolved by @{handle.lstrip('@')}",
+        "assignment_note_by": handle.lstrip("@"),
     }
     return await _write(room, key, meta, content, patch, handle)
 
@@ -257,7 +263,7 @@ async def renew(room: str, handle: str, now: datetime) -> list[dict]:
     who = handle.lstrip("@")
     renewed: list[dict] = []
     room_dir = get_room_dir(room)
-    for namespace in LEASABLE_NAMESPACES:
+    for namespace in ASSIGNABLE_NAMESPACES:
         for key, meta, content in list_memory_files(room_dir, prefix=f"{namespace}/"):
             if state_of(meta, now) != "held":
                 continue
@@ -274,7 +280,7 @@ async def renew(room: str, handle: str, now: datetime) -> list[dict]:
 
 
 def read(room: str, key: str, now: datetime) -> dict:
-    """The row's custody right now, without changing anything."""
+    """The row's assignment right now, without changing anything."""
     meta, _ = _load(room, key)
     return _describe(key, meta, now)
 
@@ -287,12 +293,12 @@ def signature(body: dict) -> str:
     sleep through the one transition nobody sends.
     """
     return "|".join(
-        str(body.get(part) or "") for part in ("custody", "owner", "claimed_at", "version")
+        str(body.get(part) or "") for part in ("assignment", "owner", "claimed_at", "version")
     )
 
 
 async def watch(room: str, key: str, since: str | None, timeout: int, now_fn=None) -> dict:
-    """Long-poll one lease and return when its custody moves.
+    """Long-poll one lease and return when its assignment moves.
 
     **The lease is the subscription object.**  Waking on channel traffic to watch
     a handoff is the wrong subscription — a dozen unrelated messages wake you for

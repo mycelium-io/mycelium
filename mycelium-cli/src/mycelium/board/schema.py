@@ -14,7 +14,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from mycelium.board.custody import STATES as CUSTODY_STATES
+from mycelium.board.assignment import STATES as ASSIGNMENT_STATES
 from mycelium.board.model import KINDS, PRIORITIES, STATUSES, LiveItem
 from mycelium.board.upstream import UPSTREAM_STATES
 
@@ -24,7 +24,7 @@ from mycelium.board.upstream import UPSTREAM_STATES
 #: a small room happens to use each state once.
 KNOWN_VOCABULARIES: dict[str, list[str]] = {
     "status": STATUSES,
-    "custody": CUSTODY_STATES,
+    "assignment": ASSIGNMENT_STATES,
     "kind": KINDS,
     "priority": PRIORITIES,
     "ci": ["green", "running", "red"],
@@ -33,7 +33,7 @@ KNOWN_VOCABULARIES: dict[str, list[str]] = {
 
 PREFERRED_ORDER = [
     "status",
-    "custody",
+    "assignment",
     "kind",
     "owner",
     "priority",

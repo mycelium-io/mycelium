@@ -1,7 +1,7 @@
 """Interactive driver for the *real* aligner — a thin wrapper, no re-implementation.
 
 Runs the actual ``AlignerEngine.mediate()`` end to end against a real per-session
-``PiBrain``, using the same in-repo fakes the test suite uses for the coordination
+``PiSession``, using the same in-repo fakes the test suite uses for the coordination
 stack (``FakePersister``/``FakeManaged``/``FakeManager``). The only thing swapped is
 the agent-reply seam: instead of ``FakeChannel``'s canned auto-reply, an
 ``InteractiveChannel`` surfaces each ``@handle`` prompt to a file and injects the
@@ -49,7 +49,7 @@ from app.services import aligner, l9  # noqa: E402
 from app.services.l9_models import Kind  # noqa: E402
 from app.services.l9_slim import serialize_content  # noqa: E402
 from app.services.persister import record_from  # noqa: E402
-from app.services.pi_brain import PiBrain  # noqa: E402
+from app.services.pi_session import PiSession  # noqa: E402
 from tests.fakes import FakeManaged, FakeManager, FakePersister  # noqa: E402
 
 _ROOM = "aligner-lab"
@@ -192,9 +192,9 @@ async def _drive(args: argparse.Namespace) -> None:
     session_dir = work / "pi-session"
     session_dir.mkdir(exist_ok=True)
 
-    def brain_factory(episode: str) -> Any:
-        return PiBrain(
-            session_path=session_dir / "brain.jsonl",
+    def llm_session_factory(episode: str) -> Any:
+        return PiSession(
+            session_path=session_dir / "llm_session.jsonl",
             model=llm_env["LLM_MODEL"],
             api_key=llm_env.get("LLM_API_KEY"),
             base_url=llm_env.get("LLM_BASE_URL"),
@@ -209,7 +209,7 @@ async def _drive(args: argparse.Namespace) -> None:
         round_timeout_s=args.turn_timeout,
         poll_interval_s=0.5,
         max_steps=args.cap,
-        brain_factory=brain_factory,
+        llm_session_factory=llm_session_factory,
     )
 
     print(f"[driver] model={llm_env['LLM_MODEL']}  participants={participants}", flush=True)

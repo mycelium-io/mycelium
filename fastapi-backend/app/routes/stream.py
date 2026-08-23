@@ -20,7 +20,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from app.bus import agent_channel, app_channel, bus, room_channel
-from app.services import local_state
+from app.services import in_memory_store
 from app.services.filesystem import list_room_names, room_exists
 
 logger = logging.getLogger(__name__)
@@ -33,7 +33,7 @@ def _room_or_session_exists(name: str) -> bool:
         return True
     if ":session:" in name:
         parent, _, _short = name.partition(":session:")
-        coord = local_state.get_session(parent)
+        coord = in_memory_store.get_session(parent)
         return coord is not None and coord.display_name == name
     return False
 
