@@ -5,7 +5,7 @@
 
 import { cn } from "@/lib/utils";
 import { ageMinutes, lensOf, ownerOf, type LiveItem } from "@/lib/board/item";
-import { AgeTag, KindGlyph, OwnerChip, SourceTag, WorkLinks, kindColor } from "./board-bits";
+import { AgeTag, KindGlyph, OwnerChip, SourceTag, UpstreamChip, WorkLinks, kindColor } from "./board-bits";
 
 interface Props {
   items: LiveItem[];
@@ -70,6 +70,7 @@ export function BoardTimeline({ items, now, selectedId, onSelect }: Props) {
                     <SourceTag item={item} />
                     <OwnerChip handle={ownerOf(item)} live={item.fields.live === true} />
                     <WorkLinks item={item} />
+          <UpstreamChip item={item} />
                   </span>
                 </span>
               </button>

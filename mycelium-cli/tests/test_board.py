@@ -17,6 +17,7 @@ from mycelium.board import activity, model
 from mycelium.board.model import ItemSource, LiveItem, lens_of
 from mycelium.board.projection import project_items
 from mycelium.board.schema import groupable_fields, infer_schema
+from mycelium.board.upstream import UPSTREAM_STATES, attach_upstream
 
 CONTRACT = json.loads(
     (Path(__file__).resolve().parents[2] / "contracts" / "board-vocabulary.json").read_text()
@@ -46,6 +47,12 @@ class TestVocabularyContract:
 
     def test_live_namespaces_match_the_contract(self):
         assert CONTRACT["live_namespaces"] == model.LIVE_NAMESPACES
+
+    def test_the_upstream_field_and_its_states_match_the_contract(self):
+        assert CONTRACT["upstream"]["states"] == UPSTREAM_STATES
+        # Neither of the row's own fields: `status` is the row's lifecycle and
+        # `live` is a boolean for agent presence.
+        assert CONTRACT["upstream"]["field"] not in ("status", "live")
 
 
 class TestProjection:
@@ -419,3 +426,114 @@ class TestActivity:
         ]
         assert summary.active_days == 1
         assert summary.by_verb == [("posted", 3)]
+
+
+def status_payload(*entries, rows=None) -> dict:
+    """A hub /status response: refs keyed by row id, the shape the route returns."""
+    return {
+        "field": "upstream",
+        "refs": list(entries),
+        "rows": rows or {},
+    }
+
+
+def answer(ref: str, state: str | None, label: str | None = None, **extra) -> dict:
+    base = {"ref": ref, "state": state, "label": label, "url": None, "error": None}
+    return {**base, "freshness": "fresh", **extra}
+
+
+class TestUpstream:
+    def test_an_answer_lands_on_the_row_that_mentioned_it(self):
+        rows = [item("plan:tasks:3", status="open")]
+        attach_upstream(
+            rows,
+            status_payload(
+                answer("github:pull_request:o/r#1", "blocked", "changes requested"),
+                rows={"plan:tasks:3": ["github:pull_request:o/r#1"]},
+            ),
+        )
+        assert rows[0].get("upstream") == "blocked"
+        assert rows[0].get("upstream_label") == "changes requested"
+
+    def test_a_row_with_two_references_shows_the_worse_one_and_says_there_were_more(self):
+        rows = [item("plan:tasks:3")]
+        attach_upstream(
+            rows,
+            status_payload(
+                answer("a", "ok", "approved"),
+                answer("b", "failed", "CI failing"),
+                rows={"plan:tasks:3": ["a", "b"]},
+            ),
+        )
+        # A board says what needs a person, so the failing one wins; the count
+        # keeps the summary from standing in for the whole.
+        assert rows[0].get("upstream") == "failed"
+        assert rows[0].get("upstream_count") == 2
+
+    def test_a_row_nothing_was_found_for_carries_no_field_at_all(self):
+        rows = [item("plan:tasks:9")]
+        attach_upstream(rows, status_payload(answer("a", "ok"), rows={"plan:tasks:3": ["a"]}))
+        # Absent, not empty: a view can tell "nothing upstream" from "unknown".
+        assert "upstream" not in rows[0].fields
+
+    def test_an_errored_answer_shows_the_reason_rather_than_an_empty_label(self):
+        rows = [item("plan:tasks:3")]
+        attach_upstream(
+            rows,
+            status_payload(
+                answer("a", "unknown", None, error="not visible to this token"),
+                rows={"plan:tasks:3": ["a"]},
+            ),
+        )
+        assert rows[0].get("upstream_label") == "not visible to this token"
+
+    def test_no_hub_answer_leaves_every_row_untouched(self):
+        rows = [item("plan:tasks:3", status="open")]
+        attach_upstream(rows, None)
+        assert rows[0].fields == {"status": "open"}
+
+    def test_a_row_whose_answer_has_not_come_back_is_pending_not_unknown(self):
+        rows = [item("plan:tasks:3")]
+        payload = status_payload(
+            answer("a", None, freshness="missing"), rows={"plan:tasks:3": ["a"]}
+        )
+        attach_upstream(rows, {**payload, "refreshing": True})
+        # `unknown` is a provider saying it could not place what it found; this
+        # is nobody having answered yet. Grouping by upstream must not collect a
+        # bucket of rows that were merely early.
+        assert "upstream" not in rows[0].fields
+        assert rows[0].get("upstream_pending") is True
+
+    def test_a_row_shows_what_is_known_when_one_of_two_answers_has_not_landed(self):
+        rows = [item("plan:tasks:3")]
+        attach_upstream(
+            rows,
+            status_payload(
+                answer("a", None, freshness="missing"),
+                answer("b", "blocked", "changes requested"),
+                rows={"plan:tasks:3": ["a", "b"]},
+            ),
+        )
+        assert rows[0].get("upstream") == "blocked"
+
+    def test_a_stale_value_is_kept_and_marked_rather_than_hidden(self):
+        rows = [item("plan:tasks:3")]
+        attach_upstream(
+            rows,
+            status_payload(
+                answer("a", "ok", "approved", freshness="stale", age_seconds=5400),
+                rows={"plan:tasks:3": ["a"]},
+            ),
+        )
+        # The truth as far as anyone knows, with a refresh behind it. Taking the
+        # value away would tell the reader less, not more.
+        assert rows[0].get("upstream") == "ok"
+        assert rows[0].get("upstream_freshness") == "stale"
+        assert rows[0].get("upstream_age") == "1h ago"
+
+    def test_upstream_is_a_select_the_board_can_group_by(self):
+        rows = [item("a", upstream="ok"), item("b", upstream="failed")]
+        found = next(f for f in infer_schema(rows) if f.name == "upstream")
+        assert found.type == "select"
+        assert {name for name, _ in found.options} <= set(UPSTREAM_STATES)
+        assert "upstream" in [f.name for f in groupable_fields(infer_schema(rows))]

@@ -18,6 +18,7 @@ import {
 } from "@/lib/board/item";
 import { parseCapture } from "@/lib/board/capture";
 import { DAILY_GOAL, heatLevel, weekdayIndex } from "@/lib/board/activity";
+import { attachUpstream, UPSTREAM_STATES, upstreamAge, type RoomStatus } from "@/lib/board/upstream";
 import type { PlanResponse } from "@/lib/api";
 
 const item = (id: string, fields: Record<string, unknown>): LiveItem => ({
@@ -273,6 +274,14 @@ describe("shared vocabulary contract", () => {
     for (const verb of VERBS) expect(contract.verbs).toContain(verb.id);
   });
 
+  it("uses the contracted upstream field and states", () => {
+    const upstream = (contract as unknown as { upstream: { field: string; states: string[] } }).upstream;
+    expect([...UPSTREAM_STATES]).toEqual(upstream.states);
+    // Neither of the row's own fields: `status` is the row's lifecycle and
+    // `live` is a boolean for agent presence.
+    expect(["status", "live"]).not.toContain(upstream.field);
+  });
+
   it("keeps the log's calendar conventions the CLI also asserts", () => {
     const log = (contract as unknown as { log: { week_starts_on: string; daily_goal: number; heat_thresholds: number[] } }).log;
     expect(log.week_starts_on).toBe("monday");
@@ -286,5 +295,120 @@ describe("shared vocabulary contract", () => {
   it("offers the contracted status vocabulary as select options", () => {
     const schema = inferSchema([item("a", { status: "open" })]);
     expect(schema.find(f => f.name === "status")?.options.map(o => o.value)).toEqual(contract.statuses);
+  });
+});
+
+
+describe("upstream answers on rows", () => {
+  const row = (id: string, fields: Record<string, unknown> = {}): LiveItem => ({
+    id,
+    title: id,
+    source: { kind: "plan", label: id },
+    fields,
+  });
+
+  const status = (refs: Partial<RoomStatus["refs"][number]>[], rows: Record<string, string[]>): RoomStatus => ({
+    room: "atlas",
+    field: "upstream",
+    providers: ["github"],
+    refs: refs.map(r => ({
+      ref: r.ref ?? "x", provider: "github", kind: "pull_request", id: r.id ?? "o/r#1",
+      url: r.url ?? null, freshness: r.freshness ?? "fresh",
+      // `??` would swallow an explicit null, which is exactly the case these
+      // cover: a reference the hub has no answer for yet.
+      state: r.state === undefined ? "ok" : r.state,
+      label: r.label ?? null, age_seconds: r.age_seconds ?? 0, error: r.error ?? null,
+      origins: r.origins ?? [],
+    })),
+    rows,
+    refreshing: false,
+  });
+
+  it("lands an answer on the row that mentioned it", () => {
+    const [out] = attachUpstream(
+      [row("plan:t3")],
+      status([{ ref: "a", state: "blocked", label: "changes requested" }], { "plan:t3": ["a"] }),
+    );
+    expect(out.fields.upstream).toBe("blocked");
+    expect(out.fields.upstream_label).toBe("changes requested");
+  });
+
+  it("shows the worse of two references and says there were more", () => {
+    const [out] = attachUpstream(
+      [row("plan:t3")],
+      status(
+        [{ ref: "a", state: "ok", label: "approved" }, { ref: "b", state: "failed", label: "CI failing" }],
+        { "plan:t3": ["a", "b"] },
+      ),
+    );
+    // A board says what needs a person, so the failing one wins.
+    expect(out.fields.upstream).toBe("failed");
+    expect(out.fields.upstream_count).toBe(2);
+  });
+
+  it("leaves a row nothing was found for completely untouched", () => {
+    const original = row("plan:t9", { status: "open" });
+    const [out] = attachUpstream([original], status([{ ref: "a" }], { "plan:t3": ["a"] }));
+    expect(out).toBe(original);
+    expect(out.fields).not.toHaveProperty("upstream");
+  });
+
+  it("shows the reason when an answer errored rather than an empty label", () => {
+    const [out] = attachUpstream(
+      [row("plan:t3")],
+      status([{ ref: "a", state: "unknown", label: null, error: "not visible to this token" }], { "plan:t3": ["a"] }),
+    );
+    expect(out.fields.upstream_label).toBe("not visible to this token");
+  });
+
+  it("marks a row whose answer has not come back yet as pending, not unknown", () => {
+    const [out] = attachUpstream(
+      [row("plan:t3")],
+      { ...status([{ ref: "a", state: null, label: null, freshness: "missing" }], { "plan:t3": ["a"] }), refreshing: true },
+    );
+    // `unknown` is a provider saying it could not place what it found; this is
+    // nobody having answered yet. A board grouping by upstream must not collect
+    // a bucket of rows that were merely early.
+    expect(out.fields).not.toHaveProperty("upstream");
+    expect(out.fields.upstream_pending).toBe(true);
+  });
+
+  it("shows what is known on a row where one answer landed and another has not", () => {
+    const [out] = attachUpstream(
+      [row("plan:t3")],
+      status(
+        [
+          { ref: "a", state: null, freshness: "missing" },
+          { ref: "b", state: "blocked", label: "changes requested" },
+        ],
+        { "plan:t3": ["a", "b"] },
+      ),
+    );
+    expect(out.fields.upstream).toBe("blocked");
+  });
+
+  it("keeps a stale value and says it is stale rather than hiding it", () => {
+    const [out] = attachUpstream(
+      [row("plan:t3")],
+      status([{ ref: "a", state: "ok", label: "approved", freshness: "stale", age_seconds: 5400 }], { "plan:t3": ["a"] }),
+    );
+    // The truth as far as anyone knows, with a refresh behind it. Taking the
+    // value away would tell the reader less, not more.
+    expect(out.fields.upstream).toBe("ok");
+    expect(out.fields.upstream_freshness).toBe("stale");
+    expect(out.fields.upstream_age).toBe("1h ago");
+  });
+
+  it("reads an answer's age the way the rest of the board reads ages", () => {
+    expect(upstreamAge(30)).toBe("just now");
+    expect(upstreamAge(600)).toBe("10m ago");
+    expect(upstreamAge(7200)).toBe("2h ago");
+    expect(upstreamAge(null)).toBeNull();
+  });
+
+  it("types upstream as a select the board can group by", () => {
+    const schema = inferSchema([row("a", { upstream: "ok" }), row("b", { upstream: "failed" })]);
+    expect(schema.find(f => f.name === "upstream")?.type).toBe("select");
+    expect(groupableFields(schema).map(f => f.name)).toContain("upstream");
   });
 });

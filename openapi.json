@@ -2896,6 +2896,79 @@
         }
       }
     },
+    "/api/rooms/{room_name}/status": {
+      "get": {
+        "tags": [
+          "status"
+        ],
+        "summary": "Get Room Status",
+        "operationId": "get_room_status_api_rooms__room_name__status_get",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "refresh",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Fetch before answering. The blocking path, for a one-shot caller.",
+              "default": false,
+              "title": "Refresh"
+            },
+            "description": "Fetch before answering. The blocking path, for a one-shot caller."
+          },
+          {
+            "name": "max_age",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Seconds. An answer older than this is reported missing, not handed over.",
+              "title": "Max Age"
+            },
+            "description": "Seconds. An answer older than this is reported missing, not handed over."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomStatusResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "tags": [
@@ -5334,6 +5407,59 @@
         ],
         "title": "RoomRead"
       },
+      "RoomStatusResponse": {
+        "properties": {
+          "room": {
+            "type": "string",
+            "title": "Room"
+          },
+          "field": {
+            "type": "string",
+            "title": "Field",
+            "description": "The board-row field an answer belongs under. Served rather than assumed so a surface does not carry its own copy of the name."
+          },
+          "providers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Providers",
+            "description": "Providers registered on this hub"
+          },
+          "refs": {
+            "items": {
+              "$ref": "#/components/schemas/UpstreamRead"
+            },
+            "type": "array",
+            "title": "Refs"
+          },
+          "rows": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "object",
+            "title": "Rows",
+            "description": "Row id to the ref keys it mentions. A row may mention several."
+          },
+          "refreshing": {
+            "type": "boolean",
+            "title": "Refreshing",
+            "description": "A background refresh was kicked for stale or unknown refs",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "room",
+          "field",
+          "providers",
+          "refs"
+        ],
+        "title": "RoomStatusResponse"
+      },
       "SearchHitRead": {
         "properties": {
           "type": {
@@ -5826,6 +5952,132 @@
           "text"
         ],
         "title": "TitleUpdate"
+      },
+      "UpstreamRead": {
+        "properties": {
+          "ref": {
+            "type": "string",
+            "title": "Ref",
+            "description": "Stable ref key, 'provider:kind:id'"
+          },
+          "provider": {
+            "type": "string",
+            "title": "Provider"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          },
+          "freshness": {
+            "type": "string",
+            "title": "Freshness",
+            "description": "fresh | stale | missing | error"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State",
+            "description": "ok | pending | blocked | failed | done | unknown"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label",
+            "description": "The provider's own wording, shown as-is"
+          },
+          "source_updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Updated At",
+            "description": "When the source last changed, not when we fetched it"
+          },
+          "fetched_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fetched At"
+          },
+          "age_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Age Seconds"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "origins": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Origins",
+            "description": "Board row ids whose text mentions this ref (plan:<id>, memory:<key>)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ref",
+          "provider",
+          "kind",
+          "id",
+          "freshness"
+        ],
+        "title": "UpstreamRead",
+        "description": "One external reference and the last thing its provider said about it."
       },
       "UserCreate": {
         "properties": {

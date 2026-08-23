@@ -11,6 +11,7 @@
  */
 
 import type { LiveItem } from "./item";
+import { UPSTREAM_STATES } from "./upstream";
 
 export type FieldType =
   | "select"
@@ -44,6 +45,7 @@ const PREFERRED_ORDER = [
   "kind",
   "owner",
   "priority",
+  "upstream",
   "ci",
   "branch",
   "pr",
@@ -69,6 +71,7 @@ const KNOWN_VOCABULARIES: Record<string, string[]> = {
   kind: ["decision", "blocked", "review", "action", "concern", "signal"],
   priority: ["urgent", "high", "normal", "low"],
   ci: ["green", "running", "red"],
+  upstream: [...UPSTREAM_STATES],
 };
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}|$)/;

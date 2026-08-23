@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from mycelium.board.model import KINDS, PRIORITIES, STATUSES, LiveItem
+from mycelium.board.upstream import UPSTREAM_STATES
 
 #: Vocabularies the coordination layer defines rather than discovers.  Inference
 #: wants a value to repeat before calling a field an enum — right for a room's
@@ -25,6 +26,7 @@ KNOWN_VOCABULARIES: dict[str, list[str]] = {
     "kind": KINDS,
     "priority": PRIORITIES,
     "ci": ["green", "running", "red"],
+    "upstream": UPSTREAM_STATES,
 }
 
 PREFERRED_ORDER = [
@@ -32,6 +34,7 @@ PREFERRED_ORDER = [
     "kind",
     "owner",
     "priority",
+    "upstream",
     "ci",
     "branch",
     "pr",

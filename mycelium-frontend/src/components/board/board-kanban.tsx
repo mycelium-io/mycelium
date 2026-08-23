@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { lensOf, ownerOf, type LiveItem } from "@/lib/board/item";
 import type { ItemGroup } from "@/lib/board/view";
 import { humanize } from "@/lib/board/schema";
-import { AgeTag, KindGlyph, OwnerChip, PriorityMeter, SourceTag, TtlBar, WorkLinks } from "./board-bits";
+import { AgeTag, KindGlyph, OwnerChip, PriorityMeter, SourceTag, TtlBar, UpstreamChip, WorkLinks } from "./board-bits";
 
 interface Props {
   groups: ItemGroup[];
@@ -85,6 +85,7 @@ export function BoardKanban({ groups, groupBy, now, selectedId, onSelect, onMove
                   <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
                     <OwnerChip handle={ownerOf(item)} live={item.fields.live === true} />
                     <WorkLinks item={item} />
+          <UpstreamChip item={item} />
                   </div>
                   <div className="mt-2 flex items-center justify-between gap-2">
                     <SourceTag item={item} />
