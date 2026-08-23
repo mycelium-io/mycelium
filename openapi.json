@@ -5857,6 +5857,17 @@
               }
             ],
             "title": "Notify"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
           }
         },
         "type": "object",

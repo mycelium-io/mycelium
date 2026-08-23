@@ -444,6 +444,9 @@ class UserCreate(BaseModel):
     display_name: str = ""
     teams: list[str] = Field(default_factory=list)
     notify: str | None = None
+    #: Who registered the record, stamped into its frontmatter. Optional so a
+    #: caller that has no principal to name (the GUI) keeps the "system" default.
+    created_by: str | None = None
 
 
 class OwnedAgentRead(BaseModel):

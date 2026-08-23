@@ -1,15 +1,15 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Self-asserted principal layer: agent owner/team and the user store.
+"""Self-asserted principal layer: the owner/team slug rules on both manifests.
 
-The owned-agent roll-up over those fields resolves against the hub, so its
-coverage lives in ``test_agent_hub_reads.py``.
+The stores these point into are the hub's, so the roll-up and the user-record
+round-trip are covered in ``test_agent_hub_reads.py`` and
+``test_user_hub_store.py``.
 """
 
 from __future__ import annotations
 
-from mycelium.commands import user as user_cmd
 from mycelium.protocol import AgentManifest, UserManifest
 
 
@@ -36,16 +36,3 @@ def test_user_manifest_normalizes() -> None:
     u = UserManifest(handle="@Avery", display_name="Avery Quinn", teams=["@Core", "Infra"])
     assert u.handle == "avery"
     assert u.teams == ["core", "infra"]
-
-
-def test_user_store_roundtrip(isolated_home) -> None:  # noqa: ANN001
-    """A user written to the global store loads back as a validated model."""
-    user_cmd._write_user(
-        UserManifest(handle="avery", display_name="Avery", teams=["core"]),
-        created_by="tester",
-    )
-    loaded = user_cmd.load_user("@Avery")  # normalization on read too
-    assert loaded is not None
-    assert loaded.display_name == "Avery"
-    assert loaded.teams == ["core"]
-    assert [u.handle for u in user_cmd.list_users()] == ["avery"]

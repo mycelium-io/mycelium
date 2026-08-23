@@ -13,6 +13,12 @@ Two kinds of record:
 - **Users** are global (`users/{handle}`), because a person works across rooms.
   An agent's `owner` points at one.
 
+Both records live on the hub. `mycelium user`, `iam` and `whoami` read and write
+them over the API like every other room read, so a spoke sees the same people the
+hub and the app do. `iam` is the one command with a local half: the handle it
+sets as *this machine's* identity is machine config, so it still lands with the
+hub down — it just says the record wasn't registered.
+
 ## Identity scales with your needs
 
 Ownership and attribution read the same at every level of trust; what changes is

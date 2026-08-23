@@ -93,3 +93,29 @@ async def test_teams_rollup(client: AsyncClient):
     assert "core" in teams
     assert teams["core"]["agent_count"] == 1
     assert "avery" in teams["core"]["members"]
+
+
+@pytest.mark.asyncio
+async def test_created_by_is_stamped_from_the_payload(client: AsyncClient):
+    """A caller that knows its principal keeps attribution on the record.
+
+    The CLI registers users over this endpoint, so without a `created_by` on the
+    wire every record it wrote would be attributed to "system".
+    """
+    from app.services.filesystem import get_users_dir, read_memory_file
+
+    await client.post("/api/users", json={"handle": "avery", "created_by": "julia"})
+    record = read_memory_file(get_users_dir(), "avery")
+    assert record is not None
+    assert record[0]["created_by"] == "julia"
+
+
+@pytest.mark.asyncio
+async def test_created_by_defaults_to_system(client: AsyncClient):
+    """A caller with no principal to name (the app) keeps the old default."""
+    from app.services.filesystem import get_users_dir, read_memory_file
+
+    await client.post("/api/users", json={"handle": "sam"})
+    record = read_memory_file(get_users_dir(), "sam")
+    assert record is not None
+    assert record[0]["created_by"] == "system"

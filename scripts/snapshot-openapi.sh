@@ -23,5 +23,6 @@ if ! curl -sfL "$BACKEND_URL/openapi.json" -o /tmp/openapi.live.json; then
   exit 1
 fi
 
-python3 -m json.tool /tmp/openapi.live.json > openapi.json
+# indent=2 matches the committed file, so a refresh shows only the real change.
+python3 -m json.tool --indent 2 /tmp/openapi.live.json > openapi.json
 echo "✓ Wrote openapi.json"

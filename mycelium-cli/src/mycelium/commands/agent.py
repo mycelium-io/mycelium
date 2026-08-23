@@ -345,13 +345,23 @@ def _warn_unknown_principal(manifest: AgentManifest) -> None:
 
     The binding is self-asserted, so a dangling owner is a soft signal, not an
     error; it just nudges the user to register the principal so 'my agents'
-    has something to resolve.
+    has something to resolve. A hub that can't be reached means the owner can't
+    be confirmed either way, so the nudge is skipped rather than guessed at —
+    the write that follows will report the outage on its own.
     """
     if not manifest.owner:
         return
-    from mycelium.commands.user import load_user
+    import httpx
 
-    if load_user(manifest.owner) is None:
+    from mycelium.commands.user import load_user
+    from mycelium_backend_client.errors import UnexpectedStatus
+
+    try:
+        known = load_user(manifest.owner) is not None
+    except (httpx.HTTPError, UnexpectedStatus):
+        return
+
+    if not known:
         console.print(
             f"[yellow]note:[/yellow] owner '@{manifest.owner}' has no user record. "
             f'Register it with: mycelium user create {manifest.owner} --name "…"'

@@ -24,7 +24,6 @@ from typer.testing import CliRunner
 
 from mycelium.commands import agent as agent_cmd
 from mycelium.commands import engine as engine_cmd
-from mycelium.commands import user as user_cmd
 from mycelium.protocol import AgentManifest
 
 runner = CliRunner()
@@ -301,11 +300,17 @@ def test_load_owned_agents_spans_every_room_on_the_hub(monkeypatch: pytest.Monke
     assert sorted(r for r, _m in owned) == ["alpha", "beta"]
 
 
-def test_owned_roll_up_distinguishes_unreachable_hub_from_owning_nothing(
+def test_load_owned_agents_reports_owning_nothing_as_an_empty_list(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _stub(monkeypatch, ROOMS_LIST_SYNC, httpx.ConnectError("connection refused"))
-    assert user_cmd._owned_agents("avery") is None
-
     _stub(monkeypatch, ROOMS_LIST_SYNC, [])
-    assert user_cmd._owned_agents("avery") == []
+    assert agent_cmd.load_owned_agents(owner="avery") == []
+
+
+def test_load_owned_agents_propagates_an_unreachable_hub(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Owning nothing is an empty list; a dead hub is an error, not an empty list."""
+    _stub(monkeypatch, ROOMS_LIST_SYNC, httpx.ConnectError("connection refused"))
+    with pytest.raises(httpx.ConnectError):
+        agent_cmd.load_owned_agents(owner="avery")
