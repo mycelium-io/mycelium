@@ -35,7 +35,7 @@ from pathlib import Path
 PAGES: list[tuple[str, str, str, str, str, str, str]] = [
     ("start", "index.html", "mycelium Docs", "Guide",
      "GET-001", "OVERVIEW · QUICK START · CONCEPTS · ENGINES",
-     "A shared space for humans and agents. Install Mycelium and learn the core concepts: rooms, memory, plan, engines (the aligner and synthesizer), and the L9 protocol."),
+     "A shared space for humans and agents. Install Mycelium and learn the core concepts: rooms, memory, plan, engines (the aligner, the synthesizer and hello), and the L9 protocol."),
     ("adapters", "adapters.html", "Adapters · mycelium", "Adapters",
      "ADP-001", "ADAPTERS · CLAUDE CODE · CURSOR · A2A BRIDGE · REST API",
      "Connect Claude Code, Cursor, any A2A agent, or any HTTP client to the Mycelium coordination layer."),
@@ -64,6 +64,7 @@ SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
     ("concepts/engines.md",           "engines",            "start",       "Engines",      "Overview"),
     ("concepts/aligner.md",           "aligner",            "start",       "Engines",      "Aligner"),
     ("concepts/synthesizer.md",       "synthesizer",        "start",       "Engines",      "Synthesizer"),
+    ("concepts/hello.md",             "hello",              "start",       "Engines",      "Hello"),
     # ── adapters (adapters.html), all hand-coded ──
     (None,                            "adapters",           "adapters",  "Adapters",     "Overview"),
     (None,                            "adapter-claude-code","adapters",  "Adapters",     "Claude Code"),

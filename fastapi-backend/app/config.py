@@ -11,6 +11,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # ``engine.runtime`` — flip both together.
 EngineRuntime = Literal["backend", "host"]
 
+# What the synthesizer distills. Messages → memory is the direction that moves
+# information from where it is lost to where it is kept; "memory" is the older
+# summarize-the-store behavior, kept as an opt-in.
+SynthesizerSource = Literal["messages", "memory"]
+
 # What a validated token's principal is. Distinguishing the two is what lets
 # handle binding (#562) treat a human and a workload differently.
 PrincipalRole = Literal["user", "agent"]
@@ -150,14 +155,35 @@ class Settings(BaseSettings):
     # refused. Flip to True only for a trusted deployment whose a2a agents live on
     # the internal network.
     A2A_ALLOW_PRIVATE_HOSTS: bool = False
-    # Synthesizer engine (kind ``synthesizer``) — reads a room's memory and
-    # compiles a structured summary as a ``knowledge`` memory. Dormant by
-    # default like the aligner: nothing runs until a registered synthesizer
-    # engine is @-summoned. Reuses the shared LLM_* + ALIGNER_PI_* Pi runtime
-    # settings; only its own handle default and per-turn timeout live here.
+    # Synthesizer engine (kind ``synthesizer``) — distills a room's transcript
+    # into a ``knowledge`` memory. Dormant by default like the aligner: nothing
+    # runs until a registered synthesizer engine is @-summoned. Reuses the shared
+    # LLM_* + ALIGNER_PI_* Pi runtime settings; only its own handle default,
+    # per-turn timeout and corpus source live here.
     SYNTHESIZER_HANDLE: str = "synthesizer"
     # Per-turn wall-clock bound (seconds) on the synthesizer's one-shot pi call.
     SYNTHESIZER_PI_TIMEOUT_S: float = 120.0
+    # What the synthesizer reads. "messages" (default) distills the room's chat
+    # — the ephemeral half, where a decision is argued and settled and nothing
+    # indexes it for meaning — into the durable half. "memory" is the older
+    # behavior, re-summarizing the memory store: a different feature (a briefing
+    # over what is already durable), kept behind this flag rather than dropped.
+    SYNTHESIZER_SOURCE: SynthesizerSource = "messages"
+
+    @field_validator("SYNTHESIZER_SOURCE", mode="before")
+    @classmethod
+    def _normalize_synthesizer_source(cls, v: object) -> object:
+        return v.strip().lower() if isinstance(v, str) else v
+
+    # Hello engine (kind ``hello``) — answers a summon with one Pi turn and
+    # writes nothing anywhere: the cheap proof that the whole engine path works
+    # on a given hub. Dormant by default like the others. Reuses the shared
+    # LLM_* + ALIGNER_PI_* Pi runtime settings; only its own handle default and
+    # per-turn timeout live here. The timeout is shorter than the other engines'
+    # because a probe that has to be waited on is not much of a probe.
+    HELLO_HANDLE: str = "hello"
+    # Per-turn wall-clock bound (seconds) on the hello engine's one-shot pi call.
+    HELLO_PI_TIMEOUT_S: float = 60.0
 
     # Where a registered `engine` (kind aligner) runs its NEGMAS drive — selects
     # the engine runtime. "backend" (default):

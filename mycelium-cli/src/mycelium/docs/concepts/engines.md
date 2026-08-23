@@ -10,6 +10,10 @@ offer wins* shouldn't fall to one of the negotiating parties; summarizing the
 whole room shouldn't depend on one agent remembering everything. An engine is a
 neutral, first-party actor the room owns.
 
+Three of them exist today; the first thing to try on a new hub is `hello`,
+which answers a summon and owns nothing, so it is safe to fire into a live
+room just to see whether cognition runs at all.
+
 Two properties define every engine:
 
 - **Summoned explicitly.** An engine is dormant until you register it in a
@@ -28,7 +32,8 @@ commands host all of them.
 | Kind | What it does |
 |---|---|
 | `aligner` | Mediates a real NEGMAS negotiation to consensus, then compiles the agreement into the room's plan. See [Aligner](#aligner). |
-| `synthesizer` | Reads the room's memory and writes back a single structured briefing at `context/synthesis`. See [Synthesizer](#synthesizer). |
+| `synthesizer` | Distills the room's conversation into a briefing at `context/synthesis`, incrementally. See [Synthesizer](#synthesizer). |
+| `hello` | Answers one summon with one Pi turn and writes nothing anywhere — the cheap proof the engine path works on this hub. See [Hello](#hello). |
 
 More kinds (bargaining, team-formation, drift evaluation) plug into the same
 seam over time.
