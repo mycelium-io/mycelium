@@ -30,13 +30,19 @@ distinct agents.
 if ! command -v mycelium >/dev/null 2>&1; then
   command -v uv >/dev/null 2>&1 || curl -fsSL https://astral.sh/uv/install.sh | sh
   export PATH="$HOME/.local/bin:$PATH"
-  # `uv tool install <release-url>` returns 401 behind a cloud egress proxy (the
-  # signed GitHub redirect rejects the proxy's auth header), so download then
-  # install the local wheel.
-  WHEEL=$(curl -fsSL https://api.github.com/repos/mycelium-io/mycelium/releases/latest \
-    | grep -o 'https://github.com/[^"]*mycelium_cli-[^"]*-py3-none-any\.whl' | head -1)
-  curl -fsSL -o /tmp/mycelium_cli.whl "$WHEEL"
-  uv tool install --python 3.12 /tmp/mycelium_cli.whl
+  # Resolve the latest version WITHOUT api.github.com, which returns 403 through a
+  # cloud egress proxy: follow the releases/latest redirect on github.com (which is
+  # allowlisted) and read the tag from the final URL.
+  TAG=$(curl -fsSL -o /dev/null -w '%{url_effective}' \
+    https://github.com/mycelium-io/mycelium/releases/latest | grep -oE 'tag/[^/]+' | cut -d/ -f2)
+  VER=${TAG#v}
+  # `uv tool install <release-url>` also 401s behind the proxy (the signed asset
+  # redirect rejects its injected auth header), so download then install the local
+  # file. Keep the PEP 427 versioned filename or uv rejects it ("must have a version").
+  WHEEL="mycelium_cli-${VER}-py3-none-any.whl"
+  curl -fsSL -o "/tmp/${WHEEL}" \
+    "https://github.com/mycelium-io/mycelium/releases/download/${TAG}/${WHEEL}"
+  uv tool install --python 3.12 "/tmp/${WHEEL}"
 fi
 export PATH="$HOME/.local/bin:$PATH"
 ```
