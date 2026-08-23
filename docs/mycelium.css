@@ -1013,23 +1013,46 @@ tr:hover td { background: var(--hairline); }
   justify-content: center;
 }
 
-/* ── HEADER ANCHORS ── */
-h2[id], h3[id] { position: relative; }
-.header-anchor {
+/* ── HEADING TOOLS ── */
+/* Every heading carries the pair: copy its link, copy its section. */
+.heading-tools {
   display: inline-flex;
   align-items: center;
+  gap: 2px;
   margin-left: 8px;
   opacity: 0;
   transition: opacity 0.15s;
   vertical-align: middle;
+}
+h1:hover .heading-tools,
+h2:hover .heading-tools,
+h3:hover .heading-tools,
+h4:hover .heading-tools,
+.heading-tools:focus-within { opacity: 1; }
+.header-anchor,
+.header-copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  border: 0;
+  background: none;
+  font: inherit;
+  line-height: 0;
   color: var(--faint);
   text-decoration: none;
+  cursor: pointer;
 }
-.header-anchor:hover { color: var(--accent); text-decoration: none; }
-.header-anchor svg { width: 15px; height: 15px; stroke: currentColor; }
-h2:hover .header-anchor,
-h3:hover .header-anchor,
-.header-anchor:focus { opacity: 1; }
+.header-anchor:hover,
+.header-copy:hover { color: var(--accent); text-decoration: none; }
+.header-anchor.copied,
+.header-copy.copied { color: var(--green); }
+.header-anchor svg,
+.header-copy svg { width: 15px; height: 15px; stroke: currentColor; }
+/* Touch has no hover to reveal them, so they stay visible but quiet. */
+@media (hover: none) {
+  .heading-tools { opacity: 0.55; }
+}
 
 /* ── THEME TOGGLE (mirrors the app's light / dark / system menu) ── */
 .theme-toggle { position: relative; display: flex; }
