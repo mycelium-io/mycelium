@@ -68,6 +68,23 @@ class MessageType(StrEnum):
     PLAN_UPDATED = "plan_updated"
 
 
+# The message types whose ``content`` is human-readable prose — real chat, and
+# the only part of a room's feed a reader can distill for meaning. Everything
+# else the feed carries is structured: the ``l9_*`` raise-up frames hold a
+# serialized envelope as their content, and the coordination/plan kinds are
+# lifecycle markers. A consumer that reads the transcript for what was *said*
+# (the synthesizer) filters on this table rather than sniffing payloads, so a
+# new system kind is excluded by default instead of leaking JSON into a prompt.
+PROSE_MESSAGE_TYPES: frozenset[str] = frozenset(
+    {
+        MessageType.ANNOUNCE,
+        MessageType.DIRECT,
+        MessageType.BROADCAST,
+        MessageType.DELEGATE,
+    }
+)
+
+
 # The message types a client may create over the HTTP API. The system-posted
 # kinds above are written server-side and are not accepted on inbound requests.
 ApiMessageType = Literal[

@@ -536,6 +536,22 @@ def room_conversation(room: str) -> list[StoredMessage]:
     return disk + mem
 
 
+def prose_messages(room: str) -> list[StoredMessage]:
+    """The room's chat, oldest first — what was actually *said*, by type.
+
+    :func:`room_conversation` is the whole feed: chat, the promoted ``l9_*``
+    frames (whose content is a serialized envelope) and the coordination
+    lifecycle rows. A reader that wants the conversation itself selects on
+    :data:`~app.schemas.PROSE_MESSAGE_TYPES` — the type the projection already
+    assigned — instead of re-deciding per message what a payload looks like.
+    """
+    from app.schemas import PROSE_MESSAGE_TYPES
+
+    chat = [m for m in room_conversation(room) if m.message_type in PROSE_MESSAGE_TYPES]
+    chat.sort(key=lambda m: m.created_at)
+    return chat
+
+
 def l9_bus_frame(room: str, record: TranscriptRecord) -> dict[str, Any]:
     """Project a transcript record into the L9 wire frame the SSE bus carries.
 

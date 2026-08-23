@@ -226,6 +226,17 @@ is no litellm dependency.
   popover; `[[` is matched before `/` and `@` since a memory key can contain
   slashes. Skills insert a reference token — the resident agent/engine interprets
   it; the composer never runs the skill.
+- **The synthesizer distills messages into memory (#808).** Its input is the
+  room's transcript — the ephemeral half, where a decision is argued and settled
+  and nothing indexes it for meaning — and its output is a `knowledge` memory at
+  `context/synthesis`. Summarizing memory back into memory is a different
+  feature, kept behind `SYNTHESIZER_SOURCE=memory` rather than as the default.
+  Three properties carry the direction: it reads **by message type**
+  (`schemas.PROSE_MESSAGE_TYPES` → `persister.prose_messages`) so a serialized
+  L9 envelope never reaches the prompt; it is **incremental**, with the cursor
+  living in the written memory's own frontmatter so position and text land in
+  one write (`--all` in the summon text re-reads everything); and it **excludes
+  its own posts** by sender, since it speaks its briefing into the room it reads.
 - **Consensus compiles into the plan.** On convergence the aligner hands the agreed
   `{issue: value}` map to `plan_compiler.py`, an LLM stage that materializes
   `plan/tasks.md` (one shared `- [ ]` checklist with `@handle` owners) *before* the
