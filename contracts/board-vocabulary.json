@@ -3,10 +3,7 @@
   "version": 1,
   "statuses": [
     "open",
-    "claimed",
-    "in_progress",
     "in_review",
-    "blocked",
     "resolved",
     "dismissed"
   ],
@@ -31,15 +28,13 @@
   ],
   "lens_of_status": {
     "open": "needs_you",
-    "blocked": "needs_you",
-    "claimed": "in_flight",
-    "in_progress": "in_flight",
     "in_review": "in_flight",
     "resolved": "resolved",
     "dismissed": "resolved"
   },
   "verbs": [
     "claim",
+    "release",
     "resolve",
     "block",
     "unblock",
@@ -48,6 +43,7 @@
   ],
   "verb_keys": {
     "claim": "c",
+    "release": "e",
     "resolve": "r",
     "block": "b",
     "promote": "p",
@@ -91,6 +87,57 @@
       "upstream_pending"
     ]
   },
+  "custody": {
+    "_comment": "Custody: who holds a row, and for how much longer. Separate from `status` because an ephemeral actor cannot promise the future \u2014 every claim it makes is a lease, so the board must be able to say a holder went quiet without anyone writing that down. `held` is the only state with a holder; `unclaimed` and `expired` are derived and never stored, which is why `stored_states` is the shorter list. Freshness is the same shape the upstream model already ships (fresh/stale/expired against fetched_at/ttl), pointed at claimed_at.",
+    "field": "custody",
+    "states": [
+      "unclaimed",
+      "held",
+      "released",
+      "expired",
+      "resolved"
+    ],
+    "stored_states": [
+      "held",
+      "released",
+      "resolved"
+    ],
+    "derived_states": [
+      "unclaimed",
+      "expired"
+    ],
+    "freshness": [
+      "fresh",
+      "stale",
+      "expired"
+    ],
+    "stale_after": 0.5,
+    "default_ttl_minutes": 30,
+    "companion_fields": [
+      "claimed_at",
+      "ttl_minutes",
+      "custody_note",
+      "custody_note_by"
+    ],
+    "runtime_author": "runtime",
+    "lens_of_custody": {
+      "unclaimed": "needs_you",
+      "held": "in_flight",
+      "released": "needs_you",
+      "expired": "needs_you",
+      "resolved": "resolved"
+    },
+    "leasable_namespaces": [
+      "work"
+    ],
+    "refusals": {
+      "plan": "a plan task is the room's commitment, not a lease: assign it with @handle",
+      "episode": "an episode is a recorded negotiation, and there is nothing to write a lease onto",
+      "agent": "presence is already a lease the runtime renews; it is not claimable",
+      "memory": "leases live on work/ memories; this row is in another namespace"
+    },
+    "blocked_field": "blocked_by"
+  },
   "schema": {
     "_comment": "Field types the two surfaces must infer identically, and the order options come back in. `cases` is a table both suites run through their own classifier: a field name, the values it holds, and the type both must call it. These drifted once (the GUI grew number-from-string and link rules the CLI never got, and sorted out-of-vocabulary options first where the CLI sorted them last), which is what a table asserted from both sides prevents.",
     "types": [
@@ -110,7 +157,15 @@
         "name": "status",
         "values": [
           "open",
-          "blocked"
+          "in_review"
+        ],
+        "type": "select"
+      },
+      {
+        "name": "custody",
+        "values": [
+          "held",
+          "unclaimed"
         ],
         "type": "select"
       },

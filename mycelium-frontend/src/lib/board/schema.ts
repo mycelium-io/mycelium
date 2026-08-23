@@ -10,7 +10,8 @@
  * no migration and no config.
  */
 
-import type { LiveItem } from "./item";
+import { CUSTODY_STATES } from "./custody";
+import { STATUS_ORDER, type LiveItem } from "./item";
 import { UPSTREAM_STATES } from "./upstream";
 
 export type FieldType =
@@ -42,6 +43,7 @@ export interface FieldSchema {
 /** Fields the cockpit knows by name lead the table; the rest follow by fill rate. */
 const PREFERRED_ORDER = [
   "status",
+  "custody",
   "kind",
   "owner",
   "priority",
@@ -67,7 +69,8 @@ const MAX_SELECT_CARDINALITY = 12;
  * a small room happens to use each state once.
  */
 const KNOWN_VOCABULARIES: Record<string, string[]> = {
-  status: ["open", "claimed", "in_progress", "in_review", "blocked", "resolved", "dismissed"],
+  status: [...STATUS_ORDER],
+  custody: [...CUSTODY_STATES],
   kind: ["decision", "blocked", "review", "action", "concern", "signal"],
   priority: ["urgent", "high", "normal", "low"],
   ci: ["green", "running", "red"],

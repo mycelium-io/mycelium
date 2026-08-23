@@ -56,6 +56,77 @@ def _await_once(config: MyceliumConfig, room_name: str, handle: str, timeout: in
     return data if "prompt" in data else None
 
 
+def _renew_leases(config: MyceliumConfig, room_name: str, handle: str) -> list[str]:
+    """Tell the hub this handle is still here, on behalf of every row it holds.
+
+    This is what makes a claim a lease rather than a fact: the loop is the thing
+    that keeps saying so, and when the loop stops — the container reclaimed, the
+    session timed out — the claims drain on their own.  Quiet on the hub side: a
+    lease still in its first half is left alone, and the writes it does make
+    broadcast nothing.
+    """
+    with hub_client(config, timeout=15, handle=handle) as client:
+        resp = client.post(f"/api/rooms/{room_name}/leases/renew", json={"handle": handle})
+    resp.raise_for_status()
+    return [row.get("key", "") for row in resp.json().get("renewed", [])]
+
+
+def _await_lease(
+    config: MyceliumConfig, room_name: str, key: str, since: str | None, timeout: int
+) -> dict:
+    """One long-poll on a lease's transitions."""
+    client_timeout = float(timeout) + 15.0 if timeout > 0 else None
+    params: dict[str, str | int] = {"key": key, "timeout": timeout}
+    if since is not None:
+        params["since"] = since
+    with hub_client(config, timeout=client_timeout) as client:
+        resp = client.get(f"/api/rooms/{room_name}/leases/await", params=params)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def _print_lease(state: dict) -> None:
+    holder = f"@{state['owner']}" if state.get("owner") else "nobody"
+    line = f"  ⟫  {state.get('key')}: {state.get('custody')} by {holder}"
+    if note := state.get("custody_note"):
+        line += f" — {note}"
+    typer.secho(line, fg=typer.colors.CYAN)
+
+
+def _lease_watch(
+    config: MyceliumConfig,
+    room_name: str,
+    key: str,
+    timeout: int,
+    loop: bool,
+    exec_cmd: str | None,
+    json_output: bool,
+) -> None:
+    """Wake on one lease's transitions, and on nothing else.
+
+    Awaiting the room's channel to follow a handoff is the wrong subscription: a
+    dozen unrelated messages wake you for nothing.  The lease is already a state
+    machine whose transitions are exactly what a handoff cares about, so it is
+    the thing to subscribe to.
+
+    The first read is orientation — the row's state comes straight back rather
+    than blocking — because an agent does not need a push, it needs the row
+    current the next time it exists.
+    """
+    since: str | None = None
+    while True:
+        state = _await_lease(config, room_name, key, since, timeout)
+        since = state.get("since")
+        if json_output:
+            typer.echo(json_module.dumps(state))
+        else:
+            _print_lease(state)
+        if exec_cmd and state.get("changed"):
+            _run_exec(exec_cmd, state, room_name, key)
+        if not loop:
+            return
+
+
 def _run_exec(exec_cmd: str, turn: dict, room_name: str, handle: str) -> None:
     """Hand a turn to the resident runtime: run ``exec_cmd`` with the turn on stdin.
 
@@ -83,14 +154,19 @@ def _run_exec(exec_cmd: str, turn: dict, room_name: str, handle: str) -> None:
 
 
 @doc_ref(
-    usage="mycelium await --room <room> --handle <handle> [--loop] [--exec CMD] [--timeout N] [--json]",
-    desc="Long-poll a room as a server-held member until a message is addressed to the handle.",
+    usage="mycelium await --room <room> [--handle <handle> | --lease <key>] [--loop] [--exec CMD] [--timeout N] [--json]",
+    desc="Long-poll a room until a message is addressed to the handle — or until a named lease changes hands.",
     group="other",
 )
 def await_room(
     ctx: typer.Context,
     room: str | None = typer.Option(None, "--room", "-r", help="Room (default: active room)"),
-    handle: str = typer.Option(..., "--handle", help="Handle to participate as"),
+    handle: str = typer.Option("", "--handle", help="Handle to participate as"),
+    lease: str | None = typer.Option(
+        None,
+        "--lease",
+        help="Wake on this lease's transitions instead of on messages (e.g. work/auth-spike)",
+    ),
     timeout: int = typer.Option(
         0, "--timeout", "-t", help="Seconds to wait before giving up (0 = wait indefinitely)"
     ),
@@ -119,14 +195,30 @@ def await_room(
     This is the supported way to keep a turn-based agent (Claude Code, Cursor) woken
     without writing your own service.
 
+    With ``--lease`` it waits on one row's custody instead: claimed, lapsed,
+    released, resolved. That is a different subscription on purpose — waking on
+    channel traffic to follow a handoff means a dozen unrelated messages wake you
+    for nothing, while a lease's transitions are exactly the events a handoff is
+    about. The first read returns the row's current state rather than blocking,
+    so a fresh session orients before it waits.
+
     Examples:
         mycelium await --room design --handle me
         mycelium await --room design --handle me --json --timeout 120
         mycelium await --room design --handle bot --loop --exec ./drive-agent.sh
+        mycelium await --room design --lease work/auth-spike --loop
     """
     try:
         config = MyceliumConfig.load()
         room_name = _resolve_room(config, room)
+
+        if lease:
+            _lease_watch(config, room_name, lease, timeout, loop, exec_cmd, json_output)
+            return
+
+        if not handle:
+            typer.secho("  ⟫  await needs --handle (or --lease <key>)", fg=typer.colors.RED)
+            raise typer.Exit(2)
 
         if loop:
             _await_loop(config, room_name, handle, timeout, exec_cmd, json_output)
@@ -186,6 +278,15 @@ def _await_loop(
             fg=typer.colors.CYAN,
         )
     while True:
+        try:
+            # Before waiting again, say we are still here. A resident agent's
+            # claims are kept alive by the same loop that keeps it woken, so
+            # residency and custody stop being two things to remember.
+            renewed = _renew_leases(config, room_name, handle)
+            if renewed and not json_output:
+                typer.secho(f"  ⟫  renewed {', '.join(renewed)}", fg=typer.colors.BLUE)
+        except Exception as e:  # noqa: BLE001 - a lease blip must not drop residency
+            typer.secho(f"  ⟫  renew error: {e}; continuing", fg=typer.colors.YELLOW)
         try:
             data = _await_once(config, room_name, handle, timeout)
         except KeyboardInterrupt:

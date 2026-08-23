@@ -10,6 +10,21 @@
  * namespace are one mechanism rather than two features.
  */
 
+import {
+  BLOCKED_FIELD,
+  LENS_OF_CUSTODY,
+  claimPatch,
+  custodyOf,
+  isBlocked,
+  leaseSpent,
+  releasePatch,
+} from "./custody";
+import { arr, bool, num, ownerOf, str } from "./fields";
+
+// The accessors live a layer down so `custody` can read a row without importing
+// this module back; callers still find them here, where they always were.
+export { arr, bool, num, ownerOf, str };
+
 export type SourceKind = "plan" | "episode" | "memory" | "agent" | "capture" | "github";
 
 export interface ItemSource {
@@ -37,57 +52,20 @@ export const LENSES: { id: Lens; label: string; blurb: string }[] = [
   { id: "resolved", label: "Resolved", blurb: "done today, auto-hides" },
 ];
 
-export type ItemStatus =
-  | "open"
-  | "claimed"
-  | "in_progress"
-  | "in_review"
-  | "blocked"
-  | "resolved"
-  | "dismissed";
+/**
+ * The stage a row is at, and only that. Who holds it is `custody` (a lease that
+ * drains); whether it is blocked is derived from `blocked_by`. Both used to be
+ * spelled here, which is how one field ended up doing three jobs.
+ */
+export type ItemStatus = "open" | "in_review" | "resolved" | "dismissed";
 
 export type ItemKind = "decision" | "blocked" | "review" | "action" | "concern" | "signal";
 
 export type Priority = "urgent" | "high" | "normal" | "low";
 
-export const STATUS_ORDER: ItemStatus[] = [
-  "open",
-  "claimed",
-  "in_progress",
-  "in_review",
-  "blocked",
-  "resolved",
-  "dismissed",
-];
+export const STATUS_ORDER: ItemStatus[] = ["open", "in_review", "resolved", "dismissed"];
 
 export const PRIORITY_ORDER: Priority[] = ["urgent", "high", "normal", "low"];
-
-// ── Field access ─────────────────────────────────────────────────────────────
-// Fields are untyped on purpose: a room can put anything in frontmatter, and a
-// row missing a field the cockpit likes still renders rather than crashing.
-
-export function str(item: LiveItem, name: string): string | null {
-  const v = item.fields[name];
-  return typeof v === "string" && v.trim() ? v.trim() : null;
-}
-
-export function num(item: LiveItem, name: string): number | null {
-  const v = item.fields[name];
-  if (typeof v === "number" && Number.isFinite(v)) return v;
-  if (typeof v === "string" && v.trim() && Number.isFinite(Number(v))) return Number(v);
-  return null;
-}
-
-export function arr(item: LiveItem, name: string): string[] {
-  const v = item.fields[name];
-  if (Array.isArray(v)) return v.filter((x): x is string => typeof x === "string");
-  if (typeof v === "string" && v.trim()) return [v.trim()];
-  return [];
-}
-
-export function bool(item: LiveItem, name: string): boolean {
-  return item.fields[name] === true;
-}
 
 export function statusOf(item: LiveItem): ItemStatus {
   const s = str(item, "status");
@@ -105,20 +83,27 @@ export function priorityOf(item: LiveItem): Priority {
   return (PRIORITY_ORDER as string[]).includes(p ?? "") ? (p as Priority) : "normal";
 }
 
-export function ownerOf(item: LiveItem): string | null {
-  const o = str(item, "owner");
-  return o ? o.replace(/^@/, "") : null;
-}
-
 /**
  * The lens is derived, never stored: a row can't drift out of sync with the
  * board it belongs on, and re-lensing is a consequence of a state change rather
  * than a second write.
+ *
+ * Custody first, stage only where there is none — a row someone holds belongs on
+ * the board by who holds it, and one whose holder went quiet drains back to the
+ * pool without anyone touching it. Blocked beats both: a row waiting on
+ * something needs a person whoever is nominally on it.
+ *
+ * `now` defaults to the wall clock so a caller with no shared tick still reads
+ * a live board; the board's own surfaces pass their tick, which is what keeps a
+ * render and its test deterministic.
  */
-export function lensOf(item: LiveItem): Lens {
+export function lensOf(item: LiveItem, now: number = Date.now()): Lens {
+  if (isBlocked(item)) return "needs_you";
+  const custody = custodyOf(item, now);
+  if (custody) return LENS_OF_CUSTODY[custody];
   const status = statusOf(item);
   if (status === "resolved" || status === "dismissed") return "resolved";
-  if (status === "open" || status === "blocked") return "needs_you";
+  if (status === "open") return "needs_you";
   return "in_flight";
 }
 
@@ -131,8 +116,15 @@ export function ageMinutes(item: LiveItem, now: number): number | null {
   return Math.max(0, Math.round((now - t) / 60000));
 }
 
-/** Fraction of the row's TTL already spent, or null when it doesn't expire. */
+/**
+ * Fraction of the row's TTL already spent, or null when it doesn't expire.
+ *
+ * A lease ages from `claimed_at` rather than from `updated`: a renewal re-dates
+ * the claim, and a holder saying "still here" is exactly what the bar is drawing.
+ */
 export function ttlSpent(item: LiveItem, now: number): number | null {
+  const lease = leaseSpent(item, now);
+  if (lease !== null) return Math.min(1, lease);
   const ttl = num(item, "ttl_minutes");
   const age = ageMinutes(item, now);
   if (ttl === null || ttl <= 0 || age === null) return null;
@@ -152,10 +144,18 @@ export function formatAge(minutes: number | null): string {
 // The same verbs an agent drives over the ledger. Each is a pure field patch,
 // so a keystroke here and an agent's call over L9 are the same state change.
 
-export type Verb = "claim" | "resolve" | "block" | "unblock" | "promote" | "dismiss";
+export type Verb =
+  | "claim"
+  | "release"
+  | "resolve"
+  | "block"
+  | "unblock"
+  | "promote"
+  | "dismiss";
 
 export const VERBS: { id: Verb; key: string; label: string }[] = [
   { id: "claim", key: "c", label: "Claim" },
+  { id: "release", key: "e", label: "Release" },
   { id: "resolve", key: "r", label: "Resolve" },
   { id: "block", key: "b", label: "Block" },
   { id: "promote", key: "p", label: "Promote → GH" },
@@ -168,6 +168,12 @@ export interface VerbContext {
   now: string;
   /** Issue number a `promote` would file as, in a PoC with no GitHub write. */
   issueNumber?: number;
+  /** Why a `release` is handing the row back, recorded against the releaser. */
+  note?: string;
+  /** Minutes a `claim` holds for before it drains. */
+  ttlMinutes?: number;
+  /** What a `block` is waiting on: the only thing that makes a row blocked. */
+  blockedBy?: string;
 }
 
 /**
@@ -183,17 +189,24 @@ export function applyVerb(
   const patch: Record<string, unknown> = { updated: ctx.now };
   switch (verb) {
     case "claim":
-      patch.status = "in_progress";
-      patch.owner = ownerOf(item) ?? ctx.actor;
+      // A claim is a lease, not a stage: it says who holds the row and until
+      // when, and it says nothing about how far along the work is.
+      Object.assign(patch, claimPatch(ownerOf(item) ?? ctx.actor, ctx.now, ctx.ttlMinutes));
+      break;
+    case "release":
+      Object.assign(patch, releasePatch(ctx.actor, ctx.now, ctx.note));
       break;
     case "resolve":
       patch.status = "resolved";
+      if (custodyOf(item, Date.parse(ctx.now)) !== null) patch.custody = "resolved";
       break;
     case "block":
-      patch.status = "blocked";
+      // Nothing writes the word "blocked": a row is blocked because it names a
+      // blocker, and the renderer has read `blocked_by` all along.
+      patch[BLOCKED_FIELD] = ctx.blockedBy ?? "unspecified";
       break;
     case "unblock":
-      patch.status = ownerOf(item) ? "in_progress" : "open";
+      patch[BLOCKED_FIELD] = null;
       break;
     case "promote":
       patch.status = "resolved";

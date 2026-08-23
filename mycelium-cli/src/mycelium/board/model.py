@@ -15,27 +15,25 @@ from datetime import UTC, datetime
 from typing import Any
 
 # Frozen in contracts/board-vocabulary.json; the GUI carries the same lists.
+#: The stage a row is at, and only that. Who holds it is ``custody`` (a lease
+#: that drains), and whether it is blocked is derived from ``blocked_by`` — both
+#: used to be spelled here, which is how one field ended up doing three jobs.
 STATUSES = [
     "open",
-    "claimed",
-    "in_progress",
     "in_review",
-    "blocked",
     "resolved",
     "dismissed",
 ]
 KINDS = ["decision", "blocked", "review", "action", "concern", "signal"]
 PRIORITIES = ["urgent", "high", "normal", "low"]
 LENSES = ["needs_you", "in_flight", "resolved"]
-VERBS = ["claim", "resolve", "block", "unblock", "promote", "dismiss"]
+VERBS = ["claim", "release", "resolve", "block", "unblock", "promote", "dismiss"]
 
 #: The lens is derived from status, never stored, so a row can't drift out of
-#: sync with the board it belongs on.
+#: sync with the board it belongs on. This is the half for rows nobody holds;
+#: a row with a lease is lensed by its custody instead (``custody.lens_of_item``).
 LENS_OF_STATUS = {
     "open": "needs_you",
-    "blocked": "needs_you",
-    "claimed": "in_flight",
-    "in_progress": "in_flight",
     "in_review": "in_flight",
     "resolved": "resolved",
     "dismissed": "resolved",
@@ -92,10 +90,6 @@ class LiveItem:
     def owner(self) -> str | None:
         value = self.text("owner")
         return value.lstrip("@") if value else None
-
-    @property
-    def lens(self) -> str:
-        return lens_of(self.status)
 
     def age_minutes(self, now: datetime) -> int | None:
         raw = self.text("updated") or self.text("created")

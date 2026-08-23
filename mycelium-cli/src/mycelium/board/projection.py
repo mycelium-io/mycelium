@@ -14,6 +14,7 @@ import re
 from datetime import datetime
 from typing import Any
 
+from mycelium.board import custody
 from mycelium.board.model import LIVE_NAMESPACES, ItemSource, LiveItem
 
 _OWNER = re.compile(r"@([a-z0-9][a-z0-9._-]*)", re.IGNORECASE)
@@ -43,7 +44,10 @@ def _plan_item(task: dict, plan: dict, now: str) -> LiveItem:
         title=title or task.get("text", ""),
         source=ItemSource("plan", f"plan/{slug}.md:{task.get('line', 0)}"),
         fields={
-            "status": "resolved" if task.get("done") else ("in_progress" if owner else "open"),
+            # A stage, and only a stage. This used to read `in_progress` when the
+            # line named anyone, which was custody wearing a stage's name: it said
+            # "someone's handle is in the text", not "someone is on this".
+            "status": "resolved" if task.get("done") else "open",
             "kind": "action",
             "owner": f"@{owner}" if owner else None,
             "priority": _priority_from_text(task.get("text", "")),
@@ -51,6 +55,8 @@ def _plan_item(task: dict, plan: dict, now: str) -> LiveItem:
             "updated": (plan_file or {}).get("updated_at") or now,
             # A compiled plan task is the room's durable commitment, so it is the
             # one row kind with no TTL — it leaves by being done, not by expiring.
+            # Ownership stays a plain @handle: `- [ ] text @handle` has nowhere to
+            # put a claim stamp, and a commitment that decays is not one.
             "ttl_minutes": None,
         },
     )
@@ -75,10 +81,11 @@ def _episode_item(episode: dict) -> LiveItem:
         ),
         source=ItemSource("episode", f"episode {episode.get('short_id')}"),
         fields={
-            "status": ("blocked" if subkind == "rejected" else "resolved")
-            if settled
-            else "in_review",
-            "kind": "decision",
+            # A rejected negotiation is not a stage called "blocked" — nothing is
+            # blocking it, it failed and wants a human. It reads open, and the
+            # kind carries what happened.
+            "status": ("open" if subkind == "rejected" else "resolved") if settled else "in_review",
+            "kind": "blocked" if subkind == "rejected" else "decision",
             "owner": f"@{next(iter(assignments))}" if len(assignments) == 1 else None,
             "priority": "normal" if settled else "high",
             "participants": participants,
@@ -114,17 +121,27 @@ def _memory_item(memory: dict) -> LiveItem:
     else:
         title = _first_line(memory.get("content_text") or key)
 
-    derived = {"failed": "blocked", "decisions": "resolved"}.get(namespace, "open")
+    derived = "resolved" if namespace == "decisions" else "open"
     fields: dict[str, Any] = {
         "status": custom.get("status") if isinstance(custom.get("status"), str) else derived,
         "kind": {"decisions": "decision", "failed": "blocked"}.get(namespace, "concern"),
-        "owner": f"@{memory.get('updated_by') or memory.get('created_by')}",
+        # Who wrote it last is provenance, not custody. Reading `owner` off
+        # `updated_by` gave every memory in the room a holder, which is the
+        # confident-lie failure this whole axis exists to stop: a holder is
+        # something a claim writes, so an unclaimed row says nobody.
+        "owner": None,
+        "writer": f"@{memory.get('updated_by') or memory.get('created_by')}",
         "priority": "normal",
         "namespace": namespace,
         "tags": memory.get("tags") or [],
         "updated": memory.get("updated_at"),
         "ttl_minutes": None,
     }
+    # `work/` is the in-flight unit, so it is the namespace that carries a lease:
+    # frontmatter has somewhere to put a stamp, which is why leases live here and
+    # not on plan tasks.
+    if namespace in custody.LEASABLE_NAMESPACES:
+        fields[custody.FIELD] = "unclaimed"
     fields.update(custom)
     return LiveItem(
         id=f"memory:{key}", title=title or key, source=ItemSource("memory", key), fields=fields
@@ -132,7 +149,15 @@ def _memory_item(memory: dict) -> LiveItem:
 
 
 def _agent_item(agent: dict, presence: dict, now: str) -> LiveItem:
+    """Residency, as the lease it already is.
+
+    A SLIM member holds a live socket, so the hub sees it now; a server-held
+    member's lease is only as good as its last poll.  Stamping both with "now"
+    made a dead agent's row draw a full TTL bar forever — the row asserted a
+    future its holder had already stopped having.
+    """
     handle = agent.get("handle", "")
+    last_seen = presence.get("last_seen") or now
     return LiveItem(
         id=f"agent:{handle}",
         title=f"@{handle} is resident and awaiting work",
@@ -140,15 +165,17 @@ def _agent_item(agent: dict, presence: dict, now: str) -> LiveItem:
             "agent", f"{agent.get('adapter', 'agent')} · {presence.get('kind', 'slim')}"
         ),
         fields={
-            "status": "claimed",
+            "status": "open",
             "kind": "signal",
             "owner": f"@{handle}",
             "priority": "low",
             "adapter": agent.get("adapter"),
             "live": True,
-            "updated": now,
+            "updated": last_seen,
             # Presence is a lease: the row drains unless the runtime renews it.
-            "ttl_minutes": 30,
+            custody.FIELD: "held",
+            "claimed_at": last_seen,
+            "ttl_minutes": custody.DEFAULT_TTL_MINUTES,
         },
     )
 
@@ -176,11 +203,16 @@ def project_items(
 
     # A resident agent is a peer, so it holds a row like anyone else.  A merely
     # registered one doesn't: a board of things that need steering shouldn't
-    # carry a line per manifest.
+    # carry a line per manifest.  Nor does one whose lease has drained — a
+    # session that went quiet an hour ago is not residency, and a row saying it
+    # is would be the board's most expensive lie.
     presence = {str(m.get("handle", "")).lower(): m for m in members}
     for agent in agents:
         seen = presence.get(str(agent.get("handle", "")).lower())
-        if seen:
-            items.append(_agent_item(agent, seen, stamp))
+        if not seen:
+            continue
+        row = _agent_item(agent, seen, stamp)
+        if custody.custody_of(row, now) == "held":
+            items.append(row)
 
     return items
