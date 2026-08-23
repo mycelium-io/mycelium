@@ -327,7 +327,7 @@ a.topnav-page:hover { color: var(--text); text-decoration: none; }
  * One primary accent exists in the app; docs chrome has no primary action, so
  * every button here is the quiet variant. */
 .copy-page-btn,
-.copy-docs-btn,
+.copy-agents-btn,
 .resources-btn,
 .install-tab {
   display: inline-flex;
@@ -347,37 +347,15 @@ a.topnav-page:hover { color: var(--text); text-decoration: none; }
   transition: color 0.15s, background 0.15s, border-color 0.15s;
 }
 .copy-page-btn svg,
-.copy-docs-btn svg,
+.copy-agents-btn svg,
 .install-tab svg { width: 13px; height: 13px; stroke: currentColor; flex-shrink: 0; }
 .copy-page-btn:hover,
-.copy-docs-btn:hover,
+.copy-agents-btn:hover,
 .resources-btn:hover,
 .install-tab:hover { color: var(--text); background: var(--surface); border-color: var(--border2); }
 .copy-page-btn.copied,
-.copy-docs-btn.copied { color: var(--green); border-color: var(--green); }
-
-/* ── TOP BAR LINK ──
- * Page navigation lives in the persistent rail, so the only thing left in the
- * bar's left half is the one link that leaves the site. */
-.sectionnav {
-  display: flex;
-  align-items: center;
-  margin-left: 12px;
-}
-.sectionnav a {
-  display: inline-flex;
-  align-items: center;
-  padding: 6px 10px;
-  border-radius: var(--radius-md);
-  color: var(--muted-foreground);
-  text-decoration: none;
-  font-family: var(--font-sans);
-  font-size: var(--text-label);
-  font-weight: 500;
-  white-space: nowrap;
-  transition: color 0.15s, background 0.15s;
-}
-.sectionnav a:hover { color: var(--text); background: var(--hairline); text-decoration: none; }
+.copy-agents-btn.copied { color: var(--green); border-color: var(--green); }
+.copy-agents-btn.failed { color: var(--red); border-color: var(--red); }
 
 .caps-mono {
   font-family: var(--font-mono);
@@ -1035,23 +1013,46 @@ tr:hover td { background: var(--hairline); }
   justify-content: center;
 }
 
-/* ── HEADER ANCHORS ── */
-h2[id], h3[id] { position: relative; }
-.header-anchor {
+/* ── HEADING TOOLS ── */
+/* Every heading carries the pair: copy its link, copy its section. */
+.heading-tools {
   display: inline-flex;
   align-items: center;
+  gap: 2px;
   margin-left: 8px;
   opacity: 0;
   transition: opacity 0.15s;
   vertical-align: middle;
+}
+h1:hover .heading-tools,
+h2:hover .heading-tools,
+h3:hover .heading-tools,
+h4:hover .heading-tools,
+.heading-tools:focus-within { opacity: 1; }
+.header-anchor,
+.header-copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  border: 0;
+  background: none;
+  font: inherit;
+  line-height: 0;
   color: var(--faint);
   text-decoration: none;
+  cursor: pointer;
 }
-.header-anchor:hover { color: var(--accent); text-decoration: none; }
-.header-anchor svg { width: 15px; height: 15px; stroke: currentColor; }
-h2:hover .header-anchor,
-h3:hover .header-anchor,
-.header-anchor:focus { opacity: 1; }
+.header-anchor:hover,
+.header-copy:hover { color: var(--accent); text-decoration: none; }
+.header-anchor.copied,
+.header-copy.copied { color: var(--green); }
+.header-anchor svg,
+.header-copy svg { width: 15px; height: 15px; stroke: currentColor; }
+/* Touch has no hover to reveal them, so they stay visible but quiet. */
+@media (hover: none) {
+  .heading-tools { opacity: 0.55; }
+}
 
 /* ── THEME TOGGLE (mirrors the app's light / dark / system menu) ── */
 .theme-toggle { position: relative; display: flex; }
@@ -1344,7 +1345,7 @@ h3:hover .header-anchor,
   :root { --statusbar-total: 0px; }
   .main { margin-left: 0; }
   .topnav-brand { width: auto; }
-  .copy-page-btn, .copy-docs-btn { display: none; }
+  .copy-page-btn, .copy-agents-btn { display: none; }
   .docsearch-field input { width: 150px; }
   .docs-footer .tagline { display: none; }
   .nav-toggle { display: inline-flex; }
@@ -1366,7 +1367,6 @@ h3:hover .header-anchor,
 }
 @media (max-width: 640px) {
   body { overflow-x: hidden; }
-  .sectionnav { display: none; }
   .topnav-cell { padding: 0 12px; }
   /* There is no room for a live text field beside the brand at these widths, so
      the bar carries only a search icon and the field drops to a row of its own

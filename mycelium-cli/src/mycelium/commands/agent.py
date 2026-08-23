@@ -25,6 +25,7 @@ import json as json_module
 import logging
 import sys
 from pathlib import Path
+from typing import Any, cast
 
 import typer
 import yaml
@@ -37,7 +38,7 @@ from mycelium.client import typed_client as _typed_client
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
 from mycelium.error_handler import print_error
-from mycelium.filesystem import get_room_dir, list_memories, read_memory
+from mycelium.filesystem import get_room_dir, read_memory
 from mycelium.integrations import AddOptions, Integration, get_adapter
 from mycelium.protocol import AGENT_ADAPTERS, AgentManifest
 
@@ -136,14 +137,40 @@ def _resolve_room(config: MyceliumConfig, room: str | None) -> str:
 _log = logging.getLogger(__name__)
 
 
+def _manifest_from_yaml(handle: str, body: str, source: str) -> AgentManifest | None:
+    """Parse a manifest body into an :class:`AgentManifest`, or ``None``.
+
+    ``None`` covers both "empty body" and "body present but unreadable"
+    (callers can't tell the difference from the return value), but every
+    unreadable case is logged at WARNING so it never fails silently. Without
+    this, bad YAML or a schema mismatch looks identical to "agent not
+    registered" and the user re-runs ``agent create`` over their own broken
+    manifest. *source* names where the body came from (a file path, or the
+    memory key on the hub) so the warning points at something actionable.
+    """
+    try:
+        data = yaml.safe_load(body) or {}
+    except yaml.YAMLError as exc:
+        _log.warning("manifest %s: invalid YAML: %s", source, exc)
+        return None
+    if not isinstance(data, dict):
+        _log.warning("manifest %s: expected a YAML mapping, got %s", source, type(data).__name__)
+        return None
+    data.setdefault("handle", handle)
+    try:
+        return AgentManifest(**data)
+    except ValidationError as exc:
+        _log.warning("manifest %s: schema validation failed: %s", source, exc)
+        return None
+
+
 def _load_manifest(room_name: str, handle: str) -> AgentManifest | None:
     """Read the manifest off the local filesystem and rehydrate the model.
 
-    Returns ``None`` for both "file missing" and "file present but unreadable"
-    (callers can't tell the difference from the return value), but a corrupt
-    manifest is logged at WARNING so it never fails silently. Without this,
-    a bad YAML or schema mismatch looks identical to "agent not registered"
-    and the user re-runs ``agent create`` over their own broken file.
+    The hub is the store, so the agent commands resolve manifests through
+    :func:`_load_manifest_remote`; this reads the local mirror, for callers
+    deliberately inspecting *this machine's* files (``mycelium doctor``) rather
+    than the room.
     """
     room_dir = get_room_dir(room_name)
     path = room_dir / "agents" / f"{handle}.md"
@@ -151,20 +178,71 @@ def _load_manifest(room_name: str, handle: str) -> AgentManifest | None:
     if result is None:
         return None
     _, content = result
-    try:
-        data = yaml.safe_load(content) or {}
-    except yaml.YAMLError as exc:
-        _log.warning("manifest %s: invalid YAML: %s", path, exc)
+    return _manifest_from_yaml(handle, content, str(path))
+
+
+def _memory_body(record: Any) -> str | None:
+    """The stored text of a memory record, whatever shape it arrived in.
+
+    The text lands in one of three places depending on how the backend
+    serialised the memory, and the record is a typed ``MemoryRead`` from the get
+    endpoint or a raw JSON dict from the list endpoint (untyped in the generated
+    client): prefer the already-flattened ``content_text``, then a plain-string
+    ``value``, then the ``text`` inside a structured ``value``.
+    """
+
+    def field(name: str) -> Any:
+        if isinstance(record, dict):
+            return record.get(name)
+        return getattr(record, name, None)
+
+    content_text = field("content_text")
+    if isinstance(content_text, str) and content_text:
+        return content_text
+
+    value = field("value")
+    if isinstance(value, str):
+        return value or None
+    if hasattr(value, "to_dict"):
+        value = value.to_dict()
+    if isinstance(value, dict):
+        text = value.get("text")
+        if isinstance(text, str) and text:
+            return text
+    return None
+
+
+def _remote_memory_text(client: Any, room_name: str, key: str) -> str | None:
+    """Fetch one memory's stored text from the hub, or ``None`` if it has none.
+
+    A missing memory is ``None``; a hub that is unreachable raises, so no caller
+    can mistake "couldn't look" for "not there".
+    """
+    from mycelium_backend_client.api.memory import (
+        get_memory_api_rooms_room_name_memory_key_get as get_api,
+    )
+    from mycelium_backend_client.models import MemoryRead
+
+    result = get_api.sync(room_name=room_name, key=key, client=client)
+    # The endpoint returns ``HTTPValidationError | MemoryRead | None`` for
+    # 200/404/422; only ``MemoryRead`` carries a usable body.
+    if not isinstance(result, MemoryRead):
         return None
-    if not isinstance(data, dict):
-        _log.warning("manifest %s: expected a YAML mapping, got %s", path, type(data).__name__)
+    return _memory_body(result)
+
+
+def _load_manifest_remote(client: Any, room_name: str, handle: str) -> AgentManifest | None:
+    """Fetch a manifest from the hub memory API and rehydrate the model.
+
+    ``None`` means the hub has no readable manifest for *handle*. Transport and
+    HTTP failures propagate, so the caller reports an unreachable hub rather
+    than printing "no agent named …" for a room it never managed to read.
+    """
+    key = f"agents/{handle}"
+    body = _remote_memory_text(client, room_name, key)
+    if not body:
         return None
-    data.setdefault("handle", handle)
-    try:
-        return AgentManifest(**data)
-    except ValidationError as exc:
-        _log.warning("manifest %s: schema validation failed: %s", path, exc)
-        return None
+    return _manifest_from_yaml(handle, body, key)
 
 
 def _is_resident(config: MyceliumConfig, room_name: str, handle: str) -> bool:
@@ -186,30 +264,64 @@ def _is_resident(config: MyceliumConfig, room_name: str, handle: str) -> bool:
     return any(str(m.get("handle", "")).lstrip("@").lower() == norm for m in members)
 
 
-def _room_manifests(room_name: str) -> list[AgentManifest]:
-    """Every agent manifest registered in a room (skips notes + log children)."""
-    room_dir = get_room_dir(room_name)
+def _room_manifests(room_name: str, *, client: Any = None) -> list[AgentManifest]:
+    """Every agent manifest registered in a room (skips notes + log children).
+
+    Resolved against the hub's memory API, the one store: a spoke keeps no local
+    ``.mycelium/`` replica, so the filesystem is not the room. An unreachable hub
+    raises rather than returning an empty list — an empty answer means "no
+    agents", never "couldn't look".
+
+    Pass *client* to share one hub session across rooms.
+    """
+    if client is None:
+        with _typed_client(MyceliumConfig.load()) as own_client:
+            return _room_manifests(room_name, client=own_client)
+
+    from mycelium_backend_client.api.memory import (
+        list_memories_api_rooms_room_name_memory_get as list_api,
+    )
+
+    entries = list_api.sync(room_name=room_name, client=client, prefix="agents/", limit=500)
+    if not isinstance(entries, list):
+        return []
+    # The list endpoint is untyped in the generated client: raw JSON records.
+    records = cast("list[dict[str, Any]]", [r for r in entries if isinstance(r, dict)])
+
     out: list[AgentManifest] = []
-    for key, _meta, _content in list_memories(room_dir, prefix="agents/", limit=500):
-        handle = key.removeprefix("agents/")
-        if "/" in handle:
+    for record in records:
+        key = record.get("key")
+        if not isinstance(key, str):
             continue
-        m = _load_manifest(room_name, handle)
+        handle = key.removeprefix("agents/")
+        if not handle or "/" in handle:
+            continue
+        body = _memory_body(record)
+        if not body:
+            continue
+        m = _manifest_from_yaml(handle, body, key)
         if m is not None:
             out.append(m)
     return out
 
 
 def load_owned_agents(*, owner: str) -> list[tuple[str, AgentManifest]]:
-    """Agents owned by ``owner`` across every local room."""
-    from mycelium.filesystem import list_room_names
+    """Agents owned by ``owner``, across every room on the hub."""
+    from mycelium_backend_client.api.rooms import list_rooms_api_rooms_get as list_rooms_api
 
     owner = owner.strip().lstrip("@").lower()
     owned: list[tuple[str, AgentManifest]] = []
-    for room_name in list_room_names():
-        for m in _room_manifests(room_name):
-            if m.owner == owner:
-                owned.append((room_name, m))
+    with _typed_client(MyceliumConfig.load()) as client:
+        rooms = list_rooms_api.sync(client=client)
+        if not isinstance(rooms, list):
+            return owned
+        for room in rooms:
+            room_name = getattr(room, "name", None)
+            if not room_name:
+                continue
+            for m in _room_manifests(room_name, client=client):
+                if m.owner == owner:
+                    owned.append((room_name, m))
     return owned
 
 
@@ -232,97 +344,26 @@ def _warn_unknown_principal(manifest: AgentManifest) -> None:
 
     The binding is self-asserted, so a dangling owner is a soft signal, not an
     error; it just nudges the user to register the principal so 'my agents'
-    has something to resolve.
+    has something to resolve. An unreachable hub confirms nothing either way, so
+    the nudge is skipped; the write that follows reports the outage.
     """
     if not manifest.owner:
         return
-    from mycelium.commands.user import load_user
+    import httpx
 
-    if load_user(manifest.owner) is None:
+    from mycelium.commands.user import load_user
+    from mycelium_backend_client.errors import UnexpectedStatus
+
+    try:
+        known = load_user(manifest.owner) is not None
+    except (httpx.HTTPError, UnexpectedStatus):
+        return
+
+    if not known:
         console.print(
             f"[yellow]note:[/yellow] owner '@{manifest.owner}' has no user record. "
             f'Register it with: mycelium user create {manifest.owner} --name "…"'
         )
-
-
-def _load_manifest_remote(client, room_name: str, handle: str) -> AgentManifest | None:
-    """Fetch a manifest from the backend memory API and rehydrate the model.
-
-    Used as a fall-through when the local mirror doesn't have it: typically
-    a hub→spoke (or spoke→hub) cross-host invocation, where the agent was
-    registered on a different machine and this host hasn't materialized
-    the manifest into its local room directory yet.
-
-    The manifest is stored at ``agents/<handle>`` as a YAML body (see
-    ``_write_manifest``), so we just need to download the memory entry and
-    re-parse it. Returns ``None`` for "not on the backend either" or any
-    transient error; the caller re-uses the same friendly "no agent named
-    …" message that fires for a true missing agent.
-    """
-    from mycelium_backend_client.api.memory import (
-        get_memory_api_rooms_room_name_memory_key_get as get_api,
-    )
-
-    try:
-        result = get_api.sync(
-            room_name=room_name,
-            key=f"agents/{handle}",
-            client=client,
-        )
-    except Exception as exc:  # noqa: BLE001 (log and treat as "not found")
-        _log.warning("backend manifest fetch failed for %s/%s: %s", room_name, handle, exc)
-        return None
-
-    if result is None:
-        return None
-    # The endpoint returns ``HTTPValidationError | MemoryRead | None`` for
-    # 200/404/422; only ``MemoryRead`` carries a usable manifest body.
-    #
-    # The body itself can land in any of three shapes depending on how the
-    # backend serialised it (and whether the generated client kept the
-    # convenience ``content_text`` field): prefer ``content_text`` (the
-    # already-flattened YAML string), fall back to ``value`` if it's a
-    # plain ``str``, and finally peek inside ``MemoryReadValueType0``
-    # (a dict-like with ``text`` populated by the backend).
-    yaml_body: str | None = None
-    content_text = getattr(result, "content_text", None)
-    if isinstance(content_text, str) and content_text:
-        yaml_body = content_text
-    if yaml_body is None:
-        value = getattr(result, "value", None)
-        if isinstance(value, str):
-            yaml_body = value
-        elif value is not None:
-            try:
-                # MemoryReadValueType0 is dict-like (__contains__/__getitem__)
-                # via attrs ``additional_properties`` but doesn't implement
-                # ``.get()``, so we can't use the SIM401 form here.
-                inner = value["text"] if "text" in value else None  # noqa: SIM401
-            except Exception:  # noqa: BLE001
-                inner = None
-            if isinstance(inner, str) and inner:
-                yaml_body = inner
-    if not yaml_body:
-        return None
-
-    try:
-        data = yaml.safe_load(yaml_body) or {}
-    except yaml.YAMLError as exc:
-        _log.warning("remote manifest agents/%s: invalid YAML: %s", handle, exc)
-        return None
-    if not isinstance(data, dict):
-        _log.warning(
-            "remote manifest agents/%s: expected a YAML mapping, got %s",
-            handle,
-            type(data).__name__,
-        )
-        return None
-    data.setdefault("handle", handle)
-    try:
-        return AgentManifest(**data)
-    except ValidationError as exc:
-        _log.warning("remote manifest agents/%s: schema validation failed: %s", handle, exc)
-        return None
 
 
 def _write_manifest(
@@ -330,9 +371,10 @@ def _write_manifest(
 ) -> None:
     """Upsert the manifest into the backend AND mirror it to the local filesystem.
 
-    ``agent ls/show/invoke`` resolve manifests by reading the local filesystem, so
-    the backend write alone isn't enough; we mirror via the same
-    ``filesystem.write_memory`` helper that the rest of the CLI uses for local
+    The backend write is what registers the agent — every read resolves there.
+    The local mirror is for the hub operator's own view of the files (and for
+    ``mycelium doctor``, which audits this machine's room dirs), written via the
+    same ``filesystem.write_memory`` helper the rest of the CLI uses for local
     copies of API-written memories.
     """
     from mycelium.filesystem import write_memory
@@ -356,8 +398,7 @@ def _write_manifest(
     with _typed_client(config) as client:
         result = create_api.sync(room_name=room_name, client=client, body=batch)
 
-    # Mirror locally so `agent ls/show/invoke` find the manifest without a
-    # round-trip.
+    # Mirror locally: the hub operator's files stay a faithful copy of the room.
     room_dir = get_room_dir(room_name)
     version = 1
     if result and isinstance(result, list) and result:
@@ -1005,12 +1046,15 @@ def agent_show(
     try:
         config = MyceliumConfig.load()
         room_name = _resolve_room(config, room)
-        room_dir = get_room_dir(room_name)
 
-        manifest = _load_manifest(room_name, handle)
-        if manifest is None:
-            console.print(f"[red]Not found:[/red] no agent named '{handle}' in room '{room_name}'.")
-            raise typer.Exit(1)
+        with _typed_client(config) as client:
+            manifest = _load_manifest_remote(client, room_name, handle)
+            if manifest is None:
+                console.print(
+                    f"[red]Not found:[/red] no agent named '{handle}' in room '{room_name}'."
+                )
+                raise typer.Exit(1)
+            notes_content = _remote_memory_text(client, room_name, manifest.notes_key)
 
         console.print(f"[bold cyan]@{manifest.handle}[/bold cyan]  [dim]({manifest.adapter})[/dim]")
         console.print(f"  cwd: {manifest.cwd}")
@@ -1023,9 +1067,7 @@ def agent_show(
         if manifest.description:
             console.print(f"\n[bold]description[/bold]\n{manifest.description}")
 
-        notes_result = read_memory(room_dir, manifest.notes_key)
-        if notes_result is not None:
-            _, notes_content = notes_result
+        if notes_content:
             console.print("\n[bold]notes[/bold]")
             console.print(notes_content)
         else:
@@ -1085,12 +1127,7 @@ def agent_invoke(
         from mycelium_backend_client.models import MessageCreate, MessageCreateMessageType
 
         with _typed_client(config) as client:
-            manifest = _load_manifest(room_name, handle)
-            if manifest is None:
-                # Cross-host case: the agent may be registered on a different
-                # machine that hasn't mirrored its manifest down to ours yet.
-                # Fall through to the backend (source of truth) before failing.
-                manifest = _load_manifest_remote(client, room_name, handle)
+            manifest = _load_manifest_remote(client, room_name, handle)
             if manifest is None:
                 console.print(
                     f"[red]Not found:[/red] no agent named '{handle}' in room '{room_name}'.\n"
@@ -1171,7 +1208,8 @@ def agent_rm(
         config = MyceliumConfig.load()
         room_name = _resolve_room(config, room)
 
-        manifest = _load_manifest(room_name, handle)
+        with _typed_client(config) as client:
+            manifest = _load_manifest_remote(client, room_name, handle)
         if manifest is None:
             console.print(f"[red]Not found:[/red] no agent named '{handle}' in room '{room_name}'.")
             raise typer.Exit(1)
@@ -1529,5 +1567,6 @@ def credential_slim_key(
 __all__ = [
     "_load_manifest",
     "_load_manifest_remote",
+    "_room_manifests",
     "app",
 ]

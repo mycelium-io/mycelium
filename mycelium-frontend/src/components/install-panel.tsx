@@ -4,15 +4,13 @@
 "use client";
 
 import { useState, useSyncExternalStore } from "react";
-import Link from "next/link";
-import { ArrowRight, Terminal } from "lucide-react";
+import { Terminal } from "lucide-react";
 import { CopyField } from "@/components/ui/copy-field";
 import { useBackendHealth } from "@/lib/use-status";
 import {
   CLI_INSTALL_COMMAND,
   DOCS_URL,
   LOGIN_COMMAND,
-  NEXT_STEPS,
   PLATFORMS,
   PROMPT_COMMAND,
   configSetCommand,
@@ -199,37 +197,7 @@ export function InstallPanel({ className }: Props) {
         </>
       )}
 
-      {healthy ? (
-        <div className="mt-5 border-t border-border pt-4">
-          <div className="text-label font-medium text-text">Next: your first room</div>
-          <ol className="mt-3 space-y-3">
-            {NEXT_STEPS.map(step => (
-              <li key={step.title}>
-                <div className="flex flex-wrap items-baseline gap-x-2">
-                  <span className="text-label text-text">{step.title}</span>
-                  <a
-                    href={step.href}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-micro text-accent hover:underline"
-                  >
-                    docs
-                  </a>
-                </div>
-                <p className="text-micro text-muted-foreground">{step.body}</p>
-                <CopyField value={step.command} className="mt-1.5" />
-              </li>
-            ))}
-          </ol>
-          <Link
-            href="/"
-            className="mt-4 inline-flex items-center gap-1.5 text-label font-medium text-accent hover:underline"
-          >
-            Open the command center
-            <ArrowRight className="size-3.5" />
-          </Link>
-        </div>
-      ) : (
+      {!healthy && (
         <p className="mt-5 border-t border-border pt-4 text-micro text-muted-foreground">
           The hub isn&apos;t answering right now, so the CLI may not be able to connect. Prefer
           the long version? Read the{" "}

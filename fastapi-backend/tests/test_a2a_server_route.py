@@ -107,3 +107,80 @@ async def test_message_send_missing_room_404(client):
     }
     resp = await client.post("/api/rooms/ghost/a2a", json=rpc)
     assert resp.status_code == 404
+
+
+def _send_rpc(text: str = "ping") -> dict:
+    return {
+        "jsonrpc": "2.0",
+        "id": "1",
+        "method": "message/send",
+        "params": {
+            "configuration": {"acceptedOutputModes": ["text"]},
+            "message": {
+                "kind": "message",
+                "messageId": "in-auth",
+                "role": "user",
+                "parts": [{"kind": "text", "text": text}],
+            },
+        },
+    }
+
+
+def _wire_room(monkeypatch, room: str = "portfolio") -> FakeChannel:
+    """Point the room's channel at a fake so the sender is assertable."""
+    persister = FakePersister()
+    channel = FakeChannel(persister)
+    monkeypatch.setattr(
+        room_channels.manager,
+        "get",
+        lambda _r: FakeManaged(room=room, channel=channel, persister=persister),
+    )
+    return channel
+
+
+@pytest.mark.asyncio
+async def test_authenticated_caller_posts_under_its_own_handle(client, monkeypatch, as_principal):
+    """A gated hub already proved the caller; the room says who it was (#798)."""
+    await _make_room(client)
+    channel = _wire_room(monkeypatch)
+    as_principal("claude-web")
+
+    resp = await client.post("/api/rooms/portfolio/a2a", json=_send_rpc())
+    assert resp.status_code == 200, resp.text
+
+    env, _extra = channel.sent[-1]
+    assert [a.id for a in env.header.participants.actors] == ["claude-web"]
+    # …and the Network views name the caller too, not a shared guest.
+    state = (await client.get("/api/rooms/portfolio/a2a/state")).json()
+    assert state["exchanges"][-1]["handle"] == "claude-web"
+
+
+@pytest.mark.asyncio
+async def test_anonymous_caller_falls_back_to_the_guest_handle(client, monkeypatch, as_principal):
+    """An ungated hub has no verified identity to name, so nothing changes."""
+    await _make_room(client)
+    channel = _wire_room(monkeypatch)
+    as_principal(None)
+
+    resp = await client.post("/api/rooms/portfolio/a2a", json=_send_rpc())
+    assert resp.status_code == 200, resp.text
+
+    env, _extra = channel.sent[-1]
+    assert [a.id for a in env.header.participants.actors] == ["a2a-guest"]
+    state = (await client.get("/api/rooms/portfolio/a2a/state")).json()
+    assert state["exchanges"][-1]["handle"] == "a2a-guest"
+
+
+@pytest.mark.asyncio
+async def test_two_callers_are_distinguishable_in_the_room(client, monkeypatch, as_principal):
+    """The point of the change: the room can tell external agents apart."""
+    await _make_room(client)
+    channel = _wire_room(monkeypatch)
+
+    for handle in ("claude-web", "atlas-agent"):
+        as_principal(handle)
+        resp = await client.post("/api/rooms/portfolio/a2a", json=_send_rpc(f"from {handle}"))
+        assert resp.status_code == 200, resp.text
+
+    senders = [env.header.participants.actors[0].id for env, _extra in channel.sent]
+    assert senders == ["claude-web", "atlas-agent"]

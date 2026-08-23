@@ -28,7 +28,7 @@ from mycelium.client import typed_client as _typed_client
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
 from mycelium.error_handler import print_error
-from mycelium.exceptions import ConfigNotFoundError, MyceliumError
+from mycelium.exceptions import MyceliumError
 
 # The L9 "raise-up" whitelist: message types promoted onto the primary channel
 # surface (here, `room watch`'s live stream) rather than staying inspector-only.
@@ -120,10 +120,6 @@ def list_rooms(
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False  # noqa: F841
         json_output = ctx.obj.get("json", False) if ctx.obj else False
 
-        config_path = MyceliumConfig.get_config_path()
-        if not config_path.exists():
-            raise ConfigNotFoundError(str(config_path))
-
         config = MyceliumConfig.load()
 
         params: dict[str, str | int] = {"limit": limit}
@@ -185,10 +181,6 @@ def create(
     try:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False  # noqa: F841
         json_output = ctx.obj.get("json", False) if ctx.obj else False
-
-        config_path = MyceliumConfig.get_config_path()
-        if not config_path.exists():
-            raise ConfigNotFoundError(str(config_path))
 
         config = MyceliumConfig.load()
 
@@ -291,10 +283,6 @@ def delete(
     """Delete one or more rooms."""
     try:
         verbose = ctx.obj.get("verbose", False) if ctx.obj else False  # noqa: F841
-        config_path = MyceliumConfig.get_config_path()
-        if not config_path.exists():
-            raise ConfigNotFoundError(str(config_path))
-
         config = MyceliumConfig.load()
 
         if not force:

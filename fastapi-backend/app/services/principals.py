@@ -190,7 +190,7 @@ def write_user(payload: dict[str, Any]) -> dict[str, Any]:
         get_users_dir(),
         handle,
         yaml_body,
-        created_by=payload.get("created_by", "system"),
+        created_by=payload.get("created_by") or "system",
         version=version,
         tags=["user-manifest"],
     )

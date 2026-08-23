@@ -8,12 +8,6 @@ import { renderWithSWR } from "@/test/swr";
 import { InstallPanel } from "@/components/install-panel";
 import { CLI_INSTALL_COMMAND, LOGIN_COMMAND, PROMPT_COMMAND, configSetCommand } from "@/lib/install";
 
-vi.mock("next/link", () => ({
-  default: ({ children, href }: { children: React.ReactNode; href: string }) => (
-    <a href={href}>{children}</a>
-  ),
-}));
-
 /** The panel's only server read is the health probe. */
 function stubHub(reachable: boolean) {
   vi.stubGlobal(
@@ -50,17 +44,15 @@ describe("<InstallPanel />", () => {
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Hub unreachable"));
     // The honest framing: this isn't "not installed yet", it's down.
     expect(screen.getByText(/isn't answering right now/i)).toBeInTheDocument();
-    expect(screen.queryByText("Next: your first room")).not.toBeInTheDocument();
   });
 
-  it("flips to reachable and shows the next steps once the hub answers", async () => {
+  it("drops the unreachable note once the hub answers, keeping only the commands", async () => {
     const user = userEvent.setup();
     stubHub(true);
     renderWithSWR(<InstallPanel />);
 
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Hub reachable"));
-    expect(screen.getByText("Next: your first room")).toBeInTheDocument();
-    expect(commandField("mycelium room create my-project && mycelium room use my-project")).toBeInTheDocument();
+    expect(screen.queryByText(/isn't answering right now/i)).not.toBeInTheDocument();
 
     // The install commands stay reachable — a second machine still needs them.
     await user.click(screen.getByRole("button", { name: "macOS" }));

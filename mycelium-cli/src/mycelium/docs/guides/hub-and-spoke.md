@@ -153,6 +153,40 @@ When spokes reach the hub over a LAN or VPN, turn on HTTP authentication on
 the hub. See [Authentication](#auth). Without it, any peer on the network can
 read/write memory and post as any `@handle` — independent of SLIM PSK.
 
+### Behind a TLS-terminating proxy
+
+A public hub usually sits behind a reverse proxy (Caddy, nginx, a cloud load
+balancer) that terminates HTTPS and forwards plain HTTP to the backend
+container. The backend then sees an `http` request and builds every absolute URL
+with that scheme, so an external client reading the A2A agent card is pointed at
+`http://` for a hub that is only served over `https://`.
+
+The proxy says what the original request was in `X-Forwarded-Proto`, but the
+backend believes that header only from a forwarder it trusts, and it trusts
+loopback alone by default. That default is the safe one: a direct caller on the
+network could otherwise assert any scheme it liked. Name the proxy instead:
+
+```bash
+mycelium config set runtime.trusted_proxies '*'
+mycelium config apply
+mycelium up
+```
+
+`'*'` is the right value when the backend port is reachable only through the
+proxy, which is the usual public deployment. If the backend is also reachable
+directly, list the proxy's addresses instead:
+
+```bash
+mycelium config set runtime.trusted_proxies '172.18.0.1,10.0.0.5'
+```
+
+Leave it unset for a hub with no proxy in front. Verify the card afterwards:
+
+```bash
+curl -s https://hub.example.com/api/rooms/my-room/.well-known/agent-card.json
+# the advertised url is https://, not http://
+```
+
 ## Step 3: Use a room from a spoke
 
 There is one store: the hub's. Create the room on the hub, then use it from
@@ -179,8 +213,17 @@ mycelium memory set decisions/allocation "60/40 equities to bonds"
 mycelium memory search "what did we decide about risk"
 ```
 
-Because reads go to the hub, a spoke sees a write the moment it lands.
-Memory commands need the hub reachable and report plainly when it is not.
+The room's roster resolves the same way, so a spoke lists the agents the
+room actually has:
+
+```bash
+mycelium agent ls
+mycelium agent show researcher
+mycelium engine ls
+```
+
+Because reads go to the hub, a spoke sees a write the moment it lands. These
+commands need the hub reachable and report plainly when it is not.
 
 > `mycelium room clone` pulls a point-in-time snapshot to local files (backup
 > or offline read). It is not part of joining a room from a spoke.

@@ -66,33 +66,3 @@ export function detectPlatform(userAgent: string | null | undefined): Platform {
   if (/linux|x11|cros/.test(ua)) return "linux";
   return "unknown";
 }
-
-export interface NextStep {
-  title: string;
-  body: string;
-  command: string;
-  /** Where the docs explain this step in full. */
-  href: string;
-}
-
-/** What to do once the hub answers: the shape of a first session. */
-export const NEXT_STEPS: NextStep[] = [
-  {
-    title: "Create a room",
-    body: "A room is the shared space for agents, memory, and the plan.",
-    command: "mycelium room create my-project && mycelium room use my-project",
-    href: `${DOCS_URL}/index.html#rooms`,
-  },
-  {
-    title: "Add an agent",
-    body: "One per role. Each becomes a citizen of the room you can @mention.",
-    command: 'mycelium agent create planner --description "Sprint planner"',
-    href: `${DOCS_URL}/adapters.html`,
-  },
-  {
-    title: "Keep the session resident",
-    body: "The loop is the wake: await → reason → respond, keeping context between turns.",
-    command: "mycelium await --loop",
-    href: `${DOCS_URL}/reference.html`,
-  },
-];
