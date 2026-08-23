@@ -4,10 +4,10 @@
 """Non-interactive smoke: the core protocol over the fake stack.
 
 One scriptable check that the happy path still works end to end —
-**room → engine → await → respond → converge → plan** — with **no SLIM node, no
+**room → engine → await → respond → converge → work** — with **no SLIM node, no
 Pi binary, and no live LLM**. The mediator runs the real NEGMAS SAO loop; only its
 brain (the deterministic ``fake_brain_factory``), the agents (the ``FakeChannel``
-reply simulation, i.e. the await/respond turns), and the plan compiler are faked.
+reply simulation, i.e. the await/respond turns), and the task compiler are faked.
 
 Run it alone with ``make smoke`` (or ``uv run pytest -m smoke``). If this goes red,
 the protocol itself broke — not a corner case.
@@ -19,7 +19,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.services import aligner, l9, plan, plan_sync
+from app.services import aligner, l9, task_compiler, task_sync
 from app.services.filesystem import ensure_room_structure, get_room_dir, read_memory_file
 from app.services.l9_models import Kind
 from tests.fakes import (
@@ -35,7 +35,7 @@ _ROOM = "smoke-room"
 
 @pytest.mark.smoke
 @pytest.mark.asyncio
-async def test_core_protocol_room_to_plan_over_fakes() -> None:
+async def test_core_protocol_room_to_work_over_fakes() -> None:
     # ── room ── a persistent room namespace on disk.
     ensure_room_structure(get_room_dir(_ROOM))
 
@@ -63,8 +63,8 @@ async def test_core_protocol_room_to_plan_over_fakes() -> None:
     assignments = verdict["payload"]["data"]["assignments"]
     assert assignments  # the negotiation actually agreed on something
 
-    # ── plan ── the converged map compiles into the room's shared plan. The compiler
-    # is the one remaining LLM stage, faked here to a deterministic checklist.
+    # ── work ── the converged map compiles into the room's work. The compiler is
+    # the one remaining LLM stage, faked here to deterministic tasks.
     converged = l9.build_envelope(
         kind=Kind.commit,
         subkind="converged",
@@ -74,17 +74,25 @@ async def test_core_protocol_room_to_plan_over_fakes() -> None:
         payload_type="consensus",
         payload_data={"assignments": assignments},
     )
-    compiled = "# Smoke Plan\n\n- [ ] ship the agreed cap @growth\n- [ ] sign off @risk"
-    plan_engine = plan_sync.PlanSyncEngine(manager)  # type: ignore[arg-type]
-    with patch.object(plan_sync.plan_compiler, "compile_plan", AsyncMock(return_value=compiled)):
-        write = await plan_engine.compile_and_sync(_ROOM, converged)
+    compiled = [
+        task_compiler.CompiledTask(title="ship the agreed cap", assignee="growth"),
+        task_compiler.CompiledTask(title="sign off", assignee="risk"),
+    ]
+    task_engine = task_sync.TaskSyncEngine(manager)  # type: ignore[arg-type]
+    with (
+        patch.object(task_sync.task_compiler, "compile_tasks", AsyncMock(return_value=compiled)),
+        # Writing a row embeds it, and this test promises no live models.
+        patch("app.routes.memory.embed_text", return_value=[0.0]),
+    ):
+        keys = await task_engine.compile_and_write(_ROOM, converged)
 
-    # The plan file exists with the agreed tasks, the title is set, and the plan was
-    # broadcast as a knowledge push — the protocol's observable end state.
-    got = read_memory_file(get_room_dir(_ROOM), plan_sync.PLAN_TASKS_KEY)
+    # Each agreed task is a row somebody can pick up: its own memory, with the
+    # frontmatter that makes it one. That is the protocol's observable end state.
+    assert keys == ["work/ship-the-agreed-cap", "work/sign-off"]
+    got = read_memory_file(get_room_dir(_ROOM), "work/ship-the-agreed-cap")
     assert got is not None
-    _meta, body = got
-    assert "ship the agreed cap @growth" in body
-    assert plan.get_title(_ROOM) == "Smoke Plan"
-    assert write is not None and write.content.startswith("# Smoke Plan")
-    assert manager.channel.sent  # a knowledge broadcast went out
+    meta, body = got
+    assert "ship the agreed cap" in body
+    assert meta["kind"] == "action"
+    assert meta["status"] == "open"
+    assert meta["assignee"] == "@growth"

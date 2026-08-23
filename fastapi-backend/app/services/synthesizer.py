@@ -23,7 +23,7 @@ Design constraints, shared with the aligner:
   seam — no polling, no held LLM connection.
 * **One-shot Pi cognition.** The summary is one throwaway ``pi`` turn off the
   event loop (:func:`_pi_complete`), the same pattern as
-  :mod:`app.services.plan_compiler`. Fail-soft: a Pi outage logs and writes
+  :mod:`app.services.task_compiler`. Fail-soft: a Pi outage logs and writes
   nothing rather than a half-baked summary.
 * **Writes through the canonical memory path.** The summary is upserted via the
   same versioned + indexed write every ``memory set`` uses, so it is searchable,
@@ -286,7 +286,7 @@ def _pi_complete(prompt: str, timeout_s: float) -> str:
     """One blocking Pi turn producing the raw summary markdown.
 
     A throwaway ``--session`` file keeps it a true one-shot with no memory to
-    carry — the same pattern as :func:`app.services.plan_compiler._pi_complete`.
+    carry — the same pattern as :func:`app.services.task_compiler._pi_complete`.
     Isolated so tests can patch it without a live Pi.
     """
     from app.services.pi_brain import PiBrain

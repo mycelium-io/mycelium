@@ -28,7 +28,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from app.services import plan
 from app.services.filesystem import get_room_dir, list_memory_files
 
 if TYPE_CHECKING:
@@ -72,10 +71,6 @@ def discover(room_name: str, runtime: StatusRuntime) -> list[Discovered]:
                 order.append(ref)
             if origin not in found[ref]:
                 found[ref].append(origin)
-
-    _, tasks = plan.load_plan(room_name)
-    for task in tasks:
-        note(task.text, f"plan:{task.id}")
 
     room_dir = get_room_dir(room_name)
     for namespace in LIVE_NAMESPACES:

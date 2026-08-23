@@ -22,14 +22,14 @@ This module is that consumer, and it does four things as each message flows past
    summon hook (defaulting to a log when no engine is wired).
 
 4. **plan-compile hook.** On a ``commit:converged`` envelope it fires the
-   ``on_converged`` seam the plan-sync consumer runs ``plan_compiler`` off of;
+   ``on_converged`` seam the task-sync consumer runs ``task_compiler`` off of;
    the persister itself does **not** compile — it just fires the seam.
 
 5. **Memory-sync receiver.** On a ``knowledge`` envelope — from a real SLIM
    arrival or the sender's own :meth:`RoomPersister.ingest_local` loopback
    alike — it applies the carried write to this backend's local store via
    :func:`app.services.memory_sync.apply_knowledge`, closing the loop the
-   emit side (``_broadcast_memory_write`` / :mod:`app.services.plan_sync`)
+   emit side (``_broadcast_memory_write`` / :mod:`app.services.task_sync`)
    opens. Unlike the summon/converged hooks this isn't a pluggable engine
    seam: the applier is stateless and version-idempotent, so it always runs.
 
@@ -1069,7 +1069,7 @@ class RoomPersister:
         a write this store already holds is a silent no-op, not a double-write.
         Scheduled as a tracked background task since ``_ingest`` is sync but the
         applier does file IO + reindexing; never re-broadcasts, so this cannot
-        loop with the emit side (``_broadcast_memory_write`` / ``plan_sync``).
+        loop with the emit side (``_broadcast_memory_write`` / ``task_sync``).
         """
         write = memory_sync.knowledge_write_from_envelope(envelope)
         if write is None:

@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Live-LLM slice for the product's cognition: negotiate, then compile a plan.
+"""Live-LLM slice for the product's cognition: negotiate, then compile the work.
 
 ``test_smoke.py`` with the fakes taken out of the cognition path — the brain is
 a real ``pi`` session and the compiler a real one-shot ``pi`` turn, so this
@@ -26,7 +26,7 @@ from typing import Any
 
 import pytest
 
-from app.services import aligner, l9, plan, plan_sync
+from app.services import aligner, l9, task_sync
 from app.services.filesystem import ensure_room_structure, get_room_dir, read_memory_file
 from app.services.l9_models import Kind
 from tests.fakes import FakeChannel, FakeManaged, FakeManager, FakePersister, position_record
@@ -100,7 +100,7 @@ class ScriptedAgents(FakeChannel):
     reason="live LLM test — set MYCELIUM_LLM_TESTS=1 to run",
 )
 @pytest.mark.asyncio
-async def test_negotiation_converges_and_compiles_a_plan(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_negotiation_converges_and_compiles_work(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("app.routes.memory.embed_text", lambda _text: [0.0])
     ensure_room_structure(get_room_dir(_ROOM))
 
@@ -138,7 +138,7 @@ async def test_negotiation_converges_and_compiles_a_plan(monkeypatch: pytest.Mon
     # Rounds were actually brokered.
     assert len(channel.sent) > 2, "no rounds were brokered"
 
-    # ── plan ── the real compiler, against the real agreement.
+    # ── work ── the real compiler, against the real agreement.
     converged = l9.build_envelope(
         kind=Kind.commit,
         subkind="converged",
@@ -148,14 +148,14 @@ async def test_negotiation_converges_and_compiles_a_plan(monkeypatch: pytest.Mon
         payload_type="consensus",
         payload_data={"assignments": assignments},
     )
-    write = await plan_sync.PlanSyncEngine(manager).compile_and_sync(_ROOM, converged)  # type: ignore[arg-type]
+    keys = await task_sync.TaskSyncEngine(manager).compile_and_write(_ROOM, converged)  # type: ignore[arg-type]
 
-    assert write is not None, "the compiler produced no plan"
-    got = read_memory_file(get_room_dir(_ROOM), plan_sync.PLAN_TASKS_KEY)
-    assert got is not None, "plan/tasks.md was not written"
-    _meta, body = got
-    assert "- [ ]" in body, f"the compiled plan has no checklist:\n{body}"
-    assert any(f"@{handle}" in body for handle in _SCRIPTS), (
-        f"the compiled plan assigns no task to a real handle:\n{body}"
+    assert keys, "the compiler produced no work"
+    rows = [read_memory_file(get_room_dir(_ROOM), key) for key in keys]
+    assert all(row is not None for row in rows), f"a compiled task was not written: {keys}"
+    assert all(row[0].get("status") == "open" for row in rows if row), (
+        "a compiled task did not land as open work"
     )
-    assert plan.get_title(_ROOM), "the plan has no title"
+    assert any(
+        str(row[0].get(task_sync.ASSIGNEE_FIELD, "")).lstrip("@") in _SCRIPTS for row in rows if row
+    ), f"no compiled task names a real handle: {[row[0] for row in rows if row]}"
