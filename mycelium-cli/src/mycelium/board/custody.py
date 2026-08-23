@@ -77,7 +77,6 @@ LEASABLE_NAMESPACES = ["work"]
 
 #: Why a row refuses a claim, in its own terms. Saying so beats pretending.
 REFUSALS = {
-    "plan": "a plan task is the room's commitment, not a lease: assign it with @handle",
     "episode": "an episode is a recorded negotiation, and there is nothing to write a lease onto",
     "agent": "presence is already a lease the runtime renews; it is not claimable",
     "memory": "leases live on work/ memories; this row is in another namespace",
@@ -100,8 +99,8 @@ def parse_stamp(raw: str | None) -> datetime | None:
 def spent(stamped_at: str | None, ttl_minutes: Any, now: datetime) -> float | None:
     """Fraction of a lease already burned, or ``None`` when it cannot expire.
 
-    A row with no TTL is not a lease — a plan task is the room's commitment and
-    leaves by being done — so it has no fraction to report rather than a zero.
+    A row with no TTL is not a lease — nobody has taken it for a window — so it
+    has no fraction to report rather than a zero.
     """
     stamp = parse_stamp(stamped_at)
     try:
@@ -204,7 +203,7 @@ def note_of(item: LiveItem, now: datetime) -> tuple[str, str] | None:
 def refusal_for(item: LiveItem) -> str | None:
     """Why this row cannot take a lease, or ``None`` when it can."""
     kind = item.source.kind
-    if kind in ("plan", "episode", "agent"):
+    if kind in ("episode", "agent"):
         return REFUSALS[kind]
     if kind == "memory":
         namespace = str(item.get("namespace") or item.source.label.split("/")[0])

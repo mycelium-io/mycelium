@@ -43,7 +43,6 @@ L9_RAISE_UP_TYPES = frozenset(
     {
         "coordination_join",
         "coordination_consensus",
-        "plan_updated",
         "l9_knowledge",
     }
 )
@@ -612,32 +611,17 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
             return f"\n  {ts()}  [bold cyan]tick {round_num}[/]"
 
         if mtype == "coordination_consensus":
-            plan = data.get("plan", "")
             assignments = data.get("assignments", {})
             lines = [f"\n  {ts()}  [bold green]consensus[/]"]
-            if plan:
-                lines.append(f"              [dim]plan:[/] {plan}")
+            tasks = data.get("tasks") or []
+            if tasks:
+                lines.append(f"              [dim]work:[/] {', '.join(tasks)}")
             for handle, task in assignments.items():
                 lines.append(f"              [cyan]{handle}[/]: {task}")
             quality_line = _consensus_quality_line(data, "              ")
             if quality_line:
                 lines.append(f"[dim]{quality_line}[/]")
             return "\n".join(lines)
-
-        if mtype == "plan_updated":
-            kind = data.get("kind")
-            if kind == "task_toggled":
-                mark = "[green]✓[/]" if data.get("done") else "[dim]○[/]"
-                return f"  {ts()}  [bold]plan[/] {mark} [dim]{data.get('text', 'task')}[/]"
-            if kind == "task_added":
-                return f"  {ts()}  [bold]plan[/] + [dim]{data.get('text', 'task')}[/]"
-            if kind == "title_set":
-                by = data.get("updated_by")
-                suffix = f" [dim]by {by}[/]" if by else ""
-                return (
-                    f"  {ts()}  [bold]plan[/] title set to [dim]{data.get('title', '')}[/]{suffix}"
-                )
-            return f"  {ts()}  [bold]plan[/] updated"
 
         if mtype == "l9_knowledge":
             l9_payload = data.get("l9", {}).get("payload", {}).get("data", {})

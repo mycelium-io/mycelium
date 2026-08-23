@@ -107,26 +107,23 @@ class TestVocabularyContract:
 
 
 class TestProjection:
-    plan = {
-        "room": "atlas",
-        "files": [{"slug": "tasks", "updated_at": "2026-08-20T10:00:00Z"}],
-        "tasks": [
-            {
-                "id": "t1",
-                "slug": "tasks",
-                "line": 2,
-                "text": "flip reads behind a flag @growth",
-                "done": False,
-            },
-            {
-                "id": "t2",
-                "slug": "tasks",
-                "line": 3,
-                "text": "retire the legacy store @risk",
-                "done": True,
-            },
-        ],
-    }
+    #: The two rows an agreement compiles into: one open and assigned, one done.
+    work = [
+        {
+            "key": "work/flip-reads-behind-a-flag",
+            "value": "flip reads behind a flag",
+            "updated_at": "2026-08-20T10:00:00Z",
+            "updated_by": "aligner",
+            "meta": {"kind": "action", "status": "open", "assignee": "@growth"},
+        },
+        {
+            "key": "work/retire-the-legacy-store",
+            "value": "retire the legacy store",
+            "updated_at": "2026-08-20T10:00:00Z",
+            "updated_by": "aligner",
+            "meta": {"kind": "action", "status": "resolved", "assignee": "@risk"},
+        },
+    ]
 
     def project(
         self,
@@ -137,28 +134,27 @@ class TestProjection:
         members: list[dict] | None = None,
     ) -> list[LiveItem]:
         return project_items(
-            plan=self.plan,
             episodes=episodes or [],
-            memories=memories or [],
+            memories=self.work if memories is None else memories,
             agents=agents or [],
             members=members or [],
             now=NOW,
         )
 
-    def test_lifts_a_plan_task_handle_into_an_owner(self):
+    def test_a_compiled_task_names_who_it_is_for_without_claiming_it(self):
         rows = self.project()
-        assert rows[0].owner == "growth"
         assert rows[0].title == "flip reads behind a flag"
-        # A named owner is a commitment, not a claim: the stage stays open, and
-        # the row takes no lease it could quietly stop renewing.
+        assert rows[0].get("assignee") == "@growth"
+        # An assignment is not a claim: the row stays unclaimed until somebody
+        # takes it, so nothing asserts a holder who never agreed to hold it.
         assert rows[0].status == "open"
-        assert custody.custody_of(rows[0], NOW) is None
+        assert custody.custody_of(rows[0], NOW) == "unclaimed"
 
     def test_a_done_task_resolves(self):
         assert self.project()[1].status == "resolved"
 
     def test_every_row_carries_its_provenance(self):
-        assert self.project()[0].source.label == "plan/tasks.md:2"
+        assert self.project()[0].source.label == "work/flip-reads-behind-a-flag"
 
     def test_only_coordination_namespaces_become_rows(self):
         memories = [
@@ -300,7 +296,6 @@ class TestActivity:
             "messages": [],
             "memories": [],
             "episodes": [],
-            "plan": None,
             "agent_handles": ["growth"],
         }
         kwargs.update(over)
@@ -398,24 +393,6 @@ class TestActivity:
         assert len(events) == 1
         assert (events[0].actor, events[0].verb) == ("growth", "revised")
 
-    def test_a_finished_task_is_credited_to_its_owner(self):
-        plan = {
-            "files": [
-                {
-                    "slug": "tasks",
-                    "updated_at": "2026-08-21T09:00:00Z",
-                    "tasks": [
-                        {"id": "t1", "text": "dual-write to the new store @growth", "done": True},
-                        {"id": "t2", "text": "flip reads @risk", "done": False},
-                    ],
-                }
-            ]
-        }
-        events = self.project(plan=plan)
-        assert [(e.actor, e.verb, e.title) for e in events] == [
-            ("growth", "completed", "dual-write to the new store")
-        ]
-
     def test_anything_unattributed_or_untimed_is_dropped(self):
         events = self.project(
             messages=[
@@ -501,25 +478,25 @@ def answer(ref: str, state: str | None, label: str | None = None, **extra) -> di
 
 class TestUpstream:
     def test_an_answer_lands_on_the_row_that_mentioned_it(self):
-        rows = [item("plan:tasks:3", status="open")]
+        rows = [item("memory:work/cutover", status="open")]
         attach_upstream(
             rows,
             status_payload(
                 answer("github:pull_request:o/r#1", "blocked", "changes requested"),
-                rows={"plan:tasks:3": ["github:pull_request:o/r#1"]},
+                rows={"memory:work/cutover": ["github:pull_request:o/r#1"]},
             ),
         )
         assert rows[0].get("upstream") == "blocked"
         assert rows[0].get("upstream_label") == "changes requested"
 
     def test_a_row_with_two_references_shows_the_worse_one_and_says_there_were_more(self):
-        rows = [item("plan:tasks:3")]
+        rows = [item("memory:work/cutover")]
         attach_upstream(
             rows,
             status_payload(
                 answer("a", "ok", "approved"),
                 answer("b", "failed", "CI failing"),
-                rows={"plan:tasks:3": ["a", "b"]},
+                rows={"memory:work/cutover": ["a", "b"]},
             ),
         )
         # A board says what needs a person, so the failing one wins; the count
@@ -528,31 +505,33 @@ class TestUpstream:
         assert rows[0].get("upstream_count") == 2
 
     def test_a_row_nothing_was_found_for_carries_no_field_at_all(self):
-        rows = [item("plan:tasks:9")]
-        attach_upstream(rows, status_payload(answer("a", "ok"), rows={"plan:tasks:3": ["a"]}))
+        rows = [item("memory:work/other")]
+        attach_upstream(
+            rows, status_payload(answer("a", "ok"), rows={"memory:work/cutover": ["a"]})
+        )
         # Absent, not empty: a view can tell "nothing upstream" from "unknown".
         assert "upstream" not in rows[0].fields
 
     def test_an_errored_answer_shows_the_reason_rather_than_an_empty_label(self):
-        rows = [item("plan:tasks:3")]
+        rows = [item("memory:work/cutover")]
         attach_upstream(
             rows,
             status_payload(
                 answer("a", "unknown", None, error="not visible to this token"),
-                rows={"plan:tasks:3": ["a"]},
+                rows={"memory:work/cutover": ["a"]},
             ),
         )
         assert rows[0].get("upstream_label") == "not visible to this token"
 
     def test_no_hub_answer_leaves_every_row_untouched(self):
-        rows = [item("plan:tasks:3", status="open")]
+        rows = [item("memory:work/cutover", status="open")]
         attach_upstream(rows, None)
         assert rows[0].fields == {"status": "open"}
 
     def test_a_row_whose_answer_has_not_come_back_is_pending_not_unknown(self):
-        rows = [item("plan:tasks:3")]
+        rows = [item("memory:work/cutover")]
         payload = status_payload(
-            answer("a", None, freshness="missing"), rows={"plan:tasks:3": ["a"]}
+            answer("a", None, freshness="missing"), rows={"memory:work/cutover": ["a"]}
         )
         attach_upstream(rows, {**payload, "refreshing": True})
         # `unknown` is a provider saying it could not place what it found; this
@@ -562,24 +541,24 @@ class TestUpstream:
         assert rows[0].get("upstream_pending") is True
 
     def test_a_row_shows_what_is_known_when_one_of_two_answers_has_not_landed(self):
-        rows = [item("plan:tasks:3")]
+        rows = [item("memory:work/cutover")]
         attach_upstream(
             rows,
             status_payload(
                 answer("a", None, freshness="missing"),
                 answer("b", "blocked", "changes requested"),
-                rows={"plan:tasks:3": ["a", "b"]},
+                rows={"memory:work/cutover": ["a", "b"]},
             ),
         )
         assert rows[0].get("upstream") == "blocked"
 
     def test_a_stale_value_is_kept_and_marked_rather_than_hidden(self):
-        rows = [item("plan:tasks:3")]
+        rows = [item("memory:work/cutover")]
         attach_upstream(
             rows,
             status_payload(
                 answer("a", "ok", "approved", freshness="stale", age_seconds=5400),
-                rows={"plan:tasks:3": ["a"]},
+                rows={"memory:work/cutover": ["a"]},
             ),
         )
         # The truth as far as anyone knows, with a refresh behind it. Taking the

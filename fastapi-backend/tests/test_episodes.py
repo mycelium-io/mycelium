@@ -33,7 +33,7 @@ async def _seed_episode(client, room: str, short_id: str = "abc123", *, broken: 
         ep,
         outcome="rejected" if broken else "converged",
         metrics=metrics,
-        plan_file="plan/tasks.md",
+        tasks=["work/ship-auth", "work/write-docs"],
     )
     return ep, metrics
 
@@ -52,7 +52,7 @@ async def test_list_episodes_returns_summary(client):
     assert summary["outcome"] == "converged"
     assert summary["subkind"] == "converged"
     assert summary["participants"] == ["alice", "bob"]
-    assert summary["plan_file"] == "plan/tasks.md"
+    assert summary["tasks"] == ["work/ship-auth", "work/write-docs"]
     assert summary["message_count"] > 0
     # Metrics are lifted straight off the commit envelope, not the markdown.
     assert summary["metrics"]["mpc"] == metrics["mpc"]

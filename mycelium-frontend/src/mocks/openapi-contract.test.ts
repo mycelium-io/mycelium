@@ -70,7 +70,6 @@ const WRITES: { path: string; body: unknown }[] = [
     body: { items: [{ key: "context/from-a-test", value: "written by the contract test" }] },
   },
   { path: "/api/rooms/{room_name}/memory/search", body: { query: "cutover" } },
-  { path: "/api/rooms/{room_name}/plan/tasks", body: { slug: "tasks", text: "a new task" } },
   { path: "/api/rooms", body: { name: "a-new-room" } },
 ];
 

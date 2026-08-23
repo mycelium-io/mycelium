@@ -40,7 +40,7 @@ shareable prose.
 **orchestrate effectively across your team's agents.** It shows what needs you:
 a decision someone is waiting on, work that's blocked, a pull request wanting
 eyes. Everything in flight stays one keystroke away. You never fill it in; it's
-assembled from the room's plan, its negotiations, its memory and who's actually
+assembled from the room's work, its negotiations, its memory and who's actually
 resident. See **[board](#board)**.
 
 **Engines** are first-party cognition you summon into a room to run repeatable

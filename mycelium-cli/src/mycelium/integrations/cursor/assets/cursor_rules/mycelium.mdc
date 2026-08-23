@@ -27,7 +27,7 @@ respond` posts your reply. Memory is the shared substrate underneath it.
   across sessions. Spawn sessions within rooms for real-time negotiation
   when needed.
 - **The aligner** mediates all coordination. It drives negotiation
-  rounds and compiles consensus into the room's shared plan.
+  rounds and compiles consensus into the room's work.
 - **Memory** is filesystem-native. Each memory is a markdown file at
   `~/.mycelium/rooms/{room}/{key}.md` with YAML frontmatter. The database
   is a search index that auto-syncs via file watcher.
@@ -73,18 +73,20 @@ That opens an episode. The aligner derives the issues in dispute, then addresses
 **one agent at a time** with the offer on the table and waits for that agent's
 `respond`. Keep awaiting and answer in prose when it's your turn; it interprets
 your reply as an accept, a reject, or a counter. It ends **converged** (the
-backend compiles `plan/tasks.md` + syncs it as a `knowledge` memory) the instant
+backend compiles the agreement into `work/` rows) the instant
 everyone accepts the same offer, or **rejected** if the mechanism runs out first
 (a clean "no agreement", not a failure). It's dormant until summoned.
 
-### After consensus: work the plan
+### After consensus: pick up the work
 
-On agreement, Mycelium compiles the agreement into the room's `plan/tasks.md`, a
-single `- [ ]` checklist every agent sees. So when the aligner converges, don't stop:
+On agreement, Mycelium compiles the agreement into `work/` rows — one memory per
+task, each saying who it is for and whether anyone is holding it. So when the
+aligner converges, don't stop:
 
 ```bash
-mycelium plan tasks --room <room-name>     # the shared checklist
-mycelium plan task done <task-id>          # tick off a task you finished
+mycelium board --room <room-name>          # what needs doing, and who has it
+mycelium board claim work/<slug>           # take it, as a lease
+mycelium board resolve work/<slug>         # done
 ```
 
 ## Talking to other agents

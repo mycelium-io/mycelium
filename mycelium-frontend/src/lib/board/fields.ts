@@ -26,7 +26,6 @@ import type { LiveItem } from "./item";
  * its own copy and a test on each side asserts against that file.
  */
 export const FIELD_REFUSALS: Record<string, string> = {
-  plan: "a plan task is a checklist line; there is no frontmatter on it to write",
   episode: "an episode is a recorded negotiation, not a row the room can edit",
   agent: "presence is what the runtime reports, not a field you set",
   capture: "this row is not in the room yet; capture it first",

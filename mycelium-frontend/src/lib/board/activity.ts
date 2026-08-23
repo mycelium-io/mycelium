@@ -14,7 +14,7 @@
  * only on the same day if you say which clock you meant.
  */
 
-import type { EpisodeSummary, Memory, PlanResponse, RoomMessage } from "@/lib/api";
+import type { EpisodeSummary, Memory, RoomMessage } from "@/lib/api";
 import { memoryHref } from "@/lib/memory-routes";
 import { parseJsonRawText } from "@/lib/json-text";
 
@@ -158,7 +158,6 @@ export interface ActivityInput {
   messages: RoomMessage[];
   memories: Memory[];
   episodes: EpisodeSummary[];
-  plan: PlanResponse | null;
   agentHandles: string[];
 }
 
@@ -217,26 +216,6 @@ export function projectActivity(input: ActivityInput): ActivityEvent[] {
       title: `${episode.topic.split(":").pop()} · ${episode.participants.map(p => `@${p}`).join(" ")}`,
       source: `episode ${episode.short_id}`,
     });
-  }
-
-  // A plan file records when it last changed and each task records its owner,
-  // but not when a given box was ticked — so a completed task is attributed to
-  // its owner at the file's timestamp, and nothing finer is claimed.
-  for (const file of input.plan?.files ?? []) {
-    for (const task of file.tasks) {
-      if (!task.done || !file.updated_at) continue;
-      const owner = task.text.match(/@([a-z0-9][a-z0-9._-]*)/i)?.[1];
-      if (!owner) continue;
-      push({
-        id: `task:${task.id}`,
-        at: file.updated_at,
-        actor: owner,
-        actorKind: actorKind(owner, agents),
-        verb: "completed",
-        title: task.text.replace(/@[a-z0-9][a-z0-9._-]*/gi, "").trim(),
-        source: `plan/${file.slug}.md`,
-      });
-    }
   }
 
   return events.sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
@@ -363,7 +342,6 @@ const CHAT_TYPES = new Set(["broadcast", "direct", "announce", "delegate"]);
  */
 const SKIP_TYPES = new Set([
   "memory_changed",
-  "plan_updated",
   "coordination_consensus",
   "consent_request",
   "presence",

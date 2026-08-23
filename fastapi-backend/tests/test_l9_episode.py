@@ -336,7 +336,7 @@ def test_write_episode_record(tmp_path, monkeypatch):
         ep,
         outcome="converged",
         metrics={"mpc": 0.8, "gar": 1.0, "scr": 0.0, "provenance_weight": 1.0, "participants": 2},
-        plan_file="plan/tasks.md",
+        tasks=["work/ship-auth", "work/write-docs"],
     )
     record = tmp_path / "rooms" / "sprint" / "log" / "episodes" / "abc123.md"
     assert record.exists()
@@ -463,7 +463,7 @@ def test_episode_record_renders_opening_positions(tmp_path, monkeypatch):
         joined_intents="- a1: ship\n- a2: test",
         opening_positions={"a1": "ship it in Q3", "a2": "test first, Q4"},
     )
-    l9_episode.write_episode_record(ep, outcome="converged", metrics=None, plan_file=None)
+    l9_episode.write_episode_record(ep, outcome="converged", metrics=None, tasks=None)
     body = (tmp_path / "rooms" / "sprint" / "log" / "episodes" / "abc123.md").read_text()
     assert "## Opening Positions" in body
     assert "- **@a1**: ship it in Q3" in body
@@ -477,7 +477,7 @@ def test_episode_record_omits_opening_positions_when_absent(tmp_path, monkeypatc
     from app.config import settings
 
     monkeypatch.setattr(settings, "MYCELIUM_DATA_DIR", str(tmp_path))
-    l9_episode.write_episode_record(_open(), outcome="rejected", metrics=None, plan_file=None)
+    l9_episode.write_episode_record(_open(), outcome="rejected", metrics=None, tasks=None)
     body = (tmp_path / "rooms" / "sprint" / "log" / "episodes" / "abc123.md").read_text()
     assert "## Opening Positions" not in body
 
@@ -525,7 +525,7 @@ def test_episode_record_renders_term_clarifications(tmp_path, monkeypatch):
         mismatches=_MISMATCH,
         clarifications={"a1": "done means live", "a2": "done means merged"},
     )
-    l9_episode.write_episode_record(ep, outcome="converged", metrics=None, plan_file=None)
+    l9_episode.write_episode_record(ep, outcome="converged", metrics=None, tasks=None)
     body = (tmp_path / "rooms" / "sprint" / "log" / "episodes" / "abc123.md").read_text()
     assert "## Term Clarifications" in body
     assert "- **done**" in body
@@ -540,7 +540,7 @@ def test_episode_record_omits_term_clarifications_when_absent(tmp_path, monkeypa
     from app.config import settings
 
     monkeypatch.setattr(settings, "MYCELIUM_DATA_DIR", str(tmp_path))
-    l9_episode.write_episode_record(_open(), outcome="converged", metrics=None, plan_file=None)
+    l9_episode.write_episode_record(_open(), outcome="converged", metrics=None, tasks=None)
     body = (tmp_path / "rooms" / "sprint" / "log" / "episodes" / "abc123.md").read_text()
     assert "## Term Clarifications" not in body
 
@@ -579,7 +579,7 @@ def test_episode_record_renders_satisfaction(tmp_path, monkeypatch):
 
     monkeypatch.setattr(settings, "MYCELIUM_DATA_DIR", str(tmp_path))
     metrics = {"min_satisfaction": 0.33, "satisfaction": {"a1": 0.33, "a2": 0.8}}
-    l9_episode.write_episode_record(_open(), outcome="converged", metrics=metrics, plan_file=None)
+    l9_episode.write_episode_record(_open(), outcome="converged", metrics=metrics, tasks=None)
     body = (tmp_path / "rooms" / "sprint" / "log" / "episodes" / "abc123.md").read_text()
     assert "- satisfaction: min 0.33 (least-happy of 2 agents" in body
 
@@ -592,7 +592,7 @@ def test_record_satisfaction_renders_without_siep_metrics(tmp_path, monkeypatch)
 
     monkeypatch.setattr(settings, "MYCELIUM_DATA_DIR", str(tmp_path))
     metrics = {"min_satisfaction": 0.5, "satisfaction": {"a1": 0.5, "a2": 0.5}}
-    l9_episode.write_episode_record(_open(), outcome="converged", metrics=metrics, plan_file=None)
+    l9_episode.write_episode_record(_open(), outcome="converged", metrics=metrics, tasks=None)
     body = (tmp_path / "rooms" / "sprint" / "log" / "episodes" / "abc123.md").read_text()
     assert "MPC" not in body
     assert "- satisfaction: min 0.50" in body

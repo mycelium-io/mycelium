@@ -16,7 +16,6 @@ day if you say which clock you meant.
 from __future__ import annotations
 
 import json
-import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
@@ -31,18 +30,15 @@ WEEK_STARTS_ON = "monday"
 ENGINES = {"aligner", "synthesizer"}
 CHAT_TYPES = {"broadcast", "direct", "announce", "delegate"}
 
-#: Facts the log reads from a truer source than the wire.  A memory write and a
-#: plan edit are already counted from the store itself, and a consensus from its
-#: episode — re-counting the message announcing each would log the work twice.
+#: Facts the log reads from a truer source than the wire.  A memory write is
+#: already counted from the store itself, and a consensus from its episode —
+#: re-counting the message announcing each would log the work twice.
 SKIP_TYPES = {
     "memory_changed",
-    "plan_updated",
     "coordination_consensus",
     "consent_request",
     "presence",
 }
-
-_OWNER = re.compile(r"@([a-z0-9][a-z0-9._-]*)", re.IGNORECASE)
 
 
 @dataclass
@@ -168,7 +164,6 @@ def project_activity(
     messages: list[dict],
     memories: list[dict],
     episodes: list[dict],
-    plan: dict | None,
     agent_handles: list[str],
 ) -> list[ActivityEvent]:
     """Flatten every timestamped fact the room can tell us into one attributed
@@ -235,31 +230,6 @@ def project_activity(
                 source=f"episode {episode.get('short_id')}",
             )
         )
-
-    # A plan file records when it last changed and each task records its owner,
-    # but not when a given box was ticked — so a completed task is attributed to
-    # its owner at the file's timestamp, and nothing finer is claimed.
-    for plan_file in (plan or {}).get("files", []):
-        at = parse_instant(plan_file.get("updated_at"))
-        if at is None:
-            continue
-        for task in plan_file.get("tasks", []):
-            if not task.get("done"):
-                continue
-            owner = _OWNER.search(task.get("text", ""))
-            if not owner:
-                continue
-            events.append(
-                ActivityEvent(
-                    id=f"task:{task.get('id')}",
-                    at=at,
-                    actor=owner.group(1),
-                    actor_kind=actor_kind(owner.group(1), agents),
-                    verb="completed",
-                    title=_OWNER.sub("", task.get("text", "")).strip(),
-                    source=f"plan/{plan_file.get('slug')}.md",
-                )
-            )
 
     return sorted(events, key=lambda e: e.at, reverse=True)
 

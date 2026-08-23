@@ -310,38 +310,6 @@ export async function handleMock(req: Request): Promise<Response | null> {
       );
     }
 
-    case "plan": {
-      // PUT /plan/title
-      if (sub[1] === "title" && method === "PUT") {
-        const body = await readJson(req);
-        return json({ title: String(body.text ?? "") });
-      }
-      // POST /plan/tasks  (and /plan/tasks/:id/toggle)
-      if (sub[1] === "tasks") {
-        if (sub[2] && sub[3] === "toggle" && method === "POST") {
-          const body = await readJson(req);
-          const id = decodeURIComponent(sub[2]);
-          const existing = fx.plan.tasks.find((t) => t.id === id);
-          return json({ ...(existing ?? { id, slug: "tasks", line: 0, text: "task" }), done: body.done === true });
-        }
-        if (method === "POST") {
-          const body = await readJson(req);
-          return json({ id: `t${fx.plan.tasks.length + 1}`, slug: String(body.slug ?? "tasks"), line: 0, text: String(body.text ?? ""), done: false });
-        }
-      }
-      // GET /plan
-      if (method === "GET") return json(fx.plan);
-      return null;
-    }
-
-    // GET /status — what the tools this room's rows point at say. Fixtures carry
-    // the resolved answers; the real hub resolves them through a provider.
-    //
-    // The first read of a room answers with the references but no answers, the
-    // way the real hub does: a read never fetches, it reports what the cache
-    // holds and refreshes behind itself. Without that the mock would show a
-    // board that is never mid-resolution, which is the one state every real
-    // first look passes through.
     case "status": {
       if (method !== "GET") return null;
       const resolved = fx.status ?? {

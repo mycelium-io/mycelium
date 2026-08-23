@@ -437,7 +437,7 @@ def write_episode_record(
     *,
     outcome: str,
     metrics: dict[str, Any] | None,
-    plan_file: str | None,
+    tasks: list[str] | None,
 ) -> None:
     """Persist the episode to ``log/episodes/{short_id}.md`` in the parent
     room's memory. Best-effort: never raises into the consensus path."""
@@ -463,8 +463,8 @@ def write_episode_record(
                 f"- satisfaction: min {metrics['min_satisfaction']:.2f} "
                 f"(least-happy of {len(per_agent)} agents, relative to opening asks)"
             )
-        if plan_file:
-            lines.append(f"- plan: `{plan_file}`")
+        if tasks:
+            lines.append("- work: " + ", ".join(f"`{key}`" for key in tasks))
         if ep.opening_positions:
             lines += [
                 "",

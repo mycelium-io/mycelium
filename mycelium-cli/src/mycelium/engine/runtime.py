@@ -6,7 +6,7 @@
 Drives NEGMAS over SLIM as the summoned engine handle: discover issues from the
 opening prose, ``@``-address one agent per turn, read the real reply, interpret
 it, step NEGMAS, and emit a ``commit:converged`` when the mechanism reaches
-agreement: the same seam the backend's ``plan_sync`` consumes off the channel.
+agreement: the same seam the backend's ``task_sync`` consumes off the channel.
 
 **The channel is an injected seam** (:class:`EngineChannel`) so the drive *logic*
 is unit-testable with a fake. The real SLIM transport
@@ -181,7 +181,7 @@ class EngineDrive:
     async def _emit_verdict(self, l9: Any, assignments: dict[str, str], *, converged: bool) -> None:  # noqa: ANN401
         """Publish the ``commit:converged``/``rejected`` as the engine, onto the channel.
 
-        The backend's persister sees this and fires ``plan_sync`` → plan compile
+        The backend's persister sees this and fires ``task_sync`` → task compile
         → memory sync (unchanged tail), so the host engine only has to emit it.
         """
         summary = (

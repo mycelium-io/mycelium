@@ -21,7 +21,7 @@
 
 https://github.com/user-attachments/assets/5e7b41c8-f98a-4cf3-bb85-fe17d855de7a
 
-<em>install → coordinate → plan → work.</em>
+<em>install → coordinate → converge → work.</em>
 
 </div>
 
@@ -53,7 +53,7 @@ Mycelium gives agents **rooms** to coordinate in, **persistent memory** that acc
 **Two surfaces, one room, built for each other.** You and your agents
 coordinate *together*:
 
-- **You** work in the **UI**: create a room, add agents, hand them a mission, and watch them reach a shared decision and a plan, live.
+- **You** work in the **UI**: create a room, add agents, hand them a mission, and watch them reach a shared decision and pick up the work, live.
 - **Your agents** work through the **CLI**: they join the room, negotiate, and write to shared memory on their own (that's what the `mycelium` skill teaches them).
 
 That's also why you need at least one **agent runtime** (Claude Code): the agents aren't an optional add-on, they're half the system.
@@ -78,17 +78,17 @@ mycelium engine invoke aligner "converge on API design"
 mycelium await   --room design --handle avery-agent --json
 mycelium respond --room design --handle avery-agent "I can accept REST with pagination standards."
 
-# On agreement the agreement is compiled into the room's shared plan
-mycelium plan tasks   # the - [ ] checklist the team now executes against
+# On agreement the agreement is compiled into work the room can pick up
+mycelium board        # what needs doing, who has it, and what the tools say
 ```
 
 ## How It Works
 
-**1. Alignment.** When agents need to agree, one participant summons the **aligner**, a first-party mediator that runs a real NEGMAS Stacked Alternating Offers negotiation. It discovers the issues from the agents' opening positions, brokers each round, addresses one agent at a time, interprets each reply, and stops the instant the agents agree. Every agent has a voice, and the result is one shared answer, not parallel outputs a human has to reconcile. From that consensus Mycelium compiles a **shared plan**: a `- [ ]` checklist at `plan/tasks.md` with `@handle` owners the whole team executes against. The arc is one line: summon → negotiate → **plan** → work. The negotiation decides *what*; the plan is *how the team carries it out*.
+**1. Alignment.** When agents need to agree, one participant summons the **aligner**, a first-party mediator that runs a real NEGMAS Stacked Alternating Offers negotiation. It discovers the issues from the agents' opening positions, brokers each round, addresses one agent at a time, interprets each reply, and stops the instant the agents agree. Every agent has a voice, and the result is one shared answer, not parallel outputs a human has to reconcile. From that consensus Mycelium compiles **work rows**: one memory per task, each saying who it is for and, separately, whether anyone is holding it. The arc is one line: summon → negotiate → **converge** → work. The negotiation decides *what*; the rows are *how the team carries it out*.
 
 **2. Room Memory.** A room's memory is one store, held by the hub. Any agent reads and writes it with `mycelium memory set` / `get` / `ls` / `search` — from any machine, with nothing to sync and no copy to drift. Memories accumulate across agents and turns, and are searchable by meaning via an embedding index that runs on the hub, with no external service and no database.
 
-**3. Peer Collaboration Environment.** Any agent joining a room reads that memory and instantly inherits everything the swarm has learned: decisions made, what failed, open questions, the room's shared plan. No repeated context-setting. Intelligence compounds instead of resetting.
+**3. Peer Collaboration Environment.** Any agent joining a room reads that memory and instantly inherits everything the swarm has learned: decisions made, what failed, open questions, the work still open. No repeated context-setting. Intelligence compounds instead of resetting.
 
 ## Quick Start
 
@@ -119,10 +119,10 @@ mycelium ui open
 
 From the UI you:
 
-1. **create a room** (a shared space for agents, memory, and the plan),
+1. **create a room** (a shared space for agents, memory, and the work),
 2. **add agents** to it (one per role),
 3. **give them a mission** in the chat box and `@mention` them,
-4. **watch** them negotiate live to a single shared answer that compiles into the room's **plan**.
+4. **watch** them negotiate live to a single shared answer that compiles into the room's **work**.
 
 Your agents drive that same room from the **CLI** on their own, waiting for
 their turn, responding, and writing to shared memory (that's what the
@@ -135,7 +135,7 @@ mycelium room create my-project && mycelium room use my-project
 mycelium engine create aligner --kind aligner --room my-project
 mycelium agent create planner --adapter claude-code --description "Sprint planner"
 mycelium engine invoke aligner "converge on the Q3 migration plan"
-mycelium plan tasks   # the shared - [ ] checklist the team executes against
+mycelium board        # the work it compiled into, and who has each row
 ```
 
 ## Architecture
@@ -158,11 +158,10 @@ Room folders use standard namespaces:
 
 ```
 ~/.mycelium/rooms/{room}/
-├── plan/         Shared checklist compiled from negotiation consensus
+├── work/         One row per task — in flight, and compiled from consensus
 ├── decisions/    Why choices were made
 ├── status/       Current state of things
 ├── context/      Background & constraints
-├── work/         In-progress and completed work
 ├── procedures/   How-to guides and runbooks
 └── log/          Events, observations, and episode records
 ```

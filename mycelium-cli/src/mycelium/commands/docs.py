@@ -30,7 +30,6 @@ SECTIONS: list[tuple[str, str]] = [
     ("principals", "Users & Teams"),
     ("episodes", "Episodes"),
     ("memory", "Memory"),
-    ("plan", "Plan"),
     ("l9-protocol", "L9 Protocol"),
     ("engines", "Engines"),
     ("aligner", "The Aligner"),

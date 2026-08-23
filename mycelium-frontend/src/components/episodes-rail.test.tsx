@@ -29,7 +29,7 @@ function episode(shortId: string): EpisodeSummary {
     participants: ["alice"],
     metrics: null,
     assignments: null,
-    plan_file: null,
+    tasks: [],
     message_count: 3,
     updated_at: "2026-08-04T10:00:00Z",
     updated_by: "aligner",

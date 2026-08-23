@@ -261,10 +261,10 @@ mycelium await --room portfolio --handle alice --json
 mycelium respond --room portfolio --handle alice "accept 50%, meets my floor"
 ```
 
-On agreement the aligner compiles `plan/tasks.md`. Read it on any machine:
+On agreement the aligner compiles the room's work. Read it on any machine:
 
 ```bash
-mycelium plan tasks
+mycelium board
 ```
 
 ## Agent identity

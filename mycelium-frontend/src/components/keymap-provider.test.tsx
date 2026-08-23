@@ -11,7 +11,7 @@ import { KeymapProvider, useKeyAction, useKeyScope } from "@/components/keymap-p
 function Room({ onPane }: { onPane: (id: string) => void }) {
   useKeyScope("room");
   useKeyAction("pane.channel", () => onPane("channel"));
-  useKeyAction("pane.plan", () => onPane("plan"));
+  useKeyAction("pane.board", () => onPane("board"));
   return <KeyBadge action="pane.network" />;
 }
 
@@ -34,7 +34,7 @@ describe("<KeymapProvider />", () => {
     expect(onPane).toHaveBeenCalledWith("channel");
 
     await user.keyboard("{Alt>}p{/Alt}");
-    expect(onPane).toHaveBeenLastCalledWith("plan");
+    expect(onPane).toHaveBeenLastCalledWith("board");
   });
 
   it("ignores the bare key without its modifier", async () => {

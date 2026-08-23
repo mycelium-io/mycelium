@@ -66,14 +66,13 @@ const CHAT_TYPES = new Set(["broadcast", "direct", "announce", "delegate"]);
 export const L9_RAISE_UP_TYPES = [
   "coordination_join",
   "coordination_consensus",
-  "plan_updated",
   "l9_knowledge",
 ];
 
 // Event types that appear in the chat-channel view alongside real chat.
 // Joins + consensus belong here so the room's chat surface narrates the
 // negotiation lifecycle ("alice joined session X", "CONSENSUS in session X
-// → plan/tasks.md", "TIMEOUT in session X, no agreement") instead of
+// → 4 work rows", "TIMEOUT in session X, no agreement") instead of
 // burying it all under the EVENTS tab.
 const CHANNEL_VIEW_TYPES = new Set([...CHAT_TYPES, ...L9_RAISE_UP_TYPES]);
 
@@ -187,14 +186,15 @@ function parseEvent(msg: Record<string, unknown>): Event {
       break;
     }
     case "coordination_consensus": {
-      const plan = raw.plan as string;
-      const planFile = raw.plan_file as string | undefined;
       const broken = raw.broken === true;
       const assignments = raw.assignments as Record<string, string>;
-      content = plan || "";
-      if (assignments) content += " " + Object.entries(assignments).map(([k, v]) => `${k}=${v}`).join(", ");
-      // Consensus isn't the end; it compiles into the room's shared plan.
-      if (!broken && planFile) content += ` · compiled → ${planFile}`;
+      const tasks = Array.isArray(raw.tasks) ? (raw.tasks as string[]) : [];
+      content = "";
+      if (assignments) content += Object.entries(assignments).map(([k, v]) => `${k}=${v}`).join(", ");
+      // Consensus isn't the end; it compiles into work the room can pick up.
+      if (!broken && tasks.length) {
+        content += ` · compiled → ${tasks.length} ${tasks.length === 1 ? "row" : "rows"}`;
+      }
       {
         const metrics = raw.metrics as Record<string, unknown> | undefined;
         const gar = metrics && typeof metrics === "object" ? metrics.gar : undefined;
@@ -238,7 +238,7 @@ function parseEvent(msg: Record<string, unknown>): Event {
       break;
     }
     case "l9_knowledge": {
-      // A memory push (e.g. the compiled plan syncing to every member) rides as
+      // A memory push (e.g. a compiled task landing in the room) rides as
       // an L9 "knowledge" envelope. Recognized as its own system notice rather
       // than falling to the unhandled-type fallback.
       const l9env = (raw.l9 as Record<string, unknown> | undefined) ?? {};
@@ -319,7 +319,7 @@ function foldAmendment(events: Event[], amendment: Event): Event[] {
   );
 }
 
-export type View = "channel" | "negotiate" | "plan" | "network";
+export type View = "channel" | "negotiate" | "board" | "network";
 export type NegotiationPhase = "idle" | "negotiating" | "converged" | "rejected";
 
 interface Props {
@@ -411,8 +411,8 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
     const event = parseEvent(msg);
     setEvents(prev => (event.amends ? foldAmendment(prev, event) : [...prev, event]));
     if (event.type === "memory_changed") onMemoryChanged?.();
-    // A consensus compiles the negotiation into plan/tasks.md, so nudge
-    // the plan header to refetch so the checklist surfaces immediately.
+    // A consensus compiles the negotiation into work rows, so nudge the
+    // room's caches to refetch and surface them immediately.
     if (event.type === "coordination_consensus" && event.raw.broken !== true) {
       onMemoryChanged?.();
     }
@@ -533,7 +533,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
           {([
             { id: "channel" as const,   label: "Channel",   count: channelCount as number | null, dot: false },
             { id: "negotiate" as const, label: "Negotiate", count: null,                          dot: negotiating },
-            { id: "plan" as const,      label: "Board",     count: null,                          dot: false },
+            { id: "board" as const,     label: "Board",     count: null,                          dot: false },
             { id: "network" as const,   label: "Network",   count: null,                          dot: false },
           ]).map(t => {
             // Hold the reveal modifier and each tab wears the key that selects it.
@@ -562,7 +562,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
           })}
         </div>
       </div>
-      {view === "plan" ? (
+      {view === "board" ? (
         <div className="flex-1 min-h-0">
           <RoomBoard roomName={roomName} />
         </div>
@@ -603,47 +603,6 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
               // Coordination + plan lifecycle events render as slim, centered
               // system notices — quiet dividers woven into the conversation,
               // not loud rows. Chat messages group under one sender header.
-              if (ev.type === "plan_updated") {
-                const kind = ev.raw.kind as string | undefined;
-                const text = ev.raw.text as string | undefined;
-                const title = ev.raw.title as string | undefined;
-                const done = ev.raw.done === true;
-                const updatedBy = ev.raw.updated_by as string | undefined;
-                let body: React.ReactNode;
-                if (kind === "task_toggled") {
-                  body = (
-                    <>
-                      <span style={{ color: done ? "var(--green)" : "var(--muted-foreground)" }}>
-                        {done ? "✓" : "○"}
-                      </span>
-                      <span className="text-muted-foreground">&ldquo;{text ?? "task"}&rdquo;</span>
-                      <span>{done ? "completed" : "reopened"}</span>
-                    </>
-                  );
-                } else if (kind === "task_added") {
-                  body = (
-                    <>
-                      <span>added</span>
-                      <span className="text-muted-foreground">&ldquo;{text ?? "task"}&rdquo;</span>
-                    </>
-                  );
-                } else if (kind === "title_set") {
-                  body = (
-                    <>
-                      <span>title set to</span>
-                      <span className="text-muted-foreground">&ldquo;{title ?? ""}&rdquo;</span>
-                      {updatedBy ? <span>by @{updatedBy}</span> : null}
-                    </>
-                  );
-                } else {
-                  body = <span>updated</span>;
-                }
-                return (
-                  <SystemNotice key={ev.id} time={ev.time} dot="var(--accent)" label="Plan">
-                    {body}
-                  </SystemNotice>
-                );
-              }
               if (ev.type === "l9_knowledge") {
                 const key = ev.raw.key as string | undefined;
                 const updatedBy = ev.raw.updated_by as string | undefined;

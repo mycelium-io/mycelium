@@ -96,8 +96,8 @@ class TestFreshness:
         assert custody.freshness(ago(minutes), 30, NOW) == expected
 
     def test_a_row_with_no_ttl_has_no_freshness(self):
-        """A plan task is a commitment, so it has nothing to report rather than a
-        zero — an answer of "fresh" would be a claim about a lease it never took."""
+        """A row nobody took for a window has nothing to report rather than a
+        zero — an answer of "fresh" would be a claim about a lease never taken."""
         assert custody.freshness(ago(500), None, NOW) is None
         assert custody.spent(ago(500), None, NOW) is None
 
@@ -191,7 +191,7 @@ class TestBlockedIsDerived:
 
 
 class TestRefusals:
-    @pytest.mark.parametrize("kind", ["plan", "episode", "agent"])
+    @pytest.mark.parametrize("kind", ["episode", "agent"])
     def test_rows_that_cannot_hold_a_lease_say_why(self, kind):
         reason = custody.refusal_for(row(kind, "t3"))
         assert reason == custody.REFUSALS[kind]
@@ -271,7 +271,7 @@ class TestProjection:
     """What the room's own state looks like once custody is the axis."""
 
     def project(self, **over):
-        kwargs = {"plan": None, "episodes": [], "memories": [], "agents": [], "members": []}
+        kwargs = {"episodes": [], "memories": [], "agents": [], "members": []}
         kwargs.update(over)
         return project_items(now=NOW, **kwargs)
 

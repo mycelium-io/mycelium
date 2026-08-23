@@ -12,8 +12,8 @@
  *
  * Three rooms cover the states worth designing against:
  *   - `atlas-migration` — a rich, converged room (memories, agents, a compiled
- *     plan, a finished L9 episode);
- *   - `pricing-model`   — an in-progress negotiation (no plan yet, a pending
+ *     compiled work, a finished L9 episode);
+ *   - `pricing-model`   — an in-progress negotiation (nothing compiled yet, a pending
  *     consent invite, a live-looking episode);
  *   - `scratch`         — a brand-new empty room (empty states).
  */
@@ -28,7 +28,6 @@ import type {
   MemoryGraphEdge,
   MemoryGraphNode,
   PendingInvite,
-  PlanResponse,
   PresenceMember,
 } from "@/lib/api";
 import type { RoomStatus } from "@/lib/board/upstream";
@@ -55,11 +54,14 @@ export interface MockMemory {
   /** Prose (most memories) or an object — the board projects a row's typed
    *  fields straight from an object value. This is the store's *structured
    *  value* shape (a memory whose `value:` frontmatter key holds a mapping —
-   *  what `MemoryCreate.value` as an object round-trips to), a real
-   *  client-reachable shape. It is NOT arbitrary markdown frontmatter, which the
-   *  read path drops (#772). Object-valued memories must also set `content_text`
-   *  so search and previews have a string to read. */
+   *  what `MemoryCreate.value` as an object round-trips to). Object-valued
+   *  memories must also set `content_text` so search and previews have a string
+   *  to read. */
   value: string | Record<string, unknown>;
+  /** Frontmatter the store doesn't own, read back from `MemoryRead.meta`. This
+   *  is where a lease lands and where a board verb writes, so a row's fields
+   *  can come from here rather than from a structured value. */
+  meta?: Record<string, unknown> | null;
   content_text?: string;
   created_by: string;
   updated_by?: string;
@@ -83,7 +85,6 @@ export interface MockMessage {
 export interface RoomFixture {
   room: MockRoom;
   memories: MockMemory[];
-  plan: PlanResponse;
   messages: MockMessage[];
   episodes: EpisodeSummary[];
   episodeDetails: Record<string, EpisodeDetail>;
@@ -270,7 +271,7 @@ const atlasEpisodeSummary: EpisodeSummary = {
   participants: ["growth", "risk", "aligner"],
   metrics: { mpc: 0.86, gar: 0.79, scr: 0.91, provenance_weight: 0.74, participants: 3 },
   assignments: { cutover: "phased", window: "48h" },
-  plan_file: "plan/tasks.md",
+  tasks: ["work/flip-reads-behind-a-flag", "work/retire-the-legacy-store"],
   message_count: 3,
   updated_at: iso(42),
   updated_by: "aligner",
@@ -285,6 +286,28 @@ const atlasEpisodeSummary: EpisodeSummary = {
 // something in every lens (needs-you, in-flight, resolved) and a column for
 // every inferred field, without any in-app demo layer.
 const atlasBoardRows: MockMemory[] = [
+  // What the atlas agreement compiled into. A task is a row like anything else:
+  // it says who it is for, and separately whether anyone is holding it.
+  {
+    key: "work/flip-reads-behind-a-flag",
+    value: "flip reads behind a flag",
+    meta: { kind: "action", status: "open", assignee: "@growth", priority: "high", issue: "#502" },
+    content_text: "flip reads behind a flag — gated on #502 and #504.",
+    created_by: "aligner",
+    updated_by: "aligner",
+    version: 1,
+    updated_at: iso(40),
+  },
+  {
+    key: "work/retire-the-legacy-store",
+    value: "48h soak, then retire the legacy store",
+    meta: { kind: "action", status: "open", assignee: "@risk", issue: "#499" },
+    content_text: "48h soak, then retire the legacy store.",
+    created_by: "aligner",
+    updated_by: "aligner",
+    version: 1,
+    updated_at: iso(40),
+  },
   {
     key: "decisions/token-ttl",
     value: {
@@ -510,34 +533,6 @@ const atlas: RoomFixture = {
     },
     ...atlasBoardRows,
   ],
-  plan: {
-    room: "atlas-migration",
-    title: "Atlas DB Migration",
-    files: [
-      {
-        slug: "tasks",
-        title: "Cutover plan",
-        content:
-          "# Cutover plan\n\n- [x] dual-write to the new store @growth\n- [x] backfill + verify parity @risk\n- [ ] flip reads behind a flag @growth\n- [ ] 48h soak, then retire the legacy store @risk",
-        updated_at: iso(40),
-        updated_by: "aligner",
-        tasks: [
-          { id: "t1", slug: "tasks", line: 2, text: "dual-write to the new store @growth", done: true },
-          { id: "t2", slug: "tasks", line: 3, text: "backfill + verify parity @risk", done: true },
-          { id: "t3", slug: "tasks", line: 4, text: "flip reads behind a flag @growth", done: false },
-          { id: "t4", slug: "tasks", line: 5, text: "48h soak, then retire the legacy store @risk", done: false },
-        ],
-      },
-    ],
-    tasks: [
-      { id: "t1", slug: "tasks", line: 2, text: "dual-write to the new store @growth", done: true },
-      { id: "t2", slug: "tasks", line: 3, text: "backfill + verify parity @risk", done: true },
-      { id: "t3", slug: "tasks", line: 4, text: "flip reads behind a flag @growth", done: false },
-      { id: "t4", slug: "tasks", line: 5, text: "48h soak, then retire the legacy store @risk", done: false },
-    ],
-    open_count: 2,
-    done_count: 2,
-  },
   messages: [
     { id: "a1", sender_handle: "operator", message_type: "broadcast", content: "@growth @risk let's settle the cutover strategy — approach and window. @aligner, broker it.", created_at: iso(48) },
     { id: "a2", sender_handle: "growth", message_type: "coordination_join", content: JSON.stringify({ handle: "growth", intent: "ship the migration this week", episode: ATLAS_EPISODE }), created_at: iso(47), episode: ATLAS_EPISODE },
@@ -546,7 +541,7 @@ const atlas: RoomFixture = {
     // a chat broadcast; the aligner reads it and emits the coordination_tick the
     // Negotiate/Network panes reconstruct. The chat is the source (see atlasMoves).
     ...atlasNegotiation,
-    { id: "a6", sender_handle: "aligner", message_type: "coordination_consensus", content: JSON.stringify({ plan: "phased cutover agreed", assignments: { cutover: "phased", window: "48h" }, plan_file: "plan/tasks.md", episode: ATLAS_EPISODE, metrics: { gar: 0.79 } }), created_at: iso(41), episode: ATLAS_EPISODE },
+    { id: "a6", sender_handle: "aligner", message_type: "coordination_consensus", content: JSON.stringify({ assignments: { cutover: "phased", window: "48h" }, episode: ATLAS_EPISODE, metrics: { gar: 0.79 } }), created_at: iso(41), episode: ATLAS_EPISODE },
     { id: "a7", sender_handle: "growth", message_type: "broadcast", content: "Dual-write is live in staging. ✅", created_at: iso(30) },
   ],
   episodes: [atlasEpisodeSummary],
@@ -560,9 +555,9 @@ const atlas: RoomFixture = {
     { handle: "risk", kind: "lease", last_seen: iso(1) },
   ],
   l9: atlasL9Frames,
-  // Two plan tasks and a work memory name pull requests; the hub resolved them.
-  // t3 mentions two, one green and one failing, so the row shows the failing one
-  // and says there was another. The shapes are GitHub's own wording.
+  // Three work rows name pull requests; the hub resolved them. The first row
+  // mentions two, one green and one failing, so it shows the failing one and says
+  // there was another. The shapes are GitHub's own wording.
   status: {
     room: "atlas-migration",
     field: "upstream",
@@ -574,7 +569,7 @@ const atlas: RoomFixture = {
         url: "https://github.com/mycelium-io/mycelium/pull/502",
         freshness: "fresh", state: "failed", label: "CI failing",
         age_seconds: 95, error: null,
-        origins: ["plan:t3"],
+        origins: ["memory:work/flip-reads-behind-a-flag"],
       },
       {
         ref: "github:pull_request:mycelium-io/mycelium#504",
@@ -582,7 +577,7 @@ const atlas: RoomFixture = {
         url: "https://github.com/mycelium-io/mycelium/pull/504",
         freshness: "fresh", state: "ok", label: "approved",
         age_seconds: 95, error: null,
-        origins: ["plan:t3"],
+        origins: ["memory:work/flip-reads-behind-a-flag"],
       },
       {
         ref: "github:pull_request:mycelium-io/mycelium#499",
@@ -590,22 +585,22 @@ const atlas: RoomFixture = {
         url: "https://github.com/mycelium-io/mycelium/pull/499",
         freshness: "stale", state: "blocked", label: "changes requested",
         age_seconds: 5400, error: null,
-        origins: ["plan:t4"],
+        origins: ["memory:work/retire-the-legacy-store"],
       },
     ],
     rows: {
-      "plan:t3": [
+      "memory:work/flip-reads-behind-a-flag": [
         "github:pull_request:mycelium-io/mycelium#502",
         "github:pull_request:mycelium-io/mycelium#504",
       ],
-      "plan:t4": ["github:pull_request:mycelium-io/mycelium#499"],
+      "memory:work/retire-the-legacy-store": ["github:pull_request:mycelium-io/mycelium#499"],
     },
     refreshing: false,
   },
 };
 
 // The synthesized briefing links out to the three memories it summarizes; the
-// decision itself relates to the goal and wikilinks a plan file that isn't a
+// decision itself relates to the goal and wikilinks a memory that isn't a
 // memory (so it can't resolve) — a deliberate broken-link example. The four
 // `agents/*` manifests and the briefing itself are never linked *to*, so they
 // render as roots (inbound=0, outbound>0) in the graph — entry points with no
@@ -617,11 +612,11 @@ const ATLAS_LINK_EDGES: MemoryGraphEdge[] = [
   { source: "context/synthesis", target: "context/goal", kind: "transclusion", resolved: true },
   { source: "status/sprint", target: "decisions/cutover", kind: "wikilink", resolved: true },
   { source: "decisions/cutover", target: "context/goal", kind: "relation", relation: "depends-on", resolved: true },
-  { source: "decisions/cutover", target: "plan/tasks", kind: "wikilink", resolved: false, error: "not_found" },
+  { source: "decisions/cutover", target: "work/cutover-runbook", kind: "wikilink", resolved: false, error: "not_found" },
 ];
 atlas.links = buildMockGraph(atlas.memories, ATLAS_LINK_EDGES);
 
-// ── pricing-model: an in-progress negotiation, no plan yet ─────────────────────
+// ── pricing-model: an in-progress negotiation, nothing compiled yet ───────────
 
 const PRICING_EPISODE = "urn:ioc:mycelium:episode:pricing-model:b2d0";
 
@@ -655,7 +650,6 @@ const pricing: RoomFixture = {
       updated_at: iso(6),
     },
   ],
-  plan: { room: "pricing-model", title: null, files: [], tasks: [], open_count: 0, done_count: 0 },
   messages: [
     { id: "p1", sender_handle: "operator", message_type: "broadcast", content: "@finance @growth what's the Pro price? @aligner mediate.", created_at: iso(12) },
     { id: "p2", sender_handle: "finance", message_type: "coordination_join", content: JSON.stringify({ handle: "finance", intent: "margin >= 60%", episode: PRICING_EPISODE }), created_at: iso(11), episode: PRICING_EPISODE },
@@ -672,7 +666,7 @@ const pricing: RoomFixture = {
       participants: ["finance", "growth", "aligner"],
       metrics: null,
       assignments: null,
-      plan_file: null,
+      tasks: [],
       message_count: 4,
       updated_at: iso(9),
       updated_by: "aligner",
@@ -768,7 +762,6 @@ const pricing: RoomFixture = {
 const scratch: RoomFixture = {
   room: { id: 3, name: "scratch", created_at: iso(4), is_public: true, is_persistent: true, mas_id: null },
   memories: [],
-  plan: { room: "scratch", title: null, files: [], tasks: [], open_count: 0, done_count: 0 },
   messages: [],
   episodes: [],
   episodeDetails: {},

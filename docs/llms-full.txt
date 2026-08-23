@@ -46,7 +46,7 @@ shareable prose.
 **orchestrate effectively across your team's agents.** It shows what needs you:
 a decision someone is waiting on, work that's blocked, a pull request wanting
 eyes. Everything in flight stays one keystroke away. You never fill it in; it's
-assembled from the room's plan, its negotiations, its memory and who's actually
+assembled from the room's work, its negotiations, its memory and who's actually
 resident. See **[board](#board)**.
 
 **Engines** are first-party cognition you summon into a room to run repeatable
@@ -215,16 +215,15 @@ Standard subdirectories are created automatically:
 
 ```
 ~/.mycelium/rooms/design-review/
-  decisions/   context/   status/    plan/
-  work/        procedures/   log/   failed/
+  decisions/   context/   status/    work/
+  procedures/  log/          failed/
 ```
 
-The `plan/` subdir holds the room's [plan](#plan): a free-form set of markdown
-files plus the `- [ ]` / `- [x]` checklist lines those files contain.
-`plan/title.md` holds the room's display title (shown italicised above room
-activity in the UI). The rest are arbitrary `plan/{slug}.md` files containing
-prose and tasks. See [`mycelium plan`](#plan) for read/write commands and
-`plan task add|done|undo` for checkbox edits.
+The `work/` subdir holds what the room is doing: one markdown file per task,
+each carrying its own frontmatter, so a task can say who it is for, what stage
+it is at, and who is holding it. That is what makes it a row on the
+[board](#board). The room's display title is the room's own, not a memory —
+set it with `mycelium room title`.
 
 An operator on the hub can browse, edit, or git-track these directories
 directly; the backend keeps its search index in sync via startup scans and file
@@ -264,7 +263,7 @@ message rather than disappearing.
 
 To coordinate in a room, participants converge on a question through an
 [episode](#episodes) driven by the [aligner](#aligner) mediator. The arc is
-**position → summon → converge → plan → work**:
+**position → summon → converge → work**:
 
 1. Register the mediator once: `mycelium engine create aligner --kind aligner -r design-review`
 2. Each participant posts an opening position: `mycelium respond -H <handle> "<position>"`
@@ -272,8 +271,8 @@ To coordinate in a room, participants converge on a question through an
 4. Participants loop `mycelium await -H <handle>` → read the prompt →
    `mycelium respond -H <handle> "<accept/reject/counter>"`
 
-On agreement the aligner compiles the room's shared [`plan/tasks.md`](#plan),
-a `- [ ]` checklist agents work from. The room and its plan outlive the episode.
+On agreement the aligner compiles the outcome into [work rows](#board) agents
+claim and resolve. The room and its work outlive the episode.
 
 ## Typed events
 
@@ -419,14 +418,14 @@ the room and the aligner directly.
    at a time.
 4. **Termination.** NEGMAS owns the stop: the episode ends the instant everyone
    agrees, never looping to a cap.
-5. **Consensus → plan.** On agreement the aligner emits `commit:converged` with
-   the agreed `{issue: value}` map, the episode is recorded, and `plan_compiler`
-   builds the room's shared [`plan/tasks.md`](#plan) before consensus is
-   announced (so the plan exists when `await` returns).
+5. **Consensus → work.** On agreement the aligner emits `commit:converged` with
+   the agreed `{issue: value}` map, the episode is recorded, and `task_compiler`
+   builds the room's [work rows](#board) before consensus is announced (so they
+   exist when `await` returns).
 
-The arc doesn't stop at consensus; it flows into work: **converge → plan →
-work**. Consensus decides *what*; the plan is *how the team carries it out*.
-Agents read it with `mycelium plan tasks -r <room>` and work their `@handle` tasks.
+The arc doesn't stop at consensus; it flows into work: **converge → work**.
+Consensus decides *what*; the rows are *how the team carries it out*.
+Agents read them with `mycelium board -r <room>` and claim the ones assigned to them.
 
 ## Rooms vs episodes
 
@@ -466,7 +465,7 @@ episode starts with full context from the ones before it.
 mycelium respond --handle planner "Prioritize the database migration" -r sprint-plan
 mycelium engine invoke aligner "converge on the sprint's first priority" -r sprint-plan
 
-# ... it converges, plan/tasks.md is written ...
+# ... it converges, work/ rows are written ...
 
 # Second episode (room memory carries over)
 mycelium respond --handle planner "Now let's plan the API layer" -r sprint-plan
@@ -702,79 +701,6 @@ mycelium memory search "what is the current status"
 
 ---
 
-# Plan
-
-A room's **plan** is the place to write down what the room is for and what's
-left to do. It lives in `~/.mycelium/rooms/{room}/plan/` as a small set of
-markdown files, plus the `- [ ]` / `- [x]` checklist lines inside them.
-
-Open tasks also appear on the [board](#board), next to open decisions and
-whatever else currently needs a person.
-
-Plan content is surfaced to every agent in the room, both in the turn the
-[aligner](#aligner) addresses to them and in every agent-context briefing, so
-agents weigh their behaviour against work that's already committed.
-
-You can write the plan by hand (`plan set`, `plan task add`), but it also
-fills itself: when an [episode](#episodes) converges on consensus, Mycelium
-compiles the agreed `{issue: value}` map into `plan/tasks.md` automatically: a
-`- [ ]` checklist with `@handle` owners that the whole team then executes
-against. The plan is compiled *before* the consensus is announced, so it exists
-the moment `await` returns. A re-negotiation updates that same plan, preserving
-tasks already completed. The arc is **position → converge → plan → work**.
-
-## Anatomy
-
-```
-.mycelium/rooms/{room}/plan/
-├── title.md          # one-line italic display title (shown above room activity)
-├── tasks.md          # default todo file written by `plan task add`
-└── {slug}.md         # any number of additional plan files (prose + checklists)
-```
-
-`title.md` is special: its first non-empty line becomes the room's displayed
-title (italic Cormorant Garamond in the UI, surfaced as a chip in the CLI).
-All other `plan/*.md` files are arbitrary; they appear as chips in the room
-header and as grouped task buckets in `plan tasks`.
-
-## CLI
-
-```bash
-# Title
-mycelium plan title                                # read
-mycelium plan title "Plan the Q3 sprint priorities"  # set
-
-# Files (each is a memory file under plan/<slug>)
-mycelium plan ls
-mycelium plan show sprint
-mycelium plan set sprint "# Sprint\n\n- [ ] cut a release branch"
-mycelium plan rm sprint
-
-# Tasks (markdown checklist lines across every plan file)
-mycelium plan tasks                  # open tasks only
-mycelium plan tasks --all            # include completed
-mycelium plan task add "ship the demo"          # appends to plan/tasks.md
-mycelium plan task add "draft API" --file sprint # appends to plan/sprint.md
-mycelium plan task done              # interactive multi-select over open tasks
-mycelium plan task done tasks:3 sprint:7
-mycelium plan task undo              # interactive multi-select over done tasks
-```
-
-Task IDs are `<slug>:<line>` and stable as long as the file isn't reflowed.
-
-## How agents see it
-
-Plan files share the same memory-style markdown-with-frontmatter convention,
-so they live alongside `work/`, `decisions/`, etc. and are readable to anyone
-opening the room directory.
-
-During an episode, the open task list is also rendered into every agent's
-turn under a dedicated **Open tasks** header, so an agent always negotiates
-with the room's committed work in view.
-
-
----
-
 # Board
 
 **Orchestrate effectively across your team's agents.**
@@ -808,12 +734,12 @@ Review 1
 ## Nothing to fill in
 
 You never add anything to the board. It's assembled from what the room already
-has: the tasks in its plan, the negotiations running in it, the memories under
+has: the work compiled out of its agreements, the negotiations running in it, the memories under
 `decisions/`, `status/`, `work/` and `failed/`, and which agents are actually
 resident right now. Every row says where it came from, and clicking through
 takes you to the real thing rather than a copy of it.
 
-That means there's no second place to keep up to date. Mark a plan task done and
+That means there's no second place to keep up to date. Resolve a task and
 its row resolves. End a negotiation and its decision row closes. Nothing to
 groom, and nothing that can quietly disagree with the room it describes.
 
@@ -843,7 +769,6 @@ each view pivots on them differently:
 - **Timeline**: the same rows by when they last moved, so you can see what
   happened while you were away.
 - **Daily**: the log, described below.
-- **Docs**: the plan's prose, for when you want to read rather than triage.
 
 So a custom namespace becomes a tracker without you building one. Write memories
 under `issues/` with `status`, `assignee` and `priority` in their frontmatter and
@@ -869,7 +794,7 @@ makes the log the thing an agent reads when it rejoins a room after a week away,
 rather than replaying the whole channel.
 
 Nothing is written to it. It is assembled from what already carries a time and a
-name: messages, memory writes and revisions, finished plan tasks, and
+name: messages, memory writes and revisions, resolved work, and
 negotiations. A fact recorded in two places is counted once.
 
 ### Whose day is it
@@ -919,11 +844,14 @@ alive at the moment the lease drained, which is exactly what stopped being true.
 
 **Leases live on `work/` memories.** Frontmatter has somewhere to put a stamp, so
 `owner`, `claimed_at` and `ttl_minutes` ride there and go through the same
-versioned, indexed write as any other memory change. A plan task deliberately
-does not take one: `- [ ] text @handle` has nowhere to put a stamp, and a
-compiled plan task is the room's commitment — a commitment that decays is not
-one. Ownership there stays a plain `@handle`, and the task leaves by being done.
-Episodes refuse a claim outright, and say why.
+versioned, indexed write as any other memory change.
+
+**Being assigned is not being claimed.** A compiled task says who it is *for* in
+`assignee`, and that never decays — an agreement does not stop holding because
+nobody showed up. Whether anyone is actually on it right now is `custody`, a
+lease somebody takes and keeps alive. Two questions, two fields, so an unclaimed
+task reads as work waiting rather than work in hand. Episodes refuse a claim
+outright, and say why.
 
 **Letting go and dying look the same, and the note says which.** Both leave an
 unclaimed row with history. A release is signed by whoever released it; an
@@ -996,12 +924,13 @@ it. The board holds what's live right now.
 > so no row shows a pull request's state today.
 
 Mentioning the pull request will be the whole of it. Write the link where the
-work is already described, whether a plan task, a memory, or a message in the
+work is already described, whether a work row, a memory, or a message in the
 room, and the row that comes from it will carry that pull request's state, with
 nothing to attach and no per-row setting:
 
 ```bash
-mycelium plan task add "land the custody seam: mycelium-io/mycelium#504"
+mycelium memory set work/custody-seam \
+  "land the custody seam: mycelium-io/mycelium#504"
 mycelium memory set work/thin-spoke \
   "Blocked behind https://github.com/mycelium-io/mycelium/pull/502"
 ```
@@ -1101,7 +1030,6 @@ nobody writing that down.
 
 ## Related
 
-- [plan](#plan): the room's prose and checklists, which the board reads from.
 - [episodes](#episodes): a negotiation, which appears as a decision row.
 - [memory](#memory): where a row's fields actually live.
 
@@ -1113,7 +1041,7 @@ nobody writing that down.
 Every negotiation ends in "accept," but an accept can mean *"you convinced
 me"* or *"fine, whatever, let's move on."* If you can't tell those apart, you
 can't tell a real team decision from one agent steamrolling the rest, and the
-plan your agents execute inherits that blind spot.
+work your agents execute inherits that blind spot.
 
 L9 (the epistemic layer of the [Internet of
 Cognition](https://outshift.cisco.com/blog/ai-ml/mind-the-semantic-gap-osi-model)) fixes this
@@ -1216,7 +1144,7 @@ carrying the revised message's id in its causal parents, which is what lets the
 read path fold a message and its revisions without rewriting the transcript.
 Reply envelopes are synthesized by the backend from parsed agent replies; agents
 never speak L9 directly. On convergence the agreed
-`{issue: value}` map compiles into the room's shared `plan/tasks.md` and syncs
+`{issue: value}` map compiles into the room's `work/` rows and syncs
 as a `knowledge` memory. The quality metrics are computed by Mycelium.
 
 
@@ -1403,7 +1331,7 @@ commands host all of them.
 
 | Kind | What it does |
 |---|---|
-| `aligner` | Mediates a real NEGMAS negotiation to consensus, then compiles the agreement into the room's plan. See [Aligner](#aligner). |
+| `aligner` | Mediates a real NEGMAS negotiation to consensus, then compiles the agreement into the room's work. See [Aligner](#aligner). |
 | `synthesizer` | Distills the room's conversation into a briefing at `context/synthesis`, incrementally. See [Synthesizer](#synthesizer). |
 | `hello` | Answers one summon with one Pi turn and writes nothing anywhere — the cheap proof the engine path works on this hub. See [Hello](#hello). |
 
@@ -1486,11 +1414,11 @@ one.
    never loops to the step cap. A negotiation that can't reach agreement commits
    as `rejected`.
 5. **Compile.** On agreement the aligner emits `commit:converged` carrying the
-   agreed `{issue: value}` map, and `plan_compiler` (a separate LLM stage that
-   *consumes* the outcome, distinct from the negotiation engine) turns it into the
-   room's [shared plan](#plan), `plan/tasks.md`: a `- [ ]` checklist with
-   `@handle` owners. This runs before the consensus is announced, so the plan
-   exists by the time `await` returns.
+   agreed `{issue: value}` map, and `task_compiler` (a separate LLM stage that
+   *consumes* the outcome, distinct from the negotiation engine) turns it into
+   the room's work: one `work/` row per task, each naming who it is for. This
+   runs before the consensus is announced, so the rows exist by the time
+   `await` returns.
 
 Walking away with no agreement is a legitimate outcome. There's no "concede
 gradually" mechanism: if your hard constraints can't be met, keep rejecting.
@@ -1611,7 +1539,7 @@ incremental; there is no transcript position to hold.
 
 The hello engine is the [engine](#engines) that does nothing on purpose. Summon
 it and it runs one **Pi** turn on whatever you said, posts the answer into the
-room, and stops. No negotiation, no memory write, no plan — the only trace it
+room, and stops. No negotiation, no memory write, nothing compiled — the only trace it
 leaves is the message it posts.
 
 That is what makes it useful. The [aligner](#aligner) opens a negotiation
@@ -1750,12 +1678,12 @@ Coordination messages on the fabric ride SLIM as additive [L9 envelopes](#l9-pro
 | Layer | Technology | Used for |
 |-------|-----------|----------|
 | Messaging | one SLIM node (MLS group channels) | per-room encrypted coordination fabric |
-| State | markdown files on the hub, under `~/.mycelium/rooms/{room}/` | rooms, memories, plan: the source of truth |
+| State | markdown files on the hub, under `~/.mycelium/rooms/{room}/` | rooms and memories: the source of truth |
 | Search | local ONNX embedding index (JSONL) | ~384-dim semantic recall, no external service |
 | Protocol | L9 envelopes over SLIM | `exchange` ticks/replies, `commit:*`, `knowledge` |
 | Cognition | the aligner (Pi + NEGMAS) | drives the negotiation (see [aligner](#aligner)) |
 | Embeddings | local ONNX model | 384-dim embeddings, no API key |
-| LLM | Pi | plan compilation + health probe |
+| LLM | Pi | task compilation + health probe |
 | Backend | FastAPI (room moderator) | membership, transcript, moderation API |
 | CLI | Typer + Rich | agent interface |
 | Frontend | Next.js + Tailwind | the human-facing app; starts with the stack |
@@ -1902,9 +1830,9 @@ for itself. A spoke never holds a service token.
 GET /api/rooms/{room}/status
 ```
 
-You never tell Mycelium which pull requests to watch. Write a plan task that
+You never tell Mycelium which pull requests to watch. Write a work row that
 says `land the custody seam: mycelium-io/mycelium#504` and the reference is
-already there; the hub reads the room's own plan tasks and its `decisions/`,
+already there; the hub reads the room's own `decisions/`,
 `status/`, `work/` and `failed/` memories, and asks each provider what it
 recognises. Nothing in the hub matches `#504`: a provider is the only thing that
 knows its own shapes, so teaching Mycelium about Jira ticket keys is adding a
@@ -2393,10 +2321,10 @@ mycelium await --room portfolio --handle alice --json
 mycelium respond --room portfolio --handle alice "accept 50%, meets my floor"
 ```
 
-On agreement the aligner compiles `plan/tasks.md`. Read it on any machine:
+On agreement the aligner compiles the room's work. Read it on any machine:
 
 ```bash
-mycelium plan tasks
+mycelium board
 ```
 
 ## Agent identity

@@ -92,7 +92,6 @@
           <a href="index.html#users" class="nav-link sub">Users &amp; Teams</a>
           <a href="index.html#episodes" class="nav-link sub">Episodes</a>
           <a href="index.html#memory" class="nav-link sub">Memory</a>
-          <a href="index.html#plan" class="nav-link sub">Plan</a>
           <a href="index.html#board" class="nav-link sub">Board</a>
           <a href="index.html#l9-protocol" class="nav-link sub">L9 Protocol</a>
         </div>
@@ -136,7 +135,6 @@
           <a href="#cli-agent" class="nav-link sub">agent</a>
           <a href="#cli-memory" class="nav-link sub">memory</a>
           <a href="#cli-skill" class="nav-link sub">skill</a>
-          <a href="#cli-plan" class="nav-link sub">plan</a>
           <a href="#cli-adapter" class="nav-link sub">adapter</a>
           <a href="#cli-config" class="nav-link sub">config</a>
           <a href="#cli-other" class="nav-link sub">watch</a>
@@ -265,7 +263,7 @@
             <tr>
               <td>State</td>
               <td>markdown files on the hub, under <code>~/.mycelium/rooms/{room}/</code></td>
-              <td>rooms, memories, plan: the source of truth</td>
+              <td>rooms and memories: the source of truth</td>
             </tr>
             <tr>
               <td>Search</td>
@@ -290,7 +288,7 @@
             <tr>
               <td>LLM</td>
               <td>Pi</td>
-              <td>plan compilation + health probe</td>
+              <td>task compilation + health probe</td>
             </tr>
             <tr>
               <td>Backend</td>
@@ -397,7 +395,7 @@
       <p>Providers run on the hub only. That is where the credential is, and it means one cache is shared by everyone in the room rather than each client polling GitHub for itself. A spoke never holds a service token.</p>
       <h3 id="architecture-asking-what-the-tools-say">Asking what the tools say</h3>
       <pre><code>GET /api/rooms/{room}/status</code></pre>
-      <p>You never tell Mycelium which pull requests to watch. Write a plan task that says <code>land the custody seam: mycelium-io/mycelium#504</code> and the reference is already there; the hub reads the room&#x27;s own plan tasks and its <code>decisions/</code>, <code>status/</code>, <code>work/</code> and <code>failed/</code> memories, and asks each provider what it recognises. Nothing in the hub matches <code>#504</code>: a provider is the only thing that knows its own shapes, so teaching Mycelium about Jira ticket keys is adding a provider, not editing a parser.</p>
+      <p>You never tell Mycelium which pull requests to watch. Write a work row that says <code>land the custody seam: mycelium-io/mycelium#504</code> and the reference is already there; the hub reads the room&#x27;s own <code>decisions/</code>, <code>status/</code>, <code>work/</code> and <code>failed/</code> memories, and asks each provider what it recognises. Nothing in the hub matches <code>#504</code>: a provider is the only thing that knows its own shapes, so teaching Mycelium about Jira ticket keys is adding a provider, not editing a parser.</p>
       <p>The response carries one entry per reference, each with the state, the provider&#x27;s own label, and the board row ids whose text mentioned it, so a surface attaches an answer to a row by matching an id it already has.</p>
       <p><strong>Reading does not fetch.</strong> Opening a board must not become a burst of calls to GitHub, so a read answers from cache, says how fresh each answer is, and starts a refresh in the background for whatever is due. The next read sees it. Two query parameters are the exceptions worth knowing:</p>
       <div class="table-wrap">
@@ -838,71 +836,6 @@
           <code><span class="bin">mycelium</span> <span class="cmd">skill</span> <span class="cmd">adapter-def</span></code>
         </div>
         <div class="cmd-ref-body">Print the Mycelium SKILL.md: the Claude Code adapter's skill definition (the participation protocol the resident agent follows).</div>
-      </div>
-
-      <h2 id="cli-plan">plan</h2>
-
-      <div class="cmd-ref">
-        <div class="cmd-ref-header">
-          <code><span class="bin">mycelium</span> <span class="cmd">plan</span> <span class="cmd">ls</span></code>
-        </div>
-        <div class="cmd-ref-body">List plan files in the active room.</div>
-      </div>
-
-      <div class="cmd-ref">
-        <div class="cmd-ref-header">
-          <code><span class="bin">mycelium</span> <span class="cmd">plan</span> <span class="cmd">show</span> <span class="arg">&lt;slug&gt;</span></code>
-        </div>
-        <div class="cmd-ref-body">Print a plan file's body.</div>
-      </div>
-
-      <div class="cmd-ref">
-        <div class="cmd-ref-header">
-          <code><span class="bin">mycelium</span> <span class="cmd">plan</span> <span class="cmd">set</span> <span class="arg">&lt;slug&gt;</span> <span class="arg">&lt;body&gt;</span></code>
-        </div>
-        <div class="cmd-ref-body">Create or overwrite a plan file. Body is the full markdown.</div>
-      </div>
-
-      <div class="cmd-ref">
-        <div class="cmd-ref-header">
-          <code><span class="bin">mycelium</span> <span class="cmd">plan</span> <span class="cmd">rm</span> <span class="arg">&lt;slug&gt;</span></code>
-        </div>
-        <div class="cmd-ref-body">Delete a plan file.</div>
-      </div>
-
-      <div class="cmd-ref">
-        <div class="cmd-ref-header">
-          <code><span class="bin">mycelium</span> <span class="cmd">plan</span> <span class="cmd">title</span> [<span class="arg">&lt;text&gt;</span>]</code>
-        </div>
-        <div class="cmd-ref-body">Read or set the room's plan title: the italic display line shown above room activity. Pass no text to print the current title.</div>
-      </div>
-
-      <div class="cmd-ref">
-        <div class="cmd-ref-header">
-          <code><span class="bin">mycelium</span> <span class="cmd">plan</span> <span class="cmd">tasks</span></code>
-        </div>
-        <div class="cmd-ref-body">List every checkbox task across plan files. Open first, done last.</div>
-      </div>
-
-      <div class="cmd-ref">
-        <div class="cmd-ref-header">
-          <code><span class="bin">mycelium</span> <span class="cmd">plan</span> <span class="cmd">task</span> add <span class="arg">&lt;text&gt;</span> [<span class="flag">--file</span> <span class="arg">&lt;slug&gt;</span>]</code>
-        </div>
-        <div class="cmd-ref-body">Append a new <code>- [ ]</code> line to a plan file (defaults to <code>tasks</code>).</div>
-      </div>
-
-      <div class="cmd-ref">
-        <div class="cmd-ref-header">
-          <code><span class="bin">mycelium</span> <span class="cmd">plan</span> <span class="cmd">task</span> done [<span class="arg">&lt;id&gt;</span>...]</code>
-        </div>
-        <div class="cmd-ref-body">Mark task(s) complete. Run without IDs to pick from open tasks interactively.</div>
-      </div>
-
-      <div class="cmd-ref">
-        <div class="cmd-ref-header">
-          <code><span class="bin">mycelium</span> <span class="cmd">plan</span> <span class="cmd">task</span> undo [<span class="arg">&lt;id&gt;</span>...]</code>
-        </div>
-        <div class="cmd-ref-body">Reopen completed task(s). Run without IDs to pick interactively.</div>
       </div>
 
       <h2 id="cli-adapter">adapter</h2>
@@ -1484,8 +1417,8 @@ procedures/  Reusable how-to steps (do this again later)</code></pre>
       <p>Each participant loops over HTTP (no SLIM socket on the spoke):</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">await</span> <span class="flag">--room</span> portfolio <span class="flag">--handle</span> alice <span class="flag">--json</span>
 <span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="flag">--room</span> portfolio <span class="flag">--handle</span> alice <span class="str">&quot;accept 50%, meets my floor&quot;</span></code></pre>
-      <p>On agreement the aligner compiles <code>plan/tasks.md</code>. Read it on any machine:</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">plan</span> <span class="cmd">tasks</span></code></pre>
+      <p>On agreement the aligner compiles the room&#x27;s work. Read it on any machine:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span></code></pre>
       <h2 id="hub-and-spoke-agent-identity">Agent identity</h2>
       <p>Each agent needs a unique handle across the deployment. The handle is resolved from, in order:</p>
       <ol class="steps">

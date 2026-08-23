@@ -24,7 +24,7 @@ const command = (id: string, title: string, group: string): PaletteCommand => ({
 const COMMANDS = [
   command("room:pricing", "pricing-model", "Rooms"),
   command("room:ops", "ops", "Rooms"),
-  command("pane.plan", "Plan", "Panes"),
+  command("pane.board", "Board", "Panes"),
   command("pane.network", "Network", "Panes"),
 ];
 
@@ -93,12 +93,12 @@ describe("paletteSections", () => {
   });
 
   it("leads with what was run recently, and doesn't repeat it below", () => {
-    const sections = paletteSections(COMMANDS, ["pane.plan", "room:ops"], "");
+    const sections = paletteSections(COMMANDS, ["pane.board", "room:ops"], "");
     expect(sections[0]).toEqual({
       heading: RECENT_HEADING,
       commands: [COMMANDS[2], COMMANDS[1]],
     });
-    expect(sections.flatMap(s => s.commands).filter(c => c.id === "pane.plan")).toHaveLength(1);
+    expect(sections.flatMap(s => s.commands).filter(c => c.id === "pane.board")).toHaveLength(1);
     expect(sections[1]).toEqual({ heading: "Rooms", commands: [COMMANDS[0]] });
   });
 
@@ -114,7 +114,7 @@ describe("paletteSections", () => {
   });
 
   it("drops the recent section once there's a query, so scoring owns the order", () => {
-    const sections = paletteSections(COMMANDS, ["pane.plan"], "pl");
+    const sections = paletteSections(COMMANDS, ["pane.board"], "bo");
     expect(sections.map(s => s.heading)).toEqual(["Rooms", "Panes"]);
   });
 

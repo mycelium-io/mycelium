@@ -39,7 +39,7 @@ describe("mock links handlers (#599)", () => {
     expect(status).toBe(200);
     const links = body as { outbound: { target: string; resolved: boolean }[]; backlinks: { source?: string | null }[] };
 
-    // decisions/cutover links out to context/goal (resolved) and a broken plan/tasks link
+    // decisions/cutover links out to context/goal (resolved) and a broken work/ link
     expect(links.outbound.some((l) => l.target === "context/goal" && l.resolved)).toBe(true);
     expect(links.outbound.some((l) => l.resolved === false)).toBe(true);
     // and is linked to by context/synthesis and status/sprint
@@ -58,7 +58,7 @@ describe("mock links handlers (#599)", () => {
       leaves: string[];
       total_memories: number;
     };
-    expect(report.broken).toContainEqual(expect.objectContaining({ source: "decisions/cutover", target: "plan/tasks" }));
+    expect(report.broken).toContainEqual(expect.objectContaining({ source: "decisions/cutover", target: "work/cutover-runbook" }));
     expect(report.total_memories).toBeGreaterThan(0);
 
     // Orphans must have no inbound AND no outbound edges.

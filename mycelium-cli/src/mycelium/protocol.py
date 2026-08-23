@@ -186,9 +186,9 @@ class ConsensusContent(BaseModel):
     consumers that want validation of the new L9 fields have one.
     """
 
-    plan: str | None = None
-    plan_file: str | None = None
     assignments: dict[str, Any] | None = None
+    #: Memory keys of the ``work/`` rows the agreement compiled into.
+    tasks: list[str] | None = None
     broken: bool = False
     metrics: ConsensusMetrics | None = None
     cfn_persisted: bool | None = None
@@ -241,7 +241,6 @@ class MemoryCategory(StrEnum):
     CONTEXT = "context"
     STATUS = "status"
     PROCEDURES = "procedures"
-    PLAN = "plan"
 
 
 MEMORY_CATEGORIES: frozenset[str] = frozenset(c.value for c in MemoryCategory)
@@ -253,7 +252,6 @@ STRUCTURED_CATEGORY_LABELS: dict[str, str] = {
     "decisions": "Decisions Made",
     "context": "Background & Preferences",
     "status": "Current Status",
-    "plan": "Plan & Open Tasks",
 }
 
 
@@ -272,7 +270,7 @@ class MemoryLogEntry(BaseModel):
         MemoryLogEntry(category="decisions", slug="db-choice", content="Chose AgensGraph ...")
     """
 
-    category: Literal["work", "decisions", "context", "status", "procedures", "plan"]
+    category: Literal["work", "decisions", "context", "status", "procedures"]
     slug: str = Field(..., min_length=1, pattern=SLUG_PATTERN)
     content: str = Field(..., min_length=1)
     tags: list[str] | None = None

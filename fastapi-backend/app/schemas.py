@@ -70,7 +70,6 @@ class MessageType(StrEnum):
     COORDINATION_TICK = "coordination_tick"
     COORDINATION_CONSENSUS = "coordination_consensus"
     COORDINATION_RETRY = "coordination_retry"
-    PLAN_UPDATED = "plan_updated"
 
 
 # The message types whose ``content`` is human-readable prose — real chat, and
@@ -709,7 +708,8 @@ class EpisodeSummaryRead(BaseModel):
     participants: list[str] = Field(default_factory=list)
     metrics: EpisodeMetricsRead | None = None
     assignments: dict[str, str] | None = None
-    plan_file: str | None = None
+    #: Memory keys of the ``work/`` rows the agreement compiled into.
+    tasks: list[str] = Field(default_factory=list)
     message_count: int = 0
     updated_at: str = ""
     updated_by: str = ""

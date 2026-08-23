@@ -4,13 +4,13 @@
 /**
  * Project what the room already has into board rows.
  *
- * Nothing here is a new store: plan tasks, episodes, memories and presence are
+ * Nothing here is a new store: episodes, memories and presence are
  * read where they live and flattened into one row shape. The board is a lens on
  * the room, so a row can't be stale relative to the thing it describes, and
  * deleting the board would lose nothing.
  */
 
-import type { AgentSummary, EpisodeSummary, Memory, PlanResponse, PlanTask } from "@/lib/api";
+import type { AgentSummary, EpisodeSummary, Memory } from "@/lib/api";
 import type { PresenceMember } from "@/lib/api";
 import { CUSTODY_FIELD, DEFAULT_TTL_MINUTES, LEASABLE_NAMESPACES, custodyOf } from "./custody";
 import type { LiveItem } from "./item";
@@ -18,53 +18,6 @@ import { memoryHref } from "@/lib/memory-routes";
 
 /** Namespaces whose memories read as coordination state rather than prose. */
 const LIVE_NAMESPACES = ["decisions", "status", "work", "failed"];
-
-/** `@handle` anywhere in a task line is its owner — how the compiler writes them. */
-const OWNER_RE = /@([a-z0-9][a-z0-9._-]*)/i;
-/** `#123` in a line points at the GitHub record behind the work. */
-const ISSUE_RE = /#(\d+)/;
-
-function priorityFromText(text: string): string {
-  const t = text.toLowerCase();
-  if (/\b(urgent|asap|blocker|critical)\b/.test(t)) return "urgent";
-  if (/\b(important|high|soon)\b/.test(t)) return "high";
-  if (/\b(nit|minor|someday|nice to have)\b/.test(t)) return "low";
-  return "normal";
-}
-
-function stripMarkup(text: string): string {
-  return text.replace(OWNER_RE, "").replace(/\s{2,}/g, " ").trim();
-}
-
-function planItem(task: PlanTask, plan: PlanResponse, now: string): LiveItem {
-  const owner = task.text.match(OWNER_RE)?.[1] ?? null;
-  const issue = task.text.match(ISSUE_RE)?.[0] ?? null;
-  const file = plan.files.find(f => f.slug === task.slug);
-  return {
-    id: `plan:${task.id}`,
-    title: stripMarkup(task.text) || task.text,
-    source: {
-      kind: "plan",
-      label: `plan/${task.slug}.md:${task.line}`,
-    },
-    fields: {
-      // A stage, and only a stage. This used to read `in_progress` when the line
-      // named anyone, which was custody wearing a stage's name: it said
-      // "someone's handle is in the text", not "someone is on this".
-      status: task.done ? "resolved" : "open",
-      kind: "action",
-      owner: owner ? `@${owner}` : null,
-      priority: priorityFromText(task.text),
-      issue,
-      updated: file?.updated_at ?? now,
-      // A compiled plan task is the room's durable commitment, so it is the one
-      // row kind with no TTL — it leaves by being done, not by expiring.
-      // Ownership stays a plain @handle: `- [ ] text @handle` has nowhere to put
-      // a claim stamp, and a commitment that decays is not one.
-      ttl_minutes: null,
-    },
-  };
-}
 
 /** Episode topics arrive as URNs; the board shows the part a person wrote. */
 function prettyTopic(topic: string): string {
@@ -203,7 +156,6 @@ function firstLine(text: string): string {
 
 export interface ProjectionInput {
   room: string;
-  plan: PlanResponse | null;
   episodes: EpisodeSummary[];
   memories: Memory[];
   agents: AgentSummary[];
@@ -218,7 +170,6 @@ export interface ProjectionInput {
 export function projectItems(input: ProjectionInput): LiveItem[] {
   const items: LiveItem[] = [];
 
-  for (const task of input.plan?.tasks ?? []) items.push(planItem(task, input.plan!, input.now));
   for (const ep of input.episodes) items.push(episodeItem(ep, input.room));
   for (const memory of input.memories) {
     if (!LIVE_NAMESPACES.includes(memory.key.split("/")[0] ?? "")) continue;

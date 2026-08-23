@@ -757,7 +757,7 @@ class AlignerEngine:
             ep,
             outcome="converged" if converged else "rejected",
             metrics=metrics,
-            plan_file=None,
+            tasks=None,
         )
         return env_dict
 

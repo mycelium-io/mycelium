@@ -66,7 +66,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "index.html#rooms-rooms-are-directories-on-the-hub",
     "t": "Rooms are Directories on the Hub",
     "s": "Concepts › Rooms",
-    "x": "Each room maps to a directory at ~/.mycelium/rooms/{room_name}/ on the hub. Standard subdirectories are created automatically: ~/.mycelium/rooms/design-review/ decisions/ context/ status/ plan/ work/ procedures/ log/ failed/ The plan/ subdir holds the room's plan: a free-form set of markdown files plus the - [ ] / - [x] checklist lines those files contain. plan/title.md holds the room's display title (shown italicise",
+    "x": "Each room maps to a directory at ~/.mycelium/rooms/{room_name}/ on the hub. Standard subdirectories are created automatically: ~/.mycelium/rooms/design-review/ decisions/ context/ status/ work/ procedures/ log/ failed/ The work/ subdir holds what the room is doing: one markdown file per task, each carrying its own frontmatter, so a task can say who it is for, what stage it is at, and who is holding it. That is what m",
     "p": "Guide"
   },
   {
@@ -87,7 +87,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "index.html#rooms-coordination",
     "t": "Coordination",
     "s": "Concepts › Rooms",
-    "x": "To coordinate in a room, participants converge on a question through an episode driven by the aligner mediator. The arc is position → summon → converge → plan → work: Register the mediator once: mycelium engine create aligner --kind aligner -r design-review Each participant posts an opening position: mycelium respond -H <handle> \"<position>\" A human summons: mycelium engine invoke aligner \"converge on <question>\" Par",
+    "x": "To coordinate in a room, participants converge on a question through an episode driven by the aligner mediator. The arc is position → summon → converge → work: Register the mediator once: mycelium engine create aligner --kind aligner -r design-review Each participant posts an opening position: mycelium respond -H <handle> \"<position>\" A human summons: mycelium engine invoke aligner \"converge on <question>\" Participan",
     "p": "Guide"
   },
   {
@@ -238,34 +238,6 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Guide"
   },
   {
-    "u": "index.html#plan",
-    "t": "Plan",
-    "s": "Concepts",
-    "x": "A room's plan is the place to write down what the room is for and what's left to do. It lives in ~/.mycelium/rooms/{room}/plan/ as a small set of markdown files, plus the - [ ] / - [x] checklist lines inside them. Open tasks also appear on the board, next to open decisions and whatever else currently needs a person. Plan content is surfaced to every agent in the room, both in the turn the aligner addresses to them an",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#plan-anatomy",
-    "t": "Anatomy",
-    "s": "Concepts › Plan",
-    "x": ".mycelium/rooms/{room}/plan/ ├── title.md # one-line italic display title (shown above room activity) ├── tasks.md # default todo file written by `plan task add` └── {slug}.md # any number of additional plan files (prose + checklists) title.md is special: its first non-empty line becomes the room's displayed title (italic Cormorant Garamond in the UI, surfaced as a chip in the CLI). All other plan/*.md files are arbi",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#plan-cli",
-    "t": "CLI",
-    "s": "Concepts › Plan",
-    "x": "# Title mycelium plan title # read mycelium plan title \"Plan the Q3 sprint priorities\" # set # Files (each is a memory file under plan/<slug>) mycelium plan ls mycelium plan show sprint mycelium plan set sprint \"# Sprint\\n\\n- [ ] cut a release branch\" mycelium plan rm sprint # Tasks (markdown checklist lines across every plan file) mycelium plan tasks # open tasks only mycelium plan tasks --all # include completed my",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#plan-how-agents-see-it",
-    "t": "How agents see it",
-    "s": "Concepts › Plan",
-    "x": "Plan files share the same memory-style markdown-with-frontmatter convention, so they live alongside work/, decisions/, etc. and are readable to anyone opening the room directory. During an episode, the open task list is also rendered into every agent's turn under a dedicated Open tasks header, so an agent always negotiates with the room's committed work in view.",
-    "p": "Guide"
-  },
-  {
     "u": "index.html#board",
     "t": "Board",
     "s": "Concepts",
@@ -276,7 +248,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "index.html#board-nothing-to-fill-in",
     "t": "Nothing to fill in",
     "s": "Concepts › Board",
-    "x": "You never add anything to the board. It's assembled from what the room already has: the tasks in its plan, the negotiations running in it, the memories under decisions/, status/, work/ and failed/, and which agents are actually resident right now. Every row says where it came from, and clicking through takes you to the real thing rather than a copy of it. That means there's no second place to keep up to date. Mark a ",
+    "x": "You never add anything to the board. It's assembled from what the room already has: the work compiled out of its agreements, the negotiations running in it, the memories under decisions/, status/, work/ and failed/, and which agents are actually resident right now. Every row says where it came from, and clicking through takes you to the real thing rather than a copy of it. That means there's no second place to keep u",
     "p": "Guide"
   },
   {
@@ -353,7 +325,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "index.html#board-live-status-how-it-will-work",
     "t": "Live status: how it will work",
     "s": "Concepts › Board",
-    "x": "Not built yet. The rest of this section describes what linked pull requests will do. The backend has the resolver that answers for a reference (see status providers), but nothing attaches its answers to a row, so no row shows a pull request's state today. Mentioning the pull request will be the whole of it. Write the link where the work is already described, whether a plan task, a memory, or a message in the room, an",
+    "x": "Not built yet. The rest of this section describes what linked pull requests will do. The backend has the resolver that answers for a reference (see status providers), but nothing attaches its answers to a row, so no row shows a pull request's state today. Mentioning the pull request will be the whole of it. Write the link where the work is already described, whether a work row, a memory, or a message in the room, and",
     "p": "Guide"
   },
   {
@@ -374,14 +346,14 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "index.html#board-related",
     "t": "Related",
     "s": "Concepts › Board",
-    "x": "plan: the room's prose and checklists, which the board reads from. episodes: a negotiation, which appears as a decision row. memory: where a row's fields actually live.",
+    "x": "episodes: a negotiation, which appears as a decision row. memory: where a row's fields actually live.",
     "p": "Guide"
   },
   {
     "u": "index.html#l9-protocol",
     "t": "L9 Protocol",
     "s": "Concepts",
-    "x": "Every negotiation ends in \"accept,\" but an accept can mean \"you convinced me\" or \"fine, whatever, let's move on.\" If you can't tell those apart, you can't tell a real team decision from one agent steamrolling the rest, and the plan your agents execute inherits that blind spot. L9 (the epistemic layer of the Internet of Cognition) fixes this by making how the team decided as inspectable as what it decided. Agents say ",
+    "x": "Every negotiation ends in \"accept,\" but an accept can mean \"you convinced me\" or \"fine, whatever, let's move on.\" If you can't tell those apart, you can't tell a real team decision from one agent steamrolling the rest, and the work your agents execute inherits that blind spot. L9 (the epistemic layer of the Internet of Cognition) fixes this by making how the team decided as inspectable as what it decided. Agents say ",
     "p": "Guide"
   },
   {
@@ -572,7 +544,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "adapters.html#engines-kinds",
     "t": "Kinds",
     "s": "Engines › Overview",
-    "x": "The engine layer is one seam with a growing set of kinds. You pick the kind at registration time. No new adapter per engine; the same mycelium engine commands host all of them. Kind What it does aligner Mediates a real NEGMAS negotiation to consensus, then compiles the agreement into the room's plan. See Aligner. synthesizer Distills the room's conversation into a briefing at context/synthesis, incrementally. See Syn",
+    "x": "The engine layer is one seam with a growing set of kinds. You pick the kind at registration time. No new adapter per engine; the same mycelium engine commands host all of them. Kind What it does aligner Mediates a real NEGMAS negotiation to consensus, then compiles the agreement into the room's work. See Aligner. synthesizer Distills the room's conversation into a briefing at context/synthesis, incrementally. See Syn",
     "p": "Adapters"
   },
   {
@@ -656,7 +628,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "adapters.html#hello",
     "t": "Hello",
     "s": "Engines",
-    "x": "The hello engine is the engine that does nothing on purpose. Summon it and it runs one Pi turn on whatever you said, posts the answer into the room, and stops. No negotiation, no memory write, no plan — the only trace it leaves is the message it posts. That is what makes it useful. The aligner opens a negotiation episode and the synthesizer writes a memory back, so neither is something you want to fire into a live ro",
+    "x": "The hello engine is the engine that does nothing on purpose. Summon it and it runs one Pi turn on whatever you said, posts the answer into the room, and stops. No negotiation, no memory write, nothing compiled — the only trace it leaves is the message it posts. That is what makes it useful. The aligner opens a negotiation episode and the synthesizer writes a memory back, so neither is something you want to fire into ",
     "p": "Adapters"
   },
   {
@@ -768,7 +740,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#architecture-asking-what-the-tools-say",
     "t": "Asking what the tools say",
     "s": "Architecture",
-    "x": "GET /api/rooms/{room}/status You never tell Mycelium which pull requests to watch. Write a plan task that says land the custody seam: mycelium-io/mycelium#504 and the reference is already there; the hub reads the room's own plan tasks and its decisions/, status/, work/ and failed/ memories, and asks each provider what it recognises. Nothing in the hub matches #504: a provider is the only thing that knows its own shap",
+    "x": "GET /api/rooms/{room}/status You never tell Mycelium which pull requests to watch. Write a work row that says land the custody seam: mycelium-io/mycelium#504 and the reference is already there; the hub reads the room's own decisions/, status/, work/ and failed/ memories, and asks each provider what it recognises. Nothing in the hub matches #504: a provider is the only thing that knows its own shapes, so teaching Myce",
     "p": "Reference"
   },
   {
@@ -1240,85 +1212,6 @@ window.MYCELIUM_SEARCH_INDEX = [
     "t": "mycelium skill adapter-def",
     "s": "CLI Reference",
     "x": "Print the Mycelium SKILL.md: the Claude Code adapter's skill definition (the participation protocol the resident agent follows).",
-    "k": "cmd",
-    "p": "Reference"
-  },
-  {
-    "u": "reference.html#cli-plan",
-    "t": "plan",
-    "s": "CLI Reference",
-    "x": "",
-    "p": "Reference"
-  },
-  {
-    "u": "reference.html#cli-plan",
-    "t": "mycelium plan ls",
-    "s": "CLI Reference",
-    "x": "List plan files in the active room.",
-    "k": "cmd",
-    "p": "Reference"
-  },
-  {
-    "u": "reference.html#cli-plan",
-    "t": "mycelium plan show <slug>",
-    "s": "CLI Reference",
-    "x": "Print a plan file's body.",
-    "k": "cmd",
-    "p": "Reference"
-  },
-  {
-    "u": "reference.html#cli-plan",
-    "t": "mycelium plan set <slug> <body>",
-    "s": "CLI Reference",
-    "x": "Create or overwrite a plan file. Body is the full markdown.",
-    "k": "cmd",
-    "p": "Reference"
-  },
-  {
-    "u": "reference.html#cli-plan",
-    "t": "mycelium plan rm <slug>",
-    "s": "CLI Reference",
-    "x": "Delete a plan file.",
-    "k": "cmd",
-    "p": "Reference"
-  },
-  {
-    "u": "reference.html#cli-plan",
-    "t": "mycelium plan title [<text>]",
-    "s": "CLI Reference",
-    "x": "Read or set the room's plan title: the italic display line shown above room activity. Pass no text to print the current title.",
-    "k": "cmd",
-    "p": "Reference"
-  },
-  {
-    "u": "reference.html#cli-plan",
-    "t": "mycelium plan tasks",
-    "s": "CLI Reference",
-    "x": "List every checkbox task across plan files. Open first, done last.",
-    "k": "cmd",
-    "p": "Reference"
-  },
-  {
-    "u": "reference.html#cli-plan",
-    "t": "mycelium plan task add <text> [--file <slug>]",
-    "s": "CLI Reference",
-    "x": "Append a new - [ ] line to a plan file (defaults to tasks).",
-    "k": "cmd",
-    "p": "Reference"
-  },
-  {
-    "u": "reference.html#cli-plan",
-    "t": "mycelium plan task done [<id>...]",
-    "s": "CLI Reference",
-    "x": "Mark task(s) complete. Run without IDs to pick from open tasks interactively.",
-    "k": "cmd",
-    "p": "Reference"
-  },
-  {
-    "u": "reference.html#cli-plan",
-    "t": "mycelium plan task undo [<id>...]",
-    "s": "CLI Reference",
-    "x": "Reopen completed task(s). Run without IDs to pick interactively.",
     "k": "cmd",
     "p": "Reference"
   },

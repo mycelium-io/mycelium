@@ -20,7 +20,6 @@ import {
 import { parseCapture } from "@/lib/board/capture";
 import { DAILY_GOAL, heatLevel, weekdayIndex } from "@/lib/board/activity";
 import { attachUpstream, UPSTREAM_STATES, upstreamAge, type RoomStatus } from "@/lib/board/upstream";
-import type { PlanResponse } from "@/lib/api";
 
 const item = (id: string, fields: Record<string, unknown>): LiveItem => ({
   id,
@@ -97,55 +96,65 @@ describe("inferSchema", () => {
 });
 
 describe("projectItems", () => {
-  const plan: PlanResponse = {
-    room: "atlas",
-    title: "Atlas",
-    files: [
-      { slug: "tasks", title: "Cutover", content: "", updated_at: "2026-08-20T10:00:00Z", updated_by: "aligner", tasks: [] },
-    ],
-    tasks: [
-      { id: "t1", slug: "tasks", line: 2, text: "flip reads behind a flag @growth", done: false },
-      { id: "t2", slug: "tasks", line: 3, text: "retire the legacy store @risk", done: true },
-    ],
-    open_count: 1,
-    done_count: 1,
-  };
+  //: The two rows an agreement compiles into: one open and assigned, one done.
+  const memories = [
+    {
+      key: "work/flip-reads-behind-a-flag",
+      value: "flip reads behind a flag",
+      meta: { kind: "action", status: "open", assignee: "@growth" },
+      version: 1,
+      created_by: "aligner",
+      updated_by: "aligner",
+      updated_at: "2026-08-20T10:00:00Z",
+    },
+    {
+      key: "work/retire-the-legacy-store",
+      value: "retire the legacy store",
+      meta: { kind: "action", status: "resolved", assignee: "@risk" },
+      version: 1,
+      created_by: "aligner",
+      updated_by: "aligner",
+      updated_at: "2026-08-20T10:00:00Z",
+    },
+  ] as unknown as Parameters<typeof projectItems>[0]["memories"];
 
   const projected = () =>
     projectItems({
       room: "atlas",
-      plan,
       episodes: [],
-      memories: [],
+      memories,
       agents: [],
       presence: new Map(),
       now: "2026-08-22T10:00:00Z",
     });
 
-  it("lifts a plan task's @handle into an owner without turning it into a claim", () => {
+  it("names who a compiled task is for without claiming it", () => {
     const [open, done] = projected();
-    // A named owner is a commitment, not a lease: the stage stays open, and the
-    // row takes no claim it could quietly stop renewing.
-    expect(open.fields).toMatchObject({ owner: "@growth", status: "open" });
-    expect(custodyOf(open, Date.parse("2026-08-22T10:00:00Z"))).toBeNull();
+    // An assignment is not a lease: the row stays unclaimed until somebody
+    // takes it, so nothing asserts a holder who never agreed to hold it.
+    expect(open.fields).toMatchObject({ assignee: "@growth", status: "open" });
+    expect(open.fields.owner).toBeNull();
+    expect(custodyOf(open, Date.parse("2026-08-22T10:00:00Z"))).toBe("unclaimed");
     expect(open.title).toBe("flip reads behind a flag");
     expect(done.fields.status).toBe("resolved");
   });
 
   it("keeps provenance on every row", () => {
-    expect(projected()[0].source).toEqual({ kind: "plan", label: "plan/tasks.md:2" });
+    expect(projected()[0].source).toMatchObject({
+      kind: "memory",
+      label: "work/flip-reads-behind-a-flag",
+    });
   });
 
   it("lets a local triage overlay win over the projected value", () => {
     const items = projectItems({
       room: "atlas",
-      plan,
       episodes: [],
-      memories: [],
+      memories,
       agents: [],
       presence: new Map(),
       now: "2026-08-22T10:00:00Z",
-      overlay: { "plan:t1": { status: "dismissed" } },
+      overlay: { "memory:work/flip-reads-behind-a-flag": { status: "dismissed" } },
     });
     expect(items[0].fields.status).toBe("dismissed");
   });
@@ -375,7 +384,7 @@ describe("shared vocabulary contract", () => {
     // it, because nothing recomputed it.
     const upstream = (contract as unknown as { upstream: { field: string; companion_fields: string[] } }).upstream;
     const rows: LiveItem[] = ["resolved", "pending", "two-refs", "errored"].map(id => ({
-      id, title: id, source: { kind: "plan", label: id }, fields: {},
+      id, title: id, source: { kind: "memory", label: id }, fields: {},
     }));
     const out = attachUpstream(rows, {
       room: "atlas", field: "upstream", providers: ["github"], refreshing: false,
@@ -412,7 +421,7 @@ describe("upstream answers on rows", () => {
   const row = (id: string, fields: Record<string, unknown> = {}): LiveItem => ({
     id,
     title: id,
-    source: { kind: "plan", label: id },
+    source: { kind: "memory", label: id },
     fields,
   });
 
@@ -435,8 +444,8 @@ describe("upstream answers on rows", () => {
 
   it("lands an answer on the row that mentioned it", () => {
     const [out] = attachUpstream(
-      [row("plan:t3")],
-      status([{ ref: "a", state: "blocked", label: "changes requested" }], { "plan:t3": ["a"] }),
+      [row("memory:work/cutover")],
+      status([{ ref: "a", state: "blocked", label: "changes requested" }], { "memory:work/cutover": ["a"] }),
     );
     expect(out.fields.upstream).toBe("blocked");
     expect(out.fields.upstream_label).toBe("changes requested");
@@ -444,10 +453,10 @@ describe("upstream answers on rows", () => {
 
   it("shows the worse of two references and says there were more", () => {
     const [out] = attachUpstream(
-      [row("plan:t3")],
+      [row("memory:work/cutover")],
       status(
         [{ ref: "a", state: "ok", label: "approved" }, { ref: "b", state: "failed", label: "CI failing" }],
-        { "plan:t3": ["a", "b"] },
+        { "memory:work/cutover": ["a", "b"] },
       ),
     );
     // A board says what needs a person, so the failing one wins.
@@ -456,24 +465,24 @@ describe("upstream answers on rows", () => {
   });
 
   it("leaves a row nothing was found for completely untouched", () => {
-    const original = row("plan:t9", { status: "open" });
-    const [out] = attachUpstream([original], status([{ ref: "a" }], { "plan:t3": ["a"] }));
+    const original = row("memory:work/other", { status: "open" });
+    const [out] = attachUpstream([original], status([{ ref: "a" }], { "memory:work/cutover": ["a"] }));
     expect(out).toBe(original);
     expect(out.fields).not.toHaveProperty("upstream");
   });
 
   it("shows the reason when an answer errored rather than an empty label", () => {
     const [out] = attachUpstream(
-      [row("plan:t3")],
-      status([{ ref: "a", state: "unknown", label: null, error: "not visible to this token" }], { "plan:t3": ["a"] }),
+      [row("memory:work/cutover")],
+      status([{ ref: "a", state: "unknown", label: null, error: "not visible to this token" }], { "memory:work/cutover": ["a"] }),
     );
     expect(out.fields.upstream_label).toBe("not visible to this token");
   });
 
   it("marks a row whose answer has not come back yet as pending, not unknown", () => {
     const [out] = attachUpstream(
-      [row("plan:t3")],
-      { ...status([{ ref: "a", state: null, label: null, freshness: "missing" }], { "plan:t3": ["a"] }), refreshing: true },
+      [row("memory:work/cutover")],
+      { ...status([{ ref: "a", state: null, label: null, freshness: "missing" }], { "memory:work/cutover": ["a"] }), refreshing: true },
     );
     // `unknown` is a provider saying it could not place what it found; this is
     // nobody having answered yet. A board grouping by upstream must not collect
@@ -484,13 +493,13 @@ describe("upstream answers on rows", () => {
 
   it("shows what is known on a row where one answer landed and another has not", () => {
     const [out] = attachUpstream(
-      [row("plan:t3")],
+      [row("memory:work/cutover")],
       status(
         [
           { ref: "a", state: null, freshness: "missing" },
           { ref: "b", state: "blocked", label: "changes requested" },
         ],
-        { "plan:t3": ["a", "b"] },
+        { "memory:work/cutover": ["a", "b"] },
       ),
     );
     expect(out.fields.upstream).toBe("blocked");
@@ -498,8 +507,8 @@ describe("upstream answers on rows", () => {
 
   it("keeps a stale value and says it is stale rather than hiding it", () => {
     const [out] = attachUpstream(
-      [row("plan:t3")],
-      status([{ ref: "a", state: "ok", label: "approved", freshness: "stale", age_seconds: 5400 }], { "plan:t3": ["a"] }),
+      [row("memory:work/cutover")],
+      status([{ ref: "a", state: "ok", label: "approved", freshness: "stale", age_seconds: 5400 }], { "memory:work/cutover": ["a"] }),
     );
     // The truth as far as anyone knows, with a refresh behind it. Taking the
     // value away would tell the reader less, not more.
@@ -525,7 +534,7 @@ describe("upstream answers on rows", () => {
 
 describe("the no-value column is not a value", () => {
   const row = (id: string, fields: Record<string, unknown> = {}): LiveItem => ({
-    id, title: id, source: { kind: "plan", label: id }, fields,
+    id, title: id, source: { kind: "memory", label: id }, fields,
   });
 
   it("collects rows with an empty field under a key the field could never hold", () => {
