@@ -83,6 +83,12 @@ The card endpoint is public: discovery is unauthenticated by the A2A spec, the
 same way `/.well-known/openid-configuration` is. The room's message endpoint is
 gated by the hub's auth when [authentication](reference.html#auth) is enabled.
 
+On a gated hub the message is attributed to the caller's token: a call
+authenticated as `claude-web` posts as `@claude-web`, so two external A2A agents
+are told apart in the transcript and either one is addressable by handle. On an
+ungated hub nothing proves who called, and the message posts as the shared
+`@a2a-guest` handle instead.
+
 The card advertises an absolute URL, which the hub builds from the scheme it
 sees. Behind a TLS-terminating reverse proxy that is plain `http`, so a public
 hub has to be told which forwarder to believe or the card points external
