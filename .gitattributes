@@ -1,0 +1,15 @@
+# docs/ carries the rendered site, and every PR that touches the markdown under
+# mycelium-cli/src/mycelium/docs/ regenerates all of it. That makes these files
+# derived data in a source tree: nobody edits them, CI recomputes them and fails
+# on drift, and their diffs are review noise.
+docs/index.html      linguist-generated=true
+docs/adapters.html   linguist-generated=true
+docs/reference.html  linguist-generated=true
+docs/llms-full.txt   linguist-generated=true
+
+# The search index is the one that cannot be merged by hand: one JSON record per
+# line with no prose structure to anchor a resolution on. Take both sides. The
+# generator gives every record a trailing comma so a union result is still a
+# valid array literal, and the worst case is a duplicate or superseded record —
+# which the CI drift check catches, and regenerating fixes.
+docs/search-index.js linguist-generated=true merge=union

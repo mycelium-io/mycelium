@@ -149,11 +149,13 @@ jobs:
       # config schema. Same contract as the openapi.json check above: regenerate,
       # fail if the tree moves. Without it the committed output drifts silently and
       # the backlog lands as unrelated diff in whichever PR next runs the generator.
+      # This is also the net under docs/search-index.js's union merge: taking both
+      # sides can leave a duplicate record, and that lands here as drift.
       - name: Docs site is current
         run: |
           (cd mycelium-cli && uv run python ../docs/generate_docs.py)
           if [ -n "$(git status --porcelain -- docs/)" ]; then
-            echo "::error file=docs/llms-full.txt::Generated docs are stale — run 'cd mycelium-cli && uv run python ../docs/generate_docs.py' and commit docs/."
+            echo "::error file=docs/llms-full.txt::Generated docs are stale — run 'cd mycelium-cli && uv run python ../docs/generate_docs.py' and commit docs/. If this PR merged a branch that also touched the docs, regenerating is also what settles docs/search-index.js."
             git status --porcelain -- docs/
             git diff --stat -- docs/
             exit 1

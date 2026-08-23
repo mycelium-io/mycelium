@@ -1467,13 +1467,26 @@ def _write_search_index(records: list[dict]) -> None:
     A plain .json fetched at runtime would be blocked opening the site straight
     off disk; a script tag injected on first use works from file:// too and
     keeps the payload off the critical path.
+
+    One record per line, every line ending in a comma. That shape is for git,
+    not for the browser: every docs PR regenerates the whole file, so on a
+    single line it is one atom no merge can resolve. Line-delimited, disjoint
+    edits merge on their own, and `.gitattributes` hands the overlaps to git's
+    union driver — whose output still parses because the last element carries a
+    trailing comma like every other (legal in a JS array literal, and this is a
+    script, not JSON). Union can leave a duplicate or superseded record; the CI
+    drift check fails on that, and regenerating is the fix.
     """
-    payload = json.dumps(records, separators=(",", ":"), ensure_ascii=False)
+    body = "".join(
+        json.dumps(rec, separators=(",", ":"), ensure_ascii=False) + ",\n"
+        for rec in records
+    )
+    payload = f"window.MYCELIUM_SEARCH_INDEX = [\n{body}];\n"
     # Legal in JSON, a line break in JS source: escape them or a page with one
     # in its prose takes the whole index down.
     payload = payload.replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
     out = OUT_DIR / "search-index.js"
-    out.write_text(f"window.MYCELIUM_SEARCH_INDEX = {payload};\n")
+    out.write_text(payload)
     print(f"  wrote {out.name} ({out.stat().st_size:,} bytes, {len(records)} records)")
 
 

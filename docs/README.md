@@ -17,7 +17,12 @@ it.
   root `CLAUDE.md`.
 - `search-index.js` backs the top-bar search. It is derived from the rendered
   HTML, not the markdown, so the hand-coded sections and the generated reference
-  are searchable on the same terms as everything else.
+  are searchable on the same terms as everything else. It is written one record
+  per line, and `.gitattributes` resolves it with git's union merge driver: two
+  docs branches both regenerate the whole file, and as a single line that was a
+  conflict no one could resolve by hand. Taking both sides can leave a record
+  twice — a duplicated search hit, nothing worse — which the drift check in CI
+  reports and regenerating fixes.
 - A few sections have no markdown source and are hand-coded HTML kept verbatim
   across regenerations. Those are the ones that *can* go stale without a test
   noticing, so treat them with the suspicion you'd give an old comment.
