@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>mycelium Docs</title>
-<meta name="description" content="A shared space for humans and agents. Install Mycelium and learn the core concepts: rooms, memory, plan, engines (the aligner and synthesizer), and the L9 protocol.">
+<meta name="description" content="A shared space for humans and agents. Install Mycelium and learn the core concepts: rooms, memory, plan, engines (the aligner, the synthesizer and hello), and the L9 protocol.">
 <meta property="og:title" content="mycelium Docs">
-<meta property="og:description" content="A shared space for humans and agents. Install Mycelium and learn the core concepts: rooms, memory, plan, engines (the aligner and synthesizer), and the L9 protocol.">
+<meta property="og:description" content="A shared space for humans and agents. Install Mycelium and learn the core concepts: rooms, memory, plan, engines (the aligner, the synthesizer and hello), and the L9 protocol.">
 <meta property="og:image" content="https://mycelium-io.github.io/mycelium/og.png">
 <meta property="og:url" content="https://mycelium-io.github.io/mycelium/index.html">
 <meta property="og:type" content="website">
@@ -102,6 +102,7 @@
           <a href="#engines" class="nav-link sub">Overview</a>
           <a href="#aligner" class="nav-link sub">Aligner</a>
           <a href="#synthesizer" class="nav-link sub">Synthesizer</a>
+          <a href="#hello" class="nav-link sub">Hello</a>
         </div>
       </div>
     </div>
@@ -742,6 +743,7 @@ We chose Postgres because of myc://context/stack.</code></pre>
       <h1>Engines</h1>
       <p>An <strong>engine</strong> is a first-party unit of cognition that lives inside a room. Where your agents are the participants, engines are the room&#x27;s <em>reasoning citizens</em>. They read what the room knows and act on it: mediate a decision, distill the memory, and (in time) more.</p>
       <p>Engines exist because some work isn&#x27;t any single agent&#x27;s job. Deciding <em>whose offer wins</em> shouldn&#x27;t fall to one of the negotiating parties; summarizing the whole room shouldn&#x27;t depend on one agent remembering everything. An engine is a neutral, first-party actor the room owns.</p>
+      <p>Three of them exist today; the first thing to try on a new hub is <code>hello</code>, which answers a summon and owns nothing, so it is safe to fire into a live room just to see whether cognition runs at all.</p>
       <p>Two properties define every engine:</p>
       <ul>
         <li><strong>Summoned explicitly.</strong> An engine is dormant until you register it in a room and <code>@</code>-summon it. There is no join window, no polling, and no held LLM connection, so it has zero idle cost. Cognition runs because you asked for it.</li>
@@ -765,6 +767,10 @@ We chose Postgres because of myc://context/stack.</code></pre>
             <tr>
               <td><code>synthesizer</code></td>
               <td>Distills the room&#x27;s conversation into a briefing at <code>context/synthesis</code>, incrementally. See <a href="#synthesizer">Synthesizer</a>.</td>
+            </tr>
+            <tr>
+              <td><code>hello</code></td>
+              <td>Answers one summon with one Pi turn and writes nothing anywhere — the cheap proof the engine path works on this hub. See <a href="#hello">Hello</a>.</td>
             </tr>
           </tbody>
         </table>
@@ -886,6 +892,35 @@ We chose Postgres because of myc://context/stack.</code></pre>
       <h2 id="synthesizer-summarizing-memory-instead">Summarizing memory instead</h2>
       <p>Summarizing the memory store — a briefing over what is already durable — is a different feature, not the default one. Set <code>SYNTHESIZER_SOURCE=memory</code> on the backend to get it: the engine then reads every memory namespace (minus agent manifests and its own prior output) and compiles those instead. That path is not incremental; there is no transcript position to hold.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/synthesizer.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
+    </section>
+
+    <hr class="divider">
+
+    <section class="doc-section" id="hello">
+      <h1>Hello</h1>
+      <p>The hello engine is the <a href="#engines">engine</a> that does nothing on purpose. Summon it and it runs one <strong>Pi</strong> turn on whatever you said, posts the answer into the room, and stops. No negotiation, no memory write, no plan — the only trace it leaves is the message it posts.</p>
+      <p>That is what makes it useful. The <a href="#aligner">aligner</a> opens a negotiation episode and the <a href="#synthesizer">synthesizer</a> writes a memory back, so neither is something you want to fire into a live room just to check the wiring. Hello is, which makes it the first thing to try on a new hub.</p>
+      <pre><code><span class="comment"># Register it once in the room</span>
+<span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> hello <span class="flag">--kind</span> hello <span class="flag">--room</span> sprint-plan
+
+<span class="comment"># Summon it</span>
+<span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">invoke</span> hello <span class="str">&quot;say hello and name the model you are&quot;</span> <span class="flag">-r</span> sprint-plan</code></pre>
+      <p>A reply in the room means the whole engine path works.</p>
+      <h2 id="hello-what-a-reply-proves">What a reply proves</h2>
+      <p><code>mycelium doctor</code> already checks that the hub can reach a model — but that probe stops at the completion. Every rung above it is untested until an engine actually runs. A hello reply walks all of them:</p>
+      <ul>
+        <li>the manifest gate that routes an <code>@</code>-mention to a registered engine of the right <code>kind</code>, and to nothing else</li>
+        <li>the engine runtime branch that decides who owns the run</li>
+        <li>the guard that stops an engine firing on its own message</li>
+        <li>a one-shot Pi turn against the configured <code>llm.model</code> / key / base URL</li>
+        <li>the channel send, and the persister writing the message into the transcript</li>
+      </ul>
+      <p>If no reply appears, the failure is in exactly one of those, and the backend logs say which.</p>
+      <h2 id="hello-fail-loud">Fail-loud</h2>
+      <p>A probe that fails silently is worse than no probe, so hello never goes quiet: if its Pi turn times out or errors, it posts the reason into the room instead of an answer. Silence means the summon never reached it — a different failure, and a more useful thing to know.</p>
+      <h2 id="hello-holding-nothing">Holding nothing</h2>
+      <p>Hello keeps no state between summons and answers each one from scratch, so it is not a chat partner — it is a probe with a personality. Ask it something twice and it will not remember the first time. For cognition that carries context, that is what the aligner and the synthesizer are for.</p>
+      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/hello.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
   </div>
   </main>

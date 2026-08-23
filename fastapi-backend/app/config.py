@@ -175,6 +175,16 @@ class Settings(BaseSettings):
     def _normalize_synthesizer_source(cls, v: object) -> object:
         return v.strip().lower() if isinstance(v, str) else v
 
+    # Hello engine (kind ``hello``) — answers a summon with one Pi turn and
+    # writes nothing anywhere: the cheap proof that the whole engine path works
+    # on a given hub. Dormant by default like the others. Reuses the shared
+    # LLM_* + ALIGNER_PI_* Pi runtime settings; only its own handle default and
+    # per-turn timeout live here. The timeout is shorter than the other engines'
+    # because a probe that has to be waited on is not much of a probe.
+    HELLO_HANDLE: str = "hello"
+    # Per-turn wall-clock bound (seconds) on the hello engine's one-shot pi call.
+    HELLO_PI_TIMEOUT_S: float = 60.0
+
     # Where a registered `engine` (kind aligner) runs its NEGMAS drive — selects
     # the engine runtime. "backend" (default):
     # this backend owns the run via its summon seam. "host": the host daemon owns
