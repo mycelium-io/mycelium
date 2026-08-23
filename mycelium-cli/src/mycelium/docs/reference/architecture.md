@@ -218,12 +218,11 @@ work already lives in**, so that a [board](#board) row pointing at a pull reques
 can report whether it's approved, blocked or failing instead of someone copying
 that state into Mycelium.
 
-> **Experimental.** This works end to end: give the hub a token, write a pull
-> request into a plan task, and the board row for that task carries the pull
-> request's state, in both the app and `mycelium board`. Nothing refreshes on a
-> schedule: a read reports what is known, starts a fetch for what is not, and
-> the surfaces show that plainly rather than pretending. Check the module before
-> writing a provider.
+This works end to end: give the hub a token, write a pull request into a row,
+and that row carries the pull request's state, in both the app and `mycelium
+board`. Nothing refreshes on a schedule: a read reports what is known, starts a
+fetch for what is not, and the surfaces show that plainly rather than
+pretending. Check the module before writing a provider.
 
 | Provider | Recognises | Reports |
 |----------|------------|---------|

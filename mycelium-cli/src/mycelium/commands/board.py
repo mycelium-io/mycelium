@@ -10,10 +10,11 @@ through whichever lens you ask for.  The default lens is "needs you", because a
 board worth having is one you can ignore until it says your name.
 
 The verbs (claim / resolve / block / promote / dismiss) are the same words the
-GUI uses and the same words an agent drives over the ledger.  In this proof of
-concept only the ones with a real write behind them act: ``resolve`` on a row
-that came from a plan task toggles the task.  Everything else prints what it
-would write rather than pretending.
+GUI uses and the same words an agent drives over the ledger, and each one
+writes.  Custody goes through a lease, because who holds a row moves under
+rules a plain write cannot check; everything else is frontmatter on the row's
+memory.  A row projected from somewhere other than a memory has nothing to
+write onto and says so.
 """
 
 from __future__ import annotations
@@ -33,6 +34,7 @@ from rich.table import Table
 from rich.text import Text
 
 from mycelium.board import LiveItem, attach_upstream, custody, infer_schema, project_items
+from mycelium.board import fields as board_fields
 from mycelium.board.activity import (
     DAILY_GOAL,
     by_day,
@@ -483,7 +485,7 @@ def board(
 
 @doc_ref(
     usage="mycelium board resolve <id>",
-    desc="Resolve a board row. Plan tasks and work/ leases write through; other rows report what they would write.",
+    desc="Resolve a board row: a plan task toggles, a work/ lease resolves, any other memory row takes status=resolved.",
     group="board",
 )
 @app.command(name="resolve")
@@ -506,7 +508,9 @@ def board_resolve(
     if item is not None and custody.refusal_for(item) is None:
         _lease(cfg, name, "resolve", key=_lease_key(item), handle=cfg.get_current_identity())
         return
-    _would_write("resolve", row_id, {"custody": "resolved"})
+    # Not leasable, but still a row with frontmatter: `status` is a stage, and a
+    # stage is a field write. Custody stays out of it — that is the lease's.
+    _write_fields(cfg, name, row_id, {"status": "resolved"})
 
 
 @doc_ref(
@@ -588,7 +592,9 @@ def board_block(
             "[yellow]·[/yellow] block needs --on: a row is blocked because it names a blocker."
         )
         raise typer.Exit(1)
-    _would_write("block", row_id, {"blocked_by": on})
+    cfg = MyceliumConfig.load()
+    name = _resolve_room(cfg, room)
+    _write_fields(cfg, name, row_id, {custody.BLOCKED_FIELD: on})
 
 
 def _lease_key(item: LiveItem) -> str:
@@ -648,14 +654,42 @@ def _lease(cfg: MyceliumConfig, room: str, action: str, **body: Any) -> None:
         console.print(f"[green]✓[/green] {action}d [bold]{data.get('key')}[/bold]")
 
 
-def _would_write(verb: str, row_id: str, patch: dict) -> None:
-    """Say what a verb implies where no write exists behind it yet."""
+def _write_fields(cfg: MyceliumConfig, room: str, row_id: str, patch: dict) -> None:
+    """Put a verb's frontmatter on the row, and say what landed.
+
+    The same upsert a ``memory set --meta`` goes through, so a verb typed here
+    and an agent writing frontmatter leave one kind of trace. A row with no
+    frontmatter behind it, or a key a lease owns, is refused in its own terms
+    rather than written somewhere it would not be read back.
+    """
+    item = _row(room, row_id)
+    if item is None:
+        console.print(f"[dim]No row '{row_id}' on this board.[/dim]")
+        raise typer.Exit(1)
+    refusal = board_fields.refusal_for(item)
+    if refusal:
+        console.print(f"[yellow]·[/yellow] {row_id} can't take a field write — {refusal}")
+        raise typer.Exit(1)
+    reserved = board_fields.reserved_in(patch)
+    if reserved:
+        console.print(
+            f"[yellow]·[/yellow] {', '.join(reserved)} moves through a lease, not a field "
+            "write — use claim / release / resolve."
+        )
+        raise typer.Exit(1)
+    key = board_fields.memory_key_of(item)
+    body = {"key": key, "handle": cfg.get_current_identity(), "fields": patch}
+    try:
+        with hub_client(cfg, timeout=30) as client:
+            resp = client.post(f"/api/rooms/{room}/fields", json=body)
+    except httpx.HTTPError as e:
+        console.print(f"[red]✗[/red] hub unreachable: {e}")
+        raise typer.Exit(1) from e
+    if resp.status_code >= 400:
+        console.print(f"[red]✗[/red] write failed: {resp.text}")
+        raise typer.Exit(1)
     rendered = " ".join(f"{k}={v}" for k, v in patch.items())
-    console.print(
-        f"[yellow]·[/yellow] {verb} [bold]{row_id}[/bold] → {rendered}\n"
-        "[dim]  Not written. Custody verbs (claim / release / resolve) write through on "
-        "work/ rows; the rest report what they would write.[/dim]"
-    )
+    console.print(f"[green]✓[/green] wrote [bold]{key}[/bold] → {rendered}")
 
 
 # ── the log ──────────────────────────────────────────────────────────────────

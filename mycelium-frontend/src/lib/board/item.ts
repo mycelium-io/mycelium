@@ -166,8 +166,6 @@ export interface VerbContext {
   /** Who the gesture acts as — `claim` with no target claims for you. */
   actor: string;
   now: string;
-  /** Issue number a `promote` would file as, in a PoC with no GitHub write. */
-  issueNumber?: number;
   /** Why a `release` is handing the row back, recorded against the releaser. */
   note?: string;
   /** Minutes a `claim` holds for before it drains. */
@@ -178,8 +176,10 @@ export interface VerbContext {
 
 /**
  * A verb returns the field patch it implies. `promote` is the one that leaves
- * the board: it stamps the back-link and resolves, because the record now lives
- * in GitHub and the live slice shouldn't hold a second copy of it.
+ * the board: it marks the row as belonging somewhere more durable and resolves,
+ * so the live slice stops carrying it. It does not stamp a back-link — nothing
+ * here files the issue, and a reference the verb invented would be one the
+ * status providers then resolve against a real, unrelated one.
  */
 export function applyVerb(
   item: LiveItem,
@@ -211,7 +211,6 @@ export function applyVerb(
     case "promote":
       patch.status = "resolved";
       patch.promoted = true;
-      if (ctx.issueNumber) patch.issue = `#${ctx.issueNumber}`;
       break;
     case "dismiss":
       patch.status = "dismissed";

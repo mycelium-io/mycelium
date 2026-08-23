@@ -42,7 +42,6 @@ from app.services.filesystem import (
     get_room_dir,
     list_memory_files,
     read_memory_file,
-    unmanaged_meta,
 )
 
 FIELD = "custody"
@@ -170,27 +169,15 @@ def _describe(key: str, meta: dict, now: datetime) -> dict:
 async def _write(
     room: str, key: str, meta: dict, content: str, patch: dict, handle: str, *, notify: bool = True
 ) -> dict:
-    """Put a custody change on the row, through the canonical memory upsert."""
-    from app.routes.memory import _reconstruct_value, upsert_memories
-    from app.schemas import MemoryBatchCreate, MemoryCreate
+    """Put a custody change on the row, through the canonical memory upsert.
 
-    payload = MemoryBatchCreate(
-        items=[
-            MemoryCreate(
-                key=key,
-                value=_reconstruct_value(meta, content),
-                content_text=content or None,
-                # A lease changes who holds the row, not what it says: re-running
-                # the embedder over unchanged prose would burn a model call per
-                # heartbeat. The stored vector is carried forward instead.
-                embed=False,
-                created_by=handle,
-                meta=patch,
-            )
-        ]
-    )
-    written = await upsert_memories(room, payload, notify=notify)
-    fresh_meta = {**unmanaged_meta(meta), **patch, "version": written[0].version}
+    The upsert itself is :func:`app.services.fields.upsert_patch`, shared with
+    the board's field writes so a lease and a status change cannot drift in how
+    they reach the store.
+    """
+    from app.services.fields import upsert_patch
+
+    fresh_meta = await upsert_patch(room, key, meta, content, patch, handle, notify=notify)
     return _describe(key, fresh_meta, datetime.now(UTC))
 
 

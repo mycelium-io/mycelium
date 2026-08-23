@@ -375,10 +375,7 @@
       <p>Any agent that can make HTTP requests can use the REST API directly. Interactive API docs are available at <code>http://localhost:8000/docs</code> when the backend is running.</p>
       <h2 id="architecture-status-providers">Status providers</h2>
       <p>Adapters connect <strong>agents</strong> to a room. Status providers connect the <strong>tools your work already lives in</strong>, so that a <a href="index.html#board">board</a> row pointing at a pull request can report whether it&#x27;s approved, blocked or failing instead of someone copying that state into Mycelium.</p>
-      <div class="callout callout-note">
-        <div class="callout-bar"></div>
-        <div class="callout-body"><strong>Experimental.</strong> This works end to end: give the hub a token, write a pull request into a plan task, and the board row for that task carries the pull request&#x27;s state, in both the app and <code>mycelium board</code>. Nothing refreshes on a schedule: a read reports what is known, starts a fetch for what is not, and the surfaces show that plainly rather than pretending. Check the module before writing a provider.</div>
-      </div>
+      <p>This works end to end: give the hub a token, write a pull request into a row, and that row carries the pull request&#x27;s state, in both the app and <code>mycelium board</code>. Nothing refreshes on a schedule: a read reports what is known, starts a fetch for what is not, and the surfaces show that plainly rather than pretending. Check the module before writing a provider.</p>
       <div class="table-wrap">
         <table>
           <thead>

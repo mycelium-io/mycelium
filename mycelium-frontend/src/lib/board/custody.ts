@@ -86,6 +86,22 @@ export const CUSTODY_REFUSALS: Record<string, string> = {
   memory: "leases live on work/ memories; this row is in another namespace",
 };
 
+/**
+ * Custody's own keys, which a plain field write must not touch.
+ *
+ * Derived from the model above rather than restated: a lease owns who holds a
+ * row and for how long, under rules a field write cannot check — a live claim
+ * is not stealable, and expiry is read off a clock rather than written down.
+ * The backend refuses these too; this is so the surface can say why without
+ * making the round trip.
+ */
+export const RESERVED_FIELDS = [CUSTODY_FIELD, "owner", ...CUSTODY_COMPANION_FIELDS];
+
+/** Which of `names` a lease owns, so a caller can refuse before writing. */
+export function reservedIn(names: string[]): string[] {
+  return names.filter(n => RESERVED_FIELDS.includes(n)).sort();
+}
+
 /** A row is blocked because it names a blocker. Nothing stores the word. */
 export const BLOCKED_FIELD = "blocked_by";
 

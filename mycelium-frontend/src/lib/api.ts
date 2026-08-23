@@ -230,6 +230,31 @@ export async function writeLease(
   });
 }
 
+export interface FieldState {
+  key: string;
+  fields: Record<string, unknown>;
+  version: number | null;
+}
+
+/**
+ * Put fields on a row — the write behind every board verb that is not custody.
+ *
+ * The same upsert a `memory set --meta` goes through, so a status changed by
+ * dragging a card is the same versioned, indexed, broadcast change an agent
+ * writing frontmatter makes. A board that moved a card in the browser and
+ * nowhere else was a surface asserting something the room had never been told.
+ */
+export async function writeFields(
+  roomName: string,
+  body: { key: string; handle: string; fields: Record<string, unknown> },
+): Promise<FieldState> {
+  return apiFetch<FieldState>(`/api/rooms/${roomName}/fields`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
 /** `fetchMemories`'s page size — exported so a caller showing a raw count
  *  (the dashboard's room cards) can tell "exactly this many" apart from
  *  "at least this many" instead of reporting the cap as a true total. */
