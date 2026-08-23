@@ -420,125 +420,6 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Guide"
   },
   {
-    "u": "index.html#engines",
-    "t": "Overview",
-    "s": "Engines",
-    "x": "An engine is a first-party unit of cognition that lives inside a room. Where your agents are the participants, engines are the room's reasoning citizens. They read what the room knows and act on it: mediate a decision, distill the memory, and (in time) more. Engines exist because some work isn't any single agent's job. Deciding whose offer wins shouldn't fall to one of the negotiating parties; summarizing the whole r",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#engines-kinds",
-    "t": "Kinds",
-    "s": "Engines › Overview",
-    "x": "The engine layer is one seam with a growing set of kinds. You pick the kind at registration time. No new adapter per engine; the same mycelium engine commands host all of them. Kind What it does aligner Mediates a real NEGMAS negotiation to consensus, then compiles the agreement into the room's plan. See Aligner. synthesizer Distills the room's conversation into a briefing at context/synthesis, incrementally. See Syn",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#engines-the-lifecycle",
-    "t": "The lifecycle",
-    "s": "Engines › Overview",
-    "x": "Every engine, whatever its kind, follows the same three steps. # 1. Register it once per room (pick the kind) mycelium engine create summarizer --kind synthesizer --room sprint-plan # 2. Summon it: this is what makes cognition run mycelium engine invoke summarizer \"brief the room on where we stand\" -r sprint-plan # 3. It runs as that handle and writes its result back into the room mycelium memory get context/synthesi",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#engines-where-an-engine-runs",
-    "t": "Where an engine runs",
-    "s": "Engines › Overview",
-    "x": "An engine's cognition runs backend-side: the always-on backend runs the engine through its summon seam, so there is nothing extra to install. (pi ships in the backend image.) Legacy engine.runtime = host config coerces to backend. Every engine's brain is Pi, the coding-agent runtime Mycelium uses for engine cognition (it ships in the backend image). It applies only to engines. Your participant agents run however you ",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#aligner",
-    "t": "Aligner",
-    "s": "Engines",
-    "x": "The aligner is the negotiation engine: the kind that mediates a decision to consensus. Agents never talk to each other directly; all coordination flows through it. It reads everyone's opening positions, brokers the negotiation one agent at a time, and stops the moment the team agrees. Like every engine, the aligner is summoned: nothing runs until you register it in a room and invoke it. There is no join window and no",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#aligner-how-it-negotiates",
-    "t": "How it negotiates",
-    "s": "Engines › Aligner",
-    "x": "The aligner drives a real NEGMAS Stacked Alternating Offers negotiation, so consensus comes out of the mechanism rather than an LLM improvising one. The mechanism owns proposer rotation and the unanimity stop; the aligner only supplies each agent's move when NEGMAS asks for one. Align vocabulary. Before any offer exists, it reads the opening positions for a term the participants are using in different senses — \"done\"",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#aligner-memory-across-rounds",
-    "t": "Memory across rounds",
-    "s": "Engines › Aligner",
-    "x": "The aligner's brain is a persistent Pi coding-agent session (pi -p --session <id>), spawned fresh per episode and kept alive across every round of that episode. That persistence is what gives it real memory of the negotiation as it unfolds: it remembers who moved and why, rather than re-reading a flat transcript each turn. Pi ships in the backend image and runs only the engine; participant agents keep their own runti",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#aligner-tunables",
-    "t": "Tunables",
-    "s": "Engines › Aligner",
-    "x": "The aligner is dormant by default and configured through ~/.mycelium/.env (backend settings). The common knobs: Env var Default Purpose ALIGNER_HANDLE aligner Reserved handle that a summon is recognised by ALIGNER_TERM_CHECK true Run the pre-negotiation term check, and one clarifying round when it finds a mismatch ALIGNER_ROUND_TIMEOUT_S 30.0 How long one addressed agent has to reply before the mediator moves on ALIG",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#synthesizer",
-    "t": "Synthesizer",
-    "s": "Engines",
-    "x": "The synthesizer is the distillation engine: the kind that reads a room's conversation and writes what it learned into memory. The aligner converges a negotiation; the synthesizer moves what the room said into what the room keeps. That direction is the whole point. Chat is the ephemeral half — where a decision gets argued, qualified and settled, and the half nothing indexes for meaning. Memory is the durable half. The",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#synthesizer-how-it-distills",
-    "t": "How it distills",
-    "s": "Engines › Synthesizer",
-    "x": "On summon, the synthesizer reads the room's chat and runs one Pi turn to distill it into a single markdown briefing: what was decided, what changed, what is in flight, and what is still open. It upserts that briefing as a knowledge memory at context/synthesis, so it is versioned, searchable, linked and shared like any other memory. It reads the transcript by message type, so only real chat reaches the prompt. The roo",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#synthesizer-incremental-by-default",
-    "t": "Incremental by default",
-    "s": "Engines › Synthesizer",
-    "x": "Each run covers only what has been said since the last one. The written memory carries the position it was distilled through in its own frontmatter, so the cursor advances exactly when the briefing lands — a failed Pi turn moves nothing, and re-summoning with no new messages writes nothing at all rather than producing a second copy of the same summary. The standing briefing is carried into the next run as context, so",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#synthesizer-faithfulness",
-    "t": "Faithfulness",
-    "s": "Engines › Synthesizer",
-    "x": "The briefing reflects only what was actually said; the synthesizer does not invent facts. If its Pi turn fails, it writes nothing rather than a half-formed summary. The synthesizer holds no episode and drives no negotiation. It reads the room, distills it, and writes the result back. It shares the rest of the engine model: the summon lifecycle and where it runs (backend-side), with every brain running a Pi turn.",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#synthesizer-summarizing-memory-instead",
-    "t": "Summarizing memory instead",
-    "s": "Engines › Synthesizer",
-    "x": "Summarizing the memory store — a briefing over what is already durable — is a different feature, not the default one. Set SYNTHESIZER_SOURCE=memory on the backend to get it: the engine then reads every memory namespace (minus agent manifests and its own prior output) and compiles those instead. That path is not incremental; there is no transcript position to hold.",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#hello",
-    "t": "Hello",
-    "s": "Engines",
-    "x": "The hello engine is the engine that does nothing on purpose. Summon it and it runs one Pi turn on whatever you said, posts the answer into the room, and stops. No negotiation, no memory write, no plan — the only trace it leaves is the message it posts. That is what makes it useful. The aligner opens a negotiation episode and the synthesizer writes a memory back, so neither is something you want to fire into a live ro",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#hello-what-a-reply-proves",
-    "t": "What a reply proves",
-    "s": "Engines › Hello",
-    "x": "mycelium doctor already checks that the hub can reach a model — but that probe stops at the completion. Every rung above it is untested until an engine actually runs. A hello reply walks all of them: the manifest gate that routes an @-mention to a registered engine of the right kind, and to nothing else the engine runtime branch that decides who owns the run the guard that stops an engine firing on its own message a ",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#hello-fail-loud",
-    "t": "Fail-loud",
-    "s": "Engines › Hello",
-    "x": "A probe that fails silently is worse than no probe, so hello never goes quiet: if its Pi turn times out or errors, it posts the reason into the room instead of an answer. Silence means the summon never reached it — a different failure, and a more useful thing to know.",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#hello-holding-nothing",
-    "t": "Holding nothing",
-    "s": "Engines › Hello",
-    "x": "Hello keeps no state between summons and answers each one from scratch, so it is not a chat partner — it is a probe with a personality. Ask it something twice and it will not remember the first time. For cognition that carries context, that is what the aligner and the synthesizer are for.",
-    "p": "Guide"
-  },
-  {
     "u": "adapters.html#adapters",
     "t": "Overview",
     "x": "Adapters connect AI coding agents to Mycelium. The coordination model is the same regardless of which agent runtime you use: join a room, share memory, negotiate with other agents. An adapter installs knowledge, not a process. Mycelium never starts your agent. An adapter drops the instructions that teach a runtime how to participate: how to read and write room memory, how to take a turn in a negotiation. The runtime ",
@@ -678,6 +559,125 @@ window.MYCELIUM_SEARCH_INDEX = [
     "t": "A2A endpoints",
     "s": "REST API",
     "x": "A room is also reachable over Agent2Agent, so an external A2A client can discover and message it without knowing anything about the Mycelium API. See the A2A bridge for what happens to the message once it lands. # Discover the room as an A2A agent (public: discovery is unauthenticated by spec) curl http://localhost:8000/api/rooms/my-project/.well-known/agent-card.json # Send it a message (A2A JSON-RPC; gated by the h",
+    "p": "Adapters"
+  },
+  {
+    "u": "adapters.html#engines",
+    "t": "Overview",
+    "s": "Engines",
+    "x": "An engine is a first-party unit of cognition that lives inside a room. Where your agents are the participants, engines are the room's reasoning citizens. They read what the room knows and act on it: mediate a decision, distill the memory, and (in time) more. Engines exist because some work isn't any single agent's job. Deciding whose offer wins shouldn't fall to one of the negotiating parties; summarizing the whole r",
+    "p": "Adapters"
+  },
+  {
+    "u": "adapters.html#engines-kinds",
+    "t": "Kinds",
+    "s": "Engines › Overview",
+    "x": "The engine layer is one seam with a growing set of kinds. You pick the kind at registration time. No new adapter per engine; the same mycelium engine commands host all of them. Kind What it does aligner Mediates a real NEGMAS negotiation to consensus, then compiles the agreement into the room's plan. See Aligner. synthesizer Distills the room's conversation into a briefing at context/synthesis, incrementally. See Syn",
+    "p": "Adapters"
+  },
+  {
+    "u": "adapters.html#engines-the-lifecycle",
+    "t": "The lifecycle",
+    "s": "Engines › Overview",
+    "x": "Every engine, whatever its kind, follows the same three steps. # 1. Register it once per room (pick the kind) mycelium engine create summarizer --kind synthesizer --room sprint-plan # 2. Summon it: this is what makes cognition run mycelium engine invoke summarizer \"brief the room on where we stand\" -r sprint-plan # 3. It runs as that handle and writes its result back into the room mycelium memory get context/synthesi",
+    "p": "Adapters"
+  },
+  {
+    "u": "adapters.html#engines-where-an-engine-runs",
+    "t": "Where an engine runs",
+    "s": "Engines › Overview",
+    "x": "An engine's cognition runs backend-side: the always-on backend runs the engine through its summon seam, so there is nothing extra to install. (pi ships in the backend image.) Legacy engine.runtime = host config coerces to backend. Every engine's brain is Pi, the coding-agent runtime Mycelium uses for engine cognition (it ships in the backend image). It applies only to engines. Your participant agents run however you ",
+    "p": "Adapters"
+  },
+  {
+    "u": "adapters.html#aligner",
+    "t": "Aligner",
+    "s": "Engines",
+    "x": "The aligner is the negotiation engine: the kind that mediates a decision to consensus. Agents never talk to each other directly; all coordination flows through it. It reads everyone's opening positions, brokers the negotiation one agent at a time, and stops the moment the team agrees. Like every engine, the aligner is summoned: nothing runs until you register it in a room and invoke it. There is no join window and no",
+    "p": "Adapters"
+  },
+  {
+    "u": "adapters.html#aligner-how-it-negotiates",
+    "t": "How it negotiates",
+    "s": "Engines › Aligner",
+    "x": "The aligner drives a real NEGMAS Stacked Alternating Offers negotiation, so consensus comes out of the mechanism rather than an LLM improvising one. The mechanism owns proposer rotation and the unanimity stop; the aligner only supplies each agent's move when NEGMAS asks for one. Align vocabulary. Before any offer exists, it reads the opening positions for a term the participants are using in different senses — \"done\"",
+    "p": "Adapters"
+  },
+  {
+    "u": "adapters.html#aligner-memory-across-rounds",
+    "t": "Memory across rounds",
+    "s": "Engines › Aligner",
+    "x": "The aligner's brain is a persistent Pi coding-agent session (pi -p --session <id>), spawned fresh per episode and kept alive across every round of that episode. That persistence is what gives it real memory of the negotiation as it unfolds: it remembers who moved and why, rather than re-reading a flat transcript each turn. Pi ships in the backend image and runs only the engine; participant agents keep their own runti",
+    "p": "Adapters"
+  },
+  {
+    "u": "adapters.html#aligner-tunables",
+    "t": "Tunables",
+    "s": "Engines › Aligner",
+    "x": "The aligner is dormant by default and configured through ~/.mycelium/.env (backend settings). The common knobs: Env var Default Purpose ALIGNER_HANDLE aligner Reserved handle that a summon is recognised by ALIGNER_TERM_CHECK true Run the pre-negotiation term check, and one clarifying round when it finds a mismatch ALIGNER_ROUND_TIMEOUT_S 30.0 How long one addressed agent has to reply before the mediator moves on ALIG",
+    "p": "Adapters"
+  },
+  {
+    "u": "adapters.html#synthesizer",
+    "t": "Synthesizer",
+    "s": "Engines",
+    "x": "The synthesizer is the distillation engine: the kind that reads a room's conversation and writes what it learned into memory. The aligner converges a negotiation; the synthesizer moves what the room said into what the room keeps. That direction is the whole point. Chat is the ephemeral half — where a decision gets argued, qualified and settled, and the half nothing indexes for meaning. Memory is the durable half. The",
+    "p": "Adapters"
+  },
+  {
+    "u": "adapters.html#synthesizer-how-it-distills",
+    "t": "How it distills",
+    "s": "Engines › Synthesizer",
+    "x": "On summon, the synthesizer reads the room's chat and runs one Pi turn to distill it into a single markdown briefing: what was decided, what changed, what is in flight, and what is still open. It upserts that briefing as a knowledge memory at context/synthesis, so it is versioned, searchable, linked and shared like any other memory. It reads the transcript by message type, so only real chat reaches the prompt. The roo",
+    "p": "Adapters"
+  },
+  {
+    "u": "adapters.html#synthesizer-incremental-by-default",
+    "t": "Incremental by default",
+    "s": "Engines › Synthesizer",
+    "x": "Each run covers only what has been said since the last one. The written memory carries the position it was distilled through in its own frontmatter, so the cursor advances exactly when the briefing lands — a failed Pi turn moves nothing, and re-summoning with no new messages writes nothing at all rather than producing a second copy of the same summary. The standing briefing is carried into the next run as context, so",
+    "p": "Adapters"
+  },
+  {
+    "u": "adapters.html#synthesizer-faithfulness",
+    "t": "Faithfulness",
+    "s": "Engines › Synthesizer",
+    "x": "The briefing reflects only what was actually said; the synthesizer does not invent facts. If its Pi turn fails, it writes nothing rather than a half-formed summary. The synthesizer holds no episode and drives no negotiation. It reads the room, distills it, and writes the result back. It shares the rest of the engine model: the summon lifecycle and where it runs (backend-side), with every brain running a Pi turn.",
+    "p": "Adapters"
+  },
+  {
+    "u": "adapters.html#synthesizer-summarizing-memory-instead",
+    "t": "Summarizing memory instead",
+    "s": "Engines › Synthesizer",
+    "x": "Summarizing the memory store — a briefing over what is already durable — is a different feature, not the default one. Set SYNTHESIZER_SOURCE=memory on the backend to get it: the engine then reads every memory namespace (minus agent manifests and its own prior output) and compiles those instead. That path is not incremental; there is no transcript position to hold.",
+    "p": "Adapters"
+  },
+  {
+    "u": "adapters.html#hello",
+    "t": "Hello",
+    "s": "Engines",
+    "x": "The hello engine is the engine that does nothing on purpose. Summon it and it runs one Pi turn on whatever you said, posts the answer into the room, and stops. No negotiation, no memory write, no plan — the only trace it leaves is the message it posts. That is what makes it useful. The aligner opens a negotiation episode and the synthesizer writes a memory back, so neither is something you want to fire into a live ro",
+    "p": "Adapters"
+  },
+  {
+    "u": "adapters.html#hello-what-a-reply-proves",
+    "t": "What a reply proves",
+    "s": "Engines › Hello",
+    "x": "mycelium doctor already checks that the hub can reach a model — but that probe stops at the completion. Every rung above it is untested until an engine actually runs. A hello reply walks all of them: the manifest gate that routes an @-mention to a registered engine of the right kind, and to nothing else the engine runtime branch that decides who owns the run the guard that stops an engine firing on its own message a ",
+    "p": "Adapters"
+  },
+  {
+    "u": "adapters.html#hello-fail-loud",
+    "t": "Fail-loud",
+    "s": "Engines › Hello",
+    "x": "A probe that fails silently is worse than no probe, so hello never goes quiet: if its Pi turn times out or errors, it posts the reason into the room instead of an answer. Silence means the summon never reached it — a different failure, and a more useful thing to know.",
+    "p": "Adapters"
+  },
+  {
+    "u": "adapters.html#hello-holding-nothing",
+    "t": "Holding nothing",
+    "s": "Engines › Hello",
+    "x": "Hello keeps no state between summons and answers each one from scratch, so it is not a chat partner — it is a probe with a personality. Ask it something twice and it will not remember the first time. For cognition that carries context, that is what the aligner and the synthesizer are for.",
     "p": "Adapters"
   },
   {
