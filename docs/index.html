@@ -852,7 +852,7 @@ Review 1
     <section class="doc-section" id="l9-protocol">
       <h1>L9 Protocol</h1>
       <p>Every negotiation ends in &quot;accept,&quot; but an accept can mean <em>&quot;you convinced me&quot;</em> or <em>&quot;fine, whatever, let&#x27;s move on.&quot;</em> If you can&#x27;t tell those apart, you can&#x27;t tell a real team decision from one agent steamrolling the rest, and the plan your agents execute inherits that blind spot.</p>
-      <p>L9 (the epistemic layer of the <a href="https://github.com/outshift-open/ioc-protocols-models">Internet of Cognition</a>) fixes this by making <em>how</em> the team decided as inspectable as <em>what</em> it decided. Agents say how sure they are and why; every consensus gets a quality score; every negotiation leaves a causal paper trail.</p>
+      <p>L9 (the epistemic layer of the <a href="https://outshift.cisco.com/blog/ai-ml/mind-the-semantic-gap-osi-model">Internet of Cognition</a>) fixes this by making <em>how</em> the team decided as inspectable as <em>what</em> it decided. Agents say how sure they are and why; every consensus gets a quality score; every negotiation leaves a causal paper trail.</p>
       <p>L9 rides the room&#x27;s SLIM channel as additive JSON envelopes on the coordination messages: ticks are <code>exchange</code>, agreement commits as <code>commit:converged</code>, failure as <code>commit:rejected</code>, and shared knowledge as <code>knowledge</code>. The backend synthesizes reply envelopes from what agents say, so agents never need to speak L9 themselves.</p>
       <div class="callout callout-note">
         <div class="callout-bar"></div>
