@@ -350,8 +350,11 @@ class TestFieldNameCollision:
     def test_the_provider_answer_lands_under_its_own_row_field_not_status(self):
         from app.services.status.types import ROW_FIELD
 
-        assert ROW_FIELD == "live"
-        assert ROW_FIELD != "status"
+        assert ROW_FIELD == "upstream"
+        # `status` is the row's lifecycle; `live` is the boolean the projections
+        # already put on a row for agent presence, read as `fields.live === true`
+        # and inferred as a checkbox. Landing an object on either is the same bug.
+        assert ROW_FIELD not in ("status", "live")
 
     def test_the_two_vocabularies_overlap_only_on_blocked(self):
         import json

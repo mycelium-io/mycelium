@@ -187,12 +187,14 @@ sort, filter and colour by without knowing what a pull request is:
 job is keeping them apart: an approved pull request is `ok` right up until it
 merges, and `done` the moment it does.
 
-That answer will land on the row under its own `live` field, never the row's own
-`status`. A row already uses `status` for its lifecycle (`open`, `claimed`,
-`in_progress`, `blocked`, `resolved`), and both sets of words contain `blocked`
-meaning different things: a person has blocked the row, versus the pull request
-is waiting on a person. Keeping the provider's reading in a separate field is
-what stops the two from being read as one.
+That answer will land on the row under its own `upstream` field, and on neither
+of the two fields a row already owns. `status` is the row's lifecycle (`open`,
+`claimed`, `in_progress`, `blocked`, `resolved`), and both sets of words contain
+`blocked` meaning different things: a person has blocked the row, versus the pull
+request is waiting on a person. `live` is the row's other one, a yes-or-no for
+whether an agent is resident on it. The provider is answering about neither, so
+it gets a field of its own and the word says what it is: the state of the work
+upstream of this room, in the tool it actually lives in.
 
 GitHub maps onto the six more narrowly than you might guess. `ok` needs an
 approval, so green checks with no review yet are `pending` / `awaiting review`.

@@ -218,12 +218,12 @@ work already lives in**, so that a [board](#board) row pointing at a pull reques
 can report whether it's approved, blocked or failing instead of someone copying
 that state into Mycelium.
 
-> **Experimental.** The contract, the GitHub provider, and the credential store
-> live in the backend (`app/services/status/`), and you can give the hub a
-> credential today (below). What is not wired yet is the part that *spends* it:
-> no route, no schedule, no field on a board row constructs the runtime, so
-> nothing polls a provider on its own. Read this section as what a provider will
-> implement, and check the module before writing one.
+> **Experimental.** The contract, the GitHub provider, the credential store and
+> the API below all work: give the hub a token and
+> `GET /api/rooms/{room}/status` answers for every reference your room's text
+> mentions. What is not wired yet is the surface: no board row carries the
+> answer, and nothing refreshes on a schedule, so a reference goes stale until
+> someone reads it again. Check the module before writing a provider.
 
 | Provider | Recognises | Reports |
 |----------|------------|---------|
@@ -232,6 +232,37 @@ that state into Mycelium.
 Providers run on the hub only. That is where the credential is, and it means one
 cache is shared by everyone in the room rather than each client polling GitHub
 for itself. A spoke never holds a service token.
+
+### Asking what the tools say
+
+```
+GET /api/rooms/{room}/status
+```
+
+You never tell Mycelium which pull requests to watch. Write a plan task that
+says `land the custody seam: mycelium-io/mycelium#504` and the reference is
+already there; the hub reads the room's own plan tasks and its `decisions/`,
+`status/`, `work/` and `failed/` memories, and asks each provider what it
+recognises. Nothing in the hub matches `#504`: a provider is the only thing that
+knows its own shapes, so teaching Mycelium about Jira ticket keys is adding a
+provider, not editing a parser.
+
+The response carries one entry per reference, each with the state, the
+provider's own label, and the board row ids whose text mentioned it, so a
+surface attaches an answer to a row by matching an id it already has.
+
+**Reading does not fetch.** Opening a board must not become a burst of calls to
+GitHub, so a read answers from cache, says how fresh each answer is, and starts
+a refresh in the background for whatever is due. The next read sees it. Two
+query parameters are the exceptions worth knowing:
+
+| Parameter | What it does |
+|-----------|--------------|
+| `?refresh=true` | Fetch before answering. The blocking path, for a one-shot caller with nowhere to come back to. |
+| `?max_age=<seconds>` | Anything older is reported `missing` rather than handed over. Recency you can demand instead of hope for. |
+
+A reference whose provider has no credential comes back with the reason
+(`github: GITHUB_TOKEN not configured`), never as a blank.
 
 ### Giving the hub a credential
 
@@ -329,10 +360,11 @@ Map your tool's vocabulary onto the six states in the
 `unknown`, and keep your own wording as the label. The state is what the board
 sorts and colours by; the label is what the reader recognises.
 
-Your answer will land on a row under a `live` field, never the row's own
-`status`. The two vocabularies both contain `blocked` and mean different things
-by it, so they are kept in separate fields rather than one shadowing the other.
-In the backend the answer is a `Liveness`, named for the same reason.
+Your answer will land on a row under an `upstream` field, and on neither field a
+row already owns. Not `status`, the row's own lifecycle, whose vocabulary shares
+the word `blocked` with yours and means something else by it. Not `live` either,
+which is a yes-or-no for whether an agent is resident on the row. In the backend
+the answer is a `Liveness`, kept apart from both for the same reason.
 
 The host bound is enforced, not merely declared: `ctx.http` refuses any request
 to a host other than your `base_url`, so a redirect or a hand-written absolute
