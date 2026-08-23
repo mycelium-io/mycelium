@@ -71,10 +71,31 @@ def test_room_messages_renders_with_type_and_count(monkeypatch: pytest.MonkeyPat
     result = CliRunner().invoke(room_cmd.app, ["messages", "msgtest", "--limit", "5"])
 
     assert result.exit_code == 0, result.output
-    assert "operator [broadcast]: @cc-x reply with OK" in result.output
-    assert "cc-x [direct]: OK from cc-x" in result.output
+    assert "operator [broadcast]" in result.output
+    assert "@cc-x reply with OK" in result.output
+    assert "cc-x [direct]" in result.output
+    assert "OK from cc-x" in result.output
     assert "2 messages" in result.output
     assert captured["limit"] == 5
+    # The short id is what `room amend` takes, so reading a room hands you one.
+    for m in msgs:
+        assert str(m.id)[:8] in result.output
+
+
+def test_room_messages_marks_an_amended_message_as_edited(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mycelium_backend_client.models import MessageListResponse
+
+    stamp = datetime.datetime(2026, 6, 11, 21, 22, 56)  # noqa: DTZ001 — fixed for assertions
+    revised = _make_messages()[:1]
+    revised[0].edited_at = stamp
+    _patch_common(monkeypatch, lambda **_kw: MessageListResponse(messages=revised, total=1))
+
+    result = CliRunner().invoke(room_cmd.app, ["messages", "msgtest"])
+
+    assert result.exit_code == 0, result.output
+    assert "(edited)" in result.output
 
 
 def test_room_messages_passes_sender_and_type_filters(monkeypatch: pytest.MonkeyPatch) -> None:

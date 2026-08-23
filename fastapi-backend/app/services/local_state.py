@@ -89,6 +89,16 @@ class StoredMessage:
     # id (``StoredMessage.id`` is a distinct id space). ``None`` for a message that
     # only ever lived here (an event-ledger row, or a broadcast to a dead channel).
     message_id: str | None = None
+    # The id of the message this one revises, when it is an ``exchange:amend``
+    # (the envelope id of the target, or its ``StoredMessage.id`` when the room's
+    # channel was down and the target never got one). An amendment is a message
+    # like any other; the read path folds it away
+    # (``persister.collapse_amendments``), so this row is what a client sees only
+    # when the target isn't in the same view.
+    amends: str | None = None
+    # When this message was last revised by an amendment, folded in on read. The
+    # amendment's own row carries None — it is the revision, not a revised thing.
+    edited_at: datetime | None = None
     id: uuid.UUID = field(default_factory=uuid.uuid4)
     created_at: datetime = field(default_factory=_now)
 
