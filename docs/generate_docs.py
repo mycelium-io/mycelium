@@ -1467,8 +1467,15 @@ def _write_search_index(records: list[dict]) -> None:
     A plain .json fetched at runtime would be blocked opening the site straight
     off disk; a script tag injected on first use works from file:// too and
     keeps the payload off the critical path.
+
+    Indented, because every docs change regenerates this whole file and git has
+    to be able to merge two of them. Minified it was one 120KB line: a single
+    atom with nothing to align on, so any two docs branches conflicted across
+    all of it and no one could resolve it by hand. Indented, the records and
+    their fields are separate lines and git merges disjoint edits itself. The
+    site pays half a kilobyte over the wire for it, after compression.
     """
-    payload = json.dumps(records, separators=(",", ":"), ensure_ascii=False)
+    payload = json.dumps(records, indent=2, ensure_ascii=False)
     # Legal in JSON, a line break in JS source: escape them or a page with one
     # in its prose takes the whole index down.
     payload = payload.replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
