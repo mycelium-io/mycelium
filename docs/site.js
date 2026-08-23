@@ -379,38 +379,35 @@
     heading.appendChild(anchor);
   });
 
-  // ── Section ID to docs command mapping ──
-  const SECTION_DOCS_MAP = {
-    'overview': 'mycelium docs overview',
-    'quickstart': 'mycelium docs quickstart',
-    'rooms': 'mycelium docs rooms',
-    'memory': 'mycelium docs memory',
-    'cognitive-engine': 'mycelium docs cognitive-engine',
-    'knowledge-graph': 'mycelium docs knowledge-graph',
-    'cli-reference': 'mycelium docs cli-reference',
-    'architecture': 'mycelium docs architecture',
-    'adapters': 'mycelium docs adapters',
-    'adapter-claude-code': 'mycelium docs adapters claude-code',
-    'adapter-cursor': 'mycelium docs adapters cursor',
-    'adapter-api': 'mycelium docs adapters api',
-  };
 
-  // Track current visible section for the docs cmd button
-  var currentDocsSection = 'overview';
-
-  function copyDocsCmd() {
-    const cmd = SECTION_DOCS_MAP[currentDocsSection] || 'mycelium docs --full';
-    navigator.clipboard.writeText(cmd).then(() => {
-      const btn = document.querySelector('.copy-docs-btn');
-      btn.innerHTML = '<i data-lucide="check"></i>' + cmd;
-      btn.classList.add('copied');
+  // agents.md is the setup runbook, meant to be handed to an agent whole. The
+  // token estimate matches copyPage's: characters over four, close enough to
+  // tell a reader whether it fits their context.
+  function copyAgentsMd() {
+    const btn = document.querySelector('.copy-agents-btn');
+    const reset = () => {
+      btn.innerHTML = '<i data-lucide="file-text"></i>Copy agents.md';
+      btn.classList.remove('copied', 'failed');
       icons();
-      setTimeout(() => {
-        btn.innerHTML = '<i data-lucide="terminal"></i>Copy docs cmd';
-        btn.classList.remove('copied');
+    };
+    fetch('agents.md')
+      .then(r => {
+        if (!r.ok) throw new Error(r.status);
+        return r.text();
+      })
+      .then(text => navigator.clipboard.writeText(text).then(() => {
+        const tokens = Math.round(text.length / 4).toLocaleString();
+        btn.innerHTML = '<i data-lucide="check"></i>Copied (~' + tokens + ' tokens)';
+        btn.classList.add('copied');
         icons();
-      }, 2000);
-    });
+        setTimeout(reset, 2000);
+      }))
+      .catch(() => {
+        btn.innerHTML = '<i data-lucide="x"></i>Copy failed';
+        btn.classList.add('failed');
+        icons();
+        setTimeout(reset, 2000);
+      });
   }
 
   // Active nav link tracking
@@ -424,8 +421,6 @@
         navLinks.forEach(l => l.classList.remove('active'));
         const active = document.querySelector(`.nav-link[href="#${id}"]`);
         if (active) active.classList.add('active');
-        // Track for copy docs cmd button
-        if (SECTION_DOCS_MAP[id]) currentDocsSection = id;
       }
     });
   }, { rootMargin: '-20% 0px -70% 0px' });

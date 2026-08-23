@@ -970,10 +970,6 @@ SKILL_MD_URL = (
     "mycelium/SKILL.md"
 )
 
-# The setup runbook the site publishes for agents, served from docs/ alongside
-# the generated pages.
-AGENTS_MD_URL = "https://mycelium-io.github.io/mycelium/agents.md"
-
 # Every markdown-backed section links back to the file it was rendered from, so
 # a reader who spots a mistake can fix it where the source of truth lives.
 EDIT_BASE_URL = (
@@ -1064,8 +1060,7 @@ def _topnav() -> str:
     The brand cell is sidebar-width so the rail reads as one column, matching
     RoomsSidebar sitting under the workspace header in the app. Page navigation
     lives in the persistent rail, which carries every page at every width, so the
-    bar holds only what the rail cannot: search, the page actions, and the
-    agent-facing runbook.
+    bar holds only what the rail cannot: search and the page actions.
     """
     return f"""<!-- TOP BAR -->
 <nav class="topnav">
@@ -1074,9 +1069,6 @@ def _topnav() -> str:
     <img src="logo.png" alt="Mycelium">
     <span class="brand-word">mycelium</span>
   </a>
-  <nav class="sectionnav">
-    <a href="{AGENTS_MD_URL}" target="_blank" rel="noopener">AGENTS.md ↗</a>
-  </nav>
   <div class="topnav-right">
     <div class="docsearch" id="docsearch">
       <button class="docsearch-toggle" id="docsearch-toggle" type="button"
@@ -1097,7 +1089,7 @@ def _topnav() -> str:
         </div>
       </div>
     </div>
-    <button class="copy-docs-btn" onclick="copyDocsCmd()"><i data-lucide="terminal"></i>Copy docs cmd</button>
+    <button class="copy-agents-btn" onclick="copyAgentsMd()"><i data-lucide="file-text"></i>Copy agents.md</button>
     <button class="copy-page-btn" onclick="copyPage()"><i data-lucide="copy"></i>Copy page</button>
 {_theme_toggle()}
     <a href="https://github.com/mycelium-io/mycelium" aria-label="GitHub">{GITHUB_SVG}</a>
@@ -1146,9 +1138,6 @@ def _sidebar(nav: list[NavPage], active_page_id: str) -> str:
     out.append('    <div class="nav-external">')
     out.append(
         f'      <a href="{SKILL_MD_URL}" target="_blank" rel="noopener">SKILL.md ↗</a>'
-    )
-    out.append(
-        f'      <a href="{AGENTS_MD_URL}" target="_blank" rel="noopener">AGENTS.md ↗</a>'
     )
     out.append("    </div>")
     out.append("  </nav>")
