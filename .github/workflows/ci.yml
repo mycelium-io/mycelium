@@ -149,11 +149,15 @@ jobs:
       # config schema. Same contract as the openapi.json check above: regenerate,
       # fail if the tree moves. Without it the committed output drifts silently and
       # the backlog lands as unrelated diff in whichever PR next runs the generator.
+      #
+      # The error names the version pins because they are the input nobody expects:
+      # the dependency table resolves them at generate time, so a bump reddens this
+      # check in a change that never touched a doc.
       - name: Docs site is current
         run: |
           (cd mycelium-cli && uv run python ../docs/generate_docs.py)
           if [ -n "$(git status --porcelain -- docs/)" ]; then
-            echo "::error file=docs/llms-full.txt::Generated docs are stale — run 'cd mycelium-cli && uv run python ../docs/generate_docs.py' and commit docs/."
+            echo "::error file=docs/llms-full.txt::Generated docs are stale — run 'cd mycelium-cli && uv run python ../docs/generate_docs.py' and commit docs/. The dependency table reads its versions live from both pyproject files and the compose.yml image tags, so bumping a dependency makes docs/ stale on its own — no doc has to have been edited."
             git status --porcelain -- docs/
             git diff --stat -- docs/
             exit 1
