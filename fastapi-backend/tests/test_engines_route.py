@@ -53,6 +53,18 @@ async def test_invite_normalizes_handle_and_synthesizer_kind(client):
 
 
 @pytest.mark.asyncio
+async def test_invite_hello_kind(client):
+    await _make_room(client)
+    resp = await client.post(
+        "/api/rooms/portfolio/engines",
+        json={"handle": "hello", "kind": "hello"},
+    )
+    assert resp.status_code == 201
+    assert resp.json()["kind"] == "hello"
+    assert _registered_engine_kind("portfolio", "hello") == "hello"
+
+
+@pytest.mark.asyncio
 async def test_duplicate_handle_conflicts(client):
     await _make_room(client)
     body = {"handle": "aligner", "kind": "aligner"}

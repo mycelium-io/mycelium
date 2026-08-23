@@ -35,6 +35,7 @@ SECTIONS: list[tuple[str, str]] = [
     ("engines", "Engines"),
     ("aligner", "The Aligner"),
     ("synthesizer", "The Synthesizer"),
+    ("hello", "Hello"),
     ("architecture", "Architecture"),
     ("structured-memory", "Structured Memory"),
     ("hub-and-spoke", "Hub & Spoke"),

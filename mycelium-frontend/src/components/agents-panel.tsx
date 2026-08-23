@@ -66,7 +66,7 @@ function subtext(...parts: (string | null | undefined | false)[]): string {
  * visible. Humans and agents share the monogram avatar, told apart by tint
  * (muted for people, accent for agents).
  *
- * Engines (aligner / synthesizer) can be invited from the Add dialog — they're
+ * Engines (aligner / synthesizer / hello) can be invited from the Add dialog — they're
  * backend-owned, so registration is a pure manifest write. Agent registration /
  * teardown stay CLI-only: those have spoke-local side effects (resident session,
  * workspace assets) the hub can't perform. Use `mycelium agent create` / `rm`.
@@ -401,6 +401,7 @@ function SectionLabel({ children, count }: { children: React.ReactNode; count?: 
 const ENGINE_KINDS: { kind: EngineKind; blurb: string }[] = [
   { kind: "aligner", blurb: "Mediates negotiation to consensus." },
   { kind: "synthesizer", blurb: "Distills the room to memory." },
+  { kind: "hello", blurb: "Answers once, writes nothing — proves the path." },
 ];
 
 /** Invite a first-party cognition engine into the room — a native manifest

@@ -22,12 +22,19 @@ def test_engine_is_a_registered_family() -> None:
     assert "engine" in AGENT_ADAPTERS
     assert "aligner" in ENGINE_KINDS
     assert "synthesizer" in ENGINE_KINDS
+    assert "hello" in ENGINE_KINDS
 
 
 def test_manifest_accepts_synthesizer() -> None:
     m = AgentManifest(handle="synth-1", adapter="engine", kind="synthesizer")
     assert m.adapter == "engine"
     assert m.kind == "synthesizer"
+
+
+def test_manifest_accepts_hello() -> None:
+    m = AgentManifest(handle="hi", adapter="engine", kind="hello")
+    assert m.adapter == "engine"
+    assert m.kind == "hello"
 
 
 def test_manifest_requires_a_kind() -> None:
