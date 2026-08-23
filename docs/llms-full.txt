@@ -731,17 +731,22 @@ Review 1
          @agent-z   feat/custody-seam   CI green   #504       12m
 ```
 
-## Nothing to fill in
+## Nothing to keep in sync
 
-You never add anything to the board. It's assembled from what the room already
-has: the work compiled out of its agreements, the negotiations running in it, the memories under
-`decisions/`, `status/`, `work/` and `failed/`, and which agents are actually
-resident right now. Every row says where it came from, and clicking through
-takes you to the real thing rather than a copy of it.
+The board has no store of its own. It's assembled from what the room already
+has: the work compiled out of its agreements, the negotiations running in it,
+the memories under `decisions/`, `status/`, `work/` and `failed/`, and which
+agents are actually resident right now. Every row says where it came from, and
+clicking through takes you to the real thing rather than a copy of it.
 
-That means there's no second place to keep up to date. Resolve a task and
-its row resolves. End a negotiation and its decision row closes. Nothing to
-groom, and nothing that can quietly disagree with the room it describes.
+Capturing a line writes a memory, so the one thing you *can* add goes into the
+same place as everything else — it shows up under Memory, it broadcasts to the
+room, and it is still there after a reload. A row you can see is a row the room
+has been told about; that is the whole rule.
+
+So there's no second place to keep up to date. Resolve a task and its row
+resolves. End a negotiation and its decision row closes. Nothing to groom, and
+nothing that can quietly disagree with the room it describes.
 
 ## Three lenses
 
@@ -875,9 +880,8 @@ something other than a memory — an episode, a resident agent — has no
 frontmatter to write, and says so rather than accepting the change.
 
 `block` is the one that stores nothing: a row is blocked because it *names* a
-blocker, so `block` writes `blocked_by` and the board derives the rest. Captured
-concerns expire if nobody claims them, so the board stays a picture of now
-instead of turning into a backlog. `promote` marks a row as belonging somewhere
+blocker, so `block` writes `blocked_by` and the board derives the rest.
+`promote` marks a row as belonging somewhere
 more durable and resolves it; filing the GitHub issue itself is still yours to
 do, and the verb doesn't invent a link it didn't create.
 

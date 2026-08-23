@@ -10,7 +10,6 @@ import { cn } from "@/lib/utils";
 
 interface Props {
   actor: string;
-  now: string;
   onCapture: (parsed: ParsedCapture) => void;
 }
 
@@ -19,11 +18,11 @@ interface Props {
  * sigils teach themselves and nothing is filed with fields the writer didn't see.
  */
 export const BoardCapture = forwardRef<HTMLInputElement, Props>(function BoardCapture(
-  { actor, now, onCapture },
+  { actor, onCapture },
   ref,
 ) {
   const [text, setText] = useState("");
-  const parsed = useMemo(() => parseCapture(text, actor, now), [text, actor, now]);
+  const parsed = useMemo(() => parseCapture(text, actor), [text, actor]);
   const armed = parsed.title.length > 0;
 
   return (
@@ -46,7 +45,7 @@ export const BoardCapture = forwardRef<HTMLInputElement, Props>(function BoardCa
             }
             if (e.key === "Escape") (e.target as HTMLInputElement).blur();
           }}
-          placeholder="Capture a concern…  @owner · !urgent · #tag · #502 · ? for a decision"
+          placeholder="Capture something…  @for · !urgent · #tag · #502 · ? for a decision"
           className="min-w-0 flex-1 bg-transparent text-label text-text outline-none placeholder:text-faint"
         />
         {armed && (

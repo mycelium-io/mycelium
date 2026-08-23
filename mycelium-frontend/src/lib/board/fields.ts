@@ -28,7 +28,6 @@ import type { LiveItem } from "./item";
 export const FIELD_REFUSALS: Record<string, string> = {
   episode: "an episode is a recorded negotiation, not a row the room can edit",
   agent: "presence is what the runtime reports, not a field you set",
-  capture: "this row is not in the room yet; capture it first",
   github: "this value belongs to the tool it came from; change it there",
 };
 
@@ -74,3 +73,4 @@ export function ownerOf(item: LiveItem): string | null {
   const o = str(item, "owner");
   return o ? o.replace(/^@/, "") : null;
 }
+

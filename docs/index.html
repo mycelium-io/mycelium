@@ -648,9 +648,10 @@ Blocked 1
 Review 1
  ◉ 7c2   @agent-z opened PR #504, wants eyes on the custody seam
          @agent-z   feat/custody-seam   CI green   #504       12m</code></pre>
-      <h2 id="board-nothing-to-fill-in">Nothing to fill in</h2>
-      <p>You never add anything to the board. It&#x27;s assembled from what the room already has: the work compiled out of its agreements, the negotiations running in it, the memories under <code>decisions/</code>, <code>status/</code>, <code>work/</code> and <code>failed/</code>, and which agents are actually resident right now. Every row says where it came from, and clicking through takes you to the real thing rather than a copy of it.</p>
-      <p>That means there&#x27;s no second place to keep up to date. Resolve a task and its row resolves. End a negotiation and its decision row closes. Nothing to groom, and nothing that can quietly disagree with the room it describes.</p>
+      <h2 id="board-nothing-to-keep-in-sync">Nothing to keep in sync</h2>
+      <p>The board has no store of its own. It&#x27;s assembled from what the room already has: the work compiled out of its agreements, the negotiations running in it, the memories under <code>decisions/</code>, <code>status/</code>, <code>work/</code> and <code>failed/</code>, and which agents are actually resident right now. Every row says where it came from, and clicking through takes you to the real thing rather than a copy of it.</p>
+      <p>Capturing a line writes a memory, so the one thing you <em>can</em> add goes into the same place as everything else — it shows up under Memory, it broadcasts to the room, and it is still there after a reload. A row you can see is a row the room has been told about; that is the whole rule.</p>
+      <p>So there&#x27;s no second place to keep up to date. Resolve a task and its row resolves. End a negotiation and its decision row closes. Nothing to groom, and nothing that can quietly disagree with the room it describes.</p>
       <h2 id="board-three-lenses">Three lenses</h2>
       <div class="table-wrap">
         <table>
@@ -714,7 +715,7 @@ Review 1
       <p><code>claim</code> · <code>release</code> · <code>resolve</code> · <code>block</code> · <code>promote</code> · <code>dismiss</code></p>
       <p>One keystroke each in the interface, one word each on the command line, and the same words agents use. Answering a decision is the answer itself: pick <code>15m</code> on the row and it&#x27;s settled and gone.</p>
       <p>Every one of them writes. A verb puts frontmatter on the row&#x27;s memory, through the same upsert a <code>memory set</code> goes through, so a card you move is a versioned, indexed change the room reads back rather than a change to your own view. Custody is the exception, and only because it needs to be: who holds a row moves through a lease, under rules a plain write can&#x27;t check. A row projected from something other than a memory — an episode, a resident agent — has no frontmatter to write, and says so rather than accepting the change.</p>
-      <p><code>block</code> is the one that stores nothing: a row is blocked because it <em>names</em> a blocker, so <code>block</code> writes <code>blocked_by</code> and the board derives the rest. Captured concerns expire if nobody claims them, so the board stays a picture of now instead of turning into a backlog. <code>promote</code> marks a row as belonging somewhere more durable and resolves it; filing the GitHub issue itself is still yours to do, and the verb doesn&#x27;t invent a link it didn&#x27;t create.</p>
+      <p><code>block</code> is the one that stores nothing: a row is blocked because it <em>names</em> a blocker, so <code>block</code> writes <code>blocked_by</code> and the board derives the rest. <code>promote</code> marks a row as belonging somewhere more durable and resolves it; filing the GitHub issue itself is still yours to do, and the verb doesn&#x27;t invent a link it didn&#x27;t create.</p>
       <h2 id="board-waiting-on-a-lease-not-on-the-room">Waiting on a lease, not on the room</h2>
       <p>Following a handoff by waiting on the room&#x27;s channel is the wrong subscription: a dozen unrelated messages wake you for nothing. A lease is already a small state machine, and its transitions — claimed, lapsed, released, resolved — are exactly what a handoff cares about, so it is the thing to subscribe to:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">await</span> <span class="flag">--lease</span> work/auth-spike <span class="flag">--loop</span></code></pre>

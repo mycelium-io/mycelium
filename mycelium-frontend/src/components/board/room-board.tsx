@@ -27,14 +27,14 @@ import {
   useRoomRoster,
   useRoomStatus,
 } from "@/lib/room-data";
-import { writeFields, writeLease } from "@/lib/api";
-import { custodyRefusal, reservedIn } from "@/lib/board/custody";
-import { fieldWriteRefusal, memoryKeyOf } from "@/lib/board/fields";
+import { createMemories, writeFields, writeLease } from "@/lib/api";
+import { custodyRefusal } from "@/lib/board/custody";
+import { planFieldWrite } from "@/lib/board/write-plan";
 import { applyVerb, LENSES, type Lens, type LiveItem, type Verb } from "@/lib/board/item";
 import { projectItems } from "@/lib/board/projection";
 import { attachUpstream } from "@/lib/board/upstream";
 import { localZone, projectActivity } from "@/lib/board/activity";
-import { captureToItem, type ParsedCapture } from "@/lib/board/capture";
+import { captureToMemory, type ParsedCapture } from "@/lib/board/capture";
 import { groupableFields, inferSchema } from "@/lib/board/schema";
 import { applyView, filterItems, lensCounts, SAVED_VIEWS, sortItems, UNGROUPED, type ViewConfig, type ViewMode } from "@/lib/board/view";
 import { BoardCockpit, summarize } from "./board-cockpit";
@@ -114,7 +114,6 @@ export function RoomBoard({ roomName }: Props) {
   const [view, setView] = useState<ViewConfig>(SAVED_VIEWS[0].config);
   const [savedView, setSavedView] = useState(SAVED_VIEWS[0].slug);
   const [overlay, setOverlay] = useState<Record<string, Record<string, unknown>>>({});
-  const [captured, setCaptured] = useState<LiveItem[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const chooseTz = useCallback((zone: string) => {
@@ -164,11 +163,10 @@ export function RoomBoard({ roomName }: Props) {
           presence,
           now: new Date(now).toISOString(),
           overlay,
-          captured,
         }),
         upstream,
       ),
-    [roomName, episodes, memories, agents, presence, now, overlay, captured, upstream],
+    [roomName, episodes, memories, agents, presence, now, overlay, upstream],
   );
 
   // One pass over every row's frontmatter gives the columns, the kanban's
@@ -193,47 +191,52 @@ export function RoomBoard({ roomName }: Props) {
     [view.mode, groups, flat],
   );
 
-  // What the surface shows the instant you act, before the room has answered.
-  const echoLocal = useCallback((id: string, fields: Record<string, unknown>) => {
+  // What the surface shows between the gesture and the room's answer. It is a
+  // guess, so it is only ever put on screen once a write is actually in flight,
+  // and it is taken back down the moment the room has spoken — either because
+  // the fresh row arrived, or because the write failed and there is nothing to
+  // show. An overlay that outlives its write is the board disagreeing with the
+  // hub until somebody reloads.
+  const applyOverlay = useCallback((id: string, fields: Record<string, unknown>) => {
     setOverlay(prev => ({ ...prev, [id]: { ...(prev[id] ?? {}), ...fields } }));
   }, []);
 
+  const clearOverlay = useCallback((id: string) => {
+    setOverlay(prev => {
+      if (!(id in prev)) return prev;
+      return Object.fromEntries(Object.entries(prev).filter(([key]) => key !== id));
+    });
+  }, []);
+
   /**
-   * A verb's write: the overlay is the optimistic echo, the room is the record.
+   * A verb's write, and the only thing that reports it.
    *
-   * A row whose fields live somewhere other than frontmatter says why instead
-   * of accepting a change that would exist in this tab and nowhere else, which
-   * is what the board did for every verb but custody.
+   * Callers do not echo their own success: every one of them used to, which
+   * meant a refusal set here was overwritten a line later by a caller claiming
+   * the write had happened. Whether the room was told is this function's
+   * business, so what the surface says about it is too.
    */
   const patch = useCallback(
-    (item: LiveItem, fields: Record<string, unknown>) => {
-      echoLocal(item.id, fields);
-      const refusal = fieldWriteRefusal(item);
-      if (refusal) {
-        setEcho(`${item.id} — ${refusal}`);
+    (item: LiveItem, fields: Record<string, unknown>, verb = "write") => {
+      const plan = planFieldWrite(item, fields);
+      if (plan === null) return;
+      if ("refused" in plan) {
+        setEcho(`${verb} ${item.id} — ${plan.refused}`);
         return;
       }
-      const key = memoryKeyOf(item);
-      if (!key) return;
-      // `updated` is the board's name for the store's own `updated_at`, so
-      // sending it would write a second, competing timestamp.
-      const rest = Object.fromEntries(Object.entries(fields).filter(([k]) => k !== "updated"));
-      const reserved = reservedIn(Object.keys(rest));
-      if (reserved.length) {
-        setEcho(`${item.id} — ${reserved.join(", ")} moves through a lease, not a field write`);
-        return;
-      }
-      // Clearing a field is `null` on the wire: `undefined` would be dropped by
-      // JSON.stringify and the key would silently survive.
-      const writable = Object.fromEntries(
-        Object.entries(rest).map(([k, v]) => [k, v === undefined ? null : v]),
-      );
-      if (!Object.keys(writable).length) return;
-      void writeFields(roomName, { key, handle: actor, fields: writable })
-        .then(() => revalidate())
-        .catch((e: unknown) => setEcho(`write ${item.id} failed — ${String(e)}`));
+      applyOverlay(item.id, fields);
+      const said = Object.entries(plan.writable)
+        .map(([k, v]) => `${k}=${String(v)}`)
+        .join(" ");
+      void writeFields(roomName, { key: plan.key, handle: actor, fields: plan.writable })
+        .then(async () => {
+          setEcho(`${verb} ${plan.key} → ${said}`);
+          await revalidate();
+        })
+        .catch((e: unknown) => setEcho(`${verb} ${item.id} failed — ${String(e)}`))
+        .finally(() => clearOverlay(item.id));
     },
-    [actor, echoLocal, revalidate, roomName],
+    [actor, applyOverlay, clearOverlay, revalidate, roomName],
   );
 
   const runVerb = useCallback(
@@ -241,42 +244,37 @@ export function RoomBoard({ roomName }: Props) {
       const fields = applyVerb(item, verb, { actor, now: new Date().toISOString() });
       setSelectedId(item.id);
       play(verb);
-      // The echo is the point: a human gesture and an agent's call are the same
-      // write, so the surface says out loud what it just put on the ledger.
-      setEcho(
-        `${verb} ${item.id} → ${Object.entries(fields)
-          .filter(([k]) => k !== "updated")
-          .map(([k, v]) => `${k}=${String(v)}`)
-          .join(" ")}`,
-      );
 
       // Custody moves under its own rules — a live claim is not stealable, and
-      // expiry is read off a clock — so it keeps its own endpoint. Every other
-      // verb is a frontmatter write and goes through `patch`.
-      if (verb !== "claim" && verb !== "release" && verb !== "resolve") {
-        patch(item, fields);
+      // expiry is read off a clock — so it keeps its own endpoint. A row that
+      // cannot hold a lease is not out of luck: `resolve` on it is a stage
+      // change, which is a plain field write like any other.
+      const custodial = verb === "claim" || verb === "release" || verb === "resolve";
+      const refusal = custodial ? custodyRefusal(item) : null;
+      if (!custodial || refusal) {
+        if (refusal && verb !== "resolve") {
+          setEcho(`${verb} ${item.id} — ${refusal}`);
+          return;
+        }
+        patch(item, fields, verb);
         return;
       }
-      echoLocal(item.id, fields);
-      const refusal = custodyRefusal(item);
-      if (refusal) {
-        if (verb !== "resolve") setEcho(`${verb} ${item.id} — ${refusal}`);
-        return;
-      }
+
+      applyOverlay(item.id, fields);
       void writeLease(roomName, verb, { key: item.id.replace(/^memory:/, ""), handle: actor })
-        .then(state => {
+        .then(async state => {
           setEcho(`${verb} ${state.key} → custody=${state.custody} owner=${state.owner ?? "—"}`);
-          revalidate();
+          await revalidate();
         })
-        .catch((e: unknown) => setEcho(`${verb} ${item.id} failed — ${String(e)}`));
+        .catch((e: unknown) => setEcho(`${verb} ${item.id} failed — ${String(e)}`))
+        .finally(() => clearOverlay(item.id));
     },
-    [actor, echoLocal, patch, play, revalidate, roomName],
+    [actor, applyOverlay, clearOverlay, patch, play, revalidate, roomName],
   );
 
   const answer = useCallback(
     (item: LiveItem, choice: string) => {
-      patch(item, { status: "resolved", decision: choice, updated: new Date().toISOString() });
-      setEcho(`answer ${item.id} → decision=${choice} status=resolved`);
+      patch(item, { status: "resolved", decision: choice }, "answer");
       play("answer");
     },
     [patch, play],
@@ -284,13 +282,20 @@ export function RoomBoard({ roomName }: Props) {
 
   const capture = useCallback(
     (parsed: ParsedCapture) => {
-      const item = captureToItem(parsed, captured.length + 1, actor);
-      setCaptured(prev => [item, ...prev]);
-      setSelectedId(item.id);
-      setEcho(`capture → ${item.title}`);
+      // A captured line is a memory, written the same way every other write is.
+      // Holding it in this component instead would put a row on the board that
+      // the room had never been told about, and lose it on reload.
+      const memory = captureToMemory(parsed, actor);
+      setEcho(`capture → ${memory.key}`);
       play("capture");
+      void createMemories(roomName, [memory])
+        .then(() => {
+          setSelectedId(`memory:${memory.key}`);
+          revalidate();
+        })
+        .catch((e: unknown) => setEcho(`capture ${memory.key} failed — ${String(e)}`));
     },
-    [actor, captured.length, play],
+    [actor, play, revalidate, roomName],
   );
 
   const pick = useCallback(
@@ -384,7 +389,7 @@ export function RoomBoard({ roomName }: Props) {
         onOptions={() => setOptionsOpen(o => !o)}
       />
 
-      <BoardCapture ref={captureRef} actor={actor} now={new Date(now).toISOString()} onCapture={capture} />
+      <BoardCapture ref={captureRef} actor={actor} onCapture={capture} />
 
       <div className="min-h-0 flex-1">
         {ordered.length === 0 && view.mode !== "daily" ? (
@@ -395,7 +400,7 @@ export function RoomBoard({ roomName }: Props) {
             description={
               view.lens === "needs_you"
                 ? "The board self-populates from episodes, memories and presence. Widen the lens to see what's in flight."
-                : "Loosen the filters, or capture a concern to start one."
+                : "Loosen the filters, or capture something to start one."
             }
           />
         ) : view.mode === "daily" ? (
@@ -413,11 +418,7 @@ export function RoomBoard({ roomName }: Props) {
               // The "no value" column is not a value: dropping a card there
               // means clear the field, not write the column's own key into it.
               const cleared = value === UNGROUPED;
-              patch(item, {
-                [field]: cleared ? undefined : value,
-                updated: new Date().toISOString(),
-              });
-              setEcho(cleared ? `move ${item.id} → ${field} cleared` : `move ${item.id} → ${field}=${value}`);
+              patch(item, { [field]: cleared ? undefined : value }, "move");
               play("move");
             }}
           />
@@ -440,8 +441,7 @@ export function RoomBoard({ roomName }: Props) {
                 selectedId={selectedId}
                 onSelect={setSelectedId}
                 onEdit={(item, field, value) => {
-                  patch(item, { [field]: value, updated: new Date().toISOString() });
-                  setEcho(`edit ${item.id} → ${field}=${String(value)} · written to frontmatter`);
+                  patch(item, { [field]: value }, "edit");
                 }}
                 sort={view.sort}
                 onSort={field =>
@@ -576,7 +576,7 @@ function BoardHeader(props: {
           <button
             key={saved.slug}
             onClick={() => props.onSavedView(saved.slug)}
-            title={`${saved.hint} · views/${saved.slug}.md`}
+            title={saved.hint}
             className={cn(
               "rounded-full border px-2 py-0.5 font-mono text-micro transition-colors",
               props.savedView === saved.slug

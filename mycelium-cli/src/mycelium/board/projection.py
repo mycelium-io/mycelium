@@ -51,6 +51,10 @@ def _episode_item(episode: dict) -> LiveItem:
     )
 
 
+#: Namespaces whose name already says what kind of thing a row is.
+_KIND_OF_NAMESPACE = {"decisions": "decision", "failed": "blocked"}
+
+
 def _first_line(text: str) -> str:
     for line in text.splitlines():
         stripped = line.strip()
@@ -79,7 +83,11 @@ def _memory_item(memory: dict) -> LiveItem:
     derived = "resolved" if namespace == "decisions" else "open"
     fields: dict[str, Any] = {
         "status": custom.get("status") if isinstance(custom.get("status"), str) else derived,
-        "kind": {"decisions": "decision", "failed": "blocked"}.get(namespace, "concern"),
+        # Only a namespace that genuinely implies a kind sets one; everything
+        # else leaves it to LiveItem.kind, which has the single fallback.
+        # Writing "concern" here made it mean two things at once: a worry
+        # somebody flagged, and "we don't know what this is".
+        **({"kind": _KIND_OF_NAMESPACE[namespace]} if namespace in _KIND_OF_NAMESPACE else {}),
         # Who wrote it last is provenance, not custody. Reading `owner` off
         # `updated_by` gave every memory in the room a holder, which is the
         # confident-lie failure this whole axis exists to stop: a holder is

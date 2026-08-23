@@ -96,7 +96,15 @@ function memoryItem(memory: Memory, room: string): LiveItem {
     },
     fields: {
       status: typeof custom.status === "string" ? custom.status : derivedStatus,
-      kind: namespace === "decisions" ? "decision" : namespace === "failed" ? "blocked" : "concern",
+      // Only a namespace that genuinely implies a kind sets one. Everything
+      // else leaves it to `kindOf`, which has the single fallback — writing
+      // "concern" here made it mean two things at once: a worry somebody
+      // flagged, and "we don't know what this is".
+      ...(namespace === "decisions"
+        ? { kind: "decision" }
+        : namespace === "failed"
+          ? { kind: "blocked" }
+          : {}),
       // Who wrote it last is provenance, not custody. Reading `owner` off
       // `updated_by` gave every memory in the room a holder, which is the
       // confident-lie failure this axis exists to stop: a holder is something a
@@ -161,10 +169,9 @@ export interface ProjectionInput {
   agents: AgentSummary[];
   presence: Map<string, PresenceMember>;
   now: string;
-  /** Rows an agent hasn't touched yet: local triage, keyed by item id. */
+  /** Optimistic values for writes still in flight, keyed by item id. Cleared
+   *  the moment the write settles, so this can never outlast the request. */
   overlay?: Record<string, Record<string, unknown>>;
-  /** Rows captured in this session, before any backend write exists for them. */
-  captured?: LiveItem[];
 }
 
 export function projectItems(input: ProjectionInput): LiveItem[] {
@@ -185,7 +192,6 @@ export function projectItems(input: ProjectionInput): LiveItem[] {
     const row = agentItem(agent, presence, input.now);
     if (custodyOf(row, clock) === "held") items.push(row);
   }
-  items.push(...(input.captured ?? []));
 
   const overlay = input.overlay ?? {};
   return items.map(item =>

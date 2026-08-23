@@ -66,7 +66,7 @@ describe("where a field write may land", () => {
     expect(memoryKeyOf(row("memory", "work/auth-spike"))).toBe("work/auth-spike");
   });
 
-  it.each(["episode", "agent", "capture", "github"] as SourceKind[])(
+  it.each(["episode", "agent", "github"] as SourceKind[])(
     "refuses a %s row, and says why",
     kind => {
       const refusal = fieldWriteRefusal(row(kind, "x"));

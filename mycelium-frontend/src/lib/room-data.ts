@@ -296,11 +296,15 @@ export function useNetworkStatus(opts: RoomQueryOptions = {}) {
 // ── Revalidation ─────────────────────────────────────────────────────────────
 
 /** Refetch all room resources; one call reaches every reader without prop-threading. */
-export function useRoomRevalidate(room: string): () => void {
+/** Re-read every cache entry for a room. Awaitable, so a caller that put an
+ *  optimistic value on screen knows when the server's own answer has landed and
+ *  it can stop showing its guess. */
+export function useRoomRevalidate(room: string): () => Promise<unknown> {
   const { mutate } = useSWRConfig();
-  return useCallback(() => {
-    void mutate((key) => Array.isArray(key) && key[0] === "room" && key[1] === room);
-  }, [mutate, room]);
+  return useCallback(
+    () => mutate((key) => Array.isArray(key) && key[0] === "room" && key[1] === room),
+    [mutate, room],
+  );
 }
 
 // ── Roster ───────────────────────────────────────────────────────────────────

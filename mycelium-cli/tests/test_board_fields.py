@@ -65,7 +65,7 @@ class TestWhereAWriteMayLand:
         assert board_fields.refusal_for(item) is None
         assert board_fields.memory_key_of(item) == "decisions/ttl"
 
-    @pytest.mark.parametrize("kind", ["episode", "agent", "capture", "github"])
+    @pytest.mark.parametrize("kind", ["episode", "agent", "github"])
     def test_every_other_kind_is_refused_in_its_own_terms(self, kind: str):
         item = row(kind, "x")
         assert board_fields.refusal_for(item) == board_fields.REFUSALS[kind]

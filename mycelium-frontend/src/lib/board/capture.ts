@@ -2,14 +2,20 @@
 // Copyright 2026 Mycelium Contributors
 
 /**
- * Natural-language capture: one line in, a typed row out.
+ * Natural-language capture: one line in, a memory out.
  *
  * Capture is the human's only authoring gesture on this surface — everything
  * else self-populates — so it parses the sigils people already type in chat
  * rather than asking for a form.
+ *
+ * What it produces is a **memory**, written through the same upsert every other
+ * write goes through. It is not a row the board invents and holds: a surface
+ * that showed you a row the room had never been told about is the failure this
+ * whole model exists to avoid, and a captured line that vanished on reload was
+ * exactly that.
  */
 
-import type { LiveItem } from "./item";
+import type { MemoryCreate } from "@/lib/api";
 
 export interface ParsedCapture {
   title: string;
@@ -30,17 +36,10 @@ const PRIORITY_WORDS: Record<string, string> = {
   someday: "low",
 };
 
-export function parseCapture(input: string, actor: string, now: string): ParsedCapture {
+export function parseCapture(input: string, actor: string): ParsedCapture {
   const fields: Record<string, unknown> = {
     status: "open",
-    kind: "concern",
-    owner: null,
     priority: "normal",
-    created: now,
-    updated: now,
-    // Captured rows are transient by default: a concern nobody claims expires
-    // rather than settling into a backlog.
-    ttl_minutes: 2880,
     captured_by: `@${actor}`,
   };
   const hints: { label: string; value: string }[] = [];
@@ -48,13 +47,16 @@ export function parseCapture(input: string, actor: string, now: string): ParsedC
 
   let title = input;
 
-  const owner = input.match(/(?:^|\s)@([a-z0-9][a-z0-9._-]*)/i);
-  if (owner) {
-    fields.owner = `@${owner[1]}`;
-    fields.status = "claimed";
+  const assignee = input.match(/(?:^|\s)@([a-z0-9][a-z0-9._-]*)/i);
+  if (assignee) {
+    // Naming somebody says who it is *for*. Custody is a lease they take, and
+    // `owner` is the lease's field — writing it here would claim on their
+    // behalf. The stage stays `open` either way: a task with a name on it is
+    // still an open task.
+    fields.assignee = `@${assignee[1]}`;
     fields.kind = "action";
-    hints.push({ label: "owner", value: `@${owner[1]}` });
-    title = title.replace(owner[0], " ");
+    hints.push({ label: "for", value: `@${assignee[1]}` });
+    title = title.replace(assignee[0], " ");
   }
 
   const bang = input.match(/(?:^|\s)(!{1,3})(?=\s|$)/);
@@ -83,9 +85,11 @@ export function parseCapture(input: string, actor: string, now: string): ParsedC
 
   const issue = input.match(/(?:^|\s)(#\d+)(?=\s|$)/);
   if (issue) {
+    // Nothing stores the word "blocked": a row is blocked because it *names* a
+    // blocker, and the renderer reads `blocked_by`. Writing it as a status
+    // would also be writing a value the vocabulary does not have.
     fields.issue = issue[1];
     fields.blocked_by = [issue[1]];
-    fields.status = "blocked";
     hints.push({ label: "blocked by", value: issue[1] });
     title = title.replace(issue[0], " ");
   }
@@ -93,18 +97,39 @@ export function parseCapture(input: string, actor: string, now: string): ParsedC
   // A question is a decision to route, not a task to do.
   if (/\?\s*$/.test(input.trim())) {
     fields.kind = "decision";
-    fields.status = "open";
     hints.push({ label: "kind", value: "decision" });
   }
 
   return { title: title.replace(/\s{2,}/g, " ").trim(), fields, hints };
 }
 
-export function captureToItem(parsed: ParsedCapture, seq: number, actor: string): LiveItem {
+/** A readable, stable key fragment for a captured line. */
+export function slugify(title: string): string {
+  const slug = title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48)
+    .replace(/-+$/, "");
+  return slug || "note";
+}
+
+/**
+ * The memory a captured line becomes.
+ *
+ * A question routes to `decisions/`, because that is where the board reads a
+ * decision from. Everything else lands in `work/` — the one namespace a lease
+ * can be taken on, so a captured item is something somebody can actually pick
+ * up rather than a note nobody can hold.
+ */
+export function captureToMemory(parsed: ParsedCapture, actor: string): MemoryCreate {
+  const namespace = parsed.fields.kind === "decision" ? "decisions" : "work";
+  const { tags, ...meta } = parsed.fields as { tags?: string[] } & Record<string, unknown>;
   return {
-    id: `capture:${seq}`,
-    title: parsed.title,
-    source: { kind: "capture", label: `captured by @${actor}` },
-    fields: parsed.fields,
+    key: `${namespace}/${slugify(parsed.title)}`,
+    value: parsed.title,
+    created_by: actor,
+    tags,
+    meta,
   };
 }

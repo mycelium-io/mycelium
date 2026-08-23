@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import { inferSchema, groupableFields } from "@/lib/board/schema";
 import { projectItems } from "@/lib/board/projection";
 import { applyView, filterItems, lensCounts, groupItems, UNGROUPED, DEFAULT_VIEW } from "@/lib/board/view";
-import { CUSTODY_STATES, DEFAULT_TTL_MINUTES, custodyOf } from "@/lib/board/custody";
+import { CUSTODY_STATES, DEFAULT_TTL_MINUTES, custodyOf, reservedIn } from "@/lib/board/custody";
 import {
   applyVerb,
   lensOf,
@@ -17,7 +17,7 @@ import {
   VERBS,
   type LiveItem,
 } from "@/lib/board/item";
-import { parseCapture } from "@/lib/board/capture";
+import { captureToMemory, parseCapture } from "@/lib/board/capture";
 import { DAILY_GOAL, heatLevel, weekdayIndex } from "@/lib/board/activity";
 import { attachUpstream, UPSTREAM_STATES, upstreamAge, type RoomStatus } from "@/lib/board/upstream";
 
@@ -284,34 +284,80 @@ describe("applyVerb", () => {
 });
 
 describe("parseCapture", () => {
-  const now = "2026-08-22T10:00:00Z";
-
-  it("routes an @handle to an owner and claims the row", () => {
-    const parsed = parseCapture("rotate the signing key @agent-z", "julia", now);
+  it("routes an @handle to an assignee without claiming the row", () => {
+    // Naming somebody says who it is for. Custody is a lease they take, and
+    // `owner` is the lease's field — writing it here claims on their behalf.
+    const parsed = parseCapture("rotate the signing key @agent-z", "julia");
     expect(parsed.title).toBe("rotate the signing key");
-    expect(parsed.fields).toMatchObject({ owner: "@agent-z", status: "claimed", kind: "action" });
+    expect(parsed.fields).toMatchObject({ assignee: "@agent-z", kind: "action", status: "open" });
+    expect(parsed.fields.owner).toBeUndefined();
   });
 
   it("reads a question as a decision to route, not a task to do", () => {
-    expect(parseCapture("15m or 60m TTL?", "julia", now).fields).toMatchObject({
+    expect(parseCapture("15m or 60m TTL?", "julia").fields).toMatchObject({
       kind: "decision",
       status: "open",
     });
   });
 
   it("treats a bare issue reference as what the row waits on", () => {
-    const parsed = parseCapture("thin-spoke join #502", "julia", now);
-    expect(parsed.fields).toMatchObject({ status: "blocked", blocked_by: ["#502"], issue: "#502" });
+    // Nothing stores the word "blocked" — the row names a blocker and the
+    // renderer derives the rest. `blocked` is not a status the vocabulary has.
+    const parsed = parseCapture("thin-spoke join #502", "julia");
+    expect(parsed.fields).toMatchObject({ blocked_by: ["#502"], issue: "#502", status: "open" });
+  });
+
+  it("only ever writes a status the vocabulary has", () => {
+    const inputs = ["plain note", "for @dana", "blocked on #502", "which one?", "urgent thing !!"];
+    for (const input of inputs) {
+      expect(STATUS_ORDER).toContain(parseCapture(input, "julia").fields.status);
+    }
   });
 
   it("lifts bangs and #tags out of the title", () => {
-    const parsed = parseCapture("audit the custody store !! #security", "julia", now);
+    const parsed = parseCapture("audit the custody store !! #security", "julia");
     expect(parsed.title).toBe("audit the custody store");
     expect(parsed.fields).toMatchObject({ priority: "urgent", tags: ["security"] });
   });
+});
 
-  it("gives a captured row a TTL, so an unclaimed concern expires", () => {
-    expect(parseCapture("something smells here", "julia", now).fields.ttl_minutes).toBe(2880);
+describe("captureToMemory", () => {
+  it("writes a work/ row, which is the one a lease can be taken on", () => {
+    const memory = captureToMemory(parseCapture("rotate the signing key", "julia"), "julia");
+    expect(memory.key).toBe("work/rotate-the-signing-key");
+    expect(memory.value).toBe("rotate the signing key");
+    expect(memory.created_by).toBe("julia");
+  });
+
+  it("routes a question to decisions/, where the board reads a decision from", () => {
+    expect(captureToMemory(parseCapture("15m or 60m?", "julia"), "julia").key).toBe(
+      "decisions/15m-or-60m",
+    );
+  });
+
+  it("carries the parsed fields as frontmatter, and tags as tags", () => {
+    const memory = captureToMemory(
+      parseCapture("audit the custody store !! #security @dana", "julia"),
+      "julia",
+    );
+    expect(memory.meta).toMatchObject({
+      priority: "urgent",
+      assignee: "@dana",
+      captured_by: "@julia",
+      status: "open",
+    });
+    expect(memory.tags).toEqual(["security"]);
+    // Tags are the store's own field, not frontmatter to duplicate.
+    expect(memory.meta?.tags).toBeUndefined();
+  });
+
+  it("never writes a field a lease owns", () => {
+    const memory = captureToMemory(parseCapture("ship it @dana", "julia"), "julia");
+    expect(reservedIn(Object.keys(memory.meta ?? {}))).toEqual([]);
+  });
+
+  it("always produces a usable key", () => {
+    expect(captureToMemory(parseCapture("!!!", "julia"), "julia").key).toBe("work/note");
   });
 });
 

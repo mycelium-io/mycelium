@@ -25,7 +25,7 @@ import { arr, bool, num, ownerOf, str } from "./fields";
 // this module back; callers still find them here, where they always were.
 export { arr, bool, num, ownerOf, str };
 
-export type SourceKind = "episode" | "memory" | "agent" | "capture" | "github";
+export type SourceKind = "episode" | "memory" | "agent" | "github";
 
 export interface ItemSource {
   kind: SourceKind;

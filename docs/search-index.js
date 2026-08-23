@@ -245,10 +245,10 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Guide"
   },
   {
-    "u": "index.html#board-nothing-to-fill-in",
-    "t": "Nothing to fill in",
+    "u": "index.html#board-nothing-to-keep-in-sync",
+    "t": "Nothing to keep in sync",
     "s": "Concepts › Board",
-    "x": "You never add anything to the board. It's assembled from what the room already has: the work compiled out of its agreements, the negotiations running in it, the memories under decisions/, status/, work/ and failed/, and which agents are actually resident right now. Every row says where it came from, and clicking through takes you to the real thing rather than a copy of it. That means there's no second place to keep u",
+    "x": "The board has no store of its own. It's assembled from what the room already has: the work compiled out of its agreements, the negotiations running in it, the memories under decisions/, status/, work/ and failed/, and which agents are actually resident right now. Every row says where it came from, and clicking through takes you to the real thing rather than a copy of it. Capturing a line writes a memory, so the one t",
     "p": "Guide"
   },
   {

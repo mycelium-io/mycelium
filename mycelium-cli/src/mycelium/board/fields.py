@@ -31,7 +31,6 @@ WRITABLE_SOURCE_KINDS = ["memory"]
 REFUSALS = {
     "episode": "an episode is a recorded negotiation, not a row the room can edit",
     "agent": "presence is what the runtime reports, not a field you set",
-    "capture": "this row is not in the room yet; capture it first",
     "github": "this value belongs to the tool it came from; change it there",
 }
 
