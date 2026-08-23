@@ -502,6 +502,33 @@ def _agent_owner_map(room_name: str) -> dict[str, str]:
         return {}
 
 
+def chat_line(mtype: str, msg: dict, data: dict, sender: str, stamp: str, own: str) -> str | None:
+    """Render one chat message for the live tail, or None if it carries no prose.
+
+    Chat reaches the tail two ways: the history replay hands back a plain
+    ``broadcast`` the backend has already folded (so a revised message arrives as
+    its newest text, stamped ``edited_at``), while the live stream carries the raw
+    L9 envelope — including an amendment, which arrives as the message it is. A
+    tail is a tail: it shows the amendment as it lands rather than rewriting a line
+    that already scrolled past, but marks it an edit and names what it revises.
+    """
+    if mtype == "l9_exchange":
+        content = data.get("content", "")
+        if not content:
+            return None  # presence/control payloads carry no prose
+        header = data.get("l9", {}).get("header", {})
+        if header.get("subkind") == "amend":
+            parents = header.get("message", {}).get("parents") or []
+            revises = f" [dim]{parents[0][:8]}[/]" if parents else ""
+            return f"  {stamp}  [yellow]{sender}[/]{own} [dim]✎ edits[/]{revises}: {content}"
+        return f"  {stamp}  [yellow]{sender}[/]{own}: {content}"
+
+    content = msg.get("content", "")
+    color = "yellow" if mtype == "broadcast" else "blue"
+    edited = " [dim](edited)[/]" if msg.get("edited_at") else ""
+    return f"  {stamp}  [{color}]{sender}[/]{own}: {content}{edited}"
+
+
 def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
     """Core SSE watch loop: pretty-renders coordination and memory events."""
     import time
@@ -631,10 +658,8 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
             content = msg.get("content", "")
             return f"  {ts()}  [magenta]{sender}[/]{own_tag(sender)} [dim]→[/] [cyan]{recipient}[/]: {content}"
 
-        if mtype in ("direct", "broadcast", "announce"):
-            content = msg.get("content", "")
-            color = "yellow" if mtype == "broadcast" else "blue"
-            return f"  {ts()}  [{color}]{sender}[/]{own_tag(sender)}: {content}"
+        if mtype in ("l9_exchange", "direct", "broadcast", "announce"):
+            return chat_line(mtype, msg, data, sender, ts(), own_tag(sender))
 
         return None
 
