@@ -8,6 +8,7 @@ import { useIsMac } from "@/lib/client-hooks";
 import { useRouter } from "next/navigation";
 import { SearchPalette } from "@/components/search-palette";
 import { Tooltip } from "@/components/ui/tooltip";
+import { KbdChord } from "@/components/ui/kbd";
 import { useKeyAction } from "@/components/keymap-provider";
 import { searchEverything } from "@/lib/api";
 import { resultHref, type SearchHit } from "@/lib/search";
@@ -64,9 +65,9 @@ export function GlobalSearchButton() {
       <button
         type="button"
         onClick={openSearch}
-        className="rounded px-1 text-micro text-muted-foreground transition-colors hover:text-text"
+        className="flex items-center gap-1.5 rounded px-1 text-micro text-muted-foreground transition-colors hover:text-text"
       >
-        <kbd className="font-sans">/</kbd> search
+        <KbdChord size="xs" tone="muted" action="search.open" /> search
       </button>
     </Tooltip>
   );

@@ -24,6 +24,7 @@ import {
   type SearchScope,
 } from "@/lib/search";
 import { eventToChord, matchBinding } from "@/lib/keymap";
+import { Kbd } from "@/components/ui/kbd";
 
 const ICONS: Record<SearchResultType, LucideIcon> = {
   room: Boxes,
@@ -224,14 +225,14 @@ export function SearchPalette({ open, onClose, onPick, search, mac }: Props) {
         </Command>
 
         <footer className="flex flex-shrink-0 items-center gap-3 border-t border-border px-4 py-2 text-micro text-muted-foreground">
-          <span>
-            <kbd className="font-sans">↑↓</kbd> navigate
+          <span className="flex items-center gap-1.5">
+            <Kbd size="xs" tone="muted">↑↓</Kbd> navigate
           </span>
-          <span>
-            <kbd className="font-sans">↵</kbd> open
+          <span className="flex items-center gap-1.5">
+            <Kbd size="xs" tone="muted">↵</Kbd> open
           </span>
-          <span>
-            <kbd className="font-sans">esc</kbd> close
+          <span className="flex items-center gap-1.5">
+            <Kbd size="xs" tone="muted">Esc</Kbd> close
           </span>
           {pending && <span className="ml-auto">searching…</span>}
         </footer>

@@ -9,16 +9,38 @@ import { BarChart3 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useGlobalStatus } from "@/lib/use-status";
 import { Tooltip } from "@/components/ui/tooltip";
+import { KbdChord } from "@/components/ui/kbd";
+
+const CELL = "flex items-center gap-1.5 rounded px-1.5 py-0.5 -my-0.5 transition-colors hover:bg-hairline hover:text-text";
+
+interface CellProps {
+  tooltip?: string;
+  /** Keymap action this cell duplicates. Its chord is drawn as a keycap beside
+   *  the tooltip label, so the cheap way in teaches the fast one — the rail is
+   *  the one place every screen shows, and a cell that a key already reaches
+   *  had no way of saying so. Silent when the keymap doesn't bind the action. */
+  action?: string;
+  children: ReactNode;
+}
+
+/** The tooltip body for a cell: its label, plus the key that does the same
+ *  thing. A cell with no binding keeps the bare string. */
+function cellTooltip(tooltip: string | undefined, action: string | undefined): ReactNode {
+  if (!tooltip || !action) return tooltip;
+  return (
+    <span className="flex items-center gap-1.5">
+      {tooltip}
+      <KbdChord size="xs" action={action} />
+    </span>
+  );
+}
 
 /** A status-bar cell that navigates somewhere on click (editor footer style).
  *  The bar sits at the bottom of the viewport, so its tooltips open upward. */
-export function StatusLink({ href, tooltip, children }: { href: string; tooltip?: string; children: ReactNode }) {
+export function StatusLink({ href, tooltip, action, children }: CellProps & { href: string }) {
   return (
-    <Tooltip content={tooltip} side="top">
-      <Link
-        href={href}
-        className="flex items-center gap-1.5 rounded px-1.5 py-0.5 -my-0.5 transition-colors hover:bg-hairline hover:text-text"
-      >
+    <Tooltip content={cellTooltip(tooltip, action)} side="top">
+      <Link href={href} className={CELL}>
         {children}
       </Link>
     </Tooltip>
@@ -26,14 +48,10 @@ export function StatusLink({ href, tooltip, children }: { href: string; tooltip?
 }
 
 /** A status-bar cell that fires an action on click. */
-export function StatusButton({ onClick, tooltip, children }: { onClick: () => void; tooltip?: string; children: ReactNode }) {
+export function StatusButton({ onClick, tooltip, action, children }: CellProps & { onClick: () => void }) {
   return (
-    <Tooltip content={tooltip} side="top">
-      <button
-        type="button"
-        onClick={onClick}
-        className="flex items-center gap-1.5 rounded px-1.5 py-0.5 -my-0.5 transition-colors hover:bg-hairline hover:text-text"
-      >
+    <Tooltip content={cellTooltip(tooltip, action)} side="top">
+      <button type="button" onClick={onClick} className={CELL}>
         {children}
       </button>
     </Tooltip>
@@ -81,9 +99,7 @@ export function MetricsStatusLink() {
       <Link
         href="/metrics"
         aria-current={active ? "page" : undefined}
-        className={`flex items-center gap-1.5 rounded px-1.5 py-0.5 -my-0.5 transition-colors hover:bg-hairline hover:text-text ${
-          active ? "text-text" : ""
-        }`}
+        className={`${CELL} ${active ? "text-text" : ""}`}
       >
         <BarChart3 className="size-3.5" />
         metrics

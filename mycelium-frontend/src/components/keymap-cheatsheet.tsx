@@ -5,15 +5,8 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import { X } from "lucide-react";
-import { bindingsInScope, formatChord, type Binding, type KeyScope } from "@/lib/keymap";
-
-function Keycap({ children }: { children: string }) {
-  return (
-    <kbd className="rounded border border-border bg-surface px-1.5 py-0.5 font-mono text-micro text-text">
-      {children}
-    </kbd>
-  );
-}
+import { bindingsInScope, type Binding, type KeyScope } from "@/lib/keymap";
+import { Kbd, KbdChord } from "@/components/ui/kbd";
 
 interface Props {
   open: boolean;
@@ -80,9 +73,9 @@ export function KeymapCheatsheet({ open, onClose, scopes, mac }: Props) {
         <header className="flex items-center gap-3 border-b border-border px-5 py-3.5">
           <h2 className="text-ui font-semibold text-text">Keyboard shortcuts</h2>
           <span className="text-micro text-muted-foreground">
-            Hold <kbd className="font-sans">{mac ? "⌥" : "Alt"}</kbd>{" "}
+            Hold <Kbd size="xs">{mac ? "⌥" : "Alt"}</Kbd>{" "}
             to see each key on the thing it selects. Keys are inert while you&apos;re typing —{" "}
-            <kbd className="font-sans">Esc</kbd> returns to command mode.
+            <Kbd size="xs">Esc</Kbd> returns to command mode.
           </span>
           <button
             type="button"
@@ -102,15 +95,18 @@ export function KeymapCheatsheet({ open, onClose, scopes, mac }: Props) {
                 {bindings.map((b) => (
                   <div key={b.id} className="flex items-baseline gap-3">
                     <dt className="flex flex-shrink-0 items-baseline gap-1">
-                      <Keycap>{formatChord(b.keys[0], mac)}</Keycap>
+                      <KbdChord size="md" chord={b.keys[0]} mac={mac} />
                       {b.abbreviate ? (
                         <>
                           <span className="text-micro text-faint">…</span>
-                          <Keycap>{formatChord(b.keys[b.keys.length - 1], mac)}</Keycap>
+                          <KbdChord size="md" chord={b.keys[b.keys.length - 1]} mac={mac} />
                         </>
                       ) : (
                         b.keys.length > 1 && (
-                          <span className="text-micro text-faint">or {formatChord(b.keys[1], mac)}</span>
+                          <>
+                            <span className="text-micro text-faint">or</span>
+                            <KbdChord size="md" tone="muted" chord={b.keys[1]} mac={mac} />
+                          </>
                         )
                       )}
                     </dt>

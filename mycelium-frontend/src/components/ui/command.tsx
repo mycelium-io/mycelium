@@ -7,6 +7,7 @@ import * as React from "react";
 import { Command as CommandPrimitive } from "cmdk";
 import { SearchIcon } from "lucide-react";
 
+import { Kbd } from "@/components/ui/kbd";
 import { cn } from "@/lib/utils";
 
 /** shadcn's `command` (cmdk), restyled onto the app's tokens: the stock recipe
@@ -109,15 +110,15 @@ function CommandItem({ className, ...props }: React.ComponentProps<typeof Comman
   );
 }
 
-/** The chord an item answers to, drawn like a keycap on the cheatsheet. */
+/** The chord an item answers to, drawn as the same keycap the cheatsheet and
+ *  the status rail use — only pushed to the row's right edge and lit with the
+ *  selection. */
 function CommandShortcut({ className, ...props }: React.ComponentProps<"kbd">) {
   return (
-    <kbd
+    <Kbd
       data-slot="command-shortcut"
-      className={cn(
-        "ml-auto flex-shrink-0 rounded border border-border bg-surface px-1.5 py-0.5 font-mono text-micro text-muted-foreground group-data-[selected=true]/command-item:text-text",
-        className,
-      )}
+      tone="muted"
+      className={cn("ml-auto group-data-[selected=true]/command-item:text-text", className)}
       {...props}
     />
   );

@@ -221,7 +221,7 @@ function RoomWorkspace() {
         {connected ? "Live" : "Reconnecting…"}
       </span>
       {episodeLabel && (
-        <StatusButton onClick={() => openTab("episodes")} tooltip="View episodes">
+        <StatusButton onClick={() => openTab("episodes")} tooltip="View episodes" action="rail.episodes">
           <span style={{ color: episodeLabel.color }}>{episodeLabel.text}</span>
         </StatusButton>
       )}
@@ -234,7 +234,7 @@ function RoomWorkspace() {
   const statusRight = (
     <>
       {agents !== null && (
-        <StatusButton onClick={() => openTab("agents")} tooltip="View agents">
+        <StatusButton onClick={() => openTab("agents")} tooltip="View agents" action="rail.agents">
           <span className="tabular">{agents} agent{agents === 1 ? "" : "s"}</span>
         </StatusButton>
       )}
