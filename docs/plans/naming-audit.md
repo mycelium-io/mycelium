@@ -133,7 +133,21 @@ message/session/participant store." `in_memory_store.py` says it.
 | **Problem** | Reads as tutorial scaffolding, so a reader's first instinct is "this is example code, delete it." It is not: it is the **production probe for the summon path**, and its own docstring argues for exactly that. A name that invites deletion is a dangerous name. |
 | **Suggest** | `ProbeEngine` / `probe_engine.py`, or `EchoEngine` if the registered `kind` string must stay short. If the user-facing `--kind hello` is worth keeping, keep the string and rename the module/class. |
 
-### 1.10 Miscellaneous Tier-1 renames
+### 1.10 `earcon` → board sound
+
+| | |
+|---|---|
+| **Where** | `mycelium-frontend/src/lib/board/earcons.ts:30` (`type Earcon`), `:37` (`MOTIFS`), `:91` (`earcon(name, volume)`); consumed at `components/board/room-board.tsx:46`, `135-136`; `lib/audio-ping.ts:40` (`motif`) |
+| **Problem** | "Earcon" is a real HCI term (Blattner, 1989) — but a term of art nobody outside auditory-display research has met is indistinguishable from an invented one at the call site. `earcon(name, volume)` tells a reader nothing; `type Earcon = Verb \| "needs_you" \| "answer" \| "capture" \| "move"` tells them less. It fails the cold-read test, which is the test that matters: the standard-term test is about *using* the word the industry uses, not about whether a defensible citation exists. |
+| **Suggest** | `earcons.ts` → `board-sounds.ts`; `type Earcon` → `BoardSound`; `earcon(...)` → `playBoardSound(...)`; `MOTIFS` → `SOUNDS`. `motif` in `audio-ping.ts` can stay — it is the generic "play these notes" primitive and reads correctly as music, not as an event vocabulary. |
+
+Blast radius is one module and one consumer (a `play` callback in
+`room-board.tsx`), so this is among the cheapest renames on the list. The
+module's design rationale — one motif per state change, intervals rather than
+volume, everything under 400ms — is good and survives the rename untouched; it
+is only the word that is doing no work.
+
+### 1.11 Miscellaneous Tier-1 renames
 
 | Where | Now | Suggest |
 |---|---|---|
@@ -241,7 +255,7 @@ write*) and `mycelium-cli/src/mycelium/board/custody.py:203` (why a row refuses 
 `fastapi-backend/app/services/l9_models.py:51` (an L9 envelope block, vendored)
 and `fastapi-backend/app/services/status/types.py:157` (the protocol a status
 provider is handed). The vendored one cannot move; the local one should be
-`ProviderContext` (see 1.10).
+`ProviderContext` (see 1.11).
 
 ---
 
@@ -249,10 +263,6 @@ provider is handed). The vendored one cannot move; the local one should be
 
 Judgment calls. Each is defensible; each also costs a reader a beat.
 
-- **`earcons.ts` / `earcon()` / `motif`** (`lib/board/earcons.ts`) — "earcon" is a
-  real HCI term (Blattner, 1989), so it passes the standard-term test on a
-  technicality. It fails the cold-read test for anyone who has not met the term.
-  `board-sounds.ts` / `playBoardSound()` loses nothing.
 - **`upstream`** (`status/types.py:78` `ROW_FIELD`, `attachUpstream`,
   `UPSTREAM_FIELD`) — well-defended in the docstring, but collides with git's
   `upstream` and with the phrase "upstream service." `external` /
