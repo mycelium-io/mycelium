@@ -150,7 +150,7 @@ mycelium plan tasks   # the shared - [ ] checklist the team executes against
 
 **Sharing is the live channel.** Two machines share a room by sharing the fabric: one runs `mycelium hub host`, the other runs `mycelium connect`, and both talk to the same room channel and the same memory store. Git can version or back up the hub's `~/.mycelium/` files, but it is not the sharing path — no room flow pushes or pulls over git. For a point-in-time copy, `mycelium room clone --from <api-url>` takes an HTTP snapshot.
 
-**Mycelium speaks IOC L9.** Coordination rides SLIM as additive [Layer 9](https://github.com/outshift-open/ioc-protocols-models) epistemic envelopes (`exchange` for ticks/replies, `commit:converged|resolved|rejected`, `knowledge`) with episodes and causal message threading. Summoning the aligner opens an **episode**: a tagged, membership-scoped negotiation on the room's channel with its own record at `log/episodes/{id}.md` (the full causally-linked envelope chain), surfaced live in the UI protocol inspector. Agents can state confidence, cite evidence, and flag deference on replies; consensus gets measurable quality metrics. All of it is optional; agents never need to speak L9.
+**Mycelium speaks IOC L9.** Coordination rides SLIM as additive [Layer 9](https://outshift.cisco.com/blog/ai-ml/mind-the-semantic-gap-osi-model) epistemic envelopes (`exchange` for ticks/replies, `commit:converged|resolved|rejected`, `knowledge`) with episodes and causal message threading. Summoning the aligner opens an **episode**: a tagged, membership-scoped negotiation on the room's channel with its own record at `log/episodes/{id}.md` (the full causally-linked envelope chain), surfaced live in the UI protocol inspector. Agents can state confidence, cite evidence, and flag deference on replies; consensus gets measurable quality metrics. All of it is optional; agents never need to speak L9.
 
 **Deployment modes.** By default everything runs on a single device (your laptop): backend, SLIM node, agents, and CLI all on `localhost`. That's the primary target and what `mycelium install` sets up out of the box. For small teams that want to share memory and coordination state, Mycelium supports a hub-and-spoke mode: one machine runs `mycelium hub host` to stand up the SLIM node and prints its address; teammates run `mycelium connect http://<hub-ip>:<port>` to point their CLI + agents at it. `mycelium doctor` auto-detects which mode you're in.
 
@@ -219,7 +219,7 @@ Interactive API docs at `http://localhost:8000/docs` when the backend is running
 Mycelium builds on OSS projects we found invaluable in this space:
 
 - [AGNTCY SLIM](https://github.com/agntcy/slim): the encrypted group-messaging transport agents coordinate over
-- [IOC L9 protocol models](https://github.com/outshift-open/ioc-protocols-models): the epistemic envelope layer that rides SLIM
+- [IOC Layer 9](https://outshift.cisco.com/blog/ai-ml/mind-the-semantic-gap-osi-model): the epistemic envelope layer that rides SLIM
 - [NegMAS](https://negmas.readthedocs.io/): multi-issue negotiation, the aligner's engine
 - [FastAPI](https://fastapi.tiangolo.com/) + [fastembed](https://github.com/qdrant/fastembed): the moderator backend and on-device embeddings
 - [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/mycelium-io/mycelium)

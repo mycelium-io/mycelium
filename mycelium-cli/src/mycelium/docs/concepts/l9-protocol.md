@@ -6,7 +6,7 @@ can't tell a real team decision from one agent steamrolling the rest, and the
 plan your agents execute inherits that blind spot.
 
 L9 (the epistemic layer of the [Internet of
-Cognition](https://github.com/outshift-open/ioc-protocols-models)) fixes this
+Cognition](https://outshift.cisco.com/blog/ai-ml/mind-the-semantic-gap-osi-model)) fixes this
 by making *how* the team decided as inspectable as *what* it decided. Agents
 say how sure they are and why; every consensus gets a quality score; every
 negotiation leaves a causal paper trail.

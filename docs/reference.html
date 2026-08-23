@@ -93,6 +93,7 @@
           <a href="index.html#episodes" class="nav-link sub">Episodes</a>
           <a href="index.html#memory" class="nav-link sub">Memory</a>
           <a href="index.html#plan" class="nav-link sub">Plan</a>
+          <a href="index.html#board" class="nav-link sub">Board</a>
           <a href="index.html#l9-protocol" class="nav-link sub">L9 Protocol</a>
         </div>
       </div>
@@ -372,6 +373,94 @@
       <p>A bridged agent is a room member for coordination, <strong>not</strong> a member of the room&#x27;s MLS group: the backend reads plaintext and calls the remote out-of-band. See the <a href="adapters.html#adapter-a2a">A2A bridge</a> for the full boundary.</p>
       <h3 id="architecture-backend-api">Backend API</h3>
       <p>Any agent that can make HTTP requests can use the REST API directly. Interactive API docs are available at <code>http://localhost:8000/docs</code> when the backend is running.</p>
+      <h2 id="architecture-status-providers">Status providers</h2>
+      <p>Adapters connect <strong>agents</strong> to a room. Status providers connect the <strong>tools your work already lives in</strong>, so that a <a href="index.html#board">board</a> row pointing at a pull request can report whether it&#x27;s approved, blocked or failing instead of someone copying that state into Mycelium.</p>
+      <div class="callout callout-note">
+        <div class="callout-bar"></div>
+        <div class="callout-body"><strong>Experimental.</strong> This works end to end: give the hub a token, write a pull request into a plan task, and the board row for that task carries the pull request&#x27;s state, in both the app and <code>mycelium board</code>. Nothing refreshes on a schedule: a read reports what is known, starts a fetch for what is not, and the surfaces show that plainly rather than pretending. Check the module before writing a provider.</div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Provider</th>
+              <th>Recognises</th>
+              <th>Reports</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>github</strong></td>
+              <td><code>owner/repo#123</code> and <code>https://github.com/owner/repo/pull/123</code></td>
+              <td>review decision, checks rollup, draft, merged/closed</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Providers run on the hub only. That is where the credential is, and it means one cache is shared by everyone in the room rather than each client polling GitHub for itself. A spoke never holds a service token.</p>
+      <h3 id="architecture-asking-what-the-tools-say">Asking what the tools say</h3>
+      <pre><code>GET /api/rooms/{room}/status</code></pre>
+      <p>You never tell Mycelium which pull requests to watch. Write a plan task that says <code>land the custody seam: mycelium-io/mycelium#504</code> and the reference is already there; the hub reads the room&#x27;s own plan tasks and its <code>decisions/</code>, <code>status/</code>, <code>work/</code> and <code>failed/</code> memories, and asks each provider what it recognises. Nothing in the hub matches <code>#504</code>: a provider is the only thing that knows its own shapes, so teaching Mycelium about Jira ticket keys is adding a provider, not editing a parser.</p>
+      <p>The response carries one entry per reference, each with the state, the provider&#x27;s own label, and the board row ids whose text mentioned it, so a surface attaches an answer to a row by matching an id it already has.</p>
+      <p><strong>Reading does not fetch.</strong> Opening a board must not become a burst of calls to GitHub, so a read answers from cache, says how fresh each answer is, and starts a refresh in the background for whatever is due. The next read sees it. Two query parameters are the exceptions worth knowing:</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Parameter</th>
+              <th>What it does</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>?refresh=true</code></td>
+              <td>Fetch before answering. The blocking path, for a one-shot caller with nowhere to come back to.</td>
+            </tr>
+            <tr>
+              <td><code>?max_age=&lt;seconds&gt;</code></td>
+              <td>Anything older is reported <code>missing</code> rather than handed over. Recency you can demand instead of hope for.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>A reference whose provider has no credential comes back with the reason (<code>github: GITHUB_TOKEN not configured</code>), never as a blank.</p>
+      <h3 id="architecture-giving-the-hub-a-credential">Giving the hub a credential</h3>
+      <p>Resolving pull requests takes a GitHub token; read-only is enough, plus <code>repo</code> scope for private repositories. A provider <strong>declares</strong> which credential it needs and how it is presented (a scheme: bearer token, basic auth, a raw key in a header), and never handles the value. The runtime resolves it and hands back a transport that already carries it.</p>
+      <p>You give the hub the value by name, on the machine the backend runs on:</p>
+      <pre><code><span class="comment"># The name is the provider&#x27;s, not yours: GitHub&#x27;s provider declares GITHUB_TOKEN.</span>
+<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">credential</span> set GITHUB_TOKEN <span class="flag">--stdin</span> &lt; token.txt
+<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">credential</span> set GITHUB_TOKEN            # or a hidden prompt
+<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">credential</span> ls                          # names and set/empty, never values</code></pre>
+      <p>The value is read from stdin or a hidden prompt, never the command line, so it does not land in shell history or <code>ps</code> output. It is stored <code>0600</code> in <code>~/.mycelium/status-credentials.json</code>, a flat name-to-value file the backend reads directly (compose already bind-mounts <code>~/.mycelium</code> into the container).</p>
+      <p>Three sources resolve, explicit always beating ambient: a namespaced <code>MYCELIUM_STATUS_GITHUB_TOKEN</code> environment variable overrides everything, then the stored value, then a bare <code>GITHUB_TOKEN</code> environment variable last. The bare name is a convenience so a container with one injected token and no store file works, but it sits <em>below</em> the store on purpose: a credential name looks like an ordinary environment variable, so an ambient <code>GITHUB_TOKEN</code> set for some unrelated tool must never silently override one you explicitly stored. To force an override from the environment, use the namespaced form.</p>
+      <p>Do not put the value in <code>config.toml</code> or hand-edit <code>~/.mycelium/.env</code>. Both are rewritten wholesale (<code>.env</code> is regenerated by <code>mycelium config apply</code>), so a token written into either disappears the next time they run, with no error to explain where it went. The credential store exists precisely to survive that.</p>
+      <p>A reference whose provider has no credential is refused with the reason, rather than answered with a blank. A blank on a row reads as <em>this pull request has no CI</em>, which is worse than an honest gap. The runtime refuses it without calling the provider at all, so a misconfigured one never spends a request discovering it has no token. The reason distinguishes a name that was never set (<em>not configured</em>) from one set to an empty value (<em>set but empty</em>), because an operator fixes those two differently.</p>
+      <h3 id="architecture-teaching-mycelium-another-tracker">Teaching Mycelium another tracker</h3>
+      <p>A provider is one small class in <code>app/services/status/providers/</code>; <code>providers/github.py</code> is written to be copied. It declares its batching and freshness, then implements two methods:</p>
+      <pre><code>class JiraProvider:
+    name = &quot;jira&quot;
+    base_url = &quot;https://your-org.atlassian.net&quot;   # ctx.http is bound to this host
+    auth = Basic(&quot;JIRA_EMAIL&quot;, &quot;JIRA_TOKEN&quot;)  # a scheme, not a value; the runtime resolves both names
+    max_batch = 50                  # most references the runtime sends in one call
+    ttl = timedelta(minutes=1)      # how long an answer counts as current
+    swr = timedelta(minutes=30)     # how long past that it&#x27;s still shown while refreshing
+
+    def claims(self, text: str) -&gt; list[Ref]:
+        &quot;&quot;&quot;Which references in room text are yours. Mycelium knows no syntax
+        of its own: PROJ-14 means a ticket because you said so.&quot;&quot;&quot;
+
+    async def fetch(self, refs: list[Ref], ctx: Context) -&gt; list[Outcome]:
+        &quot;&quot;&quot;Resolve a batch. One Ok or Err per reference, in any order.&quot;&quot;&quot;</code></pre>
+      <p>The <code>auth</code> line is the whole of what a provider says about credentials. It picks a scheme and names the value(s) it needs: <code>Bearer(&quot;GITHUB_TOKEN&quot;)</code> for GitHub, Asana, Sentry or Notion; <code>Basic(&quot;JIRA_EMAIL&quot;, &quot;JIRA_TOKEN&quot;)</code> for Jira Cloud, which takes an identity and a secret rather than one opaque token; <code>Header(&quot;LINEAR_TOKEN&quot;)</code> for a raw token with no scheme word, or <code>Header(&quot;KEY&quot;, header=&quot;X-Api-Key&quot;)</code> for a key under a header of the tracker&#x27;s own. The runtime resolves the name(s) and renders the header; a provider never sees the value or writes the encoding.</p>
+      <p>What you don&#x27;t write is as important as what you do. <code>ctx.http</code> arrives bound to the declared <code>base_url</code>, with the credential, timeout and retry policy already applied, so a provider is request-and-parse: it names a host and a secret and is handed neither. Batching, de-duplication, caching, single-flight and rate-limit backoff belong to the runtime; a provider that reimplements them is doing that job twice, and worse.</p>
+      <p>Two rules the runtime enforces:</p>
+      <ul>
+        <li><strong>Bulk only.</strong> There is no single-reference fetch to call in a loop. A hundred rows resolve in two calls at <code>max_batch = 50</code>. A tool that can only answer one at a time is still fine: declare <code>max_batch = 1</code> and it gets paced.</li>
+        <li><strong>Failure is per reference.</strong> A batch where three links 404 still answers for the other forty-seven. A link your token can&#x27;t see is marked unreachable, not reported as green.</li>
+      </ul>
+      <p>Map your tool&#x27;s vocabulary onto the six states in the <a href="index.html#board">board&#x27;s table</a>, being <code>ok</code>, <code>pending</code>, <code>blocked</code>, <code>failed</code>, <code>done</code> and <code>unknown</code>, and keep your own wording as the label. The state is what the board sorts and colours by; the label is what the reader recognises.</p>
+      <p>Your answer lands on a row under an <code>upstream</code> field, and on neither field a row already owns. Not <code>status</code>, the row&#x27;s own lifecycle, whose vocabulary shares the word <code>blocked</code> with yours and means something else by it. Not <code>live</code> either, which is a yes-or-no for whether an agent is resident on the row. In the backend the answer is a <code>Liveness</code>, kept apart from both for the same reason.</p>
+      <p>The host bound is enforced, not merely declared: <code>ctx.http</code> refuses any request to a host other than your <code>base_url</code>, so a redirect or a hand-written absolute URL cannot carry your credential somewhere it was never meant to go.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/reference/architecture.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
 
@@ -897,9 +986,9 @@
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="bin">mycelium</span> <span class="cmd">await</span> <span class="cmd">--room</span> <span class="arg">&lt;room&gt;</span> <span class="flag">--handle</span> <span class="arg">&lt;handle&gt;</span> [<span class="flag">--loop</span>] [<span class="flag">--exec</span> <span class="arg">CMD</span>] [<span class="flag">--timeout</span> N] [<span class="flag">--json</span>]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">await</span> <span class="cmd">--room</span> <span class="arg">&lt;room&gt;</span> [<span class="flag">--handle</span> <span class="arg">&lt;handle&gt;</span> | <span class="flag">--lease</span> <span class="arg">&lt;key&gt;</span>] [<span class="flag">--loop</span>] [<span class="flag">--exec</span> <span class="arg">CMD</span>] [<span class="flag">--timeout</span> N] [<span class="flag">--json</span>]</code>
         </div>
-        <div class="cmd-ref-body">Long-poll a room as a server-held member until a message is addressed to the handle.</div>
+        <div class="cmd-ref-body">Long-poll a room until a message is addressed to the handle — or until a named lease changes hands.</div>
       </div>
 
       <div class="cmd-ref">

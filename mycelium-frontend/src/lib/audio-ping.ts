@@ -23,6 +23,35 @@ export function primeAudio(): void {
   if (c && c.state === "suspended") void c.resume();
 }
 
+/** One note in a motif: a frequency, an offset from the motif's start, a length. */
+export interface Note {
+  freq: number;
+  at: number;
+  dur: number;
+  /** Relative to the caller's volume; 1 is the full requested loudness. */
+  gain?: number;
+}
+
+/**
+ * Play a short motif on the shared context. Exported so a surface can speak in
+ * more than one sound — see `board/earcons.ts` — without opening a second
+ * AudioContext or shipping an asset.
+ */
+export function motif(notes: Note[], volume = 0.5): void {
+  if (volume <= 0) return;
+  try {
+    const c = getContext();
+    if (!c) return;
+    if (c.state === "suspended") void c.resume();
+    const now = c.currentTime;
+    for (const note of notes) {
+      tone(c, note.freq, now + note.at, note.dur, volume * (note.gain ?? 1));
+    }
+  } catch {
+    // Best-effort: a sound is never worth failing the caller over.
+  }
+}
+
 function tone(c: AudioContext, freq: number, start: number, duration: number, volume: number): void {
   const osc = c.createOscillator();
   const gain = c.createGain();
@@ -39,15 +68,11 @@ function tone(c: AudioContext, freq: number, start: number, duration: number, vo
 
 /** Play a short two-note chime. ``volume`` is 0–1; a no-op below ~0. */
 export function ping(volume = 0.5): void {
-  if (volume <= 0) return;
-  try {
-    const c = getContext();
-    if (!c) return;
-    if (c.state === "suspended") void c.resume();
-    const now = c.currentTime;
-    tone(c, 880, now, 0.12, volume);
-    tone(c, 1318.5, now + 0.09, 0.16, volume * 0.8);
-  } catch {
-    // Best-effort: a notification sound is never worth failing the caller over.
-  }
+  motif(
+    [
+      { freq: 880, at: 0, dur: 0.12 },
+      { freq: 1318.5, at: 0.09, dur: 0.16, gain: 0.8 },
+    ],
+    volume,
+  );
 }

@@ -1,0 +1,44 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Mycelium Contributors
+
+/**
+ * Reading a row's frontmatter bag.
+ *
+ * Fields are untyped on purpose: a room can put anything in frontmatter, and a
+ * row missing a field the cockpit likes still renders rather than crashing.
+ *
+ * These live below both `item` and `custody` so neither has to import the other
+ * to read a value — the derivations layer on the accessors, not on each other.
+ * `item` re-exports them, so a caller still reads them where it always did.
+ */
+
+import type { LiveItem } from "./item";
+
+export function str(item: LiveItem, name: string): string | null {
+  const v = item.fields[name];
+  return typeof v === "string" && v.trim() ? v.trim() : null;
+}
+
+export function num(item: LiveItem, name: string): number | null {
+  const v = item.fields[name];
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string" && v.trim() && Number.isFinite(Number(v))) return Number(v);
+  return null;
+}
+
+export function arr(item: LiveItem, name: string): string[] {
+  const v = item.fields[name];
+  if (Array.isArray(v)) return v.filter((x): x is string => typeof x === "string");
+  if (typeof v === "string" && v.trim()) return [v.trim()];
+  return [];
+}
+
+export function bool(item: LiveItem, name: string): boolean {
+  return item.fields[name] === true;
+}
+
+/** The row's holder, without the `@`. Absent means nobody, never "unknown". */
+export function ownerOf(item: LiveItem): string | null {
+  const o = str(item, "owner");
+  return o ? o.replace(/^@/, "") : null;
+}
