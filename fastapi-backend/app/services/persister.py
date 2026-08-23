@@ -48,7 +48,7 @@ import logging
 import re
 import uuid
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -404,6 +404,68 @@ def parse_recorded_at(recorded_at: str) -> datetime | None:
     return parse_timestamp(recorded_at)
 
 
+def amended_target(subkind: str | None, parents: Any) -> str | None:
+    """The id an ``exchange:amend`` revises, read off its causal parents.
+
+    An amend carries exactly one parent — the message it revises — so the
+    supersede link is the existing ``message.parents`` field rather than a new
+    one. Anything else (a different subkind, no parent) is not an amendment.
+    """
+    if subkind != l9.AMEND_SUBKIND or not isinstance(parents, list) or not parents:
+        return None
+    target = parents[0]
+    return target if isinstance(target, str) and target else None
+
+
+def collapse_amendments(messages: list[StoredMessage]) -> list[StoredMessage]:
+    """Fold each message together with the amendments revising it, newest wins.
+
+    The transcript is append-only: an amendment is a recorded event and every
+    version of the text stays on disk. This is the read-side derivation over that
+    log — the same contract as the link and search indexes — so a reader sees one
+    message carrying its latest text, stamped ``edited_at``.
+
+    An amendment of an amendment resolves down the chain to the message that
+    started it, so the fold is always one message and its revisions. An amendment
+    folds only into a message from the **same sender** that is present in this
+    view; one that matches nothing stays a row of its own rather than vanishing.
+    An amendment nobody can attribute is still something that was said, and
+    swallowing it would be the read path inventing a deletion.
+    """
+    by_id: dict[str, StoredMessage] = {}
+    for m in messages:
+        by_id[str(m.id)] = m
+        if m.message_id:
+            by_id[m.message_id] = m
+
+    def origin(message: StoredMessage) -> StoredMessage | None:
+        """Walk an amendment's parents to the original message it revises."""
+        seen = {message.id}
+        target = by_id.get(message.amends) if message.amends else None
+        while target is not None and target.amends and target.id not in seen:
+            seen.add(target.id)
+            target = by_id.get(target.amends)
+        return target if target is not None and not target.amends else None
+
+    folded: list[StoredMessage] = []
+    revised: dict[uuid.UUID, StoredMessage] = {}
+    for m in messages:
+        target = origin(m) if m.amends else None
+        if target is None or target.sender_handle != m.sender_handle:
+            folded.append(m)
+            continue
+        current = revised.get(target.id)
+        if current is None or current.created_at <= m.created_at:
+            revised[target.id] = m
+
+    if not revised:
+        return folded
+    return [
+        replace(m, content=r.content, edited_at=r.created_at) if (r := revised.get(m.id)) else m
+        for m in folded
+    ]
+
+
 def stored_message_from_record(
     room: str, record: TranscriptRecord, *, fallback: datetime | None = None
 ) -> StoredMessage | None:
@@ -435,7 +497,8 @@ def stored_message_from_record(
         content = json.dumps(record.content)
     else:
         return None
-    episode = record.content.get("l9", {}).get("header", {}).get("message", {}).get("episode")
+    header = record.content.get("l9", {}).get("header", {})
+    episode = header.get("message", {}).get("episode")
     seed = record.message_id or f"{record.recorded_at}:{record.sender}"
     msg = StoredMessage(
         room_name=room,
@@ -444,6 +507,7 @@ def stored_message_from_record(
         content=content,
         episode=episode if isinstance(episode, str) else None,
         message_id=record.message_id or None,
+        amends=amended_target(record.subkind, header.get("message", {}).get("parents")),
         id=uuid.uuid5(_MESSAGE_ID_NS, seed),
     )
     recorded = parse_recorded_at(record.recorded_at) or fallback
@@ -526,14 +590,16 @@ def room_conversation(room: str) -> list[StoredMessage]:
     (ttl/status) plus the ids clients already hold. Where a message is in both,
     the ``local_state`` row wins and the transcript only fills what memory lost.
     Dedup is by envelope ``message_id`` — a distinct id space from
-    ``StoredMessage.id``.
+    ``StoredMessage.id``. The merged view is then folded by
+    :func:`collapse_amendments`, so a revised message reads as one row carrying
+    its latest text while the transcript keeps every version.
     """
     from app.services import local_state
 
     mem = local_state.list_messages(room)
     live_ids = {m.message_id for m in mem if m.message_id}
     disk = [m for m in conversational_messages(room) if m.message_id not in live_ids]
-    return disk + mem
+    return collapse_amendments(disk + mem)
 
 
 def prose_messages(room: str) -> list[StoredMessage]:

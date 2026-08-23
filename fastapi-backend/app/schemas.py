@@ -188,9 +188,33 @@ class MessageRead(BaseModel):
     episode: str | None = Field(
         None, description="L9 episode URN this message belongs to, if any (for grouping/folding)"
     )
+    edited_at: datetime | None = Field(
+        None,
+        description=(
+            "When this message was last revised by an amendment, folded in on read. "
+            "None for a message nobody amended."
+        ),
+    )
     created_at: datetime
 
     model_config = {"from_attributes": True, "populate_by_name": True}
+
+
+class MessageAmend(BaseModel):
+    """A revision of an earlier message: new text, same author.
+
+    The amendment is posted as its own ``exchange:amend`` message parented on the
+    one it revises. Nothing in the transcript is rewritten — the read path folds
+    the chain to the newest text.
+    """
+
+    content: str = Field(..., min_length=1, description="The revised message text")
+    sender_handle: str | None = Field(
+        None,
+        description=(
+            "Handle amending; must be the original sender. Defaults to the token-verified caller."
+        ),
+    )
 
 
 class MessageListResponse(BaseModel):

@@ -46,6 +46,11 @@ interface Event {
   // turns share their mediator's episode; casual chat carries the room default
   // or none. Lets the feed group/fold one negotiation's turns together.
   episode: string | null;
+  /** The id of the message this one revises, when it is an amendment. The feed
+   *  folds it into that message rather than showing it as a row of its own. */
+  amends: string | null;
+  /** True once an amendment has revised this message's text. */
+  edited: boolean;
   raw: Record<string, unknown>;
 }
 
@@ -261,6 +266,19 @@ function parseEvent(msg: Record<string, unknown>): Event {
       | undefined)?.episode as string ||
     null;
 
+  // An amendment names the message it revises: over SSE that's the L9 envelope's
+  // subkind + parents, on the REST snapshot the backend has already folded it and
+  // only the `edited_at` stamp survives.
+  const l9header = ((raw.l9 as Record<string, unknown> | undefined)?.header ??
+    {}) as Record<string, unknown>;
+  const parents = (l9header.message as Record<string, unknown> | undefined)?.parents;
+  const amends =
+    l9header.subkind === "amend" && Array.isArray(parents) && typeof parents[0] === "string"
+      ? (parents[0] as string)
+      : typeof msg.amends === "string"
+        ? msg.amends
+        : null;
+
   return {
     id: `${Date.now()}-${Math.random()}`,
     messageId: typeof msg.id === "string" ? msg.id : null,
@@ -270,8 +288,30 @@ function parseEvent(msg: Record<string, unknown>): Event {
     recipient,
     time,
     episode,
+    amends,
+    edited: typeof msg.edited_at === "string",
     raw,
   };
+}
+
+/** Fold an amendment into the message it revises, or keep it as its own row.
+ *
+ *  The backend folds a cold read; the live stream carries the amendment as the
+ *  message it is, so the open tab has to fold it too or it reads as the sender
+ *  repeating themselves. An amendment that matches nothing here (its target
+ *  scrolled out of this window, or came from someone else) stays visible rather
+ *  than being dropped — the same rule the read path follows. */
+function foldAmendment(events: Event[], amendment: Event): Event[] {
+  const target = events.findIndex(
+    (e) =>
+      e.messageId === amendment.amends &&
+      e.sender === amendment.sender &&
+      e.amends === null,
+  );
+  if (target === -1) return [...events, amendment];
+  return events.map((e, i) =>
+    i === target ? { ...e, content: amendment.content, edited: true } : e,
+  );
 }
 
 export type View = "channel" | "negotiate" | "plan" | "network";
@@ -364,7 +404,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
       return;
     }
     const event = parseEvent(msg);
-    setEvents(prev => [...prev, event]);
+    setEvents(prev => (event.amends ? foldAmendment(prev, event) : [...prev, event]));
     if (event.type === "memory_changed") onMemoryChanged?.();
     // A consensus compiles the negotiation into plan/tasks.md, so nudge
     // the plan header to refetch so the checklist surfaces immediately.
@@ -689,6 +729,11 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
                     <MarkdownContent className="contrast text-body leading-relaxed" onLinkClick={onOpenMemory}>
                       {ev.content}
                     </MarkdownContent>
+                    {ev.edited && (
+                      <span className="text-micro text-faint" title="revised by a later message">
+                        (edited)
+                      </span>
+                    )}
                   </div>
                 </div>
               );

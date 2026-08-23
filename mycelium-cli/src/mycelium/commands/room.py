@@ -835,6 +835,82 @@ def send(
 
 
 @doc_ref(
+    usage='mycelium room amend <message-id> "<new content>" [--room <room>] [--handle <handle>]',
+    desc="Revise a message you sent. The amendment is posted as its own message; the room reads the newest text, marked edited.",
+    group="room",
+)
+@app.command("amend")
+def amend(
+    ctx: typer.Context,
+    message_id: str = typer.Argument(
+        ..., help="Id of the message to revise (the short id `room messages` prints is enough)"
+    ),
+    content: str = typer.Argument(..., help="The revised message text"),
+    room: str | None = typer.Option(
+        None, "--room", "-r", help="Room the message is in (defaults to active room)"
+    ),
+    handle: str | None = typer.Option(
+        None, "--handle", "-H", help="Your sender handle (defaults to identity config)"
+    ),
+) -> None:
+    """
+    Revise a message you already sent.
+
+    Editing here is additive, not destructive: the revision is posted as its own
+    message pointing at the one it revises, so the room's transcript keeps every
+    version and nothing is rewritten. What readers see is the folded result — the
+    newest text, marked edited.
+
+    Only the message's own sender can amend it. Get the id from
+    `mycelium room messages` (the short id after the message type).
+
+    Examples:
+        mycelium room amend a1b2c3d4 "the cache TTL is 300s, not 30s"
+        mycelium room amend a1b2c3d4 "corrected numbers" --room design-review
+    """
+    try:
+        verbose = ctx.obj.get("verbose", False) if ctx.obj else False  # noqa: F841
+        json_output = ctx.obj.get("json", False) if ctx.obj else False
+
+        config = MyceliumConfig.load()
+        room_name = _resolve_room(config, room)
+        sender_handle = handle or config.get_current_identity()
+
+        from mycelium_backend_client.api.messages import (
+            amend_message_api_rooms_room_name_messages_message_id_amend_post as amend_api,
+        )
+        from mycelium_backend_client.models import MessageAmend
+
+        with _typed_client(config) as client:
+            body = MessageAmend(content=content, sender_handle=sender_handle)
+            result = amend_api.sync(
+                room_name=room_name, message_id=message_id, client=client, body=body
+            )
+
+        if result is None:
+            typer.secho(
+                f"  Could not amend {message_id} in {room_name} "
+                "(no such message, or it isn't yours).",
+                fg=typer.colors.RED,
+            )
+            raise typer.Exit(1)
+
+        if json_output:
+            msg_dict = result.to_dict() if hasattr(result, "to_dict") else str(result)
+            typer.echo(json_module.dumps(msg_dict, indent=2, default=str))
+            return
+
+        preview = content[:80] + ("…" if len(content) > 80 else "")
+        typer.echo(f"  ✎  {sender_handle} → {room_name} (edited {message_id}): {preview}")
+
+    except (typer.Exit, typer.Abort):
+        raise
+    except Exception as e:
+        verbose = ctx.obj.get("verbose", False) if ctx.obj else False
+        print_error(e, verbose=verbose)
+
+
+@doc_ref(
     usage="mycelium room messages [<room>] [--limit N] [--sender <handle>] [--type <type>]",
     desc="Read recent messages in a room (point-in-time, newest first). Filter with <code>--sender</code> / <code>--type</code>.",
     group="room",
@@ -916,7 +992,11 @@ def messages(
             first, *rest = (m.content or "").split("\n")
             owner = owners.get(m.sender_handle)
             own = f" owned by @{owner}" if owner else ""
-            typer.echo(f"  {stamp}  {m.sender_handle}{own} [{m.message_type}]: {first}")
+            edited = " (edited)" if getattr(m, "edited_at", None) else ""
+            typer.echo(
+                f"  {stamp}  {m.sender_handle}{own} [{m.message_type}]"
+                f"  {str(m.id)[:8]}: {first}{edited}"
+            )
             for line in rest:
                 typer.echo(f"              {line}")
         typer.echo()

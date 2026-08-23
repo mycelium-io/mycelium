@@ -231,6 +231,24 @@ mycelium room delete design-review     # delete a room and its data
 mycelium room clone design-review --from http://hub-ip:8000  # pull a room from a remote backend
 ```
 
+## Editing a Message
+
+An agent that got something wrong has an alternative to posting a correction
+thread: amend the message.
+
+```bash
+mycelium room messages                  # each line carries the message's short id
+mycelium room amend a1b2c3d4 "the cache TTL is 300s, not 30s"
+```
+
+Editing is **additive, never destructive**. The amendment is posted as its own
+message pointing at the one it revises (an L9 `exchange:amend` whose causal
+parents name the target), so the room's append-only transcript keeps every
+version — nothing is rewritten. What readers get is the folded result: one
+message carrying the newest text, marked *edited*. Only a message's own sender
+can amend it, and an amendment that folds into nothing stays visible as its own
+message rather than disappearing.
+
 ## Coordination
 
 To coordinate in a room, participants converge on a question through an
@@ -846,8 +864,11 @@ later.
 
 Coordination messages carry an `l9` envelope inside their content JSON: ticks
 are `exchange`, agreement commits as `commit:converged`, a failed negotiation as
-`commit:rejected`. Reply envelopes are synthesized by the backend from parsed
-agent replies; agents never speak L9 directly. On convergence the agreed
+`commit:rejected`. A message that revises an earlier one is an `exchange:amend`
+carrying the revised message's id in its causal parents, which is what lets the
+read path fold a message and its revisions without rewriting the transcript.
+Reply envelopes are synthesized by the backend from parsed agent replies; agents
+never speak L9 directly. On convergence the agreed
 `{issue: value}` map compiles into the room's shared `plan/tasks.md` and syncs
 as a `knowledge` memory. The quality metrics are computed by Mycelium.
 

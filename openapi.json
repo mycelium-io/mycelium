@@ -814,6 +814,68 @@
         }
       }
     },
+    "/api/rooms/{room_name}/messages/{message_id}/amend": {
+      "post": {
+        "tags": [
+          "messages"
+        ],
+        "summary": "Amend Message",
+        "description": "Revise an earlier message by posting an amendment of it.\n\nAdditive, never destructive: the amendment is its own ``exchange:amend``\nmessage, parented on the one it revises, and the transcript keeps every\nversion. The read path (``persister.collapse_amendments``) folds the chain,\nso the room sees one message carrying the newest text, marked edited.\n\nOnly the original sender may amend \u2014 an amendment from anyone else would put\nwords in someone's mouth under their name.",
+        "operationId": "amend_message_api_rooms__room_name__messages__message_id__amend_post",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Message Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MessageAmend"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/rooms/{room_name}/messages/{message_id}": {
       "patch": {
         "tags": [
@@ -4743,6 +4805,34 @@
         ],
         "title": "MemorySearchResult"
       },
+      "MessageAmend": {
+        "properties": {
+          "content": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Content",
+            "description": "The revised message text"
+          },
+          "sender_handle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sender Handle",
+            "description": "Handle amending; must be the original sender. Defaults to the token-verified caller."
+          }
+        },
+        "type": "object",
+        "required": [
+          "content"
+        ],
+        "title": "MessageAmend",
+        "description": "A revision of an earlier message: new text, same author.\n\nThe amendment is posted as its own ``exchange:amend`` message parented on the\none it revises. Nothing in the transcript is rewritten \u2014 the read path folds\nthe chain to the newest text."
+      },
       "MessageCreate": {
         "properties": {
           "sender_handle": {
@@ -4896,6 +4986,19 @@
             ],
             "title": "Episode",
             "description": "L9 episode URN this message belongs to, if any (for grouping/folding)"
+          },
+          "edited_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Edited At",
+            "description": "When this message was last revised by an amendment, folded in on read. None for a message nobody amended."
           },
           "created_at": {
             "type": "string",
