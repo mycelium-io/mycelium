@@ -14,6 +14,39 @@
 
 import type { LiveItem } from "./item";
 
+/**
+ * Why a row refuses a field write, in its own terms.
+ *
+ * A verb that is not custody writes frontmatter, and only a memory has any. The
+ * rest of the board is projected out of state that lives elsewhere — a
+ * checklist line, an episode record, a presence lease — so there is nothing to
+ * write onto, and saying that beats accepting a write that goes nowhere.
+ *
+ * Frozen in `contracts/board-vocabulary.json` under `fields`; the CLI carries
+ * its own copy and a test on each side asserts against that file.
+ */
+export const FIELD_REFUSALS: Record<string, string> = {
+  plan: "a plan task is a checklist line; there is no frontmatter on it to write",
+  episode: "an episode is a recorded negotiation, not a row the room can edit",
+  agent: "presence is what the runtime reports, not a field you set",
+  capture: "this row is not in the room yet; capture it first",
+  github: "this value belongs to the tool it came from; change it there",
+};
+
+/** The only row kind with frontmatter behind it. */
+export const WRITABLE_SOURCE_KINDS = ["memory"];
+
+/** The memory key behind a row, or null when the row is not a memory. */
+export function memoryKeyOf(item: LiveItem): string | null {
+  return item.source.kind === "memory" ? item.id.replace(/^memory:/, "") : null;
+}
+
+/** Why this row cannot take a field write, or null when it can. */
+export function fieldWriteRefusal(item: LiveItem): string | null {
+  if (WRITABLE_SOURCE_KINDS.includes(item.source.kind)) return null;
+  return FIELD_REFUSALS[item.source.kind] ?? "this row has no frontmatter to write";
+}
+
 export function str(item: LiveItem, name: string): string | null {
   const v = item.fields[name];
   return typeof v === "string" && v.trim() ? v.trim() : null;

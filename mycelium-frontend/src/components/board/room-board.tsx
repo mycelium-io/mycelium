@@ -29,8 +29,9 @@ import {
   useRoomRoster,
   useRoomStatus,
 } from "@/lib/room-data";
-import { writeLease } from "@/lib/api";
-import { custodyRefusal } from "@/lib/board/custody";
+import { writeFields, writeLease } from "@/lib/api";
+import { custodyRefusal, reservedIn } from "@/lib/board/custody";
+import { fieldWriteRefusal, memoryKeyOf } from "@/lib/board/fields";
 import { applyVerb, LENSES, type Lens, type LiveItem, type Verb } from "@/lib/board/item";
 import { projectItems } from "@/lib/board/projection";
 import { attachUpstream } from "@/lib/board/upstream";
@@ -197,18 +198,56 @@ export function RoomBoard({ roomName }: Props) {
     [view.mode, groups, flat],
   );
 
-  const patch = useCallback((id: string, fields: Record<string, unknown>) => {
+  // What the surface shows the instant you act, before the room has answered.
+  const echoLocal = useCallback((id: string, fields: Record<string, unknown>) => {
     setOverlay(prev => ({ ...prev, [id]: { ...(prev[id] ?? {}), ...fields } }));
   }, []);
 
+  /**
+   * A verb's write: the overlay is the optimistic echo, the room is the record.
+   *
+   * A row whose fields live somewhere other than frontmatter says why instead
+   * of accepting a change that would exist in this tab and nowhere else, which
+   * is what the board did for every verb but custody.
+   */
+  const patch = useCallback(
+    (item: LiveItem, fields: Record<string, unknown>) => {
+      echoLocal(item.id, fields);
+      const refusal = fieldWriteRefusal(item);
+      if (refusal) {
+        setEcho(`${item.id} — ${refusal}`);
+        return;
+      }
+      const key = memoryKeyOf(item);
+      if (!key) return;
+      // `updated` is the board's name for the store's own `updated_at`, so
+      // sending it would write a second, competing timestamp.
+      const rest = Object.fromEntries(Object.entries(fields).filter(([k]) => k !== "updated"));
+      const reserved = reservedIn(Object.keys(rest));
+      if (reserved.length) {
+        setEcho(`${item.id} — ${reserved.join(", ")} moves through a lease, not a field write`);
+        return;
+      }
+      // Clearing a field is `null` on the wire: `undefined` would be dropped by
+      // JSON.stringify and the key would silently survive.
+      const writable = Object.fromEntries(
+        Object.entries(rest).map(([k, v]) => [k, v === undefined ? null : v]),
+      );
+      if (!Object.keys(writable).length) return;
+      void writeFields(roomName, { key, handle: actor, fields: writable })
+        .then(() => revalidate())
+        .catch((e: unknown) => setEcho(`write ${item.id} failed — ${String(e)}`));
+    },
+    [actor, echoLocal, revalidate, roomName],
+  );
+
   const runVerb = useCallback(
     (item: LiveItem, verb: Verb) => {
-      const fields = applyVerb(item, verb, {
-        actor,
-        now: new Date().toISOString(),
-        issueNumber: 700 + (Object.keys(overlay).length % 90),
-      });
-      patch(item.id, fields);
+      // No `issueNumber`: a promote has no GitHub write behind it, and a
+      // synthetic `#712` was survivable as an overlay but would now be a
+      // fabricated back-link written into the room, which the upstream
+      // provider would then resolve against a real, unrelated issue.
+      const fields = applyVerb(item, verb, { actor, now: new Date().toISOString() });
       setSelectedId(item.id);
       play(verb);
       // The echo is the point: a human gesture and an agent's call are the same
@@ -220,11 +259,14 @@ export function RoomBoard({ roomName }: Props) {
           .join(" ")}`,
       );
 
-      // Custody is the half of the board with a real write behind it. A claim
-      // from here is the same versioned frontmatter a claim from the CLI is, so
-      // the overlay above is only the optimistic echo of it — and a row that
-      // can't hold a lease says why instead of silently doing nothing.
-      if (verb !== "claim" && verb !== "release" && verb !== "resolve") return;
+      // Custody moves under its own rules — a live claim is not stealable, and
+      // expiry is read off a clock — so it keeps its own endpoint. Every other
+      // verb is a frontmatter write and goes through `patch`.
+      if (verb !== "claim" && verb !== "release" && verb !== "resolve") {
+        patch(item, fields);
+        return;
+      }
+      echoLocal(item.id, fields);
       const refusal = custodyRefusal(item);
       if (refusal) {
         if (verb !== "resolve") setEcho(`${verb} ${item.id} — ${refusal}`);
@@ -237,13 +279,13 @@ export function RoomBoard({ roomName }: Props) {
         })
         .catch((e: unknown) => setEcho(`${verb} ${item.id} failed — ${String(e)}`));
     },
-    [actor, overlay, patch, play, revalidate, roomName],
+    [actor, echoLocal, patch, play, revalidate, roomName],
   );
 
   const answer = useCallback(
     (item: LiveItem, choice: string) => {
-      patch(item.id, { status: "resolved", decision: choice, updated: new Date().toISOString() });
-      setEcho(`answer ${item.id} → decision=${choice} status=resolved · commit:converged over L9`);
+      patch(item, { status: "resolved", decision: choice, updated: new Date().toISOString() });
+      setEcho(`answer ${item.id} → decision=${choice} status=resolved`);
       play("answer");
     },
     [patch, play],
@@ -386,7 +428,7 @@ export function RoomBoard({ roomName }: Props) {
               // The "no value" column is not a value: dropping a card there
               // means clear the field, not write the column's own key into it.
               const cleared = value === UNGROUPED;
-              patch(item.id, {
+              patch(item, {
                 [field]: cleared ? undefined : value,
                 updated: new Date().toISOString(),
               });
@@ -413,7 +455,7 @@ export function RoomBoard({ roomName }: Props) {
                 selectedId={selectedId}
                 onSelect={setSelectedId}
                 onEdit={(item, field, value) => {
-                  patch(item.id, { [field]: value, updated: new Date().toISOString() });
+                  patch(item, { [field]: value, updated: new Date().toISOString() });
                   setEcho(`edit ${item.id} → ${field}=${String(value)} · written to frontmatter`);
                 }}
                 sort={view.sort}

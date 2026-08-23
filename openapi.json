@@ -1418,6 +1418,107 @@
         }
       }
     },
+    "/api/rooms/{room_name}/fields": {
+      "post": {
+        "tags": [
+          "fields"
+        ],
+        "summary": "Write Fields",
+        "description": "Put fields on a row, through the canonical memory upsert.",
+        "operationId": "write_fields_api_rooms__room_name__fields_post",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WriteBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms/{room_name}/fields/{key}": {
+      "get": {
+        "tags": [
+          "fields"
+        ],
+        "summary": "Read Fields",
+        "description": "A row's writable fields, without changing anything.",
+        "operationId": "read_fields_api_rooms__room_name__fields__key__get",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/rooms/{room_name}/episodes": {
       "get": {
         "tags": [
@@ -6758,6 +6859,33 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "WriteBody": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key",
+            "description": "Memory key of the row being written"
+          },
+          "handle": {
+            "type": "string",
+            "title": "Handle",
+            "description": "Who is writing \u2014 recorded as the memory's author"
+          },
+          "fields": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Fields",
+            "description": "Frontmatter to merge onto the row. A null value clears its key. Custody keys are refused: those move through /leases."
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "handle",
+          "fields"
+        ],
+        "title": "WriteBody"
       }
     }
   }

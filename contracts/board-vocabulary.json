@@ -138,6 +138,19 @@
     },
     "blocked_field": "blocked_by"
   },
+  "fields": {
+    "_comment": "What a board verb writes when it is not custody: frontmatter on the row's memory, through the same upsert `memory set --meta` goes through. Only a memory carries frontmatter, so every other projected row refuses in its own terms rather than accepting a write that goes nowhere. The reserved set is deliberately NOT listed here \u2014 it is derived from `custody` (its field, its companion fields, and the holder), and each implementation asserts that derivation rather than a second copy that could drift.",
+    "writable_source_kinds": [
+      "memory"
+    ],
+    "refusals": {
+      "plan": "a plan task is a checklist line; there is no frontmatter on it to write",
+      "episode": "an episode is a recorded negotiation, not a row the room can edit",
+      "agent": "presence is what the runtime reports, not a field you set",
+      "capture": "this row is not in the room yet; capture it first",
+      "github": "this value belongs to the tool it came from; change it there"
+    }
+  },
   "schema": {
     "_comment": "Field types the two surfaces must infer identically, and the order options come back in. `cases` is a table both suites run through their own classifier: a field name, the values it holds, and the type both must call it. These drifted once (the GUI grew number-from-string and link rules the CLI never got, and sorted out-of-vocabulary options first where the CLI sorted them last), which is what a table asserted from both sides prevents.",
     "types": [

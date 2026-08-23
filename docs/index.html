@@ -692,7 +692,7 @@ Review 1
          @agent-z   feat/custody-seam   CI green   #504       12m</code></pre>
       <div class="callout callout-note">
         <div class="callout-bar"></div>
-        <div class="callout-body"><strong>Experimental.</strong> The board reads real room state today. The triage verbs act on your own view: <code>resolve</code> writes through to a plan task, and the rest change what you see without yet writing back to the room.</div>
+        <div class="callout-body"><strong>Experimental.</strong> The board reads and writes real room state. A triage verb puts frontmatter on the row&#x27;s memory, through the same upsert a <code>memory set</code> goes through — so a card you move is a versioned, indexed change the room can read back, not a change to your own view. Rows projected from somewhere other than a memory say so instead of taking the write.</div>
       </div>
       <h2 id="board-nothing-to-fill-in">Nothing to fill in</h2>
       <p>You never add anything to the board. It&#x27;s assembled from what the room already has: the tasks in its plan, the negotiations running in it, the memories under <code>decisions/</code>, <code>status/</code>, <code>work/</code> and <code>failed/</code>, and which agents are actually resident right now. Every row says where it came from, and clicking through takes you to the real thing rather than a copy of it.</p>

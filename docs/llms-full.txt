@@ -805,9 +805,11 @@ Review 1
          @agent-z   feat/custody-seam   CI green   #504       12m
 ```
 
-> **Experimental.** The board reads real room state today. The triage verbs act
-> on your own view: `resolve` writes through to a plan task, and the rest change
-> what you see without yet writing back to the room.
+> **Experimental.** The board reads and writes real room state. A triage verb
+> puts frontmatter on the row's memory, through the same upsert a `memory set`
+> goes through — so a card you move is a versioned, indexed change the room can
+> read back, not a change to your own view. Rows projected from somewhere other
+> than a memory say so instead of taking the write.
 
 ## Nothing to fill in
 
