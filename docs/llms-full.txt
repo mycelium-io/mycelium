@@ -1146,6 +1146,12 @@ are told apart in the transcript and either one is addressable by handle. On an
 ungated hub nothing proves who called, and the message posts as the shared
 `@a2a-guest` handle instead.
 
+The card advertises an absolute URL, which the hub builds from the scheme it
+sees. Behind a TLS-terminating reverse proxy that is plain `http`, so a public
+hub has to be told which forwarder to believe or the card points external
+clients at `http://`. See [Behind a TLS-terminating
+proxy](reference.html#hub-and-spoke).
+
 ## Watch the bridge
 
 The bridge is the one hop that doesn't ride SLIM, so it gets its own place in the
@@ -1661,6 +1667,40 @@ status, and skips hub-only checks (Docker, SLIM PSK).
 When spokes reach the hub over a LAN or VPN, turn on HTTP authentication on
 the hub. See [Authentication](#auth). Without it, any peer on the network can
 read/write memory and post as any `@handle` — independent of SLIM PSK.
+
+### Behind a TLS-terminating proxy
+
+A public hub usually sits behind a reverse proxy (Caddy, nginx, a cloud load
+balancer) that terminates HTTPS and forwards plain HTTP to the backend
+container. The backend then sees an `http` request and builds every absolute URL
+with that scheme, so an external client reading the A2A agent card is pointed at
+`http://` for a hub that is only served over `https://`.
+
+The proxy says what the original request was in `X-Forwarded-Proto`, but the
+backend believes that header only from a forwarder it trusts, and it trusts
+loopback alone by default. That default is the safe one: a direct caller on the
+network could otherwise assert any scheme it liked. Name the proxy instead:
+
+```bash
+mycelium config set runtime.trusted_proxies '*'
+mycelium config apply
+mycelium up
+```
+
+`'*'` is the right value when the backend port is reachable only through the
+proxy, which is the usual public deployment. If the backend is also reachable
+directly, list the proxy's addresses instead:
+
+```bash
+mycelium config set runtime.trusted_proxies '172.18.0.1,10.0.0.5'
+```
+
+Leave it unset for a hub with no proxy in front. Verify the card afterwards:
+
+```bash
+curl -s https://hub.example.com/api/rooms/my-room/.well-known/agent-card.json
+# the advertised url is https://, not http://
+```
 
 ## Step 3: Use a room from a spoke
 
@@ -2973,6 +3013,37 @@ Unreachable* above); the backend and the node are separate ports.
 
 ---
 
+### 13. Hub Advertises `http://` URLs Behind HTTPS
+
+**Symptom**: the hub is served over `https://`, but an absolute URL it hands out
+comes back `http://`. Most visible on the A2A agent card:
+
+```bash
+curl -s https://hub.example.com/api/rooms/my-room/.well-known/agent-card.json
+# "url": "http://hub.example.com/api/rooms/my-room/a2a"
+```
+
+**Cause**: a TLS-terminating reverse proxy forwards plain HTTP to the backend
+container, so the backend sees an `http` request. The proxy reports the original
+scheme in `X-Forwarded-Proto`, but the backend believes that header only from a
+forwarder it trusts, and by default it trusts loopback alone. The proxy connects
+from the Docker bridge, so its header is ignored.
+
+**Fix**: name the proxy, then re-render `.env` and recreate the stack.
+
+```bash
+mycelium config set runtime.trusted_proxies '*'
+mycelium config apply
+mycelium up
+```
+
+Use `'*'` when the backend port is reachable only through the proxy. If it is
+also reachable directly, list the proxy addresses instead
+(`'172.18.0.1,10.0.0.5'`) so a direct caller cannot spoof the scheme. Leave it
+unset when nothing fronts the backend.
+
+---
+
 ## Configuration Reference
 
 ### CLI settings: `~/.mycelium/config.toml`
@@ -2995,6 +3066,7 @@ Unreachable* above); the backend and the node are separate ports.
 | `MYCELIUM_BACKEND_PORT` | Backend API host port | `8000` |
 | `MYCELIUM_UI_PORT` | Frontend host port | `3000` |
 | `MYCELIUM_METRICS_PORT` | OTLP collector host port (`--metrics`) | `4318` |
+| `FORWARDED_ALLOW_IPS` | Forwarders whose `X-Forwarded-*` headers the backend honours (`runtime.trusted_proxies`) | (unset: loopback only) |
 
 All of these are written by `mycelium config apply` from the matching
 `runtime.*` config keys, so don't edit `.env` by hand.

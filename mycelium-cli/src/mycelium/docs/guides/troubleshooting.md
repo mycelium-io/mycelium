@@ -246,6 +246,37 @@ Unreachable* above); the backend and the node are separate ports.
 
 ---
 
+### 13. Hub Advertises `http://` URLs Behind HTTPS
+
+**Symptom**: the hub is served over `https://`, but an absolute URL it hands out
+comes back `http://`. Most visible on the A2A agent card:
+
+```bash
+curl -s https://hub.example.com/api/rooms/my-room/.well-known/agent-card.json
+# "url": "http://hub.example.com/api/rooms/my-room/a2a"
+```
+
+**Cause**: a TLS-terminating reverse proxy forwards plain HTTP to the backend
+container, so the backend sees an `http` request. The proxy reports the original
+scheme in `X-Forwarded-Proto`, but the backend believes that header only from a
+forwarder it trusts, and by default it trusts loopback alone. The proxy connects
+from the Docker bridge, so its header is ignored.
+
+**Fix**: name the proxy, then re-render `.env` and recreate the stack.
+
+```bash
+mycelium config set runtime.trusted_proxies '*'
+mycelium config apply
+mycelium up
+```
+
+Use `'*'` when the backend port is reachable only through the proxy. If it is
+also reachable directly, list the proxy addresses instead
+(`'172.18.0.1,10.0.0.5'`) so a direct caller cannot spoof the scheme. Leave it
+unset when nothing fronts the backend.
+
+---
+
 ## Configuration Reference
 
 ### CLI settings: `~/.mycelium/config.toml`
@@ -268,6 +299,7 @@ Unreachable* above); the backend and the node are separate ports.
 | `MYCELIUM_BACKEND_PORT` | Backend API host port | `8000` |
 | `MYCELIUM_UI_PORT` | Frontend host port | `3000` |
 | `MYCELIUM_METRICS_PORT` | OTLP collector host port (`--metrics`) | `4318` |
+| `FORWARDED_ALLOW_IPS` | Forwarders whose `X-Forwarded-*` headers the backend honours (`runtime.trusted_proxies`) | (unset: loopback only) |
 
 All of these are written by `mycelium config apply` from the matching
 `runtime.*` config keys, so don't edit `.env` by hand.

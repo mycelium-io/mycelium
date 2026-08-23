@@ -89,6 +89,12 @@ are told apart in the transcript and either one is addressable by handle. On an
 ungated hub nothing proves who called, and the message posts as the shared
 `@a2a-guest` handle instead.
 
+The card advertises an absolute URL, which the hub builds from the scheme it
+sees. Behind a TLS-terminating reverse proxy that is plain `http`, so a public
+hub has to be told which forwarder to believe or the card points external
+clients at `http://`. See [Behind a TLS-terminating
+proxy](reference.html#hub-and-spoke).
+
 ## Watch the bridge
 
 The bridge is the one hop that doesn't ride SLIM, so it gets its own place in the
