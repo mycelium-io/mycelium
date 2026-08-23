@@ -38,10 +38,9 @@ import httpx
 from rich.console import Console
 
 if TYPE_CHECKING:
-    from mycelium_backend_client import Client
-
     from mycelium.config import MyceliumConfig
     from mycelium.tokens import StoredToken
+    from mycelium_backend_client import Client
 
 _DEFAULT_TIMEOUT_S = 30.0
 

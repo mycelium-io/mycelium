@@ -21,12 +21,12 @@ from typing import Any
 
 import httpx
 import typer
-from mycelium_backend_client.errors import UnexpectedStatus
 from rich.console import Console
 
 from mycelium.client import hub_error_detail, typed_client
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
+from mycelium_backend_client.errors import UnexpectedStatus
 
 app = typer.Typer(
     help="Create and browse a room's skills: SKILL.md-style markdown in the room's skills/ namespace. Skills back the chat composer's / trigger.",

@@ -350,9 +350,9 @@ def _warn_unknown_principal(manifest: AgentManifest) -> None:
     if not manifest.owner:
         return
     import httpx
-    from mycelium_backend_client.errors import UnexpectedStatus
 
     from mycelium.commands.user import load_user
+    from mycelium_backend_client.errors import UnexpectedStatus
 
     try:
         known = load_user(manifest.owner) is not None
@@ -377,12 +377,11 @@ def _write_manifest(
     same ``filesystem.write_memory`` helper the rest of the CLI uses for local
     copies of API-written memories.
     """
+    from mycelium.filesystem import write_memory
     from mycelium_backend_client.api.memory import (
         create_memories_api_rooms_room_name_memory_post as create_api,
     )
     from mycelium_backend_client.models import MemoryBatchCreate, MemoryCreate
-
-    from mycelium.filesystem import write_memory
 
     body = manifest.model_dump(exclude={"handle"})
     yaml_body = yaml.safe_dump(body, sort_keys=False, default_flow_style=False).strip()
@@ -895,6 +894,7 @@ def _pick_room(config: MyceliumConfig) -> str | None:
     config + gateway restart; guaranteeing existence here avoids that.
     """
     import questionary
+
     from mycelium_backend_client.api.rooms import (
         create_room_api_rooms_post as create_api,
     )
