@@ -3,18 +3,18 @@
 
 """Contract drift guard for the global user store (CLI side).
 
-The store itself is the hub's: the CLI is a client of ``/api/users`` and writes
-no user files, so the frozen file shape in ``contracts/user-store.json`` — store
-dir, frontmatter tag, version rule, serialized body — is asserted only by the
-backend twin, ``fastapi-backend/tests/test_user_store_contract.py``, which is
-now its only producer.
+The store is the hub's: the CLI is a client of ``/api/users`` and writes no user
+files, so the frozen file shape in ``contracts/user-store.json`` — store dir,
+frontmatter tag, version rule, serialized body — is asserted by the backend
+twin, ``fastapi-backend/tests/test_user_store_contract.py``, the store's only
+producer.
 
-What still has to agree across the two is the part that survives the wire: the
-CLI normalizes a handle and its team slugs in ``UserManifest`` before sending
-them, and the backend re-normalizes on write. If those rules diverged, the
-handle the CLI shows you would not be the one keying the record it just wrote.
-So this locks the CLI's normalization to the same fixture, and checks the body
-it puts on the wire carries exactly the contract's fields.
+What has to agree across the two is what survives the wire: the CLI normalizes a
+handle and its team slugs in ``UserManifest`` before sending them, and the
+backend re-normalizes on write. Diverge, and the handle the CLI shows you is not
+the one keying the record it just wrote. So this locks the CLI's normalization to
+the same fixture and checks the body it puts on the wire carries the contract's
+fields.
 """
 
 import json

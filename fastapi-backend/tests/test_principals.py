@@ -99,8 +99,8 @@ async def test_teams_rollup(client: AsyncClient):
 async def test_created_by_is_stamped_from_the_payload(client: AsyncClient):
     """A caller that knows its principal keeps attribution on the record.
 
-    The CLI registers users over this endpoint, so without a `created_by` on the
-    wire every record it wrote would be attributed to "system".
+    The CLI registers users over this endpoint, so the handle it acts as has to
+    reach the frontmatter.
     """
     from app.services.filesystem import get_users_dir, read_memory_file
 
@@ -112,7 +112,7 @@ async def test_created_by_is_stamped_from_the_payload(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_created_by_defaults_to_system(client: AsyncClient):
-    """A caller with no principal to name (the app) keeps the old default."""
+    """A caller with no principal to name (the app) falls back to "system"."""
     from app.services.filesystem import get_users_dir, read_memory_file
 
     await client.post("/api/users", json={"handle": "sam"})

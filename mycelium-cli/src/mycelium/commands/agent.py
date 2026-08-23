@@ -267,11 +267,10 @@ def _is_resident(config: MyceliumConfig, room_name: str, handle: str) -> bool:
 def _room_manifests(room_name: str, *, client: Any = None) -> list[AgentManifest]:
     """Every agent manifest registered in a room (skips notes + log children).
 
-    Resolved against the hub's memory API, the one store — a spoke keeps no
-    local ``.mycelium/`` replica, so reading the filesystem here answered "no
-    agents registered" for a room that demonstrably has them (#787). A hub that
-    is unreachable raises rather than returning an empty list: an empty answer
-    has to mean "no agents", never "couldn't look".
+    Resolved against the hub's memory API, the one store: a spoke keeps no local
+    ``.mycelium/`` replica, so the filesystem is not the room. An unreachable hub
+    raises rather than returning an empty list — an empty answer means "no
+    agents", never "couldn't look".
 
     Pass *client* to share one hub session across rooms.
     """
@@ -345,9 +344,8 @@ def _warn_unknown_principal(manifest: AgentManifest) -> None:
 
     The binding is self-asserted, so a dangling owner is a soft signal, not an
     error; it just nudges the user to register the principal so 'my agents'
-    has something to resolve. A hub that can't be reached means the owner can't
-    be confirmed either way, so the nudge is skipped rather than guessed at —
-    the write that follows will report the outage on its own.
+    has something to resolve. An unreachable hub confirms nothing either way, so
+    the nudge is skipped; the write that follows reports the outage.
     """
     if not manifest.owner:
         return

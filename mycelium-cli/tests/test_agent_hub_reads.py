@@ -3,10 +3,10 @@
 
 """``mycelium agent``/``engine`` reads resolve against the hub, not local files.
 
-A spoke keeps no local ``.mycelium/`` replica, so anything that answered from
-``get_room_dir()`` reported "No agents registered" for a room that demonstrably
-has agents — a confident empty answer rather than an error (#787). These tests
-run under a temp home with **no** room files on purpose: every listing below is
+A spoke keeps no local ``.mycelium/`` replica, so a read that answers from
+``get_room_dir()`` reports "No agents registered" for a room that demonstrably
+has agents — a confident empty answer rather than an error. These tests run
+under a temp home with **no** room files on purpose: every listing below is
 served by the stubbed hub, and the unreachable-hub cases assert the command says
 so instead of printing the empty branch.
 """
@@ -49,11 +49,7 @@ def _home(isolated_home) -> None:  # noqa: ANN001
 
 @pytest.fixture(autouse=True)
 def _hub(backend) -> None:  # noqa: ANN001
-    """Neutralize the typed-client plumbing in each module under test.
-
-    ``MyceliumConfig`` is one class object shared by every command module, so
-    patching it through ``agent_cmd`` covers the ``user`` roll-up too.
-    """
+    """Neutralize the typed-client plumbing in each module under test."""
     for module in (agent_cmd, engine_cmd):
         backend(module, room="demo", active_room="demo")
 
@@ -112,7 +108,7 @@ def _stub(monkeypatch: pytest.MonkeyPatch, target: str, outcome: Any) -> list[di
 def test_agent_ls_lists_what_the_hub_serves_with_no_local_files(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The #787 regression: an agent the hub knows about shows up on a spoke."""
+    """An agent the hub knows about shows up on a spoke with no local files."""
     calls = _stub(
         monkeypatch,
         MEMORY_LIST_SYNC,

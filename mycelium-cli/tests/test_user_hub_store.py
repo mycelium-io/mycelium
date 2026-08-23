@@ -3,10 +3,10 @@
 
 """``mycelium user`` / ``whoami`` / ``iam`` read and write the hub's user store.
 
-People span rooms, so the user store is global — but global still means the
-hub's, not a per-machine `~/.mycelium/users/` replica. A spoke that kept its own
-copy showed no users while the hub and the app showed several, and `iam` wrote a
-record the hub never saw. These tests run under a temp home with no user files:
+People span rooms, so the user store is global — but global means the hub's, not
+a per-machine `~/.mycelium/users/` replica. A spoke reading its own copy shows no
+users while the hub and the app show several, and an `iam` that writes one
+registers nobody. These tests run under a temp home with no user files:
 everything below is served by, or lands on, the stubbed hub.
 """
 

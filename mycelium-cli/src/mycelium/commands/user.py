@@ -293,12 +293,11 @@ def user_show(
 def _principal_view(handle: str) -> tuple[UserManifest | None, list[tuple[str, str, str]]] | None:
     """A principal's hub record and owned-agent roll-up, or ``None`` if the hub is down.
 
-    ``whoami`` has to answer "who am I on this machine" with the hub
-    unreachable, so a failure here is a ``None`` view the caller reports, not an
-    error that sinks the command. A registered user comes back with the hub's
-    own roll-up; an unregistered principal can still own agents, so its roll-up
-    is gathered from the room manifests instead — ``/api/users`` is keyed by
-    user record, and a principal without one has nothing to key on.
+    ``whoami`` answers "who am I on this machine" with the hub unreachable, so
+    that case is a ``None`` view the caller reports rather than an error. A
+    registered user carries the hub's own roll-up; ``/api/users`` is keyed by
+    user record, so an unregistered principal's agents come from the room
+    manifests instead.
     """
     try:
         read = _fetch_user(handle)
