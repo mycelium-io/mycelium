@@ -24,15 +24,14 @@ from rich.console import Console
 from rich.table import Table
 
 from mycelium.commands.agent import (
-    _load_manifest,
     _load_manifest_remote,
     _persist_and_describe,
     _resolve_room,
+    _room_manifests,
     _typed_client,
 )
 from mycelium.config import MyceliumConfig
 from mycelium.error_handler import print_error
-from mycelium.filesystem import get_room_dir, list_memories
 from mycelium.integrations import AddOptions, get_adapter
 from mycelium.protocol import ENGINE_KINDS
 
@@ -116,16 +115,8 @@ def engine_ls(
     try:
         config = MyceliumConfig.load()
         room_name = _resolve_room(config, room)
-        room_dir = get_room_dir(room_name)
 
-        engines = []
-        for key, _meta, _content in list_memories(room_dir, prefix="agents/", limit=200):
-            handle = key.removeprefix("agents/")
-            if "/" in handle:  # notes + log children live under agents/<handle>/…
-                continue
-            m = _load_manifest(room_name, handle)
-            if m is not None and m.adapter == "engine":
-                engines.append(m)
+        engines = [m for m in _room_manifests(room_name) if m.adapter == "engine"]
 
         if ctx.obj and ctx.obj.get("json"):
             console.print(
@@ -190,9 +181,7 @@ def engine_invoke(
         from mycelium_backend_client.models import MessageCreate, MessageCreateMessageType
 
         with _typed_client(config) as client:
-            manifest = _load_manifest(room_name, handle) or _load_manifest_remote(
-                client, room_name, handle
-            )
+            manifest = _load_manifest_remote(client, room_name, handle)
             if manifest is None:
                 console.print(
                     f"[red]Not found:[/red] no engine named '{handle}' in room '{room_name}'.\n"

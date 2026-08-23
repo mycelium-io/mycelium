@@ -18,6 +18,14 @@ Scope (v1): ``message/send`` delivers the message into the room and returns an
 ack. If the message ``@``-mentions a room agent, normal room dynamics take over
 (including the outbound a2a responder) — this endpoint just doesn't block on that
 async reply. Returning the room's reply synchronously is a follow-up.
+
+Who the message is *from* comes from the hub's auth gate (#798). A gated hub
+already proved the caller's token to let the call through, so the room sender is
+that principal: a call authenticated as ``claude-web`` posts as ``@claude-web``
+and two external A2A agents are distinguishable in the transcript. On an ungated
+hub, or for an anonymous caller on a public path, there is no verified identity
+to name and the message posts as the shared guest handle — the same "no
+principal, no change" rule the rest of the write paths follow.
 """
 
 from __future__ import annotations
@@ -44,6 +52,7 @@ from fastapi import APIRouter, HTTPException, Request
 from starlette.responses import JSONResponse, Response
 
 from app.services import a2a_activity, l9
+from app.services.actor import bind_optional_actor
 from app.services.filesystem import room_exists
 from app.services.l9_slim import serialize_content
 from app.services.skills import list_room_skills
@@ -52,6 +61,10 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/rooms/{room_name}", tags=["a2a"])
 
+#: Sender of record for an inbound message with no verified caller behind it —
+#: an ungated hub, or an anonymous call. It is deliberately not a per-request
+#: placeholder: with nothing proving who called, one shared handle is honest
+#: about that, where a made-up distinct one would not be.
 _GUEST_HANDLE = "a2a-guest"
 
 
@@ -85,21 +98,30 @@ def room_card_url(room: str, request: Request) -> str:
     return f"{base}/api/rooms/{room}/.well-known/agent-card.json"
 
 
-async def _inject_into_room(room: str, text: str) -> str:
-    """Post ``text`` into the room as the a2a guest; return an ack line."""
+def inbound_sender(request: Request | None) -> str:
+    """The room handle an inbound A2A message is attributed to.
+
+    The verified principal when the gate produced one, the guest handle when it
+    did not. ``bind_optional_actor`` is the same seam every other write path
+    uses; an inbound A2A message carries no self-asserted actor at all, so the
+    token fills an absent claim rather than overriding a stated one.
+    """
+    return bind_optional_actor(request, None, field="sender") or _GUEST_HANDLE
+
+
+async def _inject_into_room(room: str, text: str, sender: str = _GUEST_HANDLE) -> str:
+    """Post ``text`` into the room as ``sender``; return an ack line."""
     from app.services.room_channels import manager
 
     managed = manager.get(room)
     if managed is None:
         ack = f"Room '{room}' is not active."
-        a2a_activity.record_inbound(
-            room, handle=_GUEST_HANDLE, status="error", prompt=text, detail=ack
-        )
+        a2a_activity.record_inbound(room, handle=sender, status="error", prompt=text, detail=ack)
         return ack
     env = l9.build_envelope(
         kind=l9.Kind.exchange,
         episode=l9.episode_urn(room, "live"),
-        sender=_GUEST_HANDLE,
+        sender=sender,
         sender_role="agent",
         topic=l9.topic_urn(room),
         payload_type="message",
@@ -112,20 +134,26 @@ async def _inject_into_room(room: str, text: str) -> str:
     if managed.persister is not None:
         managed.persister.ingest_local(env, content, list_write=True)
     ack = f"Delivered to room '{room}'."
-    a2a_activity.record_inbound(room, handle=_GUEST_HANDLE, status="ok", prompt=text, reply=ack)
+    a2a_activity.record_inbound(room, handle=sender, status="ok", prompt=text, reply=ack)
     return ack
 
 
 class _RoomAgentExecutor(AgentExecutor):
-    """Deliver an inbound A2A message into a room and ack it."""
+    """Deliver an inbound A2A message into a room and ack it.
 
-    def __init__(self, room: str) -> None:
+    The sender is resolved once per request, before the SDK dispatcher takes
+    over: the executor runs inside the dispatcher and never sees the HTTP
+    request, so the caller's identity has to travel with it.
+    """
+
+    def __init__(self, room: str, sender: str = _GUEST_HANDLE) -> None:
         self._room = room
+        self._sender = sender
 
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
         text = (context.get_user_input() or "").strip()
         ack = (
-            await _inject_into_room(self._room, text)
+            await _inject_into_room(self._room, text, self._sender)
             if text
             else "Empty message; nothing delivered."
         )
@@ -159,6 +187,7 @@ async def a2a_rpc(room_name: str, request: Request) -> Response:
     if not room_exists(room_name):
         raise HTTPException(status_code=404, detail="Room not found")
     card = build_room_card(room_name, request)
-    handler = DefaultRequestHandler(_RoomAgentExecutor(room_name), InMemoryTaskStore(), card)
+    executor = _RoomAgentExecutor(room_name, inbound_sender(request))
+    handler = DefaultRequestHandler(executor, InMemoryTaskStore(), card)
     dispatcher = JsonRpcDispatcher(handler, enable_v0_3_compat=True)
     return await dispatcher.handle_requests(request)

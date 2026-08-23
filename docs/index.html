@@ -37,9 +37,6 @@
     <img src="logo.png" alt="Mycelium">
     <span class="brand-word">mycelium</span>
   </a>
-  <nav class="sectionnav">
-    <a href="https://raw.githubusercontent.com/mycelium-io/mycelium/main/mycelium-cli/src/mycelium/integrations/cursor/assets/AGENTS.md" target="_blank" rel="noopener">AGENTS.md ↗</a>
-  </nav>
   <div class="topnav-right">
     <div class="docsearch" id="docsearch">
       <button class="docsearch-toggle" id="docsearch-toggle" type="button"
@@ -60,7 +57,7 @@
         </div>
       </div>
     </div>
-    <button class="copy-docs-btn" onclick="copyDocsCmd()"><i data-lucide="terminal"></i>Copy docs cmd</button>
+    <button class="copy-agents-btn" onclick="copyAgentsMd()"><i data-lucide="file-text"></i>Copy agents.md</button>
     <button class="copy-page-btn" onclick="copyPage()"><i data-lucide="copy"></i>Copy page</button>
     <div class="theme-toggle">
       <button class="theme-btn" id="theme-btn" aria-label="Theme" onclick="toggleThemeMenu(event)">
@@ -190,7 +187,6 @@
     </div>
     <div class="nav-external">
       <a href="https://raw.githubusercontent.com/mycelium-io/mycelium/main/mycelium-cli/src/mycelium/integrations/claude_code/assets/skills/mycelium/SKILL.md" target="_blank" rel="noopener">SKILL.md ↗</a>
-      <a href="https://raw.githubusercontent.com/mycelium-io/mycelium/main/mycelium-cli/src/mycelium/integrations/cursor/assets/AGENTS.md" target="_blank" rel="noopener">AGENTS.md ↗</a>
     </div>
   </nav>
   <div class="nav-backdrop" id="nav-backdrop" onclick="closeDrawer()"></div>
@@ -417,6 +413,7 @@ PATCH .../messages/{id}  {<span class="str">&quot;status&quot;</span>: <span cla
         <li><strong>Agents</strong> belong to a room (<code>rooms/{room}/agents/{handle}</code>). An agent can name an <code>owner</code> (a user) and a <code>team</code>.</li>
         <li><strong>Users</strong> are global (<code>users/{handle}</code>), because a person works across rooms. An agent&#x27;s <code>owner</code> points at one.</li>
       </ul>
+      <p>Both records live on the hub. <code>mycelium user</code>, <code>iam</code> and <code>whoami</code> read and write them over the API like every other room read, so a spoke sees the same people the hub and the app do. <code>iam</code> is the one command with a local half: the handle it sets as <em>this machine&#x27;s</em> identity is machine config, so it still lands with the hub down — it just says the record wasn&#x27;t registered.</p>
       <h2 id="users-identity-scales-with-your-needs">Identity scales with your needs</h2>
       <p>Ownership and attribution read the same at every level of trust; what changes is how strongly an identity is proven. Mycelium supports a three-tier model, and you turn the strength up only when you need it:</p>
       <ol class="steps">

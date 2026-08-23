@@ -172,10 +172,16 @@ is no litellm dependency.
   work — that's a hub-operator escape hatch (run `mycelium memory reindex` after),
   not the client model.
 - **The spoke is a thin client.** Any non-hub machine keeps **no local `.mycelium/`
-  replica**; there is one store, the hub's. `memory get`/`ls`/`search` and the
-  category views all resolve against the backend memory API, so a spoke with no
-  files still reads the room — and an unreachable hub is reported plainly rather
+  replica**; there is one store, the hub's. `memory get`/`ls`/`search`, the
+  category views, the roster reads (`agent ls`/`show`/`invoke`/`rm`,
+  `engine ls`/`invoke`) and the global user store (`user create`/`ls`/`show`,
+  `iam`, `whoami` over `/api/users`) all resolve against the backend, so a spoke
+  with no files still reads the room — and an unreachable hub is reported plainly rather
   than silently answered from something stale (`commands/memory.py:_hub_session`).
+  The backend is the only writer of `users/`, so the CLI half of
+  `contracts/user-store.json` covers just the slug rules and the wire fields.
+  `mycelium iam` is the one split command: the identity it sets is this machine's
+  config, the user record is the hub's, and the local half lands either way.
 - **Rooms are always persistent.** Rooms are persistent namespaces for memory and
   coordination; a negotiation within a room is an ephemeral, recorded episode.
 - **The CLI skill is a protocol.** Post a position → await → respond → consensus →

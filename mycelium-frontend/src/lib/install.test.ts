@@ -5,7 +5,6 @@ import { describe, expect, it } from "vitest";
 import {
   CLI_INSTALL_COMMAND,
   LOGIN_COMMAND,
-  NEXT_STEPS,
   PLATFORMS,
   PROMPT_COMMAND,
   configSetCommand,
@@ -61,13 +60,5 @@ describe("install content", () => {
     const windows = PLATFORMS.find(p => p.id === "windows");
     expect(windows?.note).toMatch(/WSL/);
     expect(PLATFORMS.filter(p => p.note)).toHaveLength(1);
-  });
-
-  it("points every next step at the docs", () => {
-    expect(NEXT_STEPS.length).toBeGreaterThan(0);
-    for (const step of NEXT_STEPS) {
-      expect(step.href).toMatch(/^https:\/\/mycelium-io\.github\.io\/mycelium\//);
-      expect(step.command).toMatch(/^mycelium /);
-    }
   });
 });

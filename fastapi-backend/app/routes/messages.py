@@ -55,10 +55,16 @@ async def send_message(room_name: str, payload: MessageCreate, request: Request)
     channel, coord = _resolve_channel(room_name)
 
     # Token-verified sender; fall back to payload handle if unauthenticated.
-    sender_handle = actor.bind_actor(request, payload.sender_handle, field="sender_handle")
+    # Delegation-aware, like /reply: a principal may announce as a handle that
+    # granted it access via owner/allow_from, which is how one shared workload
+    # credential posts under a distinct per-agent handle. The grant is explicit on
+    # the target manifest, so this is authorized delegation, not impersonation.
+    base_room = channel.split(":session:", 1)[0]
+    sender_handle = actor.bind_delegated_actor(
+        request, base_room, payload.sender_handle, field="sender_handle"
+    )
 
     # Prevent impersonation: only engines post as engine handles.
-    base_room = channel.split(":session:", 1)[0]
     reason = principals.post_rejection_reason(base_room, sender_handle, allow_unregistered=True)
     if reason:
         raise HTTPException(status_code=403, detail=reason)

@@ -24,7 +24,6 @@ from mycelium.client import hub_error_detail
 from mycelium.config import MyceliumConfig, ServerConfig
 from mycelium.doc_ref import doc_ref
 from mycelium.error_handler import print_error
-from mycelium.exceptions import ConfigNotFoundError
 from mycelium.http_client import MyceliumHTTPClient  # kept for health check
 from mycelium.ui_status import (
     CheckResult,
@@ -614,9 +613,6 @@ def status(ctx: typer.Context) -> None:
         json_output = ctx.obj.get("json", False) if ctx.obj else False
 
         config_path = MyceliumConfig.get_config_path()
-        if not config_path.exists():
-            raise ConfigNotFoundError(str(config_path))
-
         config = MyceliumConfig.load()
 
         from mycelium import __version__ as cli_version
@@ -688,6 +684,7 @@ def status(ctx: typer.Context) -> None:
                 },
                 "config": {
                     "path": str(config_path),
+                    "file_present": config_path.exists(),
                     "api_url": config.server.api_url,
                     "active_room": config.get_active_room(),
                 },
@@ -813,7 +810,8 @@ def status(ctx: typer.Context) -> None:
             # ── Configuration ─────────────────────────────────────────
             # Informational block (no checks): path + active room.
             print_section("Configuration")
-            print_kv("Path", str(config_path))
+            path_note = "" if config_path.exists() else "  (absent — settings from environment)"
+            print_kv("Path", f"{config_path}{path_note}")
             active_room = config.get_active_room()
             if active_room:
                 print_kv("Active Room", active_room)

@@ -235,3 +235,44 @@ async def test_delegates_to_reads_only_explicit_grants(client: AsyncClient):
     assert not principals.delegates_to(ROOM, "loner", "alice")
     assert not principals.delegates_to(ROOM, "unregistered", "alice")
     assert not principals.delegates_to(ROOM, "bot", "")
+
+
+# ── room send (POST /messages) honors delegation, like /reply ─────────────────
+
+
+async def _send_as(client: AsyncClient, handle: str, *, room: str = ROOM):
+    return await client.post(
+        f"/api/rooms/{room}/messages",
+        json={"sender_handle": handle, "content": "hi", "message_type": "broadcast"},
+    )
+
+
+@pytest.mark.asyncio
+async def test_room_send_as_own_handle(client: AsyncClient, as_principal):
+    await _make_room(client)
+    as_principal("alice", role="user")
+    resp = await _send_as(client, "alice")
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["sender_handle"] == "alice"
+
+
+@pytest.mark.asyncio
+async def test_room_send_allow_from_lets_a_shared_credential_announce(
+    client: AsyncClient, as_principal
+):
+    """One shared workload credential may announce under a distinct per-agent
+    handle that granted it access — the self-claimed ephemeral-agent path."""
+    await _make_room(client)
+    _seed_agent("cc-demo", owner="alice", allow_from=["claude-web"])
+    as_principal("claude-web")
+    resp = await _send_as(client, "cc-demo")
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["sender_handle"] == "cc-demo"
+
+
+@pytest.mark.asyncio
+async def test_room_send_rejects_an_ungranted_handle(client: AsyncClient, as_principal):
+    await _make_room(client)
+    _seed_agent("cc-demo", owner="alice", allow_from=["claude-web"])
+    as_principal("mallory")
+    assert (await _send_as(client, "cc-demo")).status_code == 403

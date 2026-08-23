@@ -355,62 +355,226 @@
     });
   }
 
-  // ── Header anchor links ──
-  // Add chainlink icon to all h2[id] and h3[id] elements
-  document.querySelectorAll('h2[id], h3[id]').forEach(heading => {
+  // ── Heading tools: copy link, copy section ──
+  // Every heading in the doc body carries a chainlink (copies its deep link)
+  // and a copy button (copies the section it opens, as markdown). h1s hold no
+  // id of their own — the enclosing <section class="doc-section"> holds it —
+  // so a heading resolves its anchor from the section it opens.
+  const LINK_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>';
+  const COPY_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+  const CHECK_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+  const BLOCK_SEL = 'p,h1,h2,h3,h4,h5,h6,pre,ul,ol,table,hr,div,section,blockquote,figure,details';
+
+  function writeClipboard(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+      return navigator.clipboard.writeText(text);
+    }
+    // No async clipboard off a secure origin (file://, plain http): copy out of
+    // a scratch textarea instead so the docs still work opened from disk.
+    return new Promise((resolve, reject) => {
+      const scratch = document.createElement('textarea');
+      scratch.value = text;
+      scratch.setAttribute('readonly', '');
+      scratch.style.cssText = 'position:fixed;top:-1000px;opacity:0';
+      document.body.appendChild(scratch);
+      scratch.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(scratch);
+      ok ? resolve() : reject(new Error('copy failed'));
+    });
+  }
+
+  function flashCopied(el, restore) {
+    el.classList.add('copied');
+    el.innerHTML = CHECK_SVG;
+    setTimeout(() => {
+      el.classList.remove('copied');
+      el.innerHTML = restore;
+    }, 1500);
+  }
+
+  function headingAnchorId(heading) {
+    if (heading.id) return heading.id;
+    const section = heading.closest('section[id]');
+    // The heading that opens a section shares the section's id — the one the
+    // nav and the search index already point at. Only that heading may claim
+    // it, or two headings would answer to the same anchor.
+    if (section && section.querySelector('h1, h2, h3, h4') === heading) return section.id;
+    // Any other heading the page left without an id (hand-written HTML) gets
+    // one derived from its text, in the shape the generator uses.
+    const slug = heading.textContent.trim().toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+    if (!slug) return null;
+    const base = (section ? section.id + '-' : '') + slug;
+    let id = base;
+    for (let n = 2; document.getElementById(id); n++) id = base + '-' + n;
+    heading.id = id;
+    return id;
+  }
+
+  // A heading owns the siblings that follow it up to the next heading at the
+  // same or a higher level, so an h1 takes its whole section, subheads included.
+  function headingBlocks(heading) {
+    const level = Number(heading.tagName[1]);
+    const blocks = [];
+    for (let node = heading.nextElementSibling; node; node = node.nextElementSibling) {
+      if (/^H[1-6]$/.test(node.tagName) && Number(node.tagName[1]) <= level) break;
+      blocks.push(node);
+    }
+    return blocks;
+  }
+
+  function inlineMarkdown(node) {
+    if (node.nodeType === 3) return node.nodeValue.replace(/\s+/g, ' ');
+    if (node.nodeType !== 1) return '';
+    if (node.classList.contains('heading-tools')) return '';
+    const tag = node.tagName.toLowerCase();
+    if (tag === 'br') return '\n';
+    const inner = Array.from(node.childNodes).map(inlineMarkdown).join('');
+    if (!inner.trim()) return '';
+    switch (tag) {
+      case 'code':
+      case 'kbd':
+        return '`' + inner + '`';
+      case 'strong':
+      case 'b':
+        return '**' + inner + '**';
+      case 'em':
+      case 'i':
+        return '*' + inner + '*';
+      case 'a': {
+        const href = node.getAttribute('href');
+        if (!href) return inner;
+        try {
+          return '[' + inner + '](' + new URL(href, location.href).href + ')';
+        } catch (err) {
+          return inner;
+        }
+      }
+      default:
+        return inner;
+    }
+  }
+
+  function listMarkdown(list, depth) {
+    const ordered = list.tagName === 'OL';
+    const pad = '  '.repeat(depth);
+    const lines = [];
+    Array.from(list.children).forEach((li, i) => {
+      const own = [];
+      const nested = [];
+      Array.from(li.childNodes).forEach(child => {
+        if (child.nodeType === 1 && /^(UL|OL)$/.test(child.tagName)) nested.push(child);
+        else own.push(inlineMarkdown(child));
+      });
+      lines.push(pad + (ordered ? (i + 1) + '. ' : '- ') + own.join('').trim());
+      nested.forEach(sub => lines.push(listMarkdown(sub, depth + 1)));
+    });
+    return lines.join('\n');
+  }
+
+  function tableMarkdown(table) {
+    const rows = Array.from(table.querySelectorAll('tr')).map(tr =>
+      Array.from(tr.children).map(cell =>
+        inlineMarkdown(cell).trim().replace(/\|/g, '\\|').replace(/\n/g, ' ')));
+    if (!rows.length) return '';
+    const width = rows.reduce((w, r) => Math.max(w, r.length), 0);
+    const row = cells =>
+      '| ' + cells.concat(new Array(width - cells.length).fill('')).join(' | ') + ' |';
+    return [row(rows[0]), row(new Array(width).fill('---'))]
+      .concat(rows.slice(1).map(row))
+      .join('\n');
+  }
+
+  function blockMarkdown(node) {
+    if (node.nodeType === 3) return node.nodeValue.trim();
+    if (node.nodeType !== 1) return '';
+    if (node.classList.contains('heading-tools') || node.classList.contains('edit-page')) return '';
+    const tag = node.tagName.toLowerCase();
+    if (/^h[1-6]$/.test(tag)) return '#'.repeat(Number(tag[1])) + ' ' + inlineMarkdown(node).trim();
+    if (tag === 'pre') return '```\n' + node.textContent.replace(/\s+$/, '') + '\n```';
+    if (tag === 'ul' || tag === 'ol') return listMarkdown(node, 0);
+    if (tag === 'table') return tableMarkdown(node);
+    if (tag === 'hr') return '---';
+    if (tag === 'script' || tag === 'style') return '';
+    if (!node.querySelector(BLOCK_SEL)) return inlineMarkdown(node).trim();
+    return Array.from(node.childNodes).map(blockMarkdown).filter(Boolean).join('\n\n');
+  }
+
+  function sectionMarkdown(heading) {
+    return [blockMarkdown(heading)]
+      .concat(headingBlocks(heading).map(blockMarkdown))
+      .filter(Boolean)
+      .join('\n\n')
+      .replace(/\n{3,}/g, '\n\n') + '\n';
+  }
+
+  document.querySelectorAll('.main h1, .main h2, .main h3, .main h4').forEach(heading => {
+    if (heading.classList.contains('hero-title')) return;
+    const id = headingAnchorId(heading);
+    if (!id) return;
+
     const anchor = document.createElement('a');
     anchor.className = 'header-anchor';
-    anchor.href = '#' + heading.id;
-    anchor.setAttribute('aria-label', 'Copy link to section');
-    anchor.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>';
-    anchor.addEventListener('click', function(e) {
+    anchor.href = '#' + id;
+    anchor.title = 'Copy link to this section';
+    anchor.setAttribute('aria-label', 'Copy link to this section');
+    anchor.innerHTML = LINK_SVG;
+    anchor.addEventListener('click', e => {
       e.preventDefault();
-      const url = window.location.origin + window.location.pathname + '#' + heading.id;
-      navigator.clipboard.writeText(url).then(() => {
-        history.pushState(null, '', '#' + heading.id);
-        anchor.style.opacity = '1';
-        anchor.style.color = 'var(--green)';
-        setTimeout(() => {
-          anchor.style.color = '';
-          anchor.style.opacity = '';
-        }, 1500);
+      writeClipboard(location.href.split('#')[0] + '#' + id).then(() => {
+        history.pushState(null, '', '#' + id);
+        flashCopied(anchor, LINK_SVG);
       });
     });
-    heading.appendChild(anchor);
+
+    const copy = document.createElement('button');
+    copy.type = 'button';
+    copy.className = 'header-copy';
+    copy.title = 'Copy this section as Markdown';
+    copy.setAttribute('aria-label', 'Copy this section as Markdown');
+    copy.innerHTML = COPY_SVG;
+    copy.addEventListener('click', () => {
+      writeClipboard(sectionMarkdown(heading)).then(() => flashCopied(copy, COPY_SVG));
+    });
+
+    const tools = document.createElement('span');
+    tools.className = 'heading-tools';
+    tools.appendChild(anchor);
+    tools.appendChild(copy);
+    heading.appendChild(tools);
   });
 
-  // ── Section ID to docs command mapping ──
-  const SECTION_DOCS_MAP = {
-    'overview': 'mycelium docs overview',
-    'quickstart': 'mycelium docs quickstart',
-    'rooms': 'mycelium docs rooms',
-    'memory': 'mycelium docs memory',
-    'cognitive-engine': 'mycelium docs cognitive-engine',
-    'knowledge-graph': 'mycelium docs knowledge-graph',
-    'cli-reference': 'mycelium docs cli-reference',
-    'architecture': 'mycelium docs architecture',
-    'adapters': 'mycelium docs adapters',
-    'adapter-claude-code': 'mycelium docs adapters claude-code',
-    'adapter-cursor': 'mycelium docs adapters cursor',
-    'adapter-api': 'mycelium docs adapters api',
-  };
 
-  // Track current visible section for the docs cmd button
-  var currentDocsSection = 'overview';
-
-  function copyDocsCmd() {
-    const cmd = SECTION_DOCS_MAP[currentDocsSection] || 'mycelium docs --full';
-    navigator.clipboard.writeText(cmd).then(() => {
-      const btn = document.querySelector('.copy-docs-btn');
-      btn.innerHTML = '<i data-lucide="check"></i>' + cmd;
-      btn.classList.add('copied');
+  // agents.md is the setup runbook, meant to be handed to an agent whole. The
+  // token estimate matches copyPage's: characters over four, close enough to
+  // tell a reader whether it fits their context.
+  function copyAgentsMd() {
+    const btn = document.querySelector('.copy-agents-btn');
+    const reset = () => {
+      btn.innerHTML = '<i data-lucide="file-text"></i>Copy agents.md';
+      btn.classList.remove('copied', 'failed');
       icons();
-      setTimeout(() => {
-        btn.innerHTML = '<i data-lucide="terminal"></i>Copy docs cmd';
-        btn.classList.remove('copied');
+    };
+    fetch('agents.md')
+      .then(r => {
+        if (!r.ok) throw new Error(r.status);
+        return r.text();
+      })
+      .then(text => navigator.clipboard.writeText(text).then(() => {
+        const tokens = Math.round(text.length / 4).toLocaleString();
+        btn.innerHTML = '<i data-lucide="check"></i>Copied (~' + tokens + ' tokens)';
+        btn.classList.add('copied');
         icons();
-      }, 2000);
-    });
+        setTimeout(reset, 2000);
+      }))
+      .catch(() => {
+        btn.innerHTML = '<i data-lucide="x"></i>Copy failed';
+        btn.classList.add('failed');
+        icons();
+        setTimeout(reset, 2000);
+      });
   }
 
   // Active nav link tracking
@@ -424,8 +588,6 @@
         navLinks.forEach(l => l.classList.remove('active'));
         const active = document.querySelector(`.nav-link[href="#${id}"]`);
         if (active) active.classList.add('active');
-        // Track for copy docs cmd button
-        if (SECTION_DOCS_MAP[id]) currentDocsSection = id;
       }
     });
   }, { rootMargin: '-20% 0px -70% 0px' });
