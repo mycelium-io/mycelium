@@ -100,6 +100,28 @@ export function parseCapture(input: string, actor: string, now: string): ParsedC
   return { title: title.replace(/\s{2,}/g, " ").trim(), fields, hints };
 }
 
+/**
+ * Where a captured row is filed, and under what key.
+ *
+ * A question routes to `decisions/` and everything else to `work/` — both are
+ * live namespaces, so either way the row comes back through the projection.
+ * The slug is the title, and the stamp on the end is what keeps two people
+ * capturing "flaky test" a minute apart from overwriting each other: a memory
+ * key is an identity, and two different concerns are not the same thing.
+ */
+export function captureKey(parsed: ParsedCapture, now: string): string {
+  const namespace = parsed.fields.kind === "decision" ? "decisions" : "work";
+  const slug =
+    parsed.title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 48) || "captured";
+  // Seconds are enough: the collision this guards is two hands, not a loop.
+  const stamp = now.replace(/[^0-9]/g, "").slice(4, 12);
+  return `${namespace}/${slug}-${stamp}`;
+}
+
 export function captureToItem(parsed: ParsedCapture, seq: number, actor: string): LiveItem {
   return {
     id: `capture:${seq}`,

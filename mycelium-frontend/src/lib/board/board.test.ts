@@ -17,7 +17,7 @@ import {
   VERBS,
   type LiveItem,
 } from "@/lib/board/item";
-import { parseCapture } from "@/lib/board/capture";
+import { captureKey, parseCapture } from "@/lib/board/capture";
 import { DAILY_GOAL, heatLevel, weekdayIndex } from "@/lib/board/activity";
 import { attachUpstream, UPSTREAM_STATES, upstreamAge, type RoomStatus } from "@/lib/board/upstream";
 import type { PlanResponse } from "@/lib/api";
@@ -536,5 +536,41 @@ describe("the no-value column is not a value", () => {
     // dropping onto this column is always distinguishable from a real move.
     expect(UNGROUPED.startsWith("\u0000")).toBe(true);
     expect(empty?.label).toBe("No owner");
+  });
+});
+
+
+describe("a captured row is filed, not held", () => {
+  const NOW = "2026-08-23T05:01:03.000Z";
+
+  it("routes a question to decisions and everything else to work", () => {
+    const concern = parseCapture("flaky soak test", "julia", NOW);
+    const question = parseCapture("15m or 60m?", "julia", NOW);
+    expect(captureKey(concern, NOW).startsWith("work/")).toBe(true);
+    expect(captureKey(question, NOW).startsWith("decisions/")).toBe(true);
+  });
+
+  it("slugs the title and stamps the key, so two hands do not overwrite", () => {
+    const parsed = parseCapture("Flaky soak test!", "julia", NOW);
+    const key = captureKey(parsed, NOW);
+    expect(key).toMatch(/^work\/flaky-soak-test-\d+$/);
+    // A different second is a different key: two people capturing the same
+    // words a minute apart filed two concerns, not one.
+    expect(captureKey(parsed, "2026-08-23T05:02:11.000Z")).not.toBe(key);
+  });
+
+  it("keeps a title that slugs to nothing addressable", () => {
+    expect(captureKey(parseCapture("???", "julia", NOW), NOW)).toMatch(/captured-\d+$/);
+  });
+
+  it("carries the parsed sigils as the frontmatter a live row needs", () => {
+    const parsed = parseCapture("soak test @risk !! #ci #502", "julia", NOW);
+    expect(parsed.fields.owner).toBe("@risk");
+    expect(parsed.fields.priority).toBe("urgent");
+    expect(parsed.fields.tags).toEqual(["ci"]);
+    expect(parsed.fields.blocked_by).toEqual(["#502"]);
+    // `work/` is a live namespace, so a row written with these fields comes
+    // back through the projection rather than being held on the side.
+    expect(captureKey(parsed, NOW).startsWith("work/")).toBe(true);
   });
 });

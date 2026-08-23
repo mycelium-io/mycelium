@@ -29,13 +29,13 @@ import {
   useRoomRoster,
   useRoomStatus,
 } from "@/lib/room-data";
-import { writeLease } from "@/lib/api";
+import { writeCapture, writeLease } from "@/lib/api";
 import { custodyRefusal } from "@/lib/board/custody";
 import { applyVerb, LENSES, type Lens, type LiveItem, type Verb } from "@/lib/board/item";
 import { projectItems } from "@/lib/board/projection";
 import { attachUpstream } from "@/lib/board/upstream";
 import { localZone, projectActivity } from "@/lib/board/activity";
-import { captureToItem, type ParsedCapture } from "@/lib/board/capture";
+import { captureKey, captureToItem, type ParsedCapture } from "@/lib/board/capture";
 import { groupableFields, inferSchema } from "@/lib/board/schema";
 import { applyView, filterItems, lensCounts, SAVED_VIEWS, sortItems, UNGROUPED, type ViewConfig, type ViewMode } from "@/lib/board/view";
 import { BoardCockpit, summarize } from "./board-cockpit";
@@ -251,13 +251,44 @@ export function RoomBoard({ roomName }: Props) {
 
   const capture = useCallback(
     (parsed: ParsedCapture) => {
-      const item = captureToItem(parsed, captured.length + 1, actor);
-      setCaptured(prev => [item, ...prev]);
-      setSelectedId(item.id);
-      setEcho(`capture → ${item.title}`);
+      const now = new Date().toISOString();
+      const key = captureKey(parsed, now);
+      // Shown immediately, then dropped when the room hands the real row back:
+      // capture should feel like typing, not like waiting on a round trip.
+      const optimistic = captureToItem(parsed, captured.length + 1, actor);
+      setCaptured(prev => [optimistic, ...prev]);
+      setSelectedId(optimistic.id);
+      setEcho(`capture → ${parsed.title}`);
       play("capture");
+
+      // `tags` has a field of its own on the write, and the store owns the
+      // stamps, so neither belongs in the frontmatter bag.
+      const meta = { ...parsed.fields };
+      const tags = meta.tags;
+      delete meta.tags;
+      delete meta.created;
+      delete meta.updated;
+      void writeCapture(roomName, {
+        key,
+        title: parsed.title,
+        actor,
+        meta,
+        tags: Array.isArray(tags) ? (tags as string[]) : undefined,
+      })
+        .then(() => {
+          setCaptured(prev => prev.filter(row => row.id !== optimistic.id));
+          setSelectedId(`memory:${key}`);
+          setEcho(`capture → ${key}`);
+          revalidate();
+        })
+        .catch((e: unknown) => {
+          // The row stays on screen rather than vanishing, but it says plainly
+          // that it is only here: a concern that looks filed and is not is
+          // worse than one that admits it.
+          setEcho(`capture not saved — ${String(e)} (this row is local only)`);
+        });
     },
-    [actor, captured.length, play],
+    [actor, captured.length, play, revalidate, roomName],
   );
 
   const pick = useCallback(

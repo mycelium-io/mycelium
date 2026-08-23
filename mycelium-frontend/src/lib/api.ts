@@ -230,6 +230,44 @@ export async function writeLease(
   });
 }
 
+/**
+ * Write a captured row into the room, as a memory.
+ *
+ * Capture is the one authoring gesture on the board, so it has to leave the
+ * browser: a concern held in React state is gone on refresh and invisible to
+ * everyone else in the room. The parsed sigils are already the frontmatter a
+ * live row needs, so they go in as `meta` and the row comes back through the
+ * projection like any other memory rather than being held on the side.
+ */
+export async function writeCapture(
+  roomName: string,
+  body: {
+    key: string;
+    title: string;
+    actor: string;
+    meta: Record<string, unknown>;
+    tags?: string[];
+  },
+): Promise<void> {
+  await apiFetch<unknown>(`/api/rooms/${roomName}/memory`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    // The route is batch-only (`MemoryBatchCreate`), so a single capture is a
+    // batch of one rather than a bare item.
+    body: JSON.stringify({
+      items: [
+        {
+          key: body.key,
+          value: body.title,
+          created_by: body.actor,
+          meta: body.meta,
+          ...(body.tags?.length ? { tags: body.tags } : {}),
+        },
+      ],
+    }),
+  });
+}
+
 /** `fetchMemories`'s page size — exported so a caller showing a raw count
  *  (the dashboard's room cards) can tell "exactly this many" apart from
  *  "at least this many" instead of reporting the cap as a true total. */
