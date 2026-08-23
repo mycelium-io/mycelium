@@ -4,32 +4,38 @@
 """
 User commands: the human as a first-class, room-spanning principal.
 
-A user is one global record at ``~/.mycelium/users/<handle>`` (markdown +
-frontmatter, same format as any memory). An agent's ``owner`` points at one of
-these handles; a ``team`` groups them. Trust is self-asserted: the handle is
-consistent, not cryptographic.
+A user is one global record on the hub at ``users/<handle>``. An agent's
+``owner`` points at one of these handles; a ``team`` groups them. Trust is
+self-asserted: the handle is consistent, not cryptographic.
 
 The store is global rather than room-scoped (unlike ``agents/<handle>``) because
-a person spans rooms.
+a person spans rooms — but it is still the hub's store. These commands are
+clients of ``/api/users``; nothing here reads or writes a local replica, so a
+spoke sees the same people the hub and the app do.
 """
 
 from __future__ import annotations
 
 import json as json_module
 import logging
+from typing import TYPE_CHECKING, Any
 
+import httpx
 import typer
-import yaml
 from pydantic import ValidationError
 from rich.console import Console
 from rich.table import Table
 
 from mycelium.client import current_token
+from mycelium.client import typed_client as _typed_client
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
 from mycelium.error_handler import print_error
-from mycelium.filesystem import get_users_dir, list_memories, read_memory, write_memory
-from mycelium.protocol import AgentManifest, UserManifest
+from mycelium.protocol import UserManifest
+from mycelium_backend_client.errors import UnexpectedStatus
+
+if TYPE_CHECKING:
+    from mycelium_backend_client.models import UserRead
 
 app = typer.Typer(
     help=(
@@ -42,67 +48,103 @@ console = Console()
 _log = logging.getLogger(__name__)
 
 
-def load_user(handle: str) -> UserManifest | None:
-    """Read a user record off the global store and rehydrate the model.
+def _norm_handle(handle: str) -> str:
+    """A handle as the store keys it: trimmed, ``@``-stripped, lower-cased."""
+    return handle.strip().lstrip("@").lower()
 
-    Returns ``None`` for both "missing" and "unreadable"; a corrupt record is
-    logged at WARNING so it never fails silently.
+
+def _unset_to_none(field: Any) -> Any:
+    """Normalize a generated-client UNSET field to ``None``."""
+    from mycelium_backend_client.types import UNSET
+
+    return None if isinstance(field, type(UNSET)) else field
+
+
+def _manifest_from_read(read: UserRead) -> UserManifest | None:
+    """Rehydrate the CLI's model from the hub's ``UserRead``.
+
+    A record the hub serves but this CLI's schema rejects is logged at WARNING
+    rather than dropped, so a version skew between the two never looks like
+    "no such user".
     """
-    handle = handle.strip().lstrip("@").lower()
-    result = read_memory(get_users_dir(), handle)
-    if result is None:
-        return None
-    _, content = result
     try:
-        data = yaml.safe_load(content) or {}
-    except yaml.YAMLError as exc:
-        _log.warning("user %s: invalid YAML: %s", handle, exc)
-        return None
-    if not isinstance(data, dict):
-        return None
-    data.setdefault("handle", handle)
-    try:
-        return UserManifest(**data)
+        return UserManifest(
+            handle=read.handle,
+            display_name=_unset_to_none(read.display_name) or "",
+            teams=_unset_to_none(read.teams) or [],
+            notify=_unset_to_none(read.notify),
+        )
     except ValidationError as exc:
-        _log.warning("user %s: schema validation failed: %s", handle, exc)
+        _log.warning("user %s: schema validation failed: %s", read.handle, exc)
         return None
+
+
+def _fetch_user(handle: str, *, client: Any = None) -> UserRead | None:
+    """The hub's record for *handle* — the model plus its owned-agent roll-up.
+
+    ``None`` means the hub has no such user. Transport and HTTP failures
+    propagate, so no caller mistakes "couldn't look" for "not registered".
+    """
+    if client is None:
+        with _typed_client(MyceliumConfig.load()) as own_client:
+            return _fetch_user(handle, client=own_client)
+
+    from mycelium_backend_client.api.users import get_user_api_users_handle_get as get_api
+    from mycelium_backend_client.models import UserRead
+
+    try:
+        result = get_api.sync(handle=_norm_handle(handle), client=client)
+    except UnexpectedStatus as exc:
+        if exc.status_code == 404:
+            return None
+        raise
+    return result if isinstance(result, UserRead) else None
+
+
+def load_user(handle: str) -> UserManifest | None:
+    """Read a user record off the hub, or ``None`` if it has no such user.
+
+    People span rooms, so the store is global rather than room-scoped — but it
+    is still the hub's store, not a local replica.
+    """
+    read = _fetch_user(handle)
+    return _manifest_from_read(read) if read is not None else None
 
 
 def list_users() -> list[UserManifest]:
-    """All user records in the global store, newest first."""
-    out: list[UserManifest] = []
-    for key, _meta, _content in list_memories(get_users_dir(), limit=500):
-        # The store is flat: one record per handle, no nested keys.
-        if "/" in key:
-            continue
-        user = load_user(key)
-        if user is not None:
-            out.append(user)
-    return out
+    """Every user registered on the hub."""
+    from mycelium_backend_client.api.users import list_users_api_users_get as list_api
+
+    with _typed_client(MyceliumConfig.load()) as client:
+        result = list_api.sync(client=client)
+    reads = _unset_to_none(getattr(result, "users", None)) or []
+    return [u for u in (_manifest_from_read(r) for r in reads) if u is not None]
 
 
 def _write_user(user: UserManifest, created_by: str) -> None:
-    body = user.model_dump(exclude={"handle"})
-    yaml_body = yaml.safe_dump(body, sort_keys=False, default_flow_style=False).strip()
-    existing = read_memory(get_users_dir(), user.handle)
-    version = 1
-    if existing is not None:
-        # Content-idempotent: re-writing the same record is a no-op (no version
-        # bump), so `iam` / `user create` can be re-run safely and converge.
-        if existing[1].strip() == yaml_body:
-            return
-        try:
-            version = int(existing[0].get("version", 1)) + 1
-        except (TypeError, ValueError):
-            version = 1
-    write_memory(
-        get_users_dir(),
-        user.handle,
-        yaml_body,
+    """Upsert the user record on the hub.
+
+    The backend owns the write — versioning, the content-idempotent no-op on an
+    unchanged record, and the frontmatter it lands in are all its business.
+    """
+    from mycelium_backend_client.api.users import create_user_api_users_post as create_api
+    from mycelium_backend_client.models import UserCreate
+
+    body = UserCreate(
+        handle=user.handle,
+        display_name=user.display_name,
+        teams=user.teams,
+        notify=user.notify,
         created_by=created_by,
-        version=version,
-        tags=["user-manifest"],
     )
+    with _typed_client(MyceliumConfig.load()) as client:
+        create_api.sync(client=client, body=body)
+
+
+def _owned_lines(read: UserRead) -> list[tuple[str, str, str]]:
+    """The hub's roll-up for a user as ``(handle, adapter, room)`` triples."""
+    owns = _unset_to_none(getattr(read, "owns", None)) or []
+    return [(o.handle, o.adapter, o.room) for o in owns]
 
 
 @doc_ref(
@@ -218,9 +260,10 @@ def user_show(
 ) -> None:
     """Inspect a user: record plus a roll-up of the agents they own."""
     try:
-        user = load_user(handle)
-        if user is None:
-            console.print(f"[red]Not found:[/red] no user '{handle}' in the global store.")
+        read = _fetch_user(handle)
+        user = _manifest_from_read(read) if read is not None else None
+        if read is None or user is None:
+            console.print(f"[red]Not found:[/red] no user '{handle}' on the hub.")
             raise typer.Exit(1)
 
         console.print(f"[bold cyan]@{user.handle}[/bold cyan]")
@@ -231,12 +274,12 @@ def user_show(
         if user.notify:
             console.print(f"  notify: {user.notify}")
 
-        # Roll up owned agents across every room.
-        owned = _owned_agents(user.handle)
+        # The hub rolls up owned agents across every room, in the same request.
+        owned = _owned_lines(read)
         if owned:
             console.print(f"\n[bold]owns {len(owned)} agent(s)[/bold]")
-            for room_name, m in owned:
-                console.print(f"  @{m.handle} [dim]({m.adapter}, {room_name})[/dim]")
+            for agent_handle, adapter, room_name in owned:
+                console.print(f"  @{agent_handle} [dim]({adapter}, {room_name})[/dim]")
         else:
             console.print("\n[dim]No agents owned yet.[/dim]")
     except typer.Exit:
@@ -247,11 +290,25 @@ def user_show(
         raise typer.Exit(1) from None
 
 
-def _owned_agents(owner: str) -> list[tuple[str, AgentManifest]]:
-    """Every agent whose manifest owner matches, across all rooms."""
-    from mycelium.commands.agent import load_owned_agents
+def _principal_view(handle: str) -> tuple[UserManifest | None, list[tuple[str, str, str]]] | None:
+    """A principal's hub record and owned-agent roll-up, or ``None`` if the hub is down.
 
-    return load_owned_agents(owner=owner)
+    ``whoami`` answers "who am I on this machine" with the hub unreachable, so
+    that case is a ``None`` view the caller reports rather than an error. A
+    registered user carries the hub's own roll-up; ``/api/users`` is keyed by
+    user record, so an unregistered principal's agents come from the room
+    manifests instead.
+    """
+    try:
+        read = _fetch_user(handle)
+        if read is not None:
+            return _manifest_from_read(read), _owned_lines(read)
+        from mycelium.commands.agent import load_owned_agents
+
+        owned = load_owned_agents(owner=handle)
+        return None, [(m.handle, m.adapter, room) for room, m in owned]
+    except (httpx.HTTPError, UnexpectedStatus):
+        return None
 
 
 @doc_ref(
@@ -280,8 +337,9 @@ def whoami(ctx: typer.Context) -> None:
             principal = token_handle
 
         json_output = ctx.obj.get("json", False) if ctx.obj else False
-        user = load_user(principal)
-        owned = _owned_agents(principal)
+        view = _principal_view(principal)
+        hub_down = view is None
+        user, owned = (None, []) if view is None else view
 
         if json_output:
             typer.echo(
@@ -299,9 +357,14 @@ def whoami(ctx: typer.Context) -> None:
                         }
                         if token
                         else None,
-                        "registered": user is not None,
+                        "hub_reachable": not hub_down,
+                        "registered": None if hub_down else user is not None,
                         "user": user.model_dump() if user else None,
-                        "owns": [{"room": r, "handle": m.handle} for r, m in owned],
+                        "owns": (
+                            None
+                            if hub_down
+                            else [{"room": room, "handle": h} for h, _adapter, room in owned]
+                        ),
                     },
                     indent=2,
                     default=str,
@@ -322,7 +385,12 @@ def whoami(ctx: typer.Context) -> None:
                 console.print("  [dim]refreshes automatically on expiry[/dim]")
             else:
                 console.print("  [dim]no refresh token — re-login required after expiry[/dim]")
-        if user is None:
+        if hub_down:
+            console.print(
+                "[yellow]Can't reach the hub[/yellow] [dim]— registration and the "
+                "owned-agent roll-up are unavailable.[/dim]"
+            )
+        elif user is None:
             console.print(
                 f'[dim]Not registered. Claim it with: mycelium iam {principal} --name "…"[/dim]'
             )
@@ -333,8 +401,8 @@ def whoami(ctx: typer.Context) -> None:
                 console.print(f"  teams: {', '.join(user.teams)}")
         if owned:
             console.print(f"\n[bold]owns {len(owned)} agent(s)[/bold]")
-            for room_name, m in owned:
-                console.print(f"  @{m.handle} [dim]({room_name})[/dim]")
+            for agent_handle, _adapter, room_name in owned:
+                console.print(f"  @{agent_handle} [dim]({room_name})[/dim]")
     except typer.Exit:
         raise
     except Exception as e:
@@ -382,14 +450,22 @@ def iam(
 
         config = MyceliumConfig.load()
 
-        # Preserve an existing display name / teams when the caller didn't pass them.
-        existing = load_user(manifest.handle)
-        if existing is not None:
-            if name is None:
-                manifest.display_name = existing.display_name
-            if not team:
-                manifest.teams = existing.teams
-        _write_user(manifest, created_by=manifest.handle)
+        # Two halves with different homes: the identity is this machine's config,
+        # the user record is the hub's. Registering can fail on its own, and the
+        # local half still has to land — otherwise a hub outage leaves you unable
+        # to say who you are here.
+        registered = True
+        try:
+            # Preserve an existing display name / teams when the caller didn't pass them.
+            existing = load_user(manifest.handle)
+            if existing is not None:
+                if name is None:
+                    manifest.display_name = existing.display_name
+                if not team:
+                    manifest.teams = existing.teams
+            _write_user(manifest, created_by=manifest.handle)
+        except (httpx.HTTPError, UnexpectedStatus):
+            registered = False
 
         config.identity.name = manifest.handle
         config.save()
@@ -401,6 +477,12 @@ def iam(
         )
         console.print(f"[dim]hub: {config.server.api_url}[/dim]")
         console.print("[dim]Set as this machine's identity. Check with: mycelium whoami[/dim]")
+        if not registered:
+            console.print(
+                f"[yellow]Not registered on the hub[/yellow] [dim]— couldn't reach "
+                f"{config.server.api_url}. Re-run this once it's up so others can "
+                f"resolve @{manifest.handle}.[/dim]"
+            )
 
         # A gated hub attributes writes to the token, and refuses a body that
         # claims a different handle (#562), so a mismatch is worth saying now

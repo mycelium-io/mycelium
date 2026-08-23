@@ -1353,7 +1353,11 @@ procedures/  Reusable how-to steps (do this again later)</code></pre>
 <span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">get</span> decisions/allocation
 <span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> decisions/allocation <span class="str">&quot;60/40 equities to bonds&quot;</span>
 <span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">search</span> <span class="str">&quot;what did we decide about risk&quot;</span></code></pre>
-      <p>Because reads go to the hub, a spoke sees a write the moment it lands. Memory commands need the hub reachable and report plainly when it is not.</p>
+      <p>The room&#x27;s roster resolves the same way, so a spoke lists the agents the room actually has:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">ls</span>
+<span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">show</span> researcher
+<span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">ls</span></code></pre>
+      <p>Because reads go to the hub, a spoke sees a write the moment it lands. These commands need the hub reachable and report plainly when it is not.</p>
       <div class="callout callout-note">
         <div class="callout-bar"></div>
         <div class="callout-body"><code>mycelium room clone</code> pulls a point-in-time snapshot to local files (backup or offline read). It is not part of joining a room from a spoke.</div>
