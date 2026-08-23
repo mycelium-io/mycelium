@@ -34,7 +34,7 @@ import { attachUpstream } from "@/lib/board/upstream";
 import { localZone, projectActivity } from "@/lib/board/activity";
 import { captureToItem, type ParsedCapture } from "@/lib/board/capture";
 import { groupableFields, inferSchema } from "@/lib/board/schema";
-import { applyView, filterItems, lensCounts, SAVED_VIEWS, sortItems, type ViewConfig, type ViewMode } from "@/lib/board/view";
+import { applyView, filterItems, lensCounts, SAVED_VIEWS, sortItems, UNGROUPED, type ViewConfig, type ViewMode } from "@/lib/board/view";
 import { BoardCockpit, summarize } from "./board-cockpit";
 import { BoardKanban } from "./board-kanban";
 import { BoardTable } from "./board-table";
@@ -355,8 +355,14 @@ export function RoomBoard({ roomName }: Props) {
             selectedId={selectedId}
             onSelect={setSelectedId}
             onMove={(item, field, value) => {
-              patch(item.id, { [field]: value, updated: new Date().toISOString() });
-              setEcho(`move ${item.id} → ${field}=${value}`);
+              // The "no value" column is not a value: dropping a card there
+              // means clear the field, not write the column's own key into it.
+              const cleared = value === UNGROUPED;
+              patch(item.id, {
+                [field]: cleared ? undefined : value,
+                updated: new Date().toISOString(),
+              });
+              setEcho(cleared ? `move ${item.id} → ${field} cleared` : `move ${item.id} → ${field}=${value}`);
               play("move");
             }}
           />

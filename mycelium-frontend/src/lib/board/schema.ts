@@ -133,8 +133,16 @@ function optionsFor(name: string, values: unknown[], type: FieldType): FieldOpti
   const options = [...counts.entries()].map(([value, count]) => ({ value, count }));
   // A defined vocabulary keeps its own order (open → resolved reads as a
   // pipeline); a discovered one sorts by how much the room actually uses it.
+  // A value outside the vocabulary sorts after every value in it: `indexOf`
+  // returns -1, which would put the unexpected thing first, and the CLI puts it
+  // last. The vocabulary is a deliberate order and something unexpected does not
+  // belong in the middle of it, let alone at the front.
+  const rank = (value: string) => {
+    const i = vocabulary ? vocabulary.indexOf(value) : -1;
+    return i === -1 ? (vocabulary?.length ?? 0) : i;
+  };
   return vocabulary
-    ? options.sort((a, b) => vocabulary.indexOf(a.value) - vocabulary.indexOf(b.value))
+    ? options.sort((a, b) => rank(a.value) - rank(b.value))
     : options.sort((a, b) => b.count - a.count || a.value.localeCompare(b.value));
 }
 

@@ -50,6 +50,10 @@ MAX_SELECT_CARDINALITY = 12
 
 _ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}|$)")
 _HANDLE = re.compile(r"^@[a-z0-9][a-z0-9._-]*$", re.IGNORECASE)
+#: A URL, a memory reference, an issue number, or an owner/repo slug. Kept
+#: identical to the GUI's copy: the same frontmatter has to read as the same
+#: column on both surfaces or grouping and sorting disagree.
+_LINKISH = re.compile(r"^(https?://|myc://|#\d+|[a-z0-9._-]+/[a-z0-9._/-]+$)", re.IGNORECASE)
 
 
 @dataclass
@@ -65,6 +69,15 @@ class FieldSchema:
 def humanize(name: str) -> str:
     spaced = re.sub(r"[_-]+", " ", name).strip()
     return spaced[:1].upper() + spaced[1:] if spaced else name
+
+
+def _is_number(text: str) -> bool:
+    """A string that is really a number, so ``port: "8000"`` sorts numerically."""
+    try:
+        float(text)
+    except ValueError:
+        return False
+    return True
 
 
 def _classify(name: str, values: list[Any]) -> str:
@@ -90,12 +103,16 @@ def _classify(name: str, values: list[Any]) -> str:
         return "date"
     if all(_HANDLE.match(s) for s in strings):
         return "handle"
+    if all(_is_number(s) for s in strings):
+        return "number"
 
     distinct = set(strings)
     repeats = len(strings) > len(distinct)
     shortish = all(len(s) <= 24 for s in distinct)
     if len(distinct) <= MAX_SELECT_CARDINALITY and repeats and shortish:
         return "select"
+    if all(_LINKISH.match(s) for s in strings):
+        return "link"
     return "text"
 
 
@@ -125,7 +142,11 @@ def _options(name: str, values: list[Any], type_: str) -> list[tuple[str, int]]:
         # A defined vocabulary keeps its own order (open → resolved reads as a
         # pipeline); a discovered one sorts by how much the room uses it.
         return sorted(
-            counts.items(), key=lambda kv: vocabulary.index(kv[0]) if kv[0] in vocabulary else 99
+            # A value outside the vocabulary sorts after every value in it: the
+            # vocabulary is a deliberate order (open reads through to resolved),
+            # and something unexpected does not belong in the middle of it.
+            counts.items(),
+            key=lambda kv: vocabulary.index(kv[0]) if kv[0] in vocabulary else len(vocabulary),
         )
     return sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
 
