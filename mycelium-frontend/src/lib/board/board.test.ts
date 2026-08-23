@@ -267,9 +267,10 @@ describe("applyVerb", () => {
     expect(patch.status).toBeUndefined();
   });
 
-  it("promote stamps the back-link and drops the row off the live board", () => {
-    const patch = applyVerb(item("a", { status: "open" }), "promote", { actor: "julia", now: "t", issueNumber: 704 });
-    expect(patch).toMatchObject({ status: "resolved", promoted: true, issue: "#704" });
+  it("promote drops the row off the live board without inventing a back-link", () => {
+    const patch = applyVerb(item("a", { status: "open" }), "promote", { actor: "julia", now: "t" });
+    expect(patch).toMatchObject({ status: "resolved", promoted: true });
+    expect(patch.issue).toBeUndefined();
   });
 });
 

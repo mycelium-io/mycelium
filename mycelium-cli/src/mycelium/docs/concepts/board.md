@@ -28,12 +28,6 @@ Review 1
          @agent-z   feat/custody-seam   CI green   #504       12m
 ```
 
-> **Experimental.** The board reads and writes real room state. A triage verb
-> puts frontmatter on the row's memory, through the same upsert a `memory set`
-> goes through — so a card you move is a versioned, indexed change the room can
-> read back, not a change to your own view. Rows projected from somewhere other
-> than a memory say so instead of taking the write.
-
 ## Nothing to fill in
 
 You never add anything to the board. It's assembled from what the room already
@@ -167,11 +161,20 @@ One keystroke each in the interface, one word each on the command line, and the
 same words agents use. Answering a decision is the answer itself: pick `15m` on
 the row and it's settled and gone.
 
+Every one of them writes. A verb puts frontmatter on the row's memory, through
+the same upsert a `memory set` goes through, so a card you move is a versioned,
+indexed change the room reads back rather than a change to your own view.
+Custody is the exception, and only because it needs to be: who holds a row moves
+through a lease, under rules a plain write can't check. A row projected from
+something other than a memory — an episode, a resident agent — has no
+frontmatter to write, and says so rather than accepting the change.
+
 `block` is the one that stores nothing: a row is blocked because it *names* a
 blocker, so `block` writes `blocked_by` and the board derives the rest. Captured
 concerns expire if nobody claims them, so the board stays a picture of now
-instead of turning into a backlog. Anything that should outlive the work gets
-`promote`d into a GitHub issue and leaves, with a link left behind.
+instead of turning into a backlog. `promote` marks a row as belonging somewhere
+more durable and resolves it; filing the GitHub issue itself is still yours to
+do, and the verb doesn't invent a link it didn't create.
 
 ## Waiting on a lease, not on the room
 

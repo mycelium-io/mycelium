@@ -243,10 +243,6 @@ export function RoomBoard({ roomName }: Props) {
 
   const runVerb = useCallback(
     (item: LiveItem, verb: Verb) => {
-      // No `issueNumber`: a promote has no GitHub write behind it, and a
-      // synthetic `#712` was survivable as an overlay but would now be a
-      // fabricated back-link written into the room, which the upstream
-      // provider would then resolve against a real, unrelated issue.
       const fields = applyVerb(item, verb, { actor, now: new Date().toISOString() });
       setSelectedId(item.id);
       play(verb);

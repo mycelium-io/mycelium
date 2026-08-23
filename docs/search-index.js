@@ -325,7 +325,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "index.html#board-one-gesture-each",
     "t": "One gesture each",
     "s": "Concepts › Board",
-    "x": "claim · release · resolve · block · promote · dismiss One keystroke each in the interface, one word each on the command line, and the same words agents use. Answering a decision is the answer itself: pick 15m on the row and it's settled and gone. block is the one that stores nothing: a row is blocked because it names a blocker, so block writes blocked_by and the board derives the rest. Captured concerns expire if nob",
+    "x": "claim · release · resolve · block · promote · dismiss One keystroke each in the interface, one word each on the command line, and the same words agents use. Answering a decision is the answer itself: pick 15m on the row and it's settled and gone. Every one of them writes. A verb puts frontmatter on the row's memory, through the same upsert a memory set goes through, so a card you move is a versioned, indexed change t",
     "p": "Guide"
   },
   {
@@ -761,7 +761,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#architecture-status-providers",
     "t": "Status providers",
     "s": "Architecture",
-    "x": "Adapters connect agents to a room. Status providers connect the tools your work already lives in, so that a board row pointing at a pull request can report whether it's approved, blocked or failing instead of someone copying that state into Mycelium. Experimental. This works end to end: give the hub a token, write a pull request into a plan task, and the board row for that task carries the pull request's state, in bo",
+    "x": "Adapters connect agents to a room. Status providers connect the tools your work already lives in, so that a board row pointing at a pull request can report whether it's approved, blocked or failing instead of someone copying that state into Mycelium. This works end to end: give the hub a token, write a pull request into a row, and that row carries the pull request's state, in both the app and mycelium board. Nothing ",
     "p": "Reference"
   },
   {
