@@ -113,7 +113,7 @@ export function RoomBoard({ roomName }: Props) {
 
   const [view, setView] = useState<ViewConfig>(SAVED_VIEWS[0].config);
   const [savedView, setSavedView] = useState(SAVED_VIEWS[0].slug);
-  const [overlay, setOverlay] = useState<Record<string, Record<string, unknown>>>({});
+  const [optimistic, setOptimistic] = useState<Record<string, Record<string, unknown>>>({});
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const chooseTz = useCallback((zone: string) => {
@@ -162,11 +162,11 @@ export function RoomBoard({ roomName }: Props) {
           agents,
           presence,
           now: new Date(now).toISOString(),
-          overlay,
+          optimistic,
         }),
         upstream,
       ),
-    [roomName, episodes, memories, agents, presence, now, overlay, upstream],
+    [roomName, episodes, memories, agents, presence, now, optimistic, upstream],
   );
 
   // One pass over every row's frontmatter gives the columns, the kanban's
@@ -191,18 +191,18 @@ export function RoomBoard({ roomName }: Props) {
     [view.mode, groups, flat],
   );
 
-  // What the surface shows between the gesture and the room's answer. It is a
-  // guess, so it is only ever put on screen once a write is actually in flight,
-  // and it is taken back down the moment the room has spoken — either because
-  // the fresh row arrived, or because the write failed and there is nothing to
-  // show. An overlay that outlives its write is the board disagreeing with the
-  // hub until somebody reloads.
-  const applyOverlay = useCallback((id: string, fields: Record<string, unknown>) => {
-    setOverlay(prev => ({ ...prev, [id]: { ...(prev[id] ?? {}), ...fields } }));
+  // Optimistic state: what a row shows between the gesture and the room's
+  // answer. It is a guess, so it only goes on screen once a write is actually
+  // in flight, and it comes off as soon as the request settles — either the
+  // real row has arrived, or the write failed and there is nothing to show. A
+  // guess that outlives its request is the board disagreeing with the hub until
+  // somebody reloads.
+  const showOptimistic = useCallback((id: string, fields: Record<string, unknown>) => {
+    setOptimistic(prev => ({ ...prev, [id]: { ...(prev[id] ?? {}), ...fields } }));
   }, []);
 
-  const clearOverlay = useCallback((id: string) => {
-    setOverlay(prev => {
+  const clearOptimistic = useCallback((id: string) => {
+    setOptimistic(prev => {
       if (!(id in prev)) return prev;
       return Object.fromEntries(Object.entries(prev).filter(([key]) => key !== id));
     });
@@ -224,7 +224,7 @@ export function RoomBoard({ roomName }: Props) {
         setEcho(`${verb} ${item.id} — ${plan.refused}`);
         return;
       }
-      applyOverlay(item.id, fields);
+      showOptimistic(item.id, fields);
       const said = Object.entries(plan.writable)
         .map(([k, v]) => `${k}=${String(v)}`)
         .join(" ");
@@ -234,9 +234,9 @@ export function RoomBoard({ roomName }: Props) {
           await revalidate();
         })
         .catch((e: unknown) => setEcho(`${verb} ${item.id} failed — ${String(e)}`))
-        .finally(() => clearOverlay(item.id));
+        .finally(() => clearOptimistic(item.id));
     },
-    [actor, applyOverlay, clearOverlay, revalidate, roomName],
+    [actor, showOptimistic, clearOptimistic, revalidate, roomName],
   );
 
   const runVerb = useCallback(
@@ -260,16 +260,16 @@ export function RoomBoard({ roomName }: Props) {
         return;
       }
 
-      applyOverlay(item.id, fields);
+      showOptimistic(item.id, fields);
       void writeLease(roomName, verb, { key: item.id.replace(/^memory:/, ""), handle: actor })
         .then(async state => {
           setEcho(`${verb} ${state.key} → custody=${state.custody} owner=${state.owner ?? "—"}`);
           await revalidate();
         })
         .catch((e: unknown) => setEcho(`${verb} ${item.id} failed — ${String(e)}`))
-        .finally(() => clearOverlay(item.id));
+        .finally(() => clearOptimistic(item.id));
     },
-    [actor, applyOverlay, clearOverlay, patch, play, revalidate, roomName],
+    [actor, showOptimistic, clearOptimistic, patch, play, revalidate, roomName],
   );
 
   const answer = useCallback(

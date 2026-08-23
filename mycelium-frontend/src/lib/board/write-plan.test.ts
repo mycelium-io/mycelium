@@ -7,8 +7,9 @@
  * The property under test: the board never puts a value on screen for a write
  * the room will not take. Returning a decision instead of performing one is
  * what makes that structural — a caller has nothing to display until this has
- * answered, so the old shape (apply the overlay, then check the guard, then
- * print the reason under a row that already moved) cannot be written.
+ * answered, so the old shape (show the value, then check whether the write was
+ * allowed, then print the reason under a row that already moved) cannot be
+ * written.
  */
 
 import { describe, expect, it } from "vitest";
@@ -31,7 +32,7 @@ describe("planFieldWrite", () => {
 
   it("writes outside the leasable namespaces too", () => {
     // Custody is restricted to work/; a stage change is not. A decision nobody
-    // can resolve is the overlay problem with extra steps.
+    // can resolve is the same problem with extra steps.
     const plan = planFieldWrite(row("memory", "decisions/ttl"), { status: "resolved" });
     expect(plan).toMatchObject({ key: "decisions/ttl" });
   });

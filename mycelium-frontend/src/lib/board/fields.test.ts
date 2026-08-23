@@ -7,7 +7,7 @@
  * The property under test is that the board never accepts a change it cannot
  * put in the room. A status set in the browser and nowhere else is a surface
  * asserting something the room was never told, which is the failure that made
- * every verb but custody an overlay in the first place.
+ * every verb but custody a local-only change in the first place.
  */
 
 import { readFileSync } from "node:fs";
@@ -109,7 +109,7 @@ describe("the verbs that are field writes", () => {
   );
 
   it("does not invent a GitHub back-link when promoting", () => {
-    // A synthetic issue number was survivable as an overlay. Written to the
+    // A synthetic issue number was survivable while it stayed local. Written to the
     // room it is a fabricated reference the upstream provider would resolve
     // against a real, unrelated issue.
     const patch = applyVerb(item, "promote", ctx);

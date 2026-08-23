@@ -146,7 +146,7 @@ describe("projectItems", () => {
     });
   });
 
-  it("lets a local triage overlay win over the projected value", () => {
+  it("lets an in-flight optimistic value win over the projected one", () => {
     const items = projectItems({
       room: "atlas",
       episodes: [],
@@ -154,7 +154,7 @@ describe("projectItems", () => {
       agents: [],
       presence: new Map(),
       now: "2026-08-22T10:00:00Z",
-      overlay: { "memory:work/flip-reads-behind-a-flag": { status: "dismissed" } },
+      optimistic: { "memory:work/flip-reads-behind-a-flag": { status: "dismissed" } },
     });
     expect(items[0].fields.status).toBe("dismissed");
   });

@@ -8,10 +8,10 @@
  * may land, and which keys a lease owns.
  *
  * Returning the decision rather than performing it is what keeps the optimistic
- * overlay honest. A caller has nothing to show until this has answered, so it
+ * state honest. A caller has nothing to show until this has answered, so it
  * cannot display a guess for a write that is then refused — which is exactly
- * what the board used to do: apply the overlay, check the guard, print the
- * reason underneath, and leave the row moved.
+ * what the board used to do: show the new value, check whether the write was
+ * allowed, print the reason underneath, and leave the row moved anyway.
  */
 
 import { reservedIn } from "./custody";
