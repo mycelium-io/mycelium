@@ -21,9 +21,11 @@ from __future__ import annotations
 import json
 import sys
 import time
+from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
+import httpx
 import typer
 from rich.console import Console, Group, RenderableType
 from rich.live import Live
@@ -100,29 +102,86 @@ TITLE_WIDTH = 50
 # ── data ─────────────────────────────────────────────────────────────────────
 
 
-def _fetch_raw(room: str | None) -> tuple[str, dict[str, Any], bool]:
+@dataclass
+class HubHealth:
+    """How the read went, in enough detail to say something true about it.
+
+    Reachability used to be inferred from whether the plan call came back, which
+    reported an authenticated hub refusing a request, or a room that does not
+    exist, as "hub unreachable" and sent the reader to check their network. It
+    also let a board draw with two of its six sources missing and look merely
+    quiet. Both are worse than an error, because the reader believes them.
+    """
+
+    #: Sources that answered with data, by name.
+    ok: list[str] = field(default_factory=list)
+    #: Sources that failed, name to the reason.
+    failed: dict[str, str] = field(default_factory=dict)
+    #: Sources the hub answered at all, whatever it said. A refusal is an answer:
+    #: it means the hub is running and the reader's problem is a credential, not
+    #: a network.
+    answered: list[str] = field(default_factory=list)
+
+    @property
+    def reachable(self) -> bool:
+        """Whether there is enough to draw anything."""
+        return bool(self.ok)
+
+    @property
+    def note(self) -> str | None:
+        """The one line worth printing above a board, or ``None`` when all is well."""
+        if not self.failed:
+            return None
+        if self.ok:
+            missing = ", ".join(sorted(self.failed))
+            total = len(self.ok) + len(self.failed)
+            return f"Incomplete: {len(self.failed)} of {total} sources failed ({missing})"
+        if self.answered:
+            # The hub is there and said no. Sending the reader to check their
+            # network here costs them the time it takes to rule it out.
+            reason = next(iter(self.failed.values()))
+            return f"Hub refused every request ({reason})"
+        return f"Hub unreachable: {next(iter(self.failed.values()))}"
+
+
+def _fetch_raw(room: str | None) -> tuple[str, dict[str, Any], HubHealth]:
     """Every source the log and the board share, read once."""
     cfg = MyceliumConfig.load()
     name = _resolve_room(cfg, room)
+    health = HubHealth()
 
-    def get(path: str, default):
+    def get(path: str, default, label: str):
         try:
             resp = client.get(path)
             resp.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            # The hub answered, and said no. That is a different problem from a
+            # hub that is not there, and the reader fixes it differently.
+            health.answered.append(label)
+            health.failed[label] = f"HTTP {exc.response.status_code}"
+            return default
+        except Exception as exc:
+            health.failed[label] = type(exc).__name__
+            return default
+        health.answered.append(label)
+        health.ok.append(label)
+        try:
             return resp.json()
-        except Exception:
+        except ValueError:
+            health.ok.remove(label)
+            health.failed[label] = "malformed response"
             return default
 
     with hub_client(cfg, timeout=30) as client:
-        plan = get(f"/api/rooms/{name}/plan", None)
-        episodes = get(f"/api/rooms/{name}/episodes", {})
-        memories = get(f"/api/rooms/{name}/memory?limit=50", [])
+        plan = get(f"/api/rooms/{name}/plan", None, "plan")
+        episodes = get(f"/api/rooms/{name}/episodes", {}, "episodes")
+        memories = get(f"/api/rooms/{name}/memory?limit=50", [], "memory")
         # What the tools the room points at say. A read never fetches hub-side,
         # so this costs a cache lookup, not a round trip to GitHub.
-        upstream = get(f"/api/rooms/{name}/status", None)
-        agents = get(f"/api/rooms/{name}/agents", [])
-        members = get(f"/api/rooms/{name}/sessions/members", {})
-        messages = get(f"/api/rooms/{name}/messages?limit=300", {})
+        upstream = get(f"/api/rooms/{name}/status", None, "status")
+        agents = get(f"/api/rooms/{name}/agents", [], "agents")
+        members = get(f"/api/rooms/{name}/sessions/members", {}, "members")
+        messages = get(f"/api/rooms/{name}/messages?limit=300", {}, "messages")
 
     return (
         name,
@@ -135,14 +194,14 @@ def _fetch_raw(room: str | None) -> tuple[str, dict[str, Any], bool]:
             "messages": (messages or {}).get("messages", []) if isinstance(messages, dict) else [],
             "upstream": upstream if isinstance(upstream, dict) else None,
         },
-        plan is not None,
+        health,
     )
 
 
-def _fetch(room: str | None) -> tuple[str, list[LiveItem], bool]:
+def _fetch(room: str | None) -> tuple[str, list[LiveItem], HubHealth]:
     """Read every source the board projects.  A source that isn't reachable
     contributes nothing rather than failing the whole board."""
-    name, sources, reachable = _fetch_raw(room)
+    name, sources, health = _fetch_raw(room)
     items = project_items(
         plan=sources["plan"],
         episodes=sources["episodes"],
@@ -151,7 +210,7 @@ def _fetch(room: str | None) -> tuple[str, list[LiveItem], bool]:
         members=sources["members"],
         now=datetime.now(UTC),
     )
-    return name, attach_upstream(items, sources["upstream"]), reachable
+    return name, attach_upstream(items, sources["upstream"]), health
 
 
 # ── rendering ────────────────────────────────────────────────────────────────
@@ -282,24 +341,28 @@ def _table(shown: list[LiveItem], every: list[LiveItem]) -> Group:
 
     table = Table(show_lines=False, box=None, pad_edge=False, header_style="dim")
     table.add_column("Row", no_wrap=True, overflow="ellipsis", width=36)
-    for field in columns:
+    for column in columns:
         # The inferred type rides the legend under the table rather than the
         # header: at terminal widths a second word per column costs the values.
-        table.add_column(field.label, no_wrap=True, overflow="ellipsis")
+        table.add_column(column.label, no_wrap=True, overflow="ellipsis")
 
     for item in shown:
-        values = []
-        for field in columns:
-            raw = item.get(field.name)
+        # Every cell is a Text, never a str: Rich parses square brackets in a
+        # plain string as markup, so a title or a field value carrying something
+        # like "[/legacy]" would raise rather than render. Room content is not
+        # markup, and the one styled cell here is ours to style explicitly.
+        values: list[Text] = []
+        for column in columns:
+            raw = item.get(column.name)
             if isinstance(raw, list):
-                values.append(", ".join(str(v) for v in raw) or "-")
+                values.append(Text(", ".join(str(v) for v in raw) or "-"))
             elif raw in (None, ""):
-                values.append("[dim]-[/dim]")
-            elif field.name == "updated":
-                values.append(str(raw)[:16].replace("T", " "))
+                values.append(Text("-", style="dim"))
+            elif column.name == "updated":
+                values.append(Text(str(raw)[:16].replace("T", " ")))
             else:
-                values.append(str(raw))
-        table.add_row(item.title, *values)
+                values.append(Text(str(raw)))
+        table.add_row(Text(item.title), *values)
 
     types = "  ".join(f"{f.name}·{f.type}" for f in columns)
     note = Text()
@@ -342,10 +405,15 @@ def board(
         raise typer.Exit(1)
 
     def read() -> Group:
-        name, items, reachable = _fetch(room)
-        if not reachable:
-            return Group(Text(f"  Hub unreachable. No board to draw for {name}.", style="red"))
-        return _render(name, items, lens=LENS_CHOICES[lens], group_by=group_by, view=view)
+        name, items, health = _fetch(room)
+        if not health.reachable:
+            return Group(Text(f"  {health.note}. No board to draw for {name}.", style="red"))
+        rendered = _render(name, items, lens=LENS_CHOICES[lens], group_by=group_by, view=view)
+        if health.note:
+            # A board missing a source is not a quiet board, and the difference
+            # matters more than the tidiness of not saying so.
+            return Group(Text(f"  {health.note}", style="yellow"), Text(), rendered)
+        return rendered
 
     if not watch:
         console.print(read())
@@ -451,7 +519,7 @@ def board_log(
     half an agent needs when it comes back to a room after a week away.
     """
     tz = zone(tz_name)
-    name, sources, reachable = _fetch_raw(room)
+    name, sources, health = _fetch_raw(room)
     today_local = datetime.now(tz).date()
 
     events = project_activity(
@@ -465,8 +533,8 @@ def board_log(
         wanted = by.lstrip("@").lower()
         events = [e for e in events if e.actor.lower() == wanted]
 
-    if not events and not reachable:
-        console.print(f"[red]  Hub unreachable. No log to draw for {name}.[/red]")
+    if not events and not health.reachable:
+        console.print(Text(f"  {health.note}. No log to draw for {name}.", style="red"))
         return
 
     if day:

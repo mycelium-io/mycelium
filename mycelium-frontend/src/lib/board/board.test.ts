@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { inferSchema, groupableFields } from "@/lib/board/schema";
 import { projectItems } from "@/lib/board/projection";
-import { applyView, filterItems, lensCounts, DEFAULT_VIEW } from "@/lib/board/view";
+import { applyView, filterItems, lensCounts, groupItems, UNGROUPED, DEFAULT_VIEW } from "@/lib/board/view";
 import {
   applyVerb,
   lensOf,
@@ -274,12 +274,56 @@ describe("shared vocabulary contract", () => {
     for (const verb of VERBS) expect(contract.verbs).toContain(verb.id);
   });
 
+  it("infers the type the contract names for every case, as the CLI must too", () => {
+    const schemaContract = (contract as unknown as {
+      schema: { cases: { name: string; values: unknown[]; type: string }[]; types: string[]; max_select_cardinality: number };
+    }).schema;
+    for (const c of schemaContract.cases) {
+      const rows = c.values.map((v, i) => item(`r${i}`, { [c.name]: v }));
+      const found = inferSchema(rows).find(f => f.name === c.name);
+      expect(`${c.name}: ${found?.type}`).toBe(`${c.name}: ${c.type}`);
+      expect(schemaContract.types).toContain(found?.type);
+    }
+  });
+
+  it("sorts an out-of-vocabulary option last, the way the CLI does", () => {
+    // A field with a known vocabulary can still hold a value outside it: the
+    // room wrote `flaky` where the board knows green/running/red. It is a select
+    // by the discovered path, and the stray value belongs after the known ones,
+    // not before them, which is where `indexOf` used to put it.
+    const rows = [item("a", { ci: "green" }), item("b", { ci: "green" }), item("c", { ci: "flaky" })];
+    const options = inferSchema(rows).find(f => f.name === "ci")?.options ?? [];
+    expect(options.map(o => o.value)).toEqual(["green", "running", "red", "flaky"]);
+  });
+
   it("uses the contracted upstream field and states", () => {
     const upstream = (contract as unknown as { upstream: { field: string; states: string[] } }).upstream;
     expect([...UPSTREAM_STATES]).toEqual(upstream.states);
     // Neither of the row's own fields: `status` is the row's lifecycle and
     // `live` is a boolean for agent presence.
     expect(["status", "live"]).not.toContain(upstream.field);
+  });
+
+  it("writes exactly the upstream fields the contract names", () => {
+    // Asserted against what the code writes, not against a copy of it: the
+    // companion list drifted the moment two fields were added without touching
+    // it, because nothing recomputed it.
+    const upstream = (contract as unknown as { upstream: { field: string; companion_fields: string[] } }).upstream;
+    const rows: LiveItem[] = ["resolved", "pending", "two-refs", "errored"].map(id => ({
+      id, title: id, source: { kind: "plan", label: id }, fields: {},
+    }));
+    const out = attachUpstream(rows, {
+      room: "atlas", field: "upstream", providers: ["github"], refreshing: false,
+      refs: [
+        { ref: "a", provider: "github", kind: "pull_request", id: "o/r#1", url: "https://x", freshness: "fresh", state: "ok", label: "approved", age_seconds: 30, error: null, origins: [] },
+        { ref: "b", provider: "github", kind: "pull_request", id: "o/r#2", url: null, freshness: "missing", state: null, label: null, age_seconds: null, error: null, origins: [] },
+        { ref: "c", provider: "github", kind: "pull_request", id: "o/r#3", url: null, freshness: "fresh", state: "failed", label: "CI failing", age_seconds: 30, error: null, origins: [] },
+        { ref: "d", provider: "github", kind: "pull_request", id: "o/r#4", url: null, freshness: "error", state: "unknown", label: null, age_seconds: 30, error: "not visible to this token", origins: [] },
+      ],
+      rows: { resolved: ["a"], pending: ["b"], "two-refs": ["a", "c"], errored: ["d"] },
+    });
+    const written = new Set(out.flatMap(r => Object.keys(r.fields)));
+    expect([...written].sort()).toEqual([upstream.field, ...upstream.companion_fields].sort());
   });
 
   it("keeps the log's calendar conventions the CLI also asserts", () => {
@@ -410,5 +454,23 @@ describe("upstream answers on rows", () => {
     const schema = inferSchema([row("a", { upstream: "ok" }), row("b", { upstream: "failed" })]);
     expect(schema.find(f => f.name === "upstream")?.type).toBe("select");
     expect(groupableFields(schema).map(f => f.name)).toContain("upstream");
+  });
+});
+
+
+describe("the no-value column is not a value", () => {
+  const row = (id: string, fields: Record<string, unknown> = {}): LiveItem => ({
+    id, title: id, source: { kind: "plan", label: id }, fields,
+  });
+
+  it("collects rows with an empty field under a key the field could never hold", () => {
+    const rows = [row("a", { owner: "@julia" }), row("b")];
+    const groups = groupItems(rows, { ...DEFAULT_VIEW, groupBy: "owner" }, inferSchema(rows));
+    const empty = groups.find(g => g.items.some(i => i.id === "b"));
+    expect(empty?.key).toBe(UNGROUPED);
+    // A NUL-prefixed sentinel cannot collide with a real frontmatter value, so
+    // dropping onto this column is always distinguishable from a real move.
+    expect(UNGROUPED.startsWith("\u0000")).toBe(true);
+    expect(empty?.label).toBe("No owner");
   });
 });

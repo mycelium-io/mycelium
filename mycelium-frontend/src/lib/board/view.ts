@@ -192,6 +192,13 @@ const KIND_LABEL: Record<string, string> = {
  * status column still renders, which is what makes a kanban a place to drop
  * work rather than a summary of work that already exists.
  */
+/**
+ * The bucket for rows the grouped field is empty on. It is not a value the
+ * field can hold, so anything acting on a group has to translate it: dropping a
+ * card here means *clear this field*, never write the string "-" into it.
+ */
+export const UNGROUPED = "\u0000ungrouped";
+
 export function groupItems(
   items: LiveItem[],
   config: ViewConfig,
@@ -220,12 +227,12 @@ export function groupItems(
 
   for (const item of items) {
     const values = fieldValues(item, name);
-    if (values.length === 0) push("-", item);
+    if (values.length === 0) push(UNGROUPED, item);
     else values.forEach(v => push(v, item));
   }
 
   const label = (key: string) => {
-    if (key === "-") return `No ${humanize(name).toLowerCase()}`;
+    if (key === UNGROUPED) return `No ${humanize(name).toLowerCase()}`;
     if (name === "kind") return KIND_LABEL[key] ?? humanize(key);
     if (name === "owner") return key.startsWith("@") ? key : `@${key}`;
     return humanize(key);

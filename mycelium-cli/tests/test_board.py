@@ -48,11 +48,62 @@ class TestVocabularyContract:
     def test_live_namespaces_match_the_contract(self):
         assert CONTRACT["live_namespaces"] == model.LIVE_NAMESPACES
 
+    def test_infers_the_type_the_contract_names_for_every_case(self):
+        """The same table the GUI suite runs. These two classifiers drifted once,
+        so neither may answer differently about the same frontmatter again."""
+        for case in CONTRACT["schema"]["cases"]:
+            rows = [
+                item(f"r{i}", **{case["name"]: value}) for i, value in enumerate(case["values"])
+            ]
+            found = next(f for f in infer_schema(rows) if f.name == case["name"])
+            assert f"{case['name']}: {found.type}" == f"{case['name']}: {case['type']}"
+            assert found.type in CONTRACT["schema"]["types"]
+
+    def test_an_out_of_vocabulary_option_sorts_last_as_it_does_in_the_gui(self):
+        # A field with a known vocabulary can still hold a value outside it: the
+        # room wrote `flaky` where the board knows green/running/red. The stray
+        # value belongs after the known ones, not before them.
+        rows = [item("a", ci="green"), item("b", ci="green"), item("c", ci="flaky")]
+        options = next(f for f in infer_schema(rows) if f.name == "ci").options
+        assert [name for name, _ in options] == ["green", "running", "red", "flaky"]
+
     def test_the_upstream_field_and_its_states_match_the_contract(self):
         assert CONTRACT["upstream"]["states"] == UPSTREAM_STATES
         # Neither of the row's own fields: `status` is the row's lifecycle and
         # `live` is a boolean for agent presence.
         assert CONTRACT["upstream"]["field"] not in ("status", "live")
+
+    def test_every_field_attach_writes_is_one_the_contract_names(self):
+        """Asserted against what the code writes, not against a copy of it.
+
+        The contract's companion list drifted the moment two fields were added
+        without touching it, because nothing recomputed it. This drives every
+        branch of `attach_upstream` and compares the keys that actually appear.
+        """
+        rows = [
+            item("resolved"),
+            item("pending"),
+            item("two-refs"),
+            item("errored"),
+        ]
+        attach_upstream(
+            rows,
+            status_payload(
+                answer("a", "ok", "approved", url="https://x", age_seconds=30),
+                answer("b", None, freshness="missing"),
+                answer("c", "failed", "CI failing"),
+                answer("d", "unknown", None, error="not visible to this token"),
+                rows={
+                    "resolved": ["a"],
+                    "pending": ["b"],
+                    "two-refs": ["a", "c"],
+                    "errored": ["d"],
+                },
+            ),
+        )
+        written = {key for row in rows for key in row.fields}
+        expected = {CONTRACT["upstream"]["field"], *CONTRACT["upstream"]["companion_fields"]}
+        assert written == expected
 
 
 class TestProjection:
@@ -537,3 +588,74 @@ class TestUpstream:
         assert found.type == "select"
         assert {name for name, _ in found.options} <= set(UPSTREAM_STATES)
         assert "upstream" in [f.name for f in groupable_fields(infer_schema(rows))]
+
+
+class TestTheTableSurvivesRoomContent:
+    def test_a_title_carrying_square_brackets_renders_rather_than_raising(self):
+        """Room content is not Rich markup.
+
+        `add_row` parses a plain string as markup, so a title like
+        "retire the [/legacy] store" raised MarkupError and took the whole
+        `--view table` down with it.
+        """
+        from rich.console import Console
+
+        from mycelium.commands.board import _table
+
+        rows = [
+            LiveItem(
+                id="memory:x",
+                title="retire the [/legacy] store",
+                source=ItemSource("memory", "x"),
+                fields={"status": "open", "kind": "action", "branch": "feat/[wip]"},
+            )
+        ]
+        console = Console(width=90, record=True)
+        console.print(_table(rows, rows))
+        output = console.export_text()
+        assert "[/legacy]" in output
+        assert "feat/[wip]" in output
+
+
+class TestHubHealthSaysWhatActuallyHappened:
+    """Reachability used to be inferred from one endpoint, so an authenticated
+    hub refusing a request read as "hub unreachable", and a board drawn with two
+    of its sources missing read as a quiet room."""
+
+    def test_a_hub_that_is_not_there_is_reported_as_unreachable(self):
+        from mycelium.commands.board import HubHealth
+
+        health = HubHealth(failed={"plan": "ConnectError", "memory": "ConnectError"})
+        assert not health.reachable
+        assert "unreachable" in (health.note or "")
+
+    def test_a_hub_that_refuses_is_not_reported_as_missing(self):
+        from mycelium.commands.board import HubHealth
+
+        health = HubHealth(
+            failed={"plan": "HTTP 401", "memory": "HTTP 401"}, answered=["plan", "memory"]
+        )
+        note = health.note or ""
+        assert "refused" in note
+        assert "401" in note
+        # The reader's problem is a credential; do not send them to their network.
+        assert "unreachable" not in note
+
+    def test_a_partly_answered_board_says_it_is_incomplete(self):
+        from mycelium.commands.board import HubHealth
+
+        health = HubHealth(
+            ok=["plan", "agents"],
+            answered=["plan", "agents", "memory"],
+            failed={"memory": "HTTP 500"},
+        )
+        # It still draws, because two of three sources is worth seeing, but a
+        # sparse board must never be mistaken for a quiet room.
+        assert health.reachable
+        assert "Incomplete" in (health.note or "")
+        assert "memory" in (health.note or "")
+
+    def test_a_healthy_read_says_nothing_at_all(self):
+        from mycelium.commands.board import HubHealth
+
+        assert HubHealth(ok=["plan"], answered=["plan"]).note is None

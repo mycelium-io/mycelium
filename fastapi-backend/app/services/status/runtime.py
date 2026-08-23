@@ -189,11 +189,19 @@ class StatusRuntime:
         return answers
 
     def due(self, refs: list[Ref], now: datetime) -> list[Ref]:
-        """The subset worth refreshing: not fresh, not in flight, not backing off."""
+        """The subset worth refreshing: not fresh, not backing off.
+
+        Deliberately *not* filtered by what is already in flight. That is
+        ``StatusCache.begin``'s job, and it can do something this cannot: hand
+        back the future to wait on, so a second caller joins the fetch already
+        running instead of being told the ref is missing. Filtering here would
+        make ``begin``'s waiting half unreachable and quietly turn ``resolve``,
+        the documented blocking path, into one that does not block.
+        """
         due: list[Ref] = []
         for ref in refs:
             provider = self._providers.get(ref.provider)
-            if provider is None or self._cache.in_flight(ref) or self._cache.backing_off(ref, now):
+            if provider is None or self._cache.backing_off(ref, now):
                 continue
             if self._cache.classify(ref, now, provider.ttl, provider.swr) != "fresh":
                 due.append(ref)
@@ -239,6 +247,10 @@ class StatusRuntime:
             return
 
         async with self._gate:
+            # The claim must be released on every exit, including a cancellation:
+            # a client that disconnects mid-``?refresh=true`` would otherwise
+            # leave these refs claimed for the life of the process, and anything
+            # waiting on them waiting forever.
             try:
                 outcomes = await provider.fetch(list(chunk), self._context_for(provider))
             except Exception as exc:
@@ -247,26 +259,27 @@ class StatusRuntime:
                 # rather than half-trusted.
                 for ref in chunk:
                     self._cache.put_err(ref, f"{provider.name} raised: {exc}", now)
-                self._cache.finish(chunk)
                 return
+            else:
+                answered = set()
+                for outcome in outcomes:
+                    answered.add(outcome.ref)
+                    if isinstance(outcome, Ok):
+                        self._cache.put_ok(
+                            outcome.ref, outcome.liveness, now, ttl_override=outcome.ttl
+                        )
+                    elif isinstance(outcome, Err):
+                        self._cache.put_err(
+                            outcome.ref, outcome.reason, now, retry_after=outcome.retry_after
+                        )
 
-            answered = set()
-            for outcome in outcomes:
-                answered.add(outcome.ref)
-                if isinstance(outcome, Ok):
-                    self._cache.put_ok(outcome.ref, outcome.liveness, now, ttl_override=outcome.ttl)
-                elif isinstance(outcome, Err):
-                    self._cache.put_err(
-                        outcome.ref, outcome.reason, now, retry_after=outcome.retry_after
-                    )
-
-            # A provider that quietly drops a ref would otherwise leave it
-            # looking un-fetched forever, retried on every sweep.
-            for ref in chunk:
-                if ref not in answered:
-                    self._cache.put_err(ref, f"{provider.name} returned no outcome", now)
-
-            self._cache.finish(chunk)
+                # A provider that quietly drops a ref would otherwise leave it
+                # looking un-fetched forever, retried on every sweep.
+                for ref in chunk:
+                    if ref not in answered:
+                        self._cache.put_err(ref, f"{provider.name} returned no outcome", now)
+            finally:
+                self._cache.finish(chunk)
 
     # ── parsing ──────────────────────────────────────────────────────────────
 

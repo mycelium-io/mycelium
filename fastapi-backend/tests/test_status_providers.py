@@ -10,6 +10,8 @@ and nothing is handed to a caller without its age.
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import pathlib
 from datetime import UTC, datetime, timedelta
 
@@ -19,7 +21,7 @@ from app.services.status.auth import Bearer
 from app.services.status.cache import StatusCache
 from app.services.status.providers.github import GitHubProvider, _liveness
 from app.services.status.runtime import StatusRuntime
-from app.services.status.types import Err, Liveness, Ok, Ref
+from app.services.status.types import Err, Liveness, Ok, Outcome, Ref
 
 NOW = datetime(2026, 8, 22, 12, 0, tzinfo=UTC)
 
@@ -379,3 +381,138 @@ class TestFieldNameCollision:
 
         assert hasattr(types, "Liveness")
         assert not hasattr(types, "Status")
+
+
+class TestFailedRefreshDoesNotRejuvenateAValue:
+    """A failed refresh must not make the value it kept look younger.
+
+    Keeping the last good answer is deliberate: a blank row reads as "this pull
+    request has no CI". Stamping it with the failure's time is not, because the
+    age is the whole basis on which a caller decides whether to trust it, and an
+    agent's `max_age` is enforced against exactly that number.
+    """
+
+    TTL = timedelta(minutes=1)
+    SWR = timedelta(minutes=30)
+
+    def _cache_after_failures(self, minutes: int) -> tuple[StatusCache, Ref, datetime]:
+        cache = StatusCache()
+        ref = Ref(provider="github", kind="pull_request", id="o/r#1")
+        start = datetime(2026, 8, 23, 0, 0, tzinfo=UTC)
+        cache.put_ok(ref, Liveness(state="ok", label="CI green"), start)
+        for minute in range(1, minutes + 1):
+            cache.put_err(ref, "github 500", start + timedelta(minutes=minute))
+        return cache, ref, start
+
+    def test_the_kept_value_reports_the_age_it_actually_has(self):
+        cache, ref, start = self._cache_after_failures(20)
+        now = start + timedelta(minutes=20)
+        known = cache.known(ref, now, self.TTL, self.SWR)
+        assert known.liveness is not None
+        assert known.age(now) == timedelta(minutes=20)
+
+    def test_a_strict_caller_is_not_handed_a_value_older_than_it_asked_for(self):
+        # The failure mode this module exists to prevent: hours of failing
+        # refreshes leaving a stale "CI green" that satisfies a five-minute bound.
+        cache, ref, start = self._cache_after_failures(180)
+        now = start + timedelta(minutes=180)
+        known = cache.known(ref, now, self.TTL, self.SWR)
+        age = known.age(now)
+        assert age is None or age > timedelta(minutes=5)
+
+    def test_a_value_kept_through_failures_still_ages_out_of_evidence(self):
+        cache, ref, start = self._cache_after_failures(180)
+        # Past ttl + swr it stops being evidence, however recent the last attempt.
+        assert cache.classify(ref, start + timedelta(minutes=180), self.TTL, self.SWR) == "missing"
+
+    def test_an_error_with_nothing_behind_it_is_still_remembered_briefly(self):
+        # A ref that never resolved has only the error; it is worth holding just
+        # long enough not to retry on every render.
+        cache = StatusCache()
+        ref = Ref(provider="github", kind="pull_request", id="o/r#2")
+        start = datetime(2026, 8, 23, 0, 0, tzinfo=UTC)
+        cache.put_err(ref, "not visible to this token", start)
+        assert cache.classify(ref, start + timedelta(seconds=30), self.TTL, self.SWR) == "error"
+        assert cache.classify(ref, start + timedelta(minutes=5), self.TTL, self.SWR) == "missing"
+
+
+class TestAClaimIsAlwaysReleased:
+    @pytest.mark.asyncio
+    async def test_a_cancelled_refresh_does_not_strand_its_refs(self):
+        """A client that disconnects mid-fetch must not freeze the ref forever.
+
+        `finish` used to be skipped on cancellation, leaving the ref claimed for
+        the life of the process: never fetched again, and never answered.
+        """
+
+        class Slow:
+            name = "slow"
+            base_url = "https://slow.example"
+            auth = None
+            max_batch = 5
+            ttl = timedelta(minutes=1)
+            swr = timedelta(minutes=30)
+
+            def claims(self, text: str) -> list[Ref]:
+                return []
+
+            async def fetch(self, refs: list[Ref], ctx: object) -> list[Outcome]:
+                await asyncio.sleep(10)
+                return [Ok(ref=r, liveness=Liveness(state="ok", label="x")) for r in refs]
+
+        ref = Ref(provider="slow", kind="k", id="1")
+        runtime = StatusRuntime(providers={"slow": Slow()}, credentials={})
+        now = datetime(2026, 8, 23, 0, 0, tzinfo=UTC)
+
+        task = asyncio.create_task(runtime.refresh([ref], now))
+        await asyncio.sleep(0.05)
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+
+        assert not runtime.cache.in_flight(ref)
+        assert runtime.due([ref], now + timedelta(hours=5)) == [ref]
+
+
+class TestSingleFlightCoalesces:
+    @pytest.mark.asyncio
+    async def test_a_second_caller_joins_the_fetch_already_running(self):
+        """`resolve` is documented as the blocking path, so it must block.
+
+        `due` once filtered in-flight refs, which meant `begin` never returned
+        anything to wait on and a concurrent caller was answered `missing` while
+        the fetch it should have joined was still running.
+        """
+
+        class Once:
+            name = "once"
+            base_url = "https://once.example"
+            auth = None
+            max_batch = 5
+            ttl = timedelta(minutes=1)
+            swr = timedelta(minutes=30)
+
+            def __init__(self) -> None:
+                self.calls = 0
+
+            def claims(self, text: str) -> list[Ref]:
+                return []
+
+            async def fetch(self, refs: list[Ref], ctx: object) -> list[Outcome]:
+                self.calls += 1
+                await asyncio.sleep(0.05)
+                return [Ok(ref=r, liveness=Liveness(state="ok", label="joined")) for r in refs]
+
+        provider = Once()
+        runtime = StatusRuntime(providers={provider.name: provider}, credentials={})
+        ref = Ref(provider="once", kind="k", id="1")
+        now = datetime(2026, 8, 23, 0, 0, tzinfo=UTC)
+
+        first = asyncio.create_task(runtime.resolve([ref], now))
+        await asyncio.sleep(0.01)
+        second = await runtime.resolve([ref], now)
+        await first
+
+        assert provider.calls == 1
+        assert second[ref].freshness == "fresh"
+        assert second[ref].liveness is not None
