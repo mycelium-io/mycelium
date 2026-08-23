@@ -28,7 +28,7 @@ commands host all of them.
 | Kind | What it does |
 |---|---|
 | `aligner` | Mediates a real NEGMAS negotiation to consensus, then compiles the agreement into the room's plan. See [Aligner](#aligner). |
-| `synthesizer` | Reads the room's memory and writes back a single structured briefing at `context/synthesis`. See [Synthesizer](#synthesizer). |
+| `synthesizer` | Distills the room's conversation into a briefing at `context/synthesis`, incrementally. See [Synthesizer](#synthesizer). |
 
 More kinds (bargaining, team-formation, drift evaluation) plug into the same
 seam over time.
