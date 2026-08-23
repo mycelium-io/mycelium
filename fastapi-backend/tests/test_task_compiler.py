@@ -47,44 +47,40 @@ class TestBuildPrompt:
         assert "no heading" in prompt
 
 
-class TestParseChecklist:
-    def test_reads_mark_title_and_assignee(self):
-        parsed = task_compiler.parse_checklist("- [x] ship it @dana\n- [ ] review")
-        assert parsed[0] == (task_compiler.CompiledTask(title="ship it", assignee="dana"), True)
-        assert parsed[1] == (task_compiler.CompiledTask(title="review", assignee=None), False)
+class TestParseTasks:
+    def test_reads_the_title_and_the_assignee(self):
+        assert task_compiler.parse_tasks("- [ ] ship it @dana") == [
+            task_compiler.CompiledTask(title="ship it", assignee="dana")
+        ]
 
     def test_accepts_an_asterisk_bullet(self):
-        assert task_compiler.parse_checklist("* [ ] ship it")[0][0].title == "ship it"
+        assert task_compiler.parse_tasks("* [ ] ship it")[0].title == "ship it"
 
     def test_lowercases_the_handle(self):
-        assert task_compiler.parse_checklist("- [ ] ship @Dana")[0][0].assignee == "dana"
+        assert task_compiler.parse_tasks("- [ ] ship @Dana")[0].assignee == "dana"
 
     def test_drops_dangling_punctuation_left_by_the_handle(self):
-        assert task_compiler.parse_checklist("- [ ] ship it — @dana")[0][0].title == "ship it"
+        assert task_compiler.parse_tasks("- [ ] ship it — @dana")[0].title == "ship it"
 
     def test_ignores_anything_that_is_not_a_checklist_line(self):
         # A heading or a stray sentence is not a task, and turning one into a
-        # row would put work in the room nobody agreed to.
+        # row would put work in the room nobody asked for.
         body = "# Plan\n\nHere is what we agreed.\n- [ ] real task\n\n> a note"
-        assert [t.title for t, _ in task_compiler.parse_checklist(body)] == ["real task"]
+        assert [t.title for t in task_compiler.parse_tasks(body)] == ["real task"]
 
     def test_ignores_a_line_that_is_only_a_handle(self):
-        assert task_compiler.parse_checklist("- [ ] @dana") == []
+        assert task_compiler.parse_tasks("- [ ] @dana") == []
 
     def test_ignores_an_empty_line(self):
-        assert task_compiler.parse_checklist("- [ ]   ") == []
+        assert task_compiler.parse_tasks("- [ ]   ") == []
 
-
-class TestParseTasks:
-    def test_keeps_only_open_tasks(self):
-        # A task that arrives already finished is the model narrating, not
-        # agreeing — the compiler is producing work to do.
-        tasks = task_compiler.parse_tasks("- [x] already done\n- [ ] to do")
-        assert [t.title for t in tasks] == ["to do"]
+    def test_drops_a_task_that_arrives_already_finished(self):
+        # The compiler produces work to do; a `- [x]` line is the model
+        # narrating rather than agreeing.
+        assert [t.title for t in task_compiler.parse_tasks("- [x] done\n- [ ] to do")] == ["to do"]
 
     def test_de_duplicates_case_insensitively(self):
-        tasks = task_compiler.parse_tasks("- [ ] Ship It\n- [ ] ship it")
-        assert len(tasks) == 1
+        assert len(task_compiler.parse_tasks("- [ ] Ship It\n- [ ] ship it")) == 1
 
 
 class TestFallbackTasks:

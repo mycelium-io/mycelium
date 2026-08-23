@@ -255,12 +255,11 @@ is no litellm dependency.
   and the line format never leaves it. A task carries `assignee`, never `owner`
   — an assignment is who it is *for*, custody is who is *holding* it, and a
   stage that cannot take a lease must not write one. Fail-soft: a compiler
-  outage falls back to the raw `issue=value` agreement. The compiler is deliberately a distinct consumer stage across an
-  explicit seam, not part of the negotiation engine. It runs a one-shot `pi` turn
+  outage falls back to the raw `issue=value` agreement. The compiler is
+  deliberately a distinct consumer stage across an explicit seam, not part of
+  the negotiation engine. It runs a one-shot `pi` turn
   (a throwaway session, off the event loop via `asyncio.to_thread`), like every
-  other mycelium cognition call. `plan_migration.py` lifts a pre-existing
-  `plan/tasks.md` checklist into rows once per room at startup, idempotently and
-  without deleting what it read.
+  other mycelium cognition call.
 - **Server-held membership.** A turn-based agent (Claude, a subagent, a shell) can't
   hold a SLIM socket between turns, so the backend holds membership: `await`
   long-polls off a durable transcript cursor and refreshes a presence lease;

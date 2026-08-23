@@ -143,51 +143,32 @@ class CompiledTask:
     assignee: str | None
 
 
-def parse_checklist(body: str) -> list[tuple[CompiledTask, bool]]:
-    """``(task, done)`` for every checklist line in ``body``.
+def parse_tasks(body: str) -> list[CompiledTask]:
+    """The open tasks in the model's checklist output, de-duplicated.
 
-    Pure — no I/O, directly unit-testable. The one reader of the ``- [ ] text
-    @handle`` format, shared with the migration that lifts an old checklist
-    into rows, so the two cannot disagree about what a line means.
-
-    Anything that is not a checklist line is dropped rather than guessed at: a
-    heading or a stray sentence is not a task, and inventing a row for one
-    would put work in the room nobody asked for.
+    Pure — no I/O, directly unit-testable. Anything that is not a checklist
+    line is dropped rather than guessed at: a heading or a stray sentence is
+    not a task, and inventing a row for one would put work in the room nobody
+    asked for. A ``- [x]`` line is dropped too — the compiler is producing work
+    to *do*, and a task that arrives already finished is the model narrating
+    rather than agreeing.
     """
-    out: list[tuple[CompiledTask, bool]] = []
+    tasks: list[CompiledTask] = []
+    seen: set[str] = set()
     for line in body.splitlines():
         match = _TASK_LINE.match(line)
-        if match is None:
+        if match is None or match.group("mark").lower() == "x":
             continue
         text = match.group("text").strip()
         if not text:
             continue
         tag = _OWNER.search(text)
         title = _OWNER.sub("", text).replace("  ", " ").strip(_TRIM)
-        if not title:
-            continue
-        assignee = tag.group(1).lower() if tag else None
-        out.append(
-            (CompiledTask(title=title, assignee=assignee), match.group("mark").lower() == "x")
-        )
-    return out
-
-
-def parse_tasks(body: str) -> list[CompiledTask]:
-    """The open tasks in the model's output, de-duplicated.
-
-    A ``- [x]`` line is dropped: the compiler is producing work to *do*, and a
-    task that arrives already finished is the model narrating rather than
-    agreeing.
-    """
-    tasks: list[CompiledTask] = []
-    seen: set[str] = set()
-    for task, done in parse_checklist(body):
-        fingerprint = task.title.casefold()
-        if done or fingerprint in seen:
+        fingerprint = title.casefold()
+        if not title or fingerprint in seen:
             continue
         seen.add(fingerprint)
-        tasks.append(task)
+        tasks.append(CompiledTask(title=title, assignee=tag.group(1).lower() if tag else None))
     return tasks
 
 

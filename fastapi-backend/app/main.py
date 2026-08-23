@@ -87,14 +87,9 @@ async def lifespan(app: FastAPI):
             logger.warning("auth: %s", warning)
     else:
         logger.info("HTTP-API JWT gate disabled — requests are unauthenticated")
-    from app.services.plan_migration import migrate_all
+    # Incremental scan of filesystem → JSONL search index
     from app.services.reindex import start_watcher, startup_scan, stop_watcher
 
-    # A room that still has a plan/ checklist has work recorded where nothing
-    # reads it now. Idempotent, and non-fatal by construction. Ahead of the
-    # incremental filesystem → JSONL scan, so the rows it writes are embedded by
-    # that one pass rather than by a model call each.
-    await migrate_all()
     await startup_scan()
     start_watcher()
 
