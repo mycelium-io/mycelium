@@ -58,13 +58,20 @@ SYSTEM_ACTOR_ROLE = "coordinator"
 # predating this vocabulary round-trip unchanged.
 EXCHANGE_MOVE_SUBKINDS = frozenset({"counter", "accept", "reject"})
 
+# An ``exchange:amend`` revises an earlier message: its ``message.parents``
+# carries the id of the message it revises and its payload carries the new text.
+# Nothing in the transcript is rewritten — every version stays a recorded event —
+# and the read path folds a message and its amendments into the newest text
+# (:func:`app.services.persister.collapse_amendments`).
+AMEND_SUBKIND = "amend"
+
 # Kind -> allowed subkinds. An empty/None subkind is always valid. A failed
 # negotiation commits as ``rejected``.
 VALID_SUBKINDS: dict[Kind, frozenset[str]] = {
     Kind.knowledge: frozenset({"query", "distillation", "extraction", "feedback"}),
     Kind.commit: frozenset({"converged", "resolved", "rejected"}),
     Kind.intent: frozenset({"coordinator-assignment", "mission"}),
-    Kind.exchange: frozenset({"team-formation"}) | EXCHANGE_MOVE_SUBKINDS,
+    Kind.exchange: frozenset({"team-formation", AMEND_SUBKIND}) | EXCHANGE_MOVE_SUBKINDS,
     Kind.contingency: frozenset({"negotiation"}),
 }
 

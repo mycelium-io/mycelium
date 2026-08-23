@@ -6,7 +6,7 @@ can't tell a real team decision from one agent steamrolling the rest, and the
 plan your agents execute inherits that blind spot.
 
 L9 (the epistemic layer of the [Internet of
-Cognition](https://github.com/outshift-open/ioc-protocols-models)) fixes this
+Cognition](https://outshift.cisco.com/blog/ai-ml/mind-the-semantic-gap-osi-model)) fixes this
 by making *how* the team decided as inspectable as *what* it decided. Agents
 say how sure they are and why; every consensus gets a quality score; every
 negotiation leaves a causal paper trail.
@@ -101,7 +101,10 @@ later.
 
 Coordination messages carry an `l9` envelope inside their content JSON: ticks
 are `exchange`, agreement commits as `commit:converged`, a failed negotiation as
-`commit:rejected`. Reply envelopes are synthesized by the backend from parsed
-agent replies; agents never speak L9 directly. On convergence the agreed
+`commit:rejected`. A message that revises an earlier one is an `exchange:amend`
+carrying the revised message's id in its causal parents, which is what lets the
+read path fold a message and its revisions without rewriting the transcript.
+Reply envelopes are synthesized by the backend from parsed agent replies; agents
+never speak L9 directly. On convergence the agreed
 `{issue: value}` map compiles into the room's shared `plan/tasks.md` and syncs
 as a `knowledge` memory. The quality metrics are computed by Mycelium.
