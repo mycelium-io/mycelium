@@ -18,6 +18,8 @@ would write rather than pretending.
 
 from __future__ import annotations
 
+import json
+import sys
 import time
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
@@ -28,7 +30,7 @@ from rich.live import Live
 from rich.table import Table
 from rich.text import Text
 
-from mycelium.board import LiveItem, infer_schema, project_items
+from mycelium.board import LiveItem, attach_upstream, infer_schema, project_items
 from mycelium.board.activity import (
     DAILY_GOAL,
     by_day,
@@ -79,6 +81,18 @@ GROUP_LABEL = {
 
 CI_COLOR = {"green": "green", "running": "yellow", "red": "red"}
 
+#: How a provider's answer reads on a row. `done` is deliberately dim: a merged
+#: pull request is finished, and a board that shouts about finished work buries
+#: the work that isn't.
+UPSTREAM_COLOR = {
+    "failed": "red",
+    "blocked": "red",
+    "pending": "yellow",
+    "ok": "green",
+    "done": "dim",
+    "unknown": "dim",
+}
+
 #: Widest title a row prints before it is elided.
 TITLE_WIDTH = 50
 
@@ -103,6 +117,9 @@ def _fetch_raw(room: str | None) -> tuple[str, dict[str, Any], bool]:
         plan = get(f"/api/rooms/{name}/plan", None)
         episodes = get(f"/api/rooms/{name}/episodes", {})
         memories = get(f"/api/rooms/{name}/memory?limit=50", [])
+        # What the tools the room points at say. A read never fetches hub-side,
+        # so this costs a cache lookup, not a round trip to GitHub.
+        upstream = get(f"/api/rooms/{name}/status", None)
         agents = get(f"/api/rooms/{name}/agents", [])
         members = get(f"/api/rooms/{name}/sessions/members", {})
         messages = get(f"/api/rooms/{name}/messages?limit=300", {})
@@ -116,6 +133,7 @@ def _fetch_raw(room: str | None) -> tuple[str, dict[str, Any], bool]:
             "agents": agents if isinstance(agents, list) else [],
             "members": (members or {}).get("members", []) if isinstance(members, dict) else [],
             "messages": (messages or {}).get("messages", []) if isinstance(messages, dict) else [],
+            "upstream": upstream if isinstance(upstream, dict) else None,
         },
         plan is not None,
     )
@@ -125,18 +143,15 @@ def _fetch(room: str | None) -> tuple[str, list[LiveItem], bool]:
     """Read every source the board projects.  A source that isn't reachable
     contributes nothing rather than failing the whole board."""
     name, sources, reachable = _fetch_raw(room)
-    return (
-        name,
-        project_items(
-            plan=sources["plan"],
-            episodes=sources["episodes"],
-            memories=sources["memories"],
-            agents=sources["agents"],
-            members=sources["members"],
-            now=datetime.now(UTC),
-        ),
-        reachable,
+    items = project_items(
+        plan=sources["plan"],
+        episodes=sources["episodes"],
+        memories=sources["memories"],
+        agents=sources["agents"],
+        members=sources["members"],
+        now=datetime.now(UTC),
     )
+    return name, attach_upstream(items, sources["upstream"]), reachable
 
 
 # ── rendering ────────────────────────────────────────────────────────────────
@@ -162,6 +177,26 @@ def _row_lines(item: LiveItem, now: datetime) -> Text:
         meta.append(f"  {branch}", style="dim")
     if ci := item.text("ci"):
         meta.append(f"  CI {ci}", style=CI_COLOR.get(ci, "dim"))
+    if item.get("upstream_pending") and not item.get("upstream"):
+        # A row that points somewhere but has no answer yet. The terminal's
+        # version of a skeleton: hold the space, say it is coming, and never
+        # print a state nobody reported.
+        meta.append("  checking…", style="dim")
+    if upstream := item.text("upstream"):
+        # The provider's own wording, not ours: "changes requested" is what the
+        # reader recognises, and the state behind it is what the board sorts by.
+        label = item.text("upstream_label") or upstream
+        meta.append(f"  {label}", style=UPSTREAM_COLOR.get(upstream, "dim"))
+        if (count := item.get("upstream_count")) and isinstance(count, int):
+            meta.append(f" +{count - 1}", style="dim")
+        # The answer's own age, not the row's: an agent reading "CI green" needs
+        # to know how old that is, and the two surfaces must not differ on it.
+        if age := item.text("upstream_age"):
+            meta.append(f" {age}", style="dim")
+        # A stale answer is still the truth as far as anyone knows, with a
+        # refresh running behind it; saying so beats taking the value away.
+        if item.text("upstream_freshness") in ("stale", "error"):
+            meta.append(" (refreshing)", style="dim")
     if pr := item.text("pr"):
         meta.append(f"  {pr}", style="dim")
     if blocked_by := item.strings("blocked_by"):
@@ -508,3 +543,151 @@ def board_log(
         if len(actor_events) > 12:
             console.print(Text(f"      +{len(actor_events) - 12} more", style="dim"))
         console.print()
+
+
+# ── status-provider credentials ───────────────────────────────────────────────
+#
+# A status provider keeps a board row's external pointer live (a pull request's
+# review state, a ticket's status). To reach the tool it needs a credential, and
+# the provider only *names* it: the hub resolves the name and renders it onto the
+# wire. These verbs write the value the hub resolves, into a 0600 file outside
+# config.toml (which `config apply` would otherwise clobber). See
+# `mycelium.status_credentials` and `app/services/status/credentials.py`.
+#
+# Providers run hub-side, so these are hub-operator commands: run them where the
+# backend runs. Nothing here can print a value.
+
+credential_app = typer.Typer(
+    help=(
+        "Give the hub the credentials its status providers need to keep board "
+        "rows live (a GitHub token, a Jira email + token). Stored 0600 outside "
+        "config.toml; the value is never printed."
+    ),
+    no_args_is_help=True,
+)
+app.add_typer(credential_app, name="credential")
+
+
+@doc_ref(
+    usage="mycelium board credential set <name> [--stdin]",
+    desc=(
+        "Store a status-provider credential value under the name a provider "
+        "declares (e.g. <code>GITHUB_TOKEN</code>). Read from a prompt or stdin, "
+        "never argv; saved 0600 outside <code>config.toml</code>."
+    ),
+    group="board",
+)
+@credential_app.command("set")
+def credential_set(
+    ctx: typer.Context,
+    name: str = typer.Argument(..., help="Credential name a provider declares, e.g. GITHUB_TOKEN"),
+    stdin: bool = typer.Option(
+        False, "--stdin", help="Read the value from stdin instead of a prompt."
+    ),
+) -> None:
+    """Store the value for a credential a status provider names.
+
+    The name is the provider's, not yours: GitHub's provider declares
+    ``GITHUB_TOKEN``, Jira's declares ``JIRA_EMAIL`` and ``JIRA_TOKEN``. The value
+    is read from stdin (``--stdin``) or a hidden prompt, never from the command
+    line, so it never lands in shell history or ``ps`` output.
+
+    Examples:
+        mycelium board credential set GITHUB_TOKEN --stdin < token.txt
+        mycelium board credential set GITHUB_TOKEN   # prompts, hidden
+    """
+    from mycelium import status_credentials
+
+    try:
+        json_output = ctx.obj.get("json", False) if ctx.obj else False
+
+        if stdin:
+            value = sys.stdin.read().strip()
+        elif sys.stdin.isatty():
+            value = typer.prompt(f"Value for {name}", hide_input=True)
+        else:
+            console.print(
+                "[red]No value given.[/red] Pass --stdin to read one, or run it "
+                "interactively for a hidden prompt."
+            )
+            raise typer.Exit(1)
+
+        path = status_credentials.set_credential(name, value)
+
+        if json_output:
+            typer.echo(json.dumps({"name": name, "stored": str(path), "empty": not value}))
+            return
+
+        console.print(f"[green]Stored[/green] [cyan]{name}[/cyan] [dim](value not shown)[/dim].")
+        console.print(f"[dim]Saved to {path} (mode 0600).[/dim]")
+        if not value:
+            console.print(
+                "[yellow]The value is empty[/yellow]; the hub will report it as set-but-empty "
+                "and still refuse the provider until it has a real value."
+            )
+    except typer.Exit:
+        raise
+    except Exception as e:  # noqa: BLE001
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1) from None
+
+
+@doc_ref(
+    usage="mycelium board credential ls",
+    desc="List the status-provider credential names the hub has, and whether each is set. Never the values.",
+    group="board",
+)
+@credential_app.command("ls")
+def credential_ls(ctx: typer.Context) -> None:
+    """List stored status-provider credential names, never their values."""
+    from mycelium import status_credentials
+
+    try:
+        names = status_credentials.list_names()
+        json_output = ctx.obj.get("json", False) if ctx.obj else False
+
+        if json_output:
+            typer.echo(json.dumps(names, indent=2, sort_keys=True))
+            return
+
+        if not names:
+            console.print("[dim]No status-provider credentials on this hub.[/dim]")
+            return
+
+        table = Table(title="Status-provider credentials")
+        table.add_column("name", style="cyan")
+        table.add_column("value")
+        for name, is_set in names.items():
+            table.add_row(name, "set" if is_set else "[yellow]empty[/yellow]")
+        console.print(table)
+    except Exception as e:  # noqa: BLE001
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1) from None
+
+
+@doc_ref(
+    usage="mycelium board credential rm <name>",
+    desc="Forget a status-provider credential on this hub.",
+    group="board",
+)
+@credential_app.command("rm")
+def credential_rm(
+    ctx: typer.Context,
+    name: str = typer.Argument(..., help="Credential name to forget"),
+) -> None:
+    """Drop a stored status-provider credential."""
+    from mycelium import status_credentials
+
+    try:
+        existed = status_credentials.remove_credential(name)
+        json_output = ctx.obj.get("json", False) if ctx.obj else False
+        if json_output:
+            typer.echo(json.dumps({"removed": existed}))
+            return
+        if existed:
+            console.print(f"[green]Removed[/green] [cyan]{name}[/cyan].")
+        else:
+            console.print(f"[dim]No credential named {name} on this hub; nothing to do.[/dim]")
+    except Exception as e:  # noqa: BLE001
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1) from None

@@ -31,6 +31,7 @@ import type {
   PlanResponse,
   PresenceMember,
 } from "@/lib/api";
+import type { RoomStatus } from "@/lib/board/upstream";
 
 // A fixed "now" so relative timestamps render deterministically. Callers offset
 // from this; nothing here calls Date.now(), so snapshots stay stable. The board
@@ -101,6 +102,10 @@ export interface RoomFixture {
   /** The room's A2A bridge, served at GET /a2a/state. Undefined means "no
    *  bridge" — the handler answers with an empty one, like the backend. */
   a2a?: A2aBridgeState;
+  /** Resolved upstream state, served at GET /status. Keyed by the board row ids
+   *  that mention each reference, exactly as the hub returns it, so the mock
+   *  exercises the same attach path the real one does. */
+  status?: RoomStatus;
 }
 
 /**
@@ -555,6 +560,48 @@ const atlas: RoomFixture = {
     { handle: "risk", kind: "lease", last_seen: iso(1) },
   ],
   l9: atlasL9Frames,
+  // Two plan tasks and a work memory name pull requests; the hub resolved them.
+  // t3 mentions two, one green and one failing, so the row shows the failing one
+  // and says there was another. The shapes are GitHub's own wording.
+  status: {
+    room: "atlas-migration",
+    field: "upstream",
+    providers: ["github"],
+    refs: [
+      {
+        ref: "github:pull_request:mycelium-io/mycelium#502",
+        provider: "github", kind: "pull_request", id: "mycelium-io/mycelium#502",
+        url: "https://github.com/mycelium-io/mycelium/pull/502",
+        freshness: "fresh", state: "failed", label: "CI failing",
+        age_seconds: 95, error: null,
+        origins: ["plan:t3"],
+      },
+      {
+        ref: "github:pull_request:mycelium-io/mycelium#504",
+        provider: "github", kind: "pull_request", id: "mycelium-io/mycelium#504",
+        url: "https://github.com/mycelium-io/mycelium/pull/504",
+        freshness: "fresh", state: "ok", label: "approved",
+        age_seconds: 95, error: null,
+        origins: ["plan:t3"],
+      },
+      {
+        ref: "github:pull_request:mycelium-io/mycelium#499",
+        provider: "github", kind: "pull_request", id: "mycelium-io/mycelium#499",
+        url: "https://github.com/mycelium-io/mycelium/pull/499",
+        freshness: "stale", state: "blocked", label: "changes requested",
+        age_seconds: 5400, error: null,
+        origins: ["plan:t4"],
+      },
+    ],
+    rows: {
+      "plan:t3": [
+        "github:pull_request:mycelium-io/mycelium#502",
+        "github:pull_request:mycelium-io/mycelium#504",
+      ],
+      "plan:t4": ["github:pull_request:mycelium-io/mycelium#499"],
+    },
+    refreshing: false,
+  },
 };
 
 // The synthesized briefing links out to the three memories it summarizes; the

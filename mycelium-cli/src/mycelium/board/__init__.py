@@ -21,6 +21,7 @@ from mycelium.board.model import (
 )
 from mycelium.board.projection import project_items
 from mycelium.board.schema import FieldSchema, infer_schema
+from mycelium.board.upstream import UPSTREAM_STATES, attach_upstream
 
 __all__ = [
     "KINDS",
@@ -28,8 +29,10 @@ __all__ = [
     "LENS_OF_STATUS",
     "PRIORITIES",
     "STATUSES",
+    "UPSTREAM_STATES",
     "VERBS",
     "FieldSchema",
+    "attach_upstream",
     "LiveItem",
     "infer_schema",
     "lens_of",

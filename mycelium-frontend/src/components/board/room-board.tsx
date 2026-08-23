@@ -26,9 +26,11 @@ import {
   useRoomMessages,
   useRoomPlan,
   useRoomRoster,
+  useRoomStatus,
 } from "@/lib/room-data";
 import { applyVerb, LENSES, type Lens, type LiveItem, type Verb } from "@/lib/board/item";
 import { projectItems } from "@/lib/board/projection";
+import { attachUpstream } from "@/lib/board/upstream";
 import { localZone, projectActivity } from "@/lib/board/activity";
 import { captureToItem, type ParsedCapture } from "@/lib/board/capture";
 import { groupableFields, inferSchema } from "@/lib/board/schema";
@@ -76,6 +78,7 @@ export function RoomBoard({ roomName }: Props) {
   const { memories } = useRoomMemories(roomName);
   const { agents, presence } = useRoomRoster(roomName);
   const { messages } = useRoomMessages(roomName, MESSAGE_HISTORY);
+  const { status: upstream } = useRoomStatus(roomName);
   const { principal } = useCurrentUser();
   const actor = principal.replace(/^@/, "") || "you";
 
@@ -149,18 +152,23 @@ export function RoomBoard({ roomName }: Props) {
 
   const items = useMemo(
     () =>
-      projectItems({
-        room: roomName,
-        plan,
-        episodes,
-        memories,
-        agents,
-        presence,
-        now: new Date(now).toISOString(),
-        overlay,
-        captured,
-      }),
-    [roomName, plan, episodes, memories, agents, presence, now, overlay, captured],
+      // The hub says which rows mention which external references, so the
+      // answer lands by row id: no view re-parses a task's text.
+      attachUpstream(
+        projectItems({
+          room: roomName,
+          plan,
+          episodes,
+          memories,
+          agents,
+          presence,
+          now: new Date(now).toISOString(),
+          overlay,
+          captured,
+        }),
+        upstream,
+      ),
+    [roomName, plan, episodes, memories, agents, presence, now, overlay, captured, upstream],
   );
 
   // One pass over every row's frontmatter gives the columns, the kanban's

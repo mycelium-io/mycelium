@@ -46,6 +46,7 @@ from app.routes.rooms import router as rooms_router
 from app.routes.search import router as search_router
 from app.routes.sessions import router as sessions_router
 from app.routes.skills import router as skills_router
+from app.routes.status import router as status_router
 from app.routes.stream import router as stream_router
 from app.routes.users import router as users_router
 from app.services.auth import auth_gate
@@ -186,6 +187,15 @@ async def lifespan(app: FastAPI):
     stop_watcher()
     stop_event_sweep()
 
+    # Close the status providers' transports. They hold sockets and the
+    # credentials bound into them, so they are the runtime's to release.
+    from app.services.status import registry as status_registry
+
+    try:
+        await status_registry.reset()
+    except Exception as exc:  # pragma: no cover - best-effort teardown
+        logger.warning("status runtime teardown failed (non-fatal): %s", exc)
+
     # Tear down long-lived SLIM room channels + the shared node connection so a
     # restart doesn't leak or reuse a stale dataplane connection.
     from app.services.room_channels import manager as room_channel_manager
@@ -253,6 +263,7 @@ app.include_router(agent_context_router, prefix="/api")
 app.include_router(users_router, prefix="/api")
 app.include_router(search_router, prefix="/api")
 app.include_router(skills_router, prefix="/api")
+app.include_router(status_router, prefix="/api")
 
 
 @app.get("/", tags=["health"])
