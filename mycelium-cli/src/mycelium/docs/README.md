@@ -9,7 +9,7 @@ to a model. Edit the markdown; never edit the generated HTML.
 | --- | --- |
 | `index.md` | What `mycelium docs` prints with no arguments |
 | `overview.md` | The front door: what Mycelium is and why |
-| `concepts/` | The model — rooms, memory, plan, episodes, the engines, L9 |
+| `concepts/` | The model — rooms, memory, the board, episodes, the engines, L9 |
 | `guides/` | Task-shaped walkthroughs, from quickstart to auth setup |
 | `reference/` | Architecture and metrics |
 

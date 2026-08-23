@@ -322,7 +322,7 @@ def _drive_consensus(
     session), so poll the room until every agent has spoken (then let a short
     settle window catch their final positions) and post ``@aligner``. That summon is what the backend
     scores into a ``commit:converged``/``rejected`` verdict and, on convergence,
-    compiles into ``plan/tasks.md`` + syncs as a ``knowledge`` memory. Driving it
+    compiles into ``work/`` rows the room can pick up. Driving it
     here makes the payoff deterministic instead of hoping an agent remembers to.
     """
     api = config.server.api_url.rstrip("/")
@@ -352,7 +352,7 @@ def _drive_consensus(
         [
             "room",
             "send",
-            f"@{ALIGNER_HANDLE} assess whether the team has converged and compile the plan.",
+            f"@{ALIGNER_HANDLE} assess whether the team has converged and compile the work.",
             "--room",
             room,
             "--handle",
@@ -364,7 +364,7 @@ def _drive_consensus(
         return
     console.print(
         f"[green]✓[/green] Summoned [bold]@{ALIGNER_HANDLE}[/bold]; on convergence the backend "
-        "compiles [cyan]plan/tasks.md[/cyan] and syncs it as a knowledge memory."
+        "compiles the agreement into [cyan]work/[/cyan] rows."
     )
 
 

@@ -10,7 +10,7 @@ Built-in reference for the Mycelium multi-agent coordination system.
 - **principals**: Users, teams, and the handles agents act under
 - **episodes**: A negotiation as a scoped, recorded round on a room's channel
 - **memory**: Persistent markdown store with local semantic search
-- **plan**: Title + markdown files + checklist tasks surfaced to every agent
+- **work**: One row per task, with an owner and a stage, surfaced to every agent
 - **board**: The room's live coordination slice: what needs you, what's in flight
 - **l9-protocol**: The epistemic envelope layer negotiation rides on
 - **engines**: First-party cognition citizens summoned into a room

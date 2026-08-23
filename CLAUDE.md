@@ -4,7 +4,7 @@
 
 Mycelium: multi-agent coordination + persistent memory over a secure messaging
 fabric. Agents coordinate as members of end-to-end-encrypted rooms; a negotiation
-that reaches consensus compiles into a shared plan and syncs to memory.
+that reaches consensus compiles into work rows in the room's memory.
 
 ## Structure
 
@@ -37,7 +37,7 @@ shotkit/            The repo's camera: fast screenshots of the running app and o
                     now runs on this engine.
 mycelium-promo/     HyperFrames promo video, a code-defined HTML→MP4 walkthrough
                     (CLI install → app install → room → adapter → post positions →
-                    summon the aligner → await/respond → consensus → plan → work →
+                    summon the aligner → await/respond → consensus → work →
                     distill the room to memory via the synthesizer). The app-screen
                     mockups mirror the frontend's workspace shell + dark design tokens.
                     Renders 1920x1080 H.264. `cd mycelium-promo && npm run dev` to
@@ -143,7 +143,7 @@ an L9 episode record. Each convening is a distinct episode (unique id, its own
 transcript slice), recorded at `log/episodes/{id}.md`.
 
 LLM: **Pi everywhere** (provider/model format, e.g. `anthropic/claude-sonnet-4-6`).
-The aligner's brain, the plan compiler, and the `mycelium doctor` / `/health`
+The aligner's brain, the task compiler, and the `mycelium doctor` / `/health`
 completion probe all shell out to the `pi` binary the backend image ships; there
 is no litellm dependency.
 
@@ -165,10 +165,10 @@ is no litellm dependency.
   snap to the nearest real grid point or refuse, never to a fabricated value
   (`offer_snap.py`).
 - **Rooms are folders on the hub.** `.mycelium/rooms/{name}/` with standard subdirs:
-  `decisions/`, `failed/`, `status/`, `context/`, `work/`, `procedures/`, `log/`,
-  `plan/`. The `plan/` namespace holds the room's plan: `plan/title.md` is the
-  room's display title (italic hero in the UI); other `plan/{slug}.md` files carry
-  prose + `- [ ]` checklist tasks surfaced to every agent. Direct file writes still
+  `decisions/`, `failed/`, `status/`, `context/`, `work/`, `procedures/`, `log/`.
+  `work/` holds one row per task. The room's display title is the room's own
+  (the `.room.json` sidecar, `PATCH /rooms/{name}`), not a memory: it names the
+  room rather than describing work in it. Direct file writes still
   work — that's a hub-operator escape hatch (run `mycelium memory reindex` after),
   not the client model.
 - **The spoke is a thin client.** Any non-hub machine keeps **no local `.mycelium/`
@@ -185,7 +185,7 @@ is no litellm dependency.
 - **Rooms are always persistent.** Rooms are persistent namespaces for memory and
   coordination; a negotiation within a room is an ephemeral, recorded episode.
 - **The CLI skill is a protocol.** Post a position → await → respond → consensus →
-  plan → work. This is the value add; don't change it to an augmentation layer.
+  work. This is the value add; don't change it to an augmentation layer.
 - **memory set always upserts.** `memory set` overwrites existing keys automatically
   (version increments). Frontmatter the store doesn't manage is user data: it
   survives a rewrite rather than being dropped, `MemoryCreate.meta` (CLI:
@@ -246,16 +246,20 @@ is no litellm dependency.
   living in the written memory's own frontmatter so position and text land in
   one write (`--all` in the summon text re-reads everything); and it **excludes
   its own posts** by sender, since it speaks its briefing into the room it reads.
-- **Consensus compiles into the plan.** On convergence the aligner hands the agreed
-  `{issue: value}` map to `plan_compiler.py`, an LLM stage that materializes
-  `plan/tasks.md` (one shared `- [ ]` checklist with `@handle` owners) *before* the
-  consensus is announced (plan-first ordering, so `await` returns once the plan
-  exists). Fail-soft: a compiler outage falls back to the raw `issue=value`
-  agreement. The compiler is deliberately a distinct consumer stage across an
-  explicit seam, not part of the negotiation engine. It runs a one-shot `pi` turn
+- **Consensus compiles into rows.** On convergence the aligner hands the agreed
+  `{issue: value}` map to `task_compiler.py`, an LLM stage that turns it into
+  tasks, and `task_sync.py` writes each one as a `work/` memory through the
+  canonical upsert *before* the consensus is announced (so the work exists once
+  `await` returns). The model still writes `- [ ] text @handle` lines because
+  that is the shape it is good at; parsing them into rows is the compiler's job
+  and the line format never leaves it. A task carries `assignee`, never `owner`
+  — an assignment is who it is *for*, custody is who is *holding* it, and a
+  stage that cannot take a lease must not write one. Fail-soft: a compiler
+  outage falls back to the raw `issue=value` agreement. The compiler is
+  deliberately a distinct consumer stage across an explicit seam, not part of
+  the negotiation engine. It runs a one-shot `pi` turn
   (a throwaway session, off the event loop via `asyncio.to_thread`), like every
-  other mycelium cognition call. `plan_sync.py` then syncs the compiled plan as a
-  `knowledge` memory.
+  other mycelium cognition call.
 - **Server-held membership.** A turn-based agent (Claude, a subagent, a shell) can't
   hold a SLIM socket between turns, so the backend holds membership: `await`
   long-polls off a durable transcript cursor and refreshes a presence lease;
@@ -325,7 +329,7 @@ is no litellm dependency.
   `respond(@alice, …)` sends through @alice's session, so attribution is cryptographic
   on the wire (not a backend-stamped L9 field) and room access is MLS group
   membership, not app logic. All sessions live in the backend process, so the
-  moderator App + aligner/plan/memory/L9 still read plaintext — cognition is
+  moderator App + aligner/memory/L9 still read plaintext — cognition is
   preserved. **Under the PSK default nothing changes** (byte-for-byte;
   `MYCELIUM_CUSTODY_DISABLE=1` forces the single-moderator path even under identity),
   and persistence structurally requires the identity provider/verifier pair anyway (a

@@ -2,7 +2,7 @@
 
 The hello engine is the [engine](#engines) that does nothing on purpose. Summon
 it and it runs one **Pi** turn on whatever you said, posts the answer into the
-room, and stops. No negotiation, no memory write, no plan — the only trace it
+room, and stops. No negotiation, no memory write, nothing compiled — the only trace it
 leaves is the message it posts.
 
 That is what makes it useful. The [aligner](#aligner) opens a negotiation

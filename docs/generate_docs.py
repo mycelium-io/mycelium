@@ -35,7 +35,7 @@ from pathlib import Path
 PAGES: list[tuple[str, str, str, str, str, str, str]] = [
     ("start", "index.html", "mycelium Docs", "Guide",
      "GET-001", "OVERVIEW · QUICK START · CONCEPTS",
-     "A shared space for humans and agents. Install Mycelium and learn the core concepts: rooms, memory, plan, episodes, and the L9 protocol."),
+     "A shared space for humans and agents. Install Mycelium and learn the core concepts: rooms, memory, the board, episodes, and the L9 protocol."),
     ("adapters", "adapters.html", "Adapters · mycelium", "Adapters",
      "ADP-001", "ADAPTERS · CLAUDE CODE · CURSOR · A2A BRIDGE · REST API · ENGINES",
      "Connect Claude Code, Cursor, any A2A agent, or any HTTP client to the Mycelium coordination layer, and summon the first-party engines: the aligner, the synthesizer and hello."),
@@ -57,7 +57,6 @@ SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
     ("concepts/principals.md",        "users",              "start",       "Concepts",     "Users & Teams"),
     ("concepts/episodes.md",          "episodes",           "start",       "Concepts",     "Episodes"),
     ("concepts/memory.md",            "memory",             "start",       "Concepts",     "Memory"),
-    ("concepts/plan.md",              "plan",               "start",       "Concepts",     "Plan"),
     ("concepts/board.md",             "board",              "start",       "Concepts",     "Board"),
     ("concepts/l9-protocol.md",       "l9-protocol",        "start",       "Concepts",     "L9 Protocol"),
     # ── adapters (adapters.html), the adapter blocks hand-coded ──
@@ -112,7 +111,6 @@ GROUP_CONFIG: list[tuple[str, str, str]] = [
     ("agent", "agent", "agent"),
     ("memory", "memory", "memory"),
     ("skill", "skill", "skill"),
-    ("plan", "plan", "plan"),
     ("negotiate", "negotiate", "negotiate"),
     ("cfn", "cfn", "cfn"),
     ("adapter", "adapter", "adapter"),
@@ -507,7 +505,6 @@ def _generate_cli_reference() -> tuple[str, list[tuple[str, str]]]:
     import mycelium.commands.login  # noqa: F401
     import mycelium.commands.memory  # noqa: F401
     import mycelium.commands.participate  # noqa: F401
-    import mycelium.commands.plan  # noqa: F401
     import mycelium.commands.room  # noqa: F401
     import mycelium.commands.skill  # noqa: F401
     import mycelium.commands.ui  # noqa: F401

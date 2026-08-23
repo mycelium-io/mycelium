@@ -11,7 +11,7 @@ subkind, episode URN, participants, and the MPC/GAR/SCR consensus metrics — fo
 the episodes route and for cross-entity search.
 
 The structured fields are derived from the envelopes themselves (the source of
-truth), not the human-readable header; only ``plan_file`` — which the consensus
+truth), not the human-readable header; only ``tasks`` — which the consensus
 envelope doesn't carry — is read from the markdown.
 """
 
@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 EPISODES_PREFIX = "log/episodes/"
 
 _JSONL_RE = re.compile(r"```jsonl\n(.*?)\n```", re.DOTALL)
-_PLAN_RE = re.compile(r"^- plan: `(.+)`$", re.MULTILINE)
+_TASKS_RE = re.compile(r"^- work: (.+)$", re.MULTILINE)
 
 
 def parse_envelopes(content: str) -> list[dict[str, Any]]:
@@ -89,8 +89,12 @@ def episode_summary(key: str, meta: dict[str, Any], content: str) -> dict[str, A
             if isinstance(data.get("assignments"), dict):
                 assignments = data["assignments"]
 
-    plan_match = _PLAN_RE.search(content)
-    plan_file = plan_match.group(1) if plan_match else None
+    tasks_match = _TASKS_RE.search(content)
+    tasks = (
+        [k.strip(" `") for k in tasks_match.group(1).split(",") if k.strip(" `")]
+        if tasks_match
+        else []
+    )
 
     return {
         "short_id": short_id,
@@ -101,7 +105,7 @@ def episode_summary(key: str, meta: dict[str, Any], content: str) -> dict[str, A
         "participants": participants,
         "metrics": metrics,
         "assignments": assignments,
-        "plan_file": plan_file,
+        "tasks": tasks,
         "message_count": len(envelopes),
         "updated_at": meta.get("updated_at", ""),
         "updated_by": meta.get("updated_by", ""),
@@ -140,7 +144,7 @@ def live_episode_summary(room_name: str) -> dict[str, Any] | None:
         "participants": participants,
         "metrics": None,
         "assignments": None,
-        "plan_file": None,
+        "tasks": [],
         "message_count": message_count,
         "updated_at": "",
         "updated_by": "",

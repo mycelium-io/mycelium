@@ -27,6 +27,7 @@ SLUG_PATTERN = r"^[a-z0-9][a-z0-9._-]*$"
 class RoomCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     description: str | None = Field(None, max_length=500)
+    title: str | None = Field(None, max_length=200)
     is_public: bool = True
     mas_id: str | None = None
     workspace_id: str | None = None
@@ -36,6 +37,10 @@ class RoomRead(BaseModel):
     id: int
     name: str
     description: str | None = None
+    #: The room's display title — the italic hero the app draws above the board.
+    #: Room metadata rather than a memory: it names the room, it is not work in
+    #: it, and nothing projects it as a row.
+    title: str | None = None
     is_public: bool
     created_at: datetime
     #: When the room was last active (its transcript's mtime), or ``created_at``
@@ -65,7 +70,6 @@ class MessageType(StrEnum):
     COORDINATION_TICK = "coordination_tick"
     COORDINATION_CONSENSUS = "coordination_consensus"
     COORDINATION_RETRY = "coordination_retry"
-    PLAN_UPDATED = "plan_updated"
 
 
 # The message types whose ``content`` is human-readable prose — real chat, and
@@ -704,7 +708,8 @@ class EpisodeSummaryRead(BaseModel):
     participants: list[str] = Field(default_factory=list)
     metrics: EpisodeMetricsRead | None = None
     assignments: dict[str, str] | None = None
-    plan_file: str | None = None
+    #: Memory keys of the ``work/`` rows the agreement compiled into.
+    tasks: list[str] = Field(default_factory=list)
     message_count: int = 0
     updated_at: str = ""
     updated_by: str = ""

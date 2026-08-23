@@ -28,7 +28,7 @@ membership), discovers the negotiable issues from the participants' opening pros
 and drives a live **NEGMAS SAO** to termination — ``@``-addressing one participant
 per turn over the room channel, interpreting the real reply, and stopping the
 *instant* the mechanism reaches unanimity (the anti-theatre property). It hands
-the agreed ``issue = value`` map to the ``commit:converged`` seam ``plan_sync``
+the agreed ``issue = value`` map to the ``commit:converged`` seam ``task_sync``
 consumes (a failed run commits ``rejected``). Deterministic scoring (MPC/GAR/SCR)
 still rides along via :mod:`l9_episode`, computed over the mediator's readings.
 
@@ -287,7 +287,7 @@ class AlignerEngine:
         ``@``-addressing one agent at a time over the channel, interpreting the
         real reply, and stopping the *instant* the mechanism reaches unanimity
         (the anti-theatre property). Hands the agreed ``issue = value`` map to the
-        same ``commit:converged`` seam ``plan_sync`` already consumes.
+        same ``commit:converged`` seam ``task_sync`` already consumes.
 
         NEGMAS is synchronous, so ``mech.run()`` executes on a worker thread; each
         negotiator bridges back to this loop for its SLIM turn (see
@@ -726,7 +726,7 @@ class AlignerEngine:
         """Broadcast the ``commit`` envelope and record it once locally.
 
         Emitting a ``commit:converged`` here is exactly the plan-compile trigger
-        the persister watches — ``on_converged`` is wired to ``plan_compiler``.
+        the persister watches — ``on_converged`` is wired to ``task_compiler``.
         """
         env_dict = l9_episode.build_consensus_envelope(
             ep, broken=not converged, assignments=assignments, metrics=metrics
@@ -757,7 +757,7 @@ class AlignerEngine:
             ep,
             outcome="converged" if converged else "rejected",
             metrics=metrics,
-            plan_file=None,
+            tasks=None,
         )
         return env_dict
 

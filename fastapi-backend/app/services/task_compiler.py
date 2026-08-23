@@ -1,13 +1,22 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Plan compiler — turns a negotiation consensus into a room plan.
+"""Task compiler — turns a negotiation consensus into the room's work.
 
 When structured negotiation reaches consensus, the aligner produces a flat
-``issue=value`` agreement dict. That records *what was agreed* but is not an
-actionable plan. This module is a separate stage that *consumes* that consensus
-and compiles it — via one LLM call — into a markdown checklist materialized at
-``plan/tasks.md``.
+``issue=value`` agreement dict. That records *what was agreed* but is not
+something anyone can pick up. This module is a separate stage that *consumes*
+that consensus and compiles it — via one LLM call — into concrete tasks.
+
+**A task is a row, not a line in a document.** Each one becomes a ``work/``
+memory with its own frontmatter, so it can carry an owner, a status and a
+lease, be grouped and filtered like anything else in the room, and be moved by
+a board verb. A shared checklist could do none of that: a ``- [ ]`` line has
+nowhere to put a field.
+
+The LLM still writes checklist lines, because that is the shape it is good at
+and the prompt is proven. Parsing them into rows is this module's job, and the
+line format never leaves it.
 
 It is deliberately NOT an aligner step: the aligner owns negotiation and ends
 at "consensus produced". The compiler picks up that artifact across an explicit
@@ -18,9 +27,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import tempfile
 import time
 import uuid
+from dataclasses import dataclass
 from pathlib import Path
 
 from app.config import settings
@@ -44,7 +55,7 @@ def _build_prompt(
     assignments: dict[str, str],
     joined_intents: str,
     issue_options: dict[str, list[str]] | None,
-    existing_plan: str | None,
+    open_work: str | None,
     participants: list[str] | None = None,
 ) -> str:
     """Assemble the compiler prompt. Pure — no I/O, directly unit-testable."""
@@ -68,17 +79,19 @@ def _build_prompt(
         )
         if opts:
             parts += ["", "## Options that were on the table per issue", opts]
-    if existing_plan and existing_plan.strip():
+    if open_work and open_work.strip():
         parts += [
             "",
-            "## The room already has a plan — this was a RE-NEGOTIATION",
-            "Below is the current plan. Produce an UPDATED plan that:",
-            "- preserves every completed task (`- [x]`) EXACTLY as written, verbatim;",
-            "- revises the open tasks (`- [ ]`) to match the new agreement;",
-            "- keeps the same overall structure.",
+            "## The room already has open work — this was a RE-NEGOTIATION",
+            "Below is what is still open. Produce the updated task list, which should:",
+            "- repeat a task VERBATIM where the new agreement does not change it,",
+            "  so it keeps the row it already has rather than opening a duplicate;",
+            "- revise the ones the agreement does change;",
+            "- add whatever is newly needed.",
+            "Finished work is not listed and must not be re-opened.",
             "",
             "```markdown",
-            existing_plan.strip(),
+            open_work.strip(),
             "```",
         ]
     handles = [f"@{h.lstrip('@')}" for h in (participants or []) if h and h.strip()]
@@ -98,28 +111,83 @@ def _build_prompt(
     parts += [
         "",
         "## Output",
-        "Return ONLY the markdown body of the plan — no preamble, no code fences.",
-        "Start with a single `# ` heading naming the plan.",
-        "Then list concrete next steps as GitHub-style checklist lines: `- [ ] task`.",
+        "Return ONLY checklist lines, one task each: `- [ ] task`.",
+        "No preamble, no heading, no code fences, no sub-headings, nothing else.",
         "Each task must be a specific, doable action — not a restatement of an "
         "`issue=value` pair. " + tag_rule,
-        "Keep it tight: 3-10 tasks. No sub-headings unless genuinely needed.",
+        "Keep it tight: 3-10 tasks.",
     ]
     return "\n".join(parts)
 
 
-def fallback_body(assignments: dict[str, str]) -> str:
-    """Deterministic non-LLM plan body, used as the fail-soft fallback when the compiler fails.
+#: A checklist line the model produced: ``- [ ] text`` / ``* [x] text``.
+_TASK_LINE = re.compile(r"^\s*[-*]\s*\[(?P<mark>[ xX])\]\s*(?P<text>.+?)\s*$")
 
-    Pure — no I/O. Ugly (one line per raw ``issue=value``) but lossless, so a
+#: An owner tag inside a task's text.
+_OWNER = re.compile(r"@([A-Za-z0-9][A-Za-z0-9_-]*)")
+
+#: Punctuation left dangling once an owner tag is lifted out of a title.
+_TRIM = " -\u2013\u2014:"
+
+
+@dataclass(frozen=True)
+class CompiledTask:
+    """One unit of agreed work, before it becomes a row.
+
+    ``assignee`` is who the task is *for*, lifted from an ``@handle`` in the
+    line. It is not custody: nobody has agreed to hold this yet, and a lease is
+    something an actor takes.
+    """
+
+    title: str
+    assignee: str | None
+
+
+def parse_tasks(body: str) -> list[CompiledTask]:
+    """The open tasks in the model's checklist output, de-duplicated.
+
+    Pure — no I/O, directly unit-testable. Anything that is not a checklist
+    line is dropped rather than guessed at: a heading or a stray sentence is
+    not a task, and inventing a row for one would put work in the room nobody
+    asked for. A ``- [x]`` line is dropped too — the compiler is producing work
+    to *do*, and a task that arrives already finished is the model narrating
+    rather than agreeing.
+    """
+    tasks: list[CompiledTask] = []
+    seen: set[str] = set()
+    for line in body.splitlines():
+        match = _TASK_LINE.match(line)
+        if match is None or match.group("mark").lower() == "x":
+            continue
+        text = match.group("text").strip()
+        if not text:
+            continue
+        tag = _OWNER.search(text)
+        title = _OWNER.sub("", text).replace("  ", " ").strip(_TRIM)
+        fingerprint = title.casefold()
+        if not title or fingerprint in seen:
+            continue
+        seen.add(fingerprint)
+        tasks.append(CompiledTask(title=title, assignee=tag.group(1).lower() if tag else None))
+    return tasks
+
+
+def fallback_tasks(assignments: dict[str, str]) -> list[CompiledTask]:
+    """Deterministic non-LLM tasks, the fail-soft path when the compiler fails.
+
+    Pure — no I/O. Blunt (one task per raw ``issue=value``) but lossless, so a
     compiler outage never costs the negotiation outcome.
     """
-    lines = ["# Plan", ""]
-    if assignments:
-        lines += [f"- [ ] {issue}: {value}" for issue, value in assignments.items()]
-    else:
-        lines.append("- [ ] Review the negotiation consensus and define next steps")
-    return "\n".join(lines)
+    if not assignments:
+        return [
+            CompiledTask(
+                title="Review the negotiation consensus and define next steps", assignee=None
+            )
+        ]
+    return [
+        CompiledTask(title=f"{issue}: {value}", assignee=None)
+        for issue, value in assignments.items()
+    ]
 
 
 def _strip_fences(text: str) -> str:
@@ -146,7 +214,7 @@ def _pi_complete(prompt: str) -> str:
     session_dir = Path(tempfile.gettempdir()) / "mycelium-pi-sessions"
     session_dir.mkdir(parents=True, exist_ok=True)
     brain = PiBrain(
-        session_path=session_dir / f"plan-compile-{uuid.uuid4().hex}.jsonl",
+        session_path=session_dir / f"task-compile-{uuid.uuid4().hex}.jsonl",
         model=settings.LLM_MODEL,
         api_key=settings.LLM_API_KEY,
         base_url=settings.LLM_BASE_URL,
@@ -157,7 +225,7 @@ def _pi_complete(prompt: str) -> str:
     return brain(prompt)
 
 
-async def _compile_plan_body(prompt: str, room_name: str) -> str:
+async def _compile_body(prompt: str, room_name: str) -> str:
     """Run the timeout-bounded Pi call and return the raw plan markdown.
 
     Isolated so tests can patch it without a live Pi.
@@ -169,7 +237,7 @@ async def _compile_plan_body(prompt: str, room_name: str) -> str:
         )
     except Exception:
         record_llm_call(
-            operation="plan_compile",
+            operation="task_compile",
             model=settings.LLM_MODEL,
             room=room_name,
             error=True,
@@ -180,43 +248,45 @@ async def _compile_plan_body(prompt: str, room_name: str) -> str:
     # Pi does not report per-turn token usage or cost on its JSON stream, so only
     # the call count + latency are recorded (tokens/cost stay zero).
     record_llm_call(
-        operation="plan_compile",
+        operation="task_compile",
         model=settings.LLM_MODEL,
         room=room_name,
         duration_ms=elapsed_ms,
     )
 
     if not content or not content.strip():
-        raise RuntimeError("plan compiler: Pi returned empty content")
+        raise RuntimeError("task compiler: Pi returned empty content")
     return content
 
 
-async def compile_plan(
+async def compile_tasks(
     *,
     room_name: str,
     assignments: dict[str, str],
     joined_intents: str,
     issue_options: dict[str, list[str]] | None,
-    existing_plan: str | None,
+    open_work: str | None,
     participants: list[str] | None = None,
-) -> str:
-    """Compile a consensus into a full markdown body for ``plan/tasks.md``.
+) -> list[CompiledTask]:
+    """Compile a consensus into the tasks it implies.
 
-    First run (``existing_plan`` is None): a fresh ``# `` checklist built from
-    the agreement and the agents' opening positions. Re-negotiation: a merge
-    that preserves completed ``- [x]`` tasks verbatim and revises open ones.
+    First run (``open_work`` is None): tasks built from the agreement and the
+    agents' opening positions. Re-negotiation: the model is shown what is still
+    open and repeats anything the new agreement does not change, so a task that
+    survives keeps the row it already has.
 
-    RAISES on LLM failure/timeout — the caller owns the fail-soft
-    fallback to :func:`fallback_body`.
+    RAISES on LLM failure/timeout, and when the model returns nothing that
+    parses as a task — the caller owns the fail-soft fallback to
+    :func:`fallback_tasks`.
     """
     prompt = _build_prompt(
         assignments=assignments,
         joined_intents=joined_intents,
         issue_options=issue_options,
-        existing_plan=existing_plan,
+        open_work=open_work,
         participants=participants,
     )
-    body = _strip_fences(await _compile_plan_body(prompt, room_name))
-    if not body:
-        raise RuntimeError("plan compiler: empty plan body after cleanup")
-    return body
+    tasks = parse_tasks(_strip_fences(await _compile_body(prompt, room_name)))
+    if not tasks:
+        raise RuntimeError("task compiler: no checklist lines in the compiled output")
+    return tasks

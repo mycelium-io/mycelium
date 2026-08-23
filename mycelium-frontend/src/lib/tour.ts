@@ -120,7 +120,7 @@ export function startRoomTour(deps: TourDeps): TourHandle {
           side: "bottom",
           align: "end",
         },
-        onHighlightStarted: () => deps.setEditorView("plan"),
+        onHighlightStarted: () => deps.setEditorView("board"),
       },
       {
         element: '[data-tour="inspector-memory"]',

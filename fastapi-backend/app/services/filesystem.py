@@ -334,7 +334,6 @@ def ensure_room_structure(room_dir: Path) -> None:
         "work",
         "procedures",
         "log",
-        "plan",
     ):
         (room_dir / subdir).mkdir(parents=True, exist_ok=True)
 
@@ -441,6 +440,7 @@ def read_room_meta(room_name: str) -> dict[str, Any] | None:
         "is_persistent": stored.get("is_persistent", True),
         "mas_id": stored.get("mas_id"),
         "workspace_id": stored.get("workspace_id"),
+        "title": stored.get("title"),
         "created_at": created_at,
     }
 

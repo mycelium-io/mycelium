@@ -33,6 +33,7 @@ from app.routes.a2a_agents import router as a2a_agents_router
 from app.routes.a2a_server import router as a2a_server_router
 from app.routes.a2a_state import router as a2a_state_router
 from app.routes.agents import router as agents_router
+from app.routes.briefing import router as briefing_router
 from app.routes.engines import router as engines_router
 from app.routes.episodes import router as episodes_router
 from app.routes.fields import router as fields_router
@@ -42,8 +43,6 @@ from app.routes.links import router as links_router
 from app.routes.memory import router as memory_router
 from app.routes.messages import router as messages_router
 from app.routes.participate import router as participate_router
-from app.routes.plan import agent_router as agent_context_router
-from app.routes.plan import router as plan_router
 from app.routes.rooms import router as rooms_router
 from app.routes.search import router as search_router
 from app.routes.sessions import router as sessions_router
@@ -118,9 +117,9 @@ async def lifespan(app: FastAPI):
     from app.services.a2a_bridge import A2aResponder
     from app.services.aligner import AlignerEngine
     from app.services.hello import HelloEngine
-    from app.services.plan_sync import PlanSyncEngine
     from app.services.room_channels import manager as room_channel_manager
     from app.services.synthesizer import SynthesizerEngine
+    from app.services.task_sync import TaskSyncEngine
 
     app.state.aligner = AlignerEngine(room_channel_manager)
     app.state.synthesizer = SynthesizerEngine(room_channel_manager)
@@ -159,11 +158,11 @@ async def lifespan(app: FastAPI):
     )
 
     # Wire the converged→plan→memory-sync consumer onto the same seam:
-    # a ``commit:converged`` the aligner emits fires plan_compiler → plan/tasks.md
+    # a ``commit:converged`` the aligner emits fires task_compiler → work/ rows
     # and a ``knowledge`` push that syncs the compiled plan to every store.
-    app.state.plan_sync = PlanSyncEngine(room_channel_manager)
-    room_channel_manager.on_converged = app.state.plan_sync.handle_converged
-    logger.info("plan-sync consumer wired (commit:converged → plan_compiler + knowledge)")
+    app.state.task_sync = TaskSyncEngine(room_channel_manager)
+    room_channel_manager.on_converged = app.state.task_sync.handle_converged
+    logger.info("task-sync consumer wired (commit:converged → task_compiler → work/ rows)")
 
     # Re-provision every room's SLIM channel on startup. Provision is
     # idempotent and best-effort; without this, a backend restart left every
@@ -266,8 +265,7 @@ app.include_router(sessions_router, prefix="/api")
 app.include_router(stream_router, prefix="/api")
 app.include_router(memory_router, prefix="/api")
 app.include_router(links_router, prefix="/api")
-app.include_router(plan_router, prefix="/api")
-app.include_router(agent_context_router, prefix="/api")
+app.include_router(briefing_router, prefix="/api")
 app.include_router(users_router, prefix="/api")
 app.include_router(search_router, prefix="/api")
 app.include_router(skills_router, prefix="/api")

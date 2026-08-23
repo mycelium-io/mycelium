@@ -86,12 +86,12 @@ Coordination messages on the fabric ride SLIM as additive [L9 envelopes](#l9-pro
 | Layer | Technology | Used for |
 |-------|-----------|----------|
 | Messaging | one SLIM node (MLS group channels) | per-room encrypted coordination fabric |
-| State | markdown files on the hub, under `~/.mycelium/rooms/{room}/` | rooms, memories, plan: the source of truth |
+| State | markdown files on the hub, under `~/.mycelium/rooms/{room}/` | rooms and memories: the source of truth |
 | Search | local ONNX embedding index (JSONL) | ~384-dim semantic recall, no external service |
 | Protocol | L9 envelopes over SLIM | `exchange` ticks/replies, `commit:*`, `knowledge` |
 | Cognition | the aligner (Pi + NEGMAS) | drives the negotiation (see [aligner](#aligner)) |
 | Embeddings | local ONNX model | 384-dim embeddings, no API key |
-| LLM | Pi | plan compilation + health probe |
+| LLM | Pi | task compilation + health probe |
 | Backend | FastAPI (room moderator) | membership, transcript, moderation API |
 | CLI | Typer + Rich | agent interface |
 | Frontend | Next.js + Tailwind | the human-facing app; starts with the stack |
@@ -238,9 +238,9 @@ for itself. A spoke never holds a service token.
 GET /api/rooms/{room}/status
 ```
 
-You never tell Mycelium which pull requests to watch. Write a plan task that
+You never tell Mycelium which pull requests to watch. Write a work row that
 says `land the custody seam: mycelium-io/mycelium#504` and the reference is
-already there; the hub reads the room's own plan tasks and its `decisions/`,
+already there; the hub reads the room's own `decisions/`,
 `status/`, `work/` and `failed/` memories, and asks each provider what it
 recognises. Nothing in the hub matches `#504`: a provider is the only thing that
 knows its own shapes, so teaching Mycelium about Jira ticket keys is adding a

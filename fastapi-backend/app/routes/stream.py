@@ -99,7 +99,7 @@ async def _sse_notifications(request: Request):
     One subscription in place of the UI opening a per-room stream for every
     room the user participates in — the notification center's source feed.
     Frames are byte-identical to the per-room stream's (``l9_*``,
-    ``coordination_join``, ``plan_updated``, each carrying ``room_name``), plus
+    ``coordination_join``, each carrying ``room_name``), plus
     the app channel's ``room_created``/``room_deleted``, which this generator
     also uses to grow/shrink its own room subscription set live.
     """

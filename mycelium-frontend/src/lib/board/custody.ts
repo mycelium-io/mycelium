@@ -80,7 +80,6 @@ export const LEASABLE_NAMESPACES = ["work"];
 
 /** Why a row refuses a claim, in its own terms. Saying so beats pretending. */
 export const CUSTODY_REFUSALS: Record<string, string> = {
-  plan: "a plan task is the room's commitment, not a lease: assign it with @handle",
   episode: "an episode is a recorded negotiation, and there is nothing to write a lease onto",
   agent: "presence is already a lease the runtime renews; it is not claimable",
   memory: "leases live on work/ memories; this row is in another namespace",
@@ -197,7 +196,7 @@ export function custodyNote(item: LiveItem, now: number): CustodyNote | null {
 /** Why this row cannot take a lease, or null when it can. */
 export function custodyRefusal(item: LiveItem): string | null {
   const kind = item.source.kind;
-  if (kind === "plan" || kind === "episode" || kind === "agent") return CUSTODY_REFUSALS[kind];
+  if (kind === "episode" || kind === "agent") return CUSTODY_REFUSALS[kind];
   if (kind === "memory") {
     const namespace = str(item, "namespace") ?? item.source.label.split("/")[0] ?? "";
     return LEASABLE_NAMESPACES.includes(namespace) ? null : CUSTODY_REFUSALS.memory;

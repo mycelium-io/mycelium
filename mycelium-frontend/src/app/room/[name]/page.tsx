@@ -145,7 +145,7 @@ function RoomWorkspace() {
   useKeyScope("room");
   useKeyAction("pane.channel", () => setEditorView("channel"));
   useKeyAction("pane.negotiate", () => setEditorView("negotiate"));
-  useKeyAction("pane.plan", () => setEditorView("plan"));
+  useKeyAction("pane.board", () => setEditorView("board"));
   useKeyAction("pane.network", () => setEditorView("network"));
   useKeyAction("rail.agents", () => openTab("agents"));
   useKeyAction("rail.episodes", () => openTab("episodes"));

@@ -459,6 +459,57 @@
           }
         }
       },
+      "patch": {
+        "tags": [
+          "rooms"
+        ],
+        "summary": "Update Room",
+        "description": "Change a room's own attributes.\n\nThe title lives here rather than in a memory because it names the room\ninstead of describing work in it: nothing projects it as a row, nothing\nclaims it, and it has no lifecycle of its own.",
+        "operationId": "update_room_api_rooms__room_name__patch",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoomUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
       "delete": {
         "tags": [
           "rooms"
@@ -2747,230 +2798,13 @@
         }
       }
     },
-    "/api/rooms/{room_name}/plan": {
-      "get": {
-        "tags": [
-          "plan"
-        ],
-        "summary": "Get Plan",
-        "description": "Read every ``plan/*.md`` and return files + flat task list.",
-        "operationId": "get_plan_api_rooms__room_name__plan_get",
-        "parameters": [
-          {
-            "name": "room_name",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Room Name"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PlanOut"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/rooms/{room_name}/plan/title": {
-      "put": {
-        "tags": [
-          "plan"
-        ],
-        "summary": "Set Title",
-        "operationId": "set_title_api_rooms__room_name__plan_title_put",
-        "parameters": [
-          {
-            "name": "room_name",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Room Name"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TitleUpdate"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Set Title Api Rooms  Room Name  Plan Title Put"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/rooms/{room_name}/plan/tasks": {
-      "post": {
-        "tags": [
-          "plan"
-        ],
-        "summary": "Add Task",
-        "operationId": "add_task_api_rooms__room_name__plan_tasks_post",
-        "parameters": [
-          {
-            "name": "room_name",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Room Name"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TaskCreate"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TaskOut"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/rooms/{room_name}/plan/tasks/{task_id}/toggle": {
-      "post": {
-        "tags": [
-          "plan"
-        ],
-        "summary": "Toggle Task",
-        "operationId": "toggle_task_api_rooms__room_name__plan_tasks__task_id__toggle_post",
-        "parameters": [
-          {
-            "name": "room_name",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Room Name"
-            }
-          },
-          {
-            "name": "task_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Task Id"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "anyOf": [
-                  {
-                    "$ref": "#/components/schemas/TaskToggle"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Body"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TaskOut"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/rooms/{room_name}/agent-context": {
       "get": {
         "tags": [
-          "plan"
+          "briefing"
         ],
         "summary": "Get Agent Context",
-        "description": "Compact room briefing injected into an agent's prompt on dispatch.\n\nHot path \u2014 called on every ``@handle`` dispatch \u2014 so it stays a pure\nfilesystem read with no DB round-trip. ``handle`` is accepted now and\nreserved for per-agent data (claimed tasks) once that lands; v1 ignores\nit and returns the room-wide plan briefing.",
+        "description": "Compact room briefing injected into an agent's prompt on dispatch.\n\nHot path \u2014 called on every ``@handle`` dispatch \u2014 so it stays a pure\nfilesystem read. ``handle`` is accepted and reserved for per-agent framing\n(what *you* are holding) once that lands; today it returns the room-wide\nbriefing regardless.",
         "operationId": "get_agent_context_api_rooms__room_name__agent_context_get",
         "parameters": [
           {
@@ -4467,16 +4301,12 @@
             ],
             "title": "Assignments"
           },
-          "plan_file": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Plan File"
+          "tasks": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tasks"
           },
           "message_count": {
             "type": "integer",
@@ -4623,16 +4453,12 @@
             ],
             "title": "Assignments"
           },
-          "plan_file": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Plan File"
+          "tasks": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tasks"
           },
           "message_count": {
             "type": "integer",
@@ -5720,109 +5546,6 @@
         ],
         "title": "ParticipantRead"
       },
-      "PlanFileOut": {
-        "properties": {
-          "slug": {
-            "type": "string",
-            "title": "Slug"
-          },
-          "title": {
-            "type": "string",
-            "title": "Title"
-          },
-          "content": {
-            "type": "string",
-            "title": "Content"
-          },
-          "updated_at": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Updated At"
-          },
-          "updated_by": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Updated By"
-          },
-          "tasks": {
-            "items": {
-              "$ref": "#/components/schemas/TaskOut"
-            },
-            "type": "array",
-            "title": "Tasks"
-          }
-        },
-        "type": "object",
-        "required": [
-          "slug",
-          "title",
-          "content",
-          "tasks"
-        ],
-        "title": "PlanFileOut"
-      },
-      "PlanOut": {
-        "properties": {
-          "room": {
-            "type": "string",
-            "title": "Room"
-          },
-          "title": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Title"
-          },
-          "files": {
-            "items": {
-              "$ref": "#/components/schemas/PlanFileOut"
-            },
-            "type": "array",
-            "title": "Files"
-          },
-          "tasks": {
-            "items": {
-              "$ref": "#/components/schemas/TaskOut"
-            },
-            "type": "array",
-            "title": "Tasks"
-          },
-          "open_count": {
-            "type": "integer",
-            "title": "Open Count"
-          },
-          "done_count": {
-            "type": "integer",
-            "title": "Done Count"
-          }
-        },
-        "type": "object",
-        "required": [
-          "room",
-          "files",
-          "tasks",
-          "open_count",
-          "done_count"
-        ],
-        "title": "PlanOut"
-      },
       "ReleaseBody": {
         "properties": {
           "key": {
@@ -5929,6 +5652,18 @@
             ],
             "title": "Description"
           },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
           "is_public": {
             "type": "boolean",
             "title": "Is Public",
@@ -5983,6 +5718,17 @@
               }
             ],
             "title": "Description"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
           },
           "is_public": {
             "type": "boolean",
@@ -6094,6 +5840,26 @@
           "refs"
         ],
         "title": "RoomStatusResponse"
+      },
+      "RoomUpdate": {
+        "properties": {
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title",
+            "description": "The room's display title"
+          }
+        },
+        "type": "object",
+        "title": "RoomUpdate",
+        "description": "What a caller may change about a room after it exists."
       },
       "SearchHitRead": {
         "properties": {
@@ -6452,76 +6218,6 @@
         ],
         "title": "SubscriptionRead"
       },
-      "TaskCreate": {
-        "properties": {
-          "text": {
-            "type": "string",
-            "maxLength": 2000,
-            "minLength": 1,
-            "title": "Text"
-          },
-          "slug": {
-            "type": "string",
-            "title": "Slug",
-            "default": "tasks"
-          }
-        },
-        "type": "object",
-        "required": [
-          "text"
-        ],
-        "title": "TaskCreate"
-      },
-      "TaskOut": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "title": "Id"
-          },
-          "slug": {
-            "type": "string",
-            "title": "Slug"
-          },
-          "line": {
-            "type": "integer",
-            "title": "Line"
-          },
-          "text": {
-            "type": "string",
-            "title": "Text"
-          },
-          "done": {
-            "type": "boolean",
-            "title": "Done"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "slug",
-          "line",
-          "text",
-          "done"
-        ],
-        "title": "TaskOut"
-      },
-      "TaskToggle": {
-        "properties": {
-          "done": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Done"
-          }
-        },
-        "type": "object",
-        "title": "TaskToggle"
-      },
       "TeamListResponse": {
         "properties": {
           "teams": {
@@ -6568,25 +6264,6 @@
         ],
         "title": "TeamRead",
         "description": "A team, rolled up from the agents fielded under it and its member users."
-      },
-      "TitleUpdate": {
-        "properties": {
-          "text": {
-            "type": "string",
-            "maxLength": 500,
-            "title": "Text"
-          },
-          "updated_by": {
-            "type": "string",
-            "title": "Updated By",
-            "default": "frontend"
-          }
-        },
-        "type": "object",
-        "required": [
-          "text"
-        ],
-        "title": "TitleUpdate"
       },
       "UpstreamRead": {
         "properties": {

@@ -16,16 +16,15 @@ Standard subdirectories are created automatically:
 
 ```
 ~/.mycelium/rooms/design-review/
-  decisions/   context/   status/    plan/
-  work/        procedures/   log/   failed/
+  decisions/   context/   status/    work/
+  procedures/  log/          failed/
 ```
 
-The `plan/` subdir holds the room's [plan](#plan): a free-form set of markdown
-files plus the `- [ ]` / `- [x]` checklist lines those files contain.
-`plan/title.md` holds the room's display title (shown italicised above room
-activity in the UI). The rest are arbitrary `plan/{slug}.md` files containing
-prose and tasks. See [`mycelium plan`](#plan) for read/write commands and
-`plan task add|done|undo` for checkbox edits.
+The `work/` subdir holds what the room is doing: one markdown file per task,
+each carrying its own frontmatter, so a task can say who it is for, what stage
+it is at, and who is holding it. That is what makes it a row on the
+[board](#board). The room's display title is the room's own, not a memory —
+set it with `mycelium room title`.
 
 An operator on the hub can browse, edit, or git-track these directories
 directly; the backend keeps its search index in sync via startup scans and file
@@ -65,7 +64,7 @@ message rather than disappearing.
 
 To coordinate in a room, participants converge on a question through an
 [episode](#episodes) driven by the [aligner](#aligner) mediator. The arc is
-**position → summon → converge → plan → work**:
+**position → summon → converge → work**:
 
 1. Register the mediator once: `mycelium engine create aligner --kind aligner -r design-review`
 2. Each participant posts an opening position: `mycelium respond -H <handle> "<position>"`
@@ -73,8 +72,8 @@ To coordinate in a room, participants converge on a question through an
 4. Participants loop `mycelium await -H <handle>` → read the prompt →
    `mycelium respond -H <handle> "<accept/reject/counter>"`
 
-On agreement the aligner compiles the room's shared [`plan/tasks.md`](#plan),
-a `- [ ]` checklist agents work from. The room and its plan outlive the episode.
+On agreement the aligner compiles the outcome into [work rows](#board) agents
+claim and resolve. The room and its work outlive the episode.
 
 ## Typed events
 

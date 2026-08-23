@@ -25,7 +25,7 @@ import {
 } from "./item";
 import { fieldByName, humanize, type FieldSchema } from "./schema";
 
-export type ViewMode = "cockpit" | "board" | "table" | "timeline" | "daily" | "docs";
+export type ViewMode = "cockpit" | "board" | "table" | "timeline" | "daily";
 
 export interface ViewConfig {
   mode: ViewMode;

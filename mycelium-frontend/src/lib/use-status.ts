@@ -5,7 +5,7 @@
 
 import useSWR from "swr";
 import { fetchCollectorMetrics, type EpisodeSummary } from "@/lib/api";
-import { useRoomAgents, useRoomEpisodes, useRoomPlan } from "@/lib/room-data";
+import { useRoomAgents, useRoomEpisodes, useRoomMemories } from "@/lib/room-data";
 
 /** The slice of the collector's metrics payload the status bar reads: total
  *  spend and per-model token totals (to find the primary model). */
@@ -16,6 +16,13 @@ interface CollectorSpendShape {
   };
 }
 
+/** A `work/` row nobody has closed. The board's own definition of outstanding. */
+function isOpenWork(memory: { key: string; meta?: Record<string, unknown> | null }): boolean {
+  if (!memory.key.startsWith("work/")) return false;
+  const status = memory.meta?.status;
+  return status !== "resolved" && status !== "dismissed";
+}
+
 export interface RoomStatus {
   agents: number | null;
   episodes: EpisodeSummary[] | null;
@@ -23,18 +30,20 @@ export interface RoomStatus {
 }
 
 /** Lightweight per-room counts for the status bar. Reads the room's shared
- *  agent / episode / plan caches, so the bar costs no requests of its own and
+ *  agent / episode / memory caches, so the bar costs no requests of its own and
  *  never disagrees with the rails showing the same numbers. `null` until the
  *  first read lands, so a count renders only once it means something. */
 export function useRoomStatus(roomName: string): RoomStatus {
   const { agents, loading: agentsLoading } = useRoomAgents(roomName);
   const { episodes, loading: episodesLoading } = useRoomEpisodes(roomName);
-  const { plan } = useRoomPlan(roomName);
+  // Open work is counted off the same rows the board draws, so the bar and the
+  // board can never disagree about how much is outstanding.
+  const { memories, loading: memoriesLoading } = useRoomMemories(roomName);
 
   return {
     agents: agentsLoading ? null : agents.length,
     episodes: episodesLoading ? null : episodes,
-    openTasks: plan ? plan.open_count ?? 0 : null,
+    openTasks: memoriesLoading ? null : memories.filter(isOpenWork).length,
   };
 }
 

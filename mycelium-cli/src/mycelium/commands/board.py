@@ -5,7 +5,7 @@
 The coordination board: the room's live slice, in the terminal.
 
 ``mycelium board`` is the CLI half of the same surface the GUI draws — one
-projection over plan tasks, episodes, memory namespaces and presence, read
+projection over episodes, memory namespaces and presence, read
 through whichever lens you ask for.  The default lens is "needs you", because a
 board worth having is one you can ignore until it says your name.
 
@@ -113,10 +113,10 @@ TTL_CELLS = 5
 class HubHealth:
     """How the read went, in enough detail to say something true about it.
 
-    Reachability used to be inferred from whether the plan call came back, which
+    Reachability used to be inferred from whether one source came back, which
     reported an authenticated hub refusing a request, or a room that does not
     exist, as "hub unreachable" and sent the reader to check their network. It
-    also let a board draw with two of its six sources missing and look merely
+    also let a board draw with two of its sources missing and look merely
     quiet. Both are worse than an error, because the reader believes them.
     """
 
@@ -180,7 +180,6 @@ def _fetch_raw(room: str | None) -> tuple[str, dict[str, Any], HubHealth]:
             return default
 
     with hub_client(cfg, timeout=30) as client:
-        plan = get(f"/api/rooms/{name}/plan", None, "plan")
         episodes = get(f"/api/rooms/{name}/episodes", {}, "episodes")
         memories = get(f"/api/rooms/{name}/memory?limit=50", [], "memory")
         # What the tools the room points at say. A read never fetches hub-side,
@@ -193,7 +192,6 @@ def _fetch_raw(room: str | None) -> tuple[str, dict[str, Any], HubHealth]:
     return (
         name,
         {
-            "plan": plan,
             "episodes": (episodes or {}).get("episodes", []) if isinstance(episodes, dict) else [],
             "memories": memories if isinstance(memories, list) else [],
             "agents": agents if isinstance(agents, list) else [],
@@ -210,7 +208,6 @@ def _fetch(room: str | None) -> tuple[str, list[LiveItem], HubHealth]:
     contributes nothing rather than failing the whole board."""
     name, sources, health = _fetch_raw(room)
     items = project_items(
-        plan=sources["plan"],
         episodes=sources["episodes"],
         memories=sources["memories"],
         agents=sources["agents"],
@@ -235,8 +232,8 @@ def _ttl_bar(fraction: float) -> Text:
 def _custody_chip(item: LiveItem, now: datetime) -> Text:
     """Who holds this row, and how much longer their claim has to run.
 
-    A row with no custody axis reads as it always did — a plan task's owner is a
-    commitment, not a lease, so it gets a plain handle and no draining bar.
+    A row with no custody axis gets a plain handle and no draining bar: nobody
+    has taken it for a window, so there is nothing to drain.
     """
     state = custody.custody_of(item, now)
     chip = Text()
@@ -485,7 +482,7 @@ def board(
 
 @doc_ref(
     usage="mycelium board resolve <id>",
-    desc="Resolve a board row: a plan task toggles, a work/ lease resolves, any other memory row takes status=resolved.",
+    desc="Resolve a board row: a work/ lease resolves, any other memory row takes status=resolved.",
     group="board",
 )
 @app.command(name="resolve")
@@ -496,13 +493,6 @@ def board_resolve(
     """Resolve a row."""
     cfg = MyceliumConfig.load()
     name = _resolve_room(cfg, room)
-    task_id = row_id.split(":", 1)[1] if row_id.startswith("plan:") else row_id
-
-    with hub_client(cfg, timeout=30) as client:
-        resp = client.post(f"/api/rooms/{name}/plan/tasks/{task_id}/toggle", json={"done": True})
-    if resp.status_code < 400:
-        console.print(f"[green]✓[/green] resolved [bold]{task_id}[/bold] (plan task marked done)")
-        return
 
     item = _row(name, row_id)
     if item is not None and custody.refusal_for(item) is None:
@@ -728,7 +718,6 @@ def board_log(
         messages=sources["messages"],
         memories=sources["memories"],
         episodes=sources["episodes"],
-        plan=sources["plan"],
         agent_handles=[a.get("handle", "") for a in sources["agents"]],
     )
     if by:

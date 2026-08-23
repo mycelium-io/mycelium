@@ -31,12 +31,12 @@ Review 1
 ## Nothing to fill in
 
 You never add anything to the board. It's assembled from what the room already
-has: the tasks in its plan, the negotiations running in it, the memories under
+has: the work compiled out of its agreements, the negotiations running in it, the memories under
 `decisions/`, `status/`, `work/` and `failed/`, and which agents are actually
 resident right now. Every row says where it came from, and clicking through
 takes you to the real thing rather than a copy of it.
 
-That means there's no second place to keep up to date. Mark a plan task done and
+That means there's no second place to keep up to date. Resolve a task and
 its row resolves. End a negotiation and its decision row closes. Nothing to
 groom, and nothing that can quietly disagree with the room it describes.
 
@@ -66,7 +66,6 @@ each view pivots on them differently:
 - **Timeline**: the same rows by when they last moved, so you can see what
   happened while you were away.
 - **Daily**: the log, described below.
-- **Docs**: the plan's prose, for when you want to read rather than triage.
 
 So a custom namespace becomes a tracker without you building one. Write memories
 under `issues/` with `status`, `assignee` and `priority` in their frontmatter and
@@ -92,7 +91,7 @@ makes the log the thing an agent reads when it rejoins a room after a week away,
 rather than replaying the whole channel.
 
 Nothing is written to it. It is assembled from what already carries a time and a
-name: messages, memory writes and revisions, finished plan tasks, and
+name: messages, memory writes and revisions, resolved work, and
 negotiations. A fact recorded in two places is counted once.
 
 ### Whose day is it
@@ -142,11 +141,14 @@ alive at the moment the lease drained, which is exactly what stopped being true.
 
 **Leases live on `work/` memories.** Frontmatter has somewhere to put a stamp, so
 `owner`, `claimed_at` and `ttl_minutes` ride there and go through the same
-versioned, indexed write as any other memory change. A plan task deliberately
-does not take one: `- [ ] text @handle` has nowhere to put a stamp, and a
-compiled plan task is the room's commitment — a commitment that decays is not
-one. Ownership there stays a plain `@handle`, and the task leaves by being done.
-Episodes refuse a claim outright, and say why.
+versioned, indexed write as any other memory change.
+
+**Being assigned is not being claimed.** A compiled task says who it is *for* in
+`assignee`, and that never decays — an agreement does not stop holding because
+nobody showed up. Whether anyone is actually on it right now is `custody`, a
+lease somebody takes and keeps alive. Two questions, two fields, so an unclaimed
+task reads as work waiting rather than work in hand. Episodes refuse a claim
+outright, and say why.
 
 **Letting go and dying look the same, and the note says which.** Both leave an
 unclaimed row with history. A release is signed by whoever released it; an
@@ -219,12 +221,13 @@ it. The board holds what's live right now.
 > so no row shows a pull request's state today.
 
 Mentioning the pull request will be the whole of it. Write the link where the
-work is already described, whether a plan task, a memory, or a message in the
+work is already described, whether a work row, a memory, or a message in the
 room, and the row that comes from it will carry that pull request's state, with
 nothing to attach and no per-row setting:
 
 ```bash
-mycelium plan task add "land the custody seam: mycelium-io/mycelium#504"
+mycelium memory set work/custody-seam \
+  "land the custody seam: mycelium-io/mycelium#504"
 mycelium memory set work/thin-spoke \
   "Blocked behind https://github.com/mycelium-io/mycelium/pull/502"
 ```
@@ -324,6 +327,5 @@ nobody writing that down.
 
 ## Related
 
-- [plan](#plan): the room's prose and checklists, which the board reads from.
 - [episodes](#episodes): a negotiation, which appears as a decision row.
 - [memory](#memory): where a row's fields actually live.

@@ -8,7 +8,6 @@ import {
   Kanban,
   ListChecks,
   Rows3,
-  ScrollText,
   CalendarDays,
   Search,
   SlidersHorizontal,
@@ -19,12 +18,11 @@ import { useCurrentUser } from "@/components/current-user";
 import { useNotifications } from "@/components/notifications-provider";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { EmptyState } from "@/components/empty-state";
-import { RoomPlanHeader } from "@/components/room-plan-header";
 import {
+  useRoom,
   useRoomEpisodes,
   useRoomMemories,
   useRoomMessages,
-  useRoomPlan,
   useRoomRevalidate,
   useRoomRoster,
   useRoomStatus,
@@ -53,7 +51,6 @@ const MODES: { id: ViewMode; label: string; icon: typeof Rows3 }[] = [
   { id: "table", label: "Table", icon: TableIcon },
   { id: "timeline", label: "Timeline", icon: ListChecks },
   { id: "daily", label: "Daily", icon: CalendarDays },
-  { id: "docs", label: "Docs", icon: ScrollText },
 ];
 
 /** The board's clock ticks slowly: ages and TTL bars, not a stopwatch. */
@@ -69,15 +66,15 @@ interface Props {
 }
 
 /**
- * The room's coordination surface, in place of the compiled plan checklist.
+ * The room's coordination surface.
  *
- * Everything on it is a projection: rows come from the plan, the episodes, the
+ * Everything on it is a projection: rows come from the episodes, the
  * memory namespaces and presence; the schema comes from the frontmatter those
  * rows already carry; and the cockpit, kanban and table are three configs over
  * one pipeline rather than three screens.
  */
 export function RoomBoard({ roomName }: Props) {
-  const { plan } = useRoomPlan(roomName);
+  const { room } = useRoom(roomName);
   const { episodes } = useRoomEpisodes(roomName);
   const { memories } = useRoomMemories(roomName);
   const { agents, presence } = useRoomRoster(roomName);
@@ -149,10 +146,9 @@ export function RoomBoard({ roomName }: Props) {
         messages,
         memories,
         episodes,
-        plan,
         agentHandles: agents.map(a => a.handle),
       }),
-    [roomName, messages, memories, episodes, plan, agents],
+    [roomName, messages, memories, episodes, agents],
   );
 
   const items = useMemo(
@@ -162,7 +158,6 @@ export function RoomBoard({ roomName }: Props) {
       attachUpstream(
         projectItems({
           room: roomName,
-          plan,
           episodes,
           memories,
           agents,
@@ -173,7 +168,7 @@ export function RoomBoard({ roomName }: Props) {
         }),
         upstream,
       ),
-    [roomName, plan, episodes, memories, agents, presence, now, overlay, captured, upstream],
+    [roomName, episodes, memories, agents, presence, now, overlay, captured, upstream],
   );
 
   // One pass over every row's frontmatter gives the columns, the kanban's
@@ -363,7 +358,7 @@ export function RoomBoard({ roomName }: Props) {
     setView({ ...saved.config, query: view.query });
   };
 
-  const title = plan?.title ?? roomName;
+  const title = room?.title ?? roomName;
   const groupBy = view.groupBy;
 
   return (
@@ -389,23 +384,17 @@ export function RoomBoard({ roomName }: Props) {
         onOptions={() => setOptionsOpen(o => !o)}
       />
 
-      {view.mode !== "docs" && (
-        <BoardCapture ref={captureRef} actor={actor} now={new Date(now).toISOString()} onCapture={capture} />
-      )}
+      <BoardCapture ref={captureRef} actor={actor} now={new Date(now).toISOString()} onCapture={capture} />
 
       <div className="min-h-0 flex-1">
-        {view.mode === "docs" ? (
-          <ScrollArea className="h-full">
-            <RoomPlanHeader roomName={roomName} />
-          </ScrollArea>
-        ) : ordered.length === 0 && view.mode !== "daily" ? (
+        {ordered.length === 0 && view.mode !== "daily" ? (
           <EmptyState
             className="h-full"
             icon={ListChecks}
             title={view.lens === "needs_you" ? "Nothing needs you" : "No rows in this view"}
             description={
               view.lens === "needs_you"
-                ? "The board self-populates from plan tasks, episodes, memories and presence. Widen the lens to see what's in flight."
+                ? "The board self-populates from episodes, memories and presence. Widen the lens to see what's in flight."
                 : "Loosen the filters, or capture a concern to start one."
             }
           />

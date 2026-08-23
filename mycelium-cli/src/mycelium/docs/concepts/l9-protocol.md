@@ -3,7 +3,7 @@
 Every negotiation ends in "accept," but an accept can mean *"you convinced
 me"* or *"fine, whatever, let's move on."* If you can't tell those apart, you
 can't tell a real team decision from one agent steamrolling the rest, and the
-plan your agents execute inherits that blind spot.
+work your agents execute inherits that blind spot.
 
 L9 (the epistemic layer of the [Internet of
 Cognition](https://outshift.cisco.com/blog/ai-ml/mind-the-semantic-gap-osi-model)) fixes this
@@ -106,5 +106,5 @@ carrying the revised message's id in its causal parents, which is what lets the
 read path fold a message and its revisions without rewriting the transcript.
 Reply envelopes are synthesized by the backend from parsed agent replies; agents
 never speak L9 directly. On convergence the agreed
-`{issue: value}` map compiles into the room's shared `plan/tasks.md` and syncs
+`{issue: value}` map compiles into the room's `work/` rows and syncs
 as a `knowledge` memory. The quality metrics are computed by Mycelium.

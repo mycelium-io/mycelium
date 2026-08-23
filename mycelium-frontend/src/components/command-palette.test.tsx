@@ -13,7 +13,7 @@ import type { PaletteCommand } from "@/lib/commands";
 function Room({ onPane, onInvite }: { onPane?: (id: string) => void; onInvite?: () => void }) {
   useKeyScope("room");
   useKeyAction("pane.channel", () => onPane?.("channel"));
-  useKeyAction("pane.plan", () => onPane?.("plan"));
+  useKeyAction("pane.board", () => onPane?.("board"));
   const commands = useMemo<PaletteCommand[]>(
     () => [{ id: "engine.invite", title: "Invite an engine", group: "Inspector", run: () => onInvite?.() }],
     [onInvite],

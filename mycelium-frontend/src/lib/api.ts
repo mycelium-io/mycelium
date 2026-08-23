@@ -131,6 +131,18 @@ export interface Room {
   is_persistent: boolean;
   mas_id?: string | null;
   workspace_id?: string | null;
+  /** The room's display title — the italic hero above the board. */
+  title?: string | null;
+}
+
+/** Rename a room. Throws `ApiError` so a caller can surface the reason rather
+ *  than silently discarding the edit. */
+export async function setRoomTitle(roomName: string, title: string): Promise<Room> {
+  return apiFetch<Room>(`/api/rooms/${roomName}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title }),
+  });
 }
 
 export async function fetchRooms(): Promise<Room[]> {
@@ -479,72 +491,6 @@ export async function fetchRoomStatus(roomName: string): Promise<RoomStatus> {
       rows: {},
       refreshing: false,
     },
-  });
-}
-
-// ── Plan ─────────────────────────────────────────────────────────────────────
-
-export interface PlanTask {
-  id: string;
-  slug: string;
-  line: number;
-  text: string;
-  done: boolean;
-}
-
-export interface PlanFile {
-  slug: string;
-  title: string;
-  content: string;
-  updated_at: string | null;
-  updated_by: string | null;
-  tasks: PlanTask[];
-}
-
-export interface PlanResponse {
-  room: string;
-  title: string | null;
-  files: PlanFile[];
-  tasks: PlanTask[];
-  open_count: number;
-  done_count: number;
-}
-
-export async function fetchPlan(roomName: string): Promise<PlanResponse> {
-  return apiFetch<PlanResponse>(`/api/rooms/${roomName}/plan`, {
-    cache: "no-store",
-    fallback: { room: roomName, title: null, files: [], tasks: [], open_count: 0, done_count: 0 },
-  });
-}
-
-/** Mutations below throw `ApiError` on failure so the plan header can surface
- *  the reason instead of silently discarding the edit or the checklist toggle. */
-
-export async function setPlanTitle(roomName: string, text: string): Promise<string> {
-  const data = await apiFetch<{ title?: string }>(`/api/rooms/${roomName}/plan/title`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text }),
-  });
-  return data.title ?? "";
-}
-
-export async function togglePlanTask(roomName: string, taskId: string, done: boolean): Promise<PlanTask> {
-  return apiFetch<PlanTask>(
-    `/api/rooms/${roomName}/plan/tasks/${encodeURIComponent(taskId)}/toggle`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ done }),
-    },
-  );
-}
-
-export async function addPlanTask(roomName: string, text: string, slug = "tasks"): Promise<PlanTask> {
-  return apiFetch<PlanTask>(`/api/rooms/${roomName}/plan/tasks`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text, slug }),
   });
 }
 
@@ -911,7 +857,8 @@ export interface EpisodeSummary {
   participants: string[];
   metrics: EpisodeMetrics | null;
   assignments: Record<string, string> | null;
-  plan_file: string | null;
+  /** Memory keys of the `work/` rows the agreement compiled into. */
+  tasks: string[];
   message_count: number;
   updated_at: string;
   updated_by: string;

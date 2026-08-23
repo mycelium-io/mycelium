@@ -7,6 +7,7 @@ import logging
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
 
 from app.bus import app_channel, bus
 from app.schemas import RoomCreate, RoomRead
@@ -78,6 +79,7 @@ async def create_room(room: RoomCreate):
             "is_persistent": True,
             "mas_id": room.mas_id,
             "workspace_id": room.workspace_id,
+            "title": room.title,
             "created_at": datetime.now(UTC).isoformat(),
         },
     )
@@ -131,6 +133,37 @@ async def get_room(room_name: str):
     result = _room_read(room_name)
     if result is None:
         raise HTTPException(status_code=404, detail="Room not found")
+    return result
+
+
+class RoomUpdate(BaseModel):
+    """What a caller may change about a room after it exists."""
+
+    title: str | None = Field(None, max_length=200, description="The room's display title")
+
+
+@router.patch("/{room_name}", response_model=RoomRead)
+async def update_room(room_name: str, payload: RoomUpdate):
+    """Change a room's own attributes.
+
+    The title lives here rather than in a memory because it names the room
+    instead of describing work in it: nothing projects it as a row, nothing
+    claims it, and it has no lifecycle of its own.
+    """
+    meta = read_room_meta(room_name)
+    if meta is None:
+        raise HTTPException(status_code=404, detail="Room not found")
+    stored = {k: v for k, v in meta.items() if k != "id"}
+    if payload.title is not None:
+        stored["title"] = payload.title.strip() or None
+    write_room_meta(room_name, stored)
+    result = _room_read(room_name)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Room not found")
+    bus.publish(
+        app_channel(),
+        {"type": "room_updated", "room_name": room_name, "title": stored.get("title")},
+    )
     return result
 
 

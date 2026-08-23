@@ -176,8 +176,7 @@ describe("notes", () => {
 });
 
 describe("refusals", () => {
-  it("tells a plan task, an episode and a presence row why not", () => {
-    expect(custodyRefusal(row({}, "plan", "t3"))).toBe(CUSTODY_REFUSALS.plan);
+  it("tells an episode and a presence row why not", () => {
     expect(custodyRefusal(row({}, "episode", "e4f1"))).toBe(CUSTODY_REFUSALS.episode);
     expect(custodyRefusal(row({}, "agent", "growth"))).toBe(CUSTODY_REFUSALS.agent);
   });
@@ -227,7 +226,6 @@ describe("the projection, once custody is the axis", () => {
   const project = (over: Partial<Parameters<typeof projectItems>[0]> = {}) =>
     projectItems({
       room: "atlas",
-      plan: null,
       episodes: [],
       memories: [],
       agents: [],

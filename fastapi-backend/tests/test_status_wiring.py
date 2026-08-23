@@ -57,7 +57,7 @@ class Recording:
 
 @pytest.fixture
 def room(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> str:
-    """A room on disk with a plan task and a memory, each naming a toy ticket."""
+    """A room on disk with two work rows, each naming a toy ticket."""
     monkeypatch.setenv("MYCELIUM_DATA_DIR", str(tmp_path))
 
     from app.services.filesystem import ensure_room_structure, get_room_dir
@@ -65,12 +65,11 @@ def room(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> str:
     name = "atlas"
     room_dir = get_room_dir(name)
     ensure_room_structure(room_dir)
-    (room_dir / "plan").mkdir(parents=True, exist_ok=True)
-    (room_dir / "plan" / "tasks.md").write_text(
-        "# Tasks\n\n- [ ] land the custody seam: TOY-1\n- [ ] unrelated work\n",
+    (room_dir / "work").mkdir(parents=True, exist_ok=True)
+    (room_dir / "work" / "custody-seam.md").write_text(
+        "---\nkind: action\nstatus: open\n---\n\nland the custody seam: TOY-1\n",
         encoding="utf-8",
     )
-    (room_dir / "work").mkdir(parents=True, exist_ok=True)
     (room_dir / "work" / "cutover.md").write_text(
         "---\ntitle: cutover\n---\n\nBlocked behind TOY-2 and TOY-1.\n", encoding="utf-8"
     )
@@ -93,9 +92,9 @@ class TestDiscovery:
         found = {d.ref.id: d.origins for d in discovery.discover(room, rt)}
 
         assert set(found) == {"TOY-1", "TOY-2"}
-        # TOY-1 is named by both a plan task and a memory; both rows get it, and
-        # the row ids are the ones the board projections already build.
-        assert any(o.startswith("plan:") for o in found["TOY-1"])
+        # TOY-1 is named by two rows; both get it, under the row ids the board
+        # projections already build.
+        assert "memory:work/custody-seam" in found["TOY-1"]
         assert "memory:work/cutover" in found["TOY-1"]
         assert found["TOY-2"] == ("memory:work/cutover",)
 
@@ -239,7 +238,10 @@ async def test_a_background_refresh_is_kept_alive_to_completion(room: str):
     assert status_route._kick(rt, refs, NOW) is True
     assert status_route._refreshes, "the task must be strongly referenced while in flight"
     await asyncio.gather(*list(status_route._refreshes))
-    assert toy.calls == [["TOY-1", "TOY-2"]]
+    # One batched call carrying both refs. The order within it is whatever the
+    # room's files were scanned in, which is not something to pin here.
+    assert len(toy.calls) == 1
+    assert set(toy.calls[0]) == {"TOY-1", "TOY-2"}
 
 
 def test_the_http_context_is_never_handed_a_bare_token():

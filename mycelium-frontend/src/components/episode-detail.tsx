@@ -110,9 +110,6 @@ export function EpisodeDetail({ roomName, shortId }: { roomName: string; shortId
           <span className="capitalize" style={{ color }}>{state}</span>
         </Meta>
         <Meta label="Participants">{detail.participants.join(", ") || "-"}</Meta>
-        {detail.plan_file && (
-          <Meta label="Plan"><span className="font-mono text-micro text-accent">{detail.plan_file}</span></Meta>
-        )}
         {detail.updated_at && (
           <Meta label="Updated"><span className="tabular">{new Date(detail.updated_at).toLocaleString()}</span></Meta>
         )}

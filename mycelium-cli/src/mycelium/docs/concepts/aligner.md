@@ -42,11 +42,11 @@ one.
    never loops to the step cap. A negotiation that can't reach agreement commits
    as `rejected`.
 5. **Compile.** On agreement the aligner emits `commit:converged` carrying the
-   agreed `{issue: value}` map, and `plan_compiler` (a separate LLM stage that
-   *consumes* the outcome, distinct from the negotiation engine) turns it into the
-   room's [shared plan](#plan), `plan/tasks.md`: a `- [ ]` checklist with
-   `@handle` owners. This runs before the consensus is announced, so the plan
-   exists by the time `await` returns.
+   agreed `{issue: value}` map, and `task_compiler` (a separate LLM stage that
+   *consumes* the outcome, distinct from the negotiation engine) turns it into
+   the room's work: one `work/` row per task, each naming who it is for. This
+   runs before the consensus is announced, so the rows exist by the time
+   `await` returns.
 
 Walking away with no agreement is a legitimate outcome. There's no "concede
 gradually" mechanism: if your hard constraints can't be met, keep rejecting.

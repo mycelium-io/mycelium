@@ -12,7 +12,7 @@ This module owns both halves of that seam:
 1. **Emit** — :func:`build_knowledge_envelope` wraps a :class:`KnowledgeWrite`
    (key + markdown body + version metadata) as a ``knowledge`` envelope
    broadcast on the room channel. Converged content (the compiled plan) flows
-   out ``knowledge:distillation`` (see :mod:`app.services.plan_sync`); a direct
+   out ``knowledge:distillation`` (see :mod:`app.services.task_sync`); a direct
    ``memory set`` write flows out ``knowledge:extraction`` (see
    ``app.routes.memory.create_memories``) — same shape, distinct subkind.
 
@@ -47,7 +47,7 @@ logger = logging.getLogger(__name__)
 # The ``knowledge`` subkinds a memory-sync write rides as (both from the
 # SLIM-native subkind table, l9.VALID_SUBKINDS). ``distillation`` is converged
 # content distilled to a shareable artifact — the compiled plan
-# (:mod:`app.services.plan_sync`). ``extraction`` is a raw ``memory set`` write
+# (:mod:`app.services.task_sync`). ``extraction`` is a raw ``memory set`` write
 # broadcast as-is, with no negotiation behind it — kept distinct so a reader
 # can tell "the room agreed to this" from "someone just wrote this".
 KNOWLEDGE_SUBKIND = "distillation"

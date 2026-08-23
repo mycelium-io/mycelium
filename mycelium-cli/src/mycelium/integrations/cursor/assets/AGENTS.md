@@ -41,7 +41,7 @@ belong in the conversation; speculation belongs nowhere.
 
 ## More
 
-Detailed coordination patterns (room/memory/negotiate/plan commands,
+Detailed coordination patterns (room/memory/negotiate/board commands,
 @-mention rules, agent-mode behaviour) live in this workspace's Cursor
 rule: `.cursor/rules/mycelium.mdc`, loaded automatically on every Cursor
 session here. Operator setup (sync, environment variables) lives in the

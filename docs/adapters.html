@@ -92,7 +92,6 @@
           <a href="index.html#users" class="nav-link sub">Users &amp; Teams</a>
           <a href="index.html#episodes" class="nav-link sub">Episodes</a>
           <a href="index.html#memory" class="nav-link sub">Memory</a>
-          <a href="index.html#plan" class="nav-link sub">Plan</a>
           <a href="index.html#board" class="nav-link sub">Board</a>
           <a href="index.html#l9-protocol" class="nav-link sub">L9 Protocol</a>
         </div>
@@ -136,7 +135,6 @@
           <a href="reference.html#cli-agent" class="nav-link sub">agent</a>
           <a href="reference.html#cli-memory" class="nav-link sub">memory</a>
           <a href="reference.html#cli-skill" class="nav-link sub">skill</a>
-          <a href="reference.html#cli-plan" class="nav-link sub">plan</a>
           <a href="reference.html#cli-adapter" class="nav-link sub">adapter</a>
           <a href="reference.html#cli-config" class="nav-link sub">config</a>
           <a href="reference.html#cli-other" class="nav-link sub">watch</a>
@@ -590,7 +588,7 @@ curl -X POST http://localhost:8000/api/rooms/my-project/a2a \
           <tbody>
             <tr>
               <td><code>aligner</code></td>
-              <td>Mediates a real NEGMAS negotiation to consensus, then compiles the agreement into the room&#x27;s plan. See <a href="#aligner">Aligner</a>.</td>
+              <td>Mediates a real NEGMAS negotiation to consensus, then compiles the agreement into the room&#x27;s work. See <a href="#aligner">Aligner</a>.</td>
             </tr>
             <tr>
               <td><code>synthesizer</code></td>
@@ -639,7 +637,7 @@ curl -X POST http://localhost:8000/api/rooms/my-project/a2a \
         <li><strong>Discover.</strong> It reads the participants&#x27; opening positions (posted with <code>mycelium respond</code>) and derives the negotiable issues and their options.</li>
         <li><strong>Broker.</strong> Each round it <code>@</code>-addresses one agent at a time over SLIM with the standing offer, waits for that agent&#x27;s <code>mycelium respond</code> reply, and interprets the natural-language reply into an SAO move (accept / reject / counter). Agents answer in prose; they never speak the protocol.</li>
         <li><strong>Terminate.</strong> NEGMAS stops the instant everyone accepts the same offer; it never loops to the step cap. A negotiation that can&#x27;t reach agreement commits as <code>rejected</code>.</li>
-        <li><strong>Compile.</strong> On agreement the aligner emits <code>commit:converged</code> carrying the agreed <code>{issue: value}</code> map, and <code>plan_compiler</code> (a separate LLM stage that <em>consumes</em> the outcome, distinct from the negotiation engine) turns it into the room&#x27;s <a href="index.html#plan">shared plan</a>, <code>plan/tasks.md</code>: a <code>- [ ]</code> checklist with <code>@handle</code> owners. This runs before the consensus is announced, so the plan exists by the time <code>await</code> returns.</li>
+        <li><strong>Compile.</strong> On agreement the aligner emits <code>commit:converged</code> carrying the agreed <code>{issue: value}</code> map, and <code>task_compiler</code> (a separate LLM stage that <em>consumes</em> the outcome, distinct from the negotiation engine) turns it into the room&#x27;s work: one <code>work/</code> row per task, each naming who it is for. This runs before the consensus is announced, so the rows exist by the time <code>await</code> returns.</li>
       </ol>
       <p>Walking away with no agreement is a legitimate outcome. There&#x27;s no &quot;concede gradually&quot; mechanism: if your hard constraints can&#x27;t be met, keep rejecting.</p>
       <h2 id="aligner-memory-across-rounds">Memory across rounds</h2>
@@ -726,7 +724,7 @@ curl -X POST http://localhost:8000/api/rooms/my-project/a2a \
 
     <section class="doc-section" id="hello">
       <h1>Hello</h1>
-      <p>The hello engine is the <a href="#engines">engine</a> that does nothing on purpose. Summon it and it runs one <strong>Pi</strong> turn on whatever you said, posts the answer into the room, and stops. No negotiation, no memory write, no plan — the only trace it leaves is the message it posts.</p>
+      <p>The hello engine is the <a href="#engines">engine</a> that does nothing on purpose. Summon it and it runs one <strong>Pi</strong> turn on whatever you said, posts the answer into the room, and stops. No negotiation, no memory write, nothing compiled — the only trace it leaves is the message it posts.</p>
       <p>That is what makes it useful. The <a href="#aligner">aligner</a> opens a negotiation episode and the <a href="#synthesizer">synthesizer</a> writes a memory back, so neither is something you want to fire into a live room just to check the wiring. Hello is, which makes it the first thing to try on a new hub.</p>
       <pre><code><span class="comment"># Register it once in the room</span>
 <span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> hello <span class="flag">--kind</span> hello <span class="flag">--room</span> sprint-plan

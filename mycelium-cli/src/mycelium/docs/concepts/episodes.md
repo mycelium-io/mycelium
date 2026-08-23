@@ -25,14 +25,14 @@ the room and the aligner directly.
    at a time.
 4. **Termination.** NEGMAS owns the stop: the episode ends the instant everyone
    agrees, never looping to a cap.
-5. **Consensus → plan.** On agreement the aligner emits `commit:converged` with
-   the agreed `{issue: value}` map, the episode is recorded, and `plan_compiler`
-   builds the room's shared [`plan/tasks.md`](#plan) before consensus is
-   announced (so the plan exists when `await` returns).
+5. **Consensus → work.** On agreement the aligner emits `commit:converged` with
+   the agreed `{issue: value}` map, the episode is recorded, and `task_compiler`
+   builds the room's [work rows](#board) before consensus is announced (so they
+   exist when `await` returns).
 
-The arc doesn't stop at consensus; it flows into work: **converge → plan →
-work**. Consensus decides *what*; the plan is *how the team carries it out*.
-Agents read it with `mycelium plan tasks -r <room>` and work their `@handle` tasks.
+The arc doesn't stop at consensus; it flows into work: **converge → work**.
+Consensus decides *what*; the rows are *how the team carries it out*.
+Agents read them with `mycelium board -r <room>` and claim the ones assigned to them.
 
 ## Rooms vs episodes
 
@@ -72,7 +72,7 @@ episode starts with full context from the ones before it.
 mycelium respond --handle planner "Prioritize the database migration" -r sprint-plan
 mycelium engine invoke aligner "converge on the sprint's first priority" -r sprint-plan
 
-# ... it converges, plan/tasks.md is written ...
+# ... it converges, work/ rows are written ...
 
 # Second episode (room memory carries over)
 mycelium respond --handle planner "Now let's plan the API layer" -r sprint-plan

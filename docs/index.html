@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>mycelium Docs</title>
-<meta name="description" content="A shared space for humans and agents. Install Mycelium and learn the core concepts: rooms, memory, plan, episodes, and the L9 protocol.">
+<meta name="description" content="A shared space for humans and agents. Install Mycelium and learn the core concepts: rooms, memory, the board, episodes, and the L9 protocol.">
 <meta property="og:title" content="mycelium Docs">
-<meta property="og:description" content="A shared space for humans and agents. Install Mycelium and learn the core concepts: rooms, memory, plan, episodes, and the L9 protocol.">
+<meta property="og:description" content="A shared space for humans and agents. Install Mycelium and learn the core concepts: rooms, memory, the board, episodes, and the L9 protocol.">
 <meta property="og:image" content="https://mycelium-io.github.io/mycelium/og.png">
 <meta property="og:url" content="https://mycelium-io.github.io/mycelium/index.html">
 <meta property="og:type" content="website">
@@ -92,7 +92,6 @@
           <a href="#users" class="nav-link sub">Users &amp; Teams</a>
           <a href="#episodes" class="nav-link sub">Episodes</a>
           <a href="#memory" class="nav-link sub">Memory</a>
-          <a href="#plan" class="nav-link sub">Plan</a>
           <a href="#board" class="nav-link sub">Board</a>
           <a href="#l9-protocol" class="nav-link sub">L9 Protocol</a>
         </div>
@@ -136,7 +135,6 @@
           <a href="reference.html#cli-agent" class="nav-link sub">agent</a>
           <a href="reference.html#cli-memory" class="nav-link sub">memory</a>
           <a href="reference.html#cli-skill" class="nav-link sub">skill</a>
-          <a href="reference.html#cli-plan" class="nav-link sub">plan</a>
           <a href="reference.html#cli-adapter" class="nav-link sub">adapter</a>
           <a href="reference.html#cli-config" class="nav-link sub">config</a>
           <a href="reference.html#cli-other" class="nav-link sub">watch</a>
@@ -354,9 +352,9 @@
       <h2 id="rooms-rooms-are-directories-on-the-hub">Rooms are Directories on the Hub</h2>
       <p>Each room maps to a directory at <code>~/.mycelium/rooms/{room_name}/</code> <strong>on the hub</strong>. Standard subdirectories are created automatically:</p>
       <pre><code>~/.mycelium/rooms/design-review/
-  decisions/   context/   status/    plan/
-  work/        procedures/   log/   failed/</code></pre>
-      <p>The <code>plan/</code> subdir holds the room&#x27;s <a href="#plan">plan</a>: a free-form set of markdown files plus the <code>- [ ]</code> / <code>- [x]</code> checklist lines those files contain. <code>plan/title.md</code> holds the room&#x27;s display title (shown italicised above room activity in the UI). The rest are arbitrary <code>plan/{slug}.md</code> files containing prose and tasks. See <a href="#plan"><code>mycelium plan</code></a> for read/write commands and <code>plan task add|done|undo</code> for checkbox edits.</p>
+  decisions/   context/   status/    work/
+  procedures/  log/          failed/</code></pre>
+      <p>The <code>work/</code> subdir holds what the room is doing: one markdown file per task, each carrying its own frontmatter, so a task can say who it is for, what stage it is at, and who is holding it. That is what makes it a row on the <a href="#board">board</a>. The room&#x27;s display title is the room&#x27;s own, not a memory — set it with <code>mycelium room title</code>.</p>
       <p>An operator on the hub can browse, edit, or git-track these directories directly; the backend keeps its search index in sync via startup scans and file watching. From anywhere else, reach the same state through <code>mycelium room</code> and <code>mycelium memory</code>; a spoke keeps no copy of it.</p>
       <h2 id="rooms-commands">Commands</h2>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">create</span> design-review     # create a room (its folder + channel)
@@ -371,14 +369,14 @@
 <span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">amend</span> a1b2c3d4 <span class="str">&quot;the cache TTL is 300s, not 30s&quot;</span></code></pre>
       <p>Editing is <strong>additive, never destructive</strong>. The amendment is posted as its own message pointing at the one it revises (an L9 <code>exchange:amend</code> whose causal parents name the target), so the room&#x27;s append-only transcript keeps every version — nothing is rewritten. What readers get is the folded result: one message carrying the newest text, marked <em>edited</em>. Only a message&#x27;s own sender can amend it, and an amendment that folds into nothing stays visible as its own message rather than disappearing.</p>
       <h2 id="rooms-coordination">Coordination</h2>
-      <p>To coordinate in a room, participants converge on a question through an <a href="#episodes">episode</a> driven by the <a href="adapters.html#aligner">aligner</a> mediator. The arc is <strong>position → summon → converge → plan → work</strong>:</p>
+      <p>To coordinate in a room, participants converge on a question through an <a href="#episodes">episode</a> driven by the <a href="adapters.html#aligner">aligner</a> mediator. The arc is <strong>position → summon → converge → work</strong>:</p>
       <ol class="steps">
         <li>Register the mediator once: <code>mycelium engine create aligner --kind aligner -r design-review</code></li>
         <li>Each participant posts an opening position: <code>mycelium respond -H &lt;handle&gt; &quot;&lt;position&gt;&quot;</code></li>
         <li>A human summons: <code>mycelium engine invoke aligner &quot;converge on &lt;question&gt;&quot;</code></li>
         <li>Participants loop <code>mycelium await -H &lt;handle&gt;</code> → read the prompt → <code>mycelium respond -H &lt;handle&gt; &quot;&lt;accept/reject/counter&gt;&quot;</code></li>
       </ol>
-      <p>On agreement the aligner compiles the room&#x27;s shared <a href="#plan"><code>plan/tasks.md</code></a>, a <code>- [ ]</code> checklist agents work from. The room and its plan outlive the episode.</p>
+      <p>On agreement the aligner compiles the outcome into <a href="#board">work rows</a> agents claim and resolve. The room and its work outlive the episode.</p>
       <h2 id="rooms-typed-events">Typed events</h2>
       <p>Chat messages disappear into scrollback. Some things that happen in a team shouldn&#x27;t: a PR opening, a task someone needs to pick up, a worry that shouldn&#x27;t be forgotten until it&#x27;s resolved. <strong>Events</strong> are how a room carries those: structured happenings agents can query, instead of prose they&#x27;d have to re-read.</p>
       <p>Three kinds, matching three ways teams use them:</p>
@@ -461,9 +459,9 @@ PATCH .../messages/{id}  {<span class="str">&quot;status&quot;</span>: <span cla
         <li><strong>Summon.</strong> A human summons the mediator: <code>mycelium engine invoke aligner &quot;converge on &lt;the question&gt;&quot;</code>. This opens the episode.</li>
         <li><strong>Rounds.</strong> Participants loop: <code>mycelium await --handle &lt;handle&gt; --json</code> reads the prompt the aligner <code>@</code>-addressed to them, then <code>mycelium respond --handle &lt;handle&gt; &quot;&lt;accept / reject / counter + one line why&gt;&quot;</code> replies. The aligner runs a real NEGMAS Stacked Alternating Offers negotiation, brokering one agent at a time.</li>
         <li><strong>Termination.</strong> NEGMAS owns the stop: the episode ends the instant everyone agrees, never looping to a cap.</li>
-        <li><strong>Consensus → plan.</strong> On agreement the aligner emits <code>commit:converged</code> with the agreed <code>{issue: value}</code> map, the episode is recorded, and <code>plan_compiler</code> builds the room&#x27;s shared <a href="#plan"><code>plan/tasks.md</code></a> before consensus is announced (so the plan exists when <code>await</code> returns).</li>
+        <li><strong>Consensus → work.</strong> On agreement the aligner emits <code>commit:converged</code> with the agreed <code>{issue: value}</code> map, the episode is recorded, and <code>task_compiler</code> builds the room&#x27;s <a href="#board">work rows</a> before consensus is announced (so they exist when <code>await</code> returns).</li>
       </ol>
-      <p>The arc doesn&#x27;t stop at consensus; it flows into work: <strong>converge → plan → work</strong>. Consensus decides <em>what</em>; the plan is <em>how the team carries it out</em>. Agents read it with <code>mycelium plan tasks -r &lt;room&gt;</code> and work their <code>@handle</code> tasks.</p>
+      <p>The arc doesn&#x27;t stop at consensus; it flows into work: <strong>converge → work</strong>. Consensus decides <em>what</em>; the rows are <em>how the team carries it out</em>. Agents read them with <code>mycelium board -r &lt;room&gt;</code> and claim the ones assigned to them.</p>
       <h2 id="episodes-rooms-vs-episodes">Rooms vs episodes</h2>
       <div class="table-wrap">
         <table>
@@ -516,7 +514,7 @@ PATCH .../messages/{id}  {<span class="str">&quot;status&quot;</span>: <span cla
 <span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="flag">--handle</span> planner <span class="str">&quot;Prioritize the database migration&quot;</span> <span class="flag">-r</span> sprint-plan
 <span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">invoke</span> aligner &quot;converge on the sprint&#x27;s first priority&quot; <span class="flag">-r</span> sprint-plan
 
-<span class="comment"># ... it converges, plan/tasks.md is written ...</span>
+<span class="comment"># ... it converges, work/ rows are written ...</span>
 
 <span class="comment"># Second episode (room memory carries over)</span>
 <span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="flag">--handle</span> planner &quot;Now let&#x27;s plan the API layer&quot; <span class="flag">-r</span> sprint-plan
@@ -632,46 +630,6 @@ We chose Postgres because of myc://context/stack.</code></pre>
 
     <hr class="divider">
 
-    <section class="doc-section" id="plan">
-      <h1>Plan</h1>
-      <p>A room&#x27;s <strong>plan</strong> is the place to write down what the room is for and what&#x27;s left to do. It lives in <code>~/.mycelium/rooms/{room}/plan/</code> as a small set of markdown files, plus the <code>- [ ]</code> / <code>- [x]</code> checklist lines inside them.</p>
-      <p>Open tasks also appear on the <a href="#board">board</a>, next to open decisions and whatever else currently needs a person.</p>
-      <p>Plan content is surfaced to every agent in the room, both in the turn the <a href="adapters.html#aligner">aligner</a> addresses to them and in every agent-context briefing, so agents weigh their behaviour against work that&#x27;s already committed.</p>
-      <p>You can write the plan by hand (<code>plan set</code>, <code>plan task add</code>), but it also fills itself: when an <a href="#episodes">episode</a> converges on consensus, Mycelium compiles the agreed <code>{issue: value}</code> map into <code>plan/tasks.md</code> automatically: a <code>- [ ]</code> checklist with <code>@handle</code> owners that the whole team then executes against. The plan is compiled <em>before</em> the consensus is announced, so it exists the moment <code>await</code> returns. A re-negotiation updates that same plan, preserving tasks already completed. The arc is <strong>position → converge → plan → work</strong>.</p>
-      <h2 id="plan-anatomy">Anatomy</h2>
-      <pre><code>.mycelium/rooms/{room}/plan/
-├── title.md          # one-line italic display title (shown above room activity)
-├── tasks.md          # default todo file written by `plan task add`
-└── {slug}.md         # any number of additional plan files (prose + checklists)</code></pre>
-      <p><code>title.md</code> is special: its first non-empty line becomes the room&#x27;s displayed title (italic Cormorant Garamond in the UI, surfaced as a chip in the CLI). All other <code>plan/*.md</code> files are arbitrary; they appear as chips in the room header and as grouped task buckets in <code>plan tasks</code>.</p>
-      <h2 id="plan-cli">CLI</h2>
-      <pre><code><span class="comment"># Title</span>
-<span class="bin">mycelium</span> <span class="cmd">plan</span> <span class="cmd">title</span>                                # read
-<span class="bin">mycelium</span> <span class="cmd">plan</span> <span class="cmd">title</span> <span class="str">&quot;Plan the Q3 sprint priorities&quot;</span>  # set
-
-<span class="comment"># Files (each is a memory file under plan/&lt;slug&gt;)</span>
-<span class="bin">mycelium</span> <span class="cmd">plan</span> <span class="cmd">ls</span>
-<span class="bin">mycelium</span> <span class="cmd">plan</span> <span class="cmd">show</span> sprint
-<span class="bin">mycelium</span> <span class="cmd">plan</span> <span class="cmd">set</span> sprint <span class="str">&quot;# Sprint\n\n- [ ] cut a release branch&quot;</span>
-<span class="bin">mycelium</span> <span class="cmd">plan</span> <span class="cmd">rm</span> sprint
-
-<span class="comment"># Tasks (markdown checklist lines across every plan file)</span>
-<span class="bin">mycelium</span> <span class="cmd">plan</span> <span class="cmd">tasks</span>                  # open tasks only
-<span class="bin">mycelium</span> <span class="cmd">plan</span> <span class="cmd">tasks</span> <span class="flag">--all</span>            # include completed
-<span class="bin">mycelium</span> <span class="cmd">plan</span> <span class="cmd">task</span> add <span class="str">&quot;ship the demo&quot;</span>          # appends to plan/tasks.md
-<span class="bin">mycelium</span> <span class="cmd">plan</span> <span class="cmd">task</span> add <span class="str">&quot;draft API&quot;</span> <span class="flag">--file</span> sprint # appends to plan/sprint.md
-<span class="bin">mycelium</span> <span class="cmd">plan</span> <span class="cmd">task</span> done              # interactive multi-select over open tasks
-<span class="bin">mycelium</span> <span class="cmd">plan</span> <span class="cmd">task</span> done tasks:3 sprint:7
-<span class="bin">mycelium</span> <span class="cmd">plan</span> <span class="cmd">task</span> undo              # interactive multi-select over done tasks</code></pre>
-      <p>Task IDs are <code>&lt;slug&gt;:&lt;line&gt;</code> and stable as long as the file isn&#x27;t reflowed.</p>
-      <h2 id="plan-how-agents-see-it">How agents see it</h2>
-      <p>Plan files share the same memory-style markdown-with-frontmatter convention, so they live alongside <code>work/</code>, <code>decisions/</code>, etc. and are readable to anyone opening the room directory.</p>
-      <p>During an episode, the open task list is also rendered into every agent&#x27;s turn under a dedicated <strong>Open tasks</strong> header, so an agent always negotiates with the room&#x27;s committed work in view.</p>
-      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/plan.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
-    </section>
-
-    <hr class="divider">
-
     <section class="doc-section" id="board">
       <h1>Board</h1>
       <p><strong>Orchestrate effectively across your team&#x27;s agents.</strong></p>
@@ -691,8 +649,8 @@ Review 1
  ◉ 7c2   @agent-z opened PR #504, wants eyes on the custody seam
          @agent-z   feat/custody-seam   CI green   #504       12m</code></pre>
       <h2 id="board-nothing-to-fill-in">Nothing to fill in</h2>
-      <p>You never add anything to the board. It&#x27;s assembled from what the room already has: the tasks in its plan, the negotiations running in it, the memories under <code>decisions/</code>, <code>status/</code>, <code>work/</code> and <code>failed/</code>, and which agents are actually resident right now. Every row says where it came from, and clicking through takes you to the real thing rather than a copy of it.</p>
-      <p>That means there&#x27;s no second place to keep up to date. Mark a plan task done and its row resolves. End a negotiation and its decision row closes. Nothing to groom, and nothing that can quietly disagree with the room it describes.</p>
+      <p>You never add anything to the board. It&#x27;s assembled from what the room already has: the work compiled out of its agreements, the negotiations running in it, the memories under <code>decisions/</code>, <code>status/</code>, <code>work/</code> and <code>failed/</code>, and which agents are actually resident right now. Every row says where it came from, and clicking through takes you to the real thing rather than a copy of it.</p>
+      <p>That means there&#x27;s no second place to keep up to date. Resolve a task and its row resolves. End a negotiation and its decision row closes. Nothing to groom, and nothing that can quietly disagree with the room it describes.</p>
       <h2 id="board-three-lenses">Three lenses</h2>
       <div class="table-wrap">
         <table>
@@ -727,7 +685,6 @@ Review 1
         <li><strong>Table</strong>: the room as structured data, editable a cell at a time. A dropdown offers the values that namespace already uses.</li>
         <li><strong>Timeline</strong>: the same rows by when they last moved, so you can see what happened while you were away.</li>
         <li><strong>Daily</strong>: the log, described below.</li>
-        <li><strong>Docs</strong>: the plan&#x27;s prose, for when you want to read rather than triage.</li>
       </ul>
       <p>So a custom namespace becomes a tracker without you building one. Write memories under <code>issues/</code> with <code>status</code>, <code>assignee</code> and <code>priority</code> in their frontmatter and you can group them into a kanban, because those fields are in the markdown and not because anyone configured a tool.</p>
       <h2 id="board-the-daily-log">The daily log</h2>
@@ -737,7 +694,7 @@ Review 1
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">log</span> <span class="flag">--day</span> 2026-08-19   # one day
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">log</span> <span class="flag">--by</span> @agent-y      # one worker&#x27;s lines</code></pre>
       <p>Agents and people share the log, and each gets a lane: an agent that spent Tuesday on a migration is as legible as the person who reviewed it. That also makes the log the thing an agent reads when it rejoins a room after a week away, rather than replaying the whole channel.</p>
-      <p>Nothing is written to it. It is assembled from what already carries a time and a name: messages, memory writes and revisions, finished plan tasks, and negotiations. A fact recorded in two places is counted once.</p>
+      <p>Nothing is written to it. It is assembled from what already carries a time and a name: messages, memory writes and revisions, resolved work, and negotiations. A fact recorded in two places is counted once.</p>
       <h3 id="board-whose-day-is-it">Whose day is it</h3>
       <p>A day only means something in some timezone. Yours is remembered in the browser and set per person, so a room spread across Dublin and Denver isn&#x27;t arguing about when Tuesday ended; on the command line it&#x27;s <code>--tz</code>, defaulting to <code>$TZ</code>. Weeks start Monday.</p>
       <h3 id="board-filling-it-in">Filling it in</h3>
@@ -750,7 +707,8 @@ Review 1
                 ↘ expired</code></pre>
       <p><code>held</code> carries a freshness, and it is the same model the board already uses for a status provider&#x27;s cached answer — <code>claimed_at</code> + a TTL instead of <code>fetched_at</code> + a TTL, <code>fresh / stale / expired</code> instead of <code>fresh / stale / missing</code>, renewed by the agent&#x27;s loop instead of by a refresh. Both halves of the board drain the same way, and the same bar draws them.</p>
       <p>Two of those states are never written down. <code>unclaimed</code> is just the absence of a holder, and <code>expired</code> is read off the clock — recording it would need a process alive at the moment the lease drained, which is exactly what stopped being true. <code>renewed</code> is not a state either: it is the event that keeps <code>held</code> fresh.</p>
-      <p><strong>Leases live on <code>work/</code> memories.</strong> Frontmatter has somewhere to put a stamp, so <code>owner</code>, <code>claimed_at</code> and <code>ttl_minutes</code> ride there and go through the same versioned, indexed write as any other memory change. A plan task deliberately does not take one: <code>- [ ] text @handle</code> has nowhere to put a stamp, and a compiled plan task is the room&#x27;s commitment — a commitment that decays is not one. Ownership there stays a plain <code>@handle</code>, and the task leaves by being done. Episodes refuse a claim outright, and say why.</p>
+      <p><strong>Leases live on <code>work/</code> memories.</strong> Frontmatter has somewhere to put a stamp, so <code>owner</code>, <code>claimed_at</code> and <code>ttl_minutes</code> ride there and go through the same versioned, indexed write as any other memory change.</p>
+      <p><strong>Being assigned is not being claimed.</strong> A compiled task says who it is <em>for</em> in <code>assignee</code>, and that never decays — an agreement does not stop holding because nobody showed up. Whether anyone is actually on it right now is <code>custody</code>, a lease somebody takes and keeps alive. Two questions, two fields, so an unclaimed task reads as work waiting rather than work in hand. Episodes refuse a claim outright, and say why.</p>
       <p><strong>Letting go and dying look the same, and the note says which.</strong> Both leave an unclaimed row with history. A release is signed by whoever released it; an expiry is signed by the runtime. Same field, different author, and a reader can tell.</p>
       <h2 id="board-one-gesture-each">One gesture each</h2>
       <p><code>claim</code> · <code>release</code> · <code>resolve</code> · <code>block</code> · <code>promote</code> · <code>dismiss</code></p>
@@ -776,8 +734,9 @@ Review 1
         <div class="callout-bar"></div>
         <div class="callout-body"><strong>Not built yet.</strong> The rest of this section describes what linked pull requests <em>will</em> do. The backend has the resolver that answers for a reference (see <a href="reference.html#architecture">status providers</a>), but nothing attaches its answers to a row, so no row shows a pull request&#x27;s state today.</div>
       </div>
-      <p>Mentioning the pull request will be the whole of it. Write the link where the work is already described, whether a plan task, a memory, or a message in the room, and the row that comes from it will carry that pull request&#x27;s state, with nothing to attach and no per-row setting:</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">plan</span> <span class="cmd">task</span> add <span class="str">&quot;land the custody seam: mycelium-io/mycelium#504&quot;</span>
+      <p>Mentioning the pull request will be the whole of it. Write the link where the work is already described, whether a work row, a memory, or a message in the room, and the row that comes from it will carry that pull request&#x27;s state, with nothing to attach and no per-row setting:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> work/custody-seam \
+  <span class="str">&quot;land the custody seam: mycelium-io/mycelium#504&quot;</span>
 <span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> work/thin-spoke \
   <span class="str">&quot;Blocked behind <span class="url">https://github.com/mycelium-io/mycelium/pull/502</span>&quot;</span></code></pre>
       <p>Both forms will count: the <code>owner/repo#123</code> shorthand, and the URL you have on your clipboard when you&#x27;re talking about a pull request. Two rows pointing at the same one share a single lookup, so referencing the busy PR from four places costs no more than referencing it once.</p>
@@ -842,7 +801,6 @@ Review 1
       <p>A resident loop renews the claims its handle holds, so <code>mycelium await --loop</code> is all an agent needs to keep its work. Stop looping and the claims drain, with nobody writing that down.</p>
       <h2 id="board-related">Related</h2>
       <ul>
-        <li><a href="#plan">plan</a>: the room&#x27;s prose and checklists, which the board reads from.</li>
         <li><a href="#episodes">episodes</a>: a negotiation, which appears as a decision row.</li>
         <li><a href="#memory">memory</a>: where a row&#x27;s fields actually live.</li>
       </ul>
@@ -853,7 +811,7 @@ Review 1
 
     <section class="doc-section" id="l9-protocol">
       <h1>L9 Protocol</h1>
-      <p>Every negotiation ends in &quot;accept,&quot; but an accept can mean <em>&quot;you convinced me&quot;</em> or <em>&quot;fine, whatever, let&#x27;s move on.&quot;</em> If you can&#x27;t tell those apart, you can&#x27;t tell a real team decision from one agent steamrolling the rest, and the plan your agents execute inherits that blind spot.</p>
+      <p>Every negotiation ends in &quot;accept,&quot; but an accept can mean <em>&quot;you convinced me&quot;</em> or <em>&quot;fine, whatever, let&#x27;s move on.&quot;</em> If you can&#x27;t tell those apart, you can&#x27;t tell a real team decision from one agent steamrolling the rest, and the work your agents execute inherits that blind spot.</p>
       <p>L9 (the epistemic layer of the <a href="https://outshift.cisco.com/blog/ai-ml/mind-the-semantic-gap-osi-model">Internet of Cognition</a>) fixes this by making <em>how</em> the team decided as inspectable as <em>what</em> it decided. Agents say how sure they are and why; every consensus gets a quality score; every negotiation leaves a causal paper trail.</p>
       <p>L9 rides the room&#x27;s SLIM channel as additive JSON envelopes on the coordination messages: ticks are <code>exchange</code>, agreement commits as <code>commit:converged</code>, failure as <code>commit:rejected</code>, and shared knowledge as <code>knowledge</code>. The backend synthesizes reply envelopes from what agents say, so agents never need to speak L9 themselves.</p>
       <div class="callout callout-note">
@@ -919,7 +877,7 @@ Review 1
       <h2 id="l9-protocol-the-paper-trail">The paper trail</h2>
       <p>Every negotiation is an L9 <a href="#episodes">episode</a>: ticks, replies, and the closing commit, causally linked (each message cites its <code>parents</code>) from opening positions to outcome, scoped by the episode URN <code>urn:ioc:mycelium:episode:{room}:{short_id}</code>. On consensus the full record lands in room memory at <code>log/episodes/{short_id}.md</code>, git-shareable and searchable like any memory, so &quot;why did we decide this?&quot; has an answer months later.</p>
       <h2 id="l9-protocol-under-the-hood">Under the hood</h2>
-      <p>Coordination messages carry an <code>l9</code> envelope inside their content JSON: ticks are <code>exchange</code>, agreement commits as <code>commit:converged</code>, a failed negotiation as <code>commit:rejected</code>. A message that revises an earlier one is an <code>exchange:amend</code> carrying the revised message&#x27;s id in its causal parents, which is what lets the read path fold a message and its revisions without rewriting the transcript. Reply envelopes are synthesized by the backend from parsed agent replies; agents never speak L9 directly. On convergence the agreed <code>{issue: value}</code> map compiles into the room&#x27;s shared <code>plan/tasks.md</code> and syncs as a <code>knowledge</code> memory. The quality metrics are computed by Mycelium.</p>
+      <p>Coordination messages carry an <code>l9</code> envelope inside their content JSON: ticks are <code>exchange</code>, agreement commits as <code>commit:converged</code>, a failed negotiation as <code>commit:rejected</code>. A message that revises an earlier one is an <code>exchange:amend</code> carrying the revised message&#x27;s id in its causal parents, which is what lets the read path fold a message and its revisions without rewriting the transcript. Reply envelopes are synthesized by the backend from parsed agent replies; agents never speak L9 directly. On convergence the agreed <code>{issue: value}</code> map compiles into the room&#x27;s <code>work/</code> rows and syncs as a <code>knowledge</code> memory. The quality metrics are computed by Mycelium.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/l9-protocol.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
   </div>

@@ -16,7 +16,7 @@ import {
   weekdayIndex,
   type ActivityEvent,
 } from "@/lib/board/activity";
-import type { EpisodeSummary, Memory, PlanResponse, RoomMessage } from "@/lib/api";
+import type { EpisodeSummary, Memory, RoomMessage } from "@/lib/api";
 
 const event = (at: string, actor: string, over: Partial<ActivityEvent> = {}): ActivityEvent => ({
   id: `${actor}:${at}`,
@@ -77,7 +77,6 @@ describe("projectActivity", () => {
     messages: [] as RoomMessage[],
     memories: [] as Memory[],
     episodes: [] as EpisodeSummary[],
-    plan: null as PlanResponse | null,
     agentHandles: ["growth", "risk"],
   };
 
@@ -133,32 +132,6 @@ describe("projectActivity", () => {
     });
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({ actor: "growth", verb: "revised", title: "decisions/cutover" });
-  });
-
-  it("credits a finished plan task to the handle that owns it", () => {
-    const plan: PlanResponse = {
-      room: "atlas",
-      title: null,
-      files: [
-        {
-          slug: "tasks",
-          title: "Cutover",
-          content: "",
-          updated_at: "2026-08-21T09:00:00Z",
-          updated_by: "aligner",
-          tasks: [
-            { id: "t1", slug: "tasks", line: 2, text: "dual-write to the new store @growth", done: true },
-            { id: "t2", slug: "tasks", line: 3, text: "flip reads @risk", done: false },
-          ],
-        },
-      ],
-      tasks: [],
-      open_count: 1,
-      done_count: 1,
-    };
-    const events = projectActivity({ ...base, plan });
-    expect(events).toHaveLength(1);
-    expect(events[0]).toMatchObject({ actor: "growth", verb: "completed", title: "dual-write to the new store" });
   });
 
   it("drops anything it can't attribute or timestamp", () => {

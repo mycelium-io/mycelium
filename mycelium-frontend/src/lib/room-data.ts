@@ -9,7 +9,7 @@
  * Every read here is an SWR hook keyed by `["room", <name>, <resource>]`, so N
  * components asking for the same thing make one request and share one cache
  * entry: the composer and the Members rail read the same roster, the status bar
- * and the plan header read the same plan. SWR owns revalidation — polling,
+ * and the board read the same rows. SWR owns revalidation — polling,
  * refocus, reconnect, and request dedup — so components hold no `setInterval`
  * and no fetched-data `useState`, and a pushed event refreshes every reader
  * through `useRoomRevalidate` instead of a counter threaded down as a prop.
@@ -28,7 +28,6 @@ import {
   fetchMemoryIntegrity,
   fetchMessages,
   fetchNetworkStatus,
-  fetchPlan,
   fetchRoom,
   fetchRoomAgents,
   fetchRoomMembers,
@@ -42,7 +41,6 @@ import {
   type Memory,
   type MemoryLinksIntegrity,
   type NetworkStatus,
-  type PlanResponse,
   type PresenceMember,
   type Room,
   type RoomMessage,
@@ -53,7 +51,7 @@ import { useCurrentUser } from "@/components/current-user";
 
 /**
  * One cadence per resource rather than one per component, picked from how fast
- * the thing actually moves: a live negotiation and a compiled plan are worth
+ * the thing actually moves: a live negotiation and compiled work are worth
  * watching closely; manifests, memories and skills change when someone changes
  * them, and a pushed event revalidates those the moment they do.
  */
@@ -65,7 +63,6 @@ const POLL = {
   messages: 30_000,
   memories: 30_000,
   skills: 30_000,
-  plan: 8_000,
   episodes: 5_000,
   coordination: 20_000,
   // The hub answers a status read from cache and refreshes behind it, so this
@@ -107,7 +104,6 @@ type RoomResource =
   | "messages"
   | "memories"
   | "skills"
-  | "plan"
   | "episodes"
   | "integrity"
   | "status"
@@ -270,13 +266,6 @@ export function useRoomSkills(room: string, opts: RoomQueryOptions = {}) {
     room, "skills", fetchSkills, NO_SKILLS, POLL.skills, opts,
   );
   return { skills: data, loading, refresh };
-}
-
-export function useRoomPlan(room: string, opts: RoomQueryOptions = {}) {
-  const { data, loading, refresh } = useRoomQuery(
-    room, "plan", fetchPlan, null as PlanResponse | null, POLL.plan, opts,
-  );
-  return { plan: data, loading, refresh };
 }
 
 export function useRoomEpisodes(room: string, opts: RoomQueryOptions = {}) {
