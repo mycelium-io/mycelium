@@ -96,7 +96,7 @@ def engine_create(
             config=config,
             room_name=room_name,
             handle_flag=handle_flag,
-            verb="created",
+            action="created",
         )
     except typer.Exit:
         raise

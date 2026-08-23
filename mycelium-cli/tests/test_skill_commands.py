@@ -13,10 +13,10 @@ import datetime
 from typing import Any
 
 import pytest
-from mycelium_backend_client.errors import UnexpectedStatus
 from typer.testing import CliRunner
 
 from mycelium.commands import skill as skill_cmd
+from mycelium_backend_client.errors import UnexpectedStatus
 
 runner = CliRunner()
 

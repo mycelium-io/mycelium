@@ -2,7 +2,7 @@
 // Copyright 2026 Mycelium Contributors
 
 /**
- * Custody: who holds a row, and for how much longer.
+ * Assignment: who holds a row, and for how much longer.
  *
  * An agent is resident rather than one-shot, but no session gets to announce
  * that it ended — a container is reclaimed, a cloud session times out, a job is
@@ -14,7 +14,7 @@
  * confident lies. Held as a lease, an abandoned claim drains and the row returns
  * to the pool.
  *
- * **Custody is not a stage.** `status` is a stage vocabulary, borrowed from
+ * **Assignment is not a stage.** `status` is a stage vocabulary, borrowed from
  * tools built for workers who do not die silently. `in_review` says nothing
  * about whether anyone is alive; `held, renewed 30s ago` says everything.
  *
@@ -32,7 +32,7 @@
  * `renewed` is not a state: it is the event that keeps `held` fresh, which is
  * why it is not in the enum.
  *
- * Frozen in `contracts/board-vocabulary.json` under `custody`; the CLI and the
+ * Frozen in `contracts/board-vocabulary.json` under `assignment`; the CLI and the
  * backend carry their own copies, and a test on each side asserts against that
  * file so no copy can drift alone.
  */
@@ -40,34 +40,34 @@
 import { fieldAsNumber, fieldAsString, ownerOf } from "./fields";
 import type { LiveItem } from "./item";
 
-export const CUSTODY_FIELD = "custody";
+export const ASSIGNMENT_FIELD = "assignment";
 
-export const CUSTODY_STATES = ["unclaimed", "held", "released", "expired", "resolved"] as const;
-export type Custody = (typeof CUSTODY_STATES)[number];
+export const ASSIGNMENT_STATES = ["unclaimed", "held", "released", "expired", "resolved"] as const;
+export type Assignment = (typeof ASSIGNMENT_STATES)[number];
 
 /** What a writer may put on disk. The other two are read off the clock. */
-export const STORED_CUSTODY_STATES: Custody[] = ["held", "released", "resolved"];
-export const DERIVED_CUSTODY_STATES: Custody[] = ["unclaimed", "expired"];
+export const STORED_ASSIGNMENT_STATES: Assignment[] = ["held", "released", "resolved"];
+export const DERIVED_ASSIGNMENT_STATES: Assignment[] = ["unclaimed", "expired"];
 
 /** The upstream half's three words, minus "missing": a claim expires. */
-export const CUSTODY_FRESHNESS = ["fresh", "stale", "expired"] as const;
-export type CustodyFreshness = (typeof CUSTODY_FRESHNESS)[number];
+export const ASSIGNMENT_FRESHNESS = ["fresh", "stale", "expired"] as const;
+export type AssignmentFreshness = (typeof ASSIGNMENT_FRESHNESS)[number];
 
 /** Fraction of a lease that may be spent before a renewal is due. */
 export const STALE_AFTER = 0.5;
 export const DEFAULT_TTL_MINUTES = 30;
 
-export const CUSTODY_COMPANION_FIELDS = [
+export const ASSIGNMENT_COMPANION_FIELDS = [
   "claimed_at",
   "ttl_minutes",
-  "custody_note",
-  "custody_note_by",
+  "assignment_note",
+  "assignment_note_by",
 ];
 
 /** Who a note is attributed to when the runtime wrote it rather than a person. */
 export const RUNTIME_AUTHOR = "runtime";
 
-export const LENS_OF_CUSTODY: Record<Custody, "needs_you" | "in_flight" | "resolved"> = {
+export const ATTENTION_OF_ASSIGNMENT: Record<Assignment, "needs_you" | "in_flight" | "resolved"> = {
   unclaimed: "needs_you",
   held: "in_flight",
   released: "needs_you",
@@ -76,17 +76,17 @@ export const LENS_OF_CUSTODY: Record<Custody, "needs_you" | "in_flight" | "resol
 };
 
 /** Leases live on memories, because frontmatter has somewhere to put a stamp. */
-export const LEASABLE_NAMESPACES = ["work"];
+export const ASSIGNABLE_NAMESPACES = ["work"];
 
 /** Why a row refuses a claim, in its own terms. Saying so beats pretending. */
-export const CUSTODY_REFUSALS: Record<string, string> = {
-  episode: "an episode is a recorded negotiation, and there is nothing to write a lease onto",
+export const ASSIGNMENT_REFUSALS: Record<string, string> = {
+  episode: "an episode is a recorded negotiation, and there is nothing to assign",
   agent: "presence is already a lease the runtime renews; it is not claimable",
-  memory: "leases live on work/ memories; this row is in another namespace",
+  memory: "assignments live on work/ memories; this row is in another namespace",
 };
 
 /**
- * Custody's own keys, which a plain field write must not touch.
+ * Assignment's own keys, which a plain field write must not touch.
  *
  * Derived from the model above rather than restated: a lease owns who holds a
  * row and for how long, under rules a field write cannot check — a live claim
@@ -94,7 +94,7 @@ export const CUSTODY_REFUSALS: Record<string, string> = {
  * The backend refuses these too; this is so the surface can say why without
  * making the round trip.
  */
-export const RESERVED_FIELDS = [CUSTODY_FIELD, "owner", ...CUSTODY_COMPANION_FIELDS];
+export const RESERVED_FIELDS = [ASSIGNMENT_FIELD, "owner", ...ASSIGNMENT_COMPANION_FIELDS];
 
 /** Which of `names` a lease owns, so a caller can refuse before writing. */
 export function reservedIn(names: string[]): string[] {
@@ -123,7 +123,7 @@ export function leaseElapsedFraction(item: LiveItem, now: number): number | null
   return Math.max(0, (now - stamped) / 60000 / ttl);
 }
 
-export function leaseFreshness(item: LiveItem, now: number): CustodyFreshness | null {
+export function leaseFreshness(item: LiveItem, now: number): AssignmentFreshness | null {
   const fraction = leaseElapsedFraction(item, now);
   if (fraction === null) return null;
   if (fraction < STALE_AFTER) return "fresh";
@@ -139,19 +139,19 @@ export function remainingMinutes(item: LiveItem, now: number): number | null {
 }
 
 /**
- * The row's custody state, or null when it has no custody axis.
+ * The row's assignment state, or null when it has no assignment axis.
  *
  * null is not a state — it means this row is not the kind of thing anyone holds
- * (a decision that has been made, a prose memory), so a lens falls back to its
+ * (a decision that has been made, a prose memory), so the filter falls back to its
  * stage rather than inventing a holder for it.
  *
  * A `held` lease whose clock ran out reads `expired` with nothing on disk having
  * changed: the row drains because time passed, not because anyone wrote it down.
  */
-export function custodyOf(item: LiveItem, now: number): Custody | null {
-  const stored = fieldAsString(item, CUSTODY_FIELD);
-  if (!stored || !(CUSTODY_STATES as readonly string[]).includes(stored)) return null;
-  if (stored !== "held") return stored as Custody;
+export function assignmentOf(item: LiveItem, now: number): Assignment | null {
+  const stored = fieldAsString(item, ASSIGNMENT_FIELD);
+  if (!stored || !(ASSIGNMENT_STATES as readonly string[]).includes(stored)) return null;
+  if (stored !== "held") return stored as Assignment;
   // Held by nobody is not held. A row that lost its holder is in the pool.
   if (!ownerOf(item)) return "unclaimed";
   // A claim that cannot be shown to be alive is not evidence that it is — and an
@@ -168,40 +168,40 @@ export function isBlocked(item: LiveItem): boolean {
   return typeof value === "string" && value.trim().length > 0;
 }
 
-export interface CustodyNote {
+export interface AssignmentNote {
   text: string;
   /** The releaser's handle, or `runtime` when the lease simply drained. */
   by: string;
 }
 
 /**
- * The row's custody note and who wrote it, or null when there is none.
+ * The row's assignment note and who wrote it, or null when there is none.
  *
  * Handing work off deliberately and dying mid-task converge on the same state:
  * an unclaimed row with history. What tells them apart is the note's author, so
  * both come back together rather than as prose a reader has to interpret.
  */
-export function custodyNote(item: LiveItem, now: number): CustodyNote | null {
-  if (custodyOf(item, now) === "expired") {
+export function assignmentNote(item: LiveItem, now: number): AssignmentNote | null {
+  if (assignmentOf(item, now) === "expired") {
     return {
       text: `expired — @${ownerOf(item) ?? "its holder"} stopped renewing`,
       by: RUNTIME_AUTHOR,
     };
   }
-  const text = fieldAsString(item, "custody_note");
+  const text = fieldAsString(item, "assignment_note");
   if (!text) return null;
-  return { text, by: fieldAsString(item, "custody_note_by") ?? RUNTIME_AUTHOR };
+  return { text, by: fieldAsString(item, "assignment_note_by") ?? RUNTIME_AUTHOR };
 }
 
 /** Why this row cannot take a lease, or null when it can. */
-export function custodyRefusal(item: LiveItem): string | null {
+export function assignmentRefusal(item: LiveItem): string | null {
   const kind = item.source.kind;
-  if (kind === "episode" || kind === "agent") return CUSTODY_REFUSALS[kind];
+  if (kind === "episode" || kind === "agent") return ASSIGNMENT_REFUSALS[kind];
   if (kind === "memory") {
     const namespace = fieldAsString(item, "namespace") ?? item.source.label.split("/")[0] ?? "";
-    return LEASABLE_NAMESPACES.includes(namespace) ? null : CUSTODY_REFUSALS.memory;
+    return ASSIGNABLE_NAMESPACES.includes(namespace) ? null : ASSIGNMENT_REFUSALS.memory;
   }
-  return CUSTODY_REFUSALS.memory;
+  return ASSIGNMENT_REFUSALS.memory;
 }
 
 /** The frontmatter a claim writes. One shape, whoever is claiming. */
@@ -211,13 +211,13 @@ export function claimPatch(
   ttlMinutes = DEFAULT_TTL_MINUTES,
 ): Record<string, unknown> {
   return {
-    [CUSTODY_FIELD]: "held",
+    [ASSIGNMENT_FIELD]: "held",
     owner: handle.startsWith("@") ? handle : `@${handle}`,
     claimed_at: now,
     ttl_minutes: ttlMinutes,
     // A new holder inherits the row, not the last holder's parting words.
-    custody_note: null,
-    custody_note_by: null,
+    assignment_note: null,
+    assignment_note_by: null,
   };
 }
 
@@ -228,12 +228,12 @@ export function releasePatch(
   note?: string,
 ): Record<string, unknown> {
   return {
-    [CUSTODY_FIELD]: "released",
+    [ASSIGNMENT_FIELD]: "released",
     owner: null,
     claimed_at: null,
     ttl_minutes: null,
-    custody_note: note || "released",
-    custody_note_by: handle.replace(/^@/, ""),
+    assignment_note: note || "released",
+    assignment_note_by: handle.replace(/^@/, ""),
     updated: now,
   };
 }

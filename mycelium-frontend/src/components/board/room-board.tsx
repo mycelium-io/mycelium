@@ -27,17 +27,17 @@ import {
   useRoomRoster,
   useRoomStatus,
 } from "@/lib/room-data";
-import { writeFields, writeLease } from "@/lib/api";
-import { custodyRefusal, reservedIn } from "@/lib/board/custody";
+import { writeFields, writeAssignment } from "@/lib/api";
+import { assignmentRefusal, reservedIn } from "@/lib/board/assignment";
 import { fieldWriteRefusal, memoryKeyOf } from "@/lib/board/fields";
-import { applyVerb, LENSES, type Lens, type LiveItem, type Verb } from "@/lib/board/item";
+import { applyRowAction, ATTENTION_FILTERS, type AttentionFilter, type LiveItem, type RowAction } from "@/lib/board/item";
 import { projectItems } from "@/lib/board/projection";
 import { attachUpstream } from "@/lib/board/upstream";
 import { localZone, projectActivity } from "@/lib/board/activity";
 import { captureToItem, type ParsedCapture } from "@/lib/board/capture";
 import { groupableFields, inferSchema } from "@/lib/board/schema";
-import { applyView, filterItems, lensCounts, SAVED_VIEWS, sortItems, UNGROUPED, type ViewConfig, type ViewMode } from "@/lib/board/view";
-import { BoardCockpit, summarize } from "./board-cockpit";
+import { applyView, filterItems, attentionFilterCounts, SAVED_VIEWS, sortItems, UNGROUPED, type ViewConfig, type ViewMode } from "@/lib/board/view";
+import { BoardTriage, summarize } from "./board-triage";
 import { BoardKanban } from "./board-kanban";
 import { BoardTable } from "./board-table";
 import { BoardTimeline } from "./board-timeline";
@@ -46,7 +46,7 @@ import { BoardDaily } from "./board-daily";
 import { playBoardSound, type BoardSound } from "@/lib/board/board-sounds";
 
 const MODES: { id: ViewMode; label: string; icon: typeof Rows3 }[] = [
-  { id: "cockpit", label: "Cockpit", icon: Rows3 },
+  { id: "triage", label: "Triage", icon: Rows3 },
   { id: "board", label: "Board", icon: Kanban },
   { id: "table", label: "Table", icon: TableIcon },
   { id: "timeline", label: "Timeline", icon: ListChecks },
@@ -70,7 +70,7 @@ interface Props {
  *
  * Everything on it is a projection: rows come from the episodes, the
  * memory namespaces and presence; the schema comes from the frontmatter those
- * rows already carry; and the cockpit, kanban and table are three configs over
+ * rows already carry; and the triage, kanban and table are three configs over
  * one pipeline rather than three screens.
  */
 export function RoomBoard({ roomName }: Props) {
@@ -175,10 +175,10 @@ export function RoomBoard({ roomName }: Props) {
   // groupings and the table's editors — nothing about the schema is declared.
   const schema = useMemo(() => inferSchema(items), [items]);
   const groupable = useMemo(() => groupableFields(schema), [schema]);
-  const counts = useMemo(() => lensCounts(items, now), [items, now]);
+  const counts = useMemo(() => attentionFilterCounts(items, now), [items, now]);
 
   // Watching the board is optional; hearing it is the point. Only a *growing*
-  // steer-lens speaks, and only after the first render has something to compare.
+  // steer filter speaks, and only after the first render has something to compare.
   const lastNeedsYou = useRef<number | null>(null);
   useEffect(() => {
     const previous = lastNeedsYou.current;
@@ -189,7 +189,7 @@ export function RoomBoard({ roomName }: Props) {
   const groups = useMemo(() => applyView(items, view, schema, now), [items, view, schema, now]);
   const flat = useMemo(() => sortItems(filterItems(items, view, now), view, now), [items, view, now]);
   const ordered = useMemo(
-    () => (view.mode === "cockpit" || view.mode === "board" ? groups.flatMap(g => g.items) : flat),
+    () => (view.mode === "triage" || view.mode === "board" ? groups.flatMap(g => g.items) : flat),
     [view.mode, groups, flat],
   );
 
@@ -199,11 +199,11 @@ export function RoomBoard({ roomName }: Props) {
   }, []);
 
   /**
-   * A verb's write: the optimistic edit is what you see, the room is the record.
+   * A action's write: the optimistic edit is what you see, the room is the record.
    *
    * A row whose fields live somewhere other than frontmatter says why instead
    * of accepting a change that would exist in this tab and nowhere else, which
-   * is what the board did for every verb but custody.
+   * is what the board did for every action but assignment.
    */
   const patch = useCallback(
     (item: LiveItem, fields: Record<string, unknown>) => {
@@ -236,39 +236,39 @@ export function RoomBoard({ roomName }: Props) {
     [actor, applyOptimisticEdit, revalidate, roomName],
   );
 
-  const runVerb = useCallback(
-    (item: LiveItem, verb: Verb) => {
-      const fields = applyVerb(item, verb, { actor, now: new Date().toISOString() });
+  const runRowAction = useCallback(
+    (item: LiveItem, action: RowAction) => {
+      const fields = applyRowAction(item, action, { actor, now: new Date().toISOString() });
       setSelectedId(item.id);
-      play(verb);
+      play(action);
       // Saying it is the point: a human gesture and an agent's call are the same
       // write, so the surface says out loud what it just put on the ledger.
       setStatusMessage(
-        `${verb} ${item.id} → ${Object.entries(fields)
+        `${action} ${item.id} → ${Object.entries(fields)
           .filter(([k]) => k !== "updated")
           .map(([k, v]) => `${k}=${String(v)}`)
           .join(" ")}`,
       );
 
-      // Custody moves under its own rules — a live claim is not stealable, and
+      // Assignment moves under its own rules — a live claim is not stealable, and
       // expiry is read off a clock — so it keeps its own endpoint. Every other
-      // verb is a frontmatter write and goes through `patch`.
-      if (verb !== "claim" && verb !== "release" && verb !== "resolve") {
+      // action is a frontmatter write and goes through `patch`.
+      if (action !== "claim" && action !== "release" && action !== "resolve") {
         patch(item, fields);
         return;
       }
       applyOptimisticEdit(item.id, fields);
-      const refusal = custodyRefusal(item);
+      const refusal = assignmentRefusal(item);
       if (refusal) {
-        if (verb !== "resolve") setStatusMessage(`${verb} ${item.id} — ${refusal}`);
+        if (action !== "resolve") setStatusMessage(`${action} ${item.id} — ${refusal}`);
         return;
       }
-      void writeLease(roomName, verb, { key: item.id.replace(/^memory:/, ""), handle: actor })
+      void writeAssignment(roomName, action, { key: item.id.replace(/^memory:/, ""), handle: actor })
         .then(state => {
-          setStatusMessage(`${verb} ${state.key} → custody=${state.custody} owner=${state.owner ?? "—"}`);
+          setStatusMessage(`${action} ${state.key} → assignment=${state.assignment} owner=${state.owner ?? "—"}`);
           revalidate();
         })
-        .catch((e: unknown) => setStatusMessage(`${verb} ${item.id} failed — ${String(e)}`));
+        .catch((e: unknown) => setStatusMessage(`${action} ${item.id} failed — ${String(e)}`));
     },
     [actor, applyOptimisticEdit, patch, play, revalidate, roomName],
   );
@@ -305,7 +305,7 @@ export function RoomBoard({ roomName }: Props) {
 
   const setMode = useCallback((mode: ViewMode) => setView(v => ({ ...v, mode })), []);
 
-  // Keyboard-first triage: the verbs are one keystroke from wherever the caret
+  // Keyboard-first triage: the row actions are one keystroke from wherever the caret
   // sits, and typing anywhere with a text cursor never reaches them.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -330,11 +330,11 @@ export function RoomBoard({ roomName }: Props) {
         return setMode(MODES[(index + 1) % MODES.length].id);
       }
       if (["1", "2", "3", "4"].includes(key)) {
-        const lens = (["needs_you", "in_flight", "resolved", "all"] as const)[Number(key) - 1];
-        return setView(v => ({ ...v, lens, showResolved: lens !== "needs_you" }));
+        const attentionFilter = (["needs_you", "in_flight", "resolved", "all"] as const)[Number(key) - 1];
+        return setView(v => ({ ...v, attentionFilter, showResolved: attentionFilter !== "needs_you" }));
       }
       if (!selected) return;
-      const verbs: Record<string, Verb> = {
+      const rowActions: Record<string, RowAction> = {
         c: "claim",
         e: "release",
         r: "resolve",
@@ -342,14 +342,14 @@ export function RoomBoard({ roomName }: Props) {
         p: "promote",
         x: "dismiss",
       };
-      if (verbs[key]) {
+      if (rowActions[key]) {
         e.preventDefault();
-        runVerb(selected, verbs[key]);
+        runRowAction(selected, rowActions[key]);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [ordered, selectedId, pick, runVerb, view.mode, setMode]);
+  }, [ordered, selectedId, pick, runRowAction, view.mode, setMode]);
 
   const applySaved = (slug: string) => {
     const saved = SAVED_VIEWS.find(s => s.slug === slug);
@@ -367,8 +367,8 @@ export function RoomBoard({ roomName }: Props) {
         title={title}
         summary={summarize(items)}
         counts={counts}
-        lens={view.lens}
-        onLens={lens => setView(v => ({ ...v, lens, showResolved: lens !== "needs_you" }))}
+        attentionFilter={view.attentionFilter}
+        onAttentionFilter={attentionFilter => setView(v => ({ ...v, attentionFilter, showResolved: attentionFilter !== "needs_you" }))}
         query={view.query}
         onQuery={query => setView(v => ({ ...v, query }))}
         mode={view.mode}
@@ -391,10 +391,10 @@ export function RoomBoard({ roomName }: Props) {
           <EmptyState
             className="h-full"
             icon={ListChecks}
-            title={view.lens === "needs_you" ? "Nothing needs you" : "No rows in this view"}
+            title={view.attentionFilter === "needs_you" ? "Nothing needs you" : "No rows in this view"}
             description={
-              view.lens === "needs_you"
-                ? "The board self-populates from episodes, memories and presence. Widen the lens to see what's in flight."
+              view.attentionFilter === "needs_you"
+                ? "The board self-populates from episodes, memories and presence. Widen the filter to see what's in flight."
                 : "Loosen the filters, or capture a concern to start one."
             }
           />
@@ -423,13 +423,13 @@ export function RoomBoard({ roomName }: Props) {
           />
         ) : (
           <ScrollArea className="h-full">
-            {view.mode === "cockpit" ? (
-              <BoardCockpit
+            {view.mode === "triage" ? (
+              <BoardTriage
                 groups={groups}
                 now={now}
                 selectedId={selectedId}
                 onSelect={setSelectedId}
-                onVerb={runVerb}
+                onVerb={runRowAction}
                 onAnswer={answer}
               />
             ) : view.mode === "table" ? (
@@ -466,9 +466,9 @@ export function RoomBoard({ roomName }: Props) {
 function BoardHeader(props: {
   title: string;
   summary: string;
-  counts: Record<Lens | "all", number>;
-  lens: Lens | "all";
-  onLens: (lens: Lens | "all") => void;
+  counts: Record<AttentionFilter | "all", number>;
+  attentionFilter: AttentionFilter | "all";
+  onAttentionFilter: (attentionFilter: AttentionFilter | "all") => void;
   query: string;
   onQuery: (q: string) => void;
   mode: ViewMode;
@@ -484,11 +484,11 @@ function BoardHeader(props: {
   onOptions: () => void;
 }) {
   // Grouping and the schema are what a board or a table is *for*; in the
-  // cockpit they are furniture, so they fold away until asked for.
+  // triage they are furniture, so they fold away until asked for.
   const showOptions = props.optionsOpen || props.mode === "board" || props.mode === "table";
-  const lenses: (Lens | "all")[] = [...LENSES.map(l => l.id), "all"];
+  const attentionFilters: (AttentionFilter | "all")[] = [...ATTENTION_FILTERS.map(l => l.id), "all"];
   const label: Record<string, string> = {
-    ...Object.fromEntries(LENSES.map(l => [l.id, l.label])),
+    ...Object.fromEntries(ATTENTION_FILTERS.map(l => [l.id, l.label])),
     all: "All",
   };
 
@@ -503,23 +503,23 @@ function BoardHeader(props: {
 
       <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
         <div className="flex items-center gap-0.5 rounded-lg bg-surface p-0.5">
-          {lenses.map(lens => (
+          {attentionFilters.map(attentionFilter => (
             <button
-              key={lens}
-              onClick={() => props.onLens(lens)}
+              key={attentionFilter}
+              onClick={() => props.onAttentionFilter(attentionFilter)}
               className={cn(
                 "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-label transition-colors",
-                props.lens === lens ? "bg-elevated text-text shadow-sm ring-1 ring-border" : "text-muted-foreground hover:text-text",
+                props.attentionFilter === attentionFilter ? "bg-elevated text-text shadow-sm ring-1 ring-border" : "text-muted-foreground hover:text-text",
               )}
             >
-              {label[lens]}
+              {label[attentionFilter]}
               <span
                 className={cn(
                   "tabular text-micro",
-                  lens === "needs_you" && props.counts.needs_you > 0 ? "text-accent" : "text-faint",
+                  attentionFilter === "needs_you" && props.counts.needs_you > 0 ? "text-accent" : "text-faint",
                 )}
               >
-                {props.counts[lens]}
+                {props.counts[attentionFilter]}
               </span>
             </button>
           ))}

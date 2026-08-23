@@ -18,10 +18,10 @@ from typing import Any
 
 import httpx
 import pytest
-from mycelium_backend_client.errors import UnexpectedStatus
 from typer.testing import CliRunner
 
 from mycelium.commands import memory as memory_cmd
+from mycelium_backend_client.errors import UnexpectedStatus
 
 runner = CliRunner()
 
@@ -236,7 +236,7 @@ def test_memory_get_raw_carries_unmanaged_frontmatter(monkeypatch: pytest.Monkey
         monkeypatch,
         _memory_read(
             "work/x",
-            "blocked on the custody seam",
+            "blocked on the assignment seam",
             meta=MemoryReadMetaType0.from_dict({"status": "open", "owner": "@julia"}),
         ),
     )

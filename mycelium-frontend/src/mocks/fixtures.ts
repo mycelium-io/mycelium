@@ -59,7 +59,7 @@ export interface MockMemory {
    *  to read. */
   value: string | Record<string, unknown>;
   /** Frontmatter the store doesn't own, read back from `MemoryRead.meta`. This
-   *  is where a lease lands and where a board verb writes, so a row's fields
+   *  is where a lease lands and where a board action writes, so a row's fields
    *  can come from here rather than from a structured value. */
   meta?: Record<string, unknown> | null;
   content_text?: string;
@@ -283,7 +283,7 @@ const atlasEpisodeSummary: EpisodeSummary = {
 // path), not arbitrary markdown frontmatter, which the read path drops (#772).
 // The board reads its typed fields (status, owner, priority, ci, pr, branch,
 // blocks, choices) straight from that object. Together they give the board
-// something in every lens (needs-you, in-flight, resolved) and a column for
+// something in every attention filter (needs-you, in-flight, resolved) and a column for
 // every inferred field, without any in-app demo layer.
 const atlasBoardRows: MockMemory[] = [
   // What the atlas agreement compiled into. A task is a row like anything else:

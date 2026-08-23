@@ -220,7 +220,7 @@ async def upsert_memories(
     manifest) reuse the one correct upsert without routing their actor through a
     request body they never had.
 
-    ``notify=False`` is for writes that are not news — a custody heartbeat
+    ``notify=False`` is for writes that are not news — a assignment heartbeat
     re-dating a lease it already holds.  The file, the index and the link graph
     are all updated exactly as usual; what is skipped is telling the room, which
     a loop running every few seconds must not do.

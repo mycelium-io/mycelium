@@ -126,7 +126,7 @@ async def send_message(room_name: str, payload: MessageCreate, request: Request)
             # transcript, so a cold read dedups this row against its transcript copy.
             msg.message_id = result.message_id
     # The human's message always lands in ``in_memory_store`` — its id backs PATCH /
-    # event semantics and it's the live lens. The persister records the same
+    # event semantics and it's the live view. The persister records the same
     # message to the durable transcript (the read path's source of truth); the two
     # dedup by ``message_id`` on read. When published, the persister owns the bus
     # push, so only the un-published path publishes here.

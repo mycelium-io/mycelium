@@ -423,7 +423,7 @@ async def test_unmanaged_frontmatter_is_returned(client: AsyncClient):
             "items": [
                 {
                     "key": "work/x",
-                    "value": "Blocked behind the custody seam",
+                    "value": "Blocked behind the assignment seam",
                     "created_by": "julia",
                     "embed": False,
                     "meta": {"status": "open", "owner": "@julia", "priority": "high"},
@@ -435,7 +435,7 @@ async def test_unmanaged_frontmatter_is_returned(client: AsyncClient):
     fields = {"status": "open", "owner": "@julia", "priority": "high"}
     written = (await client.get("/api/rooms/meta-rt/memory/work/x")).json()
     assert written["meta"] == fields
-    assert written["value"] == {"text": "Blocked behind the custody seam"}
+    assert written["value"] == {"text": "Blocked behind the assignment seam"}
 
     listed = (await client.get("/api/rooms/meta-rt/memory", params={"prefix": "work/"})).json()
     assert listed[0]["meta"] == fields

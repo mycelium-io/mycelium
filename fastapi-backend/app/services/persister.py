@@ -586,7 +586,7 @@ def room_conversation(room: str) -> list[StoredMessage]:
     """A room's full conversational view: durable transcript + live in-memory rows.
 
     The transcript survives restarts and both post paths converge on it; the
-    in-memory ``in_memory_store`` rows are the live lens and carry the ledger fields
+    in-memory ``in_memory_store`` rows are the live view and carry the ledger fields
     (ttl/status) plus the ids clients already hold. Where a message is in both,
     the ``in_memory_store`` row wins and the transcript only fills what memory lost.
     Dedup is by envelope ``message_id`` — a distinct id space from
@@ -1034,7 +1034,7 @@ class RoomPersister:
         self.log.record(record, delivered_to=present, recipients=envelope_recipients(envelope))
         append_transcript(self.room, record)
         self._persist_cursors()
-        # The list store is the live/fast lens; the durable transcript is the read
+        # The list store is the live/fast view; the durable transcript is the read
         # path's source of truth. SLIM arrivals (agent replies) and ``respond`` write
         # here so they're visible immediately; the human-proxy broadcast skips it
         # (``list_write=False``) since the transcript already carries it.
@@ -1105,7 +1105,7 @@ class RoomPersister:
             logger.debug("bus publish from persister failed for room %s", self.room, exc_info=True)
 
     def _record_to_list_store(self, record: TranscriptRecord) -> None:
-        """Mirror a conversational record into the in-memory list store (live lens).
+        """Mirror a conversational record into the in-memory list store (the live view).
 
         The durable transcript is the read path's source of truth; this write keeps
         the message visible immediately (before a cold read re-projects the

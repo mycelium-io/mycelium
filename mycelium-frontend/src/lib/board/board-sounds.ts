@@ -4,7 +4,7 @@
 /**
  * The board's sounds: one short motif per state change.
  *
- * A steer-lens is only worth having if you can stop watching it, so the surface
+ * A steer filter is only worth having if you can stop watching it, so the surface
  * is built to be heard as well as read — a row arriving that needs you sounds
  * different from one an agent just resolved, and a human's keystroke and an
  * agent's write make the same sound because they are the same write.
@@ -16,7 +16,7 @@
  */
 
 import { motif, type Note } from "@/lib/audio-ping";
-import type { Verb } from "./item";
+import type { RowAction } from "./item";
 
 /** A5 as the board's tonic; every motif is an interval off it. */
 const A = 880;
@@ -28,7 +28,7 @@ const RATIO = {
 } as const;
 
 export type BoardSound =
-  | Verb
+  | RowAction
   | "needs_you"
   | "answer"
   | "capture"

@@ -4,8 +4,8 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { ageMinutes, lensOf, type LiveItem } from "@/lib/board/item";
-import { AgeTag, KindIcon, CustodyChip, SourceTag, UpstreamChip, WorkLinks, kindColor } from "./board-cells";
+import { ageMinutes, attentionFilterOf, type LiveItem } from "@/lib/board/item";
+import { AgeTag, KindIcon, AssignmentChip, SourceTag, UpstreamChip, WorkLinks, kindColor } from "./board-cells";
 
 interface Props {
   items: LiveItem[];
@@ -53,7 +53,7 @@ export function BoardTimeline({ items, now, selectedId, onSelect }: Props) {
                 className={cn(
                   "relative flex w-full items-start gap-2.5 rounded-lg px-2.5 py-1.5 text-left transition-colors",
                   item.id === selectedId ? "bg-elevated ring-1 ring-border" : "hover:bg-hairline",
-                  lensOf(item, now) === "resolved" && "opacity-65",
+                  attentionFilterOf(item, now) === "resolved" && "opacity-65",
                 )}
               >
                 <span
@@ -68,7 +68,7 @@ export function BoardTimeline({ items, now, selectedId, onSelect }: Props) {
                   </span>
                   <span className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-1">
                     <SourceTag item={item} />
-                    <CustodyChip item={item} now={now} />
+                    <AssignmentChip item={item} now={now} />
                     <WorkLinks item={item} />
           <UpstreamChip item={item} />
                   </span>

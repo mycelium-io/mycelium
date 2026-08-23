@@ -431,7 +431,7 @@ def _persist_and_describe(
     config: MyceliumConfig,
     room_name: str,
     handle_flag: str,
-    verb: str,
+    action: str,
 ) -> None:
     """Shared tail: run runtime side effects, persist the manifest, print."""
     opts = AddOptions(room=room_name)
@@ -446,7 +446,7 @@ def _persist_and_describe(
     impl.register(manifest=manifest, config=config, opts=opts)
     _write_manifest(config, room_name, manifest, created_by=handle_flag)
     console.print(
-        f"\n[green]Agent {verb}:[/green] [cyan]@{manifest.handle}[/cyan] "
+        f"\n[green]Agent {action}:[/green] [cyan]@{manifest.handle}[/cyan] "
         f"in room [bold]{room_name}[/bold]"
     )
     for line in impl.describe(manifest, room=room_name):
@@ -648,7 +648,7 @@ def _create_wizard(
         config=config,
         room_name=room_name,
         handle_flag=handle_flag,
-        verb="created",
+        action="created",
     )
 
 
@@ -874,7 +874,7 @@ def agent_create(
             config=config,
             room_name=room_name,
             handle_flag=handle_flag,
-            verb="created",
+            action="created",
         )
     except typer.Exit:
         raise
@@ -1253,8 +1253,8 @@ def agent_rm(
         # error (the manifest is already gone).
         _revoke_channel_identity(handle, config.slim.identity)
 
-        verb = "Destroyed" if will_destroy else "Unregistered"
-        console.print(f"[green]{verb}:[/green] @{handle} from {room_name}")
+        action = "Destroyed" if will_destroy else "Unregistered"
+        console.print(f"[green]{action}:[/green] @{handle} from {room_name}")
     except typer.Exit:
         raise
     except Exception as e:

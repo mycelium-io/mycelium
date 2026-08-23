@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Custody leases: claims that drain, and a watch that only the lease can wake.
+"""Assignments: claims that drain, and a watch that only the assignment can wake.
 
 The property behind all of it: no session gets to announce that it ended, so a
 claim has to stop being true without anyone writing that it did.
@@ -15,12 +15,12 @@ from pathlib import Path
 import pytest
 from httpx import AsyncClient
 
-from app.services import leases
+from app.services import assignments
 from app.services.filesystem import get_room_dir, read_memory_file
 
 CONTRACT = json.loads(
     (Path(__file__).resolve().parents[2] / "contracts" / "board-vocabulary.json").read_text()
-)["custody"]
+)["assignment"]
 
 
 async def make_room(client: AsyncClient, name: str) -> None:
@@ -54,13 +54,13 @@ class TestContract:
     """The CLI and the GUI carry their own copies of every constant here."""
 
     def test_states_and_thresholds_match_the_contract(self):
-        assert CONTRACT["states"] == list(leases.STATES)
-        assert CONTRACT["stored_states"] == list(leases.STORED_STATES)
-        assert CONTRACT["derived_states"] == list(leases.DERIVED_STATES)
-        assert CONTRACT["stale_after"] == leases.STALE_AFTER
-        assert CONTRACT["default_ttl_minutes"] == leases.DEFAULT_TTL_MINUTES
-        assert CONTRACT["runtime_author"] == leases.RUNTIME_AUTHOR
-        assert CONTRACT["leasable_namespaces"] == list(leases.LEASABLE_NAMESPACES)
+        assert CONTRACT["states"] == list(assignments.STATES)
+        assert CONTRACT["stored_states"] == list(assignments.STORED_STATES)
+        assert CONTRACT["derived_states"] == list(assignments.DERIVED_STATES)
+        assert CONTRACT["stale_after"] == assignments.STALE_AFTER
+        assert CONTRACT["default_ttl_minutes"] == assignments.DEFAULT_TTL_MINUTES
+        assert CONTRACT["runtime_author"] == assignments.RUNTIME_AUTHOR
+        assert CONTRACT["assignable_namespaces"] == list(assignments.ASSIGNABLE_NAMESPACES)
 
 
 class TestDerivation:
@@ -71,7 +71,7 @@ class TestDerivation:
 
     def held(self, minutes: float, **over) -> dict:
         meta = {
-            "custody": "held",
+            "assignment": "held",
             "owner": "@growth",
             "claimed_at": (self.now() - timedelta(minutes=minutes)).isoformat(),
             "ttl_minutes": 30,
@@ -80,23 +80,26 @@ class TestDerivation:
         return meta
 
     def test_a_lease_ages_through_the_same_words_the_upstream_half_uses(self):
-        assert leases.freshness(self.held(1), self.now()) == "fresh"
-        assert leases.freshness(self.held(20), self.now()) == "stale"
-        assert leases.freshness(self.held(45), self.now()) == "expired"
+        assert assignments.freshness(self.held(1), self.now()) == "fresh"
+        assert assignments.freshness(self.held(20), self.now()) == "stale"
+        assert assignments.freshness(self.held(45), self.now()) == "expired"
 
     def test_a_claim_nobody_renewed_expires_with_nothing_written(self):
         meta = self.held(90)
-        assert meta["custody"] == "held"
-        assert leases.state_of(meta, self.now()) == "expired"
+        assert meta["assignment"] == "held"
+        assert assignments.state_of(meta, self.now()) == "expired"
 
-    def test_a_row_with_no_custody_frontmatter_is_unclaimed(self):
-        assert leases.state_of({}, self.now()) == "unclaimed"
+    def test_a_row_with_no_assignment_frontmatter_is_unclaimed(self):
+        assert assignments.state_of({}, self.now()) == "unclaimed"
 
     def test_held_by_nobody_is_not_held(self):
-        assert leases.state_of(self.held(1, owner=None), self.now()) == "unclaimed"
+        assert assignments.state_of(self.held(1, owner=None), self.now()) == "unclaimed"
 
     def test_an_undatable_claim_cannot_be_shown_to_be_alive(self):
-        assert leases.state_of({"custody": "held", "owner": "@growth"}, self.now()) == "expired"
+        assert (
+            assignments.state_of({"assignment": "held", "owner": "@growth"}, self.now())
+            == "expired"
+        )
 
 
 @pytest.mark.asyncio
@@ -106,18 +109,18 @@ class TestClaim:
         await make_work(client, "lease-claim", "work/auth-spike")
 
         resp = await client.post(
-            "/api/rooms/lease-claim/leases/claim",
+            "/api/rooms/lease-claim/assignments/claim",
             json={"key": "work/auth-spike", "handle": "growth", "ttl_minutes": 30},
         )
         assert resp.status_code == 200
         body = resp.json()
-        assert body["custody"] == "held"
+        assert body["assignment"] == "held"
         assert body["owner"] == "growth"
         assert body["freshness"] == "fresh"
 
         # Versioned, and on disk as frontmatter a person can read.
         meta = frontmatter("lease-claim", "work/auth-spike")
-        assert meta["custody"] == "held"
+        assert meta["assignment"] == "held"
         assert meta["owner"] == "@growth"
         assert meta["ttl_minutes"] == 30
         assert meta["version"] == 2
@@ -126,7 +129,7 @@ class TestClaim:
         await make_room(client, "lease-body")
         await make_work(client, "lease-body", "work/auth-spike")
         await client.post(
-            "/api/rooms/lease-body/leases/claim",
+            "/api/rooms/lease-body/assignments/claim",
             json={"key": "work/auth-spike", "handle": "growth"},
         )
         resp = await client.get("/api/rooms/lease-body/memory/work/auth-spike")
@@ -144,7 +147,7 @@ class TestClaim:
             {"key": "work/auth-spike", "room_name": "lease-index", "embedding": [0.5, 0.25]},
         )
         await client.post(
-            "/api/rooms/lease-index/leases/claim",
+            "/api/rooms/lease-index/assignments/claim",
             json={"key": "work/auth-spike", "handle": "growth"},
         )
         assert search_index.embedding_for("lease-index", "work/auth-spike") == [0.5, 0.25]
@@ -153,11 +156,11 @@ class TestClaim:
         await make_room(client, "lease-steal")
         await make_work(client, "lease-steal", "work/auth-spike")
         await client.post(
-            "/api/rooms/lease-steal/leases/claim",
+            "/api/rooms/lease-steal/assignments/claim",
             json={"key": "work/auth-spike", "handle": "growth"},
         )
         resp = await client.post(
-            "/api/rooms/lease-steal/leases/claim",
+            "/api/rooms/lease-steal/assignments/claim",
             json={"key": "work/auth-spike", "handle": "risk"},
         )
         assert resp.status_code == 409
@@ -172,13 +175,13 @@ class TestClaim:
             client,
             "lease-retake",
             "work/auth-spike",
-            custody="held",
+            assignment="held",
             owner="@growth",
             claimed_at=(datetime.now(UTC) - timedelta(hours=2)).isoformat(),
             ttl_minutes=30,
         )
         resp = await client.post(
-            "/api/rooms/lease-retake/leases/claim",
+            "/api/rooms/lease-retake/assignments/claim",
             json={"key": "work/auth-spike", "handle": "risk"},
         )
         assert resp.status_code == 200
@@ -187,7 +190,7 @@ class TestClaim:
     async def test_a_plan_task_has_nowhere_to_put_a_lease(self, client):
         await make_room(client, "lease-refuse")
         resp = await client.post(
-            "/api/rooms/lease-refuse/leases/claim",
+            "/api/rooms/lease-refuse/assignments/claim",
             json={"key": "plan/tasks", "handle": "growth"},
         )
         assert resp.status_code == 422
@@ -196,7 +199,7 @@ class TestClaim:
     async def test_a_missing_row_says_so(self, client):
         await make_room(client, "lease-missing")
         resp = await client.post(
-            "/api/rooms/lease-missing/leases/claim",
+            "/api/rooms/lease-missing/assignments/claim",
             json={"key": "work/nothing-here", "handle": "growth"},
         )
         assert resp.status_code == 404
@@ -208,31 +211,31 @@ class TestReleaseAndExpiry:
         await make_room(client, "lease-release")
         await make_work(client, "lease-release", "work/auth-spike")
         await client.post(
-            "/api/rooms/lease-release/leases/claim",
+            "/api/rooms/lease-release/assignments/claim",
             json={"key": "work/auth-spike", "handle": "growth"},
         )
         resp = await client.post(
-            "/api/rooms/lease-release/leases/release",
+            "/api/rooms/lease-release/assignments/release",
             json={"key": "work/auth-spike", "handle": "growth", "note": "handing to @risk"},
         )
         body = resp.json()
-        assert body["custody"] == "released"
+        assert body["assignment"] == "released"
         assert body["owner"] is None
-        assert body["custody_note"] == "handing to @risk"
-        assert body["custody_note_by"] == "growth"
+        assert body["assignment_note"] == "handing to @risk"
+        assert body["assignment_note_by"] == "growth"
 
     async def test_a_release_with_nothing_to_add_still_leaves_a_note(self, client):
         await make_room(client, "lease-quiet-release")
         await make_work(client, "lease-quiet-release", "work/auth-spike")
         await client.post(
-            "/api/rooms/lease-quiet-release/leases/claim",
+            "/api/rooms/lease-quiet-release/assignments/claim",
             json={"key": "work/auth-spike", "handle": "growth"},
         )
         resp = await client.post(
-            "/api/rooms/lease-quiet-release/leases/release",
+            "/api/rooms/lease-quiet-release/assignments/release",
             json={"key": "work/auth-spike", "handle": "growth"},
         )
-        assert resp.json()["custody_note_by"] == "growth"
+        assert resp.json()["assignment_note_by"] == "growth"
 
     async def test_an_expired_lease_is_signed_by_the_runtime_instead(self, client):
         """Delegation and abandonment converge on the same state; the note's
@@ -242,16 +245,16 @@ class TestReleaseAndExpiry:
             client,
             "lease-expiry",
             "work/auth-spike",
-            custody="held",
+            assignment="held",
             owner="@growth",
             claimed_at=(datetime.now(UTC) - timedelta(hours=2)).isoformat(),
             ttl_minutes=30,
         )
-        resp = await client.get("/api/rooms/lease-expiry/leases/work/auth-spike")
+        resp = await client.get("/api/rooms/lease-expiry/assignments/work/auth-spike")
         body = resp.json()
-        assert body["custody"] == "expired"
-        assert body["custody_note_by"] == leases.RUNTIME_AUTHOR
-        assert "stopped renewing" in body["custody_note"]
+        assert body["assignment"] == "expired"
+        assert body["assignment_note_by"] == assignments.RUNTIME_AUTHOR
+        assert "stopped renewing" in body["assignment_note"]
 
     async def test_expiry_is_not_written_down(self, client):
         """Reading a drained lease must not repair it into a stored state — the
@@ -261,25 +264,25 @@ class TestReleaseAndExpiry:
             client,
             "lease-no-write",
             "work/auth-spike",
-            custody="held",
+            assignment="held",
             owner="@growth",
             claimed_at=(datetime.now(UTC) - timedelta(hours=2)).isoformat(),
             ttl_minutes=30,
         )
         before = frontmatter("lease-no-write", "work/auth-spike")["version"]
-        await client.get("/api/rooms/lease-no-write/leases/work/auth-spike")
+        await client.get("/api/rooms/lease-no-write/assignments/work/auth-spike")
         after = frontmatter("lease-no-write", "work/auth-spike")
-        assert after["custody"] == "held"
+        assert after["assignment"] == "held"
         assert after["version"] == before
 
     async def test_resolving_takes_the_row_off_the_board(self, client):
         await make_room(client, "lease-resolve")
         await make_work(client, "lease-resolve", "work/auth-spike")
         resp = await client.post(
-            "/api/rooms/lease-resolve/leases/resolve",
+            "/api/rooms/lease-resolve/assignments/resolve",
             json={"key": "work/auth-spike", "handle": "growth"},
         )
-        assert resp.json()["custody"] == "resolved"
+        assert resp.json()["assignment"] == "resolved"
 
 
 @pytest.mark.asyncio
@@ -290,12 +293,14 @@ class TestRenew:
             client,
             "lease-renew",
             "work/auth-spike",
-            custody="held",
+            assignment="held",
             owner="@growth",
             claimed_at=(datetime.now(UTC) - timedelta(minutes=25)).isoformat(),
             ttl_minutes=30,
         )
-        resp = await client.post("/api/rooms/lease-renew/leases/renew", json={"handle": "growth"})
+        resp = await client.post(
+            "/api/rooms/lease-renew/assignments/renew", json={"handle": "growth"}
+        )
         renewed = resp.json()["renewed"]
         assert [r["key"] for r in renewed] == ["work/auth-spike"]
         assert renewed[0]["freshness"] == "fresh"
@@ -308,13 +313,15 @@ class TestRenew:
             client,
             "lease-quiet",
             "work/auth-spike",
-            custody="held",
+            assignment="held",
             owner="@growth",
             claimed_at=datetime.now(UTC).isoformat(),
             ttl_minutes=30,
         )
         before = frontmatter("lease-quiet", "work/auth-spike")["version"]
-        resp = await client.post("/api/rooms/lease-quiet/leases/renew", json={"handle": "growth"})
+        resp = await client.post(
+            "/api/rooms/lease-quiet/assignments/renew", json={"handle": "growth"}
+        )
         assert resp.json()["renewed"] == []
         assert frontmatter("lease-quiet", "work/auth-spike")["version"] == before
 
@@ -328,13 +335,15 @@ class TestRenew:
             client,
             "lease-silent",
             "work/auth-spike",
-            custody="held",
+            assignment="held",
             owner="@growth",
             claimed_at=(datetime.now(UTC) - timedelta(minutes=25)).isoformat(),
             ttl_minutes=30,
         )
         in_memory_store.clear_all()
-        resp = await client.post("/api/rooms/lease-silent/leases/renew", json={"handle": "growth"})
+        resp = await client.post(
+            "/api/rooms/lease-silent/assignments/renew", json={"handle": "growth"}
+        )
         # It did renew — the silence is the point, not an absence of work.
         assert len(resp.json()["renewed"]) == 1
         messages = await client.get("/api/rooms/lease-silent/messages")
@@ -346,12 +355,14 @@ class TestRenew:
             client,
             "lease-not-mine",
             "work/auth-spike",
-            custody="held",
+            assignment="held",
             owner="@growth",
             claimed_at=(datetime.now(UTC) - timedelta(minutes=25)).isoformat(),
             ttl_minutes=30,
         )
-        resp = await client.post("/api/rooms/lease-not-mine/leases/renew", json={"handle": "risk"})
+        resp = await client.post(
+            "/api/rooms/lease-not-mine/assignments/renew", json={"handle": "risk"}
+        )
         assert resp.json()["renewed"] == []
 
     async def test_a_lease_that_already_drained_is_not_resurrected(self, client):
@@ -362,12 +373,14 @@ class TestRenew:
             client,
             "lease-drained",
             "work/auth-spike",
-            custody="held",
+            assignment="held",
             owner="@growth",
             claimed_at=(datetime.now(UTC) - timedelta(hours=2)).isoformat(),
             ttl_minutes=30,
         )
-        resp = await client.post("/api/rooms/lease-drained/leases/renew", json={"handle": "growth"})
+        resp = await client.post(
+            "/api/rooms/lease-drained/assignments/renew", json={"handle": "growth"}
+        )
         assert resp.json()["renewed"] == []
 
 
@@ -379,10 +392,10 @@ class TestAwaitOnALease:
         await make_room(client, "lease-await")
         await make_work(client, "lease-await", "work/auth-spike")
         resp = await client.get(
-            "/api/rooms/lease-await/leases/await", params={"key": "work/auth-spike"}
+            "/api/rooms/lease-await/assignments/await", params={"key": "work/auth-spike"}
         )
         body = resp.json()
-        assert body["custody"] == "unclaimed"
+        assert body["assignment"] == "unclaimed"
         assert body["changed"] is False
         assert body["since"]
 
@@ -390,24 +403,24 @@ class TestAwaitOnALease:
         await make_room(client, "lease-wake")
         await make_work(client, "lease-wake", "work/auth-spike")
         first = await client.get(
-            "/api/rooms/lease-wake/leases/await", params={"key": "work/auth-spike"}
+            "/api/rooms/lease-wake/assignments/await", params={"key": "work/auth-spike"}
         )
         since = first.json()["since"]
 
         watcher = asyncio.create_task(
             client.get(
-                "/api/rooms/lease-wake/leases/await",
+                "/api/rooms/lease-wake/assignments/await",
                 params={"key": "work/auth-spike", "since": since, "timeout": 10},
             )
         )
         await asyncio.sleep(0.1)
         await client.post(
-            "/api/rooms/lease-wake/leases/claim",
+            "/api/rooms/lease-wake/assignments/claim",
             json={"key": "work/auth-spike", "handle": "growth"},
         )
         body = (await watcher).json()
         assert body["changed"] is True
-        assert body["custody"] == "held"
+        assert body["assignment"] == "held"
         assert body["owner"] == "growth"
 
     async def test_unrelated_room_traffic_does_not_wake_it(self, client):
@@ -416,13 +429,13 @@ class TestAwaitOnALease:
         await make_room(client, "lease-quiet-watch")
         await make_work(client, "lease-quiet-watch", "work/auth-spike")
         first = await client.get(
-            "/api/rooms/lease-quiet-watch/leases/await", params={"key": "work/auth-spike"}
+            "/api/rooms/lease-quiet-watch/assignments/await", params={"key": "work/auth-spike"}
         )
         since = first.json()["since"]
 
         watcher = asyncio.create_task(
             client.get(
-                "/api/rooms/lease-quiet-watch/leases/await",
+                "/api/rooms/lease-quiet-watch/assignments/await",
                 params={"key": "work/auth-spike", "since": since, "timeout": 3},
             )
         )
@@ -433,7 +446,7 @@ class TestAwaitOnALease:
             )
         body = (await watcher).json()
         assert body["changed"] is False
-        assert body["custody"] == "unclaimed"
+        assert body["assignment"] == "unclaimed"
 
     async def test_a_lapsing_lease_is_a_transition_nobody_sent(self, client):
         """The one wake that has no writer: the holder went quiet, so the state
@@ -445,33 +458,33 @@ class TestAwaitOnALease:
             client,
             room,
             "work/auth-spike",
-            custody="held",
+            assignment="held",
             owner="@growth",
             claimed_at=(datetime.now(UTC) - timedelta(minutes=29, seconds=58)).isoformat(),
             ttl_minutes=30,
         )
         first = await client.get(
-            f"/api/rooms/{room}/leases/await", params={"key": "work/auth-spike"}
+            f"/api/rooms/{room}/assignments/await", params={"key": "work/auth-spike"}
         )
-        assert first.json()["custody"] == "held"
+        assert first.json()["assignment"] == "held"
         body = (
             await client.get(
-                f"/api/rooms/{room}/leases/await",
+                f"/api/rooms/{room}/assignments/await",
                 params={"key": "work/auth-spike", "since": first.json()["since"], "timeout": 10},
             )
         ).json()
         assert body["changed"] is True
-        assert body["custody"] == "expired"
+        assert body["assignment"] == "expired"
 
     async def test_the_watch_gives_up_and_says_nothing_moved(self, client):
         await make_room(client, "lease-timeout")
         await make_work(client, "lease-timeout", "work/auth-spike")
         first = await client.get(
-            "/api/rooms/lease-timeout/leases/await", params={"key": "work/auth-spike"}
+            "/api/rooms/lease-timeout/assignments/await", params={"key": "work/auth-spike"}
         )
         body = (
             await client.get(
-                "/api/rooms/lease-timeout/leases/await",
+                "/api/rooms/lease-timeout/assignments/await",
                 params={
                     "key": "work/auth-spike",
                     "since": first.json()["since"],

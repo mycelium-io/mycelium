@@ -11,7 +11,7 @@ that consensus and compiles it — via one LLM call — into concrete tasks.
 **A task is a row, not a line in a document.** Each one becomes a ``work/``
 memory with its own frontmatter, so it can carry an owner, a status and a
 lease, be grouped and filtered like anything else in the room, and be moved by
-a board verb. A shared checklist could do none of that: a ``- [ ]`` line has
+a board action. A shared checklist could do none of that: a ``- [ ]`` line has
 nowhere to put a field.
 
 The LLM still writes checklist lines, because that is the shape it is good at
@@ -135,8 +135,8 @@ class CompiledTask:
     """One unit of agreed work, before it becomes a row.
 
     ``assignee`` is who the task is *for*, lifted from an ``@handle`` in the
-    line. It is not custody: nobody has agreed to hold this yet, and a lease is
-    something an actor takes.
+    line. It is not an assignment: nobody has agreed to hold this yet, and an
+    assignment is something an actor takes.
     """
 
     title: str

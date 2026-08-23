@@ -743,9 +743,9 @@ That means there's no second place to keep up to date. Resolve a task and
 its row resolves. End a negotiation and its decision row closes. Nothing to
 groom, and nothing that can quietly disagree with the room it describes.
 
-## Three lenses
+## Three attention filters
 
-| Lens | What's in it |
+| Filter | What's in it |
 |---|---|
 | **Needs you** (default) | Open decisions, blocked work, reviews wanting eyes |
 | **In flight** | Claimed and moving: who holds it, which branch, CI state |
@@ -761,7 +761,7 @@ A row is a title plus whatever its markdown frontmatter carries. Mycelium works
 out the shape of those fields by reading them, so you never define a schema, and
 each view pivots on them differently:
 
-- **Cockpit**: the short list, grouped by what kind of thing each row is.
+- **Triage**: the short list, grouped by what kind of thing each row is.
 - **Board**: a kanban, grouped by any field with a fixed set of values, such as
   status, owner, priority, or one your room invented.
 - **Table**: the room as structured data, editable a cell at a time. A dropdown
@@ -824,7 +824,7 @@ is on this" forever, and the board degrades exactly as it gets busy: full of
 confident lies. Held as a lease, an abandoned claim drains and the row returns to
 the pool. A board whose agents all died an hour ago should read empty.
 
-That is the `custody` field, and it is a different axis from `status`:
+That is the `assignment` field, and it is a different axis from `status`:
 
 ```
 unclaimed → held → released / resolved
@@ -842,13 +842,13 @@ holder, and `expired` is read off the clock — recording it would need a proces
 alive at the moment the lease drained, which is exactly what stopped being true.
 `renewed` is not a state either: it is the event that keeps `held` fresh.
 
-**Leases live on `work/` memories.** Frontmatter has somewhere to put a stamp, so
+**Assignments live on `work/` memories.** Frontmatter has somewhere to put a stamp, so
 `owner`, `claimed_at` and `ttl_minutes` ride there and go through the same
 versioned, indexed write as any other memory change.
 
 **Being assigned is not being claimed.** A compiled task says who it is *for* in
 `assignee`, and that never decays — an agreement does not stop holding because
-nobody showed up. Whether anyone is actually on it right now is `custody`, a
+nobody showed up. Whether anyone is actually on it right now is `assignment`, a
 lease somebody takes and keeps alive. Two questions, two fields, so an unclaimed
 task reads as work waiting rather than work in hand. Episodes refuse a claim
 outright, and say why.
@@ -866,10 +866,10 @@ One keystroke each in the interface, one word each on the command line, and the
 same words agents use. Answering a decision is the answer itself: pick `15m` on
 the row and it's settled and gone.
 
-Every one of them writes. A verb puts frontmatter on the row's memory, through
+Every one of them writes. A row action puts frontmatter on the row's memory, through
 the same upsert a `memory set` goes through, so a card you move is a versioned,
 indexed change the room reads back rather than a change to your own view.
-Custody is the exception, and only because it needs to be: who holds a row moves
+Assignment is the exception, and only because it needs to be: who holds a row moves
 through a lease, under rules a plain write can't check. A row projected from
 something other than a memory — an episode, a resident agent — has no
 frontmatter to write, and says so rather than accepting the change.
@@ -879,7 +879,7 @@ blocker, so `block` writes `blocked_by` and the board derives the rest. Captured
 concerns expire if nobody claims them, so the board stays a picture of now
 instead of turning into a backlog. `promote` marks a row as belonging somewhere
 more durable and resolves it; filing the GitHub issue itself is still yours to
-do, and the verb doesn't invent a link it didn't create.
+do, and the action doesn't invent a link it didn't create.
 
 ## Waiting on a lease, not on the room
 
@@ -900,7 +900,7 @@ exists.
 
 The board is meant to be ignored until it matters, so it makes a sound when it
 changes: rising when something opens and wants you, falling when something
-closes. Only a new row in your "needs you" lens interrupts. It follows your
+closes. Only a new row in your "needs you" filter interrupts. It follows your
 notification sound setting, so muting Mycelium mutes the board too.
 
 ## GitHub, by reference
@@ -960,7 +960,7 @@ merges, and `done` the moment it does.
 
 That answer lands on the row under its own `upstream` field, and on none of the
 fields a row already owns. `status` is the row's stage (`open`, `in_review`,
-`resolved`, `dismissed`); `custody` is who holds it and for how much longer;
+`resolved`, `dismissed`); `assignment` is who holds it and for how much longer;
 `live` is a yes-or-no for whether an agent is resident on it. The two
 vocabularies used to share the word `blocked`, meaning different things — a
 person has blocked the row, versus the pull request is waiting on a person —
@@ -1012,11 +1012,11 @@ than GitHub, see [status providers](#architecture).
 
 ```bash
 mycelium board                            # what needs you
-mycelium board --lens in-flight           # claimed work, who holds it, CI
-mycelium board --lens all --view table    # the room as structured data
+mycelium board --filter in-flight         # claimed work, who holds it, CI
+mycelium board --filter all --view table  # the room as structured data
 mycelium board --group owner              # group by any field it found
 mycelium board --watch                    # keep it open, re-reading
-mycelium board claim work/auth-spike      # take custody, as a lease that drains
+mycelium board claim work/auth-spike      # take it, as a lease that drains
 mycelium board release work/auth-spike --note "handing over"
 mycelium board resolve t3                 # resolve a row
 mycelium board block t3 --on "#502"       # name what it is waiting on

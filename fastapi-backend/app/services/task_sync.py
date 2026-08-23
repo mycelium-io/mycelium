@@ -14,7 +14,7 @@ can actually pick up.
 ``work/`` memory through the canonical upsert. That makes a task the same kind
 of thing as everything else in the room: it carries frontmatter, so it has an
 owner, a status and a lease; it is indexed and link-parsed; and the board
-projects it as a row a verb can move. Fail-soft: a compiler outage falls back to
+projects it as a row an action can move. Fail-soft: a compiler outage falls back to
 the raw ``assignments`` so the verdict is never sunk.
 
 Each write announces itself the way every memory write does, so there is no
@@ -56,7 +56,7 @@ TASK_KIND = "action"
 #: Deliberately not ``owner``: that is the lease's, and a lease is something an
 #: actor takes under rules this stage cannot satisfy — it has no claim window,
 #: no renewal, and nobody on the other end who has agreed to hold anything. An
-#: assignment written as custody would be a claim on behalf of an agent that
+#: assignment written as assignment would be a claim on behalf of an agent that
 #: never made one, and it would drain to "expired" the moment its TTL passed.
 ASSIGNEE_FIELD = "assignee"
 

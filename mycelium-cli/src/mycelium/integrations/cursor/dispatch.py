@@ -160,8 +160,8 @@ class CursorIntegration(Integration):
         profile: str | None,
         container: str | None,
     ) -> None:
-        verb = "reinstalled" if reinstall else "installed"
-        typer.secho(f"Adapter 'cursor' {verb}.", fg=typer.colors.GREEN)
+        action = "reinstalled" if reinstall else "installed"
+        typer.secho(f"Adapter 'cursor' {action}.", fg=typer.colors.GREEN)
         typer.echo("  (no host-level files; cursor reads workspace-local rules)")
         typer.echo("")
         typer.secho("  Next steps:", bold=True)

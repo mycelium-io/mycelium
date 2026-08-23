@@ -13,8 +13,8 @@ from pathlib import Path
 
 import pytest
 
-from mycelium.board import activity, custody, model
-from mycelium.board.model import ItemSource, LiveItem, lens_of
+from mycelium.board import activity, assignment, model
+from mycelium.board.model import ItemSource, LiveItem, attention_of_status
 from mycelium.board.projection import project_items
 from mycelium.board.schema import groupable_fields, infer_schema
 from mycelium.board.upstream import UPSTREAM_STATES, attach_upstream
@@ -37,13 +37,13 @@ class TestVocabularyContract:
         assert CONTRACT["statuses"] == model.STATUSES
         assert CONTRACT["kinds"] == model.KINDS
         assert CONTRACT["priorities"] == model.PRIORITIES
-        assert CONTRACT["lenses"] == model.LENSES
-        assert CONTRACT["verbs"] == model.VERBS
+        assert CONTRACT["attention_filters"] == model.ATTENTION_FILTERS
+        assert CONTRACT["row_actions"] == model.ROW_ACTIONS
 
-    def test_every_status_maps_to_the_contracted_lens(self):
-        assert CONTRACT["lens_of_status"] == model.LENS_OF_STATUS
-        for status, lens in CONTRACT["lens_of_status"].items():
-            assert lens_of(status) == lens
+    def test_every_status_maps_to_the_contracted_attention_filter(self):
+        assert CONTRACT["attention_of_status"] == model.ATTENTION_OF_STATUS
+        for status, attention_filter in CONTRACT["attention_of_status"].items():
+            assert attention_of_status(status) == attention_filter
 
     def test_live_namespaces_match_the_contract(self):
         assert CONTRACT["live_namespaces"] == model.LIVE_NAMESPACES
@@ -148,7 +148,7 @@ class TestProjection:
         # An assignment is not a claim: the row stays unclaimed until somebody
         # takes it, so nothing asserts a holder who never agreed to hold it.
         assert rows[0].status == "open"
-        assert custody.custody_of(rows[0], NOW) == "unclaimed"
+        assert assignment.assignment_of(rows[0], NOW) == "unclaimed"
 
     def test_a_done_task_resolves(self):
         assert self.project()[1].status == "resolved"
@@ -199,7 +199,7 @@ class TestProjection:
         rows = self.project(agents=agents, members=[{"handle": "growth", "kind": "slim"}])
         agent_rows = [r for r in rows if r.id.startswith("agent:")]
         assert [r.id for r in agent_rows] == ["agent:growth"]
-        assert custody.lens_of_item(agent_rows[0], NOW) == "in_flight"
+        assert assignment.attention_of_item(agent_rows[0], NOW) == "in_flight"
 
     def test_a_live_episode_reads_as_a_decision_and_drops_the_urn(self):
         episodes = [
@@ -357,7 +357,7 @@ class TestActivity:
                 }
             ]
         )
-        assert events[0].verb == "negotiated"
+        assert events[0].action == "negotiated"
         assert events[0].title == "round 4 · @risk accept"
         assert "{" not in events[0].title
 
@@ -391,7 +391,7 @@ class TestActivity:
             ],
         )
         assert len(events) == 1
-        assert (events[0].actor, events[0].verb) == ("growth", "revised")
+        assert (events[0].actor, events[0].action) == ("growth", "revised")
 
     def test_anything_unattributed_or_untimed_is_dropped(self):
         events = self.project(
@@ -461,7 +461,7 @@ class TestActivity:
             ("growth", 1),
         ]
         assert summary.active_days == 1
-        assert summary.by_verb == [("posted", 3)]
+        assert summary.by_action == [("posted", 3)]
 
 
 def status_payload(*entries, rows=None) -> dict:

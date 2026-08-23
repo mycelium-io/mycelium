@@ -208,34 +208,34 @@ export async function createMemories(
   });
 }
 
-// ── Custody leases ────────────────────────────────────────────────────────────
+// ── Assignments ──────────────────────────────────────────────────────────────────
 
-/** One row's custody, as `/rooms/{room}/leases/*` answers it. */
-export interface LeaseState {
+/** One row's assignment, as `/rooms/{room}/assignments/*` answers it. */
+export interface AssignmentState {
   key: string;
-  custody: string;
+  assignment: string;
   owner: string | null;
   claimed_at: string | null;
   ttl_minutes: number | null;
   freshness: string | null;
   version: number | null;
-  custody_note: string | null;
-  custody_note_by: string | null;
+  assignment_note: string | null;
+  assignment_note_by: string | null;
 }
 
 /**
- * Take, hand back, or close out custody of a `work/` row.
+ * Take, hand back, or close out assignment of a `work/` row.
  *
  * The write lands as frontmatter through the room's canonical memory upsert, so
  * a claim made from the browser is the same versioned, indexed change a claim
  * made from the CLI is — there is no second store for what the board knows.
  */
-export async function writeLease(
+export async function writeAssignment(
   roomName: string,
   action: "claim" | "release" | "resolve",
   body: { key: string; handle: string; ttl_minutes?: number; note?: string },
-): Promise<LeaseState> {
-  return apiFetch<LeaseState>(`/api/rooms/${roomName}/leases/${action}`, {
+): Promise<AssignmentState> {
+  return apiFetch<AssignmentState>(`/api/rooms/${roomName}/assignments/${action}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -249,7 +249,7 @@ export interface FieldState {
 }
 
 /**
- * Put fields on a row — the write behind every board verb that is not custody.
+ * Put fields on a row — the write behind every board action that is not assignment.
  *
  * The same upsert a `memory set --meta` goes through, so a status changed by
  * dragging a card is the same versioned, indexed, broadcast change an agent

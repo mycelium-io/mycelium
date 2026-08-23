@@ -252,17 +252,17 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Guide"
   },
   {
-    "u": "index.html#board-three-lenses",
-    "t": "Three lenses",
+    "u": "index.html#board-three-attention-filters",
+    "t": "Three attention filters",
     "s": "Concepts › Board",
-    "x": "Lens What's in it Needs you (default) Open decisions, blocked work, reviews wanting eyes In flight Claimed and moving: who holds it, which branch, CI state Resolved Closed today, then it drops off You get the narrow one by default. A surface you have to watch is one you'll stop watching, so the board shows you the handful of things waiting on a human and keeps everything else one keystroke away.",
+    "x": "Filter What's in it Needs you (default) Open decisions, blocked work, reviews wanting eyes In flight Claimed and moving: who holds it, which branch, CI state Resolved Closed today, then it drops off You get the narrow one by default. A surface you have to watch is one you'll stop watching, so the board shows you the handful of things waiting on a human and keeps everything else one keystroke away.",
     "p": "Guide"
   },
   {
     "u": "index.html#board-five-ways-to-read-the-same-rows",
     "t": "Five ways to read the same rows",
     "s": "Concepts › Board",
-    "x": "A row is a title plus whatever its markdown frontmatter carries. Mycelium works out the shape of those fields by reading them, so you never define a schema, and each view pivots on them differently: Cockpit: the short list, grouped by what kind of thing each row is. Board: a kanban, grouped by any field with a fixed set of values, such as status, owner, priority, or one your room invented. Table: the room as structur",
+    "x": "A row is a title plus whatever its markdown frontmatter carries. Mycelium works out the shape of those fields by reading them, so you never define a schema, and each view pivots on them differently: Triage: the short list, grouped by what kind of thing each row is. Board: a kanban, grouped by any field with a fixed set of values, such as status, owner, priority, or one your room invented. Table: the room as structure",
     "p": "Guide"
   },
   {
@@ -297,7 +297,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "index.html#board-one-gesture-each",
     "t": "One gesture each",
     "s": "Concepts › Board",
-    "x": "claim · release · resolve · block · promote · dismiss One keystroke each in the interface, one word each on the command line, and the same words agents use. Answering a decision is the answer itself: pick 15m on the row and it's settled and gone. Every one of them writes. A verb puts frontmatter on the row's memory, through the same upsert a memory set goes through, so a card you move is a versioned, indexed change t",
+    "x": "claim · release · resolve · block · promote · dismiss One keystroke each in the interface, one word each on the command line, and the same words agents use. Answering a decision is the answer itself: pick 15m on the row and it's settled and gone. Every one of them writes. A row action puts frontmatter on the row's memory, through the same upsert a memory set goes through, so a card you move is a versioned, indexed ch",
     "p": "Guide"
   },
   {
@@ -311,7 +311,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "index.html#board-you-can-hear-it",
     "t": "You can hear it",
     "s": "Concepts › Board",
-    "x": "The board is meant to be ignored until it matters, so it makes a sound when it changes: rising when something opens and wants you, falling when something closes. Only a new row in your \"needs you\" lens interrupts. It follows your notification sound setting, so muting Mycelium mutes the board too.",
+    "x": "The board is meant to be ignored until it matters, so it makes a sound when it changes: rising when something opens and wants you, falling when something closes. Only a new row in your \"needs you\" filter interrupts. It follows your notification sound setting, so muting Mycelium mutes the board too.",
     "p": "Guide"
   },
   {
@@ -339,7 +339,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "index.html#board-cli",
     "t": "CLI",
     "s": "Concepts › Board",
-    "x": "mycelium board # what needs you mycelium board --lens in-flight # claimed work, who holds it, CI mycelium board --lens all --view table # the room as structured data mycelium board --group owner # group by any field it found mycelium board --watch # keep it open, re-reading mycelium board claim work/auth-spike # take custody, as a lease that drains mycelium board release work/auth-spike --note \"handing over\" mycelium",
+    "x": "mycelium board # what needs you mycelium board --filter in-flight # claimed work, who holds it, CI mycelium board --filter all --view table # the room as structured data mycelium board --group owner # group by any field it found mycelium board --watch # keep it open, re-reading mycelium board claim work/auth-spike # take it, as a lease that drains mycelium board release work/auth-spike --note \"handing over\" mycelium ",
     "p": "Guide"
   },
   {

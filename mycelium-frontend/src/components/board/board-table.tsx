@@ -6,7 +6,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { lensOf, type LiveItem } from "@/lib/board/item";
+import { attentionFilterOf, type LiveItem } from "@/lib/board/item";
 import type { FieldSchema } from "@/lib/board/schema";
 import { KindIcon } from "./board-cells";
 
@@ -66,7 +66,7 @@ export function BoardTable({ items, schema, now, selectedId, onSelect, onEdit, s
               className={cn(
                 "group",
                 item.id === selectedId ? "bg-elevated" : "hover:bg-hairline",
-                lensOf(item, now) === "resolved" && "opacity-65",
+                attentionFilterOf(item, now) === "resolved" && "opacity-65",
               )}
             >
               <td className="max-w-[380px] border-b border-hairline px-2 py-1.5">

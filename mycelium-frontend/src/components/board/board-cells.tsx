@@ -17,7 +17,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { custodyNote, custodyOf, remainingMinutes } from "@/lib/board/custody";
+import { assignmentNote, assignmentOf, remainingMinutes } from "@/lib/board/assignment";
 import {
   fieldAsBool,
   fieldAsList,
@@ -32,7 +32,7 @@ import {
   type Priority,
 } from "@/lib/board/item";
 
-/** One glyph + colour per row kind — the cockpit's fastest read. */
+/** One glyph + colour per row kind — the triage's fastest read. */
 const KIND_STYLE: Record<ItemKind, { icon: typeof CircleDot; color: string; label: string }> = {
   decision: { icon: CircleHelp, color: "var(--accent)", label: "decision" },
   blocked: { icon: Ban, color: "var(--red)", label: "blocked" },
@@ -300,14 +300,14 @@ const TTL_VISIBLE_FROM = 0.4;
 /**
  * Who holds this row, and what happened to the last person who did.
  *
- * A row with no custody axis reads as it always did — a plan task's owner is a
+ * A row with no assignment axis reads as it always did — a plan task's owner is a
  * commitment, not a lease, so it gets a plain handle and nothing that drains.
  * The states that are not `held` are the interesting ones: `released` and
  * `expired` leave the same unclaimed row behind, and only the note's author says
  * which happened, so the byline is rendered rather than summarised away.
  */
-export function CustodyChip({ item, now }: { item: LiveItem; now: number }) {
-  const state = custodyOf(item, now);
+export function AssignmentChip({ item, now }: { item: LiveItem; now: number }) {
+  const state = assignmentOf(item, now);
   const holder = fieldAsString(item, "owner");
 
   if (state === null || state === "unclaimed") {
@@ -328,7 +328,7 @@ export function CustodyChip({ item, now }: { item: LiveItem; now: number }) {
     );
   }
 
-  const note = custodyNote(item, now);
+  const note = assignmentNote(item, now);
   return (
     <span
       className={cn(

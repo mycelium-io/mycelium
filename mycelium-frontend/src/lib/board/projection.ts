@@ -5,14 +5,14 @@
  * Project what the room already has into board rows.
  *
  * Nothing here is a new store: episodes, memories and presence are
- * read where they live and flattened into one row shape. The board is a lens on
+ * read where they live and flattened into one row shape. The board is one filter on
  * the room, so a row can't be stale relative to the thing it describes, and
  * deleting the board would lose nothing.
  */
 
 import type { AgentSummary, EpisodeSummary, Memory } from "@/lib/api";
 import type { PresenceMember } from "@/lib/api";
-import { CUSTODY_FIELD, DEFAULT_TTL_MINUTES, LEASABLE_NAMESPACES, custodyOf } from "./custody";
+import { ASSIGNMENT_FIELD, DEFAULT_TTL_MINUTES, ASSIGNABLE_NAMESPACES, assignmentOf } from "./assignment";
 import type { LiveItem } from "./item";
 import { memoryHref } from "@/lib/memory-routes";
 
@@ -97,7 +97,7 @@ function memoryItem(memory: Memory, room: string): LiveItem {
     fields: {
       status: typeof custom.status === "string" ? custom.status : derivedStatus,
       kind: namespace === "decisions" ? "decision" : namespace === "failed" ? "blocked" : "concern",
-      // Who wrote it last is provenance, not custody. Reading `owner` off
+      // Who wrote it last is provenance, not assignment. Reading `owner` off
       // `updated_by` gave every memory in the room a holder, which is the
       // confident-lie failure this axis exists to stop: a holder is something a
       // claim writes, so an unclaimed row says nobody.
@@ -111,7 +111,7 @@ function memoryItem(memory: Memory, room: string): LiveItem {
       // `work/` is the in-flight unit, so it is the namespace that carries a
       // lease: frontmatter has somewhere to put a stamp, which is why leases
       // live here and not on plan tasks.
-      ...(LEASABLE_NAMESPACES.includes(namespace) ? { [CUSTODY_FIELD]: "unclaimed" } : {}),
+      ...(ASSIGNABLE_NAMESPACES.includes(namespace) ? { [ASSIGNMENT_FIELD]: "unclaimed" } : {}),
       ...custom,
       ...meta,
     },
@@ -142,7 +142,7 @@ function agentItem(agent: AgentSummary, presence: PresenceMember, now: string): 
       live: true,
       updated: lastSeen,
       // Presence is a lease: the row drains unless the runtime keeps renewing it.
-      [CUSTODY_FIELD]: "held",
+      [ASSIGNMENT_FIELD]: "held",
       claimed_at: lastSeen,
       ttl_minutes: DEFAULT_TTL_MINUTES,
     },
@@ -183,7 +183,7 @@ export function projectItems(input: ProjectionInput): LiveItem[] {
     const presence = input.presence.get(agent.handle.toLowerCase());
     if (!presence) continue;
     const row = agentItem(agent, presence, input.now);
-    if (custodyOf(row, clock) === "held") items.push(row);
+    if (assignmentOf(row, clock) === "held") items.push(row);
   }
   items.push(...(input.captured ?? []));
 

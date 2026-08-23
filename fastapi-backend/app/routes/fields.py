@@ -2,7 +2,7 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-Field API — the board's verbs, written down.
+Field API — the board's row actions, written down.
 
 GET  /rooms/{room}/fields/{key}   — a row's writable fields right now
 POST /rooms/{room}/fields         — put fields on a row
@@ -14,7 +14,7 @@ happen.
 
 A board that changed a row's status in the browser and nowhere else was a
 surface asserting something the room had never been told.  This is the write
-that makes a verb real, and it is deliberately the *same* upsert a ``memory
+that makes a row action real, and it is deliberately the *same* upsert a ``memory
 set`` goes through — a human moving a card and an agent writing frontmatter are
 one operation, so they leave one kind of trace.
 """
@@ -50,7 +50,7 @@ class WriteBody(BaseModel):
         ...,
         description=(
             "Frontmatter to merge onto the row. A null value clears its key. "
-            "Custody keys are refused: those move through /leases."
+            "Assignment keys are refused: those move through /assignments."
         ),
     )
 
