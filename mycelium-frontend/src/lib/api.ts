@@ -8,6 +8,7 @@
 
 import type { SearchResponse } from "@/lib/search";
 import { encodeMemoryKeyPath } from "@/lib/memory-routes";
+import type { RoomStatus } from "@/lib/board/upstream";
 
 /**
  * Attach to a fetch `.catch` to surface network failures in the browser console.
@@ -403,6 +404,23 @@ export async function fetchSkills(roomName: string): Promise<Skill[]> {
     fallback: { skills: [] },
   });
   return data.skills ?? [];
+}
+
+/** What the tools a room points at say about the work its rows mention.
+ *  A read is answered from the hub's cache and never fetches, so polling this
+ *  costs a cache lookup rather than a round trip to GitHub. */
+export async function fetchRoomStatus(roomName: string): Promise<RoomStatus> {
+  return apiFetch<RoomStatus>(`/api/rooms/${roomName}/status`, {
+    cache: "no-store",
+    fallback: {
+      room: roomName,
+      field: "upstream",
+      providers: [],
+      refs: [],
+      rows: {},
+      refreshing: false,
+    },
+  });
 }
 
 // ── Plan ─────────────────────────────────────────────────────────────────────

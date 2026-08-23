@@ -330,6 +330,22 @@ export async function handleMock(req: Request): Promise<Response | null> {
       return null;
     }
 
+    // GET /status — what the tools this room's rows point at say. Fixtures carry
+    // the resolved answers; the real hub resolves them through a provider.
+    case "status": {
+      if (method !== "GET") return null;
+      return json(
+        fx.status ?? {
+          room: name,
+          field: "upstream",
+          providers: ["github"],
+          refs: [],
+          rows: {},
+          refreshing: false,
+        },
+      );
+    }
+
     case "messages": {
       // GET /messages/l9 — the L9 wire feed for the Network pane.
       if (sub[1] === "l9" && method === "GET") {

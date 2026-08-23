@@ -26,6 +26,7 @@ import {
   PriorityMeter,
   SourceTag,
   TtlBar,
+  UpstreamChip,
   WorkLinks,
 } from "./board-bits";
 
@@ -140,6 +141,7 @@ function CockpitRow({
           <span className="text-faint">·</span>
           <OwnerChip handle={owner} live={item.fields.live === true} />
           <WorkLinks item={item} />
+          <UpstreamChip item={item} />
           <BlocksNote item={item} />
           {waiting && <span className="text-micro text-red">{waiting}</span>}
           <LiveDot item={item} />

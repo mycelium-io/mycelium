@@ -30,7 +30,7 @@ from rich.live import Live
 from rich.table import Table
 from rich.text import Text
 
-from mycelium.board import LiveItem, infer_schema, project_items
+from mycelium.board import LiveItem, attach_upstream, infer_schema, project_items
 from mycelium.board.activity import (
     DAILY_GOAL,
     by_day,
@@ -81,6 +81,18 @@ GROUP_LABEL = {
 
 CI_COLOR = {"green": "green", "running": "yellow", "red": "red"}
 
+#: How a provider's answer reads on a row. `done` is deliberately dim: a merged
+#: pull request is finished, and a board that shouts about finished work buries
+#: the work that isn't.
+UPSTREAM_COLOR = {
+    "failed": "red",
+    "blocked": "red",
+    "pending": "yellow",
+    "ok": "green",
+    "done": "dim",
+    "unknown": "dim",
+}
+
 #: Widest title a row prints before it is elided.
 TITLE_WIDTH = 50
 
@@ -105,6 +117,9 @@ def _fetch_raw(room: str | None) -> tuple[str, dict[str, Any], bool]:
         plan = get(f"/api/rooms/{name}/plan", None)
         episodes = get(f"/api/rooms/{name}/episodes", {})
         memories = get(f"/api/rooms/{name}/memory?limit=50", [])
+        # What the tools the room points at say. A read never fetches hub-side,
+        # so this costs a cache lookup, not a round trip to GitHub.
+        upstream = get(f"/api/rooms/{name}/status", None)
         agents = get(f"/api/rooms/{name}/agents", [])
         members = get(f"/api/rooms/{name}/sessions/members", {})
         messages = get(f"/api/rooms/{name}/messages?limit=300", {})
@@ -118,6 +133,7 @@ def _fetch_raw(room: str | None) -> tuple[str, dict[str, Any], bool]:
             "agents": agents if isinstance(agents, list) else [],
             "members": (members or {}).get("members", []) if isinstance(members, dict) else [],
             "messages": (messages or {}).get("messages", []) if isinstance(messages, dict) else [],
+            "upstream": upstream if isinstance(upstream, dict) else None,
         },
         plan is not None,
     )
@@ -127,18 +143,15 @@ def _fetch(room: str | None) -> tuple[str, list[LiveItem], bool]:
     """Read every source the board projects.  A source that isn't reachable
     contributes nothing rather than failing the whole board."""
     name, sources, reachable = _fetch_raw(room)
-    return (
-        name,
-        project_items(
-            plan=sources["plan"],
-            episodes=sources["episodes"],
-            memories=sources["memories"],
-            agents=sources["agents"],
-            members=sources["members"],
-            now=datetime.now(UTC),
-        ),
-        reachable,
+    items = project_items(
+        plan=sources["plan"],
+        episodes=sources["episodes"],
+        memories=sources["memories"],
+        agents=sources["agents"],
+        members=sources["members"],
+        now=datetime.now(UTC),
     )
+    return name, attach_upstream(items, sources["upstream"]), reachable
 
 
 # ── rendering ────────────────────────────────────────────────────────────────
@@ -164,6 +177,17 @@ def _row_lines(item: LiveItem, now: datetime) -> Text:
         meta.append(f"  {branch}", style="dim")
     if ci := item.text("ci"):
         meta.append(f"  CI {ci}", style=CI_COLOR.get(ci, "dim"))
+    if upstream := item.text("upstream"):
+        # The provider's own wording, not ours: "changes requested" is what the
+        # reader recognises, and the state behind it is what the board sorts by.
+        label = item.text("upstream_label") or upstream
+        meta.append(f"  {label}", style=UPSTREAM_COLOR.get(upstream, "dim"))
+        if (count := item.get("upstream_count")) and isinstance(count, int):
+            meta.append(f" +{count - 1}", style="dim")
+        # The answer's own age, not the row's: an agent reading "CI green" needs
+        # to know how old that is, and the two surfaces must not differ on it.
+        if age := item.text("upstream_age"):
+            meta.append(f" {age}", style="dim")
     if pr := item.text("pr"):
         meta.append(f"  {pr}", style="dim")
     if blocked_by := item.strings("blocked_by"):

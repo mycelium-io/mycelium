@@ -138,6 +138,67 @@ const CI_TONE: Record<string, string> = {
   red: "var(--red)",
 };
 
+/**
+ * How a provider's answer reads. `done` is deliberately quiet: a merged pull
+ * request is finished, and a board that shouts about finished work buries the
+ * work that isn't.
+ */
+const UPSTREAM_TONE: Record<string, string> = {
+  failed: "var(--red)",
+  blocked: "var(--red)",
+  pending: "var(--yellow)",
+  ok: "var(--green)",
+  done: "var(--muted-foreground)",
+  unknown: "var(--muted-foreground)",
+};
+
+/**
+ * What the tool this row points at says about it, in that tool's own words.
+ *
+ * The provider's label is shown verbatim ("changes requested", "CI failing")
+ * because that is the phrasing the reader already recognises; the state behind
+ * it is what the board sorts and colours by. A stale answer wears its age, so a
+ * reader is never asked to trust a number without knowing how old it is.
+ */
+export function UpstreamChip({ item }: { item: LiveItem }) {
+  const state = str(item, "upstream");
+  if (!state) return null;
+  const label = str(item, "upstream_label") ?? state;
+  const age = str(item, "upstream_age");
+  const url = str(item, "upstream_url");
+  const more = item.fields.upstream_count;
+  const tone = UPSTREAM_TONE[state] ?? "var(--muted-foreground)";
+
+  const body = (
+    <>
+      <span className="size-1.5 rounded-full" style={{ background: tone }} />
+      {label}
+      {typeof more === "number" && more > 1 && (
+        <span className="text-muted-foreground">+{more - 1}</span>
+      )}
+      {age && <span className="text-faint">{age}</span>}
+    </>
+  );
+
+  const className = "inline-flex items-center gap-1 font-mono text-micro";
+  return url ? (
+    <a
+      href={url}
+      target="_blank"
+      rel="noreferrer noopener"
+      className={cn(className, "hover:underline")}
+      style={{ color: tone }}
+      title={`${state} upstream`}
+    >
+      {body}
+    </a>
+  ) : (
+    <span className={className} style={{ color: tone }} title={`${state} upstream`}>
+      {body}
+    </span>
+  );
+}
+
 /** The work-links strip: branch · CI · PR · issue, only what the row carries. */
 export function WorkLinks({ item }: { item: LiveItem }) {
   const branch = str(item, "branch");

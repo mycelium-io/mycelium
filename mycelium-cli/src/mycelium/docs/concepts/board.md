@@ -187,14 +187,22 @@ sort, filter and colour by without knowing what a pull request is:
 job is keeping them apart: an approved pull request is `ok` right up until it
 merges, and `done` the moment it does.
 
-That answer will land on the row under its own `upstream` field, and on neither
-of the two fields a row already owns. `status` is the row's lifecycle (`open`,
+That answer lands on the row under its own `upstream` field, and on neither of
+the two fields a row already owns. `status` is the row's lifecycle (`open`,
 `claimed`, `in_progress`, `blocked`, `resolved`), and both sets of words contain
 `blocked` meaning different things: a person has blocked the row, versus the pull
 request is waiting on a person. `live` is the row's other one, a yes-or-no for
 whether an agent is resident on it. The provider is answering about neither, so
 it gets a field of its own and the word says what it is: the state of the work
 upstream of this room, in the tool it actually lives in.
+
+A row shows the tool's own words, so a task waiting on a review reads `changes
+requested` and one with red checks reads `CI failing`. The state behind those
+words is what the board groups, filters and colours by, which means you can
+group by `upstream` like any other field. An answer wears its age, because "CI
+green" an hour old is a different claim from "CI green" a minute old. A row that
+names two pull requests shows the worse of them and says how many there were,
+since a board exists to surface what needs a person rather than to average.
 
 GitHub maps onto the six more narrowly than you might guess. `ok` needs an
 approval, so green checks with no review yet are `pending` / `awaiting review`.

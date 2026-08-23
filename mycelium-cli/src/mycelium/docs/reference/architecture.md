@@ -218,12 +218,11 @@ work already lives in**, so that a [board](#board) row pointing at a pull reques
 can report whether it's approved, blocked or failing instead of someone copying
 that state into Mycelium.
 
-> **Experimental.** The contract, the GitHub provider, the credential store and
-> the API below all work: give the hub a token and
-> `GET /api/rooms/{room}/status` answers for every reference your room's text
-> mentions. What is not wired yet is the surface: no board row carries the
-> answer, and nothing refreshes on a schedule, so a reference goes stale until
-> someone reads it again. Check the module before writing a provider.
+> **Experimental.** This works end to end: give the hub a token, write a pull
+> request into a plan task, and the board row for that task carries the pull
+> request's state, in both the app and `mycelium board`. What is still missing
+> is a schedule. Nothing refreshes on its own, so an answer goes stale until
+> someone reads the board again. Check the module before writing a provider.
 
 | Provider | Recognises | Reports |
 |----------|------------|---------|
@@ -360,8 +359,8 @@ Map your tool's vocabulary onto the six states in the
 `unknown`, and keep your own wording as the label. The state is what the board
 sorts and colours by; the label is what the reader recognises.
 
-Your answer will land on a row under an `upstream` field, and on neither field a
-row already owns. Not `status`, the row's own lifecycle, whose vocabulary shares
+Your answer lands on a row under an `upstream` field, and on neither field a row
+already owns. Not `status`, the row's own lifecycle, whose vocabulary shares
 the word `blocked` with yours and means something else by it. Not `live` either,
 which is a yes-or-no for whether an agent is resident on the row. In the backend
 the answer is a `Liveness`, kept apart from both for the same reason.
