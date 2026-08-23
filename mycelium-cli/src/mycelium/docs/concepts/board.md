@@ -204,6 +204,16 @@ green" an hour old is a different claim from "CI green" a minute old. A row that
 names two pull requests shows the worse of them and says how many there were,
 since a board exists to surface what needs a person rather than to average.
 
+The first look at a room is the interesting case. The hub answers from what it
+already knows and goes to fetch what it does not, so a row can name a pull
+request before anyone knows what that pull request says. Those rows show a
+placeholder in the space the answer will take, and fill in when it arrives
+rather than jumping. That is a different thing from `unknown`, which is a
+provider telling you it met a state it could not place, and different again from
+a row that points nowhere and shows nothing at all. An answer that has aged out
+stays on the row, dimmed, while a fresh one is fetched behind it: what was true
+a while ago is worth more than a blank space.
+
 GitHub maps onto the six more narrowly than you might guess. `ok` needs an
 approval, so green checks with no review yet are `pending` / `awaiting review`.
 Changes requested is `blocked` and red CI is `failed`: a person is the fix in

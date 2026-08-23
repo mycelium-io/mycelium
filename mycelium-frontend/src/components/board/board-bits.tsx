@@ -153,6 +153,29 @@ const UPSTREAM_TONE: Record<string, string> = {
 };
 
 /**
+ * A row that points somewhere but has no answer yet.
+ *
+ * The hub answers a read from cache and refreshes behind it, so the first look
+ * at a room knows a task names a pull request without knowing what the pull
+ * request says. A skeleton is the honest shape of that: it holds the space the
+ * answer will take, so the row does not reflow when it lands, and it says
+ * "coming" rather than showing a state nobody reported.
+ */
+function UpstreamSkeleton({ label }: { label: string | null }) {
+  return (
+    <span
+      className="inline-flex items-center gap-1 font-mono text-micro text-faint"
+      title={label ?? "checking upstream"}
+      aria-busy="true"
+      aria-label="checking upstream"
+    >
+      <span className="size-1.5 animate-pulse rounded-full bg-border2" />
+      <span className="h-2 w-16 animate-pulse rounded-full bg-border2" />
+    </span>
+  );
+}
+
+/**
  * What the tool this row points at says about it, in that tool's own words.
  *
  * The provider's label is shown verbatim ("changes requested", "CI failing")
@@ -162,16 +185,31 @@ const UPSTREAM_TONE: Record<string, string> = {
  */
 export function UpstreamChip({ item }: { item: LiveItem }) {
   const state = str(item, "upstream");
-  if (!state) return null;
+  // No state and a pending marker means the answer is still coming, which is a
+  // different thing from a row that points nowhere (nothing at all) and from
+  // `unknown`, which is a provider saying it could not place what it found.
+  if (!state) {
+    return bool(item, "upstream_pending") ? (
+      <UpstreamSkeleton label={str(item, "upstream_label")} />
+    ) : null;
+  }
   const label = str(item, "upstream_label") ?? state;
   const age = str(item, "upstream_age");
   const url = str(item, "upstream_url");
   const more = item.fields.upstream_count;
+  const freshness = str(item, "upstream_freshness");
   const tone = UPSTREAM_TONE[state] ?? "var(--muted-foreground)";
+  // A stale answer is still the truth as far as anyone knows; it just has a
+  // refresh running behind it. Dimming it and pulsing the dot says that without
+  // taking the value away, which a spinner in its place would.
+  const aging = freshness === "stale" || freshness === "error";
 
   const body = (
     <>
-      <span className="size-1.5 rounded-full" style={{ background: tone }} />
+      <span
+        className={cn("size-1.5 rounded-full", aging && "animate-pulse")}
+        style={{ background: tone }}
+      />
       {label}
       {typeof more === "number" && more > 1 && (
         <span className="text-muted-foreground">+{more - 1}</span>
@@ -180,7 +218,10 @@ export function UpstreamChip({ item }: { item: LiveItem }) {
     </>
   );
 
-  const className = "inline-flex items-center gap-1 font-mono text-micro";
+  const className = cn(
+    "inline-flex items-center gap-1 font-mono text-micro transition-opacity",
+    aging && "opacity-70",
+  );
   return url ? (
     <a
       href={url}
@@ -188,12 +229,16 @@ export function UpstreamChip({ item }: { item: LiveItem }) {
       rel="noreferrer noopener"
       className={cn(className, "hover:underline")}
       style={{ color: tone }}
-      title={`${state} upstream`}
+      title={`${state} upstream${aging ? `, ${freshness}` : ""}`}
     >
       {body}
     </a>
   ) : (
-    <span className={className} style={{ color: tone }} title={`${state} upstream`}>
+    <span
+      className={className}
+      style={{ color: tone }}
+      title={`${state} upstream${aging ? `, ${freshness}` : ""}`}
+    >
       {body}
     </span>
   );

@@ -177,6 +177,11 @@ def _row_lines(item: LiveItem, now: datetime) -> Text:
         meta.append(f"  {branch}", style="dim")
     if ci := item.text("ci"):
         meta.append(f"  CI {ci}", style=CI_COLOR.get(ci, "dim"))
+    if item.get("upstream_pending") and not item.get("upstream"):
+        # A row that points somewhere but has no answer yet. The terminal's
+        # version of a skeleton: hold the space, say it is coming, and never
+        # print a state nobody reported.
+        meta.append("  checking…", style="dim")
     if upstream := item.text("upstream"):
         # The provider's own wording, not ours: "changes requested" is what the
         # reader recognises, and the state behind it is what the board sorts by.
@@ -188,6 +193,10 @@ def _row_lines(item: LiveItem, now: datetime) -> Text:
         # to know how old that is, and the two surfaces must not differ on it.
         if age := item.text("upstream_age"):
             meta.append(f" {age}", style="dim")
+        # A stale answer is still the truth as far as anyone knows, with a
+        # refresh running behind it; saying so beats taking the value away.
+        if item.text("upstream_freshness") in ("stale", "error"):
+            meta.append(" (refreshing)", style="dim")
     if pr := item.text("pr"):
         meta.append(f"  {pr}", style="dim")
     if blocked_by := item.strings("blocked_by"):

@@ -437,8 +437,9 @@ def status_payload(*entries, rows=None) -> dict:
     }
 
 
-def answer(ref: str, state: str, label: str | None = None, **extra) -> dict:
-    return {"ref": ref, "state": state, "label": label, "url": None, "error": None, **extra}
+def answer(ref: str, state: str | None, label: str | None = None, **extra) -> dict:
+    base = {"ref": ref, "state": state, "label": label, "url": None, "error": None}
+    return {**base, "freshness": "fresh", **extra}
 
 
 class TestUpstream:
@@ -490,6 +491,45 @@ class TestUpstream:
         rows = [item("plan:tasks:3", status="open")]
         attach_upstream(rows, None)
         assert rows[0].fields == {"status": "open"}
+
+    def test_a_row_whose_answer_has_not_come_back_is_pending_not_unknown(self):
+        rows = [item("plan:tasks:3")]
+        payload = status_payload(
+            answer("a", None, freshness="missing"), rows={"plan:tasks:3": ["a"]}
+        )
+        attach_upstream(rows, {**payload, "refreshing": True})
+        # `unknown` is a provider saying it could not place what it found; this
+        # is nobody having answered yet. Grouping by upstream must not collect a
+        # bucket of rows that were merely early.
+        assert "upstream" not in rows[0].fields
+        assert rows[0].get("upstream_pending") is True
+
+    def test_a_row_shows_what_is_known_when_one_of_two_answers_has_not_landed(self):
+        rows = [item("plan:tasks:3")]
+        attach_upstream(
+            rows,
+            status_payload(
+                answer("a", None, freshness="missing"),
+                answer("b", "blocked", "changes requested"),
+                rows={"plan:tasks:3": ["a", "b"]},
+            ),
+        )
+        assert rows[0].get("upstream") == "blocked"
+
+    def test_a_stale_value_is_kept_and_marked_rather_than_hidden(self):
+        rows = [item("plan:tasks:3")]
+        attach_upstream(
+            rows,
+            status_payload(
+                answer("a", "ok", "approved", freshness="stale", age_seconds=5400),
+                rows={"plan:tasks:3": ["a"]},
+            ),
+        )
+        # The truth as far as anyone knows, with a refresh behind it. Taking the
+        # value away would tell the reader less, not more.
+        assert rows[0].get("upstream") == "ok"
+        assert rows[0].get("upstream_freshness") == "stale"
+        assert rows[0].get("upstream_age") == "1h ago"
 
     def test_upstream_is_a_select_the_board_can_group_by(self):
         rows = [item("a", upstream="ok"), item("b", upstream="failed")]

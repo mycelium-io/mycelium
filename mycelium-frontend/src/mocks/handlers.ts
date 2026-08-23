@@ -34,6 +34,10 @@ const memText = (m: MockMemory): string =>
 
 /** A memory's manifest source — only the string-valued `agents/*` memories have
  *  one; object-valued rows return empty so the manifest regexes see no match. */
+/** Rooms whose status has been read once. The first read of each is answered
+ *  cold, so the mock passes through the same resolving state a real one does. */
+const statusWarmed = new Set<string>();
+
 const manifestText = (m: MockMemory): string => (typeof m.value === "string" ? m.value : "");
 
 /** A graph edge's `raw` markdown, synthesized for display — the fixtures only
@@ -332,18 +336,37 @@ export async function handleMock(req: Request): Promise<Response | null> {
 
     // GET /status — what the tools this room's rows point at say. Fixtures carry
     // the resolved answers; the real hub resolves them through a provider.
+    //
+    // The first read of a room answers with the references but no answers, the
+    // way the real hub does: a read never fetches, it reports what the cache
+    // holds and refreshes behind itself. Without that the mock would show a
+    // board that is never mid-resolution, which is the one state every real
+    // first look passes through.
     case "status": {
       if (method !== "GET") return null;
-      return json(
-        fx.status ?? {
-          room: name,
-          field: "upstream",
-          providers: ["github"],
-          refs: [],
-          rows: {},
-          refreshing: false,
-        },
-      );
+      const resolved = fx.status ?? {
+        room: roomName,
+        field: "upstream",
+        providers: ["github"],
+        refs: [],
+        rows: {},
+        refreshing: false,
+      };
+      if (resolved.refs.length > 0 && !statusWarmed.has(roomName)) {
+        statusWarmed.add(roomName);
+        return json({
+          ...resolved,
+          refs: resolved.refs.map(ref => ({
+            ...ref,
+            state: null,
+            label: null,
+            freshness: "missing" as const,
+            age_seconds: null,
+          })),
+          refreshing: true,
+        });
+      }
+      return json(resolved);
     }
 
     case "messages": {

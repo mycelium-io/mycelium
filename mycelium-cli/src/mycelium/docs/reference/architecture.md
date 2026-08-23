@@ -220,9 +220,10 @@ that state into Mycelium.
 
 > **Experimental.** This works end to end: give the hub a token, write a pull
 > request into a plan task, and the board row for that task carries the pull
-> request's state, in both the app and `mycelium board`. What is still missing
-> is a schedule. Nothing refreshes on its own, so an answer goes stale until
-> someone reads the board again. Check the module before writing a provider.
+> request's state, in both the app and `mycelium board`. Nothing refreshes on a
+> schedule: a read reports what is known, starts a fetch for what is not, and
+> the surfaces show that plainly rather than pretending. Check the module before
+> writing a provider.
 
 | Provider | Recognises | Reports |
 |----------|------------|---------|

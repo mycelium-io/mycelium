@@ -19,6 +19,13 @@
  * what needs you, so a task blocked on one pull request and green on another
  * reads as blocked; `upstream_count` says there was more than one, so the
  * summary never quietly stands in for the whole.
+ *
+ * **Not knowing yet is not a state.** The hub answers a read from cache and
+ * refreshes behind it, so the first read of a room has references but no answers
+ * for them. That is `upstream_pending`, and deliberately not `unknown`, which is
+ * a real thing a provider says when it meets a state it cannot place. A row that
+ * is pending carries no `upstream` at all, so a board grouping by the field
+ * never collects a bucket of rows that were merely early.
  */
 
 import type { LiveItem } from "./item";
@@ -94,19 +101,40 @@ export function attachUpstream(items: LiveItem[], status: RoomStatus | null | un
       .filter((r): r is UpstreamRef => r !== undefined);
     if (answers.length === 0) return item;
 
-    answers.sort((a, b) => rank(a.state) - rank(b.state));
+    // A resolved answer outranks one still coming, so a row with two references
+    // shows what is known rather than waiting on the slowest.
+    answers.sort((a, b) => {
+      const known = Number(b.state !== null) - Number(a.state !== null);
+      return known !== 0 ? known : rank(a.state) - rank(b.state);
+    });
     const worst = answers[0];
+
+    // Nothing has come back for this row yet. Say so, rather than showing a
+    // state nobody reported.
+    if (worst.state === null) {
+      return {
+        ...item,
+        fields: {
+          ...item.fields,
+          upstream_pending: worst.freshness === "missing" || status.refreshing,
+          upstream_label: worst.error,
+          upstream_freshness: worst.freshness,
+          ...(answers.length > 1 ? { upstream_count: answers.length } : {}),
+        },
+      };
+    }
 
     return {
       ...item,
       fields: {
         ...item.fields,
-        [UPSTREAM_FIELD]: worst.state ?? "unknown",
+        [UPSTREAM_FIELD]: worst.state,
         // An errored answer has no label of its own, so the reason stands in:
         // "not visible to this token" is the honest wording for that row.
         upstream_label: worst.label ?? worst.error,
         upstream_url: worst.url,
         upstream_age: upstreamAge(worst.age_seconds),
+        upstream_freshness: worst.freshness,
         ...(answers.length > 1 ? { upstream_count: answers.length } : {}),
       },
     };

@@ -313,7 +313,10 @@ describe("upstream answers on rows", () => {
     providers: ["github"],
     refs: refs.map(r => ({
       ref: r.ref ?? "x", provider: "github", kind: "pull_request", id: r.id ?? "o/r#1",
-      url: r.url ?? null, freshness: r.freshness ?? "fresh", state: r.state ?? "ok",
+      url: r.url ?? null, freshness: r.freshness ?? "fresh",
+      // `??` would swallow an explicit null, which is exactly the case these
+      // cover: a reference the hub has no answer for yet.
+      state: r.state === undefined ? "ok" : r.state,
       label: r.label ?? null, age_seconds: r.age_seconds ?? 0, error: r.error ?? null,
       origins: r.origins ?? [],
     })),
@@ -356,6 +359,44 @@ describe("upstream answers on rows", () => {
       status([{ ref: "a", state: "unknown", label: null, error: "not visible to this token" }], { "plan:t3": ["a"] }),
     );
     expect(out.fields.upstream_label).toBe("not visible to this token");
+  });
+
+  it("marks a row whose answer has not come back yet as pending, not unknown", () => {
+    const [out] = attachUpstream(
+      [row("plan:t3")],
+      { ...status([{ ref: "a", state: null, label: null, freshness: "missing" }], { "plan:t3": ["a"] }), refreshing: true },
+    );
+    // `unknown` is a provider saying it could not place what it found; this is
+    // nobody having answered yet. A board grouping by upstream must not collect
+    // a bucket of rows that were merely early.
+    expect(out.fields).not.toHaveProperty("upstream");
+    expect(out.fields.upstream_pending).toBe(true);
+  });
+
+  it("shows what is known on a row where one answer landed and another has not", () => {
+    const [out] = attachUpstream(
+      [row("plan:t3")],
+      status(
+        [
+          { ref: "a", state: null, freshness: "missing" },
+          { ref: "b", state: "blocked", label: "changes requested" },
+        ],
+        { "plan:t3": ["a", "b"] },
+      ),
+    );
+    expect(out.fields.upstream).toBe("blocked");
+  });
+
+  it("keeps a stale value and says it is stale rather than hiding it", () => {
+    const [out] = attachUpstream(
+      [row("plan:t3")],
+      status([{ ref: "a", state: "ok", label: "approved", freshness: "stale", age_seconds: 5400 }], { "plan:t3": ["a"] }),
+    );
+    // The truth as far as anyone knows, with a refresh behind it. Taking the
+    // value away would tell the reader less, not more.
+    expect(out.fields.upstream).toBe("ok");
+    expect(out.fields.upstream_freshness).toBe("stale");
+    expect(out.fields.upstream_age).toBe("1h ago");
   });
 
   it("reads an answer's age the way the rest of the board reads ages", () => {
