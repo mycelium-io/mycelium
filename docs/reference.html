@@ -955,6 +955,9 @@
 <span class="comment"># Root directory for .mycelium/ data (defaults to ~/.mycelium)</span>
 <span class="arg">data_dir</span> = <span class="str">&quot;&quot;</span>
 
+<span class="comment"># Which forwarders the backend may believe about the original request (rendered as uvicorn&#x27;s FORWARDED_ALLOW_IPS). Empty (the default) trusts only loopback, so a direct caller cannot spoof X-Forwarded-Proto and make the hub advertise a scheme it is not served on. Set it when a TLS-terminating reverse proxy fronts the backend, otherwise every absolute URL the hub generates (the A2A agent card&#x27;s `url` most visibly) comes out http:// on an https:// deployment. Use &#x27;*&#x27; when the backend is only reachable through that proxy, or a comma-separated list of proxy addresses. Example: mycelium config set runtime.trusted_proxies &#x27;*&#x27;</span>
+<span class="arg">trusted_proxies</span> = <span class="str">&quot;&quot;</span>
+
 <span class="comment"># Room management configuration.</span>
 <span class="cmd" id="config-rooms">[rooms]</span>
 
@@ -1341,6 +1344,17 @@ procedures/  Reusable how-to steps (do this again later)</code></pre>
       <p>The spoke reports <strong>spoke mode</strong>, checks backend reachability and HTTP auth status, and skips hub-only checks (Docker, SLIM PSK).</p>
       <h3 id="hub-and-spoke-secure-a-shared-hub">Secure a shared hub</h3>
       <p>When spokes reach the hub over a LAN or VPN, turn on HTTP authentication on the hub. See <a href="#auth">Authentication</a>. Without it, any peer on the network can read/write memory and post as any <code>@handle</code> — independent of SLIM PSK.</p>
+      <h3 id="hub-and-spoke-behind-a-tls-terminating-proxy">Behind a TLS-terminating proxy</h3>
+      <p>A public hub usually sits behind a reverse proxy (Caddy, nginx, a cloud load balancer) that terminates HTTPS and forwards plain HTTP to the backend container. The backend then sees an <code>http</code> request and builds every absolute URL with that scheme, so an external client reading the A2A agent card is pointed at <code>http://</code> for a hub that is only served over <code>https://</code>.</p>
+      <p>The proxy says what the original request was in <code>X-Forwarded-Proto</code>, but the backend believes that header only from a forwarder it trusts, and it trusts loopback alone by default. That default is the safe one: a direct caller on the network could otherwise assert any scheme it liked. Name the proxy instead:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> runtime.trusted_proxies &#x27;*&#x27;
+<span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">apply</span>
+<span class="bin">mycelium</span> <span class="cmd">up</span></code></pre>
+      <p><code>&#x27;*&#x27;</code> is the right value when the backend port is reachable only through the proxy, which is the usual public deployment. If the backend is also reachable directly, list the proxy&#x27;s addresses instead:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> runtime.trusted_proxies &#x27;172.18.0.1,10.0.0.5&#x27;</code></pre>
+      <p>Leave it unset for a hub with no proxy in front. Verify the card afterwards:</p>
+      <pre><code><span class="cmd">curl</span> <span class="flag">-s</span> <span class="url">https://hub.example.com/api/rooms/my-room/.well-known/agent-card.json</span>
+<span class="comment"># the advertised url is https://, not http://</span></code></pre>
       <h2 id="hub-and-spoke-step-3-use-a-room-from-a-spoke">Step 3: Use a room from a spoke</h2>
       <p>There is one store: the hub&#x27;s. Create the room on the hub, then use it from anywhere.</p>
       <pre><code><span class="comment"># On the hub</span>
@@ -2207,6 +2221,17 @@ grep api_url ~/.mycelium/config.toml  # what the spoke targets</code></pre>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">init</span> <span class="flag">--api-url</span> http://&lt;correct-hub-ip&gt;:8000</code></pre>
       <p>Note the spoke must also reach the hub&#x27;s <strong>SLIM node</strong> on 46357 (see <em>SLIM Node Unreachable</em> above); the backend and the node are separate ports.</p>
       <hr class="divider">
+      <h3 id="troubleshooting-13-hub-advertises-http-urls-behind-https">13. Hub Advertises <code>http://</code> URLs Behind HTTPS</h3>
+      <p><strong>Symptom</strong>: the hub is served over <code>https://</code>, but an absolute URL it hands out comes back <code>http://</code>. Most visible on the A2A agent card:</p>
+      <pre><code><span class="cmd">curl</span> <span class="flag">-s</span> <span class="url">https://hub.example.com/api/rooms/my-room/.well-known/agent-card.json</span>
+<span class="comment"># &quot;url&quot;: &quot;http://hub.example.com/api/rooms/my-room/a2a&quot;</span></code></pre>
+      <p><strong>Cause</strong>: a TLS-terminating reverse proxy forwards plain HTTP to the backend container, so the backend sees an <code>http</code> request. The proxy reports the original scheme in <code>X-Forwarded-Proto</code>, but the backend believes that header only from a forwarder it trusts, and by default it trusts loopback alone. The proxy connects from the Docker bridge, so its header is ignored.</p>
+      <p><strong>Fix</strong>: name the proxy, then re-render <code>.env</code> and recreate the stack.</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">set</span> runtime.trusted_proxies &#x27;*&#x27;
+<span class="bin">mycelium</span> <span class="cmd">config</span> <span class="cmd">apply</span>
+<span class="bin">mycelium</span> <span class="cmd">up</span></code></pre>
+      <p>Use <code>&#x27;*&#x27;</code> when the backend port is reachable only through the proxy. If it is also reachable directly, list the proxy addresses instead (<code>&#x27;172.18.0.1,10.0.0.5&#x27;</code>) so a direct caller cannot spoof the scheme. Leave it unset when nothing fronts the backend.</p>
+      <hr class="divider">
       <h2 id="troubleshooting-configuration-reference">Configuration Reference</h2>
       <h3 id="troubleshooting-cli-settings-myceliumconfigtoml">CLI settings: <code>~/.mycelium/config.toml</code></h3>
       <div class="table-wrap">
@@ -2287,6 +2312,11 @@ grep api_url ~/.mycelium/config.toml  # what the spoke targets</code></pre>
               <td><code>MYCELIUM_METRICS_PORT</code></td>
               <td>OTLP collector host port (<code>--metrics</code>)</td>
               <td><code>4318</code></td>
+            </tr>
+            <tr>
+              <td><code>FORWARDED_ALLOW_IPS</code></td>
+              <td>Forwarders whose <code>X-Forwarded-*</code> headers the backend honours (<code>runtime.trusted_proxies</code>)</td>
+              <td>(unset: loopback only)</td>
             </tr>
           </tbody>
         </table>

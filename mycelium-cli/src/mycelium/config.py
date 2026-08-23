@@ -389,6 +389,21 @@ class RuntimeConfig(BaseModel):
         default=None,
         description="Root directory for .mycelium/ data (defaults to ~/.mycelium)",
     )
+    trusted_proxies: str = Field(
+        default="",
+        description=(
+            "Which forwarders the backend may believe about the original request "
+            "(rendered as uvicorn's FORWARDED_ALLOW_IPS). Empty (the default) trusts "
+            "only loopback, so a direct caller cannot spoof X-Forwarded-Proto and "
+            "make the hub advertise a scheme it is not served on. Set it when a "
+            "TLS-terminating reverse proxy fronts the backend, otherwise every "
+            "absolute URL the hub generates (the A2A agent card's `url` most "
+            "visibly) comes out http:// on an https:// deployment. Use '*' when the "
+            "backend is only reachable through that proxy, or a comma-separated list "
+            "of proxy addresses. Example: mycelium config set "
+            "runtime.trusted_proxies '*'"
+        ),
+    )
 
 
 class RoomConfig(BaseModel):
