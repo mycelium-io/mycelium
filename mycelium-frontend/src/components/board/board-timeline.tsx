@@ -5,7 +5,7 @@
 
 import { cn } from "@/lib/utils";
 import { ageMinutes, lensOf, type LiveItem } from "@/lib/board/item";
-import { AgeTag, KindGlyph, CustodyChip, SourceTag, UpstreamChip, WorkLinks, kindColor } from "./board-bits";
+import { AgeTag, KindIcon, CustodyChip, SourceTag, UpstreamChip, WorkLinks, kindColor } from "./board-cells";
 
 interface Props {
   items: LiveItem[];
@@ -60,7 +60,7 @@ export function BoardTimeline({ items, now, selectedId, onSelect }: Props) {
                   className="absolute -left-[13px] top-3 size-[7px] rounded-full ring-2 ring-bg"
                   style={{ background: kindColor(item) }}
                 />
-                <KindGlyph item={item} className="mt-[1px]" />
+                <KindIcon item={item} className="mt-[1px]" />
                 <span className="min-w-0 flex-1">
                   <span className="flex items-baseline gap-2">
                     <span className="min-w-0 flex-1 truncate text-label text-text">{item.title}</span>

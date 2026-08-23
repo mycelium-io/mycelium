@@ -55,25 +55,25 @@ class TestContract:
 class TestWhereAWriteMayLand:
     def test_a_memory_row_takes_a_write(self):
         item = row("memory")
-        assert board_fields.refusal_for(item) is None
+        assert board_fields.field_write_refusal(item) is None
         assert board_fields.memory_key_of(item) == "work/auth-spike"
 
     def test_it_writes_outside_the_leasable_namespaces(self):
         # Custody is restricted to work/; a status change is not. A decision
         # nobody can move is the overlay problem with extra steps.
         item = row("memory", "decisions/ttl")
-        assert board_fields.refusal_for(item) is None
+        assert board_fields.field_write_refusal(item) is None
         assert board_fields.memory_key_of(item) == "decisions/ttl"
 
     @pytest.mark.parametrize("kind", ["episode", "agent", "capture", "github"])
     def test_every_other_kind_is_refused_in_its_own_terms(self, kind: str):
         item = row(kind, "x")
-        assert board_fields.refusal_for(item) == board_fields.REFUSALS[kind]
+        assert board_fields.field_write_refusal(item) == board_fields.REFUSALS[kind]
         assert board_fields.memory_key_of(item) is None
 
     def test_an_unknown_kind_is_refused_rather_than_written_somewhere(self):
         # A new source kind added without a refusal must not fall through.
-        assert board_fields.refusal_for(row("wormhole", "x")) is not None
+        assert board_fields.field_write_refusal(row("wormhole", "x")) is not None
         assert board_fields.memory_key_of(row("wormhole", "x")) is None
 
 

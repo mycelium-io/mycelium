@@ -116,14 +116,14 @@ async def lifespan(app: FastAPI):
     # summon since a handle maps to a single runtime.
     from app.services.a2a_bridge import A2aResponder
     from app.services.aligner import AlignerEngine
-    from app.services.hello import HelloEngine
+    from app.services.probe_engine import ProbeEngine
     from app.services.room_channels import manager as room_channel_manager
     from app.services.synthesizer import SynthesizerEngine
     from app.services.task_sync import TaskSyncEngine
 
     app.state.aligner = AlignerEngine(room_channel_manager)
     app.state.synthesizer = SynthesizerEngine(room_channel_manager)
-    app.state.hello = HelloEngine(room_channel_manager)
+    app.state.hello = ProbeEngine(room_channel_manager)
     # The A2A responder shares the seam too: it answers @-mentions of a
     # registered a2a agent by calling the remote endpoint, gating on the manifest
     # like the engines gate on their kind, so only one handler ever acts.
@@ -150,7 +150,7 @@ async def lifespan(app: FastAPI):
 
     room_channel_manager.on_summon = _dispatch_summon
     logger.info(
-        "engines wired (aligner @%s, synthesizer @%s, hello @%s; brain=pi via %s)",
+        "engines wired (aligner @%s, synthesizer @%s, hello @%s; llm=pi via %s)",
         app.state.aligner.handle,
         app.state.synthesizer.handle,
         app.state.hello.handle,

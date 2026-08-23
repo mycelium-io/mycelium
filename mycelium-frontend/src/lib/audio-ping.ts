@@ -34,7 +34,7 @@ export interface Note {
 
 /**
  * Play a short motif on the shared context. Exported so a surface can speak in
- * more than one sound — see `board/earcons.ts` — without opening a second
+ * more than one sound — see `board/board-sounds.ts` — without opening a second
  * AudioContext or shipping an asset.
  */
 export function motif(notes: Note[], volume = 0.5): void {

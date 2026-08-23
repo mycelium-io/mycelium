@@ -99,7 +99,7 @@ class TestFreshness:
         """A row nobody took for a window has nothing to report rather than a
         zero — an answer of "fresh" would be a claim about a lease never taken."""
         assert custody.freshness(ago(500), None, NOW) is None
-        assert custody.spent(ago(500), None, NOW) is None
+        assert custody.elapsed_fraction(ago(500), None, NOW) is None
 
     def test_minutes_left_counts_down_and_floors_at_zero(self):
         assert custody.remaining_minutes(held(10), NOW) == 20
@@ -193,19 +193,19 @@ class TestBlockedIsDerived:
 class TestRefusals:
     @pytest.mark.parametrize("kind", ["episode", "agent"])
     def test_rows_that_cannot_hold_a_lease_say_why(self, kind):
-        reason = custody.refusal_for(row(kind, "t3"))
+        reason = custody.custody_refusal(row(kind, "t3"))
         assert reason == custody.REFUSALS[kind]
 
     def test_an_episode_refuses_a_claim_with_its_own_reason(self):
-        reason = custody.refusal_for(row("episode", "e4f1"))
+        reason = custody.custody_refusal(row("episode", "e4f1"))
         assert reason is not None
         assert "nothing to write a lease onto" in reason
 
     def test_a_work_memory_takes_a_lease(self):
-        assert custody.refusal_for(row("memory", "work/auth", namespace="work")) is None
+        assert custody.custody_refusal(row("memory", "work/auth", namespace="work")) is None
 
     def test_a_memory_in_another_namespace_does_not(self):
-        assert custody.refusal_for(row("memory", "status/ci", namespace="status")) is not None
+        assert custody.custody_refusal(row("memory", "status/ci", namespace="status")) is not None
 
 
 class TestNotes:

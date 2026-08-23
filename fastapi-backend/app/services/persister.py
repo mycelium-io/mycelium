@@ -64,9 +64,9 @@ _MESSAGE_ID_NS = uuid.UUID("6f1d2c3b-4a59-6e7d-8c9b-0a1b2c3d4e5f")
 if TYPE_CHECKING:
     import slim_bindings
 
+    from app.services.in_memory_store import StoredMessage
     from app.services.l9_models import L9
     from app.services.l9_slim import L9SlimChannel
-    from app.services.local_state import StoredMessage
 
 logger = logging.getLogger(__name__)
 
@@ -474,7 +474,7 @@ def stored_message_from_record(
     Returns None for a non-conversational, non-raise-up record. The synthetic id is
     derived from the envelope id so it's stable across reads, and ``message_id``
     carries that envelope id as the cross-store correlation key (dedup against
-    ``local_state``).
+    ``in_memory_store``).
 
     ``fallback`` stands in when a record carries no readable ``recorded_at`` —
     :func:`conversational_messages` passes the neighbouring record's stamp, the
@@ -482,7 +482,7 @@ def stored_message_from_record(
     keeps ``StoredMessage``'s read-time default, which sorts it to the newest end
     of the feed no matter when it was actually recorded.
     """
-    from app.services.local_state import StoredMessage
+    from app.services.in_memory_store import StoredMessage
 
     text = _conversational_text(record.content)
     if text is not None:
@@ -565,7 +565,7 @@ def conversational_messages(room: str) -> list[StoredMessage]:
     The read path's source of truth for chat: it survives restarts (the transcript
     is on disk) and both post paths converge here (``respond`` and a human
     broadcast both land in the transcript). Event-ledger rows live only in
-    ``local_state`` and are merged in by the route.
+    ``in_memory_store`` and are merged in by the route.
     """
     from app.services.filesystem import get_room_dir
 
@@ -586,17 +586,17 @@ def room_conversation(room: str) -> list[StoredMessage]:
     """A room's full conversational view: durable transcript + live in-memory rows.
 
     The transcript survives restarts and both post paths converge on it; the
-    in-memory ``local_state`` rows are the live lens and carry the ledger fields
+    in-memory ``in_memory_store`` rows are the live lens and carry the ledger fields
     (ttl/status) plus the ids clients already hold. Where a message is in both,
-    the ``local_state`` row wins and the transcript only fills what memory lost.
+    the ``in_memory_store`` row wins and the transcript only fills what memory lost.
     Dedup is by envelope ``message_id`` — a distinct id space from
     ``StoredMessage.id``. The merged view is then folded by
     :func:`collapse_amendments`, so a revised message reads as one row carrying
     its latest text while the transcript keeps every version.
     """
-    from app.services import local_state
+    from app.services import in_memory_store
 
-    mem = local_state.list_messages(room)
+    mem = in_memory_store.list_messages(room)
     live_ids = {m.message_id for m in mem if m.message_id}
     disk = [m for m in conversational_messages(room) if m.message_id not in live_ids]
     return collapse_amendments(disk + mem)
@@ -1003,7 +1003,7 @@ class RoomPersister:
 
         ``list_write`` controls whether the message is also written to the
         in-memory list store: the human-proxy broadcast path pre-writes nothing to
-        ``local_state`` (the transcript is its record, read back by
+        ``in_memory_store`` (the transcript is its record, read back by
         :func:`conversational_messages`), while ``respond`` (``/reply``) passes
         ``list_write=True`` so an agent's turn is visible live, before it's flushed
         to the durable transcript — otherwise ``respond`` and ``room send`` would
@@ -1117,8 +1117,8 @@ class RoomPersister:
         if msg is None:
             return
         try:
-            from app.services import local_state
+            from app.services import in_memory_store
 
-            local_state.add_message(self.room, msg)
+            in_memory_store.add_message(self.room, msg)
         except Exception:
             logger.debug("list-store write failed for room %s", self.room, exc_info=True)

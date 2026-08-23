@@ -13,13 +13,13 @@ import {
   PRIORITY_ORDER,
   STATUS_ORDER,
   ageMinutes,
-  arr,
+  fieldAsList,
+  fieldAsNumber,
+  fieldAsString,
   kindOf,
   lensOf,
-  num,
   priorityOf,
   statusOf,
-  str,
   type Lens,
   type LiveItem,
 } from "./item";
@@ -164,9 +164,9 @@ function ordinal(item: LiveItem, field: string, now: number): number | string {
   if (field === "priority") return PRIORITY_ORDER.indexOf(priorityOf(item));
   if (field === "status") return STATUS_ORDER.indexOf(statusOf(item));
   if (field === "updated") return -(ageMinutes(item, now) ?? Number.MAX_SAFE_INTEGER);
-  const n = num(item, field);
+  const n = fieldAsNumber(item, field);
   if (n !== null) return n;
-  return (str(item, field) ?? "￿").toLowerCase();
+  return (fieldAsString(item, field) ?? "￿").toLowerCase();
 }
 
 export function sortItems(items: LiveItem[], config: ViewConfig, now: number): LiveItem[] {
@@ -286,7 +286,7 @@ export function lensCounts(items: LiveItem[], now: number = Date.now()): Record<
 
 /** What the row is waiting on, phrased for the cockpit's second line. */
 export function waitingOn(item: LiveItem): string | null {
-  const blockedBy = arr(item, "blocked_by");
+  const blockedBy = fieldAsList(item, "blocked_by");
   if (blockedBy.length) return `waiting on ${blockedBy.join(", ")}`;
   if (kindOf(item) === "decision" && statusOf(item) === "in_review") return "awaiting a call";
   return null;

@@ -54,7 +54,7 @@ app = typer.Typer(
 console = Console()
 
 
-def _bail_root_owned(target: Path, blocking: Path, owner_name: str) -> None:
+def _abort_if_root_owned(target: Path, blocking: Path, owner_name: str) -> None:
     """Print a chown-guidance error and exit 1.
 
     Used when writing under ``~/.mycelium/`` would fail because some ancestor
@@ -94,7 +94,7 @@ def _check_writable_or_bail(target: Path) -> None:
     """Bail out with chown guidance if any ancestor of *target* isn't ours.
 
     Walks up to the closest existing ancestor of *target* and checks its
-    ``st_uid`` against ``os.getuid()``. Mismatch → :func:`_bail_root_owned`.
+    ``st_uid`` against ``os.getuid()``. Mismatch → :func:`_abort_if_root_owned`.
     Windows has no uid concept; this no-ops there. Stat failures are
     swallowed (let the real write raise its own error).
     """
@@ -117,7 +117,7 @@ def _check_writable_or_bail(target: Path) -> None:
         owner_name = pwd.getpwuid(owner_uid).pw_name
     except (KeyError, ImportError):
         owner_name = f"uid {owner_uid}"
-    _bail_root_owned(target, p, owner_name)
+    _abort_if_root_owned(target, p, owner_name)
 
 
 def _resolve_room(config: MyceliumConfig, room: str | None) -> str:
@@ -350,9 +350,9 @@ def _warn_unknown_principal(manifest: AgentManifest) -> None:
     if not manifest.owner:
         return
     import httpx
+    from mycelium_backend_client.errors import UnexpectedStatus
 
     from mycelium.commands.user import load_user
-    from mycelium_backend_client.errors import UnexpectedStatus
 
     try:
         known = load_user(manifest.owner) is not None
@@ -377,11 +377,12 @@ def _write_manifest(
     same ``filesystem.write_memory`` helper the rest of the CLI uses for local
     copies of API-written memories.
     """
-    from mycelium.filesystem import write_memory
     from mycelium_backend_client.api.memory import (
         create_memories_api_rooms_room_name_memory_post as create_api,
     )
     from mycelium_backend_client.models import MemoryBatchCreate, MemoryCreate
+
+    from mycelium.filesystem import write_memory
 
     body = manifest.model_dump(exclude={"handle"})
     yaml_body = yaml.safe_dump(body, sort_keys=False, default_flow_style=False).strip()
@@ -894,7 +895,6 @@ def _pick_room(config: MyceliumConfig) -> str | None:
     config + gateway restart; guaranteeing existence here avoids that.
     """
     import questionary
-
     from mycelium_backend_client.api.rooms import (
         create_room_api_rooms_post as create_api,
     )

@@ -9,7 +9,7 @@ resolved to a state, with the row ids that mention it.
 
 **Reading never fetches.** This is the whole point of the cache underneath: a
 board opening does not become a burst of calls to GitHub. A read answers from
-what is already known, says how fresh each answer is, and kicks a refresh in the
+what is already cached, says how fresh each answer is, and kicks a refresh in the
 background for whatever is due. The next read sees it. ``?refresh=true`` is the
 blocking path for a caller with nowhere to come back to, a one-shot CLI or an
 agent mid-turn.
@@ -34,7 +34,7 @@ from pydantic import BaseModel, Field
 
 from app.services.filesystem import room_exists
 from app.services.status import discovery, registry
-from app.services.status.types import ROW_FIELD, Known, Ref
+from app.services.status.types import ROW_FIELD, CachedStatus, Ref
 
 if TYPE_CHECKING:
     from app.services.status.runtime import StatusRuntime
@@ -95,9 +95,9 @@ class RoomStatusResponse(BaseModel):
     )
 
 
-def _read(ref: Ref, known: Known, origins: tuple[str, ...], now: datetime) -> UpstreamRead:
-    age = known.age(now)
-    liveness = known.liveness
+def _read(ref: Ref, cached: CachedStatus, origins: tuple[str, ...], now: datetime) -> UpstreamRead:
+    age = cached.age(now)
+    upstream = cached.upstream
     return UpstreamRead(
         ref=str(ref),
         provider=ref.provider,
@@ -105,19 +105,19 @@ def _read(ref: Ref, known: Known, origins: tuple[str, ...], now: datetime) -> Up
         id=ref.id,
         # The provider's own link wins: it resolved the thing and we only parsed
         # a mention of it.
-        url=(liveness.url if liveness and liveness.url else ref.url),
-        freshness=known.freshness,
-        state=liveness.state if liveness else None,
-        label=liveness.label if liveness else None,
-        source_updated_at=liveness.source_updated_at if liveness else None,
-        fetched_at=known.fetched_at,
+        url=(upstream.url if upstream and upstream.url else ref.url),
+        freshness=cached.freshness,
+        state=upstream.state if upstream else None,
+        label=upstream.label if upstream else None,
+        source_updated_at=upstream.source_updated_at if upstream else None,
+        fetched_at=cached.fetched_at,
         age_seconds=age.total_seconds() if age is not None else None,
-        error=known.error,
+        error=cached.error,
         origins=list(origins),
     )
 
 
-def _kick(runtime: StatusRuntime, refs: list[Ref], now: datetime) -> bool:
+def _schedule_background_refresh(runtime: StatusRuntime, refs: list[Ref], now: datetime) -> bool:
     """Refresh whatever is due, in the background. Returns whether anything was."""
     due = runtime.due(refs, now)
     if not due:
@@ -167,20 +167,20 @@ async def get_room_status(
         await runtime.refresh(refs, now)
         now = datetime.now(UTC)
     elif refs:
-        refreshing = _kick(runtime, refs, now)
+        refreshing = _schedule_background_refresh(runtime, refs, now)
 
-    known = runtime.read(refs, now, max_age=window)
+    cached = runtime.read(refs, now, max_age=window)
     return RoomStatusResponse(
         room=room_name,
         field=ROW_FIELD,
         providers=sorted(registry.registered()),
-        refs=[_read(ref, known[ref], origins[ref], now) for ref in refs],
+        refs=[_read(ref, cached[ref], origins[ref], now) for ref in refs],
         rows=_rows(found),
         refreshing=refreshing,
     )
 
 
-def _rows(found: list[discovery.Discovered]) -> dict[str, list[str]]:
+def _rows(found: list[discovery.DiscoveredRefs]) -> dict[str, list[str]]:
     rows: dict[str, list[str]] = {}
     for item in found:
         for origin in item.origins:

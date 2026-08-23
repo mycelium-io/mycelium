@@ -37,7 +37,7 @@
  * file so no copy can drift alone.
  */
 
-import { num, ownerOf, str } from "./fields";
+import { fieldAsNumber, fieldAsString, ownerOf } from "./fields";
 import type { LiveItem } from "./item";
 
 export const CUSTODY_FIELD = "custody";
@@ -110,13 +110,13 @@ export const BLOCKED_FIELD = "blocked_by";
  * claim, and dating it from the file beats treating it as claimed now.
  */
 export function claimedAt(item: LiveItem): string | null {
-  return str(item, "claimed_at") ?? str(item, "updated");
+  return fieldAsString(item, "claimed_at") ?? fieldAsString(item, "updated");
 }
 
 /** Fraction of a lease already burned, or null when it cannot expire. */
-export function leaseSpent(item: LiveItem, now: number): number | null {
+export function leaseElapsedFraction(item: LiveItem, now: number): number | null {
   const raw = claimedAt(item);
-  const ttl = num(item, "ttl_minutes");
+  const ttl = fieldAsNumber(item, "ttl_minutes");
   if (raw === null || ttl === null || ttl <= 0) return null;
   const stamped = Date.parse(raw);
   if (Number.isNaN(stamped)) return null;
@@ -124,7 +124,7 @@ export function leaseSpent(item: LiveItem, now: number): number | null {
 }
 
 export function leaseFreshness(item: LiveItem, now: number): CustodyFreshness | null {
-  const fraction = leaseSpent(item, now);
+  const fraction = leaseElapsedFraction(item, now);
   if (fraction === null) return null;
   if (fraction < STALE_AFTER) return "fresh";
   return fraction < 1 ? "stale" : "expired";
@@ -132,8 +132,8 @@ export function leaseFreshness(item: LiveItem, now: number): CustodyFreshness | 
 
 /** Minutes of lease left, or null when the row does not expire. */
 export function remainingMinutes(item: LiveItem, now: number): number | null {
-  const fraction = leaseSpent(item, now);
-  const ttl = num(item, "ttl_minutes");
+  const fraction = leaseElapsedFraction(item, now);
+  const ttl = fieldAsNumber(item, "ttl_minutes");
   if (fraction === null || ttl === null) return null;
   return Math.max(0, Math.round(ttl * (1 - fraction)));
 }
@@ -149,7 +149,7 @@ export function remainingMinutes(item: LiveItem, now: number): number | null {
  * changed: the row drains because time passed, not because anyone wrote it down.
  */
 export function custodyOf(item: LiveItem, now: number): Custody | null {
-  const stored = str(item, CUSTODY_FIELD);
+  const stored = fieldAsString(item, CUSTODY_FIELD);
   if (!stored || !(CUSTODY_STATES as readonly string[]).includes(stored)) return null;
   if (stored !== "held") return stored as Custody;
   // Held by nobody is not held. A row that lost its holder is in the pool.
@@ -188,9 +188,9 @@ export function custodyNote(item: LiveItem, now: number): CustodyNote | null {
       by: RUNTIME_AUTHOR,
     };
   }
-  const text = str(item, "custody_note");
+  const text = fieldAsString(item, "custody_note");
   if (!text) return null;
-  return { text, by: str(item, "custody_note_by") ?? RUNTIME_AUTHOR };
+  return { text, by: fieldAsString(item, "custody_note_by") ?? RUNTIME_AUTHOR };
 }
 
 /** Why this row cannot take a lease, or null when it can. */
@@ -198,7 +198,7 @@ export function custodyRefusal(item: LiveItem): string | null {
   const kind = item.source.kind;
   if (kind === "episode" || kind === "agent") return CUSTODY_REFUSALS[kind];
   if (kind === "memory") {
-    const namespace = str(item, "namespace") ?? item.source.label.split("/")[0] ?? "";
+    const namespace = fieldAsString(item, "namespace") ?? item.source.label.split("/")[0] ?? "";
     return LEASABLE_NAMESPACES.includes(namespace) ? null : CUSTODY_REFUSALS.memory;
   }
   return CUSTODY_REFUSALS.memory;

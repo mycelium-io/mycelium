@@ -7,11 +7,11 @@ import { useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import {
   VERBS,
-  arr,
+  fieldAsList,
+  fieldAsString,
   kindOf,
   lensOf,
   statusOf,
-  str,
   type LiveItem,
   type Verb,
 } from "@/lib/board/item";
@@ -19,7 +19,7 @@ import { waitingOn, type ItemGroup } from "@/lib/board/view";
 import {
   AgeTag,
   BlocksNote,
-  KindGlyph,
+  KindIcon,
   LiveDot,
   CustodyChip,
   PriorityMeter,
@@ -27,7 +27,7 @@ import {
   TtlBar,
   UpstreamChip,
   WorkLinks,
-} from "./board-bits";
+} from "./board-cells";
 
 interface Props {
   groups: ItemGroup[];
@@ -96,10 +96,10 @@ function CockpitRow({
     if (selected) ref.current?.scrollIntoView({ block: "nearest" });
   }, [selected]);
 
-  const choices = arr(item, "choices");
+  const choices = fieldAsList(item, "choices");
   const waiting = waitingOn(item);
   const resolved = lensOf(item, now) === "resolved";
-  const urgent = str(item, "priority") === "urgent" && !resolved;
+  const urgent = fieldAsString(item, "priority") === "urgent" && !resolved;
 
   return (
     <div
@@ -117,7 +117,7 @@ function CockpitRow({
       {/* The selected row wears an accent edge; the eye keeps its place through a verb. */}
       {selected && <span className="absolute inset-y-1 left-0 w-[2px] rounded-full bg-accent" />}
 
-      <KindGlyph item={item} className="mt-[3px]" />
+      <KindIcon item={item} className="mt-[3px]" />
 
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2">

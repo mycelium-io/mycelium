@@ -453,7 +453,9 @@ class TestActivity:
             )
             for i, actor in enumerate(["julia", "julia", "growth"])
         ]
-        summary = activity.digest(activity.by_day(events, tz), date(2026, 8, 22), date(2026, 8, 22))
+        summary = activity.summarize_activity(
+            activity.by_day(events, tz), date(2026, 8, 22), date(2026, 8, 22)
+        )
         assert [(actor, len(rows)) for actor, _, rows in summary.by_actor] == [
             ("julia", 2),
             ("growth", 1),

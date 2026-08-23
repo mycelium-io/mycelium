@@ -6,7 +6,7 @@ Sessions API — tracks agent presence in rooms.
 
 Presence is handled by SLIM: joining a room invites the agent into the
 room's SLIM group channel (backend = moderator), and — when a channel is live —
-membership on that channel is authoritative for who is present. ``local_state``
+membership on that channel is authoritative for who is present. ``in_memory_store``
 remains the metadata store (intent, context files) that SLIM membership doesn't
 carry; it is also the sole fallback when no fabric is up (unit suite, no-node
 dev), so these endpoints keep answering without a node.
@@ -30,7 +30,7 @@ from app.schemas import (
     ParticipantListResponse,
     ParticipantRead,
 )
-from app.services import actor, l9, local_state, room_channels
+from app.services import actor, in_memory_store, l9, room_channels
 from app.services.filesystem import (
     ensure_room_structure,
     get_room_dir,
@@ -54,7 +54,7 @@ async def spawn_session(room_name: str):
     """Return the room's presence session (a no-op shim spawn)."""
     if not room_exists(room_name):
         raise HTTPException(status_code=404, detail="Room not found")
-    coord = local_state.get_or_create_session(room_name)
+    coord = in_memory_store.get_or_create_session(room_name)
     return {
         "session_room": coord.display_name,
         "coordination_session_id": str(coord.id),
@@ -70,22 +70,22 @@ async def join_room(room_name: str, payload: ParticipantCreate, request: Request
     # Authorized before the room is created, so a claim can't leave a room behind.
     actor.authorize_handle(request, room_name, payload.agent_handle, field="agent_handle")
     _ensure_room(room_name)
-    coord = local_state.get_or_create_session(room_name)
+    coord = in_memory_store.get_or_create_session(room_name)
 
-    existing = local_state.find_participant(coord.id, payload.agent_handle)
+    existing = in_memory_store.find_participant(coord.id, payload.agent_handle)
     is_new = existing is None
     if is_new:
         context_files = (
             [cf.model_dump() for cf in payload.context_files] if payload.context_files else None
         )
-        participant = local_state.StoredParticipant(
-            id=local_state.participant_id(coord.id, payload.agent_handle),
+        participant = in_memory_store.StoredParticipant(
+            id=in_memory_store.participant_id(coord.id, payload.agent_handle),
             coordination_session_id=coord.id,
             agent_handle=payload.agent_handle,
             intent=payload.intent,
             context_files=context_files,
         )
-        local_state.add_participant(coord.id, participant)
+        in_memory_store.add_participant(coord.id, participant)
     else:
         logger.info("Re-join for handle=%s room=%s (re-inviting)", payload.agent_handle, room_name)
         participant = existing
@@ -118,7 +118,7 @@ async def list_coordination_sessions(room_name: str):
     """List coordination sessions in a room (at most the one presence shim)."""
     if not room_exists(room_name):
         raise HTTPException(status_code=404, detail="Room not found")
-    coord = local_state.get_session(room_name)
+    coord = in_memory_store.get_session(room_name)
     if coord is None:
         return []
     return [CoordinationSessionRead.model_validate(coord)]
@@ -127,19 +127,19 @@ async def list_coordination_sessions(room_name: str):
 @router.get("", response_model=ParticipantListResponse)
 async def list_sessions(room_name: str):
     """List agents participating in a room."""
-    coord = local_state.get_session(room_name)
+    coord = in_memory_store.get_session(room_name)
     if coord is None:
         if not room_exists(room_name):
             raise HTTPException(status_code=404, detail="Room or session not found")
         return ParticipantListResponse(participants=[], total=0)
 
-    participants = local_state.list_participants(coord.id)
+    participants = in_memory_store.list_participants(coord.id)
     # When a SLIM channel is live *and has members*, its membership is
     # authoritative for presence: surface only participants still on the channel.
-    # local_state supplies the metadata (intent, context files) SLIM membership
+    # in_memory_store supplies the metadata (intent, context files) SLIM membership
     # doesn't carry. Without agent-side SLIM connectors, the moderator
     # can't invite HTTP joiners onto the channel, so SLIM membership is empty —
-    # then (and when no channel is live at all) local_state is the source of truth.
+    # then (and when no channel is live at all) in_memory_store is the source of truth.
     present = set(room_channels.manager.members(room_name))
     if present:
         participants = [p for p in participants if p.agent_handle in present]
@@ -182,15 +182,15 @@ async def list_members(room_name: str):
 @router.delete("/{session_id}", status_code=204)
 async def leave_room(room_name: str, session_id: UUID):
     """Remove a participant (agent leaves the room + the SLIM channel)."""
-    coord = local_state.get_session(room_name)
+    coord = in_memory_store.get_session(room_name)
     if coord is None:
         raise HTTPException(status_code=404, detail="Participant not found")
     # Resolve the handle before dropping the row, so we can remove it from SLIM.
     handle = next(
-        (p.agent_handle for p in local_state.list_participants(coord.id) if p.id == session_id),
+        (p.agent_handle for p in in_memory_store.list_participants(coord.id) if p.id == session_id),
         None,
     )
-    if not local_state.remove_participant(coord.id, session_id):
+    if not in_memory_store.remove_participant(coord.id, session_id):
         raise HTTPException(status_code=404, detail="Participant not found")
     if handle is not None:
         await room_channels.manager.remove(room_name, handle)

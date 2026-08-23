@@ -27,7 +27,7 @@ from app.schemas import (
     MessageRead,
     MessageType,
 )
-from app.services import actor, l9, local_state, persister, principals, room_channels
+from app.services import actor, in_memory_store, l9, persister, principals, room_channels
 from app.services.filesystem import room_exists
 
 logger = logging.getLogger(__name__)
@@ -39,7 +39,7 @@ router = APIRouter(prefix="/rooms/{room_name}/messages", tags=["messages"])
 _MIN_ID_PREFIX = 6
 
 
-def _resolve_channel(name: str) -> tuple[str, local_state.CoordSessionShim | None]:
+def _resolve_channel(name: str) -> tuple[str, in_memory_store.PresenceSession | None]:
     """Resolve a path name to its message channel key and optional session shim.
 
     Real room → (room_name, None). A ``{parent}:session:{short}`` display name →
@@ -47,7 +47,7 @@ def _resolve_channel(name: str) -> tuple[str, local_state.CoordSessionShim | Non
     """
     if ":session:" in name:
         parent, _, _short = name.partition(":session:")
-        coord = local_state.get_session(parent)
+        coord = in_memory_store.get_session(parent)
         if coord is not None and coord.display_name == name:
             return name, coord
     if room_exists(name):
@@ -75,7 +75,7 @@ async def send_message(room_name: str, payload: MessageCreate, request: Request)
     if reason:
         raise HTTPException(status_code=403, detail=reason)
 
-    msg = local_state.StoredMessage(
+    msg = in_memory_store.StoredMessage(
         room_name=None if coord else channel,
         coordination_session_id=coord.id if coord else None,
         sender_handle=sender_handle,
@@ -110,7 +110,7 @@ async def send_message(room_name: str, payload: MessageCreate, request: Request)
     # Human-in-the-room: backend publishes onto the channel as proxy for live SLIM
     # rooms, parsing ``@`` recipients and raising consent for absent mentions. The
     # persister records to the durable transcript (source of truth), so don't also
-    # write local_state/bus here (would duplicate). Non-SLIM paths use direct write.
+    # write in_memory_store/bus here (would duplicate). Non-SLIM paths use direct write.
     published = False
     if (
         coord is None
@@ -125,12 +125,12 @@ async def send_message(room_name: str, payload: MessageCreate, request: Request)
             # Correlation key: the same envelope the persister records to the
             # transcript, so a cold read dedups this row against its transcript copy.
             msg.message_id = result.message_id
-    # The human's message always lands in ``local_state`` — its id backs PATCH /
+    # The human's message always lands in ``in_memory_store`` — its id backs PATCH /
     # event semantics and it's the live lens. The persister records the same
     # message to the durable transcript (the read path's source of truth); the two
     # dedup by ``message_id`` on read. When published, the persister owns the bus
     # push, so only the un-published path publishes here.
-    local_state.add_message(channel, msg)
+    in_memory_store.add_message(channel, msg)
     if not published:
         bus.publish(room_channel(channel), notify_payload)
 
@@ -138,15 +138,15 @@ async def send_message(room_name: str, payload: MessageCreate, request: Request)
 
 
 def _read_messages(
-    channel: str, coord: local_state.CoordSessionShim | None
-) -> list[local_state.StoredMessage]:
+    channel: str, coord: in_memory_store.PresenceSession | None
+) -> list[in_memory_store.StoredMessage]:
     """The room view: durable conversational history + in-memory event-ledger rows.
 
     A coordination session has no transcript, so it is the in-memory rows alone;
     a real room is the merged view ``persister.room_conversation`` builds.
     """
     if coord is not None:
-        return local_state.list_messages(channel)
+        return in_memory_store.list_messages(channel)
     return persister.room_conversation(channel)
 
 
@@ -212,8 +212,8 @@ async def list_l9_wire(room_name: str, limit: int = Query(200, le=1000)) -> list
 
 
 def _find_amend_target(
-    messages: list[local_state.StoredMessage], message_id: str
-) -> local_state.StoredMessage | None:
+    messages: list[in_memory_store.StoredMessage], message_id: str
+) -> in_memory_store.StoredMessage | None:
     """Resolve ``message_id`` to a message in this room's view.
 
     A message carries two ids — the row id every client already holds and the
@@ -277,7 +277,7 @@ async def amend_message(
     # amendment names something the read path can resolve.
     amends = target.message_id or str(target.id)
 
-    msg = local_state.StoredMessage(
+    msg = in_memory_store.StoredMessage(
         room_name=None if coord else channel,
         coordination_session_id=coord.id if coord else None,
         sender_handle=sender_handle,
@@ -300,7 +300,7 @@ async def amend_message(
         if result is not None:
             msg.message_id = result.message_id
 
-    local_state.add_message(channel, msg)
+    in_memory_store.add_message(channel, msg)
     if not published:
         bus.publish(
             room_channel(channel),
@@ -331,7 +331,7 @@ async def update_event_status(
     """Transition a stateful event's status (open -> in_progress -> resolved)."""
     channel, coord = _resolve_channel(room_name)
 
-    msg = local_state.find_message(message_id)
+    msg = in_memory_store.find_message(message_id)
     in_target = msg is not None and (
         (coord is None and msg.room_name == channel)
         or (coord is not None and msg.coordination_session_id == coord.id)

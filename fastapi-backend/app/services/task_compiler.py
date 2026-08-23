@@ -209,11 +209,11 @@ def _pi_complete(prompt: str) -> str:
     file keeps it a true one-shot with no memory to carry. Isolated so tests can
     patch it without a live Pi.
     """
-    from app.services.pi_brain import PiBrain
+    from app.services.pi_session import PiSession
 
     session_dir = Path(tempfile.gettempdir()) / "mycelium-pi-sessions"
     session_dir.mkdir(parents=True, exist_ok=True)
-    brain = PiBrain(
+    llm_session = PiSession(
         session_path=session_dir / f"task-compile-{uuid.uuid4().hex}.jsonl",
         model=settings.LLM_MODEL,
         api_key=settings.LLM_API_KEY,
@@ -222,7 +222,7 @@ def _pi_complete(prompt: str) -> str:
         timeout_s=COMPILER_TIMEOUT_SECS,
         openshell=settings.ALIGNER_PI_OPENSHELL,
     )
-    return brain(prompt)
+    return llm_session(prompt)
 
 
 async def _compile_body(prompt: str, room_name: str) -> str:

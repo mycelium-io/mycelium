@@ -321,7 +321,7 @@ class TestRenew:
     async def test_a_renewal_does_not_announce_itself(self, client):
         """A heartbeat is not news: a room whose transcript filled with 'still
         here' would be worse than one that forgot."""
-        from app.services import local_state
+        from app.services import in_memory_store
 
         await make_room(client, "lease-silent")
         await make_work(
@@ -333,7 +333,7 @@ class TestRenew:
             claimed_at=(datetime.now(UTC) - timedelta(minutes=25)).isoformat(),
             ttl_minutes=30,
         )
-        local_state.clear_all()
+        in_memory_store.clear_all()
         resp = await client.post("/api/rooms/lease-silent/leases/renew", json={"handle": "growth"})
         # It did renew — the silence is the point, not an absence of work.
         assert len(resp.json()["renewed"]) == 1

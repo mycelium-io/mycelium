@@ -20,7 +20,7 @@ negotiator's ``propose``/``respond`` bridge back to the loop with
 reply the persister records, then interpret the prose in-thread. NEGMAS keeps
 full ownership of proposer rotation and the unanimity stop; we only supply each
 agent's move when NEGMAS asks for it. LLM calls (discover/broker/interpret) run
-synchronously in-thread against the injected Pi brain (see ``brain.py``).
+synchronously in-thread against the injected Pi session (see ``pi_session.py``).
 
 The mediator is deliberately *interpretation over the agents' prose*: agents are
 never required to emit structured markers. The mediator restates its reading into
@@ -46,7 +46,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Deterministic interpretation; brokering keeps the Pi brain's own default.
+# Deterministic interpretation; brokering keeps the Pi session's own default.
 _DISCOVER_TEMPERATURE = 0.0
 
 # No-deal framing: the BATNA that turns a hardliner into a negotiator (the one
@@ -87,7 +87,7 @@ def discover_issues(
     Returns a list of ``{"name": snake_case, "options": [token, ...]}``. An empty/degenerate result
     (fewer than one issue) is a signal to the caller to bail to a rejected
     verdict rather than build an empty mechanism. ``llm`` is required; the host
-    runtime always injects a Pi brain; there is no global fallback.
+    runtime always injects a Pi session; there is no global fallback.
     """
     opening = "\n".join(f"@{handle}: {prose}" for handle, prose in positions.items())
     out = _extract_json(
@@ -283,7 +283,7 @@ class MediatedNegotiation:
         return list(self._names)
 
 
-class LiveNegotiator(SAONegotiator):
+class RemoteAgentNegotiator(SAONegotiator):
     """A NEGMAS SAO negotiator backed by a real agent's replies over SLIM.
 
     ``propose``/``respond`` mirror the proven spike's ``MediatedAgent``; the only
@@ -337,7 +337,7 @@ def build_mechanism(
     ]
     mech = SAOMechanism(issues=negmas_issues, n_steps=cap)
     for handle in handles:
-        mech.add(LiveNegotiator(handle, negotiation))
+        mech.add(RemoteAgentNegotiator(handle, negotiation))
     return mech
 
 

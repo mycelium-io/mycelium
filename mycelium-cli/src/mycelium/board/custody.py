@@ -96,7 +96,7 @@ def parse_stamp(raw: str | None) -> datetime | None:
     return stamp.replace(tzinfo=UTC) if stamp.tzinfo is None else stamp
 
 
-def spent(stamped_at: str | None, ttl_minutes: Any, now: datetime) -> float | None:
+def elapsed_fraction(stamped_at: str | None, ttl_minutes: Any, now: datetime) -> float | None:
     """Fraction of a lease already burned, or ``None`` when it cannot expire.
 
     A row with no TTL is not a lease — nobody has taken it for a window — so it
@@ -114,7 +114,7 @@ def spent(stamped_at: str | None, ttl_minutes: Any, now: datetime) -> float | No
 
 def freshness(stamped_at: str | None, ttl_minutes: Any, now: datetime) -> str | None:
     """fresh / stale / expired, in the shape the upstream half already reads."""
-    fraction = spent(stamped_at, ttl_minutes, now)
+    fraction = elapsed_fraction(stamped_at, ttl_minutes, now)
     if fraction is None:
         return None
     if fraction < STALE_AFTER:
@@ -200,7 +200,7 @@ def note_of(item: LiveItem, now: datetime) -> tuple[str, str] | None:
     return (note, item.text("custody_note_by") or RUNTIME_AUTHOR)
 
 
-def refusal_for(item: LiveItem) -> str | None:
+def custody_refusal(item: LiveItem) -> str | None:
     """Why this row cannot take a lease, or ``None`` when it can."""
     kind = item.source.kind
     if kind in ("episode", "agent"):
@@ -238,7 +238,7 @@ def release_patch(handle: str, now: datetime, note: str | None = None) -> dict:
 
 def remaining_minutes(item: LiveItem, now: datetime) -> int | None:
     """Minutes of lease left, or ``None`` when the row does not expire."""
-    fraction = spent(claimed_at(item), item.get("ttl_minutes"), now)
+    fraction = elapsed_fraction(claimed_at(item), item.get("ttl_minutes"), now)
     if fraction is None:
         return None
     try:

@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { lensOf, type LiveItem } from "@/lib/board/item";
 import type { ItemGroup } from "@/lib/board/view";
 import { humanize } from "@/lib/board/schema";
-import { AgeTag, KindGlyph, CustodyChip, PriorityMeter, SourceTag, TtlBar, UpstreamChip, WorkLinks } from "./board-bits";
+import { AgeTag, KindIcon, CustodyChip, PriorityMeter, SourceTag, TtlBar, UpstreamChip, WorkLinks } from "./board-cells";
 
 interface Props {
   groups: ItemGroup[];
@@ -78,7 +78,7 @@ export function BoardKanban({ groups, groupBy, now, selectedId, onSelect, onMove
                   )}
                 >
                   <div className="flex items-start gap-2">
-                    <KindGlyph item={item} className="mt-[1px]" />
+                    <KindIcon item={item} className="mt-[1px]" />
                     <span className="min-w-0 flex-1 text-label leading-snug text-text">{item.title}</span>
                     <PriorityMeter item={item} />
                   </div>

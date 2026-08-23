@@ -48,7 +48,7 @@ def memory_key_of(item: LiveItem) -> str | None:
     return item.id.split(":", 1)[1] if ":" in item.id else item.id
 
 
-def refusal_for(item: LiveItem) -> str | None:
+def field_write_refusal(item: LiveItem) -> str | None:
     """Why this row cannot take a field write, or ``None`` when it can."""
     kind = item.source.kind
     if kind in WRITABLE_SOURCE_KINDS:

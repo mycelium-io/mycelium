@@ -43,7 +43,7 @@ import { BoardTable } from "./board-table";
 import { BoardTimeline } from "./board-timeline";
 import { BoardCapture } from "./board-capture";
 import { BoardDaily } from "./board-daily";
-import { earcon, type Earcon } from "@/lib/board/earcons";
+import { playBoardSound, type BoardSound } from "@/lib/board/board-sounds";
 
 const MODES: { id: ViewMode; label: string; icon: typeof Rows3 }[] = [
   { id: "cockpit", label: "Cockpit", icon: Rows3 },
@@ -113,7 +113,7 @@ export function RoomBoard({ roomName }: Props) {
 
   const [view, setView] = useState<ViewConfig>(SAVED_VIEWS[0].config);
   const [savedView, setSavedView] = useState(SAVED_VIEWS[0].slug);
-  const [overlay, setOverlay] = useState<Record<string, Record<string, unknown>>>({});
+  const [optimisticEdits, setOptimisticEdits] = useState<Record<string, Record<string, unknown>>>({});
   const [captured, setCaptured] = useState<LiveItem[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [optionsOpen, setOptionsOpen] = useState(false);
@@ -125,15 +125,15 @@ export function RoomBoard({ roomName }: Props) {
       // A browser refusing storage still gets the zone for this session.
     }
   }, []);
-  const [echo, setEcho] = useState<string | null>(null);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const captureRef = useRef<HTMLInputElement>(null);
 
   // The board borrows the notification sound setting rather than inventing a
   // second one: someone who silenced Mycelium silenced all of it.
   const { settings } = useNotifications();
   const play = useCallback(
-    (name: Earcon) => {
-      if (settings.soundEnabled) earcon(name, settings.soundVolume);
+    (name: BoardSound) => {
+      if (settings.soundEnabled) playBoardSound(name, settings.soundVolume);
     },
     [settings.soundEnabled, settings.soundVolume],
   );
@@ -163,12 +163,12 @@ export function RoomBoard({ roomName }: Props) {
           agents,
           presence,
           now: new Date(now).toISOString(),
-          overlay,
+          optimisticEdits,
           captured,
         }),
         upstream,
       ),
-    [roomName, episodes, memories, agents, presence, now, overlay, captured, upstream],
+    [roomName, episodes, memories, agents, presence, now, optimisticEdits, captured, upstream],
   );
 
   // One pass over every row's frontmatter gives the columns, the kanban's
@@ -194,12 +194,12 @@ export function RoomBoard({ roomName }: Props) {
   );
 
   // What the surface shows the instant you act, before the room has answered.
-  const echoLocal = useCallback((id: string, fields: Record<string, unknown>) => {
-    setOverlay(prev => ({ ...prev, [id]: { ...(prev[id] ?? {}), ...fields } }));
+  const applyOptimisticEdit = useCallback((id: string, fields: Record<string, unknown>) => {
+    setOptimisticEdits(prev => ({ ...prev, [id]: { ...(prev[id] ?? {}), ...fields } }));
   }, []);
 
   /**
-   * A verb's write: the overlay is the optimistic echo, the room is the record.
+   * A verb's write: the optimistic edit is what you see, the room is the record.
    *
    * A row whose fields live somewhere other than frontmatter says why instead
    * of accepting a change that would exist in this tab and nowhere else, which
@@ -207,10 +207,10 @@ export function RoomBoard({ roomName }: Props) {
    */
   const patch = useCallback(
     (item: LiveItem, fields: Record<string, unknown>) => {
-      echoLocal(item.id, fields);
+      applyOptimisticEdit(item.id, fields);
       const refusal = fieldWriteRefusal(item);
       if (refusal) {
-        setEcho(`${item.id} — ${refusal}`);
+        setStatusMessage(`${item.id} — ${refusal}`);
         return;
       }
       const key = memoryKeyOf(item);
@@ -220,7 +220,7 @@ export function RoomBoard({ roomName }: Props) {
       const rest = Object.fromEntries(Object.entries(fields).filter(([k]) => k !== "updated"));
       const reserved = reservedIn(Object.keys(rest));
       if (reserved.length) {
-        setEcho(`${item.id} — ${reserved.join(", ")} moves through a lease, not a field write`);
+        setStatusMessage(`${item.id} — ${reserved.join(", ")} moves through a lease, not a field write`);
         return;
       }
       // Clearing a field is `null` on the wire: `undefined` would be dropped by
@@ -231,9 +231,9 @@ export function RoomBoard({ roomName }: Props) {
       if (!Object.keys(writable).length) return;
       void writeFields(roomName, { key, handle: actor, fields: writable })
         .then(() => revalidate())
-        .catch((e: unknown) => setEcho(`write ${item.id} failed — ${String(e)}`));
+        .catch((e: unknown) => setStatusMessage(`write ${item.id} failed — ${String(e)}`));
     },
-    [actor, echoLocal, revalidate, roomName],
+    [actor, applyOptimisticEdit, revalidate, roomName],
   );
 
   const runVerb = useCallback(
@@ -241,9 +241,9 @@ export function RoomBoard({ roomName }: Props) {
       const fields = applyVerb(item, verb, { actor, now: new Date().toISOString() });
       setSelectedId(item.id);
       play(verb);
-      // The echo is the point: a human gesture and an agent's call are the same
+      // Saying it is the point: a human gesture and an agent's call are the same
       // write, so the surface says out loud what it just put on the ledger.
-      setEcho(
+      setStatusMessage(
         `${verb} ${item.id} → ${Object.entries(fields)
           .filter(([k]) => k !== "updated")
           .map(([k, v]) => `${k}=${String(v)}`)
@@ -257,26 +257,26 @@ export function RoomBoard({ roomName }: Props) {
         patch(item, fields);
         return;
       }
-      echoLocal(item.id, fields);
+      applyOptimisticEdit(item.id, fields);
       const refusal = custodyRefusal(item);
       if (refusal) {
-        if (verb !== "resolve") setEcho(`${verb} ${item.id} — ${refusal}`);
+        if (verb !== "resolve") setStatusMessage(`${verb} ${item.id} — ${refusal}`);
         return;
       }
       void writeLease(roomName, verb, { key: item.id.replace(/^memory:/, ""), handle: actor })
         .then(state => {
-          setEcho(`${verb} ${state.key} → custody=${state.custody} owner=${state.owner ?? "—"}`);
+          setStatusMessage(`${verb} ${state.key} → custody=${state.custody} owner=${state.owner ?? "—"}`);
           revalidate();
         })
-        .catch((e: unknown) => setEcho(`${verb} ${item.id} failed — ${String(e)}`));
+        .catch((e: unknown) => setStatusMessage(`${verb} ${item.id} failed — ${String(e)}`));
     },
-    [actor, echoLocal, patch, play, revalidate, roomName],
+    [actor, applyOptimisticEdit, patch, play, revalidate, roomName],
   );
 
   const answer = useCallback(
     (item: LiveItem, choice: string) => {
       patch(item, { status: "resolved", decision: choice, updated: new Date().toISOString() });
-      setEcho(`answer ${item.id} → decision=${choice} status=resolved`);
+      setStatusMessage(`answer ${item.id} → decision=${choice} status=resolved`);
       play("answer");
     },
     [patch, play],
@@ -287,7 +287,7 @@ export function RoomBoard({ roomName }: Props) {
       const item = captureToItem(parsed, captured.length + 1, actor);
       setCaptured(prev => [item, ...prev]);
       setSelectedId(item.id);
-      setEcho(`capture → ${item.title}`);
+      setStatusMessage(`capture → ${item.title}`);
       play("capture");
     },
     [actor, captured.length, play],
@@ -417,7 +417,7 @@ export function RoomBoard({ roomName }: Props) {
                 [field]: cleared ? undefined : value,
                 updated: new Date().toISOString(),
               });
-              setEcho(cleared ? `move ${item.id} → ${field} cleared` : `move ${item.id} → ${field}=${value}`);
+              setStatusMessage(cleared ? `move ${item.id} → ${field} cleared` : `move ${item.id} → ${field}=${value}`);
               play("move");
             }}
           />
@@ -441,7 +441,7 @@ export function RoomBoard({ roomName }: Props) {
                 onSelect={setSelectedId}
                 onEdit={(item, field, value) => {
                   patch(item, { [field]: value, updated: new Date().toISOString() });
-                  setEcho(`edit ${item.id} → ${field}=${String(value)} · written to frontmatter`);
+                  setStatusMessage(`edit ${item.id} → ${field}=${String(value)} · written to frontmatter`);
                 }}
                 sort={view.sort}
                 onSort={field =>
@@ -458,7 +458,7 @@ export function RoomBoard({ roomName }: Props) {
         )}
       </div>
 
-      <BoardFooter echo={echo} rows={ordered.length} total={items.length} />
+      <BoardFooter statusMessage={statusMessage} rows={ordered.length} total={items.length} />
     </div>
   );
 }
@@ -615,11 +615,11 @@ function BoardHeader(props: {
 }
 
 function BoardFooter({
-  echo,
+  statusMessage,
   rows,
   total,
 }: {
-  echo: string | null;
+  statusMessage: string | null;
   rows: number;
   total: number;
 }) {
@@ -635,7 +635,9 @@ function BoardFooter({
         <Key k="n" /> capture
       </span>
       <span className="ml-auto flex items-center gap-2 font-mono text-micro">
-        {echo && <span className="truncate text-accent" title={echo}>{echo}</span>}
+        {statusMessage && (
+          <span className="truncate text-accent" title={statusMessage}>{statusMessage}</span>
+        )}
         <span className="text-faint">
           {rows}/{total} rows
         </span>

@@ -3,8 +3,8 @@
 
 """The host-side cognition-engine mediation core (currently unwired, backend-side only).
 
-The first-party SAO mediator: the NEGMAS core (``mediator``), the Pi brain
-(``brain``), the fuzzy offer snap (``offer_snap``), and the SLIM drive loop
+The first-party SAO mediator: the NEGMAS core (``mediator``), the Pi LLM session
+(``pi_session``), the fuzzy offer snap (``offer_snap``), and the SLIM drive loop
 (``runtime``). The heavy dep (negmas) comes from the ``mycelium[engine]`` extra.
 
 The mediation core is retained dormant, pending integration with the

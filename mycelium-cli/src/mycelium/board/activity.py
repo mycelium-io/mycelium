@@ -53,7 +53,7 @@ class ActivityEvent:
 
 
 @dataclass
-class Digest:
+class ActivitySummary:
     frm: date
     to: date
     events: list[ActivityEvent] = field(default_factory=list)
@@ -266,7 +266,9 @@ def streaks(days: dict[date, list[ActivityEvent]], end: date) -> tuple[int, int]
     return current, longest
 
 
-def digest(days: dict[date, list[ActivityEvent]], frm: date, to: date) -> Digest:
+def summarize_activity(
+    days: dict[date, list[ActivityEvent]], frm: date, to: date
+) -> ActivitySummary:
     events: list[ActivityEvent] = []
     active = 0
     cursor = frm
@@ -276,7 +278,7 @@ def digest(days: dict[date, list[ActivityEvent]], frm: date, to: date) -> Digest
             active += 1
         events.extend(for_day)
         cursor += timedelta(days=1)
-    return Digest(
+    return ActivitySummary(
         frm=frm, to=to, events=sorted(events, key=lambda e: e.at, reverse=True), active_days=active
     )
 

@@ -1,7 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""The hello engine — a cognition engine that proves the summon path.
+"""The probe engine — a cognition engine that proves the summon path.
+
+Registered and summoned under the engine kind ``hello``, which is the name
+users type; the module and the class are named for the job so nobody reads
+this as example code and deletes a production probe.
 
 A third engine ``kind`` alongside the aligner and the synthesizer, and the only
 one that owns nothing. On an ``@``-summon it runs one Pi turn on whatever was
@@ -14,7 +18,7 @@ side effects, so neither is something to fire into a shared room just to check
 the wiring — and so the engine path stays unproven until something important
 needs it. A summon of a ``hello`` engine walks every rung: the manifest-kind
 gate, the :data:`~app.config.Settings.ENGINE_RUNTIME` branch, the self-summon
-guard, a :class:`~app.services.pi_brain.PiBrain` one-shot, and the channel send
+guard, a :class:`~app.services.pi_session.PiSession` one-shot, and the channel send
 plus persister ingest. A reply in the room means all of it works; silence
 narrows the failure to one place.
 
@@ -81,11 +85,11 @@ def _pi_complete(prompt: str, timeout_s: float) -> str:
     carry — the same pattern as :func:`app.services.synthesizer._pi_complete`.
     Isolated so tests can patch it without a live Pi.
     """
-    from app.services.pi_brain import PiBrain
+    from app.services.pi_session import PiSession
 
     session_dir = Path(tempfile.gettempdir()) / "mycelium-pi-sessions"
     session_dir.mkdir(parents=True, exist_ok=True)
-    brain = PiBrain(
+    llm_session = PiSession(
         session_path=session_dir / f"hello-{uuid.uuid4().hex}.jsonl",
         model=settings.LLM_MODEL,
         api_key=settings.LLM_API_KEY,
@@ -94,10 +98,10 @@ def _pi_complete(prompt: str, timeout_s: float) -> str:
         timeout_s=timeout_s,
         openshell=settings.ALIGNER_PI_OPENSHELL,
     )
-    return brain(prompt)
+    return llm_session(prompt)
 
 
-class HelloEngine:
+class ProbeEngine:
     """Answer a summon with one Pi turn, and write nothing anywhere.
 
     Reaches the room's channel through the :class:`RoomChannelManager` it is

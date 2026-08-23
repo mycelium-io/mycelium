@@ -38,10 +38,10 @@ from mycelium.board import fields as board_fields
 from mycelium.board.activity import (
     DAILY_GOAL,
     by_day,
-    digest,
     heat_level,
     project_activity,
     streaks,
+    summarize_activity,
     week_start,
     zone,
 )
@@ -245,7 +245,7 @@ def _custody_chip(item: LiveItem, now: datetime) -> Text:
 
     if state == "held":
         chip.append(f"held @{item.owner}", style="cyan")
-        fraction = custody.spent(custody.claimed_at(item), item.get("ttl_minutes"), now)
+        fraction = custody.elapsed_fraction(custody.claimed_at(item), item.get("ttl_minutes"), now)
         if fraction is not None:
             chip.append(" ")
             chip.append_text(_ttl_bar(fraction))
@@ -495,7 +495,7 @@ def board_resolve(
     name = _resolve_room(cfg, room)
 
     item = _row(name, row_id)
-    if item is not None and custody.refusal_for(item) is None:
+    if item is not None and custody.custody_refusal(item) is None:
         _lease(cfg, name, "resolve", key=_lease_key(item), handle=cfg.get_current_identity())
         return
     # Not leasable, but still a row with frontmatter: `status` is a stage, and a
@@ -524,7 +524,7 @@ def board_claim(
     if item is None:
         console.print(f"[dim]No row '{row_id}' on this board.[/dim]")
         raise typer.Exit(1)
-    if refusal := custody.refusal_for(item):
+    if refusal := custody.custody_refusal(item):
         # Refusing with the reason is the honest answer: there is nowhere on this
         # row to write a claim, and pretending otherwise is how a board fills up
         # with holders nobody can renew.
@@ -552,7 +552,7 @@ def board_release(
     if item is None:
         console.print(f"[dim]No row '{row_id}' on this board.[/dim]")
         raise typer.Exit(1)
-    if refusal := custody.refusal_for(item):
+    if refusal := custody.custody_refusal(item):
         console.print(f"[yellow]·[/yellow] {row_id} holds no lease — {refusal}")
         raise typer.Exit(1)
     _lease(
@@ -656,7 +656,7 @@ def _write_fields(cfg: MyceliumConfig, room: str, row_id: str, patch: dict) -> N
     if item is None:
         console.print(f"[dim]No row '{row_id}' on this board.[/dim]")
         raise typer.Exit(1)
-    refusal = board_fields.refusal_for(item)
+    refusal = board_fields.field_write_refusal(item)
     if refusal:
         console.print(f"[yellow]·[/yellow] {row_id} can't take a field write — {refusal}")
         raise typer.Exit(1)
@@ -748,7 +748,7 @@ def board_log(
 
     days = by_day(events, tz)
     current, longest = streaks(days, today_local)
-    summary = digest(days, frm, to)
+    summary = summarize_activity(days, frm, to)
     logged_today = len(days.get(today_local, []))
 
     console.print()

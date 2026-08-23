@@ -40,7 +40,7 @@ from app.schemas import (
     SubscriptionCreate,
     SubscriptionRead,
 )
-from app.services import actor, links, local_state, memory_sync, search_index
+from app.services import actor, in_memory_store, links, memory_sync, search_index
 from app.services.embedding import embed_text
 from app.services.filesystem import (
     MANAGED_META,
@@ -124,7 +124,7 @@ def _notify_change(room_name: str, key: str, updated_by: str, version: int) -> N
         "created_at": datetime.now(UTC).isoformat(),
     }
     bus.publish(room_channel(room_name), payload)
-    for sub in local_state.list_subscriptions(room_name):
+    for sub in in_memory_store.list_subscriptions(room_name):
         if fnmatch.fnmatch(key, sub.key_pattern):
             bus.publish(agent_channel(sub.subscriber), payload)
 
@@ -462,26 +462,28 @@ async def search_memories(room_name: str, payload: MemorySearchRequest):
 async def subscribe(room_name: str, payload: SubscriptionCreate):
     """Subscribe to memory change notifications for a key pattern."""
     _require_room(room_name)
-    sub = local_state.StoredSubscription(
+    sub = in_memory_store.StoredSubscription(
         room_name=room_name,
         subscriber=payload.subscriber,
         key_pattern=payload.key_pattern,
     )
-    local_state.add_subscription(sub)
+    in_memory_store.add_subscription(sub)
     return SubscriptionRead.model_validate(sub)
 
 
 @router.delete("/subscribe/{subscription_id}", status_code=204)
 async def unsubscribe(room_name: str, subscription_id: UUID):
     """Remove a memory subscription."""
-    if not local_state.remove_subscription(room_name, subscription_id):
+    if not in_memory_store.remove_subscription(room_name, subscription_id):
         raise HTTPException(status_code=404, detail="Subscription not found")
 
 
 @router.get("/subscriptions", response_model=list[SubscriptionRead])
 async def list_subscriptions(room_name: str):
     """List active memory subscriptions for a room."""
-    return [SubscriptionRead.model_validate(s) for s in local_state.list_subscriptions(room_name)]
+    return [
+        SubscriptionRead.model_validate(s) for s in in_memory_store.list_subscriptions(room_name)
+    ]
 
 
 # ── Key-path routes (catch-all, must be LAST) ─────────────────────────────

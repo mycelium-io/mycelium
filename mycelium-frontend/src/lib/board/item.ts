@@ -16,14 +16,14 @@ import {
   claimPatch,
   custodyOf,
   isBlocked,
-  leaseSpent,
+  leaseElapsedFraction,
   releasePatch,
 } from "./custody";
-import { arr, bool, num, ownerOf, str } from "./fields";
+import { fieldAsBool, fieldAsList, fieldAsNumber, fieldAsString, ownerOf } from "./fields";
 
 // The accessors live a layer down so `custody` can read a row without importing
 // this module back; callers still find them here, where they always were.
-export { arr, bool, num, ownerOf, str };
+export { fieldAsBool, fieldAsList, fieldAsNumber, fieldAsString, ownerOf };
 
 export type SourceKind = "episode" | "memory" | "agent" | "capture" | "github";
 
@@ -68,18 +68,18 @@ export const STATUS_ORDER: ItemStatus[] = ["open", "in_review", "resolved", "dis
 export const PRIORITY_ORDER: Priority[] = ["urgent", "high", "normal", "low"];
 
 export function statusOf(item: LiveItem): ItemStatus {
-  const s = str(item, "status");
+  const s = fieldAsString(item, "status");
   return (STATUS_ORDER as string[]).includes(s ?? "") ? (s as ItemStatus) : "open";
 }
 
 export function kindOf(item: LiveItem): ItemKind {
-  const k = str(item, "kind");
+  const k = fieldAsString(item, "kind");
   const known: string[] = ["decision", "blocked", "review", "action", "concern", "signal"];
   return known.includes(k ?? "") ? (k as ItemKind) : "action";
 }
 
 export function priorityOf(item: LiveItem): Priority {
-  const p = str(item, "priority");
+  const p = fieldAsString(item, "priority");
   return (PRIORITY_ORDER as string[]).includes(p ?? "") ? (p as Priority) : "normal";
 }
 
@@ -109,7 +109,7 @@ export function lensOf(item: LiveItem, now: number = Date.now()): Lens {
 
 /** Minutes since the row last moved, for the age column and the TTL bar. */
 export function ageMinutes(item: LiveItem, now: number): number | null {
-  const raw = str(item, "updated") ?? str(item, "created");
+  const raw = fieldAsString(item, "updated") ?? fieldAsString(item, "created");
   if (!raw) return null;
   const t = Date.parse(raw);
   if (Number.isNaN(t)) return null;
@@ -122,10 +122,10 @@ export function ageMinutes(item: LiveItem, now: number): number | null {
  * A lease ages from `claimed_at` rather than from `updated`: a renewal re-dates
  * the claim, and a holder saying "still here" is exactly what the bar is drawing.
  */
-export function ttlSpent(item: LiveItem, now: number): number | null {
-  const lease = leaseSpent(item, now);
+export function ttlElapsedFraction(item: LiveItem, now: number): number | null {
+  const lease = leaseElapsedFraction(item, now);
   if (lease !== null) return Math.min(1, lease);
-  const ttl = num(item, "ttl_minutes");
+  const ttl = fieldAsNumber(item, "ttl_minutes");
   const age = ageMinutes(item, now);
   if (ttl === null || ttl <= 0 || age === null) return null;
   return Math.min(1, age / ttl);

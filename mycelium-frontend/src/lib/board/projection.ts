@@ -161,8 +161,8 @@ export interface ProjectionInput {
   agents: AgentSummary[];
   presence: Map<string, PresenceMember>;
   now: string;
-  /** Rows an agent hasn't touched yet: local triage, keyed by item id. */
-  overlay?: Record<string, Record<string, unknown>>;
+  /** Field writes applied locally until the server's copy catches up, keyed by item id. */
+  optimisticEdits?: Record<string, Record<string, unknown>>;
   /** Rows captured in this session, before any backend write exists for them. */
   captured?: LiveItem[];
 }
@@ -187,8 +187,8 @@ export function projectItems(input: ProjectionInput): LiveItem[] {
   }
   items.push(...(input.captured ?? []));
 
-  const overlay = input.overlay ?? {};
+  const edits = input.optimisticEdits ?? {};
   return items.map(item =>
-    overlay[item.id] ? { ...item, fields: { ...item.fields, ...overlay[item.id] } } : item,
+    edits[item.id] ? { ...item, fields: { ...item.fields, ...edits[item.id] } } : item,
   );
 }

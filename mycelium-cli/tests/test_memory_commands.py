@@ -18,10 +18,10 @@ from typing import Any
 
 import httpx
 import pytest
+from mycelium_backend_client.errors import UnexpectedStatus
 from typer.testing import CliRunner
 
 from mycelium.commands import memory as memory_cmd
-from mycelium_backend_client.errors import UnexpectedStatus
 
 runner = CliRunner()
 

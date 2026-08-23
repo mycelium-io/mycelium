@@ -46,31 +46,31 @@ export function fieldWriteRefusal(item: LiveItem): string | null {
   return FIELD_REFUSALS[item.source.kind] ?? "this row has no frontmatter to write";
 }
 
-export function str(item: LiveItem, name: string): string | null {
+export function fieldAsString(item: LiveItem, name: string): string | null {
   const v = item.fields[name];
   return typeof v === "string" && v.trim() ? v.trim() : null;
 }
 
-export function num(item: LiveItem, name: string): number | null {
+export function fieldAsNumber(item: LiveItem, name: string): number | null {
   const v = item.fields[name];
   if (typeof v === "number" && Number.isFinite(v)) return v;
   if (typeof v === "string" && v.trim() && Number.isFinite(Number(v))) return Number(v);
   return null;
 }
 
-export function arr(item: LiveItem, name: string): string[] {
+export function fieldAsList(item: LiveItem, name: string): string[] {
   const v = item.fields[name];
   if (Array.isArray(v)) return v.filter((x): x is string => typeof x === "string");
   if (typeof v === "string" && v.trim()) return [v.trim()];
   return [];
 }
 
-export function bool(item: LiveItem, name: string): boolean {
+export function fieldAsBool(item: LiveItem, name: string): boolean {
   return item.fields[name] === true;
 }
 
 /** The row's holder, without the `@`. Absent means nobody, never "unknown". */
 export function ownerOf(item: LiveItem): string | null {
-  const o = str(item, "owner");
+  const o = fieldAsString(item, "owner");
   return o ? o.replace(/^@/, "") : null;
 }

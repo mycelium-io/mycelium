@@ -18,6 +18,7 @@ from typing import Any, cast
 
 import httpx
 import typer
+from mycelium_backend_client.errors import UnexpectedStatus
 from pydantic import ValidationError
 from rich.console import Console
 from rich.table import Table
@@ -31,7 +32,6 @@ from mycelium.filesystem import (
     write_memory,
 )
 from mycelium.protocol import MEMORY_CATEGORIES, MemoryLogEntry
-from mycelium_backend_client.errors import UnexpectedStatus
 
 app = typer.Typer(
     help="Read and write persistent memories scoped to rooms. Memories are markdown files in .mycelium/rooms/. Supports semantic vector search via a local JSONL index.",

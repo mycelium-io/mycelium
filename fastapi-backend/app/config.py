@@ -130,24 +130,24 @@ class Settings(BaseSettings):
     # well above the participant count so several proposer rotations can happen
     # (spike used 20).
     ALIGNER_MEDIATOR_MAX_STEPS: int = 20
-    # Pre-negotiation term check — one cheap brain call over the opening positions
+    # Pre-negotiation term check — one cheap LLM session call over the opening positions
     # looking for a word two agents use in different senses, and one clarifying
     # round when it finds any. On by default: a room that shares its vocabulary
     # pays a single call and negotiates exactly as before. Off skips the check.
     ALIGNER_TERM_CHECK: bool = True
-    # Mediator brain runtime — the cognitive engine behind the SAO
+    # Mediator LLM session runtime — the cognitive engine behind the SAO
     # mediator, an *internal* agent — always a persistent, optionally
     # OpenShell-sandboxed `pi -p --session <id> --mode json` session that gives the
     # internal agent real memory across SAO rounds (the anti-theatre property).
     # This is ONLY the runtime for mycelium's own cognition engines; user/participant
     # agent runtimes (claude_code, cursor, …) are untouched and keep their own runtime.
-    # Path/name of the `pi` binary the mediator brain runs.
+    # Path/name of the `pi` binary the mediator LLM session runs.
     ALIGNER_PI_BINARY: str = "pi"
     # Wrap each pi session in an OpenShell sandbox when true. Off by default:
     # `openshell` may not be installed and the sandbox path is a live-validation
-    # step — the wrap is a config flip, not a code change (pi_brain._sandbox_wrap).
+    # step — the wrap is a config flip, not a code change (pi_session._sandbox_wrap).
     ALIGNER_PI_OPENSHELL: bool = False
-    # Per-turn wall-clock bound (seconds) on one pi brain call before it is killed.
+    # Per-turn wall-clock bound (seconds) on one pi LLM session call before it is killed.
     ALIGNER_PI_TIMEOUT_S: float = 120.0
     # A2A bridge SSRF guard: registering/summoning an a2a agent makes the backend
     # dial the card's host, so by default a host that resolves to a private,

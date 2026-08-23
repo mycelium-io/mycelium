@@ -13,12 +13,12 @@ Two shapes carry the whole design.
 ``Ref`` is the unit of work.  Rows reference refs, not the other way round, so
 two rows pointing at the same pull request cost one fetch between them.
 
-``Liveness`` is a closed vocabulary plus an open bag.  ``state`` is one of six
+``UpstreamState`` is a closed vocabulary plus an open bag.  ``state`` is one of six
 words the board can colour and sort by without knowing what a "ticket" is;
 ``label`` is the provider's own phrasing, kept verbatim because "Needs review"
 and "In QA" are the words the reader actually recognises.
 
-The word *liveness*, and not *status*, is deliberate.  A board row already owns
+The word *upstream*, and not *status*, is deliberate.  A board row already owns
 ``status`` for its own lifecycle (``open``, ``claimed``, ``in_progress`` …), a
 different closed vocabulary that happens to share the word ``blocked`` with this
 one meaning something else.  A provider answers about the *external* thing a row
@@ -101,7 +101,7 @@ class Ref:
 
 
 @dataclass(frozen=True, slots=True)
-class Liveness:
+class UpstreamState:
     """A provider's reading of an external thing: one of six states, plus its
     own words for it. Lands on a board row under ``ROW_FIELD``, never ``status``
     and never ``live`` (both are the row's own, meaning something else).
@@ -118,16 +118,16 @@ class Liveness:
 
 
 @dataclass(frozen=True, slots=True)
-class Ok:
+class FetchSucceeded:
     ref: Ref
-    liveness: Liveness
+    upstream: UpstreamState
     #: Override the provider's default freshness window for this one answer —
     #: a merged pull request can be cached far longer than an open one.
     ttl: timedelta | None = None
 
 
 @dataclass(frozen=True, slots=True)
-class Err:
+class FetchFailed:
     ref: Ref
     reason: str
     #: Honour a provider's rate-limit reply rather than hammering it.
@@ -136,16 +136,16 @@ class Err:
 
 #: One outcome per ref. A batch where three refs 404 must still answer for the
 #: other forty-seven, so failure is a value rather than an exception.
-Outcome = Ok | Err
+FetchOutcome = FetchSucceeded | FetchFailed
 
 
 @dataclass(frozen=True, slots=True)
-class Known:
+class CachedStatus:
     """What the app hands a caller: a value, and how much to trust it."""
 
     ref: Ref
     freshness: Freshness
-    liveness: Liveness | None = None
+    upstream: UpstreamState | None = None
     fetched_at: datetime | None = None
     error: str | None = None
 
@@ -154,7 +154,7 @@ class Known:
 
 
 @runtime_checkable
-class Context(Protocol):
+class ProviderContext(Protocol):
     """What a provider is handed. Deliberately small.
 
     ``http`` is pre-built against the provider's declared ``base_url`` with its
@@ -220,7 +220,7 @@ class StatusProvider(Protocol):
         """
         ...
 
-    async def fetch(self, refs: list[Ref], ctx: Context) -> list[Outcome]:
+    async def fetch(self, refs: list[Ref], ctx: ProviderContext) -> list[FetchOutcome]:
         """Resolve a chunk. One outcome per ref, in any order.
 
         Raising is a bug, not a protocol: the runtime catches it and marks every
