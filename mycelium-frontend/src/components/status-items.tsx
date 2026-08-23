@@ -58,9 +58,10 @@ export function StatusButton({ onClick, tooltip, action, children }: CellProps &
   );
 }
 
-/** Global items shared by every screen's status bar: model, spend, health. */
+/** Global items shared by every screen's status bar: the cognition model and,
+ *  when it is down, the hub itself. */
 export function GlobalStatusItems() {
-  const { model, spend, healthy } = useGlobalStatus();
+  const { model, healthy } = useGlobalStatus();
   const shortModel = model ? model.split("/").pop() : null;
 
   return (
@@ -68,11 +69,6 @@ export function GlobalStatusItems() {
       {shortModel && (
         <StatusLink href="/metrics" tooltip={model ?? undefined}>
           <span className="font-mono">{shortModel}</span>
-        </StatusLink>
-      )}
-      {spend !== null && (
-        <StatusLink href="/metrics" tooltip="Spend (session)">
-          <span className="tabular">${spend.toFixed(2)}</span>
         </StatusLink>
       )}
       {/* Health only shows when unhealthy. */}
@@ -88,8 +84,8 @@ export function GlobalStatusItems() {
   );
 }
 
-/** Metrics lives in the status bar, beside the model/spend cells that already
- *  deep-link into it — telemetry reads as a footer concern (editor-style), not
+/** Metrics lives in the status bar, beside the model cell that already
+ *  deep-links into it — telemetry reads as a footer concern (editor-style), not
  *  a peer of the rooms in the navigation rail. */
 export function MetricsStatusLink() {
   const pathname = usePathname();

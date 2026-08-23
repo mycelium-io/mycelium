@@ -10,7 +10,7 @@
  * The SSE stream is handled separately in `stream.ts`.
  */
 
-import { BACKEND_METRICS, COLLECTOR_METRICS, HOSTS, ROOMS, ROOM_FIXTURES, getRoomFixture } from "./fixtures";
+import { BACKEND_METRICS, ROOMS, ROOM_FIXTURES, getRoomFixture } from "./fixtures";
 import type { MockMemory } from "./fixtures";
 import type { A2aBridgeState, MemoryGraph, MemoryGraphEdge, MemoryLink } from "@/lib/api";
 import type { SearchHit, SearchResultType } from "@/lib/search";
@@ -131,11 +131,9 @@ export async function handleMock(req: Request): Promise<Response | null> {
   if (segs[0] !== "api") return null;
   const rest = segs.slice(1); // e.g. ["rooms", "atlas-migration", "plan"]
 
-  // ── /api/observability* ─────────────────────────────────────────────────────
+  // ── /api/observability ──────────────────────────────────────────────────────
   if (rest[0] === "observability") {
     if (rest.length === 1) return json(BACKEND_METRICS);
-    if (rest[1] === "collector") return json(COLLECTOR_METRICS);
-    if (rest[1] === "hosts") return json({ hosts: HOSTS });
     return notFound("unknown observability route (mock)");
   }
 
