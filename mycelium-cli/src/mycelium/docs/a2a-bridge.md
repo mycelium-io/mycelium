@@ -83,6 +83,12 @@ The card endpoint is public: discovery is unauthenticated by the A2A spec, the
 same way `/.well-known/openid-configuration` is. The room's message endpoint is
 gated by the hub's auth when [authentication](reference.html#auth) is enabled.
 
+The card advertises an absolute URL, which the hub builds from the scheme it
+sees. Behind a TLS-terminating reverse proxy that is plain `http`, so a public
+hub has to be told which forwarder to believe or the card points external
+clients at `http://`. See [Behind a TLS-terminating
+proxy](reference.html#hub-and-spoke).
+
 ## Watch the bridge
 
 The bridge is the one hop that doesn't ride SLIM, so it gets its own place in the

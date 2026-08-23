@@ -251,6 +251,17 @@ def generate_env_file(
         # Production builds don't need this — browsers always hit their own origin.
         f"MYCELIUM_ALLOWED_DEV_ORIGINS={config.runtime.allowed_dev_origins}",
         "",
+        "# ── Reverse proxy in front of the backend ───────────────────────────────",
+        # uvicorn honours X-Forwarded-Proto/-For only from a forwarder it trusts,
+        # and trusts loopback alone unless told otherwise. Behind a TLS-terminating
+        # proxy the hop arrives from the bridge, so without this every absolute URL
+        # the backend builds keeps the http:// scheme it sees (#799). Emitted only
+        # when set: an empty value would be read as "trust nobody", which is not the
+        # same as uvicorn's loopback default.
+        f"FORWARDED_ALLOW_IPS={config.runtime.trusted_proxies}"
+        if config.runtime.trusted_proxies
+        else "# FORWARDED_ALLOW_IPS not set; uvicorn trusts loopback forwarders only",
+        "",
     ]
 
     # ── Operator-managed pins (preserved across `mycelium config apply`) ─────
