@@ -13,6 +13,7 @@ vi.mock("@/lib/api", () => ({
   fetchMessages: vi.fn().mockResolvedValue({ messages: [] }),
   fetchRoomAgents: vi.fn().mockResolvedValue([]),
   fetchPendingInvites: vi.fn().mockResolvedValue([]),
+  fetchPlan: vi.fn().mockResolvedValue({ documents: [] }),
   respondToInvite: vi.fn(),
   logFetchError: () => () => undefined,
 }));
@@ -213,5 +214,104 @@ describe("<EventStream /> live message rendering", () => {
       expect.anything(),
     );
     warn.mockRestore();
+  });
+});
+
+describe("<EventStream /> stick-to-bottom", () => {
+  beforeEach(() => {
+    resetStreamHub();
+    FakeEventSource.reset();
+    vi.stubGlobal("EventSource", FakeEventSource);
+  });
+
+  const viewport = () =>
+    document.querySelector('[data-slot="scroll-area-viewport"]') as HTMLElement;
+
+  /** jsdom lays nothing out, so the viewport's scroll geometry is all zeros —
+   *  which reads as "at the bottom". Give it a real scrollable shape. */
+  function scrollTo(el: HTMLElement, top: number) {
+    Object.defineProperty(el, "scrollHeight", { value: 1000, configurable: true });
+    Object.defineProperty(el, "clientHeight", { value: 400, configurable: true });
+    Object.defineProperty(el, "scrollTop", { value: top, writable: true, configurable: true });
+    el.dispatchEvent(new Event("scroll"));
+  }
+
+  async function mountWithMessage(text: string) {
+    renderWithSWR(<EventStream roomName="sprint" />);
+    await act(async () => {});
+    const es = FakeEventSource.latest();
+    await act(async () => {
+      es.open();
+      es.emit(l9Exchange(text));
+    });
+    await screen.findByText(text);
+    return es;
+  }
+
+  it("hides the jump button while the reader is on the tail", async () => {
+    await mountWithMessage("first");
+    expect(screen.queryByRole("button", { name: /Jump to latest/ })).not.toBeInTheDocument();
+  });
+
+  it("offers a jump button once the reader scrolls up off the tail", async () => {
+    await mountWithMessage("first");
+
+    await act(async () => { scrollTo(viewport(), 0); });
+
+    expect(await screen.findByRole("button", { name: /Jump to latest/ })).toBeInTheDocument();
+  });
+
+  it("holds the reader's place instead of yanking them down to a new message", async () => {
+    const es = await mountWithMessage("history the reader is reading");
+    await act(async () => { scrollTo(viewport(), 0); });
+
+    const scrollSpy = vi.spyOn(Element.prototype, "scrollTo");
+    await act(async () => { es.emit(l9Exchange("landed while scrolled up")); });
+    await screen.findByText("landed while scrolled up");
+
+    expect(scrollSpy).not.toHaveBeenCalled();
+    scrollSpy.mockRestore();
+  });
+
+  it("counts what landed while the reader was away", async () => {
+    const es = await mountWithMessage("first");
+    await act(async () => { scrollTo(viewport(), 0); });
+
+    await act(async () => { es.emit(l9Exchange("second")); });
+    expect(await screen.findByRole("button", { name: /1 new/ })).toHaveTextContent("1 new message");
+
+    await act(async () => { es.emit(l9Exchange("third")); });
+    expect(await screen.findByRole("button", { name: /2 new/ })).toHaveTextContent("2 new messages");
+  });
+
+  it("does not strand the reader after they page through the plan view", async () => {
+    // Plan and channel share one scroll viewport, so a plan document's scroll
+    // position must not be read as the reader leaving the channel's tail.
+    const { rerender } = renderWithSWR(<EventStream roomName="sprint" view="plan" />);
+    await act(async () => {});
+    const es = FakeEventSource.latest();
+    await act(async () => {
+      es.open();
+      es.emit(l9Exchange("posted while the plan was open"));
+    });
+
+    await act(async () => { scrollTo(viewport(), 0); });
+    rerender(<EventStream roomName="sprint" view="channel" />);
+    await act(async () => {});
+
+    expect(screen.queryByRole("button", { name: /Jump to latest/ })).not.toBeInTheDocument();
+  });
+
+  it("returns to the tail when the jump button is clicked", async () => {
+    await mountWithMessage("first");
+    await act(async () => { scrollTo(viewport(), 0); });
+    const button = await screen.findByRole("button", { name: /Jump to latest/ });
+
+    const scrollSpy = vi.spyOn(Element.prototype, "scrollTo");
+    await userEvent.click(button);
+
+    expect(scrollSpy).toHaveBeenCalledWith({ top: 1000, behavior: "smooth" });
+    expect(screen.queryByRole("button", { name: /Jump to latest/ })).not.toBeInTheDocument();
+    scrollSpy.mockRestore();
   });
 });

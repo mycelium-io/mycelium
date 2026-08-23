@@ -27,7 +27,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Monogram } from "@/components/ui/monogram";
 import { Tooltip } from "@/components/ui/tooltip";
-import { Bot, MessagesSquare } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { ArrowDown, Bot, MessagesSquare } from "lucide-react";
 
 interface Event {
   /** Render key only — synthesized, so a message republished by a status
@@ -274,6 +275,10 @@ function parseEvent(msg: Record<string, unknown>): Event {
   };
 }
 
+/** A reader a couple of lines off the bottom still counts as reading the tail,
+ *  so a stray wheel tick doesn't detach them. */
+const PIN_TOLERANCE_PX = 64;
+
 export type View = "channel" | "negotiate" | "plan" | "network";
 export type NegotiationPhase = "idle" | "negotiating" | "converged" | "rejected";
 
@@ -395,10 +400,50 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
     onFocusConsumed?.();
   }, [focusMessageId, onFocusConsumed]);
 
-  // Auto-scroll when new events arrive — but not over a message the user was
-  // just sent to, which is the one place in the feed they're looking.
+  // The feed follows new messages only while the reader is on the tail; scroll
+  // up and it holds still. A jump-back button carries the count of what landed
+  // meanwhile, so leaving the tail doesn't read as a quiet room.
+  const [atBottom, setAtBottom] = useState(true);
+  const atBottomRef = useRef(true);
+  // visible.length at the moment the reader left the tail.
+  const [detachedAt, setDetachedAt] = useState(0);
+  const visibleCount = useRef(0);
+
   useEffect(() => {
-    if (highlight) return;
+    const el = scrollRef.current;
+    // The plan doc scrolls in this same viewport, so the pin is tracked only
+    // for the channel — paging through a plan is not leaving the chat's tail.
+    if (!el || view !== "channel") return;
+    // Switching views unmounts the viewport, and a remount starts at the top;
+    // put a pinned reader back on the tail rather than in the archive.
+    if (atBottomRef.current) el.scrollTop = el.scrollHeight;
+    const measure = () => {
+      const pinned = el.scrollHeight - el.scrollTop - el.clientHeight <= PIN_TOLERANCE_PX;
+      if (pinned === atBottomRef.current) return;
+      atBottomRef.current = pinned;
+      if (!pinned) setDetachedAt(visibleCount.current);
+      setAtBottom(pinned);
+    };
+    el.addEventListener("scroll", measure, { passive: true });
+    return () => el.removeEventListener("scroll", measure);
+  }, [view]);
+
+  const jumpToLatest = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    atBottomRef.current = true;
+    setAtBottom(true);
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  };
+
+  const unread = atBottom ? 0 : Math.max(0, visible.length - detachedAt);
+
+  // Auto-scroll when new events arrive — but not over a message the user was
+  // just sent to, which is the one place in the feed they're looking, and not
+  // over history they scrolled up to read.
+  useEffect(() => {
+    visibleCount.current = visible.length;
+    if (highlight || !atBottomRef.current) return;
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [visible, highlight]);
 
@@ -497,6 +542,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
           <NegotiationView events={events} />
         </div>
       ) : (
+      <div className="relative flex flex-1 min-h-0 flex-col">
       <ScrollArea className="flex-1 min-h-0" viewportRef={scrollRef}>
         {view === "plan" ? (
           <RoomPlanHeader roomName={roomName} />
@@ -696,6 +742,21 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
         </div>
         )}
       </ScrollArea>
+      {view === "channel" && !atBottom && visible.length > 0 && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={jumpToLatest}
+            aria-label={unread > 0 ? `Jump to latest, ${unread} new` : "Jump to latest"}
+            className="pointer-events-auto rounded-full border-border bg-elevated shadow-lg motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1"
+          >
+            <ArrowDown className="size-3.5" />
+            {unread > 0 ? `${unread} new ${unread === 1 ? "message" : "messages"}` : "Jump to latest"}
+          </Button>
+        </div>
+      )}
+      </div>
       )}
     </div>
   );
