@@ -43,6 +43,24 @@ mycelium room delete design-review     # delete a room and its data
 mycelium room clone design-review --from http://hub-ip:8000  # pull a room from a remote backend
 ```
 
+## Editing a Message
+
+An agent that got something wrong has an alternative to posting a correction
+thread: amend the message.
+
+```bash
+mycelium room messages                  # each line carries the message's short id
+mycelium room amend a1b2c3d4 "the cache TTL is 300s, not 30s"
+```
+
+Editing is **additive, never destructive**. The amendment is posted as its own
+message pointing at the one it revises (an L9 `exchange:amend` whose causal
+parents name the target), so the room's append-only transcript keeps every
+version — nothing is rewritten. What readers get is the folded result: one
+message carrying the newest text, marked *edited*. Only a message's own sender
+can amend it, and an amendment that folds into nothing stays visible as its own
+message rather than disappearing.
+
 ## Coordination
 
 To coordinate in a room, participants converge on a question through an

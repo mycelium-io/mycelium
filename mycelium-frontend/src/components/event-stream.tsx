@@ -14,7 +14,7 @@ import {
 import { useRoomAgents } from "@/lib/room-data";
 import { useRoomConnected, useRoomStream } from "@/lib/stream-hub";
 import { MarkdownContent } from "@/components/markdown-content";
-import { RoomPlanHeader } from "@/components/room-plan-header";
+import { RoomBoard } from "@/components/board/room-board";
 import { ConsentDialog } from "@/components/consent-dialog";
 import { EpisodeTag } from "@/components/episode-tag";
 import { L9Inspector } from "@/components/l9-inspector";
@@ -47,6 +47,11 @@ interface Event {
   // turns share their mediator's episode; casual chat carries the room default
   // or none. Lets the feed group/fold one negotiation's turns together.
   episode: string | null;
+  /** The id of the message this one revises, when it is an amendment. The feed
+   *  folds it into that message rather than showing it as a row of its own. */
+  amends: string | null;
+  /** True once an amendment has revised this message's text. */
+  edited: boolean;
   raw: Record<string, unknown>;
 }
 
@@ -262,6 +267,19 @@ function parseEvent(msg: Record<string, unknown>): Event {
       | undefined)?.episode as string ||
     null;
 
+  // An amendment names the message it revises: over SSE that's the L9 envelope's
+  // subkind + parents, on the REST snapshot the backend has already folded it and
+  // only the `edited_at` stamp survives.
+  const l9header = ((raw.l9 as Record<string, unknown> | undefined)?.header ??
+    {}) as Record<string, unknown>;
+  const parents = (l9header.message as Record<string, unknown> | undefined)?.parents;
+  const amends =
+    l9header.subkind === "amend" && Array.isArray(parents) && typeof parents[0] === "string"
+      ? (parents[0] as string)
+      : typeof msg.amends === "string"
+        ? msg.amends
+        : null;
+
   return {
     id: `${Date.now()}-${Math.random()}`,
     messageId: typeof msg.id === "string" ? msg.id : null,
@@ -271,6 +289,8 @@ function parseEvent(msg: Record<string, unknown>): Event {
     recipient,
     time,
     episode,
+    amends,
+    edited: typeof msg.edited_at === "string",
     raw,
   };
 }
@@ -278,6 +298,26 @@ function parseEvent(msg: Record<string, unknown>): Event {
 /** A reader a couple of lines off the bottom still counts as reading the tail,
  *  so a stray wheel tick doesn't detach them. */
 const PIN_TOLERANCE_PX = 64;
+
+/** Fold an amendment into the message it revises, or keep it as its own row.
+ *
+ *  The backend folds a cold read; the live stream carries the amendment as the
+ *  message it is, so the open tab has to fold it too or it reads as the sender
+ *  repeating themselves. An amendment that matches nothing here (its target
+ *  scrolled out of this window, or came from someone else) stays visible rather
+ *  than being dropped — the same rule the read path follows. */
+function foldAmendment(events: Event[], amendment: Event): Event[] {
+  const target = events.findIndex(
+    (e) =>
+      e.messageId === amendment.amends &&
+      e.sender === amendment.sender &&
+      e.amends === null,
+  );
+  if (target === -1) return [...events, amendment];
+  return events.map((e, i) =>
+    i === target ? { ...e, content: amendment.content, edited: true } : e,
+  );
+}
 
 export type View = "channel" | "negotiate" | "plan" | "network";
 export type NegotiationPhase = "idle" | "negotiating" | "converged" | "rejected";
@@ -369,7 +409,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
       return;
     }
     const event = parseEvent(msg);
-    setEvents(prev => [...prev, event]);
+    setEvents(prev => (event.amends ? foldAmendment(prev, event) : [...prev, event]));
     if (event.type === "memory_changed") onMemoryChanged?.();
     // A consensus compiles the negotiation into plan/tasks.md, so nudge
     // the plan header to refetch so the checklist surfaces immediately.
@@ -410,11 +450,11 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
   const visibleCount = useRef(0);
 
   useEffect(() => {
+    // Only the channel renders this viewport; the other views replace it, so
+    // the ref is null for them and the pin is left as they found it.
     const el = scrollRef.current;
-    // The plan doc scrolls in this same viewport, so the pin is tracked only
-    // for the channel — paging through a plan is not leaving the chat's tail.
-    if (!el || view !== "channel") return;
-    // Switching views unmounts the viewport, and a remount starts at the top;
+    if (!el) return;
+    // A view switch unmounts the viewport, and a remount starts at the top;
     // put a pinned reader back on the tail rather than in the archive.
     if (atBottomRef.current) el.scrollTop = el.scrollHeight;
     const measure = () => {
@@ -493,7 +533,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
           {([
             { id: "channel" as const,   label: "Channel",   count: channelCount as number | null, dot: false },
             { id: "negotiate" as const, label: "Negotiate", count: null,                          dot: negotiating },
-            { id: "plan" as const,      label: "Plan",      count: null,                          dot: false },
+            { id: "plan" as const,      label: "Board",     count: null,                          dot: false },
             { id: "network" as const,   label: "Network",   count: null,                          dot: false },
           ]).map(t => {
             // Hold the reveal modifier and each tab wears the key that selects it.
@@ -522,7 +562,11 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
           })}
         </div>
       </div>
-      {view === "network" ? (
+      {view === "plan" ? (
+        <div className="flex-1 min-h-0">
+          <RoomBoard roomName={roomName} />
+        </div>
+      ) : view === "network" ? (
         // Unified Network pane: SLIM channel diagnostics as a rail on top, the
         // A2A bridge (the room's off-channel traffic) beneath it when there is
         // one, and the live L9 protocol feed filling the rest.
@@ -544,9 +588,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
       ) : (
       <div className="relative flex flex-1 min-h-0 flex-col">
       <ScrollArea className="flex-1 min-h-0" viewportRef={scrollRef}>
-        {view === "plan" ? (
-          <RoomPlanHeader roomName={roomName} />
-        ) : !historyLoaded ? (
+        {!historyLoaded ? (
           <ChannelSkeleton />
         ) : visible.length === 0 ? (
           <EmptyState
@@ -735,6 +777,11 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
                     <MarkdownContent className="contrast text-body leading-relaxed" onLinkClick={onOpenMemory}>
                       {ev.content}
                     </MarkdownContent>
+                    {ev.edited && (
+                      <span className="text-micro text-faint" title="revised by a later message">
+                        (edited)
+                      </span>
+                    )}
                   </div>
                 </div>
               );
@@ -742,7 +789,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
         </div>
         )}
       </ScrollArea>
-      {view === "channel" && !atBottom && visible.length > 0 && (
+      {!atBottom && visible.length > 0 && (
         <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
           <Button
             size="sm"

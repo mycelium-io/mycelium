@@ -735,7 +735,13 @@ class RoomChannelManager:
     # -- human-in-the-room --
 
     async def publish_human(
-        self, room: str, *, sender: str, text: str
+        self,
+        room: str,
+        *,
+        sender: str,
+        text: str,
+        subkind: str | None = None,
+        parents: list[str] | None = None,
     ) -> HumanPublishResult | None:
         """Publish a human's message onto the room channel as their proxy.
 
@@ -744,6 +750,10 @@ class RoomChannelManager:
         it. In-room mentions wake through the connector's recipient match;
         mentions of agents **not** on the channel raise a consent-gated invite
         instead. Returns ``None`` when no channel is live.
+
+        ``subkind``/``parents`` carry an ``amend`` revising an earlier message —
+        the same publish in every other respect, since a revision is a message
+        the room hears like any other (mentions and the consent gate included).
 
         The published message is ingested locally via the persister so the
         transcript and UI bus see it exactly once, independent of whether SLIM
@@ -759,7 +769,9 @@ class RoomChannelManager:
         # intent is recorded, but only present ones actually receive the broadcast.
         envelope = l9.build_envelope(
             kind=Kind.exchange,
+            subkind=subkind,
             episode=l9.episode_urn(room, "live"),
+            parents=parents,
             sender=sender,
             sender_role="human",
             recipients=mentioned,

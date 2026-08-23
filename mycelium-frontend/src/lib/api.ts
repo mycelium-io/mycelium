@@ -8,6 +8,7 @@
 
 import type { SearchResponse } from "@/lib/search";
 import { encodeMemoryKeyPath } from "@/lib/memory-routes";
+import type { RoomStatus } from "@/lib/board/upstream";
 
 /**
  * Attach to a fetch `.catch` to surface network failures in the browser console.
@@ -192,6 +193,40 @@ export async function createMemories(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ items }),
+  });
+}
+
+// ── Custody leases ────────────────────────────────────────────────────────────
+
+/** One row's custody, as `/rooms/{room}/leases/*` answers it. */
+export interface LeaseState {
+  key: string;
+  custody: string;
+  owner: string | null;
+  claimed_at: string | null;
+  ttl_minutes: number | null;
+  freshness: string | null;
+  version: number | null;
+  custody_note: string | null;
+  custody_note_by: string | null;
+}
+
+/**
+ * Take, hand back, or close out custody of a `work/` row.
+ *
+ * The write lands as frontmatter through the room's canonical memory upsert, so
+ * a claim made from the browser is the same versioned, indexed change a claim
+ * made from the CLI is — there is no second store for what the board knows.
+ */
+export async function writeLease(
+  roomName: string,
+  action: "claim" | "release" | "resolve",
+  body: { key: string; handle: string; ttl_minutes?: number; note?: string },
+): Promise<LeaseState> {
+  return apiFetch<LeaseState>(`/api/rooms/${roomName}/leases/${action}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
   });
 }
 
@@ -403,6 +438,23 @@ export async function fetchSkills(roomName: string): Promise<Skill[]> {
     fallback: { skills: [] },
   });
   return data.skills ?? [];
+}
+
+/** What the tools a room points at say about the work its rows mention.
+ *  A read is answered from the hub's cache and never fetches, so polling this
+ *  costs a cache lookup rather than a round trip to GitHub. */
+export async function fetchRoomStatus(roomName: string): Promise<RoomStatus> {
+  return apiFetch<RoomStatus>(`/api/rooms/${roomName}/status`, {
+    cache: "no-store",
+    fallback: {
+      room: roomName,
+      field: "upstream",
+      providers: [],
+      refs: [],
+      rows: {},
+      refreshing: false,
+    },
+  });
 }
 
 // ── Plan ─────────────────────────────────────────────────────────────────────

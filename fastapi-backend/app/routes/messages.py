@@ -18,19 +18,25 @@ from fastapi import APIRouter, HTTPException, Query, Request
 
 from app.bus import bus, room_channel
 from app.schemas import (
+    PROSE_MESSAGE_TYPES,
     STATEFUL_EVENT_KINDS,
     EventStatusUpdate,
+    MessageAmend,
     MessageCreate,
     MessageListResponse,
     MessageRead,
     MessageType,
 )
-from app.services import actor, local_state, persister, principals, room_channels
+from app.services import actor, l9, local_state, persister, principals, room_channels
 from app.services.filesystem import room_exists
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/rooms/{room_name}/messages", tags=["messages"])
+
+# Shortest id prefix an amend may name its target by. Short enough for the id the
+# CLI prints, long enough that a prefix match is a lookup rather than a guess.
+_MIN_ID_PREFIX = 6
 
 
 def _resolve_channel(name: str) -> tuple[str, local_state.CoordSessionShim | None]:
@@ -203,6 +209,117 @@ async def list_l9_wire(room_name: str, limit: int = Query(200, le=1000)) -> list
     if coord is not None:
         return []  # a coordination session has no durable transcript
     return persister.l9_wire_history(channel, limit=limit)
+
+
+def _find_amend_target(
+    messages: list[local_state.StoredMessage], message_id: str
+) -> local_state.StoredMessage | None:
+    """Resolve ``message_id`` to a message in this room's view.
+
+    A message carries two ids — the row id every client already holds and the
+    envelope id it rode the channel under — so either identifies it, as does an
+    unambiguous prefix of one (what a reader has in front of them is the short
+    form the CLI prints).
+    """
+    for m in messages:
+        if str(m.id) == message_id or m.message_id == message_id:
+            return m
+    if len(message_id) < _MIN_ID_PREFIX:
+        return None
+    matched = [
+        m
+        for m in messages
+        if str(m.id).startswith(message_id) or (m.message_id or "").startswith(message_id)
+    ]
+    return matched[0] if len(matched) == 1 else None
+
+
+@router.post("/{message_id}/amend", response_model=MessageRead, status_code=201)
+async def amend_message(
+    room_name: str,
+    message_id: str,
+    payload: MessageAmend,
+    request: Request,
+):
+    """Revise an earlier message by posting an amendment of it.
+
+    Additive, never destructive: the amendment is its own ``exchange:amend``
+    message, parented on the one it revises, and the transcript keeps every
+    version. The read path (``persister.collapse_amendments``) folds the chain,
+    so the room sees one message carrying the newest text, marked edited.
+
+    Only the original sender may amend — an amendment from anyone else would put
+    words in someone's mouth under their name.
+    """
+    channel, coord = _resolve_channel(room_name)
+    base_room = channel.split(":session:", 1)[0]
+    sender_handle = actor.bind_delegated_actor(
+        request, base_room, payload.sender_handle, field="sender_handle"
+    )
+
+    messages = _read_messages(channel, coord)
+    target = _find_amend_target(messages, message_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="Message not found in this room")
+    if target.sender_handle != sender_handle:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Only @{target.sender_handle} can amend their own message",
+        )
+    if target.message_type not in PROSE_MESSAGE_TYPES:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Message type {target.message_type!r} is not chat — nothing to amend",
+        )
+
+    # The envelope id when the target rode the channel; its row id otherwise (a
+    # message posted while the channel was down never got one). Either way the
+    # amendment names something the read path can resolve.
+    amends = target.message_id or str(target.id)
+
+    msg = local_state.StoredMessage(
+        room_name=None if coord else channel,
+        coordination_session_id=coord.id if coord else None,
+        sender_handle=sender_handle,
+        recipient_handle=target.recipient_handle,
+        message_type=target.message_type,
+        content=payload.content,
+        amends=amends,
+    )
+
+    published = False
+    if coord is None and room_channels.manager.is_live(channel):
+        result = await room_channels.manager.publish_human(
+            channel,
+            sender=sender_handle,
+            text=payload.content,
+            subkind=l9.AMEND_SUBKIND,
+            parents=[amends],
+        )
+        published = result is not None
+        if result is not None:
+            msg.message_id = result.message_id
+
+    local_state.add_message(channel, msg)
+    if not published:
+        bus.publish(
+            room_channel(channel),
+            {
+                "id": str(msg.id),
+                "sender_handle": msg.sender_handle,
+                "recipient_handle": msg.recipient_handle,
+                "message_type": msg.message_type,
+                "content": msg.content,
+                "amends": amends,
+                "created_at": msg.created_at.isoformat(),
+                "room_name": channel,
+            },
+        )
+
+    # Answer with the folded message — the row the room now reads — rather than
+    # the amendment, so a client refreshes to exactly what it was handed.
+    revised = _find_amend_target(_read_messages(channel, coord), str(target.id))
+    return MessageRead.model_validate(revised or msg)
 
 
 @router.patch("/{message_id}", response_model=MessageRead)

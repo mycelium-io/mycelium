@@ -19,6 +19,7 @@
  */
 
 import { useCallback, useMemo } from "react";
+import type { RoomStatus } from "@/lib/board/upstream";
 import useSWR, { useSWRConfig, type SWRConfiguration } from "swr";
 import {
   fetchA2aBridge,
@@ -31,6 +32,7 @@ import {
   fetchRoom,
   fetchRoomAgents,
   fetchRoomMembers,
+  fetchRoomStatus,
   fetchRooms,
   fetchSkills,
   logFetchError,
@@ -43,6 +45,7 @@ import {
   type PlanResponse,
   type PresenceMember,
   type Room,
+  type RoomMessage,
   type Skill,
 } from "@/lib/api";
 import { latestPreview } from "@/lib/room-preview";
@@ -65,6 +68,10 @@ const POLL = {
   plan: 8_000,
   episodes: 5_000,
   coordination: 20_000,
+  // The hub answers a status read from cache and refreshes behind it, so this
+  // is how often a resolved answer reaches the board, not how often GitHub is
+  // asked. Polling harder would not make anything fresher.
+  status: 20_000,
   a2a: 15_000,
 } as const;
 
@@ -76,9 +83,18 @@ const POSTER_LIMIT = 200;
 const LATEST_LIMIT = 20;
 
 // Stable empties: a fresh `[]` per render would break every downstream memo.
+const NO_STATUS: RoomStatus = {
+  room: "",
+  field: "upstream",
+  providers: [],
+  refs: [],
+  rows: {},
+  refreshing: false,
+};
 const NO_ROOMS: Room[] = [];
 const NO_AGENTS: AgentSummary[] = [];
 const NO_MEMBERS: PresenceMember[] = [];
+const NO_MESSAGES: RoomMessage[] = [];
 const NO_POSTERS: string[] = [];
 const NO_MEMORIES: Memory[] = [];
 const NO_SKILLS: Skill[] = [];
@@ -94,6 +110,7 @@ type RoomResource =
   | "plan"
   | "episodes"
   | "integrity"
+  | "status"
   | "a2a";
 
 /** A null key parks the hook: a room-less render fetches nothing. */
@@ -195,6 +212,20 @@ export function useRoomPosters(room: string, opts: RoomQueryOptions = {}) {
   return { posters, loading: isLoading, refresh };
 }
 
+/** Recent chat, for surfaces that read the room's history rather than tail it.
+ *  Shares one cache entry with every other reader of the same page size. */
+export function useRoomMessages(room: string, limit = 200, opts: RoomQueryOptions = {}) {
+  const { data, isLoading, mutate } = useSWR(
+    room ? (["room", room, "messages", limit] as const) : null,
+    () => fetchMessages(room, limit),
+    { refreshInterval: opts.refreshInterval ?? POLL.messages },
+  );
+  const refresh = useCallback(() => {
+    void mutate();
+  }, [mutate]);
+  return { messages: data?.messages ?? NO_MESSAGES, loading: isLoading, refresh };
+}
+
 /** The last readable line in a room, for an inbox-style row. Its own SWR key,
  *  so it never collides with the 200-message page `useRoomPosters` holds. */
 export function useRoomLatest(room: string, opts: RoomQueryOptions = {}) {
@@ -208,6 +239,15 @@ export function useRoomLatest(room: string, opts: RoomQueryOptions = {}) {
     void mutate();
   }, [mutate]);
   return { latest, loading: isLoading, refresh };
+}
+
+/** What the tools a room's rows point at say. One cache entry shared by every
+ *  view that shows an upstream state, so the board reads it once. */
+export function useRoomStatus(room: string, opts: RoomQueryOptions = {}) {
+  const { data, loading, error, refresh } = useRoomQuery(
+    room, "status", fetchRoomStatus, NO_STATUS, POLL.status, opts,
+  );
+  return { status: data, loading, error, refresh };
 }
 
 export function useRoomMemories(room: string, opts: RoomQueryOptions = {}) {

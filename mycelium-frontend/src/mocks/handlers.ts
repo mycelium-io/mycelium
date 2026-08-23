@@ -27,6 +27,19 @@ interface MockMemoryWrite {
 
 const EMPTY_GRAPH: MemoryGraph = { nodes: [], edges: [] };
 
+/** A memory's text for search/parse: its prose value, or its `content_text`
+ *  when the value is a frontmatter object (the board's typed rows). */
+const memText = (m: MockMemory): string =>
+  m.content_text ?? (typeof m.value === "string" ? m.value : "");
+
+/** A memory's manifest source — only the string-valued `agents/*` memories have
+ *  one; object-valued rows return empty so the manifest regexes see no match. */
+/** Rooms whose status has been read once. The first read of each is answered
+ *  cold, so the mock passes through the same resolving state a real one does. */
+const statusWarmed = new Set<string>();
+
+const manifestText = (m: MockMemory): string => (typeof m.value === "string" ? m.value : "");
+
 /** A graph edge's `raw` markdown, synthesized for display — the fixtures only
  *  need to carry the parsed shape (source/target/kind), not the literal text. */
 function synthesizeRaw(edge: MemoryGraphEdge): string {
@@ -224,7 +237,7 @@ export async function handleMock(req: Request): Promise<Response | null> {
         const hits = fx.memories
           .map((m, i) => ({
             memory: m,
-            score: (m.content_text ?? m.value ?? "").toLowerCase().includes(q) ? 0.92 - i * 0.05 : 0,
+            score: memText(m).toLowerCase().includes(q) ? 0.92 - i * 0.05 : 0,
           }))
           .filter((r) => r.score > 0)
           .slice(0, 10);
@@ -321,6 +334,41 @@ export async function handleMock(req: Request): Promise<Response | null> {
       return null;
     }
 
+    // GET /status — what the tools this room's rows point at say. Fixtures carry
+    // the resolved answers; the real hub resolves them through a provider.
+    //
+    // The first read of a room answers with the references but no answers, the
+    // way the real hub does: a read never fetches, it reports what the cache
+    // holds and refreshes behind itself. Without that the mock would show a
+    // board that is never mid-resolution, which is the one state every real
+    // first look passes through.
+    case "status": {
+      if (method !== "GET") return null;
+      const resolved = fx.status ?? {
+        room: roomName,
+        field: "upstream",
+        providers: ["github"],
+        refs: [],
+        rows: {},
+        refreshing: false,
+      };
+      if (resolved.refs.length > 0 && !statusWarmed.has(roomName)) {
+        statusWarmed.add(roomName);
+        return json({
+          ...resolved,
+          refs: resolved.refs.map(ref => ({
+            ...ref,
+            state: null,
+            label: null,
+            freshness: "missing" as const,
+            age_seconds: null,
+          })),
+          refreshing: true,
+        });
+      }
+      return json(resolved);
+    }
+
     case "messages": {
       // GET /messages/l9 — the L9 wire feed for the Network pane.
       if (sub[1] === "l9" && method === "GET") {
@@ -352,24 +400,27 @@ export async function handleMock(req: Request): Promise<Response | null> {
       if (method !== "GET") return null;
       const agents = fx.memories
         .filter((m) => m.key.startsWith("agents/") && !m.key.slice(7).includes("/"))
-        .map((m) => ({
-          handle: m.key.slice(7),
-          adapter: /adapter:\s*(\S+)/.exec(m.value)?.[1] ?? "claude_code",
-          kind: /kind:\s*(\S+)/.exec(m.value)?.[1] ?? null,
-          description: /description:\s*"?([^"\n]*)"?/.exec(m.value)?.[1] ?? "",
-          cwd: null,
-          owner: /owner:\s*@?(\S+)/.exec(m.value)?.[1] ?? null,
-          team: /team:\s*(\S+)/.exec(m.value)?.[1] ?? null,
-          allow_from: [],
-          a2a_card: /a2a_card:\s*(\S+)/.exec(m.value)?.[1] ?? null,
-          a2a_endpoint: /a2a_endpoint:\s*(\S+)/.exec(m.value)?.[1] ?? null,
-          a2a_skills:
-            /a2a_skills:\s*\[([^\]]*)\]/
-              .exec(m.value)?.[1]
-              .split(",")
-              .map((s) => s.trim())
-              .filter(Boolean) ?? [],
-        }));
+        .map((m) => {
+          const manifest = manifestText(m);
+          return {
+            handle: m.key.slice(7),
+            adapter: /adapter:\s*(\S+)/.exec(manifest)?.[1] ?? "claude_code",
+            kind: /kind:\s*(\S+)/.exec(manifest)?.[1] ?? null,
+            description: /description:\s*"?([^"\n]*)"?/.exec(manifest)?.[1] ?? "",
+            cwd: null,
+            owner: /owner:\s*@?(\S+)/.exec(manifest)?.[1] ?? null,
+            team: /team:\s*(\S+)/.exec(manifest)?.[1] ?? null,
+            allow_from: [],
+            a2a_card: /a2a_card:\s*(\S+)/.exec(manifest)?.[1] ?? null,
+            a2a_endpoint: /a2a_endpoint:\s*(\S+)/.exec(manifest)?.[1] ?? null,
+            a2a_skills:
+              /a2a_skills:\s*\[([^\]]*)\]/
+                .exec(manifest)?.[1]
+                .split(",")
+                .map((s) => s.trim())
+                .filter(Boolean) ?? [],
+          };
+        });
       return json(agents);
     }
 
@@ -434,8 +485,9 @@ export async function handleMock(req: Request): Promise<Response | null> {
     }
 
     case "sessions": {
-      // Presence: nobody is live in the fixtures — there is no SLIM node here.
-      if (sub[1] === "members" && method === "GET") return json({ members: [] });
+      // Presence: a room's fixture may name resident members (there is no SLIM
+      // node here to report them), which the board projects into resident rows.
+      if (sub[1] === "members" && method === "GET") return json({ members: fx.presence ?? [] });
       return null;
     }
 
@@ -542,7 +594,7 @@ function mockSearch(raw: string, limit: number) {
     if (wants("memory")) {
       for (const m of fx.memories) {
         if (!byActor(m.updated_by, m.created_by)) continue;
-        const text = m.content_text ?? m.value ?? "";
+        const text = memText(m);
         // A memory's kind is its namespace, matching the backend.
         const namespace = m.key.includes("/") ? m.key.slice(0, m.key.lastIndexOf("/")) : "";
         if (kinds.length && !kinds.includes(namespace.toLowerCase())) continue;
@@ -579,10 +631,11 @@ function mockSearch(raw: string, limit: number) {
         if (handle.includes("/")) continue;
         if (actors.length && !actors.includes(handle.toLowerCase())) continue;
         // An agent's kind is its engine kind, falling back to its adapter.
-        const adapter = /adapter:\s*(\S+)/.exec(m.value)?.[1] ?? "claude_code";
+        const manifest = manifestText(m);
+        const adapter = /adapter:\s*(\S+)/.exec(manifest)?.[1] ?? "claude_code";
         if (kinds.length && !kinds.includes(adapter.toLowerCase())) continue;
         push({ type: "agent", room, id: handle, title: handle, subtitle: `${room} · ${adapter}`,
-          snippet: m.value, kind: adapter, timestamp: "", score: score(handle, m.value) });
+          snippet: manifest, kind: adapter, timestamp: "", score: score(handle, manifest) });
       }
     }
   }

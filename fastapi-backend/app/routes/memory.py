@@ -211,12 +211,19 @@ async def create_memories(room_name: str, payload: MemoryBatchCreate, request: R
     return await upsert_memories(room_name, payload)
 
 
-async def upsert_memories(room_name: str, payload: MemoryBatchCreate) -> list[MemoryRead]:
+async def upsert_memories(
+    room_name: str, payload: MemoryBatchCreate, *, notify: bool = True
+) -> list[MemoryRead]:
     """The write itself, with ``created_by`` already resolved to its true author.
 
     Split from the route so backend-owned writers (the synthesizer, an engine
     manifest) reuse the one correct upsert without routing their actor through a
     request body they never had.
+
+    ``notify=False`` is for writes that are not news — a custody heartbeat
+    re-dating a lease it already holds.  The file, the index and the link graph
+    are all updated exactly as usual; what is skipped is telling the room, which
+    a loop running every few seconds must not do.
     """
     _require_room(room_name)
     room_dir = get_room_dir(room_name)
@@ -292,6 +299,12 @@ async def upsert_memories(room_name: str, payload: MemoryBatchCreate) -> list[Me
         embedding = None
         if item.embed:
             embedding = await asyncio.to_thread(embed_text, content_text)
+        else:
+            # A metadata-only write (a claim, a renewal) leaves the prose alone,
+            # so it must leave the vector alone too. The index record is replaced
+            # wholesale, so not carrying the old embedding forward would quietly
+            # drop the memory out of semantic search.
+            embedding = search_index.embedding_for(room_name, item.key)
         write_metrics.append(item.embed)
 
         search_index.upsert(
@@ -333,6 +346,8 @@ async def upsert_memories(room_name: str, payload: MemoryBatchCreate) -> list[Me
                 file_path=f"rooms/{room_name}/{item.key}.md",
             )
         )
+        if not notify:
+            continue
         _notify_change(room_name, item.key, item.created_by, new_version)
         _broadcast_memory_write(
             room_name,

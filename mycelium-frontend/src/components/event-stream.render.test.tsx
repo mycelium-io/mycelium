@@ -13,7 +13,6 @@ vi.mock("@/lib/api", () => ({
   fetchMessages: vi.fn().mockResolvedValue({ messages: [] }),
   fetchRoomAgents: vi.fn().mockResolvedValue([]),
   fetchPendingInvites: vi.fn().mockResolvedValue([]),
-  fetchPlan: vi.fn().mockResolvedValue({ documents: [] }),
   respondToInvite: vi.fn(),
   logFetchError: () => () => undefined,
 }));
@@ -22,16 +21,27 @@ import { EventStream } from "@/components/event-stream";
 
 const CREATED = "2026-08-04T10:00:00.000000+00:00";
 
-/** The live SSE stream wraps a human/agent message as an L9 exchange envelope. */
-function l9Exchange(text: string) {
+/** The live SSE stream wraps a human/agent message as an L9 exchange envelope.
+ *  An amendment is the same envelope with the `amend` subkind and the id of the
+ *  message it revises in its causal parents. */
+function l9Exchange(
+  text: string,
+  { id, sender = "user", amends }: { id?: string; sender?: string; amends?: string } = {},
+) {
   return {
+    id,
     message_type: "l9_exchange",
-    sender_handle: "user",
+    sender_handle: sender,
     created_at: CREATED,
     content: JSON.stringify({
       content: text,
       l9: {
-        header: { kind: "exchange", participants: { actors: [{ id: "user", role: "human" }] } },
+        header: {
+          kind: "exchange",
+          ...(amends ? { subkind: "amend" } : {}),
+          message: { id, parents: amends ? [amends] : [] },
+          participants: { actors: [{ id: sender, role: "human" }] },
+        },
         payload: { type: "message", data: {} },
       },
     }),
@@ -58,6 +68,39 @@ describe("<EventStream /> live message rendering", () => {
     // The prose is unwrapped from the L9 envelope and rendered like a broadcast,
     // so the live feed matches what a refresh (REST) would show.
     expect(await screen.findByText("hello over the live channel")).toBeInTheDocument();
+  });
+
+  it("folds a streamed amendment into the message it revises", async () => {
+    renderWithSWR(<EventStream roomName="sprint" />);
+    await act(async () => {});
+    const es = FakeEventSource.latest();
+
+    await act(async () => {
+      es.open();
+      es.emit(l9Exchange("the TTL is 30s", { id: "m-1" }));
+      es.emit(l9Exchange("the TTL is 300s", { id: "m-2", amends: "m-1" }));
+    });
+
+    // The open tab folds what a cold read would: one message, the newest text.
+    expect(await screen.findByText("the TTL is 300s")).toBeInTheDocument();
+    expect(screen.queryByText("the TTL is 30s")).not.toBeInTheDocument();
+    expect(screen.getByText("(edited)")).toBeInTheDocument();
+  });
+
+  it("keeps an amendment from another sender as its own message", async () => {
+    renderWithSWR(<EventStream roomName="sprint" />);
+    await act(async () => {});
+    const es = FakeEventSource.latest();
+
+    await act(async () => {
+      es.open();
+      es.emit(l9Exchange("mine", { id: "m-1" }));
+      es.emit(l9Exchange("not what they said", { id: "m-2", sender: "ops", amends: "m-1" }));
+    });
+
+    // Folding it would put someone else's words under the original author's name.
+    expect(await screen.findByText("mine")).toBeInTheDocument();
+    expect(screen.getByText("not what they said")).toBeInTheDocument();
   });
 
   it("auto-scrolls the ScrollArea viewport, not the outer wrapper, on new messages", async () => {
@@ -282,24 +325,6 @@ describe("<EventStream /> stick-to-bottom", () => {
 
     await act(async () => { es.emit(l9Exchange("third")); });
     expect(await screen.findByRole("button", { name: /2 new/ })).toHaveTextContent("2 new messages");
-  });
-
-  it("does not strand the reader after they page through the plan view", async () => {
-    // Plan and channel share one scroll viewport, so a plan document's scroll
-    // position must not be read as the reader leaving the channel's tail.
-    const { rerender } = renderWithSWR(<EventStream roomName="sprint" view="plan" />);
-    await act(async () => {});
-    const es = FakeEventSource.latest();
-    await act(async () => {
-      es.open();
-      es.emit(l9Exchange("posted while the plan was open"));
-    });
-
-    await act(async () => { scrollTo(viewport(), 0); });
-    rerender(<EventStream roomName="sprint" view="channel" />);
-    await act(async () => {});
-
-    expect(screen.queryByRole("button", { name: /Jump to latest/ })).not.toBeInTheDocument();
   });
 
   it("returns to the tail when the jump button is clicked", async () => {
