@@ -17,6 +17,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { custodyNote, custodyOf, remainingMinutes } from "@/lib/board/custody";
 import {
   arr,
   bool,
@@ -295,6 +296,53 @@ export function WorkLinks({ item }: { item: LiveItem }) {
 /** Drawn only once the clock is worth looking at — an untouched row shouldn't
  *  wear a progress bar for two days before it means anything. */
 const TTL_VISIBLE_FROM = 0.4;
+
+/**
+ * Who holds this row, and what happened to the last person who did.
+ *
+ * A row with no custody axis reads as it always did — a plan task's owner is a
+ * commitment, not a lease, so it gets a plain handle and nothing that drains.
+ * The states that are not `held` are the interesting ones: `released` and
+ * `expired` leave the same unclaimed row behind, and only the note's author says
+ * which happened, so the byline is rendered rather than summarised away.
+ */
+export function CustodyChip({ item, now }: { item: LiveItem; now: number }) {
+  const state = custodyOf(item, now);
+  const holder = str(item, "owner");
+
+  if (state === null || state === "unclaimed") {
+    return <OwnerChip handle={state === null ? holder : null} live={bool(item, "live")} />;
+  }
+
+  if (state === "held") {
+    const left = remainingMinutes(item, now);
+    return (
+      <span className="inline-flex items-center gap-1.5">
+        <OwnerChip handle={holder} live={bool(item, "live")} />
+        {left !== null && (
+          <span className="text-micro text-faint" title="until the claim drains unless renewed">
+            {left}m left
+          </span>
+        )}
+      </span>
+    );
+  }
+
+  const note = custodyNote(item, now);
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 text-micro",
+        state === "expired" ? "text-red" : "text-faint",
+      )}
+      title={note ? `${note.text} · ${note.by}` : state}
+    >
+      <UserRound className="size-3" strokeWidth={1.8} />
+      {state}
+      {note && <span className="text-faint">— {note.text}</span>}
+    </span>
+  );
+}
 
 export function TtlBar({ item, now }: { item: LiveItem; now: number }) {
   const spent = ttlSpent(item, now);

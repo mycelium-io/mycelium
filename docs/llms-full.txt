@@ -873,17 +873,77 @@ deliberately a nudge rather than a metric: it counts what actually moved, it
 belongs to the room rather than to any one person, and nothing anywhere reads it
 as a score.
 
+## Holding work is a lease
+
+An agent is resident, not one-shot: `mycelium await --loop` keeps a session woken
+across turns. But every session eventually ends and none of them get to say so —
+a container is reclaimed, a cloud session times out, a job is cancelled.
+
+So every claim an agent makes is a **lease**, because none of them can promise
+the future. Held as a fact, one dead agent leaves the board asserting "@someone
+is on this" forever, and the board degrades exactly as it gets busy: full of
+confident lies. Held as a lease, an abandoned claim drains and the row returns to
+the pool. A board whose agents all died an hour ago should read empty.
+
+That is the `custody` field, and it is a different axis from `status`:
+
+```
+unclaimed → held → released / resolved
+                ↘ expired
+```
+
+`held` carries a freshness, and it is the same model the board already uses for a
+status provider's cached answer — `claimed_at` + a TTL instead of `fetched_at` +
+a TTL, `fresh / stale / expired` instead of `fresh / stale / missing`, renewed by
+the agent's loop instead of by a refresh. Both halves of the board drain the same
+way, and the same bar draws them.
+
+Two of those states are never written down. `unclaimed` is just the absence of a
+holder, and `expired` is read off the clock — recording it would need a process
+alive at the moment the lease drained, which is exactly what stopped being true.
+`renewed` is not a state either: it is the event that keeps `held` fresh.
+
+**Leases live on `work/` memories.** Frontmatter has somewhere to put a stamp, so
+`owner`, `claimed_at` and `ttl_minutes` ride there and go through the same
+versioned, indexed write as any other memory change. A plan task deliberately
+does not take one: `- [ ] text @handle` has nowhere to put a stamp, and a
+compiled plan task is the room's commitment — a commitment that decays is not
+one. Ownership there stays a plain `@handle`, and the task leaves by being done.
+Episodes refuse a claim outright, and say why.
+
+**Letting go and dying look the same, and the note says which.** Both leave an
+unclaimed row with history. A release is signed by whoever released it; an
+expiry is signed by the runtime. Same field, different author, and a reader can
+tell.
+
 ## One gesture each
 
-`claim` · `resolve` · `block` · `promote` · `dismiss`
+`claim` · `release` · `resolve` · `block` · `promote` · `dismiss`
 
 One keystroke each in the interface, one word each on the command line, and the
 same words agents use. Answering a decision is the answer itself: pick `15m` on
 the row and it's settled and gone.
 
-Captured concerns expire if nobody claims them, so the board stays a picture of
-now instead of turning into a backlog. Anything that should outlive the work
-gets `promote`d into a GitHub issue and leaves, with a link left behind.
+`block` is the one that stores nothing: a row is blocked because it *names* a
+blocker, so `block` writes `blocked_by` and the board derives the rest. Captured
+concerns expire if nobody claims them, so the board stays a picture of now
+instead of turning into a backlog. Anything that should outlive the work gets
+`promote`d into a GitHub issue and leaves, with a link left behind.
+
+## Waiting on a lease, not on the room
+
+Following a handoff by waiting on the room's channel is the wrong subscription: a
+dozen unrelated messages wake you for nothing. A lease is already a small state
+machine, and its transitions — claimed, lapsed, released, resolved — are exactly
+what a handoff cares about, so it is the thing to subscribe to:
+
+```bash
+mycelium await --lease work/auth-spike --loop
+```
+
+The first read returns the row's current state rather than blocking. An agent
+does not need a push; it needs the row findable and current the next time it
+exists.
 
 ## You can hear it
 
@@ -946,12 +1006,14 @@ sort, filter and colour by without knowing what a pull request is:
 job is keeping them apart: an approved pull request is `ok` right up until it
 merges, and `done` the moment it does.
 
-That answer lands on the row under its own `upstream` field, and on neither of
-the two fields a row already owns. `status` is the row's lifecycle (`open`,
-`claimed`, `in_progress`, `blocked`, `resolved`), and both sets of words contain
-`blocked` meaning different things: a person has blocked the row, versus the pull
-request is waiting on a person. `live` is the row's other one, a yes-or-no for
-whether an agent is resident on it. The provider is answering about neither, so
+That answer lands on the row under its own `upstream` field, and on none of the
+fields a row already owns. `status` is the row's stage (`open`, `in_review`,
+`resolved`, `dismissed`); `custody` is who holds it and for how much longer;
+`live` is a yes-or-no for whether an agent is resident on it. The two
+vocabularies used to share the word `blocked`, meaning different things — a
+person has blocked the row, versus the pull request is waiting on a person —
+which is why they were split onto separate fields in the first place. The row's
+copy of that word is gone now: a row is blocked because it names a blocker. The provider is answering about neither, so
 it gets a field of its own and the word says what it is: the state of the work
 upstream of this room, in the tool it actually lives in.
 
@@ -1002,9 +1064,17 @@ mycelium board --lens in-flight           # claimed work, who holds it, CI
 mycelium board --lens all --view table    # the room as structured data
 mycelium board --group owner              # group by any field it found
 mycelium board --watch                    # keep it open, re-reading
+mycelium board claim work/auth-spike      # take custody, as a lease that drains
+mycelium board release work/auth-spike --note "handing over"
 mycelium board resolve t3                 # resolve a row
+mycelium board block t3 --on "#502"       # name what it is waiting on
 mycelium board log --last-week            # what the room did, by day and by who
+mycelium await --lease work/auth-spike    # wake when that row changes hands
 ```
+
+A resident loop renews the claims its handle holds, so `mycelium await --loop`
+is all an agent needs to keep its work. Stop looping and the claims drain, with
+nobody writing that down.
 
 ## Related
 

@@ -196,6 +196,40 @@ export async function createMemories(
   });
 }
 
+// ── Custody leases ────────────────────────────────────────────────────────────
+
+/** One row's custody, as `/rooms/{room}/leases/*` answers it. */
+export interface LeaseState {
+  key: string;
+  custody: string;
+  owner: string | null;
+  claimed_at: string | null;
+  ttl_minutes: number | null;
+  freshness: string | null;
+  version: number | null;
+  custody_note: string | null;
+  custody_note_by: string | null;
+}
+
+/**
+ * Take, hand back, or close out custody of a `work/` row.
+ *
+ * The write lands as frontmatter through the room's canonical memory upsert, so
+ * a claim made from the browser is the same versioned, indexed change a claim
+ * made from the CLI is — there is no second store for what the board knows.
+ */
+export async function writeLease(
+  roomName: string,
+  action: "claim" | "release" | "resolve",
+  body: { key: string; handle: string; ttl_minutes?: number; note?: string },
+): Promise<LeaseState> {
+  return apiFetch<LeaseState>(`/api/rooms/${roomName}/leases/${action}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
 /** `fetchMemories`'s page size — exported so a caller showing a raw count
  *  (the dashboard's room cards) can tell "exactly this many" apart from
  *  "at least this many" instead of reporting the cap as a true total. */

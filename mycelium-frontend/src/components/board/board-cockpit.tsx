@@ -10,7 +10,6 @@ import {
   arr,
   kindOf,
   lensOf,
-  ownerOf,
   statusOf,
   str,
   type LiveItem,
@@ -22,7 +21,7 @@ import {
   BlocksNote,
   KindGlyph,
   LiveDot,
-  OwnerChip,
+  CustodyChip,
   PriorityMeter,
   SourceTag,
   TtlBar,
@@ -99,8 +98,7 @@ function CockpitRow({
 
   const choices = arr(item, "choices");
   const waiting = waitingOn(item);
-  const owner = ownerOf(item);
-  const resolved = lensOf(item) === "resolved";
+  const resolved = lensOf(item, now) === "resolved";
   const urgent = str(item, "priority") === "urgent" && !resolved;
 
   return (
@@ -139,7 +137,7 @@ function CockpitRow({
         <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1">
           <SourceTag item={item} />
           <span className="text-faint">·</span>
-          <OwnerChip handle={owner} live={item.fields.live === true} />
+          <CustodyChip item={item} now={now} />
           <WorkLinks item={item} />
           <UpstreamChip item={item} />
           <BlocksNote item={item} />
@@ -203,11 +201,13 @@ function CockpitRow({
 }
 
 /** The one-line summary the header wears, phrased the way the CLI prints it. */
-export function summarize(items: LiveItem[]): string {
-  const needs = items.filter(i => lensOf(i) === "needs_you").length;
-  const flight = items.filter(i => lensOf(i) === "in_flight").length;
-  const resolved = items.filter(i => lensOf(i) === "resolved").length;
-  const decisions = items.filter(i => kindOf(i) === "decision" && lensOf(i) === "needs_you").length;
+export function summarize(items: LiveItem[], now: number = Date.now()): string {
+  const needs = items.filter(i => lensOf(i, now) === "needs_you").length;
+  const flight = items.filter(i => lensOf(i, now) === "in_flight").length;
+  const resolved = items.filter(i => lensOf(i, now) === "resolved").length;
+  const decisions = items.filter(
+    i => kindOf(i) === "decision" && lensOf(i, now) === "needs_you",
+  ).length;
   const parts = [`${needs} need you`, `${flight} in flight`, `${resolved} resolved today`];
   if (decisions) parts.unshift(`${decisions} open decision${decisions === 1 ? "" : "s"}`);
   return parts.join(" · ");

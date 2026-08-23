@@ -1018,6 +1018,344 @@
         }
       }
     },
+    "/api/rooms/{room_name}/leases/claim": {
+      "post": {
+        "tags": [
+          "leases"
+        ],
+        "summary": "Claim Lease",
+        "description": "Take custody of a row for a window, not for good.",
+        "operationId": "claim_lease_api_rooms__room_name__leases_claim_post",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClaimBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms/{room_name}/leases/release": {
+      "post": {
+        "tags": [
+          "leases"
+        ],
+        "summary": "Release Lease",
+        "description": "Hand a row back on purpose, and sign the note that says so.",
+        "operationId": "release_lease_api_rooms__room_name__leases_release_post",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReleaseBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms/{room_name}/leases/resolve": {
+      "post": {
+        "tags": [
+          "leases"
+        ],
+        "summary": "Resolve Lease",
+        "description": "The work is done: the row leaves the board rather than draining out of it.",
+        "operationId": "resolve_lease_api_rooms__room_name__leases_resolve_post",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolveBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms/{room_name}/leases/renew": {
+      "post": {
+        "tags": [
+          "leases"
+        ],
+        "summary": "Renew Leases",
+        "description": "A resident loop saying it is still here, on behalf of every row it holds.\n\nQuiet by design: a lease still in its first half is left alone, and the\nwrites this does make broadcast nothing.",
+        "operationId": "renew_leases_api_rooms__room_name__leases_renew_post",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenewBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms/{room_name}/leases/await": {
+      "get": {
+        "tags": [
+          "leases"
+        ],
+        "summary": "Await Lease",
+        "description": "Wake on this lease's transitions, and on nothing else.",
+        "operationId": "await_lease_api_rooms__room_name__leases_await_get",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "key",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Memory key of the lease to watch",
+              "title": "Key"
+            },
+            "description": "Memory key of the lease to watch"
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The `since` token from a previous call. Omit for orientation: the current state comes straight back rather than blocking.",
+              "title": "Since"
+            },
+            "description": "The `since` token from a previous call. Omit for orientation: the current state comes straight back rather than blocking."
+          },
+          {
+            "name": "timeout",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 60,
+              "minimum": 0,
+              "description": "Seconds to hold the request",
+              "default": 0,
+              "title": "Timeout"
+            },
+            "description": "Seconds to hold the request"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms/{room_name}/leases/{key}": {
+      "get": {
+        "tags": [
+          "leases"
+        ],
+        "summary": "Read Lease",
+        "description": "One row's custody as it stands, including a drain nobody wrote down.",
+        "operationId": "read_lease_api_rooms__room_name__leases__key__get",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          },
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/rooms/{room_name}/episodes": {
       "get": {
         "tags": [
@@ -3686,6 +4024,33 @@
         "title": "AgentRead",
         "description": "Structured view of an agent's manifest, as returned by GET /rooms/{room}/agents."
       },
+      "ClaimBody": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key",
+            "description": "Memory key of the work/ row being claimed"
+          },
+          "handle": {
+            "type": "string",
+            "title": "Handle",
+            "description": "The handle taking custody"
+          },
+          "ttl_minutes": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Ttl Minutes",
+            "description": "Minutes the claim holds without a renewal before it drains",
+            "default": 30
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "handle"
+        ],
+        "title": "ClaimBody"
+      },
       "ContextFile": {
         "properties": {
           "path": {
@@ -5254,6 +5619,52 @@
         ],
         "title": "PlanOut"
       },
+      "ReleaseBody": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key",
+            "description": "Memory key of the row being handed back"
+          },
+          "handle": {
+            "type": "string",
+            "title": "Handle",
+            "description": "The handle releasing it"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note",
+            "description": "Why \u2014 recorded against the releaser's name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "handle"
+        ],
+        "title": "ReleaseBody"
+      },
+      "RenewBody": {
+        "properties": {
+          "handle": {
+            "type": "string",
+            "title": "Handle",
+            "description": "The resident handle whose claims are being renewed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "handle"
+        ],
+        "title": "RenewBody"
+      },
       "ReplyBody": {
         "properties": {
           "handle": {
@@ -5273,6 +5684,26 @@
           "text"
         ],
         "title": "ReplyBody"
+      },
+      "ResolveBody": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key",
+            "description": "Memory key of the row being resolved"
+          },
+          "handle": {
+            "type": "string",
+            "title": "Handle",
+            "description": "The handle resolving it"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "handle"
+        ],
+        "title": "ResolveBody"
       },
       "RoomCreate": {
         "properties": {

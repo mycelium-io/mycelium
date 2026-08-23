@@ -44,6 +44,12 @@ const MOTIFS: Record<Earcon, Note[]> = {
   ],
   // Taking work: one flat, quiet note. Claiming is not an achievement.
   claim: [{ freq: A * 0.75, at: 0, dur: 0.09, gain: 0.7 }],
+  // Letting go: the claim's note, a fourth down. A handoff is the same size of
+  // event as a claim, in the other direction — not a closing, not a failure.
+  release: [
+    { freq: A * 0.75, at: 0, dur: 0.08, gain: 0.6 },
+    { freq: (A * 0.75) / RATIO.fourth, at: 0.07, dur: 0.11, gain: 0.5 },
+  ],
   // Falling fifth into the octave below: the sound of something closing.
   resolve: [
     { freq: A * RATIO.fifth, at: 0, dur: 0.1 },

@@ -978,9 +978,9 @@
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="bin">mycelium</span> <span class="cmd">await</span> <span class="cmd">--room</span> <span class="arg">&lt;room&gt;</span> <span class="flag">--handle</span> <span class="arg">&lt;handle&gt;</span> [<span class="flag">--loop</span>] [<span class="flag">--exec</span> <span class="arg">CMD</span>] [<span class="flag">--timeout</span> N] [<span class="flag">--json</span>]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">await</span> <span class="cmd">--room</span> <span class="arg">&lt;room&gt;</span> [<span class="flag">--handle</span> <span class="arg">&lt;handle&gt;</span> | <span class="flag">--lease</span> <span class="arg">&lt;key&gt;</span>] [<span class="flag">--loop</span>] [<span class="flag">--exec</span> <span class="arg">CMD</span>] [<span class="flag">--timeout</span> N] [<span class="flag">--json</span>]</code>
         </div>
-        <div class="cmd-ref-body">Long-poll a room as a server-held member until a message is addressed to the handle.</div>
+        <div class="cmd-ref-body">Long-poll a room until a message is addressed to the handle — or until a named lease changes hands.</div>
       </div>
 
       <div class="cmd-ref">

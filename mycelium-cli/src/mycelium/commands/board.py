@@ -32,7 +32,7 @@ from rich.live import Live
 from rich.table import Table
 from rich.text import Text
 
-from mycelium.board import LiveItem, attach_upstream, infer_schema, project_items
+from mycelium.board import LiveItem, attach_upstream, custody, infer_schema, project_items
 from mycelium.board.activity import (
     DAILY_GOAL,
     by_day,
@@ -43,6 +43,7 @@ from mycelium.board.activity import (
     week_start,
     zone,
 )
+from mycelium.board.custody import lens_of_item
 from mycelium.board.model import KINDS, PRIORITIES, STATUSES, format_age
 from mycelium.board.schema import groupable_fields
 from mycelium.client import hub_client
@@ -97,6 +98,10 @@ UPSTREAM_COLOR = {
 
 #: Widest title a row prints before it is elided.
 TITLE_WIDTH = 50
+
+#: How a lease reads as it drains. The terminal's version of the GUI's TtlBar:
+#: the same fraction, five cells wide.
+TTL_CELLS = 5
 
 
 # ── data ─────────────────────────────────────────────────────────────────────
@@ -216,22 +221,67 @@ def _fetch(room: str | None) -> tuple[str, list[LiveItem], HubHealth]:
 # ── rendering ────────────────────────────────────────────────────────────────
 
 
+def _ttl_bar(fraction: float) -> Text:
+    """A draining lease, drawn. Same fraction the GUI's TtlBar reads."""
+    filled = min(TTL_CELLS, int(fraction * TTL_CELLS + 0.5))
+    bar = Text()
+    bar.append("▰" * filled, style="red" if fraction > 0.75 else "yellow")
+    bar.append("▱" * (TTL_CELLS - filled), style="dim")
+    return bar
+
+
+def _custody_chip(item: LiveItem, now: datetime) -> Text:
+    """Who holds this row, and how much longer their claim has to run.
+
+    A row with no custody axis reads as it always did — a plan task's owner is a
+    commitment, not a lease, so it gets a plain handle and no draining bar.
+    """
+    state = custody.custody_of(item, now)
+    chip = Text()
+    if state is None:
+        chip.append(
+            f"@{item.owner}" if item.owner else "unowned", style="cyan" if item.owner else "dim"
+        )
+        return chip
+
+    if state == "held":
+        chip.append(f"held @{item.owner}", style="cyan")
+        fraction = custody.spent(custody.claimed_at(item), item.get("ttl_minutes"), now)
+        if fraction is not None:
+            chip.append(" ")
+            chip.append_text(_ttl_bar(fraction))
+            left = custody.remaining_minutes(item, now)
+            if left is not None:
+                chip.append(f" {left}m left", style="dim")
+        return chip
+
+    chip.append(state, style="red" if state == "expired" else "dim")
+    note = custody.note_of(item, now)
+    if note:
+        text, author = note
+        chip.append(f" — {text}", style="dim")
+        # The note's author is what tells a deliberate handoff from an abandoned
+        # one: they leave the same row behind, and only the byline differs.
+        if author != custody.RUNTIME_AUTHOR:
+            chip.append(f" (by @{author})", style="dim")
+    return chip
+
+
 def _row_lines(item: LiveItem, now: datetime) -> Text:
     glyph, colour = KIND_GLYPH.get(item.kind, ("●", "white"))
+    lens = lens_of_item(item, now)
     head = Text()
     head.append(f" {glyph} ", style=colour)
     head.append(f"{item.id.split(':', 1)[1][:12]:<13}", style="dim")
     title = item.title if len(item.title) <= TITLE_WIDTH else item.title[: TITLE_WIDTH - 1] + "…"
-    head.append(title, style="dim strike" if item.lens == "resolved" else "")
-    if item.priority == "urgent" and item.lens != "resolved":
+    head.append(title, style="dim strike" if lens == "resolved" else "")
+    if item.priority == "urgent" and lens != "resolved":
         head.append("  urgent", style="red")
 
     meta = Text("     ")
     meta.append(item.source.label, style="dim")
     meta.append("  ")
-    meta.append(
-        f"@{item.owner}" if item.owner else "unowned", style="cyan" if item.owner else "dim"
-    )
+    meta.append_text(_custody_chip(item, now))
     if branch := item.text("branch"):
         meta.append(f"  {branch}", style="dim")
     if ci := item.text("ci"):
@@ -292,12 +342,13 @@ def _render(
     view: str,
 ) -> Group:
     now = datetime.now(UTC)
+    lenses = {i.id: lens_of_item(i, now) for i in items}
     counts = {
-        "needs_you": sum(1 for i in items if i.lens == "needs_you"),
-        "in_flight": sum(1 for i in items if i.lens == "in_flight"),
-        "resolved": sum(1 for i in items if i.lens == "resolved"),
+        "needs_you": sum(1 for i in items if lenses[i.id] == "needs_you"),
+        "in_flight": sum(1 for i in items if lenses[i.id] == "in_flight"),
+        "resolved": sum(1 for i in items if lenses[i.id] == "resolved"),
     }
-    shown = [i for i in items if lens is None or i.lens == lens]
+    shown = [i for i in items if lens is None or lenses[i.id] == lens]
     shown.sort(key=lambda i: (PRIORITIES.index(i.priority), i.age_minutes(now) or 10**6))
 
     header = Text()
@@ -327,7 +378,7 @@ def _render(
 
     blocks.append(Text())
     legend = Text("  ")
-    legend.append("claim  resolve  block  promote  dismiss", style="dim")
+    legend.append("claim  release  resolve  block  promote  dismiss", style="dim")
     legend.append("     mycelium board <verb> <id>", style="dim")
     blocks.append(legend)
     return Group(*blocks)
@@ -432,61 +483,178 @@ def board(
 
 @doc_ref(
     usage="mycelium board resolve <id>",
-    desc="Resolve a board row. Rows projected from a plan task write through; others report what they would write.",
+    desc="Resolve a board row. Plan tasks and work/ leases write through; other rows report what they would write.",
     group="board",
 )
 @app.command(name="resolve")
 def board_resolve(
-    row_id: str = typer.Argument(..., help="Row id as shown on the board (e.g. t3, plan:t3)"),
+    row_id: str = typer.Argument(..., help="Row id as shown on the board (e.g. t3, work/auth)"),
     room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
 ) -> None:
     """Resolve a row."""
-    _verb("resolve", row_id, room)
-
-
-@doc_ref(
-    usage="mycelium board claim <id> [--to @handle]",
-    desc="Claim a board row for yourself or an agent.",
-    group="board",
-)
-@app.command(name="claim")
-def board_claim(
-    row_id: str = typer.Argument(..., help="Row id as shown on the board"),
-    to: str | None = typer.Option(None, "--to", help="Handle to claim it for"),
-    room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
-) -> None:
-    """Claim a row."""
-    _verb("claim", row_id, room, owner=to)
-
-
-def _verb(verb: str, row_id: str, room: str | None, *, owner: str | None = None) -> None:
-    """Apply a verb where a real write exists, and say so plainly where it
-    doesn't — the live ledger these rows belong to isn't built yet."""
     cfg = MyceliumConfig.load()
     name = _resolve_room(cfg, room)
     task_id = row_id.split(":", 1)[1] if row_id.startswith("plan:") else row_id
 
-    if verb == "resolve":
-        with hub_client(cfg, timeout=30) as client:
-            resp = client.post(
-                f"/api/rooms/{name}/plan/tasks/{task_id}/toggle",
-                json={"done": True},
-            )
-        if resp.status_code < 400:
-            console.print(
-                f"[green]✓[/green] resolved [bold]{task_id}[/bold] (plan task marked done)"
-            )
-            return
-        console.print(f"[dim]No plan task '{task_id}'.[/dim]")
+    with hub_client(cfg, timeout=30) as client:
+        resp = client.post(f"/api/rooms/{name}/plan/tasks/{task_id}/toggle", json={"done": True})
+    if resp.status_code < 400:
+        console.print(f"[green]✓[/green] resolved [bold]{task_id}[/bold] (plan task marked done)")
+        return
 
-    patch = {"status": {"claim": "in_progress", "resolve": "resolved"}.get(verb, verb)}
-    if owner:
-        patch["owner"] = owner if owner.startswith("@") else f"@{owner}"
+    item = _row(name, row_id)
+    if item is not None and custody.refusal_for(item) is None:
+        _lease(cfg, name, "resolve", key=_lease_key(item), handle=cfg.get_current_identity())
+        return
+    _would_write("resolve", row_id, {"custody": "resolved"})
+
+
+@doc_ref(
+    usage="mycelium board claim <id> [--to @handle] [--ttl 30]",
+    desc="Take custody of a work/ row: a lease with your handle on it, which drains unless renewed.",
+    group="board",
+)
+@app.command(name="claim")
+def board_claim(
+    row_id: str = typer.Argument(..., help="Row id as shown on the board (e.g. work/auth-spike)"),
+    to: str | None = typer.Option(None, "--to", help="Handle to claim it for (default: you)"),
+    ttl: int = typer.Option(
+        custody.DEFAULT_TTL_MINUTES, "--ttl", help="Minutes the claim holds without a renewal"
+    ),
+    room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
+) -> None:
+    """Claim a row, as a lease rather than a fact."""
+    cfg = MyceliumConfig.load()
+    name = _resolve_room(cfg, room)
+    item = _row(name, row_id)
+    if item is None:
+        console.print(f"[dim]No row '{row_id}' on this board.[/dim]")
+        raise typer.Exit(1)
+    if refusal := custody.refusal_for(item):
+        # Refusing with the reason is the honest answer: there is nowhere on this
+        # row to write a claim, and pretending otherwise is how a board fills up
+        # with holders nobody can renew.
+        console.print(f"[yellow]·[/yellow] {row_id} can't be claimed — {refusal}")
+        raise typer.Exit(1)
+    handle = (to or cfg.get_current_identity()).lstrip("@")
+    _lease(cfg, name, "claim", key=_lease_key(item), handle=handle, ttl_minutes=ttl)
+
+
+@doc_ref(
+    usage='mycelium board release <id> [--note "why"]',
+    desc="Hand a claimed row back to the pool, leaving a note saying you did it deliberately.",
+    group="board",
+)
+@app.command(name="release")
+def board_release(
+    row_id: str = typer.Argument(..., help="Row id as shown on the board"),
+    note: str | None = typer.Option(None, "--note", help="Why you're handing it back"),
+    room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
+) -> None:
+    """Release a row you hold."""
+    cfg = MyceliumConfig.load()
+    name = _resolve_room(cfg, room)
+    item = _row(name, row_id)
+    if item is None:
+        console.print(f"[dim]No row '{row_id}' on this board.[/dim]")
+        raise typer.Exit(1)
+    if refusal := custody.refusal_for(item):
+        console.print(f"[yellow]·[/yellow] {row_id} holds no lease — {refusal}")
+        raise typer.Exit(1)
+    _lease(
+        cfg,
+        name,
+        "release",
+        key=_lease_key(item),
+        handle=cfg.get_current_identity().lstrip("@"),
+        note=note,
+    )
+
+
+@doc_ref(
+    usage="mycelium board block <id> --on <ref>",
+    desc="Record what a row is waiting on. The board derives 'blocked' from that, and stores it nowhere.",
+    group="board",
+)
+@app.command(name="block")
+def board_block(
+    row_id: str = typer.Argument(..., help="Row id as shown on the board"),
+    on: str | None = typer.Option(None, "--on", help="What it's waiting on (e.g. #502)"),
+    room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
+) -> None:
+    """Say what a row is waiting on."""
+    if not on:
+        console.print(
+            "[yellow]·[/yellow] block needs --on: a row is blocked because it names a blocker."
+        )
+        raise typer.Exit(1)
+    _would_write("block", row_id, {"blocked_by": on})
+
+
+def _lease_key(item: LiveItem) -> str:
+    """The memory key behind a row. Leases are written where the row lives."""
+    return item.id.split(":", 1)[1]
+
+
+def _row(room: str, row_id: str) -> LiveItem | None:
+    """Find the row a verb names, however the reader typed its id.
+
+    The board elides ids to fit a column, and a reader retypes what they saw, so
+    ``work/auth``, ``memory:work/auth`` and the truncated form all have to land on
+    the same row.
+    """
+    _, items, _ = _fetch(room)
+    wanted = row_id.strip()
+    for item in items:
+        tail = item.id.split(":", 1)[1] if ":" in item.id else item.id
+        if wanted in (item.id, tail, tail[:12]):
+            return item
+    return None
+
+
+def _lease(cfg: MyceliumConfig, room: str, action: str, **body: Any) -> None:
+    """Write a custody change through the hub, and say what it did."""
+    payload = {k: v for k, v in body.items() if v is not None}
+    try:
+        with hub_client(cfg, timeout=30) as client:
+            resp = client.post(f"/api/rooms/{room}/leases/{action}", json=payload)
+    except httpx.HTTPError as e:
+        console.print(f"[red]✗[/red] hub unreachable: {e}")
+        raise typer.Exit(1) from e
+    if resp.status_code == 409:
+        detail = resp.json().get("detail", {})
+        held_by = detail.get("owner") if isinstance(detail, dict) else None
+        console.print(
+            f"[yellow]·[/yellow] {payload.get('key')} is already held by @{held_by}. "
+            "[dim]Its lease has to drain (or its holder release it) before anyone else takes it.[/dim]"
+        )
+        raise typer.Exit(1)
+    if resp.status_code >= 400:
+        console.print(f"[red]✗[/red] {action} failed: {resp.text}")
+        raise typer.Exit(1)
+    data = resp.json()
+    if action == "claim":
+        console.print(
+            f"[green]✓[/green] held [bold]{data.get('key')}[/bold] by @{data.get('owner')} "
+            f"[dim]for {data.get('ttl_minutes')}m — renewed by your loop, or it drains back to "
+            "the pool.[/dim]"
+        )
+    elif action == "release":
+        console.print(
+            f"[green]✓[/green] released [bold]{data.get('key')}[/bold] "
+            f"[dim]— {data.get('custody_note')}[/dim]"
+        )
+    else:
+        console.print(f"[green]✓[/green] {action}d [bold]{data.get('key')}[/bold]")
+
+
+def _would_write(verb: str, row_id: str, patch: dict) -> None:
+    """Say what a verb implies where no write exists behind it yet."""
     rendered = " ".join(f"{k}={v}" for k, v in patch.items())
     console.print(
         f"[yellow]·[/yellow] {verb} [bold]{row_id}[/bold] → {rendered}\n"
-        "[dim]  Not written. Rows from episodes, memory and presence can't be "
-        "changed from here yet; plan-sourced rows write through today.[/dim]"
+        "[dim]  Not written. Custody verbs (claim / release / resolve) write through on "
+        "work/ rows; the rest report what they would write.[/dim]"
     )
 
 

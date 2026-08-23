@@ -344,9 +344,10 @@ class TestFieldNameCollision:
     """A provider's answer must not shadow the board row's own `status`.
 
     The row owns `status` for its lifecycle; a provider answers about the
-    external thing the row points at. Both vocabularies contain `blocked`,
-    meaning different things, so the answer lands under its own field
-    (`ROW_FIELD`) and is named `liveness` in the contract, never `status`.
+    external thing the row points at. The two vocabularies used to share
+    `blocked`, meaning different things, which is why the answer lands under its
+    own field (`ROW_FIELD`) and is named `liveness` in the contract, never
+    `status`.
     """
 
     def test_the_provider_answer_lands_under_its_own_row_field_not_status(self):
@@ -358,7 +359,7 @@ class TestFieldNameCollision:
         # and inferred as a checkbox. Landing an object on either is the same bug.
         assert ROW_FIELD not in ("status", "live")
 
-    def test_the_two_vocabularies_overlap_only_on_blocked(self):
+    def test_the_two_vocabularies_no_longer_share_a_word(self):
         import json
         import typing
 
@@ -371,8 +372,11 @@ class TestFieldNameCollision:
         )
         live = set(typing.get_args(LiveState))
         row = set(board["statuses"])
-        # The one shared word is exactly why they must not share a field.
-        assert live & row == {"blocked"}
+        # They used to share `blocked`, which is what forced them onto separate
+        # fields. The row's copy is gone — a row is blocked because it names a
+        # blocker, and nothing stores the word — so the overlap is now empty, and
+        # putting one back is the drift this guards against.
+        assert live & row == set()
 
     def test_the_contract_type_is_named_for_liveness_not_status(self):
         # The dataclass a provider returns is `Liveness`; a `Status` next to a

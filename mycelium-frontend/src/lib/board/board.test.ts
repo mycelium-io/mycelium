@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import { inferSchema, groupableFields } from "@/lib/board/schema";
 import { projectItems } from "@/lib/board/projection";
 import { applyView, filterItems, lensCounts, groupItems, UNGROUPED, DEFAULT_VIEW } from "@/lib/board/view";
+import { CUSTODY_STATES, DEFAULT_TTL_MINUTES, custodyOf } from "@/lib/board/custody";
 import {
   applyVerb,
   lensOf,
@@ -49,14 +50,11 @@ describe("inferSchema", () => {
     expect(status?.type).toBe("select");
     expect(status?.options.map(o => o.value)).toEqual([
       "open",
-      "claimed",
-      "in_progress",
       "in_review",
-      "blocked",
       "resolved",
       "dismissed",
     ]);
-    expect(status?.options.find(o => o.value === "claimed")?.count).toBe(0);
+    expect(status?.options.find(o => o.value === "dismissed")?.count).toBe(0);
   });
 
   it("keeps one-off prose as text, so grouping can't make a column per row", () => {
@@ -85,9 +83,16 @@ describe("inferSchema", () => {
   it("offers only bounded fields as kanban columns", () => {
     const schema = inferSchema([
       item("a", { status: "open", title_line: "one" }),
-      item("b", { status: "blocked", title_line: "two" }),
+      item("b", { status: "in_review", title_line: "two" }),
     ]);
     expect(groupableFields(schema).map(f => f.name)).toEqual(["status"]);
+  });
+
+  it("offers custody as a column, so a board can group by who holds what", () => {
+    const schema = inferSchema([item("a", { custody: "held" })]);
+    const custody = schema.find(f => f.name === "custody");
+    expect(custody?.type).toBe("select");
+    expect(custody?.options.map(o => o.value)).toEqual([...CUSTODY_STATES]);
   });
 });
 
@@ -117,9 +122,12 @@ describe("projectItems", () => {
       now: "2026-08-22T10:00:00Z",
     });
 
-  it("lifts a plan task's @handle into an owner and its state into a status", () => {
+  it("lifts a plan task's @handle into an owner without turning it into a claim", () => {
     const [open, done] = projected();
-    expect(open.fields).toMatchObject({ owner: "@growth", status: "in_progress" });
+    // A named owner is a commitment, not a lease: the stage stays open, and the
+    // row takes no claim it could quietly stop renewing.
+    expect(open.fields).toMatchObject({ owner: "@growth", status: "open" });
+    expect(custodyOf(open, Date.parse("2026-08-22T10:00:00Z"))).toBeNull();
     expect(open.title).toBe("flip reads behind a flag");
     expect(done.fields.status).toBe("resolved");
   });
@@ -137,40 +145,60 @@ describe("projectItems", () => {
       agents: [],
       presence: new Map(),
       now: "2026-08-22T10:00:00Z",
-      overlay: { "plan:t1": { status: "blocked" } },
+      overlay: { "plan:t1": { status: "dismissed" } },
     });
-    expect(items[0].fields.status).toBe("blocked");
+    expect(items[0].fields.status).toBe("dismissed");
   });
 });
 
 describe("lenses", () => {
-  it("derives the lens from status rather than storing it", () => {
-    expect(lensOf(item("a", { status: "open" }))).toBe("needs_you");
-    expect(lensOf(item("b", { status: "blocked" }))).toBe("needs_you");
-    expect(lensOf(item("c", { status: "in_progress" }))).toBe("in_flight");
-    expect(lensOf(item("d", { status: "resolved" }))).toBe("resolved");
+  const now = Date.parse("2026-08-22T10:00:00Z");
+  const heldNow = { custody: "held", owner: "@growth", claimed_at: "2026-08-22T09:55:00Z", ttl_minutes: 30 };
+
+  it("derives the lens from status where nobody holds the row", () => {
+    expect(lensOf(item("a", { status: "open" }), now)).toBe("needs_you");
+    expect(lensOf(item("d", { status: "in_review" }), now)).toBe("in_flight");
+    expect(lensOf(item("e", { status: "resolved" }), now)).toBe("resolved");
+  });
+
+  it("puts custody ahead of the stage, because a holder is the sharper fact", () => {
+    expect(lensOf(item("b", heldNow), now)).toBe("in_flight");
+    expect(lensOf(item("c", { custody: "released" }), now)).toBe("needs_you");
+  });
+
+  it("is blocked because the row names a blocker, whoever holds it", () => {
+    expect(lensOf(item("f", { ...heldNow, blocked_by: ["#502"] }), now)).toBe("needs_you");
   });
 
   it("counts every lens off the unfiltered set", () => {
-    const counts = lensCounts([
-      item("a", { status: "open" }),
-      item("b", { status: "in_progress" }),
-      item("c", { status: "resolved" }),
-    ]);
+    const counts = lensCounts(
+      [item("a", { status: "open" }), item("b", heldNow), item("c", { status: "resolved" })],
+      now,
+    );
     expect(counts).toEqual({ needs_you: 1, in_flight: 1, resolved: 1, all: 3 });
   });
 
   it("shows only the lens asked for", () => {
-    const items = [item("a", { status: "open" }), item("b", { status: "in_progress" })];
-    expect(filterItems(items, { ...DEFAULT_VIEW, lens: "in_flight" }).map(i => i.id)).toEqual(["b"]);
+    const items = [item("a", { status: "open" }), item("b", heldNow)];
+    expect(filterItems(items, { ...DEFAULT_VIEW, lens: "in_flight" }, now).map(i => i.id)).toEqual([
+      "b",
+    ]);
   });
 });
 
 describe("applyView", () => {
   const items = [
     item("a", { status: "open", kind: "decision", priority: "urgent", updated: "2026-08-22T09:00:00Z" }),
-    item("b", { status: "blocked", kind: "blocked", priority: "normal", updated: "2026-08-22T08:00:00Z" }),
-    item("c", { status: "in_progress", kind: "action", priority: "high", updated: "2026-08-22T09:30:00Z" }),
+    item("b", { status: "open", kind: "blocked", priority: "normal", blocked_by: ["#502"], updated: "2026-08-22T08:00:00Z" }),
+    item("c", {
+      custody: "held",
+      owner: "@growth",
+      claimed_at: "2026-08-22T09:50:00Z",
+      ttl_minutes: 30,
+      kind: "action",
+      priority: "high",
+      updated: "2026-08-22T09:30:00Z",
+    }),
   ];
   const now = Date.parse("2026-08-22T10:00:00Z");
 
@@ -187,20 +215,56 @@ describe("applyView", () => {
   });
 
   it("matches a query against fields as well as the title", () => {
-    const config = { ...DEFAULT_VIEW, lens: "all" as const, query: "blocked" };
-    expect(filterItems(items, config).map(i => i.id)).toEqual(["b"]);
+    const config = { ...DEFAULT_VIEW, lens: "all" as const, query: "#502" };
+    expect(filterItems(items, config, now).map(i => i.id)).toEqual(["b"]);
   });
 });
 
 describe("applyVerb", () => {
-  it("claims for the actor when the row is unowned", () => {
-    const patch = applyVerb(item("a", { status: "open" }), "claim", { actor: "julia", now: "t" });
-    expect(patch).toMatchObject({ status: "in_progress", owner: "julia" });
+  const stamp = "2026-08-22T10:00:00Z";
+
+  it("claims for the actor as a lease, not as a stage", () => {
+    const patch = applyVerb(item("a", { status: "open" }), "claim", { actor: "julia", now: stamp });
+    expect(patch).toMatchObject({
+      custody: "held",
+      owner: "@julia",
+      claimed_at: stamp,
+      ttl_minutes: DEFAULT_TTL_MINUTES,
+    });
+    // The stage is untouched: a claim says who is on it, not how far along it is.
+    expect(patch.status).toBeUndefined();
   });
 
   it("leaves the owner alone when the row already has one", () => {
-    const patch = applyVerb(item("a", { status: "open", owner: "@agent-y" }), "claim", { actor: "julia", now: "t" });
-    expect(patch.owner).toBe("agent-y");
+    const patch = applyVerb(item("a", { status: "open", owner: "@agent-y" }), "claim", {
+      actor: "julia",
+      now: stamp,
+    });
+    expect(patch.owner).toBe("@agent-y");
+  });
+
+  it("releasing clears the holder and signs a note", () => {
+    const patch = applyVerb(item("a", { custody: "held", owner: "@julia" }), "release", {
+      actor: "julia",
+      now: stamp,
+      note: "handing to @risk",
+    });
+    expect(patch).toMatchObject({
+      custody: "released",
+      owner: null,
+      custody_note: "handing to @risk",
+      custody_note_by: "julia",
+    });
+  });
+
+  it("blocking names the blocker rather than writing the word", () => {
+    const patch = applyVerb(item("a", { status: "open" }), "block", {
+      actor: "julia",
+      now: stamp,
+      blockedBy: "#502",
+    });
+    expect(patch.blocked_by).toBe("#502");
+    expect(patch.status).toBeUndefined();
   });
 
   it("promote stamps the back-link and drops the row off the live board", () => {

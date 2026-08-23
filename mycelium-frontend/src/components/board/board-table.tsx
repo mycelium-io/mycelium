@@ -17,6 +17,8 @@ interface Props {
   onSelect: (id: string) => void;
   /** An edited cell writes one frontmatter field back to the markdown. */
   onEdit: (item: LiveItem, field: string, value: unknown) => void;
+  /** The board's shared tick, so every view drains a lease at the same moment. */
+  now: number;
   /** Sort is a view property, so a header click changes the view, not the data. */
   sort: { field: string; dir: "asc" | "desc" };
   onSort: (field: string) => void;
@@ -25,7 +27,7 @@ interface Props {
 /** Columns are capped so a wide schema still reads; the rest stay filterable. */
 const MAX_COLUMNS = 7;
 
-export function BoardTable({ items, schema, selectedId, onSelect, onEdit, sort, onSort }: Props) {
+export function BoardTable({ items, schema, now, selectedId, onSelect, onEdit, sort, onSort }: Props) {
   const columns = schema.filter(f => f.name !== "choices").slice(0, MAX_COLUMNS);
 
   return (
@@ -64,7 +66,7 @@ export function BoardTable({ items, schema, selectedId, onSelect, onEdit, sort, 
               className={cn(
                 "group",
                 item.id === selectedId ? "bg-elevated" : "hover:bg-hairline",
-                lensOf(item) === "resolved" && "opacity-65",
+                lensOf(item, now) === "resolved" && "opacity-65",
               )}
             >
               <td className="max-w-[380px] border-b border-hairline px-2 py-1.5">

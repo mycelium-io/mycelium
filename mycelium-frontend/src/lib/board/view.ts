@@ -135,10 +135,19 @@ function fieldValues(item: LiveItem, name: string): string[] {
   return [String(raw)];
 }
 
-export function filterItems(items: LiveItem[], config: ViewConfig): LiveItem[] {
+export function filterItems(
+  items: LiveItem[],
+  config: ViewConfig,
+  now: number = Date.now(),
+): LiveItem[] {
   return items.filter(item => {
-    if (config.lens !== "all" && lensOf(item) !== config.lens) return false;
-    if (!config.showResolved && config.lens === "all" && lensOf(item) === "resolved") return false;
+    // The lens is read against the board's own tick, so a lease that drained
+    // between two renders leaves the in-flight lens on the next one — with
+    // nobody having touched the row.
+    if (config.lens !== "all" && lensOf(item, now) !== config.lens) return false;
+    if (!config.showResolved && config.lens === "all" && lensOf(item, now) === "resolved") {
+      return false;
+    }
     if (!matchesQuery(item, config.query)) return false;
     for (const [name, allowed] of Object.entries(config.filters)) {
       if (allowed.length === 0) continue;
@@ -259,19 +268,19 @@ export function applyView(
   schema: FieldSchema[],
   now: number,
 ): ItemGroup[] {
-  return groupItems(sortItems(filterItems(items, config), config, now), config, schema);
+  return groupItems(sortItems(filterItems(items, config, now), config, now), config, schema);
 }
 
 /** Counts for the lens tabs — computed off the unfiltered set so a tab shows
  *  what switching to it would reveal. */
-export function lensCounts(items: LiveItem[]): Record<Lens | "all", number> {
+export function lensCounts(items: LiveItem[], now: number = Date.now()): Record<Lens | "all", number> {
   const counts: Record<Lens | "all", number> = {
     needs_you: 0,
     in_flight: 0,
     resolved: 0,
     all: items.length,
   };
-  for (const item of items) counts[lensOf(item)] += 1;
+  for (const item of items) counts[lensOf(item, now)] += 1;
   return counts;
 }
 

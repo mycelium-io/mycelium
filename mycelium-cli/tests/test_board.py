@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from mycelium.board import activity, model
+from mycelium.board import activity, custody, model
 from mycelium.board.model import ItemSource, LiveItem, lens_of
 from mycelium.board.projection import project_items
 from mycelium.board.schema import groupable_fields, infer_schema
@@ -149,7 +149,10 @@ class TestProjection:
         rows = self.project()
         assert rows[0].owner == "growth"
         assert rows[0].title == "flip reads behind a flag"
-        assert rows[0].status == "in_progress"
+        # A named owner is a commitment, not a claim: the stage stays open, and
+        # the row takes no lease it could quietly stop renewing.
+        assert rows[0].status == "open"
+        assert custody.custody_of(rows[0], NOW) is None
 
     def test_a_done_task_resolves(self):
         assert self.project()[1].status == "resolved"
@@ -200,7 +203,7 @@ class TestProjection:
         rows = self.project(agents=agents, members=[{"handle": "growth", "kind": "slim"}])
         agent_rows = [r for r in rows if r.id.startswith("agent:")]
         assert [r.id for r in agent_rows] == ["agent:growth"]
-        assert agent_rows[0].lens == "in_flight"
+        assert custody.lens_of_item(agent_rows[0], NOW) == "in_flight"
 
     def test_a_live_episode_reads_as_a_decision_and_drops_the_urn(self):
         episodes = [
@@ -238,7 +241,7 @@ class TestSchema:
         schema = infer_schema([item("a", status="open")])
         status = next(f for f in schema if f.name == "status")
         assert [value for value, _ in status.options] == CONTRACT["statuses"]
-        assert dict(status.options)["claimed"] == 0
+        assert dict(status.options)["dismissed"] == 0
 
     @pytest.mark.parametrize(
         ("name", "value", "expected"),
@@ -256,7 +259,10 @@ class TestSchema:
 
     def test_only_bounded_fields_can_become_columns(self):
         schema = infer_schema(
-            [item("a", status="open", headline="one"), item("b", status="blocked", headline="two")]
+            [
+                item("a", status="open", headline="one"),
+                item("b", status="in_review", headline="two"),
+            ]
         )
         assert [f.name for f in groupable_fields(schema)] == ["status"]
 

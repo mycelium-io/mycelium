@@ -12,6 +12,7 @@
 
 import type { AgentSummary, EpisodeSummary, Memory, PlanResponse, PlanTask } from "@/lib/api";
 import type { PresenceMember } from "@/lib/api";
+import { CUSTODY_FIELD, DEFAULT_TTL_MINUTES, LEASABLE_NAMESPACES, custodyOf } from "./custody";
 import type { LiveItem } from "./item";
 import { memoryHref } from "@/lib/memory-routes";
 
@@ -47,7 +48,10 @@ function planItem(task: PlanTask, plan: PlanResponse, now: string): LiveItem {
       label: `plan/${task.slug}.md:${task.line}`,
     },
     fields: {
-      status: task.done ? "resolved" : owner ? "in_progress" : "open",
+      // A stage, and only a stage. This used to read `in_progress` when the line
+      // named anyone, which was custody wearing a stage's name: it said
+      // "someone's handle is in the text", not "someone is on this".
+      status: task.done ? "resolved" : "open",
       kind: "action",
       owner: owner ? `@${owner}` : null,
       priority: priorityFromText(task.text),
@@ -55,6 +59,8 @@ function planItem(task: PlanTask, plan: PlanResponse, now: string): LiveItem {
       updated: file?.updated_at ?? now,
       // A compiled plan task is the room's durable commitment, so it is the one
       // row kind with no TTL — it leaves by being done, not by expiring.
+      // Ownership stays a plain @handle: `- [ ] text @handle` has nowhere to put
+      // a claim stamp, and a commitment that decays is not one.
       ttl_minutes: null,
     },
   };
@@ -82,8 +88,11 @@ function episodeItem(ep: EpisodeSummary, room: string): LiveItem {
       href: `/room/${encodeURIComponent(room)}?focus=episode:${encodeURIComponent(ep.short_id)}`,
     },
     fields: {
-      status: settled ? (subkind === "rejected" ? "blocked" : "resolved") : "in_review",
-      kind: "decision",
+      // A rejected negotiation is not a stage called "blocked" — nothing is
+      // blocking it, it failed and wants a human. It reads open, and the kind
+      // carries what happened.
+      status: settled ? (subkind === "rejected" ? "open" : "resolved") : "in_review",
+      kind: subkind === "rejected" ? "blocked" : "decision",
       owner: assignees.length === 1 ? `@${assignees[0]}` : null,
       priority: settled ? "normal" : "high",
       participants: ep.participants,
@@ -116,8 +125,13 @@ function memoryItem(memory: Memory, room: string): LiveItem {
         ? firstLine(value)
         : firstLine(memory.content_text ?? memory.key);
 
-  const derivedStatus =
-    namespace === "failed" ? "blocked" : namespace === "decisions" ? "resolved" : "open";
+  const derivedStatus = namespace === "decisions" ? "resolved" : "open";
+
+  // A memory's own frontmatter, beyond the store's managed keys. This is where a
+  // lease lands (`--meta owner=… claimed_at=…`), so a board that read only the
+  // structured `value` would never see a claim anyone actually wrote.
+  const meta: Record<string, unknown> =
+    memory.meta && typeof memory.meta === "object" ? { ...memory.meta } : {};
 
   return {
     id: `memory:${memory.key}`,
@@ -130,13 +144,23 @@ function memoryItem(memory: Memory, room: string): LiveItem {
     fields: {
       status: typeof custom.status === "string" ? custom.status : derivedStatus,
       kind: namespace === "decisions" ? "decision" : namespace === "failed" ? "blocked" : "concern",
-      owner: memory.updated_by ? `@${memory.updated_by}` : `@${memory.created_by}`,
+      // Who wrote it last is provenance, not custody. Reading `owner` off
+      // `updated_by` gave every memory in the room a holder, which is the
+      // confident-lie failure this axis exists to stop: a holder is something a
+      // claim writes, so an unclaimed row says nobody.
+      owner: null,
+      writer: memory.updated_by ? `@${memory.updated_by}` : `@${memory.created_by}`,
       priority: "normal",
       namespace,
       tags: memory.tags ?? [],
       updated: memory.updated_at,
       ttl_minutes: null,
+      // `work/` is the in-flight unit, so it is the namespace that carries a
+      // lease: frontmatter has somewhere to put a stamp, which is why leases
+      // live here and not on plan tasks.
+      ...(LEASABLE_NAMESPACES.includes(namespace) ? { [CUSTODY_FIELD]: "unclaimed" } : {}),
       ...custom,
+      ...meta,
     },
   };
 }
@@ -147,20 +171,27 @@ function memoryItem(memory: Memory, room: string): LiveItem {
  * line per manifest.
  */
 function agentItem(agent: AgentSummary, presence: PresenceMember, now: string): LiveItem {
+  // A SLIM member holds a live socket, so the hub sees it now; a server-held
+  // member's lease is only as good as its last poll. Stamping both "now" made a
+  // dead agent's row draw a full TTL bar forever — the row asserted a future its
+  // holder had already stopped having.
+  const lastSeen = presence.last_seen ?? now;
   return {
     id: `agent:${agent.handle}`,
     title: `@${agent.handle} is resident and awaiting work`,
     source: { kind: "agent", label: `${agent.adapter} · ${presence.kind}` },
     fields: {
-      status: "claimed",
+      status: "open",
       kind: "signal",
       owner: `@${agent.handle}`,
       priority: "low",
       adapter: agent.adapter,
       live: true,
-      updated: now,
+      updated: lastSeen,
       // Presence is a lease: the row drains unless the runtime keeps renewing it.
-      ttl_minutes: 30,
+      [CUSTODY_FIELD]: "held",
+      claimed_at: lastSeen,
+      ttl_minutes: DEFAULT_TTL_MINUTES,
     },
   };
 }
@@ -193,9 +224,15 @@ export function projectItems(input: ProjectionInput): LiveItem[] {
     if (!LIVE_NAMESPACES.includes(memory.key.split("/")[0] ?? "")) continue;
     items.push(memoryItem(memory, input.room));
   }
+  // Nor does an agent whose lease has drained — a session that went quiet an
+  // hour ago is not residency, and a row saying it is would be the board's most
+  // expensive lie.
+  const clock = Date.parse(input.now) || Date.now();
   for (const agent of input.agents) {
     const presence = input.presence.get(agent.handle.toLowerCase());
-    if (presence) items.push(agentItem(agent, presence, input.now));
+    if (!presence) continue;
+    const row = agentItem(agent, presence, input.now);
+    if (custodyOf(row, clock) === "held") items.push(row);
   }
   items.push(...(input.captured ?? []));
 

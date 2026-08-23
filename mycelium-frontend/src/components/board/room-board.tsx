@@ -25,9 +25,12 @@ import {
   useRoomMemories,
   useRoomMessages,
   useRoomPlan,
+  useRoomRevalidate,
   useRoomRoster,
   useRoomStatus,
 } from "@/lib/room-data";
+import { writeLease } from "@/lib/api";
+import { custodyRefusal } from "@/lib/board/custody";
 import { applyVerb, LENSES, type Lens, type LiveItem, type Verb } from "@/lib/board/item";
 import { projectItems } from "@/lib/board/projection";
 import { attachUpstream } from "@/lib/board/upstream";
@@ -79,6 +82,7 @@ export function RoomBoard({ roomName }: Props) {
   const { agents, presence } = useRoomRoster(roomName);
   const { messages } = useRoomMessages(roomName, MESSAGE_HISTORY);
   const { status: upstream } = useRoomStatus(roomName);
+  const revalidate = useRoomRevalidate(roomName);
   const { principal } = useCurrentUser();
   const actor = principal.replace(/^@/, "") || "you";
 
@@ -175,7 +179,7 @@ export function RoomBoard({ roomName }: Props) {
   // groupings and the table's editors — nothing about the schema is declared.
   const schema = useMemo(() => inferSchema(items), [items]);
   const groupable = useMemo(() => groupableFields(schema), [schema]);
-  const counts = useMemo(() => lensCounts(items), [items]);
+  const counts = useMemo(() => lensCounts(items, now), [items, now]);
 
   // Watching the board is optional; hearing it is the point. Only a *growing*
   // steer-lens speaks, and only after the first render has something to compare.
@@ -187,7 +191,7 @@ export function RoomBoard({ roomName }: Props) {
   }, [counts.needs_you, play]);
 
   const groups = useMemo(() => applyView(items, view, schema, now), [items, view, schema, now]);
-  const flat = useMemo(() => sortItems(filterItems(items, view), view, now), [items, view, now]);
+  const flat = useMemo(() => sortItems(filterItems(items, view, now), view, now), [items, view, now]);
   const ordered = useMemo(
     () => (view.mode === "cockpit" || view.mode === "board" ? groups.flatMap(g => g.items) : flat),
     [view.mode, groups, flat],
@@ -215,8 +219,25 @@ export function RoomBoard({ roomName }: Props) {
           .map(([k, v]) => `${k}=${String(v)}`)
           .join(" ")}`,
       );
+
+      // Custody is the half of the board with a real write behind it. A claim
+      // from here is the same versioned frontmatter a claim from the CLI is, so
+      // the overlay above is only the optimistic echo of it — and a row that
+      // can't hold a lease says why instead of silently doing nothing.
+      if (verb !== "claim" && verb !== "release" && verb !== "resolve") return;
+      const refusal = custodyRefusal(item);
+      if (refusal) {
+        if (verb !== "resolve") setEcho(`${verb} ${item.id} — ${refusal}`);
+        return;
+      }
+      void writeLease(roomName, verb, { key: item.id.replace(/^memory:/, ""), handle: actor })
+        .then(state => {
+          setEcho(`${verb} ${state.key} → custody=${state.custody} owner=${state.owner ?? "—"}`);
+          revalidate();
+        })
+        .catch((e: unknown) => setEcho(`${verb} ${item.id} failed — ${String(e)}`));
     },
-    [actor, overlay, patch, play],
+    [actor, overlay, patch, play, revalidate, roomName],
   );
 
   const answer = useCallback(
@@ -280,7 +301,14 @@ export function RoomBoard({ roomName }: Props) {
         return setView(v => ({ ...v, lens, showResolved: lens !== "needs_you" }));
       }
       if (!selected) return;
-      const verbs: Record<string, Verb> = { c: "claim", r: "resolve", b: "block", p: "promote", x: "dismiss" };
+      const verbs: Record<string, Verb> = {
+        c: "claim",
+        e: "release",
+        r: "resolve",
+        b: "block",
+        p: "promote",
+        x: "dismiss",
+      };
       if (verbs[key]) {
         e.preventDefault();
         runVerb(selected, verbs[key]);
@@ -381,6 +409,7 @@ export function RoomBoard({ roomName }: Props) {
               <BoardTable
                 items={flat}
                 schema={schema}
+                now={now}
                 selectedId={selectedId}
                 onSelect={setSelectedId}
                 onEdit={(item, field, value) => {
