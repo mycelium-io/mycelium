@@ -58,6 +58,7 @@ SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
     ("concepts/episodes.md",          "episodes",           "start",       "Concepts",     "Episodes"),
     ("concepts/memory.md",            "memory",             "start",       "Concepts",     "Memory"),
     ("concepts/plan.md",              "plan",               "start",       "Concepts",     "Plan"),
+    ("concepts/board.md",             "board",              "start",       "Concepts",     "Board"),
     ("concepts/l9-protocol.md",       "l9-protocol",        "start",       "Concepts",     "L9 Protocol"),
     # Engines are a nested group: the overview, then one page per kind.
     ("concepts/engines.md",           "engines",            "start",       "Engines",      "Overview"),

@@ -4,6 +4,9 @@ A room's **plan** is the place to write down what the room is for and what's
 left to do. It lives in `~/.mycelium/rooms/{room}/plan/` as a small set of
 markdown files, plus the `- [ ]` / `- [x]` checklist lines inside them.
 
+Open tasks also appear on the [board](#board), next to open decisions and
+whatever else currently needs a person.
+
 Plan content is surfaced to every agent in the room, both in the turn the
 [aligner](#aligner) addresses to them and in every agent-context briefing, so
 agents weigh their behaviour against work that's already committed.

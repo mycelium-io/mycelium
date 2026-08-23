@@ -1,0 +1,249 @@
+{
+  "_comment": "Frozen vocabulary for the coordination board (PoC). The GUI (mycelium-frontend/src/lib/board/) and the CLI (mycelium-cli/src/mycelium/board/) each carry their own copy of the projection rules \u2014 the thin `uv tool` CLI can't import the frontend and vice versa \u2014 so the words they must agree on live here, the same way contracts/slim-l9-wire.json freezes the SLIM+L9 constants. A unit test on each side asserts against this file, so neither copy can drift without a red gate.",
+  "version": 1,
+  "statuses": [
+    "open",
+    "in_review",
+    "resolved",
+    "dismissed"
+  ],
+  "kinds": [
+    "decision",
+    "blocked",
+    "review",
+    "action",
+    "concern",
+    "signal"
+  ],
+  "priorities": [
+    "urgent",
+    "high",
+    "normal",
+    "low"
+  ],
+  "lenses": [
+    "needs_you",
+    "in_flight",
+    "resolved"
+  ],
+  "lens_of_status": {
+    "open": "needs_you",
+    "in_review": "in_flight",
+    "resolved": "resolved",
+    "dismissed": "resolved"
+  },
+  "verbs": [
+    "claim",
+    "release",
+    "resolve",
+    "block",
+    "unblock",
+    "promote",
+    "dismiss"
+  ],
+  "verb_keys": {
+    "claim": "c",
+    "release": "e",
+    "resolve": "r",
+    "block": "b",
+    "promote": "p",
+    "dismiss": "x"
+  },
+  "live_namespaces": [
+    "decisions",
+    "status",
+    "work",
+    "failed"
+  ],
+  "log": {
+    "_comment": "The daily log's calendar conventions. A day is a calendar date in the reader's timezone; weeks start Monday; the heat scale steps at these upper bounds.",
+    "week_starts_on": "monday",
+    "day_key_format": "YYYY-MM-DD",
+    "daily_goal": 6,
+    "heat_thresholds": [
+      0,
+      2,
+      5,
+      9
+    ]
+  },
+  "upstream": {
+    "_comment": "What a status provider's answer looks like on a row. The field is `upstream` and not `status` (the row's own lifecycle) or `live` (a boolean for whether an agent is resident on the row): a provider answers about the work upstream of this room, in the tool it actually lives in. States are ordered worst first, which is the order a row with two references picks by. `companion_fields` is every other key the two implementations write, and both assert this list against what they actually produce rather than against a copy of it.",
+    "field": "upstream",
+    "states": [
+      "failed",
+      "blocked",
+      "pending",
+      "ok",
+      "done",
+      "unknown"
+    ],
+    "companion_fields": [
+      "upstream_label",
+      "upstream_url",
+      "upstream_count",
+      "upstream_age",
+      "upstream_freshness",
+      "upstream_pending"
+    ]
+  },
+  "custody": {
+    "_comment": "Custody: who holds a row, and for how much longer. Separate from `status` because an ephemeral actor cannot promise the future \u2014 every claim it makes is a lease, so the board must be able to say a holder went quiet without anyone writing that down. `held` is the only state with a holder; `unclaimed` and `expired` are derived and never stored, which is why `stored_states` is the shorter list. Freshness is the same shape the upstream model already ships (fresh/stale/expired against fetched_at/ttl), pointed at claimed_at.",
+    "field": "custody",
+    "states": [
+      "unclaimed",
+      "held",
+      "released",
+      "expired",
+      "resolved"
+    ],
+    "stored_states": [
+      "held",
+      "released",
+      "resolved"
+    ],
+    "derived_states": [
+      "unclaimed",
+      "expired"
+    ],
+    "freshness": [
+      "fresh",
+      "stale",
+      "expired"
+    ],
+    "stale_after": 0.5,
+    "default_ttl_minutes": 30,
+    "companion_fields": [
+      "claimed_at",
+      "ttl_minutes",
+      "custody_note",
+      "custody_note_by"
+    ],
+    "runtime_author": "runtime",
+    "lens_of_custody": {
+      "unclaimed": "needs_you",
+      "held": "in_flight",
+      "released": "needs_you",
+      "expired": "needs_you",
+      "resolved": "resolved"
+    },
+    "leasable_namespaces": [
+      "work"
+    ],
+    "refusals": {
+      "plan": "a plan task is the room's commitment, not a lease: assign it with @handle",
+      "episode": "an episode is a recorded negotiation, and there is nothing to write a lease onto",
+      "agent": "presence is already a lease the runtime renews; it is not claimable",
+      "memory": "leases live on work/ memories; this row is in another namespace"
+    },
+    "blocked_field": "blocked_by"
+  },
+  "schema": {
+    "_comment": "Field types the two surfaces must infer identically, and the order options come back in. `cases` is a table both suites run through their own classifier: a field name, the values it holds, and the type both must call it. These drifted once (the GUI grew number-from-string and link rules the CLI never got, and sorted out-of-vocabulary options first where the CLI sorted them last), which is what a table asserted from both sides prevents.",
+    "types": [
+      "select",
+      "handle",
+      "number",
+      "date",
+      "tags",
+      "checkbox",
+      "link",
+      "text"
+    ],
+    "max_select_cardinality": 12,
+    "unknown_options_sort": "last",
+    "cases": [
+      {
+        "name": "status",
+        "values": [
+          "open",
+          "in_review"
+        ],
+        "type": "select"
+      },
+      {
+        "name": "custody",
+        "values": [
+          "held",
+          "unclaimed"
+        ],
+        "type": "select"
+      },
+      {
+        "name": "owner",
+        "values": [
+          "@julia",
+          "@growth"
+        ],
+        "type": "handle"
+      },
+      {
+        "name": "rounds",
+        "values": [
+          3,
+          5
+        ],
+        "type": "number"
+      },
+      {
+        "name": "port",
+        "values": [
+          "8000",
+          "9000"
+        ],
+        "type": "number"
+      },
+      {
+        "name": "updated",
+        "values": [
+          "2026-08-20T10:00:00Z"
+        ],
+        "type": "date"
+      },
+      {
+        "name": "tags",
+        "values": [
+          [
+            "auth"
+          ],
+          [
+            "auth",
+            "jwt"
+          ]
+        ],
+        "type": "tags"
+      },
+      {
+        "name": "live",
+        "values": [
+          true,
+          false
+        ],
+        "type": "checkbox"
+      },
+      {
+        "name": "repo",
+        "values": [
+          "mycelium-io/mycelium"
+        ],
+        "type": "link"
+      },
+      {
+        "name": "note",
+        "values": [
+          "a one-off line nobody repeats"
+        ],
+        "type": "text"
+      },
+      {
+        "name": "severity",
+        "values": [
+          "sev2",
+          "sev2",
+          "sev1"
+        ],
+        "type": "select"
+      }
+    ]
+  }
+}

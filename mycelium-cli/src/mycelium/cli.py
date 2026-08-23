@@ -11,6 +11,7 @@ from mycelium import __version__
 from mycelium.commands import (
     adapter,
     agent,
+    board,
     config,
     demo,
     docs,
@@ -104,6 +105,7 @@ app.command(name="respond")(participate.respond)
 # point, so listing them shouldn't need the `room` prefix.
 app.command(name="ls")(room.list_rooms)
 
+app.add_typer(board.app, name="board")
 app.add_typer(room.app, name="room")
 app.add_typer(memory.app, name="memory")
 app.add_typer(skill.app, name="skill")

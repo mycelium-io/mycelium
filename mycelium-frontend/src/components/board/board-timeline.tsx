@@ -1,0 +1,83 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Mycelium Contributors
+
+"use client";
+
+import { cn } from "@/lib/utils";
+import { ageMinutes, lensOf, type LiveItem } from "@/lib/board/item";
+import { AgeTag, KindGlyph, CustodyChip, SourceTag, UpstreamChip, WorkLinks, kindColor } from "./board-bits";
+
+interface Props {
+  items: LiveItem[];
+  now: number;
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+}
+
+const BUCKETS: { label: string; within: number }[] = [
+  { label: "Last hour", within: 60 },
+  { label: "Today", within: 60 * 24 },
+  { label: "This week", within: 60 * 24 * 7 },
+  { label: "Earlier", within: Number.POSITIVE_INFINITY },
+];
+
+/**
+ * The ledger, read as a ledger. Same rows, ordered by when they last moved —
+ * the view that answers "what happened while I was away" without anyone
+ * maintaining an activity feed.
+ */
+export function BoardTimeline({ items, now, selectedId, onSelect }: Props) {
+  const buckets = BUCKETS.map(bucket => ({
+    ...bucket,
+    items: items.filter(item => {
+      const age = ageMinutes(item, now) ?? Number.POSITIVE_INFINITY;
+      const index = BUCKETS.findIndex(b => age < b.within);
+      return BUCKETS[index === -1 ? BUCKETS.length - 1 : index].label === bucket.label;
+    }),
+  })).filter(b => b.items.length > 0);
+
+  return (
+    <div className="px-5 py-4">
+      {buckets.map(bucket => (
+        <section key={bucket.label} className="mb-5">
+          <h3 className="mb-2 font-mono text-micro text-muted-foreground">
+            {bucket.label}
+          </h3>
+          <div className="relative pl-4">
+            {/* The rail: one line the whole bucket hangs off. */}
+            <span className="absolute inset-y-0 left-[5px] w-px bg-hairline" />
+            {bucket.items.map(item => (
+              <button
+                key={item.id}
+                onClick={() => onSelect(item.id)}
+                className={cn(
+                  "relative flex w-full items-start gap-2.5 rounded-lg px-2.5 py-1.5 text-left transition-colors",
+                  item.id === selectedId ? "bg-elevated ring-1 ring-border" : "hover:bg-hairline",
+                  lensOf(item, now) === "resolved" && "opacity-65",
+                )}
+              >
+                <span
+                  className="absolute -left-[13px] top-3 size-[7px] rounded-full ring-2 ring-bg"
+                  style={{ background: kindColor(item) }}
+                />
+                <KindGlyph item={item} className="mt-[1px]" />
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-baseline gap-2">
+                    <span className="min-w-0 flex-1 truncate text-label text-text">{item.title}</span>
+                    <AgeTag item={item} now={now} />
+                  </span>
+                  <span className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-1">
+                    <SourceTag item={item} />
+                    <CustodyChip item={item} now={now} />
+                    <WorkLinks item={item} />
+          <UpstreamChip item={item} />
+                  </span>
+                </span>
+              </button>
+            ))}
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}

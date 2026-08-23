@@ -87,6 +87,20 @@ def upsert(room_name: str, record: dict) -> None:
     write_index(room_name, records)
 
 
+def embedding_for(room_name: str, key: str) -> list[float] | None:
+    """The vector already indexed for ``key``, if there is one.
+
+    A write that doesn't touch the prose shouldn't have to re-embed it, but
+    :func:`upsert` replaces a record whole — so the caller reads the old vector
+    back and hands it in, rather than silently indexing the memory with none.
+    """
+    for record in load_index(room_name):
+        if record.get("key") == key:
+            embedding = record.get("embedding")
+            return embedding if isinstance(embedding, list) else None
+    return None
+
+
 def remove(room_name: str, key: str) -> bool:
     """Drop the record for ``key``. Returns True if a record was removed."""
     records = load_index(room_name)
