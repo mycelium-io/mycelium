@@ -10,6 +10,7 @@ import { RoomsSidebar } from "@/components/rooms-sidebar";
 import { GlobalSearch, GlobalSearchButton } from "@/components/global-search";
 import { CommandPaletteButton, KeymapHelpButton } from "@/components/keymap-provider";
 import { InstallModalProvider, useOpenInstallModal } from "@/components/install-modal";
+import { DocsLink } from "@/components/docs-link";
 import { MetricsStatusLink } from "@/components/status-items";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
@@ -154,6 +155,7 @@ export function AppShell({
                   <div className="ml-auto flex flex-shrink-0 items-center gap-3">
                     {headerRight}
                     <InstallCliButton />
+                    <DocsLink />
                     <ThemeToggle />
                   </div>
                 </header>
