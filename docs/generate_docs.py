@@ -970,10 +970,9 @@ SKILL_MD_URL = (
     "mycelium/SKILL.md"
 )
 
-AGENTS_MD_URL = (
-    "https://raw.githubusercontent.com/mycelium-io/mycelium/main/"
-    "mycelium-cli/src/mycelium/integrations/cursor/assets/AGENTS.md"
-)
+# The setup runbook the site publishes for agents, served from docs/ alongside
+# the generated pages.
+AGENTS_MD_URL = "https://mycelium-io.github.io/mycelium/agents.md"
 
 # Every markdown-backed section links back to the file it was rendered from, so
 # a reader who spots a mistake can fix it where the source of truth lives.
@@ -1065,8 +1064,8 @@ def _topnav() -> str:
     The brand cell is sidebar-width so the rail reads as one column, matching
     RoomsSidebar sitting under the workspace header in the app. Page navigation
     lives in the persistent rail, which carries every page at every width, so the
-    bar holds only what the rail cannot: search, the page actions, and the one
-    link that leaves the site.
+    bar holds only what the rail cannot: search, the page actions, and the
+    agent-facing runbook.
     """
     return f"""<!-- TOP BAR -->
 <nav class="topnav">
