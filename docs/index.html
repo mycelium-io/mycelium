@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>mycelium Docs</title>
-<meta name="description" content="A shared space for humans and agents. Install Mycelium and learn the core concepts: rooms, memory, plan, engines (the aligner, the synthesizer and hello), and the L9 protocol.">
+<meta name="description" content="A shared space for humans and agents. Install Mycelium and learn the core concepts: rooms, memory, plan, episodes, and the L9 protocol.">
 <meta property="og:title" content="mycelium Docs">
-<meta property="og:description" content="A shared space for humans and agents. Install Mycelium and learn the core concepts: rooms, memory, plan, engines (the aligner, the synthesizer and hello), and the L9 protocol.">
+<meta property="og:description" content="A shared space for humans and agents. Install Mycelium and learn the core concepts: rooms, memory, plan, episodes, and the L9 protocol.">
 <meta property="og:image" content="https://mycelium-io.github.io/mycelium/og.png">
 <meta property="og:url" content="https://mycelium-io.github.io/mycelium/index.html">
 <meta property="og:type" content="website">
@@ -97,15 +97,6 @@
           <a href="#l9-protocol" class="nav-link sub">L9 Protocol</a>
         </div>
       </div>
-      <div class="nav-group" data-nav-group="start:engines">
-        <button class="nav-group-toggle" type="button" aria-expanded="true"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Engines</span></button>
-        <div class="nav-group-items">
-          <a href="#engines" class="nav-link sub">Overview</a>
-          <a href="#aligner" class="nav-link sub">Aligner</a>
-          <a href="#synthesizer" class="nav-link sub">Synthesizer</a>
-          <a href="#hello" class="nav-link sub">Hello</a>
-        </div>
-      </div>
     </div>
     <div class="nav-page-group">
       <a href="adapters.html" class="nav-page-link">Adapters</a>
@@ -117,6 +108,15 @@
           <a href="adapters.html#adapter-cursor" class="nav-link sub">Cursor</a>
           <a href="adapters.html#adapter-a2a" class="nav-link sub">A2A Bridge</a>
           <a href="adapters.html#adapter-api" class="nav-link sub">REST API</a>
+        </div>
+      </div>
+      <div class="nav-group collapsed" data-nav-group="adapters:engines">
+        <button class="nav-group-toggle" type="button" aria-expanded="false"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Engines</span></button>
+        <div class="nav-group-items">
+          <a href="adapters.html#engines" class="nav-link sub">Overview</a>
+          <a href="adapters.html#aligner" class="nav-link sub">Aligner</a>
+          <a href="adapters.html#synthesizer" class="nav-link sub">Synthesizer</a>
+          <a href="adapters.html#hello" class="nav-link sub">Hello</a>
         </div>
       </div>
     </div>
@@ -371,7 +371,7 @@
 <span class="bin">mycelium</span> <span class="cmd">room</span> <span class="cmd">amend</span> a1b2c3d4 <span class="str">&quot;the cache TTL is 300s, not 30s&quot;</span></code></pre>
       <p>Editing is <strong>additive, never destructive</strong>. The amendment is posted as its own message pointing at the one it revises (an L9 <code>exchange:amend</code> whose causal parents name the target), so the room&#x27;s append-only transcript keeps every version — nothing is rewritten. What readers get is the folded result: one message carrying the newest text, marked <em>edited</em>. Only a message&#x27;s own sender can amend it, and an amendment that folds into nothing stays visible as its own message rather than disappearing.</p>
       <h2 id="rooms-coordination">Coordination</h2>
-      <p>To coordinate in a room, participants converge on a question through an <a href="#episodes">episode</a> driven by the <a href="#aligner">aligner</a> mediator. The arc is <strong>position → summon → converge → plan → work</strong>:</p>
+      <p>To coordinate in a room, participants converge on a question through an <a href="#episodes">episode</a> driven by the <a href="adapters.html#aligner">aligner</a> mediator. The arc is <strong>position → summon → converge → plan → work</strong>:</p>
       <ol class="steps">
         <li>Register the mediator once: <code>mycelium engine create aligner --kind aligner -r design-review</code></li>
         <li>Each participant posts an opening position: <code>mycelium respond -H &lt;handle&gt; &quot;&lt;position&gt;&quot;</code></li>
@@ -453,7 +453,7 @@ PATCH .../messages/{id}  {<span class="str">&quot;status&quot;</span>: <span cla
 
     <section class="doc-section" id="episodes">
       <h1>Episodes</h1>
-      <p>An episode is one recorded negotiation. Summoning the <a href="#aligner">aligner</a> on a <a href="#rooms">room</a> opens an episode: a scoped, membership-tagged round on the room&#x27;s existing SLIM channel (a tag on that channel, <em>not</em> a separate channel). Each convening is a distinct episode with its own id, its own slice of the transcript, and a 1:1 record at <code>log/episodes/{id}.md</code> (the full causally-linked <a href="#l9-protocol">L9</a> envelope chain). Rooms persist; an episode is the arc of a single question being converged on.</p>
+      <p>An episode is one recorded negotiation. Summoning the <a href="adapters.html#aligner">aligner</a> on a <a href="#rooms">room</a> opens an episode: a scoped, membership-tagged round on the room&#x27;s existing SLIM channel (a tag on that channel, <em>not</em> a separate channel). Each convening is a distinct episode with its own id, its own slice of the transcript, and a 1:1 record at <code>log/episodes/{id}.md</code> (the full causally-linked <a href="#l9-protocol">L9</a> envelope chain). Rooms persist; an episode is the arc of a single question being converged on.</p>
       <p>There is no session to create, join, or await, and no join window. You address the room and the aligner directly.</p>
       <h2 id="episodes-the-lifecycle">The lifecycle</h2>
       <ol class="steps">
@@ -636,7 +636,7 @@ We chose Postgres because of myc://context/stack.</code></pre>
       <h1>Plan</h1>
       <p>A room&#x27;s <strong>plan</strong> is the place to write down what the room is for and what&#x27;s left to do. It lives in <code>~/.mycelium/rooms/{room}/plan/</code> as a small set of markdown files, plus the <code>- [ ]</code> / <code>- [x]</code> checklist lines inside them.</p>
       <p>Open tasks also appear on the <a href="#board">board</a>, next to open decisions and whatever else currently needs a person.</p>
-      <p>Plan content is surfaced to every agent in the room, both in the turn the <a href="#aligner">aligner</a> addresses to them and in every agent-context briefing, so agents weigh their behaviour against work that&#x27;s already committed.</p>
+      <p>Plan content is surfaced to every agent in the room, both in the turn the <a href="adapters.html#aligner">aligner</a> addresses to them and in every agent-context briefing, so agents weigh their behaviour against work that&#x27;s already committed.</p>
       <p>You can write the plan by hand (<code>plan set</code>, <code>plan task add</code>), but it also fills itself: when an <a href="#episodes">episode</a> converges on consensus, Mycelium compiles the agreed <code>{issue: value}</code> map into <code>plan/tasks.md</code> automatically: a <code>- [ ]</code> checklist with <code>@handle</code> owners that the whole team then executes against. The plan is compiled <em>before</em> the consensus is announced, so it exists the moment <code>await</code> returns. A re-negotiation updates that same plan, preserving tasks already completed. The arc is <strong>position → converge → plan → work</strong>.</p>
       <h2 id="plan-anatomy">Anatomy</h2>
       <pre><code>.mycelium/rooms/{room}/plan/
@@ -924,192 +924,6 @@ Review 1
       <h2 id="l9-protocol-under-the-hood">Under the hood</h2>
       <p>Coordination messages carry an <code>l9</code> envelope inside their content JSON: ticks are <code>exchange</code>, agreement commits as <code>commit:converged</code>, a failed negotiation as <code>commit:rejected</code>. A message that revises an earlier one is an <code>exchange:amend</code> carrying the revised message&#x27;s id in its causal parents, which is what lets the read path fold a message and its revisions without rewriting the transcript. Reply envelopes are synthesized by the backend from parsed agent replies; agents never speak L9 directly. On convergence the agreed <code>{issue: value}</code> map compiles into the room&#x27;s shared <code>plan/tasks.md</code> and syncs as a <code>knowledge</code> memory. The quality metrics are computed by Mycelium.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/l9-protocol.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
-    </section>
-
-    <hr class="divider">
-
-    <section class="doc-section" id="engines">
-      <h1>Engines</h1>
-      <p>An <strong>engine</strong> is a first-party unit of cognition that lives inside a room. Where your agents are the participants, engines are the room&#x27;s <em>reasoning citizens</em>. They read what the room knows and act on it: mediate a decision, distill the memory, and (in time) more.</p>
-      <p>Engines exist because some work isn&#x27;t any single agent&#x27;s job. Deciding <em>whose offer wins</em> shouldn&#x27;t fall to one of the negotiating parties; summarizing the whole room shouldn&#x27;t depend on one agent remembering everything. An engine is a neutral, first-party actor the room owns.</p>
-      <p>Three of them exist today; the first thing to try on a new hub is <code>hello</code>, which answers a summon and owns nothing, so it is safe to fire into a live room just to see whether cognition runs at all.</p>
-      <p>Two properties define every engine:</p>
-      <ul>
-        <li><strong>Summoned explicitly.</strong> An engine is dormant until you register it in a room and <code>@</code>-summon it. There is no join window, no polling, and no held LLM connection, so it has zero idle cost. Cognition runs because you asked for it.</li>
-        <li><strong>A room citizen with a handle.</strong> A registered engine is an agent whose manifest says <code>adapter: engine</code> and carries a <code>kind</code>. It runs <em>as that handle</em>, so it can be <code>@</code>-addressed and its output is attributed like any member&#x27;s.</li>
-      </ul>
-      <h2 id="engines-kinds">Kinds</h2>
-      <p>The engine layer is one seam with a growing set of kinds. You pick the kind at registration time. No new adapter per engine; the same <code>mycelium engine</code> commands host all of them.</p>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Kind</th>
-              <th>What it does</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td><code>aligner</code></td>
-              <td>Mediates a real NEGMAS negotiation to consensus, then compiles the agreement into the room&#x27;s plan. See <a href="#aligner">Aligner</a>.</td>
-            </tr>
-            <tr>
-              <td><code>synthesizer</code></td>
-              <td>Distills the room&#x27;s conversation into a briefing at <code>context/synthesis</code>, incrementally. See <a href="#synthesizer">Synthesizer</a>.</td>
-            </tr>
-            <tr>
-              <td><code>hello</code></td>
-              <td>Answers one summon with one Pi turn and writes nothing anywhere — the cheap proof the engine path works on this hub. See <a href="#hello">Hello</a>.</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <p>More kinds (bargaining, team-formation, drift evaluation) plug into the same seam over time.</p>
-      <h2 id="engines-the-lifecycle">The lifecycle</h2>
-      <p>Every engine, whatever its kind, follows the same three steps.</p>
-      <pre><code><span class="comment"># 1. Register it once per room (pick the kind)</span>
-<span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> summarizer <span class="flag">--kind</span> synthesizer <span class="flag">--room</span> sprint-plan
-
-<span class="comment"># 2. Summon it: this is what makes cognition run</span>
-<span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">invoke</span> summarizer <span class="str">&quot;brief the room on where we stand&quot;</span> <span class="flag">-r</span> sprint-plan
-
-<span class="comment"># 3. It runs as that handle and writes its result back into the room</span>
-<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">get</span> context/synthesis <span class="flag">-r</span> sprint-plan</code></pre>
-      <p><code>mycelium engine ls</code> shows the engines registered in a room and their kinds.</p>
-      <h2 id="engines-where-an-engine-runs">Where an engine runs</h2>
-      <p>An engine&#x27;s cognition runs <strong>backend-side</strong>: the always-on backend runs the engine through its summon seam, so there is nothing extra to install. (<code>pi</code> ships in the backend image.) Legacy <code>engine.runtime = host</code> config coerces to <code>backend</code>.</p>
-      <p>Every engine&#x27;s brain is <strong>Pi</strong>, the coding-agent runtime Mycelium uses for engine cognition (it ships in the backend image). It applies only to engines. Your participant agents run however you like (Claude Code, Cursor, a plain HTTP client) and only ever answer in prose.</p>
-      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/engines.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
-    </section>
-
-    <hr class="divider">
-
-    <section class="doc-section" id="aligner">
-      <h1>Aligner</h1>
-      <p>The aligner is the negotiation <a href="#engines">engine</a>: the <code>kind</code> that mediates a decision to consensus. Agents never talk to each other directly; all coordination flows through it. It reads everyone&#x27;s opening positions, brokers the negotiation one agent at a time, and stops the moment the team agrees.</p>
-      <p>Like every engine, the aligner is <em>summoned</em>: nothing runs until you register it in a <a href="#rooms">room</a> and invoke it. There is no join window and no auto-start.</p>
-      <pre><code><span class="comment"># Register the mediator once per room</span>
-<span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> aligner <span class="flag">--kind</span> aligner <span class="flag">--room</span> sprint-plan
-
-<span class="comment"># Summon it to open an episode</span>
-<span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">invoke</span> aligner <span class="str">&quot;converge on tech allocation and the cap&quot;</span> <span class="flag">-r</span> sprint-plan</code></pre>
-      <h2 id="aligner-how-it-negotiates">How it negotiates</h2>
-      <p>The aligner drives a real <strong>NEGMAS Stacked Alternating Offers</strong> negotiation, so consensus comes out of the mechanism rather than an LLM improvising one. The mechanism owns proposer rotation and the unanimity stop; the aligner only supplies each agent&#x27;s move when NEGMAS asks for one.</p>
-      <ol class="steps">
-        <li><strong>Align vocabulary.</strong> Before any offer exists, it reads the opening positions for a term the participants are using in <em>different senses</em> — &quot;done&quot;, &quot;priority&quot;, &quot;blocked&quot;. A word two agents read differently is a disagreement an agreement would hide rather than settle, so when it finds one the aligner runs a single clarifying round: one <code>@</code>-addressed turn each, asking only for a definition, folded into the prose the next step reads. Most rooms share their vocabulary — no mismatch means no round, and the check itself is one cheap call. <code>ALIGNER_TERM_CHECK=0</code> skips it.</li>
-        <li><strong>Discover.</strong> It reads the participants&#x27; opening positions (posted with <code>mycelium respond</code>) and derives the negotiable issues and their options.</li>
-        <li><strong>Broker.</strong> Each round it <code>@</code>-addresses one agent at a time over SLIM with the standing offer, waits for that agent&#x27;s <code>mycelium respond</code> reply, and interprets the natural-language reply into an SAO move (accept / reject / counter). Agents answer in prose; they never speak the protocol.</li>
-        <li><strong>Terminate.</strong> NEGMAS stops the instant everyone accepts the same offer; it never loops to the step cap. A negotiation that can&#x27;t reach agreement commits as <code>rejected</code>.</li>
-        <li><strong>Compile.</strong> On agreement the aligner emits <code>commit:converged</code> carrying the agreed <code>{issue: value}</code> map, and <code>plan_compiler</code> (a separate LLM stage that <em>consumes</em> the outcome, distinct from the negotiation engine) turns it into the room&#x27;s <a href="#plan">shared plan</a>, <code>plan/tasks.md</code>: a <code>- [ ]</code> checklist with <code>@handle</code> owners. This runs before the consensus is announced, so the plan exists by the time <code>await</code> returns.</li>
-      </ol>
-      <p>Walking away with no agreement is a legitimate outcome. There&#x27;s no &quot;concede gradually&quot; mechanism: if your hard constraints can&#x27;t be met, keep rejecting.</p>
-      <h2 id="aligner-memory-across-rounds">Memory across rounds</h2>
-      <p>The aligner&#x27;s brain is a persistent <strong>Pi</strong> coding-agent session (<code>pi -p --session &lt;id&gt;</code>), spawned fresh per episode and kept alive across every round of that episode. That persistence is what gives it real memory of the negotiation as it unfolds: it remembers who moved and why, rather than re-reading a flat transcript each turn. Pi ships in the backend image and runs only the engine; participant agents keep their own runtimes.</p>
-      <h2 id="aligner-tunables">Tunables</h2>
-      <p>The aligner is dormant by default and configured through <code>~/.mycelium/.env</code> (backend settings). The common knobs:</p>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Env var</th>
-              <th>Default</th>
-              <th>Purpose</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td><code>ALIGNER_HANDLE</code></td>
-              <td><code>aligner</code></td>
-              <td>Reserved handle that a summon is recognised by</td>
-            </tr>
-            <tr>
-              <td><code>ALIGNER_TERM_CHECK</code></td>
-              <td><code>true</code></td>
-              <td>Run the pre-negotiation term check, and one clarifying round when it finds a mismatch</td>
-            </tr>
-            <tr>
-              <td><code>ALIGNER_ROUND_TIMEOUT_S</code></td>
-              <td><code>30.0</code></td>
-              <td>How long one addressed agent has to reply before the mediator moves on</td>
-            </tr>
-            <tr>
-              <td><code>ALIGNER_MEDIATOR_MAX_STEPS</code></td>
-              <td><code>20</code></td>
-              <td>Hard cap on NEGMAS SAO steps, a safety bound; NEGMAS normally stops at agreement well before it</td>
-            </tr>
-            <tr>
-              <td><code>ALIGNER_PI_TIMEOUT_S</code></td>
-              <td><code>120.0</code></td>
-              <td>Per-turn wall-clock bound on one Pi brain call</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <p>Convergence is <strong>not</strong> a tunable: it is whatever the mechanism decides. NEGMAS stops at unanimity and the aligner reports agreement if, and only if, the mechanism produced one. The confidence agents report feeds the recorded quality metrics (MPC/GAR/SCR), not the verdict.</p>
-      <p>See <a href="#l9-protocol">L9 Protocol</a> for the envelope format, epistemic reply fields, and the consensus quality metrics the aligner records at close.</p>
-      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/aligner.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
-    </section>
-
-    <hr class="divider">
-
-    <section class="doc-section" id="synthesizer">
-      <h1>Synthesizer</h1>
-      <p>The synthesizer is the distillation <a href="#engines">engine</a>: the <code>kind</code> that reads a room&#x27;s <strong>conversation</strong> and writes what it learned into <strong>memory</strong>. The <a href="#aligner">aligner</a> converges a negotiation; the synthesizer moves what the room said into what the room keeps.</p>
-      <p>That direction is the whole point. Chat is the ephemeral half — where a decision gets argued, qualified and settled, and the half nothing indexes for meaning. Memory is the durable half. The synthesizer is the bridge between them.</p>
-      <p>Like every engine, it is summoned. Nothing runs until you register it in a <a href="#rooms">room</a> and invoke it, so there is no polling and no held connection.</p>
-      <pre><code><span class="comment"># Register the synthesizer once per room</span>
-<span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> summarizer <span class="flag">--kind</span> synthesizer <span class="flag">--room</span> sprint-plan
-
-<span class="comment"># Summon it to distill what has been said since last time</span>
-<span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">invoke</span> summarizer <span class="str">&quot;brief the room on where we stand&quot;</span> <span class="flag">-r</span> sprint-plan
-
-<span class="comment"># Re-distill the whole transcript instead of just the new tail</span>
-<span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">invoke</span> summarizer <span class="str">&quot;--all&quot;</span> <span class="flag">-r</span> sprint-plan
-
-<span class="comment"># Read the result back</span>
-<span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">get</span> context/synthesis <span class="flag">-r</span> sprint-plan</code></pre>
-      <h2 id="synthesizer-how-it-distills">How it distills</h2>
-      <p>On summon, the synthesizer reads the room&#x27;s chat and runs one <strong>Pi</strong> turn to distill it into a single markdown briefing: what was decided, what changed, what is in flight, and what is still open. It upserts that briefing as a <code>knowledge</code> <a href="#memory">memory</a> at <code>context/synthesis</code>, so it is versioned, searchable, linked and shared like any other memory.</p>
-      <p>It reads the transcript <strong>by message type</strong>, so only real chat reaches the prompt. The room&#x27;s feed also carries L9 frames and coordination messages whose content is a serialized envelope; those are excluded structurally, and a briefing never comes back with JSON quoted inside it.</p>
-      <h2 id="synthesizer-incremental-by-default">Incremental by default</h2>
-      <p>Each run covers only what has been said since the last one. The written memory carries the position it was distilled through in its own frontmatter, so the cursor advances exactly when the briefing lands — a failed Pi turn moves nothing, and re-summoning with no new messages writes nothing at all rather than producing a second copy of the same summary.</p>
-      <p>The standing briefing is carried into the next run as context, so a new slice is folded into what is already known rather than replacing it. Pass <code>--all</code> in the summon text to re-read the whole transcript from the start.</p>
-      <p>The synthesizer also speaks its briefing into the room, which means its own words are in its next input. Messages from any registered synthesizer handle are dropped from the corpus before the prompt is built, so it never feeds on itself.</p>
-      <h2 id="synthesizer-faithfulness">Faithfulness</h2>
-      <p>The briefing reflects only what was actually said; the synthesizer does not invent facts. If its Pi turn fails, it writes nothing rather than a half-formed summary.</p>
-      <p>The synthesizer holds no <a href="#episodes">episode</a> and drives no negotiation. It reads the room, distills it, and writes the result back. It shares the rest of the engine model: the summon lifecycle and <a href="#engines">where it runs</a> (backend-side), with every brain running a <strong>Pi</strong> turn.</p>
-      <h2 id="synthesizer-summarizing-memory-instead">Summarizing memory instead</h2>
-      <p>Summarizing the memory store — a briefing over what is already durable — is a different feature, not the default one. Set <code>SYNTHESIZER_SOURCE=memory</code> on the backend to get it: the engine then reads every memory namespace (minus agent manifests and its own prior output) and compiles those instead. That path is not incremental; there is no transcript position to hold.</p>
-      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/synthesizer.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
-    </section>
-
-    <hr class="divider">
-
-    <section class="doc-section" id="hello">
-      <h1>Hello</h1>
-      <p>The hello engine is the <a href="#engines">engine</a> that does nothing on purpose. Summon it and it runs one <strong>Pi</strong> turn on whatever you said, posts the answer into the room, and stops. No negotiation, no memory write, no plan — the only trace it leaves is the message it posts.</p>
-      <p>That is what makes it useful. The <a href="#aligner">aligner</a> opens a negotiation episode and the <a href="#synthesizer">synthesizer</a> writes a memory back, so neither is something you want to fire into a live room just to check the wiring. Hello is, which makes it the first thing to try on a new hub.</p>
-      <pre><code><span class="comment"># Register it once in the room</span>
-<span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> hello <span class="flag">--kind</span> hello <span class="flag">--room</span> sprint-plan
-
-<span class="comment"># Summon it</span>
-<span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">invoke</span> hello <span class="str">&quot;say hello and name the model you are&quot;</span> <span class="flag">-r</span> sprint-plan</code></pre>
-      <p>A reply in the room means the whole engine path works.</p>
-      <h2 id="hello-what-a-reply-proves">What a reply proves</h2>
-      <p><code>mycelium doctor</code> already checks that the hub can reach a model — but that probe stops at the completion. Every rung above it is untested until an engine actually runs. A hello reply walks all of them:</p>
-      <ul>
-        <li>the manifest gate that routes an <code>@</code>-mention to a registered engine of the right <code>kind</code>, and to nothing else</li>
-        <li>the engine runtime branch that decides who owns the run</li>
-        <li>the guard that stops an engine firing on its own message</li>
-        <li>a one-shot Pi turn against the configured <code>llm.model</code> / key / base URL</li>
-        <li>the channel send, and the persister writing the message into the transcript</li>
-      </ul>
-      <p>If no reply appears, the failure is in exactly one of those, and the backend logs say which.</p>
-      <h2 id="hello-fail-loud">Fail-loud</h2>
-      <p>A probe that fails silently is worse than no probe, so hello never goes quiet: if its Pi turn times out or errors, it posts the reason into the room instead of an answer. Silence means the summon never reached it — a different failure, and a more useful thing to know.</p>
-      <h2 id="hello-holding-nothing">Holding nothing</h2>
-      <p>Hello keeps no state between summons and answers each one from scratch, so it is not a chat partner — it is a probe with a personality. Ask it something twice and it will not remember the first time. For cognition that carries context, that is what the aligner and the synthesizer are for.</p>
-      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/hello.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
   </div>
   </main>
