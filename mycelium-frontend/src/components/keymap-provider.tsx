@@ -17,12 +17,12 @@ import {
 import { useIsMac } from "@/lib/client-hooks";
 import { CommandPalette } from "@/components/command-palette";
 import { Tooltip } from "@/components/ui/tooltip";
+import { KbdChord } from "@/components/ui/kbd";
 import { KeymapCheatsheet } from "@/components/keymap-cheatsheet";
 import { loadRecent, pushRecent, saveRecent, type PaletteCommand } from "@/lib/commands";
 import {
   chordFor,
   eventToChord,
-  formatChord,
   isCommandChord,
   isModifierKey,
   matchBinding,
@@ -392,9 +392,9 @@ export function KeymapHelpButton() {
       <button
         type="button"
         onClick={api.openHelp}
-        className="rounded px-1 text-micro text-muted-foreground transition-colors hover:text-text"
+        className="flex items-center gap-1.5 rounded px-1 text-micro text-muted-foreground transition-colors hover:text-text"
       >
-        <kbd className="font-sans">?</kbd> keys
+        <KbdChord size="xs" tone="muted" action="help.keys" /> keys
       </button>
     </Tooltip>
   );
@@ -409,9 +409,9 @@ export function CommandPaletteButton() {
       <button
         type="button"
         onClick={api.openPalette}
-        className="rounded px-1 text-micro text-muted-foreground transition-colors hover:text-text"
+        className="flex items-center gap-1.5 rounded px-1 text-micro text-muted-foreground transition-colors hover:text-text"
       >
-        <kbd className="font-sans">{formatChord(chordFor("palette.open") ?? "", mac)}</kbd> commands
+        <KbdChord size="xs" tone="muted" action="palette.open" mac={mac} /> commands
       </button>
     </Tooltip>
   );

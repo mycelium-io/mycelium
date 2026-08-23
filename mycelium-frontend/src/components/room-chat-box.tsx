@@ -10,6 +10,7 @@ import { SendPlaneIcon } from "@/components/send-plane-icon";
 import { useRoomMemories, useRoomRoster, useRoomSkills } from "@/lib/room-data";
 import { useKeyAction } from "@/components/keymap-provider";
 import { useCurrentUser } from "@/components/current-user";
+import { Kbd } from "@/components/ui/kbd";
 
 interface Props {
   roomName: string;
@@ -305,9 +306,10 @@ export function RoomChatBox({ roomName, onSent, className }: Props) {
             </button>
           </div>
         </div>
-        <div className="mt-1.5 px-1 text-micro text-muted-foreground">
-          <kbd className="font-sans">Enter</kbd> to send · <kbd className="font-sans">Shift+Enter</kbd> for newline ·{" "}
-          <kbd className="font-sans">Esc</kbd> for command mode
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 px-1 text-micro text-muted-foreground">
+          <Kbd size="xs" tone="muted">Enter</Kbd> to send ·
+          <Kbd size="xs" tone="muted">Shift+Enter</Kbd> for newline ·
+          <Kbd size="xs" tone="muted">Esc</Kbd> for command mode
         </div>
       </div>
     </div>

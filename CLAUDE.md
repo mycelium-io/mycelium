@@ -226,6 +226,15 @@ is no litellm dependency.
   popover; `[[` is matched before `/` and `@` since a memory key can contain
   slashes. Skills insert a reference token — the resident agent/engine interprets
   it; the composer never runs the skill.
+- **One keycap, sized by where it sits.** Every surface that names a key draws it
+  through `ui/kbd.tsx` — `Kbd` for a literal, `KbdChord` for a chord the keymap
+  owns (platform-spelled, and silent when nothing binds the action). Three sizes,
+  picked by context rather than emphasis: `xs` is the one that fits the 24px
+  status rail, `sm` for palettes and hint rows, `md` for the `?` cheatsheet. The
+  rail is where this matters most: it is the only strip every screen shows, so a
+  cell a key already reaches names that key (in its tooltip, via `action=`) and
+  the way in teaches the way past. `key-badge.tsx` stays separate — that is the
+  ⌥-reveal badge drawn *on* a target, not a cap set in copy.
 - **The synthesizer distills messages into memory (#808).** Its input is the
   room's transcript — the ephemeral half, where a decision is argued and settled
   and nothing indexes it for meaning — and its output is a `knowledge` memory at

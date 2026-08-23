@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/command";
 import { paletteFilter, paletteSections, type PaletteCommand } from "@/lib/commands";
 import { eventToChord, formatChord, matchBinding } from "@/lib/keymap";
+import { Kbd } from "@/components/ui/kbd";
 
 interface Props {
   open: boolean;
@@ -122,14 +123,14 @@ export function CommandPalette({ open, onClose, commands, recent, onRun, mac }: 
         </Command>
 
         <footer className="flex flex-shrink-0 items-center gap-3 border-t border-border px-4 py-2 text-micro text-muted-foreground">
-          <span>
-            <kbd className="font-sans">↑↓</kbd> navigate
+          <span className="flex items-center gap-1.5">
+            <Kbd size="xs" tone="muted">↑↓</Kbd> navigate
           </span>
-          <span>
-            <kbd className="font-sans">↵</kbd> run
+          <span className="flex items-center gap-1.5">
+            <Kbd size="xs" tone="muted">↵</Kbd> run
           </span>
-          <span>
-            <kbd className="font-sans">esc</kbd> close
+          <span className="flex items-center gap-1.5">
+            <Kbd size="xs" tone="muted">Esc</Kbd> close
           </span>
         </footer>
       </div>
