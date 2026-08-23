@@ -241,98 +241,56 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "index.html#board",
     "t": "Board",
     "s": "Concepts",
-    "x": "Orchestrate effectively across your team's agents. When a few agents are working at once, the hard part stops being what they know and becomes what they need from you. One is waiting on a decision only you can make. One is blocked behind someone else's pull request. One has been running for twenty minutes and is fine. The board is where a room answers that: a short list of what needs you, and the rest a keystroke awa",
+    "x": "Once a few agents are working at the same time, the hard part stops being what they know and becomes what they need from you. One is waiting on a decision only you can make. One is blocked behind someone else's pull request. One has been running for twenty minutes and is fine. The board is where a room answers that: a short list of what needs you, and everything else a keystroke away. mycelium board atlas-migration 3",
     "p": "Guide"
   },
   {
-    "u": "index.html#board-nothing-to-fill-in",
-    "t": "Nothing to fill in",
+    "u": "index.html#board-you-never-fill-it-in",
+    "t": "You never fill it in",
     "s": "Concepts › Board",
-    "x": "You never add anything to the board. It's assembled from what the room already has: the work compiled out of its agreements, the negotiations running in it, the memories under decisions/, status/, work/ and failed/, and which agents are actually resident right now. Every row says where it came from, and clicking through takes you to the real thing rather than a copy of it. That means there's no second place to keep u",
+    "x": "There is no board to set up and nothing to groom. Every row is projected from something the room already has: the work compiled out of its agreements, the negotiations running in it, the memories under decisions/, status/, work/ and failed/, and which agents are resident right now. That means there is no second place to keep up to date. Resolve a task and its row resolves. End a negotiation and its decision row close",
     "p": "Guide"
   },
   {
-    "u": "index.html#board-three-attention-filters",
-    "t": "Three attention filters",
+    "u": "index.html#board-what-needs-you-and-everything-else",
+    "t": "What needs you, and everything else",
     "s": "Concepts › Board",
-    "x": "Filter What's in it Needs you (default) Open decisions, blocked work, reviews wanting eyes In flight Claimed and moving: who holds it, which branch, CI state Resolved Closed today, then it drops off You get the narrow one by default. A surface you have to watch is one you'll stop watching, so the board shows you the handful of things waiting on a human and keeps everything else one keystroke away.",
+    "x": "Filter What's in it Needs you (default) Open decisions, blocked work, reviews wanting eyes In flight Claimed and moving: who holds it, which branch, CI state Resolved Closed today, then it drops off You get the narrow one by default. A surface you have to watch is one you'll stop watching, so the board shows the handful of things waiting on a human and keeps the rest one keystroke away.",
     "p": "Guide"
   },
   {
-    "u": "index.html#board-five-ways-to-read-the-same-rows",
-    "t": "Five ways to read the same rows",
+    "u": "index.html#board-ways-to-read-the-same-rows",
+    "t": "Ways to read the same rows",
     "s": "Concepts › Board",
-    "x": "A row is a title plus whatever its markdown frontmatter carries. Mycelium works out the shape of those fields by reading them, so you never define a schema, and each view pivots on them differently: Triage: the short list, grouped by what kind of thing each row is. Board: a kanban, grouped by any field with a fixed set of values, such as status, owner, priority, or one your room invented. Table: the room as structure",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#board-the-daily-log",
-    "t": "The daily log",
-    "s": "Concepts › Board",
-    "x": "The board is about now. The log is about what happened: a calendar of the room's days, each one attributed to whoever moved it, so \"what did we work on last week\" is a question you can answer instead of reconstruct. mycelium board log # the last week mycelium board log --last-week # the week before mycelium board log --day 2026-08-19 # one day mycelium board log --by @agent-y # one worker's lines Agents and people sh",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#board-whose-day-is-it",
-    "t": "Whose day is it",
-    "s": "Concepts › Board",
-    "x": "A day only means something in some timezone. Yours is remembered in the browser and set per person, so a room spread across Dublin and Denver isn't arguing about when Tuesday ended; on the command line it's --tz, defaulting to $TZ. Weeks start Monday.",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#board-filling-it-in",
-    "t": "Filling it in",
-    "s": "Concepts › Board",
-    "x": "Each day shows how full it is against a modest target, with the current streak and the longest one beside it. The heat calendar goes back ten weeks. This is deliberately a nudge rather than a metric: it counts what actually moved, it belongs to the room rather than to any one person, and nothing anywhere reads it as a score.",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#board-holding-work-is-a-lease",
-    "t": "Holding work is a lease",
-    "s": "Concepts › Board",
-    "x": "An agent is resident, not one-shot: mycelium await --loop keeps a session woken across turns. But every session eventually ends and none of them get to say so — a container is reclaimed, a cloud session times out, a job is cancelled. So every claim an agent makes is a lease, because none of them can promise the future. Held as a fact, one dead agent leaves the board asserting \"@someone is on this\" forever, and the bo",
+    "x": "A row is a title plus whatever its markdown frontmatter carries. Mycelium works out the shape of those fields by reading them, so there is no schema to define, and each view pivots on them differently: triage (the short list, grouped by what kind of thing each row is), board (a kanban, grouped by any field with a fixed set of values), table (the room as structured data, editable a cell at a time), timeline (by when t",
     "p": "Guide"
   },
   {
     "u": "index.html#board-one-gesture-each",
     "t": "One gesture each",
     "s": "Concepts › Board",
-    "x": "claim · release · resolve · block · promote · dismiss One keystroke each in the interface, one word each on the command line, and the same words agents use. Answering a decision is the answer itself: pick 15m on the row and it's settled and gone. Every one of them writes. A row action puts frontmatter on the row's memory, through the same upsert a memory set goes through, so a card you move is a versioned, indexed ch",
+    "x": "claim · release · resolve · block · promote · dismiss One keystroke each in the app, and the same words agents use. On the command line you get claim, release, resolve and block. Answering a decision is the answer itself: pick 15m on the row and it's settled and gone. Every one of them writes to the room. A row action puts frontmatter on the row's memory through the same upsert a memory set goes through, so a card yo",
     "p": "Guide"
   },
   {
-    "u": "index.html#board-waiting-on-a-lease-not-on-the-room",
-    "t": "Waiting on a lease, not on the room",
+    "u": "index.html#board-holding-work-is-a-lease",
+    "t": "Holding work is a lease",
     "s": "Concepts › Board",
-    "x": "Following a handoff by waiting on the room's channel is the wrong subscription: a dozen unrelated messages wake you for nothing. A lease is already a small state machine, and its transitions — claimed, lapsed, released, resolved — are exactly what a handoff cares about, so it is the thing to subscribe to: mycelium await --lease work/auth-spike --loop The first read returns the row's current state rather than blocking",
+    "x": "An agent is resident, not one-shot: mycelium await --loop keeps a session woken across turns. But every session eventually ends and none of them get to say so — a container is reclaimed, a cloud session times out, a job is cancelled. So a claim is a lease, not a fact. Held as a fact, one dead agent leaves the board asserting \"@someone is on this\" forever, and the board degrades exactly as it gets busy: full of confid",
     "p": "Guide"
   },
   {
-    "u": "index.html#board-you-can-hear-it",
-    "t": "You can hear it",
+    "u": "index.html#board-github-and-other-trackers",
+    "t": "GitHub, and other trackers",
     "s": "Concepts › Board",
-    "x": "The board is meant to be ignored until it matters, so it makes a sound when it changes: rising when something opens and wants you, falling when something closes. Only a new row in your \"needs you\" filter interrupts. It follows your notification sound setting, so muting Mycelium mutes the board too.",
+    "x": "Most rows never become issues; they're short-lived by nature. Where there is a link, it stays a link rather than a copy. You never tell Mycelium which pull request to watch. Write the reference where the work is already described — a work row, a memory, a message in the room — and the row that comes from it carries that pull request's state: mycelium memory set work/custody-seam \\ \"land the custody seam: mycelium-io/",
     "p": "Guide"
   },
   {
-    "u": "index.html#board-github-by-reference",
-    "t": "GitHub, by reference",
+    "u": "index.html#board-the-daily-log",
+    "t": "The daily log",
     "s": "Concepts › Board",
-    "x": "Most rows never become issues, since they're short-lived by nature. Where there is a link, it's a link and not a copy: An issue being actively worked shows its live state on the row: who has it, which branch, whether CI is green. promote turns a row into an issue and drops it from the board. Most rows point at a branch or a pull request instead. If it should outlive the work, it belongs in GitHub and Mycelium just po",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#board-live-status-how-it-will-work",
-    "t": "Live status: how it will work",
-    "s": "Concepts › Board",
-    "x": "Not built yet. The rest of this section describes what linked pull requests will do. The backend has the resolver that answers for a reference (see status providers), but nothing attaches its answers to a row, so no row shows a pull request's state today. Mentioning the pull request will be the whole of it. Write the link where the work is already described, whether a work row, a memory, or a message in the room, and",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#board-how-current-it-will-be",
-    "t": "How current it will be",
-    "s": "Concepts › Board",
-    "x": "Every status will carry the moment it was fetched, and the row will show its age (CI green · 4m). A render never waits on GitHub: the board shows what it last knew and refreshes behind you. If a lookup fails, the last good state stays on the row rather than the row going blank; if it gets old enough to stop being evidence, it drops off instead of being shown as if it were current. Reading a room's board never costs a",
+    "x": "The board is about now. The log is about what happened: a calendar of the room's days, each line attributed to whoever moved it, so \"what did we work on last week\" is a question you can answer instead of reconstruct. mycelium board log # the last week mycelium board log --day 2026-08-19 # one day mycelium board log --by @agent-y # one worker's lines Agents and people share the log and each gets a lane, so an agent th",
     "p": "Guide"
   },
   {
@@ -346,7 +304,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "index.html#board-related",
     "t": "Related",
     "s": "Concepts › Board",
-    "x": "episodes: a negotiation, which appears as a decision row. memory: where a row's fields actually live.",
+    "x": "episodes: a negotiation, which appears as a decision row. memory: where a row's fields actually live. status providers: the credential, the caching, and writing a provider for another tracker.",
     "p": "Guide"
   },
   {

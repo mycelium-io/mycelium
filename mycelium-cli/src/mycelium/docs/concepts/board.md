@@ -1,12 +1,12 @@
 # Board
 
-**Orchestrate effectively across your team's agents.**
+Once a few agents are working at the same time, the hard part stops being what
+they know and becomes what they need from you. One is waiting on a decision only
+you can make. One is blocked behind someone else's pull request. One has been
+running for twenty minutes and is fine.
 
-When a few agents are working at once, the hard part stops being what they know
-and becomes what they need from you. One is waiting on a decision only you can
-make. One is blocked behind someone else's pull request. One has been running
-for twenty minutes and is fine. The board is where a room answers that: a short
-list of what needs you, and the rest a keystroke away.
+The board is where a room answers that: a short list of what needs you, and
+everything else a keystroke away.
 
 ```bash
 mycelium board
@@ -28,19 +28,19 @@ Review 1
          @agent-z   feat/custody-seam   CI green   #504       12m
 ```
 
-## Nothing to fill in
+## You never fill it in
 
-You never add anything to the board. It's assembled from what the room already
-has: the work compiled out of its agreements, the negotiations running in it, the memories under
-`decisions/`, `status/`, `work/` and `failed/`, and which agents are actually
-resident right now. Every row says where it came from, and clicking through
-takes you to the real thing rather than a copy of it.
+There is no board to set up and nothing to groom. Every row is projected from
+something the room already has: the work compiled out of its agreements, the
+negotiations running in it, the memories under `decisions/`, `status/`, `work/`
+and `failed/`, and which agents are resident right now.
 
-That means there's no second place to keep up to date. Resolve a task and
-its row resolves. End a negotiation and its decision row closes. Nothing to
-groom, and nothing that can quietly disagree with the room it describes.
+That means there is no second place to keep up to date. Resolve a task and its
+row resolves. End a negotiation and its decision row closes. Nothing on the board
+can quietly disagree with the room it describes, and every row says where it came
+from — clicking through takes you to the real thing rather than a copy of it.
 
-## Three attention filters
+## What needs you, and everything else
 
 | Filter | What's in it |
 |---|---|
@@ -48,182 +48,75 @@ groom, and nothing that can quietly disagree with the room it describes.
 | **In flight** | Claimed and moving: who holds it, which branch, CI state |
 | **Resolved** | Closed today, then it drops off |
 
-You get the narrow one by default. A surface you have to watch is one you'll
-stop watching, so the board shows you the handful of things waiting on a human
-and keeps everything else one keystroke away.
+You get the narrow one by default. A surface you have to watch is one you'll stop
+watching, so the board shows the handful of things waiting on a human and keeps
+the rest one keystroke away.
 
-## Five ways to read the same rows
+## Ways to read the same rows
 
 A row is a title plus whatever its markdown frontmatter carries. Mycelium works
-out the shape of those fields by reading them, so you never define a schema, and
-each view pivots on them differently:
-
-- **Triage**: the short list, grouped by what kind of thing each row is.
-- **Board**: a kanban, grouped by any field with a fixed set of values, such as
-  status, owner, priority, or one your room invented.
-- **Table**: the room as structured data, editable a cell at a time. A dropdown
-  offers the values that namespace already uses.
-- **Timeline**: the same rows by when they last moved, so you can see what
-  happened while you were away.
-- **Daily**: the log, described below.
+out the shape of those fields by reading them, so there is no schema to define,
+and each view pivots on them differently: **triage** (the short list, grouped by
+what kind of thing each row is), **board** (a kanban, grouped by any field with a
+fixed set of values), **table** (the room as structured data, editable a cell at a
+time), **timeline** (by when things last moved) and **daily** (the log, below).
+On the command line it's `--view list` and `--view table`; the app has all five.
 
 So a custom namespace becomes a tracker without you building one. Write memories
 under `issues/` with `status`, `assignee` and `priority` in their frontmatter and
-you can group them into a kanban, because those fields are in the markdown and
-not because anyone configured a tool.
-
-## The daily log
-
-The board is about now. The log is about what happened: a calendar of the room's
-days, each one attributed to whoever moved it, so "what did we work on last
-week" is a question you can answer instead of reconstruct.
-
-```bash
-mycelium board log                    # the last week
-mycelium board log --last-week        # the week before
-mycelium board log --day 2026-08-19   # one day
-mycelium board log --by @agent-y      # one worker's lines
-```
-
-Agents and people share the log, and each gets a lane: an agent that spent
-Tuesday on a migration is as legible as the person who reviewed it. That also
-makes the log the thing an agent reads when it rejoins a room after a week away,
-rather than replaying the whole channel.
-
-Nothing is written to it. It is assembled from what already carries a time and a
-name: messages, memory writes and revisions, resolved work, and
-negotiations. A fact recorded in two places is counted once.
-
-### Whose day is it
-
-A day only means something in some timezone. Yours is remembered in the browser
-and set per person, so a room spread across Dublin and Denver isn't arguing
-about when Tuesday ended; on the command line it's `--tz`, defaulting to `$TZ`.
-Weeks start Monday.
-
-### Filling it in
-
-Each day shows how full it is against a modest target, with the current streak
-and the longest one beside it. The heat calendar goes back ten weeks. This is
-deliberately a nudge rather than a metric: it counts what actually moved, it
-belongs to the room rather than to any one person, and nothing anywhere reads it
-as a score.
-
-## Holding work is a lease
-
-An agent is resident, not one-shot: `mycelium await --loop` keeps a session woken
-across turns. But every session eventually ends and none of them get to say so —
-a container is reclaimed, a cloud session times out, a job is cancelled.
-
-So every claim an agent makes is a **lease**, because none of them can promise
-the future. Held as a fact, one dead agent leaves the board asserting "@someone
-is on this" forever, and the board degrades exactly as it gets busy: full of
-confident lies. Held as a lease, an abandoned claim drains and the row returns to
-the pool. A board whose agents all died an hour ago should read empty.
-
-That is the `assignment` field, and it is a different axis from `status`:
-
-```
-unclaimed → held → released / resolved
-                ↘ expired
-```
-
-`held` carries a freshness, and it is the same model the board already uses for a
-status provider's cached answer — `claimed_at` + a TTL instead of `fetched_at` +
-a TTL, `fresh / stale / expired` instead of `fresh / stale / missing`, renewed by
-the agent's loop instead of by a refresh. Both halves of the board drain the same
-way, and the same bar draws them.
-
-Two of those states are never written down. `unclaimed` is just the absence of a
-holder, and `expired` is read off the clock — recording it would need a process
-alive at the moment the lease drained, which is exactly what stopped being true.
-`renewed` is not a state either: it is the event that keeps `held` fresh.
-
-**Assignments live on `work/` memories.** Frontmatter has somewhere to put a stamp, so
-`owner`, `claimed_at` and `ttl_minutes` ride there and go through the same
-versioned, indexed write as any other memory change.
-
-**Being assigned is not being claimed.** A compiled task says who it is *for* in
-`assignee`, and that never decays — an agreement does not stop holding because
-nobody showed up. Whether anyone is actually on it right now is `assignment`, a
-lease somebody takes and keeps alive. Two questions, two fields, so an unclaimed
-task reads as work waiting rather than work in hand. Episodes refuse a claim
-outright, and say why.
-
-**Letting go and dying look the same, and the note says which.** Both leave an
-unclaimed row with history. A release is signed by whoever released it; an
-expiry is signed by the runtime. Same field, different author, and a reader can
-tell.
+you can group them into a kanban — because those fields are in the markdown, not
+because anyone configured a tool.
 
 ## One gesture each
 
 `claim` · `release` · `resolve` · `block` · `promote` · `dismiss`
 
-One keystroke each in the interface, one word each on the command line, and the
-same words agents use. Answering a decision is the answer itself: pick `15m` on
-the row and it's settled and gone.
+One keystroke each in the app, and the same words agents use. On the command line
+you get `claim`, `release`, `resolve` and `block`. Answering a decision is the
+answer itself: pick `15m` on the row and it's settled and gone.
 
-Every one of them writes. A row action puts frontmatter on the row's memory, through
-the same upsert a `memory set` goes through, so a card you move is a versioned,
-indexed change the room reads back rather than a change to your own view.
-Assignment is the exception, and only because it needs to be: who holds a row moves
-through a lease, under rules a plain write can't check. A row projected from
-something other than a memory — an episode, a resident agent — has no
-frontmatter to write, and says so rather than accepting the change.
+Every one of them writes to the room. A row action puts frontmatter on the row's
+memory through the same upsert a `memory set` goes through, so a card you move is
+a versioned, indexed change the room reads back — not a change to your own view.
+A row projected from something other than a memory, like an episode or a resident
+agent, has no frontmatter to write on and says so rather than accepting the
+change.
 
-`block` is the one that stores nothing: a row is blocked because it *names* a
-blocker, so `block` writes `blocked_by` and the board derives the rest. Captured
-concerns expire if nobody claims them, so the board stays a picture of now
-instead of turning into a backlog. `promote` marks a row as belonging somewhere
-more durable and resolves it; filing the GitHub issue itself is still yours to
-do, and the action doesn't invent a link it didn't create.
+## Holding work is a lease
 
-## Waiting on a lease, not on the room
+An agent is resident, not one-shot: `mycelium await --loop` keeps a session woken
+across turns. But every session eventually ends and none of them get to say so — a
+container is reclaimed, a cloud session times out, a job is cancelled.
 
-Following a handoff by waiting on the room's channel is the wrong subscription: a
-dozen unrelated messages wake you for nothing. A lease is already a small state
-machine, and its transitions — claimed, lapsed, released, resolved — are exactly
-what a handoff cares about, so it is the thing to subscribe to:
+So a claim is a **lease**, not a fact. Held as a fact, one dead agent leaves the
+board asserting "@someone is on this" forever, and the board degrades exactly as
+it gets busy: full of confident lies. Held as a lease, an abandoned claim drains
+and the row returns to the pool. A resident loop renews the claims its handle
+holds, so `mycelium await --loop` is all an agent needs to keep its work; stop
+looping and the claims drain, with nobody having to write that down.
+
+**Being assigned is not being claimed.** A compiled task says who it is *for* in
+`assignee`, and that never decays — an agreement doesn't stop holding because
+nobody showed up. Whether anyone is *on* it right now is the lease. Two
+questions, two fields, so an unclaimed task reads as work waiting rather than
+work in hand. A release is signed by whoever released it and an expiry by the
+runtime, so letting go and dying are told apart by the note.
+
+To follow a handoff, wait on the row rather than on the room — a dozen unrelated
+messages shouldn't wake you:
 
 ```bash
 mycelium await --lease work/auth-spike --loop
 ```
 
-The first read returns the row's current state rather than blocking. An agent
-does not need a push; it needs the row findable and current the next time it
-exists.
+## GitHub, and other trackers
 
-## You can hear it
+Most rows never become issues; they're short-lived by nature. Where there is a
+link, it stays a link rather than a copy.
 
-The board is meant to be ignored until it matters, so it makes a sound when it
-changes: rising when something opens and wants you, falling when something
-closes. Only a new row in your "needs you" filter interrupts. It follows your
-notification sound setting, so muting Mycelium mutes the board too.
-
-## GitHub, by reference
-
-Most rows never become issues, since they're short-lived by nature. Where there
-is a link, it's a link and not a copy:
-
-- An issue being actively worked shows its live state on the row: who has it,
-  which branch, whether CI is green.
-- `promote` turns a row into an issue and drops it from the board.
-- Most rows point at a branch or a pull request instead.
-
-If it should outlive the work, it belongs in GitHub and Mycelium just points at
-it. The board holds what's live right now.
-
-### Live status: how it will work
-
-> **Not built yet.** The rest of this section describes what linked pull requests
-> *will* do. The backend has the resolver that answers for a reference (see
-> [status providers](#architecture)), but nothing attaches its answers to a row,
-> so no row shows a pull request's state today.
-
-Mentioning the pull request will be the whole of it. Write the link where the
-work is already described, whether a work row, a memory, or a message in the
-room, and the row that comes from it will carry that pull request's state, with
-nothing to attach and no per-row setting:
+**You never tell Mycelium which pull request to watch.** Write the reference where
+the work is already described — a work row, a memory, a message in the room —
+and the row that comes from it carries that pull request's state:
 
 ```bash
 mycelium memory set work/custody-seam \
@@ -232,15 +125,11 @@ mycelium memory set work/thin-spoke \
   "Blocked behind https://github.com/mycelium-io/mycelium/pull/502"
 ```
 
-Both forms will count: the `owner/repo#123` shorthand, and the URL you have on
-your clipboard when you're talking about a pull request. Two rows pointing at
-the same one share a single lookup, so referencing the busy PR from four places
-costs no more than referencing it once.
-
-The row will show GitHub's own words (`CI failing`, `changes requested`,
-`draft`, `merged`) because that's the phrasing you already recognise.
-Underneath, each is filed as one of six states, which is what a surface can
-sort, filter and colour by without knowing what a pull request is:
+Both forms count: the `owner/repo#123` shorthand and the URL you have on your
+clipboard. The row shows GitHub's own words (`CI failing`, `changes requested`,
+`draft`, `merged`) with the age of the answer beside them, because "CI green" an
+hour old is a different claim from "CI green" a minute old. Underneath, each is
+filed as one of six states, which is what a view can group, filter and colour by:
 
 | State | What it means |
 |---|---|
@@ -251,59 +140,39 @@ sort, filter and colour by without knowing what a pull request is:
 | `done` | terminal, however it ended; the label carries how |
 | `unknown` | the provider met a state it couldn't place |
 
-`ok` and `done` are the pair worth reading carefully, because a board's whole
-job is keeping them apart: an approved pull request is `ok` right up until it
-merges, and `done` the moment it does.
+Opening a board never waits on GitHub: it shows what the hub last knew and
+refreshes behind you. An answer that fails to refresh stays on the row, dimmed,
+rather than the row going blank.
 
-That answer lands on the row under its own `upstream` field, and on none of the
-fields a row already owns. `status` is the row's stage (`open`, `in_review`,
-`resolved`, `dismissed`); `assignment` is who holds it and for how much longer;
-`live` is a yes-or-no for whether an agent is resident on it. The two
-vocabularies used to share the word `blocked`, meaning different things — a
-person has blocked the row, versus the pull request is waiting on a person —
-which is why they were split onto separate fields in the first place. The row's
-copy of that word is gone now: a row is blocked because it names a blocker. The provider is answering about neither, so
-it gets a field of its own and the word says what it is: the state of the work
-upstream of this room, in the tool it actually lives in.
+Turning it on is one token on the hub, `mycelium board credential set
+GITHUB_TOKEN`. Lookups happen there and only there, so one cache serves the whole
+room and no spoke ever holds a service token. GitHub is the provider that ships
+today; teaching Mycelium a different tracker is adding a provider, not editing a
+parser. See [status providers](reference.html#architecture-status-providers).
 
-A row shows the tool's own words, so a task waiting on a review reads `changes
-requested` and one with red checks reads `CI failing`. The state behind those
-words is what the board groups, filters and colours by, which means you can
-group by `upstream` like any other field. An answer wears its age, because "CI
-green" an hour old is a different claim from "CI green" a minute old. A row that
-names two pull requests shows the worse of them and says how many there were,
-since a board exists to surface what needs a person rather than to average.
+If something should outlive the work, it belongs in GitHub: `promote` marks the
+row as having graduated and resolves it. Filing the issue itself is still yours
+to do — the action doesn't invent a link it didn't create.
 
-The first look at a room is the interesting case. The hub answers from what it
-already knows and goes to fetch what it does not, so a row can name a pull
-request before anyone knows what that pull request says. Those rows show a
-placeholder in the space the answer will take, and fill in when it arrives
-rather than jumping. That is a different thing from `unknown`, which is a
-provider telling you it met a state it could not place, and different again from
-a row that points nowhere and shows nothing at all. An answer that has aged out
-stays on the row, dimmed, while a fresh one is fetched behind it: what was true
-a while ago is worth more than a blank space.
+## The daily log
 
-GitHub maps onto the six more narrowly than you might guess. `ok` needs an
-approval, so green checks with no review yet are `pending` / `awaiting review`.
-Changes requested is `blocked` and red CI is `failed`: a person is the fix in
-one case, a machine in the other. `unknown` is there for a provider that meets a
-state it can't place; the GitHub one never emits it.
+The board is about now. The log is about what happened: a calendar of the room's
+days, each line attributed to whoever moved it, so "what did we work on last
+week" is a question you can answer instead of reconstruct.
 
-### How current it will be
+```bash
+mycelium board log                    # the last week
+mycelium board log --day 2026-08-19   # one day
+mycelium board log --by @agent-y      # one worker's lines
+```
 
-Every status will carry the moment it was fetched, and the row will show its age
-(`CI green · 4m`). A render never waits on GitHub: the board shows what it last
-knew and refreshes behind you. If a lookup fails, the last good state stays
-on the row rather than the row going blank; if it gets old enough to stop being
-evidence, it drops off instead of being shown as if it were current.
-
-Reading a room's board never costs a request per row, either: identical
-references are answered once, and a tool is asked about many references in one
-call rather than one at a time.
-
-For the credential a provider needs, and for teaching Mycelium a tracker other
-than GitHub, see [status providers](#architecture).
+Agents and people share the log and each gets a lane, so an agent that spent
+Tuesday on a migration is as legible as the person who reviewed it. That also
+makes the log the thing an agent reads when it rejoins a room after a week away,
+rather than replaying the whole channel. Nothing is written to it: it is assembled
+from what already carries a time and a name — messages, memory writes, resolved
+work, negotiations — and a fact recorded twice is counted once. Your timezone is
+per person (`--tz`, defaulting to `$TZ`); weeks start Monday.
 
 ## CLI
 
@@ -321,11 +190,9 @@ mycelium board log --last-week            # what the room did, by day and by who
 mycelium await --lease work/auth-spike    # wake when that row changes hands
 ```
 
-A resident loop renews the claims its handle holds, so `mycelium await --loop`
-is all an agent needs to keep its work. Stop looping and the claims drain, with
-nobody writing that down.
-
 ## Related
 
 - [episodes](#episodes): a negotiation, which appears as a decision row.
 - [memory](#memory): where a row's fields actually live.
+- [status providers](reference.html#architecture-status-providers): the credential,
+  the caching, and writing a provider for another tracker.
