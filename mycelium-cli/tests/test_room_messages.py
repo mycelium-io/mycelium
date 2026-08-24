@@ -49,6 +49,8 @@ def _patch_common(monkeypatch: pytest.MonkeyPatch, sync_fn) -> None:
     fake_cm.__enter__.return_value = Mock(name="client")
     fake_cm.__exit__.return_value = None
     monkeypatch.setattr(room_cmd, "_typed_client", lambda _c: fake_cm)
+    # The wire call lives in the shared chat helper now; both surfaces use it.
+    monkeypatch.setattr("mycelium.chat._typed_client", lambda _c: fake_cm)
 
     monkeypatch.setattr(
         "mycelium_backend_client.api.messages.list_messages_api_rooms_room_name_messages_get.sync",

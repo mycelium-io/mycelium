@@ -47,6 +47,24 @@ def test_contract_file_present():
     assert _CONTRACT_PATH.is_file(), f"missing shared contract file at {_CONTRACT_PATH}"
 
 
+def test_ping_payload_matches_contract():
+    """The CLI reads the ping the backend raises, off one shared literal.
+
+    ``room watch``'s activity line is the only thing that says a unit moved
+    while a thread absorbs the argument inside it; a type that drifted here
+    would leave the tail silent rather than wrong, which is worse.
+    """
+    g = _contract()["ping"]
+    assert g["payload_type"] == l9.PING_PAYLOAD_TYPE
+
+    fields = dict.fromkeys(g["payload_fields"], "x")
+    ping = {"l9": {"payload": {"type": g["payload_type"], "data": fields}}}
+    assert l9.ping_of(ping) == fields
+    # Anything else on the channel is not a ping, however it is shaped.
+    assert l9.ping_of({"l9": {"payload": {"type": "message", "data": fields}}}) is None
+    assert l9.ping_of({"content": "hello"}) is None
+
+
 def test_shared_constants_match_contract():
     """The literals the shared secret + naming derive from are frozen."""
     g = _contract()

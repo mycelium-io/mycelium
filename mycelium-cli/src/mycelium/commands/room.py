@@ -23,6 +23,7 @@ import os
 
 import typer
 
+from mycelium import chat
 from mycelium.client import hub_client
 from mycelium.client import typed_client as _typed_client
 from mycelium.config import MyceliumConfig
@@ -501,6 +502,31 @@ def _agent_owner_map(room_name: str) -> dict[str, str]:
         return {}
 
 
+def _ping_line(data: dict, stamp: str) -> str | None:
+    """Render a thread's activity as the one line it is meant to be.
+
+    A ping says a unit moved and deliberately not what was said in it — that is
+    how the room stays readable while agents argue inside a row. So the tail
+    gets the thread's short id, who wrote, and the way to read it, rather than
+    an echo of the prose.
+
+    One line per ping, not a coalesced counter: a tail is a tail, and rewriting
+    a line that has already scrolled past is what this surface declines to do
+    for an amendment too.
+    """
+    from mycelium.slim.l9 import ping_of
+
+    ping = ping_of(data)
+    if ping is None:
+        return None
+    thread = str(ping.get("episode", "")).rsplit(":", 1)[-1] or "?"
+    who = ping.get("sender")
+    by = f" [dim]· @{who}[/]" if who else ""
+    return (
+        f"  {stamp}  [dim]·[/] activity in [cyan]{thread}[/]{by} [dim]· board messages {thread}[/]"
+    )
+
+
 def chat_line(mtype: str, msg: dict, data: dict, sender: str, stamp: str, own: str) -> str | None:
     """Render one chat message for the live tail, or None if it carries no prose.
 
@@ -512,6 +538,8 @@ def chat_line(mtype: str, msg: dict, data: dict, sender: str, stamp: str, own: s
     that already scrolled past, but marks it an edit and names what it revises.
     """
     if mtype == "l9_exchange":
+        if ping := _ping_line(data, stamp):
+            return ping
         content = data.get("content", "")
         if not content:
             return None  # presence/control payloads carry no prose
@@ -814,27 +842,13 @@ def send(
         config = MyceliumConfig.load()
         room_name = _resolve_room(config, room)
         sender_handle = handle or config.get_current_identity()
-
-        from mycelium_backend_client.api.messages import (
-            send_message_api_rooms_room_name_messages_post as send_api,
+        chat.post(
+            config,
+            room_name,
+            sender_handle=sender_handle,
+            content=content,
+            json_output=json_output,
         )
-        from mycelium_backend_client.models import MessageCreate, MessageCreateMessageType
-
-        with _typed_client(config) as client:
-            body = MessageCreate(
-                sender_handle=sender_handle,
-                message_type=MessageCreateMessageType.BROADCAST,
-                content=content,
-            )
-            result = send_api.sync(room_name=room_name, client=client, body=body)
-
-        if json_output and result:
-            msg_dict = result.to_dict() if hasattr(result, "to_dict") else str(result)
-            typer.echo(json_module.dumps(msg_dict, indent=2, default=str))
-            return
-
-        preview = content[:80] + ("…" if len(content) > 80 else "")
-        typer.echo(f"  ↑  {sender_handle} → {room_name}: {preview}")
 
     except (typer.Exit, typer.Abort):
         raise
@@ -955,60 +969,14 @@ def messages(
 
         config = MyceliumConfig.load()
         room_name = _resolve_room(config, room)
-
-        from mycelium_backend_client.api.messages import (
-            list_messages_api_rooms_room_name_messages_get as list_api,
+        chat.read(
+            config,
+            room_name,
+            limit=limit,
+            sender=sender,
+            message_type=message_type,
+            json_output=json_output,
         )
-        from mycelium_backend_client.models import HTTPValidationError
-        from mycelium_backend_client.types import UNSET
-
-        with _typed_client(config) as client:
-            result = list_api.sync(
-                room_name=room_name,
-                client=client,
-                limit=limit,
-                sender=sender or UNSET,
-                message_type=message_type or UNSET,
-            )
-
-        if not result or isinstance(result, HTTPValidationError):
-            msgs = []
-        else:
-            msgs = result.messages
-
-        if json_output:
-            payload = (
-                result.to_dict()
-                if result and not isinstance(result, HTTPValidationError)
-                else {"messages": [], "total": 0}
-            )
-            typer.echo(json_module.dumps(payload, indent=2, default=str))
-            return
-
-        if not msgs:
-            typer.echo(f"  {room_name}: no messages")
-            return
-
-        plural = "message" if len(msgs) == 1 else "messages"
-        owners = _agent_owner_map(room_name)
-        typer.secho(f"\n  {room_name}  ", fg=typer.colors.CYAN, bold=True, nl=False)
-        typer.secho(f"({len(msgs)} {plural}, newest first)\n", fg=typer.colors.BRIGHT_BLACK)
-        for m in msgs:
-            stamp = m.created_at.strftime("%H:%M:%S")
-            # Show the full message; this is the read-the-transcript command, so
-            # never truncate. Keep multi-line content readable by indenting any
-            # continuation lines under the first.
-            first, *rest = (m.content or "").split("\n")
-            owner = owners.get(m.sender_handle)
-            own = f" owned by @{owner}" if owner else ""
-            edited = " (edited)" if getattr(m, "edited_at", None) else ""
-            typer.echo(
-                f"  {stamp}  {m.sender_handle}{own} [{m.message_type}]"
-                f"  {str(m.id)[:8]}: {first}{edited}"
-            )
-            for line in rest:
-                typer.echo(f"              {line}")
-        typer.echo()
 
     except (typer.Exit, typer.Abort):
         raise

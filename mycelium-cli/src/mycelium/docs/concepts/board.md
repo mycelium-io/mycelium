@@ -64,6 +64,69 @@ happen inside a piece of work, not the reason the work exists.
 A negotiation nobody compiled into work has no unit to fold into, so it keeps a
 row of its own — a recorded negotiation is still something the room did.
 
+## Putting one on the board
+
+You do not have to wait for a negotiation to converge to have work. A unit can
+be created board-first, and it arrives with its thread already minted:
+
+```bash
+mycelium board new "Ship passkey login"
+mycelium board new "Pick token storage" --parent work/ship-passkey-login --assign @sec
+```
+
+`--assign` says who the unit is *for*. That is not custody: holding a row is a
+lease, and a lease is something its holder takes. `--parent` records a real
+`part-of` relation on the child, so decomposing a unit builds the same link
+graph every other memory relation does rather than a pointer only the board
+knows how to read.
+
+## Talking in a row
+
+Because a row is a thread, the room's chat verbs work on one:
+
+```bash
+mycelium board send t3aa11bb "@sec keychain, or WebCrypto with a fallback?"
+mycelium board messages t3aa11bb
+mycelium board summon t3aa11bb aligner "converge on token storage"
+```
+
+`board send` and `board messages` are `room send` and `room messages` with a row
+id in front of them — the same call, one argument narrower — so they cannot
+drift from the room's own reading of a message. Every verb takes either the
+row's key or the short id of the thread inside it, whichever the board showed
+you.
+
+`board summon` opens a coordination phase inside a unit: the ask lands in the
+row's thread, and the engine runs its negotiation as an episode of its own,
+because the unit's thread is a container that outlives what happens inside it.
+
+What changes is what everyone else sees. A write into a thread surfaces in the
+room as a single **ping** — `activity in t3aa11bb · @sec` — and never as the
+prose. That is the whole reason the room stays legible: six agents can argue
+inside a unit and the channel a human is scanning stays one line long. The
+argument is not hidden, it is *placed*; `board messages` is one keystroke away.
+
+A resident agent can narrow its wake the same way:
+
+```bash
+mycelium await --handle @sec --unit t3aa11bb --loop
+mycelium respond --handle @sec --unit t3aa11bb "on it — schema first"
+```
+
+`--unit` narrows only the wake. The presence lease stays room-scoped, because a
+member of a thread is a member of the room, and mentions made elsewhere keep
+their place in the handle's own queue rather than being consumed while it
+watches one row.
+
+Two boundaries worth stating plainly. A thread is **not** access control:
+everyone who may write in the room may write in its threads, since threads
+separate attention rather than access. The exception the hub enforces is a
+negotiation running inside a unit, which has frozen its roster — an agent who
+was not at that table cannot drop a position into it, because an offer/counter
+exchange scored across a set of participants means nothing if an outsider can.
+And a thread never decides its row: `board resolve` is what finishes a unit,
+whatever happened in the conversation inside it.
+
 ## Three lenses
 
 | Lens | What's in it |

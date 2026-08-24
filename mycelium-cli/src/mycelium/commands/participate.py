@@ -43,17 +43,39 @@ from mycelium.error_handler import print_error
 _TERMINAL_STATUSES = frozenset({401, 403})
 
 
-def _await_once(config: MyceliumConfig, room_name: str, handle: str, timeout: int) -> dict | None:
+def _await_once(
+    config: MyceliumConfig,
+    room_name: str,
+    handle: str,
+    timeout: int,
+    episode: str | None = None,
+) -> dict | None:
     """One long-poll. Returns the turn dict, or ``None`` on timeout."""
     path = f"/api/rooms/{room_name}/await"
     # The server blocks up to `timeout`; give the client a little more headroom
     # (or no cap when waiting indefinitely).
     client_timeout = float(timeout) + 15.0 if timeout > 0 else None
+    params: dict[str, str | int] = {"handle": handle, "timeout": timeout}
+    if episode:
+        params["episode"] = episode
     with hub_client(config, timeout=client_timeout, handle=handle) as client:
-        resp = client.get(path, params={"handle": handle, "timeout": timeout})
+        resp = client.get(path, params=params)
     resp.raise_for_status()
     data = resp.json()
     return data if "prompt" in data else None
+
+
+def _unit_episode(room_name: str, row_id: str) -> str:
+    """The thread inside a board row, resolved once.
+
+    Resolved here rather than per poll: a resident loop that re-read the board
+    every few seconds to answer a question whose answer cannot change (a unit is
+    bound to one thread for its life) would spend six hub reads a minute to
+    learn the same URN.
+    """
+    from mycelium.commands.board import _thread
+
+    return _thread(room_name, row_id)[1]
 
 
 def _renew_leases(config: MyceliumConfig, room_name: str, handle: str) -> list[str]:
@@ -154,7 +176,7 @@ def _run_exec(exec_cmd: str, turn: dict, room_name: str, handle: str) -> None:
 
 
 @doc_ref(
-    usage="mycelium await --room <room> [--handle <handle> | --lease <key>] [--loop] [--exec CMD] [--timeout N] [--json]",
+    usage="mycelium await --room <room> [--handle <handle> | --lease <key>] [--unit <id>] [--loop] [--exec CMD] [--timeout N] [--json]",
     desc="Long-poll a room until a message is addressed to the handle — or until a named lease changes hands.",
     group="other",
 )
@@ -166,6 +188,12 @@ def await_room(
         None,
         "--lease",
         help="Wake on this lease's transitions instead of on messages (e.g. work/auth-spike)",
+    ),
+    unit: str | None = typer.Option(
+        None,
+        "--unit",
+        "-u",
+        help="Wake only on one board row's thread (e.g. t3, work/auth) instead of the whole room",
     ),
     timeout: int = typer.Option(
         0, "--timeout", "-t", help="Seconds to wait before giving up (0 = wait indefinitely)"
@@ -195,6 +223,12 @@ def await_room(
     This is the supported way to keep a turn-based agent (Claude Code, Cursor) woken
     without writing your own service.
 
+    With ``--unit`` it narrows the wake to one board row's thread: the handle is
+    woken only when that unit moves, and mentions of it elsewhere in the room
+    keep their place in its own queue rather than being consumed. Only the wake
+    narrows — the presence lease stays room-scoped, because a member of a thread
+    is a member of the room.
+
     With ``--lease`` it waits on one row's custody instead: claimed, lapsed,
     released, resolved. That is a different subscription on purpose — waking on
     channel traffic to follow a handoff means a dozen unrelated messages wake you
@@ -206,6 +240,7 @@ def await_room(
         mycelium await --room design --handle me
         mycelium await --room design --handle me --json --timeout 120
         mycelium await --room design --handle bot --loop --exec ./drive-agent.sh
+        mycelium await --room design --handle me --unit t3 --loop
         mycelium await --room design --lease work/auth-spike --loop
     """
     try:
@@ -220,15 +255,20 @@ def await_room(
             typer.secho("  ⟫  await needs --handle (or --lease <key>)", fg=typer.colors.RED)
             raise typer.Exit(2)
 
+        # Resolved before the first poll, so a row id that names nothing is
+        # refused now rather than after an hour of waiting on a thread that
+        # was never going to speak.
+        episode = _unit_episode(room_name, unit) if unit else None
+
         if loop:
-            _await_loop(config, room_name, handle, timeout, exec_cmd, json_output)
+            _await_loop(config, room_name, handle, timeout, exec_cmd, json_output, episode)
             return
 
         if exec_cmd:
             typer.secho("  ⟫  --exec requires --loop", fg=typer.colors.RED)
             raise typer.Exit(2)
 
-        data = _await_once(config, room_name, handle, timeout)
+        data = _await_once(config, room_name, handle, timeout, episode)
         if data is None:  # timed out; backend returned {"message": null}
             if json_output:
                 typer.echo(
@@ -259,6 +299,7 @@ def _await_loop(
     timeout: int,
     exec_cmd: str | None,
     json_output: bool,
+    episode: str | None = None,
 ) -> None:
     """Resident-runner loop: re-await forever, dispatching each turn.
 
@@ -272,7 +313,9 @@ def _await_loop(
 
     if not json_output:
         typer.secho(
-            f"  ⟫  @{handle} resident in {room_name}, awaiting"
+            f"  ⟫  @{handle} resident in {room_name}"
+            + (f" thread {episode.rsplit(':', 1)[-1]}" if episode else "")
+            + ", awaiting"
             + (f", driving `{exec_cmd}` per turn" if exec_cmd else "")
             + " (Ctrl-C to stop)",
             fg=typer.colors.CYAN,
@@ -288,7 +331,7 @@ def _await_loop(
         except Exception as e:  # noqa: BLE001 - a lease blip must not drop residency
             typer.secho(f"  ⟫  renew error: {e}; continuing", fg=typer.colors.YELLOW)
         try:
-            data = _await_once(config, room_name, handle, timeout)
+            data = _await_once(config, room_name, handle, timeout, episode)
         except KeyboardInterrupt:
             typer.echo("\n  [Stopped]")
             return
@@ -321,7 +364,7 @@ def _await_loop(
 
 
 @doc_ref(
-    usage='mycelium respond --room <room> --handle <handle> "<text>"',
+    usage='mycelium respond --room <room> --handle <handle> [--unit <id>] "<text>"',
     desc="Publish a reply as the handle; the backend records it as a position for the aligner.",
     group="other",
 )
@@ -330,6 +373,12 @@ def respond(
     text: str = typer.Argument(..., help="The reply / position text to publish"),
     room: str | None = typer.Option(None, "--room", "-r", help="Room (default: active room)"),
     handle: str = typer.Option(..., "--handle", help="Handle to publish the reply as"),
+    unit: str | None = typer.Option(
+        None,
+        "--unit",
+        "-u",
+        help="Reply into one board row's thread (e.g. t3, work/auth) rather than where you were asked",
+    ),
     json_output: bool = typer.Option(False, "--json", help="Emit the result as JSON for agents"),
 ) -> None:
     """Publish the caller's reply; the backend threads it onto the last awaited turn.
@@ -338,22 +387,30 @@ def respond(
     `[[mycelium: confidence=0.85 stance=accept]]`); the backend lifts it onto the L9
     payload so the aligner can score it, and strips it from the posted prose.
 
+    Without ``--unit`` a reply lands where the turn that woke you was asked, which
+    is what keeps a resident loop threaded without tracking URNs. Name a unit to
+    answer somewhere else — and expect the causal edge back to that turn to be
+    dropped, because a reply redirected into another thread is not an answer to it.
+
     Examples:
         mycelium respond --room design --handle me "I can move to 30% if the timeline slips."
+        mycelium respond --room design --handle me --unit t3 "claiming this; starting on the schema."
     """
     try:
         config = MyceliumConfig.load()
         room_name = _resolve_room(config, room)
+        body: dict[str, str] = {"handle": handle, "text": text}
+        if unit:
+            body["episode"] = _unit_episode(room_name, unit)
         with hub_client(config, timeout=30.0, handle=handle) as client:
-            resp = client.post(
-                f"/api/rooms/{room_name}/reply", json={"handle": handle, "text": text}
-            )
+            resp = client.post(f"/api/rooms/{room_name}/reply", json=body)
         resp.raise_for_status()
         data = resp.json()
         if json_output:
             typer.echo(json_module.dumps(data))
         else:
-            typer.secho(f"  ⟫  @{handle} replied in {room_name}", fg=typer.colors.GREEN)
+            where = f"{room_name}/{unit}" if unit else room_name
+            typer.secho(f"  ⟫  @{handle} replied in {where}", fg=typer.colors.GREEN)
     except KeyboardInterrupt:
         typer.echo("\n  [Stopped]")
     except Exception as e:

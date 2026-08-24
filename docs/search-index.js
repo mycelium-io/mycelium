@@ -259,6 +259,20 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Guide"
   },
   {
+    "u": "index.html#board-putting-one-on-the-board",
+    "t": "Putting one on the board",
+    "s": "Concepts › Board",
+    "x": "You do not have to wait for a negotiation to converge to have work. A unit can be created board-first, and it arrives with its thread already minted: mycelium board new \"Ship passkey login\" mycelium board new \"Pick token storage\" --parent work/ship-passkey-login --assign @sec --assign says who the unit is for. That is not custody: holding a row is a lease, and a lease is something its holder takes. --parent records a",
+    "p": "Guide"
+  },
+  {
+    "u": "index.html#board-talking-in-a-row",
+    "t": "Talking in a row",
+    "s": "Concepts › Board",
+    "x": "Because a row is a thread, the room's chat verbs work on one: mycelium board send t3aa11bb \"@sec keychain, or WebCrypto with a fallback?\" mycelium board messages t3aa11bb mycelium board summon t3aa11bb aligner \"converge on token storage\" board send and board messages are room send and room messages with a row id in front of them — the same call, one argument narrower — so they cannot drift from the room's own reading",
+    "p": "Guide"
+  },
+  {
     "u": "index.html#board-three-lenses",
     "t": "Three lenses",
     "s": "Concepts › Board",
@@ -1325,7 +1339,7 @@ window.MYCELIUM_SEARCH_INDEX = [
   },
   {
     "u": "reference.html#cli-other",
-    "t": "mycelium await --room <room> [--handle <handle> | --lease <key>] [--loop] [--exec CMD] [--timeout N] [--json]",
+    "t": "mycelium await --room <room> [--handle <handle> | --lease <key>] [--unit <id>] [--loop] [--exec CMD] [--timeout N] [--json]",
     "s": "CLI Reference",
     "x": "Long-poll a room until a message is addressed to the handle — or until a named lease changes hands.",
     "k": "cmd",
@@ -1333,7 +1347,7 @@ window.MYCELIUM_SEARCH_INDEX = [
   },
   {
     "u": "reference.html#cli-other",
-    "t": "mycelium respond --room <room> --handle <handle> \"<text>\"",
+    "t": "mycelium respond --room <room> --handle <handle> [--unit <id>] \"<text>\"",
     "s": "CLI Reference",
     "x": "Publish a reply as the handle; the backend records it as a position for the aligner.",
     "k": "cmd",

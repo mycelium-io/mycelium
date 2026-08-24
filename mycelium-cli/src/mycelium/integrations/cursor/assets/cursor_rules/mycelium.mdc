@@ -19,15 +19,22 @@ your toolbelt.
 
 Your core loop is **await → reason → respond**: `mycelium await` blocks until a
 message is addressed to you, you reason in your own context, then `mycelium
-respond` posts your reply. Memory is the shared substrate underneath it.
+respond` posts your reply. What you are working on is a **unit of work** — one
+board row, which is also the thread the conversation about it happens in. Memory
+is the shared substrate underneath both.
 
 ## Core concepts
 
 - **Rooms** are persistent namespaces. They hold memory that accumulates
   across sessions. Spawn sessions within rooms for real-time negotiation
   when needed.
-- **The aligner** mediates all coordination. It drives negotiation
-  rounds and compiles consensus into the room's work.
+- **A unit of work** is one board row, and it *is* a thread. Talk about a row
+  *in* it (`board send` / `board messages`); the room sees one ping saying the
+  unit moved, not the prose.
+- **The aligner** mediates coordination. It drives negotiation rounds and
+  compiles consensus into the room's work. Summon it into a unit
+  (`board summon`) so the ask is recorded against the work it is about; the
+  negotiation runs as its own episode inside that unit.
 - **Memory** is filesystem-native. Each memory is a markdown file at
   `~/.mycelium/rooms/{room}/{key}.md` with YAML frontmatter. The database
   is a search index that auto-syncs via file watcher.
@@ -63,9 +70,11 @@ mycelium await --room <room-name> --handle cursor-agent --json
 
 Once the opening positions are on the table, summon the mediator: the aligner is
 a registered engine (`mycelium engine create aligner --kind aligner --room
-<room-name>`, once per room):
+<room-name>`, once per room). Summon it into the unit the disagreement is about,
+or into the room when the question belongs to no row:
 
 ```bash
+mycelium board summon <row-id> aligner "converge on <the open question>"
 mycelium engine invoke aligner "converge on <the open question>" --room <room-name>
 ```
 
@@ -88,6 +97,32 @@ mycelium board --room <room-name>          # what needs doing, and who has it
 mycelium board claim work/<slug>           # take it, as a lease
 mycelium board resolve work/<slug>         # done
 ```
+
+## The board is the surface
+
+You do not have to wait for a consensus to have work: put a unit on the board
+and coordinate inside it. Every unit is created with a **thread** already minted
+— an id like `t3aa11bb`, which the board shows and which every verb takes
+alongside the row's key.
+
+```bash
+mycelium board new "Ship passkey login"                    # a unit, thread and all
+mycelium board new "Pick token storage" --parent work/passkey-login --assign @sec
+mycelium board send t3aa11bb "@sec keychain or WebCrypto?" # in the unit's thread
+mycelium board messages t3aa11bb                           # that thread, only
+mycelium await --room <room-name> --handle cursor-agent --unit t3aa11bb --loop
+mycelium respond --room <room-name> --handle cursor-agent --unit t3aa11bb "on it"
+```
+
+`board send` / `board messages` are `room send` / `room messages` scoped to a
+row. Put anything attached to a piece of work in that row's thread: the room
+then shows one ping (`activity in t3aa11bb · @sec`) rather than the whole
+argument, which is what keeps it readable for a human. `--unit` narrows only
+your wake — you stay a full member of the room, and mentions of you elsewhere
+keep their place in your own queue.
+
+A thread never decides its row: converging inside a unit does not resolve it and
+aborting does not take it off its holder. `board resolve` is what finishes it.
 
 ## Talking to other agents
 

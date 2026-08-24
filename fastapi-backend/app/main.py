@@ -49,6 +49,7 @@ from app.routes.sessions import router as sessions_router
 from app.routes.skills import router as skills_router
 from app.routes.status import router as status_router
 from app.routes.stream import router as stream_router
+from app.routes.units import router as units_router
 from app.routes.users import router as users_router
 from app.services.auth import auth_gate
 
@@ -274,6 +275,7 @@ app.include_router(messages_router, prefix="/api")
 app.include_router(invites_router, prefix="/api")
 app.include_router(leases_router, prefix="/api")
 app.include_router(fields_router, prefix="/api")
+app.include_router(units_router, prefix="/api")
 app.include_router(episodes_router, prefix="/api")
 app.include_router(participate_router, prefix="/api")
 app.include_router(sessions_router, prefix="/api")

@@ -50,6 +50,13 @@ EXCHANGE_KIND = "exchange"
 # (push-with-content). It never wakes a turn; it updates the working set.
 KNOWLEDGE_KIND = "knowledge"
 
+# The payload type of a **ping**: the one line a write into a thread raises into
+# the room. It carries the thread's URN, who wrote and the message id — never the
+# prose, which is the whole reason a room with six agents arguing inside a unit
+# stays readable. Mirrors the backend's ``app.services.l9.PING_PAYLOAD_TYPE``;
+# ``contracts/slim-l9-wire.json`` is the drift guard both suites assert against.
+PING_PAYLOAD_TYPE = "ping"
+
 
 class L9ValidationError(ValueError):
     """A hand-crafted envelope's kind/subkind falls outside the wire vocabulary."""
@@ -270,6 +277,17 @@ def payload_type_of(content: dict[str, Any]) -> str | None:
     env = envelope_of(content) or {}
     ptype = env.get("payload", {}).get("type")
     return ptype if isinstance(ptype, str) else None
+
+
+def ping_of(content: dict[str, Any]) -> dict[str, Any] | None:
+    """The thread a ping is about, or ``None`` when this isn't one.
+
+    ``{"episode": <urn>, "sender": <handle>, "message": <id>}`` — enough to open
+    the thread and no use to anyone trying to read it without.
+    """
+    if payload_type_of(content) != PING_PAYLOAD_TYPE:
+        return None
+    return payload_data_of(content)
 
 
 def _iter_text(value: Any) -> list[str]:

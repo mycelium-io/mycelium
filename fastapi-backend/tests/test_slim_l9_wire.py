@@ -156,6 +156,46 @@ def test_valid_subkinds_match_contract():
         assert l9.VALID_SUBKINDS[Kind(kind)] == frozenset(allowed)
 
 
+def test_ping_payload_matches_contract():
+    """The ping the backend raises is the one the CLI's tail knows how to draw.
+
+    Rename it on this side alone and two things go quiet: the CLI stops
+    surfacing that a unit moved, and every resident agent starts waking on every
+    thread write, because the exclusion in ``participate._addressed_to`` keys off
+    this same literal.
+    """
+    import asyncio
+    import json as json_module
+
+    from app.bus import bus
+    from app.services.room_channels import RoomChannelManager
+
+    g = _contract()["ping"]
+    assert g["payload_type"] == l9.PING_PAYLOAD_TYPE
+
+    published: list[dict] = []
+    original = bus.publish
+    bus.publish = lambda _ch, frame: published.append(frame)  # type: ignore[method-assign]
+    try:
+        manager = RoomChannelManager(
+            endpoint="http://127.0.0.1:46357", default_workspace="mycelium"
+        )
+        asyncio.run(
+            manager.raise_ping(
+                "acme", episode=l9.episode_urn("acme", "t3"), sender="avery", message_id="m1"
+            )
+        )
+    finally:
+        bus.publish = original  # type: ignore[method-assign]
+
+    content = json_module.loads(published[0]["content"])
+    payload = content["l9"]["payload"]
+    assert payload["type"] == g["payload_type"]
+    assert sorted(payload["data"]) == sorted(g["payload_fields"])
+    # The whole of it: a ping names the thread and never echoes what was said.
+    assert "content" not in content
+
+
 def test_channel_name_topic_matches_contract():
     """A room channel's app segment is the frozen default topic."""
     pytest.importorskip("slim_bindings")

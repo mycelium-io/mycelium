@@ -27,7 +27,14 @@ STATUSES = [
 KINDS = ["decision", "blocked", "review", "action", "concern", "signal"]
 PRIORITIES = ["urgent", "high", "normal", "low"]
 LENSES = ["needs_you", "in_flight", "resolved"]
-VERBS = ["claim", "release", "resolve", "block", "unblock", "promote", "dismiss"]
+#: What a verb does to the row it names. A **mutation** verb changes the row —
+#: its custody through a lease, everything else as frontmatter. A **chat** verb
+#: changes nothing about the row and speaks in the thread the row *is*: the
+#: room's own chat verbs with a row id in front of them. Kept as two lists
+#: rather than one because a reader has to be able to tell, from the word alone,
+#: whether a typo just wrote a field or posted a message.
+VERBS = ["claim", "release", "resolve", "block", "unblock", "promote", "dismiss", "new"]
+CHAT_VERBS = ["send", "messages", "summon"]
 
 #: The lens is derived from status, never stored, so a row can't drift out of
 #: sync with the board it belongs on. This is the half for rows nobody holds;
@@ -57,6 +64,15 @@ THREAD_STATES = ["open", "converged", "resolved", "rejected", "committed"]
 #: The row's own axes, which folding a thread onto it must never write. This is
 #: the container-outlives-the-negotiation rule as a list.
 UNIT_FIELDS = ["status", "custody", "owner", "kind", "priority"]
+
+#: Why a projected row has no thread to speak into, keyed by what produced it.
+#: A chat verb refuses in these terms rather than falling back to the room: a
+#: message that quietly went somewhere other than where it was addressed is
+#: worse than one that did not go.
+THREAD_REFUSALS = {
+    "agent": "presence is a lease the runtime renews, not a conversation to join",
+    "memory": "a thread belongs to a unit of work; this row is in another namespace",
+}
 
 
 @dataclass(frozen=True)
