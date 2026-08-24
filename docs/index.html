@@ -650,7 +650,12 @@ Review 1
          @agent-z   feat/custody-seam   CI green   #504       12m</code></pre>
       <h2 id="board-nothing-to-fill-in">Nothing to fill in</h2>
       <p>You never add anything to the board. It&#x27;s assembled from what the room already has: the work compiled out of its agreements, the negotiations running in it, the memories under <code>decisions/</code>, <code>status/</code>, <code>work/</code> and <code>failed/</code>, and which agents are actually resident right now. Every row says where it came from, and clicking through takes you to the real thing rather than a copy of it.</p>
-      <p>That means there&#x27;s no second place to keep up to date. Resolve a task and its row resolves. End a negotiation and its decision row closes. Nothing to groom, and nothing that can quietly disagree with the room it describes.</p>
+      <p>That means there&#x27;s no second place to keep up to date. Resolve a task and its row resolves. Nothing to groom, and nothing that can quietly disagree with the room it describes.</p>
+      <h2 id="board-a-row-is-a-unit-of-work-and-a-unit-of-work-is-a-thread">A row is a unit of work, and a unit of work is a thread</h2>
+      <p>A <code>work/</code> row carries the episode URN of the thread its coordination happens in. The row and the thread are one object, so the board draws one row per unit — the negotiation that produced a task shows up <em>on</em> that task (<code>thread</code>, <code>thread_state</code>, who was at the table, how many rounds) rather than beside it as a second row.</p>
+      <p>The URN is the store&#x27;s: it is minted when the unit is created, it survives every later write, and no <code>memory set --meta</code> or board verb can set or move it. A unit is therefore bound to one thread for its whole life — a second negotiation about the same work opens its own episode, and the row stays pointed at the conversation that produced it.</p>
+      <p><strong>The unit outlives what happens inside it.</strong> A thread&#x27;s state never writes the row&#x27;s own axes. Converging inside a unit does not resolve the unit, aborting a negotiation does not take the row off whoever is holding it, and a unit can be created, claimed, worked and resolved with no negotiation ever opened. That is the whole point of the separation: a negotiation is one optional thing that can happen inside a piece of work, not the reason the work exists.</p>
+      <p>A negotiation nobody compiled into work has no unit to fold into, so it keeps a row of its own — a recorded negotiation is still something the room did.</p>
       <h2 id="board-three-lenses">Three lenses</h2>
       <div class="table-wrap">
         <table>
@@ -801,7 +806,7 @@ Review 1
       <p>A resident loop renews the claims its handle holds, so <code>mycelium await --loop</code> is all an agent needs to keep its work. Stop looping and the claims drain, with nobody writing that down.</p>
       <h2 id="board-related">Related</h2>
       <ul>
-        <li><a href="#episodes">episodes</a>: a negotiation, which appears as a decision row.</li>
+        <li><a href="#episodes">episodes</a>: the thread inside a unit — folded onto its row, or a row of its own when no work came out of it.</li>
         <li><a href="#memory">memory</a>: where a row&#x27;s fields actually live.</li>
       </ul>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/board.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>

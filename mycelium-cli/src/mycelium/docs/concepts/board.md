@@ -37,8 +37,32 @@ resident right now. Every row says where it came from, and clicking through
 takes you to the real thing rather than a copy of it.
 
 That means there's no second place to keep up to date. Resolve a task and
-its row resolves. End a negotiation and its decision row closes. Nothing to
-groom, and nothing that can quietly disagree with the room it describes.
+its row resolves. Nothing to groom, and nothing that can quietly disagree with
+the room it describes.
+
+## A row is a unit of work, and a unit of work is a thread
+
+A `work/` row carries the episode URN of the thread its coordination happens in.
+The row and the thread are one object, so the board draws one row per unit — the
+negotiation that produced a task shows up *on* that task (`thread`,
+`thread_state`, who was at the table, how many rounds) rather than beside it as a
+second row.
+
+The URN is the store's: it is minted when the unit is created, it survives every
+later write, and no `memory set --meta` or board verb can set or move it. A unit
+is therefore bound to one thread for its whole life — a second negotiation about
+the same work opens its own episode, and the row stays pointed at the
+conversation that produced it.
+
+**The unit outlives what happens inside it.** A thread's state never writes the
+row's own axes. Converging inside a unit does not resolve the unit, aborting a
+negotiation does not take the row off whoever is holding it, and a unit can be
+created, claimed, worked and resolved with no negotiation ever opened. That is
+the whole point of the separation: a negotiation is one optional thing that can
+happen inside a piece of work, not the reason the work exists.
+
+A negotiation nobody compiled into work has no unit to fold into, so it keeps a
+row of its own — a recorded negotiation is still something the room did.
 
 ## Three lenses
 
@@ -327,5 +351,6 @@ nobody writing that down.
 
 ## Related
 
-- [episodes](#episodes): a negotiation, which appears as a decision row.
+- [episodes](#episodes): the thread inside a unit — folded onto its row, or a
+  row of its own when no work came out of it.
 - [memory](#memory): where a row's fields actually live.

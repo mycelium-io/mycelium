@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from app.services.filesystem import read_room_meta
 from app.services.leases import state_of
-from app.services.task_sync import ASSIGNEE_FIELD, WORK_NAMESPACE
+from app.services.units import ASSIGNEE_FIELD, WORK_NAMESPACE
 
 #: How many open rows a briefing names before it stops. A briefing long enough
 #: to skim past is one an agent reads none of.

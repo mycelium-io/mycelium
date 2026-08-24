@@ -8,7 +8,8 @@ Creating/opening a room **provisions a SLIM group channel**, and the always-on
 backend is its **moderator** — it creates the group session and invites members
 as they join. This registry holds one long-lived moderator session per room,
 tracks membership (SLIM's built-in presence), and enforces the episode↔channel
-lifecycle (a mid-episode membership change aborts the episode; the channel is
+lifecycle (a membership change mid-*negotiation* aborts that negotiation; the
+channel, and any unit of work the negotiation was happening inside, are
 untouched).
 
 Everything here is **best-effort**. When no node is reachable (or no wheel is
@@ -806,10 +807,12 @@ class RoomChannelManager:
             if handle in present or handle == BACKEND_AGENT:
                 continue
             if _is_own_registered_agent(room, handle):
-                if managed.lifecycle.active:
-                    # Inviting a new member mid-episode would abort it (L9's
+                if managed.lifecycle.frozen:
+                    # Inviting a new member mid-negotiation would abort it (L9's
                     # stable-membership rule), so queue like a consent accept —
                     # flush_queued_invites applies it once the episode closes.
+                    # Gated on ``frozen``, not ``active``: a unit of work's thread
+                    # is an episode too, and it must not hold invites hostage.
                     queued = self._invites.request(
                         room, handle, requested_by=sender, trigger_text=text
                     )
@@ -861,7 +864,7 @@ class RoomChannelManager:
         managed = self._channels.get(invite.room)
         if managed is None:
             return self._invites.mark(invite_id, DECLINED)
-        if managed.lifecycle.active:
+        if managed.lifecycle.frozen:
             logger.info(
                 "invite for @%s in %s queued until episode %s closes",
                 invite.agent,
@@ -936,21 +939,24 @@ class RoomChannelManager:
         await self._enforce_membership_change(managed)
         return True
 
-    def open_episode(self, room: str, episode: str) -> bool:
-        """Open a negotiation episode over the room's current membership.
+    def open_episode(self, room: str, episode: str, *, negotiation: bool = True) -> bool:
+        """Open an episode over the room's current membership.
 
-        Freezes membership: a subsequent join/leave aborts it.
+        A negotiation freezes that membership: a subsequent join/leave aborts it.
+        ``negotiation=False`` opens a container — a unit of work's thread — which
+        a join or leave leaves running, because the unit outlives what happens
+        inside it.
         """
         managed = self._channels.get(room)
         if managed is None:
             return False
-        managed.lifecycle.open(episode, managed.members)
+        managed.lifecycle.open(episode, managed.members, negotiation=negotiation)
         return True
 
     async def close_episode(self, room: str) -> bool:
         """Close the room's active episode normally and flush queued invites.
 
-        The membership-freeze that an episode holds is released here, so invites
+        The membership-freeze a negotiation holds is released here, so invites
         an ``@``-mention deferred mid-episode are now safe to apply.
         """
         managed = self._channels.get(room)
@@ -961,7 +967,7 @@ class RoomChannelManager:
         return True
 
     async def _enforce_membership_change(self, managed: ManagedRoomChannel) -> None:
-        """Abort the active episode if membership changed under it."""
+        """Abort the active negotiation if membership changed under it."""
         if not managed.lifecycle.on_membership_change(managed.members):
             return
         episode = managed.lifecycle.episode

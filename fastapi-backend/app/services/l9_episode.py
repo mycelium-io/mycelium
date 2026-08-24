@@ -2,10 +2,18 @@
 # Copyright 2026 Mycelium Contributors
 
 """
-L9 episode tracking for CFN negotiations.
+L9 episode tracking.
 
-One :class:`EpisodeState` accompanies each ``_CfnRoundState`` in
-``coordination.py``. It does three things:
+:class:`EpisodeState` is what any episode is — a tagged thread over the room's
+channel, with its participants, its topic and the envelopes it has carried.
+:class:`NegotiationState` adds what a *negotiation* inside one accumulates: the
+opening asks, the offer grid, and the belief-move scoreboard. The split is the
+unit-of-work model's: a unit of work is a thread, and a negotiation is one
+optional thing that happens inside it, so a thread opened for a board row does
+not carry an SAO scoreboard it will never fill in.
+
+A :class:`NegotiationState` accompanies each mediated session. It does three
+things:
 
 1. Builds the L9 envelopes that ride inside coordination message content
    (ticks are ``exchange``, the consensus is ``commit:converged`` /
@@ -71,7 +79,14 @@ def _clean_str_list(value: Any) -> list[str]:
 
 @dataclass
 class EpisodeState:
-    """L9 episode accumulator for one coordination session."""
+    """What every episode is: a tagged thread over the room's own channel.
+
+    A unit of work is one of these; so is a negotiation inside a unit. Everything
+    here is what a thread has whatever happens in it — who it is scoped to, what
+    it is about, and the envelopes it has carried. The accumulators a *negotiation*
+    needs are :class:`NegotiationState`'s, so opening a thread for a board row
+    does not drag an SAO scoreboard along with it.
+    """
 
     episode: str  # URN
     topic: str  # concept URN
@@ -86,6 +101,20 @@ class EpisodeState:
     # back to the system actor (an episode opened outside an engine context).
     engine_handle: str = ""
     intent_id: str = ""
+    # Ordered record of every envelope in the episode (dicts, wire shape).
+    messages: list[dict[str, Any]] = field(default_factory=list)
+
+
+@dataclass
+class NegotiationState(EpisodeState):
+    """The extra bookkeeping a *negotiation* inside an episode accumulates.
+
+    Split from :class:`EpisodeState` because a negotiation is one optional thing
+    that can happen inside a unit of work rather than the reason the unit exists.
+    Opening positions, an SAO offer grid and the belief-move scoreboard mean
+    nothing to a thread nobody is negotiating in.
+    """
+
     # Each participant's opening prose, captured before mediation runs — the
     # structured snapshot the episode record renders as "Opening Positions" so a
     # negotiation can be audited against what the room believed going in.
@@ -102,8 +131,6 @@ class EpisodeState:
     # The negotiable issues' ordered option grids (issue -> options), so
     # satisfaction can be scored as ordinal distance on the grid actually negotiated.
     issue_options: dict[str, list[str]] = field(default_factory=dict)
-    # Ordered record of every envelope in the episode (dicts, wire shape).
-    messages: list[dict[str, Any]] = field(default_factory=list)
     # handle -> l9 message id of the last tick sent to that agent.
     last_tick_ids: dict[str, str] = field(default_factory=dict)
     # handle -> l9 message id of that agent's last recorded reply.
@@ -131,8 +158,8 @@ def open_episode(
     joined_intents: str,
     engine_handle: str = "",
     opening_positions: dict[str, str] | None = None,
-) -> EpisodeState:
-    """Open the episode: mint URNs and record the ``intent`` envelope.
+) -> NegotiationState:
+    """Open a negotiation episode: mint URNs and record the ``intent`` envelope.
 
     ``engine_handle`` is the registered engine mediating the episode; it signs
     the intent/tick/consensus envelopes so the wire carries the engine's real
@@ -142,7 +169,7 @@ def open_episode(
     captured before mediation runs; it is rendered into the episode record's
     "Opening Positions" section for audit.
     """
-    ep = EpisodeState(
+    ep = NegotiationState(
         episode=l9.episode_urn(parent_room, short_id),
         topic=l9.topic_urn(parent_room),
         parent_room=parent_room,
@@ -171,7 +198,7 @@ def open_episode(
 
 
 def record_tick(
-    ep: EpisodeState, *, handle: str, round_n: int | None, payload: dict[str, Any]
+    ep: NegotiationState, *, handle: str, round_n: int | None, payload: dict[str, Any]
 ) -> dict[str, Any]:
     """Record the tick sent to ``handle`` and return its envelope dict.
 
@@ -201,7 +228,7 @@ def record_tick(
 
 
 def record_term_check(
-    ep: EpisodeState,
+    ep: NegotiationState,
     *,
     mismatches: list[dict[str, Any]],
     clarifications: dict[str, str],
@@ -218,7 +245,7 @@ def record_term_check(
 
 
 def record_reply(
-    ep: EpisodeState,
+    ep: NegotiationState,
     *,
     handle: str,
     reply: dict[str, Any],
@@ -328,7 +355,7 @@ def record_reply(
             ep.deferred.pop(handle, None)
 
 
-def compute_metrics(ep: EpisodeState) -> dict[str, Any] | None:
+def compute_metrics(ep: NegotiationState) -> dict[str, Any] | None:
     """SIEP agreement-quality metrics over the agents that reported confidence.
     Returns None when participation is too thin to mean anything (fewer than two
     reporters, or more than one silent agent)."""
@@ -403,7 +430,7 @@ def estimate_satisfaction(
 
 
 def build_consensus_envelope(
-    ep: EpisodeState,
+    ep: NegotiationState,
     *,
     broken: bool,
     assignments: dict[str, Any],
@@ -442,8 +469,6 @@ def write_episode_record(
     """Persist the episode to ``log/episodes/{short_id}.md`` in the parent
     room's memory. Best-effort: never raises into the consensus path."""
     try:
-        from app.services.filesystem import get_room_dir, write_memory_file
-
         lines = [
             f"# Episode {ep.episode}",
             "",
@@ -465,6 +490,12 @@ def write_episode_record(
             )
         if tasks:
             lines.append("- work: " + ", ".join(f"`{key}`" for key in tasks))
+        # The header and the envelope chain are any thread's; the sections below
+        # exist only where a negotiation actually ran.
+        if not isinstance(ep, NegotiationState):
+            _append_messages(lines, ep)
+            _write_record(ep, lines)
+            return
         if ep.opening_positions:
             lines += [
                 "",
@@ -503,28 +534,38 @@ def write_episode_record(
                         if handle in ep.clarifications
                     ),
                 ]
-        lines += [
-            "",
-            "## Messages",
-            "",
-            "The full causally-linked L9 message record (one JSON envelope per line):",
-            "",
-            "```jsonl",
-            *(json.dumps(m, sort_keys=True) for m in ep.messages),
-            "```",
-            "",
-        ]
-        base = get_room_dir(ep.parent_room)
-        base.mkdir(parents=True, exist_ok=True)
-        write_memory_file(
-            base,
-            f"log/episodes/{ep.short_id}",
-            "\n".join(lines),
-            created_by=l9.SYSTEM_ACTOR_ID,
-            updated_by=l9.SYSTEM_ACTOR_ID,
-        )
+        _append_messages(lines, ep)
+        _write_record(ep, lines)
     except Exception:
         logger.exception("episode record write failed for %s", ep.episode)
+
+
+def _append_messages(lines: list[str], ep: EpisodeState) -> None:
+    lines += [
+        "",
+        "## Messages",
+        "",
+        "The full causally-linked L9 message record (one JSON envelope per line):",
+        "",
+        "```jsonl",
+        *(json.dumps(m, sort_keys=True) for m in ep.messages),
+        "```",
+        "",
+    ]
+
+
+def _write_record(ep: EpisodeState, lines: list[str]) -> None:
+    from app.services.filesystem import get_room_dir, write_memory_file
+
+    base = get_room_dir(ep.parent_room)
+    base.mkdir(parents=True, exist_ok=True)
+    write_memory_file(
+        base,
+        f"log/episodes/{ep.short_id}",
+        "\n".join(lines),
+        created_by=l9.SYSTEM_ACTOR_ID,
+        updated_by=l9.SYSTEM_ACTOR_ID,
+    )
 
 
 # One canonical converged-rule memory per room (each room is one topic). Reading

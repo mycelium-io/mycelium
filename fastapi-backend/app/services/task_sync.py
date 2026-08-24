@@ -31,11 +31,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
 from typing import TYPE_CHECKING, Any
 
 from app.services import l9, task_compiler
-from app.services.filesystem import get_room_dir, list_memory_files, read_memory_file
+from app.services.filesystem import EPISODE_META, get_room_dir, list_memory_files, read_memory_file
+from app.services.units import ASSIGNEE_FIELD, TASK_KIND, WORK_NAMESPACE, slugify
 
 if TYPE_CHECKING:
     from app.services.l9_models import L9
@@ -44,36 +44,15 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-#: Compiled work lands here, which is the namespace a lease can be taken on.
-WORK_NAMESPACE = "work"
 
-#: What a board row calls a unit of agreed work. Written explicitly because the
-#: projection's default for this namespace is "concern" — a task is an action.
-TASK_KIND = "action"
+def _episode_from(envelope: L9) -> str | None:
+    """The episode the verdict was reached in, off the envelope's own header.
 
-#: Who a task is *meant for*, which is not who holds it.
-#:
-#: Deliberately not ``owner``: that is the lease's, and a lease is something an
-#: actor takes under rules this stage cannot satisfy — it has no claim window,
-#: no renewal, and nobody on the other end who has agreed to hold anything. An
-#: assignment written as custody would be a claim on behalf of an agent that
-#: never made one, and it would drain to "expired" the moment its TTL passed.
-ASSIGNEE_FIELD = "assignee"
-
-_SLUG_STRIP = re.compile(r"[^a-z0-9]+")
-
-#: Longest slug taken from a task's title, before any de-duplicating suffix.
-SLUG_MAX = 48
-
-
-def slugify(title: str) -> str:
-    """A stable, readable key fragment for a task title.
-
-    Deterministic, so re-compiling an unchanged task lands on the row it
-    already has rather than opening a second one beside it.
+    A compiled row is born inside a negotiation, so the negotiation is the
+    thread it starts life in — the row does not need one minted for it.
     """
-    slug = _SLUG_STRIP.sub("-", title.casefold()).strip("-")[:SLUG_MAX].strip("-")
-    return slug or "task"
+    message = envelope.header.message
+    return message.episode if message is not None else None
 
 
 def _assignments_from(envelope: L9) -> dict[str, str]:
@@ -154,8 +133,9 @@ class TaskSyncEngine:
     async def compile_and_write(self, room: str, envelope: L9) -> list[str]:
         """Compile the verdict into ``work/`` rows and return the keys written."""
         assignments = _assignments_from(envelope)
+        episode = _episode_from(envelope)
         tasks = await self._compile(room, assignments)
-        written = [await self._write_task(room, t) for t in tasks]
+        written = [await self._write_task(room, t, episode) for t in tasks]
         logger.info("compiled %d task row(s) for room %s", len(written), room)
         return written
 
@@ -180,13 +160,16 @@ class TaskSyncEngine:
             )
             return task_compiler.fallback_tasks(assignments)
 
-    async def _write_task(self, room: str, task: CompiledTask) -> str:
-        """Put one task in the room as a ``work/`` row.
+    async def _write_task(self, room: str, task: CompiledTask, episode: str | None) -> str:
+        """Put one task in the room as a ``work/`` row, bound to its episode.
 
         An unchanged task re-compiles to the same key, so this is an upsert onto
         the row it already has. Its ``status`` is deliberately left alone on a
         rewrite: a re-negotiation that restates a task nobody has touched must
-        not re-open one somebody already moved.
+        not re-open one somebody already moved. Its ``episode`` is likewise the
+        row's own — a later verdict must not move the row off the conversation
+        that produced it. The binding is write-once in the store, so passing this
+        verdict's episode is only ever an offer.
         """
         from app.routes.memory import upsert_memories
         from app.schemas import MemoryBatchCreate, MemoryCreate
@@ -211,5 +194,6 @@ class TaskSyncEngine:
                     )
                 ]
             ),
+            system={EPISODE_META: episode} if episode else None,
         )
         return key

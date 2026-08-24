@@ -182,6 +182,34 @@ def test_membership_change_with_no_active_episode_adopts_baseline():
     assert lc.on_membership_change({"agent-a"}) is False
 
 
+def test_a_unit_s_thread_outlives_a_membership_change():
+    """A unit of work is an episode too, and freezing membership is not its rule.
+
+    L9's stable-membership rule exists because an offer/counter exchange scored
+    across a changing set of participants means nothing. A container has no such
+    problem — so someone joining the room must not end the thread a board row's
+    history lives in.
+    """
+    lc = l9_slim.EpisodeLifecycle()
+    lc.open("urn:ioc:mycelium:episode:r:unit", {"agent-a"}, negotiation=False)
+    assert lc.active is True
+    assert lc.frozen is False
+    assert lc.on_membership_change({"agent-a", "agent-b"}) is False
+    assert lc.active is True
+    assert lc.episode == "urn:ioc:mycelium:episode:r:unit"
+
+
+def test_a_negotiation_is_what_freezes_membership():
+    lc = l9_slim.EpisodeLifecycle()
+    lc.open("urn:ioc:mycelium:episode:r:s", {"agent-a"})
+    assert lc.frozen is True
+    lc.close()
+    assert lc.frozen is False
+    # Closing restores the default, so the next open is a negotiation unless it
+    # says otherwise — a container must be asked for, never inherited.
+    assert lc.negotiation is True
+
+
 def test_episode_abort_envelope_is_rejected_commit():
     env = l9_slim.build_episode_abort_envelope(
         "urn:ioc:mycelium:episode:r:s",

@@ -402,6 +402,15 @@ class MemoryRead(BaseModel):
             "what ``MemoryCreate.meta`` wrote, read back."
         ),
     )
+    episode: str | None = Field(
+        None,
+        description=(
+            "The episode URN this row's coordination happens in — what makes a unit "
+            "of work a thread. Store-owned: minted by the backend, so it is absent "
+            "from ``meta`` and cannot be set by a write. Null on a memory that is "
+            "not a unit of work, and on one no thread has been opened for."
+        ),
+    )
     expandable: bool = Field(
         False,
         description=(

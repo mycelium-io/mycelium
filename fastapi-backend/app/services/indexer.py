@@ -23,6 +23,7 @@ from pathlib import Path
 from app.services import links, search_index
 from app.services.embedding import embed_text
 from app.services.filesystem import (
+    EPISODE_META,
     get_data_dir,
     list_memory_files,
     parse_memory,
@@ -62,6 +63,7 @@ def _build_record(room_name: str, key: str, content: str, meta: dict) -> dict:
         "version": meta.get("version", 1),
         "tags": meta.get("tags"),
         "meta": unmanaged_meta(meta) or None,
+        "episode": meta.get(EPISODE_META),
         "expandable": links.is_expandable(meta),
         "created_at": _iso(meta.get("created_at"), now),
         "updated_at": _iso(meta.get("updated_at"), now),

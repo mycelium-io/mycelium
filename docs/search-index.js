@@ -252,6 +252,13 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Guide"
   },
   {
+    "u": "index.html#board-a-row-is-a-unit-of-work-and-a-unit-of-work-is-a-thread",
+    "t": "A row is a unit of work, and a unit of work is a thread",
+    "s": "Concepts › Board",
+    "x": "A work/ row carries the episode URN of the thread its coordination happens in. The row and the thread are one object, so the board draws one row per unit — the negotiation that produced a task shows up on that task (thread, thread_state, who was at the table, how many rounds) rather than beside it as a second row. The URN is the store's: it is minted when the unit is created, it survives every later write, and no mem",
+    "p": "Guide"
+  },
+  {
     "u": "index.html#board-three-lenses",
     "t": "Three lenses",
     "s": "Concepts › Board",
@@ -346,7 +353,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "index.html#board-related",
     "t": "Related",
     "s": "Concepts › Board",
-    "x": "episodes: a negotiation, which appears as a decision row. memory: where a row's fields actually live.",
+    "x": "episodes: the thread inside a unit — folded onto its row, or a row of its own when no work came out of it. memory: where a row's fields actually live.",
     "p": "Guide"
   },
   {

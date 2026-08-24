@@ -8,6 +8,15 @@
  * read where they live and flattened into one row shape. The board is a lens on
  * the room, so a row can't be stale relative to the thing it describes, and
  * deleting the board would lose nothing.
+ *
+ * **One row per unit of work.** A row and the thread its coordination happens in
+ * are the same object, bound by the `episode` key the store puts on the row's
+ * memory, so a unit and its episode fold into one row rather than sitting beside
+ * each other as two. The thread's state lands under `THREAD_FIELDS` and never on
+ * the row's own axes: closing a negotiation inside a unit must not resolve the
+ * unit or take it off whoever is holding it. An episode no row is bound to is an
+ * **orphan** — it keeps a row of its own, because a recorded negotiation nobody
+ * compiled into work is still something the room did.
  */
 
 import type { AgentSummary, EpisodeSummary, Memory } from "@/lib/api";
@@ -18,6 +27,31 @@ import { memoryHref } from "@/lib/memory-routes";
 
 /** Namespaces whose memories read as coordination state rather than prose. */
 const LIVE_NAMESPACES = ["decisions", "status", "work", "failed"];
+
+/**
+ * The store-owned frontmatter key binding a row to its thread. Minted by the
+ * backend and carried across writes, so a row's thread is stable for its life.
+ */
+export const EPISODE_FIELD = "episode";
+
+/**
+ * What a row says about the thread inside it. Deliberately its own names: a
+ * unit's `status` and `custody` are the unit's, so a negotiation that converges
+ * inside a row must not resolve the row or take it off its holder.
+ */
+export const THREAD_FIELDS = ["episode", "thread", "thread_state", "participants", "rounds"];
+
+/**
+ * How the thread inside a unit reads. `open` while it is still running; the rest
+ * are the commit subkinds a negotiation closes on.
+ */
+export const THREAD_STATES = ["open", "converged", "resolved", "rejected", "committed"];
+
+/**
+ * The row's own axes, which folding a thread onto it must never write. This is
+ * the container-outlives-the-negotiation rule as a list.
+ */
+export const UNIT_FIELDS = ["status", "custody", "owner", "kind", "priority"];
 
 /** Episode topics arrive as URNs; the board shows the part a person wrote. */
 function prettyTopic(topic: string): string {
@@ -41,6 +75,8 @@ function episodeItem(ep: EpisodeSummary, room: string): LiveItem {
       href: `/room/${encodeURIComponent(room)}?focus=episode:${encodeURIComponent(ep.short_id)}`,
     },
     fields: {
+      [EPISODE_FIELD]: ep.episode,
+      thread: ep.short_id,
       // A rejected negotiation is not a stage called "blocked" — nothing is
       // blocking it, it failed and wants a human. It reads open, and the kind
       // carries what happened.
@@ -114,7 +150,27 @@ function memoryItem(memory: Memory, room: string): LiveItem {
       ...(LEASABLE_NAMESPACES.includes(namespace) ? { [CUSTODY_FIELD]: "unclaimed" } : {}),
       ...custom,
       ...meta,
+      // The binding is store-owned, so it arrives as its own field rather than
+      // in the meta bag a caller can write.
+      ...(memory.episode
+        ? { [EPISODE_FIELD]: memory.episode, thread: memory.episode.split(":").pop() }
+        : {}),
     },
+  };
+}
+
+/**
+ * What a unit's row says about the thread inside it.
+ *
+ * Never the row's own axes (`UNIT_FIELDS`) — a converged negotiation is a fact
+ * about the conversation, not a claim that the work is done or that anyone is
+ * holding it.
+ */
+function threadFields(ep: EpisodeSummary): Record<string, unknown> {
+  return {
+    thread_state: ep.subkind ?? ep.outcome ?? "open",
+    participants: ep.participants,
+    rounds: ep.message_count,
   };
 }
 
@@ -170,11 +226,23 @@ export interface ProjectionInput {
 export function projectItems(input: ProjectionInput): LiveItem[] {
   const items: LiveItem[] = [];
 
-  for (const ep of input.episodes) items.push(episodeItem(ep, input.room));
-  for (const memory of input.memories) {
-    if (!LIVE_NAMESPACES.includes(memory.key.split("/")[0] ?? "")) continue;
-    items.push(memoryItem(memory, input.room));
+  const rows = input.memories
+    .filter(memory => LIVE_NAMESPACES.includes(memory.key.split("/")[0] ?? ""))
+    .map(memory => memoryItem(memory, input.room));
+  // A unit folds in its thread; what nothing folded is an orphan episode, which
+  // keeps its own row rather than being hidden.
+  const byUrn = new Map(input.episodes.map(ep => [ep.episode, ep]));
+  const folded = new Set<string>();
+  for (const row of rows) {
+    const ep = byUrn.get(row.fields[EPISODE_FIELD] as string);
+    if (!ep) continue;
+    folded.add(ep.episode);
+    Object.assign(row.fields, threadFields(ep));
   }
+  for (const ep of input.episodes) {
+    if (!folded.has(ep.episode)) items.push(episodeItem(ep, input.room));
+  }
+  items.push(...rows);
   // Nor does an agent whose lease has drained — a session that went quiet an
   // hour ago is not residency, and a row saying it is would be the board's most
   // expensive lie.
