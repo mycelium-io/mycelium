@@ -54,9 +54,10 @@ describe("<ThreadChip />", () => {
     expect(onOpen).toHaveBeenCalledWith(THREAD);
   });
 
-  it("offers nothing on a row no thread has run in", () => {
-    // A task created board-first and worked with no episode ever opened is the
-    // normal case, not a broken row — so it says so by not offering.
+  it("offers nothing on a row with no episode at all", () => {
+    // Every board row is minted a thread on create, so this is a legacy row from
+    // before threading — until the backfill reaches it, the chip stays absent
+    // rather than pointing at a thread that is not there.
     const { container } = render(<ThreadChip item={row({ status: "open" })} onOpen={vi.fn()} />);
     expect(container).toBeEmptyDOMElement();
   });
@@ -93,7 +94,7 @@ const bound = {
   episode: THREAD,
 };
 
-/** A task created board-first and worked with no thread ever opened in it. */
+/** A legacy row from before threading: no episode yet, until the backfill mints one. */
 const unbound = { ...bound, key: "work/cache-sweep", value: { title: "cache sweep", status: "open" }, episode: null };
 
 describe("<RoomBoard /> thread affordance", () => {
@@ -103,10 +104,10 @@ describe("<RoomBoard /> thread affordance", () => {
   });
 
   it("says why a row has no thread rather than opening some other conversation", async () => {
-    // A row nothing has been said about is the ordinary case, not a broken one,
-    // so the board refuses in the terms `board messages` refuses in — it does
-    // not fall back to the room, which would show a different conversation than
-    // the one asked for.
+    // A task is minted a thread on create, so a row without one is a legacy gap
+    // the backfill has not reached — the surface refuses in the terms `board
+    // messages` refuses in rather than falling back to the room, which would show
+    // a different conversation than the one asked for.
     fetchMemories.mockResolvedValue([unbound]);
     const onOpenThread = vi.fn();
     renderWithSWR(<RoomBoard roomName="atlas" onOpenThread={onOpenThread} />);

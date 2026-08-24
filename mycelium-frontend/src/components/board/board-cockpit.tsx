@@ -16,6 +16,7 @@ import {
   type Verb,
 } from "@/lib/board/item";
 import { waitingOn, type ItemGroup } from "@/lib/board/view";
+import { EPISODE_FIELD } from "@/lib/board/projection";
 import {
   AgeTag,
   BlocksNote,
@@ -167,7 +168,25 @@ function CockpitRow({
                 {choice}
               </button>
             ))}
-            <span className="text-micro text-faint">or reply in thread</span>
+            {/* Answering settles it in one gesture; replying opens its thread —
+                the row's own, because a decision is a task with a thread like any
+                other. A real way in, not a promise the row can't keep. */}
+            {(() => {
+              const episode = str(item, EPISODE_FIELD);
+              return episode && onOpenThread ? (
+                <button
+                  onClick={e => {
+                    e.stopPropagation();
+                    onOpenThread(episode);
+                  }}
+                  className="text-micro text-muted-foreground underline-offset-2 transition-colors hover:text-text hover:underline"
+                >
+                  or reply in thread
+                </button>
+              ) : (
+                <span className="text-micro text-faint">or reply in thread</span>
+              );
+            })()}
           </div>
         )}
       </div>

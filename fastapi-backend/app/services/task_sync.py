@@ -34,7 +34,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from app.services import l9, task_compiler
-from app.services.filesystem import EPISODE_META, get_room_dir, list_memory_files, read_memory_file
+from app.services.filesystem import get_room_dir, list_memory_files, read_memory_file
 from app.services.tasks import ASSIGNEE_FIELD, TASK_KIND, WORK_NAMESPACE, slugify
 
 if TYPE_CHECKING:
@@ -43,16 +43,6 @@ if TYPE_CHECKING:
     from app.services.task_compiler import CompiledTask
 
 logger = logging.getLogger(__name__)
-
-
-def _episode_from(envelope: L9) -> str | None:
-    """The episode the verdict was reached in, off the envelope's own header.
-
-    A compiled row is born inside a negotiation, so the negotiation is the
-    thread it starts life in — the row does not need one minted for it.
-    """
-    message = envelope.header.message
-    return message.episode if message is not None else None
 
 
 def _assignments_from(envelope: L9) -> dict[str, str]:
@@ -133,9 +123,8 @@ class TaskSyncEngine:
     async def compile_and_write(self, room: str, envelope: L9) -> list[str]:
         """Compile the verdict into ``work/`` rows and return the keys written."""
         assignments = _assignments_from(envelope)
-        episode = _episode_from(envelope)
         tasks = await self._compile(room, assignments)
-        written = [await self._write_task(room, t, episode) for t in tasks]
+        written = [await self._write_task(room, t) for t in tasks]
         logger.info("compiled %d task row(s) for room %s", len(written), room)
         return written
 
@@ -160,16 +149,19 @@ class TaskSyncEngine:
             )
             return task_compiler.fallback_tasks(assignments)
 
-    async def _write_task(self, room: str, task: CompiledTask, episode: str | None) -> str:
-        """Put one task in the room as a ``work/`` row, bound to its episode.
+    async def _write_task(self, room: str, task: CompiledTask) -> str:
+        """Put one task in the room as a ``work/`` row, with its own thread.
 
         An unchanged task re-compiles to the same key, so this is an upsert onto
         the row it already has. Its ``status`` is deliberately left alone on a
         rewrite: a re-negotiation that restates a task nobody has touched must
-        not re-open one somebody already moved. Its ``episode`` is likewise the
-        row's own — a later verdict must not move the row off the conversation
-        that produced it. The binding is write-once in the store, so passing this
-        verdict's episode is only ever an offer.
+        not re-open one somebody already moved.
+
+        A task's thread is **its own**, minted on creation like any board row,
+        not the negotiation's — two tasks compiled from one verdict are two
+        tasks with two threads, not two rows sharing the conversation that
+        produced them. The upsert mints it on the first write; the binding is
+        write-once, so a later verdict never moves the row off its thread.
         """
         from app.routes.memory import upsert_memories
         from app.schemas import MemoryBatchCreate, MemoryCreate
@@ -194,6 +186,5 @@ class TaskSyncEngine:
                     )
                 ]
             ),
-            system={EPISODE_META: episode} if episode else None,
         )
         return key

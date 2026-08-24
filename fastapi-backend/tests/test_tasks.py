@@ -14,7 +14,12 @@ import pytest
 from app.routes.memory import upsert_memories
 from app.schemas import MemoryBatchCreate, MemoryCreate
 from app.services import fields, tasks
-from app.services.filesystem import EPISODE_META, get_room_dir, read_memory_file
+from app.services.filesystem import (
+    EPISODE_META,
+    get_room_dir,
+    read_memory_file,
+    write_memory_file,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -42,6 +47,15 @@ async def _write(room: str, key: str, value: str, **meta) -> None:
             items=[MemoryCreate(key=key, value=value, created_by="tester", meta=meta or None)]
         ),
     )
+
+
+def _write_unbound(room: str, key: str, value: str, **meta) -> None:
+    """A row as it looked before threading: straight to disk, with no episode.
+
+    The normal write path now mints a thread on create, so this is the only way
+    to reach the pre-migration state that :func:`tasks.backfill_room` heals.
+    """
+    write_memory_file(get_room_dir(room), key, value, created_by="tester", extra_meta=meta or None)
 
 
 class TestMinting:
@@ -81,6 +95,40 @@ class TestBoardFirstCreation:
         two = await tasks.create_task(room, "Rotate the signing keys", created_by="julia")
         assert one.key != two.key
         assert one.episode != two.episode
+
+
+@pytest.mark.asyncio
+class TestThreadOnEveryBoardWrite:
+    """The plain write path mints a thread for a board row, not just create_task.
+
+    A decision dropped with ``memory set``, a status posted, a blocked item — each
+    is a task and gets a thread the moment it exists, so nothing has to be
+    coordinated first for a row to have one to open.
+    """
+
+    async def test_a_decision_written_plainly_gets_its_own_thread(self):
+        room = _room("u-write-decision")
+        await _write(room, "decisions/token-ttl", "15m or 60m?")
+        assert _meta(room, "decisions/token-ttl")[EPISODE_META]
+
+    async def test_each_board_row_gets_a_distinct_thread(self):
+        room = _room("u-write-distinct")
+        await _write(room, "work/one", "One")
+        await _write(room, "decisions/two", "Two")
+        assert _meta(room, "work/one")[EPISODE_META] != _meta(room, "decisions/two")[EPISODE_META]
+
+    async def test_a_non_board_note_gets_no_thread(self):
+        # A context note or an agent manifest is not a board row; it has no thread.
+        room = _room("u-write-context")
+        await _write(room, "context/goal", "Move off the legacy store")
+        assert EPISODE_META not in _meta(room, "context/goal")
+
+    async def test_a_later_write_never_moves_the_thread(self):
+        room = _room("u-write-stable")
+        await _write(room, "work/one", "One")
+        first = _meta(room, "work/one")[EPISODE_META]
+        await _write(room, "work/one", "One, revised", status="in_review")
+        assert _meta(room, "work/one")[EPISODE_META] == first
 
 
 @pytest.mark.asyncio
@@ -177,7 +225,7 @@ class TestBinding:
 class TestMigration:
     async def test_a_row_written_before_the_binding_gets_a_thread(self):
         room = _room("u-migrate")
-        await _write(room, "work/legacy", "An older row")
+        _write_unbound(room, "work/legacy", "An older row")
         assert tasks.backfill_room(room) == 1
         assert _meta(room, "work/legacy")[EPISODE_META]
 
@@ -186,7 +234,7 @@ class TestMigration:
         # broadcast a write nobody made — shuffling every stale row to the top of
         # a time-ordered board on the first restart after the upgrade.
         room = _room("u-migrate-2")
-        await _write(room, "work/legacy", "An older row", status="in_review")
+        _write_unbound(room, "work/legacy", "An older row", status="in_review")
         before = _meta(room, "work/legacy")
         tasks.backfill_room(room)
         after = _meta(room, "work/legacy")
@@ -197,15 +245,21 @@ class TestMigration:
 
     async def test_a_second_pass_binds_nothing(self):
         room = _room("u-migrate-3")
-        await _write(room, "work/legacy", "An older row")
+        _write_unbound(room, "work/legacy", "An older row")
         tasks.backfill_room(room)
         bound = _meta(room, "work/legacy")[EPISODE_META]
         assert tasks.backfill_room(room) == 0
         assert _meta(room, "work/legacy")[EPISODE_META] == bound
 
-    async def test_only_units_are_bound(self):
-        # A decision is not a task; nothing is coordinated *inside* it.
+    async def test_every_board_row_is_bound_not_only_work(self):
+        # A decision is a task too — a board row with a thread of its own — so
+        # the backfill heals it alongside a work row. A non-board namespace (a
+        # plain context note) is left alone: it is not a board row.
         room = _room("u-migrate-4")
-        await _write(room, "decisions/db", "PostgreSQL")
-        assert tasks.backfill_room(room) == 0
-        assert EPISODE_META not in _meta(room, "decisions/db")
+        _write_unbound(room, "decisions/db", "PostgreSQL")
+        _write_unbound(room, "failed/spoke", "Thin-spoke join")
+        _write_unbound(room, "context/goal", "Move off the legacy store")
+        assert tasks.backfill_room(room) == 2
+        assert _meta(room, "decisions/db")[EPISODE_META]
+        assert _meta(room, "failed/spoke")[EPISODE_META]
+        assert EPISODE_META not in _meta(room, "context/goal")

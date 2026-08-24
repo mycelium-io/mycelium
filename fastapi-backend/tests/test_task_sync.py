@@ -116,14 +116,28 @@ class TestConvergedToRows:
         meta, _ = _row("r5", "work/ship-auth")
         assert meta["version"] == 2  # an upsert, not a second row
 
-    async def test_a_row_is_bound_to_the_episode_it_was_agreed_in(self):
-        # The keystone: a compiled row is born inside a negotiation, so that
-        # negotiation is the thread the row starts life in. Read off the
-        # envelope's own header rather than minted, so work → episode → messages
-        # round-trips back to the conversation that produced it.
+    async def test_a_row_gets_its_own_thread_not_the_negotiation_s(self):
+        # The keystone, inverted: a compiled row is a task with its own thread,
+        # minted when the row is written, not the episode the negotiation reached
+        # its verdict in. Two tasks from one verdict are two threads, not two rows
+        # sharing the conversation that produced them.
         await _run("r6", [CompiledTask(title="ship auth", assignee="a")], {"a": "auth"})
         meta, _ = _row("r6", "work/ship-auth")
-        assert meta[EPISODE_META] == l9.episode_urn("r", "live")
+        assert meta[EPISODE_META]
+        assert meta[EPISODE_META] != l9.episode_urn("r", "live")
+
+    async def test_two_rows_from_one_verdict_are_two_threads(self):
+        await _run(
+            "r6b",
+            [
+                CompiledTask(title="ship auth", assignee="a"),
+                CompiledTask(title="rotate keys", assignee="b"),
+            ],
+            {"a": "auth", "b": "keys"},
+        )
+        one = _row("r6b", "work/ship-auth")[0][EPISODE_META]
+        two = _row("r6b", "work/rotate-keys")[0][EPISODE_META]
+        assert one and two and one != two
 
     async def test_a_re_negotiation_does_not_move_a_row_off_its_thread(self):
         # A row's thread is where its history is. A later verdict that restates
