@@ -115,7 +115,7 @@ function MemoryLinkChip({ link, broken, onClick }: LinkProps) {
       <button
         type="button"
         onClick={() => onClick(link.target)}
-        aria-description={action}
+        aria-label={action}
         className={`${base} text-accent hover:bg-accent-soft hover:underline`}
       >
         {body}

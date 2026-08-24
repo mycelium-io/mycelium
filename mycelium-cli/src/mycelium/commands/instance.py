@@ -190,6 +190,13 @@ def _patch_env_image_tag(env_path: Path, tag: str) -> None:
     env_path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
 
 
+def _patch_env_build_mode(env_path: Path, mode: str) -> None:
+    """Delegate to docker_utils.patch_build_mode (instance-local shim)."""
+    from mycelium.docker_utils import patch_build_mode
+
+    patch_build_mode(env_path, mode)
+
+
 def _announce_image_tag() -> None:
     """Print the effective ``MYCELIUM_IMAGE_TAG`` after ``mycelium up``.
 
@@ -512,6 +519,10 @@ def start(
         ui_port = "3000"
         metrics_port = "4318"
         env_path = _get_env_path()
+        # Stamp (or clear) the build-mode flag so `mycelium config apply --restart`
+        # knows whether to re-inject compose-dev.yml without pulling GHCR images.
+        if env_path is not None:
+            _patch_env_build_mode(env_path, "dev" if build_env is not None else "")
         if env_path and env_path.exists():
             from dotenv import dotenv_values
 
@@ -1094,6 +1105,8 @@ def pull(
                 raise typer.Exit(result.returncode)
 
         typer.secho("✓ Services restarted", fg=typer.colors.GREEN)
+        if env_path is not None:
+            _patch_env_build_mode(env_path, "")
 
         # Health check
         import time
