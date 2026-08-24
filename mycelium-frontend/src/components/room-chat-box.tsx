@@ -17,6 +17,14 @@ interface Props {
   /** Fired after a successful POST so the parent can refresh the event stream. */
   onSent?: () => void;
   className?: string;
+  /**
+   * The thread this composer writes into. Without one it writes to the room —
+   * the same composer either way, since a thread is a tag over the room's own
+   * channel and not a second place to type.
+   */
+  episode?: string | null;
+  /** What to call that thread in the placeholder, e.g. a task's title. */
+  threadLabel?: string | null;
 }
 
 // Three sigils, three vocabularies, one composer (#618, #619):
@@ -72,7 +80,7 @@ function memoryKey(m: Memory): string {
   return m.key;
 }
 
-export function RoomChatBox({ roomName, onSent, className }: Props) {
+export function RoomChatBox({ roomName, onSent, className, episode = null, threadLabel = null }: Props) {
   const [content, setContent] = useState("");
   // A human message is sent as the acting-as principal — the single source of
   // "who am I" (the ActingAsPicker), not a per-composer handle. Anonymous falls
@@ -192,7 +200,7 @@ export function RoomChatBox({ roomName, onSent, className }: Props) {
     setSending(true);
     setError(null);
     try {
-      await sendRoomMessage(roomName, { sender_handle: handle, content: body });
+      await sendRoomMessage(roomName, { sender_handle: handle, content: body, episode });
       setContent("");
       setTrigger(null);
       onSent?.();
@@ -204,7 +212,13 @@ export function RoomChatBox({ roomName, onSent, className }: Props) {
       // render, so refocus after that commit lands to keep the user typing.
       requestAnimationFrame(() => inputRef.current?.focus());
     }
-  }, [content, onSent, roomName, principal, sending]);
+  }, [content, episode, onSent, roomName, principal, sending]);
+
+  // Where this lands is the one thing the composer must never be coy about: the
+  // same box writes to the room and into a thread, and the difference is whether
+  // an argument stays inside a task or becomes everyone's.
+  const target = episode ? `Reply in ${threadLabel || "this thread"}…` : "Message the room…";
+  const placeholder = `${target}  @ mention · [[ memory · / skill`;
 
   // The button carries no chrome at rest — the composer's own border is the
   // affordance and Enter is the primary path. It only colors up, and only
@@ -281,7 +295,7 @@ export function RoomChatBox({ roomName, onSent, className }: Props) {
             value={content}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
-            placeholder="Message the room…  @ mention · [[ memory · / skill"
+            placeholder={placeholder}
             minRows={1}
             maxRows={10}
             className="w-full resize-none bg-transparent px-4 pt-3 pb-1.5 text-body text-text leading-relaxed focus:outline-none placeholder:text-muted-foreground"

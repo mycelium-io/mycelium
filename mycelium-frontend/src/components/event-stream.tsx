@@ -5,13 +5,15 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  fetchL9History,
   fetchMessages,
   fetchPendingInvites,
   respondToInvite,
   logFetchError,
   type PendingInvite,
 } from "@/lib/api";
-import { useRoomAgents } from "@/lib/room-data";
+import { useRoomAgents, useRoomThreads } from "@/lib/room-data";
+import { PING_TYPE, coalescePings, isLiveEpisode, pingOf, threadShortId } from "@/lib/threads";
 import { useRoomConnected, useRoomStream } from "@/lib/stream-hub";
 import { MarkdownContent } from "@/components/markdown-content";
 import { RoomBoard } from "@/components/board/room-board";
@@ -28,7 +30,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Monogram } from "@/components/ui/monogram";
 import { Tooltip } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
-import { ArrowDown, Bot, MessagesSquare } from "lucide-react";
+import { ArrowDown, Bot, MessageSquare, MessagesSquare } from "lucide-react";
 
 interface Event {
   /** Render key only — synthesized, so a message republished by a status
@@ -43,6 +45,8 @@ interface Event {
   sender: string;
   recipient: string | null;
   time: string;
+  /** The full stamp, for ordering two reads into one feed. */
+  at: string;
   // The L9 episode URN this event belongs to, when it rode one. Negotiation
   // turns share their mediator's episode; casual chat carries the room default
   // or none. Lets the feed group/fold one negotiation's turns together.
@@ -52,6 +56,13 @@ interface Event {
   amends: string | null;
   /** True once an amendment has revised this message's text. */
   edited: boolean;
+  /** The thread a **ping** is about — never the episode the ping itself rode,
+   *  which is the room. Null on everything that is not a ping. */
+  thread: string | null;
+  /** How many pings this row stands for, once a burst has been coalesced. */
+  pings: number;
+  /** Who wrote in the thread during that burst, in the order they first did. */
+  pingSenders: string[];
   raw: Record<string, unknown>;
 }
 
@@ -74,12 +85,19 @@ export const L9_RAISE_UP_TYPES = [
 // negotiation lifecycle ("alice joined session X", "CONSENSUS in session X
 // → 4 work rows", "TIMEOUT in session X, no agreement") instead of
 // burying it all under the EVENTS tab.
-const CHANNEL_VIEW_TYPES = new Set([...CHAT_TYPES, ...L9_RAISE_UP_TYPES]);
+const CHANNEL_VIEW_TYPES = new Set([...CHAT_TYPES, ...L9_RAISE_UP_TYPES, PING_TYPE]);
 
 // Lifecycle events that render as slim system notices (not chat rows). Used to
 // decide message grouping: a chat message only groups under the sender above it
 // when no system notice interrupts the run.
-const SYSTEM_TYPES = new Set(L9_RAISE_UP_TYPES);
+/**
+ * A ping is a system notice too, but deliberately not on the shared raise-up
+ * list: that list names message types both surfaces promote out of the L9
+ * inspector, and a ping is an `l9_exchange` already on the chat path that is
+ * *renamed* here — the same branch the CLI takes inside `chat_line`. Adding it
+ * to the contract would claim a drift that isn't one.
+ */
+const SYSTEM_TYPES = new Set([...L9_RAISE_UP_TYPES, PING_TYPE]);
 
 /** Skeleton loader for chat rows. */
 function ChannelSkeleton() {
@@ -131,7 +149,7 @@ function SystemNotice({
   );
 }
 
-function parseEvent(msg: Record<string, unknown>): Event {
+function parseEvent(msg: Record<string, unknown>, room: string): Event {
   let mtype = (msg.message_type as string) || (msg.type as string) || "unknown";
   const sender = (msg.sender_handle as string) || (msg.updated_by as string) || "?";
   const recipient = (msg.recipient_handle as string) || null;
@@ -140,6 +158,8 @@ function parseEvent(msg: Record<string, unknown>): Event {
 
   let content = "";
   let raw: Record<string, unknown> = {};
+  let thread: string | null = null;
+  let pingSender: string | null = null;
 
   try {
     if (typeof msg.content === "string") {
@@ -209,7 +229,18 @@ function parseEvent(msg: Record<string, unknown>): Event {
       content = `${key} v${version} by ${by}`;
       break;
     }
-    case "l9_exchange":
+    case "l9_exchange": {
+      // A ping rides the exchange kind like everything else, so it has to be
+      // recognised before the prose unwrap below — which would otherwise turn
+      // it into an empty chat row from `system`, the one shape a thread exists
+      // to keep out of the room.
+      const ping = pingOf(raw);
+      if (ping) {
+        thread = ping.episode;
+        pingSender = ping.sender;
+        mtype = PING_TYPE;
+        break;
+      }
       // The live SSE stream wraps human/agent messages as an L9 exchange
       // envelope, while the REST snapshot (loaded on mount/refresh) delivers the
       // same message as a plain "broadcast". Unwrap the prose and normalise to
@@ -218,6 +249,7 @@ function parseEvent(msg: Record<string, unknown>): Event {
       content = (raw.content as string) || "";
       mtype = recipient ? "direct" : "broadcast";
       break;
+    }
     case "l9_commit": {
       // Unwrap the L9 commit envelope into the coordination_consensus shape
       // so NegotiationView can render it.
@@ -288,11 +320,27 @@ function parseEvent(msg: Record<string, unknown>): Event {
     sender,
     recipient,
     time,
+    at: created,
     episode,
     amends,
     edited: typeof msg.edited_at === "string",
+    thread,
+    pings: thread ? 1 : 0,
+    pingSenders: pingSender ? [pingSender] : [],
     raw,
   };
+}
+
+/**
+ * Whether this event's prose belongs to a thread rather than to the room.
+ *
+ * Only prose: a thread absorbs the argument, not the outcome. A consensus or a
+ * join is the room's business however deep inside a task it happened, which is
+ * why the raise-up notices are not asked this question — the same split the CLI
+ * makes by consulting its own `in_a_thread` from the chat branch alone.
+ */
+function inAThread(event: Event, room: string): boolean {
+  return CHAT_TYPES.has(event.type) && !isLiveEpisode(room, event.episode);
 }
 
 /** A reader a couple of lines off the bottom still counts as reading the tail,
@@ -333,6 +381,9 @@ interface Props {
   /** Open an episode by short id — wired to the episode tags on coordination
    *  notices, so the episode a notice names is one click from its record. */
   onOpenEpisode?: (shortId: string) => void;
+  /** Open a thread by its episode URN — from a ping in the channel, or from the
+   *  board row the thread belongs to. */
+  onOpenThread?: (episode: string) => void;
   /** Optional controlled tab (e.g. driven by the onboarding tour). */
   view?: View;
   onViewChange?: (view: View) => void;
@@ -344,7 +395,7 @@ interface Props {
   onFocusConsumed?: () => void;
 }
 
-export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onNegotiationPhaseChange, onOpenMemory, onOpenEpisode, view: viewProp, onViewChange, suppressInvites = false, focusMessageId = null, onFocusConsumed }: Props) {
+export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onNegotiationPhaseChange, onOpenMemory, onOpenEpisode, onOpenThread, view: viewProp, onViewChange, suppressInvites = false, focusMessageId = null, onFocusConsumed }: Props) {
   const [events, setEvents] = useState<Event[]>([]);
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const connected = useRoomConnected(roomName);
@@ -364,22 +415,46 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
   // read, so this costs no request of its own; owner is resolved at render time
   // so it always reflects the current manifest, never a stale stamp.
   const { agents } = useRoomAgents(roomName);
+  // Which task each thread belongs to, so a ping can name the row rather than
+  // six characters of URN. Off the room's shared memory read, so it costs
+  // nothing; a thread no row is bound to simply has no name to give.
+  const threads = useRoomThreads(roomName);
   const agentHandles = useMemo(() => new Set(agents.map((a) => a.handle)), [agents]);
   const agentOwners = useMemo(
     () => new Map(agents.filter((a) => a.owner).map((a) => [a.handle, a.owner as string])),
     [agents],
   );
 
-  // Load initial messages
+  // Two reads, one feed.
+  //
+  // The room's messages are what was *said*; a ping is a control frame and the
+  // conversational read leaves it out by construction — which would mean the
+  // channel's account of a busy thread survived only as long as the tab that
+  // watched it land. The transcript's L9 replay is where a ping does survive, so
+  // the pings are lifted out of it and merged back in by time. Everything else
+  // in that replay already reaches the feed as a message, so only pings are
+  // taken; reading both is what makes a reload say what the room said.
   useEffect(() => {
-    fetchMessages(roomName).then(data => {
-      const msgs = (data.messages || []).reverse();
-      setEvents(msgs.map(parseEvent));
-      setHistoryLoaded(true);
-    }).catch((err) => {
-      logFetchError("fetchMessages")(err);
-      setHistoryLoaded(true);
-    });
+    let live = true;
+    Promise.all([fetchMessages(roomName), fetchL9History(roomName)])
+      .then(([data, frames]) => {
+        if (!live) return;
+        const said = (data.messages || []).map((m) => parseEvent(m, roomName));
+        const pings = frames
+          .map((frame) => parseEvent(frame, roomName))
+          .filter((e) => e.type === PING_TYPE);
+        setEvents(
+          [...said, ...pings].sort((a, b) => (Date.parse(a.at) || 0) - (Date.parse(b.at) || 0)),
+        );
+        setHistoryLoaded(true);
+      })
+      .catch((err) => {
+        logFetchError("fetchMessages")(err);
+        if (live) setHistoryLoaded(true);
+      });
+    return () => {
+      live = false;
+    };
   }, [roomName]);
 
   // Load any consent prompts already open (an @-invite raised before this
@@ -408,7 +483,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
       } catch {}
       return;
     }
-    const event = parseEvent(msg);
+    const event = parseEvent(msg, roomName);
     setEvents(prev => (event.amends ? foldAmendment(prev, event) : [...prev, event]));
     if (event.type === "memory_changed") onMemoryChanged?.();
     // A consensus compiles the negotiation into work rows, so nudge the
@@ -422,9 +497,18 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
     }
   });
 
+  // What the room actually says. A thread's prose is dropped — it is not lost,
+  // it is placed, and the pane the ping opens is where it reads — and a burst of
+  // pings from one thread collapses to a single line, so the surface that exists
+  // to stay legible cannot be flooded by the mechanism meant to protect it.
   const visible = useMemo(
-    () => events.filter(e => CHANNEL_VIEW_TYPES.has(e.type)),
-    [events],
+    () =>
+      coalescePings(
+        events.filter(e => CHANNEL_VIEW_TYPES.has(e.type) && !inAThread(e, roomName)),
+        e => e.pings,
+        (latest, pings, pingSenders) => ({ ...latest, pings, pingSenders }),
+      ),
+    [events, roomName],
   );
 
   // Arriving from search: mark the named message and scroll it into sight once
@@ -492,10 +576,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
     highlightRow.current?.scrollIntoView({ block: "center" });
   }, [highlight, historyLoaded, visible]);
 
-  const channelCount = useMemo(
-    () => events.filter(e => CHANNEL_VIEW_TYPES.has(e.type)).length,
-    [events],
-  );
+  const channelCount = visible.length;
 
   // Negotiation phase, derived from the coordination stream. Drives the live
   // tab dot and (via the callback) the onboarding tour's convergence sync.
@@ -564,7 +645,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
       </div>
       {view === "board" ? (
         <div className="flex-1 min-h-0">
-          <RoomBoard roomName={roomName} />
+          <RoomBoard roomName={roomName} onOpenThread={onOpenThread} />
         </div>
       ) : view === "network" ? (
         // Unified Network pane: SLIM channel diagnostics as a rail on top, the
@@ -603,6 +684,33 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
               // Coordination + plan lifecycle events render as slim, centered
               // system notices — quiet dividers woven into the conversation,
               // not loud rows. Chat messages group under one sender header.
+              if (ev.type === PING_TYPE && ev.thread) {
+                const thread = ev.thread;
+                const shortId = threadShortId(thread) ?? "thread";
+                const owner = threads.get(thread);
+                const who = ev.pingSenders;
+                return (
+                  <SystemNotice key={ev.id} time={ev.time} dot="var(--accent)" label="Activity">
+                    <span>in</span>
+                    <button
+                      type="button"
+                      onClick={() => onOpenThread?.(thread)}
+                      disabled={!onOpenThread}
+                      title={thread}
+                      aria-label={`Open thread ${shortId}`}
+                      className="inline-flex max-w-[18rem] items-center gap-1 truncate rounded px-1 text-accent transition-colors enabled:hover:bg-accent-soft enabled:hover:underline disabled:cursor-default"
+                    >
+                      <MessageSquare className="size-3 shrink-0" strokeWidth={1.9} />
+                      <span className="truncate">{owner?.title ?? shortId}</span>
+                    </button>
+                    <span>· {ev.pings} new</span>
+                    {who.length > 0 && (
+                      <span className="truncate">· {who.map(h => `@${h}`).join(", ")}</span>
+                    )}
+                    {onOpenThread && <span className="text-faint">· click to open</span>}
+                  </SystemNotice>
+                );
+              }
               if (ev.type === "l9_knowledge") {
                 const key = ev.raw.key as string | undefined;
                 const updatedBy = ev.raw.updated_by as string | undefined;

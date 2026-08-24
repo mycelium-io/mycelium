@@ -79,6 +79,33 @@ const POSTER_LIMIT = 200;
  *  scans a short window past any protocol ticks on top of it. */
 const LATEST_LIMIT = 20;
 
+/** A thread is one task's conversation, so its whole history is a short read. */
+const THREAD_LIMIT = 200;
+
+/** What a thread belongs to, for anything that has to name it. */
+export interface ThreadOwner {
+  /** Every row bound to this thread, in the order the room lists them. */
+  keys: string[];
+  /**
+   * What to call it — the row's own title, but **only** where exactly one row
+   * is bound. A negotiation compiles several tasks and binds all of them to the
+   * episode it converged in, so naming one of those would be picking a row at
+   * random and asserting it. Null means the thread is named by its short id,
+   * which is what is actually true of it.
+   */
+  title: string | null;
+}
+
+/** A row's own title where its frontmatter carries one, else its key. */
+function memoryTitle(memory: Memory): string {
+  const value = memory.value;
+  const title =
+    value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>).title
+      : null;
+  return typeof title === "string" && title.trim() ? title.trim() : memory.key;
+}
+
 // Stable empties: a fresh `[]` per render would break every downstream memo.
 const NO_STATUS: RoomStatus = {
   room: "",
@@ -220,6 +247,64 @@ export function useRoomMessages(room: string, limit = 200, opts: RoomQueryOption
     void mutate();
   }, [mutate]);
   return { messages: data?.messages ?? NO_MESSAGES, loading: isLoading, refresh };
+}
+
+/**
+ * One thread's messages, and nothing else.
+ *
+ * Its own cache entry — `["room", <name>, "messages", "thread", <urn>]` — so a
+ * thread pane never overwrites the room's own feed with a filtered slice of it,
+ * which is what a shared key would do the moment both are open. Still under the
+ * `["room", <name>]` prefix, so `useRoomRevalidate` reaches it: an SSE write
+ * into a thread refreshes the thread and the room together.
+ *
+ * A null episode parks the hook, so a closed pane fetches nothing.
+ */
+export function useThreadMessages(
+  room: string,
+  episode: string | null,
+  limit = THREAD_LIMIT,
+  opts: RoomQueryOptions = {},
+) {
+  const { data, isLoading, mutate } = useSWR(
+    room && episode ? (["room", room, "messages", "thread", episode, limit] as const) : null,
+    () => fetchMessages(room, limit, { episode }),
+    { refreshInterval: opts.refreshInterval ?? POLL.messages },
+  );
+  const refresh = useCallback(() => {
+    void mutate();
+  }, [mutate]);
+  return { messages: data?.messages ?? NO_MESSAGES, loading: isLoading, refresh };
+}
+
+/**
+ * Every thread the room's rows are bound to, keyed by URN.
+ *
+ * The binding is the task's (`Memory.episode`), so this is that same edge read
+ * the other way round — what a bare URN in a ping is a thread *of*. Derived off
+ * the shared memories cache, so naming a thread costs no request.
+ *
+ * Two ways a thread ends up without a name here, both honest rather than
+ * missing: an episode no row mentions (a coordination phase opens its own and
+ * records no back-link to the task that summoned it), and an episode several
+ * rows share (a converged negotiation binds every task it compiled to itself).
+ */
+export function useRoomThreads(room: string): Map<string, ThreadOwner> {
+  const { memories } = useRoomMemories(room);
+  return useMemo(() => {
+    const index = new Map<string, ThreadOwner>();
+    for (const memory of memories) {
+      if (!memory.episode) continue;
+      const known = index.get(memory.episode);
+      if (known) {
+        known.keys.push(memory.key);
+        known.title = null;
+      } else {
+        index.set(memory.episode, { keys: [memory.key], title: memoryTitle(memory) });
+      }
+    }
+    return index;
+  }, [memories]);
 }
 
 /** The last readable line in a room, for an inbox-style row. Its own SWR key,

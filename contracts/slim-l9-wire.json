@@ -13,7 +13,8 @@
     "the same PR and both suites will re-lock to the new value.",
     "",
     "Tests: fastapi-backend/tests/test_slim_l9_wire.py,",
-    "mycelium-cli/tests/test_slim_l9_wire.py"
+    "mycelium-cli/tests/test_slim_l9_wire.py,",
+    "mycelium-frontend/src/lib/threads.contract.test.ts (the ping + urn sections only)"
   ],
 
   "master_secret": "mycelium-dev-shared-secret-v1-do-not-use-in-prod",
@@ -46,7 +47,7 @@
   },
 
   "ping": {
-    "_comment": "The payload type a thread's activity surfaces into the room as. The backend PRODUCES it (room_channels.raise_ping, off app.services.l9.PING_PAYLOAD_TYPE) on every write into a thread; the CLI READS it (mycelium.slim.l9.ping_of) to draw the one activity line `room watch` shows when a task moves. A ping deliberately carries no prose \u2014 only which thread moved, who wrote it and the message id \u2014 so payload_fields is the whole of it, and a reader expecting text would draw an empty line instead of the argument the thread exists to absorb. It is also what the backend's participate._addressed_to excludes, so a resident agent consumes a ping silently rather than spending a turn on it: rename the type on one side only and every agent in the room wakes on every thread write.",
+    "_comment": "The payload type a thread's activity surfaces into the room as. The backend PRODUCES it (room_channels.raise_ping, off app.services.l9.PING_PAYLOAD_TYPE) on every write into a thread; the CLI READS it (mycelium.slim.l9.ping_of) to draw the one activity line `room watch` shows when a task moves. A ping deliberately carries no prose \u2014 only which thread moved, who wrote it and the message id \u2014 so payload_fields is the whole of it, and a reader expecting text would draw an empty line instead of the argument the thread exists to absorb. It is also what the backend's participate._addressed_to excludes, so a resident agent consumes a ping silently rather than spending a turn on it: rename the type on one side only and every agent in the room wakes on every thread write. The GUI is the third reader (mycelium-frontend/src/lib/threads.ts, ping_of + PING_PAYLOAD_TYPE): it draws the coalesced 'activity in <task>' notice the room sees in place of the thread's prose, so a drift here empties the channel of any sign its threads moved.",
     "payload_type": "ping",
     "payload_fields": ["episode", "sender", "message"]
   },
@@ -60,7 +61,7 @@
   },
 
   "urn": {
-    "_comment": "Room-scoped episode/topic URN forms. Backend: l9.episode_urn(room, session) / l9.topic_urn(room). CLI connector: _room_episode(room) / _room_topic(room) with the 'live' session literal.",
+    "_comment": "Room-scoped episode/topic URN forms. Backend: l9.episode_urn(room, session) / l9.topic_urn(room). CLI connector: _room_episode(room) / _room_topic(room) with the 'live' session literal. Frontend: mycelium-frontend/src/lib/threads.ts liveEpisodeUrn(room), which is how the channel tells the room's own messages from a thread's.",
     "room": "acme",
     "session": "live",
     "expected_episode": "urn:ioc:mycelium:episode:acme:live",

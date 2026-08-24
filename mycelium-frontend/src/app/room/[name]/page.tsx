@@ -7,14 +7,16 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDefaultLayout } from "react-resizable-panels";
 import { type EpisodeSummary } from "@/lib/api";
-import { useRoom, useRoomRevalidate } from "@/lib/room-data";
+import { useRoom, useRoomRevalidate, useRoomThreads } from "@/lib/room-data";
 import { parseFocus, type FocusTarget } from "@/lib/search";
 import { memoryHref } from "@/lib/memory-routes";
 import { AppShell } from "@/components/app-shell";
 import { EventStream, type View, type NegotiationPhase } from "@/components/event-stream";
 import { RoomChatBox } from "@/components/room-chat-box";
+import { ThreadView } from "@/components/thread-view";
 import { RoomInspector, type Tab } from "@/components/room-inspector";
 import { RoomTour } from "@/components/room-tour";
+import { cn } from "@/lib/utils";
 import { GlobalStatusItems, StatusButton } from "@/components/status-items";
 import { Tooltip } from "@/components/ui/tooltip";
 import { useCommands, useKeyAction, useKeyScope } from "@/components/keymap-provider";
@@ -72,6 +74,9 @@ function RoomWorkspace() {
   const [inviteEngine, setInviteEngine] = useState(false);
   const [focusMemory, setFocusMemory] = useState<{ key: string; nonce: number } | null>(null);
   const [focusEpisode, setFocusEpisode] = useState<{ shortId: string; nonce: number } | null>(null);
+  // The open thread, as a URN. A transient pane and nothing more: no rail holds
+  // it, no route names it, and closing it leaves the room exactly as it was.
+  const [threadEpisode, setThreadEpisode] = useState<string | null>(null);
 
   const handleTourExit = useCallback(() => {
     setTourActive(false);
@@ -105,6 +110,20 @@ function RoomWorkspace() {
   }, []);
 
   const handleEngineInviteShown = useCallback(() => setInviteEngine(false), []);
+
+  // A board row's thread chip, or a ping in the channel. Both name the same
+  // thing — the episode — because a row and its thread are one object.
+  const openThread = useCallback((episode: string) => setThreadEpisode(episode), []);
+  const closeThread = useCallback(() => setThreadEpisode(null), []);
+
+  // The task a thread belongs to, when the room knows of one. A coordination
+  // phase opens its own episode and records no back-link, so the pane names the
+  // thread instead of guessing at a row.
+  const threads = useRoomThreads(roomName);
+  const threadTarget = useMemo(
+    () => (threadEpisode ? { episode: threadEpisode, title: threads.get(threadEpisode)?.title ?? null } : null),
+    [threadEpisode, threads],
+  );
 
   // Arriving from search: `?focus=<type>:<id>` names one item in this room.
   // Reveal the surface it lives on, then hand the id to the panel that owns the
@@ -270,23 +289,44 @@ function RoomWorkspace() {
           onLayoutChanged={inspectorOpen ? onLayoutChanged : undefined}
         >
           <ResizablePanel id={PANEL_MAIN} minSize={MAIN_PANEL.min} className="flex min-w-0">
-            <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
-              <div className="flex-1 overflow-hidden">
-                <EventStream
-                  roomName={roomName}
-                  onMemoryChanged={handleMemoryChanged}
-                  onConnectionChange={setConnected}
-                  onNegotiationPhaseChange={setNegPhase}
-                  onOpenMemory={openMemory}
-                  onOpenEpisode={openEpisode}
-                  view={editorView}
-                  onViewChange={setEditorView}
-                  suppressInvites={tourActive}
-                  focusMessageId={focus?.type === "message" ? focus.id : null}
-                  onFocusConsumed={clearFocus}
-                />
+            <main className="flex min-w-0 flex-1 overflow-hidden">
+              {/* The room's own surface stays mounted behind an open thread, so
+                  closing the pane returns to the feed where it was left. Only a
+                  screen too narrow for both hands the width over. */}
+              <div
+                className={cn(
+                  "min-w-0 flex-1 flex-col overflow-hidden",
+                  threadTarget ? "hidden lg:flex" : "flex",
+                )}
+              >
+                <div className="flex-1 overflow-hidden">
+                  <EventStream
+                    roomName={roomName}
+                    onMemoryChanged={handleMemoryChanged}
+                    onConnectionChange={setConnected}
+                    onNegotiationPhaseChange={setNegPhase}
+                    onOpenMemory={openMemory}
+                    onOpenEpisode={openEpisode}
+                    onOpenThread={openThread}
+                    view={editorView}
+                    onViewChange={setEditorView}
+                    suppressInvites={tourActive}
+                    focusMessageId={focus?.type === "message" ? focus.id : null}
+                    onFocusConsumed={clearFocus}
+                  />
+                </div>
+                <RoomChatBox roomName={roomName} className={editorView !== "channel" ? "hidden" : undefined} />
               </div>
-              <RoomChatBox roomName={roomName} className={editorView !== "channel" ? "hidden" : undefined} />
+              {threadTarget && (
+                <div className="flex min-w-0 flex-1 border-l border-border lg:max-w-[26rem] xl:max-w-[34rem]">
+                  <ThreadView
+                    roomName={roomName}
+                    target={threadTarget}
+                    onClose={closeThread}
+                    onOpenMemory={openMemory}
+                  />
+                </div>
+              )}
             </main>
           </ResizablePanel>
           {inspectorOpen && (

@@ -1,0 +1,149 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Mycelium Contributors
+
+/**
+ * Threads, and how the room hears about them.
+ *
+ * A task's coordination happens in a **thread** — an episode URN tagged over
+ * the room's own channel, not a channel of its own. The room itself is an
+ * episode too (the `live` URN), which is what makes "the room without its
+ * threads" a question this module can answer rather than a special case.
+ *
+ * What surfaces in the room when a thread moves is a **ping**: which thread,
+ * who wrote, and the message's id. Deliberately no prose — a thread exists so
+ * an argument inside a task does not become the room's problem, and echoing it
+ * here would undo that. The backend produces the ping
+ * (`room_channels.raise_ping`) and the CLI reads it (`slim.l9.ping_of`); this
+ * is the third reader, so the constants below are frozen in
+ * `contracts/slim-l9-wire.json` and asserted by `threads.contract.test.ts`.
+ */
+
+/** The session literal naming a room's own channel among its episodes. */
+export const LIVE_SESSION = "live";
+
+/** The payload type a thread's activity surfaces into the room as. */
+export const PING_PAYLOAD_TYPE = "ping";
+
+/** The whole of a ping. A reader expecting prose here would draw an empty line. */
+export const PING_PAYLOAD_FIELDS = ["episode", "sender", "message"] as const;
+
+/**
+ * The normalized type a ping wears once parsed.
+ *
+ * A ping arrives as an `l9_exchange` like any other message, so it would
+ * otherwise render as a chat row from `system` with nothing in it. Naming it
+ * here is what lets the feed render it as the notice it is.
+ */
+export const PING_TYPE = "thread_ping";
+
+/** The URN of a room's own channel — where a message with no thread lands. */
+export function liveEpisodeUrn(room: string): string {
+  return `urn:ioc:mycelium:episode:${room}:${LIVE_SESSION}`;
+}
+
+/**
+ * Whether this episode is the room itself rather than a thread inside it.
+ *
+ * A missing episode is the room: rows written before threading carry none, and
+ * reading them as a thread would empty the channel of its own history.
+ */
+export function isLiveEpisode(room: string, episode: string | null | undefined): boolean {
+  return !episode || episode === liveEpisodeUrn(room);
+}
+
+/** The short id a thread is named by — the tail of its URN. */
+export function threadShortId(episode: string | null | undefined): string | null {
+  if (!episode) return null;
+  const tail = episode.split(":").pop();
+  return tail && tail !== LIVE_SESSION ? tail : null;
+}
+
+/** What a ping says: the thread that moved, who wrote, and what they wrote. */
+export interface Ping {
+  episode: string;
+  sender: string | null;
+  message: string | null;
+}
+
+/**
+ * The ping a wire frame carries, or null when it isn't one.
+ *
+ * Reads the L9 envelope's own payload rather than the frame's `episode` field:
+ * a ping rides in `live` (that is the point of it) and names the thread it is
+ * about in its payload, so the two answer different questions.
+ */
+export function pingOf(raw: Record<string, unknown> | null | undefined): Ping | null {
+  const envelope = (raw?.l9 ?? null) as Record<string, unknown> | null;
+  const payload = (envelope?.payload ?? null) as Record<string, unknown> | null;
+  if (!payload || payload.type !== PING_PAYLOAD_TYPE) return null;
+  const data = (payload.data ?? {}) as Record<string, unknown>;
+  const episode = data.episode;
+  if (typeof episode !== "string" || !episode) return null;
+  return {
+    episode,
+    sender: typeof data.sender === "string" ? data.sender : null,
+    message: typeof data.message === "string" ? data.message : null,
+  };
+}
+
+/** The minimum a feed row has to expose to be coalesced. */
+export interface Pingable {
+  type: string;
+  /** The thread this row is about, on a ping; null on everything else. */
+  thread: string | null;
+  /** Who wrote in the thread. A row's own sender is the system that raised the
+   *  ping, which is nobody, so the writers are read from the payload instead. */
+  pingSenders: string[];
+}
+
+/**
+ * Collapse a burst of pings into one line per thread.
+ *
+ * A thread that is genuinely busy would otherwise write a line per message into
+ * the channel it exists to keep quiet — the noise back, one indirection later.
+ * So a **run** of consecutive pings (nothing else said in between) becomes at
+ * most one row per thread, counting what landed and keeping the newest ping's
+ * identity so opening it still reaches the latest.
+ *
+ * Coalescing stops at the first non-ping row: a ping after someone speaks is
+ * new activity, not more of the same, and folding it backwards would move a
+ * line that has already been read.
+ */
+export function coalescePings<T extends Pingable>(
+  rows: T[],
+  count: (row: T) => number,
+  merge: (latest: T, total: number, senders: string[]) => T,
+): T[] {
+  const out: T[] = [];
+  let run: T[] = [];
+
+  const flush = () => {
+    if (!run.length) return;
+    const byThread = new Map<string, T[]>();
+    for (const row of run) {
+      const thread = row.thread as string;
+      const group = byThread.get(thread);
+      if (group) group.push(row);
+      else byThread.set(thread, [row]);
+    }
+    for (const group of byThread.values()) {
+      const latest = group[group.length - 1];
+      const total = group.reduce((sum, row) => sum + count(row), 0);
+      // Who has been in the thread since the last thing said in the room. In
+      // first-seen order, so the list reads as the conversation happened.
+      const senders = [...new Set(group.flatMap(row => row.pingSenders))];
+      out.push(total > count(latest) || senders.length > 1 ? merge(latest, total, senders) : latest);
+    }
+    run = [];
+  };
+
+  for (const row of rows) {
+    if (row.type === PING_TYPE && row.thread) run.push(row);
+    else {
+      flush();
+      out.push(row);
+    }
+  }
+  flush();
+  return out;
+}

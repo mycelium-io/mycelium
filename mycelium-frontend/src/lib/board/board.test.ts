@@ -17,6 +17,7 @@ import {
   VERBS,
   type LiveItem,
 } from "@/lib/board/item";
+import { THREAD_REFUSALS, threadRefusal } from "@/lib/board/fields";
 import { parseCapture } from "@/lib/board/capture";
 import { DAILY_GOAL, heatLevel, weekdayIndex } from "@/lib/board/activity";
 import { attachUpstream, UPSTREAM_STATES, upstreamAge, type RoomStatus } from "@/lib/board/upstream";
@@ -510,6 +511,19 @@ describe("shared vocabulary contract", () => {
     // rather than as a promise in a comment.
     const task = (contract as unknown as { task: { thread_fields: string[]; task_fields: string[] } }).task;
     expect(task.thread_fields.filter(f => task.task_fields.includes(f))).toEqual([]);
+  });
+
+  it("refuses to open a thread in the terms the CLI refuses in", () => {
+    const task = (contract as unknown as { task: { refusals: Record<string, string> } }).task;
+    expect(THREAD_REFUSALS).toEqual(task.refusals);
+    // A row that has one is not refused, whatever produced it — including an
+    // orphan episode row, which *is* a thread.
+    const episode: LiveItem = { id: "episode:e4f1a2", title: "e4f1a2", source: { kind: "episode", label: "e" }, fields: {} };
+    expect(threadRefusal(episode, "urn:ioc:mycelium:episode:atlas:e4f1a2")).toBeNull();
+    // And one that hasn't is refused by what produced it, never generically.
+    const agent: LiveItem = { id: "agent:risk", title: "risk", source: { kind: "agent", label: "a" }, fields: {} };
+    expect(threadRefusal(agent, null)).toBe(task.refusals.agent);
+    expect(threadRefusal(item("work/x", {}), null)).toBe(task.refusals.memory);
   });
 
   it("keeps the log's calendar conventions the CLI also asserts", () => {

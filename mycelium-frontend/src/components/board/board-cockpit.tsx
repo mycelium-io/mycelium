@@ -24,6 +24,7 @@ import {
   CustodyChip,
   PriorityMeter,
   SourceTag,
+  ThreadChip,
   TtlBar,
   UpstreamChip,
   WorkLinks,
@@ -36,6 +37,8 @@ interface Props {
   onSelect: (id: string) => void;
   onVerb: (item: LiveItem, verb: Verb) => void;
   onAnswer: (item: LiveItem, choice: string) => void;
+  /** Open a row's thread. Absent, the thread chip reads as a label. */
+  onOpenThread?: (episode: string) => void;
 }
 
 /**
@@ -43,7 +46,7 @@ interface Props {
  * every row carries its own verbs — triage is one gesture from wherever the eye
  * already is, never a detour through a detail page.
  */
-export function BoardCockpit({ groups, now, selectedId, onSelect, onVerb, onAnswer }: Props) {
+export function BoardCockpit({ groups, now, selectedId, onSelect, onVerb, onAnswer, onOpenThread }: Props) {
   return (
     <div className="flex flex-col gap-6 px-5 py-4">
       {groups.map(group => (
@@ -65,6 +68,7 @@ export function BoardCockpit({ groups, now, selectedId, onSelect, onVerb, onAnsw
                 onSelect={() => onSelect(item.id)}
                 onVerb={verb => onVerb(item, verb)}
                 onAnswer={choice => onAnswer(item, choice)}
+                onOpenThread={onOpenThread}
               />
             ))}
           </div>
@@ -81,6 +85,7 @@ function CockpitRow({
   onSelect,
   onVerb,
   onAnswer,
+  onOpenThread,
 }: {
   item: LiveItem;
   now: number;
@@ -88,6 +93,7 @@ function CockpitRow({
   onSelect: () => void;
   onVerb: (verb: Verb) => void;
   onAnswer: (choice: string) => void;
+  onOpenThread?: (episode: string) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   // Keyboard navigation moves the selection, so the selection has to bring the
@@ -138,6 +144,7 @@ function CockpitRow({
           <SourceTag item={item} />
           <span className="text-faint">·</span>
           <CustodyChip item={item} now={now} />
+          <ThreadChip item={item} onOpen={onOpenThread} />
           <WorkLinks item={item} />
           <UpstreamChip item={item} />
           <BlocksNote item={item} />
