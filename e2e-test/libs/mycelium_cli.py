@@ -1,4 +1,4 @@
-"""Subprocess wrapper for the ``mycelium`` CLI."""
+"""Subprocess wrapper for the ``mycelium`` CLI (SLIM-native)."""
 
 from __future__ import annotations
 
@@ -109,55 +109,78 @@ class MyceliumCLI:
     def memory_reindex(self, room: str) -> CLIResult:
         return self.run("memory", "reindex", "--room", room, timeout=120)
 
-    # ── Session commands ──────────────────────────────────────────────────
+    # ── Await / Respond (SLIM-native turn loop) ───────────────────────────
 
-    def session_create(self, room: str) -> CLIResult:
-        return self.run("session", "create", "--room", room, json_mode=True, timeout=60)
-
-    def session_join(self, room: str, handle: str, position: str = "") -> CLIResult:
-        args = ["session", "join", "--room", room, "--handle", handle]
-        if position:
-            args.extend(["--message", position])
-        return self.run(*args, timeout=60)
-
-    def session_ls(self, room: str) -> CLIResult:
-        return self.run("session", "ls", "--room", room)
-
-    def session_await(
+    def await_turn(
         self,
         room: str,
-        handle: str = "",
-        timeout: int = 300,
+        handle: str,
+        timeout: int = 120,
     ) -> CLIResult:
-        args = ["session", "await", "--room", room, "--timeout", str(timeout)]
-        if handle:
-            args.extend(["--handle", handle])
-        return self.run(*args, timeout=timeout + 15)
+        """Block until a turn arrives for *handle* in *room*. Returns JSON turn."""
+        return self.run(
+            "await", "--room", room, "--handle", handle,
+            "--timeout", str(timeout), "--json",
+            timeout=timeout + 15,
+            json_mode=False,
+        )
 
-    def session_watch(self, room: str, timeout: int = 300) -> CLIResult:
-        return self.run("session", "watch", "--room", room, timeout=timeout)
+    def respond(self, room: str, handle: str, text: str) -> CLIResult:
+        """Publish a reply for *handle* in *room*.
 
-    # ── Negotiation commands ──────────────────────────────────────────────
+        Append a position marker to *text* if desired:
+        ``"I can accept this [<accept>]"``
+        """
+        return self.run("respond", "--room", room, "--handle", handle, text, timeout=30)
 
-    def negotiate_propose(self, room: str, handle: str, topic: str) -> CLIResult:
-        return self.run("negotiate", "propose", "--room", room, "--handle", handle, f"topic={topic}", timeout=60)
+    # ── Agent / Engine commands ───────────────────────────────────────────
 
-    def negotiate_respond(self, room: str, handle: str, action: str) -> CLIResult:
-        return self.run("negotiate", "respond", action, "--room", room, "--handle", handle, timeout=120)
+    def agent_create(
+        self,
+        handle: str,
+        room: str,
+        adapter: str = "claude_code",
+        cwd: str = "",
+        description: str = "",
+    ) -> CLIResult:
+        args = ["agent", "create", handle, "--room", room, "--adapter", adapter]
+        if cwd:
+            args.extend(["--cwd", cwd])
+        if description:
+            args.extend(["--description", description])
+        return self.run(*args, timeout=60)
 
-    def negotiate_query(self, room: str, text: str = "status") -> CLIResult:
-        return self.run("negotiate", "query", text, "--room", room, timeout=30)
+    def agent_ls(self, room: str) -> CLIResult:
+        return self.run("agent", "ls", "--room", room, json_mode=True)
 
-    def negotiate_status(self, room: str) -> CLIResult:
-        return self.run("negotiate", "status", "--room", room, json_mode=True, timeout=30)
+    def agent_rm(self, handle: str, room: str) -> CLIResult:
+        return self.run("agent", "rm", handle, "--room", room, timeout=30)
 
-    # ── Synthesis / Catchup ───────────────────────────────────────────────
+    def agent_invoke(self, handle: str, room: str, message: str = "") -> CLIResult:
+        args = ["agent", "invoke", handle, "--room", room]
+        if message:
+            args.append(message)
+        return self.run(*args, timeout=60)
 
-    def synthesize(self, room: str) -> CLIResult:
-        return self.run("synthesize", "--room", room, timeout=120)
+    def engine_create(self, handle: str, room: str, kind: str = "aligner") -> CLIResult:
+        return self.run("engine", "create", handle, "--room", room, "--kind", kind, timeout=60)
 
-    def catchup(self, room: str) -> CLIResult:
-        return self.run("catchup", "--room", room, timeout=60)
+    def engine_invoke(self, handle: str, room: str, message: str = "") -> CLIResult:
+        args = ["engine", "invoke", handle, "--room", room]
+        if message:
+            args.append(message)
+        return self.run(*args, timeout=60)
+
+    # ── Network / Status ──────────────────────────────────────────────────
+
+    def network(self, room: str = "") -> CLIResult:
+        args = ["network"]
+        if room:
+            args.append(room)
+        return self.run(*args, json_mode=True, timeout=15)
+
+    def status(self) -> CLIResult:
+        return self.run("status", json_mode=True, timeout=15)
 
     # ── Config / Doctor ───────────────────────────────────────────────────
 

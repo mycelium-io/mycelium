@@ -1,6 +1,6 @@
-"""PR job — Tier A (stack health + memory + protocol).
+"""Nightly job — Tier A + Tier B (stack + stub coordination).
 
-Runs on every PR. No LLM required. Fast (~5 min).
+Runs nightly and before release cuts. No LLM required (stubs only).
 Blocks release on any failure.
 """
 
@@ -19,12 +19,12 @@ log = logging.getLogger(__name__)
 
 def main(runtime):
     root = get_project_root()
-    datafile = get_datafile(default="pr_datafile.yaml")
+    datafile = get_datafile(default="nightly_datafile.yaml")
     install_job_sigint_cleanup(resolve_backend_url(datafile))
 
-    log.info("=== PR Job — Tier A (stack health, memory, protocol) ===")
+    log.info("=== Nightly Job — Tier A + Tier B (stack + stub coordination) ===")
     log.info("Datafile: %s", datafile)
 
-    for suite_name in ("pr_suite.py",):
+    for suite_name in ("pr_suite.py", "nightly_suite.py"):
         suite_path = os.path.join(root, "suites", suite_name)
         run(testscript=suite_path, datafile=datafile)

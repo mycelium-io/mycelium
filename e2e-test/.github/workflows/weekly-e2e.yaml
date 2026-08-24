@@ -1,293 +1,93 @@
-name: Weekly Distributed E2E Tests
+name: Weekly Canary (Tier C)
+
+# Tier C — live agent multi-episode canary.
+# Runs once a week. Informational only — NEVER blocks release.
+# Requires live LLM credentials to be set in GitHub secrets.
 
 on:
   # schedule:
-  #   - cron: "0 6 * * 1"  # Every Monday at 06:00 UTC
+  #   - cron: '0 8 * * 1'  # Monday 08:00 UTC — re-enable when ready
   workflow_dispatch:
     inputs:
-      instance_type:
-        description: "EC2 instance type"
-        default: "t3.medium"
-        type: string
-      skip_teardown:
-        description: "Keep instances alive for debugging"
-        default: false
-        type: boolean
-
-permissions:
-  contents: read
-  id-token: write  # For OIDC-based AWS auth
+      canary_room:
+        description: 'Canary room name (domain-realistic, not qa-*)'
+        default: 'api-design-review'
+      mycelium_ref:
+        description: 'Mycelium repo ref. Empty = use release install.'
+        default: ''
 
 env:
-  TF_VAR_aws_region: us-east-1
-  TF_VAR_instance_type: ${{ inputs.instance_type || 't3.medium' }}
-  TF_VAR_github_run_id: ${{ github.run_id }}
-  INFRA_DIR: infra/terraform
+  LLM_MODEL: ${{ secrets.LLM_MODEL || vars.LLM_MODEL || '' }}
+  LLM_API_KEY: ${{ secrets.LLM_API_KEY || vars.LLM_API_KEY || '' }}
+  LLM_BASE_URL: ${{ secrets.LLM_BASE_URL || vars.LLM_BASE_URL || '' }}
 
 jobs:
-  # ─── Phase 1: Provision infrastructure ───────────────────────────────────────
-  provision:
-    name: Provision EC2 Cluster
+  canary:
+    name: Tier C Canary (informational)
     runs-on: ubuntu-latest
-    outputs:
-      orchestrator_ip: ${{ steps.tf-output.outputs.orchestrator_ip }}
-      node2_ip: ${{ steps.tf-output.outputs.node2_ip }}
-      node3_ip: ${{ steps.tf-output.outputs.node3_ip }}
-      orchestrator_private_ip: ${{ steps.tf-output.outputs.orchestrator_private_ip }}
-      node2_private_ip: ${{ steps.tf-output.outputs.node2_private_ip }}
-      node3_private_ip: ${{ steps.tf-output.outputs.node3_private_ip }}
+    timeout-minutes: 120
+    continue-on-error: true  # Never block anything
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout e2e-test repo
+        uses: actions/checkout@v4
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      - name: Set up Python and uv
+        uses: astral-sh/setup-uv@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: us-east-1
+          python-version: '3.12'
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_wrapper: false
+      - name: Install e2e dependencies
+        run: uv sync
 
-      - name: Generate SSH keypair
+      - name: Install mycelium CLI
         run: |
-          ssh-keygen -t ed25519 -f /tmp/e2e-key -N ""
-          echo "TF_VAR_ssh_public_key=$(cat /tmp/e2e-key.pub)" >> "$GITHUB_ENV"
+          curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
+          mycelium --version
 
-      - name: Upload SSH key as artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ssh-key
-          path: /tmp/e2e-key
-          retention-days: 1
+      - name: Start mycelium hub
+        run: |
+          mycelium init --api-url http://localhost:8000 2>/dev/null || true
+          mycelium up --detach
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:8000/health > /dev/null 2>&1 && echo "Backend healthy" && break
+            [ "$i" -eq 60 ] && echo "ERROR: backend not healthy" && exit 1
+            sleep 2
+          done
 
-      - name: Terraform Init & Apply
-        working-directory: ${{ env.INFRA_DIR }}
+      - name: Configure CLI
+        run: |
+          mycelium config set server.api_url http://localhost:8000 2>/dev/null || true
+          {
+            [ -n "$LLM_API_KEY" ]  && echo "LLM_API_KEY=$LLM_API_KEY"
+            [ -n "$LLM_BASE_URL" ] && echo "LLM_BASE_URL=$LLM_BASE_URL"
+            [ -n "$LLM_MODEL" ]    && echo "LLM_MODEL=$LLM_MODEL"
+          } > ~/.mycelium/.env || true
+
+      - name: Run canary suite (Tier C — informational only)
         env:
-          TF_VAR_matrix_shared_secret: ${{ secrets.MATRIX_SHARED_SECRET }}
-          TF_VAR_mycelium_db_password: ${{ secrets.MYCELIUM_DB_PASSWORD }}
-          TF_VAR_bedrock_access_key_id: ${{ secrets.BEDROCK_ACCESS_KEY_ID }}
-          TF_VAR_bedrock_secret_access_key: ${{ secrets.BEDROCK_SECRET_ACCESS_KEY }}
+          MYCELIUM_BACKEND_URL: http://localhost:8000
+          MYCELIUM_CANARY_ROOM: ${{ github.event.inputs.canary_room || 'api-design-review' }}
         run: |
-          terraform init
-          terraform apply -auto-approve
+          echo "=== Canary run — results are INFORMATIONAL only ==="
+          echo "Room: $MYCELIUM_CANARY_ROOM"
 
-      - name: Capture outputs
-        id: tf-output
-        working-directory: ${{ env.INFRA_DIR }}
-        run: |
-          echo "orchestrator_ip=$(terraform output -raw orchestrator_ip)" >> "$GITHUB_OUTPUT"
-          echo "node2_ip=$(terraform output -raw node2_ip)" >> "$GITHUB_OUTPUT"
-          echo "node3_ip=$(terraform output -raw node3_ip)" >> "$GITHUB_OUTPUT"
-          echo "orchestrator_private_ip=$(terraform output -raw orchestrator_private_ip)" >> "$GITHUB_OUTPUT"
-          echo "node2_private_ip=$(terraform output -raw node2_private_ip)" >> "$GITHUB_OUTPUT"
-          echo "node3_private_ip=$(terraform output -raw node3_private_ip)" >> "$GITHUB_OUTPUT"
+          mkdir -p artifacts/pyats-runinfo artifacts/pyats-archive
+          uv run pyats run job jobs/canary_job.py \
+            --datafile data/canary_datafile.yaml \
+            --html-logs artifacts \
+            --runinfo-dir artifacts/pyats-runinfo \
+            --archive-dir artifacts/pyats-archive \
+            --no-archive-subdir || echo "Canary run finished (non-zero exit is OK for Tier C)"
 
-      - name: Save Terraform state
-        uses: actions/upload-artifact@v4
-        with:
-          name: tf-state
-          path: ${{ env.INFRA_DIR }}/terraform.tfstate
-          retention-days: 1
-
-  # ─── Phase 2: Configure cluster ─────────────────────────────────────────────
-  configure:
-    name: Configure E2E Cluster
-    needs: provision
-    runs-on: ubuntu-latest
-    env:
-      ORCH_IP: ${{ needs.provision.outputs.orchestrator_ip }}
-      NODE2_IP: ${{ needs.provision.outputs.node2_ip }}
-      NODE3_IP: ${{ needs.provision.outputs.node3_ip }}
-      ORCH_PRIV: ${{ needs.provision.outputs.orchestrator_private_ip }}
-      NODE2_PRIV: ${{ needs.provision.outputs.node2_private_ip }}
-      NODE3_PRIV: ${{ needs.provision.outputs.node3_private_ip }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download SSH key
-        uses: actions/download-artifact@v4
-        with:
-          name: ssh-key
-          path: /tmp
-
-      - name: Setup SSH
-        run: |
-          chmod 600 /tmp/e2e-key
-          mkdir -p ~/.ssh
-          cat >> ~/.ssh/config <<EOF
-          Host orch
-            HostName $ORCH_IP
-            User ubuntu
-            IdentityFile /tmp/e2e-key
-            StrictHostKeyChecking no
-          Host node2
-            HostName $NODE2_IP
-            User ubuntu
-            IdentityFile /tmp/e2e-key
-            StrictHostKeyChecking no
-          Host node3
-            HostName $NODE3_IP
-            User ubuntu
-            IdentityFile /tmp/e2e-key
-            StrictHostKeyChecking no
-          EOF
-
-      - name: Wait for instances to be ready
-        run: |
-          for host in orch node2 node3; do
-            echo "Waiting for $host..."
-            for i in $(seq 1 60); do
-              if ssh $host "test -f /home/ubuntu/.e2e-ready" 2>/dev/null; then
-                echo "$host is ready"
-                break
-              fi
-              sleep 10
-            done
-          done
-
-      - name: Deploy services on orchestrator
-        run: |
-          # Copy compose files and start services
-          scp -r infra/docker-compose/ orch:~/.mycelium/docker/
-
-          ssh orch << 'REMOTE'
-          cd ~/.mycelium/docker
-          source ~/.mycelium/.env
-          docker compose up -d
-          # Wait for services to be healthy
-          for i in $(seq 1 30); do
-            if curl -sf http://localhost:8000/health > /dev/null 2>&1; then
-              echo "Backend healthy"
-              break
-            fi
-            sleep 5
-          done
-          REMOTE
-
-      - name: Configure agent nodes
-        run: |
-          # Distribute SSH keys so nodes can reach each other
-          ORCH_PUB=$(ssh orch "cat ~/.ssh/id_ed25519.pub")
-          for host in node2 node3; do
-            ssh $host "echo '$ORCH_PUB' >> ~/.ssh/authorized_keys"
-          done
-
-          # Configure OpenClaw on each node with correct IPs
-          ssh orch "bash ~/configure-cluster.sh $ORCH_PRIV $NODE2_PRIV $NODE3_PRIV"
-
-      - name: Register Matrix accounts & refresh tokens
-        run: |
-          ssh orch "cd ~/mycelium-e2e-test && bash scripts/refresh-matrix-tokens.sh"
-
-      - name: Start OpenClaw gateways
-        run: |
-          for host in orch node2 node3; do
-            ssh $host "systemctl --user start openclaw-gateway"
-          done
-          sleep 10  # Let gateways connect
-
-  # ─── Phase 3: Run tests ─────────────────────────────────────────────────────
-  test:
-    name: Run E2E Test Suite
-    needs: [provision, configure]
-    runs-on: ubuntu-latest
-    env:
-      ORCH_IP: ${{ needs.provision.outputs.orchestrator_ip }}
-    steps:
-      - name: Download SSH key
-        uses: actions/download-artifact@v4
-        with:
-          name: ssh-key
-          path: /tmp
-
-      - name: Setup SSH
-        run: |
-          chmod 600 /tmp/e2e-key
-          cat >> ~/.ssh/config <<EOF
-          Host orch
-            HostName $ORCH_IP
-            User ubuntu
-            IdentityFile /tmp/e2e-key
-            StrictHostKeyChecking no
-          EOF
-
-      - name: Run full test suite
-        timeout-minutes: 60
-        run: |
-          ssh orch << 'REMOTE'
-          cd ~/mycelium-e2e-test
-          source ~/.mycelium/.env
-          uv run pytest tests/test_mycelium_e2e.py -v 2>&1 | tee /tmp/e2e-results.log
-          REMOTE
-
-      - name: Collect results
-        if: always()
-        run: |
-          scp orch:/tmp/e2e-results.log ./e2e-results.log || true
-          scp orch:~/.mycelium/e2e-logs/e2e_run_*.log ./e2e-detailed.log || true
-
-      - name: Upload test results
+      - name: Upload canary results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-results
-          path: |
-            e2e-results.log
-            e2e-detailed.log
-          retention-days: 30
+          name: canary-results-${{ github.run_id }}
+          path: artifacts/
+          retention-days: 60
 
-      - name: Check results
-        run: |
-          if grep -q "Test run completed. Result: PASS" e2e-detailed.log 2>/dev/null; then
-            echo "✅ E2E suite PASSED"
-          else
-            echo "❌ E2E suite FAILED"
-            grep -E "FAILED CHECKS:" -A 50 e2e-detailed.log || true
-            exit 1
-          fi
-
-  # ─── Phase 4: Teardown ──────────────────────────────────────────────────────
-  teardown:
-    name: Destroy Infrastructure
-    needs: [provision, test]
-    if: always() && !inputs.skip_teardown
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: us-east-1
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_wrapper: false
-
-      - name: Download Terraform state
-        uses: actions/download-artifact@v4
-        with:
-          name: tf-state
-          path: ${{ env.INFRA_DIR }}
-
-      - name: Download SSH key (for TF var)
-        uses: actions/download-artifact@v4
-        with:
-          name: ssh-key
-          path: /tmp
-
-      - name: Terraform Destroy
-        working-directory: infra/terraform
-        env:
-          TF_VAR_ssh_public_key: "unused-for-destroy"
-          TF_VAR_matrix_shared_secret: "unused"
-          TF_VAR_mycelium_db_password: "unused"
-          TF_VAR_bedrock_access_key_id: "unused"
-          TF_VAR_bedrock_secret_access_key: "unused"
-        run: |
-          terraform init
-          terraform destroy -auto-approve
+      - name: Tear down
+        if: always()
+        run: mycelium down 2>/dev/null || true

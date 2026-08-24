@@ -35,8 +35,11 @@ if _ROOT not in sys.path:
 
 RUNTIME_ENV_VAR = "MYCELIUM_E2E_RUNTIME"
 
-RUNTIME_COMPOSE = "compose"
+RUNTIME_LOCAL = "local"
 RUNTIME_LAB = "lab"
+
+# Back-compat alias — compose is now local
+RUNTIME_COMPOSE = RUNTIME_LOCAL
 
 
 def no_cleanup() -> bool:
@@ -65,16 +68,18 @@ def keep_rooms() -> bool:
     """
     return os.environ.get("MYCELIUM_E2E_KEEP_ROOMS", "").lower() in {"1", "true", "yes"}
 
-RUNTIMES_ALL = frozenset({RUNTIME_COMPOSE, RUNTIME_LAB})
+RUNTIMES_ALL = frozenset({RUNTIME_LOCAL, RUNTIME_LAB})
 RUNTIME_LAB_ONLY = frozenset({RUNTIME_LAB})
 
-TESTBED_COMPOSE = "testbeds/compose.yaml"
+TESTBED_LOCAL = "testbeds/local.yaml"
 TESTBED_LAB = "testbeds/lab.yaml"
 
-# ``testbed.name`` values from ``testbeds/*.yaml`` — used when pyATS has
-# already loaded a topology object (``runtime.testbed`` or ``run(testbed=)``).
-TESTBED_NAME_COMPOSE = "mycelium-compose"
+# Back-compat
+TESTBED_COMPOSE = TESTBED_LOCAL
+
+TESTBED_NAME_LOCAL = "mycelium-local"
 TESTBED_NAME_LAB = "mycelium-lab"
+TESTBED_NAME_COMPOSE = TESTBED_NAME_LOCAL
 
 
 class JobRuntimeMismatchError(RuntimeError):
@@ -87,12 +92,12 @@ class InvalidE2ERuntimeError(ValueError):
 
 def testbed_path_for_runtime(runtime: str) -> str:
     """Map a runtime label to the canonical testbed YAML path."""
-    if runtime == RUNTIME_COMPOSE:
-        return TESTBED_COMPOSE
+    if runtime in (RUNTIME_LOCAL, "compose"):
+        return TESTBED_LOCAL
     if runtime == RUNTIME_LAB:
         return TESTBED_LAB
     raise InvalidE2ERuntimeError(
-        f"unsupported runtime {runtime!r}; expected {RUNTIME_COMPOSE!r} or {RUNTIME_LAB!r}",
+        f"unsupported runtime {runtime!r}; expected {RUNTIME_LOCAL!r} or {RUNTIME_LAB!r}",
     )
 
 
@@ -100,14 +105,17 @@ def active_e2e_runtime(job_default: str) -> str:
     """Pick compose vs lab from env, CI auto-detect, or the job default."""
     explicit = os.environ.get(RUNTIME_ENV_VAR, "").strip().lower()
     if explicit:
+        # Normalise legacy "compose" alias
+        if explicit == "compose":
+            explicit = RUNTIME_LOCAL
         if explicit not in RUNTIMES_ALL:
             raise InvalidE2ERuntimeError(
-                f"{RUNTIME_ENV_VAR} must be {RUNTIME_COMPOSE!r} or {RUNTIME_LAB!r}, got {explicit!r}",
+                f"{RUNTIME_ENV_VAR} must be {RUNTIME_LOCAL!r} or {RUNTIME_LAB!r}, got {explicit!r}",
             )
         return explicit
 
     if os.environ.get("GITHUB_ACTIONS", "").lower() in ("1", "true", "yes"):
-        return RUNTIME_COMPOSE
+        return RUNTIME_LOCAL
 
     return job_default
 
@@ -138,30 +146,24 @@ def runtime_resolution_source(job_default: str) -> str:
 
 
 def runtime_for_testbed(testbed_path: str) -> str:
-    """Return ``compose``, ``lab``, or ``compose`` (for aio) from a testbed file path."""
+    """Return ``local`` or ``lab`` from a testbed file path."""
     normalized = testbed_path.replace("\\", "/").rstrip("/")
-    if normalized.endswith("compose.yaml"):
-        return RUNTIME_COMPOSE
+    if normalized.endswith("local.yaml") or normalized.endswith("compose.yaml") or normalized.endswith("aio.yaml"):
+        return RUNTIME_LOCAL
     if normalized.endswith("lab.yaml"):
         return RUNTIME_LAB
-    if normalized.endswith("aio.yaml"):
-        # aio is a single-host variant — treated as compose for job runtime checks.
-        return RUNTIME_COMPOSE
     return "unknown"
 
 
 def runtime_for_testbed_object(testbed: Any) -> str:
-    """Return ``compose`` or ``lab`` from a loaded pyATS Testbed."""
+    """Return ``local`` or ``lab`` from a loaded pyATS Testbed."""
     if testbed is None:
         return "unknown"
     name = getattr(testbed, "name", "") or ""
-    if name == TESTBED_NAME_COMPOSE:
-        return RUNTIME_COMPOSE
+    if name in (TESTBED_NAME_LOCAL, "mycelium-compose", "mycelium-aio"):
+        return RUNTIME_LOCAL
     if name == TESTBED_NAME_LAB:
         return RUNTIME_LAB
-    if name == "mycelium-aio":
-        # aio is a single-host variant — treated as compose for job runtime checks.
-        return RUNTIME_COMPOSE
     return "unknown"
 
 

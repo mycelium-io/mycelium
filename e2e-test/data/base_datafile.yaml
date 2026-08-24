@@ -1,160 +1,30 @@
 ---
-# Base datafile for Mycelium E2E tests — parameters only.
-#
-# Defines the service topology and shared runtime parameters. Per-suite
-# testcase UIDs live in suite-specific datafiles (``weekly_datafile.yaml``,
-# ``core_datafile.yaml``, etc.) that extend this file or an env overlay
-# (``lab_datafile.yaml``, ``local_datafile.yaml``).
-#
-# All URLs/IPs can be overridden via environment variables at runtime.
+# Base datafile for SLIM-native Mycelium E2E tests.
+# All URLs can be overridden via environment variables.
 
 parameters:
 
-  # ── Service Topology ────────────────────────────────────────────────────
+  # ── Service Topology ──────────────────────────────────────────────────────
   topology:
     backend:
       base_url: "%ENV{MYCELIUM_BACKEND_URL, http://localhost:8000}"
       api_path: "/api"
       health_path: "/health"
 
-    cfn_mgmt:
-      base_url: "%ENV{CFN_MGMT_URL, http://localhost:9000}"
-      health_path: "/health"
-
-    cfn_node_svc:
-      base_url: "%ENV{CFN_SVC_URL, http://localhost:9002}"
-      health_path: "/api/internal/diagnostics/health"
-
-    matrix:
-      base_url: "%ENV{MATRIX_URL, http://localhost:8008}"
-      health_path: "/_matrix/client/versions"
-      shared_secret: "%ENV{MATRIX_SHARED_SECRET, e2e-shared-secret}"
-      test_room_alias: "#agents:local"
-      test_room_id: "%ENV{E2E_MATRIX_ROOM_ID, !XSQgKkMAXJHhTwQLTE:local}"
-
-  # ── Agent Definitions ───────────────────────────────────────────────────
-  agents:
-    local:
-      agent-alpha:
-        display_name: "Alpha"
-        matrix_token_env: "MATRIX_TOKEN_AGENT_ALPHA"
-      agent-beta:
-        display_name: "Beta"
-        matrix_token_env: "MATRIX_TOKEN_AGENT_BETA"
-      agent-gamma:
-        display_name: "Gamma"
-        matrix_token_env: "MATRIX_TOKEN_AGENT_GAMMA"
-      agent-delta:
-        display_name: "Delta"
-        matrix_token_env: "MATRIX_TOKEN_AGENT_DELTA"
-
-  # Fixed runtime handles per logical host + adapter. Scenario rows use
-  # ``role`` keys that resolve through ``roles``; ``slots`` is the full
-  # set ensured in CommonSetup before the suite room is created.
-  agent_pools:
-    hub:
-      openclaw:
-        slots: [agent-alpha, agent-beta, agent-gamma, agent-delta]
-        roles:
-          alpha: agent-alpha
-          beta: agent-beta
-          gamma: agent-gamma
-          delta: agent-delta
-          planner: agent-gamma
-          lawyer-a: agent-alpha
-          lawyer-b: agent-beta
-      hermes:
-        slots: [alpha-he, beta-he, gamma-he]
-        roles:
-          alpha-he: alpha-he
-          beta-he: beta-he
-          gamma-he: gamma-he
-      cursor:
-        slots: []
-        roles:
-          alpha-cu: alpha-cu
-          beta-cu: beta-cu
-          front-cu: front-cu
-    spoke1:
-      openclaw:
-        slots: [claire-agent]
-        roles:
-          beta: claire-agent
-          lawyer-b: claire-agent
-      hermes:
-        slots: [beta-he]
-        roles:
-          beta-he: beta-he
-          back-he: beta-he
-      cursor:
-        slots: []
-        roles:
-          designer: designer
-          beta-cu: beta-cu
-    spoke2:
-      openclaw:
-        slots: [oclw5-agent]
-        roles:
-          gamma: oclw5-agent
-      hermes:
-        slots: [gamma-he]
-        roles:
-          gamma-he: gamma-he
-          ops: gamma-he
-      cursor:
-        slots: []
-        roles:
-          ops: ops
-
-  # ── Shared Test Parameters ──────────────────────────────────────────────
-  room_prefix: "e2e-test"
-  shared_mycelium_room: "%ENV{E2E_MYCELIUM_ROOM, mycelium_room}"
+  # ── Shared Test Parameters ────────────────────────────────────────────────
+  room_prefix: "qa-coord-fresh"
 
   # Timeouts (seconds)
   timeouts:
     http_default: 10
     cli_default: 30
-    negotiation_wait: 600
-    convergence_poll: 5
-    agent_idle_wait: 20
-    session_spawn_wait: 60
+    stub_session_wait: 120
+    stub_turn_wait: 45
+    live_session_wait: 900
+    live_turn_wait: 180
 
-  # ── Failure Thresholds ──────────────────────────────────────────────────
-  # pyATS max_failures: abort the suite after this many testcase failures.
-  # Prevents burning CI minutes and LLM credits when infra is broken.
-  # Set to null/0 to disable (run all tests regardless).
+  # pyATS: abort suite after N failures (0 = run all)
   max_failures: 5
 
   # Logging
   log_dir: "%ENV{MYCELIUM_E2E_LOG_DIR, ~/.mycelium/e2e-logs}"
-  trace_dir: "%ENV{MYCELIUM_TRACE_DIR, ~/.mycelium/e2e-logs/traces}"
-
-  # SSH configuration for remote hosts
-  ssh:
-    key_path: "~/.ssh/ioc.pem"
-    user: "ubuntu"
-    connect_timeout: 5
-
-  # OpenClaw configuration
-  openclaw:
-    max_session_files: 5
-    session_reset_tags:
-      - "mycelium-room"
-      - "matrix:channel:"
-
-  # ── Cursor Adapter Configuration ────────────────────────────────────────
-  cursor:
-    hub_host: "%ENV{CURSOR_HUB_HOST, 10.0.50.125}"
-    spoke_hosts:
-      oclw3: "%ENV{OCLW3_IP, 10.0.50.171}"
-      oclw5: "%ENV{OCLW5_IP, 10.0.50.142}"
-    openclaw_counterpart: "claire-agent"
-    dispatch_timeout: 120
-    negotiation_timeout: 600
-
-  # ── Convergence Scenario Defaults ───────────────────────────────────────
-  convergence:
-    default_topic: "Sprint planning for Q3 release"
-    max_rounds: 15
-    consensus_timeout: 600
-    poll_interval: 5

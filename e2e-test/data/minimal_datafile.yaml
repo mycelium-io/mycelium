@@ -1,6 +1,0 @@
----
-parameters: {}
-
-testcases:
-  SimpleTest:
-    uid: "minimal:001"

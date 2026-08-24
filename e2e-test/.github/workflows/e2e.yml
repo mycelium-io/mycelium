@@ -1,65 +1,28 @@
 name: E2E Tests
 
-# This workflow tests the **mycelium** product end-to-end. There are
-# three trigger paths:
+# Trigger paths:
+# 1. Push to any non-main branch + PRs → Tier A (pr suite, ~10 min)
+# 2. Nightly cron 05:00 UTC → Tier A + B (nightly suite, ~30 min)
+# 3. Cross-repo dispatch from mycelium repo → pr or nightly
+# 4. workflow_dispatch → manual with suite choice
 #
-# 1. Local CI for changes to this repo (e2e tooling): push to any
-#    non-main branch + PRs into main. These default to the `pr` suite.
-#    ``fix/e2e-workflow`` is workflow_dispatch-only (no push CI).
-#
-# 2. Schedule:
-#    - 05:00 UTC daily → `nightly` suite (pr + nightly tiers)
-#    - 06:00 UTC Monday → `weekly_full` suite (legacy comprehensive)
-#
-# 3. **Cross-repo dispatch from the mycelium repo.** A mycelium PR or
-#    branch CI fires a ``repository_dispatch`` event into this repo and
-#    we run the matrix against the requested mycelium ref. Convention:
-#    mycelium PR branches are named ``PR<n>`` (e.g. ``PR123``).
-#
-#    From the mycelium repo:
-#
-#        - uses: peter-evans/repository-dispatch@v3
-#          with:
-#            token: ${{ secrets.E2E_REPO_PAT }}
-#            repository: mycelium-io/mycelium-e2e-test
-#            event-type: mycelium-pr-test
-#            client-payload: |
-#              {
-#                "mycelium_ref": "${{ github.event.pull_request.head.sha }}",
-#                "pr_number": "${{ github.event.pull_request.number }}",
-#                "suite": "pr"
-#              }
-#
-#    Event types:
-#    - ``mycelium-pr-test``   → defaults to suite=`pr`     (~30min budget)
-#    - ``mycelium-nightly``   → defaults to suite=`nightly`
-#    - ``mycelium-full-test`` → defaults to suite=`weekly_full`
-#
-#    Payload fields (all optional except mycelium_ref):
-#    - ``mycelium_ref``    (required) branch / tag / SHA in mycelium repo
-#    - ``pr_number``       displayed in job name for traceability
-#    - ``suite``           overrides the event-type default
-#    - ``spoke_adapters``  e.g. ``"openclaw,cursor,hermes"``
-#    - ``datafile``        relative to data/
+# Tier C (canary) is NOT triggered here — it runs from canary_job.py manually
+# or via a separate weekly workflow. It never blocks release.
 
 on:
   push:
     branches:
       - '**'
       - '!main'
-      - '!fix/e2e-workflow'
   pull_request:
     branches: [main]
-  # schedule:
-  #   # Nightly @ 05:00 UTC — runs the `pr,nightly` tier set.
-  #   - cron: '0 5 * * *'
-  #   # Weekly Monday @ 06:00 UTC — runs the legacy full suite.
-  #   - cron: '0 6 * * 1'
+  schedule:
+    # Nightly 05:00 UTC — Tier A + B
+    - cron: '0 5 * * *'
   repository_dispatch:
     types:
       - mycelium-pr-test
       - mycelium-nightly
-      - mycelium-full-test
   workflow_dispatch:
     inputs:
       suite:
@@ -67,86 +30,30 @@ on:
         type: choice
         default: 'pr'
         options:
-          - pr          # three-axis matrix, pr tier only (~30min budget)
-          - nightly     # three-axis matrix, pr+nightly tiers
-          - weekly_full # legacy full suite (core/distributed/convergence/integration/cursor)
-          - sanity
-          - core
-          - convergence
-          - distributed
-          - integration
+          - pr        # Tier A only (~10 min)
+          - nightly   # Tier A + B (~30 min)
+      mycelium_ref:
+        description: 'Mycelium repo ref (branch/tag/SHA). Empty = use release install.'
+        default: ''
       datafile:
         description: 'Datafile override (relative to data/)'
-        default: 'ci_datafile.yaml'
-      image_tag:
-        description: 'Mycelium image tag'
-        default: 'latest'
-      stub_embeddings:
-        description: 'Use stub embeddings (skip model download)'
-        type: boolean
-        default: true
-      mycelium_ref:
-        description: 'Mycelium repo ref — leave empty or "main" to use release install; set a branch/tag/SHA to build from source'
         default: ''
-      spoke_adapters:
-        description: 'Comma-separated adapters to start on each spoke (openclaw,cursor,hermes)'
-        default: 'openclaw'
-      hub_adapters:
-        description: 'Comma-separated adapters on the hub device (openclaw,cursor,hermes)'
-        default: 'openclaw'
 
 env:
-  COMPOSE_FILE: infra/compose.e2e.yaml
-  MYCELIUM_IMAGE_TAG: ${{ github.event.inputs.image_tag || github.event.client_payload.image_tag || 'latest' }}
-  MYCELIUM_STUB_EMBEDDINGS: ${{ github.event.inputs.stub_embeddings == 'false' && '0' || '1' }}
-  MYCELIUM_DB_PASSWORD: password
-  CFN_NAME: mycelium-cfn
   LLM_MODEL: ${{ secrets.LLM_MODEL || vars.LLM_MODEL || '' }}
   LLM_API_KEY: ${{ secrets.LLM_API_KEY || vars.LLM_API_KEY || '' }}
   LLM_BASE_URL: ${{ secrets.LLM_BASE_URL || vars.LLM_BASE_URL || '' }}
-  CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY || vars.CURSOR_API_KEY || '' }}
-  CURSOR_MODEL: ${{ secrets.CURSOR_MODEL || vars.CURSOR_MODEL || 'claude-4.5-haiku' }}
-  # Spokes default to openclaw-only for legacy parity; PR / nightly /
-  # full runs from the mycelium repo can override via workflow inputs or
-  # client_payload fields.
-  SPOKE_ADAPTERS: ${{ github.event.inputs.spoke_adapters || github.event.client_payload.spoke_adapters || 'openclaw' }}
-  HUB_ADAPTERS: ${{ github.event.inputs.hub_adapters || github.event.client_payload.hub_adapters || 'openclaw,cursor' }}
-  # Optional cursor auth bind-mount for compose hub/spoke cursor tests.
-  HOST_CURSOR_AUTH: ${{ secrets.HOST_CURSOR_AUTH || '' }}
 
 jobs:
   e2e:
-    # Effective suite selection (cascaded; first match wins):
-    #   1. workflow_dispatch input  → user-chosen via UI
-    #   2. repository_dispatch.client_payload.suite override → mycelium CI explicit choice
-    #   3. repository_dispatch event type default:
-    #         mycelium-pr-test    → pr
-    #         mycelium-nightly    → nightly
-    #         mycelium-full-test  → weekly_full
-    #   4. schedule cron string    → nightly (05:00) or weekly_full (06:00 Mon)
-    #   5. fallback (push / PR)    → pr
-    #
-    # Job-level timeout is the kill-switch; per-tier wall-clock is
-    # capped tighter by `compute_timeout_seconds` in scenarios.py.
-    name: ${{ format('E2E {0}{1}', github.event.inputs.suite || github.event.client_payload.suite || (github.event.action == 'mycelium-pr-test' && 'pr') || (github.event.action == 'mycelium-nightly' && 'nightly') || (github.event.action == 'mycelium-full-test' && 'weekly_full') || (github.event_name == 'schedule' && github.event.schedule == '0 6 * * 1' && 'weekly_full') || (github.event_name == 'schedule' && 'nightly') || 'pr', github.event.client_payload.pr_number && format(' (mycelium PR {0})', github.event.client_payload.pr_number) || '') }}
+    name: ${{ format('E2E {0}', github.event.inputs.suite || (github.event.action == 'mycelium-pr-test' && 'pr') || (github.event.action == 'mycelium-nightly' && 'nightly') || (github.event_name == 'schedule' && 'nightly') || 'pr') }}
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ fromJSON('{"pr":40,"nightly":90,"weekly_full":130,"sanity":40,"core":90,"convergence":60,"distributed":90,"integration":90}')[github.event.inputs.suite || github.event.client_payload.suite || (github.event.action == 'mycelium-pr-test' && 'pr') || (github.event.action == 'mycelium-nightly' && 'nightly') || (github.event.action == 'mycelium-full-test' && 'weekly_full') || (github.event_name == 'schedule' && github.event.schedule == '0 6 * * 1' && 'weekly_full') || (github.event_name == 'schedule' && 'nightly') || 'pr'] }}
+    timeout-minutes: ${{ fromJSON('{"pr":20,"nightly":60}')[github.event.inputs.suite || (github.event.action == 'mycelium-pr-test' && 'pr') || (github.event.action == 'mycelium-nightly' && 'nightly') || (github.event_name == 'schedule' && 'nightly') || 'pr'] || 20 }}
 
     steps:
       - name: Checkout e2e-test repo
         uses: actions/checkout@v4
 
-      - name: Login to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      # Centralised "what is this run?" resolution. Every downstream
-      # step references ``steps.resolve.outputs.{suite,mycelium_ref,
-      # pr_number,datafile}`` so the cascading expression isn't
-      # repeated in 5 different places.
       - name: Resolve run parameters
         id: resolve
         env:
@@ -155,13 +62,10 @@ jobs:
           INPUT_DATAFILE: ${{ github.event.inputs.datafile }}
           PAYLOAD_SUITE: ${{ github.event.client_payload.suite }}
           PAYLOAD_REF: ${{ github.event.client_payload.mycelium_ref }}
-          PAYLOAD_DATAFILE: ${{ github.event.client_payload.datafile }}
-          PAYLOAD_PR: ${{ github.event.client_payload.pr_number }}
           DISPATCH_ACTION: ${{ github.event.action }}
-          EVENT_SCHED: ${{ github.event.schedule }}
           EVENT_NAME: ${{ github.event_name }}
+          EVENT_SCHED: ${{ github.event.schedule }}
         run: |
-          # ── suite ───────────────────────────────────────────────────
           if [ -n "$INPUT_SUITE" ]; then
             SUITE="$INPUT_SUITE"
           elif [ -n "$PAYLOAD_SUITE" ]; then
@@ -170,32 +74,26 @@ jobs:
             SUITE="pr"
           elif [ "$DISPATCH_ACTION" = "mycelium-nightly" ]; then
             SUITE="nightly"
-          elif [ "$DISPATCH_ACTION" = "mycelium-full-test" ]; then
-            SUITE="weekly_full"
-          elif [ "$EVENT_NAME" = "schedule" ] && [ "$EVENT_SCHED" = "0 6 * * 1" ]; then
-            SUITE="weekly_full"
           elif [ "$EVENT_NAME" = "schedule" ]; then
             SUITE="nightly"
           else
             SUITE="pr"
           fi
 
-          # ── mycelium_ref ────────────────────────────────────────────
           MYCELIUM_REF="${INPUT_REF:-$PAYLOAD_REF}"
 
-          # ── datafile ────────────────────────────────────────────────
-          DATAFILE="${INPUT_DATAFILE:-${PAYLOAD_DATAFILE:-ci_datafile.yaml}}"
-
-          # ── PR number (only for cross-repo dispatch from mycelium) ─
-          PR_NUMBER="$PAYLOAD_PR"
-
-          echo "suite=$SUITE"          | tee -a "$GITHUB_OUTPUT"
-          echo "mycelium_ref=$MYCELIUM_REF" | tee -a "$GITHUB_OUTPUT"
-          echo "datafile=$DATAFILE"    | tee -a "$GITHUB_OUTPUT"
-          echo "pr_number=$PR_NUMBER"  | tee -a "$GITHUB_OUTPUT"
-          if [ -n "$PR_NUMBER" ]; then
-            echo "ℹ️  Triggered from mycelium PR #$PR_NUMBER"
+          DATAFILE="$INPUT_DATAFILE"
+          if [ -z "$DATAFILE" ]; then
+            case "$SUITE" in
+              nightly) DATAFILE="nightly_datafile.yaml" ;;
+              *)       DATAFILE="pr_datafile.yaml" ;;
+            esac
           fi
+
+          echo "suite=$SUITE"             >> "$GITHUB_OUTPUT"
+          echo "mycelium_ref=$MYCELIUM_REF" >> "$GITHUB_OUTPUT"
+          echo "datafile=$DATAFILE"       >> "$GITHUB_OUTPUT"
+          echo "Resolved: suite=$SUITE datafile=$DATAFILE ref=$MYCELIUM_REF"
 
       - name: Determine build mode
         env:
@@ -206,405 +104,115 @@ jobs:
             echo "Building mycelium from source (ref=$REF)"
           else
             echo "BUILD_FROM_SOURCE=false" >> "$GITHUB_ENV"
-            echo "Using release artifacts"
           fi
 
-      - name: Checkout mycelium repo (for source build)
+      - name: Checkout mycelium repo (source build)
         if: env.BUILD_FROM_SOURCE == 'true'
         uses: actions/checkout@v4
         with:
           repository: mycelium-io/mycelium
           ref: ${{ steps.resolve.outputs.mycelium_ref }}
-          path: mycelium
+          path: mycelium-src
           token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build mycelium images from source
-        if: env.BUILD_FROM_SOURCE == 'true'
-        run: |
-          docker build -t mycelium-backend:dev \
-            -f mycelium/fastapi-backend/Dockerfile mycelium/fastapi-backend/
-          docker build -t mycelium-collector:dev \
-            -f mycelium/mycelium-cli/Dockerfile.collector mycelium/mycelium-cli/
-
-          # Build a CLI wheel so the spoke image can install the same branch
-          pip install --quiet build
-          python -m build --wheel --outdir /tmp/cli-wheel mycelium/mycelium-cli/
-          CLI_WHL=$(ls /tmp/cli-wheel/*.whl | head -1)
-          cp "$CLI_WHL" infra/mycelium_cli.whl
-
-          docker build -t mycelium-spoke:dev \
-            --target spoke \
-            -f infra/Dockerfile.spoke .
-
-          echo "MYCELIUM_BACKEND_IMAGE=mycelium-backend:dev" >> "$GITHUB_ENV"
-          echo "MYCELIUM_COLLECTOR_IMAGE=mycelium-collector:dev" >> "$GITHUB_ENV"
-          echo "MYCELIUM_SPOKE_IMAGE=mycelium-spoke:dev" >> "$GITHUB_ENV"
-
-      - name: Verify LLM configuration
-        run: |
-          echo "=== LLM environment check ==="
-          [ -n "$LLM_API_KEY" ]   && echo "LLM_API_KEY:   set (${#LLM_API_KEY} chars)" \
-                                   || echo "LLM_API_KEY:   *** NOT SET ***"
-          [ -n "$LLM_BASE_URL" ]  && echo "LLM_BASE_URL:  set (${#LLM_BASE_URL} chars)" \
-                                   || echo "LLM_BASE_URL:  *** NOT SET ***"
-          [ -n "$LLM_MODEL" ]     && echo "LLM_MODEL:     $LLM_MODEL" \
-                                   || echo "LLM_MODEL:     *** NOT SET ***"
-          if [ -z "$LLM_API_KEY" ] || [ -z "$LLM_BASE_URL" ]; then
-            echo ""
-            echo "WARNING: LLM-dependent tests (synthesis, catchup, convergence) will"
-            echo "be skipped unless all three vars are set in GitHub secrets or vars."
-          fi
-
-      - name: Set adapter matrix for scenario suites
-        run: |
-          case "${{ steps.resolve.outputs.suite }}" in
-            pr|nightly|weekly_full)
-              echo "HUB_ADAPTERS=openclaw,cursor,hermes" >> "$GITHUB_ENV"
-              echo "SPOKE_ADAPTERS=openclaw,cursor,hermes" >> "$GITHUB_ENV"
-              echo "PR/nightly/full suite → hub=$HUB_ADAPTERS spokes=$SPOKE_ADAPTERS"
-              ;;
-          esac
-
-      - name: Start infrastructure
-        run: |
-          docker compose -f $COMPOSE_FILE up -d \
-            mycelium-db matrix-synapse
-          echo "Waiting for DB and Matrix..."
-          docker compose -f $COMPOSE_FILE up -d \
-            ioc-cfn-mgmt-plane-svc ioc-cfn-svc
-          docker compose -f $COMPOSE_FILE up -d \
-            mycelium-backend
-
-      - name: Wait for services healthy
-        run: |
-          services=(e2e-mycelium-db e2e-matrix-synapse e2e-cfn-mgmt e2e-cfn-node e2e-mycelium-backend)
-          for svc in "${services[@]}"; do
-            echo "Waiting for $svc..."
-            for i in $(seq 1 60); do
-              status=$(docker inspect --format='{{.State.Health.Status}}' "$svc" 2>/dev/null || echo "missing")
-              if [ "$status" = "healthy" ]; then
-                echo "  $svc is healthy"
-                break
-              fi
-              if [ "$i" -eq 60 ]; then
-                echo "  ERROR: $svc did not become healthy (status=$status)"
-                docker logs "$svc" --tail 50
-                exit 1
-              fi
-              sleep 3
-            done
-          done
-
-      - name: Run Matrix bootstrap
-        run: |
-          docker compose -f $COMPOSE_FILE run --rm matrix-bootstrap
-
-      - name: Run Mycelium bootstrap
-        run: |
-          docker compose -f $COMPOSE_FILE run --rm mycelium-bootstrap
-
-      - name: Fetch workspace/MAS IDs and propagate to backend
-        run: |
-          # The bootstrap container wrote config to the e2e-shared volume.
-          # Derive the compose project name to get the correct volume prefix.
-          PROJECT=$(docker compose -f $COMPOSE_FILE config --format json | python3 -c "import sys,json; print(json.load(sys.stdin).get('name','infra'))")
-          VOLUME="${PROJECT}_e2e-shared"
-          echo "Reading IDs from volume: $VOLUME"
-          eval "$(docker run --rm \
-            -v "${VOLUME}:/shared:ro" \
-            python:3.12-slim \
-            python3 -c "
-          import json, pathlib
-          p = pathlib.Path('/shared/mycelium-config.json')
-          if p.exists():
-              cfg = json.loads(p.read_text())
-              for key in ('workspace_id', 'mas_id'):
-                  v = cfg.get(key, '')
-                  if v:
-                      print(f'{key.upper()}={v}')
-          " 2>/dev/null)"
-
-          if [ -n "$WORKSPACE_ID" ] || [ -n "$MAS_ID" ]; then
-            echo "WORKSPACE_ID=$WORKSPACE_ID"
-            echo "MAS_ID=$MAS_ID"
-            # Persist to GITHUB_ENV so subsequent steps (e.g. openclaw-hub)
-            # don't cause Compose to recreate the backend with empty values.
-            echo "WORKSPACE_ID=$WORKSPACE_ID" >> "$GITHUB_ENV"
-            echo "MAS_ID=$MAS_ID" >> "$GITHUB_ENV"
-            docker compose -f $COMPOSE_FILE stop mycelium-backend
-            export WORKSPACE_ID MAS_ID
-            docker compose -f $COMPOSE_FILE up -d mycelium-backend
-            for i in $(seq 1 30); do
-              status=$(docker inspect --format='{{.State.Health.Status}}' e2e-mycelium-backend 2>/dev/null || echo "missing")
-              [ "$status" = "healthy" ] && break
-              sleep 2
-            done
-            echo "Backend restarted with WORKSPACE_ID=$WORKSPACE_ID MAS_ID=$MAS_ID (status=$status)"
-          else
-            echo "No workspace/MAS ID found — skipping"
-          fi
-
-      - name: Start collector and OpenClaw gateway
-        run: |
-          docker compose -f $COMPOSE_FILE up -d --no-recreate mycelium-collector
-          echo "Waiting for collector..."
-          for i in $(seq 1 30); do
-            status=$(docker inspect --format='{{.State.Health.Status}}' e2e-mycelium-collector 2>/dev/null || echo "missing")
-            [ "$status" = "healthy" ] && break
-            sleep 2
-          done
-          echo "  Collector: $status"
-
-          docker compose -f $COMPOSE_FILE up -d --no-recreate openclaw-hub
-          echo "Waiting for OpenClaw hub to start..."
-          for i in $(seq 1 90); do
-            status=$(docker inspect --format='{{.State.Health.Status}}' e2e-openclaw-hub 2>/dev/null || echo "missing")
-            if [ "$status" = "healthy" ]; then
-              echo "  OpenClaw hub is healthy"
-              break
-            fi
-            if [ "$i" -eq 90 ]; then
-              echo "  WARNING: OpenClaw hub did not become healthy (status=$status)"
-              docker logs e2e-openclaw-hub --tail 30
-            fi
-            sleep 2
-          done
-
-      - name: Start spoke devices
-        run: |
-          docker compose -f $COMPOSE_FILE up -d --no-recreate openclaw-spoke1 openclaw-spoke2
-          echo "Waiting for spokes to start..."
-          for svc in e2e-openclaw-spoke1 e2e-openclaw-spoke2; do
-            for i in $(seq 1 90); do
-              status=$(docker inspect --format='{{.State.Health.Status}}' "$svc" 2>/dev/null || echo "missing")
-              if [ "$status" = "healthy" ]; then
-                echo "  $svc is healthy"
-                break
-              fi
-              if [ "$i" -eq 90 ]; then
-                echo "  WARNING: $svc did not become healthy (status=$status)"
-                docker logs "$svc" --tail 30
-              fi
-              sleep 2
-            done
-          done
-
-      - name: Verify backend container environment
-        run: |
-          echo "=== Backend container env check ==="
-          for var in LLM_API_KEY LLM_BASE_URL LLM_MODEL WORKSPACE_ID MAS_ID CFN_SVC_URL CFN_MGMT_URL; do
-            val=$(docker exec e2e-mycelium-backend printenv "$var" 2>/dev/null || echo "")
-            if [ -n "$val" ]; then
-              if [ "$var" = "LLM_API_KEY" ]; then
-                echo "  $var: set (${#val} chars)"
-              else
-                echo "  $var: $val"
-              fi
-            else
-              echo "  $var: *** NOT SET ***"
-            fi
-          done
-
-          cfn_url=$(docker exec e2e-mycelium-backend printenv CFN_SVC_URL 2>/dev/null || echo "")
-          if [ -z "$cfn_url" ]; then
-            echo "ERROR: CFN_SVC_URL must be set on the backend for CFN coordination"
-            exit 1
-          fi
-
-          echo ""
-          echo "=== Backend /health LLM status ==="
-          curl -sf http://localhost:8000/health | python3 -c "
-          import sys, json
-          h = json.load(sys.stdin)
-          llm = h.get('llm', 'missing')
-          print(json.dumps(llm, indent=2) if isinstance(llm, dict) else f'llm: {llm}')
-          " 2>/dev/null || echo "Could not fetch /health"
 
       - name: Set up Python and uv
         uses: astral-sh/setup-uv@v4
         with:
           python-version: '3.12'
 
-      - name: Install dependencies
+      - name: Install e2e dependencies
         run: uv sync
 
       - name: Install mycelium CLI (release)
         if: env.BUILD_FROM_SOURCE != 'true'
         run: |
           curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
-          mycelium --version || mycelium --help | head -5
+          mycelium --version
 
       - name: Install mycelium CLI (from source)
         if: env.BUILD_FROM_SOURCE == 'true'
         run: |
-          uv tool install ./mycelium/mycelium-cli --force --link-mode=copy
-          mycelium --version || mycelium --help | head -5
+          uv tool install ./mycelium-src/mycelium-cli --force --link-mode=copy
+          mycelium --version
 
-      - name: Initialize mycelium CLI config
+      - name: Start mycelium hub (SLIM node + backend)
         run: |
-          mkdir -p ~/.mycelium
           mycelium init --api-url http://localhost:8000 2>/dev/null || true
-          if [ ! -f ~/.mycelium/config.toml ]; then
-            echo "mycelium init did not create config.toml — writing manually"
-            cat > ~/.mycelium/config.toml <<'TOML'
-          [server]
-          api_url = "http://localhost:8000"
+          mycelium up --detach
+          echo "Waiting for backend..."
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:8000/health > /dev/null 2>&1; then
+              echo "Backend healthy"
+              break
+            fi
+            if [ "$i" -eq 60 ]; then
+              echo "ERROR: Backend did not become healthy after 120s"
+              mycelium logs 2>&1 | tail -30
+              exit 1
+            fi
+            sleep 2
+          done
 
-          [rooms]
-          active = "mycelium_room"
-          TOML
-          fi
+      - name: Configure mycelium CLI
+        run: |
           mycelium config set server.api_url http://localhost:8000 2>/dev/null || true
-          mycelium config set rooms.active mycelium_room 2>/dev/null || true
-
-          # Write .env with LLM + CFN credentials so CLI commands can use them.
-          # In containerized CI the backend gets CFN URLs from compose inline env;
-          # in lab mode these come from the shell env and must land in .env so
-          # backend containers started via env_file pick them up.
           {
-            [ -n "$LLM_API_KEY" ]    && echo "LLM_API_KEY=$LLM_API_KEY"
-            [ -n "$LLM_BASE_URL" ]   && echo "LLM_BASE_URL=$LLM_BASE_URL"
-            [ -n "$LLM_MODEL" ]      && echo "LLM_MODEL=$LLM_MODEL"
-            [ -n "$CFN_SVC_URL" ]    && echo "CFN_SVC_URL=$CFN_SVC_URL"
-            [ -n "$CFN_MGMT_URL" ]   && echo "CFN_MGMT_URL=$CFN_MGMT_URL"
-          } > ~/.mycelium/.env
-          echo "Wrote ~/.mycelium/.env ($(wc -l < ~/.mycelium/.env) lines)"
-
-          echo "=== CLI config.toml ==="
-          cat ~/.mycelium/config.toml
-
-          echo ""
-          echo "=== CLI config verification ==="
-          echo "server.api_url = $(mycelium config get server.api_url 2>/dev/null || echo 'FAILED TO READ')"
-          echo "rooms.active   = $(mycelium config get rooms.active 2>/dev/null || echo 'FAILED TO READ')"
-
-          echo ""
-          echo "=== CLI doctor ==="
+            [ -n "$LLM_API_KEY" ]  && echo "LLM_API_KEY=$LLM_API_KEY"
+            [ -n "$LLM_BASE_URL" ] && echo "LLM_BASE_URL=$LLM_BASE_URL"
+            [ -n "$LLM_MODEL" ]    && echo "LLM_MODEL=$LLM_MODEL"
+          } > ~/.mycelium/.env || true
           mycelium doctor 2>&1 || true
 
-      - name: Verify hub adapters (spoke-entrypoint installs in-container)
+      - name: Verify LLM configuration
         run: |
-          echo "=== Hub adapter check ==="
-          docker inspect --format='{{.State.Status}} (health={{.State.Health.Status}})' e2e-openclaw-hub
-          docker exec e2e-openclaw-hub mycelium --version
-          docker exec e2e-openclaw-hub sh -c 'test -f /home/spoke/.openclaw/extensions/mycelium/dist/index.js'
-          docker exec e2e-openclaw-spoke1 sh -c 'command -v cursor-agent >/dev/null && echo cursor-agent: ok || echo cursor-agent: missing'
-          docker logs e2e-openclaw-hub 2>&1 | grep -E "mycelium-room|adapter add" | tail -10 || true
+          echo "=== LLM environment check ==="
+          [ -n "$LLM_API_KEY" ]  && echo "LLM_API_KEY:  set" || echo "LLM_API_KEY:  NOT SET (LLM tests will skip)"
+          [ -n "$LLM_BASE_URL" ] && echo "LLM_BASE_URL: set" || echo "LLM_BASE_URL: NOT SET"
+          [ -n "$LLM_MODEL" ]    && echo "LLM_MODEL:    $LLM_MODEL" || echo "LLM_MODEL:    NOT SET"
 
       - name: Run E2E tests
         env:
-          MYCELIUM_DATAFILE: ${{ steps.resolve.outputs.datafile }}
+          MYCELIUM_BACKEND_URL: http://localhost:8000
+          MYCELIUM_E2E_RUNTIME: local
           SUITE: ${{ steps.resolve.outputs.suite }}
-          MYCELIUM_E2E_RUNTIME: compose
+          MYCELIUM_DATAFILE: ${{ steps.resolve.outputs.datafile }}
         run: |
-          # Runtime: MYCELIUM_E2E_RUNTIME (also auto-detects GITHUB_ACTIONS).
-          # Jobs load the matching testbed — no --testbed-file required.
-          TESTBED_ARGS=()
           case "$SUITE" in
-            pr)
-              JOB_FILE="jobs/pr_job.py"
-              export MYCELIUM_E2E_TIERS=pr
-              ;;
-            nightly)
-              JOB_FILE="jobs/pr_job.py"
-              export MYCELIUM_E2E_TIERS=pr,nightly
-              ;;
-            weekly_full)
-              JOB_FILE="jobs/weekly_e2e_job.py"
-              ;;
-            *)
-              JOB_FILE="jobs/${SUITE}_job.py"
-              ;;
+            nightly) JOB_FILE="jobs/nightly_job.py" ;;
+            *)       JOB_FILE="jobs/pr_job.py" ;;
           esac
 
           echo "Suite:    $SUITE"
-          echo "Job file: $JOB_FILE"
+          echo "Job:      $JOB_FILE"
           echo "Datafile: $MYCELIUM_DATAFILE"
-          [ -n "${MYCELIUM_E2E_TIERS:-}" ] && echo "Tiers:    $MYCELIUM_E2E_TIERS"
-          [ ${#TESTBED_ARGS[@]} -gt 0 ] && echo "Testbed:  ${TESTBED_ARGS[*]}"
 
           mkdir -p artifacts/pyats-runinfo artifacts/pyats-archive
 
           uv run pyats run job "$JOB_FILE" \
-            "${TESTBED_ARGS[@]}" \
+            --testbed-file testbeds/local.yaml \
             --html-logs artifacts \
             --runinfo-dir artifacts/pyats-runinfo \
             --archive-dir artifacts/pyats-archive \
             --no-archive-subdir
 
-      - name: Print pyATS results summary
+      - name: Print results summary
         if: always()
         run: |
           echo "=== pyATS Results ==="
-
-          # Find the runinfo directory (uncompressed run data)
           RUNINFO=$(ls -td artifacts/pyats-runinfo/*/ 2>/dev/null | head -1)
-          if [ -z "$RUNINFO" ]; then
-            echo "No pyATS runinfo directory found — trying archive ZIP fallback"
-            ZIP=$(ls -t artifacts/pyats-archive/*.zip 2>/dev/null | head -1)
-            if [ -n "$ZIP" ]; then
-              echo "Extracting archive: $ZIP"
-              RUNINFO="artifacts/pyats-runinfo/_extracted"
-              mkdir -p "$RUNINFO"
-              python3 -c "
-          import zipfile, sys
-          with zipfile.ZipFile('$ZIP') as z:
-              z.extractall('$RUNINFO')
-          " 2>/dev/null || unzip -qo "$ZIP" -d "$RUNINFO" 2>/dev/null || true
-            fi
+          if [ -n "$RUNINFO" ]; then
+            for logfile in "$RUNINFO"/TaskLog.rst "$RUNINFO"/TaskLog; do
+              [ -f "$logfile" ] && cat "$logfile" && break
+            done
           fi
 
-          if [ -z "$RUNINFO" ] || [ ! -d "$RUNINFO" ]; then
-            echo "No pyATS archive or runinfo found"
-            echo "Contents of artifacts/:"
-            find artifacts/ -maxdepth 3 -type f 2>/dev/null | head -30 || true
-            exit 0
-          fi
-          echo "Runinfo: $RUNINFO"
-
-          # Print the TaskLog
-          for logfile in "$RUNINFO"/TaskLog.rst "$RUNINFO"/TaskLog; do
-            if [ -f "$logfile" ]; then
-              echo ""
-              echo "=== TaskLog ==="
-              cat "$logfile"
-              break
-            fi
-          done
-
-          # Print results summary if available
-          RESULTS=$(find "$RUNINFO" -name "results.json" -type f 2>/dev/null | head -1)
-          if [ -n "$RESULTS" ]; then
-            echo ""
-            echo "=== Results JSON ==="
-            python3 -c "
-          import json, sys
-          with open('$RESULTS') as f:
-              data = json.load(f)
-          json.dump(data, sys.stdout, indent=2)
-          " 2>/dev/null || cat "$RESULTS"
-          fi
-
-          # List archive contents for debugging
-          echo ""
-          echo "=== Archive contents ==="
-          ls -lhR artifacts/pyats-archive/ 2>/dev/null | head -20 || echo "No archive files"
-
-      - name: Collect container logs
+      - name: Collect service logs
         if: always()
         run: |
           mkdir -p artifacts/logs
-          for svc in e2e-mycelium-db e2e-mycelium-backend e2e-cfn-mgmt e2e-cfn-node e2e-matrix-synapse e2e-mycelium-collector e2e-openclaw-hub e2e-openclaw-spoke1 e2e-openclaw-spoke2; do
-            docker logs "$svc" > "artifacts/logs/${svc}.log" 2>&1 || true
-          done
+          mycelium logs > artifacts/logs/mycelium.log 2>&1 || true
 
-          echo "=== Artifact summary ==="
-          echo "pyats-archive: $(ls artifacts/pyats-archive/*.zip 2>/dev/null | wc -l) ZIP(s)"
-          echo "pyats-runinfo: $(ls -d artifacts/pyats-runinfo/*/ 2>/dev/null | wc -l) run(s)"
-          echo "container logs: $(ls artifacts/logs/*.log 2>/dev/null | wc -l) file(s)"
-          echo "Total: $(du -sh artifacts/ | cut -f1)"
-
-      - name: Upload test results
+      - name: Upload artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -614,5 +222,4 @@ jobs:
 
       - name: Tear down
         if: always()
-        run: |
-          docker compose -f $COMPOSE_FILE down -v --remove-orphans
+        run: mycelium down 2>/dev/null || true

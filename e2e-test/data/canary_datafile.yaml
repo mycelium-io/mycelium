@@ -1,0 +1,12 @@
+---
+extends: base_datafile.yaml
+
+parameters:
+  room_prefix: "qa-soak-canary"
+  max_failures: 0  # never abort — Tier C is informational
+
+  # Canary-specific: rotate rooms weekly, cap at 2-3 episodes per room
+  canary:
+    room: "%ENV{MYCELIUM_CANARY_ROOM, api-design-review}"
+    max_episodes_per_room: 3
+    room_rotation_days: 7

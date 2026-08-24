@@ -1,267 +1,187 @@
-"""Unit tests for coordination flow helpers."""
+"""Unit tests for SLIM-native coordination flow helpers."""
 
 from __future__ import annotations
 
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from libs.coordination_flow import (
-    AgentResponseSnapshot,
-    AgentNegotiationSetup,
-    collect_agent_responses,
-    find_coordination_consensus,
-    parse_session_room_from_cli,
-    poll_for_consensus,
-    poll_negotiation_completion,
-    poll_room_consensus_outcome,
-    setup_agent_driven_negotiation,
+    SUBKIND_CONVERGED,
+    SUBKIND_REJECTED,
+    TERMINAL_SUBKINDS,
+    RoundSnapshot,
+    _parse_l9_commit,
+    collect_room_responses,
+    poll_for_terminal_state,
+    scan_for_terminal,
 )
 
 
-def test_parse_session_room_from_cli_top_level() -> None:
-    stdout = json.dumps({"session_room": "room:session:abc123"})
-    assert parse_session_room_from_cli(stdout, "room") == "room:session:abc123"
+def _l9_commit_msg(subkind: str) -> dict:
+    """Build a minimal l9_commit message."""
+    return {
+        "message_type": "l9_commit",
+        "content": json.dumps({
+            "l9": {"header": {"subkind": subkind}},
+            "payload": {},
+        }),
+    }
 
 
-def test_parse_session_room_from_cli_nested() -> None:
-    stdout = json.dumps({"session": {"display_name": "parent:session:xyz"}})
-    assert parse_session_room_from_cli(stdout, "parent") == "parent:session:xyz"
+# ── _parse_l9_commit ──────────────────────────────────────────────────────────
 
 
-def test_parse_session_room_from_cli_invalid() -> None:
-    assert parse_session_room_from_cli("not-json", "room") is None
+def test_parse_converged() -> None:
+    msg = _l9_commit_msg("converged")
+    result = _parse_l9_commit(msg)
+    assert result is not None
+    assert result["l9"]["header"]["subkind"] == "converged"
 
 
-def test_collect_agent_responses_direct_messages() -> None:
-    messages = [
-        {"id": "1", "message_type": "coordination_tick", "content": "{}"},
-        {
-            "id": "2",
-            "message_type": "direct",
-            "sender_handle": "agent-alpha",
-            "content": '{"action":"accept"}',
-        },
-        {
-            "id": "3",
-            "message_type": "direct",
-            "sender_handle": "agent-beta",
-            "content": '{"action":"accept"}',
-        },
+def test_parse_rejected() -> None:
+    msg = _l9_commit_msg("rejected")
+    result = _parse_l9_commit(msg)
+    assert result is not None
+
+
+def test_parse_non_terminal_subkind_returns_none() -> None:
+    msg = _l9_commit_msg("in_progress")
+    assert _parse_l9_commit(msg) is None
+
+
+def test_parse_wrong_message_type_returns_none() -> None:
+    msg = {"message_type": "broadcast", "content": "{}"}
+    assert _parse_l9_commit(msg) is None
+
+
+def test_parse_invalid_json_returns_raw() -> None:
+    msg = {"message_type": "l9_commit", "content": "not-json-but-converged"}
+    # Non-terminal (can't parse subkind) → None
+    assert _parse_l9_commit(msg) is None
+
+
+# ── scan_for_terminal ─────────────────────────────────────────────────────────
+
+
+def test_scan_finds_converged() -> None:
+    msgs = [
+        {"message_type": "broadcast", "content": "hello"},
+        _l9_commit_msg("converged"),
     ]
-    snapshot = collect_agent_responses(messages, ["agent-alpha", "agent-beta"])
-    assert snapshot.all_responded
-    assert len(snapshot.responses["agent-alpha"]) == 1
-    assert len(snapshot.responses["agent-beta"]) == 1
-
-
-def test_collect_agent_responses_dedupes_by_id() -> None:
-    messages = [
-        {
-            "id": "same",
-            "message_type": "direct",
-            "sender_handle": "agent-alpha",
-            "content": "first",
-        },
-        {
-            "id": "same",
-            "message_type": "direct",
-            "sender_handle": "agent-alpha",
-            "content": "duplicate",
-        },
-    ]
-    seen: set[str] = set()
-    snapshot = collect_agent_responses(
-        messages,
-        ["agent-alpha"],
-        seen_ids=seen,
-    )
-    assert snapshot.responses["agent-alpha"] == ["first"]
-
-
-def test_agent_response_snapshot_all_responded_false_when_missing() -> None:
-    snapshot = AgentResponseSnapshot(responses={"a": ["ok"], "b": []})
-    assert not snapshot.all_responded
-
-
-def test_find_coordination_consensus() -> None:
-    messages = [
-        {"message_type": "direct", "content": "{}"},
-        {
-            "message_type": "coordination_consensus",
-            "content": json.dumps({"plan": "ship it", "broken": False}),
-        },
-    ]
-    payload = find_coordination_consensus(messages)
-    assert payload is not None
-    assert payload["plan"] == "ship it"
-
-
-def test_poll_negotiation_completion_via_session_state() -> None:
-    api = MagicMock()
-    api.get_coordination_sessions.return_value = (
-        200,
-        [
-            {
-                "display_name": "room:session:abc",
-                "state": "complete",
-            }
-        ],
-    )
-    api.get_room_messages.return_value = (
-        200,
-        [
-            {
-                "message_type": "coordination_consensus",
-                "content": json.dumps(
-                    {"plan_file": "plan/tasks.md", "broken": False, "plan": "ship it"}
-                ),
-            }
-        ],
-    )
-    cli = MagicMock()
-    result = poll_negotiation_completion(api, cli, "room", "room:session:abc")
+    result = scan_for_terminal(msgs)
     assert result is not None
-    assert result["coordination_state"] == "complete"
-    assert result["completion_source"] == "coordination_session"
-    assert result["consensus"]["plan_file"] == "plan/tasks.md"
+    assert result["l9"]["header"]["subkind"] == "converged"
 
 
-def test_poll_room_consensus_outcome_via_failed_session() -> None:
+def test_scan_finds_rejected() -> None:
+    msgs = [_l9_commit_msg("rejected")]
+    assert scan_for_terminal(msgs) is not None
+
+
+def test_scan_returns_none_when_absent() -> None:
+    msgs = [{"message_type": "broadcast", "content": "nothing here"}]
+    assert scan_for_terminal(msgs) is None
+
+
+def test_scan_empty_list() -> None:
+    assert scan_for_terminal([]) is None
+
+
+# ── Terminal subkind constants ────────────────────────────────────────────────
+
+
+def test_terminal_subkinds_nonempty() -> None:
+    assert SUBKIND_CONVERGED in TERMINAL_SUBKINDS
+    assert SUBKIND_REJECTED in TERMINAL_SUBKINDS
+
+
+# ── RoundSnapshot ─────────────────────────────────────────────────────────────
+
+
+def test_round_snapshot_all_responded_true() -> None:
+    snap = RoundSnapshot(responses={"stub-a": 2, "stub-b": 1})
+    assert snap.all_responded is True
+
+
+def test_round_snapshot_all_responded_false_when_zero() -> None:
+    snap = RoundSnapshot(responses={"stub-a": 1, "stub-b": 0})
+    assert snap.all_responded is False
+
+
+def test_round_snapshot_all_responded_false_when_empty() -> None:
+    assert RoundSnapshot(responses={}).all_responded is False
+
+
+def test_round_snapshot_total() -> None:
+    snap = RoundSnapshot(responses={"a": 3, "b": 2})
+    assert snap.total_responses() == 5
+
+
+# ── collect_room_responses ────────────────────────────────────────────────────
+
+
+def test_collect_counts_broadcast_per_handle() -> None:
     api = MagicMock()
-    api.get_coordination_sessions.return_value = (
-        200,
-        [
-            {
-                "display_name": "room:session:abc",
-                "state": "failed",
-                "created_at": "2026-06-17T20:43:09Z",
-            }
-        ],
-    )
-    api.get_room_messages.return_value = (200, [])
-    result = poll_room_consensus_outcome(api, "room")
+    api.get_room_messages.return_value = (200, [
+        {"message_type": "broadcast", "sender_handle": "stub-a", "content": "hi"},
+        {"message_type": "broadcast", "sender_handle": "stub-a", "content": "hi2"},
+        {"message_type": "broadcast", "sender_handle": "stub-b", "content": "yo"},
+        {"message_type": "l9_commit", "sender_handle": "aligner", "content": "{}"},
+    ])
+    snap = collect_room_responses(api, "qa-room", ["stub-a", "stub-b"])
+    assert snap.responses == {"stub-a": 2, "stub-b": 1}
+
+
+def test_collect_ignores_non_broadcast() -> None:
+    api = MagicMock()
+    api.get_room_messages.return_value = (200, [
+        {"message_type": "coordination_join", "sender_handle": "stub-a"},
+    ])
+    snap = collect_room_responses(api, "qa-room", ["stub-a"])
+    assert snap.responses == {"stub-a": 0}
+
+
+# ── poll_for_terminal_state ───────────────────────────────────────────────────
+
+
+def test_poll_returns_on_converged_message() -> None:
+    api = MagicMock()
+    api.get_room_messages.return_value = (200, [
+        _l9_commit_msg("converged"),
+    ])
+    result = poll_for_terminal_state(api, "qa-room", timeout=5, poll_interval=1)
     assert result is not None
-    assert result["coordination_state"] == "failed"
-    assert result["completion_source"] == "coordination_session"
+    assert result["converged"] is True
+    assert result["subkind"] == "converged"
 
 
-def test_poll_room_consensus_outcome_scoped_ignores_other_sessions() -> None:
-    """Session-scoped poll must not return a stale terminal session."""
+def test_poll_returns_on_rejected_message() -> None:
     api = MagicMock()
-    api.get_coordination_sessions.return_value = (
-        200,
-        [
-            {
-                "display_name": "room:session:old",
-                "state": "failed",
-                "created_at": "2026-06-18T21:01:02Z",
-            },
-            {
-                "display_name": "room:session:new",
-                "state": "negotiating",
-                "created_at": "2026-06-18T21:11:01Z",
-            },
-        ],
-    )
-    api.get_room_messages.return_value = (200, [])
-
-    parent_result = poll_room_consensus_outcome(api, "room")
-    assert parent_result is not None
-    assert parent_result["session_room"] == "room:session:old"
-
-    scoped_result = poll_room_consensus_outcome(
-        api,
-        "room",
-        session_room="room:session:new",
-    )
-    assert scoped_result is None
-
-
-def test_poll_room_consensus_outcome_via_broken_consensus_message() -> None:
-    api = MagicMock()
-    api.get_coordination_sessions.return_value = (200, [])
-    api.get_room_messages.return_value = (
-        200,
-        [
-            {
-                "message_type": "coordination_consensus",
-                "content": json.dumps(
-                    {
-                        "plan": "Negotiation ended: timeout",
-                        "broken": True,
-                        "session": "room:session:xyz",
-                    }
-                ),
-            }
-        ],
-    )
-    result = poll_room_consensus_outcome(api, "room")
+    api.get_room_messages.return_value = (200, [
+        _l9_commit_msg("rejected"),
+    ])
+    result = poll_for_terminal_state(api, "qa-room", timeout=5, poll_interval=1)
     assert result is not None
-    assert result["coordination_state"] == "failed"
-    assert result["completion_source"] == "coordination_consensus"
+    assert result["converged"] is False
+    assert result["subkind"] == "rejected"
 
 
-def test_setup_agent_driven_negotiation() -> None:
+def test_poll_returns_none_on_timeout() -> None:
     api = MagicMock()
-    cli = MagicMock()
-    cli.session_create.return_value = MagicMock(ok=True, stdout='{"session_room":"room:session:abc"}')
-    cli.session_join.return_value = MagicMock(ok=True)
-    with patch("libs.coordination_flow.resolve_session_room", return_value="room:session:abc"):
-        with patch("libs.coordination_flow.wait_for_message_type", return_value=True):
-            setup = setup_agent_driven_negotiation(
-                api,
-                cli,
-                "room",
-                [("agent-alpha", "speed"), ("agent-beta", "quality")],
-            )
-    assert setup == AgentNegotiationSetup(
-        session_room="room:session:abc",
-        expected_handles=["agent-alpha", "agent-beta"],
+    api.get_room_messages.return_value = (200, [
+        {"message_type": "broadcast", "content": "nothing terminal"},
+    ])
+    result = poll_for_terminal_state(api, "qa-room", timeout=1, poll_interval=1)
+    assert result is None
+
+
+def test_poll_ignores_already_seen_messages() -> None:
+    """If all messages are in seen_ids, should not return them."""
+    api = MagicMock()
+    msg = {**_l9_commit_msg("converged"), "id": "msg-1"}
+    api.get_room_messages.return_value = (200, [msg])
+    seen = {"msg-1"}
+    result = poll_for_terminal_state(
+        api, "qa-room", timeout=1, poll_interval=1, seen_message_ids=seen
     )
-
-
-def test_poll_for_consensus_returns_on_first_terminal_outcome() -> None:
-    api = MagicMock()
-    with patch(
-        "libs.coordination_flow.poll_room_consensus_outcome",
-        side_effect=[None, {"coordination_state": "complete", "completion_source": "coordination_session"}],
-    ):
-        result = poll_for_consensus(api, "room", timeout=10, poll_interval=0)
-    assert result is not None
-    assert result["coordination_state"] == "complete"
-
-
-def test_poll_for_consensus_passes_session_room() -> None:
-    api = MagicMock()
-    with patch(
-        "libs.coordination_flow.poll_room_consensus_outcome",
-        return_value={"coordination_state": "complete"},
-    ) as poll_mock:
-        poll_for_consensus(
-            api,
-            "room",
-            session_room="room:session:abc",
-            timeout=10,
-            poll_interval=0,
-        )
-    poll_mock.assert_called_with(api, "room", session_room="room:session:abc")
-
-
-def test_poll_negotiation_completion_via_consensus_message() -> None:
-    api = MagicMock()
-    api.get_coordination_sessions.return_value = (200, [])
-    api.get_room_messages.return_value = (
-        200,
-        [
-            {
-                "message_type": "coordination_consensus",
-                "content": json.dumps({"plan": "done"}),
-            }
-        ],
-    )
-    cli = MagicMock()
-    result = poll_negotiation_completion(api, cli, "room", "room:session:xyz")
-    assert result is not None
-    assert result["coordination_state"] == "complete"
-    assert result["completion_source"] == "coordination_consensus"
-    assert result["consensus"]["plan"] == "done"
+    assert result is None

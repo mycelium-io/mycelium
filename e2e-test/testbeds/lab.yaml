@@ -1,44 +1,37 @@
 ---
-# Lab testbed - real hardware (oclw3/4/5) reached via SSH.
+# Lab testbed — physical hardware (oclw4 as hub).
 #
-# Usage:
+# The mycelium CLI runs on oclw4 (or this host if pointing at oclw4).
+# Backend runs on oclw4; configure MYCELIUM_BACKEND_URL if running
+# the harness from a different machine.
+#
+# Usage (from oclw4):
 #   pyats run job jobs/pr_job.py --testbed-file testbeds/lab.yaml
 #
-# Devices use logical names (hub/spoke1/spoke2) that match
-# data/scenarios.yaml so the same matrix runs unchanged in any
-# environment. Per-device `custom.transport` selects how libs/host_exec
-# dispatches commands.
+# Usage (from another machine, targeting oclw4):
+#   MYCELIUM_BACKEND_URL=http://10.0.50.125:8000 \
+#     pyats run job jobs/pr_job.py --testbed-file testbeds/lab.yaml
 
 testbed:
   name: mycelium-lab
-  credentials:
-    default:
-      username: "%ENV{SSH_USER, ubuntu}"
 
 devices:
   hub:
     type: linux
     os: linux
-    # `connections:` is required by the pyATS schema even though we
-    # dispatch via libs/host_exec rather than unicon. Keep it as a
-    # placeholder so testbed loading succeeds.
     connections:
       ssh:
         protocol: ssh
-        ip: 10.0.50.125
+        ip: 10.0.50.125  # default oclw4; override via OCLW4_IP (read from custom.ssh_ip)
     custom:
-      role: hub
       transport: ssh
+      # backend_url: external IP — used by spokes and remote runners (requires auth token)
+      backend_url: "%ENV{MYCELIUM_BACKEND_URL, http://10.0.50.125:8000}"
+      # harness_backend_url: localhost — used when harness runs ON oclw4 (auth bypassed)
+      harness_backend_url: "%ENV{MYCELIUM_HARNESS_BACKEND_URL, http://localhost:8000}"
       ssh_ip: "%ENV{OCLW4_IP, 10.0.50.125}"
       ssh_user: "%ENV{SSH_USER, ubuntu}"
       ssh_key: "%ENV{SSH_KEY_PATH, ~/.ssh/ioc.pem}"
-      mycelium_backend_url: "%ENV{MYCELIUM_BACKEND_URL, http://10.0.50.125:8000}"
-      # Pre-authed OpenClaw agent used as the ``--copy-auth-from``
-      # source when ``provision_matrix_agents`` spawns fresh agents.
-      # claire-agent is the manual seed installed during lab
-      # bootstrap; it survives lab redeploys (MODERATE cleanup
-      # doesn't touch ~/.openclaw).
-      openclaw_seed_agent: claire-agent
 
   spoke1:
     type: linux
@@ -48,13 +41,10 @@ devices:
         protocol: ssh
         ip: 10.0.50.171
     custom:
-      role: spoke
       transport: ssh
       ssh_ip: "%ENV{OCLW3_IP, 10.0.50.171}"
       ssh_user: "%ENV{SSH_USER, ubuntu}"
       ssh_key: "%ENV{SSH_KEY_PATH, ~/.ssh/ioc.pem}"
-      mycelium_backend_url: "%ENV{MYCELIUM_BACKEND_URL, http://10.0.50.125:8000}"
-      openclaw_seed_agent: claire-agent
 
   spoke2:
     type: linux
@@ -64,10 +54,7 @@ devices:
         protocol: ssh
         ip: 10.0.50.142
     custom:
-      role: spoke
       transport: ssh
       ssh_ip: "%ENV{OCLW5_IP, 10.0.50.142}"
       ssh_user: "%ENV{SSH_USER, ubuntu}"
       ssh_key: "%ENV{SSH_KEY_PATH, ~/.ssh/ioc.pem}"
-      mycelium_backend_url: "%ENV{MYCELIUM_BACKEND_URL, http://10.0.50.125:8000}"
-      openclaw_seed_agent: oclw5-agent

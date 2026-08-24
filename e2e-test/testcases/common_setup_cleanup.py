@@ -1,10 +1,4 @@
-"""CommonSetup and CommonCleanup base classes for Mycelium E2E suites.
-
-Every suite script inherits from these to get consistent environment
-detection, service client initialization, pre-suite hygiene, and
-post-suite teardown. Follows the motific-performance pattern of layered
-subsections in CommonSetup with state accumulated in ``testscript.parameters``.
-"""
+"""CommonSetup and CommonCleanup base classes for SLIM-native Mycelium E2E suites."""
 
 from __future__ import annotations
 
@@ -12,302 +6,172 @@ import logging
 import os
 import pathlib
 import time
+from typing import Any
 
 from pyats import aetest
 
-from libs.cfn_api import CfnMgmtAPI, CfnNodeSvcAPI
 from libs.environment import EnvironmentInfo, detect_environment
 from libs.mycelium_api import MyceliumAPI
 from libs.mycelium_cli import MyceliumCLI
-from libs.openclaw import (
-    reset_agent_sessions,
-    trim_agent_sessions,
-    trim_remote_agent_sessions,
-    wait_for_agents_idle,
-)
 
 log = logging.getLogger(__name__)
 
-# Script-level default parameters — overridden by datafile and job.
 parameters = {}
 
-# Agent topology for local + remote hosts
-_DEFAULT_LOCAL_AGENTS = ("agent-alpha", "agent-beta", "agent-gamma", "agent-delta")
+
+def require_devices(section: Any, testscript: Any, *device_names: str) -> None:
+    """Skip *section* if any of *device_names* are absent from the loaded testbed.
+
+    Call this at the top of a testcase ``@aetest.setup`` or ``@aetest.test``
+    when the test requires devices beyond the basic ``hub``::
+
+        @aetest.setup
+        def check_topology(self, testscript):
+            require_devices(self, testscript, "spoke1", "spoke2")
+
+    If the testbed was not loaded (no ``--testbed-file`` passed), the check
+    is skipped — we assume single-host mode where all tests can run.
+    """
+    devices = testscript.parameters.get("testbed_devices") or {}
+    if not devices:
+        return  # no testbed loaded — single-host mode, don't gate
+    missing = [d for d in device_names if d not in devices]
+    if missing:
+        section.skipped(
+            f"Testbed does not include device(s) {missing!r} — "
+            f"available: {list(devices.keys())}. "
+            f"Pass a testbed that includes these devices to run this test."
+        )
 
 
 class MyceliumCommonSetup(aetest.CommonSetup):
-    """Shared setup subsections: env detection, service clients, pre-suite hygiene."""
+    """Setup: initialize clients, configure CLI, probe environment, create test room."""
+
+    @aetest.subsection
+    def read_testbed_topology(self, testscript, testbed=None):
+        """Read device topology from the loaded testbed and store in parameters.
+
+        The ``testbed`` argument is automatically injected by pyATS when
+        ``--testbed-file`` is passed to ``pyats run job``.
+
+        Stores ``testbed_devices`` (dict of device_name → custom attrs) and
+        ``testbed_name`` so testcases can gate on available topology without
+        importing pyATS topology objects directly.
+        """
+        if testbed is None:
+            testscript.parameters["testbed_devices"] = {}
+            testscript.parameters["testbed_name"] = "none"
+            log.info("No testbed loaded — running in single-host mode")
+            return
+
+        devices = {}
+        for name, device in testbed.devices.items():
+            custom = {}
+            if hasattr(device, "custom"):
+                custom = dict(device.custom) if device.custom else {}
+            devices[name] = custom
+
+        testscript.parameters["testbed_devices"] = devices
+        testscript.parameters["testbed_name"] = getattr(testbed, "name", "unknown")
+        testscript.parameters["testbed"] = testbed
+
+        log.info(
+            "Testbed: name=%s devices=%s",
+            testscript.parameters["testbed_name"],
+            list(devices.keys()),
+        )
+
+        # Use harness_backend_url (localhost, auth-bypassed) when running on the hub.
+        # Fall back to backend_url (external IP, needs auth) for remote runners.
+        # Never override an explicit MYCELIUM_BACKEND_URL env var.
+        hub_custom = devices.get("hub", {})
+        if not os.environ.get("MYCELIUM_BACKEND_URL"):
+            tb_url = (
+                hub_custom.get("harness_backend_url")
+                or hub_custom.get("backend_url")
+                or ""
+            )
+            if tb_url:
+                resolved = self._resolve_env(tb_url)
+                os.environ["MYCELIUM_BACKEND_URL"] = resolved
+                log.info("Backend URL from testbed hub.custom: %s", resolved)
 
     @aetest.subsection
     def initialize_clients(self, testscript, topology=None):
-        """Create API/CLI client instances from topology config."""
         topo = topology or {}
         backend_cfg = topo.get("backend", {})
-        cfn_mgmt_cfg = topo.get("cfn_mgmt", {})
-        cfn_node_cfg = topo.get("cfn_node_svc", {})
-        matrix_cfg = topo.get("matrix", {})
-
         backend_url = self._resolve_env(backend_cfg.get("base_url", "http://localhost:8000"))
-        cfn_mgmt_url = self._resolve_env(cfn_mgmt_cfg.get("base_url", "http://localhost:9000"))
-        cfn_svc_url = self._resolve_env(cfn_node_cfg.get("base_url", "http://localhost:9002"))
-        matrix_url = self._resolve_env(matrix_cfg.get("base_url", "http://localhost:8008"))
         api_path = backend_cfg.get("api_path", "/api")
 
         try:
             testscript.parameters["api"] = MyceliumAPI(base_url=backend_url, api_path=api_path)
             testscript.parameters["cli"] = MyceliumCLI()
-            testscript.parameters["cfn_mgmt"] = CfnMgmtAPI(base_url=cfn_mgmt_url)
-            testscript.parameters["cfn_node_svc"] = CfnNodeSvcAPI(base_url=cfn_svc_url)
+            testscript.parameters["backend_url"] = backend_url
         except Exception as exc:
-            self.failed(
-                f"Client initialization failed: {exc}",
-                goto=["common_cleanup"],
-            )
+            self.failed(f"Client initialization failed: {exc}", goto=["common_cleanup"])
 
-        testscript.parameters["matrix_url"] = matrix_url
-        testscript.parameters["matrix_config"] = {
-            k: self._resolve_env(v) if isinstance(v, str) else v for k, v in matrix_cfg.items()
-        }
-        testscript.parameters["backend_url"] = backend_url
-
-        log.info(
-            "Clients initialized: backend=%s cfn_mgmt=%s cfn_svc=%s matrix=%s",
-            backend_url,
-            cfn_mgmt_url,
-            cfn_svc_url,
-            matrix_url,
-        )
+        log.info("Clients initialized: backend=%s", backend_url)
 
     @aetest.subsection
-    def configure_cli(self, testscript, shared_mycelium_room="mycelium_room"):
-        """Ensure the mycelium CLI config points at the correct backend.
-
-        Runs ``mycelium init --api-url <backend>`` to seed
-        ``~/.mycelium/config.toml`` if absent, then unconditionally sets
-        the API URL and active room via ``config set`` and verifies the
-        values were persisted correctly.
-
-        Config keys (from mycelium CLI's ``MyceliumConfig``):
-          - ``server.api_url`` — backend URL
-          - ``rooms.active``   — default room name
-        """
+    def configure_cli(self, testscript):
+        """Point the CLI at the test backend and verify the config."""
         cli: MyceliumCLI = testscript.parameters["cli"]
         backend_url: str = testscript.parameters["backend_url"]
-        room = self._resolve_env(shared_mycelium_room)
 
         r = cli.run("init", "--api-url", backend_url)
         if not r.ok:
-            log.debug("mycelium init returned rc=%d (may already be initialized)", r.returncode)
+            log.debug("mycelium init rc=%d (may already be initialized)", r.returncode)
 
-        expected = {"server.api_url": backend_url, "rooms.active": room}
-        for key, value in expected.items():
-            r = cli.config_set(key, value)
-            if not r.ok:
-                log.warning("Failed to set CLI %s: %s", key, r.error_message)
+        r = cli.config_set("server.api_url", backend_url)
+        if not r.ok:
+            log.warning("Failed to set server.api_url: %s", r.error_message)
 
         self._ensure_dotenv()
-
-        def _url_equiv(a: str | None, b: str) -> bool:
-            """True if URLs are equivalent, treating any local IP as localhost."""
-            if a is None:
-                return False
-            if a == b:
-                return True
-            import socket
-            import urllib.parse
-
-            pa, pb = urllib.parse.urlparse(a), urllib.parse.urlparse(b)
-            if pa.port != pb.port or pa.scheme != pb.scheme:
-                return False
-
-            def _is_local(hostname: str) -> bool:
-                if hostname in ("localhost", "127.0.0.1"):
-                    return True
-                try:
-                    local_ips = {
-                        info[4][0]
-                        for info in socket.getaddrinfo(socket.gethostname(), None)
-                    } | {"127.0.0.1"}
-                    return socket.gethostbyname(hostname) in local_ips
-                except Exception:
-                    return False
-
-            return _is_local(pa.hostname) and _is_local(pb.hostname)
-
-        errors = []
-        for key, value in expected.items():
-            r = cli.config_get(key)
-            actual = r.stdout.strip() if r.ok else None
-            if not _url_equiv(actual, value) and actual != value:
-                errors.append(f"{key}: expected={value!r} got={actual!r}")
-        if errors:
-            log.warning("CLI config verification failed: %s", "; ".join(errors))
 
         r = cli.doctor()
         if r.ok:
             log.info("CLI doctor: %s", r.stdout.strip()[:200])
         else:
-            log.warning("CLI doctor failed (rc=%d): %s", r.returncode, r.error_message[:200])
-
-        log.info("CLI configured: server.api_url=%s rooms.active=%s", backend_url, room)
+            log.warning("CLI doctor rc=%d: %s", r.returncode, r.error_message[:200])
 
     @aetest.subsection
-    def detect_environment(self, testscript, room_prefix="e2e-test"):
-        """Probe all services and set skip flags."""
+    def detect_environment(self, testscript):
         api: MyceliumAPI = testscript.parameters["api"]
-        cfn_mgmt: CfnMgmtAPI = testscript.parameters["cfn_mgmt"]
-        cfn_node_svc: CfnNodeSvcAPI = testscript.parameters["cfn_node_svc"]
-        matrix_url: str = testscript.parameters["matrix_url"]
-
-        env = detect_environment(api, cfn_mgmt, cfn_node_svc, matrix_url, room_prefix)
+        env = detect_environment(api)
         testscript.parameters["env"] = env
 
         if not env.backend_reachable:
             self.failed("Backend unreachable — cannot proceed", goto=["common_cleanup"])
 
         log.info(
-            "Environment: llm=%s cfn=%s matrix=%s blocked=%s",
+            "Environment: slim=%s llm=%s",
+            env.slim_reachable,
             not env.skip_llm_tests,
-            not env.skip_cfn_tests,
-            not env.skip_matrix_tests,
-            env.coordination_blocked_reason,
         )
 
     @aetest.subsection
-    def provision_matrix_tokens(self, testscript):
-        """Get a fresh Matrix access token for agent-alpha via the Synapse admin API.
-
-        Stores the token as ``matrix_token_agent_alpha`` in testscript.parameters
-        so hub_and_spoke testcases can send Matrix triggers without requiring the
-        token to be pre-set in the environment.
-
-        Falls back to MATRIX_TOKEN_AGENT_ALPHA env var if already set.
-        Stores None when Matrix is not reachable or the secret is missing —
-        hub_and_spoke testcases gate on this value in check_prerequisites.
-        """
-        import asyncio
-
-        env: EnvironmentInfo = testscript.parameters.get("env")
-        if not env or not env.matrix_reachable:
-            log.info("Matrix not reachable — skipping token provisioning")
-            testscript.parameters["matrix_token_agent_alpha"] = None
-            return
-
-        # Honour a pre-set token (CI injects via environment / secrets store).
-        existing = os.environ.get("MATRIX_TOKEN_AGENT_ALPHA", "").strip()
-        if existing:
-            log.info("Using MATRIX_TOKEN_AGENT_ALPHA from environment")
-            testscript.parameters["matrix_token_agent_alpha"] = existing
-            return
-
-        # Prefer datafile topology value (already resolved via %ENV{} by initialize_clients)
-        # over raw os.environ so the datafile default is honoured even without an env var.
-        matrix_config: dict = testscript.parameters.get("matrix_config") or {}
-        shared_secret = (
-            matrix_config.get("shared_secret")
-            or os.environ.get("MATRIX_SHARED_SECRET", "")
-        ).strip()
-        if not shared_secret:
-            log.warning(
-                "MATRIX_SHARED_SECRET not set — hub_and_spoke tests will skip "
-                "(set MATRIX_TOKEN_AGENT_ALPHA or MATRIX_SHARED_SECRET)"
-            )
-            testscript.parameters["matrix_token_agent_alpha"] = None
-            return
-
-        matrix_url: str = testscript.parameters.get("matrix_url", "")
-        try:
-            from libs.matrix_client import get_agent_token, get_observer_token
-
-            # Provision agent-alpha's token (used as a join credential).
-            token = asyncio.run(
-                get_agent_token(matrix_url, "agent-alpha", shared_secret=shared_secret)
-            )
-            testscript.parameters["matrix_token_agent_alpha"] = token
-            log.info("Provisioned Matrix token for agent-alpha via admin API")
-
-            # Provision a neutral sender token (test-observer) for Matrix triggers.
-            # Using a non-participant sender avoids echo suppression — the gateway
-            # ignores messages sent by the same account it is syncing for, so triggers
-            # sent as agent-alpha would be silently dropped for agent-alpha's own loop.
-            try:
-                obs_token = asyncio.run(get_observer_token(matrix_url, shared_secret=shared_secret))
-                testscript.parameters["matrix_token_trigger_sender"] = obs_token
-                log.info("Provisioned Matrix trigger sender token (test-observer)")
-            except Exception as exc:
-                log.warning("Failed to provision trigger sender token: %s — will fall back to agent-alpha", exc)
-                testscript.parameters["matrix_token_trigger_sender"] = token
-
-        except Exception as exc:
-            log.warning("Failed to provision Matrix token for agent-alpha: %s", exc)
-            testscript.parameters["matrix_token_agent_alpha"] = None
-            testscript.parameters["matrix_token_trigger_sender"] = None
-
-    @aetest.subsection
-    def provision_cfn_ids(self, testscript):
-        """Fetch workspace & MAS IDs from CFN mgmt and persist them.
-
-        Mirrors what ``mycelium install`` does: resolve the primary
-        workspace, find (or create) a MAS, and write both IDs to
-        ``~/.mycelium/.env`` so the CLI and backend can use them.
-        """
-        env: EnvironmentInfo = testscript.parameters["env"]
-        cfn_mgmt: CfnMgmtAPI = testscript.parameters["cfn_mgmt"]
-
-        workspace_id = env.cfn_primary_workspace_id
-        if not workspace_id:
-            log.warning("No workspace_id — skipping MAS provisioning")
-            testscript.parameters["mas_id"] = None
-            return
-
-        mas_id = cfn_mgmt.get_primary_mas_id(workspace_id)
-        if not mas_id:
-            log.info("No MAS found — creating default MAS for workspace %s", workspace_id)
-            mas_id = cfn_mgmt.create_mas(workspace_id, "e2e-default")
-
-        testscript.parameters["mas_id"] = mas_id
-        testscript.parameters["workspace_id"] = workspace_id
-        log.info("CFN IDs: workspace=%s mas=%s", workspace_id, mas_id)
-
-        self._persist_cfn_ids(workspace_id, mas_id)
-
-    @aetest.subsection
-    def presuite_hygiene(self, testscript, room_prefix="e2e-test"):
-        """Clean stale sessions and trim agent history.
-
-        Must run before create_test_room so we don't delete our own room.
-        """
+    def presuite_hygiene(self, testscript, room_prefix="qa-"):
+        """Clean stale QA rooms from previous runs."""
         from jobs._common import no_cleanup
         if no_cleanup():
             log.info("presuite_hygiene: skipped (MYCELIUM_E2E_NO_CLEANUP)")
             return
         api: MyceliumAPI = testscript.parameters["api"]
         owned = testscript.parameters.get("owned_rooms", set())
-
-        for prefix in ("e2e-", "dist-e2e-", "mycelium_room:session:"):
+        for prefix in ("qa-coord-fresh-", "qa-memory-", "qa-cross-episode-stub-"):
             deleted = api.cleanup_rooms(prefix, exclude=owned)
             if deleted:
                 log.info("Cleaned %d stale '%s*' rooms", deleted, prefix)
 
-        trimmed = trim_agent_sessions(max_files=5)
-        if trimmed:
-            log.info("Trimmed %d local session files", trimmed)
-
-        remote_hosts = self._get_remote_hosts(testscript)
-        containers = self._get_containers(testscript)
-        if remote_hosts:
-            trim_remote_agent_sessions(remote_hosts, max_files=5, containers=containers)
-
     @aetest.subsection
-    def create_test_room(self, testscript, room_prefix="e2e-test"):
-        """Create the session-scoped test room."""
-        room_suffix = str(int(time.time()))[-7:]
-        room_name = f"{room_prefix}-{room_suffix}"
+    def create_test_room(self, testscript, room_prefix="qa-coord-fresh"):
+        suffix = f"{int(time.time()) % 10_000_000:07d}"
+        room_name = f"{room_prefix}-{suffix}"
         testscript.parameters["room_name"] = room_name
-        testscript.parameters["owned_rooms"] = {room_name}
+        testscript.parameters.setdefault("owned_rooms", set()).add(room_name)
 
         api: MyceliumAPI = testscript.parameters["api"]
-        status, data = api.create_room(room_name, description="pyATS E2E test room")
+        status, _ = api.create_room(room_name, description="E2E test room")
         if status not in (200, 201):
             self.failed(
                 f"Failed to create test room {room_name}: status={status}",
@@ -315,214 +179,46 @@ class MyceliumCommonSetup(aetest.CommonSetup):
             )
         log.info("Test room created: %s", room_name)
 
-    @aetest.subsection
-    def reset_agent_sessions(self, testscript):
-        """Reset negotiation-carrying sessions via gateway RPC."""
-        agents_by_host = self._get_agents_by_host(testscript)
-        containers = self._get_containers(testscript)
-        ok, failed = reset_agent_sessions(agents_by_host, containers=containers)
-        if ok or failed:
-            log.info("Session reset: %d ok, %d failed", ok, failed)
-
-    @aetest.subsection
-    def wait_agents_idle(self, testscript):
-        """Wait for any in-flight agent turns to finish."""
-        from jobs._common import get_agent_idle_wait
-
-        agents_by_host = self._get_agents_by_host(testscript)
-        containers = self._get_containers(testscript)
-        idle_wait = get_agent_idle_wait()
-        counts = wait_for_agents_idle(
-            agents_by_host,
-            timeout=idle_wait,
-            poll_interval=2.0,
-            containers=containers,
-        )
-        busy = {h: c for h, c in counts.items() if c > 0}
-        if busy:
-            log.warning("Agents still busy after %ds: %s", idle_wait, busy)
-        else:
-            log.info("All agents idle")
-
-    @aetest.subsection
-    def dump_openclaw_diagnostics(self, testscript):
-        """Print openclaw.json and gateway status for debug visibility."""
-        import subprocess
-
-        for label, cmd in [
-            (
-                "openclaw.json",
-                [
-                    "docker",
-                    "exec",
-                    "e2e-openclaw-hub",
-                    "sh",
-                    "-c",
-                    "cat $HOME/.openclaw/openclaw.json",
-                ],
-            ),
-            (
-                "openclaw status",
-                [
-                    "docker",
-                    "exec",
-                    "e2e-openclaw-hub",
-                    "openclaw",
-                    "status",
-                ],
-            ),
-        ]:
-            try:
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
-                output = result.stdout.strip() or result.stderr.strip()
-                log.info("=== %s ===\n%s", label, output[:16000])
-            except Exception as exc:
-                log.warning("Could not get %s: %s", label, exc)
-
-    # ── Helpers ───────────────────────────────────────────────────────────
+    # ── Helpers ───────────────────────────────────────────────────────────────
 
     @staticmethod
     def _ensure_dotenv() -> None:
-        """Write ``~/.mycelium/.env`` with LLM credentials from the environment.
-
-        The CLI reads this file for LLM_API_KEY, LLM_BASE_URL, and
-        LLM_MODEL when running commands like ``synthesize`` and ``catchup``.
-        ``mycelium init`` may not create it, so we ensure it exists.
-        """
         env_path = pathlib.Path.home() / ".mycelium" / ".env"
         env_path.parent.mkdir(parents=True, exist_ok=True)
-
         lines = []
-        for var in (
-            "LLM_API_KEY",
-            "LLM_BASE_URL",
-            "LLM_MODEL",
-            "WORKSPACE_ID",
-            "MAS_ID",
-            "MATRIX_SHARED_SECRET",
-        ):
+        for var in ("LLM_API_KEY", "LLM_BASE_URL", "LLM_MODEL"):
             val = os.environ.get(var)
             if val:
                 lines.append(f"{var}={val}")
-
         if lines:
             env_path.write_text("\n".join(lines) + "\n")
-            log.info("Wrote %s (%d vars)", env_path, len(lines))
         elif not env_path.exists():
             env_path.touch()
-            log.debug("Created empty %s (no LLM vars in environment)", env_path)
-
-    @staticmethod
-    def _persist_cfn_ids(workspace_id: str | None, mas_id: str | None) -> None:
-        """Append WORKSPACE_ID and MAS_ID to ``~/.mycelium/.env``."""
-        env_path = pathlib.Path.home() / ".mycelium" / ".env"
-        env_path.parent.mkdir(parents=True, exist_ok=True)
-
-        existing = env_path.read_text() if env_path.exists() else ""
-        additions = []
-        for key, val in [("WORKSPACE_ID", workspace_id), ("MAS_ID", mas_id)]:
-            if val and f"{key}=" not in existing:
-                additions.append(f"{key}={val}")
-        if additions:
-            with env_path.open("a") as f:
-                f.write("\n".join(additions) + "\n")
-            log.info("Appended %s to %s", ", ".join(k.split("=")[0] for k in additions), env_path)
 
     @staticmethod
     def _resolve_env(value: str) -> str:
-        """Resolve %ENV{VAR, default} patterns in datafile values."""
         if not value.startswith("%ENV{"):
             return value
-        inner = value[5:-1]  # strip %ENV{ and }
+        inner = value[5:-1]
         parts = inner.split(",", 1)
         var_name = parts[0].strip()
         default = parts[1].strip() if len(parts) > 1 else ""
         return os.environ.get(var_name, default)
 
-    @staticmethod
-    def _get_remote_hosts(testscript) -> list[str]:
-        remote_cfg = testscript.parameters.get("remote_hosts", {})
-        hosts = []
-        for host_info in remote_cfg.values():
-            ip = host_info.get("ip", "")
-            if ip.startswith("%ENV{"):
-                ip = MyceliumCommonSetup._resolve_env(ip)
-            if ip:
-                hosts.append(ip)
-        if not hosts:
-            hosts = [
-                os.environ.get("OCLW3_IP", "10.0.50.171"),
-                os.environ.get("OCLW5_IP", "10.0.50.142"),
-            ]
-        return hosts
-
-    @staticmethod
-    def _get_containers(testscript) -> dict[str, str]:
-        """Extract Docker container mappings from remote_hosts config.
-
-        Returns a dict mapping host IP/name to container name for hosts
-        that use the docker transport (set ``transport: docker`` and
-        ``container: <name>`` in the datafile's remote_hosts section).
-        """
-        remote_cfg = testscript.parameters.get("remote_hosts", {})
-        containers: dict[str, str] = {}
-        for host_info in remote_cfg.values():
-            transport = host_info.get("transport", "")
-            ctr = host_info.get("container", "")
-            ip = host_info.get("ip", "")
-            if ip.startswith("%ENV{"):
-                ip = MyceliumCommonSetup._resolve_env(ip)
-            if transport == "docker" and ctr and ip:
-                containers[ip] = ctr
-        return containers
-
-    @staticmethod
-    def _get_agents_by_host(testscript) -> dict[str | None, tuple[str, ...]]:
-        agents_cfg = testscript.parameters.get("agents", {})
-        result: dict[str | None, tuple[str, ...]] = {}
-        local_agents = tuple(agents_cfg.get("local", {}).keys()) or _DEFAULT_LOCAL_AGENTS
-        result[None] = local_agents
-
-        remote_cfg = testscript.parameters.get("remote_hosts", {})
-        for host_info in remote_cfg.values():
-            ip = host_info.get("ip", "")
-            if ip.startswith("%ENV{"):
-                ip = MyceliumCommonSetup._resolve_env(ip)
-            agent_names = tuple(host_info.get("agents", {}).keys())
-            if ip and agent_names:
-                result[ip] = agent_names
-        if not remote_cfg:
-            result[os.environ.get("OCLW3_IP", "10.0.50.171")] = ("claire-agent",)
-            result[os.environ.get("OCLW5_IP", "10.0.50.142")] = ("oclw5-agent",)
-        return result
-
-
-def _keep_rooms() -> bool:
-    from jobs._common import keep_rooms
-    return keep_rooms()
-
 
 class MyceliumCommonCleanup(aetest.CommonCleanup):
-    """Shared cleanup: delete test rooms, sweep for stragglers."""
+    """Cleanup: delete owned test rooms."""
 
     @aetest.subsection
-    def cleanup_test_room(self, testscript):
-        """Delete all rooms created during this suite run.
-
-        ``owned_rooms`` is accumulated by testcases that call
-        ``owned_rooms.add(name)``; the primary ``room_name`` from
-        ``create_test_room`` is always included.
-        """
-        from jobs._common import no_cleanup
+    def cleanup_test_rooms(self, testscript):
+        from jobs._common import no_cleanup, keep_rooms
         if no_cleanup():
-            self.skipped("MYCELIUM_E2E_NO_CLEANUP is set — teardown skipped")
+            self.skipped("MYCELIUM_E2E_NO_CLEANUP set — teardown skipped")
             return
-        if _keep_rooms():
-            log.info(
-                "cleanup: skipping room deletion (MYCELIUM_E2E_KEEP_ROOMS) — owned=%s",
-                testscript.parameters.get("owned_rooms"),
-            )
+        if keep_rooms():
+            log.info("cleanup: skipping room deletion (MYCELIUM_E2E_KEEP_ROOMS)")
             return
+
         api: MyceliumAPI = testscript.parameters.get("api")
         if not api:
             return
@@ -541,27 +237,14 @@ class MyceliumCommonCleanup(aetest.CommonCleanup):
 
     @aetest.subsection
     def cleanup_stale_rooms(self, testscript):
-        """Prefix sweep for any e2e/scenario rooms not explicitly tracked.
-
-        This is a safety net for rooms created by testcases that don't
-        register themselves in ``owned_rooms``, or for rooms left behind
-        when a test was interrupted mid-setup before teardown ran.
-        """
-        from jobs._common import no_cleanup
-        if no_cleanup():
-            self.skipped("MYCELIUM_E2E_NO_CLEANUP is set — teardown skipped")
-            return
-        if _keep_rooms():
+        from jobs._common import no_cleanup, keep_rooms
+        if no_cleanup() or keep_rooms():
             return
         api: MyceliumAPI = testscript.parameters.get("api")
         if not api:
             return
-
-        # Protect rooms we still own (e.g. rooms deleted above may have
-        # already been removed, but exclude is cheap).
         owned = testscript.parameters.get("owned_rooms") or set()
-
-        for prefix in ("e2e-", "dist-e2e-", "scn-"):
+        for prefix in ("qa-coord-fresh-", "qa-memory-", "qa-cross-episode-stub-"):
             deleted = api.cleanup_rooms(prefix, exclude=owned)
             if deleted:
-                log.info("Stale room sweep: deleted %d '%s*' rooms", deleted, prefix)
+                log.info("Stale sweep: deleted %d '%s*' rooms", deleted, prefix)

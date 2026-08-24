@@ -1,0 +1,31 @@
+---
+# Local testbed — CI and dev use.
+#
+# The mycelium CLI and backend both run on the same host.
+# Start the backend with `mycelium up` before running.
+#
+# Usage:
+#   pyats run job jobs/pr_job.py --testbed-file testbeds/local.yaml
+#   pyats run job jobs/nightly_job.py --testbed-file testbeds/local.yaml
+#
+# All topology config (backend URL, timeouts) lives in data/*_datafile.yaml.
+# This testbed is a pyATS schema requirement; no device connections are used
+# by the test harness — it talks to the backend directly via HTTP.
+
+testbed:
+  name: mycelium-local
+
+devices:
+  hub:
+    type: linux
+    os: linux
+    connections:
+      local:
+        protocol: ssh
+        ip: 127.0.0.1
+    custom:
+      # transport hint for host_exec (if used)
+      transport: local
+      backend_url: "%ENV{MYCELIUM_BACKEND_URL, http://localhost:8000}"
+      # Tests that need devices beyond 'hub' will skip when using this testbed.
+      # To run multi-machine tests, use testbeds/lab.yaml or add spoke devices here.

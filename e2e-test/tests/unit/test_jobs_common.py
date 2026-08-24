@@ -121,8 +121,8 @@ class TestGetTestbedFile:
 
 class TestRuntimeForTestbed:
     def test_compose_path(self) -> None:
-        assert common.runtime_for_testbed("testbeds/compose.yaml") == "compose"
-        assert common.runtime_for_testbed("/abs/testbeds/compose.yaml") == "compose"
+        assert common.runtime_for_testbed("testbeds/compose.yaml") == "local"
+        assert common.runtime_for_testbed("/abs/testbeds/compose.yaml") == "local"
 
     def test_lab_path(self) -> None:
         assert common.runtime_for_testbed("testbeds/lab.yaml") == "lab"
@@ -136,11 +136,12 @@ class TestRuntimeForTestbedObject:
         from pyats import topology
 
         tb = topology.loader.load(common.get_testbed_file(default=common.TESTBED_COMPOSE))
-        assert common.runtime_for_testbed_object(tb) == "compose"
+        assert common.runtime_for_testbed_object(tb) == "local"
 
-    def test_lab_name(self) -> None:
+    def test_lab_name(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from pyats import topology
 
+        monkeypatch.setenv("OCLW4_IP", "127.0.0.1")
         tb = topology.loader.load(common.get_testbed_file(default=common.TESTBED_LAB))
         assert common.runtime_for_testbed_object(tb) == "lab"
 
@@ -157,7 +158,7 @@ class TestActiveE2ERuntime:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         monkeypatch.setenv("GITHUB_ACTIONS", "true")
-        assert common.active_e2e_runtime(common.RUNTIME_LAB) == "compose"
+        assert common.active_e2e_runtime(common.RUNTIME_LAB) == "local"
 
     def test_job_default_when_nothing_set(self, clean_env: None) -> None:
         assert common.active_e2e_runtime(common.RUNTIME_LAB) == "lab"
@@ -186,15 +187,17 @@ class TestResolveJobTestbed:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         monkeypatch.setenv("MYCELIUM_E2E_RUNTIME", "lab")
+        monkeypatch.setenv("OCLW4_IP", "127.0.0.1")
         runtime = SimpleNamespace(testbed=None)
         tb, active, source = common.resolve_job_testbed(runtime, common.RUNTIME_COMPOSE)
         assert tb.name == common.TESTBED_NAME_LAB
         assert active == common.RUNTIME_LAB
         assert source == common.RUNTIME_ENV_VAR
 
-    def test_prefers_runtime_testbed_from_cli(self) -> None:
+    def test_prefers_runtime_testbed_from_cli(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from pyats import topology
 
+        monkeypatch.setenv("OCLW4_IP", "127.0.0.1")
         lab = topology.loader.load(common.get_testbed_file(default=common.TESTBED_LAB))
         runtime = SimpleNamespace(testbed=lab)
         tb, active, source = common.resolve_job_testbed(runtime, common.RUNTIME_COMPOSE)

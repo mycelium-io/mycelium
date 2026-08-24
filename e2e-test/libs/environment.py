@@ -1,87 +1,66 @@
-"""Environment detection — probes all services and determines skip flags."""
+"""Environment detection — probes backend and SLIM node health."""
 
 from __future__ import annotations
 
 import logging
 import os
-import uuid
+import urllib.error
+import urllib.request
 from typing import Any, Optional
 
-from libs.cfn_api import CfnMgmtAPI, CfnNodeSvcAPI
-from libs.matrix_client import check_matrix_reachable
 from libs.mycelium_api import MyceliumAPI
 
 log = logging.getLogger(__name__)
 
 
 class EnvironmentInfo:
-    """Collects reachability and configuration state across all services."""
+    """Reachability and configuration state for SLIM-native Mycelium."""
 
     def __init__(self):
         self.backend_reachable: bool = False
         self.backend_status: Optional[str] = None
         self.backend_health: dict = {}
+        self.slim_reachable: bool = False
+        self.slim_endpoint: Optional[str] = None
         self.llm_available: bool = False
         self.llm_detail: Optional[str] = None
-        self.cfn_mgmt_reachable: bool = False
-        self.cfn_node_svc_reachable: bool = False
-        self.cfn_primary_workspace_id: Optional[str] = None
-        self.cfn_primary_mas_id: Optional[str] = None
-        self.matrix_reachable: bool = False
-        self.coordination_blocked_reason: Optional[str] = None
 
     @property
     def skip_llm_tests(self) -> bool:
         return not self.llm_available
 
     @property
-    def skip_cfn_tests(self) -> bool:
-        return not self.cfn_mgmt_reachable
-
-    @property
-    def skip_matrix_tests(self) -> bool:
-        return not self.matrix_reachable
+    def coordination_ready(self) -> bool:
+        """Both backend and SLIM node must be up for coordination tests."""
+        return self.backend_reachable and self.slim_reachable
 
     def as_dict(self) -> dict[str, Any]:
         return {
             "backend_reachable": self.backend_reachable,
             "backend_status": self.backend_status,
+            "slim_reachable": self.slim_reachable,
+            "slim_endpoint": self.slim_endpoint,
             "llm_available": self.llm_available,
             "llm_detail": self.llm_detail,
-            "cfn_mgmt_reachable": self.cfn_mgmt_reachable,
-            "cfn_node_svc_reachable": self.cfn_node_svc_reachable,
-            "cfn_primary_workspace_id": self.cfn_primary_workspace_id,
-            "matrix_reachable": self.matrix_reachable,
-            "coordination_blocked_reason": self.coordination_blocked_reason,
         }
 
 
-def detect_environment(
-    backend: MyceliumAPI,
-    cfn_mgmt: CfnMgmtAPI,
-    cfn_node_svc: CfnNodeSvcAPI,
-    matrix_url: str,
-    room_prefix: str = "e2e-test",
-) -> EnvironmentInfo:
-    """Probe all services and return a populated EnvironmentInfo."""
+_LLM_FAILURE_STATUSES = frozenset({
+    "auth_error", "unavailable", "error", "misconfigured", "not_configured",
+})
+
+
+def detect_environment(backend: MyceliumAPI) -> EnvironmentInfo:
+    """Probe backend and SLIM node; return a populated EnvironmentInfo."""
     env = EnvironmentInfo()
 
-    _LLM_FAILURE_STATUSES = frozenset(
-        {
-            "auth_error",
-            "unavailable",
-            "error",
-            "misconfigured",
-            "not_configured",
-        }
-    )
-
-    # Backend health
+    # ── Backend health ────────────────────────────────────────────────────
     health = backend.health_json()
     if health:
         env.backend_reachable = True
         env.backend_status = "ok"
         env.backend_health = health
+
         llm_status = health.get("llm")
         if isinstance(llm_status, dict):
             status_val = llm_status.get("status", "")
@@ -95,89 +74,59 @@ def detect_environment(
             env.llm_detail = f"status={llm_status}"
         else:
             env.llm_available = False
-            env.llm_detail = f"unexpected type: {type(llm_status).__name__}"
+            env.llm_detail = f"unexpected llm type: {type(llm_status).__name__}"
+
         log.info(
-            "Backend: reachable=%s llm=%s (%s) raw=%r",
-            env.backend_reachable,
+            "Backend: reachable=True llm=%s (%s)",
             "available" if env.llm_available else "unavailable",
             env.llm_detail,
-            llm_status,
         )
-
         _check_llm_env_vars(env)
+
+        # ── SLIM node reachability ─────────────────────────────────────────
+        # SLIM node may be on a Docker network (e.g. mycelium-slim:46357),
+        # not directly reachable from the host. Use backend's reported status.
+        coord = health.get("coordination") or health.get("slim") or health.get("network") or {}
+        if isinstance(coord, dict):
+            env.slim_endpoint = coord.get("endpoint") or coord.get("node_endpoint")
+            slim_enabled = coord.get("slim_enabled", False)
+            # Backend reports SLIM as up if slim_enabled and no error state
+            env.slim_reachable = bool(slim_enabled and env.slim_endpoint)
+        # Fallback: direct probe if backend doesn't report coordination status
+        if not env.slim_reachable and not env.slim_endpoint:
+            env.slim_reachable, env.slim_endpoint = _probe_slim_node()
     else:
         env.backend_status = "unreachable"
-        log.warning("Backend unreachable")
+        log.warning("Backend unreachable at %s", backend.base_url)
 
-    # CFN management plane
-    env.cfn_mgmt_reachable = cfn_mgmt.is_reachable()
-    if env.cfn_mgmt_reachable:
-        env.cfn_primary_workspace_id = cfn_mgmt.get_primary_workspace_id()
-        log.info("CFN mgmt: reachable, workspace=%s", env.cfn_primary_workspace_id)
-    else:
-        log.info("CFN mgmt: unreachable")
-
-    # CFN node service
-    env.cfn_node_svc_reachable = cfn_node_svc.is_reachable()
-    log.info("CFN node-svc: reachable=%s", env.cfn_node_svc_reachable)
-
-    # Matrix
-    env.matrix_reachable = check_matrix_reachable(matrix_url)
-    log.info("Matrix: reachable=%s", env.matrix_reachable)
-
-    # Workspace alignment probe
-    if env.cfn_mgmt_reachable and env.cfn_primary_workspace_id and env.backend_reachable:
-        _probe_workspace_alignment(backend, cfn_mgmt, env, room_prefix)
-
+    log.info(
+        "SLIM node: reachable=%s endpoint=%s",
+        env.slim_reachable,
+        env.slim_endpoint or "unknown",
+    )
     return env
 
 
-def _check_llm_env_vars(env: EnvironmentInfo) -> None:
-    """Warn if the host-side LLM env vars look incomplete.
+def _probe_slim_node() -> tuple[bool, Optional[str]]:
+    """Try to reach the SLIM node at the configured endpoint."""
+    endpoint = os.environ.get("MYCELIUM_SLIM_ENDPOINT", "http://localhost:46357")
+    try:
+        req = urllib.request.Request(endpoint, method="GET")
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            return resp.status < 500, endpoint
+    except urllib.error.HTTPError as e:
+        # Any HTTP response (even 4xx) means the node is listening
+        return e.code < 500, endpoint
+    except Exception:
+        return False, endpoint
 
-    The backend reads LLM_API_KEY / LLM_BASE_URL / LLM_MODEL from its own
-    container environment, but logging the host-side state helps diagnose
-    CI misconfigurations where the vars never reached the container.
-    """
+
+def _check_llm_env_vars(env: EnvironmentInfo) -> None:
     key_set = bool(os.environ.get("LLM_API_KEY"))
     url_set = bool(os.environ.get("LLM_BASE_URL"))
-    bool(os.environ.get("LLM_MODEL"))
-
     if key_set and not url_set:
         log.warning(
-            "LLM_API_KEY is set but LLM_BASE_URL is empty — the backend "
-            "will use its default endpoint which may not match the key's provider"
+            "LLM_API_KEY is set but LLM_BASE_URL is empty — backend may use wrong provider"
         )
     if not key_set:
-        log.info("LLM_API_KEY not set on host; LLM tests will depend on backend-side config")
-    else:
-        log.info(
-            "Host LLM env: API_KEY=set BASE_URL=%s MODEL=%s",
-            "set" if url_set else "NOT SET",
-            os.environ.get("LLM_MODEL", "NOT SET"),
-        )
-
-
-def _probe_workspace_alignment(
-    backend: MyceliumAPI,
-    cfn_mgmt: CfnMgmtAPI,
-    env: EnvironmentInfo,
-    room_prefix: str,
-) -> None:
-    """Check if backend's WORKSPACE_ID aligns with CFN mgmt workspaces."""
-    probe_name = f"{room_prefix}-wsprobe-{uuid.uuid4().hex[:8]}"
-    st, room_data = backend.create_room(probe_name, description="workspace alignment probe")
-    if st not in (200, 201):
-        return
-
-    mas_id = room_data.get("mas_id") if isinstance(room_data, dict) else None
-    backend.delete_room(probe_name)
-
-    if env.cfn_primary_workspace_id and not mas_id:
-        env.coordination_blocked_reason = (
-            f"Backend has WORKSPACE_ID unset: new rooms return mas_id=null "
-            f"while CFN mgmt has workspace {env.cfn_primary_workspace_id}. "
-            f"Add WORKSPACE_ID={env.cfn_primary_workspace_id} to ~/.mycelium/.env "
-            f"and recreate mycelium-backend."
-        )
-        log.warning("Workspace alignment check FAILED: %s", env.coordination_blocked_reason)
+        log.info("LLM_API_KEY not set on host; LLM availability depends on backend config")
