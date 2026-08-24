@@ -1681,7 +1681,7 @@
           "participate"
         ],
         "summary": "Await Message",
-        "description": "Long-poll for the next message addressed to ``handle`` (server-held member).",
+        "description": "Long-poll for the next message addressed to ``handle`` (server-held member).\n\n``episode`` narrows the wake to one thread \u2014 a unit of work being coordinated\nin, or a negotiation inside one. It narrows *only* the wake: the handle's\npresence lease stays room-scoped (a member of a thread is a member of the\nroom), and so does its room-wide delivery position, so scoping to a unit\nnever eats mentions made to it elsewhere. The thread's own position is\npersisted the same way, so a restart mid-thread resumes rather than\nre-serving.",
         "operationId": "await_message_api_rooms__room_name__await_get",
         "parameters": [
           {
@@ -1711,6 +1711,24 @@
               "default": 0,
               "title": "Timeout"
             }
+          },
+          {
+            "name": "episode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Wake only on this thread (an episode URN). Omit to wake on anything addressed to the handle anywhere in the room.",
+              "title": "Episode"
+            },
+            "description": "Wake only on this thread (an episode URN). Omit to wake on anything addressed to the handle anywhere in the room."
           }
         ],
         "responses": {
@@ -5256,6 +5274,18 @@
               }
             ],
             "description": "Structured event metadata; required when message_type=\"event\""
+          },
+          "episode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Episode",
+            "description": "Thread to post into (an episode URN \u2014 a unit of work's, or a negotiation inside one). Omit to post to the room itself."
           }
         },
         "type": "object",
@@ -5615,6 +5645,18 @@
             "type": "string",
             "title": "Text",
             "description": "The reply / position prose (may carry a position marker)"
+          },
+          "episode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Episode",
+            "description": "Thread to reply into (an episode URN). Overrides the episode inherited from the tick that woke the handle; omit to answer where you were asked."
           }
         },
         "type": "object",

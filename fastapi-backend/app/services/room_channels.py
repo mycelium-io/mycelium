@@ -47,7 +47,14 @@ from app.services.l9_slim import (
     build_episode_abort_envelope,
     serialize_content,
 )
-from app.services.persister import ConvergedHook, RoomPersister, SummonHook, parse_mentions
+from app.services.persister import (
+    ConvergedHook,
+    RoomPersister,
+    SummonHook,
+    l9_bus_frame,
+    parse_mentions,
+    record_from,
+)
 from app.services.slim_client import (
     SlimClient,
     SlimIdentity,
@@ -743,6 +750,7 @@ class RoomChannelManager:
         text: str,
         subkind: str | None = None,
         parents: list[str] | None = None,
+        episode: str | None = None,
     ) -> HumanPublishResult | None:
         """Publish a human's message onto the room channel as their proxy.
 
@@ -755,6 +763,14 @@ class RoomChannelManager:
         ``subkind``/``parents`` carry an ``amend`` revising an earlier message —
         the same publish in every other respect, since a revision is a message
         the room hears like any other (mentions and the consent gate included).
+
+        ``episode`` names the **thread** the message lands in; without one it
+        lands in the room itself. A thread is a tag over this same channel, so a
+        threaded message is broadcast and recorded exactly like any other — what
+        changes is only that it does not clutter the room. The :meth:`raise_ping`
+        that surfaces it there is the *caller's*: this publish is one of several
+        ways a message reaches a thread, and a ping raised from inside it would
+        be silently skipped by every other one.
 
         The published message is ingested locally via the persister so the
         transcript and UI bus see it exactly once, independent of whether SLIM
@@ -771,7 +787,7 @@ class RoomChannelManager:
         envelope = l9.build_envelope(
             kind=Kind.exchange,
             subkind=subkind,
-            episode=l9.episode_urn(room, "live"),
+            episode=episode or l9.live_episode_urn(room),
             parents=parents,
             sender=sender,
             sender_role="human",
@@ -828,6 +844,68 @@ class RoomChannelManager:
         return HumanPublishResult(
             mentioned=mentioned, recipients=recipients, invites=invites, message_id=message_id
         )
+
+    async def raise_ping(
+        self,
+        room: str,
+        *,
+        episode: str | None,
+        sender: str,
+        message_id: str | None,
+    ) -> str | None:
+        """Raise a thread's activity into ``live`` as a **ping**, and nothing more.
+
+        The room stays legible because a thread absorbs its own noise: what
+        surfaces is that a unit moved, not what was said in it. So the ping
+        carries no text — only the thread it is about, who wrote, and the id of
+        the message, which is enough for a reader to open the thread and no use
+        to anyone trying to read it without.
+
+        Two properties it must hold, both structural rather than a convention a
+        later caller has to remember:
+
+        *It wakes nobody.* The ping is addressed to no one and rides a ``ping``
+        payload, which :func:`app.routes.participate._addressed_to` excludes the
+        same way it excludes presence — so a resident agent's ``await`` consumes
+        it silently instead of spending a turn on it.
+
+        *It does not go out on the wire.* This is the aligner's
+        record-locally-don't-broadcast seam: ``ingest_local`` alone, so the ping
+        lands in the transcript and on the SSE bus for the GUI without being
+        published to the group. Nothing on the channel has to filter it out.
+
+        Returns the ping's message id, or ``None`` when there is nothing to
+        announce — a message in the room itself, which *is* the room.
+        """
+        if episode is None or l9.is_live_episode(room, episode):
+            return None
+        ping = l9.build_envelope(
+            kind=Kind.exchange,
+            episode=l9.live_episode_urn(room),
+            sender=l9.SYSTEM_ACTOR_ID,
+            sender_role=l9.SYSTEM_ACTOR_ROLE,
+            topic=l9.topic_urn(room),
+            payload_type=l9.PING_PAYLOAD_TYPE,
+            payload_data={
+                "episode": episode,
+                "sender": sender,
+                **({"message": message_id} if message_id else {}),
+            },
+        )
+        content = serialize_content(ping)
+        managed = self._channels.get(room)
+        if managed is not None and managed.persister is not None:
+            managed.persister.ingest_local(ping, content, list_write=False)
+        else:
+            # No channel means no transcript to raise into — and the message this
+            # announces reached only the bus for the same reason. So the ping
+            # matches its reach rather than vanishing: the exact frame the
+            # persister would have pushed, built by the same projection, so a
+            # client decodes it identically either way.
+            from app.bus import bus, room_channel
+
+            bus.publish(room_channel(room), l9_bus_frame(room, record_from(ping, content)))
+        return ping.header.message.id if ping.header.message else None
 
     # -- consent-gated invites --
 

@@ -27,7 +27,7 @@ from app.schemas import (
     MessageRead,
     MessageType,
 )
-from app.services import actor, l9, local_state, persister, principals, room_channels
+from app.services import actor, l9, local_state, persister, principals, room_channels, units
 from app.services.filesystem import room_exists
 
 logger = logging.getLogger(__name__)
@@ -55,6 +55,19 @@ def _resolve_channel(name: str) -> tuple[str, local_state.CoordSessionShim | Non
     raise HTTPException(status_code=404, detail="Room or session not found")
 
 
+def _room_episode(
+    room: str, coord: local_state.CoordSessionShim | None, episode: str | None
+) -> str | None:
+    """The episode a stored row carries: the named thread, or the room's own.
+
+    A coordination session is not a room and has no channel, so it stays
+    episode-less; everywhere else "no thread" is the ``live`` URN spelled out.
+    """
+    if coord is not None:
+        return episode
+    return episode or l9.live_episode_urn(room)
+
+
 @router.post("", response_model=MessageRead, status_code=201)
 async def send_message(room_name: str, payload: MessageCreate, request: Request):
     """Send a message to a room; publish it to the room's live stream."""
@@ -75,6 +88,19 @@ async def send_message(room_name: str, payload: MessageCreate, request: Request)
     if reason:
         raise HTTPException(status_code=403, detail=reason)
 
+    # A thread write has to name a thread the room has, and stay out of a
+    # negotiation it is not part of. Refused before anything is stored, so a
+    # rejected write leaves nothing behind.
+    if payload.episode and not l9.is_live_episode(base_room, payload.episode):
+        if coord is not None:
+            raise HTTPException(
+                status_code=409,
+                detail="A coordination session has no threads to post into",
+            )
+        refusal = units.thread_write_refusal(base_room, sender_handle, payload.episode)
+        if refusal is not None:
+            raise HTTPException(status_code=refusal.status, detail=refusal.detail)
+
     msg = local_state.StoredMessage(
         room_name=None if coord else channel,
         coordination_session_id=coord.id if coord else None,
@@ -82,6 +108,11 @@ async def send_message(room_name: str, payload: MessageCreate, request: Request)
         recipient_handle=payload.recipient_handle,
         message_type=payload.message_type,
         content=payload.content,
+        # Always the URN, never a bare ``None`` for "the room": the transcript
+        # projection stamps ``live`` on the same message, and a row that agrees
+        # with its own transcript copy is what makes ``?episode=<live>`` mean
+        # "the room without its threads" — the read a legible main channel needs.
+        episode=_room_episode(base_room, coord, payload.episode),
     )
     if payload.metadata is not None:
         meta = payload.metadata.model_dump(exclude_none=True)
@@ -106,6 +137,8 @@ async def send_message(room_name: str, payload: MessageCreate, request: Request)
     if coord is not None:
         notify_payload["coordination_session_id"] = str(coord.id)
     notify_payload["room_name"] = channel
+    if msg.episode:
+        notify_payload["episode"] = msg.episode
 
     # Human-in-the-room: backend publishes onto the channel as proxy for live SLIM
     # rooms, parsing ``@`` recipients and raising consent for absent mentions. The
@@ -118,7 +151,7 @@ async def send_message(room_name: str, payload: MessageCreate, request: Request)
         and room_channels.manager.is_live(channel)
     ):
         result = await room_channels.manager.publish_human(
-            channel, sender=msg.sender_handle, text=msg.content
+            channel, sender=msg.sender_handle, text=msg.content, episode=payload.episode
         )
         published = result is not None
         if result is not None:
@@ -134,6 +167,14 @@ async def send_message(room_name: str, payload: MessageCreate, request: Request)
     if not published:
         bus.publish(room_channel(channel), notify_payload)
 
+    # Exactly one ping per threaded write, whatever the message type and whether
+    # or not the channel is up. Raised here rather than inside ``publish_human``
+    # because that only sees broadcasts over a live channel: an ``event`` into a
+    # thread, or any write while the channel is down, would move a unit in
+    # silence, and the ping is the only thing that surfaces a thread into the room.
+    await room_channels.manager.raise_ping(
+        base_room, episode=msg.episode, sender=msg.sender_handle, message_id=msg.message_id
+    )
     return MessageRead.model_validate(msg)
 
 
@@ -272,6 +313,16 @@ async def amend_message(
             detail=f"Message type {target.message_type!r} is not chat — nothing to amend",
         )
 
+    # An amendment lands in the thread of the message it revises — never in the
+    # room. Publishing it to ``live`` would echo a thread's prose onto the main
+    # channel, which is the one thing a thread exists to prevent, and the
+    # ``?episode=`` read of that thread would not show the revision it folded in.
+    # It is a write into that thread, so it passes the same guard as any other:
+    # a roster that froze after the original message must still hold.
+    refusal = units.thread_write_refusal(base_room, sender_handle, target.episode)
+    if refusal is not None:
+        raise HTTPException(status_code=refusal.status, detail=refusal.detail)
+
     # The envelope id when the target rode the channel; its row id otherwise (a
     # message posted while the channel was down never got one). Either way the
     # amendment names something the read path can resolve.
@@ -285,6 +336,7 @@ async def amend_message(
         message_type=target.message_type,
         content=payload.content,
         amends=amends,
+        episode=_room_episode(base_room, coord, target.episode),
     )
 
     published = False
@@ -295,6 +347,7 @@ async def amend_message(
             text=payload.content,
             subkind=l9.AMEND_SUBKIND,
             parents=[amends],
+            episode=target.episode,
         )
         published = result is not None
         if result is not None:
@@ -313,8 +366,18 @@ async def amend_message(
                 "amends": amends,
                 "created_at": msg.created_at.isoformat(),
                 "room_name": channel,
+                "episode": msg.episode,
             },
         )
+
+    # Exactly one ping per threaded write, whatever the message type and whether
+    # or not the channel is up. Raised here rather than inside ``publish_human``
+    # because that only sees broadcasts over a live channel: an ``event`` into a
+    # thread, or any write while the channel is down, would move a unit in
+    # silence, and the ping is the only thing that surfaces a thread into the room.
+    await room_channels.manager.raise_ping(
+        base_room, episode=msg.episode, sender=sender_handle, message_id=msg.message_id
+    )
 
     # Answer with the folded message — the row the room now reads — rather than
     # the amendment, so a client refreshes to exactly what it was handed.

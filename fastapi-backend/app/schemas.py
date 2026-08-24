@@ -169,6 +169,13 @@ class MessageCreate(BaseModel):
     metadata: EventMetadata | None = Field(
         None, description='Structured event metadata; required when message_type="event"'
     )
+    episode: str | None = Field(
+        None,
+        description=(
+            "Thread to post into (an episode URN — a unit of work's, or a negotiation "
+            "inside one). Omit to post to the room itself."
+        ),
+    )
 
     @model_validator(mode="after")
     def _metadata_matches_type(self) -> "MessageCreate":

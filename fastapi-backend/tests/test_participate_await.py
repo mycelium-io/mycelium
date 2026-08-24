@@ -43,13 +43,21 @@ def _addressed_record(message_id: str, *, to: str, sender: str = "avery"):
 
 class _FakePersister:
     """Just enough of RoomPersister for the await loop: a durable log + the
-    consume-side cursor advance (no disk write needed in the unit test)."""
+    consume-side cursor advance, room-wide and per-thread (no disk write needed
+    in the unit test)."""
 
     def __init__(self, log: persister.DeliveryLog) -> None:
         self.log = log
+        self.episode_cursors = persister.EpisodeCursors()
 
     def advance_cursor(self, handle: str, pos: int) -> None:
         self.log.advance(handle, pos)
+
+    def episode_position(self, handle: str, episode: str) -> int:
+        return self.episode_cursors.position(handle, episode, default=self.log.position(handle))
+
+    def advance_episode_cursor(self, handle: str, episode: str, pos: int) -> None:
+        self.episode_cursors.advance(handle, episode, pos, limit=len(self.log.records))
 
 
 class _Managed:
