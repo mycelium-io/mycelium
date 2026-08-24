@@ -318,6 +318,42 @@ function atlasPing(message: string, sender: string, minutesAgo: number): Record<
   };
 }
 
+/**
+ * A task filed into the room, as the room hears it: a **task-created notice**.
+ *
+ * The mirror of {@link atlasPing} — an exchange envelope in `live` naming the
+ * task that was filed (key, title, and the task's own thread to open), so the
+ * board's newest rows read as something the room *did*, in sequence with the
+ * chat, rather than appearing silently on another tab.
+ */
+function atlasTaskCreated(
+  key: string,
+  title: string,
+  episode: string,
+  by: string,
+  kind: string,
+  minutesAgo: number,
+): Record<string, unknown> {
+  return {
+    id: `filed-${key}`,
+    sender_handle: "system",
+    message_type: "l9_exchange",
+    created_at: iso(minutesAgo),
+    room_name: "atlas-migration",
+    episode: ATLAS_LIVE,
+    content: {
+      l9: {
+        header: {
+          kind: "exchange",
+          message: { id: `filed-${key}`, parents: [], episode: ATLAS_LIVE },
+          participants: { actors: [{ id: "system", role: "coordinator" }] },
+        },
+        payload: { type: "task_created", data: { key, title, episode, by, kind } },
+      },
+    },
+  };
+}
+
 const atlasEpisodeSummary: EpisodeSummary = {
   short_id: "e4f1a2",
   episode: ATLAS_EPISODE,
@@ -601,7 +637,23 @@ const atlas: RoomFixture = {
     },
     ...atlasBoardRows,
   ],
+  // The channel is the room's whole history, so every row on the board is a thing
+  // it once filed: the chat lines below set up each filing, and the task-created
+  // notices in the `l9` feed are the filings themselves. Read top to bottom it is
+  // one arc — stand up the room, do the early security/architecture work, spin up
+  // the auth migration and the work that depends on it, broker the cutover, file
+  // what it breaks into, then keep going.
   messages: [
+    // ── standing the room up, and the early work (a day ago) ──
+    { id: "h1", sender_handle: "operator", message_type: "broadcast", content: "Standing up the Atlas migration room. Goal: move the catalog off the legacy store with zero downtime.", created_at: iso(60 * 25) },
+    { id: "h2", sender_handle: "julia", message_type: "broadcast", content: "First call: we're not keeping the SPIRE tier. Filing the decision so it's on the record.", created_at: iso(1440) },
+    { id: "h3", sender_handle: "risk", message_type: "broadcast", content: "And the path-traversal hole in the key encoder is a hard blocker for anything public — taking it now.", created_at: iso(1400) },
+    // ── the auth migration and the work hanging off it ──
+    { id: "h4", sender_handle: "growth", message_type: "broadcast", content: "Auth has to move to JWT before the cutover. I've got it — PR #502 is open.", created_at: iso(140) },
+    { id: "h5", sender_handle: "julia", message_type: "broadcast", content: "Thin-spoke join needs that landed first, so I'm filing it blocked on #502.", created_at: iso(130) },
+    { id: "h6", sender_handle: "julia", message_type: "broadcast", content: "Also sweeping the cache TTLs across the memory index while I'm in here.", created_at: iso(95) },
+    { id: "h7", sender_handle: "risk", message_type: "broadcast", content: "Filing a concern: the aligner stalls when a proposer replies with prose only. Fix is on fix/offer-snap but CI's red.", created_at: iso(58) },
+    // ── the cutover negotiation ──
     { id: "a1", sender_handle: "operator", message_type: "broadcast", content: "@growth @risk let's settle the cutover strategy — approach and window. @aligner, broker it.", created_at: iso(48) },
     { id: "a2", sender_handle: "growth", message_type: "coordination_join", content: JSON.stringify({ handle: "growth", intent: "ship the migration this week", episode: ATLAS_EPISODE }), created_at: iso(47), episode: ATLAS_EPISODE },
     { id: "a3", sender_handle: "risk", message_type: "coordination_join", content: JSON.stringify({ handle: "risk", intent: "no downtime, no data loss", episode: ATLAS_EPISODE }), created_at: iso(47), episode: ATLAS_EPISODE },
@@ -610,7 +662,15 @@ const atlas: RoomFixture = {
     // Negotiate/Network panes reconstruct. The chat is the source (see atlasMoves).
     ...atlasNegotiation,
     { id: "a6", sender_handle: "aligner", message_type: "coordination_consensus", content: JSON.stringify({ assignments: { cutover: "phased", window: "48h" }, episode: ATLAS_EPISODE, metrics: { gar: 0.79 } }), created_at: iso(41), episode: ATLAS_EPISODE },
+    // The room files the work the agreement breaks into. The two task-created
+    // notices land right after this line (see the `l9` feed below), so the chat
+    // reads "here is the work" → the tasks, in sequence, instead of them just
+    // appearing on the board.
+    { id: "file1", sender_handle: "aligner", message_type: "broadcast", content: "Settled: phased cutover over 48h. Filing the work it breaks into for us to pick up:", created_at: iso(40) },
     { id: "a7", sender_handle: "growth", message_type: "broadcast", content: "Dual-write is live in staging. ✅", created_at: iso(30) },
+    // ── follow-on work after the agreement ──
+    { id: "h8", sender_handle: "risk", message_type: "broadcast", content: "PR #504 is up for the custody seam — filing it for review.", created_at: iso(14) },
+    { id: "h9", sender_handle: "risk", message_type: "broadcast", content: "One more thing to settle before auth ships: access-token TTL, 15m or 60m. Filing the decision.", created_at: iso(6) },
     // Two agents working the flag row talk inside its thread. The channel does
     // not carry this — that is the whole point — so the room hears the pings
     // below instead, and the prose reads in the thread pane.
@@ -628,7 +688,27 @@ const atlas: RoomFixture = {
     { handle: "growth", kind: "slim", last_seen: null },
     { handle: "risk", kind: "lease", last_seen: iso(1) },
   ],
-  l9: [...atlasL9Frames, atlasPing("t2", "risk", 21), atlasPing("t3", "growth", 20)],
+  // Every board row's origin, as the notice the room filed it with — each timed
+  // just after the chat line that sets it up, so the channel reads talk → filing
+  // for all ten, not just the two the negotiation compiled. The episode on each
+  // matches its board row, so a notice opens the same thread the row's chip does.
+  l9: [
+    ...atlasL9Frames,
+    atlasTaskCreated("decisions/spire-retire", "Retire the SPIRE identity tier", atlasEpisode("b0d2f4"), "julia", "decision", 1439.8),
+    atlasTaskCreated("work/path-traversal", "Fix path traversal in the memory key encoder", atlasEpisode("a9c1e3"), "risk", "action", 1399.8),
+    atlasTaskCreated("work/jwt-auth", "Migrate auth → JWT", atlasEpisode("d6f8b0"), "growth", "action", 139.8),
+    atlasTaskCreated("failed/thin-spoke", "Enable thin-spoke join without a local replica", atlasEpisode("b4d6f8"), "julia", "blocked", 129.8),
+    atlasTaskCreated("work/cache-sweep", "Cache TTL sweep across the memory index", atlasEpisode("e7a9c1"), "julia", "action", 94.8),
+    atlasTaskCreated("failed/offer-snap", "Aligner stalls when a proposer replies with prose only", atlasEpisode("f8b0d2"), "risk", "concern", 57.8),
+    // The two the cutover agreement compiled, filed by the aligner right after
+    // its "filing the work" line (iso(40)).
+    atlasTaskCreated("work/flip-reads-behind-a-flag", "flip reads behind a flag", ATLAS_FLIP_THREAD, "aligner", "action", 39.9),
+    atlasTaskCreated("work/retire-the-legacy-store", "48h soak, then retire the legacy store", ATLAS_RETIRE_THREAD, "aligner", "action", 39.8),
+    atlasTaskCreated("work/custody-review", "@risk opened PR #504 — eyes on the custody seam", atlasEpisode("c5e7a9"), "risk", "review", 13.8),
+    atlasTaskCreated("decisions/token-ttl", "JWT access-token TTL: 15m or 60m?", atlasEpisode("a1c3e5"), "risk", "decision", 5.8),
+    atlasPing("t2", "risk", 21),
+    atlasPing("t3", "growth", 20),
+  ],
   // Three work rows name pull requests; the hub resolved them. The first row
   // mentions two, one green and one failing, so it shows the failing one and says
   // there was another. The shapes are GitHub's own wording.

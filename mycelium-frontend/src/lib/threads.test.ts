@@ -5,9 +5,11 @@ import { describe, expect, it } from "vitest";
 import {
   PING_TYPE,
   coalescePings,
+  filedLabel,
   isLiveEpisode,
   liveEpisodeUrn,
   pingOf,
+  taskCreatedOf,
   threadShortId,
   type Pingable,
 } from "@/lib/threads";
@@ -69,6 +71,46 @@ describe("reading a ping", () => {
   it("survives a frame with no envelope at all", () => {
     expect(pingOf({})).toBeNull();
     expect(pingOf(null)).toBeNull();
+  });
+});
+
+describe("reading a task-created notice", () => {
+  function filedFrame(data: Record<string, unknown>) {
+    return {
+      l9: {
+        header: { kind: "exchange", message: { episode: liveEpisodeUrn(ROOM) } },
+        payload: { type: "task_created", data },
+      },
+    };
+  }
+
+  it("carries the task, its title, its own thread, and who filed it", () => {
+    // Like a ping, it rides in `live` and names the task it filed in its payload,
+    // so a notice can open the same thread the row's own chip does.
+    const created = taskCreatedOf(
+      filedFrame({ key: "work/flip", title: "flip reads", episode: THREAD, by: "aligner", kind: "action" }),
+    );
+    expect(created).toEqual({ key: "work/flip", title: "flip reads", episode: THREAD, by: "aligner", kind: "action" });
+  });
+
+  it("is not a task-created notice when the payload is a ping", () => {
+    expect(taskCreatedOf(pingFrame(THREAD, "risk", "m7"))).toBeNull();
+  });
+
+  it("refuses a notice that names no task", () => {
+    expect(taskCreatedOf(filedFrame({ title: "no key" }))).toBeNull();
+    expect(taskCreatedOf({})).toBeNull();
+    expect(taskCreatedOf(null)).toBeNull();
+  });
+
+  it("names what was filed by its kind, not always a task", () => {
+    expect(filedLabel("decision")).toBe("New decision");
+    expect(filedLabel("concern")).toBe("New concern");
+    expect(filedLabel("blocked")).toBe("New blocker");
+    expect(filedLabel("action")).toBe("New task");
+    // An unknown or missing kind falls back to the plain word.
+    expect(filedLabel(null)).toBe("New task");
+    expect(filedLabel("whatever")).toBe("New task");
   });
 });
 

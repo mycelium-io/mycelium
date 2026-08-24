@@ -13,7 +13,7 @@ import {
   type PendingInvite,
 } from "@/lib/api";
 import { useRoomAgents, useRoomThreads } from "@/lib/room-data";
-import { PING_TYPE, coalescePings, isLiveEpisode, pingOf, threadShortId } from "@/lib/threads";
+import { PING_TYPE, TASK_CREATED_TYPE, coalescePings, filedLabel, isLiveEpisode, pingOf, taskCreatedOf, threadShortId } from "@/lib/threads";
 import { useRoomConnected, useRoomStream } from "@/lib/stream-hub";
 import { MarkdownContent } from "@/components/markdown-content";
 import { RoomBoard } from "@/components/board/room-board";
@@ -85,7 +85,7 @@ export const L9_RAISE_UP_TYPES = [
 // negotiation lifecycle ("alice joined session X", "CONSENSUS in session X
 // → 4 work rows", "TIMEOUT in session X, no agreement") instead of
 // burying it all under the EVENTS tab.
-const CHANNEL_VIEW_TYPES = new Set([...CHAT_TYPES, ...L9_RAISE_UP_TYPES, PING_TYPE]);
+const CHANNEL_VIEW_TYPES = new Set([...CHAT_TYPES, ...L9_RAISE_UP_TYPES, PING_TYPE, TASK_CREATED_TYPE]);
 
 // Lifecycle events that render as slim system notices (not chat rows). Used to
 // decide message grouping: a chat message only groups under the sender above it
@@ -97,7 +97,7 @@ const CHANNEL_VIEW_TYPES = new Set([...CHAT_TYPES, ...L9_RAISE_UP_TYPES, PING_TY
  * *renamed* here — the same branch the CLI takes inside `chat_line`. Adding it
  * to the contract would claim a drift that isn't one.
  */
-const SYSTEM_TYPES = new Set([...L9_RAISE_UP_TYPES, PING_TYPE]);
+const SYSTEM_TYPES = new Set([...L9_RAISE_UP_TYPES, PING_TYPE, TASK_CREATED_TYPE]);
 
 /** Skeleton loader for chat rows. */
 function ChannelSkeleton() {
@@ -239,6 +239,17 @@ function parseEvent(msg: Record<string, unknown>, room: string): Event {
         thread = ping.episode;
         pingSender = ping.sender;
         mtype = PING_TYPE;
+        break;
+      }
+      // A task filed into the room rides the same exchange kind, named before the
+      // prose unwrap for the same reason a ping is: it is a notice about the
+      // board, not a chat row. `thread` holds the task's own thread to open.
+      const created = taskCreatedOf(raw);
+      if (created) {
+        thread = created.episode;
+        content = created.title ?? created.key;
+        mtype = TASK_CREATED_TYPE;
+        raw = { ...raw, taskKey: created.key, by: created.by, kind: created.kind };
         break;
       }
       // The live SSE stream wraps human/agent messages as an L9 exchange
@@ -440,11 +451,15 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
       .then(([data, frames]) => {
         if (!live) return;
         const said = (data.messages || []).map((m) => parseEvent(m, roomName));
-        const pings = frames
+        // The L9 replay is where the room's board notices live — a ping about a
+        // thread, and a task filed into the room — neither of which survives the
+        // conversational read of `/messages`. Merge those in so the channel is
+        // the room's timeline, not just its prose.
+        const notices = frames
           .map((frame) => parseEvent(frame, roomName))
-          .filter((e) => e.type === PING_TYPE);
+          .filter((e) => e.type === PING_TYPE || e.type === TASK_CREATED_TYPE);
         setEvents(
-          [...said, ...pings].sort((a, b) => (Date.parse(a.at) || 0) - (Date.parse(b.at) || 0)),
+          [...said, ...notices].sort((a, b) => (Date.parse(a.at) || 0) - (Date.parse(b.at) || 0)),
         );
         setHistoryLoaded(true);
       })
@@ -708,6 +723,24 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
                       <span className="truncate">· {who.map(h => `@${h}`).join(", ")}</span>
                     )}
                     {onOpenThread && <span className="text-faint">· click to open</span>}
+                  </SystemNotice>
+                );
+              }
+              if (ev.type === TASK_CREATED_TYPE) {
+                const episode = ev.thread;
+                const by = ev.raw.by as string | undefined;
+                return (
+                  <SystemNotice key={ev.id} time={ev.time} dot="var(--green)" label={filedLabel(ev.raw.kind as string | undefined)}>
+                    <button
+                      type="button"
+                      onClick={() => episode && onOpenThread?.(episode)}
+                      disabled={!episode || !onOpenThread}
+                      className="inline-flex max-w-[20rem] items-center gap-1 truncate rounded px-1 text-accent transition-colors enabled:hover:bg-accent-soft enabled:hover:underline disabled:cursor-default disabled:text-text"
+                    >
+                      <MessageSquare className="size-3 shrink-0" strokeWidth={1.9} />
+                      <span className="truncate">{ev.content}</span>
+                    </button>
+                    {by && <span>· by @{by}</span>}
                   </SystemNotice>
                 );
               }

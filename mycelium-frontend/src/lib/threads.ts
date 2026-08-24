@@ -86,6 +86,62 @@ export function pingOf(raw: Record<string, unknown> | null | undefined): Ping | 
   };
 }
 
+/** The payload type a task's creation surfaces into the room as. */
+export const TASK_CREATED_PAYLOAD_TYPE = "task_created";
+
+/** The normalized type a task-created notice wears once parsed. */
+export const TASK_CREATED_TYPE = "task_created";
+
+/** What a "new task" notice says: which task, its title, and the thread to open. */
+export interface TaskCreated {
+  key: string;
+  title: string | null;
+  episode: string | null;
+  by: string | null;
+  kind: string | null;
+}
+
+/** What the room calls a thing it just filed, by its board kind. A decision is
+ *  not a task, so the notice says so — otherwise the timeline mislabels half of
+ *  what the room does. */
+const FILED_AS: Record<string, string> = {
+  decision: "decision",
+  concern: "concern",
+  blocked: "blocker",
+  review: "task",
+  action: "task",
+  signal: "note",
+};
+
+/** The label a task-created notice wears: "New task", "New decision", … */
+export function filedLabel(kind: string | null | undefined): string {
+  return `New ${(kind && FILED_AS[kind]) || "task"}`;
+}
+
+/**
+ * The task-created notice a wire frame carries, or null when it isn't one.
+ *
+ * The mirror of {@link pingOf}: a creation rides in `live` (so the room sees it
+ * in its timeline) and names the task it filed — the key, the title to read, and
+ * the task's own thread to open — in its payload. This is what turns "a work row
+ * appeared on the board" into "the room filed a task", in sequence with the chat.
+ */
+export function taskCreatedOf(raw: Record<string, unknown> | null | undefined): TaskCreated | null {
+  const envelope = (raw?.l9 ?? null) as Record<string, unknown> | null;
+  const payload = (envelope?.payload ?? null) as Record<string, unknown> | null;
+  if (!payload || payload.type !== TASK_CREATED_PAYLOAD_TYPE) return null;
+  const data = (payload.data ?? {}) as Record<string, unknown>;
+  const key = data.key;
+  if (typeof key !== "string" || !key) return null;
+  return {
+    key,
+    title: typeof data.title === "string" ? data.title : null,
+    episode: typeof data.episode === "string" ? data.episode : null,
+    by: typeof data.by === "string" ? data.by : null,
+    kind: typeof data.kind === "string" ? data.kind : null,
+  };
+}
+
 /** The minimum a feed row has to expose to be coalesced. */
 export interface Pingable {
   type: string;
