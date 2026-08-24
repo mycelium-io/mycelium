@@ -55,9 +55,9 @@ export const THREAD_REFUSALS: Record<string, string> = {
 /**
  * Why this row's thread cannot be opened, or null when it can.
  *
- * A `work/` row with no binding is the common case and reads as the memory
- * refusal's sibling: nothing has been said about it yet, so there is no thread
- * rather than no place for one.
+ * Every task is minted a thread on creation, so a board row all but always has
+ * one; the memory refusal is left for a memory outside the board namespaces,
+ * which is genuinely in another namespace and has no thread to open.
  */
 export function threadRefusal(item: LiveItem, episode: string | null): string | null {
   if (episode) return null;

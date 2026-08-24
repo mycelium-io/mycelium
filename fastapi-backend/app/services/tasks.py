@@ -52,6 +52,21 @@ logger = logging.getLogger(__name__)
 #: The namespace a task lives in — the one the board leases against.
 WORK_NAMESPACE = "work"
 
+#: The namespaces whose memories are board rows — a task, each with its own
+#: thread. Every row here is a markdown file with frontmatter, and gets an
+#: episode minted the moment it is created, so a task, a decision, a status or a
+#: blocked item all carry a thread from the start rather than only once a
+#: negotiation happens inside one. Kept in step with the frontend's
+#: ``LIVE_NAMESPACES`` and the CLI's, and frozen in
+#: ``contracts/board-vocabulary.json`` under ``live_namespaces``.
+BOARD_NAMESPACES = frozenset({"decisions", "status", "work", "failed"})
+
+
+def is_board_row(key: str) -> bool:
+    """Whether ``key`` names a board row, which is what gets a thread on create."""
+    return key.split("/", 1)[0] in BOARD_NAMESPACES
+
+
 #: What a board row calls a task.  Written explicitly because the
 #: projection's default for this namespace is "concern" — a task is an action.
 TASK_KIND = "action"
@@ -298,7 +313,11 @@ async def create_task(
 
 
 def backfill_room(room: str) -> int:
-    """Mint a thread for every ``work/`` row that carries none, in place.
+    """Mint a thread for every board row that carries none, in place.
+
+    Covers every board namespace, not just ``work/``: a decision, a status or a
+    blocked item is a task with its own thread too, so a room written before
+    threading gets one on each of its rows.
 
     Written straight to the file: minting a URN records where a row's thread
     *is*, so it must not bump the version, re-date ``updated_at`` or broadcast a
@@ -308,7 +327,12 @@ def backfill_room(room: str) -> int:
     """
     base = get_room_dir(room)
     bound = 0
-    for key, meta, content in list_memory_files(base, prefix=f"{WORK_NAMESPACE}/"):
+    rows = (
+        row
+        for namespace in sorted(BOARD_NAMESPACES)
+        for row in list_memory_files(base, prefix=f"{namespace}/")
+    )
+    for key, meta, content in rows:
         if system_meta(meta).get(EPISODE_META):
             continue
         # Everything serialize_memory does not write from its own arguments,

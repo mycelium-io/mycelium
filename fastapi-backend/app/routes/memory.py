@@ -59,6 +59,7 @@ from app.services.filesystem import (
     write_memory_file,
 )
 from app.services.search_index import stable_memory_id
+from app.services.tasks import is_board_row, mint_episode_urn
 
 logger = logging.getLogger(__name__)
 
@@ -304,6 +305,15 @@ async def upsert_memories(
         if system:
             extra_meta.update(system)
         extra_meta.update(system_meta(existing_meta))
+
+        # Every board row is a task with its own thread. If this write creates
+        # one in a board namespace and nothing has already bound it, mint its
+        # episode now — so a task, a decision or a blocked item carries a thread
+        # from the moment it exists, not only once a negotiation happens inside
+        # it. The merge above is write-once (an existing binding won), so this
+        # only ever fires on creation and each row gets a distinct URN.
+        if EPISODE_META not in extra_meta and is_board_row(item.key):
+            extra_meta[EPISODE_META] = mint_episode_urn(room_name)
 
         # Persist structured values into frontmatter so non-text keys survive
         # the round-trip (the markdown body only carries the ``text``/rendering).

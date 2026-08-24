@@ -402,32 +402,37 @@ export function LiveDot({ item }: { item: LiveItem }) {
 }
 
 /**
- * The way into a row's conversation.
+ * The episode a row's thread opens at, or null when it has none — a row from
+ * before threading, or the room's own live channel. The whole row opens this:
+ * a row and the thread its coordination happens in are the same object, so
+ * opening the thread is the row, opened, not a second thing to find.
+ */
+export function openableThread(item: LiveItem): string | null {
+  const episode = str(item, EPISODE_FIELD);
+  return episode && threadShortId(episode) ? episode : null;
+}
+
+/**
+ * A quiet marker that a row's thread has been spoken in — a count, never the
+ * thread's id, which is noise on every row.
  *
- * A row and the thread its coordination happens in are the same object, so the
- * thread is not a second thing to find — it is the row, opened. The chip draws
- * only where a row is actually bound to one: a task created before threading,
- * or one nobody has said anything about, has no thread to open and says so by
- * not offering.
- *
- * What it opens is a transient pane, not a rail, which is why this is a chip on
- * the row rather than a permanent column of its own.
+ * The thread is opened by clicking the row, not this, so the chip is a badge and
+ * not the way in: it shows where there is something to read and stays out of the
+ * way where there is not (no count, no chip — the row still opens on click).
  */
 export function ThreadChip({ item, onOpen }: { item: LiveItem; onOpen?: (episode: string) => void }) {
-  const episode = str(item, EPISODE_FIELD);
-  const shortId = threadShortId(episode);
-  if (!episode || !shortId) return null;
-  const state = str(item, "thread_state");
+  const episode = openableThread(item);
   const rounds = num(item, "rounds");
-  // A count only where the thread has one, and never zero: "0 messages" reads
-  // as a claim about a conversation nobody has had.
-  const label = rounds && rounds > 0 ? `${shortId} · ${rounds}` : shortId;
-  const title = state && state !== "open" ? `thread ${shortId} · ${state}` : `thread ${shortId}`;
+  // Never zero, and never a bare id: "0 messages" reads as a claim about a
+  // conversation nobody has had, and the id is noise a reader never types.
+  if (!episode || !rounds || rounds <= 0) return null;
+  const state = str(item, "thread_state");
+  const title = state && state !== "open" ? `${rounds} in the thread · ${state}` : `${rounds} in the thread`;
   if (!onOpen) {
     return (
       <span className="inline-flex items-center gap-1 font-mono text-micro text-muted-foreground" title={title}>
         <MessageSquare className="size-3" strokeWidth={1.8} />
-        {label}
+        {rounds}
       </span>
     );
   }
@@ -438,12 +443,12 @@ export function ThreadChip({ item, onOpen }: { item: LiveItem; onOpen?: (episode
         e.stopPropagation();
         onOpen(episode);
       }}
-      title={`${title}  (t)`}
-      aria-label={`Open thread ${shortId}`}
+      title={title}
+      aria-label="Open thread"
       className="inline-flex items-center gap-1 rounded px-1 font-mono text-micro text-accent transition-colors hover:bg-accent-soft hover:underline"
     >
       <MessageSquare className="size-3" strokeWidth={1.8} />
-      {label}
+      {rounds}
     </button>
   );
 }

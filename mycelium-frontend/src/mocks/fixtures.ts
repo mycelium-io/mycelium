@@ -155,11 +155,25 @@ const a2aManifest = (description: string, card: string, skills: string[]): strin
 
 // ── atlas-migration: the rich, converged room ─────────────────────────────────
 
-const ATLAS_EPISODE = "urn:ioc:mycelium:episode:atlas-migration:e4f1a2";
+const atlasEpisode = (shortId: string): string =>
+  `urn:ioc:mycelium:episode:atlas-migration:${shortId}`;
+
+// The negotiation growth and risk ran. It is an *orphan* episode — no board row
+// is bound to it — because a task's thread is the task's own, not the
+// conversation that produced it. The two tasks it compiled each carry their own
+// thread below; this URN stays the negotiation's record (Episodes rail, L9 feed).
+const ATLAS_EPISODE = atlasEpisode("e4f1a2");
 // The room's own channel. A message with no thread lands here, and a ping about
 // a thread is raised here — which is why the ping's own episode is this one and
 // the thread it names is in its payload.
-const ATLAS_LIVE = "urn:ioc:mycelium:episode:atlas-migration:live";
+const ATLAS_LIVE = atlasEpisode("live");
+// The flip-reads task's own thread: where growth and risk work that one row, and
+// what the pings below point at. Its own episode, minted when the row was, not
+// the negotiation's.
+const ATLAS_FLIP_THREAD = atlasEpisode("f1a5c7");
+// The retire-legacy task's thread. Its own, and still silent — a blank thread is
+// the common case, and the board shows the row with a thread to open regardless.
+const ATLAS_RETIRE_THREAD = atlasEpisode("d2b8e0");
 
 // The negotiation the aligner brokered: growth (big-bang, fast) vs risk
 // (phased, safe), converging over four rounds of Stacked Alternating Offers.
@@ -298,7 +312,7 @@ function atlasPing(message: string, sender: string, minutesAgo: number): Record<
           message: { id: `ping-${message}`, parents: [], episode: ATLAS_LIVE },
           participants: { actors: [{ id: "system", role: "coordinator" }] },
         },
-        payload: { type: "ping", data: { episode: ATLAS_EPISODE, sender, message } },
+        payload: { type: "ping", data: { episode: ATLAS_FLIP_THREAD, sender, message } },
       },
     },
   };
@@ -319,17 +333,19 @@ const atlasEpisodeSummary: EpisodeSummary = {
   updated_by: "aligner",
 };
 
-// Coordination-state memories the board projects into rows. Each value is a
-// structured object — the store's `value:`-key mapping shape (what
-// `MemoryCreate.value` as an object round-trips to, a real client-reachable
-// path), not arbitrary markdown frontmatter, which the read path drops (#772).
-// The board reads its typed fields (status, owner, priority, ci, pr, branch,
-// blocks, choices) straight from that object. Together they give the board
-// something in every lens (needs-you, in-flight, resolved) and a column for
-// every inferred field, without any in-app demo layer.
+// Coordination-state memories the board projects into rows. Every one is what
+// the docs promise a task is: a markdown file with frontmatter — prose in the
+// body (`value`), the row's typed fields in `meta`. The board reads status,
+// owner, priority, ci, pr, branch, blocks and choices from that frontmatter, the
+// same keys a `memory set --meta` writes. And every row carries its own
+// `episode`: a thread is per-item, minted when the row is, so each has one to
+// open whether or not anyone has spoken in it yet. Together they give the board
+// something in every lens (needs-you, in-flight, resolved) and a column for every
+// inferred field, without any in-app demo layer.
 const atlasBoardRows: MockMemory[] = [
-  // What the atlas agreement compiled into. A task is a row like anything else:
-  // it says who it is for, and separately whether anyone is holding it.
+  // What the atlas agreement compiled into. Two tasks from one negotiation are
+  // two tasks with two threads, not two rows sharing the conversation that
+  // produced them — so each carries its own episode, not the negotiation's.
   {
     key: "work/flip-reads-behind-a-flag",
     value: "flip reads behind a flag",
@@ -339,10 +355,7 @@ const atlasBoardRows: MockMemory[] = [
     updated_by: "aligner",
     version: 1,
     updated_at: iso(40),
-    // Both rows were compiled out of the atlas negotiation, so both are bound to
-    // it: the board draws two tasks carrying their thread, not two tasks plus a
-    // separate episode row for the conversation that produced them.
-    episode: ATLAS_EPISODE,
+    episode: ATLAS_FLIP_THREAD,
   },
   {
     key: "work/retire-the-legacy-store",
@@ -353,12 +366,12 @@ const atlasBoardRows: MockMemory[] = [
     updated_by: "aligner",
     version: 1,
     updated_at: iso(40),
-    episode: ATLAS_EPISODE,
+    episode: ATLAS_RETIRE_THREAD,
   },
   {
     key: "decisions/token-ttl",
-    value: {
-      title: "JWT access-token TTL: 15m or 60m?",
+    value: "JWT access-token TTL: 15m or 60m?",
+    meta: {
       status: "open",
       kind: "decision",
       owner: null,
@@ -372,11 +385,12 @@ const atlasBoardRows: MockMemory[] = [
     updated_by: "risk",
     version: 1,
     updated_at: iso(6),
+    episode: atlasEpisode("a1c3e5"),
   },
   {
     key: "failed/thin-spoke",
-    value: {
-      title: "Enable thin-spoke join without a local replica",
+    value: "Enable thin-spoke join without a local replica",
+    meta: {
       status: "blocked",
       kind: "blocked",
       owner: "@julia",
@@ -389,11 +403,12 @@ const atlasBoardRows: MockMemory[] = [
     updated_by: "julia",
     version: 1,
     updated_at: iso(40),
+    episode: atlasEpisode("b4d6f8"),
   },
   {
     key: "work/custody-review",
-    value: {
-      title: "@risk opened PR #504 — eyes on the custody seam",
+    value: "@risk opened PR #504 — eyes on the custody seam",
+    meta: {
       status: "in_review",
       kind: "review",
       owner: "@risk",
@@ -408,11 +423,12 @@ const atlasBoardRows: MockMemory[] = [
     updated_by: "risk",
     version: 1,
     updated_at: iso(12),
+    episode: atlasEpisode("c5e7a9"),
   },
   {
     key: "work/jwt-auth",
-    value: {
-      title: "Migrate auth → JWT",
+    value: "Migrate auth → JWT",
+    meta: {
       status: "in_progress",
       kind: "action",
       owner: "@growth",
@@ -427,11 +443,12 @@ const atlasBoardRows: MockMemory[] = [
     updated_by: "growth",
     version: 2,
     updated_at: iso(12),
+    episode: atlasEpisode("d6f8b0"),
   },
   {
     key: "work/cache-sweep",
-    value: {
-      title: "Cache TTL sweep across the memory index",
+    value: "Cache TTL sweep across the memory index",
+    meta: {
       status: "in_progress",
       kind: "action",
       owner: "@julia",
@@ -444,11 +461,12 @@ const atlasBoardRows: MockMemory[] = [
     updated_by: "julia",
     version: 1,
     updated_at: iso(3),
+    episode: atlasEpisode("e7a9c1"),
   },
   {
     key: "failed/offer-snap",
-    value: {
-      title: "Aligner stalls when a proposer replies with prose only",
+    value: "Aligner stalls when a proposer replies with prose only",
+    meta: {
       status: "in_review",
       kind: "concern",
       owner: "@risk",
@@ -462,11 +480,12 @@ const atlasBoardRows: MockMemory[] = [
     updated_by: "risk",
     version: 1,
     updated_at: iso(55),
+    episode: atlasEpisode("f8b0d2"),
   },
   {
     key: "work/path-traversal",
-    value: {
-      title: "Fix path traversal in the memory key encoder",
+    value: "Fix path traversal in the memory key encoder",
+    meta: {
       status: "resolved",
       kind: "action",
       owner: "@risk",
@@ -480,11 +499,12 @@ const atlasBoardRows: MockMemory[] = [
     updated_by: "risk",
     version: 2,
     updated_at: iso(62),
+    episode: atlasEpisode("a9c1e3"),
   },
   {
     key: "decisions/spire-retire",
-    value: {
-      title: "Retire the SPIRE identity tier",
+    value: "Retire the SPIRE identity tier",
+    meta: {
       status: "resolved",
       kind: "concern",
       owner: "@julia",
@@ -498,6 +518,7 @@ const atlasBoardRows: MockMemory[] = [
     updated_by: "julia",
     version: 1,
     updated_at: iso(200),
+    episode: atlasEpisode("b0d2f4"),
   },
 ];
 
@@ -593,9 +614,9 @@ const atlas: RoomFixture = {
     // Two agents working the flag row talk inside its thread. The channel does
     // not carry this — that is the whole point — so the room hears the pings
     // below instead, and the prose reads in the thread pane.
-    { id: "t1", sender_handle: "growth", message_type: "broadcast", content: "Flag is wired: reads flip on `atlas.reads.v2`, default off.", created_at: iso(22), episode: ATLAS_EPISODE },
-    { id: "t2", sender_handle: "risk", message_type: "broadcast", content: "Hold the flip until replica lag has been under a second for an hour.", created_at: iso(21), episode: ATLAS_EPISODE },
-    { id: "t3", sender_handle: "growth", message_type: "broadcast", content: "Agreed — gating the flip on the lag alarm.", created_at: iso(20), episode: ATLAS_EPISODE },
+    { id: "t1", sender_handle: "growth", message_type: "broadcast", content: "Flag is wired: reads flip on `atlas.reads.v2`, default off.", created_at: iso(22), episode: ATLAS_FLIP_THREAD },
+    { id: "t2", sender_handle: "risk", message_type: "broadcast", content: "Hold the flip until replica lag has been under a second for an hour.", created_at: iso(21), episode: ATLAS_FLIP_THREAD },
+    { id: "t3", sender_handle: "growth", message_type: "broadcast", content: "Agreed — gating the flip on the lag alarm.", created_at: iso(20), episode: ATLAS_FLIP_THREAD },
   ],
   episodes: [atlasEpisodeSummary],
   episodeDetails: { e4f1a2: { ...atlasEpisodeSummary, messages: atlasL9Chain } },

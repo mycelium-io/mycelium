@@ -473,9 +473,10 @@ export function RoomBoard({ roomName, onOpenThread }: Props) {
                     sort: { field, dir: v.sort.field === field && v.sort.dir === "asc" ? "desc" : "asc" },
                   }))
                 }
+                onOpenThread={onOpenThread}
               />
             ) : (
-              <BoardTimeline items={flat} now={now} selectedId={selectedId} onSelect={setSelectedId} />
+              <BoardTimeline items={flat} now={now} selectedId={selectedId} onSelect={setSelectedId} onOpenThread={onOpenThread} />
             )}
           </ScrollArea>
         )}

@@ -16,12 +16,14 @@ import {
   type Verb,
 } from "@/lib/board/item";
 import { waitingOn, type ItemGroup } from "@/lib/board/view";
+import { EPISODE_FIELD } from "@/lib/board/projection";
 import {
   AgeTag,
   BlocksNote,
   KindGlyph,
   LiveDot,
   CustodyChip,
+  openableThread,
   PriorityMeter,
   SourceTag,
   ThreadChip,
@@ -112,10 +114,17 @@ function CockpitRow({
       ref={ref}
       role="button"
       tabIndex={-1}
-      onClick={onSelect}
+      // The row is the task, and the task is its thread, so a click opens it —
+      // the verbs and answer chips below stop the click, so they still act in
+      // place. Selecting keeps the keyboard's place on the row it opened.
+      onClick={() => {
+        onSelect();
+        const episode = openableThread(item);
+        if (episode) onOpenThread?.(episode);
+      }}
       data-board-row={item.id}
       className={cn(
-        "group relative flex cursor-default items-start gap-2.5 rounded-lg px-2.5 py-2 transition-colors",
+        "group relative flex cursor-pointer items-start gap-2.5 rounded-lg px-2.5 py-2 transition-colors",
         selected ? "bg-elevated ring-1 ring-border" : "hover:bg-hairline",
         resolved && "opacity-60",
       )}
@@ -167,7 +176,25 @@ function CockpitRow({
                 {choice}
               </button>
             ))}
-            <span className="text-micro text-faint">or reply in thread</span>
+            {/* Answering settles it in one gesture; replying opens its thread —
+                the row's own, because a decision is a task with a thread like any
+                other. A real way in, not a promise the row can't keep. */}
+            {(() => {
+              const episode = str(item, EPISODE_FIELD);
+              return episode && onOpenThread ? (
+                <button
+                  onClick={e => {
+                    e.stopPropagation();
+                    onOpenThread(episode);
+                  }}
+                  className="text-micro text-muted-foreground underline-offset-2 transition-colors hover:text-text hover:underline"
+                >
+                  or reply in thread
+                </button>
+              ) : (
+                <span className="text-micro text-faint">or reply in thread</span>
+              );
+            })()}
           </div>
         )}
       </div>
