@@ -291,17 +291,21 @@ async def post_reply(room_name: str, body: ReplyBody, request: Request):
     tick_sender = (
         woke_actors[0].get("id") if woke_actors and isinstance(woke_actors[0], dict) else None
     )
+    # Where the tick was asked, and where this reply lands. Read once: two
+    # accessors of the same field drift, and the answer decides both the target
+    # and whether the causal edge below survives.
+    tick_episode = woke_msg.get("episode") or l9.live_episode_urn(room_name)
     # An explicit target wins over the inherited one: a reply answers where it was
     # asked by default, which is what keeps a resident loop threaded without the
     # agent tracking URNs — but a caller that names a thread means that thread.
-    episode = body.episode or woke_msg.get("episode") or l9.live_episode_urn(room_name)
+    episode = body.episode or tick_episode
     _refuse_thread_write(units.thread_write_refusal(room_name, handle, episode))
     topic = ((woke_header.get("context") or {}).get("topic")) or l9.topic_urn(room_name)
     # Parent onto the tick only when the reply lands where the tick did. A reply
     # redirected into another thread is not an answer to that tick, and a causal
     # edge reaching across threads would put one thread's message in another's
     # chain — read back as a conversation that never happened.
-    answers_the_tick = woke_msg.get("episode", l9.live_episode_urn(room_name)) == episode
+    answers_the_tick = tick_episode == episode
     parents = [woke_msg["id"]] if answers_the_tick and woke_msg.get("id") else []
     recipients = [tick_sender] if answers_the_tick and tick_sender else [l9.SYSTEM_ACTOR_ID]
 

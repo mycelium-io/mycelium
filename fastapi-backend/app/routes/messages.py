@@ -167,6 +167,14 @@ async def send_message(room_name: str, payload: MessageCreate, request: Request)
     if not published:
         bus.publish(room_channel(channel), notify_payload)
 
+    # Exactly one ping per threaded write, whatever the message type and whether
+    # or not the channel is up. Raised here rather than inside ``publish_human``
+    # because that only sees broadcasts over a live channel: an ``event`` into a
+    # thread, or any write while the channel is down, would move a unit in
+    # silence, and the ping is the only thing that surfaces a thread into the room.
+    await room_channels.manager.raise_ping(
+        base_room, episode=msg.episode, sender=msg.sender_handle, message_id=msg.message_id
+    )
     return MessageRead.model_validate(msg)
 
 
@@ -358,8 +366,18 @@ async def amend_message(
                 "amends": amends,
                 "created_at": msg.created_at.isoformat(),
                 "room_name": channel,
+                "episode": msg.episode,
             },
         )
+
+    # Exactly one ping per threaded write, whatever the message type and whether
+    # or not the channel is up. Raised here rather than inside ``publish_human``
+    # because that only sees broadcasts over a live channel: an ``event`` into a
+    # thread, or any write while the channel is down, would move a unit in
+    # silence, and the ping is the only thing that surfaces a thread into the room.
+    await room_channels.manager.raise_ping(
+        base_room, episode=msg.episode, sender=sender_handle, message_id=msg.message_id
+    )
 
     # Answer with the folded message — the row the room now reads — rather than
     # the amendment, so a client refreshes to exactly what it was handed.

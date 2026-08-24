@@ -15,13 +15,14 @@ from __future__ import annotations
 
 import json
 from typing import Any
+from unittest import mock
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from starlette.requests import Request
 
 from app.routes import participate
-from app.services import l9, persister, units
+from app.services import l9, persister, room_channels, units
 from app.services.filesystem import get_room_dir
 from app.services.l9_models import Kind
 from app.services.l9_slim import serialize_content
@@ -31,6 +32,13 @@ THREAD = l9.episode_urn(ROOM, "t3")
 OTHER_THREAD = l9.episode_urn(ROOM, "t9")
 
 _REQUEST = Request({"type": "http", "method": "GET", "path": "/await", "headers": []})
+
+
+async def _unit_thread(room: str, title: str) -> str:
+    """Create a unit and hand back the thread it was minted with."""
+    unit = await units.create_unit(room, title, created_by="avery")
+    assert unit.episode, "a unit is created with its thread already minted"
+    return unit.episode
 
 
 def _record(message_id: str, *, to: str, episode: str, sender: str = "avery"):
@@ -248,6 +256,10 @@ class _RecordingPersister:
 
     def __init__(self) -> None:
         self.ingested: list[tuple[Any, dict, bool]] = []
+        # The write guard reads the transcript to recognise a thread already
+        # spoken in; empty here, so every test resolves its thread off the row
+        # it is bound to — the first-write path, which is the one that matters.
+        self.log = persister.DeliveryLog()
 
     def ingest_local(self, envelope, content, *, list_write=False):
         self.ingested.append((envelope, content, list_write))
@@ -281,81 +293,277 @@ def _live_room(members: set[str] | None = None):
 
 
 class TestPing:
-    """A thread write surfaces in the room as a signal, never as its content."""
+    """A thread write surfaces in the room as a signal, never as its content.
 
-    @pytest.mark.asyncio
-    async def test_a_thread_write_leaves_exactly_one_ping_in_live(self):
-        """The whole point of the epic's PING: the human's channel shows that a
-        unit moved, once, instead of the argument inside it."""
+    Driven through the write route rather than ``publish_human``, because the
+    property is "every write into a thread raises one ping" and the publish
+    helper only ever sees one of the ways a write gets there.
+    """
+
+    @pytest.fixture
+    async def room(self, client, monkeypatch):
+        assert (await client.post("/api/rooms", json={"name": ROOM})).status_code in (200, 201)
+        monkeypatch.setattr("app.routes.memory.embed_text", lambda _text: [0.0])
+        return ROOM
+
+    @pytest.fixture
+    def live(self):
+        """A live channel for ROOM whose sends and local ingests are observable."""
         manager, managed = _live_room()
-        await manager.publish_human(
-            ROOM, sender="api", text="the token goes in memory", episode=THREAD
+        with mock.patch.object(room_channels, "manager", manager):
+            yield managed
+
+    @staticmethod
+    async def _post(client, *, episode, text="the token goes in memory", kind="broadcast"):
+        return await client.post(
+            f"/api/rooms/{ROOM}/messages",
+            json={
+                "message_type": kind,
+                "sender_handle": "api",
+                "content": text,
+                "episode": episode,
+            },
         )
 
-        assert len(managed.persister.pings) == 1
-        ping, _content = managed.persister.pings[0]
+    @pytest.mark.asyncio
+    async def test_a_thread_write_leaves_exactly_one_ping_in_live(self, client, room, live):
+        """The whole point of the epic's PING: the human's channel shows that a
+        unit moved, once, instead of the argument inside it."""
+        thread = await _unit_thread(room, "pick a token store")
+        assert (await self._post(client, episode=thread)).status_code == 201
+
+        assert len(live.persister.pings) == 1
+        ping, _content = live.persister.pings[0]
         assert ping.header.message.episode == l9.live_episode_urn(ROOM)
-        assert ping.payload.data["episode"] == THREAD
+        assert ping.payload.data["episode"] == thread
 
     @pytest.mark.asyncio
-    async def test_the_ping_carries_no_echo_of_what_was_said(self):
-        manager, managed = _live_room()
-        secret = "the token goes in memory"
-        await manager.publish_human(ROOM, sender="api", text=secret, episode=THREAD)
+    async def test_the_ping_carries_no_echo_of_what_was_said(self, client, room, live):
+        thread = await _unit_thread(room, "pick a token store")
+        secret = "the token goes in the keychain"
+        await self._post(client, episode=thread, text=secret)
 
-        _ping, content = managed.persister.pings[0]
+        _ping, content = live.persister.pings[0]
         assert "content" not in content
         assert secret not in json.dumps(content)
 
     @pytest.mark.asyncio
-    async def test_the_ping_names_the_thread_and_the_writer(self):
-        manager, managed = _live_room()
-        await manager.publish_human(ROOM, sender="api", text="hi", episode=THREAD)
+    async def test_the_ping_names_the_thread_and_the_writer(self, client, room, live):
+        thread = await _unit_thread(room, "pick a token store")
+        await self._post(client, episode=thread)
 
-        ping, _content = managed.persister.pings[0]
-        assert ping.payload.data["episode"] == THREAD
+        ping, _content = live.persister.pings[0]
+        assert ping.payload.data["episode"] == thread
         assert ping.payload.data["sender"] == "api"
         assert ping.payload.data["message"]  # enough to open the thread on
 
     @pytest.mark.asyncio
-    async def test_the_ping_never_goes_out_on_the_wire(self):
+    async def test_the_ping_never_goes_out_on_the_wire(self, client, room, live):
         """Record locally, don't broadcast — the aligner's seam. The channel
         already carried the real message; the ping is for the transcript and GUI."""
-        manager, managed = _live_room()
-        await manager.publish_human(ROOM, sender="api", text="hi", episode=THREAD)
+        thread = await _unit_thread(room, "pick a token store")
+        await self._post(client, episode=thread)
 
-        sent = [call.args[0] for call in managed.channel.send.call_args_list]
+        sent = [call.args[0] for call in live.channel.send.call_args_list]
         assert [e for e in sent if e.payload.type == l9.PING_PAYLOAD_TYPE] == []
         assert len(sent) == 1  # the thread message itself, and only that
+        assert sent[0].header.message.episode == thread  # a tag, not a second channel
 
     @pytest.mark.asyncio
-    async def test_the_ping_wakes_nobody(self):
+    async def test_the_ping_wakes_nobody(self, client, room, live):
         """A nudge to look, not a turn to take: a resident ``await`` consumes it
         silently rather than spending a reasoning turn on it."""
-        manager, managed = _live_room()
-        await manager.publish_human(ROOM, sender="api", text="@sec thoughts?", episode=THREAD)
+        thread = await _unit_thread(room, "pick a token store")
+        await self._post(client, episode=thread, text="@sec thoughts?")
 
-        _ping, content = managed.persister.pings[0]
+        _ping, content = live.persister.pings[0]
         assert not participate._addressed_to(content, "sec")
         assert not participate._addressed_to(content, "api")
 
     @pytest.mark.asyncio
-    async def test_a_message_to_the_room_pings_nothing(self):
-        manager, managed = _live_room()
-        await manager.publish_human(ROOM, sender="api", text="hi")
-        await manager.publish_human(
-            ROOM, sender="api", text="hi", episode=l9.live_episode_urn(ROOM)
-        )
-        assert managed.persister.pings == []
+    async def test_a_message_to_the_room_pings_nothing(self, client, room, live):
+        assert (await self._post(client, episode=None)).status_code == 201
+        assert (await self._post(client, episode=l9.live_episode_urn(ROOM))).status_code == 201
+        assert live.persister.pings == []
 
     @pytest.mark.asyncio
-    async def test_a_thread_message_still_rides_the_channel_normally(self):
-        """A thread is a tag over the room's own channel, not a second one."""
-        manager, managed = _live_room()
-        await manager.publish_human(ROOM, sender="api", text="hi", episode=THREAD)
+    async def test_a_write_that_is_not_a_broadcast_still_pings(self, client, room, live):
+        """Only a broadcast reaches ``publish_human``. A thread that can be moved
+        by an ``announce`` without the room hearing of it is a thread the board
+        would show as idle while work happened in it."""
+        thread = await _unit_thread(room, "pick a token store")
+        assert (await self._post(client, episode=thread, kind="announce")).status_code == 201
 
-        sent = [call.args[0] for call in managed.channel.send.call_args_list]
-        assert sent[0].header.message.episode == THREAD
+        assert len(live.persister.pings) == 1
+        assert live.persister.pings[0][0].payload.data["episode"] == thread
+
+    @pytest.mark.asyncio
+    async def test_an_amendment_in_a_thread_pings_too(self, client, room, live):
+        thread = await _unit_thread(room, "pick a token store")
+        posted = await self._post(client, episode=thread, text="in memory")
+        live.persister.ingested.clear()
+
+        await client.post(
+            f"/api/rooms/{ROOM}/messages/{posted.json()['id']}/amend",
+            json={"sender_handle": "api", "content": "in the keychain"},
+        )
+        assert len(live.persister.pings) == 1
+
+    @pytest.mark.asyncio
+    async def test_a_thread_write_with_no_channel_still_reaches_the_bus(self, monkeypatch):
+        """A room whose channel is down has no transcript to raise into — so the
+        ping matches the reach of the message it announces (bus only) instead of
+        vanishing, in the frame a client already decodes."""
+        from app.bus import bus, room_channel
+        from app.services.room_channels import RoomChannelManager
+
+        published: list[tuple[str, dict]] = []
+        monkeypatch.setattr(bus, "publish", lambda ch, frame: published.append((ch, frame)))
+
+        manager = RoomChannelManager(endpoint="http://127.0.0.1:46357", default_workspace="m")
+        mid = await manager.raise_ping(ROOM, episode=THREAD, sender="api", message_id="m1")
+
+        assert mid is not None
+        assert len(published) == 1
+        channel, frame = published[0]
+        assert channel == room_channel(ROOM)
+        assert frame["message_type"] == "l9_exchange"
+        assert frame["episode"] == l9.live_episode_urn(ROOM)
+        assert THREAD in frame["content"]
+
+
+class TestReplyTargeting:
+    """Where an agent's reply lands, and what it is an answer *to*.
+
+    The route's subtlest path: a resident loop replies where it was asked
+    without ever naming a URN, and a caller that does name one gets that thread
+    — including the causal edge, which must not follow it across.
+    """
+
+    @pytest.fixture
+    async def replying(self, client, monkeypatch):
+        """A registered agent, a live channel, and a tick already served to it."""
+        assert (await client.post("/api/rooms", json={"name": ROOM})).status_code in (200, 201)
+        monkeypatch.setattr("app.routes.memory.embed_text", lambda _text: [0.0])
+        monkeypatch.setattr(participate.principals, "post_rejection_reason", lambda *a, **k: None)
+
+        manager, managed = _live_room()
+
+        async def _provision(_room, **_kw):
+            return managed
+
+        monkeypatch.setattr(manager, "provision", _provision)
+        monkeypatch.setattr(manager, "send_as_custodian", AsyncMock(return_value=False))
+        monkeypatch.setattr(participate.room_channels, "manager", manager)
+        monkeypatch.setattr(room_channels, "manager", manager)
+        participate._last_tick.clear()
+        return managed
+
+    @staticmethod
+    def _woke(episode: str, *, sender: str = "aligner", message_id: str = "tick-1") -> None:
+        """Stand the caller where an ``await`` on ``episode`` would have left it."""
+        env = l9.build_envelope(
+            kind=Kind.exchange,
+            episode=episode,
+            sender=sender,
+            recipients=["api"],
+            topic=l9.topic_urn(ROOM),
+            message_id=message_id,
+            payload_type="message",
+        )
+        participate._last_tick[(ROOM, "api")] = serialize_content(
+            env, extra={"content": "@api where should the token live?"}
+        )
+
+    @staticmethod
+    def _replied(managed) -> Any:
+        """The reply envelope the route recorded.
+
+        Selected by payload type: the moderator also ingests the ping, and a
+        ``create_unit`` in the test's own setup broadcasts a ``knowledge`` write.
+        """
+        replies = [
+            env for env, _c, _lw in managed.persister.ingested if env.payload.type == "reply"
+        ]
+        assert len(replies) == 1, "the route records exactly one reply"
+        return replies[0]
+
+    async def _reply(self, client, **body) -> Any:
+        return await client.post(
+            f"/api/rooms/{ROOM}/reply", json={"handle": "api", "text": "in memory", **body}
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_reply_answers_where_it_was_asked(self, client, replying):
+        """The inherit: a resident loop stays threaded without tracking URNs."""
+        thread = await _unit_thread(ROOM, "pick a token store")
+        self._woke(thread)
+
+        assert (await self._reply(client)).status_code == 200
+        env = self._replied(replying)
+        assert env.header.message.episode == thread
+        assert env.header.message.parents == ["tick-1"]
+        assert [a.id for a in env.header.participants.actors] == ["api", "aligner"]
+
+    @pytest.mark.asyncio
+    async def test_a_named_thread_beats_the_one_inherited(self, client, replying):
+        thread = await _unit_thread(ROOM, "pick a token store")
+        other = await _unit_thread(ROOM, "rotate the signing key")
+        self._woke(thread)
+
+        assert (await self._reply(client, episode=other)).status_code == 200
+        assert self._replied(replying).header.message.episode == other
+
+    @pytest.mark.asyncio
+    async def test_a_redirected_reply_drops_the_causal_edge(self, client, replying):
+        """A reply carried into another thread is not an answer to the tick that
+        woke it. Keeping the parent would splice one thread's message into
+        another's chain, which reads back as a conversation nobody had — and
+        would leave the tick's sender addressed in a thread they never spoke in."""
+        thread = await _unit_thread(ROOM, "pick a token store")
+        other = await _unit_thread(ROOM, "rotate the signing key")
+        self._woke(thread)
+
+        await self._reply(client, episode=other)
+        env = self._replied(replying)
+        assert env.header.message.parents == []
+        assert [a.id for a in env.header.participants.actors] == ["api", l9.SYSTEM_ACTOR_ID]
+
+    @pytest.mark.asyncio
+    async def test_naming_the_same_thread_keeps_the_edge(self, client, replying):
+        """Redirecting is what drops the parent, not the act of naming a thread."""
+        thread = await _unit_thread(ROOM, "pick a token store")
+        self._woke(thread)
+
+        await self._reply(client, episode=thread)
+        assert self._replied(replying).header.message.parents == ["tick-1"]
+
+    @pytest.mark.asyncio
+    async def test_a_reply_into_a_thread_pings_the_room(self, client, replying):
+        thread = await _unit_thread(ROOM, "pick a token store")
+        self._woke(thread)
+
+        await self._reply(client)
+        assert len(replying.persister.pings) == 1
+        assert replying.persister.pings[0][0].payload.data["episode"] == thread
+
+    @pytest.mark.asyncio
+    async def test_a_reply_to_the_room_pings_nothing(self, client, replying):
+        self._woke(l9.live_episode_urn(ROOM))
+
+        await self._reply(client)
+        assert self._replied(replying).header.message.episode == l9.live_episode_urn(ROOM)
+        assert replying.persister.pings == []
+
+    @pytest.mark.asyncio
+    async def test_a_reply_into_an_invented_thread_is_refused(self, client, replying):
+        self._woke(l9.live_episode_urn(ROOM))
+
+        resp = await self._reply(client, episode=THREAD)
+        assert resp.status_code == 404
+        # Refused before anything was recorded — no reply, and no ping either.
+        assert [e for e, _c, _lw in replying.persister.ingested if e.payload.type == "reply"] == []
+        assert replying.persister.pings == []
 
 
 class TestWriteRoutes:
@@ -401,9 +609,7 @@ class TestWriteRoutes:
         self, client, room, monkeypatch
     ):
         monkeypatch.setattr("app.routes.memory.embed_text", lambda _text: [0.0])
-        unit = await units.create_unit(room, "ship passkey login", created_by="avery")
-        thread = unit.episode
-        assert thread, "a unit is created with its thread already minted"
+        thread = await _unit_thread(room, "ship passkey login")
 
         resp = await client.post(
             f"/api/rooms/{room}/messages",
@@ -422,8 +628,7 @@ class TestWriteRoutes:
         """Write-then-read round-trips on the same URN, which is what makes a board
         row openable as a conversation."""
         monkeypatch.setattr("app.routes.memory.embed_text", lambda _text: [0.0])
-        unit = await units.create_unit(room, "rotate the signing key", created_by="avery")
-        thread = unit.episode
+        thread = await _unit_thread(room, "rotate the signing key")
 
         await client.post(
             f"/api/rooms/{room}/messages",
@@ -456,8 +661,7 @@ class TestWriteRoutes:
         the one thing a thread exists to prevent — and the thread's own read has
         to show the revision it folded in."""
         monkeypatch.setattr("app.routes.memory.embed_text", lambda _text: [0.0])
-        unit = await units.create_unit(room, "pick a token store", created_by="avery")
-        thread = unit.episode
+        thread = await _unit_thread(room, "pick a token store")
 
         posted = await client.post(
             f"/api/rooms/{room}/messages",
