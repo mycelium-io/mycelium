@@ -30,6 +30,8 @@ from __future__ import annotations
 import logging
 import re
 import uuid
+from collections.abc import Iterable
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from app.services import l9
@@ -72,6 +74,11 @@ _SLUG_STRIP = re.compile(r"[^a-z0-9]+")
 #: Frontmatter :func:`serialize_memory` writes from its own arguments; passing
 #: it through ``extra_meta`` as well would write each of those keys twice.
 _REWRITTEN_META = frozenset({"key", "created_by", "updated_by", "version", "tags"})
+
+
+def _norm(handle: str) -> str:
+    """A handle as it compares: the roster and the caller may spell it differently."""
+    return handle.strip().lstrip("@").casefold()
 
 
 def slugify(title: str) -> str:
@@ -119,6 +126,106 @@ def bound_episodes(room: str) -> set[str]:
         if isinstance(urn, str) and urn:
             urns.add(urn)
     return urns
+
+
+@dataclass(frozen=True)
+class ThreadRefusal:
+    """Why a write into a named thread was refused, and how to answer it."""
+
+    status: int
+    detail: str
+
+
+def known_episode(room: str, episode: str, *, transcript: Iterable[str] = ()) -> bool:
+    """Whether ``episode`` is a thread this room actually has.
+
+    Checked cheapest-first, because it runs on the write path: the URNs already
+    on the room's in-memory transcript settle every thread that has ever been
+    spoken in (a negotiation's, and an orphaned episode's, as well as a unit's),
+    and only a *first* write into a thread that is still silent falls through to
+    the store scan — once per thread, not once per message. ``transcript`` is
+    read newest-first and short-circuits, so recognising an active thread costs
+    a handful of records rather than the whole history.
+    """
+    if episode in transcript:
+        return True
+    return episode in bound_episodes(room)
+
+
+def episode_write_rejection(
+    room: str,
+    handle: str,
+    episode: str | None,
+    *,
+    frozen_episode: str | None = None,
+    frozen_members: Iterable[str] = (),
+    transcript: Iterable[str] = (),
+) -> ThreadRefusal | None:
+    """Why ``handle`` may not write into ``episode``, or ``None`` if it may.
+
+    Two refusals, and the difference between them is the whole model:
+
+    A thread the room does not have is refused (404) — naming a URN must not be
+    how one comes into being, or the transcript grows threads nobody opened.
+
+    A thread that is a **frozen negotiation** is refused to anyone outside the
+    roster it froze on (403). That is L9's stable-membership rule: an
+    offer/counter exchange scored across a set of participants means nothing if
+    an outsider can drop a position into it.
+
+    A **container** — a unit of work's thread — refuses neither, and that is
+    deliberate rather than unfinished. Freezing membership is a negotiation's
+    policy, not an episode's (:class:`~app.services.l9_slim.EpisodeLifecycle`):
+    a unit outlives what happens inside it, so an agent that claims a row after
+    the thread opened must be able to speak in it.  The honest boundary: a unit's
+    thread is scoped to the room, not narrower.  Everyone who may write in the
+    room may write in its threads — threads separate *attention*, not access, and
+    the room's own guards (membership, principal, delegation) are what a write
+    still has to pass.
+    """
+    if episode is None or l9.is_live_episode(room, episode):
+        return None
+    if not known_episode(room, episode, transcript=transcript):
+        return ThreadRefusal(404, f"No thread {short_id_of(episode)!r} in room {room!r}")
+    if episode == frozen_episode and _norm(handle) not in {_norm(m) for m in frozen_members}:
+        return ThreadRefusal(
+            403,
+            f"@{handle} is not a member of the negotiation in thread {short_id_of(episode)!r}",
+        )
+    return None
+
+
+def thread_write_refusal(room: str, handle: str, episode: str | None) -> ThreadRefusal | None:
+    """:func:`episode_write_rejection`, read against the room's live channel state.
+
+    The one call both write routes make, so ``/messages`` and ``/reply`` cannot
+    grow separate ideas of who may speak in a thread. A room with no live channel
+    has no negotiation to be outside of and no transcript to recognise a thread
+    by, so the rule falls back to what the store knows.
+    """
+    if episode is None or l9.is_live_episode(room, episode):
+        return None
+
+    from app.services.room_channels import manager
+
+    managed = manager.get(room)
+    lifecycle = managed.lifecycle if managed is not None else None
+    persister = managed.persister if managed is not None else None
+    spoken: Iterable[str] = ()
+    if persister is not None:
+        from app.services.persister import record_episode
+
+        # Newest-first and lazy: a thread being written into was almost certainly
+        # spoken in recently, so the membership test stops within a few records.
+        spoken = (urn for r in reversed(persister.log.records) if (urn := record_episode(r)))
+    return episode_write_rejection(
+        room,
+        handle,
+        episode,
+        frozen_episode=(lifecycle.episode if lifecycle is not None and lifecycle.frozen else None),
+        frozen_members=lifecycle.members if lifecycle is not None else (),
+        transcript=spoken,
+    )
 
 
 async def bind_episode(room: str, key: str, *, episode: str | None = None) -> str:

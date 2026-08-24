@@ -18,6 +18,14 @@ delivery queue. The agent participates with two plain, stateless HTTP calls:
   (role ``agent``) recorded into the transcript, which the aligner's poll scores
   as a position.
 
+Both take an optional **thread** — the episode URN of a unit of work, or of a
+negotiation inside one. A thread is a tag over the room's own channel, so this is
+one field on each call rather than a second transport: ``await?episode=`` narrows
+what wakes the handle (against that thread's own persisted cursor, so watching a
+unit consumes nothing from the room inbox behind it), and ``reply``'s ``episode``
+names where the answer lands. Writing into a thread raises a **ping** in the room
+— that a unit moved, never what was said in it.
+
 No client SLIM connection, no backgrounding, no compound shell — just two simple
 commands, which is all a headless/allowlisted agent can safely issue.
 """
@@ -26,15 +34,16 @@ from __future__ import annotations
 
 import asyncio
 import re
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
-from app.services import actor, l9, principals, room_channels
+from app.services import actor, l9, principals, room_channels, units
 from app.services.filesystem import room_exists
 from app.services.l9_models import Kind
 from app.services.l9_slim import serialize_content, serialize_envelope
+from app.services.persister import record_episode
 
 router = APIRouter(prefix="/rooms/{room_name}", tags=["participate"])
 
@@ -54,6 +63,12 @@ _MAX_WAIT_S = 3600.0
 # ``[[mycelium: confidence=0.85 stance=accept]]``; those fields are lifted onto the
 # L9 payload so the aligner can score convergence, and stripped from the prose.
 _MARKER_RE = re.compile(r"\[\[\s*mycelium\s*:(.*?)\]\]", re.IGNORECASE | re.DOTALL)
+# Payloads that are never an addressed turn however they are actor-labelled:
+# presence/keepalive are liveness, and a ``ping`` is the signal that a *thread*
+# moved — a nudge to look, not a turn to take. Excluded structurally here so a
+# resident loop consumes one silently rather than reasoning about it.
+_UNADDRESSED_PAYLOADS = frozenset({"presence", "keepalive", l9.PING_PAYLOAD_TYPE})
+
 _STANCE_TO_ACTION = {
     "accept": "accept",
     "agree": "accept",
@@ -100,7 +115,7 @@ def _addressed_to(content: dict[str, Any], handle: str) -> bool:
     header = env.get("header") or {}
     if header.get("kind") != "exchange":
         return False
-    if ((env.get("payload") or {}).get("type")) in ("presence", "keepalive"):
+    if ((env.get("payload") or {}).get("type")) in _UNADDRESSED_PAYLOADS:
         return False
     actors = (header.get("participants") or {}).get("actors") or []
     sender = actors[0].get("id") if actors and isinstance(actors[0], dict) else None
@@ -116,6 +131,19 @@ def _addressed_to(content: dict[str, Any], handle: str) -> bool:
         return False
     nxt = text[idx + len(needle)] if idx + len(needle) < len(text) else ""
     return not (nxt.isalnum() or nxt in "_-")
+
+
+def _refuse_thread_write(refusal: units.ThreadRefusal | None) -> None:
+    """Answer a refused thread write, or return and let the write proceed.
+
+    A room write is unchanged; a *thread* write has to name a thread the room
+    has and stay out of a negotiation it is not part of — the rule and its
+    reasoning live in :func:`app.services.units.episode_write_rejection`. This is
+    the seam that keeps a handle from side-channelling a position into someone
+    else's negotiation by naming its URN.
+    """
+    if refusal is not None:
+        raise HTTPException(status_code=refusal.status, detail=refusal.detail)
 
 
 def _describe(room: str, handle: str, record: Any) -> dict[str, Any]:
@@ -135,8 +163,34 @@ def _describe(room: str, handle: str, record: Any) -> dict[str, Any]:
 
 
 @router.get("/await")
-async def await_message(room_name: str, request: Request, handle: str, timeout: int = 0):
-    """Long-poll for the next message addressed to ``handle`` (server-held member)."""
+async def await_message(
+    room_name: str,
+    request: Request,
+    handle: str,
+    timeout: int = 0,
+    # Annotated rather than a ``Query(...)`` default: the default is then a real
+    # ``None``, so calling this as a plain function (as the unit tests do) scopes
+    # to the room instead of to a truthy ``Query`` object.
+    episode: Annotated[
+        str | None,
+        Query(
+            description=(
+                "Wake only on this thread (an episode URN). Omit to wake on anything "
+                "addressed to the handle anywhere in the room."
+            )
+        ),
+    ] = None,
+):
+    """Long-poll for the next message addressed to ``handle`` (server-held member).
+
+    ``episode`` narrows the wake to one thread — a unit of work being coordinated
+    in, or a negotiation inside one. It narrows *only* the wake: the handle's
+    presence lease stays room-scoped (a member of a thread is a member of the
+    room), and so does its room-wide delivery position, so scoping to a unit
+    never eats mentions made to it elsewhere. The thread's own position is
+    persisted the same way, so a restart mid-thread resumes rather than
+    re-serving.
+    """
     if not room_exists(room_name):
         raise HTTPException(status_code=404, detail="Room not found")
     # Draining a queue consumes it: the cursor advances, so a served turn is not
@@ -154,22 +208,41 @@ async def await_message(room_name: str, request: Request, handle: str, timeout: 
     # holds an @-addressed turn for an untracked recipient) and preserved across a
     # backend restart. So a message sitting in the transcript before this handle's
     # first ``await`` is delivered, not skipped.
+    #
+    # A thread-scoped call reads and commits a *different* cursor over the same
+    # transcript — the thread's — so watching one unit consumes nothing from the
+    # handle's room inbox, and vice versa.
+    scoped = episode if episode and not l9.is_live_episode(room_name, episode) else None
+
+    def _position() -> int:
+        return (
+            persister.episode_position(handle, scoped) if scoped else persister.log.position(handle)
+        )
+
+    def _commit(pos: int) -> None:
+        if scoped:
+            persister.advance_episode_cursor(handle, scoped, pos)
+        else:
+            persister.advance_cursor(handle, pos)
+
     loop = asyncio.get_event_loop()
     deadline = loop.time() + (timeout if timeout > 0 else _MAX_WAIT_S)
     while True:
         records = persister.log.records
-        i = persister.log.position(handle)
+        i = _position()
         while i < len(records):
             record = records[i]
             i += 1
+            if scoped and record_episode(record) != scoped:
+                continue
             if _addressed_to(record.content, handle):
-                persister.advance_cursor(handle, i)
+                _commit(i)
                 _last_tick[key] = record.content
                 room_channels.manager.refresh_lease(room_name, handle)
                 return _describe(room_name, handle, record)
         # Nothing addressed in the scanned range: consume it (advance past the
         # observer/broadcast turns this handle doesn't await) and keep polling.
-        persister.advance_cursor(handle, len(records))
+        _commit(len(records))
         if loop.time() >= deadline:
             return {"room": room_name, "handle": handle, "message": None}
         room_channels.manager.refresh_lease(room_name, handle)
@@ -179,6 +252,13 @@ async def await_message(room_name: str, request: Request, handle: str, timeout: 
 class ReplyBody(BaseModel):
     handle: str = Field(..., description="The handle publishing the reply")
     text: str = Field(..., description="The reply / position prose (may carry a position marker)")
+    episode: str | None = Field(
+        None,
+        description=(
+            "Thread to reply into (an episode URN). Overrides the episode inherited "
+            "from the tick that woke the handle; omit to answer where you were asked."
+        ),
+    )
 
 
 @router.post("/reply")
@@ -211,16 +291,26 @@ async def post_reply(room_name: str, body: ReplyBody, request: Request):
     tick_sender = (
         woke_actors[0].get("id") if woke_actors and isinstance(woke_actors[0], dict) else None
     )
-    episode = woke_msg.get("episode") or l9.episode_urn(room_name, "live")
+    # An explicit target wins over the inherited one: a reply answers where it was
+    # asked by default, which is what keeps a resident loop threaded without the
+    # agent tracking URNs — but a caller that names a thread means that thread.
+    episode = body.episode or woke_msg.get("episode") or l9.live_episode_urn(room_name)
+    _refuse_thread_write(units.thread_write_refusal(room_name, handle, episode))
     topic = ((woke_header.get("context") or {}).get("topic")) or l9.topic_urn(room_name)
-    parents = [woke_msg["id"]] if woke_msg.get("id") else []
+    # Parent onto the tick only when the reply lands where the tick did. A reply
+    # redirected into another thread is not an answer to that tick, and a causal
+    # edge reaching across threads would put one thread's message in another's
+    # chain — read back as a conversation that never happened.
+    answers_the_tick = woke_msg.get("episode", l9.live_episode_urn(room_name)) == episode
+    parents = [woke_msg["id"]] if answers_the_tick and woke_msg.get("id") else []
+    recipients = [tick_sender] if answers_the_tick and tick_sender else [l9.SYSTEM_ACTOR_ID]
 
     envelope = l9.build_envelope(
         kind=Kind.exchange,
         episode=episode,
         sender=handle,
         sender_role="agent",
-        recipients=[tick_sender] if tick_sender else [l9.SYSTEM_ACTOR_ID],
+        recipients=recipients,
         topic=topic,
         payload_type="reply",
         payload_data=payload_data or {"action": "reply"},
@@ -248,6 +338,12 @@ async def post_reply(room_name: str, body: ReplyBody, request: Request):
             await managed.channel.send(envelope, extra={"content": clean})
         except Exception:
             pass
+    await room_channels.manager.raise_ping(
+        room_name,
+        episode=episode,
+        sender=handle,
+        message_id=envelope.header.message.id if envelope.header.message else None,
+    )
     return {
         "room": room_name,
         "handle": handle,
