@@ -413,7 +413,7 @@ class MemoryRead(BaseModel):
         None,
         description=(
             "The episode URN this row's coordination happens in — what makes a task "
-            "of work a thread. Store-owned: minted by the backend, so it is absent "
+            "a thread. Store-owned: minted by the backend, so it is absent "
             "from ``meta`` and cannot be set by a write. Null on a memory that is "
             "not a task, and on one no thread has been opened for."
         ),

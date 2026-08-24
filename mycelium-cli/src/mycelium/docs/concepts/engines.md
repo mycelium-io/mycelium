@@ -31,7 +31,7 @@ commands host all of them.
 
 | Kind | What it does |
 |---|---|
-| `aligner` | Mediates a real NEGMAS negotiation to consensus, then compiles the agreement into the room's work. See [Aligner](#aligner). |
+| `aligner` | Mediates a disagreement inside a task to one shared answer, running a real NEGMAS negotiation. See [Aligner](#aligner). |
 | `synthesizer` | Distills the room's conversation into a briefing at `context/synthesis`, incrementally. See [Synthesizer](#synthesizer). |
 | `hello` | Answers one summon with one Pi turn and writes nothing anywhere — the cheap proof the engine path works on this hub. See [Hello](#hello). |
 

@@ -1,20 +1,26 @@
 # Aligner
 
-The aligner is the negotiation [engine](#engines): the `kind` that mediates a
-decision to consensus. Agents never talk to each other directly; all
-coordination flows through it. It reads everyone's opening positions, brokers the
-negotiation one agent at a time, and stops the moment the team agrees.
+The aligner is the mediator: the [engine](#engines) `kind` that drives a
+disagreement to one shared answer. It reads everyone's positions, works the
+negotiation one agent at a time, and stops the moment the team agrees. Agents
+never bargain with each other directly; the mediator is between them.
 
-Like every engine, the aligner is *summoned*: nothing runs until you register it
-in a [room](#rooms) and invoke it. There is no join window and no auto-start.
+You put it to work on a [task](#board), which is where the disagreement usually
+is. That opens an [episode](#episodes) inside that task.
 
 ```bash
 # Register the mediator once per room
 mycelium engine create aligner --kind aligner --room sprint-plan
 
-# Summon it to open an episode
+# Put it to work on the task the disagreement is about
+mycelium board coordinate t3aa11bb aligner "converge on token storage"
+
+# Or summon it into the room, when the question belongs to no task
 mycelium engine invoke aligner "converge on tech allocation and the cap" -r sprint-plan
 ```
+
+Like every engine it is dormant until summoned. There is no join window and no
+auto-start, so nothing runs until someone asks for it.
 
 ## How it negotiates
 
@@ -41,12 +47,12 @@ one.
 4. **Terminate.** NEGMAS stops the instant everyone accepts the same offer; it
    never loops to the step cap. A negotiation that can't reach agreement commits
    as `rejected`.
-5. **Compile.** On agreement the aligner emits `commit:converged` carrying the
-   agreed `{issue: value}` map, and `task_compiler` (a separate LLM stage that
-   *consumes* the outcome, distinct from the negotiation engine) turns it into
-   the room's work: one `work/` row per task, each naming who it is for. This
-   runs before the consensus is announced, so the rows exist by the time
-   `await` returns.
+5. **Compile.** An agreement can become work. A separate stage reads the agreed
+   answer and turns it into tasks on the board, each naming who it is for. It
+   can refine the task the episode ran in, and it can add new tasks under it.
+   That happens before the agreement is announced, so the work exists by the
+   time an agent's `await` returns. This stage consumes the outcome and is kept
+   separate from the mediator that produced it.
 
 Walking away with no agreement is a legitimate outcome. There's no "concede
 gradually" mechanism: if your hard constraints can't be met, keep rejecting.
@@ -54,8 +60,7 @@ gradually" mechanism: if your hard constraints can't be met, keep rejecting.
 ## Memory across rounds
 
 The aligner's brain is a persistent **Pi** coding-agent session (`pi -p --session
-<id>`), spawned fresh per episode and kept alive across every round of that
-episode. That persistence is what gives it real memory of the negotiation as it
+<id>`), spawned fresh per episode and kept alive across every round of it. That persistence is what gives it real memory of the negotiation as it
 unfolds: it remembers who moved and why, rather than re-reading a flat
 transcript each turn. Pi ships in the backend image and runs only the engine;
 participant agents keep their own runtimes.
@@ -78,5 +83,7 @@ stops at unanimity and the aligner reports agreement if, and only if, the
 mechanism produced one. The confidence agents report feeds the recorded quality
 metrics (MPC/GAR/SCR), not the verdict.
 
-See [L9 Protocol](#l9-protocol) for the envelope format, epistemic reply fields,
-and the consensus quality metrics the aligner records at close.
+An episode does not decide its task: converging does not resolve the task and
+failing does not take it off whoever is holding it. See [episodes](#episodes)
+for that boundary, and [decision quality](#l9-protocol) for how agents state
+confidence and how to read the quality scores recorded when an episode closes.

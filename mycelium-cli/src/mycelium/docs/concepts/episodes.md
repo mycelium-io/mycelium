@@ -1,80 +1,112 @@
 # Episodes
 
-An episode is one recorded negotiation. Summoning the [aligner](#aligner) on a
-[room](#rooms) opens an episode: a scoped, membership-tagged round on the room's
-existing SLIM channel (a tag on that channel, *not* a separate channel). Each
-convening is a distinct episode with its own id, its own slice of the transcript,
-and a 1:1 record at `log/episodes/{id}.md` (the full causally-linked
-[L9](#l9-protocol) envelope chain). Rooms persist; an episode is the arc of a
-single question being converged on.
+**An episode is the coordination phase inside a task.**
 
-There is no session to create, join, or await, and no join window. You address
-the room and the aligner directly.
+A [task](#board) is a piece of work and a thread: agents talk about it in there,
+claim it, and resolve it. Most tasks need nothing more than that. An episode is
+what you open when talk is not settling it: two or more agents disagree on a
+trade-off with several moving parts, and someone puts a mediator on the task to
+drive it to one answer.
+
+So the containment goes: a room holds tasks, a task holds its conversation, and
+an episode is one bounded, recorded stretch of that conversation with a mediator
+running it. The task outlives the episode.
+
+## Opening one
+
+```bash
+mycelium board coordinate t3aa11bb aligner "converge on token storage"
+```
+
+The ask lands in the task's thread and the [aligner](#aligner) starts working.
+There is no session to create, join or wait for.
+
+When the question belongs to no task, summon the engine into the room instead:
+
+```bash
+mycelium engine invoke aligner "converge on the Q3 migration plan" -r sprint-plan
+```
+
+Register the mediator once per room before either form works:
+
+```bash
+mycelium engine create aligner --kind aligner --room sprint-plan
+```
 
 ## The lifecycle
 
-1. **Openings.** Each participant posts their opening position with
-   `mycelium respond --handle <handle> "<position>"`. The backend records it for
-   the aligner to read.
-2. **Summon.** A human summons the mediator: `mycelium engine invoke aligner
-   "converge on <the question>"`. This opens the episode.
-3. **Rounds.** Participants loop: `mycelium await --handle <handle> --json` reads
-   the prompt the aligner `@`-addressed to them, then `mycelium respond --handle
-   <handle> "<accept / reject / counter + one line why>"` replies. The aligner
-   runs a real NEGMAS Stacked Alternating Offers negotiation, brokering one agent
-   at a time.
-4. **Termination.** NEGMAS owns the stop: the episode ends the instant everyone
-   agrees, never looping to a cap.
-5. **Consensus → work.** On agreement the aligner emits `commit:converged` with
-   the agreed `{issue: value}` map, the episode is recorded, and `task_compiler`
-   builds the room's [work rows](#board) before consensus is announced (so they
-   exist when `await` returns).
+1. **Positions.** Participants say what they want and why, in the task's thread
+   or with `mycelium respond`. A position is ordinary prose. Being specific
+   matters more than being brief: a stake, a concession you would make, and a
+   hard limit.
+2. **Open.** Someone runs `board coordinate`. That starts the episode.
+3. **Rounds.** The aligner works out what is actually in dispute, then addresses
+   one agent at a time with the offer on the table and waits for that agent's
+   reply. Agents answer in prose; the mediator reads each reply as an accept, a
+   reject or a counter-offer. An agent stays in `mycelium await` and answers when
+   addressed.
+4. **Termination.** The mechanism stops the instant every participant accepts
+   the same offer. It does not keep going to a step cap, and it does not
+   re-state an agreement that already happened.
+5. **Outcome.** Either the team agreed on one answer, or it did not. Both are
+   real endings, and a failure to agree is recorded as one rather than papered
+   over.
 
-The arc doesn't stop at consensus; it flows into work: **converge → work**.
-Consensus decides *what*; the rows are *how the team carries it out*.
-Agents read them with `mycelium board -r <room>` and claim the ones assigned to them.
+An agreement can become work: it can refine the task it ran in, and it can add
+new tasks to the board, each with its own thread. Those rows carry who each
+task is for and land before the agreement is announced, so the work exists by
+the time an agent's `await` returns.
 
-## Rooms vs episodes
+## What an episode does not decide
 
-| | Room | Episode |
-|---|------|---------|
-| Lifetime | Persistent | One recorded negotiation |
-| Purpose | Namespace for memory + coordination | Converge on a single question |
-| Channel | Owns the SLIM channel | A membership-scoped tag on it |
-| Memory | Yes, scoped to the room | Uses the room's memory; recorded to it |
-| Multiple | One room, many episodes over time | Each convening is a distinct episode |
+- **It does not resolve the task.** Converging inside a task does not finish it;
+  `board resolve` does.
+- **It does not change custody.** An episode that fails does not take the task
+  off whoever is holding it.
+- **It is not required.** A task can be created, claimed, worked and resolved
+  with no episode ever opened. Most are.
 
-## Epistemic annotations
+While an episode is running, its participants are fixed. An agent who was not at
+the table cannot drop a position into it, because a round of offers scored
+across a set of participants means nothing if an outsider can add to it midway.
+That is the one case where a thread restricts who may speak.
 
-An episode carries an optional epistemic layer from the [L9 protocol](#l9-protocol):
+## Rooms, tasks and episodes
 
-- A reply can append an inline position marker with its confidence and stance,
-  e.g. `mycelium respond --handle me "I can move to 30% [[mycelium: confidence=0.85
-  stance=accept]]"`. The backend lifts it onto the L9 payload so the aligner can
-  score it, and strips it from the posted prose.
-- On convergence the record carries consensus quality metrics: **MPC** (mean
-  posterior confidence), **GAR** (genuine agreement ratio, how many agents
-  actually moved toward the outcome), and **SCR** (social compliance ratio:
-  accepts made to yield rather than from conviction), with a derived
-  `provenance_weight`.
+| | Room | Task | Episode |
+|---|---|---|---|
+| Lifetime | Persistent | Until it resolves | One bounded coordination phase |
+| Holds | Memory, tasks, the channel | Its own thread and lifecycle | Its rounds and its outcome |
+| How many | One per team or project | Many per room | Zero or more per task |
+| Ends when | You delete it | Someone resolves it | The team agrees, or does not |
 
-All of it is optional. Agents that ignore it negotiate exactly the same. See
-[L9 Protocol](#l9-protocol) for the envelope format and the metric definitions.
+## The record
 
-## Multiple episodes
+Every episode is recorded to the room's memory at `log/episodes/{id}.md`: who
+took part, what was offered, how it ended. It is a memory like any other, so it
+is searchable by meaning and readable months later when someone asks why the
+team decided this.
 
-A room hosts many episodes over time. When one closes, summon the aligner again
-for the next decision. The room's memory persists across all of them, so each
-episode starts with full context from the ones before it.
+If enough participants said how confident they were, the record also carries
+quality scores for the agreement: how sure the team was, how many were actually
+persuaded rather than going along with it, and a single trust number combining
+the two. Those are worth reading, because two episodes can both end in
+unanimous agreement and mean very different things. See
+[decision quality](#l9-protocol) for how to state confidence and how to read the
+scores.
+
+## Many episodes over time
+
+A room hosts many episodes. The room's memory persists across all of them, so
+each one starts with the context of everything decided before it.
 
 ```bash
-# First episode
-mycelium respond --handle planner "Prioritize the database migration" -r sprint-plan
-mycelium engine invoke aligner "converge on the sprint's first priority" -r sprint-plan
+# A disagreement inside one task
+mycelium board coordinate t3aa11bb aligner "converge on token storage"
 
-# ... it converges, work/ rows are written ...
+# ... it agrees, the task is refined and child tasks land ...
 
-# Second episode (room memory carries over)
-mycelium respond --handle planner "Now let's plan the API layer" -r sprint-plan
-mycelium engine invoke aligner "converge on the API layer scope" -r sprint-plan
+# A later question, in its own task, with the room's memory carried over
+mycelium board new "Plan the API layer"
+mycelium board coordinate t7f21c04 aligner "converge on the API layer scope"
 ```

@@ -85,6 +85,28 @@ An agent participates as your own live session: keep it woken with
 `mycelium await --loop`, so it picks up each `@handle` mention on its next turn.
 See the **Adapters** guide for supported runtimes.
 
+## Put work on the board
+
+The [board](#board) is where a room's work lives. Add a task and say what you
+want. Working out how is the agents' job:
+
+```bash
+mycelium board new "Ship passkey login"
+mycelium board                       # what needs you right now
+```
+
+Every task comes with its own thread, so the conversation about a piece of work
+happens inside that piece of work:
+
+```bash
+mycelium board send t3aa11bb "@planner what's the smallest first slice here?"
+mycelium board messages t3aa11bb
+```
+
+Your agents claim tasks, split them into smaller ones, talk them through in
+those threads and resolve them. The room's channel shows one line per task that
+moved, not the whole conversation.
+
 ## Share memory
 
 Rooms are also persistent memory. Anything you write is visible to every agent in

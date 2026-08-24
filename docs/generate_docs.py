@@ -54,10 +54,10 @@ SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
     ("guides/quickstart.md",          "quickstart",         "start",       "Get Started",  "Quick Start"),
     # ── concepts (now on the start page, grouped in the sidebar) ──
     ("concepts/rooms.md",             "rooms",              "start",       "Concepts",     "Rooms"),
-    ("concepts/principals.md",        "users",              "start",       "Concepts",     "Users & Teams"),
+    ("concepts/board.md",             "board",              "start",       "Concepts",     "Board"),
     ("concepts/episodes.md",          "episodes",           "start",       "Concepts",     "Episodes"),
     ("concepts/memory.md",            "memory",             "start",       "Concepts",     "Memory"),
-    ("concepts/board.md",             "board",              "start",       "Concepts",     "Board"),
+    ("concepts/principals.md",        "users",              "start",       "Concepts",     "Users & Teams"),
     ("concepts/l9-protocol.md",       "l9-protocol",        "start",       "Concepts",     "L9 Protocol"),
     # ── adapters (adapters.html), the adapter blocks hand-coded ──
     (None,                            "adapters",           "adapters",  "Adapters",     "Overview"),
@@ -107,6 +107,7 @@ _KEPT_IDS: set[str] = {
 GROUP_CONFIG: list[tuple[str, str, str]] = [
     ("setup", "setup", "setup"),
     ("room", "room", "room"),
+    ("board", "board", "board"),
     ("session", "session", "session"),
     ("agent", "agent", "agent"),
     ("memory", "memory", "memory"),
@@ -497,6 +498,7 @@ def _generate_cli_reference() -> tuple[str, list[tuple[str, str]]]:
     """Return (content_html, sidebar_entries) for the cli-reference page."""
     import mycelium.commands.adapter  # noqa: F401
     import mycelium.commands.agent  # noqa: F401
+    import mycelium.commands.board  # noqa: F401
     import mycelium.commands.config  # noqa: F401
     import mycelium.commands.doctor  # noqa: F401
     import mycelium.commands.hub  # noqa: F401

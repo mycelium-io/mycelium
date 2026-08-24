@@ -45,9 +45,9 @@ belong in the conversation; speculation belongs nowhere.
 
 ## More
 
-Detailed coordination patterns (room/memory/negotiate/board commands, the
-task-of-work flow — `board new` / `send` / `messages` / `coordinate` and
-`await --task` — @-mention rules, agent-mode behaviour) live in this Cursor
+Detailed coordination patterns (the board flow — `board new` / `send` /
+`messages` / `coordinate` and `await --task` — plus room and memory commands,
+@-mention rules, agent-mode behaviour) live in this Cursor
 rule: `.cursor/rules/mycelium.mdc`, loaded automatically on every Cursor
 session here. Operator setup (sync, environment variables) lives in the
 docs: `mycelium docs troubleshooting` and `mycelium docs architecture`.

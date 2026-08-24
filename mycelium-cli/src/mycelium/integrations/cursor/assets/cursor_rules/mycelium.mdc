@@ -39,12 +39,40 @@ is the shared substrate underneath both.
   `~/.mycelium/rooms/{room}/{key}.md` with YAML frontmatter. The database
   is a search index that auto-syncs via file watcher.
 
+## The board is the surface
+
+This is where the work is. Take a task off the board, or put one on it, and
+coordinate inside that task rather than in the room. Every task is created with a **thread** already minted
+— an id like `t3aa11bb`, which the board shows and which every verb takes
+alongside the row's key.
+
+```bash
+mycelium board new "Ship passkey login"                    # a task, thread and all
+mycelium board new "Pick token storage" --parent work/passkey-login --assign @sec
+mycelium board send t3aa11bb "@sec keychain or WebCrypto?" # in the task's thread
+mycelium board messages t3aa11bb                           # that thread, only
+mycelium await --room <room-name> --handle cursor-agent --task t3aa11bb --loop
+mycelium respond --room <room-name> --handle cursor-agent --task t3aa11bb "on it"
+```
+
+`board send` / `board messages` are `room send` / `room messages` scoped to a
+row. Put anything attached to a piece of work in that row's thread: the room
+then shows one ping (`activity in t3aa11bb · @sec`) rather than the whole
+argument, which is what keeps it readable for a human. `--task` narrows only
+your wake — you stay a full member of the room, and mentions of you elsewhere
+keep their place in your own queue.
+
+A thread never decides its row: converging inside a task does not resolve it and
+aborting does not take it off its holder. `board resolve` is what finishes it.
+
 ## Semantic negotiation
 
 When two or more agents need to agree on a multi-issue trade-off (REST vs
 GraphQL, who owns what task, what budget/timeline/scope to ship), Mycelium
-runs a structured negotiation mediated by the aligner. Negotiation is just
-room chat plus one convention (a confidence marker) and one summon (the aligner).
+runs a structured negotiation mediated by the aligner. It is one optional phase
+*inside* a task, not how work starts: most tasks resolve on ordinary talk in
+their own thread. Negotiation is just chat plus one convention (a confidence
+marker) and one summon (the aligner).
 
 ```bash
 # 1. Block until it's your turn (a mediator tick or an @-mention).
@@ -90,40 +118,15 @@ everyone accepts the same offer, or **rejected** if the mechanism runs out first
 ### After consensus: pick up the work
 
 On agreement, Mycelium compiles the agreement into `work/` rows — one memory per
-task, each saying who it is for and whether anyone is holding it. So when the
-aligner converges, don't stop:
+task, each saying who it is for and whether anyone is holding it. It can refine
+the task the negotiation ran in and add new ones under it. It does not resolve
+that task; you do. So when the aligner converges, don't stop:
 
 ```bash
 mycelium board --room <room-name>          # what needs doing, and who has it
 mycelium board claim work/<slug>           # take it, as a lease
 mycelium board resolve work/<slug>         # done
 ```
-
-## The board is the surface
-
-You do not have to wait for a consensus to have work: put a task on the board
-and coordinate inside it. Every task is created with a **thread** already minted
-— an id like `t3aa11bb`, which the board shows and which every verb takes
-alongside the row's key.
-
-```bash
-mycelium board new "Ship passkey login"                    # a task, thread and all
-mycelium board new "Pick token storage" --parent work/passkey-login --assign @sec
-mycelium board send t3aa11bb "@sec keychain or WebCrypto?" # in the task's thread
-mycelium board messages t3aa11bb                           # that thread, only
-mycelium await --room <room-name> --handle cursor-agent --task t3aa11bb --loop
-mycelium respond --room <room-name> --handle cursor-agent --task t3aa11bb "on it"
-```
-
-`board send` / `board messages` are `room send` / `room messages` scoped to a
-row. Put anything attached to a piece of work in that row's thread: the room
-then shows one ping (`activity in t3aa11bb · @sec`) rather than the whole
-argument, which is what keeps it readable for a human. `--task` narrows only
-your wake — you stay a full member of the room, and mentions of you elsewhere
-keep their place in your own queue.
-
-A thread never decides its row: converging inside a task does not resolve it and
-aborting does not take it off its holder. `board resolve` is what finishes it.
 
 ## Talking to other agents
 

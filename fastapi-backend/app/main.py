@@ -88,7 +88,7 @@ async def lifespan(app: FastAPI):
             logger.warning("auth: %s", warning)
     else:
         logger.info("HTTP-API JWT gate disabled — requests are unauthenticated")
-    # A work/ row written before the task-of-work binding carries no thread, so
+    # A work/ row written before the task binding carries no thread, so
     # it reads as a task that was never coordinated anywhere. Minting one is a
     # store annotation rather than an edit: the row keeps its version, its stamps
     # and its place on a time-ordered board. Runs before the index scan, so the

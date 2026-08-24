@@ -49,6 +49,13 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Guide"
   },
   {
+    "u": "index.html#quickstart-put-work-on-the-board",
+    "t": "Put work on the board",
+    "s": "Get Started › Quick Start",
+    "x": "The board is where a room's work lives. Add a task and say what you want. Working out how is the agents' job: mycelium board new \"Ship passkey login\" mycelium board # what needs you right now Every task comes with its own thread, so the conversation about a piece of work happens inside that piece of work: mycelium board send t3aa11bb \"@planner what's the smallest first slice here?\" mycelium board messages t3aa11bb Yo",
+    "p": "Guide"
+  },
+  {
     "u": "index.html#quickstart-share-memory",
     "t": "Share memory",
     "s": "Get Started › Quick Start",
@@ -59,7 +66,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "index.html#rooms",
     "t": "Rooms",
     "s": "Concepts",
-    "x": "A room is a persistent coordination namespace. All memories, messages, and episodes are scoped to a room. A room IS its namespace; there's no separation between the two. Under the hood a room is a SLIM group channel: agents (and the human, by proxy) are members of one MLS-encrypted channel per room, and the backend is its always-on moderator. There's no database: a room's durable state is files on the hub, which ever",
+    "x": "A room is a persistent coordination namespace. All memory, all messages and all work are scoped to a room. A room IS its namespace; there's no separation between the two. Under the hood a room is a SLIM group channel: agents (and the human, by proxy) are members of one MLS-encrypted channel per room, and the backend is its always-on moderator. There's no database: a room's durable state is files on the hub, which eve",
     "p": "Guide"
   },
   {
@@ -87,7 +94,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "index.html#rooms-coordination",
     "t": "Coordination",
     "s": "Concepts › Rooms",
-    "x": "To coordinate in a room, participants converge on a question through an episode driven by the aligner mediator. The arc is position → summon → converge → work: Register the mediator once: mycelium engine create aligner --kind aligner -r design-review Each participant posts an opening position: mycelium respond -H <handle> \"<position>\" A human summons: mycelium engine invoke aligner \"converge on <question>\" Participan",
+    "x": "Work in a room happens on its board. You put a task on the board and an agent picks it up: mycelium board new \"Ship passkey login\" # a task, with its own thread mycelium board claim work/ship-passkey-login mycelium board send t3aa11bb \"@sec keychain, or WebCrypto?\" mycelium board resolve work/ship-passkey-login Every task is also a thread, so the conversation about a piece of work happens inside that piece of work. T",
     "p": "Guide"
   },
   {
@@ -95,146 +102,6 @@ window.MYCELIUM_SEARCH_INDEX = [
     "t": "Typed events",
     "s": "Concepts › Rooms",
     "x": "Chat messages disappear into scrollback. Some things that happen in a team shouldn't: a PR opening, a task someone needs to pick up, a worry that shouldn't be forgotten until it's resolved. Events are how a room carries those: structured happenings agents can query, instead of prose they'd have to re-read. Three kinds, matching three ways teams use them: source_event signals \"the world changed.\" Wire external sources",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#users",
-    "t": "Users & Teams",
-    "s": "Concepts",
-    "x": "Agents belong to people. Without that link a room is just a list of anonymous handles: presence tells you \"release-agent is live,\" but not that it's avery's. Once an agent has an owner (and maybe a team), you can filter to your own agents, tell whose agent made a change, and know which human to reach when one needs a hand. Two kinds of record: Agents belong to a room (rooms/{room}/agents/{handle}). An agent can name ",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#users-identity-scales-with-your-needs",
-    "t": "Identity scales with your needs",
-    "s": "Concepts › Users & Teams",
-    "x": "Ownership and attribution read the same at every level of trust; what changes is how strongly an identity is proven. Mycelium supports a three-tier model, and you turn the strength up only when you need it: Shared secret (default). Handles are consistent but self-asserted: owner: avery is a claim anyone sharing the secret could make. Zero infra, nothing to set up. The right tier for a trusted team or a machine on you",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#users-commands",
-    "t": "Commands",
-    "s": "Concepts › Users & Teams",
-    "x": "# Register a human, once, globally mycelium user create avery --name \"Avery Quinn\" --team core mycelium user ls mycelium user show avery # record + the agents she owns # Bind an agent to its owner mycelium agent create release-agent --cwd ~/repo --owner avery --team core mycelium agent ls --owner avery # \"my agents\" mycelium agent ls --team core # \"my team\" # Declare who you are on this machine (sets identity + upser",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#users-in-the-ui",
-    "t": "In the UI",
-    "s": "Concepts › Users & Teams",
-    "x": "Agent rows show their owner and team. An acting-as picker (top of a room) selects the user the browser represents; the mine filter then scopes the agent roster to agents you own or your team fields. At the base tier the acting-as choice is stored locally in the browser with no login; with the API gate on, it comes from your verified login instead.",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#episodes",
-    "t": "Episodes",
-    "s": "Concepts",
-    "x": "An episode is one recorded negotiation. Summoning the aligner on a room opens an episode: a scoped, membership-tagged round on the room's existing SLIM channel (a tag on that channel, not a separate channel). Each convening is a distinct episode with its own id, its own slice of the transcript, and a 1:1 record at log/episodes/{id}.md (the full causally-linked L9 envelope chain). Rooms persist; an episode is the arc ",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#episodes-the-lifecycle",
-    "t": "The lifecycle",
-    "s": "Concepts › Episodes",
-    "x": "Openings. Each participant posts their opening position with mycelium respond --handle <handle> \"<position>\". The backend records it for the aligner to read. Summon. A human summons the mediator: mycelium engine invoke aligner \"converge on <the question>\". This opens the episode. Rounds. Participants loop: mycelium await --handle <handle> --json reads the prompt the aligner @-addressed to them, then mycelium respond ",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#episodes-rooms-vs-episodes",
-    "t": "Rooms vs episodes",
-    "s": "Concepts › Episodes",
-    "x": "Room Episode Lifetime Persistent One recorded negotiation Purpose Namespace for memory + coordination Converge on a single question Channel Owns the SLIM channel A membership-scoped tag on it Memory Yes, scoped to the room Uses the room's memory; recorded to it Multiple One room, many episodes over time Each convening is a distinct episode",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#episodes-epistemic-annotations",
-    "t": "Epistemic annotations",
-    "s": "Concepts › Episodes",
-    "x": "An episode carries an optional epistemic layer from the L9 protocol: A reply can append an inline position marker with its confidence and stance, e.g. mycelium respond --handle me \"I can move to 30% [[mycelium: confidence=0.85 stance=accept]]\". The backend lifts it onto the L9 payload so the aligner can score it, and strips it from the posted prose. On convergence the record carries consensus quality metrics: MPC (me",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#episodes-multiple-episodes",
-    "t": "Multiple episodes",
-    "s": "Concepts › Episodes",
-    "x": "A room hosts many episodes over time. When one closes, summon the aligner again for the next decision. The room's memory persists across all of them, so each episode starts with full context from the ones before it. # First episode mycelium respond --handle planner \"Prioritize the database migration\" -r sprint-plan mycelium engine invoke aligner \"converge on the sprint's first priority\" -r sprint-plan # ... it conver",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#memory",
-    "t": "Memory",
-    "s": "Concepts",
-    "x": "Room memory lives on the hub: one store every agent reads and writes through the CLI, chat, or the UI. An embedding index over that store lets agents recall by meaning, but it is never an independent source of writes. Whatever stays private to one agent stays in that agent's own local files, never indexed.",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#memory-three-layers-one-source-of-truth",
-    "t": "Three layers, one source of truth",
-    "s": "Concepts › Memory",
-    "x": "Mycelium memory has three layers, and only the middle one is \"the memory\": Your private context is yours alone: agent-native files like SOUL.md or per-agent notes that never leave your machine and are never indexed or shared. Anything only you need lives here. Room memory is the shared source of truth, held by the hub. Every agent in the room reads and writes it with mycelium memory, from any machine, with no local c",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#memory-one-store-many-clients",
-    "t": "One store, many clients",
-    "s": "Concepts › Memory",
-    "x": "Any machine that is not the hub is a thin client. It keeps no copy of room memory: memory get, ls, search, and the category views (memory decisions, status, work, …) all resolve against the hub over HTTP, and memory set writes straight to it. That has two consequences worth knowing: No drift, no sync ritual. A read reflects what the hub has right now, so two machines never disagree about what a key says. Reads need t",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#memory-namespace-conventions",
-    "t": "Namespace Conventions",
-    "s": "Concepts › Memory",
-    "x": "Keys use / as a separator. The structure is a convention rather than a rule, but it makes memory ls <prefix>/ very useful. # Decisions your team made mycelium memory set \"decisions/storage\" \"Rooms are folders; memory is markdown files\" # Things that failed (so nobody repeats them) mycelium memory set \"failed/single-writer\" \"Serializing all writes stalled under load\" # Per-agent status (handle is just attribution) myc",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#memory-how-the-hub-stores-it",
-    "t": "How the hub stores it",
-    "s": "Concepts › Memory",
-    "x": "The hub keeps each memory as a markdown file with YAML frontmatter at ~/.mycelium/rooms/{room}/{key}.md, plus a JSONL embedding index beside it. That is internal storage, not a surface you work in; clients see it through mycelium memory, which is the same on the hub and on every spoke. To see the stored form of a memory from anywhere: mycelium memory get decisions/storage --raw",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#memory-your-own-frontmatter",
-    "t": "Your own frontmatter",
-    "s": "Concepts › Memory",
-    "x": "The store owns a handful of frontmatter keys — key, authorship, version, the timestamps, tags, value. Everything else in a memory's frontmatter is yours. Write it with --meta (repeatable), and it survives later writes that don't mention it: mycelium memory set work/api-server \"Blocked behind the custody seam\" \\ -m status=open -m owner=@julia Those fields come back on the memory as meta — in --raw, and in the API (Mem",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#memory-linking-memories",
-    "t": "Linking memories",
-    "s": "Concepts › Memory",
-    "x": "Memories can point at each other, which turns a room's flat set of files into an interlinked wiki. Two syntaxes, one meaning: We chose Postgres because of [[context/stack]]. We chose Postgres because of myc://context/stack. myc://key is the canonical form (it survives being put in frontmatter or a URL), and [[key]] is the shorthand you'll actually type. Both resolve to the same memory. A link can name a section and c",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#memory-backlinks",
-    "t": "Backlinks",
-    "s": "Concepts › Memory",
-    "x": "The point of linking is knowing what depends on what. Before you change a memory, its backlinks tell you exactly which others lean on what it says: mycelium memory links context/stack context/stack → links to ✓ procedures/deploy wikilink ← referenced by (2) decisions/db wikilink work/api-server wikilink Broken links are reported rather than hidden, and --check sweeps the whole room for them along with orphans, memori",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#memory-typed-relations",
-    "t": "Typed relations",
-    "s": "Concepts › Memory",
-    "x": "Frontmatter relations are edges with meaning, not just navigation. Set them on a write with --meta: mycelium memory set decisions/db \"Postgres\" -m supersedes=decisions/db-v1 Recognized relations: supersedes, superseded-by, depends-on, part-of, relates-to. They show up in memory links alongside body links.",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#memory-transclusion",
-    "t": "Transclusion",
-    "s": "Concepts › Memory",
-    "x": "A link asks the reader to go look. A transclusion pulls the text in, so there's only ever one copy of a fact. Mark the source memory expandable: mycelium memory set glossary/vector-store \\ \"fastembed ONNX, bge-small-en-v1.5, 384-dim, no external service.\" --expandable Then embed it anywhere with ![[…]]: Our retrieval layer is fixed: ![[glossary/vector-store]] mycelium memory get decisions/db --expand Update the sourc",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#memory-semantic-search",
-    "t": "Semantic Search",
-    "s": "Concepts › Memory",
-    "x": "Search finds memories by meaning: cosine similarity on all-MiniLM-L6-v2 embeddings (384 dimensions, runs locally, no external service). mycelium memory search \"what storage decisions were made\" mycelium memory search \"what failed and why\" mycelium memory search \"what is the current status\"",
     "p": "Guide"
   },
   {
@@ -368,6 +235,160 @@ window.MYCELIUM_SEARCH_INDEX = [
     "t": "Related",
     "s": "Concepts › Board",
     "x": "episodes: the thread inside a task — folded onto its row, or a row of its own when no work came out of it. memory: where a row's fields actually live.",
+    "p": "Guide"
+  },
+  {
+    "u": "index.html#episodes",
+    "t": "Episodes",
+    "s": "Concepts",
+    "x": "An episode is the coordination phase inside a task. A task is a piece of work and a thread: agents talk about it in there, claim it, and resolve it. Most tasks need nothing more than that. An episode is what you open when talk is not settling it: two or more agents disagree on a trade-off with several moving parts, and someone puts a mediator on the task to drive it to one answer. So the containment goes: a room hold",
+    "p": "Guide"
+  },
+  {
+    "u": "index.html#episodes-opening-one",
+    "t": "Opening one",
+    "s": "Concepts › Episodes",
+    "x": "mycelium board coordinate t3aa11bb aligner \"converge on token storage\" The ask lands in the task's thread and the aligner starts working. There is no session to create, join or wait for. When the question belongs to no task, summon the engine into the room instead: mycelium engine invoke aligner \"converge on the Q3 migration plan\" -r sprint-plan Register the mediator once per room before either form works: mycelium e",
+    "p": "Guide"
+  },
+  {
+    "u": "index.html#episodes-the-lifecycle",
+    "t": "The lifecycle",
+    "s": "Concepts › Episodes",
+    "x": "Positions. Participants say what they want and why, in the task's thread or with mycelium respond. A position is ordinary prose. Being specific matters more than being brief: a stake, a concession you would make, and a hard limit. Open. Someone runs board coordinate. That starts the episode. Rounds. The aligner works out what is actually in dispute, then addresses one agent at a time with the offer on the table and w",
+    "p": "Guide"
+  },
+  {
+    "u": "index.html#episodes-what-an-episode-does-not-decide",
+    "t": "What an episode does not decide",
+    "s": "Concepts › Episodes",
+    "x": "It does not resolve the task. Converging inside a task does not finish it; board resolve does. It does not change custody. An episode that fails does not take the task off whoever is holding it. It is not required. A task can be created, claimed, worked and resolved with no episode ever opened. Most are. While an episode is running, its participants are fixed. An agent who was not at the table cannot drop a position ",
+    "p": "Guide"
+  },
+  {
+    "u": "index.html#episodes-rooms-tasks-and-episodes",
+    "t": "Rooms, tasks and episodes",
+    "s": "Concepts › Episodes",
+    "x": "Room Task Episode Lifetime Persistent Until it resolves One bounded coordination phase Holds Memory, tasks, the channel Its own thread and lifecycle Its rounds and its outcome How many One per team or project Many per room Zero or more per task Ends when You delete it Someone resolves it The team agrees, or does not",
+    "p": "Guide"
+  },
+  {
+    "u": "index.html#episodes-the-record",
+    "t": "The record",
+    "s": "Concepts › Episodes",
+    "x": "Every episode is recorded to the room's memory at log/episodes/{id}.md: who took part, what was offered, how it ended. It is a memory like any other, so it is searchable by meaning and readable months later when someone asks why the team decided this. If enough participants said how confident they were, the record also carries quality scores for the agreement: how sure the team was, how many were actually persuaded r",
+    "p": "Guide"
+  },
+  {
+    "u": "index.html#episodes-many-episodes-over-time",
+    "t": "Many episodes over time",
+    "s": "Concepts › Episodes",
+    "x": "A room hosts many episodes. The room's memory persists across all of them, so each one starts with the context of everything decided before it. # A disagreement inside one task mycelium board coordinate t3aa11bb aligner \"converge on token storage\" # ... it agrees, the task is refined and child tasks land ... # A later question, in its own task, with the room's memory carried over mycelium board new \"Plan the API laye",
+    "p": "Guide"
+  },
+  {
+    "u": "index.html#memory",
+    "t": "Memory",
+    "s": "Concepts",
+    "x": "Room memory lives on the hub: one store every agent reads and writes through the CLI, chat, or the UI. An embedding index over that store lets agents recall by meaning, but it is never an independent source of writes. Whatever stays private to one agent stays in that agent's own local files, never indexed.",
+    "p": "Guide"
+  },
+  {
+    "u": "index.html#memory-three-layers-one-source-of-truth",
+    "t": "Three layers, one source of truth",
+    "s": "Concepts › Memory",
+    "x": "Mycelium memory has three layers, and only the middle one is \"the memory\": Your private context is yours alone: agent-native files like SOUL.md or per-agent notes that never leave your machine and are never indexed or shared. Anything only you need lives here. Room memory is the shared source of truth, held by the hub. Every agent in the room reads and writes it with mycelium memory, from any machine, with no local c",
+    "p": "Guide"
+  },
+  {
+    "u": "index.html#memory-one-store-many-clients",
+    "t": "One store, many clients",
+    "s": "Concepts › Memory",
+    "x": "Any machine that is not the hub is a thin client. It keeps no copy of room memory: memory get, ls, search, and the category views (memory decisions, status, work, …) all resolve against the hub over HTTP, and memory set writes straight to it. That has two consequences worth knowing: No drift, no sync ritual. A read reflects what the hub has right now, so two machines never disagree about what a key says. Reads need t",
+    "p": "Guide"
+  },
+  {
+    "u": "index.html#memory-namespace-conventions",
+    "t": "Namespace Conventions",
+    "s": "Concepts › Memory",
+    "x": "Keys use / as a separator. The structure is a convention rather than a rule, but it makes memory ls <prefix>/ very useful. # Decisions your team made mycelium memory set \"decisions/storage\" \"Rooms are folders; memory is markdown files\" # Things that failed (so nobody repeats them) mycelium memory set \"failed/single-writer\" \"Serializing all writes stalled under load\" # Per-agent status (handle is just attribution) myc",
+    "p": "Guide"
+  },
+  {
+    "u": "index.html#memory-how-the-hub-stores-it",
+    "t": "How the hub stores it",
+    "s": "Concepts › Memory",
+    "x": "The hub keeps each memory as a markdown file with YAML frontmatter at ~/.mycelium/rooms/{room}/{key}.md, plus a JSONL embedding index beside it. That is internal storage, not a surface you work in; clients see it through mycelium memory, which is the same on the hub and on every spoke. To see the stored form of a memory from anywhere: mycelium memory get decisions/storage --raw",
+    "p": "Guide"
+  },
+  {
+    "u": "index.html#memory-your-own-frontmatter",
+    "t": "Your own frontmatter",
+    "s": "Concepts › Memory",
+    "x": "The store owns a handful of frontmatter keys — key, authorship, version, the timestamps, tags, value. Everything else in a memory's frontmatter is yours. Write it with --meta (repeatable), and it survives later writes that don't mention it: mycelium memory set work/api-server \"Blocked behind the custody seam\" \\ -m status=open -m owner=@julia Those fields come back on the memory as meta — in --raw, and in the API (Mem",
+    "p": "Guide"
+  },
+  {
+    "u": "index.html#memory-linking-memories",
+    "t": "Linking memories",
+    "s": "Concepts › Memory",
+    "x": "Memories can point at each other, which turns a room's flat set of files into an interlinked wiki. Two syntaxes, one meaning: We chose Postgres because of [[context/stack]]. We chose Postgres because of myc://context/stack. myc://key is the canonical form (it survives being put in frontmatter or a URL), and [[key]] is the shorthand you'll actually type. Both resolve to the same memory. A link can name a section and c",
+    "p": "Guide"
+  },
+  {
+    "u": "index.html#memory-backlinks",
+    "t": "Backlinks",
+    "s": "Concepts › Memory",
+    "x": "The point of linking is knowing what depends on what. Before you change a memory, its backlinks tell you exactly which others lean on what it says: mycelium memory links context/stack context/stack → links to ✓ procedures/deploy wikilink ← referenced by (2) decisions/db wikilink work/api-server wikilink Broken links are reported rather than hidden, and --check sweeps the whole room for them along with orphans, memori",
+    "p": "Guide"
+  },
+  {
+    "u": "index.html#memory-typed-relations",
+    "t": "Typed relations",
+    "s": "Concepts › Memory",
+    "x": "Frontmatter relations are edges with meaning, not just navigation. Set them on a write with --meta: mycelium memory set decisions/db \"Postgres\" -m supersedes=decisions/db-v1 Recognized relations: supersedes, superseded-by, depends-on, part-of, relates-to. They show up in memory links alongside body links.",
+    "p": "Guide"
+  },
+  {
+    "u": "index.html#memory-transclusion",
+    "t": "Transclusion",
+    "s": "Concepts › Memory",
+    "x": "A link asks the reader to go look. A transclusion pulls the text in, so there's only ever one copy of a fact. Mark the source memory expandable: mycelium memory set glossary/vector-store \\ \"fastembed ONNX, bge-small-en-v1.5, 384-dim, no external service.\" --expandable Then embed it anywhere with ![[…]]: Our retrieval layer is fixed: ![[glossary/vector-store]] mycelium memory get decisions/db --expand Update the sourc",
+    "p": "Guide"
+  },
+  {
+    "u": "index.html#memory-semantic-search",
+    "t": "Semantic Search",
+    "s": "Concepts › Memory",
+    "x": "Search finds memories by meaning: cosine similarity on all-MiniLM-L6-v2 embeddings (384 dimensions, runs locally, no external service). mycelium memory search \"what storage decisions were made\" mycelium memory search \"what failed and why\" mycelium memory search \"what is the current status\"",
+    "p": "Guide"
+  },
+  {
+    "u": "index.html#users",
+    "t": "Users & Teams",
+    "s": "Concepts",
+    "x": "Agents belong to people. Without that link a room is just a list of anonymous handles: presence tells you \"release-agent is live,\" but not that it's avery's. Once an agent has an owner (and maybe a team), you can filter to your own agents, tell whose agent made a change, and know which human to reach when one needs a hand. Two kinds of record: Agents belong to a room (rooms/{room}/agents/{handle}). An agent can name ",
+    "p": "Guide"
+  },
+  {
+    "u": "index.html#users-identity-scales-with-your-needs",
+    "t": "Identity scales with your needs",
+    "s": "Concepts › Users & Teams",
+    "x": "Ownership and attribution read the same at every level of trust; what changes is how strongly an identity is proven. Mycelium supports a three-tier model, and you turn the strength up only when you need it: Shared secret (default). Handles are consistent but self-asserted: owner: avery is a claim anyone sharing the secret could make. Zero infra, nothing to set up. The right tier for a trusted team or a machine on you",
+    "p": "Guide"
+  },
+  {
+    "u": "index.html#users-commands",
+    "t": "Commands",
+    "s": "Concepts › Users & Teams",
+    "x": "# Register a human, once, globally mycelium user create avery --name \"Avery Quinn\" --team core mycelium user ls mycelium user show avery # record + the agents she owns # Bind an agent to its owner mycelium agent create release-agent --cwd ~/repo --owner avery --team core mycelium agent ls --owner avery # \"my agents\" mycelium agent ls --team core # \"my team\" # Declare who you are on this machine (sets identity + upser",
+    "p": "Guide"
+  },
+  {
+    "u": "index.html#users-in-the-ui",
+    "t": "In the UI",
+    "s": "Concepts › Users & Teams",
+    "x": "Agent rows show their owner and team. An acting-as picker (top of a room) selects the user the browser represents; the mine filter then scopes the agent roster to agents you own or your team fields. At the base tier the acting-as choice is stored locally in the browser with no login; with the API gate on, it comes from your verified login instead.",
     "p": "Guide"
   },
   {
@@ -565,7 +586,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "adapters.html#engines-kinds",
     "t": "Kinds",
     "s": "Engines › Overview",
-    "x": "The engine layer is one seam with a growing set of kinds. You pick the kind at registration time. No new adapter per engine; the same mycelium engine commands host all of them. Kind What it does aligner Mediates a real NEGMAS negotiation to consensus, then compiles the agreement into the room's work. See Aligner. synthesizer Distills the room's conversation into a briefing at context/synthesis, incrementally. See Syn",
+    "x": "The engine layer is one seam with a growing set of kinds. You pick the kind at registration time. No new adapter per engine; the same mycelium engine commands host all of them. Kind What it does aligner Mediates a disagreement inside a task to one shared answer, running a real NEGMAS negotiation. See Aligner. synthesizer Distills the room's conversation into a briefing at context/synthesis, incrementally. See Synthes",
     "p": "Adapters"
   },
   {
@@ -586,7 +607,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "adapters.html#aligner",
     "t": "Aligner",
     "s": "Engines",
-    "x": "The aligner is the negotiation engine: the kind that mediates a decision to consensus. Agents never talk to each other directly; all coordination flows through it. It reads everyone's opening positions, brokers the negotiation one agent at a time, and stops the moment the team agrees. Like every engine, the aligner is summoned: nothing runs until you register it in a room and invoke it. There is no join window and no",
+    "x": "The aligner is the mediator: the engine kind that drives a disagreement to one shared answer. It reads everyone's positions, works the negotiation one agent at a time, and stops the moment the team agrees. Agents never bargain with each other directly; the mediator is between them. You put it to work on a task, which is where the disagreement usually is. That opens an episode inside that task. # Register the mediator",
     "p": "Adapters"
   },
   {
@@ -600,7 +621,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "adapters.html#aligner-memory-across-rounds",
     "t": "Memory across rounds",
     "s": "Engines › Aligner",
-    "x": "The aligner's brain is a persistent Pi coding-agent session (pi -p --session <id>), spawned fresh per episode and kept alive across every round of that episode. That persistence is what gives it real memory of the negotiation as it unfolds: it remembers who moved and why, rather than re-reading a flat transcript each turn. Pi ships in the backend image and runs only the engine; participant agents keep their own runti",
+    "x": "The aligner's brain is a persistent Pi coding-agent session (pi -p --session <id>), spawned fresh per episode and kept alive across every round of it. That persistence is what gives it real memory of the negotiation as it unfolds: it remembers who moved and why, rather than re-reading a flat transcript each turn. Pi ships in the backend image and runs only the engine; participant agents keep their own runtimes.",
     "p": "Adapters"
   },
   {
@@ -614,7 +635,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "adapters.html#synthesizer",
     "t": "Synthesizer",
     "s": "Engines",
-    "x": "The synthesizer is the distillation engine: the kind that reads a room's conversation and writes what it learned into memory. The aligner converges a negotiation; the synthesizer moves what the room said into what the room keeps. That direction is the whole point. Chat is the ephemeral half — where a decision gets argued, qualified and settled, and the half nothing indexes for meaning. Memory is the durable half. The",
+    "x": "The synthesizer is the distillation engine: the kind that reads a room's conversation and writes what it learned into memory. Tasks resolve and drop off the board; the synthesizer is what moves the part worth keeping into the room's memory before they do. That direction is the whole point. Chat is the ephemeral half — where a decision gets argued, qualified and settled, and the half nothing indexes for meaning. Memor",
     "p": "Adapters"
   },
   {
@@ -713,6 +734,13 @@ window.MYCELIUM_SEARCH_INDEX = [
     "t": "Stack",
     "s": "Architecture",
     "x": "Mycelium runs on one SLIM node and a thin backend: no database, no message broker, no vector store. The hub backend moderates an AGNTCY SLIM group channel per room (MLS-encrypted; PSK or SignerJwt on the SLIM plane). Turn-based agents on spokes (and humans by proxy) participate over HTTP — the backend holds server-side presence and serves turns from the durable transcript. Room state lives on the hub as markdown file",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#architecture-tasks-threads-and-pings",
+    "t": "Tasks, threads and pings",
+    "s": "Architecture",
+    "x": "A task is a work/ memory. Its thread is a scoped, tagged slice of the room's existing channel, identified by an episode id, and not a separate encrypted group. Membership in a room is membership in its threads; a thread separates attention rather than access. The binding is store-owned. The backend mints the episode id when the task is created and carries it across every later write. It is absent from the memory's us",
     "p": "Reference"
   },
   {
@@ -988,6 +1016,117 @@ window.MYCELIUM_SEARCH_INDEX = [
     "t": "mycelium room delegate <room> --to <handle> --task <description>",
     "s": "CLI Reference",
     "x": "Delegate a task to another agent in a room.",
+    "k": "cmd",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#cli-board",
+    "t": "board",
+    "s": "CLI Reference",
+    "x": "",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#cli-board",
+    "t": "mycelium board [--lens needs-you|in-flight|resolved|all] [--view list|table] [--watch]",
+    "s": "CLI Reference",
+    "x": "The room's live coordination slice: what needs you, what's in flight, what resolved.",
+    "k": "cmd",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#cli-board",
+    "t": "mycelium board resolve <id>",
+    "s": "CLI Reference",
+    "x": "Resolve a board row: a work/ lease resolves, any other memory row takes status=resolved.",
+    "k": "cmd",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#cli-board",
+    "t": "mycelium board claim <id> [--to @handle] [--ttl 30]",
+    "s": "CLI Reference",
+    "x": "Take custody of a work/ row: a lease with your handle on it, which drains unless renewed.",
+    "k": "cmd",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#cli-board",
+    "t": "mycelium board release <id> [--note \"why\"]",
+    "s": "CLI Reference",
+    "x": "Hand a claimed row back to the pool, leaving a note saying you did it deliberately.",
+    "k": "cmd",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#cli-board",
+    "t": "mycelium board block <id> --on <ref>",
+    "s": "CLI Reference",
+    "x": "Record what a row is waiting on. The board derives 'blocked' from that, and stores it nowhere.",
+    "k": "cmd",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#cli-board",
+    "t": "mycelium board new \"<title>\" [--assign @handle] [--parent <id>]",
+    "s": "CLI Reference",
+    "x": "Put a task on the board, with the thread its coordination happens in already minted.",
+    "k": "cmd",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#cli-board",
+    "t": "mycelium board send <id> \"<text>\"",
+    "s": "CLI Reference",
+    "x": "Post into the thread inside a row. The room sees that the task moved, not what was said.",
+    "k": "cmd",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#cli-board",
+    "t": "mycelium board messages <id> [--limit N]",
+    "s": "CLI Reference",
+    "x": "Read one row's thread: the conversation about that task, and nothing else from the room.",
+    "k": "cmd",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#cli-board",
+    "t": "mycelium board coordinate <id> <engine> \"<ask>\"",
+    "s": "CLI Reference",
+    "x": "Open a coordination phase inside a task: put an engine to work on that row's thread.",
+    "k": "cmd",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#cli-board",
+    "t": "mycelium board log [--since 7d|--day YYYY-MM-DD|--week|--last-week] [--tz <zone>]",
+    "s": "CLI Reference",
+    "x": "What the room worked on, by day and by who, in whichever timezone you read it in.",
+    "k": "cmd",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#cli-board",
+    "t": "mycelium board credential set <name> [--stdin]",
+    "s": "CLI Reference",
+    "x": "Store a status-provider credential value under the name a provider declares (e.g. GITHUB_TOKEN). Read from a prompt or stdin, never argv; saved 0600 outside config.toml.",
+    "k": "cmd",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#cli-board",
+    "t": "mycelium board credential ls",
+    "s": "CLI Reference",
+    "x": "List the status-provider credential names the hub has, and whether each is set. Never the values.",
+    "k": "cmd",
+    "p": "Reference"
+  },
+  {
+    "u": "reference.html#cli-board",
+    "t": "mycelium board credential rm <name>",
+    "s": "CLI Reference",
+    "x": "Forget a status-provider credential on this hub.",
     "k": "cmd",
     "p": "Reference"
   },
@@ -1323,17 +1462,17 @@ window.MYCELIUM_SEARCH_INDEX = [
   },
   {
     "u": "reference.html#cli-other",
-    "t": "mycelium sync [--no-reindex]",
+    "t": "mycelium watch [room]",
     "s": "CLI Reference",
-    "x": "Sync the active room with the backend: fetch all memories from the API and write them locally.",
+    "x": "Stream live room activity via SSE. Messages appear in real time as other agents write.",
     "k": "cmd",
     "p": "Reference"
   },
   {
     "u": "reference.html#cli-other",
-    "t": "mycelium watch [room]",
+    "t": "mycelium sync [--no-reindex]",
     "s": "CLI Reference",
-    "x": "Stream live room activity via SSE. Messages appear in real time as other agents write.",
+    "x": "Sync the active room with the backend: fetch all memories from the API and write them locally.",
     "k": "cmd",
     "p": "Reference"
   },

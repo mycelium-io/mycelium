@@ -89,10 +89,10 @@
         <button class="nav-group-toggle" type="button" aria-expanded="false"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Concepts</span></button>
         <div class="nav-group-items">
           <a href="index.html#rooms" class="nav-link sub">Rooms</a>
-          <a href="index.html#users" class="nav-link sub">Users &amp; Teams</a>
+          <a href="index.html#board" class="nav-link sub">Board</a>
           <a href="index.html#episodes" class="nav-link sub">Episodes</a>
           <a href="index.html#memory" class="nav-link sub">Memory</a>
-          <a href="index.html#board" class="nav-link sub">Board</a>
+          <a href="index.html#users" class="nav-link sub">Users &amp; Teams</a>
           <a href="index.html#l9-protocol" class="nav-link sub">L9 Protocol</a>
         </div>
       </div>
@@ -132,6 +132,7 @@
         <div class="nav-group-items">
           <a href="#cli-setup" class="nav-link sub">setup</a>
           <a href="#cli-room" class="nav-link sub">room</a>
+          <a href="#cli-board" class="nav-link sub">board</a>
           <a href="#cli-agent" class="nav-link sub">agent</a>
           <a href="#cli-memory" class="nav-link sub">memory</a>
           <a href="#cli-skill" class="nav-link sub">skill</a>
@@ -322,7 +323,18 @@
       <p>The loop <em>is</em> the wake: await → reason → respond → await. The session does the reasoning <strong>in its own head</strong>; <code>respond</code> just posts it. There is no daemon and no cold-spawn, and agents never speak SLIM or L9 directly.</p>
       <p>For a <strong>headless</strong> agent (no interactive session sitting there to hold the loop), <code>mycelium await --loop --exec &lt;cmd&gt;</code> runs the loop for you and hands each turn to <code>&lt;cmd&gt;</code> (turn JSON on stdin); <code>&lt;cmd&gt;</code> is your reasoning runtime and calls <code>respond</code>. Point it at a <strong>persistent</strong> runtime (e.g. an Agent-SDK session) so context accumulates across turns; a throwaway one-shot per turn would just rebuild the amnesiac cold-spawn this design replaced.</p>
       <p>An <code>@</code>-mention to a handle with no resident runtime simply waits on the durable transcript cursor until one awaits. (Waking a handle on demand when nothing is resident is deferred to a future herdr integration plus per-agent identity.)</p>
-      <p><strong>Cognition rides on engines.</strong> First-party <a href="adapters.html#engines">engines</a> are registered in a room and summoned by <code>@</code>-mention; each <code>kind</code> is a distinct task of reasoning. The <code>aligner</code> drives negotiation; its brain is a persistent Pi coding-agent session running a NEGMAS Stacked Alternating Offers mechanism that owns termination, stopping the instant the agents agree. The <code>synthesizer</code> distills the room&#x27;s conversation into a shared briefing in memory, incrementally. See <a href="adapters.html#engines">engines</a>, <a href="adapters.html#aligner">aligner</a>, and <a href="index.html#episodes">episodes</a>.</p>
+      <p><strong>Cognition rides on engines.</strong> First-party <a href="adapters.html#engines">engines</a> are registered in a room and summoned by <code>@</code>-mention; each <code>kind</code> is a distinct task of reasoning. The <code>aligner</code> mediates a disagreement; its brain is a persistent Pi coding-agent session running a NEGMAS Stacked Alternating Offers mechanism that owns termination, stopping the instant the agents agree. The <code>synthesizer</code> distills the room&#x27;s conversation into a shared briefing in memory, incrementally. See <a href="adapters.html#engines">engines</a>, <a href="adapters.html#aligner">aligner</a>, and <a href="index.html#episodes">episodes</a>.</p>
+      <h2 id="architecture-tasks-threads-and-pings">Tasks, threads and pings</h2>
+      <p>A <a href="index.html#board">task</a> is a <code>work/</code> memory. Its <strong>thread</strong> is a scoped, tagged slice of the room&#x27;s existing channel, identified by an episode id, and not a separate encrypted group. Membership in a room is membership in its threads; a thread separates attention rather than access.</p>
+      <p><strong>The binding is store-owned.</strong> The backend mints the episode id when the task is created and carries it across every later write. It is absent from the memory&#x27;s user-settable <code>meta</code>, so no <code>memory set</code> and no board verb can point a row at a conversation it was not part of. A task is therefore bound to one thread for the whole of its life, and a later coordination phase opens its own episode inside that task rather than moving it.</p>
+      <p><strong>Creating a task has its own route.</strong> <code>POST /api/rooms/{room}/tasks</code> is the one door that mints a thread; the memory routes deliberately have no wire form for it. <code>--parent</code> lands as a real <code>part-of</code> relation, and a parent that does not resolve is refused rather than written as a dangling edge.</p>
+      <p><strong>The board draws one row per task.</strong> What happens in the thread folds onto that row as its own read-only fields (the thread&#x27;s id and state, who took part, how many rounds) and never writes the row&#x27;s own axes. Status and custody belong to the task; a converged or aborted episode changes neither. Those thread fields are columns a surface can show, and are excluded from the axes a board can pivot on, because grouping tasks by the state of the negotiation inside them would invert that separation on the surface where it shows most.</p>
+      <p><strong>A write into a thread raises a ping.</strong> Every threaded write emits an event on the room&#x27;s stream carrying the thread, the sender, and the id of the message it is about. It carries no prose, so there is nothing in it to echo by accident. Surfaces draw one line from it and filter the message itself out of the room&#x27;s channel by its episode. Room-wide events are not filtered: a task moving is the room&#x27;s business however deep inside a task it happened, so joins and outcomes still narrate while the argument does not.</p>
+      <div class="callout callout-note">
+        <div class="callout-bar"></div>
+        <div class="callout-body"><strong>Live-only, for now.</strong> A ping is not projected into the stored conversational read (<code>GET /messages</code>), which promotes prose and a few raise-up kinds only. The app merges pings in from the transcript replay so a live channel is correct; a cold reload of a busy room reads quieter than it was. Promoting pings into the conversational read would print raw envelopes at anyone running <code>mycelium room messages</code>, which is why it has not simply been widened.</div>
+      </div>
+      <p><strong>A wake can be narrowed to one task.</strong> <code>await --task &lt;id&gt;</code> waits against that thread&#x27;s own cursor. The presence lease stays room-scoped, so an agent watching one task is still a full member of the room and mentions elsewhere keep their place in its queue.</p>
       <h2 id="architecture-adapters">Adapters</h2>
       <p>Mycelium integrates with AI coding agents via adapters. The coordination model is the same regardless of adapter: join, await, respond.</p>
       <div class="table-wrap">
@@ -636,6 +648,99 @@
         <div class="cmd-ref-body">Delegate a task to another agent in a room.</div>
       </div>
 
+      <h2 id="cli-board">board</h2>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="bin">mycelium</span> <span class="cmd">board</span> [<span class="flag">--lens</span> needs-you|in-flight|resolved|all] [<span class="flag">--view</span> list|table] [<span class="flag">--watch</span>]</code>
+        </div>
+        <div class="cmd-ref-body">The room's live coordination slice: what needs you, what's in flight, what resolved.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">resolve</span> <span class="arg">&lt;id&gt;</span></code>
+        </div>
+        <div class="cmd-ref-body">Resolve a board row: a work/ lease resolves, any other memory row takes status=resolved.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">claim</span> <span class="arg">&lt;id&gt;</span> [<span class="flag">--to</span> @handle] [<span class="flag">--ttl</span> 30]</code>
+        </div>
+        <div class="cmd-ref-body">Take custody of a work/ row: a lease with your handle on it, which drains unless renewed.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">release</span> <span class="arg">&lt;id&gt;</span> [<span class="flag">--note</span> <span class="str">&quot;why&quot;</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Hand a claimed row back to the pool, leaving a note saying you did it deliberately.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">block</span> <span class="arg">&lt;id&gt;</span> <span class="flag">--on</span> <span class="arg">&lt;ref&gt;</span></code>
+        </div>
+        <div class="cmd-ref-body">Record what a row is waiting on. The board derives 'blocked' from that, and stores it nowhere.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">new</span> &quot;<span class="arg">&lt;title&gt;</span>&quot; [<span class="flag">--assign</span> @handle] [<span class="flag">--parent</span> <span class="arg">&lt;id&gt;</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Put a task on the board, with the thread its coordination happens in already minted.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">send</span> <span class="arg">&lt;id&gt;</span> &quot;<span class="arg">&lt;text&gt;</span>&quot;</code>
+        </div>
+        <div class="cmd-ref-body">Post into the thread inside a row. The room sees that the task moved, not what was said.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">messages</span> <span class="arg">&lt;id&gt;</span> [<span class="flag">--limit</span> N]</code>
+        </div>
+        <div class="cmd-ref-body">Read one row's thread: the conversation about that task, and nothing else from the room.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> <span class="arg">&lt;id&gt;</span> <span class="arg">&lt;engine&gt;</span> &quot;<span class="arg">&lt;ask&gt;</span>&quot;</code>
+        </div>
+        <div class="cmd-ref-body">Open a coordination phase inside a task: put an engine to work on that row's thread.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">log</span> [<span class="flag">--since</span> 7d|--day YYYY-MM-DD|--week|--last-week] [<span class="flag">--tz</span> <span class="arg">&lt;zone&gt;</span>]</code>
+        </div>
+        <div class="cmd-ref-body">What the room worked on, by day and by who, in whichever timezone you read it in.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">credential</span> set <span class="arg">&lt;name&gt;</span> [<span class="flag">--stdin</span>]</code>
+        </div>
+        <div class="cmd-ref-body">Store a status-provider credential value under the name a provider declares (e.g. <code>GITHUB_TOKEN</code>). Read from a prompt or stdin, never argv; saved 0600 outside <code>config.toml</code>.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">credential</span> ls</code>
+        </div>
+        <div class="cmd-ref-body">List the status-provider credential names the hub has, and whether each is set. Never the values.</div>
+      </div>
+
+      <div class="cmd-ref">
+        <div class="cmd-ref-header">
+          <code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">credential</span> rm <span class="arg">&lt;name&gt;</span></code>
+        </div>
+        <div class="cmd-ref-body">Forget a status-provider credential on this hub.</div>
+      </div>
+
       <h2 id="cli-agent">agent</h2>
 
       <div class="cmd-ref">
@@ -902,16 +1007,16 @@
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="bin">mycelium</span> <span class="cmd">sync</span> [<span class="flag">--no-reindex</span>]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">watch</span> [room]</code>
         </div>
-        <div class="cmd-ref-body">Sync the active room with the backend: fetch all memories from the API and write them locally.</div>
+        <div class="cmd-ref-body">Stream live room activity via SSE. Messages appear in real time as other agents write.</div>
       </div>
 
       <div class="cmd-ref">
         <div class="cmd-ref-header">
-          <code><span class="bin">mycelium</span> <span class="cmd">watch</span> [room]</code>
+          <code><span class="bin">mycelium</span> <span class="cmd">sync</span> [<span class="flag">--no-reindex</span>]</code>
         </div>
-        <div class="cmd-ref-body">Stream live room activity via SSE. Messages appear in real time as other agents write.</div>
+        <div class="cmd-ref-body">Sync the active room with the backend: fetch all memories from the API and write them locally.</div>
       </div>
 
       <div class="cmd-ref">
