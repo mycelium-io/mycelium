@@ -35,6 +35,35 @@ export const FIELD_REFUSALS: Record<string, string> = {
 /** The only row kind with frontmatter behind it. */
 export const WRITABLE_SOURCE_KINDS = ["memory"];
 
+/**
+ * Why a projected row has no thread to open, keyed by what produced it.
+ *
+ * The surface refuses in these terms rather than opening the room instead: a
+ * pane that quietly showed a different conversation than the one asked for is
+ * worse than one that did not open. Keyed by source kind, so an episode row is
+ * absent — an episode *is* a thread, and its row always carries one.
+ *
+ * Frozen in `contracts/board-vocabulary.json` under `task.refusals`; the CLI
+ * carries its own copy (`mycelium/board/model.py THREAD_REFUSALS`) and a test on
+ * each side asserts against that file.
+ */
+export const THREAD_REFUSALS: Record<string, string> = {
+  agent: "presence is a lease the runtime renews, not a conversation to join",
+  memory: "a thread belongs to a task; this row is in another namespace",
+};
+
+/**
+ * Why this row's thread cannot be opened, or null when it can.
+ *
+ * A `work/` row with no binding is the common case and reads as the memory
+ * refusal's sibling: nothing has been said about it yet, so there is no thread
+ * rather than no place for one.
+ */
+export function threadRefusal(item: LiveItem, episode: string | null): string | null {
+  if (episode) return null;
+  return THREAD_REFUSALS[item.source.kind] ?? THREAD_REFUSALS.memory;
+}
+
 /** The memory key behind a row, or null when the row is not a memory. */
 export function memoryKeyOf(item: LiveItem): string | null {
   return item.source.kind === "memory" ? item.id.replace(/^memory:/, "") : null;

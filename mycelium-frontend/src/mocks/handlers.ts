@@ -345,9 +345,14 @@ export async function handleMock(req: Request): Promise<Response | null> {
       if (method === "GET") {
         // The backend serves newest-first; the UI reverses to oldest-first.
         const limit = Number(searchParams.get("limit") ?? "0");
-        const ordered = [...fx.messages].reverse();
+        // `?episode=` narrows to one conversation — a thread, or the room's own
+        // `live` URN. Exact-match, as the backend filters, so the mock can't let
+        // a thread pane pass while the real read returns everything.
+        const episode = searchParams.get("episode");
+        const scoped = episode ? fx.messages.filter((m) => m.episode === episode) : fx.messages;
+        const ordered = [...scoped].reverse();
         const messages = limit > 0 ? ordered.slice(0, limit) : ordered;
-        return json({ messages, total: fx.messages.length });
+        return json({ messages, total: scoped.length });
       }
       if (method === "POST") {
         const body = await readJson(req);
@@ -356,6 +361,7 @@ export async function handleMock(req: Request): Promise<Response | null> {
           sender_handle: String(body.sender_handle ?? "operator"),
           message_type: String(body.message_type ?? "broadcast"),
           content: String(body.content ?? ""),
+          episode: body.episode ?? null,
           created_at: new Date(0).toISOString(),
         });
       }

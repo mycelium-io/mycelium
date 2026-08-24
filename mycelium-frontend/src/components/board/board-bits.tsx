@@ -12,17 +12,21 @@ import {
   Eye,
   GitBranch,
   GitPullRequest,
+  MessageSquare,
   Radio,
   TriangleAlert,
   UserRound,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { custodyNote, custodyOf, remainingMinutes } from "@/lib/board/custody";
+import { EPISODE_FIELD } from "@/lib/board/projection";
+import { threadShortId } from "@/lib/threads";
 import {
   arr,
   bool,
   formatAge,
   kindOf,
+  num,
   priorityOf,
   statusOf,
   str,
@@ -394,6 +398,53 @@ export function LiveDot({ item }: { item: LiveItem }) {
       <span className="size-1.5 animate-pulse rounded-full bg-accent" />
       live
     </span>
+  );
+}
+
+/**
+ * The way into a row's conversation.
+ *
+ * A row and the thread its coordination happens in are the same object, so the
+ * thread is not a second thing to find — it is the row, opened. The chip draws
+ * only where a row is actually bound to one: a task created before threading,
+ * or one nobody has said anything about, has no thread to open and says so by
+ * not offering.
+ *
+ * What it opens is a transient pane, not a rail, which is why this is a chip on
+ * the row rather than a permanent column of its own.
+ */
+export function ThreadChip({ item, onOpen }: { item: LiveItem; onOpen?: (episode: string) => void }) {
+  const episode = str(item, EPISODE_FIELD);
+  const shortId = threadShortId(episode);
+  if (!episode || !shortId) return null;
+  const state = str(item, "thread_state");
+  const rounds = num(item, "rounds");
+  // A count only where the thread has one, and never zero: "0 messages" reads
+  // as a claim about a conversation nobody has had.
+  const label = rounds && rounds > 0 ? `${shortId} · ${rounds}` : shortId;
+  const title = state && state !== "open" ? `thread ${shortId} · ${state}` : `thread ${shortId}`;
+  if (!onOpen) {
+    return (
+      <span className="inline-flex items-center gap-1 font-mono text-micro text-muted-foreground" title={title}>
+        <MessageSquare className="size-3" strokeWidth={1.8} />
+        {label}
+      </span>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={e => {
+        e.stopPropagation();
+        onOpen(episode);
+      }}
+      title={`${title}  (t)`}
+      aria-label={`Open thread ${shortId}`}
+      className="inline-flex items-center gap-1 rounded px-1 font-mono text-micro text-accent transition-colors hover:bg-accent-soft hover:underline"
+    >
+      <MessageSquare className="size-3" strokeWidth={1.8} />
+      {label}
+    </button>
   );
 }
 

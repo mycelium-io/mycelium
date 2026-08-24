@@ -156,6 +156,10 @@ const a2aManifest = (description: string, card: string, skills: string[]): strin
 // ── atlas-migration: the rich, converged room ─────────────────────────────────
 
 const ATLAS_EPISODE = "urn:ioc:mycelium:episode:atlas-migration:e4f1a2";
+// The room's own channel. A message with no thread lands here, and a ping about
+// a thread is raised here — which is why the ping's own episode is this one and
+// the thread it names is in its payload.
+const ATLAS_LIVE = "urn:ioc:mycelium:episode:atlas-migration:live";
 
 // The negotiation the aligner brokered: growth (big-bang, fast) vs risk
 // (phased, safe), converging over four rounds of Stacked Alternating Offers.
@@ -266,6 +270,39 @@ const atlasL9Frames: Record<string, unknown>[] = atlasL9Chain.map((env, i) => ({
   created_at: iso(44 - i),
   content: env,
 }));
+
+/**
+ * A thread's activity as the room hears it: a **ping**, and only a ping.
+ *
+ * The shape the backend raises (`room_channels.raise_ping`) — an exchange
+ * envelope in `live` naming the thread that moved, who wrote and which message,
+ * carrying no prose, so there is nothing here to echo even by accident.
+ *
+ * It belongs to the L9 wire feed and *not* to the message list, which is where
+ * the backend puts it too: a ping is a control frame, so the conversational
+ * read drops it and the transcript replay is where it survives a reload. A mock
+ * that served it from both would hide the merge the channel actually does.
+ */
+function atlasPing(message: string, sender: string, minutesAgo: number): Record<string, unknown> {
+  return {
+    id: `ping-${message}`,
+    sender_handle: "system",
+    message_type: "l9_exchange",
+    created_at: iso(minutesAgo),
+    room_name: "atlas-migration",
+    episode: ATLAS_LIVE,
+    content: {
+      l9: {
+        header: {
+          kind: "exchange",
+          message: { id: `ping-${message}`, parents: [], episode: ATLAS_LIVE },
+          participants: { actors: [{ id: "system", role: "coordinator" }] },
+        },
+        payload: { type: "ping", data: { episode: ATLAS_EPISODE, sender, message } },
+      },
+    },
+  };
+}
 
 const atlasEpisodeSummary: EpisodeSummary = {
   short_id: "e4f1a2",
@@ -553,6 +590,12 @@ const atlas: RoomFixture = {
     ...atlasNegotiation,
     { id: "a6", sender_handle: "aligner", message_type: "coordination_consensus", content: JSON.stringify({ assignments: { cutover: "phased", window: "48h" }, episode: ATLAS_EPISODE, metrics: { gar: 0.79 } }), created_at: iso(41), episode: ATLAS_EPISODE },
     { id: "a7", sender_handle: "growth", message_type: "broadcast", content: "Dual-write is live in staging. ✅", created_at: iso(30) },
+    // Two agents working the flag row talk inside its thread. The channel does
+    // not carry this — that is the whole point — so the room hears the pings
+    // below instead, and the prose reads in the thread pane.
+    { id: "t1", sender_handle: "growth", message_type: "broadcast", content: "Flag is wired: reads flip on `atlas.reads.v2`, default off.", created_at: iso(22), episode: ATLAS_EPISODE },
+    { id: "t2", sender_handle: "risk", message_type: "broadcast", content: "Hold the flip until replica lag has been under a second for an hour.", created_at: iso(21), episode: ATLAS_EPISODE },
+    { id: "t3", sender_handle: "growth", message_type: "broadcast", content: "Agreed — gating the flip on the lag alarm.", created_at: iso(20), episode: ATLAS_EPISODE },
   ],
   episodes: [atlasEpisodeSummary],
   episodeDetails: { e4f1a2: { ...atlasEpisodeSummary, messages: atlasL9Chain } },
@@ -564,7 +607,7 @@ const atlas: RoomFixture = {
     { handle: "growth", kind: "slim", last_seen: null },
     { handle: "risk", kind: "lease", last_seen: iso(1) },
   ],
-  l9: atlasL9Frames,
+  l9: [...atlasL9Frames, atlasPing("t2", "risk", 21), atlasPing("t3", "growth", 20)],
   // Three work rows name pull requests; the hub resolved them. The first row
   // mentions two, one green and one failing, so it shows the failing one and says
   // there was another. The shapes are GitHub's own wording.
