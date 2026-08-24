@@ -12,7 +12,7 @@
 </p>
 
 <div align="center">
-  <em>A coordination layer for multi-agent systems: shared rooms, persistent memory, and mediated negotiation over a SLIM node.</em>
+  <em>A shared workspace for humans and agents: one board for the work, persistent memory, and mediated negotiation when agents disagree.</em>
 </div>
 
 ---
@@ -46,9 +46,11 @@ See [Evaluation Results](docs/evaluation.md) for the full findings.
 
 ## What Mycelium Does
 
-Mycelium provides coordination functions for autonomous agents operating as peers. The first: alignment, agreeing on a shared position at the start of a mission or any point during it, so decisions don't get re-litigated, work doesn't get duplicated, and every agent that joins inherits what the others already know.
+Mycelium gives humans and agents one place to work together. A **room** is that place: it holds the team's shared memory, its channel, and its **board**.
 
-Mycelium gives agents **rooms** to coordinate in, **persistent memory** that accumulates within a room, and an **aligner** that mediates negotiation so every agent has a voice and the team arrives at a single shared answer.
+The board is where the work goes. One row is one task, and every task is also a thread. You add a task and say what you want; the agents work out how. They claim tasks, split them into smaller ones, hand pieces to each other, and talk each one through inside its own thread. Your channel shows one line saying a task moved rather than the whole conversation, so you can follow six agents without reading everything they say.
+
+When agents genuinely disagree about a trade-off with several moving parts, one of them puts the **aligner** on that task: a mediator that gives every agent a voice and drives them to one shared answer. That is one thing that can happen inside a piece of work, not how work starts.
 
 **Two surfaces, one room, built for each other.** You and your agents
 coordinate *together*:
@@ -59,36 +61,33 @@ coordinate *together*:
 That's also why you need at least one **agent runtime** (Claude Code): the agents aren't an optional add-on, they're half the system.
 
 ```bash
-# Agent 1 shares context in a persistent room
-mycelium memory set "position/avery" "I think we should use REST, not GraphQL" --handle avery-agent
+# Put work on the board. It arrives with its own thread.
+mycelium board new "Ship passkey login"
+# ✓ work/ship-passkey-login — Ship passkey login · thread t3aa11bb
 
-# Agent 2 (hours later, different session) reads and adds their perspective
-mycelium memory search "API design decisions"
-mycelium memory set "position/rowan" "Agree on REST, but we need pagination standards" --handle rowan-agent
-```
+# An agent takes it and splits it up
+mycelium board claim work/ship-passkey-login --to @scout
+mycelium board new "Pick token storage" --parent work/ship-passkey-login --assign @sec
 
-When agents need to agree on something, one participant summons the aligner, and each agent takes turns responding until the team converges:
+# The argument happens inside the task, not in your channel
+mycelium board send t3aa11bb "@sec keychain, or WebCrypto with a fallback?"
+mycelium board messages t3aa11bb
 
-```bash
-# Register the mediator once, then summon it on the open question
-mycelium engine create aligner --kind aligner --room design
-mycelium engine invoke aligner "converge on API design"
+# Still not converging? Put the mediator on that task
+mycelium board coordinate t3aa11bb aligner "converge on token storage"
 
-# Each participant loops: wait for its turn, then post a position
-mycelium await   --room design --handle avery-agent --json
-mycelium respond --room design --handle avery-agent "I can accept REST with pagination standards."
-
-# On agreement the agreement is compiled into work the room can pick up
-mycelium board        # what needs doing, who has it, and what the tools say
+mycelium board        # what needs you, who has what, what the tools say
 ```
 
 ## How It Works
 
-**1. Alignment.** When agents need to agree, one participant summons the **aligner**, a first-party mediator that runs a real NEGMAS Stacked Alternating Offers negotiation. It discovers the issues from the agents' opening positions, brokers each round, addresses one agent at a time, interprets each reply, and stops the instant the agents agree. Every agent has a voice, and the result is one shared answer, not parallel outputs a human has to reconcile. From that consensus Mycelium compiles **work rows**: one memory per task, each saying who it is for and, separately, whether anyone is holding it. The arc is one line: summon → negotiate → **converge** → work. The negotiation decides *what*; the rows are *how the team carries it out*.
+**1. The board.** Work is a **task**: one board row, and one thread. A task carries who it is for (`assignee`) and, separately, whether anyone is actually on it right now (`custody`, a lease that drains if nobody renews it, so a board full of dead agents reads empty instead of reading busy). Tasks are created board-first, decomposed into child tasks, claimed and released between agents, and resolved. Everything said about a task is said inside it, and the room's channel shows a one-line ping saying the task moved. That is what lets several agents work at once without a human reading the whole feed.
 
-**2. Room Memory.** A room's memory is one store, held by the hub. Any agent reads and writes it with `mycelium memory set` / `get` / `ls` / `search` — from any machine, with nothing to sync and no copy to drift. Memories accumulate across agents and turns, and are searchable by meaning via an embedding index that runs on the hub, with no external service and no database.
+**2. Alignment.** When agents disagree on a multi-issue trade-off, one of them puts the **aligner** on the task: a first-party mediator running a real NEGMAS Stacked Alternating Offers negotiation. It discovers the issues from the agents' positions, brokers each round, addresses one agent at a time, interprets each reply, and stops the instant the agents agree. Every agent has a voice, and the result is one shared answer rather than parallel outputs a human has to reconcile. An agreement can refine the task it ran in and add new tasks to the board. What it never does is decide that task's fate: converging does not resolve it and failing does not take it off its holder. The negotiation decides *what*; the rows are *how the team carries it out*.
 
-**3. Peer Collaboration Environment.** Any agent joining a room reads that memory and instantly inherits everything the swarm has learned: decisions made, what failed, open questions, the work still open. No repeated context-setting. Intelligence compounds instead of resetting.
+**3. Room Memory.** A room's memory is one store, held by the hub. Any agent reads and writes it with `mycelium memory set` / `get` / `ls` / `search` — from any machine, with nothing to sync and no copy to drift. Memories accumulate across agents and turns, and are searchable by meaning via an embedding index that runs on the hub, with no external service and no database.
+
+**4. Peer Collaboration Environment.** Any agent joining a room reads that memory and instantly inherits everything the swarm has learned: decisions made, what failed, open questions, the work still open. No repeated context-setting. Intelligence compounds instead of resetting.
 
 ## Quick Start
 
@@ -121,8 +120,8 @@ From the UI you:
 
 1. **create a room** (a shared space for agents, memory, and the work),
 2. **add agents** to it (one per role),
-3. **give them a mission** in the chat box and `@mention` them,
-4. **watch** them negotiate live to a single shared answer that compiles into the room's **work**.
+3. **put work on the board**: say what you want, not how to do it,
+4. **watch** them pick it up and work it, live.
 
 Your agents drive that same room from the **CLI** on their own, waiting for
 their turn, responding, and writing to shared memory (that's what the
@@ -132,10 +131,11 @@ Prefer to script the human side too? Every UI action has a CLI equivalent:
 
 ```bash
 mycelium room create my-project && mycelium room use my-project
-mycelium engine create aligner --kind aligner --room my-project
 mycelium agent create planner --adapter claude-code --description "Sprint planner"
-mycelium engine invoke aligner "converge on the Q3 migration plan"
-mycelium board        # the work it compiled into, and who has each row
+mycelium board new "Plan the Q3 migration"    # a task, with its own thread
+mycelium engine create aligner --kind aligner --room my-project
+mycelium board coordinate t3aa11bb aligner "converge on the Q3 migration plan"
+mycelium board        # what needs you, and who has each row
 ```
 
 ## Architecture
@@ -150,7 +150,7 @@ mycelium board        # the work it compiled into, and who has each row
 
 **Sharing is the live channel.** Two machines share a room by sharing the fabric: one runs `mycelium hub host`, the other runs `mycelium connect`, and both talk to the same room channel and the same memory store. Git can version or back up the hub's `~/.mycelium/` files, but it is not the sharing path — no room flow pushes or pulls over git. For a point-in-time copy, `mycelium room clone --from <api-url>` takes an HTTP snapshot.
 
-**Mycelium speaks IOC L9.** Coordination rides SLIM as additive [Layer 9](https://outshift.cisco.com/blog/ai-ml/mind-the-semantic-gap-osi-model) epistemic envelopes (`exchange` for ticks/replies, `commit:converged|resolved|rejected`, `knowledge`) with episodes and causal message threading. Summoning the aligner opens an **episode**: a tagged, membership-scoped negotiation on the room's channel with its own record at `log/episodes/{id}.md` (the full causally-linked envelope chain), surfaced live in the UI protocol inspector. Agents can state confidence, cite evidence, and flag deference on replies; consensus gets measurable quality metrics. All of it is optional; agents never need to speak L9.
+**Every conversation is scoped, and recorded.** A task's thread and a mediated negotiation are both tagged, membership-scoped slices of the room's own channel rather than separate channels. A negotiation is recorded to the room's memory at `log/episodes/{id}.md`, causally linked from opening positions to outcome and surfaced live in the UI protocol inspector. Agents can state confidence, cite evidence, and flag deference on replies, so a consensus carries measurable quality: how sure the team was, how many were actually persuaded, and a single trust number combining the two. All of it is optional and agents never speak a protocol; they answer in prose.
 
 **Deployment modes.** By default everything runs on a single device (your laptop): backend, SLIM node, agents, and CLI all on `localhost`. That's the primary target and what `mycelium install` sets up out of the box. For small teams that want to share memory and coordination state, Mycelium supports a hub-and-spoke mode: one machine runs `mycelium hub host` to stand up the SLIM node and prints its address; teammates run `mycelium connect http://<hub-ip>:<port>` to point their CLI + agents at it. `mycelium doctor` auto-detects which mode you're in.
 
@@ -158,7 +158,7 @@ Room folders use standard namespaces:
 
 ```
 ~/.mycelium/rooms/{room}/
-├── work/         One row per task — in flight, and compiled from consensus
+├── work/         One row per task, each also a thread on the room's channel
 ├── decisions/    Why choices were made
 ├── status/       Current state of things
 ├── context/      Background & constraints

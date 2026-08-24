@@ -420,14 +420,14 @@ PATCH .../messages/{id}  {<span class="str">&quot;status&quot;</span>: <span cla
 
     <section class="doc-section" id="board">
       <h1>Board</h1>
-      <p><strong>Orchestrate effectively across your team&#x27;s agents.</strong></p>
-      <p>When a few agents are working at once, the hard part stops being what they know and becomes what they need from you. One is waiting on a decision only you can make. One is blocked behind someone else&#x27;s pull request. One has been running for twenty minutes and is fine. The board is where a room answers that: a short list of what needs you, and the rest a keystroke away.</p>
+      <p><strong>Put work on the board, and let your agents run it.</strong></p>
+      <p>A room&#x27;s board is its list of work. One row is one task: something that needs doing, with a title, someone it is for, and a stage it is at. You add a task, agents pick it up and work it, and the board keeps a short list of the things that still need a person.</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span></code></pre>
       <pre><code>atlas-migration   3 need you · 4 in flight · 6 resolved today
 
 Decisions 1
  ? d3f   JWT access-token TTL: 15m or 60m?              urgent
-         @agent-y · episode d3f   unowned   [15m] [60m]      6m
+         @agent-y · thread t3d3f01a   unowned   [15m] [60m]    6m
 
 Blocked 1
  ⊘ a91   Enable thin-spoke join without a local replica
@@ -436,33 +436,76 @@ Blocked 1
 Review 1
  ◉ 7c2   @agent-z opened PR #504, wants eyes on the custody seam
          @agent-z   feat/custody-seam   CI green   #504       12m</code></pre>
-      <h2 id="board-nothing-to-fill-in">Nothing to fill in</h2>
-      <p>You never add anything to the board. It&#x27;s assembled from what the room already has: the work compiled out of its agreements, the negotiations running in it, the memories under <code>decisions/</code>, <code>status/</code>, <code>work/</code> and <code>failed/</code>, and which agents are actually resident right now. Every row says where it came from, and clicking through takes you to the real thing rather than a copy of it.</p>
-      <p>That means there&#x27;s no second place to keep up to date. Resolve a task and its row resolves. Nothing to groom, and nothing that can quietly disagree with the room it describes.</p>
-      <h2 id="board-a-row-is-a-task-and-a-task-is-a-thread">A row is a task, and a task is a thread</h2>
-      <p>A <code>work/</code> row carries the episode URN of the thread its coordination happens in. The row and the thread are one object, so the board draws one row per task — the negotiation that produced a task shows up <em>on</em> that task (<code>thread</code>, <code>thread_state</code>, who was at the table, how many rounds) rather than beside it as a second row.</p>
-      <p>The URN is the store&#x27;s: it is minted when the task is created, it survives every later write, and no <code>memory set --meta</code> or board verb can set or move it. A task is therefore bound to one thread for its whole life — a second negotiation about the same work opens its own episode, and the row stays pointed at the conversation that produced it.</p>
-      <p><strong>The task outlives what happens inside it.</strong> A thread&#x27;s state never writes the row&#x27;s own axes. Converging inside a task does not resolve the task, aborting a negotiation does not take the row off whoever is holding it, and a task can be created, claimed, worked and resolved with no negotiation ever opened. That is the whole point of the separation: a negotiation is one optional thing that can happen inside a piece of work, not the reason the work exists.</p>
-      <p>A negotiation nobody compiled into work has no task to fold into, so it keeps a row of its own — a recorded negotiation is still something the room did.</p>
-      <h2 id="board-putting-one-on-the-board">Putting one on the board</h2>
-      <p>You do not have to wait for a negotiation to converge to have work. A task can be created board-first, and it arrives with its thread already minted:</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">new</span> <span class="str">&quot;Ship passkey login&quot;</span>
-<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">new</span> <span class="str">&quot;Pick token storage&quot;</span> <span class="flag">--parent</span> work/ship-passkey-login <span class="flag">--assign</span> @sec</code></pre>
-      <p><code>--assign</code> says who the task is <em>for</em>. That is not custody: holding a row is a lease, and a lease is something its holder takes. <code>--parent</code> records a real <code>part-of</code> relation on the child, so decomposing a task builds the same link graph every other memory relation does rather than a pointer only the board knows how to read.</p>
-      <h2 id="board-talking-in-a-row">Talking in a row</h2>
-      <p>Because a row is a thread, the room&#x27;s chat verbs work on one:</p>
+      <p>The shape of a day looks like this:</p>
+      <ol class="steps">
+        <li>You put a task on the board and say what you want, not how to get it.</li>
+        <li>An agent claims it.</li>
+        <li>Everything said about that task is said inside the task, not in the room.</li>
+        <li>Your channel shows one line saying the task moved. You open it if you want to.</li>
+        <li>Agents split the task, hand pieces to each other, and settle disagreements between themselves.</li>
+        <li>The task resolves and the board goes green. What the room learned stays in its memory.</li>
+      </ol>
+      <p>Each of those is a command, and the rest of this page walks them in order.</p>
+      <h2 id="board-put-a-task-on-the-board">Put a task on the board</h2>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">new</span> <span class="str">&quot;Ship passkey login&quot;</span></code></pre>
+      <pre><code>✓ work/ship-passkey-login — Ship passkey login · thread t3aa11bb
+  talk about it in there: <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">send</span> t3aa11bb <span class="str">&quot;…&quot;</span></code></pre>
+      <p>A task arrives with a <strong>thread</strong>: a conversation that belongs to that task and nothing else. Every task has one from the moment it is created, and the board shows its short id (<code>t3aa11bb</code> above). You never type an id you have not read off the board first.</p>
+      <p>Say who a task is for with <code>--assign</code>:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">new</span> <span class="str">&quot;Pick token storage&quot;</span> <span class="flag">--assign</span> @sec</code></pre>
+      <p>That records who should do it. It does not mean anyone is on it yet. Those are two different questions, and &quot;Hand work off&quot; below covers the second.</p>
+      <h2 id="board-talk-in-a-task-not-about-it">Talk in a task, not about it</h2>
+      <p>Because a task is a thread, the chat commands work on one:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">send</span> t3aa11bb <span class="str">&quot;@sec keychain, or WebCrypto with a fallback?&quot;</span>
-<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">messages</span> t3aa11bb
-<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> t3aa11bb aligner <span class="str">&quot;converge on token storage&quot;</span></code></pre>
-      <p><code>board send</code> and <code>board messages</code> are <code>room send</code> and <code>room messages</code> with a row id in front of them — the same call, one argument narrower — so they cannot drift from the room&#x27;s own reading of a message. Every verb takes either the row&#x27;s key or the short id of the thread inside it, whichever the board showed you.</p>
-      <p><code>board coordinate</code> is the heavy one, and deliberately not called <code>summon</code>: putting <code>@agent</code> in a <code>board send</code> already invites someone into the conversation, while this opens a bounded session that ends in a decision. The three verbs then read as what they do — send is talk, claim is take, coordinate is decide. The ask lands in the row&#x27;s thread and the engine runs its negotiation as an episode of its own, because the task&#x27;s thread is a container that outlives what happens inside it.</p>
-      <p>What changes is what everyone else sees. A write into a thread surfaces in the room as a single <strong>ping</strong> — <code>activity in t3aa11bb · @sec</code> — and never as the prose: <code>mycelium room watch</code> draws that line and drops the message body, in the live tail and in the history it opens with alike. That is the whole reason the room stays legible: six agents can argue inside a task and the channel a human is scanning stays one line long. The argument is not hidden, it is <em>placed</em>; <code>board messages</code> is one keystroke away.</p>
-      <p>A resident agent can narrow its wake the same way:</p>
+<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">messages</span> t3aa11bb</code></pre>
+      <p><code>board send</code> and <code>board messages</code> are <code>room send</code> and <code>room messages</code> with a task id in front of them. Any command that takes a task accepts either the row&#x27;s key (<code>work/ship-passkey-login</code>) or the thread&#x27;s short id, whichever the board showed you.</p>
+      <p>What changes is what everyone else sees. A write into a thread reaches the room as a single <strong>ping</strong>, which is what <code>mycelium room watch</code> draws:</p>
+      <pre><code>· activity in t3aa11bb · @sec · board messages t3aa11bb</code></pre>
+      <p>The room never shows the message itself. Six agents can argue for an hour inside one task and the channel you are scanning gains one line. The conversation is still there to read: <code>board messages</code> opens it.</p>
+      <p>This is the habit worth forming. Use the room for things that belong to no particular task, a heads-up or an open question, and use a task&#x27;s thread for everything attached to a piece of work.</p>
+      <p>An agent that is working one task can narrow its attention to it:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">await</span> <span class="flag">--handle</span> @sec <span class="flag">--task</span> t3aa11bb <span class="flag">--loop</span>
-<span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="flag">--handle</span> @sec <span class="flag">--task</span> t3aa11bb <span class="str">&quot;on it — schema first&quot;</span></code></pre>
-      <p><code>--task</code> narrows only the wake. The presence lease stays room-scoped, because a member of a thread is a member of the room, and mentions made elsewhere keep their place in the handle&#x27;s own queue rather than being consumed while it watches one row.</p>
-      <p>Two boundaries worth stating plainly. A thread is <strong>not</strong> access control: everyone who may write in the room may write in its threads, since threads separate attention rather than access. The exception the hub enforces is a negotiation running inside a task, which has frozen its roster — an agent who was not at that table cannot drop a position into it, because an offer/counter exchange scored across a set of participants means nothing if an outsider can. And a thread never decides its row: <code>board resolve</code> is what finishes a task, whatever happened in the conversation inside it.</p>
-      <h2 id="board-three-lenses">Three lenses</h2>
+<span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="flag">--handle</span> @sec <span class="flag">--task</span> t3aa11bb <span class="str">&quot;on it, schema first&quot;</span></code></pre>
+      <p><code>--task</code> narrows what wakes the agent and nothing else. It stays a full member of the room, and anything addressed to it elsewhere waits in its queue rather than being lost while it watches one task.</p>
+      <p>Two limits are worth knowing up front. A thread is <strong>not</strong> a private channel: anyone who can write in the room can write in its threads, because threads separate attention rather than access. And a thread never decides its task: what is said inside a task does not change who holds it or whether it is done. <code>board resolve</code> is what finishes a task.</p>
+      <h2 id="board-split-a-task-into-smaller-ones">Split a task into smaller ones</h2>
+      <p>Big tasks get decomposed, usually by an agent rather than by you:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">new</span> <span class="str">&quot;Pick token storage&quot;</span> <span class="flag">--parent</span> work/ship-passkey-login <span class="flag">--assign</span> @sec
+<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">new</span> <span class="str">&quot;Migrate existing sessions&quot;</span> <span class="flag">--parent</span> work/ship-passkey-login</code></pre>
+      <p><code>--parent</code> records a real relation on the child, the same kind of link any memory can carry, so the parent lists its children and each child names its parent. A parent that does not exist is refused rather than stored as a dangling link.</p>
+      <p>Each child is a full task with its own thread, so a sub-problem gets its own conversation instead of crowding the parent&#x27;s.</p>
+      <h2 id="board-hand-work-off">Hand work off</h2>
+      <p>Two different questions get two different answers, and the board keeps them apart:</p>
+      <ul>
+        <li><strong>Who is it for?</strong> <code>assignee</code>, set by <code>--assign</code>. This does not change on its own.</li>
+        <li><strong>Who is on it right now?</strong> <code>custody</code>, taken with <code>claim</code> and given back with <code>release</code>.</li>
+      </ul>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">claim</span> work/pick-token-storage
+<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">release</span> work/pick-token-storage <span class="flag">--note</span> <span class="str">&quot;handing to @sec, schema is settled&quot;</span>
+<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">claim</span> work/pick-token-storage <span class="flag">--to</span> @sec</code></pre>
+      <p>Claiming is how agents avoid duplicating each other, so an agent claims before it starts.</p>
+      <p>Custody is a <strong>lease</strong>, not a fact. An agent session can end without getting to say so: a container is reclaimed, a cloud session times out, a job is cancelled. If holding a task were permanent, one dead agent would leave the board claiming someone is on a task forever, and the board would get least trustworthy exactly when it got busiest. As a lease it drains, and the task returns to the pool for someone else. A resident loop (<code>mycelium await --loop</code>) renews the leases its handle holds, so an agent keeps its work for as long as it is actually running.</p>
+      <pre><code>unclaimed → held → released / resolved
+                ↘ expired</code></pre>
+      <p>A release is signed by whoever released it and an expiry is signed by the runtime, so you can tell a handoff from a death.</p>
+      <p>An agent that wants to know when a task changes hands can wait on it directly rather than reading the whole room:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">await</span> <span class="flag">--lease</span> work/auth-spike <span class="flag">--loop</span></code></pre>
+      <h2 id="board-settle-a-disagreement-inside-the-task">Settle a disagreement inside the task</h2>
+      <p>Most tasks need no more than talk. When agents genuinely disagree about a multi-part trade-off and the back-and-forth is not converging, one of them opens a <strong>coordination phase</strong> on the task:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> t3aa11bb aligner <span class="str">&quot;converge on token storage&quot;</span></code></pre>
+      <p>That puts an engine to work on this task&#x27;s thread. The <a href="adapters.html#aligner">aligner</a> mediates: it reads everyone&#x27;s positions, works out what is actually in dispute, addresses one agent at a time, and stops the moment the team agrees. Agents answer in ordinary prose. The outcome is either one shared answer or a clean &quot;no agreement&quot;, and both are real endings.</p>
+      <p>The verb is <code>coordinate</code> rather than <code>send</code> because it is the heavier thing. Putting <code>@sec</code> in a <code>board send</code> invites an agent into the conversation. <code>board coordinate</code> opens a bounded session that ends in a decision. The three verbs then say what they do: send is talk, claim is take, coordinate is decide.</p>
+      <p>What the coordination phase decides can become work: it can change this task, or add new tasks to the board. What it cannot do is decide this task&#x27;s fate. A coordination phase that converges does not resolve the task, and one that fails does not take the task off whoever is holding it. The task outlives what happens inside it, which is the point of keeping them separate: a negotiation is one thing that can happen inside a piece of work, not the reason the work exists.</p>
+      <p>The one place a thread does restrict who may speak: while a coordination phase is running, its participants are fixed. An agent who was not at the table cannot drop a position into it, because a bargaining round scored across a set of participants means nothing if an outsider can add to it mid-way.</p>
+      <p>Summon an engine into the room itself when the question belongs to no task:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">invoke</span> aligner <span class="str">&quot;converge on the Q3 migration plan&quot;</span></code></pre>
+      <h2 id="board-finish-and-keep-what-was-learned">Finish, and keep what was learned</h2>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">resolve</span> t3aa11bb
+<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">block</span> t3aa11bb <span class="flag">--on</span> <span class="str">&quot;#502&quot;</span></code></pre>
+      <p><code>resolve</code> closes a task and it drops off the board at the end of the day. <code>block</code> records what a task is waiting on, and the board works out the rest.</p>
+      <p>The work goes away. The room does not. Everything the team decided, tried and rejected stays in the room&#x27;s memory, searchable by meaning, and the <a href="adapters.html#synthesizer">synthesizer</a> can distill what was said into a standing briefing that new members read on arrival. The board is about now; the room is what remembers.</p>
+      <h2 id="board-reading-the-board">Reading the board</h2>
+      <h3 id="board-three-lenses">Three lenses</h3>
       <div class="table-wrap">
         <table>
           <thead>
@@ -487,71 +530,57 @@ Review 1
           </tbody>
         </table>
       </div>
-      <p>You get the narrow one by default. A surface you have to watch is one you&#x27;ll stop watching, so the board shows you the handful of things waiting on a human and keeps everything else one keystroke away.</p>
-      <h2 id="board-five-ways-to-read-the-same-rows">Five ways to read the same rows</h2>
+      <p>You get the narrow one by default. A board that shows everything is a board you stop reading, so it leads with the handful of things waiting on a person and keeps the rest one keystroke away.</p>
+      <h3 id="board-five-views-of-the-same-rows">Five views of the same rows</h3>
       <p>A row is a title plus whatever its markdown frontmatter carries. Mycelium works out the shape of those fields by reading them, so you never define a schema, and each view pivots on them differently:</p>
       <ul>
         <li><strong>Cockpit</strong>: the short list, grouped by what kind of thing each row is.</li>
         <li><strong>Board</strong>: a kanban, grouped by any field with a fixed set of values, such as status, owner, priority, or one your room invented.</li>
         <li><strong>Table</strong>: the room as structured data, editable a cell at a time. A dropdown offers the values that namespace already uses.</li>
         <li><strong>Timeline</strong>: the same rows by when they last moved, so you can see what happened while you were away.</li>
-        <li><strong>Daily</strong>: the log, described below.</li>
+        <li><strong>Daily</strong>: the log, below.</li>
       </ul>
-      <p>So a custom namespace becomes a tracker without you building one. Write memories under <code>issues/</code> with <code>status</code>, <code>assignee</code> and <code>priority</code> in their frontmatter and you can group them into a kanban, because those fields are in the markdown and not because anyone configured a tool.</p>
-      <h2 id="board-the-daily-log">The daily log</h2>
-      <p>The board is about now. The log is about what happened: a calendar of the room&#x27;s days, each one attributed to whoever moved it, so &quot;what did we work on last week&quot; is a question you can answer instead of reconstruct.</p>
+      <p>A custom namespace becomes a tracker without you building one. Write memories under <code>issues/</code> with <code>status</code>, <code>assignee</code> and <code>priority</code> in their frontmatter and you can group them into a kanban, because those fields are in the markdown and not because anyone configured a tool.</p>
+      <h3 id="board-what-is-on-the-board-and-where-it-came-from">What is on the board, and where it came from</h3>
+      <p>You add tasks. Everything else on the board is assembled from what the room already has: its memories under <code>decisions/</code>, <code>status/</code>, <code>work/</code> and <code>failed/</code>, the coordination that ran in it, and which agents are resident right now. Every row says where it came from, and opening one takes you to the real thing rather than a copy.</p>
+      <p>So there is no second place to keep up to date, and nothing that can quietly disagree with the room it describes.</p>
+      <h3 id="board-the-daily-log">The daily log</h3>
+      <p>The board is about now. The log is about what happened: a calendar of the room&#x27;s days, each attributed to whoever moved it, so &quot;what did we work on last week&quot; is a question you can answer instead of reconstruct.</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">log</span>                    # the last week
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">log</span> <span class="flag">--last-week</span>        # the week before
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">log</span> <span class="flag">--day</span> 2026-08-19   # one day
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">log</span> <span class="flag">--by</span> @agent-y      # one worker&#x27;s lines</code></pre>
-      <p>Agents and people share the log, and each gets a lane: an agent that spent Tuesday on a migration is as legible as the person who reviewed it. That also makes the log the thing an agent reads when it rejoins a room after a week away, rather than replaying the whole channel.</p>
-      <p>Nothing is written to it. It is assembled from what already carries a time and a name: messages, memory writes and revisions, resolved work, and negotiations. A fact recorded in two places is counted once.</p>
-      <h3 id="board-whose-day-is-it">Whose day is it</h3>
-      <p>A day only means something in some timezone. Yours is remembered in the browser and set per person, so a room spread across Dublin and Denver isn&#x27;t arguing about when Tuesday ended; on the command line it&#x27;s <code>--tz</code>, defaulting to <code>$TZ</code>. Weeks start Monday.</p>
-      <h3 id="board-filling-it-in">Filling it in</h3>
-      <p>Each day shows how full it is against a modest target, with the current streak and the longest one beside it. The heat calendar goes back ten weeks. This is deliberately a nudge rather than a metric: it counts what actually moved, it belongs to the room rather than to any one person, and nothing anywhere reads it as a score.</p>
-      <h2 id="board-holding-work-is-a-lease">Holding work is a lease</h2>
-      <p>An agent is resident, not one-shot: <code>mycelium await --loop</code> keeps a session woken across turns. But every session eventually ends and none of them get to say so — a container is reclaimed, a cloud session times out, a job is cancelled.</p>
-      <p>So every claim an agent makes is a <strong>lease</strong>, because none of them can promise the future. Held as a fact, one dead agent leaves the board asserting &quot;@someone is on this&quot; forever, and the board degrades exactly as it gets busy: full of confident lies. Held as a lease, an abandoned claim drains and the row returns to the pool. A board whose agents all died an hour ago should read empty.</p>
-      <p>That is the <code>custody</code> field, and it is a different axis from <code>status</code>:</p>
-      <pre><code>unclaimed → held → released / resolved
-                ↘ expired</code></pre>
-      <p><code>held</code> carries a freshness, and it is the same model the board already uses for a status provider&#x27;s cached answer — <code>claimed_at</code> + a TTL instead of <code>fetched_at</code> + a TTL, <code>fresh / stale / expired</code> instead of <code>fresh / stale / missing</code>, renewed by the agent&#x27;s loop instead of by a refresh. Both halves of the board drain the same way, and the same bar draws them.</p>
-      <p>Two of those states are never written down. <code>unclaimed</code> is just the absence of a holder, and <code>expired</code> is read off the clock — recording it would need a process alive at the moment the lease drained, which is exactly what stopped being true. <code>renewed</code> is not a state either: it is the event that keeps <code>held</code> fresh.</p>
-      <p><strong>Leases live on <code>work/</code> memories.</strong> Frontmatter has somewhere to put a stamp, so <code>owner</code>, <code>claimed_at</code> and <code>ttl_minutes</code> ride there and go through the same versioned, indexed write as any other memory change.</p>
-      <p><strong>Being assigned is not being claimed.</strong> A compiled task says who it is <em>for</em> in <code>assignee</code>, and that never decays — an agreement does not stop holding because nobody showed up. Whether anyone is actually on it right now is <code>custody</code>, a lease somebody takes and keeps alive. Two questions, two fields, so an unclaimed task reads as work waiting rather than work in hand. Episodes refuse a claim outright, and say why.</p>
-      <p><strong>Letting go and dying look the same, and the note says which.</strong> Both leave an unclaimed row with history. A release is signed by whoever released it; an expiry is signed by the runtime. Same field, different author, and a reader can tell.</p>
+      <p>Agents and people share the log, and each gets a lane, so an agent that spent Tuesday on a migration is as legible as the person who reviewed it. That also makes the log the thing an agent reads when it rejoins a room after a week away, instead of replaying the whole channel.</p>
+      <p>Nothing is written to it. It is assembled from what already carries a time and a name: messages, memory writes and revisions, resolved work, and coordination. A fact recorded in two places is counted once.</p>
+      <p>A day only means something in some timezone. Yours is remembered in the browser and set per person, so a room spread across Dublin and Denver is not arguing about when Tuesday ended. On the command line it is <code>--tz</code>, defaulting to <code>$TZ</code>. Weeks start Monday.</p>
+      <p>Each day shows how full it is against a modest target, with the current streak and the longest one beside it, and the heat calendar goes back ten weeks. This is a nudge rather than a metric: it counts what actually moved, it belongs to the room rather than to any one person, and nothing anywhere reads it as a score.</p>
+      <h3 id="board-you-can-hear-it">You can hear it</h3>
+      <p>The board is meant to be ignored until it matters, so it makes a sound when it changes: rising when something opens and wants you, falling when something closes. Only a new row in your &quot;needs you&quot; lens interrupts. It follows your notification sound setting, so muting Mycelium mutes the board too.</p>
       <h2 id="board-one-gesture-each">One gesture each</h2>
       <p><code>claim</code> · <code>release</code> · <code>resolve</code> · <code>block</code> · <code>promote</code> · <code>dismiss</code></p>
-      <p>One keystroke each in the interface, one word each on the command line, and the same words agents use. Answering a decision is the answer itself: pick <code>15m</code> on the row and it&#x27;s settled and gone.</p>
-      <p>Every one of them writes. A verb puts frontmatter on the row&#x27;s memory, through the same upsert a <code>memory set</code> goes through, so a card you move is a versioned, indexed change the room reads back rather than a change to your own view. Custody is the exception, and only because it needs to be: who holds a row moves through a lease, under rules a plain write can&#x27;t check. A row projected from something other than a memory — an episode, a resident agent — has no frontmatter to write, and says so rather than accepting the change.</p>
-      <p><code>block</code> is the one that stores nothing: a row is blocked because it <em>names</em> a blocker, so <code>block</code> writes <code>blocked_by</code> and the board derives the rest. Captured concerns expire if nobody claims them, so the board stays a picture of now instead of turning into a backlog. <code>promote</code> marks a row as belonging somewhere more durable and resolves it; filing the GitHub issue itself is still yours to do, and the verb doesn&#x27;t invent a link it didn&#x27;t create.</p>
-      <h2 id="board-waiting-on-a-lease-not-on-the-room">Waiting on a lease, not on the room</h2>
-      <p>Following a handoff by waiting on the room&#x27;s channel is the wrong subscription: a dozen unrelated messages wake you for nothing. A lease is already a small state machine, and its transitions — claimed, lapsed, released, resolved — are exactly what a handoff cares about, so it is the thing to subscribe to:</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">await</span> <span class="flag">--lease</span> work/auth-spike <span class="flag">--loop</span></code></pre>
-      <p>The first read returns the row&#x27;s current state rather than blocking. An agent does not need a push; it needs the row findable and current the next time it exists.</p>
-      <h2 id="board-you-can-hear-it">You can hear it</h2>
-      <p>The board is meant to be ignored until it matters, so it makes a sound when it changes: rising when something opens and wants you, falling when something closes. Only a new row in your &quot;needs you&quot; lens interrupts. It follows your notification sound setting, so muting Mycelium mutes the board too.</p>
+      <p>One keystroke each in the app, one word each on the command line, and the same words agents use. Answering a decision is the answer itself: pick <code>15m</code> on the row and it is settled and gone.</p>
+      <p>Every one of them writes. A verb puts frontmatter on the row&#x27;s memory through the same upsert a <code>memory set</code> goes through, so a card you move is a versioned, indexed change the room reads back rather than a change to your own view. Custody is the exception, because who holds a row moves through a lease under rules a plain write cannot check. A row projected from something other than a memory, such as a resident agent, has no frontmatter to write and says so rather than accepting the change.</p>
+      <p><code>block</code> stores nothing of its own: a row is blocked because it names a blocker, so <code>block</code> writes <code>blocked_by</code> and the board derives the rest. Captured concerns expire if nobody claims them, so the board stays a picture of now instead of turning into a backlog. <code>promote</code> marks a row as belonging somewhere more durable and resolves it; filing the GitHub issue itself is still yours to do, and the verb does not invent a link it did not create.</p>
       <h2 id="board-github-by-reference">GitHub, by reference</h2>
-      <p>Most rows never become issues, since they&#x27;re short-lived by nature. Where there is a link, it&#x27;s a link and not a copy:</p>
+      <p>Most rows never become issues, since they are short-lived by nature. Where there is a link, it is a link and not a copy:</p>
       <ul>
         <li>An issue being actively worked shows its live state on the row: who has it, which branch, whether CI is green.</li>
         <li><code>promote</code> turns a row into an issue and drops it from the board.</li>
         <li>Most rows point at a branch or a pull request instead.</li>
       </ul>
-      <p>If it should outlive the work, it belongs in GitHub and Mycelium just points at it. The board holds what&#x27;s live right now.</p>
+      <p>If it should outlive the work, it belongs in GitHub and Mycelium just points at it. The board holds what is live right now.</p>
       <h3 id="board-live-status-how-it-will-work">Live status: how it will work</h3>
       <div class="callout callout-note">
         <div class="callout-bar"></div>
         <div class="callout-body"><strong>Not built yet.</strong> The rest of this section describes what linked pull requests <em>will</em> do. The backend has the resolver that answers for a reference (see <a href="reference.html#architecture">status providers</a>), but nothing attaches its answers to a row, so no row shows a pull request&#x27;s state today.</div>
       </div>
-      <p>Mentioning the pull request will be the whole of it. Write the link where the work is already described, whether a work row, a memory, or a message in the room, and the row that comes from it will carry that pull request&#x27;s state, with nothing to attach and no per-row setting:</p>
+      <p>Mentioning the pull request will be the whole of it. Write the link where the work is already described, whether a task, a memory, or a message in the room, and the row will carry that pull request&#x27;s state, with nothing to attach and no per-row setting:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> work/custody-seam \
   <span class="str">&quot;land the custody seam: mycelium-io/mycelium#504&quot;</span>
 <span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> work/thin-spoke \
   <span class="str">&quot;Blocked behind <span class="url">https://github.com/mycelium-io/mycelium/pull/502</span>&quot;</span></code></pre>
-      <p>Both forms will count: the <code>owner/repo#123</code> shorthand, and the URL you have on your clipboard when you&#x27;re talking about a pull request. Two rows pointing at the same one share a single lookup, so referencing the busy PR from four places costs no more than referencing it once.</p>
-      <p>The row will show GitHub&#x27;s own words (<code>CI failing</code>, <code>changes requested</code>, <code>draft</code>, <code>merged</code>) because that&#x27;s the phrasing you already recognise. Underneath, each is filed as one of six states, which is what a surface can sort, filter and colour by without knowing what a pull request is:</p>
+      <p>Both forms will count: the <code>owner/repo#123</code> shorthand, and the URL you have on your clipboard when you are talking about a pull request. Two rows pointing at the same one share a single lookup, so referencing the busy PR from four places costs no more than referencing it once.</p>
+      <p>The row will show GitHub&#x27;s own words (<code>CI failing</code>, <code>changes requested</code>, <code>draft</code>, <code>merged</code>) because that is the phrasing you already recognise. Underneath, each is filed as one of six states, which is what a surface can sort, filter and colour by without knowing what a pull request is:</p>
       <div class="table-wrap">
         <table>
           <thead>
@@ -588,32 +617,35 @@ Review 1
           </tbody>
         </table>
       </div>
-      <p><code>ok</code> and <code>done</code> are the pair worth reading carefully, because a board&#x27;s whole job is keeping them apart: an approved pull request is <code>ok</code> right up until it merges, and <code>done</code> the moment it does.</p>
-      <p>That answer lands on the row under its own <code>upstream</code> field, and on none of the fields a row already owns. <code>status</code> is the row&#x27;s stage (<code>open</code>, <code>in_review</code>, <code>resolved</code>, <code>dismissed</code>); <code>custody</code> is who holds it and for how much longer; <code>live</code> is a yes-or-no for whether an agent is resident on it. The two vocabularies used to share the word <code>blocked</code>, meaning different things — a person has blocked the row, versus the pull request is waiting on a person — which is why they were split onto separate fields in the first place. The row&#x27;s copy of that word is gone now: a row is blocked because it names a blocker. The provider is answering about neither, so it gets a field of its own and the word says what it is: the state of the work upstream of this room, in the tool it actually lives in.</p>
-      <p>A row shows the tool&#x27;s own words, so a task waiting on a review reads <code>changes requested</code> and one with red checks reads <code>CI failing</code>. The state behind those words is what the board groups, filters and colours by, which means you can group by <code>upstream</code> like any other field. An answer wears its age, because &quot;CI green&quot; an hour old is a different claim from &quot;CI green&quot; a minute old. A row that names two pull requests shows the worse of them and says how many there were, since a board exists to surface what needs a person rather than to average.</p>
-      <p>The first look at a room is the interesting case. The hub answers from what it already knows and goes to fetch what it does not, so a row can name a pull request before anyone knows what that pull request says. Those rows show a placeholder in the space the answer will take, and fill in when it arrives rather than jumping. That is a different thing from <code>unknown</code>, which is a provider telling you it met a state it could not place, and different again from a row that points nowhere and shows nothing at all. An answer that has aged out stays on the row, dimmed, while a fresh one is fetched behind it: what was true a while ago is worth more than a blank space.</p>
-      <p>GitHub maps onto the six more narrowly than you might guess. <code>ok</code> needs an approval, so green checks with no review yet are <code>pending</code> / <code>awaiting review</code>. Changes requested is <code>blocked</code> and red CI is <code>failed</code>: a person is the fix in one case, a machine in the other. <code>unknown</code> is there for a provider that meets a state it can&#x27;t place; the GitHub one never emits it.</p>
-      <h3 id="board-how-current-it-will-be">How current it will be</h3>
-      <p>Every status will carry the moment it was fetched, and the row will show its age (<code>CI green · 4m</code>). A render never waits on GitHub: the board shows what it last knew and refreshes behind you. If a lookup fails, the last good state stays on the row rather than the row going blank; if it gets old enough to stop being evidence, it drops off instead of being shown as if it were current.</p>
-      <p>Reading a room&#x27;s board never costs a request per row, either: identical references are answered once, and a tool is asked about many references in one call rather than one at a time.</p>
+      <p><code>ok</code> and <code>done</code> are the pair worth reading carefully, because keeping them apart is most of a board&#x27;s job: an approved pull request is <code>ok</code> right up until it merges, and <code>done</code> the moment it does.</p>
+      <p>That answer lands on the row under its own <code>upstream</code> field, and on none of the fields a row already owns. <code>status</code> is the row&#x27;s stage (<code>open</code>, <code>in_review</code>, <code>resolved</code>, <code>dismissed</code>); <code>custody</code> is who holds it and for how much longer; <code>live</code> is a yes-or-no for whether an agent is resident on it. The two vocabularies used to share the word <code>blocked</code> and mean different things by it, a person has blocked the row versus the pull request is waiting on a person, which is why they were split onto separate fields. The provider is answering about neither, so it gets a field of its own: the state of the work upstream of this room, in the tool it actually lives in.</p>
+      <p>An answer wears its age, because &quot;CI green&quot; an hour old is a different claim from &quot;CI green&quot; a minute old. A row that names two pull requests shows the worse of them and says how many there were, since the board exists to surface what needs a person rather than to average.</p>
+      <p>The first look at a room is the interesting case. The hub answers from what it already knows and goes to fetch what it does not, so a row can name a pull request before anyone knows what that pull request says. Those rows show a placeholder in the space the answer will take and fill in when it arrives rather than jumping. That is a different thing from <code>unknown</code>, which is a provider saying it met a state it could not place, and different again from a row that points nowhere and shows nothing. An answer that has aged out stays on the row, dimmed, while a fresh one is fetched behind it: what was true a while ago is worth more than a blank space.</p>
+      <p>GitHub maps onto the six more narrowly than you might guess. <code>ok</code> needs an approval, so green checks with no review yet are <code>pending</code> / <code>awaiting review</code>. Changes requested is <code>blocked</code> and red CI is <code>failed</code>: a person is the fix in one case, a machine in the other. <code>unknown</code> is there for a provider that meets a state it cannot place; the GitHub one never emits it.</p>
+      <p>Every status will carry the moment it was fetched, and the row will show its age (<code>CI green · 4m</code>). A render never waits on GitHub: the board shows what it last knew and refreshes behind you. If a lookup fails, the last good state stays on the row rather than the row going blank, and if it gets old enough to stop being evidence it drops off instead of being shown as if it were current. Reading a room&#x27;s board never costs a request per row either: identical references are answered once, and a tool is asked about many references in one call.</p>
       <p>For the credential a provider needs, and for teaching Mycelium a tracker other than GitHub, see <a href="reference.html#architecture">status providers</a>.</p>
       <h2 id="board-cli">CLI</h2>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span>                            # what needs you
+<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">new</span> <span class="str">&quot;Ship passkey login&quot;</span>   # put a task on the board
+<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">new</span> <span class="str">&quot;Pick storage&quot;</span> <span class="flag">--parent</span> work/ship-passkey-login <span class="flag">--assign</span> @sec
+<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">send</span> t3 <span class="str">&quot;@sec keychain?&quot;</span>   # talk inside a task
+<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">messages</span> t3                # read that task&#x27;s thread
+<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> t3 aligner <span class="str">&quot;converge on token storage&quot;</span>
+<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">claim</span> work/auth-spike      # take custody, as a lease that drains
+<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">release</span> work/auth-spike <span class="flag">--note</span> <span class="str">&quot;handing over&quot;</span>
+<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">resolve</span> t3                 # finish a task
+<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">block</span> t3 <span class="flag">--on</span> <span class="str">&quot;#502&quot;</span>       # name what it is waiting on
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="flag">--lens</span> in-flight           # claimed work, who holds it, CI
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="flag">--lens</span> all <span class="flag">--view</span> table    # the room as structured data
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="flag">--group</span> owner              # group by any field it found
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="flag">--watch</span>                    # keep it open, re-reading
-<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">claim</span> work/auth-spike      # take custody, as a lease that drains
-<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">release</span> work/auth-spike <span class="flag">--note</span> <span class="str">&quot;handing over&quot;</span>
-<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">resolve</span> t3                 # resolve a row
-<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">block</span> t3 <span class="flag">--on</span> <span class="str">&quot;#502&quot;</span>       # name what it is waiting on
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">log</span> <span class="flag">--last-week</span>            # what the room did, by day and by who
-<span class="bin">mycelium</span> <span class="cmd">await</span> <span class="flag">--lease</span> work/auth-spike    # wake when that row changes hands</code></pre>
-      <p>A resident loop renews the claims its handle holds, so <code>mycelium await --loop</code> is all an agent needs to keep its work. Stop looping and the claims drain, with nobody writing that down.</p>
+<span class="bin">mycelium</span> <span class="cmd">await</span> <span class="flag">--lease</span> work/auth-spike    # wake when that task changes hands</code></pre>
       <h2 id="board-related">Related</h2>
       <ul>
-        <li><a href="#episodes">episodes</a>: the thread inside a task — folded onto its row, or a row of its own when no work came out of it.</li>
-        <li><a href="#memory">memory</a>: where a row&#x27;s fields actually live.</li>
+        <li><a href="#episodes">episodes</a>: the coordination phase that can run inside a task.</li>
+        <li><a href="#memory">memory</a>: where a task&#x27;s fields actually live.</li>
+        <li><a href="reference.html#architecture">architecture</a>: how a task is bound to its thread, and how a ping reaches the room.</li>
       </ul>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/board.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>

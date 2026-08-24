@@ -108,91 +108,84 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "index.html#board",
     "t": "Board",
     "s": "Concepts",
-    "x": "Orchestrate effectively across your team's agents. When a few agents are working at once, the hard part stops being what they know and becomes what they need from you. One is waiting on a decision only you can make. One is blocked behind someone else's pull request. One has been running for twenty minutes and is fine. The board is where a room answers that: a short list of what needs you, and the rest a keystroke awa",
+    "x": "Put work on the board, and let your agents run it. A room's board is its list of work. One row is one task: something that needs doing, with a title, someone it is for, and a stage it is at. You add a task, agents pick it up and work it, and the board keeps a short list of the things that still need a person. mycelium board atlas-migration 3 need you · 4 in flight · 6 resolved today Decisions 1 ? d3f JWT access-token",
     "p": "Guide"
   },
   {
-    "u": "index.html#board-nothing-to-fill-in",
-    "t": "Nothing to fill in",
+    "u": "index.html#board-put-a-task-on-the-board",
+    "t": "Put a task on the board",
     "s": "Concepts › Board",
-    "x": "You never add anything to the board. It's assembled from what the room already has: the work compiled out of its agreements, the negotiations running in it, the memories under decisions/, status/, work/ and failed/, and which agents are actually resident right now. Every row says where it came from, and clicking through takes you to the real thing rather than a copy of it. That means there's no second place to keep u",
+    "x": "mycelium board new \"Ship passkey login\" ✓ work/ship-passkey-login — Ship passkey login · thread t3aa11bb talk about it in there: mycelium board send t3aa11bb \"…\" A task arrives with a thread: a conversation that belongs to that task and nothing else. Every task has one from the moment it is created, and the board shows its short id (t3aa11bb above). You never type an id you have not read off the board first. Say who ",
     "p": "Guide"
   },
   {
-    "u": "index.html#board-a-row-is-a-task-and-a-task-is-a-thread",
-    "t": "A row is a task, and a task is a thread",
+    "u": "index.html#board-talk-in-a-task-not-about-it",
+    "t": "Talk in a task, not about it",
     "s": "Concepts › Board",
-    "x": "A work/ row carries the episode URN of the thread its coordination happens in. The row and the thread are one object, so the board draws one row per task — the negotiation that produced a task shows up on that task (thread, thread_state, who was at the table, how many rounds) rather than beside it as a second row. The URN is the store's: it is minted when the task is created, it survives every later write, and no mem",
+    "x": "Because a task is a thread, the chat commands work on one: mycelium board send t3aa11bb \"@sec keychain, or WebCrypto with a fallback?\" mycelium board messages t3aa11bb board send and board messages are room send and room messages with a task id in front of them. Any command that takes a task accepts either the row's key (work/ship-passkey-login) or the thread's short id, whichever the board showed you. What changes i",
     "p": "Guide"
   },
   {
-    "u": "index.html#board-putting-one-on-the-board",
-    "t": "Putting one on the board",
+    "u": "index.html#board-split-a-task-into-smaller-ones",
+    "t": "Split a task into smaller ones",
     "s": "Concepts › Board",
-    "x": "You do not have to wait for a negotiation to converge to have work. A task can be created board-first, and it arrives with its thread already minted: mycelium board new \"Ship passkey login\" mycelium board new \"Pick token storage\" --parent work/ship-passkey-login --assign @sec --assign says who the task is for. That is not custody: holding a row is a lease, and a lease is something its holder takes. --parent records a",
+    "x": "Big tasks get decomposed, usually by an agent rather than by you: mycelium board new \"Pick token storage\" --parent work/ship-passkey-login --assign @sec mycelium board new \"Migrate existing sessions\" --parent work/ship-passkey-login --parent records a real relation on the child, the same kind of link any memory can carry, so the parent lists its children and each child names its parent. A parent that does not exist i",
     "p": "Guide"
   },
   {
-    "u": "index.html#board-talking-in-a-row",
-    "t": "Talking in a row",
+    "u": "index.html#board-hand-work-off",
+    "t": "Hand work off",
     "s": "Concepts › Board",
-    "x": "Because a row is a thread, the room's chat verbs work on one: mycelium board send t3aa11bb \"@sec keychain, or WebCrypto with a fallback?\" mycelium board messages t3aa11bb mycelium board coordinate t3aa11bb aligner \"converge on token storage\" board send and board messages are room send and room messages with a row id in front of them — the same call, one argument narrower — so they cannot drift from the room's own rea",
+    "x": "Two different questions get two different answers, and the board keeps them apart: Who is it for? assignee, set by --assign. This does not change on its own. Who is on it right now? custody, taken with claim and given back with release. mycelium board claim work/pick-token-storage mycelium board release work/pick-token-storage --note \"handing to @sec, schema is settled\" mycelium board claim work/pick-token-storage --",
+    "p": "Guide"
+  },
+  {
+    "u": "index.html#board-settle-a-disagreement-inside-the-task",
+    "t": "Settle a disagreement inside the task",
+    "s": "Concepts › Board",
+    "x": "Most tasks need no more than talk. When agents genuinely disagree about a multi-part trade-off and the back-and-forth is not converging, one of them opens a coordination phase on the task: mycelium board coordinate t3aa11bb aligner \"converge on token storage\" That puts an engine to work on this task's thread. The aligner mediates: it reads everyone's positions, works out what is actually in dispute, addresses one age",
+    "p": "Guide"
+  },
+  {
+    "u": "index.html#board-finish-and-keep-what-was-learned",
+    "t": "Finish, and keep what was learned",
+    "s": "Concepts › Board",
+    "x": "mycelium board resolve t3aa11bb mycelium board block t3aa11bb --on \"#502\" resolve closes a task and it drops off the board at the end of the day. block records what a task is waiting on, and the board works out the rest. The work goes away. The room does not. Everything the team decided, tried and rejected stays in the room's memory, searchable by meaning, and the synthesizer can distill what was said into a standing",
+    "p": "Guide"
+  },
+  {
+    "u": "index.html#board-reading-the-board",
+    "t": "Reading the board",
+    "s": "Concepts › Board",
+    "x": "",
     "p": "Guide"
   },
   {
     "u": "index.html#board-three-lenses",
     "t": "Three lenses",
     "s": "Concepts › Board",
-    "x": "Lens What's in it Needs you (default) Open decisions, blocked work, reviews wanting eyes In flight Claimed and moving: who holds it, which branch, CI state Resolved Closed today, then it drops off You get the narrow one by default. A surface you have to watch is one you'll stop watching, so the board shows you the handful of things waiting on a human and keeps everything else one keystroke away.",
+    "x": "Lens What's in it Needs you (default) Open decisions, blocked work, reviews wanting eyes In flight Claimed and moving: who holds it, which branch, CI state Resolved Closed today, then it drops off You get the narrow one by default. A board that shows everything is a board you stop reading, so it leads with the handful of things waiting on a person and keeps the rest one keystroke away.",
     "p": "Guide"
   },
   {
-    "u": "index.html#board-five-ways-to-read-the-same-rows",
-    "t": "Five ways to read the same rows",
+    "u": "index.html#board-five-views-of-the-same-rows",
+    "t": "Five views of the same rows",
     "s": "Concepts › Board",
     "x": "A row is a title plus whatever its markdown frontmatter carries. Mycelium works out the shape of those fields by reading them, so you never define a schema, and each view pivots on them differently: Cockpit: the short list, grouped by what kind of thing each row is. Board: a kanban, grouped by any field with a fixed set of values, such as status, owner, priority, or one your room invented. Table: the room as structur",
+    "p": "Guide"
+  },
+  {
+    "u": "index.html#board-what-is-on-the-board-and-where-it-came-from",
+    "t": "What is on the board, and where it came from",
+    "s": "Concepts › Board",
+    "x": "You add tasks. Everything else on the board is assembled from what the room already has: its memories under decisions/, status/, work/ and failed/, the coordination that ran in it, and which agents are resident right now. Every row says where it came from, and opening one takes you to the real thing rather than a copy. So there is no second place to keep up to date, and nothing that can quietly disagree with the room",
     "p": "Guide"
   },
   {
     "u": "index.html#board-the-daily-log",
     "t": "The daily log",
     "s": "Concepts › Board",
-    "x": "The board is about now. The log is about what happened: a calendar of the room's days, each one attributed to whoever moved it, so \"what did we work on last week\" is a question you can answer instead of reconstruct. mycelium board log # the last week mycelium board log --last-week # the week before mycelium board log --day 2026-08-19 # one day mycelium board log --by @agent-y # one worker's lines Agents and people sh",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#board-whose-day-is-it",
-    "t": "Whose day is it",
-    "s": "Concepts › Board",
-    "x": "A day only means something in some timezone. Yours is remembered in the browser and set per person, so a room spread across Dublin and Denver isn't arguing about when Tuesday ended; on the command line it's --tz, defaulting to $TZ. Weeks start Monday.",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#board-filling-it-in",
-    "t": "Filling it in",
-    "s": "Concepts › Board",
-    "x": "Each day shows how full it is against a modest target, with the current streak and the longest one beside it. The heat calendar goes back ten weeks. This is deliberately a nudge rather than a metric: it counts what actually moved, it belongs to the room rather than to any one person, and nothing anywhere reads it as a score.",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#board-holding-work-is-a-lease",
-    "t": "Holding work is a lease",
-    "s": "Concepts › Board",
-    "x": "An agent is resident, not one-shot: mycelium await --loop keeps a session woken across turns. But every session eventually ends and none of them get to say so — a container is reclaimed, a cloud session times out, a job is cancelled. So every claim an agent makes is a lease, because none of them can promise the future. Held as a fact, one dead agent leaves the board asserting \"@someone is on this\" forever, and the bo",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#board-one-gesture-each",
-    "t": "One gesture each",
-    "s": "Concepts › Board",
-    "x": "claim · release · resolve · block · promote · dismiss One keystroke each in the interface, one word each on the command line, and the same words agents use. Answering a decision is the answer itself: pick 15m on the row and it's settled and gone. Every one of them writes. A verb puts frontmatter on the row's memory, through the same upsert a memory set goes through, so a card you move is a versioned, indexed change t",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#board-waiting-on-a-lease-not-on-the-room",
-    "t": "Waiting on a lease, not on the room",
-    "s": "Concepts › Board",
-    "x": "Following a handoff by waiting on the room's channel is the wrong subscription: a dozen unrelated messages wake you for nothing. A lease is already a small state machine, and its transitions — claimed, lapsed, released, resolved — are exactly what a handoff cares about, so it is the thing to subscribe to: mycelium await --lease work/auth-spike --loop The first read returns the row's current state rather than blocking",
+    "x": "The board is about now. The log is about what happened: a calendar of the room's days, each attributed to whoever moved it, so \"what did we work on last week\" is a question you can answer instead of reconstruct. mycelium board log # the last week mycelium board log --last-week # the week before mycelium board log --day 2026-08-19 # one day mycelium board log --by @agent-y # one worker's lines Agents and people share ",
     "p": "Guide"
   },
   {
@@ -203,38 +196,38 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Guide"
   },
   {
+    "u": "index.html#board-one-gesture-each",
+    "t": "One gesture each",
+    "s": "Concepts › Board",
+    "x": "claim · release · resolve · block · promote · dismiss One keystroke each in the app, one word each on the command line, and the same words agents use. Answering a decision is the answer itself: pick 15m on the row and it is settled and gone. Every one of them writes. A verb puts frontmatter on the row's memory through the same upsert a memory set goes through, so a card you move is a versioned, indexed change the roo",
+    "p": "Guide"
+  },
+  {
     "u": "index.html#board-github-by-reference",
     "t": "GitHub, by reference",
     "s": "Concepts › Board",
-    "x": "Most rows never become issues, since they're short-lived by nature. Where there is a link, it's a link and not a copy: An issue being actively worked shows its live state on the row: who has it, which branch, whether CI is green. promote turns a row into an issue and drops it from the board. Most rows point at a branch or a pull request instead. If it should outlive the work, it belongs in GitHub and Mycelium just po",
+    "x": "Most rows never become issues, since they are short-lived by nature. Where there is a link, it is a link and not a copy: An issue being actively worked shows its live state on the row: who has it, which branch, whether CI is green. promote turns a row into an issue and drops it from the board. Most rows point at a branch or a pull request instead. If it should outlive the work, it belongs in GitHub and Mycelium just ",
     "p": "Guide"
   },
   {
     "u": "index.html#board-live-status-how-it-will-work",
     "t": "Live status: how it will work",
     "s": "Concepts › Board",
-    "x": "Not built yet. The rest of this section describes what linked pull requests will do. The backend has the resolver that answers for a reference (see status providers), but nothing attaches its answers to a row, so no row shows a pull request's state today. Mentioning the pull request will be the whole of it. Write the link where the work is already described, whether a work row, a memory, or a message in the room, and",
-    "p": "Guide"
-  },
-  {
-    "u": "index.html#board-how-current-it-will-be",
-    "t": "How current it will be",
-    "s": "Concepts › Board",
-    "x": "Every status will carry the moment it was fetched, and the row will show its age (CI green · 4m). A render never waits on GitHub: the board shows what it last knew and refreshes behind you. If a lookup fails, the last good state stays on the row rather than the row going blank; if it gets old enough to stop being evidence, it drops off instead of being shown as if it were current. Reading a room's board never costs a",
+    "x": "Not built yet. The rest of this section describes what linked pull requests will do. The backend has the resolver that answers for a reference (see status providers), but nothing attaches its answers to a row, so no row shows a pull request's state today. Mentioning the pull request will be the whole of it. Write the link where the work is already described, whether a task, a memory, or a message in the room, and the",
     "p": "Guide"
   },
   {
     "u": "index.html#board-cli",
     "t": "CLI",
     "s": "Concepts › Board",
-    "x": "mycelium board # what needs you mycelium board --lens in-flight # claimed work, who holds it, CI mycelium board --lens all --view table # the room as structured data mycelium board --group owner # group by any field it found mycelium board --watch # keep it open, re-reading mycelium board claim work/auth-spike # take custody, as a lease that drains mycelium board release work/auth-spike --note \"handing over\" mycelium",
+    "x": "mycelium board # what needs you mycelium board new \"Ship passkey login\" # put a task on the board mycelium board new \"Pick storage\" --parent work/ship-passkey-login --assign @sec mycelium board send t3 \"@sec keychain?\" # talk inside a task mycelium board messages t3 # read that task's thread mycelium board coordinate t3 aligner \"converge on token storage\" mycelium board claim work/auth-spike # take custody, as a leas",
     "p": "Guide"
   },
   {
     "u": "index.html#board-related",
     "t": "Related",
     "s": "Concepts › Board",
-    "x": "episodes: the thread inside a task — folded onto its row, or a row of its own when no work came out of it. memory: where a row's fields actually live.",
+    "x": "episodes: the coordination phase that can run inside a task. memory: where a task's fields actually live. architecture: how a task is bound to its thread, and how a ping reaches the room.",
     "p": "Guide"
   },
   {
