@@ -1570,6 +1570,59 @@
         }
       }
     },
+    "/api/rooms/{room_name}/units": {
+      "post": {
+        "tags": [
+          "units"
+        ],
+        "summary": "Create Unit",
+        "description": "Create a unit of work with its thread already minted.",
+        "operationId": "create_unit_api_rooms__room_name__units_post",
+        "parameters": [
+          {
+            "name": "room_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UnitCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/rooms/{room_name}/episodes": {
       "get": {
         "tags": [
@@ -6318,6 +6371,62 @@
         ],
         "title": "TeamRead",
         "description": "A team, rolled up from the agents fielded under it and its member users."
+      },
+      "UnitCreate": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "What the unit of work is \u2014 the row's title"
+          },
+          "handle": {
+            "type": "string",
+            "title": "Handle",
+            "description": "Who is creating it \u2014 recorded as the row's author"
+          },
+          "key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key",
+            "description": "Memory key to write (default: work/<slug of the title>)"
+          },
+          "assignee": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignee",
+            "description": "Who the unit is meant for. Not custody: holding it is a lease, which only its holder can take (POST /leases/claim)."
+          },
+          "parent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent",
+            "description": "Memory key of the unit this one decomposes \u2014 recorded as a ``part-of`` relation on the child."
+          }
+        },
+        "type": "object",
+        "required": [
+          "title",
+          "handle"
+        ],
+        "title": "UnitCreate"
       },
       "UpstreamRead": {
         "properties": {

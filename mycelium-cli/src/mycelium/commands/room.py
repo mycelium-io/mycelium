@@ -23,12 +23,14 @@ import os
 
 import typer
 
+from mycelium import chat
 from mycelium.client import hub_client
 from mycelium.client import typed_client as _typed_client
 from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
 from mycelium.error_handler import print_error
 from mycelium.exceptions import MyceliumError
+from mycelium.slim.l9 import room_episode
 
 # The L9 "raise-up" whitelist: message types promoted onto the primary channel
 # surface (here, `room watch`'s live stream) rather than staying inspector-only.
@@ -501,6 +503,60 @@ def _agent_owner_map(room_name: str) -> dict[str, str]:
         return {}
 
 
+def frame_episode(mtype: str, msg: dict, data: dict) -> str | None:
+    """The episode a tail frame belongs to, however it reached the tail.
+
+    Chat arrives two ways — the history replay's folded row, which carries the
+    episode as a plain field, and the live stream's raw L9 envelope, which
+    carries it in the header — so the question "which conversation is this?" has
+    to be asked of both shapes to be worth asking at all.
+    """
+    if mtype == "l9_exchange":
+        episode = ((data.get("l9", {}).get("header", {})).get("message", {})).get("episode")
+    else:
+        episode = msg.get("episode") or data.get("episode")
+    return episode if isinstance(episode, str) and episode else None
+
+
+def in_a_thread(room: str, mtype: str, msg: dict, data: dict) -> bool:
+    """Whether this frame's prose belongs to a thread rather than to the room.
+
+    The room's account of a thread is the **ping** — that a unit moved, not what
+    was said in it. So the prose itself does not also draw here: printing both
+    would be the argument plus a line saying an argument happened, which is
+    worse than either. It is not lost, it is placed; ``board messages`` reads it.
+
+    A frame with no episode at all predates threading and is the room's.
+    """
+    episode = frame_episode(mtype, msg, data)
+    return episode is not None and episode != room_episode(room)
+
+
+def _ping_line(data: dict, stamp: str) -> str | None:
+    """Render a thread's activity as the one line it is meant to be.
+
+    A ping says a unit moved and deliberately not what was said in it — that is
+    how the room stays readable while agents argue inside a row. So the tail
+    gets the thread's short id, who wrote, and the way to read it, rather than
+    an echo of the prose.
+
+    One line per ping, not a coalesced counter: a tail is a tail, and rewriting
+    a line that has already scrolled past is what this surface declines to do
+    for an amendment too.
+    """
+    from mycelium.slim.l9 import ping_of
+
+    ping = ping_of(data)
+    if ping is None:
+        return None
+    thread = str(ping.get("episode", "")).rsplit(":", 1)[-1] or "?"
+    who = ping.get("sender")
+    by = f" [dim]· @{who}[/]" if who else ""
+    return (
+        f"  {stamp}  [dim]·[/] activity in [cyan]{thread}[/]{by} [dim]· board messages {thread}[/]"
+    )
+
+
 def chat_line(mtype: str, msg: dict, data: dict, sender: str, stamp: str, own: str) -> str | None:
     """Render one chat message for the live tail, or None if it carries no prose.
 
@@ -512,6 +568,8 @@ def chat_line(mtype: str, msg: dict, data: dict, sender: str, stamp: str, own: s
     that already scrolled past, but marks it an edit and names what it revises.
     """
     if mtype == "l9_exchange":
+        if ping := _ping_line(data, stamp):
+            return ping
         content = data.get("content", "")
         if not content:
             return None  # presence/control payloads carry no prose
@@ -643,6 +701,8 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
             return f"  {ts()}  [magenta]{sender}[/]{own_tag(sender)} [dim]→[/] [cyan]{recipient}[/]: {content}"
 
         if mtype in ("l9_exchange", "direct", "broadcast", "announce"):
+            if in_a_thread(room_name, mtype, msg, data):
+                return None
             return chat_line(mtype, msg, data, sender, ts(), own_tag(sender))
 
         return None
@@ -695,6 +755,11 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
 
     try:
         with hub_client(config, timeout=10) as client:
+            # Deliberately unfiltered: ``?episode=<live>`` reads as "the room
+            # without its threads" only for rows written since threading, and
+            # would drop every message from before it — history the reader would
+            # never know was missing. ``render`` applies the same rule to the
+            # replay as to the live stream, where an untagged row is the room's.
             hist_resp = client.get(f"/api/rooms/{room_name}/messages", params={"limit": 50})
         if hist_resp.status_code == 200:
             body = hist_resp.json()
@@ -814,27 +879,13 @@ def send(
         config = MyceliumConfig.load()
         room_name = _resolve_room(config, room)
         sender_handle = handle or config.get_current_identity()
-
-        from mycelium_backend_client.api.messages import (
-            send_message_api_rooms_room_name_messages_post as send_api,
+        chat.post(
+            config,
+            room_name,
+            sender_handle=sender_handle,
+            content=content,
+            json_output=json_output,
         )
-        from mycelium_backend_client.models import MessageCreate, MessageCreateMessageType
-
-        with _typed_client(config) as client:
-            body = MessageCreate(
-                sender_handle=sender_handle,
-                message_type=MessageCreateMessageType.BROADCAST,
-                content=content,
-            )
-            result = send_api.sync(room_name=room_name, client=client, body=body)
-
-        if json_output and result:
-            msg_dict = result.to_dict() if hasattr(result, "to_dict") else str(result)
-            typer.echo(json_module.dumps(msg_dict, indent=2, default=str))
-            return
-
-        preview = content[:80] + ("…" if len(content) > 80 else "")
-        typer.echo(f"  ↑  {sender_handle} → {room_name}: {preview}")
 
     except (typer.Exit, typer.Abort):
         raise
@@ -955,60 +1006,14 @@ def messages(
 
         config = MyceliumConfig.load()
         room_name = _resolve_room(config, room)
-
-        from mycelium_backend_client.api.messages import (
-            list_messages_api_rooms_room_name_messages_get as list_api,
+        chat.read(
+            config,
+            room_name,
+            limit=limit,
+            sender=sender,
+            message_type=message_type,
+            json_output=json_output,
         )
-        from mycelium_backend_client.models import HTTPValidationError
-        from mycelium_backend_client.types import UNSET
-
-        with _typed_client(config) as client:
-            result = list_api.sync(
-                room_name=room_name,
-                client=client,
-                limit=limit,
-                sender=sender or UNSET,
-                message_type=message_type or UNSET,
-            )
-
-        if not result or isinstance(result, HTTPValidationError):
-            msgs = []
-        else:
-            msgs = result.messages
-
-        if json_output:
-            payload = (
-                result.to_dict()
-                if result and not isinstance(result, HTTPValidationError)
-                else {"messages": [], "total": 0}
-            )
-            typer.echo(json_module.dumps(payload, indent=2, default=str))
-            return
-
-        if not msgs:
-            typer.echo(f"  {room_name}: no messages")
-            return
-
-        plural = "message" if len(msgs) == 1 else "messages"
-        owners = _agent_owner_map(room_name)
-        typer.secho(f"\n  {room_name}  ", fg=typer.colors.CYAN, bold=True, nl=False)
-        typer.secho(f"({len(msgs)} {plural}, newest first)\n", fg=typer.colors.BRIGHT_BLACK)
-        for m in msgs:
-            stamp = m.created_at.strftime("%H:%M:%S")
-            # Show the full message; this is the read-the-transcript command, so
-            # never truncate. Keep multi-line content readable by indenting any
-            # continuation lines under the first.
-            first, *rest = (m.content or "").split("\n")
-            owner = owners.get(m.sender_handle)
-            own = f" owned by @{owner}" if owner else ""
-            edited = " (edited)" if getattr(m, "edited_at", None) else ""
-            typer.echo(
-                f"  {stamp}  {m.sender_handle}{own} [{m.message_type}]"
-                f"  {str(m.id)[:8]}: {first}{edited}"
-            )
-            for line in rest:
-                typer.echo(f"              {line}")
-        typer.echo()
 
     except (typer.Exit, typer.Abort):
         raise

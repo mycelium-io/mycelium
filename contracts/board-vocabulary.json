@@ -32,6 +32,7 @@
     "resolved": "resolved",
     "dismissed": "resolved"
   },
+  "_verbs_comment": "Two kinds of verb, and the split is the point. A MUTATION verb changes the row: its custody through a lease, everything else as frontmatter. A CHAT verb changes nothing about the row and says something in the thread the row is \u2014 they are the room's own chat verbs (`room send` / `room messages`) with a row id in front of them, sharing one transport (mycelium-cli/src/mycelium/chat.py) rather than a second implementation that would drift on attribution and edit marks. The two lists are asserted DISJOINT: a word that both writes a field and posts a message would leave a reader unable to tell which of the two a typo just did. `new` is a mutation verb with nothing to mutate yet \u2014 board-first creation, which is the only way a unit gets its thread minted \u2014 so it takes no keystroke and is absent from verb_keys.",
   "verbs": [
     "claim",
     "release",
@@ -39,7 +40,13 @@
     "block",
     "unblock",
     "promote",
-    "dismiss"
+    "dismiss",
+    "new"
+  ],
+  "chat_verbs": [
+    "send",
+    "messages",
+    "coordinate"
   ],
   "verb_keys": {
     "claim": "c",
@@ -78,7 +85,12 @@
       "owner",
       "kind",
       "priority"
-    ]
+    ],
+    "_refusals_comment": "Why a projected row has no thread to speak into, keyed by the source that produced it. A chat verb refuses in these terms rather than falling back to the room: a message that quietly went somewhere other than where it was addressed is worse than one that did not go. Keyed by source kind, so an episode row is absent \u2014 an episode IS a thread, and speaking into a recorded negotiation is a write the hub judges (a frozen roster refuses an outsider), not one the surface guesses at.",
+    "refusals": {
+      "agent": "presence is a lease the runtime renews, not a conversation to join",
+      "memory": "a thread belongs to a unit of work; this row is in another namespace"
+    }
   },
   "log": {
     "_comment": "The daily log's calendar conventions. A day is a calendar date in the reader's timezone; weeks start Monday; the heat scale steps at these upper bounds.",

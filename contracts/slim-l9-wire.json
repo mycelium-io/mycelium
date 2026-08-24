@@ -45,6 +45,12 @@
     "contingency": ["negotiation"]
   },
 
+  "ping": {
+    "_comment": "The payload type a thread's activity surfaces into the room as. The backend PRODUCES it (room_channels.raise_ping, off app.services.l9.PING_PAYLOAD_TYPE) on every write into a thread; the CLI READS it (mycelium.slim.l9.ping_of) to draw the one activity line `room watch` shows when a unit moves. A ping deliberately carries no prose \u2014 only which thread moved, who wrote it and the message id \u2014 so payload_fields is the whole of it, and a reader expecting text would draw an empty line instead of the argument the thread exists to absorb. It is also what the backend's participate._addressed_to excludes, so a resident agent consumes a ping silently rather than spending a turn on it: rename the type on one side only and every agent in the room wakes on every thread write.",
+    "payload_type": "ping",
+    "payload_fields": ["episode", "sender", "message"]
+  },
+
   "shared_secret": {
     "_comment": "mint_shared_secret is keyed on workspace/room only (agent ignored). HMAC-SHA256(master_secret, 'workspace/room').hexdigest().",
     "workspace": "acme",

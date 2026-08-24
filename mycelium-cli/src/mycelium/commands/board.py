@@ -33,6 +33,7 @@ from rich.live import Live
 from rich.table import Table
 from rich.text import Text
 
+from mycelium import chat
 from mycelium.board import LiveItem, attach_upstream, custody, infer_schema, project_items
 from mycelium.board import fields as board_fields
 from mycelium.board.activity import (
@@ -46,7 +47,14 @@ from mycelium.board.activity import (
     zone,
 )
 from mycelium.board.custody import lens_of_item
-from mycelium.board.model import KINDS, PRIORITIES, STATUSES, format_age
+from mycelium.board.model import (
+    EPISODE_FIELD,
+    KINDS,
+    PRIORITIES,
+    STATUSES,
+    THREAD_REFUSALS,
+    format_age,
+)
 from mycelium.board.schema import groupable_fields
 from mycelium.client import hub_client
 from mycelium.commands.room import _resolve_room
@@ -598,14 +606,59 @@ def _row(room: str, row_id: str) -> LiveItem | None:
     The board elides ids to fit a column, and a reader retypes what they saw, so
     ``work/auth``, ``memory:work/auth`` and the truncated form all have to land on
     the same row.
+
+    A unit is also nameable by the thread inside it (``t3``), because that is
+    what the room calls it once anything has been said in there: a ping names
+    the thread, not the memory key, and the reader who followed one types back
+    what they read.
     """
     _, items, _ = _fetch(room)
     wanted = row_id.strip()
     for item in items:
         tail = item.id.split(":", 1)[1] if ":" in item.id else item.id
-        if wanted in (item.id, tail, tail[:12]):
+        if wanted in (item.id, tail, tail[:12], item.text("thread")):
             return item
     return None
+
+
+def _thread(room: str, row_id: str) -> tuple[LiveItem, str]:
+    """The row a chat verb names and the thread inside it.
+
+    The resolution the board's chat verbs are: a reader types a row id and means
+    the conversation about that unit. A row with nothing to speak into is
+    refused in its own terms rather than posted to the room instead — a message
+    that quietly went somewhere else is worse than one that did not go.
+    """
+    item = _row(room, row_id)
+    if item is None:
+        console.print(f"[dim]No row '{row_id}' on this board.[/dim]")
+        raise typer.Exit(1)
+    episode = item.text(EPISODE_FIELD)
+    if not episode:
+        why = THREAD_REFUSALS.get(item.source.kind, THREAD_REFUSALS["memory"])
+        console.print(f"[yellow]·[/yellow] {row_id} has no thread — {why}.")
+        raise typer.Exit(1)
+    return item, episode
+
+
+def _parent_key(room: str, row_id: str) -> str:
+    """The memory key a ``part-of`` edge on a child unit points at."""
+    item = _row(room, row_id)
+    if item is None:
+        console.print(f"[dim]No row '{row_id}' on this board.[/dim]")
+        raise typer.Exit(1)
+    key = board_fields.memory_key_of(item)
+    if key is None:
+        console.print(
+            f"[yellow]·[/yellow] {row_id} can't be a parent — {board_fields.refusal_for(item)}."
+        )
+        raise typer.Exit(1)
+    return key
+
+
+def _thread_label(room: str, item: LiveItem, row_id: str) -> str:
+    """What a chat verb calls where it landed: the room, then the row in it."""
+    return f"{room}/{item.text('thread') or row_id}"
 
 
 def _lease(cfg: MyceliumConfig, room: str, action: str, **body: Any) -> None:
@@ -680,6 +733,211 @@ def _write_fields(cfg: MyceliumConfig, room: str, row_id: str, patch: dict) -> N
         raise typer.Exit(1)
     rendered = " ".join(f"{k}={v}" for k, v in patch.items())
     console.print(f"[green]✓[/green] wrote [bold]{key}[/bold] → {rendered}")
+
+
+# ── a row is a thread: the chat verbs, scoped to a unit ──────────────────────
+#
+# These are the room's own verbs with a row id in front of them. A unit of work
+# *is* a thread, so talking about one is talking in it — and the room stays
+# legible because a thread absorbs its own traffic and surfaces one ping. The
+# transport is shared with ``room send`` / ``room messages`` (``mycelium.chat``):
+# same wire call, one argument narrower.
+
+
+@doc_ref(
+    usage='mycelium board new "<title>" [--assign @handle] [--parent <id>]',
+    desc="Put a unit of work on the board, with the thread its coordination happens in already minted.",
+    group="board",
+)
+@app.command(name="new")
+def board_new(
+    title: str = typer.Argument(..., help="What the unit of work is"),
+    assign: str | None = typer.Option(
+        None, "--assign", help="Who it's for (an assignment, not a claim — holding it is a lease)"
+    ),
+    parent: str | None = typer.Option(
+        None, "--parent", help="Row this one decomposes, as a part-of relation"
+    ),
+    room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
+) -> None:
+    """Create a unit of work.
+
+    Board-first: a unit exists because someone put it on the board, not because a
+    negotiation converged into it. It comes with a thread and no argument in it
+    yet, which is the point — coordination inside a unit is optional, and most
+    units never need any.
+    """
+    cfg = MyceliumConfig.load()
+    name = _resolve_room(cfg, room)
+    body: dict[str, Any] = {"title": title, "handle": cfg.get_current_identity()}
+    if assign:
+        body["assignee"] = assign.lstrip("@")
+    if parent:
+        # Resolved here so ``--parent t3`` works like every other row id, and so
+        # a typo is refused against the board the reader is looking at rather
+        # than by the hub against a key they never typed. A ``part-of`` edge
+        # points at a memory, so a row projected from anything else has nothing
+        # to be the parent *of*.
+        body["parent"] = _parent_key(name, parent)
+    try:
+        with hub_client(cfg, timeout=30) as client:
+            resp = client.post(f"/api/rooms/{name}/units", json=body)
+    except httpx.HTTPError as e:
+        console.print(f"[red]✗[/red] hub unreachable: {e}")
+        raise typer.Exit(1) from e
+    if resp.status_code >= 400:
+        console.print(f"[red]✗[/red] could not create the unit: {resp.text}")
+        raise typer.Exit(1)
+    unit = resp.json()
+    thread = str(unit.get(EPISODE_FIELD) or "").rsplit(":", 1)[-1]
+    console.print(
+        f"[green]✓[/green] [bold]{unit.get('key')}[/bold] — {title}"
+        + (f" [dim]· thread {thread}[/dim]" if thread else "")
+    )
+    console.print(
+        f'  [dim]talk about it in there: mycelium board send {thread or unit.get("key")} "…"[/dim]'
+    )
+
+
+@doc_ref(
+    usage='mycelium board send <id> "<text>"',
+    desc="Post into the thread inside a row. The room sees that the unit moved, not what was said.",
+    group="board",
+)
+@app.command(name="send")
+def board_send(
+    row_id: str = typer.Argument(..., help="Row id as shown on the board (e.g. t3, work/auth)"),
+    content: str = typer.Argument(..., help="What to say. @handle mentions address agents."),
+    room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
+    handle: str | None = typer.Option(
+        None, "--handle", "-H", help="Your sender handle (defaults to identity config)"
+    ),
+) -> None:
+    """Say something in a row's thread.
+
+    Exactly ``mycelium room send``, scoped to one unit. Everyone who may write in
+    the room may write in its threads — a thread separates attention, not access
+    — with one exception the hub enforces: a negotiation running inside a unit
+    has frozen its roster, and an outsider dropping a position into that would
+    be scoring an exchange they were not part of.
+    """
+    cfg = MyceliumConfig.load()
+    name = _resolve_room(cfg, room)
+    item, episode = _thread(name, row_id)
+    chat.post(
+        cfg,
+        name,
+        sender_handle=handle or cfg.get_current_identity(),
+        content=content,
+        episode=episode,
+        destination=_thread_label(name, item, row_id),
+    )
+
+
+@doc_ref(
+    usage="mycelium board messages <id> [--limit N]",
+    desc="Read one row's thread: the conversation about that unit, and nothing else from the room.",
+    group="board",
+)
+@app.command(name="messages")
+def board_messages(
+    row_id: str = typer.Argument(..., help="Row id as shown on the board (e.g. t3, work/auth)"),
+    limit: int = typer.Option(20, "--limit", "-l", help="Max messages to show (newest first)"),
+    sender: str | None = typer.Option(
+        None, "--sender", "-s", help="Only messages from this handle"
+    ),
+    room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
+) -> None:
+    """Read a row's thread.
+
+    This is what a ping is for. The room said a unit moved; this is what moved
+    in it.
+    """
+    cfg = MyceliumConfig.load()
+    name = _resolve_room(cfg, room)
+    item, episode = _thread(name, row_id)
+    chat.read(
+        cfg,
+        name,
+        limit=limit,
+        sender=sender,
+        episode=episode,
+        label=_thread_label(name, item, row_id),
+        empty_note="nothing said in this thread yet",
+    )
+
+
+@doc_ref(
+    usage='mycelium board coordinate <id> <engine> "<ask>"',
+    desc="Open a coordination phase inside a unit: put an engine to work on that row's thread.",
+    group="board",
+)
+@app.command(name="coordinate")
+def board_coordinate(
+    row_id: str = typer.Argument(..., help="Row id as shown on the board (e.g. t3, work/auth)"),
+    engine: str = typer.Argument(..., help="Engine handle to run it (e.g. aligner)"),
+    ask: str = typer.Argument(
+        "please mediate us to an agreement.", help="What you're asking it to do"
+    ),
+    room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
+    handle: str | None = typer.Option(
+        None, "--handle", "-H", help="Your sender handle (defaults to identity config)"
+    ),
+) -> None:
+    """Open a coordination phase on a row, run by an engine.
+
+    Heavier than ``board send``, and deliberately a different word for it:
+    putting ``@agent`` in a message invites someone into the conversation,
+    while this opens a bounded session that ends in a decision. The three verbs
+    read as what they do — send is talk, claim is take, coordinate is decide.
+
+    The phase happens *inside* a unit and does not become the unit: the ask
+    lands in the row's thread, and whatever the engine decides never resolves
+    the row or takes it off its holder. A unit can be coordinated more than
+    once, or never.
+
+    The engine opens a **separate** negotiation episode to run in — a unit's
+    thread is a container that outlives what happens inside it, so an exchange
+    with a frozen roster is not the same conversation as the row's. What comes
+    back to the row is the outcome: the work the agreement compiles into, and
+    the thread state the board folds onto it.
+    """
+    from mycelium.client import typed_client
+    from mycelium.commands.agent import _load_manifest_remote
+
+    cfg = MyceliumConfig.load()
+    name = _resolve_room(cfg, room)
+    item, episode = _thread(name, row_id)
+    target = engine.lstrip("@")
+
+    with typed_client(cfg) as client:
+        manifest = _load_manifest_remote(client, name, target)
+    if manifest is None:
+        console.print(
+            f"[red]Not found:[/red] no engine named '{target}' in room '{name}'.\n"
+            f"  Create one with: mycelium engine create {target} --kind aligner --room {name}"
+        )
+        raise typer.Exit(1)
+    if manifest.adapter != "engine":
+        console.print(
+            f"[red]'{target}' is a {manifest.adapter} agent, not an engine.[/red]\n"
+            f'  Use: mycelium board send {row_id} "@{target} …"'
+        )
+        raise typer.Exit(1)
+
+    chat.post(
+        cfg,
+        name,
+        sender_handle=handle or cfg.get_current_identity(),
+        content=f"@{manifest.handle} {ask}",
+        episode=episode,
+        destination=_thread_label(name, item, row_id),
+    )
+    console.print(
+        f"  [dim]the ask is in {item.text('thread') or row_id}'s thread; the "
+        f"{manifest.kind} engine opens its negotiation from there and addresses "
+        "agents one at a time[/dim]"
+    )
 
 
 # ── the log ──────────────────────────────────────────────────────────────────
