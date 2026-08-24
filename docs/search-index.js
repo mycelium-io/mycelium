@@ -252,17 +252,17 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Guide"
   },
   {
-    "u": "index.html#board-a-row-is-a-unit-of-work-and-a-unit-of-work-is-a-thread",
-    "t": "A row is a unit of work, and a unit of work is a thread",
+    "u": "index.html#board-a-row-is-a-task-and-a-task-is-a-thread",
+    "t": "A row is a task, and a task is a thread",
     "s": "Concepts › Board",
-    "x": "A work/ row carries the episode URN of the thread its coordination happens in. The row and the thread are one object, so the board draws one row per unit — the negotiation that produced a task shows up on that task (thread, thread_state, who was at the table, how many rounds) rather than beside it as a second row. The URN is the store's: it is minted when the unit is created, it survives every later write, and no mem",
+    "x": "A work/ row carries the episode URN of the thread its coordination happens in. The row and the thread are one object, so the board draws one row per task — the negotiation that produced a task shows up on that task (thread, thread_state, who was at the table, how many rounds) rather than beside it as a second row. The URN is the store's: it is minted when the task is created, it survives every later write, and no mem",
     "p": "Guide"
   },
   {
     "u": "index.html#board-putting-one-on-the-board",
     "t": "Putting one on the board",
     "s": "Concepts › Board",
-    "x": "You do not have to wait for a negotiation to converge to have work. A unit can be created board-first, and it arrives with its thread already minted: mycelium board new \"Ship passkey login\" mycelium board new \"Pick token storage\" --parent work/ship-passkey-login --assign @sec --assign says who the unit is for. That is not custody: holding a row is a lease, and a lease is something its holder takes. --parent records a",
+    "x": "You do not have to wait for a negotiation to converge to have work. A task can be created board-first, and it arrives with its thread already minted: mycelium board new \"Ship passkey login\" mycelium board new \"Pick token storage\" --parent work/ship-passkey-login --assign @sec --assign says who the task is for. That is not custody: holding a row is a lease, and a lease is something its holder takes. --parent records a",
     "p": "Guide"
   },
   {
@@ -367,7 +367,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "index.html#board-related",
     "t": "Related",
     "s": "Concepts › Board",
-    "x": "episodes: the thread inside a unit — folded onto its row, or a row of its own when no work came out of it. memory: where a row's fields actually live.",
+    "x": "episodes: the thread inside a task — folded onto its row, or a row of its own when no work came out of it. memory: where a row's fields actually live.",
     "p": "Guide"
   },
   {
@@ -558,7 +558,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "adapters.html#engines",
     "t": "Overview",
     "s": "Engines",
-    "x": "An engine is a first-party unit of cognition that lives inside a room. Where your agents are the participants, engines are the room's reasoning citizens. They read what the room knows and act on it: mediate a decision, distill the memory, and (in time) more. Engines exist because some work isn't any single agent's job. Deciding whose offer wins shouldn't fall to one of the negotiating parties; summarizing the whole r",
+    "x": "An engine is a first-party task of cognition that lives inside a room. Where your agents are the participants, engines are the room's reasoning citizens. They read what the room knows and act on it: mediate a decision, distill the memory, and (in time) more. Engines exist because some work isn't any single agent's job. Deciding whose offer wins shouldn't fall to one of the negotiating parties; summarizing the whole r",
     "p": "Adapters"
   },
   {
@@ -1339,7 +1339,7 @@ window.MYCELIUM_SEARCH_INDEX = [
   },
   {
     "u": "reference.html#cli-other",
-    "t": "mycelium await --room <room> [--handle <handle> | --lease <key>] [--unit <id>] [--loop] [--exec CMD] [--timeout N] [--json]",
+    "t": "mycelium await --room <room> [--handle <handle> | --lease <key>] [--task <id>] [--loop] [--exec CMD] [--timeout N] [--json]",
     "s": "CLI Reference",
     "x": "Long-poll a room until a message is addressed to the handle — or until a named lease changes hands.",
     "k": "cmd",
@@ -1347,7 +1347,7 @@ window.MYCELIUM_SEARCH_INDEX = [
   },
   {
     "u": "reference.html#cli-other",
-    "t": "mycelium respond --room <room> --handle <handle> [--unit <id>] \"<text>\"",
+    "t": "mycelium respond --room <room> --handle <handle> [--task <id>] \"<text>\"",
     "s": "CLI Reference",
     "x": "Publish a reply as the handle; the backend records it as a position for the aligner.",
     "k": "cmd",

@@ -521,7 +521,7 @@ def frame_episode(mtype: str, msg: dict, data: dict) -> str | None:
 def in_a_thread(room: str, mtype: str, msg: dict, data: dict) -> bool:
     """Whether this frame's prose belongs to a thread rather than to the room.
 
-    The room's account of a thread is the **ping** — that a unit moved, not what
+    The room's account of a thread is the **ping** — that a task moved, not what
     was said in it. So the prose itself does not also draw here: printing both
     would be the argument plus a line saying an argument happened, which is
     worse than either. It is not lost, it is placed; ``board messages`` reads it.
@@ -535,7 +535,7 @@ def in_a_thread(room: str, mtype: str, msg: dict, data: dict) -> bool:
 def _ping_line(data: dict, stamp: str) -> str | None:
     """Render a thread's activity as the one line it is meant to be.
 
-    A ping says a unit moved and deliberately not what was said in it — that is
+    A ping says a task moved and deliberately not what was said in it — that is
     how the room stays readable while agents argue inside a row. So the tail
     gets the thread's short id, who wrote, and the way to read it, rather than
     an echo of the prose.

@@ -9,11 +9,11 @@ backend is its **moderator** — it creates the group session and invites member
 as they join. This registry holds one long-lived moderator session per room,
 tracks membership (SLIM's built-in presence), and enforces the episode↔channel
 lifecycle (a membership change mid-*negotiation* aborts that negotiation; the
-channel, and any unit of work the negotiation was happening inside, are
+channel, and any task the negotiation was happening inside, are
 untouched).
 
 Everything here is **best-effort**. When no node is reachable (or no wheel is
-installed), the calls degrade to no-ops so room CRUD and the unit suite stay
+installed), the calls degrade to no-ops so room CRUD and the task suite stay
 green without a live fabric — the sole failure mode is "no SLIM channel," never
 "room create failed." A node-reachability pre-flight keeps the no-node path fast.
 
@@ -827,7 +827,7 @@ class RoomChannelManager:
                     # Inviting a new member mid-negotiation would abort it (L9's
                     # stable-membership rule), so queue like a consent accept —
                     # flush_queued_invites applies it once the episode closes.
-                    # Gated on ``frozen``, not ``active``: a unit of work's thread
+                    # Gated on ``frozen``, not ``active``: a task's thread
                     # is an episode too, and it must not hold invites hostage.
                     queued = self._invites.request(
                         room, handle, requested_by=sender, trigger_text=text
@@ -856,7 +856,7 @@ class RoomChannelManager:
         """Raise a thread's activity into ``live`` as a **ping**, and nothing more.
 
         The room stays legible because a thread absorbs its own noise: what
-        surfaces is that a unit moved, not what was said in it. So the ping
+        surfaces is that a task moved, not what was said in it. So the ping
         carries no text — only the thread it is about, who wrote, and the id of
         the message, which is enough for a reader to open the thread and no use
         to anyone trying to read it without.
@@ -1021,8 +1021,8 @@ class RoomChannelManager:
         """Open an episode over the room's current membership.
 
         A negotiation freezes that membership: a subsequent join/leave aborts it.
-        ``negotiation=False`` opens a container — a unit of work's thread — which
-        a join or leave leaves running, because the unit outlives what happens
+        ``negotiation=False`` opens a container — a task's thread — which
+        a join or leave leaves running, because the task outlives what happens
         inside it.
         """
         managed = self._channels.get(room)

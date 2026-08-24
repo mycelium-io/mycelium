@@ -10,7 +10,7 @@ kind of reference and answers, in bulk, what state it is in.
 
 Two shapes carry the whole design.
 
-``Ref`` is the unit of work.  Rows reference refs, not the other way round, so
+``Ref`` is the task.  Rows reference refs, not the other way round, so
 two rows pointing at the same pull request cost one fetch between them.
 
 ``Liveness`` is a closed vocabulary plus an open bag.  ``state`` is one of six
@@ -87,7 +87,7 @@ Freshness = Literal["fresh", "stale", "missing", "error"]
 class Ref:
     """One external thing worth watching.
 
-    Frozen and hashable because it is a cache key, a dedupe key, and the unit
+    Frozen and hashable because it is a cache key, a dedupe key, and the task
     the runtime batches by.
     """
 

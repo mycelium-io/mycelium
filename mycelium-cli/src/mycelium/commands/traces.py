@@ -205,8 +205,8 @@ def _since_to_sql(since: str | None) -> str:
         typer.echo("  Use forms like 30s, 15m, 2h, 1d.")
         raise typer.Exit(2)
     n = int(m.group(1))
-    unit = m.group(2) or "m"
-    suffix = {"s": "seconds", "m": "minutes", "h": "hours", "d": "days"}[unit]
+    task = m.group(2) or "m"
+    suffix = {"s": "seconds", "m": "minutes", "h": "hours", "d": "days"}[task]
     return f"-{n} {suffix}"
 
 

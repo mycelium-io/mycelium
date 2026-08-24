@@ -17,7 +17,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.services import l9, task_sync, units
+from app.services import l9, task_sync, tasks
 from app.services.filesystem import EPISODE_META, get_room_dir, read_memory_file
 from app.services.l9_models import L9, Kind
 from app.services.task_compiler import CompiledTask
@@ -61,16 +61,16 @@ async def _run(room: str, tasks: list[CompiledTask] | Exception, assignments: di
 
 class TestSlugify:
     def test_is_readable_and_stable(self):
-        assert units.slugify("Ship the auth rewrite") == "ship-the-auth-rewrite"
+        assert tasks.slugify("Ship the auth rewrite") == "ship-the-auth-rewrite"
 
     def test_collapses_punctuation(self):
-        assert units.slugify("Ship auth (v2) — now!") == "ship-auth-v2-now"
+        assert tasks.slugify("Ship auth (v2) — now!") == "ship-auth-v2-now"
 
     def test_never_returns_an_empty_key(self):
-        assert units.slugify("!!!") == "task"
+        assert tasks.slugify("!!!") == "task"
 
     def test_is_bounded(self):
-        assert len(units.slugify("x" * 200)) <= units.SLUG_MAX
+        assert len(tasks.slugify("x" * 200)) <= tasks.SLUG_MAX
 
 
 @pytest.mark.asyncio
@@ -89,7 +89,7 @@ class TestConvergedToRows:
     async def test_a_row_carries_what_makes_it_a_row(self):
         await _run("r2", [CompiledTask(title="ship auth", assignee="a")], {"a": "auth"})
         meta, body = _row("r2", "work/ship-auth")
-        assert meta["kind"] == units.TASK_KIND
+        assert meta["kind"] == tasks.TASK_KIND
         assert meta["status"] == "open"
         assert "ship auth" in body
 
@@ -99,14 +99,14 @@ class TestConvergedToRows:
         # nobody made, and it would drain to "expired" on its own.
         await _run("r3", [CompiledTask(title="ship auth", assignee="a")], {"a": "auth"})
         meta, _ = _row("r3", "work/ship-auth")
-        assert meta[units.ASSIGNEE_FIELD] == "@a"
+        assert meta[tasks.ASSIGNEE_FIELD] == "@a"
         assert "owner" not in meta
         assert "custody" not in meta
 
     async def test_an_untagged_task_names_nobody(self):
         await _run("r4", [CompiledTask(title="ship auth", assignee=None)], {"a": "auth"})
         meta, _ = _row("r4", "work/ship-auth")
-        assert units.ASSIGNEE_FIELD not in meta
+        assert tasks.ASSIGNEE_FIELD not in meta
 
     async def test_a_recompiled_task_lands_on_the_row_it_already_has(self):
         task = [CompiledTask(title="ship auth", assignee="a")]

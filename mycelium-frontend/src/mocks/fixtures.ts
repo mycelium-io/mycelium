@@ -303,7 +303,7 @@ const atlasBoardRows: MockMemory[] = [
     version: 1,
     updated_at: iso(40),
     // Both rows were compiled out of the atlas negotiation, so both are bound to
-    // it: the board draws two units carrying their thread, not two units plus a
+    // it: the board draws two tasks carrying their thread, not two tasks plus a
     // separate episode row for the conversation that produced them.
     episode: ATLAS_EPISODE,
   },

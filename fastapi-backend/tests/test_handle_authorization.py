@@ -50,7 +50,7 @@ def _seed_agent(
 
 
 async def _await_as(client: AsyncClient, handle: str, *, room: str = ROOM):
-    """One long-poll. No SLIM node in the unit suite, so it returns immediately."""
+    """One long-poll. No SLIM node in the task suite, so it returns immediately."""
     return await client.get(f"/api/rooms/{room}/await", params={"handle": handle, "timeout": 1})
 
 

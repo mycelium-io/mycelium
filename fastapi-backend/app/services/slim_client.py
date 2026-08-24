@@ -179,7 +179,7 @@ def node_reachable(endpoint: str, *, timeout: float = 1.0) -> bool:
     """True if a TCP connection to the node ``endpoint`` succeeds quickly.
 
     A cheap pre-flight so best-effort callers (room provisioning) skip the full
-    connect handshake when no node is up — keeping the unit suite fast and green
+    connect handshake when no node is up — keeping the task suite fast and green
     without a live fabric. Mirrors the guard in ``tests/test_slim_roundtrip.py``.
     """
     parsed = urlparse(endpoint)

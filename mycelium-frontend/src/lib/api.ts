@@ -178,7 +178,7 @@ export interface Memory {
   /** Frontmatter the store doesn't own — whatever the writer put there. */
   meta?: Record<string, unknown> | null;
   /**
-   * The episode URN this row's coordination happens in — what makes a unit of
+   * The episode URN this row's coordination happens in — what makes a task of
    * work a thread. Store-owned: minted by the backend, so it is absent from
    * `meta` and cannot be set by a write.
    */

@@ -27,7 +27,7 @@ from app.schemas import (
     MessageRead,
     MessageType,
 )
-from app.services import actor, l9, local_state, persister, principals, room_channels, units
+from app.services import actor, l9, local_state, persister, principals, room_channels, tasks
 from app.services.filesystem import room_exists
 
 logger = logging.getLogger(__name__)
@@ -97,7 +97,7 @@ async def send_message(room_name: str, payload: MessageCreate, request: Request)
                 status_code=409,
                 detail="A coordination session has no threads to post into",
             )
-        refusal = units.thread_write_refusal(base_room, sender_handle, payload.episode)
+        refusal = tasks.thread_write_refusal(base_room, sender_handle, payload.episode)
         if refusal is not None:
             raise HTTPException(status_code=refusal.status, detail=refusal.detail)
 
@@ -170,7 +170,7 @@ async def send_message(room_name: str, payload: MessageCreate, request: Request)
     # Exactly one ping per threaded write, whatever the message type and whether
     # or not the channel is up. Raised here rather than inside ``publish_human``
     # because that only sees broadcasts over a live channel: an ``event`` into a
-    # thread, or any write while the channel is down, would move a unit in
+    # thread, or any write while the channel is down, would move a task in
     # silence, and the ping is the only thing that surfaces a thread into the room.
     await room_channels.manager.raise_ping(
         base_room, episode=msg.episode, sender=msg.sender_handle, message_id=msg.message_id
@@ -319,7 +319,7 @@ async def amend_message(
     # ``?episode=`` read of that thread would not show the revision it folded in.
     # It is a write into that thread, so it passes the same guard as any other:
     # a roster that froze after the original message must still hold.
-    refusal = units.thread_write_refusal(base_room, sender_handle, target.episode)
+    refusal = tasks.thread_write_refusal(base_room, sender_handle, target.episode)
     if refusal is not None:
         raise HTTPException(status_code=refusal.status, detail=refusal.detail)
 
@@ -373,7 +373,7 @@ async def amend_message(
     # Exactly one ping per threaded write, whatever the message type and whether
     # or not the channel is up. Raised here rather than inside ``publish_human``
     # because that only sees broadcasts over a live channel: an ``event`` into a
-    # thread, or any write while the channel is down, would move a unit in
+    # thread, or any write while the channel is down, would move a task in
     # silence, and the ping is the only thing that surfaces a thread into the room.
     await room_channels.manager.raise_ping(
         base_room, episode=msg.episode, sender=sender_handle, message_id=msg.message_id

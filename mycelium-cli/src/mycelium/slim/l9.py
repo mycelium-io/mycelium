@@ -52,7 +52,7 @@ KNOWLEDGE_KIND = "knowledge"
 
 # The payload type of a **ping**: the one line a write into a thread raises into
 # the room. It carries the thread's URN, who wrote and the message id — never the
-# prose, which is the whole reason a room with six agents arguing inside a unit
+# prose, which is the whole reason a room with six agents arguing inside a task
 # stays readable. Mirrors the backend's ``app.services.l9.PING_PAYLOAD_TYPE``;
 # ``contracts/slim-l9-wire.json`` is the drift guard both suites assert against.
 PING_PAYLOAD_TYPE = "ping"

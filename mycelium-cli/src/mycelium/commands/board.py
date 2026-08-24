@@ -607,7 +607,7 @@ def _row(room: str, row_id: str) -> LiveItem | None:
     ``work/auth``, ``memory:work/auth`` and the truncated form all have to land on
     the same row.
 
-    A unit is also nameable by the thread inside it (``t3``), because that is
+    A task is also nameable by the thread inside it (``t3``), because that is
     what the room calls it once anything has been said in there: a ping names
     the thread, not the memory key, and the reader who followed one types back
     what they read.
@@ -625,7 +625,7 @@ def _thread(room: str, row_id: str) -> tuple[LiveItem, str]:
     """The row a chat verb names and the thread inside it.
 
     The resolution the board's chat verbs are: a reader types a row id and means
-    the conversation about that unit. A row with nothing to speak into is
+    the conversation about that task. A row with nothing to speak into is
     refused in its own terms rather than posted to the room instead — a message
     that quietly went somewhere else is worse than one that did not go.
     """
@@ -642,7 +642,7 @@ def _thread(room: str, row_id: str) -> tuple[LiveItem, str]:
 
 
 def _parent_key(room: str, row_id: str) -> str:
-    """The memory key a ``part-of`` edge on a child unit points at."""
+    """The memory key a ``part-of`` edge on a child task points at."""
     item = _row(room, row_id)
     if item is None:
         console.print(f"[dim]No row '{row_id}' on this board.[/dim]")
@@ -735,9 +735,9 @@ def _write_fields(cfg: MyceliumConfig, room: str, row_id: str, patch: dict) -> N
     console.print(f"[green]✓[/green] wrote [bold]{key}[/bold] → {rendered}")
 
 
-# ── a row is a thread: the chat verbs, scoped to a unit ──────────────────────
+# ── a row is a thread: the chat verbs, scoped to a task ──────────────────────
 #
-# These are the room's own verbs with a row id in front of them. A unit of work
+# These are the room's own verbs with a row id in front of them. A task
 # *is* a thread, so talking about one is talking in it — and the room stays
 # legible because a thread absorbs its own traffic and surfaces one ping. The
 # transport is shared with ``room send`` / ``room messages`` (``mycelium.chat``):
@@ -746,12 +746,12 @@ def _write_fields(cfg: MyceliumConfig, room: str, row_id: str, patch: dict) -> N
 
 @doc_ref(
     usage='mycelium board new "<title>" [--assign @handle] [--parent <id>]',
-    desc="Put a unit of work on the board, with the thread its coordination happens in already minted.",
+    desc="Put a task on the board, with the thread its coordination happens in already minted.",
     group="board",
 )
 @app.command(name="new")
 def board_new(
-    title: str = typer.Argument(..., help="What the unit of work is"),
+    title: str = typer.Argument(..., help="What the task is"),
     assign: str | None = typer.Option(
         None, "--assign", help="Who it's for (an assignment, not a claim — holding it is a lease)"
     ),
@@ -760,12 +760,12 @@ def board_new(
     ),
     room: str | None = typer.Option(None, "--room", "-r", help="Room name"),
 ) -> None:
-    """Create a unit of work.
+    """Create a task.
 
-    Board-first: a unit exists because someone put it on the board, not because a
+    Board-first: a task exists because someone put it on the board, not because a
     negotiation converged into it. It comes with a thread and no argument in it
-    yet, which is the point — coordination inside a unit is optional, and most
-    units never need any.
+    yet, which is the point — coordination inside a task is optional, and most
+    tasks never need any.
     """
     cfg = MyceliumConfig.load()
     name = _resolve_room(cfg, room)
@@ -781,27 +781,27 @@ def board_new(
         body["parent"] = _parent_key(name, parent)
     try:
         with hub_client(cfg, timeout=30) as client:
-            resp = client.post(f"/api/rooms/{name}/units", json=body)
+            resp = client.post(f"/api/rooms/{name}/tasks", json=body)
     except httpx.HTTPError as e:
         console.print(f"[red]✗[/red] hub unreachable: {e}")
         raise typer.Exit(1) from e
     if resp.status_code >= 400:
-        console.print(f"[red]✗[/red] could not create the unit: {resp.text}")
+        console.print(f"[red]✗[/red] could not create the task: {resp.text}")
         raise typer.Exit(1)
-    unit = resp.json()
-    thread = str(unit.get(EPISODE_FIELD) or "").rsplit(":", 1)[-1]
+    task = resp.json()
+    thread = str(task.get(EPISODE_FIELD) or "").rsplit(":", 1)[-1]
     console.print(
-        f"[green]✓[/green] [bold]{unit.get('key')}[/bold] — {title}"
+        f"[green]✓[/green] [bold]{task.get('key')}[/bold] — {title}"
         + (f" [dim]· thread {thread}[/dim]" if thread else "")
     )
     console.print(
-        f'  [dim]talk about it in there: mycelium board send {thread or unit.get("key")} "…"[/dim]'
+        f'  [dim]talk about it in there: mycelium board send {thread or task.get("key")} "…"[/dim]'
     )
 
 
 @doc_ref(
     usage='mycelium board send <id> "<text>"',
-    desc="Post into the thread inside a row. The room sees that the unit moved, not what was said.",
+    desc="Post into the thread inside a row. The room sees that the task moved, not what was said.",
     group="board",
 )
 @app.command(name="send")
@@ -815,9 +815,9 @@ def board_send(
 ) -> None:
     """Say something in a row's thread.
 
-    Exactly ``mycelium room send``, scoped to one unit. Everyone who may write in
+    Exactly ``mycelium room send``, scoped to one task. Everyone who may write in
     the room may write in its threads — a thread separates attention, not access
-    — with one exception the hub enforces: a negotiation running inside a unit
+    — with one exception the hub enforces: a negotiation running inside a task
     has frozen its roster, and an outsider dropping a position into that would
     be scoring an exchange they were not part of.
     """
@@ -836,7 +836,7 @@ def board_send(
 
 @doc_ref(
     usage="mycelium board messages <id> [--limit N]",
-    desc="Read one row's thread: the conversation about that unit, and nothing else from the room.",
+    desc="Read one row's thread: the conversation about that task, and nothing else from the room.",
     group="board",
 )
 @app.command(name="messages")
@@ -850,7 +850,7 @@ def board_messages(
 ) -> None:
     """Read a row's thread.
 
-    This is what a ping is for. The room said a unit moved; this is what moved
+    This is what a ping is for. The room said a task moved; this is what moved
     in it.
     """
     cfg = MyceliumConfig.load()
@@ -869,7 +869,7 @@ def board_messages(
 
 @doc_ref(
     usage='mycelium board coordinate <id> <engine> "<ask>"',
-    desc="Open a coordination phase inside a unit: put an engine to work on that row's thread.",
+    desc="Open a coordination phase inside a task: put an engine to work on that row's thread.",
     group="board",
 )
 @app.command(name="coordinate")
@@ -891,12 +891,12 @@ def board_coordinate(
     while this opens a bounded session that ends in a decision. The three verbs
     read as what they do — send is talk, claim is take, coordinate is decide.
 
-    The phase happens *inside* a unit and does not become the unit: the ask
+    The phase happens *inside* a task and does not become the task: the ask
     lands in the row's thread, and whatever the engine decides never resolves
-    the row or takes it off its holder. A unit can be coordinated more than
+    the row or takes it off its holder. A task can be coordinated more than
     once, or never.
 
-    The engine opens a **separate** negotiation episode to run in — a unit's
+    The engine opens a **separate** negotiation episode to run in — a task's
     thread is a container that outlives what happens inside it, so an exchange
     with a frozen roster is not the same conversation as the row's. What comes
     back to the row is the outcome: the work the agreement compiles into, and

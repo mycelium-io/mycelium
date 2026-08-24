@@ -4,7 +4,7 @@
 """The aggregate notification stream: every room's activity, one subscription.
 
 Drives ``_sse_notifications`` directly (not over HTTP) — the generator is the
-unit under test; the surrounding ``StreamingResponse``/route wiring mirrors the
+task under test; the surrounding ``StreamingResponse``/route wiring mirrors the
 already-untested ``_sse_from_channel`` endpoints.
 """
 

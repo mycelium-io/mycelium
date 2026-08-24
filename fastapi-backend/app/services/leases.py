@@ -15,7 +15,7 @@ any other change to the room, and a hub operator can read one in a text editor.
 
 Plan tasks are deliberately excluded: ``- [ ] text @handle`` has nowhere to put a
 stamp, and a compiled plan task is the room's commitment rather than an
-in-flight unit — a commitment that decays is not one.
+in-flight task — a commitment that decays is not one.
 
 **Expiry is derived, never written.**  Recording that a lease ran out would need
 a process to be alive at the moment it drained, which is exactly what stopped

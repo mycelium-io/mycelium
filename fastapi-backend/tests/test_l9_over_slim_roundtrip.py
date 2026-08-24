@@ -3,7 +3,7 @@
 
 """L9-over-SLIM round-trip integration test.
 
-Needs a running ``slim`` node. Guarded so the default unit suite stays green
+Needs a running ``slim`` node. Guarded so the default task suite stays green
 without one (mirrors ``test_slim_roundtrip.py``): point at a node with
 ``MYCELIUM_SLIM_ENDPOINT`` (default ``http://127.0.0.1:46357``); run one via
 ``mycelium hub host``.

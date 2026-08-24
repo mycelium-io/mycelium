@@ -160,7 +160,7 @@ def test_ping_payload_matches_contract():
     """The ping the backend raises is the one the CLI's tail knows how to draw.
 
     Rename it on this side alone and two things go quiet: the CLI stops
-    surfacing that a unit moved, and every resident agent starts waking on every
+    surfacing that a task moved, and every resident agent starts waking on every
     thread write, because the exclusion in ``participate._addressed_to`` keys off
     this same literal.
     """

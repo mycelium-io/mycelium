@@ -32,7 +32,7 @@
     "resolved": "resolved",
     "dismissed": "resolved"
   },
-  "_verbs_comment": "Two kinds of verb, and the split is the point. A MUTATION verb changes the row: its custody through a lease, everything else as frontmatter. A CHAT verb changes nothing about the row and says something in the thread the row is \u2014 they are the room's own chat verbs (`room send` / `room messages`) with a row id in front of them, sharing one transport (mycelium-cli/src/mycelium/chat.py) rather than a second implementation that would drift on attribution and edit marks. The two lists are asserted DISJOINT: a word that both writes a field and posts a message would leave a reader unable to tell which of the two a typo just did. `new` is a mutation verb with nothing to mutate yet \u2014 board-first creation, which is the only way a unit gets its thread minted \u2014 so it takes no keystroke and is absent from verb_keys.",
+  "_verbs_comment": "Two kinds of verb, and the split is the point. A MUTATION verb changes the row: its custody through a lease, everything else as frontmatter. A CHAT verb changes nothing about the row and says something in the thread the row is \u2014 they are the room's own chat verbs (`room send` / `room messages`) with a row id in front of them, sharing one transport (mycelium-cli/src/mycelium/chat.py) rather than a second implementation that would drift on attribution and edit marks. The two lists are asserted DISJOINT: a word that both writes a field and posts a message would leave a reader unable to tell which of the two a typo just did. `new` is a mutation verb with nothing to mutate yet \u2014 board-first creation, which is the only way a task gets its thread minted \u2014 so it takes no keystroke and is absent from verb_keys.",
   "verbs": [
     "claim",
     "release",
@@ -62,8 +62,8 @@
     "work",
     "failed"
   ],
-  "unit": {
-    "_comment": "A unit of work is a board row and a thread: one row per unit, with its coordination folded into it. The binding is `binding_field` on the row's memory \u2014 store-owned, minted by the backend, carried across writes, so it is absent from the meta bag a caller can write and a field write cannot move a row onto someone else's thread. The thread's own state lands under `thread_fields` because a unit's status and custody are the unit's: a negotiation that converges or aborts inside a row must not resolve the row or take it off its holder, which is what `unit_fields` names \u2014 the container-outlives-the-negotiation rule, as a list both sides assert a fold against. An episode no row is bound to is an ORPHAN: it keeps its own row rather than being hidden or deleted, which is why the board still projects episodes.",
+  "task": {
+    "_comment": "A task is a board row and a thread: one row per task, with its coordination folded into it. The binding is `binding_field` on the row's memory \u2014 store-owned, minted by the backend, carried across writes, so it is absent from the meta bag a caller can write and a field write cannot move a row onto someone else's thread. The thread's own state lands under `thread_fields` because a task's status and custody are the task's: a negotiation that converges or aborts inside a row must not resolve the row or take it off its holder, which is what `task_fields` names \u2014 the container-outlives-the-negotiation rule, as a list both sides assert a fold against. An episode no row is bound to is an ORPHAN: it keeps its own row rather than being hidden or deleted, which is why the board still projects episodes.",
     "binding_field": "episode",
     "thread_fields": [
       "episode",
@@ -79,7 +79,7 @@
       "rejected",
       "committed"
     ],
-    "unit_fields": [
+    "task_fields": [
       "status",
       "custody",
       "owner",
@@ -89,7 +89,7 @@
     "_refusals_comment": "Why a projected row has no thread to speak into, keyed by the source that produced it. A chat verb refuses in these terms rather than falling back to the room: a message that quietly went somewhere other than where it was addressed is worse than one that did not go. Keyed by source kind, so an episode row is absent \u2014 an episode IS a thread, and speaking into a recorded negotiation is a write the hub judges (a frozen roster refuses an outsider), not one the surface guesses at.",
     "refusals": {
       "agent": "presence is a lease the runtime renews, not a conversation to join",
-      "memory": "a thread belongs to a unit of work; this row is in another namespace"
+      "memory": "a thread belongs to a task; this row is in another namespace"
     }
   },
   "log": {
