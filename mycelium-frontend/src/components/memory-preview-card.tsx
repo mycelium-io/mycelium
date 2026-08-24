@@ -77,7 +77,7 @@ export function MemoryPreviewCard({ memory, anchor }: Props) {
         width: PREVIEW_CARD_WIDTH,
         visibility: top === null ? "hidden" : "visible",
       }}
-      className="pointer-events-none z-50 animate-in fade-in-0 zoom-in-95 rounded-xl border border-border bg-elevated shadow-lg duration-100"
+      className="pointer-events-none z-50 animate-in fade-in-0 zoom-in-95 overflow-hidden rounded-xl border border-border bg-elevated shadow-lg duration-100"
     >
       <div className="flex items-start gap-1.5 border-b border-border px-3 py-2">
         <FileText className="mt-px size-3.5 flex-shrink-0 text-faint" />
@@ -99,7 +99,7 @@ export function MemoryPreviewCard({ memory, anchor }: Props) {
             {preview.lines.map((line, i) => (
               <p
                 key={i}
-                className={`text-label leading-snug ${line ? "text-muted-foreground" : "h-1"}`}
+                className={`break-words text-label leading-snug ${line ? "text-muted-foreground" : "h-1"}`}
               >
                 {line}
               </p>
