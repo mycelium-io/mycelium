@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { lensOf, type LiveItem } from "@/lib/board/item";
 import type { ItemGroup } from "@/lib/board/view";
 import { humanize } from "@/lib/board/schema";
-import { AgeTag, KindGlyph, CustodyChip, PriorityMeter, SourceTag, ThreadChip, TtlBar, UpstreamChip, WorkLinks } from "./board-bits";
+import { AgeTag, KindGlyph, CustodyChip, openableThread, PriorityMeter, SourceTag, ThreadChip, TtlBar, UpstreamChip, WorkLinks } from "./board-bits";
 
 interface Props {
   groups: ItemGroup[];
@@ -71,7 +71,11 @@ export function BoardKanban({ groups, groupBy, now, selectedId, onSelect, onMove
                     setDragging(null);
                     setOver(null);
                   }}
-                  onClick={() => onSelect(item.id)}
+                  onClick={() => {
+                    onSelect(item.id);
+                    const episode = openableThread(item);
+                    if (episode) onOpenThread?.(episode);
+                  }}
                   className={cn(
                     "cursor-grab rounded-lg border bg-paper p-2.5 shadow-sm transition-colors active:cursor-grabbing",
                     item.id === selectedId ? "border-accent/50 ring-1 ring-accent/30" : "border-border hover:border-border2",

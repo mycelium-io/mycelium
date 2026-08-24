@@ -23,6 +23,7 @@ import {
   KindGlyph,
   LiveDot,
   CustodyChip,
+  openableThread,
   PriorityMeter,
   SourceTag,
   ThreadChip,
@@ -113,10 +114,17 @@ function CockpitRow({
       ref={ref}
       role="button"
       tabIndex={-1}
-      onClick={onSelect}
+      // The row is the task, and the task is its thread, so a click opens it —
+      // the verbs and answer chips below stop the click, so they still act in
+      // place. Selecting keeps the keyboard's place on the row it opened.
+      onClick={() => {
+        onSelect();
+        const episode = openableThread(item);
+        if (episode) onOpenThread?.(episode);
+      }}
       data-board-row={item.id}
       className={cn(
-        "group relative flex cursor-default items-start gap-2.5 rounded-lg px-2.5 py-2 transition-colors",
+        "group relative flex cursor-pointer items-start gap-2.5 rounded-lg px-2.5 py-2 transition-colors",
         selected ? "bg-elevated ring-1 ring-border" : "hover:bg-hairline",
         resolved && "opacity-60",
       )}
