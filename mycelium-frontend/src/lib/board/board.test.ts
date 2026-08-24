@@ -88,6 +88,20 @@ describe("inferSchema", () => {
     expect(groupableFields(schema).map(f => f.name)).toEqual(["status"]);
   });
 
+  it("reads a thread's state as a column but never as an axis to pivot on", () => {
+    // Folding a thread onto a row is so it can be read. Grouping is not reading:
+    // it makes the field what the board is organised by, and pivoting tasks by
+    // how the negotiation inside them went is the container-outlives-the-
+    // negotiation rule inverted where it shows most.
+    const schema = inferSchema([
+      item("a", { status: "open", thread_state: "converged", rounds: 6 }),
+      item("b", { status: "open", thread_state: "converged", rounds: 2 }),
+      item("c", { status: "in_review", thread_state: "rejected", rounds: 4 }),
+    ]);
+    expect(schema.find(f => f.name === "thread_state")?.type).toBe("select");
+    expect(groupableFields(schema).map(f => f.name)).toEqual(["status"]);
+  });
+
   it("offers custody as a column, so a board can group by who holds what", () => {
     const schema = inferSchema([item("a", { custody: "held" })]);
     const custody = schema.find(f => f.name === "custody");
@@ -504,6 +518,25 @@ describe("shared vocabulary contract", () => {
     expect(THREAD_FIELDS).toEqual(task.thread_fields);
     expect(THREAD_STATES).toEqual(task.thread_states);
     expect(TASK_FIELDS).toEqual(task.task_fields);
+  });
+
+  it("keeps every thread field off the pivot axes, not just the one that reaches them today", () => {
+    // What makes a thread field ineligible is whose field it is, not its type.
+    // Only `thread_state` classifies as a select off real rows, so inferring the
+    // schema would leave the other four excluded by type and prove nothing about
+    // them — the fields are handed in already type-eligible, which is the state a
+    // room could put any of them in tomorrow.
+    const task = (contract as unknown as { task: { thread_fields: string[] } }).task;
+    const bounded = (name: string) => ({
+      name,
+      label: name,
+      type: "select" as const,
+      options: [{ value: "a", count: 2 }, { value: "b", count: 1 }],
+      filled: 3,
+      total: 3,
+    });
+    const schema = [...task.thread_fields.map(bounded), bounded("status")];
+    expect(groupableFields(schema).map(f => f.name)).toEqual(["status"]);
   });
 
   it("never lets a thread write one of the task's own axes", () => {
