@@ -116,13 +116,22 @@ def _read_env_value(env_path: Path | None, key: str) -> str | None:
     return None
 
 
-def ensure_slim_master_secret(config: MyceliumConfig, *, env_path: Path | None = None) -> bool:
+def ensure_slim_master_secret(
+    config: MyceliumConfig,
+    *,
+    env_path: Path | None = None,
+    allow_generate: bool = True,
+) -> bool:
     """Ensure ``config.slim.master_secret`` is set before rendering ``.env``.
 
     Import order when unset:
 
-    1. Existing ``MYCELIUM_SLIM_MASTER_SECRET`` in ``env_path`` (migration)
-    2. Fresh ``secrets.token_hex(32)`` (first hub install / apply)
+    1. Existing ``MYCELIUM_SLIM_MASTER_SECRET`` in ``env_path`` (migration /
+       hub at a non-localhost address).
+    2. Fresh ``secrets.token_hex(32)`` — only when ``allow_generate`` is
+       ``True`` (hub install / apply).  Pass ``allow_generate=False`` on a
+       spoke so an existing secret in ``.env`` is promoted into ``config.toml``
+       but no new secret is minted.
 
     Returns ``True`` when a value was imported or generated (caller should
     ``config.save()``).
@@ -137,6 +146,9 @@ def ensure_slim_master_secret(config: MyceliumConfig, *, env_path: Path | None =
     if imported:
         config.slim.master_secret = imported
         return True
+
+    if not allow_generate:
+        return False
 
     config.slim.master_secret = secrets.token_hex(32)
     return True
@@ -341,11 +353,15 @@ def generate_env_file(
 def write_env_file(config: MyceliumConfig, env_path: Path | None = None) -> tuple[Path, bool]:
     """Write (or overwrite) the .env file derived from config.toml.
 
-    On a hub (local ``server.api_url``), ensures ``[slim].master_secret`` is
-    set (import or generate) and persists it to ``config.toml`` when newly
-    assigned.  On a spoke, PSK generation is skipped — spokes use only the
-    HTTP API and have no SLIM node.  Preserves operator-managed pins
-    (currently ``MYCELIUM_IMAGE_TAG``) from the existing .env.
+    Always runs the import path for ``[slim].master_secret``: if the key
+    already exists in ``.env`` it is promoted into ``config.toml`` so the
+    rendered output stays correct for hubs at non-localhost addresses (LAN IP,
+    reverse proxy).  Generation of a *new* secret is only performed on hubs
+    (local ``server.api_url``) — spokes have no SLIM node and must not silently
+    mint a secret that would diverge from the hub's shared PSK.
+
+    Preserves operator-managed pins (``MYCELIUM_IMAGE_TAG``,
+    ``MYCELIUM_BUILD_MODE``) from the existing .env.
 
     Returns ``(path, secret_was_assigned)`` where ``secret_was_assigned`` is
     ``True`` when a master secret was imported or generated this call.
@@ -354,11 +370,13 @@ def write_env_file(config: MyceliumConfig, env_path: Path | None = None) -> tupl
         env_path = config.get_global_config_dir() / ".env"
     env_path.parent.mkdir(parents=True, exist_ok=True)
 
-    secret_assigned = False
-    if _is_hub_config(config):
-        secret_assigned = ensure_slim_master_secret(config, env_path=env_path)
-        if secret_assigned:
-            config.save()
+    secret_assigned = ensure_slim_master_secret(
+        config,
+        env_path=env_path,
+        allow_generate=_is_hub_config(config),
+    )
+    if secret_assigned:
+        config.save()
 
     preserved = _read_operator_managed_keys(env_path)
     rendered = generate_env_file(
