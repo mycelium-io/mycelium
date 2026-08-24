@@ -44,7 +44,19 @@ _EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 # data: it survives a rewrite, a caller can set it via ``MemoryCreate.meta``, and
 # it is returned as ``MemoryRead.meta``.
 MANAGED_META = frozenset(
-    {"key", "created_by", "updated_by", "version", "created_at", "updated_at", "tags", "value"}
+    # `episode` binds a work row to its unit-of-work thread. System-owned, so it is
+    # filtered out of user meta and a field write cannot overwrite it.
+    {
+        "key",
+        "created_by",
+        "updated_by",
+        "version",
+        "created_at",
+        "updated_at",
+        "tags",
+        "value",
+        "episode",
+    }
 )
 
 
