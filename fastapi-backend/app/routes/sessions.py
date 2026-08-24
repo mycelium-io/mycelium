@@ -8,7 +8,7 @@ Presence is handled by SLIM: joining a room invites the agent into the
 room's SLIM group channel (backend = moderator), and — when a channel is live —
 membership on that channel is authoritative for who is present. ``local_state``
 remains the metadata store (intent, context files) that SLIM membership doesn't
-carry; it is also the sole fallback when no fabric is up (unit suite, no-node
+carry; it is also the sole fallback when no fabric is up (task suite, no-node
 dev), so these endpoints keep answering without a node.
 
 POST   /rooms/{room}/sessions       — join a room (record presence + SLIM invite)

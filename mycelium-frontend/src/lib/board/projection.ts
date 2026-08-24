@@ -9,12 +9,12 @@
  * the room, so a row can't be stale relative to the thing it describes, and
  * deleting the board would lose nothing.
  *
- * **One row per unit of work.** A row and the thread its coordination happens in
+ * **One row per task.** A row and the thread its coordination happens in
  * are the same object, bound by the `episode` key the store puts on the row's
- * memory, so a unit and its episode fold into one row rather than sitting beside
+ * memory, so a task and its episode fold into one row rather than sitting beside
  * each other as two. The thread's state lands under `THREAD_FIELDS` and never on
- * the row's own axes: closing a negotiation inside a unit must not resolve the
- * unit or take it off whoever is holding it. An episode no row is bound to is an
+ * the row's own axes: closing a negotiation inside a task must not resolve the
+ * task or take it off whoever is holding it. An episode no row is bound to is an
  * **orphan** — it keeps a row of its own, because a recorded negotiation nobody
  * compiled into work is still something the room did.
  */
@@ -36,13 +36,13 @@ export const EPISODE_FIELD = "episode";
 
 /**
  * What a row says about the thread inside it. Deliberately its own names: a
- * unit's `status` and `custody` are the unit's, so a negotiation that converges
+ * task's `status` and `custody` are the task's, so a negotiation that converges
  * inside a row must not resolve the row or take it off its holder.
  */
 export const THREAD_FIELDS = ["episode", "thread", "thread_state", "participants", "rounds"];
 
 /**
- * How the thread inside a unit reads. `open` while it is still running; the rest
+ * How the thread inside a task reads. `open` while it is still running; the rest
  * are the commit subkinds a negotiation closes on.
  */
 export const THREAD_STATES = ["open", "converged", "resolved", "rejected", "committed"];
@@ -51,7 +51,7 @@ export const THREAD_STATES = ["open", "converged", "resolved", "rejected", "comm
  * The row's own axes, which folding a thread onto it must never write. This is
  * the container-outlives-the-negotiation rule as a list.
  */
-export const UNIT_FIELDS = ["status", "custody", "owner", "kind", "priority"];
+export const TASK_FIELDS = ["status", "custody", "owner", "kind", "priority"];
 
 /** Episode topics arrive as URNs; the board shows the part a person wrote. */
 function prettyTopic(topic: string): string {
@@ -144,7 +144,7 @@ function memoryItem(memory: Memory, room: string): LiveItem {
       tags: memory.tags ?? [],
       updated: memory.updated_at,
       ttl_minutes: null,
-      // `work/` is the in-flight unit, so it is the namespace that carries a
+      // `work/` is the in-flight task, so it is the namespace that carries a
       // lease: frontmatter has somewhere to put a stamp, which is why leases
       // live here and not on plan tasks.
       ...(LEASABLE_NAMESPACES.includes(namespace) ? { [CUSTODY_FIELD]: "unclaimed" } : {}),
@@ -160,9 +160,9 @@ function memoryItem(memory: Memory, room: string): LiveItem {
 }
 
 /**
- * What a unit's row says about the thread inside it.
+ * What a task's row says about the thread inside it.
  *
- * Never the row's own axes (`UNIT_FIELDS`) — a converged negotiation is a fact
+ * Never the row's own axes (`TASK_FIELDS`) — a converged negotiation is a fact
  * about the conversation, not a claim that the work is done or that anyone is
  * holding it.
  */
@@ -229,7 +229,7 @@ export function projectItems(input: ProjectionInput): LiveItem[] {
   const rows = input.memories
     .filter(memory => LIVE_NAMESPACES.includes(memory.key.split("/")[0] ?? ""))
     .map(memory => memoryItem(memory, input.room));
-  // A unit folds in its thread; what nothing folded is an orphan episode, which
+  // A task folds in its thread; what nothing folded is an orphan episode, which
   // keeps its own row rather than being hidden.
   const byUrn = new Map(input.episodes.map(ep => [ep.episode, ep]));
   const folded = new Set<string>();

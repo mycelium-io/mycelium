@@ -3,7 +3,7 @@
 
 """SLIM group round-trip integration test.
 
-Needs a running ``slim`` node. Guarded so the default unit suite stays green
+Needs a running ``slim`` node. Guarded so the default task suite stays green
 without one: if the node endpoint is unreachable, the test is skipped. Point at
 a node with ``MYCELIUM_SLIM_ENDPOINT`` (default ``http://127.0.0.1:46357``); run
 one via ``mycelium hub host``.

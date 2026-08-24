@@ -49,7 +49,7 @@ from app.routes.sessions import router as sessions_router
 from app.routes.skills import router as skills_router
 from app.routes.status import router as status_router
 from app.routes.stream import router as stream_router
-from app.routes.units import router as units_router
+from app.routes.tasks import router as tasks_router
 from app.routes.users import router as users_router
 from app.services.auth import auth_gate
 
@@ -88,20 +88,20 @@ async def lifespan(app: FastAPI):
             logger.warning("auth: %s", warning)
     else:
         logger.info("HTTP-API JWT gate disabled — requests are unauthenticated")
-    # A work/ row written before the unit-of-work binding carries no thread, so
+    # A work/ row written before the task-of-work binding carries no thread, so
     # it reads as a task that was never coordinated anywhere. Minting one is a
     # store annotation rather than an edit: the row keeps its version, its stamps
     # and its place on a time-ordered board. Runs before the index scan, so the
     # rows it rewrites are indexed once rather than caught on the next restart.
     from app.services.filesystem import list_room_names
-    from app.services.units import backfill_room
+    from app.services.tasks import backfill_room
 
     bound_units = 0
     for _room in list_room_names():
         try:
             bound_units += backfill_room(_room)
         except Exception:
-            logger.exception("unit backfill failed for room %s", _room)
+            logger.exception("task backfill failed for room %s", _room)
     if bound_units:
         logger.info("bound %d pre-existing work row(s) to a thread on startup", bound_units)
 
@@ -275,7 +275,7 @@ app.include_router(messages_router, prefix="/api")
 app.include_router(invites_router, prefix="/api")
 app.include_router(leases_router, prefix="/api")
 app.include_router(fields_router, prefix="/api")
-app.include_router(units_router, prefix="/api")
+app.include_router(tasks_router, prefix="/api")
 app.include_router(episodes_router, prefix="/api")
 app.include_router(participate_router, prefix="/api")
 app.include_router(sessions_router, prefix="/api")

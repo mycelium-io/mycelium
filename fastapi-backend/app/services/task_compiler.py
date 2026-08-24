@@ -132,7 +132,7 @@ _TRIM = " -\u2013\u2014:"
 
 @dataclass(frozen=True)
 class CompiledTask:
-    """One unit of agreed work, before it becomes a row.
+    """One task of agreed work, before it becomes a row.
 
     ``assignee`` is who the task is *for*, lifted from an ``@handle`` in the
     line. It is not custody: nobody has agreed to hold this yet, and a lease is

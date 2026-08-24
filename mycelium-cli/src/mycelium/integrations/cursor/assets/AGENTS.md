@@ -27,7 +27,7 @@ mycelium memory get agents/$MYCELIUM_AGENT_HANDLE/notes
   `work/...`), not the room chat surface.
 - Anything attached to a specific board row goes in **that row's thread**
   (`mycelium board send <row-id> "…"`), not the room. The room then shows one
-  ping saying the unit moved, so it stays readable while the detail stays
+  ping saying the task moved, so it stays readable while the detail stays
   attached to the work.
 
 ## Update your notes
@@ -46,8 +46,8 @@ belong in the conversation; speculation belongs nowhere.
 ## More
 
 Detailed coordination patterns (room/memory/negotiate/board commands, the
-unit-of-work flow — `board new` / `send` / `messages` / `coordinate` and
-`await --unit` — @-mention rules, agent-mode behaviour) live in this Cursor
+task-of-work flow — `board new` / `send` / `messages` / `coordinate` and
+`await --task` — @-mention rules, agent-mode behaviour) live in this Cursor
 rule: `.cursor/rules/mycelium.mdc`, loaded automatically on every Cursor
 session here. Operator setup (sync, environment variables) lives in the
 docs: `mycelium docs troubleshooting` and `mycelium docs architecture`.

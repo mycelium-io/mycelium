@@ -136,7 +136,7 @@ transcript cursor until one awaits. (Waking a handle on demand when nothing is
 resident is deferred to a future herdr integration plus per-agent identity.)
 
 **Cognition rides on engines.** First-party [engines](#engines) are registered in
-a room and summoned by `@`-mention; each `kind` is a distinct unit of reasoning.
+a room and summoned by `@`-mention; each `kind` is a distinct task of reasoning.
 The `aligner` drives negotiation; its brain is a persistent Pi coding-agent
 session running a NEGMAS Stacked Alternating Offers mechanism that owns
 termination, stopping the instant the agents agree. The `synthesizer` distills

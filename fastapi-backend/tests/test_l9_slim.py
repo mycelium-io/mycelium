@@ -183,7 +183,7 @@ def test_membership_change_with_no_active_episode_adopts_baseline():
 
 
 def test_a_unit_s_thread_outlives_a_membership_change():
-    """A unit of work is an episode too, and freezing membership is not its rule.
+    """A task is an episode too, and freezing membership is not its rule.
 
     L9's stable-membership rule exists because an offer/counter exchange scored
     across a changing set of participants means nothing. A container has no such
@@ -191,12 +191,12 @@ def test_a_unit_s_thread_outlives_a_membership_change():
     history lives in.
     """
     lc = l9_slim.EpisodeLifecycle()
-    lc.open("urn:ioc:mycelium:episode:r:unit", {"agent-a"}, negotiation=False)
+    lc.open("urn:ioc:mycelium:episode:r:task", {"agent-a"}, negotiation=False)
     assert lc.active is True
     assert lc.frozen is False
     assert lc.on_membership_change({"agent-a", "agent-b"}) is False
     assert lc.active is True
-    assert lc.episode == "urn:ioc:mycelium:episode:r:unit"
+    assert lc.episode == "urn:ioc:mycelium:episode:r:task"
 
 
 def test_a_negotiation_is_what_freezes_membership():

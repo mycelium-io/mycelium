@@ -1570,14 +1570,14 @@
         }
       }
     },
-    "/api/rooms/{room_name}/units": {
+    "/api/rooms/{room_name}/tasks": {
       "post": {
         "tags": [
-          "units"
+          "tasks"
         ],
-        "summary": "Create Unit",
-        "description": "Create a unit of work with its thread already minted.",
-        "operationId": "create_unit_api_rooms__room_name__units_post",
+        "summary": "Create Task",
+        "description": "Create a task with its thread already minted.",
+        "operationId": "create_task_api_rooms__room_name__tasks_post",
         "parameters": [
           {
             "name": "room_name",
@@ -1594,7 +1594,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/UnitCreate"
+                "$ref": "#/components/schemas/TaskCreate"
               }
             }
           }
@@ -1734,7 +1734,7 @@
           "participate"
         ],
         "summary": "Await Message",
-        "description": "Long-poll for the next message addressed to ``handle`` (server-held member).\n\n``episode`` narrows the wake to one thread \u2014 a unit of work being coordinated\nin, or a negotiation inside one. It narrows *only* the wake: the handle's\npresence lease stays room-scoped (a member of a thread is a member of the\nroom), and so does its room-wide delivery position, so scoping to a unit\nnever eats mentions made to it elsewhere. The thread's own position is\npersisted the same way, so a restart mid-thread resumes rather than\nre-serving.",
+        "description": "Long-poll for the next message addressed to ``handle`` (server-held member).\n\n``episode`` narrows the wake to one thread \u2014 a task being coordinated\nin, or a negotiation inside one. It narrows *only* the wake: the handle's\npresence lease stays room-scoped (a member of a thread is a member of the\nroom), and so does its room-wide delivery position, so scoping to a task\nnever eats mentions made to it elsewhere. The thread's own position is\npersisted the same way, so a restart mid-thread resumes rather than\nre-serving.",
         "operationId": "await_message_api_rooms__room_name__await_get",
         "parameters": [
           {
@@ -5130,7 +5130,7 @@
               }
             ],
             "title": "Episode",
-            "description": "The episode URN this row's coordination happens in \u2014 what makes a unit of work a thread. Store-owned: minted by the backend, so it is absent from ``meta`` and cannot be set by a write. Null on a memory that is not a unit of work, and on one no thread has been opened for."
+            "description": "The episode URN this row's coordination happens in \u2014 what makes a task of work a thread. Store-owned: minted by the backend, so it is absent from ``meta`` and cannot be set by a write. Null on a memory that is not a task, and on one no thread has been opened for."
           },
           "expandable": {
             "type": "boolean",
@@ -5338,7 +5338,7 @@
               }
             ],
             "title": "Episode",
-            "description": "Thread to post into (an episode URN \u2014 a unit of work's, or a negotiation inside one). Omit to post to the room itself."
+            "description": "Thread to post into (an episode URN \u2014 a task's, or a negotiation inside one). Omit to post to the room itself."
           }
         },
         "type": "object",
@@ -6325,6 +6325,62 @@
         ],
         "title": "SubscriptionRead"
       },
+      "TaskCreate": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "What the task is \u2014 the row's title"
+          },
+          "handle": {
+            "type": "string",
+            "title": "Handle",
+            "description": "Who is creating it \u2014 recorded as the row's author"
+          },
+          "key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key",
+            "description": "Memory key to write (default: work/<slug of the title>)"
+          },
+          "assignee": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignee",
+            "description": "Who the task is meant for. Not custody: holding it is a lease, which only its holder can take (POST /leases/claim)."
+          },
+          "parent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent",
+            "description": "Memory key of the task this one decomposes \u2014 recorded as a ``part-of`` relation on the child."
+          }
+        },
+        "type": "object",
+        "required": [
+          "title",
+          "handle"
+        ],
+        "title": "TaskCreate"
+      },
       "TeamListResponse": {
         "properties": {
           "teams": {
@@ -6371,62 +6427,6 @@
         ],
         "title": "TeamRead",
         "description": "A team, rolled up from the agents fielded under it and its member users."
-      },
-      "UnitCreate": {
-        "properties": {
-          "title": {
-            "type": "string",
-            "title": "Title",
-            "description": "What the unit of work is \u2014 the row's title"
-          },
-          "handle": {
-            "type": "string",
-            "title": "Handle",
-            "description": "Who is creating it \u2014 recorded as the row's author"
-          },
-          "key": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Key",
-            "description": "Memory key to write (default: work/<slug of the title>)"
-          },
-          "assignee": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Assignee",
-            "description": "Who the unit is meant for. Not custody: holding it is a lease, which only its holder can take (POST /leases/claim)."
-          },
-          "parent": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Parent",
-            "description": "Memory key of the unit this one decomposes \u2014 recorded as a ``part-of`` relation on the child."
-          }
-        },
-        "type": "object",
-        "required": [
-          "title",
-          "handle"
-        ],
-        "title": "UnitCreate"
       },
       "UpstreamRead": {
         "properties": {

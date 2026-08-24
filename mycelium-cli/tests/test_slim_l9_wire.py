@@ -50,7 +50,7 @@ def test_contract_file_present():
 def test_ping_payload_matches_contract():
     """The CLI reads the ping the backend raises, off one shared literal.
 
-    ``room watch``'s activity line is the only thing that says a unit moved
+    ``room watch``'s activity line is the only thing that says a task moved
     while a thread absorbs the argument inside it; a type that drifted here
     would leave the tail silent rather than wrong, which is worse.
     """

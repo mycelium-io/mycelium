@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""A unit of work, and the thread it is worked in.
+"""A task, and the thread it is worked in.
 
-A ``work/`` row is the unit: one board row, one thing to do, with its own
+A ``work/`` row is the task: one board row, one thing to do, with its own
 custody and status.  This module binds that row to an **episode URN** — a tag
 over the room's existing channel, not a new one — so the same row is also the
 thread the coordination about it happens in.  Nothing new is stored to make that
@@ -11,18 +11,18 @@ true: the URN is one frontmatter key on the memory the row already is.
 
 Two properties everything downstream reads off this module:
 
-**The container outlives what happens inside it.**  A unit's episode is minted
-when the unit is created, not when someone argues about it.  A negotiation
-inside a unit is its own, later episode with its own lifecycle
+**The container outlives what happens inside it.**  A task's episode is minted
+when the task is created, not when someone argues about it.  A negotiation
+inside a task is its own, later episode with its own lifecycle
 (:class:`~app.services.l9_slim.EpisodeLifecycle`), and closing or aborting one
-touches neither the row's custody nor its status.  A unit can be created,
+touches neither the row's custody nor its status.  A task can be created,
 claimed, worked and resolved with no negotiation ever opened.
 
-**Binding happens once.**  The URN is minted on the write that creates the unit
+**Binding happens once.**  The URN is minted on the write that creates the task
 and carried forward by every later write
 (:data:`~app.services.filesystem.SYSTEM_META`), so a row's thread is stable for
-the row's life.  Re-negotiating inside a unit opens a *new* negotiation episode;
-it does not re-mint the unit's own.
+the row's life.  Re-negotiating inside a task opens a *new* negotiation episode;
+it does not re-mint the task's own.
 """
 
 from __future__ import annotations
@@ -49,14 +49,14 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-#: The namespace a unit of work lives in — the one the board leases against.
+#: The namespace a task lives in — the one the board leases against.
 WORK_NAMESPACE = "work"
 
-#: What a board row calls a unit of work.  Written explicitly because the
-#: projection's default for this namespace is "concern" — a unit is an action.
+#: What a board row calls a task.  Written explicitly because the
+#: projection's default for this namespace is "concern" — a task is an action.
 TASK_KIND = "action"
 
-#: Who a unit is *meant for*, which is not who holds it.
+#: Who a task is *meant for*, which is not who holds it.
 #:
 #: Deliberately not ``owner``: that is the lease's, and a lease is something an
 #: actor takes under rules a compiler or a creation call cannot satisfy — no
@@ -66,7 +66,7 @@ TASK_KIND = "action"
 #: passed.
 ASSIGNEE_FIELD = "assignee"
 
-#: Longest slug taken from a unit's title, before any de-duplicating suffix.
+#: Longest slug taken from a task's title, before any de-duplicating suffix.
 SLUG_MAX = 48
 
 _SLUG_STRIP = re.compile(r"[^a-z0-9]+")
@@ -82,7 +82,7 @@ def _norm(handle: str) -> str:
 
 
 def slugify(title: str) -> str:
-    """A stable, readable key fragment for a unit's title.
+    """A stable, readable key fragment for a task's title.
 
     Deterministic, so re-compiling an unchanged task lands on the row it already
     has rather than opening a second one beside it.
@@ -117,7 +117,7 @@ def episode_of(room: str, key: str) -> str | None:
 def bound_episodes(room: str) -> set[str]:
     """Every episode URN some row in the room already carries.
 
-    What tells a unit's thread from an *orphaned* episode — one no row is bound
+    What tells a task's thread from an *orphaned* episode — one no row is bound
     to, which stays a row of its own rather than being hidden or deleted.
     """
     urns: set[str] = set()
@@ -141,7 +141,7 @@ def known_episode(room: str, episode: str, *, transcript: Iterable[str] = ()) ->
 
     Checked cheapest-first, because it runs on the write path: the URNs already
     on the room's in-memory transcript settle every thread that has ever been
-    spoken in (a negotiation's, and an orphaned episode's, as well as a unit's),
+    spoken in (a negotiation's, and an orphaned episode's, as well as a task's),
     and only a *first* write into a thread that is still silent falls through to
     the store scan — once per thread, not once per message. ``transcript`` is
     read newest-first and short-circuits, so recognising an active thread costs
@@ -173,11 +173,11 @@ def episode_write_rejection(
     offer/counter exchange scored across a set of participants means nothing if
     an outsider can drop a position into it.
 
-    A **container** — a unit of work's thread — refuses neither, and that is
+    A **container** — a task's thread — refuses neither, and that is
     deliberate rather than unfinished. Freezing membership is a negotiation's
     policy, not an episode's (:class:`~app.services.l9_slim.EpisodeLifecycle`):
-    a unit outlives what happens inside it, so an agent that claims a row after
-    the thread opened must be able to speak in it.  The honest boundary: a unit's
+    a task outlives what happens inside it, so an agent that claims a row after
+    the thread opened must be able to speak in it.  The honest boundary: a task's
     thread is scoped to the room, not narrower.  Everyone who may write in the
     room may write in its threads — threads separate *attention*, not access, and
     the room's own guards (membership, principal, delegation) are what a write
@@ -233,7 +233,7 @@ async def bind_episode(room: str, key: str, *, episode: str | None = None) -> st
 
     Idempotent: a row that is already bound keeps the URN it has, so a
     coordination step that binds on its way in is safe however often it is
-    retried, and a second negotiation never moves a unit's thread.
+    retried, and a second negotiation never moves a task's thread.
     """
     existing = episode_of(room, key)
     if existing:
@@ -269,7 +269,7 @@ async def bind_episode(room: str, key: str, *, episode: str | None = None) -> st
     return urn
 
 
-async def create_unit(
+async def create_task(
     room: str,
     title: str,
     *,
@@ -277,7 +277,7 @@ async def create_unit(
     key: str | None = None,
     meta: dict[str, Any] | None = None,
 ) -> MemoryRead:
-    """Create a unit of work board-first, with its thread already minted.
+    """Create a task board-first, with its thread already minted.
 
     The row comes first and any coordination inside it is optional, so putting
     something on the board takes no negotiation to converge first.

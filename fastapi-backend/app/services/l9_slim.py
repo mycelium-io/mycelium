@@ -20,10 +20,10 @@ This module owns three things the *app* must, not SLIM:
    any dependents it unblocks) in causal order.
 
 3. **Episode ↔ channel lifecycle.** The channel is durable for the room's life;
-   an *episode* is one tagged thread inside it — a unit of work, or a negotiation
-   within a unit. :class:`EpisodeLifecycle` enforces L9's stable-membership rule
+   an *episode* is one tagged thread inside it — a task, or a negotiation
+   within a task. :class:`EpisodeLifecycle` enforces L9's stable-membership rule
    where it means something: a membership change aborts an active *negotiation*
-   (emitted as ``commit:rejected``), without tearing down the channel or the unit
+   (emitted as ``commit:rejected``), without tearing down the channel or the task
    the negotiation was happening inside.
 
 :class:`L9SlimChannel` composes 1-2 over a single SLIM group session: one call
@@ -178,7 +178,7 @@ class EpisodeLifecycle:
     *negotiation* is running **aborts** it (the channel itself is untouched, and a
     new episode can open afterward with the changed membership).
 
-    A unit of work is an episode too, and nothing about it wants that rule: it is
+    A task is an episode too, and nothing about it wants that rule: it is
     a container that outlives what happens inside it, so someone joining the room
     must not end the thread a board row's history lives in. Such an episode opens
     with ``negotiation=False``, and :attr:`frozen` — not :attr:`active` — is what
@@ -204,7 +204,7 @@ class EpisodeLifecycle:
     ) -> None:
         """Begin an episode over the given membership.
 
-        ``negotiation=False`` opens a container (a unit of work's thread) that a
+        ``negotiation=False`` opens a container (a task's thread) that a
         later join or leave leaves running.
         """
         self.episode = episode

@@ -8,7 +8,7 @@ L9 episode tracking.
 channel, with its participants, its topic and the envelopes it has carried.
 :class:`NegotiationState` adds what a *negotiation* inside one accumulates: the
 opening asks, the offer grid, and the belief-move scoreboard. The split is the
-unit-of-work model's: a unit of work is a thread, and a negotiation is one
+task-of-work model's: a task is a thread, and a negotiation is one
 optional thing that happens inside it, so a thread opened for a board row does
 not carry an SAO scoreboard it will never fill in.
 
@@ -81,7 +81,7 @@ def _clean_str_list(value: Any) -> list[str]:
 class EpisodeState:
     """What every episode is: a tagged thread over the room's own channel.
 
-    A unit of work is one of these; so is a negotiation inside a unit. Everything
+    A task is one of these; so is a negotiation inside a task. Everything
     here is what a thread has whatever happens in it — who it is scoped to, what
     it is about, and the envelopes it has carried. The accumulators a *negotiation*
     needs are :class:`NegotiationState`'s, so opening a thread for a board row
@@ -110,7 +110,7 @@ class NegotiationState(EpisodeState):
     """The extra bookkeeping a *negotiation* inside an episode accumulates.
 
     Split from :class:`EpisodeState` because a negotiation is one optional thing
-    that can happen inside a unit of work rather than the reason the unit exists.
+    that can happen inside a task rather than the reason the task exists.
     Opening positions, an SAO offer grid and the belief-move scoreboard mean
     nothing to a thread nobody is negotiating in.
     """

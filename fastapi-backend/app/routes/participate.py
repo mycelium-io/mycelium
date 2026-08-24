@@ -18,13 +18,13 @@ delivery queue. The agent participates with two plain, stateless HTTP calls:
   (role ``agent``) recorded into the transcript, which the aligner's poll scores
   as a position.
 
-Both take an optional **thread** — the episode URN of a unit of work, or of a
+Both take an optional **thread** — the episode URN of a task, or of a
 negotiation inside one. A thread is a tag over the room's own channel, so this is
 one field on each call rather than a second transport: ``await?episode=`` narrows
 what wakes the handle (against that thread's own persisted cursor, so watching a
-unit consumes nothing from the room inbox behind it), and ``reply``'s ``episode``
+task consumes nothing from the room inbox behind it), and ``reply``'s ``episode``
 names where the answer lands. Writing into a thread raises a **ping** in the room
-— that a unit moved, never what was said in it.
+— that a task moved, never what was said in it.
 
 No client SLIM connection, no backgrounding, no compound shell — just two simple
 commands, which is all a headless/allowlisted agent can safely issue.
@@ -39,7 +39,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
-from app.services import actor, l9, principals, room_channels, units
+from app.services import actor, l9, principals, room_channels, tasks
 from app.services.filesystem import room_exists
 from app.services.l9_models import Kind
 from app.services.l9_slim import serialize_content, serialize_envelope
@@ -133,12 +133,12 @@ def _addressed_to(content: dict[str, Any], handle: str) -> bool:
     return not (nxt.isalnum() or nxt in "_-")
 
 
-def _refuse_thread_write(refusal: units.ThreadRefusal | None) -> None:
+def _refuse_thread_write(refusal: tasks.ThreadRefusal | None) -> None:
     """Answer a refused thread write, or return and let the write proceed.
 
     A room write is unchanged; a *thread* write has to name a thread the room
     has and stay out of a negotiation it is not part of — the rule and its
-    reasoning live in :func:`app.services.units.episode_write_rejection`. This is
+    reasoning live in :func:`app.services.tasks.episode_write_rejection`. This is
     the seam that keeps a handle from side-channelling a position into someone
     else's negotiation by naming its URN.
     """
@@ -183,10 +183,10 @@ async def await_message(
 ):
     """Long-poll for the next message addressed to ``handle`` (server-held member).
 
-    ``episode`` narrows the wake to one thread — a unit of work being coordinated
+    ``episode`` narrows the wake to one thread — a task being coordinated
     in, or a negotiation inside one. It narrows *only* the wake: the handle's
     presence lease stays room-scoped (a member of a thread is a member of the
-    room), and so does its room-wide delivery position, so scoping to a unit
+    room), and so does its room-wide delivery position, so scoping to a task
     never eats mentions made to it elsewhere. The thread's own position is
     persisted the same way, so a restart mid-thread resumes rather than
     re-serving.
@@ -210,7 +210,7 @@ async def await_message(
     # first ``await`` is delivered, not skipped.
     #
     # A thread-scoped call reads and commits a *different* cursor over the same
-    # transcript — the thread's — so watching one unit consumes nothing from the
+    # transcript — the thread's — so watching one task consumes nothing from the
     # handle's room inbox, and vice versa.
     scoped = episode if episode and not l9.is_live_episode(room_name, episode) else None
 
@@ -299,7 +299,7 @@ async def post_reply(room_name: str, body: ReplyBody, request: Request):
     # asked by default, which is what keeps a resident loop threaded without the
     # agent tracking URNs — but a caller that names a thread means that thread.
     episode = body.episode or tick_episode
-    _refuse_thread_write(units.thread_write_refusal(room_name, handle, episode))
+    _refuse_thread_write(tasks.thread_write_refusal(room_name, handle, episode))
     topic = ((woke_header.get("context") or {}).get("topic")) or l9.topic_urn(room_name)
     # Parent onto the tick only when the reply lands where the tick did. A reply
     # redirected into another thread is not an answer to that tick, and a causal

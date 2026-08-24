@@ -4,7 +4,7 @@
 """Live custodial-session integration (#666) — needs a running SLIM node.
 
 Productizes the #662/#665 spike against the backend's own code paths. Guarded so
-the default unit suite stays green without a node: unreachable → skipped. Point at
+the default task suite stays green without a node: unreachable → skipped. Point at
 a node with ``MYCELIUM_SLIM_ENDPOINT`` (default ``http://127.0.0.1:46357``); run
 one via ``mycelium hub host``.
 

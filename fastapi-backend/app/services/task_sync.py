@@ -35,7 +35,7 @@ from typing import TYPE_CHECKING, Any
 
 from app.services import l9, task_compiler
 from app.services.filesystem import EPISODE_META, get_room_dir, list_memory_files, read_memory_file
-from app.services.units import ASSIGNEE_FIELD, TASK_KIND, WORK_NAMESPACE, slugify
+from app.services.tasks import ASSIGNEE_FIELD, TASK_KIND, WORK_NAMESPACE, slugify
 
 if TYPE_CHECKING:
     from app.services.l9_models import L9

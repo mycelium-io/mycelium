@@ -224,7 +224,7 @@ class TestCreation:
         result = runner.invoke(board_cmd.app, ["new", "Ship passkey login", "--assign", "@sec"])
         assert result.exit_code == 0, result.output
         path, body = posts[0]
-        assert path == f"/api/rooms/{ROOM}/units"
+        assert path == f"/api/rooms/{ROOM}/tasks"
         assert body == {"title": "Ship passkey login", "handle": "julia", "assignee": "sec"}
         assert SHORT in result.output
 
@@ -279,7 +279,7 @@ def _null_cm():
 
 
 class TestUnitScopedParticipation:
-    """``await --unit`` / ``respond --unit``: the resident loop, narrowed to a row."""
+    """``await --task`` / ``respond --task``: the resident loop, narrowed to a row."""
 
     def test_await_scopes_the_long_poll_to_the_row_s_thread(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path
@@ -298,7 +298,7 @@ class TestUnitScopedParticipation:
             return {"room": room_name, "handle": handle, "prompt": "@me?", "sender": "sec"}
 
         monkeypatch.setattr(participate_cmd, "_await_once", fake_await)
-        result = runner.invoke(cli_app, ["await", "--handle", "me", "--unit", SHORT, "--json"])
+        result = runner.invoke(cli_app, ["await", "--handle", "me", "--task", SHORT, "--json"])
         assert result.exit_code == 0, result.output
         assert captured["episode"] == THREAD
 
@@ -327,7 +327,7 @@ class TestUnitScopedParticipation:
 
         monkeypatch.setattr(participate_cmd, "hub_client", lambda *_a, **_k: _Client())
         result = runner.invoke(
-            cli_app, ["respond", "ok, claiming it", "--handle", "me", "--unit", SHORT]
+            cli_app, ["respond", "ok, claiming it", "--handle", "me", "--task", SHORT]
         )
         assert result.exit_code == 0, result.output
         assert bodies[0]["episode"] == THREAD
@@ -347,7 +347,7 @@ class TestUnitScopedParticipation:
             lambda *_a, **_k: polled.append(1),
         )
         result = runner.invoke(
-            cli_app, ["await", "--handle", "me", "--unit", "work/ghost", "--loop"]
+            cli_app, ["await", "--handle", "me", "--task", "work/ghost", "--loop"]
         )
         assert result.exit_code == 1
         assert polled == []
@@ -455,7 +455,7 @@ def _prose_frame(episode: str, text: str = "keychain, with a WebCrypto fallback"
 
 
 def test_a_ping_draws_the_thread_that_moved_and_not_what_was_said() -> None:
-    """The room's whole account of a thread write: which unit, and who."""
+    """The room's whole account of a thread write: which task, and who."""
     from mycelium.commands.room import chat_line
 
     line = chat_line("l9_exchange", {}, _ping_frame(), "system", "12:00:00", "")

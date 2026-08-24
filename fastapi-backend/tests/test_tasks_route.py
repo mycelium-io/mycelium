@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Board-first creation over HTTP (#838): ``POST /rooms/{room}/units``.
+"""Board-first creation over HTTP (#838): ``POST /rooms/{room}/tasks``.
 
-Creating a unit is the one write that mints a thread, and minting is a
+Creating a task is the one write that mints a thread, and minting is a
 capability of this route rather than a field a caller supplies — the binding has
 no wire form anywhere else on purpose. So what these hold is that the route
 mints, that a decomposition is recorded as a real ontology edge or refused, and
@@ -15,8 +15,8 @@ from __future__ import annotations
 
 import pytest
 
-from app.routes.units import PARENT_RELATION
-from app.services import units
+from app.routes.tasks import PARENT_RELATION
+from app.services import tasks
 from app.services.filesystem import EPISODE_META, get_room_dir, read_memory_file
 
 ROOM = "atlas"
@@ -34,7 +34,7 @@ async def _room(client) -> str:
 
 async def _new(client, title: str, **body):
     return await client.post(
-        f"/api/rooms/{ROOM}/units", json={"title": title, "handle": "julia", **body}
+        f"/api/rooms/{ROOM}/tasks", json={"title": title, "handle": "julia", **body}
     )
 
 
@@ -43,41 +43,41 @@ async def test_a_created_unit_comes_with_its_thread(client):
     await _room(client)
     resp = await _new(client, "Ship passkey login")
     assert resp.status_code == 201
-    unit = resp.json()
-    assert unit["key"] == "work/ship-passkey-login"
-    assert unit["episode"].startswith(f"urn:ioc:mycelium:episode:{ROOM}:")
+    task = resp.json()
+    assert task["key"] == "work/ship-passkey-login"
+    assert task["episode"].startswith(f"urn:ioc:mycelium:episode:{ROOM}:")
     # On the row itself, not only in the answer: the board reads the file.
-    found = read_memory_file(get_room_dir(ROOM), unit["key"])
+    found = read_memory_file(get_room_dir(ROOM), task["key"])
     assert found is not None
-    assert found[0][EPISODE_META] == unit["episode"]
+    assert found[0][EPISODE_META] == task["episode"]
 
 
 @pytest.mark.asyncio
 async def test_the_thread_is_the_room_s_own_and_the_store_knows_it(client):
     await _room(client)
-    unit = (await _new(client, "Rotate the signing key")).json()
-    # What tells a unit's thread from an orphaned episode, and what the write
+    task = (await _new(client, "Rotate the signing key")).json()
+    # What tells a task's thread from an orphaned episode, and what the write
     # guard in leg 2 recognises a nameable thread by.
-    assert unit["episode"] in units.bound_episodes(ROOM)
-    assert units.episode_of(ROOM, unit["key"]) == unit["episode"]
+    assert task["episode"] in tasks.bound_episodes(ROOM)
+    assert tasks.episode_of(ROOM, task["key"]) == task["episode"]
 
 
 @pytest.mark.asyncio
 async def test_a_unit_lands_on_the_board_as_an_open_action(client):
     await _room(client)
-    unit = (await _new(client, "Draft the migration")).json()
-    assert unit["meta"]["kind"] == units.TASK_KIND
-    assert unit["meta"]["status"] == "open"
+    task = (await _new(client, "Draft the migration")).json()
+    assert task["meta"]["kind"] == tasks.TASK_KIND
+    assert task["meta"]["status"] == "open"
 
 
 @pytest.mark.asyncio
 async def test_an_assignment_is_not_a_claim(client):
-    """Who a unit is *for* is a field; who holds it is a lease nobody has taken."""
+    """Who a task is *for* is a field; who holds it is a lease nobody has taken."""
     await _room(client)
-    unit = (await _new(client, "Wire the callback", assignee="@sec")).json()
-    assert unit["meta"][units.ASSIGNEE_FIELD] == "sec"
-    assert "custody" not in unit["meta"]
-    assert "owner" not in unit["meta"]
+    task = (await _new(client, "Wire the callback", assignee="@sec")).json()
+    assert task["meta"][tasks.ASSIGNEE_FIELD] == "sec"
+    assert "custody" not in task["meta"]
+    assert "owner" not in task["meta"]
 
 
 @pytest.mark.asyncio
@@ -92,7 +92,7 @@ async def test_a_child_unit_records_a_real_relation_to_its_parent(client):
 
 @pytest.mark.asyncio
 async def test_a_parent_the_room_does_not_have_is_refused(client):
-    """Rather than written: a dangling edge reads as a top-level unit forever."""
+    """Rather than written: a dangling edge reads as a top-level task forever."""
     await _room(client)
     resp = await _new(client, "Pick token storage", parent="work/nothing-here")
     assert resp.status_code == 404
@@ -102,7 +102,7 @@ async def test_a_parent_the_room_does_not_have_is_refused(client):
 @pytest.mark.asyncio
 async def test_a_room_that_does_not_exist_is_a_404_not_a_new_room(client):
     resp = await client.post(
-        "/api/rooms/nowhere/units", json={"title": "Ship it", "handle": "julia"}
+        "/api/rooms/nowhere/tasks", json={"title": "Ship it", "handle": "julia"}
     )
     assert resp.status_code == 404
 

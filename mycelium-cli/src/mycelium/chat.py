@@ -5,8 +5,8 @@
 
 ``mycelium room send`` and ``mycelium board send`` are the same write, and
 ``room messages`` and ``board messages`` are the same read.  What differs is one
-argument: a **thread** — the episode URN of a unit of work — narrows both to that
-unit's conversation instead of the room's.  A thread is a tag over the room's own
+argument: a **thread** — the episode URN of a task — narrows both to that
+task's conversation instead of the room's.  A thread is a tag over the room's own
 channel rather than a second transport, so a second implementation here would be
 two code paths for one wire call, drifting on exactly the details (owner
 attribution, edit marks, multi-line indentation) a reader notices.

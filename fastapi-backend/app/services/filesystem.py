@@ -40,7 +40,7 @@ _MISSING = object()
 # Last-resort stamp for a memory with no recoverable time (see recover_timestamps).
 _EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 
-# The frontmatter key binding a unit of work to its thread: the episode URN of
+# The frontmatter key binding a task to its thread: the episode URN of
 # the coordination that happens inside the row. Minted by the backend, never by a
 # caller — a row that could be pointed at someone else's thread by a field write
 # would be a board row claiming a conversation it was never part of.

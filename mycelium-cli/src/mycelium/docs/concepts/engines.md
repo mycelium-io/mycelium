@@ -1,6 +1,6 @@
 # Engines
 
-An **engine** is a first-party unit of cognition that lives inside a room. Where
+An **engine** is a first-party task of cognition that lives inside a room. Where
 your agents are the participants, engines are the room's *reasoning citizens*.
 They read what the room knows and act on it: mediate a decision, distill the
 memory, and (in time) more.

@@ -3,12 +3,12 @@
 
 """Writing into a thread, waking on one, and the ping that surfaces it (#837).
 
-A unit of work's thread is a tag over the room's own channel, so the transport
+A task's thread is a tag over the room's own channel, so the transport
 that reaches it is the room's transport with one field on it. These tests hold
 the three things that field has to be worth: a write can be *targeted* at a
 thread and is refused when it may not be, a wake can be *scoped* to one without
 eating the room inbox behind it, and a thread write leaves the room itself
-carrying a ping — a signal that a unit moved, never an echo of what was said.
+carrying a ping — a signal that a task moved, never an echo of what was said.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ import pytest
 from starlette.requests import Request
 
 from app.routes import participate
-from app.services import l9, persister, room_channels, units
+from app.services import l9, persister, room_channels, tasks
 from app.services.filesystem import get_room_dir
 from app.services.l9_models import Kind
 from app.services.l9_slim import serialize_content
@@ -35,10 +35,10 @@ _REQUEST = Request({"type": "http", "method": "GET", "path": "/await", "headers"
 
 
 async def _unit_thread(room: str, title: str) -> str:
-    """Create a unit and hand back the thread it was minted with."""
-    unit = await units.create_unit(room, title, created_by="avery")
-    assert unit.episode, "a unit is created with its thread already minted"
-    return unit.episode
+    """Create a task and hand back the thread it was minted with."""
+    task = await tasks.create_task(room, title, created_by="avery")
+    assert task.episode, "a task is created with its thread already minted"
+    return task.episode
 
 
 def _record(message_id: str, *, to: str, episode: str, sender: str = "avery"):
@@ -113,7 +113,7 @@ class TestScopedAwait:
 
     @pytest.mark.asyncio
     async def test_a_turn_in_another_thread_is_not_its_turn(self, wired):
-        """Scoping to a unit is the whole point: the room's noise stays out."""
+        """Scoping to a task is the whole point: the room's noise stays out."""
         log = persister.DeliveryLog()
         log.record(
             _record("m1", to="api", episode=OTHER_THREAD), delivered_to=set(), recipients=["api"]
@@ -134,7 +134,7 @@ class TestScopedAwait:
     async def test_watching_a_thread_leaves_the_room_inbox_alone(self, wired):
         """The two cursors are independent — draining one must not drain the other.
 
-        An agent that spends a turn on a unit still has its room mentions waiting
+        An agent that spends a turn on a task still has its room mentions waiting
         when it looks; the reverse of the bug a single shared cursor would cause.
         """
         log = persister.DeliveryLog()
@@ -188,29 +188,29 @@ class TestThreadWriteAuthorization:
     """Naming a thread is not how one comes into being, and a frozen roster holds."""
 
     def test_the_room_itself_is_always_writable(self):
-        assert units.episode_write_rejection(ROOM, "api", None) is None
-        assert units.episode_write_rejection(ROOM, "api", l9.live_episode_urn(ROOM)) is None
+        assert tasks.episode_write_rejection(ROOM, "api", None) is None
+        assert tasks.episode_write_rejection(ROOM, "api", l9.live_episode_urn(ROOM)) is None
 
     def test_an_invented_thread_is_refused(self):
-        refusal = units.episode_write_rejection(ROOM, "api", THREAD)
+        refusal = tasks.episode_write_rejection(ROOM, "api", THREAD)
         assert refusal is not None
         assert refusal.status == 404
 
     def test_a_thread_the_room_has_spoken_in_is_writable(self):
-        assert units.episode_write_rejection(ROOM, "api", THREAD, transcript={THREAD}) is None
+        assert tasks.episode_write_rejection(ROOM, "api", THREAD, transcript={THREAD}) is None
 
     def test_a_bound_row_makes_its_thread_writable(self, tmp_path, monkeypatch):
-        """A unit's thread is writable from the moment the row carries it — before
+        """A task's thread is writable from the moment the row carries it — before
         anything has been said in it, which is exactly when the first write lands."""
         monkeypatch.setenv("MYCELIUM_DATA_DIR", str(tmp_path))
         get_room_dir(ROOM)
-        monkeypatch.setattr(units, "bound_episodes", lambda _room: {THREAD})
-        assert units.episode_write_rejection(ROOM, "api", THREAD) is None
+        monkeypatch.setattr(tasks, "bound_episodes", lambda _room: {THREAD})
+        assert tasks.episode_write_rejection(ROOM, "api", THREAD) is None
 
     def test_an_outsider_cannot_drop_a_position_into_a_negotiation(self):
         """L9's stable-membership rule, enforced on the write side: a score across
         a frozen roster means nothing if anyone can post into it."""
-        refusal = units.episode_write_rejection(
+        refusal = tasks.episode_write_rejection(
             ROOM,
             "mallory",
             THREAD,
@@ -224,7 +224,7 @@ class TestThreadWriteAuthorization:
 
     def test_a_member_of_the_negotiation_may_write(self):
         assert (
-            units.episode_write_rejection(
+            tasks.episode_write_rejection(
                 ROOM,
                 "@API",
                 THREAD,
@@ -236,10 +236,10 @@ class TestThreadWriteAuthorization:
         )
 
     def test_a_container_takes_a_newcomer(self):
-        """A unit outlives what happens inside it, so an agent that claims the row
+        """A task outlives what happens inside it, so an agent that claims the row
         after the thread opened can speak in it. The freeze is the negotiation's."""
         assert (
-            units.episode_write_rejection(
+            tasks.episode_write_rejection(
                 ROOM,
                 "newcomer",
                 THREAD,
@@ -328,7 +328,7 @@ class TestPing:
     @pytest.mark.asyncio
     async def test_a_thread_write_leaves_exactly_one_ping_in_live(self, client, room, live):
         """The whole point of the epic's PING: the human's channel shows that a
-        unit moved, once, instead of the argument inside it."""
+        task moved, once, instead of the argument inside it."""
         thread = await _unit_thread(room, "pick a token store")
         assert (await self._post(client, episode=thread)).status_code == 201
 
@@ -480,7 +480,7 @@ class TestReplyTargeting:
         """The reply envelope the route recorded.
 
         Selected by payload type: the moderator also ingests the ping, and a
-        ``create_unit`` in the test's own setup broadcasts a ``knowledge`` write.
+        ``create_task`` in the test's own setup broadcasts a ``knowledge`` write.
         """
         replies = [
             env for env, _c, _lw in managed.persister.ingested if env.payload.type == "reply"

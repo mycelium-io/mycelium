@@ -7,12 +7,12 @@ Nothing here is a new store: episodes, memories and presence are
 read where they live and flattened into one row shape.  The board is a lens on
 the room, so a row can't be stale relative to the thing it describes.
 
-**One row per unit of work.**  A row and the thread its coordination happens in
+**One row per task.**  A row and the thread its coordination happens in
 are the same object, bound by the ``episode`` key the store puts on the row's
-memory, so a unit and its episode fold into one row rather than sitting beside
+memory, so a task and its episode fold into one row rather than sitting beside
 each other as two.  The thread's state lands under
 :data:`~mycelium.board.model.THREAD_FIELDS` and never on the row's own axes:
-closing a negotiation inside a unit must not resolve the unit or take it off
+closing a negotiation inside a task must not resolve the task or take it off
 whoever is holding it.  An episode no row is bound to is an **orphan** — it keeps
 a row of its own, because a recorded negotiation nobody compiled into work is
 still something the room did.
@@ -104,7 +104,7 @@ def _memory_item(memory: dict) -> LiveItem:
         "updated": memory.get("updated_at"),
         "ttl_minutes": None,
     }
-    # `work/` is the in-flight unit, so it is the namespace that carries a lease:
+    # `work/` is the in-flight task, so it is the namespace that carries a lease:
     # frontmatter has somewhere to put a stamp, which is why leases live here and
     # not on rows that carry no stamp.
     if namespace in custody.LEASABLE_NAMESPACES:
@@ -161,9 +161,9 @@ def _agent_item(agent: dict, presence: dict, now: str) -> LiveItem:
 
 
 def _thread_fields(episode: dict) -> dict[str, Any]:
-    """What a unit's row says about the thread inside it.
+    """What a task's row says about the thread inside it.
 
-    Never the row's own axes (:data:`~mycelium.board.model.UNIT_FIELDS`) — a
+    Never the row's own axes (:data:`~mycelium.board.model.TASK_FIELDS`) — a
     converged negotiation is a fact about the conversation, not a claim that the
     work is done or that anyone is holding it.
     """
@@ -190,7 +190,7 @@ def project_items(
         for memory in memories
         if memory.get("key", "").split("/")[0] in LIVE_NAMESPACES
     ]
-    # A unit folds in its thread; what nothing folded is an orphan episode, which
+    # A task folds in its thread; what nothing folded is an orphan episode, which
     # keeps its own row rather than being hidden.
     by_urn = {str(e.get("episode")): e for e in episodes if e.get("episode")}
     folded: set[str] = set()

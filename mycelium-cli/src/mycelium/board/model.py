@@ -53,17 +53,17 @@ LIVE_NAMESPACES = ["decisions", "status", "work", "failed"]
 EPISODE_FIELD = "episode"
 
 #: What a row says about the thread inside it. Deliberately its own names: a
-#: unit's ``status`` and ``custody`` are the unit's, so a negotiation that
+#: task's ``status`` and ``custody`` are the task's, so a negotiation that
 #: converges inside a row must not resolve the row or take it off its holder.
 THREAD_FIELDS = ["episode", "thread", "thread_state", "participants", "rounds"]
 
-#: How the thread inside a unit reads. ``open`` while it is still running;
+#: How the thread inside a task reads. ``open`` while it is still running;
 #: the rest are the commit subkinds a negotiation closes on.
 THREAD_STATES = ["open", "converged", "resolved", "rejected", "committed"]
 
 #: The row's own axes, which folding a thread onto it must never write. This is
 #: the container-outlives-the-negotiation rule as a list.
-UNIT_FIELDS = ["status", "custody", "owner", "kind", "priority"]
+TASK_FIELDS = ["status", "custody", "owner", "kind", "priority"]
 
 #: Why a projected row has no thread to speak into, keyed by what produced it.
 #: A chat verb refuses in these terms rather than falling back to the room: a
@@ -71,7 +71,7 @@ UNIT_FIELDS = ["status", "custody", "owner", "kind", "priority"]
 #: worse than one that did not go.
 THREAD_REFUSALS = {
     "agent": "presence is a lease the runtime renews, not a conversation to join",
-    "memory": "a thread belongs to a unit of work; this row is in another namespace",
+    "memory": "a thread belongs to a task; this row is in another namespace",
 }
 
 

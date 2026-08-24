@@ -234,11 +234,11 @@ async def upsert_memories(
     a loop running every few seconds must not do.
 
     ``system`` sets the store-owned frontmatter in :data:`SYSTEM_META` — today
-    just the ``episode`` a unit of work is bound to.  An in-process parameter has
+    just the ``episode`` a task is bound to.  An in-process parameter has
     no wire form, so nothing over HTTP can point a row at a thread it was never
     part of; the same key stays ignored in ``MemoryCreate.meta``.
 
-    It is **write-once**: a value already on the row wins, so a unit stays bound
+    It is **write-once**: a value already on the row wins, so a task stays bound
     to the thread its history is in for the row's whole life.
     """
     _require_room(room_name)

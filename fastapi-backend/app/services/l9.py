@@ -77,7 +77,7 @@ VALID_SUBKINDS: dict[Kind, frozenset[str]] = {
 
 
 #: The session id of a room's own channel — the episode everything said *to the
-#: room* rides under, as opposed to a thread inside it. A unit of work's thread
+#: room* rides under, as opposed to a thread inside it. A task's thread
 #: and a negotiation are episodes too; ``live`` is the one that is the room.
 LIVE_SESSION = "live"
 

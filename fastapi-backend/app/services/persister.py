@@ -303,7 +303,7 @@ class EpisodeCursors:
 
     Deliberately *not* the room-wide cursor of :class:`DeliveryLog`. Scoping an
     ``await`` to a thread must not consume the handle's room inbox: an agent that
-    watches one unit still has every mention made to it in the room waiting when
+    watches one task still has every mention made to it in the room waiting when
     it looks. The two positions move independently, and both persist.
 
     A handle with no position on a thread starts at its **room-wide** one, so the
@@ -839,7 +839,7 @@ def _default_summon_hook(
 
 
 def _default_converged_hook(envelope: L9) -> None:
-    # Log-only default for a persister with no plan-sync consumer wired (unit
+    # Log-only default for a persister with no plan-sync consumer wired (task
     # tests / a bare backend).
     logger.info(
         "converged hook (unwired): commit:converged on episode %s; no plan-sync consumer",
@@ -881,7 +881,7 @@ class RoomPersister:
         # recognised as a reconnect and re-served exactly its missed tail.
         self.log = DeliveryLog(load_transcript(room), cursors=load_cursors(room))
         # The same resume, for a thread-scoped ``await``: a per-(handle, thread)
-        # position over the transcript above, so waking on one unit never
+        # position over the transcript above, so waking on one task never
         # re-serves what it already served across a restart.
         self.episode_cursors = EpisodeCursors(load_episode_cursors(room))
         # handle -> most recent inbound MessageContext, for targeted re-serve.
