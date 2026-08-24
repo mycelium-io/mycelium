@@ -46,7 +46,7 @@
   "chat_verbs": [
     "send",
     "messages",
-    "summon"
+    "coordinate"
   ],
   "verb_keys": {
     "claim": "c",

@@ -30,6 +30,7 @@ from mycelium.config import MyceliumConfig
 from mycelium.doc_ref import doc_ref
 from mycelium.error_handler import print_error
 from mycelium.exceptions import MyceliumError
+from mycelium.slim.l9 import room_episode
 
 # The L9 "raise-up" whitelist: message types promoted onto the primary channel
 # surface (here, `room watch`'s live stream) rather than staying inspector-only.
@@ -502,6 +503,35 @@ def _agent_owner_map(room_name: str) -> dict[str, str]:
         return {}
 
 
+def frame_episode(mtype: str, msg: dict, data: dict) -> str | None:
+    """The episode a tail frame belongs to, however it reached the tail.
+
+    Chat arrives two ways — the history replay's folded row, which carries the
+    episode as a plain field, and the live stream's raw L9 envelope, which
+    carries it in the header — so the question "which conversation is this?" has
+    to be asked of both shapes to be worth asking at all.
+    """
+    if mtype == "l9_exchange":
+        episode = ((data.get("l9", {}).get("header", {})).get("message", {})).get("episode")
+    else:
+        episode = msg.get("episode") or data.get("episode")
+    return episode if isinstance(episode, str) and episode else None
+
+
+def in_a_thread(room: str, mtype: str, msg: dict, data: dict) -> bool:
+    """Whether this frame's prose belongs to a thread rather than to the room.
+
+    The room's account of a thread is the **ping** — that a unit moved, not what
+    was said in it. So the prose itself does not also draw here: printing both
+    would be the argument plus a line saying an argument happened, which is
+    worse than either. It is not lost, it is placed; ``board messages`` reads it.
+
+    A frame with no episode at all predates threading and is the room's.
+    """
+    episode = frame_episode(mtype, msg, data)
+    return episode is not None and episode != room_episode(room)
+
+
 def _ping_line(data: dict, stamp: str) -> str | None:
     """Render a thread's activity as the one line it is meant to be.
 
@@ -671,6 +701,8 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
             return f"  {ts()}  [magenta]{sender}[/]{own_tag(sender)} [dim]→[/] [cyan]{recipient}[/]: {content}"
 
         if mtype in ("l9_exchange", "direct", "broadcast", "announce"):
+            if in_a_thread(room_name, mtype, msg, data):
+                return None
             return chat_line(mtype, msg, data, sender, ts(), own_tag(sender))
 
         return None
@@ -723,6 +755,11 @@ def _watch_room(config: MyceliumConfig, room_name: str, timeout: int) -> None:
 
     try:
         with hub_client(config, timeout=10) as client:
+            # Deliberately unfiltered: ``?episode=<live>`` reads as "the room
+            # without its threads" only for rows written since threading, and
+            # would drop every message from before it — history the reader would
+            # never know was missing. ``render`` applies the same rule to the
+            # replay as to the live stream, where an untagged row is the room's.
             hist_resp = client.get(f"/api/rooms/{room_name}/messages", params={"limit": 50})
         if hist_resp.status_code == 200:
             body = hist_resp.json()

@@ -87,7 +87,7 @@ Because a row is a thread, the room's chat verbs work on one:
 ```bash
 mycelium board send t3aa11bb "@sec keychain, or WebCrypto with a fallback?"
 mycelium board messages t3aa11bb
-mycelium board summon t3aa11bb aligner "converge on token storage"
+mycelium board coordinate t3aa11bb aligner "converge on token storage"
 ```
 
 `board send` and `board messages` are `room send` and `room messages` with a row
@@ -96,15 +96,21 @@ drift from the room's own reading of a message. Every verb takes either the
 row's key or the short id of the thread inside it, whichever the board showed
 you.
 
-`board summon` opens a coordination phase inside a unit: the ask lands in the
-row's thread, and the engine runs its negotiation as an episode of its own,
-because the unit's thread is a container that outlives what happens inside it.
+`board coordinate` is the heavy one, and deliberately not called `summon`:
+putting `@agent` in a `board send` already invites someone into the
+conversation, while this opens a bounded session that ends in a decision. The
+three verbs then read as what they do — send is talk, claim is take, coordinate
+is decide. The ask lands in the row's thread and the engine runs its negotiation
+as an episode of its own, because the unit's thread is a container that outlives
+what happens inside it.
 
 What changes is what everyone else sees. A write into a thread surfaces in the
 room as a single **ping** — `activity in t3aa11bb · @sec` — and never as the
-prose. That is the whole reason the room stays legible: six agents can argue
-inside a unit and the channel a human is scanning stays one line long. The
-argument is not hidden, it is *placed*; `board messages` is one keystroke away.
+prose: `mycelium room watch` draws that line and drops the message body, in the
+live tail and in the history it opens with alike. That is the whole
+reason the room stays legible: six agents can argue inside a unit and the
+channel a human is scanning stays one line long. The argument is not hidden, it
+is *placed*; `board messages` is one keystroke away.
 
 A resident agent can narrow its wake the same way:
 

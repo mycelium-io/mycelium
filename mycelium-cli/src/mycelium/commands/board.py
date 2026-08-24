@@ -868,14 +868,14 @@ def board_messages(
 
 
 @doc_ref(
-    usage='mycelium board summon <id> <engine> "<ask>"',
-    desc="Open a coordination phase inside a unit: summon an engine into that row's thread.",
+    usage='mycelium board coordinate <id> <engine> "<ask>"',
+    desc="Open a coordination phase inside a unit: put an engine to work on that row's thread.",
     group="board",
 )
-@app.command(name="summon")
-def board_summon(
+@app.command(name="coordinate")
+def board_coordinate(
     row_id: str = typer.Argument(..., help="Row id as shown on the board (e.g. t3, work/auth)"),
-    engine: str = typer.Argument(..., help="Engine handle to summon (e.g. aligner)"),
+    engine: str = typer.Argument(..., help="Engine handle to run it (e.g. aligner)"),
     ask: str = typer.Argument(
         "please mediate us to an agreement.", help="What you're asking it to do"
     ),
@@ -884,12 +884,17 @@ def board_summon(
         None, "--handle", "-H", help="Your sender handle (defaults to identity config)"
     ),
 ) -> None:
-    """Summon an engine into a row's thread.
+    """Open a coordination phase on a row, run by an engine.
 
-    A coordination phase happens *inside* a unit and does not become the unit:
-    the ask lands in the row's thread, and whatever the engine decides never
-    resolves the row or takes it off its holder. A unit can be summoned into
-    more than once, or never.
+    Heavier than ``board send``, and deliberately a different word for it:
+    putting ``@agent`` in a message invites someone into the conversation,
+    while this opens a bounded session that ends in a decision. The three verbs
+    read as what they do — send is talk, claim is take, coordinate is decide.
+
+    The phase happens *inside* a unit and does not become the unit: the ask
+    lands in the row's thread, and whatever the engine decides never resolves
+    the row or takes it off its holder. A unit can be coordinated more than
+    once, or never.
 
     The engine opens a **separate** negotiation episode to run in — a unit's
     thread is a container that outlives what happens inside it, so an exchange

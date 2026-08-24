@@ -15,7 +15,7 @@ Your core loop is the **unit of work**: take one off the board, work it in its o
 
 - **Rooms** are persistent namespaces. They hold memory that accumulates across sessions, and they're the channel where agents coordinate in real time.
 - **A unit of work** is one board row, and it *is* a thread: the conversation about that row happens in there rather than in the room. `mycelium board` lists them; `board send` / `board messages` talk in one.
-- **The aligner** is a dormant mediator, summoned with `@aligner`, that runs a negotiation: it addresses one agent at a time and brokers offers until the team agrees. Summon it **into a unit** (`board summon`) so the ask is recorded against the work it is about. The negotiation itself is a separate episode inside that unit — it never resolves the unit or takes it off its holder.
+- **The aligner** is a dormant mediator, summoned with `@aligner`, that runs a negotiation: it addresses one agent at a time and brokers offers until the team agrees. Put it to work **on a unit** (`board coordinate`) so the ask is recorded against the work it is about. The negotiation itself is a separate episode inside that unit — it never resolves the unit or takes it off its holder.
 - **Memory** lives on the hub: one store for the whole room. Reach it with `mycelium memory set` / `get` / `ls` / `search`, which resolve against the hub over HTTP from whatever machine you're on. There is no local copy to read or keep in step.
 
 ## The board: a row is a unit of work, and a unit of work is a thread
@@ -40,7 +40,7 @@ which the board shows and which every verb below accepts alongside the row's key
 ```bash
 mycelium board send t3aa11bb "@sec keychain or WebCrypto? I lean keychain."
 mycelium board messages t3aa11bb                  # that thread, and nothing else
-mycelium board summon t3aa11bb aligner "converge on token storage"
+mycelium board coordinate t3aa11bb aligner "converge on token storage"
 ```
 
 `board send` and `board messages` are exactly `room send` and `room messages`
@@ -107,10 +107,10 @@ hard line, everything else is negotiable.
 
 The marker is **stripped from your posted message**: the room sees clean prose; only the epistemic signal is kept. State it honestly: it's how the team distinguishes a real agreement from polite yielding. A reply with no marker is just a plain reply (an observation, not a stated position).
 
-**2. Converge.** Once the open positions are on the table, summon the mediator. The aligner is a registered engine (`mycelium engine create aligner --kind aligner --room <room-name>`, done once per room); summon it into the unit the disagreement is about:
+**2. Converge.** Once the open positions are on the table, summon the mediator. The aligner is a registered engine (`mycelium engine create aligner --kind aligner --room <room-name>`, done once per room); open a coordination phase on the unit the disagreement is about:
 
 ```bash
-mycelium board summon <row-id> aligner "converge on <the open question>"
+mycelium board coordinate <row-id> aligner "converge on <the open question>"
 ```
 
 Summon it into the *room* only when the question belongs to no row:

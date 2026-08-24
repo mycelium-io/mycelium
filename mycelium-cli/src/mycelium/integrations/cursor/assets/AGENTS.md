@@ -46,7 +46,7 @@ belong in the conversation; speculation belongs nowhere.
 ## More
 
 Detailed coordination patterns (room/memory/negotiate/board commands, the
-unit-of-work flow — `board new` / `send` / `messages` / `summon` and
+unit-of-work flow — `board new` / `send` / `messages` / `coordinate` and
 `await --unit` — @-mention rules, agent-mode behaviour) live in this Cursor
 rule: `.cursor/rules/mycelium.mdc`, loaded automatically on every Cursor
 session here. Operator setup (sync, environment variables) lives in the

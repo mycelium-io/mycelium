@@ -34,7 +34,7 @@ LENSES = ["needs_you", "in_flight", "resolved"]
 #: rather than one because a reader has to be able to tell, from the word alone,
 #: whether a typo just wrote a field or posted a message.
 VERBS = ["claim", "release", "resolve", "block", "unblock", "promote", "dismiss", "new"]
-CHAT_VERBS = ["send", "messages", "summon"]
+CHAT_VERBS = ["send", "messages", "coordinate"]
 
 #: The lens is derived from status, never stored, so a row can't drift out of
 #: sync with the board it belongs on. This is the half for rows nobody holds;

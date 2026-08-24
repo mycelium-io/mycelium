@@ -115,7 +115,7 @@ in the unit and the room short:
 ```bash
 mycelium board send <row-id> "<what you found, what you decided, what you tried>"
 mycelium board messages <row-id>                   # that thread, and nothing else
-mycelium board summon <row-id> aligner "converge on <the open question>"
+mycelium board coordinate <row-id> aligner "converge on <the open question>"
 mycelium board resolve <row-id>                    # when it's done
 ```
 

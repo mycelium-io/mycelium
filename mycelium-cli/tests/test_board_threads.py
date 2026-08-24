@@ -3,7 +3,7 @@
 
 """A board row is a thread, and the verbs that talk in it (#838).
 
-``board send`` / ``board messages`` / ``board summon`` are the room's own chat
+``board send`` / ``board messages`` / ``board coordinate`` are the room's own chat
 verbs with a row id in front of them, and ``board new`` is the creation that
 mints the thread in the first place. What these hold is the resolution — a
 reader types what the board showed them and lands on the right conversation —
@@ -181,7 +181,7 @@ class TestChatVerbs:
         assert read["limit"] == 5
         assert read["label"] == f"{ROOM}/{SHORT}"
 
-    def test_summon_addresses_the_engine_inside_the_row_s_thread(
+    def test_coordinate_addresses_the_engine_inside_the_row_s_thread(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _hub(monkeypatch, memories=[_unit()])
@@ -191,13 +191,15 @@ class TestChatVerbs:
             lambda *_a: SimpleNamespace(handle="aligner", adapter="engine", kind="aligner"),
         )
         monkeypatch.setattr("mycelium.client.typed_client", lambda _c: _null_cm())
-        result = runner.invoke(board_cmd.app, ["summon", SHORT, "aligner", "converge on storage"])
+        result = runner.invoke(
+            board_cmd.app, ["coordinate", SHORT, "aligner", "converge on storage"]
+        )
         assert result.exit_code == 0, result.output
         post = sent["post"]
         assert post["content"] == "@aligner converge on storage"
         assert post["episode"] == THREAD
 
-    def test_summoning_a_plain_agent_is_refused_with_the_verb_that_does_work(
+    def test_coordinating_with_a_plain_agent_is_refused_with_the_verb_that_does_work(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _hub(monkeypatch, memories=[_unit()])
@@ -207,7 +209,7 @@ class TestChatVerbs:
             lambda *_a: SimpleNamespace(handle="sec", adapter="claude_code", kind=None),
         )
         monkeypatch.setattr("mycelium.client.typed_client", lambda _c: _null_cm())
-        result = runner.invoke(board_cmd.app, ["summon", SHORT, "sec", "mediate"])
+        result = runner.invoke(board_cmd.app, ["coordinate", SHORT, "sec", "mediate"])
         assert result.exit_code == 1
         assert "board send" in result.output
         assert sent == {}
@@ -415,23 +417,210 @@ def test_a_thread_with_nothing_in_it_says_so_rather_than_no_messages(
     assert "nothing said in this thread yet" in capsys.readouterr().out
 
 
+LIVE = f"urn:ioc:mycelium:episode:{ROOM}:live"
+
+
+def _ping_frame() -> dict:
+    """The frame the hub raises into the room when a thread moves."""
+    return {
+        "l9": {
+            "header": {"kind": "exchange", "message": {"episode": LIVE}},
+            "payload": {
+                "type": "ping",
+                "data": {"episode": THREAD, "sender": "sec", "message": "m1"},
+            },
+        }
+    }
+
+
+def _bus_frame(content: dict, sender: str = "sec") -> dict:
+    """The SSE frame the hub pushes: an envelope carried as a JSON string."""
+    return {
+        "message_type": "l9_exchange",
+        "sender_handle": sender,
+        "content": json.dumps(content),
+        "episode": content["l9"]["header"]["message"]["episode"],
+    }
+
+
+def _prose_frame(episode: str, text: str = "keychain, with a WebCrypto fallback") -> dict:
+    """The message itself, as the live stream carries it."""
+    return {
+        "content": text,
+        "l9": {
+            "header": {"kind": "exchange", "message": {"episode": episode, "parents": []}},
+            "payload": {"type": "message"},
+        },
+    }
+
+
 def test_a_ping_draws_the_thread_that_moved_and_not_what_was_said() -> None:
     """The room's whole account of a thread write: which unit, and who."""
     from mycelium.commands.room import chat_line
 
-    ping = {
-        "l9": {
-            "payload": {
-                "type": "ping",
-                "data": {"episode": THREAD, "sender": "sec", "message": "m1"},
-            }
-        }
-    }
-    line = chat_line("l9_exchange", {}, ping, "system", "12:00:00", "")
+    line = chat_line("l9_exchange", {}, _ping_frame(), "system", "12:00:00", "")
     assert line is not None
     assert SHORT in line
     assert "@sec" in line
     assert "keychain" not in line
+
+
+class TestTheRoomShowsThePingAndNotTheProse:
+    """The property the whole epic rests on, asserted where a reader would see it.
+
+    A thread write reaches the room twice — the message itself, and the ping
+    announcing it — so drawing the ping is only half the job. Printing both is
+    the argument *plus* a line saying an argument happened, which is worse than
+    either alone, and a test that only checks the ping in isolation stays green
+    through exactly that.
+    """
+
+    def test_the_prose_of_a_thread_write_is_dropped_from_the_tail(self) -> None:
+        from mycelium.commands.room import in_a_thread
+
+        assert in_a_thread(ROOM, "l9_exchange", {}, _prose_frame(THREAD)) is True
+
+    def test_the_ping_announcing_it_is_not(self) -> None:
+        """It rides the room's own episode, which is what makes it the room's line."""
+        from mycelium.commands.room import in_a_thread
+
+        assert in_a_thread(ROOM, "l9_exchange", {}, _ping_frame()) is False
+
+    def test_a_message_to_the_room_still_draws_in_full(self) -> None:
+        from mycelium.commands.room import in_a_thread
+
+        assert in_a_thread(ROOM, "l9_exchange", {}, _prose_frame(LIVE)) is False
+
+    def test_a_replayed_row_is_judged_by_the_same_rule(self) -> None:
+        """History arrives as a folded row carrying the episode as a plain field,
+        so a filter that only read the envelope would let the replay through."""
+        from mycelium.commands.room import in_a_thread
+
+        row = {"content": "keychain", "episode": THREAD}
+        assert in_a_thread(ROOM, "broadcast", row, {}) is True
+        assert in_a_thread(ROOM, "broadcast", {"content": "hi", "episode": LIVE}, {}) is False
+
+    def test_a_message_from_before_threading_is_the_room_s(self) -> None:
+        from mycelium.commands.room import in_a_thread
+
+        assert in_a_thread(ROOM, "broadcast", {"content": "hi"}, {}) is False
+
+    def test_the_tail_itself_prints_the_ping_and_not_the_message(
+        self, monkeypatch: pytest.MonkeyPatch, capsys
+    ) -> None:
+        """Driven through the watch loop rather than its predicate: the rule is
+        only worth anything if the thing that renders actually asks it."""
+        from mycelium.commands import room as room_cmd
+
+        requested: list[dict] = []
+        frames = [
+            _bus_frame(_prose_frame(THREAD)),
+            _bus_frame(_ping_frame(), sender="system"),
+            _bus_frame(_prose_frame(LIVE, "standup in five")),
+        ]
+
+        class _Stream:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_exc):
+                return False
+
+            @staticmethod
+            def iter_lines():
+                for frame in frames:
+                    yield f"data: {json.dumps(frame)}"
+
+        class _Client:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_exc):
+                return False
+
+            def get(self, path, params=None, **_kw):
+                requested.append({"path": path, "params": params or {}})
+                body = {"sessions": []} if path.endswith("/sessions") else {"messages": []}
+                return SimpleNamespace(status_code=200, json=lambda: body)
+
+            def stream(self, _method, _path):
+                return _Stream()
+
+        monkeypatch.setattr(room_cmd, "hub_client", lambda *_a, **_k: _Client())
+        monkeypatch.setattr(room_cmd, "_agent_owner_map", lambda _r: {})
+        room_cmd._watch_room(_config(), ROOM, 0)
+
+        out = capsys.readouterr().out
+        assert "activity in" in out
+        assert SHORT in out
+        assert "WebCrypto fallback" not in out, "a thread's prose reached the room's tail"
+        # The room's own messages are untouched — this drops threads, not chat.
+        assert "standup in five" in out
+        assert out.count("activity in") == 1
+
+    def test_the_replay_drops_a_thread_s_prose_too(
+        self, monkeypatch: pytest.MonkeyPatch, capsys
+    ) -> None:
+        """The tail opens with history, so a filter that only covered the live
+        stream would still show the argument — just a moment earlier.
+
+        Filtered here rather than by asking the hub for ``?episode=<live>``:
+        that read is exact only for rows written since threading, and would
+        drop every message from before it — history a reader would never know
+        was missing.
+        """
+        from mycelium.commands import room as room_cmd
+
+        history = [
+            {
+                "message_type": "broadcast",
+                "sender_handle": "sec",
+                "content": "in the keychain",
+                "episode": THREAD,
+            },
+            {
+                "message_type": "broadcast",
+                "sender_handle": "julia",
+                "content": "standup in five",
+                "episode": LIVE,
+            },
+            {"message_type": "broadcast", "sender_handle": "julia", "content": "from before"},
+        ]
+
+        class _Stream:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_exc):
+                return False
+
+            @staticmethod
+            def iter_lines():
+                return iter(())
+
+        class _Client:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_exc):
+                return False
+
+            def get(self, path, params=None, **_kw):  # noqa: ARG002
+                body = {"sessions": []} if path.endswith("/sessions") else {"messages": history}
+                return SimpleNamespace(status_code=200, json=lambda: body)
+
+            def stream(self, _method, _path):
+                return _Stream()
+
+        monkeypatch.setattr(room_cmd, "hub_client", lambda *_a, **_k: _Client())
+        monkeypatch.setattr(room_cmd, "_agent_owner_map", lambda _r: {})
+        room_cmd._watch_room(_config(), ROOM, 0)
+
+        out = capsys.readouterr().out
+        assert "in the keychain" not in out
+        assert "standup in five" in out
+        # Written before threading existed, so it carries no episode at all.
+        assert "from before" in out
 
 
 def test_a_json_dump_of_the_thread_is_still_json(monkeypatch: pytest.MonkeyPatch, capsys) -> None:

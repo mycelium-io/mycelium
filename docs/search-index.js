@@ -269,7 +269,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "index.html#board-talking-in-a-row",
     "t": "Talking in a row",
     "s": "Concepts › Board",
-    "x": "Because a row is a thread, the room's chat verbs work on one: mycelium board send t3aa11bb \"@sec keychain, or WebCrypto with a fallback?\" mycelium board messages t3aa11bb mycelium board summon t3aa11bb aligner \"converge on token storage\" board send and board messages are room send and room messages with a row id in front of them — the same call, one argument narrower — so they cannot drift from the room's own reading",
+    "x": "Because a row is a thread, the room's chat verbs work on one: mycelium board send t3aa11bb \"@sec keychain, or WebCrypto with a fallback?\" mycelium board messages t3aa11bb mycelium board coordinate t3aa11bb aligner \"converge on token storage\" board send and board messages are room send and room messages with a row id in front of them — the same call, one argument narrower — so they cannot drift from the room's own rea",
     "p": "Guide"
   },
   {

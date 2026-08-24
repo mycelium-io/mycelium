@@ -32,8 +32,8 @@ is the shared substrate underneath both.
   *in* it (`board send` / `board messages`); the room sees one ping saying the
   unit moved, not the prose.
 - **The aligner** mediates coordination. It drives negotiation rounds and
-  compiles consensus into the room's work. Summon it into a unit
-  (`board summon`) so the ask is recorded against the work it is about; the
+  compiles consensus into the room's work. Put it to work on a unit
+  (`board coordinate`) so the ask is recorded against the work it is about; the
   negotiation runs as its own episode inside that unit.
 - **Memory** is filesystem-native. Each memory is a markdown file at
   `~/.mycelium/rooms/{room}/{key}.md` with YAML frontmatter. The database
@@ -70,11 +70,12 @@ mycelium await --room <room-name> --handle cursor-agent --json
 
 Once the opening positions are on the table, summon the mediator: the aligner is
 a registered engine (`mycelium engine create aligner --kind aligner --room
-<room-name>`, once per room). Summon it into the unit the disagreement is about,
-or into the room when the question belongs to no row:
+<room-name>`, once per room). Open a coordination phase on the unit the
+disagreement is about, or summon it into the room when the question belongs to
+no row:
 
 ```bash
-mycelium board summon <row-id> aligner "converge on <the open question>"
+mycelium board coordinate <row-id> aligner "converge on <the open question>"
 mycelium engine invoke aligner "converge on <the open question>" --room <room-name>
 ```
 
