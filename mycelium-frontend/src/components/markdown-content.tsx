@@ -112,10 +112,12 @@ function MemoryLinkChip({ link, broken, onClick }: LinkProps) {
   const action = link.transclusion ? `Embeds ${link.target}` : `Open ${link.target}`;
   return (
     <Tooltip content={action}>
+      {/* aria-description is ARIA 1.3 — jsx-a11y doesn't recognise it yet */}
+      {/* eslint-disable-next-line jsx-a11y/role-supports-aria-props */}
       <button
         type="button"
         onClick={() => onClick(link.target)}
-        aria-label={action}
+        aria-description={action}
         className={`${base} text-accent hover:bg-accent-soft hover:underline`}
       >
         {body}
