@@ -124,4 +124,15 @@ describe("<MarkdownContent /> memory links", () => {
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
     expect(screen.getByText(/!\[\[key\]\]/)).toBeInTheDocument();
   });
+
+  it("renders a single newline as a line break, not a collapsed space", () => {
+    // Agents post terminal-style prose with single newlines. Without remark-breaks
+    // CommonMark folds these into one paragraph and the message walls up; with it
+    // each line breaks. One <p> that carries a <br> between the two lines.
+    const { container } = render(<MarkdownContent>{"Line one.\nLine two."}</MarkdownContent>);
+
+    const paragraphs = container.querySelectorAll("p");
+    expect(paragraphs).toHaveLength(1);
+    expect(paragraphs[0].querySelector("br")).toBeInTheDocument();
+  });
 });

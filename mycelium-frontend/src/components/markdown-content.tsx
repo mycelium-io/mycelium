@@ -6,6 +6,7 @@
 import React from "react";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkBreaks from "remark-breaks";
 import { Tooltip } from "@/components/ui/tooltip";
 
 // Mentions, memory links, transclusions, and skill references, in one pass so a
@@ -222,7 +223,11 @@ export function MarkdownContent({ children, className, onLinkClick, brokenLinks 
   return (
     <div className={`markdown-body ${className ?? ""}`}>
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+        // `remark-breaks` turns a single newline into a line break, the way chat
+        // apps do. Agents post terminal-style prose with single newlines; without
+        // this CommonMark collapses them into one paragraph and every message walls
+        // up. Blank-line paragraph breaks and lists are unaffected.
+        remarkPlugins={[remarkGfm, remarkBreaks]}
         // `myc://` is an internal scheme the default sanitizer would strip to
         // an empty href; every other URL keeps the stock protocol filtering.
         urlTransform={url => (url.startsWith("myc://") ? url : defaultUrlTransform(url))}
