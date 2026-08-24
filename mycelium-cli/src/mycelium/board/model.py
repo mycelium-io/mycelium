@@ -41,6 +41,23 @@ LENS_OF_STATUS = {
 
 LIVE_NAMESPACES = ["decisions", "status", "work", "failed"]
 
+#: The store-owned frontmatter key binding a row to its thread. Minted by the
+#: backend and carried across writes, so a row's thread is stable for its life.
+EPISODE_FIELD = "episode"
+
+#: What a row says about the thread inside it. Deliberately its own names: a
+#: unit's ``status`` and ``custody`` are the unit's, so a negotiation that
+#: converges inside a row must not resolve the row or take it off its holder.
+THREAD_FIELDS = ["episode", "thread", "thread_state", "participants", "rounds"]
+
+#: How the thread inside a unit reads. ``open`` while it is still running;
+#: the rest are the commit subkinds a negotiation closes on.
+THREAD_STATES = ["open", "converged", "resolved", "rejected", "committed"]
+
+#: The row's own axes, which folding a thread onto it must never write. This is
+#: the container-outlives-the-negotiation rule as a list.
+UNIT_FIELDS = ["status", "custody", "owner", "kind", "priority"]
+
 
 @dataclass(frozen=True)
 class ItemSource:

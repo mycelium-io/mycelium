@@ -43,7 +43,9 @@ from app.schemas import (
 from app.services import actor, links, local_state, memory_sync, search_index
 from app.services.embedding import embed_text
 from app.services.filesystem import (
+    EPISODE_META,
     MANAGED_META,
+    SYSTEM_META,
     delete_memory_file,
     get_room_dir,
     list_memory_files,
@@ -51,6 +53,7 @@ from app.services.filesystem import (
     read_memory_file,
     recover_timestamps,
     room_exists,
+    system_meta,
     unmanaged_meta,
     value_to_content,
     write_memory_file,
@@ -106,6 +109,7 @@ def _memory_read_from_file(room_name: str, key: str, meta: dict, content: str) -
         version=meta.get("version", 1),
         tags=meta.get("tags"),
         meta=unmanaged_meta(meta) or None,
+        episode=meta.get(EPISODE_META),
         expandable=links.is_expandable(meta),
         created_at=created_at,
         updated_at=updated_at,
@@ -212,7 +216,11 @@ async def create_memories(room_name: str, payload: MemoryBatchCreate, request: R
 
 
 async def upsert_memories(
-    room_name: str, payload: MemoryBatchCreate, *, notify: bool = True
+    room_name: str,
+    payload: MemoryBatchCreate,
+    *,
+    notify: bool = True,
+    system: dict[str, Any] | None = None,
 ) -> list[MemoryRead]:
     """The write itself, with ``created_by`` already resolved to its true author.
 
@@ -224,8 +232,20 @@ async def upsert_memories(
     re-dating a lease it already holds.  The file, the index and the link graph
     are all updated exactly as usual; what is skipped is telling the room, which
     a loop running every few seconds must not do.
+
+    ``system`` sets the store-owned frontmatter in :data:`SYSTEM_META` — today
+    just the ``episode`` a unit of work is bound to.  An in-process parameter has
+    no wire form, so nothing over HTTP can point a row at a thread it was never
+    part of; the same key stays ignored in ``MemoryCreate.meta``.
+
+    It is **write-once**: a value already on the row wins, so a unit stays bound
+    to the thread its history is in for the row's whole life.
     """
     _require_room(room_name)
+    if system and not set(system) <= SYSTEM_META:
+        raise ValueError(
+            f"system meta outside {sorted(SYSTEM_META)}: {sorted(set(system) - SYSTEM_META)}"
+        )
     room_dir = get_room_dir(room_name)
 
     from app.services.metrics import record_memory_write
@@ -277,6 +297,14 @@ async def upsert_memories(
         if item.meta:
             extra_meta.update({k: v for k, v in item.meta.items() if k not in MANAGED_META})
 
+        # The store's own minted keys, which nothing here recomputes. ``system``
+        # supplies one; what the row already carries wins, so the binding is
+        # write-once: a field write cannot silently unbind a row from its thread,
+        # and a later writer cannot move it onto a different one.
+        if system:
+            extra_meta.update(system)
+        extra_meta.update(system_meta(existing_meta))
+
         # Persist structured values into frontmatter so non-text keys survive
         # the round-trip (the markdown body only carries the ``text``/rendering).
         structured = set(value.keys()) != {"text"}
@@ -320,6 +348,7 @@ async def upsert_memories(
                 "version": new_version,
                 "tags": item.tags,
                 "meta": unmanaged_meta(extra_meta) or None,
+                "episode": extra_meta.get(EPISODE_META),
                 "expandable": links.is_expandable(extra_meta),
                 "created_at": created_at.isoformat(),
                 "updated_at": now.isoformat(),
@@ -340,6 +369,7 @@ async def upsert_memories(
                 version=new_version,
                 tags=item.tags,
                 meta=unmanaged_meta(extra_meta) or None,
+                episode=extra_meta.get(EPISODE_META),
                 expandable=links.is_expandable(extra_meta),
                 created_at=created_at,
                 updated_at=now,
@@ -444,6 +474,7 @@ async def search_memories(room_name: str, payload: MemorySearchRequest):
             version=rec.get("version", 1),
             tags=rec.get("tags"),
             meta=rec.get("meta") or None,
+            episode=rec.get(EPISODE_META),
             expandable=bool(rec.get("expandable")),
             created_at=created_at,
             updated_at=updated_at,

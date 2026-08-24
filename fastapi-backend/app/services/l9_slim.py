@@ -20,9 +20,11 @@ This module owns three things the *app* must, not SLIM:
    any dependents it unblocks) in causal order.
 
 3. **Episode ↔ channel lifecycle.** The channel is durable for the room's life;
-   an *episode* is one negotiation inside it. :class:`EpisodeLifecycle` enforces
-   L9's stable-membership rule: a membership change mid-episode **aborts** the
-   episode (emitted as ``commit:rejected``), without tearing down the channel.
+   an *episode* is one tagged thread inside it — a unit of work, or a negotiation
+   within a unit. :class:`EpisodeLifecycle` enforces L9's stable-membership rule
+   where it means something: a membership change aborts an active *negotiation*
+   (emitted as ``commit:rejected``), without tearing down the channel or the unit
+   the negotiation was happening inside.
 
 :class:`L9SlimChannel` composes 1-2 over a single SLIM group session: one call
 to :meth:`send` publishes an envelope; :meth:`receive` pulls one broadcast and
@@ -168,32 +170,56 @@ class CausalOrderBuffer:
 
 @dataclass
 class EpisodeLifecycle:
-    """Tracks one negotiation (episode) within a durable room channel.
+    """Tracks one episode within a durable room channel.
 
-    An episode freezes the membership it opened with. A membership change while
-    the episode is active violates L9's stable-membership rule and **aborts** the
-    episode — the channel itself is untouched. A new episode can
-    be opened afterward with the changed membership.
+    **Freezing membership is a negotiation's policy, not an episode's.** L9's
+    stable-membership rule exists because an offer/counter exchange scored across
+    a changing set of participants means nothing — so a membership change while a
+    *negotiation* is running **aborts** it (the channel itself is untouched, and a
+    new episode can open afterward with the changed membership).
+
+    A unit of work is an episode too, and nothing about it wants that rule: it is
+    a container that outlives what happens inside it, so someone joining the room
+    must not end the thread a board row's history lives in. Such an episode opens
+    with ``negotiation=False``, and :attr:`frozen` — not :attr:`active` — is what
+    callers gate the freeze on.
     """
 
     episode: str | None = None
     members: frozenset[str] = field(default_factory=frozenset)
     active: bool = False
+    negotiation: bool = True
 
-    def open(self, episode: str, members: set[str] | frozenset[str]) -> None:
-        """Begin an episode over the given frozen membership."""
+    @property
+    def frozen(self) -> bool:
+        """Whether membership is frozen right now: an active *negotiation*.
+
+        The gate for anything a membership change would break — aborting, and
+        deferring an invite until the episode closes.
+        """
+        return self.active and self.negotiation
+
+    def open(
+        self, episode: str, members: set[str] | frozenset[str], *, negotiation: bool = True
+    ) -> None:
+        """Begin an episode over the given membership.
+
+        ``negotiation=False`` opens a container (a unit of work's thread) that a
+        later join or leave leaves running.
+        """
         self.episode = episode
         self.members = frozenset(members)
         self.active = True
+        self.negotiation = negotiation
 
     def on_membership_change(self, members: set[str] | frozenset[str]) -> bool:
-        """Record a membership change; return True if it aborts an active episode.
+        """Record a membership change; return True if it aborts a negotiation.
 
-        When no episode is active the new membership is simply adopted as the
-        baseline (so the *next* episode opens clean).
+        When nothing is frozen the new membership is simply adopted as the
+        baseline (so the *next* negotiation opens clean).
         """
         new_members = frozenset(members)
-        if self.active and new_members != self.members:
+        if self.frozen and new_members != self.members:
             self.active = False
             return True
         self.members = new_members
@@ -203,6 +229,7 @@ class EpisodeLifecycle:
         """Close the episode normally (converged/rejected reached)."""
         self.active = False
         self.episode = None
+        self.negotiation = True
 
 
 def build_episode_abort_envelope(

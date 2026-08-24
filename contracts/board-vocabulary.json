@@ -55,6 +55,31 @@
     "work",
     "failed"
   ],
+  "unit": {
+    "_comment": "A unit of work is a board row and a thread: one row per unit, with its coordination folded into it. The binding is `binding_field` on the row's memory \u2014 store-owned, minted by the backend, carried across writes, so it is absent from the meta bag a caller can write and a field write cannot move a row onto someone else's thread. The thread's own state lands under `thread_fields` because a unit's status and custody are the unit's: a negotiation that converges or aborts inside a row must not resolve the row or take it off its holder, which is what `unit_fields` names \u2014 the container-outlives-the-negotiation rule, as a list both sides assert a fold against. An episode no row is bound to is an ORPHAN: it keeps its own row rather than being hidden or deleted, which is why the board still projects episodes.",
+    "binding_field": "episode",
+    "thread_fields": [
+      "episode",
+      "thread",
+      "thread_state",
+      "participants",
+      "rounds"
+    ],
+    "thread_states": [
+      "open",
+      "converged",
+      "resolved",
+      "rejected",
+      "committed"
+    ],
+    "unit_fields": [
+      "status",
+      "custody",
+      "owner",
+      "kind",
+      "priority"
+    ]
+  },
   "log": {
     "_comment": "The daily log's calendar conventions. A day is a calendar date in the reader's timezone; weeks start Monday; the heat scale steps at these upper bounds.",
     "week_starts_on": "monday",

@@ -10,7 +10,7 @@ import pytest
 from app.services import l9_episode
 
 
-def _open() -> l9_episode.EpisodeState:
+def _open() -> l9_episode.NegotiationState:
     return l9_episode.open_episode(
         parent_room="sprint",
         short_id="abc123",

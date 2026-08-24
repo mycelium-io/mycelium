@@ -5049,6 +5049,18 @@
             "title": "Meta",
             "description": "The memory's unmanaged frontmatter \u2014 every key the store doesn't own (so not key, authorship, version, timestamps, tags or value). This is what ``MemoryCreate.meta`` wrote, read back."
           },
+          "episode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Episode",
+            "description": "The episode URN this row's coordination happens in \u2014 what makes a unit of work a thread. Store-owned: minted by the backend, so it is absent from ``meta`` and cannot be set by a write. Null on a memory that is not a unit of work, and on one no thread has been opened for."
+          },
           "expandable": {
             "type": "boolean",
             "title": "Expandable",

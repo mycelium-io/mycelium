@@ -57,7 +57,7 @@ from app.services.room_channels import BACKEND_AGENT
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from app.services.l9_episode import EpisodeState
+    from app.services.l9_episode import NegotiationState
     from app.services.l9_models import L9
     from app.services.persister import RoomPersister, TranscriptRecord
     from app.services.room_channels import ManagedRoomChannel, RoomChannelManager
@@ -468,7 +468,7 @@ class AlignerEngine:
         self,
         managed: ManagedRoomChannel,
         persister: RoomPersister,
-        ep: EpisodeState,
+        ep: NegotiationState,
         sender: str,
         episode: str,
         topic: str,
@@ -645,7 +645,7 @@ class AlignerEngine:
             managed.persister.ingest_local(env, content)
 
     def _fold_reading(
-        self, ep: EpisodeState, handle: str, reading: dict[str, Any], proposing: bool
+        self, ep: NegotiationState, handle: str, reading: dict[str, Any], proposing: bool
     ) -> None:
         """Fold one interpreted SAO move into the episode so metrics stay live.
 
@@ -706,7 +706,7 @@ class AlignerEngine:
             *(_norm(h) for h in _NON_PARTICIPANTS),
         }
 
-    def _verdict(self, ep: EpisodeState) -> tuple[bool, dict[str, Any] | None]:
+    def _verdict(self, ep: NegotiationState) -> tuple[bool, dict[str, Any] | None]:
         """(converged, metrics). Converged ⇔ metrics exist and MPC ≥ threshold."""
         metrics = l9_episode.compute_metrics(ep)
         converged = metrics is not None and metrics["mpc"] >= self._threshold
@@ -717,7 +717,7 @@ class AlignerEngine:
     async def _emit_verdict(
         self,
         managed: ManagedRoomChannel,
-        ep: EpisodeState,
+        ep: NegotiationState,
         assignments: dict[str, Any],
         converged: bool,
         metrics: dict[str, Any] | None,

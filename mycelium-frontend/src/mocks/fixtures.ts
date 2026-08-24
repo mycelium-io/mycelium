@@ -70,6 +70,11 @@ export interface MockMemory {
   room_name?: string;
   tags?: string[];
   expandable?: boolean;
+  /** The episode URN binding this row to the thread its coordination happens in
+   *  (`MemoryRead.episode`). Store-owned rather than part of `meta`, so a write
+   *  carries it forward rather than replacing it — the board folds the bound
+   *  episode into this row instead of drawing a second one beside it. */
+  episode?: string | null;
 }
 
 export interface MockMessage {
@@ -297,6 +302,10 @@ const atlasBoardRows: MockMemory[] = [
     updated_by: "aligner",
     version: 1,
     updated_at: iso(40),
+    // Both rows were compiled out of the atlas negotiation, so both are bound to
+    // it: the board draws two units carrying their thread, not two units plus a
+    // separate episode row for the conversation that produced them.
+    episode: ATLAS_EPISODE,
   },
   {
     key: "work/retire-the-legacy-store",
@@ -307,6 +316,7 @@ const atlasBoardRows: MockMemory[] = [
     updated_by: "aligner",
     version: 1,
     updated_at: iso(40),
+    episode: ATLAS_EPISODE,
   },
   {
     key: "decisions/token-ttl",
