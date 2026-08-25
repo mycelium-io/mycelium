@@ -31,6 +31,7 @@ from __future__ import annotations
 import logging
 import os
 import shutil
+import subprocess
 import tempfile
 import time
 import uuid
@@ -60,6 +61,11 @@ _HANDLE_A = "architect"
 _HANDLE_B = "engineer"
 _ALIGNER = "aligner"
 
+# Adapter to use for live agents. Cursor is the default since it uses
+# Cursor's own model access (no separate API key required).
+# Set MYCELIUM_CANARY_ADAPTER=claude_code to override.
+_ADAPTER = os.environ.get("MYCELIUM_CANARY_ADAPTER", "cursor")
+
 # Thresholds
 _EPISODE_TIMEOUT = 900        # 15 min per episode (real LLM is slow)
 _TURN_TIMEOUT = 180           # 3 min per turn
@@ -86,60 +92,62 @@ class EpisodeOne(aetest.Testcase):
     uid = "tier_c_E01"
 
     @aetest.setup
-    def check_prerequisites(self, env: EnvironmentInfo):
+    def setup(self, env: EnvironmentInfo, api: MyceliumAPI, cli: MyceliumCLI, testscript):
+        # Prerequisites
         if env.skip_llm_tests:
             self.skipped("LLM not available — Tier C requires live LLM access")
 
-    @aetest.setup
-    def prepare_room(self, api: MyceliumAPI, cli: MyceliumCLI, testscript):
+        # Room
         self.room = os.environ.get(_CANARY_ROOM_ENV, _DEFAULT_CANARY_ROOM)
         testscript.parameters["canary_room"] = self.room
-
-        # Create room if it doesn't exist
-        status, data = api.get_room(self.room)
+        status, _ = api.get_room(self.room)
         if status == 404:
-            status, data = api.create_room(self.room, description="API design coordination room")
+            status, _ = api.create_room(self.room, description="API design coordination room")
             assert status in (200, 201), f"room create failed: {status}"
-            log.info("Created canary room: %s", self.room)
-        else:
-            log.info("Using existing canary room: %s", self.room)
+        log.info("Canary room: %s", self.room)
 
-        # Pre-seed domain memories via API (not agent prose — fixture data)
+        # Seed memories
         for key, content in _SEED_MEMORIES:
             r = cli.memory_set(self.room, "qa-seeder", key, content)
-            if not r.ok:
-                log.warning("Failed to seed memory %s: %s", key, r.error_message)
-            else:
-                log.info("Seeded memory: %s", key)
+            if r.ok:
+                log.info("Seeded: %s", key)
 
-    @aetest.setup
-    def create_agent_workspaces(self, testscript):
-        """Create fresh workspaces for each agent (prevents stale SKILL.md from prior runs)."""
+        # Fresh agent workspaces
         ws_a = tempfile.mkdtemp(prefix=f"mc-{_HANDLE_A}-")
         ws_b = tempfile.mkdtemp(prefix=f"mc-{_HANDLE_B}-")
         testscript.parameters["workspace_a"] = ws_a
         testscript.parameters["workspace_b"] = ws_b
-        log.info("Agent workspaces: %s=%s, %s=%s", _HANDLE_A, ws_a, _HANDLE_B, ws_b)
 
-    @aetest.setup
-    def register_agents(self, api: MyceliumAPI, cli: MyceliumCLI, testscript):
-        ws_a = testscript.parameters.get("workspace_a", "")
-        ws_b = testscript.parameters.get("workspace_b", "")
-
+        # Register agents
         for handle, cwd in [(_HANDLE_A, ws_a), (_HANDLE_B, ws_b)]:
-            r = cli.agent_create(
-                handle, self.room,
-                adapter="claude_code",
-                cwd=cwd,
-                description=f"Canary agent {handle} for E2E multi-episode test",
-            )
+            r = cli.agent_create(handle, self.room, adapter=_ADAPTER, cwd=cwd,
+                                 description=f"Canary {handle}")
             if not r.ok and "already" not in r.error_message.lower():
                 self.failed(f"agent create failed for {handle}: {r.error_message}")
-            log.info("Agent registered: @%s", handle)
+
+        # Start await --loop processes (cursor adapter only)
+        procs = []
+        if _ADAPTER == "cursor":
+            exec_script = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                "scripts", "cursor_exec.sh",
+            )
+            for handle, ws_key in [(_HANDLE_A, "workspace_a"), (_HANDLE_B, "workspace_b")]:
+                ws = testscript.parameters.get(ws_key, "")
+                proc = subprocess.Popen(
+                    ["mycelium", "await", "--room", self.room, "--handle", handle,
+                     "--loop", "--exec", exec_script, "--timeout", str(_TURN_TIMEOUT)],
+                    env={**os.environ, "CURSOR_WORKSPACE": ws},
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                )
+                procs.append((handle, proc))
+                log.info("await --loop started for @%s (pid=%d)", handle, proc.pid)
+            time.sleep(3)
+        testscript.parameters["agent_procs"] = procs
 
     @aetest.test
     def episode_one_coordination(self, api: MyceliumAPI, cli: MyceliumCLI, testscript):
-        """Invoke aligner; track response rate and terminal state."""
+        """Post opening positions, invoke aligner, monitor until l9_commit."""
         setup = setup_coordination(
             api, cli, self.room,
             agent_handles=[_HANDLE_A, _HANDLE_B],
@@ -152,7 +160,7 @@ class EpisodeOne(aetest.Testcase):
         if setup is None:
             self.failed("coordination setup failed")
 
-        # Invoke aligner — real agents are running await --loop via their daemon
+        # Invoke aligner — cursor agents are already awaiting via their loop processes
         r = cli.engine_invoke(_ALIGNER, self.room,
                               "Please mediate on API rate-limiting strategy.")
         if not r.ok:
@@ -217,7 +225,15 @@ class EpisodeOne(aetest.Testcase):
         )
 
     @aetest.cleanup
-    def cleanup_workspaces(self, testscript):
+    def cleanup(self, testscript):
+        for handle, proc in testscript.parameters.get("agent_procs") or []:
+            if proc.poll() is None:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+            log.info("Stopped await --loop for @%s", handle)
         for ws_key in ("workspace_a", "workspace_b"):
             ws = testscript.parameters.get(ws_key)
             if ws and os.path.exists(ws):
@@ -235,16 +251,12 @@ class EpisodeTwo(aetest.Testcase):
     uid = "tier_c_E02"
 
     @aetest.setup
-    def check_prerequisites(self, env: EnvironmentInfo, testscript):
+    def setup(self, env: EnvironmentInfo, testscript):
         if env.skip_llm_tests:
             self.skipped("LLM not available — Tier C requires live LLM access")
-
         e01_state = testscript.parameters.get("e01_terminal_state")
         if e01_state is None:
             self.skipped("Episode 1 did not run or timed out — skipping Episode 2")
-
-    @aetest.setup
-    def create_fresh_workspaces(self, testscript):
         ws_a = tempfile.mkdtemp(prefix=f"mc-e2-{_HANDLE_A}-")
         ws_b = tempfile.mkdtemp(prefix=f"mc-e2-{_HANDLE_B}-")
         testscript.parameters["workspace_a_e2"] = ws_a
@@ -292,12 +304,31 @@ class EpisodeTwo(aetest.Testcase):
         for handle, cwd in [(_HANDLE_A, ws_a), (_HANDLE_B, ws_b)]:
             r = cli.agent_create(
                 handle, room,
-                adapter="claude_code",
+                adapter=_ADAPTER,
                 cwd=cwd,
                 description=f"Canary agent {handle} (Episode 2)",
             )
             if not r.ok and "already" not in r.error_message.lower():
                 log.warning("agent create for %s: %s", handle, r.error_message)
+
+        # Start agent loops for Episode 2
+        procs_e2: list = []
+        if _ADAPTER == "cursor":
+            exec_script = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                "scripts", "cursor_exec.sh",
+            )
+            for handle, ws in [(_HANDLE_A, ws_a), (_HANDLE_B, ws_b)]:
+                env = {**os.environ, "CURSOR_WORKSPACE": ws}
+                proc = subprocess.Popen(
+                    ["mycelium", "await", "--room", room, "--handle", handle,
+                     "--loop", "--exec", exec_script, "--timeout", str(_TURN_TIMEOUT)],
+                    env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                )
+                procs_e2.append((handle, proc))
+                log.info("E2 await --loop started for @%s (pid=%d)", handle, proc.pid)
+            time.sleep(3)
+        testscript.parameters["agent_procs_e2"] = procs_e2
 
         setup = setup_coordination(
             api, cli, room,
@@ -339,7 +370,14 @@ class EpisodeTwo(aetest.Testcase):
             self.skipped("SILENT in Episode 2 — compatibility observation")
 
     @aetest.cleanup
-    def cleanup_workspaces(self, testscript):
+    def cleanup(self, testscript):
+        for handle, proc in testscript.parameters.get("agent_procs_e2") or []:
+            if proc.poll() is None:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
         for ws_key in ("workspace_a_e2", "workspace_b_e2"):
             ws = testscript.parameters.get(ws_key)
             if ws and os.path.exists(ws):
