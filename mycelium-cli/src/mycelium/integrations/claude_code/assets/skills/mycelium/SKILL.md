@@ -24,7 +24,7 @@ This is the surface. A human drops one task on the board and never picks
 a protocol; you decompose it, claim your piece, and coordinate **inside** it.
 
 ```bash
-mycelium board                                    # what needs you (the default lens)
+mycelium board                                    # what needs you (the default filter)
 mycelium board new "Ship passkey login"           # put a task on the board
 mycelium board new "Pick token storage" --parent work/passkey-login --assign @sec
 mycelium board claim work/passkey-login           # take it, as a lease
@@ -76,7 +76,7 @@ threaded without you tracking any ids at all.
 
 - It does **not** decide the row. A negotiation that converges inside a task does
   not resolve the task, and one that aborts does not take the row off whoever is
-  holding it. Status and custody are the task's; `board resolve` is what finishes it.
+  holding it. Status and assignment are the task's; `board resolve` is what finishes it.
 - It is **not** access control. Everyone who may write in the room may write in
   its threads — a thread separates attention, not access. The one exception the
   hub enforces: a negotiation running inside a task has frozen its roster, so an
