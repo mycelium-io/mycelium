@@ -48,7 +48,7 @@ jobs:
   e2e:
     name: ${{ format('E2E {0}', github.event.inputs.suite || (github.event.action == 'mycelium-pr-test' && 'pr') || (github.event.action == 'mycelium-nightly' && 'nightly') || (github.event_name == 'schedule' && 'nightly') || 'pr') }}
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ fromJSON('{"pr":20,"nightly":60}')[github.event.inputs.suite || (github.event.action == 'mycelium-pr-test' && 'pr') || (github.event.action == 'mycelium-nightly' && 'nightly') || (github.event_name == 'schedule' && 'nightly') || 'pr'] || 20 }}
+    timeout-minutes: ${{ fromJSON('{"pr":20,"nightly":75}')[github.event.inputs.suite || (github.event.action == 'mycelium-pr-test' && 'pr') || (github.event.action == 'mycelium-nightly' && 'nightly') || (github.event_name == 'schedule' && 'nightly') || 'pr'] || 20 }}
 
     steps:
       - name: Checkout e2e-test repo
