@@ -91,8 +91,6 @@ export const KEYMAP: Binding[] = [
   { id: "pane.network", keys: ["alt+w"], label: "Network", group: "Panes", scope: "room" },
 
   { id: "rail.agents", keys: ["alt+a"], label: "Members", group: "Inspector", scope: "room" },
-  // Not ⌥E: Alt+E opens the browser menu on Windows and Linux.
-  { id: "rail.episodes", keys: ["alt+i"], label: "Episodes", group: "Inspector", scope: "room" },
   { id: "rail.memory", keys: ["alt+m"], label: "Memory", group: "Inspector", scope: "room" },
   { id: "rail.toggle", keys: ["\\"], label: "Collapse / expand the rail", group: "Inspector", scope: "room" },
 

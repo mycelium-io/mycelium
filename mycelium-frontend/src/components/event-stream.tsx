@@ -390,11 +390,9 @@ interface Props {
   /** Open a memory by key — wired to `[[wikilinks]]` in chat so a message can
    *  link a room's memory and a reader (or agent author) can jump straight to it. */
   onOpenMemory?: (key: string) => void;
-  /** Open an episode by short id — wired to the episode tags on coordination
-   *  notices, so the episode a notice names is one click from its record. */
-  onOpenEpisode?: (shortId: string) => void;
-  /** Open a thread by its episode URN — from a ping in the channel, or from the
-   *  board row the thread belongs to. */
+  /** Open a thread by its episode URN — from a ping in the channel, from the
+   *  board row the thread belongs to, or from an episode tag on a coordination
+   *  notice. */
   onOpenThread?: (episode: string) => void;
   /** Optional controlled tab (e.g. driven by the onboarding tour). */
   view?: View;
@@ -407,7 +405,7 @@ interface Props {
   onFocusConsumed?: () => void;
 }
 
-export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onNegotiationPhaseChange, onOpenMemory, onOpenEpisode, onOpenThread, view: viewProp, onViewChange, suppressInvites = false, focusMessageId = null, onFocusConsumed }: Props) {
+export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onNegotiationPhaseChange, onOpenMemory, onOpenThread, view: viewProp, onViewChange, suppressInvites = false, focusMessageId = null, onFocusConsumed }: Props) {
   const [events, setEvents] = useState<Event[]>([]);
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const connected = useRoomConnected(roomName);
@@ -794,7 +792,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
                   >
                     <span>in</span>
                     {shortId ? (
-                      <EpisodeTag urn={episodeUrn} shortId={shortId} onOpen={onOpenEpisode} />
+                      <EpisodeTag urn={episodeUrn} shortId={shortId} onOpen={onOpenThread && episodeUrn ? () => onOpenThread(episodeUrn) : undefined} />
                     ) : (
                       <span className="font-mono">episode</span>
                     )}
@@ -831,7 +829,7 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
                     <span className="font-medium text-muted-foreground">@{handle}</span>
                     <span>joined</span>
                     {shortId ? (
-                      <EpisodeTag urn={episodeUrn} shortId={shortId} onOpen={onOpenEpisode} />
+                      <EpisodeTag urn={episodeUrn} shortId={shortId} onOpen={onOpenThread && episodeUrn ? () => onOpenThread(episodeUrn) : undefined} />
                     ) : null}
                     {intent ? <span>· &ldquo;{intent}&rdquo;</span> : null}
                   </SystemNotice>

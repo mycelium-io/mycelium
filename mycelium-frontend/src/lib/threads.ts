@@ -36,9 +36,14 @@ export const PING_PAYLOAD_FIELDS = ["episode", "sender", "message"] as const;
  */
 export const PING_TYPE = "thread_ping";
 
+/** The URN of a room episode, from the room and the session (short id) it tags. */
+export function episodeUrn(room: string, session: string): string {
+  return `urn:ioc:mycelium:episode:${room}:${session}`;
+}
+
 /** The URN of a room's own channel — where a message with no thread lands. */
 export function liveEpisodeUrn(room: string): string {
-  return `urn:ioc:mycelium:episode:${room}:${LIVE_SESSION}`;
+  return episodeUrn(room, LIVE_SESSION);
 }
 
 /**

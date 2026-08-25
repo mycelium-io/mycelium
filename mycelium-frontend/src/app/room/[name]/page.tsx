@@ -17,6 +17,7 @@ import { ThreadView } from "@/components/thread-view";
 import { RoomInspector, type Tab } from "@/components/room-inspector";
 import { RoomTour } from "@/components/room-tour";
 import { GlobalStatusItems, StatusButton } from "@/components/status-items";
+import { episodeUrn } from "@/lib/threads";
 import { Tooltip } from "@/components/ui/tooltip";
 import { useCommands, useKeyAction, useKeyScope } from "@/components/keymap-provider";
 import type { PaletteCommand } from "@/lib/commands";
@@ -78,7 +79,6 @@ function RoomWorkspace() {
   const [tourActive, setTourActive] = useState(() => searchParamsEarly.get("tour") === "1");
   const [inviteEngine, setInviteEngine] = useState(false);
   const [focusMemory, setFocusMemory] = useState<{ key: string; nonce: number } | null>(null);
-  const [focusEpisode, setFocusEpisode] = useState<{ shortId: string; nonce: number } | null>(null);
   // The open thread, as a URN. A transient pane and nothing more: no rail holds
   // it, no route names it, and closing it leaves the room exactly as it was.
   const [threadEpisode, setThreadEpisode] = useState<string | null>(null);
@@ -105,13 +105,6 @@ function RoomWorkspace() {
     setInspectorTab("memory");
     setInspectorOpen(true);
     setFocusMemory(prev => ({ key, nonce: (prev?.nonce ?? 0) + 1 }));
-  }, []);
-
-  // An episode tag clicked in chat opens the Episodes rail on that episode.
-  const openEpisode = useCallback((shortId: string) => {
-    setInspectorTab("episodes");
-    setInspectorOpen(true);
-    setFocusEpisode(prev => ({ shortId, nonce: (prev?.nonce ?? 0) + 1 }));
   }, []);
 
   const handleEngineInviteShown = useCallback(() => setInviteEngine(false), []);
@@ -157,11 +150,11 @@ function RoomWorkspace() {
     // the parameter, which is cleared as soon as it has been acted on.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setFocus(target);
-    if (target.type === "episode") openTab("episodes");
+    if (target.type === "episode") openThread(episodeUrn(roomName, target.id));
     else if (target.type === "agent") openTab("agents");
     else if (target.type === "message") setEditorView("channel");
     router.replace(`/room/${encodeURIComponent(roomName)}`, { scroll: false });
-  }, [focusParam, openTab, roomName, router]);
+  }, [focusParam, openTab, openThread, roomName, router]);
 
   // Room-scoped keybinds: the panes, the inspector rails, and the composer are
   // all reachable without a pointer. The chat box focuses the textarea itself;
@@ -172,7 +165,6 @@ function RoomWorkspace() {
   useKeyAction("pane.board", () => setEditorView("board"));
   useKeyAction("pane.network", () => setEditorView("network"));
   useKeyAction("rail.agents", () => openTab("agents"));
-  useKeyAction("rail.episodes", () => openTab("episodes"));
   useKeyAction("rail.memory", () => openTab("memory"));
   useKeyAction("rail.toggle", () => setInspectorOpen(open => !open));
   useKeyAction("focus.chat", () => setEditorView("channel"));
@@ -237,7 +229,6 @@ function RoomWorkspace() {
           onConnectionChange={setConnected}
           onNegotiationPhaseChange={setNegPhase}
           onOpenMemory={openMemory}
-          onOpenEpisode={openEpisode}
           onOpenThread={openThread}
           view={editorView}
           onViewChange={setEditorView}
@@ -282,9 +273,11 @@ function RoomWorkspace() {
         {connected ? "Live" : "Reconnecting…"}
       </span>
       {episodeLabel && (
-        <StatusButton onClick={() => openTab("episodes")} tooltip="View episodes" action="rail.episodes">
-          <span style={{ color: episodeLabel.color }}>{episodeLabel.text}</span>
-        </StatusButton>
+        // A plain, ambient signal that a negotiation is live in the room. Its
+        // old destination (the Episodes rail) is gone, so it no longer clicks.
+        <span className="px-1.5 py-0.5 text-micro font-medium" style={{ color: episodeLabel.color }}>
+          {episodeLabel.text}
+        </span>
       )}
       {openTasks !== null && openTasks > 0 && (
         <span className="px-1.5 tabular">{openTasks} open task{openTasks === 1 ? "" : "s"}</span>
@@ -400,7 +393,6 @@ function RoomWorkspace() {
                   focus={focus}
                   onFocusConsumed={clearFocus}
                   focusMemory={focusMemory}
-                  focusEpisode={focusEpisode}
                 />
               </ResizablePanel>
             </>
@@ -421,7 +413,6 @@ function RoomWorkspace() {
             focus={focus}
             onFocusConsumed={clearFocus}
             focusMemory={focusMemory}
-            focusEpisode={focusEpisode}
             />
           </div>
         )}
