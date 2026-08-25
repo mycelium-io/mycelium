@@ -40,17 +40,48 @@ _MISSING = object()
 # Last-resort stamp for a memory with no recoverable time (see recover_timestamps).
 _EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 
+# The frontmatter key binding a task to its thread: the episode URN of
+# the coordination that happens inside the row. Minted by the backend, never by a
+# caller — a row that could be pointed at someone else's thread by a field write
+# would be a board row claiming a conversation it was never part of.
+EPISODE_META = "episode"
+
 # Frontmatter the store owns. Everything else in a memory's frontmatter is user
 # data: it survives a rewrite, a caller can set it via ``MemoryCreate.meta``, and
 # it is returned as ``MemoryRead.meta``.
 MANAGED_META = frozenset(
-    {"key", "created_by", "updated_by", "version", "created_at", "updated_at", "tags", "value"}
+    {
+        "key",
+        "created_by",
+        "updated_by",
+        "version",
+        "created_at",
+        "updated_at",
+        "tags",
+        "value",
+        EPISODE_META,
+    }
 )
+
+# The managed keys the write path does not recompute: minted once and carried
+# forward verbatim on every later write. Managed, so no caller sets one through
+# ``MemoryCreate.meta``; carried forward, so a write that doesn't supply one
+# keeps what the row has instead of dropping it.
+SYSTEM_META = frozenset({EPISODE_META})
 
 
 def unmanaged_meta(meta: dict[str, Any]) -> dict[str, Any]:
     """The user-owned half of a memory's frontmatter — everything outside MANAGED_META."""
     return {k: v for k, v in meta.items() if k not in MANAGED_META}
+
+
+def system_meta(meta: dict[str, Any]) -> dict[str, Any]:
+    """The system-minted half of a memory's frontmatter, for carrying forward.
+
+    Empty values are dropped rather than carried: a row whose ``episode`` was
+    hand-blanked in the file reads as unbound, not as bound to "".
+    """
+    return {k: v for k, v in meta.items() if k in SYSTEM_META and v not in (None, "")}
 
 
 def get_data_dir() -> Path:

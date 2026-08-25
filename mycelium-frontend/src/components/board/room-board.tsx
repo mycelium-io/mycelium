@@ -29,9 +29,9 @@ import {
 } from "@/lib/room-data";
 import { writeFields, writeAssignment } from "@/lib/api";
 import { assignmentRefusal, reservedIn } from "@/lib/board/assignment";
-import { fieldWriteRefusal, memoryKeyOf } from "@/lib/board/fields";
-import { applyRowAction, ATTENTION_FILTERS, type AttentionFilter, type LiveItem, type RowAction } from "@/lib/board/item";
-import { projectItems } from "@/lib/board/projection";
+import { fieldWriteRefusal, memoryKeyOf, threadRefusal } from "@/lib/board/fields";
+import { applyRowAction, ATTENTION_FILTERS, fieldAsString, type AttentionFilter, type LiveItem, type RowAction } from "@/lib/board/item";
+import { EPISODE_FIELD, projectItems } from "@/lib/board/projection";
 import { attachUpstream } from "@/lib/board/upstream";
 import { localZone, projectActivity } from "@/lib/board/activity";
 import { captureToItem, type ParsedCapture } from "@/lib/board/capture";
@@ -63,6 +63,13 @@ const TZ_KEY = "mycelium.board.tz";
 
 interface Props {
   roomName: string;
+  /**
+   * Open a row's thread. A row and the thread its coordination happens in are
+   * the same object, so this is the row opened rather than a second surface —
+   * and it stays a callback because the pane it opens belongs to the room's
+   * workspace, not to the board.
+   */
+  onOpenThread?: (episode: string) => void;
 }
 
 /**
@@ -73,7 +80,7 @@ interface Props {
  * rows already carry; and the triage, kanban and table are three configs over
  * one pipeline rather than three screens.
  */
-export function RoomBoard({ roomName }: Props) {
+export function RoomBoard({ roomName, onOpenThread }: Props) {
   const { room } = useRoom(roomName);
   const { episodes } = useRoomEpisodes(roomName);
   const { memories } = useRoomMemories(roomName);
@@ -325,6 +332,20 @@ export function RoomBoard({ roomName }: Props) {
         return;
       }
       if (key === "escape") return setSelectedId(null);
+      if (key === "t") {
+        if (!selected) return;
+        e.preventDefault();
+        const episode = fieldAsString(selected, EPISODE_FIELD);
+        // A row with nothing to open says why, in the same terms `board
+        // messages` refuses in — never by opening some other conversation.
+        const refusal = threadRefusal(selected, episode);
+        if (refusal) {
+          setStatusMessage(`${selected.id} has no thread — ${refusal}`);
+          return;
+        }
+        onOpenThread?.(episode as string);
+        return;
+      }
       if (key === "v") {
         const index = MODES.findIndex(m => m.id === view.mode);
         return setMode(MODES[(index + 1) % MODES.length].id);
@@ -349,7 +370,7 @@ export function RoomBoard({ roomName }: Props) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [ordered, selectedId, pick, runRowAction, view.mode, setMode]);
+  }, [ordered, selectedId, pick, runRowAction, view.mode, setMode, onOpenThread]);
 
   const applySaved = (slug: string) => {
     const saved = SAVED_VIEWS.find(s => s.slug === slug);
@@ -409,6 +430,7 @@ export function RoomBoard({ roomName }: Props) {
             now={now}
             selectedId={selectedId}
             onSelect={setSelectedId}
+            onOpenThread={onOpenThread}
             onMove={(item, field, value) => {
               // The "no value" column is not a value: dropping a card there
               // means clear the field, not write the column's own key into it.
@@ -431,6 +453,7 @@ export function RoomBoard({ roomName }: Props) {
                 onSelect={setSelectedId}
                 onVerb={runRowAction}
                 onAnswer={answer}
+                onOpenThread={onOpenThread}
               />
             ) : view.mode === "table" ? (
               <BoardTable
@@ -450,9 +473,10 @@ export function RoomBoard({ roomName }: Props) {
                     sort: { field, dir: v.sort.field === field && v.sort.dir === "asc" ? "desc" : "asc" },
                   }))
                 }
+                onOpenThread={onOpenThread}
               />
             ) : (
-              <BoardTimeline items={flat} now={now} selectedId={selectedId} onSelect={setSelectedId} />
+              <BoardTimeline items={flat} now={now} selectedId={selectedId} onSelect={setSelectedId} onOpenThread={onOpenThread} />
             )}
           </ScrollArea>
         )}
@@ -633,6 +657,7 @@ function BoardFooter({
         <Key k="p" /> promote
         <Key k="x" /> dismiss
         <Key k="n" /> capture
+        <Key k="t" /> thread
       </span>
       <span className="ml-auto flex items-center gap-2 font-mono text-micro">
         {statusMessage && (

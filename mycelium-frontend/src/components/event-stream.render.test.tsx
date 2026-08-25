@@ -11,6 +11,8 @@ import { resetStreamHub } from "@/lib/stream-hub";
 
 vi.mock("@/lib/api", () => ({
   fetchMessages: vi.fn().mockResolvedValue({ messages: [] }),
+  fetchL9History: vi.fn().mockResolvedValue([]),
+  fetchMemories: vi.fn().mockResolvedValue([]),
   fetchRoomAgents: vi.fn().mockResolvedValue([]),
   fetchPendingInvites: vi.fn().mockResolvedValue([]),
   respondToInvite: vi.fn(),
@@ -183,9 +185,9 @@ describe("<EventStream /> live message rendering", () => {
     warn.mockRestore();
   });
 
-  it("opens the episode a coordination notice names when its tag is clicked", async () => {
-    const onOpenEpisode = vi.fn();
-    renderWithSWR(<EventStream roomName="sprint" onOpenEpisode={onOpenEpisode} />);
+  it("opens the episode's thread when a coordination notice's tag is clicked", async () => {
+    const onOpenThread = vi.fn();
+    renderWithSWR(<EventStream roomName="sprint" onOpenThread={onOpenThread} />);
     await act(async () => {});
     const es = FakeEventSource.latest();
 
@@ -211,7 +213,7 @@ describe("<EventStream /> live message rendering", () => {
 
     // The notice names the episode by its short id; the name is the way in.
     await userEvent.click(await screen.findByRole("button", { name: /Open episode e4f1a2/ }));
-    expect(onOpenEpisode).toHaveBeenCalledWith("e4f1a2");
+    expect(onOpenThread).toHaveBeenCalledWith("urn:ioc:mycelium:episode:sprint:e4f1a2");
   });
 
   it("leaves the episode tag inert when nothing is listening for it", async () => {

@@ -4,7 +4,11 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    # Integration branches are in the filter so a change lands checked rather
+    # than only at the point the whole branch merges to main. Same tier, same
+    # jobs — a PR into `epic/x` is a PR, and finding a break in the branch that
+    # collected six of them is the most expensive place to find it.
+    branches: [main, "epic/**"]
 
 # Read-only by default; the timing job asks for `actions: read` on top of this.
 permissions:

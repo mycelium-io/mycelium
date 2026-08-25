@@ -21,7 +21,7 @@ any other change to the room, and a hub operator can read one in a text editor.
 
 Plan tasks are deliberately excluded: ``- [ ] text @handle`` has nowhere to put a
 stamp, and a compiled plan task is the room's commitment rather than an
-in-flight unit — a commitment that decays is not one.
+in-flight task — a commitment that decays is not one.
 
 **Expiry is derived, never written.**  Recording that a lease ran out would need
 a process to be alive at the moment it drained, which is exactly what stopped
@@ -45,9 +45,11 @@ from datetime import UTC, datetime
 from typing import Any
 
 from app.services.filesystem import (
+    EPISODE_META,
     get_room_dir,
     list_memory_files,
     read_memory_file,
+    system_meta,
 )
 
 FIELD = "assignment"
@@ -187,6 +189,31 @@ async def _write(
     return _describe(key, fresh_meta, datetime.now(UTC))
 
 
+async def _raise_notice(
+    room: str, key: str, meta: dict, content: str, subkind: str, by: str
+) -> None:
+    """Tell the room the board moved: a task was claimed, handed back or resolved.
+
+    A custody write is news the timeline should carry, so it raises a notice the
+    same way a thread write raises a ping — through the manager, waking nobody. The
+    episode is the row's own (stable across a custody write, so the pre-write meta
+    has it), and the title is the row's first line, so the notice can name the task
+    and open its thread.
+    """
+    from app.services.room_channels import manager
+
+    episode = system_meta(meta).get(EPISODE_META)
+    first = next((ln.strip() for ln in (content or "").splitlines() if ln.strip()), key)
+    await manager.raise_notice(
+        room,
+        subkind=subkind,
+        key=key,
+        title=first.lstrip("# ").strip(),
+        episode=episode,
+        by=by.lstrip("@"),
+    )
+
+
 async def claim(room: str, key: str, handle: str, ttl_minutes: int, now: datetime) -> dict:
     """Take assignment of a row, for as long as the lease runs.
 
@@ -216,7 +243,9 @@ async def claim(room: str, key: str, handle: str, ttl_minutes: int, now: datetim
         "assignment_note": None,
         "assignment_note_by": None,
     }
-    return await _write(room, key, meta, content, patch, handle)
+    described = await _write(room, key, meta, content, patch, handle)
+    await _raise_notice(room, key, meta, content, "claimed", handle)
+    return described
 
 
 async def release(room: str, key: str, handle: str, note: str | None, now: datetime) -> dict:
@@ -235,7 +264,9 @@ async def release(room: str, key: str, handle: str, note: str | None, now: datet
         "assignment_note": note or "released",
         "assignment_note_by": handle.lstrip("@"),
     }
-    return await _write(room, key, meta, content, patch, handle)
+    described = await _write(room, key, meta, content, patch, handle)
+    await _raise_notice(room, key, meta, content, "released", handle)
+    return described
 
 
 async def resolve(room: str, key: str, handle: str, now: datetime) -> dict:
@@ -248,7 +279,9 @@ async def resolve(room: str, key: str, handle: str, now: datetime) -> dict:
         "assignment_note": f"resolved by @{handle.lstrip('@')}",
         "assignment_note_by": handle.lstrip("@"),
     }
-    return await _write(room, key, meta, content, patch, handle)
+    described = await _write(room, key, meta, content, patch, handle)
+    await _raise_notice(room, key, meta, content, "resolved", handle)
+    return described
 
 
 async def renew(room: str, handle: str, now: datetime) -> list[dict]:

@@ -177,6 +177,12 @@ export interface Memory {
   expandable?: boolean;
   /** Frontmatter the store doesn't own — whatever the writer put there. */
   meta?: Record<string, unknown> | null;
+  /**
+   * The episode URN this row's coordination happens in — what makes a task of
+   * work a thread. Store-owned: minted by the backend, so it is absent from
+   * `meta` and cannot be set by a write.
+   */
+  episode?: string | null;
 }
 
 /** Shape sent to POST /api/rooms/{room}/memory to create or upsert a memory. */
@@ -519,15 +525,30 @@ export interface MessagesResponse {
 const isMessagesResponse = (d: unknown): d is MessagesResponse =>
   !!d && typeof d === "object" && Array.isArray((d as { messages?: unknown }).messages);
 
-export async function fetchMessages(roomName: string, limit?: number): Promise<MessagesResponse> {
-  const url = limit
-    ? `/api/rooms/${roomName}/messages?limit=${limit}`
-    : `/api/rooms/${roomName}/messages`;
-  return apiFetch<MessagesResponse>(url, {
-    cache: "no-store",
-    fallback: { messages: [] },
-    guard: isMessagesResponse,
-  });
+/** Narrow a read to one conversation. Without it the room answers with all of
+ *  them — its own and every thread inside it. */
+export interface MessageQuery {
+  /** An episode URN: a task's thread, or the room's own `live` URN. */
+  episode?: string | null;
+}
+
+export async function fetchMessages(
+  roomName: string,
+  limit?: number,
+  query: MessageQuery = {},
+): Promise<MessagesResponse> {
+  const params = new URLSearchParams();
+  if (limit) params.set("limit", String(limit));
+  if (query.episode) params.set("episode", query.episode);
+  const qs = params.toString();
+  return apiFetch<MessagesResponse>(
+    `/api/rooms/${roomName}/messages${qs ? `?${qs}` : ""}`,
+    {
+      cache: "no-store",
+      fallback: { messages: [] },
+      guard: isMessagesResponse,
+    },
+  );
 }
 
 /** The room's L9 wire history (transcript replay), for backfilling the live
@@ -546,7 +567,13 @@ export async function fetchL9History(
 
 export async function sendRoomMessage(
   roomName: string,
-  data: { sender_handle: string; content: string; message_type?: string },
+  data: {
+    sender_handle: string;
+    content: string;
+    message_type?: string;
+    /** The thread this lands in. Omitted, it lands in the room itself. */
+    episode?: string | null;
+  },
 ): Promise<RoomMessage> {
   return apiFetch<RoomMessage>(`/api/rooms/${roomName}/messages`, {
     method: "POST",

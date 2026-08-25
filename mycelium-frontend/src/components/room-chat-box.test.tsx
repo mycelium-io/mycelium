@@ -125,3 +125,37 @@ describe("<RoomChatBox /> composer triggers", () => {
     });
   });
 });
+
+describe("<RoomChatBox /> targeting", () => {
+  beforeEach(() => {
+    sendRoomMessage.mockClear();
+  });
+
+  it("writes to the room when no thread is named", async () => {
+    renderWithSWR(<RoomChatBox roomName="demo" />);
+    const box = await textarea();
+    await userEvent.type(box, "morning{Enter}");
+    await waitFor(() => expect(sendRoomMessage).toHaveBeenCalled());
+    expect(sendRoomMessage.mock.calls[0][1]).toMatchObject({ content: "morning", episode: null });
+  });
+
+  it("writes into the thread it was pointed at", async () => {
+    const episode = "urn:ioc:mycelium:episode:demo:t3aa11bb";
+    renderWithSWR(<RoomChatBox roomName="demo" episode={episode} threadLabel="flip reads" />);
+    // Where it lands is the one thing the composer must not be coy about: the
+    // same box writes both places, and the difference is whether an argument
+    // stays inside a task or becomes the room's.
+    const box = await screen.findByPlaceholderText(/Reply in flip reads/);
+    await userEvent.type(box, "gating on the lag alarm{Enter}");
+    await waitFor(() => expect(sendRoomMessage).toHaveBeenCalled());
+    expect(sendRoomMessage.mock.calls[0][1]).toMatchObject({
+      content: "gating on the lag alarm",
+      episode,
+    });
+  });
+
+  it("still says it is a thread when nothing named it", async () => {
+    renderWithSWR(<RoomChatBox roomName="demo" episode="urn:ioc:mycelium:episode:demo:t9" />);
+    expect(await screen.findByPlaceholderText(/Reply in this thread/)).toBeInTheDocument();
+  });
+});

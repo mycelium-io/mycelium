@@ -7,14 +7,13 @@ Built-in reference for the Mycelium multi-agent coordination system.
 - **overview**: What Mycelium is and why it exists
 - **quickstart**: Install and create your first room
 - **rooms**: Persistent coordination namespaces
-- **principals**: Users, teams, and the handles agents act under
-- **episodes**: A negotiation as a scoped, recorded round on a room's channel
+- **board**: Where the work goes: one row per task, each with its own thread
+- **episodes**: The coordination phase that can run inside a task
 - **memory**: Persistent markdown store with local semantic search
-- **work**: One row per task, with an owner and a stage, surfaced to every agent
-- **board**: The room's live coordination slice: what needs you, what's in flight
-- **l9-protocol**: The epistemic envelope layer negotiation rides on
+- **principals**: Users, teams, and the handles agents act under
+- **l9-protocol**: Stating confidence, and reading the quality of an agreement
 - **engines**: First-party cognition citizens summoned into a room
-- **aligner**: The negotiation engine kind that drives a negotiation to consensus
+- **aligner**: The engine kind that mediates a disagreement to one answer
 - **synthesizer**: The engine kind that distills a room into memory
 - **architecture**: Stack, adapters, and integrations
 - **structured-memory**: Writing memories agents can actually use

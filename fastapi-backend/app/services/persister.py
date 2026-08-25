@@ -293,6 +293,54 @@ class DeliveryLog:
         self._cursors[handle] = len(self._records)
 
 
+class EpisodeCursors:
+    """Per-``(handle, episode)`` delivery positions over the same transcript.
+
+    A room has one ordered transcript; a thread is a *tag* on records inside it,
+    not a second log. So a thread cursor is an index into that same list — the
+    count of leading records this handle has already been served **for that
+    thread** — and reading a thread costs no second store.
+
+    Deliberately *not* the room-wide cursor of :class:`DeliveryLog`. Scoping an
+    ``await`` to a thread must not consume the handle's room inbox: an agent that
+    watches one task still has every mention made to it in the room waiting when
+    it looks. The two positions move independently, and both persist.
+
+    A handle with no position on a thread starts at its **room-wide** one, so the
+    fork happens where it is standing: the ``@``-mention that pulled it into the
+    thread anchored that cursor (:meth:`DeliveryLog.record`) and is therefore
+    still ahead of it, while everything it had already consumed stays consumed.
+    """
+
+    def __init__(self, cursors: dict[str, dict[str, int]] | None = None) -> None:
+        self._by_episode: dict[str, dict[str, int]] = {
+            str(episode): {str(h): int(pos) for h, pos in positions.items()}
+            for episode, positions in (cursors or {}).items()
+        }
+
+    @property
+    def snapshot(self) -> dict[str, dict[str, int]]:
+        """A copy for persistence, keyed episode -> handle -> position."""
+        return {episode: dict(positions) for episode, positions in self._by_episode.items()}
+
+    def position(self, handle: str, episode: str, *, default: int) -> int:
+        """``handle``'s position on ``episode``, clamped to ``default`` on a first read."""
+        return self._by_episode.get(episode, {}).get(handle, default)
+
+    def advance(self, handle: str, episode: str, pos: int, *, limit: int) -> None:
+        """Move the position forward to ``pos`` (clamped to ``limit``, never backward)."""
+        clamped = max(0, min(int(pos), limit))
+        positions = self._by_episode.setdefault(episode, {})
+        if clamped > positions.get(handle, -1):
+            positions[handle] = clamped
+
+
+def record_episode(record: TranscriptRecord) -> str | None:
+    """The episode URN a transcript record rode under, if it carries one."""
+    episode = record.content.get("l9", {}).get("header", {}).get("message", {}).get("episode")
+    return episode if isinstance(episode, str) and episode else None
+
+
 def record_from(
     envelope: L9, content: dict[str, Any], *, now: str | None = None
 ) -> TranscriptRecord:
@@ -685,6 +733,43 @@ def write_cursors(room: str, cursors: dict[str, int]) -> None:
         logger.exception("delivery-cursor write failed for room %s", room)
 
 
+# Thread cursors persist in their own file rather than namespaced into the
+# room-wide one: ``load_cursors`` feeds ``DeliveryLog``, which reads every key it
+# is handed as a handle, and a composite key there would show up as a phantom
+# member in ``knows``/``undelivered``.
+def _episode_cursors_path(room: str) -> Path:
+    from app.services.filesystem import get_room_dir
+
+    return get_room_dir(room) / "log" / ".thread-cursors.json"
+
+
+def load_episode_cursors(room: str) -> dict[str, dict[str, int]]:
+    """Read a room's persisted per-thread delivery positions (empty when none)."""
+    path = _episode_cursors_path(room)
+    try:
+        if path.exists():
+            data = json.loads(path.read_text())
+            if isinstance(data, dict):
+                return {
+                    str(episode): {str(h): int(pos) for h, pos in positions.items()}
+                    for episode, positions in data.items()
+                    if isinstance(positions, dict)
+                }
+    except (OSError, ValueError, TypeError):
+        logger.warning("could not load thread cursors for room %s; starting empty", room)
+    return {}
+
+
+def write_episode_cursors(room: str, cursors: dict[str, dict[str, int]]) -> None:
+    """Persist a room's per-thread delivery positions (best-effort)."""
+    try:
+        path = _episode_cursors_path(room)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(cursors))
+    except Exception:
+        logger.exception("thread-cursor write failed for room %s", room)
+
+
 # ── The receive loop ─────────────────────────────────────────────────────────
 
 SummonHook = Callable[[str, "L9", list[str], str], None]
@@ -754,7 +839,7 @@ def _default_summon_hook(
 
 
 def _default_converged_hook(envelope: L9) -> None:
-    # Log-only default for a persister with no plan-sync consumer wired (unit
+    # Log-only default for a persister with no plan-sync consumer wired (task
     # tests / a bare backend).
     logger.info(
         "converged hook (unwired): commit:converged on episode %s; no plan-sync consumer",
@@ -795,6 +880,10 @@ class RoomPersister:
         # delivery position — so a member that was offline at shutdown is still
         # recognised as a reconnect and re-served exactly its missed tail.
         self.log = DeliveryLog(load_transcript(room), cursors=load_cursors(room))
+        # The same resume, for a thread-scoped ``await``: a per-(handle, thread)
+        # position over the transcript above, so waking on one task never
+        # re-serves what it already served across a restart.
+        self.episode_cursors = EpisodeCursors(load_episode_cursors(room))
         # handle -> most recent inbound MessageContext, for targeted re-serve.
         self._contexts: dict[str, slim_bindings.MessageContext] = {}
         # Message ids ingested this process lifetime, so a message the backend
@@ -824,6 +913,19 @@ class RoomPersister:
     def _persist_cursors(self) -> None:
         """Snapshot the delivery cursors to disk (best-effort, per mutation)."""
         write_cursors(self.room, self.log.cursors)
+
+    def _persist_episode_cursors(self) -> None:
+        """Snapshot the per-thread delivery positions to disk (best-effort)."""
+        write_episode_cursors(self.room, self.episode_cursors.snapshot)
+
+    def episode_position(self, handle: str, episode: str) -> int:
+        """``handle``'s delivery position on ``episode``, forked off its room one."""
+        return self.episode_cursors.position(handle, episode, default=self.log.position(handle))
+
+    def advance_episode_cursor(self, handle: str, episode: str, pos: int) -> None:
+        """Advance ``handle``'s durable position on ``episode`` and persist it."""
+        self.episode_cursors.advance(handle, episode, pos, limit=len(self.log.records))
+        self._persist_episode_cursors()
 
     def advance_cursor(self, handle: str, pos: int) -> None:
         """Advance ``handle``'s durable delivery cursor to ``pos`` and persist it.

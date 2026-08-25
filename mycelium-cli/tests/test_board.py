@@ -48,6 +48,19 @@ class TestVocabularyContract:
     def test_live_namespaces_match_the_contract(self):
         assert CONTRACT["live_namespaces"] == model.LIVE_NAMESPACES
 
+    def test_folds_a_thread_under_exactly_the_contracted_field_names(self):
+        task_contract = CONTRACT["task"]
+        assert task_contract["binding_field"] == model.EPISODE_FIELD
+        assert task_contract["thread_fields"] == model.THREAD_FIELDS
+        assert task_contract["thread_states"] == model.THREAD_STATES
+        assert task_contract["task_fields"] == model.TASK_FIELDS
+
+    def test_a_thread_never_writes_one_of_the_unit_s_own_axes(self):
+        # The container-outlives-the-negotiation rule, asserted as a
+        # disjointness rather than promised in a comment.
+        task_contract = CONTRACT["task"]
+        assert not set(task_contract["thread_fields"]) & set(task_contract["task_fields"])
+
     def test_infers_the_type_the_contract_names_for_every_case(self):
         """The same table the GUI suite runs. These two classifiers drifted once,
         so neither may answer differently about the same frontmatter again."""
@@ -216,6 +229,93 @@ class TestProjection:
         row = next(r for r in self.project(episodes=episodes) if r.id.startswith("episode:"))
         assert row.kind == "decision"
         assert row.title.startswith("atlas migration: negotiating")
+
+
+URN = "urn:ioc:mycelium:episode:atlas:e4f1a2"
+
+EPISODE = {
+    "short_id": "e4f1a2",
+    "episode": URN,
+    "topic": "urn:concept:mycelium:atlas",
+    "outcome": "converged",
+    "subkind": "converged",
+    "participants": ["growth", "risk"],
+    "message_count": 7,
+    "updated_at": "2026-08-22T10:00:00Z",
+}
+
+
+def task(**extra) -> dict:
+    return {
+        "key": "work/cutover",
+        "value": "run the cutover",
+        "updated_at": "2026-08-22T10:00:00Z",
+        "updated_by": "aligner",
+        "episode": URN,
+        "meta": {"kind": "action", "status": "open", **extra},
+    }
+
+
+class TestUnitOfWork:
+    """A task is one row, and it is a thread.
+
+    The GUI runs the same six cases over its own projection; neither surface may
+    start drawing a task and its thread as two rows without the other.
+    """
+
+    def project(self, episodes: list[dict], memories: list[dict]) -> list[LiveItem]:
+        return project_items(episodes=episodes, memories=memories, agents=[], members=[], now=NOW)
+
+    def test_folds_a_bound_episode_into_the_row_instead_of_a_second_one(self):
+        rows = self.project([EPISODE], [task()])
+        assert [r.id for r in rows] == ["memory:work/cutover"]
+        assert rows[0].fields["episode"] == URN
+        assert rows[0].fields["thread"] == "e4f1a2"
+        assert rows[0].fields["thread_state"] == "converged"
+        assert rows[0].fields["participants"] == ["growth", "risk"]
+        assert rows[0].fields["rounds"] == 7
+
+    def test_a_closing_thread_leaves_the_unit_s_own_axes_alone(self):
+        # The container outlives the negotiation. A converged episode is a fact
+        # about the conversation, not a claim that the work is done or that
+        # anyone is holding it.
+        held = {
+            "assignment": "held",
+            "owner": "@growth",
+            "claimed_at": "2026-08-22T11:55:00Z",
+            "ttl_minutes": 30,
+        }
+        row = self.project([EPISODE], [task(**held)])[0]
+        assert row.status == "open"
+        assert row.owner == "growth"
+        assert assignment.assignment_of(row, NOW) == "held"
+
+    def test_an_orphaned_episode_keeps_a_row_of_its_own(self):
+        # A recorded negotiation nobody compiled into work is still something
+        # the room did, so it is surfaced rather than hidden or deleted.
+        rows = self.project([EPISODE], [])
+        assert [r.id for r in rows] == ["episode:e4f1a2"]
+        assert rows[0].fields["episode"] == URN
+
+    def test_every_row_compiled_out_of_one_negotiation_carries_it(self):
+        second = {**task(), "key": "work/soak"}
+        rows = self.project([EPISODE], [task(), second])
+        assert [r.id for r in rows] == ["memory:work/cutover", "memory:work/soak"]
+        assert all(r.fields["thread_state"] == "converged" for r in rows)
+
+    def test_a_unit_no_thread_has_run_in_says_nothing_it_does_not_know(self):
+        # The inversion: a task is created board-first and worked with no episode
+        # ever opened. It carries its binding and claims no thread state.
+        row = self.project([], [task()])[0]
+        assert row.fields["episode"] == URN
+        assert row.fields["thread"] == "e4f1a2"
+        assert "thread_state" not in row.fields
+        assert "rounds" not in row.fields
+
+    def test_a_row_with_no_binding_is_left_alone(self):
+        row = self.project([], [{**task(), "episode": None}])[0]
+        assert "episode" not in row.fields
+        assert "thread" not in row.fields
 
 
 class TestSchema:

@@ -5,7 +5,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronLeft, Pencil, Eye } from "lucide-react";
 import {
   fetchMemory,
@@ -14,9 +14,13 @@ import {
 } from "@/lib/api";
 import { useRoomMemoryIntegrity, useRoomRevalidate } from "@/lib/room-data";
 import { memoryHref } from "@/lib/memory-routes";
+import { isLiveEpisode } from "@/lib/threads";
 import { MemoryDetail } from "@/components/memory-detail";
 import { MemoryEditor } from "@/components/memory-editor";
+import { RoomChatBox } from "@/components/room-chat-box";
+import { TaskConversation } from "@/components/task/task-conversation";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip } from "@/components/ui/tooltip";
 import { useCurrentUser } from "@/components/current-user";
 import { useUnsavedGuard } from "@/components/unsaved-changes";
 
@@ -61,6 +65,13 @@ export function MemoryPageView({ roomName, memoryKey }: Props) {
     [router, roomName],
   );
 
+  // The thread conversation owns its own read; it hands us its refresh so the
+  // page composer's send can re-read the episode.
+  const threadRefresh = useRef<(() => void) | null>(null);
+  const onThreadReady = useCallback((refresh: () => void) => {
+    threadRefresh.current = refresh;
+  }, []);
+
   if (memory === undefined) {
     return (
       <div className="mx-auto max-w-3xl px-6 py-10 space-y-4">
@@ -90,7 +101,10 @@ export function MemoryPageView({ roomName, memoryKey }: Props) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-      <header className="sticky top-0 z-10 border-b border-border bg-surface/90 px-6 py-3 backdrop-blur-sm md:px-8">
+      {/* The same header aesthetic as the split pane the full-screen button
+          arrives from: a clean bar over paper, and an icon edit toggle rather
+          than a bordered pill, so the page reads as the same task opened larger. */}
+      <header className="sticky top-0 z-10 border-b border-border bg-paper px-6 py-3 backdrop-blur-sm md:px-8">
         <Link
           href={`/room/${encodeURIComponent(roomName)}`}
           className="mb-2 inline-flex items-center gap-1 text-micro text-muted-foreground transition-colors hover:text-accent"
@@ -99,7 +113,7 @@ export function MemoryPageView({ roomName, memoryKey }: Props) {
           {roomName}
         </Link>
         <div className="flex items-center gap-3">
-          <h1 className="flex-1 font-mono text-ui font-semibold text-text break-all">
+          <h1 className="min-w-0 flex-1 truncate font-mono text-ui font-semibold text-text">
             {crumbs.map((part, i) => (
               <span key={i}>
                 {i > 0 && <span className="text-faint">/</span>}
@@ -107,16 +121,18 @@ export function MemoryPageView({ roomName, memoryKey }: Props) {
               </span>
             ))}
           </h1>
-          <button
-            type="button"
-            onClick={() =>
-              isEditing ? guard(() => setIsEditing(false)) : setIsEditing(true)
-            }
-            className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-micro font-medium text-accent transition-colors hover:bg-hairline"
-          >
-            {isEditing ? <Eye className="size-3.5" /> : <Pencil className="size-3.5" />}
-            {isEditing ? "View" : "Edit"}
-          </button>
+          <Tooltip content={isEditing ? "View" : "Edit"}>
+            <button
+              type="button"
+              onClick={() =>
+                isEditing ? guard(() => setIsEditing(false)) : setIsEditing(true)
+              }
+              aria-label={isEditing ? "View" : "Edit"}
+              className="grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
+            >
+              {isEditing ? <Eye className="size-4" strokeWidth={1.9} /> : <Pencil className="size-4" strokeWidth={1.9} />}
+            </button>
+          </Tooltip>
         </div>
       </header>
 
@@ -151,6 +167,29 @@ export function MemoryPageView({ roomName, memoryKey }: Props) {
             renderedBody={renderedBody}
             integrity={integrity}
           />
+        )}
+
+        {/* The task's discussion, below its body — the full-page equivalent of
+            the thread pane's conversation. Only a real thread has one: a row
+            written before threading carries the room's own live episode (or
+            none), and reading that as a thread would empty the room's history. */}
+        {!isEditing && memory.episode && !isLiveEpisode(roomName, memory.episode) && (
+          <section className="mt-8 flex min-h-0 flex-col px-6 md:px-8">
+            <h2 className="mb-2 text-micro uppercase tracking-wide text-faint">Discussion</h2>
+            <div className="flex min-h-[16rem] flex-col rounded-xl border border-border bg-surface">
+              <TaskConversation
+                roomName={roomName}
+                episode={memory.episode}
+                onOpenMemory={onNavigate}
+                onReady={onThreadReady}
+              />
+              <RoomChatBox
+                roomName={roomName}
+                episode={memory.episode}
+                onSent={() => threadRefresh.current?.()}
+              />
+            </div>
+          </section>
         )}
       </div>
 

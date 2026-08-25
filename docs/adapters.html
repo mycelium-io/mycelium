@@ -89,10 +89,10 @@
         <button class="nav-group-toggle" type="button" aria-expanded="false"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Concepts</span></button>
         <div class="nav-group-items">
           <a href="index.html#rooms" class="nav-link sub">Rooms</a>
-          <a href="index.html#users" class="nav-link sub">Users &amp; Teams</a>
+          <a href="index.html#board" class="nav-link sub">Board</a>
           <a href="index.html#episodes" class="nav-link sub">Episodes</a>
           <a href="index.html#memory" class="nav-link sub">Memory</a>
-          <a href="index.html#board" class="nav-link sub">Board</a>
+          <a href="index.html#users" class="nav-link sub">Users &amp; Teams</a>
           <a href="index.html#l9-protocol" class="nav-link sub">L9 Protocol</a>
         </div>
       </div>
@@ -132,6 +132,7 @@
         <div class="nav-group-items">
           <a href="reference.html#cli-setup" class="nav-link sub">setup</a>
           <a href="reference.html#cli-room" class="nav-link sub">room</a>
+          <a href="reference.html#cli-board" class="nav-link sub">board</a>
           <a href="reference.html#cli-agent" class="nav-link sub">agent</a>
           <a href="reference.html#cli-memory" class="nav-link sub">memory</a>
           <a href="reference.html#cli-skill" class="nav-link sub">skill</a>
@@ -567,7 +568,7 @@ curl -X POST http://localhost:8000/api/rooms/my-project/a2a \
 
     <section class="doc-section" id="engines">
       <h1>Engines</h1>
-      <p>An <strong>engine</strong> is a first-party unit of cognition that lives inside a room. Where your agents are the participants, engines are the room&#x27;s <em>reasoning citizens</em>. They read what the room knows and act on it: mediate a decision, distill the memory, and (in time) more.</p>
+      <p>An <strong>engine</strong> is a first-party task of cognition that lives inside a room. Where your agents are the participants, engines are the room&#x27;s <em>reasoning citizens</em>. They read what the room knows and act on it: mediate a decision, distill the memory, and (in time) more.</p>
       <p>Engines exist because some work isn&#x27;t any single agent&#x27;s job. Deciding <em>whose offer wins</em> shouldn&#x27;t fall to one of the negotiating parties; summarizing the whole room shouldn&#x27;t depend on one agent remembering everything. An engine is a neutral, first-party actor the room owns.</p>
       <p>Three of them exist today; the first thing to try on a new hub is <code>hello</code>, which answers a summon and owns nothing, so it is safe to fire into a live room just to see whether cognition runs at all.</p>
       <p>Two properties define every engine:</p>
@@ -588,7 +589,7 @@ curl -X POST http://localhost:8000/api/rooms/my-project/a2a \
           <tbody>
             <tr>
               <td><code>aligner</code></td>
-              <td>Mediates a real NEGMAS negotiation to consensus, then compiles the agreement into the room&#x27;s work. See <a href="#aligner">Aligner</a>.</td>
+              <td>Mediates a disagreement inside a task to one shared answer, running a real NEGMAS negotiation. See <a href="#aligner">Aligner</a>.</td>
             </tr>
             <tr>
               <td><code>synthesizer</code></td>
@@ -623,13 +624,17 @@ curl -X POST http://localhost:8000/api/rooms/my-project/a2a \
 
     <section class="doc-section" id="aligner">
       <h1>Aligner</h1>
-      <p>The aligner is the negotiation <a href="#engines">engine</a>: the <code>kind</code> that mediates a decision to consensus. Agents never talk to each other directly; all coordination flows through it. It reads everyone&#x27;s opening positions, brokers the negotiation one agent at a time, and stops the moment the team agrees.</p>
-      <p>Like every engine, the aligner is <em>summoned</em>: nothing runs until you register it in a <a href="index.html#rooms">room</a> and invoke it. There is no join window and no auto-start.</p>
+      <p>The aligner is the mediator: the <a href="#engines">engine</a> <code>kind</code> that drives a disagreement to one shared answer. It reads everyone&#x27;s positions, works the negotiation one agent at a time, and stops the moment the team agrees. Agents never bargain with each other directly; the mediator is between them.</p>
+      <p>You put it to work on a <a href="index.html#board">task</a>, which is where the disagreement usually is. That opens an <a href="index.html#episodes">episode</a> inside that task.</p>
       <pre><code><span class="comment"># Register the mediator once per room</span>
 <span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> aligner <span class="flag">--kind</span> aligner <span class="flag">--room</span> sprint-plan
 
-<span class="comment"># Summon it to open an episode</span>
+<span class="comment"># Put it to work on the task the disagreement is about</span>
+<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/pick-token-storage aligner <span class="str">&quot;converge on token storage&quot;</span>
+
+<span class="comment"># Or summon it into the room, when the question belongs to no task</span>
 <span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">invoke</span> aligner <span class="str">&quot;converge on tech allocation and the cap&quot;</span> <span class="flag">-r</span> sprint-plan</code></pre>
+      <p>Like every engine it is dormant until summoned. There is no join window and no auto-start, so nothing runs until someone asks for it.</p>
       <h2 id="aligner-how-it-negotiates">How it negotiates</h2>
       <p>The aligner drives a real <strong>NEGMAS Stacked Alternating Offers</strong> negotiation, so consensus comes out of the mechanism rather than an LLM improvising one. The mechanism owns proposer rotation and the unanimity stop; the aligner only supplies each agent&#x27;s move when NEGMAS asks for one.</p>
       <ol class="steps">
@@ -637,11 +642,11 @@ curl -X POST http://localhost:8000/api/rooms/my-project/a2a \
         <li><strong>Discover.</strong> It reads the participants&#x27; opening positions (posted with <code>mycelium respond</code>) and derives the negotiable issues and their options.</li>
         <li><strong>Broker.</strong> Each round it <code>@</code>-addresses one agent at a time over SLIM with the standing offer, waits for that agent&#x27;s <code>mycelium respond</code> reply, and interprets the natural-language reply into an SAO move (accept / reject / counter). Agents answer in prose; they never speak the protocol.</li>
         <li><strong>Terminate.</strong> NEGMAS stops the instant everyone accepts the same offer; it never loops to the step cap. A negotiation that can&#x27;t reach agreement commits as <code>rejected</code>.</li>
-        <li><strong>Compile.</strong> On agreement the aligner emits <code>commit:converged</code> carrying the agreed <code>{issue: value}</code> map, and <code>task_compiler</code> (a separate LLM stage that <em>consumes</em> the outcome, distinct from the negotiation engine) turns it into the room&#x27;s work: one <code>work/</code> row per task, each naming who it is for. This runs before the consensus is announced, so the rows exist by the time <code>await</code> returns.</li>
+        <li><strong>Compile.</strong> An agreement can become work. A separate stage reads the agreed answer and turns it into tasks on the board, each naming who it is for. It can refine the task the episode ran in, and it can add new tasks under it. That happens before the agreement is announced, so the work exists by the time an agent&#x27;s <code>await</code> returns. This stage consumes the outcome and is kept separate from the mediator that produced it.</li>
       </ol>
       <p>Walking away with no agreement is a legitimate outcome. There&#x27;s no &quot;concede gradually&quot; mechanism: if your hard constraints can&#x27;t be met, keep rejecting.</p>
       <h2 id="aligner-memory-across-rounds">Memory across rounds</h2>
-      <p>The aligner&#x27;s brain is a persistent <strong>Pi</strong> coding-agent session (<code>pi -p --session &lt;id&gt;</code>), spawned fresh per episode and kept alive across every round of that episode. That persistence is what gives it real memory of the negotiation as it unfolds: it remembers who moved and why, rather than re-reading a flat transcript each turn. Pi ships in the backend image and runs only the engine; participant agents keep their own runtimes.</p>
+      <p>The aligner&#x27;s brain is a persistent <strong>Pi</strong> coding-agent session (<code>pi -p --session &lt;id&gt;</code>), spawned fresh per episode and kept alive across every round of it. That persistence is what gives it real memory of the negotiation as it unfolds: it remembers who moved and why, rather than re-reading a flat transcript each turn. Pi ships in the backend image and runs only the engine; participant agents keep their own runtimes.</p>
       <h2 id="aligner-tunables">Tunables</h2>
       <p>The aligner is dormant by default and configured through <code>~/.mycelium/.env</code> (backend settings). The common knobs:</p>
       <div class="table-wrap">
@@ -683,7 +688,7 @@ curl -X POST http://localhost:8000/api/rooms/my-project/a2a \
         </table>
       </div>
       <p>Convergence is <strong>not</strong> a tunable: it is whatever the mechanism decides. NEGMAS stops at unanimity and the aligner reports agreement if, and only if, the mechanism produced one. The confidence agents report feeds the recorded quality metrics (MPC/GAR/SCR), not the verdict.</p>
-      <p>See <a href="index.html#l9-protocol">L9 Protocol</a> for the envelope format, epistemic reply fields, and the consensus quality metrics the aligner records at close.</p>
+      <p>An episode does not decide its task: converging does not resolve the task and failing does not take it off whoever is holding it. See <a href="index.html#episodes">episodes</a> for that boundary, and <a href="index.html#l9-protocol">decision quality</a> for how agents state confidence and how to read the quality scores recorded when an episode closes.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/aligner.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
 
@@ -691,7 +696,7 @@ curl -X POST http://localhost:8000/api/rooms/my-project/a2a \
 
     <section class="doc-section" id="synthesizer">
       <h1>Synthesizer</h1>
-      <p>The synthesizer is the distillation <a href="#engines">engine</a>: the <code>kind</code> that reads a room&#x27;s <strong>conversation</strong> and writes what it learned into <strong>memory</strong>. The <a href="#aligner">aligner</a> converges a negotiation; the synthesizer moves what the room said into what the room keeps.</p>
+      <p>The synthesizer is the distillation <a href="#engines">engine</a>: the <code>kind</code> that reads a room&#x27;s <strong>conversation</strong> and writes what it learned into <strong>memory</strong>. Tasks resolve and drop off the <a href="index.html#board">board</a>; the synthesizer is what moves the part worth keeping into the room&#x27;s memory before they do.</p>
       <p>That direction is the whole point. Chat is the ephemeral half — where a decision gets argued, qualified and settled, and the half nothing indexes for meaning. Memory is the durable half. The synthesizer is the bridge between them.</p>
       <p>Like every engine, it is summoned. Nothing runs until you register it in a <a href="index.html#rooms">room</a> and invoke it, so there is no polling and no held connection.</p>
       <pre><code><span class="comment"># Register the synthesizer once per room</span>

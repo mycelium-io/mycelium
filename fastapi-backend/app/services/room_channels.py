@@ -8,11 +8,12 @@ Creating/opening a room **provisions a SLIM group channel**, and the always-on
 backend is its **moderator** — it creates the group session and invites members
 as they join. This registry holds one long-lived moderator session per room,
 tracks membership (SLIM's built-in presence), and enforces the episode↔channel
-lifecycle (a mid-episode membership change aborts the episode; the channel is
+lifecycle (a membership change mid-*negotiation* aborts that negotiation; the
+channel, and any task the negotiation was happening inside, are
 untouched).
 
 Everything here is **best-effort**. When no node is reachable (or no wheel is
-installed), the calls degrade to no-ops so room CRUD and the unit suite stay
+installed), the calls degrade to no-ops so room CRUD and the task suite stay
 green without a live fabric — the sole failure mode is "no SLIM channel," never
 "room create failed." A node-reachability pre-flight keeps the no-node path fast.
 
@@ -46,7 +47,14 @@ from app.services.l9_slim import (
     build_episode_abort_envelope,
     serialize_content,
 )
-from app.services.persister import ConvergedHook, RoomPersister, SummonHook, parse_mentions
+from app.services.persister import (
+    ConvergedHook,
+    RoomPersister,
+    SummonHook,
+    l9_bus_frame,
+    parse_mentions,
+    record_from,
+)
 from app.services.slim_client import (
     SlimClient,
     SlimIdentity,
@@ -742,6 +750,7 @@ class RoomChannelManager:
         text: str,
         subkind: str | None = None,
         parents: list[str] | None = None,
+        episode: str | None = None,
     ) -> HumanPublishResult | None:
         """Publish a human's message onto the room channel as their proxy.
 
@@ -754,6 +763,14 @@ class RoomChannelManager:
         ``subkind``/``parents`` carry an ``amend`` revising an earlier message —
         the same publish in every other respect, since a revision is a message
         the room hears like any other (mentions and the consent gate included).
+
+        ``episode`` names the **thread** the message lands in; without one it
+        lands in the room itself. A thread is a tag over this same channel, so a
+        threaded message is broadcast and recorded exactly like any other — what
+        changes is only that it does not clutter the room. The :meth:`raise_ping`
+        that surfaces it there is the *caller's*: this publish is one of several
+        ways a message reaches a thread, and a ping raised from inside it would
+        be silently skipped by every other one.
 
         The published message is ingested locally via the persister so the
         transcript and UI bus see it exactly once, independent of whether SLIM
@@ -770,7 +787,7 @@ class RoomChannelManager:
         envelope = l9.build_envelope(
             kind=Kind.exchange,
             subkind=subkind,
-            episode=l9.episode_urn(room, "live"),
+            episode=episode or l9.live_episode_urn(room),
             parents=parents,
             sender=sender,
             sender_role="human",
@@ -806,10 +823,12 @@ class RoomChannelManager:
             if handle in present or handle == BACKEND_AGENT:
                 continue
             if _is_own_registered_agent(room, handle):
-                if managed.lifecycle.active:
-                    # Inviting a new member mid-episode would abort it (L9's
+                if managed.lifecycle.frozen:
+                    # Inviting a new member mid-negotiation would abort it (L9's
                     # stable-membership rule), so queue like a consent accept —
                     # flush_queued_invites applies it once the episode closes.
+                    # Gated on ``frozen``, not ``active``: a task's thread
+                    # is an episode too, and it must not hold invites hostage.
                     queued = self._invites.request(
                         room, handle, requested_by=sender, trigger_text=text
                     )
@@ -825,6 +844,114 @@ class RoomChannelManager:
         return HumanPublishResult(
             mentioned=mentioned, recipients=recipients, invites=invites, message_id=message_id
         )
+
+    async def raise_ping(
+        self,
+        room: str,
+        *,
+        episode: str | None,
+        sender: str,
+        message_id: str | None,
+    ) -> str | None:
+        """Raise a thread's activity into ``live`` as a **ping**, and nothing more.
+
+        The room stays legible because a thread absorbs its own noise: what
+        surfaces is that a task moved, not what was said in it. So the ping
+        carries no text — only the thread it is about, who wrote, and the id of
+        the message, which is enough for a reader to open the thread and no use
+        to anyone trying to read it without.
+
+        Two properties it must hold, both structural rather than a convention a
+        later caller has to remember:
+
+        *It wakes nobody.* The ping is addressed to no one and rides a ``ping``
+        payload, which :func:`app.routes.participate._addressed_to` excludes the
+        same way it excludes presence — so a resident agent's ``await`` consumes
+        it silently instead of spending a turn on it.
+
+        *It does not go out on the wire.* This is the aligner's
+        record-locally-don't-broadcast seam: ``ingest_local`` alone, so the ping
+        lands in the transcript and on the SSE bus for the GUI without being
+        published to the group. Nothing on the channel has to filter it out.
+
+        Returns the ping's message id, or ``None`` when there is nothing to
+        announce — a message in the room itself, which *is* the room.
+        """
+        if episode is None or l9.is_live_episode(room, episode):
+            return None
+        ping = l9.build_envelope(
+            kind=Kind.exchange,
+            episode=l9.live_episode_urn(room),
+            sender=l9.SYSTEM_ACTOR_ID,
+            sender_role=l9.SYSTEM_ACTOR_ROLE,
+            topic=l9.topic_urn(room),
+            payload_type=l9.PING_PAYLOAD_TYPE,
+            payload_data={
+                "episode": episode,
+                "sender": sender,
+                **({"message": message_id} if message_id else {}),
+            },
+        )
+        content = serialize_content(ping)
+        managed = self._channels.get(room)
+        if managed is not None and managed.persister is not None:
+            managed.persister.ingest_local(ping, content, list_write=False)
+        else:
+            # No channel means no transcript to raise into — and the message this
+            # announces reached only the bus for the same reason. So the ping
+            # matches its reach rather than vanishing: the exact frame the
+            # persister would have pushed, built by the same projection, so a
+            # client decodes it identically either way.
+            from app.bus import bus, room_channel
+
+            bus.publish(room_channel(room), l9_bus_frame(room, record_from(ping, content)))
+        return ping.header.message.id if ping.header.message else None
+
+    async def raise_notice(
+        self,
+        room: str,
+        *,
+        subkind: str,
+        key: str,
+        title: str | None = None,
+        episode: str | None = None,
+        by: str | None = None,
+        **extra: str | None,
+    ) -> None:
+        """Raise a **notice** into ``live``: the room's timeline of board events.
+
+        The sibling of :meth:`raise_ping`, and it holds the same two structural
+        properties — it wakes nobody (a ``notice`` payload, which
+        :func:`app.routes.participate._addressed_to` excludes) and it does not go
+        out on the wire (``ingest_local`` alone) — so a task filed, claimed,
+        handed back or resolved reads in the channel in sequence with the chat
+        without spending an agent's turn or being filtered out on arrival.
+
+        Where a ping says a thread moved, a notice says the board did: it names
+        the task (``key``/``title``), the thread to open (``episode``), and who
+        moved it (``by``). ``subkind`` is one of :data:`app.services.l9.NOTICE_SUBKINDS`.
+        """
+        data: dict[str, str] = {"subkind": subkind, "key": key}
+        for name, value in (("title", title), ("episode", episode), ("by", by), *extra.items()):
+            if value:
+                data[name] = value
+        notice = l9.build_envelope(
+            kind=Kind.exchange,
+            episode=l9.live_episode_urn(room),
+            sender=l9.SYSTEM_ACTOR_ID,
+            sender_role=l9.SYSTEM_ACTOR_ROLE,
+            topic=l9.topic_urn(room),
+            payload_type=l9.NOTICE_PAYLOAD_TYPE,
+            payload_data=data,
+        )
+        content = serialize_content(notice)
+        managed = self._channels.get(room)
+        if managed is not None and managed.persister is not None:
+            managed.persister.ingest_local(notice, content, list_write=False)
+        else:
+            from app.bus import bus, room_channel
+
+            bus.publish(room_channel(room), l9_bus_frame(room, record_from(notice, content)))
 
     # -- consent-gated invites --
 
@@ -861,7 +988,7 @@ class RoomChannelManager:
         managed = self._channels.get(invite.room)
         if managed is None:
             return self._invites.mark(invite_id, DECLINED)
-        if managed.lifecycle.active:
+        if managed.lifecycle.frozen:
             logger.info(
                 "invite for @%s in %s queued until episode %s closes",
                 invite.agent,
@@ -936,21 +1063,24 @@ class RoomChannelManager:
         await self._enforce_membership_change(managed)
         return True
 
-    def open_episode(self, room: str, episode: str) -> bool:
-        """Open a negotiation episode over the room's current membership.
+    def open_episode(self, room: str, episode: str, *, negotiation: bool = True) -> bool:
+        """Open an episode over the room's current membership.
 
-        Freezes membership: a subsequent join/leave aborts it.
+        A negotiation freezes that membership: a subsequent join/leave aborts it.
+        ``negotiation=False`` opens a container — a task's thread — which
+        a join or leave leaves running, because the task outlives what happens
+        inside it.
         """
         managed = self._channels.get(room)
         if managed is None:
             return False
-        managed.lifecycle.open(episode, managed.members)
+        managed.lifecycle.open(episode, managed.members, negotiation=negotiation)
         return True
 
     async def close_episode(self, room: str) -> bool:
         """Close the room's active episode normally and flush queued invites.
 
-        The membership-freeze that an episode holds is released here, so invites
+        The membership-freeze a negotiation holds is released here, so invites
         an ``@``-mention deferred mid-episode are now safe to apply.
         """
         managed = self._channels.get(room)
@@ -961,7 +1091,7 @@ class RoomChannelManager:
         return True
 
     async def _enforce_membership_change(self, managed: ManagedRoomChannel) -> None:
-        """Abort the active episode if membership changed under it."""
+        """Abort the active negotiation if membership changed under it."""
         if not managed.lifecycle.on_membership_change(managed.members):
             return
         episode = managed.lifecycle.episode

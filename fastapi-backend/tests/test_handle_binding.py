@@ -255,6 +255,11 @@ async def test_reply_as_an_owned_agent_is_allowed(client: AsyncClient, as_princi
             # PSK default: no custodial session, so the reply falls back to a moderator send.
             return False
 
+        async def raise_ping(self, room: str, **_kw: Any) -> None:
+            # A reply to the room itself pings nothing; the fake only has to answer
+            # the call the reply route makes every time.
+            return None
+
     monkeypatch.setattr(room_channels, "manager", _Manager())
 
     await _make_room(client)
@@ -303,6 +308,11 @@ async def test_reply_stamps_the_token_handle_on_the_l9_actor(
         async def send_as_custodian(self, room: str, handle: str, data: bytes) -> bool:
             # PSK default: no custodial session, so the reply falls back to a moderator send.
             return False
+
+        async def raise_ping(self, room: str, **_kw: Any) -> None:
+            # A reply to the room itself pings nothing; the fake only has to answer
+            # the call the reply route makes every time.
+            return None
 
     monkeypatch.setattr(room_channels, "manager", _Manager())
 

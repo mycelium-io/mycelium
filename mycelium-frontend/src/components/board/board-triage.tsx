@@ -16,14 +16,17 @@ import {
   type RowAction,
 } from "@/lib/board/item";
 import { waitingOn, type ItemGroup } from "@/lib/board/view";
+import { EPISODE_FIELD } from "@/lib/board/projection";
 import {
   AgeTag,
   BlocksNote,
   KindIcon,
   LiveDot,
   AssignmentChip,
+  openableThread,
   PriorityMeter,
   SourceTag,
+  ThreadChip,
   TtlBar,
   UpstreamChip,
   WorkLinks,
@@ -36,6 +39,8 @@ interface Props {
   onSelect: (id: string) => void;
   onVerb: (item: LiveItem, action: RowAction) => void;
   onAnswer: (item: LiveItem, choice: string) => void;
+  /** Open a row's thread. Absent, the thread chip reads as a label. */
+  onOpenThread?: (episode: string) => void;
 }
 
 /**
@@ -43,7 +48,7 @@ interface Props {
  * every row carries its own row actions — triage is one gesture from wherever the eye
  * already is, never a detour through a detail page.
  */
-export function BoardTriage({ groups, now, selectedId, onSelect, onVerb, onAnswer }: Props) {
+export function BoardTriage({ groups, now, selectedId, onSelect, onVerb, onAnswer, onOpenThread }: Props) {
   return (
     <div className="flex flex-col gap-6 px-5 py-4">
       {groups.map(group => (
@@ -65,6 +70,7 @@ export function BoardTriage({ groups, now, selectedId, onSelect, onVerb, onAnswe
                 onSelect={() => onSelect(item.id)}
                 onVerb={action => onVerb(item, action)}
                 onAnswer={choice => onAnswer(item, choice)}
+                onOpenThread={onOpenThread}
               />
             ))}
           </div>
@@ -81,6 +87,7 @@ function TriageRow({
   onSelect,
   onVerb,
   onAnswer,
+  onOpenThread,
 }: {
   item: LiveItem;
   now: number;
@@ -88,6 +95,7 @@ function TriageRow({
   onSelect: () => void;
   onVerb: (action: RowAction) => void;
   onAnswer: (choice: string) => void;
+  onOpenThread?: (episode: string) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   // Keyboard navigation moves the selection, so the selection has to bring the
@@ -106,10 +114,17 @@ function TriageRow({
       ref={ref}
       role="button"
       tabIndex={-1}
-      onClick={onSelect}
+      // The row is the task, and the task is its thread, so a click opens it —
+      // the verbs and answer chips below stop the click, so they still act in
+      // place. Selecting keeps the keyboard's place on the row it opened.
+      onClick={() => {
+        onSelect();
+        const episode = openableThread(item);
+        if (episode) onOpenThread?.(episode);
+      }}
       data-board-row={item.id}
       className={cn(
-        "group relative flex cursor-default items-start gap-2.5 rounded-lg px-2.5 py-2 transition-colors",
+        "group relative flex cursor-pointer items-start gap-2.5 rounded-lg px-2.5 py-2 transition-colors",
         selected ? "bg-elevated ring-1 ring-border" : "hover:bg-hairline",
         resolved && "opacity-60",
       )}
@@ -138,6 +153,7 @@ function TriageRow({
           <SourceTag item={item} />
           <span className="text-faint">·</span>
           <AssignmentChip item={item} now={now} />
+          <ThreadChip item={item} onOpen={onOpenThread} />
           <WorkLinks item={item} />
           <UpstreamChip item={item} />
           <BlocksNote item={item} />
@@ -160,7 +176,25 @@ function TriageRow({
                 {choice}
               </button>
             ))}
-            <span className="text-micro text-faint">or reply in thread</span>
+            {/* Answering settles it in one gesture; replying opens its thread —
+                the row's own, because a decision is a task with a thread like any
+                other. A real way in, not a promise the row can't keep. */}
+            {(() => {
+              const episode = fieldAsString(item, EPISODE_FIELD);
+              return episode && onOpenThread ? (
+                <button
+                  onClick={e => {
+                    e.stopPropagation();
+                    onOpenThread(episode);
+                  }}
+                  className="text-micro text-muted-foreground underline-offset-2 transition-colors hover:text-text hover:underline"
+                >
+                  or reply in thread
+                </button>
+              ) : (
+                <span className="text-micro text-faint">or reply in thread</span>
+              );
+            })()}
           </div>
         )}
       </div>

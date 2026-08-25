@@ -26,7 +26,7 @@ def manager(monkeypatch: pytest.MonkeyPatch) -> room_channels.RoomChannelManager
     monkeypatch.setattr(settings, "SLIM_ENABLED", True)
     monkeypatch.setattr(room_channels, "node_reachable", lambda _endpoint: True)
     monkeypatch.setattr(room_channels, "SlimClient", FakeSlimClient)
-    # The durable-inbox persister owns a background loop we don't want in a unit
+    # The durable-inbox persister owns a background loop we don't want in a task
     # test — provisioning/membership is the surface under test here.
     monkeypatch.setattr(room_channels.RoomChannelManager, "_start_persister", lambda self, m: None)
     return room_channels.RoomChannelManager(endpoint="http://node", default_workspace="ws")

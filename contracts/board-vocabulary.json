@@ -1,5 +1,5 @@
 {
-  "_comment": "Frozen vocabulary for the coordination board. The GUI (mycelium-frontend/src/lib/board/) and the CLI (mycelium-cli/src/mycelium/board/) each carry their own copy of the projection rules \u2014 the thin `uv tool` CLI can't import the frontend and vice versa \u2014 so the words they must agree on live here, the same way contracts/slim-l9-wire.json freezes the SLIM+L9 constants. A unit test on each side asserts against this file, so neither copy can drift without a red gate.",
+  "_comment": "Frozen vocabulary for the coordination board. The GUI (mycelium-frontend/src/lib/board/) and the CLI (mycelium-cli/src/mycelium/board/) each carry their own copy of the projection rules — the thin `uv tool` CLI can't import the frontend and vice versa — so the words they must agree on live here, the same way contracts/slim-l9-wire.json freezes the SLIM+L9 constants. A unit test on each side asserts against this file, so neither copy can drift without a red gate.",
   "version": 2,
   "statuses": [
     "open",
@@ -32,6 +32,7 @@
     "resolved": "resolved",
     "dismissed": "resolved"
   },
+  "_row_actions_comment": "Two kinds of action, and the split is the point. A ROW ACTION changes the row: its assignment through the lease endpoints, everything else as frontmatter. A CHAT verb (`chat_verbs`) changes nothing about the row and says something in the thread the row is — the room's own chat verbs (`room send` / `room messages`) with a row id in front of them, one transport (mycelium-cli/src/mycelium/chat.py) rather than a second implementation that would drift on attribution. The two lists are asserted DISJOINT. `new` is a row action with nothing to mutate yet — board-first creation, the only way a task gets its thread minted — so it takes no keystroke and is absent from row_action_keys.",
   "row_actions": [
     "claim",
     "release",
@@ -39,7 +40,13 @@
     "block",
     "unblock",
     "promote",
-    "dismiss"
+    "dismiss",
+    "new"
+  ],
+  "chat_verbs": [
+    "send",
+    "messages",
+    "coordinate"
   ],
   "row_action_keys": {
     "claim": "c",
@@ -55,6 +62,36 @@
     "work",
     "failed"
   ],
+  "task": {
+    "_comment": "A task is a board row and a thread: one row per task, with its coordination folded into it. The binding is `binding_field` on the row's memory — store-owned, minted by the backend, carried across writes, so it is absent from the meta bag a caller can write and a field write cannot move a row onto someone else's thread. The thread's own state lands under `thread_fields` because a task's status and assignment are the task's: a negotiation that converges or aborts inside a row must not resolve the row or take it off its holder, which is what `task_fields` names — the container-outlives-the-negotiation rule, as a list both sides assert a fold against. An episode no row is bound to is an ORPHAN: it keeps its own row rather than being hidden or deleted, which is why the board still projects episodes.",
+    "binding_field": "episode",
+    "thread_fields": [
+      "episode",
+      "thread",
+      "thread_state",
+      "participants",
+      "rounds"
+    ],
+    "thread_states": [
+      "open",
+      "converged",
+      "resolved",
+      "rejected",
+      "committed"
+    ],
+    "task_fields": [
+      "status",
+      "assignment",
+      "owner",
+      "kind",
+      "priority"
+    ],
+    "_refusals_comment": "Why a projected row has no thread to speak into, keyed by the source that produced it. A chat verb refuses in these terms rather than falling back to the room: a message that quietly went somewhere other than where it was addressed is worse than one that did not go. Keyed by source kind, so an episode row is absent — an episode IS a thread, and speaking into a recorded negotiation is a write the hub judges (a frozen roster refuses an outsider), not one the surface guesses at.",
+    "refusals": {
+      "agent": "presence is a lease the runtime renews, not a conversation to join",
+      "memory": "a thread belongs to a task; this row is in another namespace"
+    }
+  },
   "log": {
     "_comment": "The daily log's calendar conventions. A day is a calendar date in the reader's timezone; weeks start Monday; the heat scale steps at these upper bounds.",
     "week_starts_on": "monday",
@@ -88,7 +125,7 @@
     ]
   },
   "assignment": {
-    "_comment": "Assignment: who holds a row, and for how much longer. Separate from `status` because an ephemeral actor cannot promise the future \u2014 every claim it makes runs on a window, so the board must be able to say a holder went quiet without anyone writing that down. `held` is the only state with a holder; `unclaimed` and `expired` are derived and never stored, which is why `stored_states` is the shorter list. Freshness is the same shape the upstream model already ships (fresh/stale/expired against fetched_at/ttl), pointed at claimed_at. The word is `assignment` and not `custody`: `custody` is taken, by the hub holding a member's MLS keys (fastapi-backend/app/services/custody.py), which shares no concept with this.",
+    "_comment": "Assignment: who holds a row, and for how much longer. Separate from `status` because an ephemeral actor cannot promise the future — every claim it makes runs on a window, so the board must be able to say a holder went quiet without anyone writing that down. `held` is the only state with a holder; `unclaimed` and `expired` are derived and never stored, which is why `stored_states` is the shorter list. Freshness is the same shape the upstream model already ships (fresh/stale/expired against fetched_at/ttl), pointed at claimed_at. The word is `assignment` and not `custody`: `custody` is taken, by the hub holding a member's MLS keys (fastapi-backend/app/services/custody.py), which shares no concept with this.",
     "field": "assignment",
     "states": [
       "unclaimed",
@@ -138,7 +175,7 @@
     "blocked_field": "blocked_by"
   },
   "fields": {
-    "_comment": "What a row action writes when it is not an assignment: frontmatter on the row's memory, through the same upsert `memory set --meta` goes through. Only a memory carries frontmatter, so every other projected row refuses in its own terms rather than accepting a write that goes nowhere. The reserved set is deliberately NOT listed here \u2014 it is derived from `assignment` (its field, its companion fields, and the holder), and each implementation asserts that derivation rather than a second copy that could drift.",
+    "_comment": "What a row action writes when it is not an assignment: frontmatter on the row's memory, through the same upsert `memory set --meta` goes through. Only a memory carries frontmatter, so every other projected row refuses in its own terms rather than accepting a write that goes nowhere. The reserved set is deliberately NOT listed here — it is derived from `assignment` (its field, its companion fields, and the holder), and each implementation asserts that derivation rather than a second copy that could drift.",
     "writable_source_kinds": [
       "memory"
     ],

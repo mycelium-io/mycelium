@@ -76,6 +76,34 @@ VALID_SUBKINDS: dict[Kind, frozenset[str]] = {
 }
 
 
+#: The session id of a room's own channel — the episode everything said *to the
+#: room* rides under, as opposed to a thread inside it. A task's thread
+#: and a negotiation are episodes too; ``live`` is the one that is the room.
+LIVE_SESSION = "live"
+
+#: The payload type of a **ping**: the compact signal raised into ``live`` saying
+#: a thread moved, carrying no echo of what was said. It sits beside
+#: ``presence``/``keepalive`` as a control payload — deliberately not chat, and
+#: deliberately not an addressed turn, so it surfaces activity without waking
+#: anyone (:func:`app.routes.participate._addressed_to`).
+PING_PAYLOAD_TYPE = "ping"
+
+#: The payload type of a **notice**: the room's timeline of what happened to its
+#: work — a task filed, claimed, handed back or resolved. Like a ping it is a
+#: control payload raised into ``live`` that wakes nobody, but where a ping says a
+#: thread *moved*, a notice says the *board* moved: it names the task, carries the
+#: line the room reads ("New task", "@x is on it", "resolved"), and never the
+#: prose (which stays in the thread). ``data.subkind`` is one of
+#: :data:`NOTICE_SUBKINDS`; the rest of ``data`` is the task it is about.
+NOTICE_PAYLOAD_TYPE = "notice"
+
+#: What a notice can be about, as a closed set frozen in
+#: ``contracts/slim-l9-wire.json``. ``filed`` also carries the row's board
+#: ``kind`` (so the line reads "New decision", not always "New task") and who it
+#: is ``for``; the custody and lifecycle subkinds carry ``by`` (who moved it).
+NOTICE_SUBKINDS = frozenset({"filed", "claimed", "released", "resolved", "blocked", "unblocked"})
+
+
 class L9ValidationError(ValueError):
     """An envelope violates the L9 structure or the CFN subkind table."""
 
@@ -83,6 +111,19 @@ class L9ValidationError(ValueError):
 def episode_urn(parent_room: str, session_id: str) -> str:
     """Mint the episode URN scoping all messages of one coordination session."""
     return f"urn:ioc:mycelium:episode:{parent_room}:{session_id}"
+
+
+def live_episode_urn(parent_room: str) -> str:
+    """The URN of the room's own channel — where a message with no thread lands."""
+    return episode_urn(parent_room, LIVE_SESSION)
+
+
+def is_live_episode(parent_room: str, episode: str | None) -> bool:
+    """Whether ``episode`` is the room itself rather than a thread inside it.
+
+    ``None`` is the room: a caller that names no thread is talking to the room.
+    """
+    return episode is None or episode == live_episode_urn(parent_room)
 
 
 def topic_urn(parent_room: str) -> str:

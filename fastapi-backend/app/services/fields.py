@@ -118,8 +118,38 @@ async def write(room: str, key: str, patch: dict, handle: str) -> dict:
         raise FieldError(RESERVED_REASON, status=422, key=key, reserved=clashes)
     meta, content = _load(room, key)
     fresh = await upsert_patch(room, key, meta, content, patch, handle)
+    await _maybe_raise_block_notice(room, key, meta, content, patch, handle)
     return {
         "key": key,
         "fields": {k: v for k, v in fresh.items() if k != "version"},
         "version": fresh.get("version"),
     }
+
+
+async def _maybe_raise_block_notice(
+    room: str, key: str, meta: dict, content: str, patch: dict, handle: str
+) -> None:
+    """Tell the room when a field write blocks or unblocks a task.
+
+    Keyed on the blocker field itself, not the status, so it fires exactly when a
+    row gains or loses a blocker. A write that leaves ``blocked_by`` where it was
+    says nothing, the same restraint a renewal keeps.
+    """
+    if "blocked_by" not in patch:
+        return
+    was, now = bool(meta.get("blocked_by")), bool(patch.get("blocked_by"))
+    if was == now:
+        return
+
+    from app.services.filesystem import EPISODE_META, system_meta
+    from app.services.room_channels import manager
+
+    first = next((ln.strip() for ln in (content or "").splitlines() if ln.strip()), key)
+    await manager.raise_notice(
+        room,
+        subkind="blocked" if now else "unblocked",
+        key=key,
+        title=first.lstrip("# ").strip(),
+        episode=system_meta(meta).get(EPISODE_META),
+        by=handle.lstrip("@"),
+    )

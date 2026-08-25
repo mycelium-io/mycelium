@@ -27,7 +27,14 @@ STATUSES = [
 KINDS = ["decision", "blocked", "review", "action", "concern", "signal"]
 PRIORITIES = ["urgent", "high", "normal", "low"]
 ATTENTION_FILTERS = ["needs_you", "in_flight", "resolved"]
-ROW_ACTIONS = ["claim", "release", "resolve", "block", "unblock", "promote", "dismiss"]
+#: What a row action does to the row it names. A **mutation** action changes the
+#: row — its assignment through a lease, everything else as frontmatter. A
+#: **chat** verb changes nothing about the row and speaks in the thread the row
+#: *is*: the room's own chat verbs with a row id in front of them. Kept as two
+#: lists rather than one because a reader has to be able to tell, from the word
+#: alone, whether a typo just wrote a field or posted a message.
+ROW_ACTIONS = ["claim", "release", "resolve", "block", "unblock", "promote", "dismiss", "new"]
+CHAT_VERBS = ["send", "messages", "coordinate"]
 
 #: The attention filter is derived from status, never stored, so a row can't drift out of
 #: sync with the board it belongs on. This is the half for rows nobody holds;
@@ -40,6 +47,32 @@ ATTENTION_OF_STATUS = {
 }
 
 LIVE_NAMESPACES = ["decisions", "status", "work", "failed"]
+
+#: The store-owned frontmatter key binding a row to its thread. Minted by the
+#: backend and carried across writes, so a row's thread is stable for its life.
+EPISODE_FIELD = "episode"
+
+#: What a row says about the thread inside it. Deliberately its own names: a
+#: task's ``status`` and ``assignment`` are the task's, so a negotiation that
+#: converges inside a row must not resolve the row or take it off its holder.
+THREAD_FIELDS = ["episode", "thread", "thread_state", "participants", "rounds"]
+
+#: How the thread inside a task reads. ``open`` while it is still running;
+#: the rest are the commit subkinds a negotiation closes on.
+THREAD_STATES = ["open", "converged", "resolved", "rejected", "committed"]
+
+#: The row's own axes, which folding a thread onto it must never write. This is
+#: the container-outlives-the-negotiation rule as a list.
+TASK_FIELDS = ["status", "assignment", "owner", "kind", "priority"]
+
+#: Why a projected row has no thread to speak into, keyed by what produced it.
+#: A chat verb refuses in these terms rather than falling back to the room: a
+#: message that quietly went somewhere other than where it was addressed is
+#: worse than one that did not go.
+THREAD_REFUSALS = {
+    "agent": "presence is a lease the runtime renews, not a conversation to join",
+    "memory": "a thread belongs to a task; this row is in another namespace",
+}
 
 
 @dataclass(frozen=True)

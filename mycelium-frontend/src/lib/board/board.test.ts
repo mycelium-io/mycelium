@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { inferSchema, groupableFields } from "@/lib/board/schema";
-import { projectItems } from "@/lib/board/projection";
+import { projectItems, EPISODE_FIELD, THREAD_FIELDS, THREAD_STATES, TASK_FIELDS } from "@/lib/board/projection";
 import { applyView, filterItems, attentionFilterCounts, groupItems, UNGROUPED, DEFAULT_VIEW } from "@/lib/board/view";
 import { ASSIGNMENT_STATES, DEFAULT_TTL_MINUTES, assignmentOf } from "@/lib/board/assignment";
 import {
@@ -17,6 +17,7 @@ import {
   ROW_ACTIONS,
   type LiveItem,
 } from "@/lib/board/item";
+import { THREAD_REFUSALS, threadRefusal } from "@/lib/board/fields";
 import { parseCapture } from "@/lib/board/capture";
 import { DAILY_GOAL, heatLevel, weekdayIndex } from "@/lib/board/activity";
 import { attachUpstream, UPSTREAM_STATES, upstreamAge, type RoomStatus } from "@/lib/board/upstream";
@@ -84,6 +85,20 @@ describe("inferSchema", () => {
       item("a", { status: "open", title_line: "one" }),
       item("b", { status: "in_review", title_line: "two" }),
     ]);
+    expect(groupableFields(schema).map(f => f.name)).toEqual(["status"]);
+  });
+
+  it("reads a thread's state as a column but never as an axis to pivot on", () => {
+    // Folding a thread onto a row is so it can be read. Grouping is not reading:
+    // it makes the field what the board is organised by, and pivoting tasks by
+    // how the negotiation inside them went is the container-outlives-the-
+    // negotiation rule inverted where it shows most.
+    const schema = inferSchema([
+      item("a", { status: "open", thread_state: "converged", rounds: 6 }),
+      item("b", { status: "open", thread_state: "converged", rounds: 2 }),
+      item("c", { status: "in_review", thread_state: "rejected", rounds: 4 }),
+    ]);
+    expect(schema.find(f => f.name === "thread_state")?.type).toBe("select");
     expect(groupableFields(schema).map(f => f.name)).toEqual(["status"]);
   });
 
@@ -157,6 +172,101 @@ describe("projectItems", () => {
       optimisticEdits: { "memory:work/flip-reads-behind-a-flag": { status: "dismissed" } },
     });
     expect(items[0].fields.status).toBe("dismissed");
+  });
+});
+
+describe("a task is one row, and it is a thread", () => {
+  const NOW = "2026-08-22T10:00:00Z";
+  const URN = "urn:ioc:mycelium:episode:atlas:e4f1a2";
+
+  const episode = {
+    short_id: "e4f1a2",
+    episode: URN,
+    topic: "urn:concept:mycelium:atlas",
+    outcome: "converged",
+    subkind: "converged",
+    participants: ["growth", "risk"],
+    metrics: null,
+    assignments: { cutover: "phased" },
+    tasks: ["work/cutover"],
+    message_count: 7,
+    updated_at: NOW,
+    updated_by: "aligner",
+  } as unknown as Parameters<typeof projectItems>[0]["episodes"][number];
+
+  const task = (extra: Record<string, unknown> = {}) => ({
+    key: "work/cutover",
+    value: "run the cutover",
+    meta: { kind: "action", status: "open", ...extra },
+    version: 1,
+    created_by: "aligner",
+    updated_by: "aligner",
+    updated_at: NOW,
+    episode: URN,
+  }) as unknown as Parameters<typeof projectItems>[0]["memories"][number];
+
+  const project = (episodes: unknown[], memories: unknown[]) =>
+    projectItems({
+      room: "atlas",
+      episodes: episodes as Parameters<typeof projectItems>[0]["episodes"],
+      memories: memories as Parameters<typeof projectItems>[0]["memories"],
+      agents: [],
+      presence: new Map(),
+      now: NOW,
+    });
+
+  it("folds a bound episode into the row instead of drawing a second one", () => {
+    const items = project([episode], [task()]);
+    expect(items).toHaveLength(1);
+    expect(items[0].id).toBe("memory:work/cutover");
+    expect(items[0].fields).toMatchObject({
+      episode: URN,
+      thread: "e4f1a2",
+      thread_state: "converged",
+      participants: ["growth", "risk"],
+      rounds: 7,
+    });
+  });
+
+  it("leaves a task's own axes alone when the thread inside it closes", () => {
+    // The container outlives the negotiation. A converged episode is a fact
+    // about the conversation, not a claim that the work is done or that anyone
+    // is holding it — the row keeps its status, its assignment and its holder.
+    const held = { assignment: "held", owner: "@growth", claimed_at: NOW, ttl_minutes: 30 };
+    const [row] = project([episode], [task(held)]);
+    expect(row.fields).toMatchObject({ status: "open", assignment: "held", owner: "@growth" });
+    expect(assignmentOf(row, Date.parse(NOW))).toBe("held");
+  });
+
+  it("keeps an orphaned episode as a row of its own", () => {
+    // A recorded negotiation nobody compiled into work is still something the
+    // room did, so it is surfaced rather than hidden or deleted.
+    const items = project([episode], []);
+    expect(items.map(i => i.id)).toEqual(["episode:e4f1a2"]);
+    expect(items[0].fields).toMatchObject({ episode: URN, thread: "e4f1a2" });
+  });
+
+  it("gives every row an episode compiled out of the same negotiation", () => {
+    const second = { ...task(), key: "work/soak" };
+    const items = project([episode], [task(), second]);
+    expect(items.map(i => i.id)).toEqual(["memory:work/cutover", "memory:work/soak"]);
+    for (const row of items) expect(row.fields.thread_state).toBe("converged");
+  });
+
+  it("draws a task no thread has run in yet, with no thread state to show", () => {
+    // The inversion: a task is created board-first and worked with no episode
+    // ever opened. It carries its binding and says nothing it doesn't know.
+    const [row] = project([], [task()]);
+    expect(row.fields).toMatchObject({ episode: URN, thread: "e4f1a2", status: "open" });
+    expect(row.fields.thread_state).toBeUndefined();
+    expect(row.fields.rounds).toBeUndefined();
+  });
+
+  it("leaves a row with no binding entirely alone", () => {
+    const unbound = { ...task(), episode: null };
+    const [row] = project([], [unbound]);
+    expect(row.fields.episode).toBeUndefined();
+    expect(row.fields.thread).toBeUndefined();
   });
 });
 
@@ -398,6 +508,55 @@ describe("shared vocabulary contract", () => {
     });
     const written = new Set(out.flatMap(r => Object.keys(r.fields)));
     expect([...written].sort()).toEqual([upstream.field, ...upstream.companion_fields].sort());
+  });
+
+  it("folds a thread onto a row under exactly the contracted field names", () => {
+    const task = (contract as unknown as {
+      task: { binding_field: string; thread_fields: string[]; task_fields: string[]; thread_states: string[] };
+    }).task;
+    expect(EPISODE_FIELD).toBe(task.binding_field);
+    expect(THREAD_FIELDS).toEqual(task.thread_fields);
+    expect(THREAD_STATES).toEqual(task.thread_states);
+    expect(TASK_FIELDS).toEqual(task.task_fields);
+  });
+
+  it("keeps every thread field off the pivot axes, not just the one that reaches them today", () => {
+    // What makes a thread field ineligible is whose field it is, not its type.
+    // Only `thread_state` classifies as a select off real rows, so inferring the
+    // schema would leave the other four excluded by type and prove nothing about
+    // them — the fields are handed in already type-eligible, which is the state a
+    // room could put any of them in tomorrow.
+    const task = (contract as unknown as { task: { thread_fields: string[] } }).task;
+    const bounded = (name: string) => ({
+      name,
+      label: name,
+      type: "select" as const,
+      options: [{ value: "a", count: 2 }, { value: "b", count: 1 }],
+      filled: 3,
+      total: 3,
+    });
+    const schema = [...task.thread_fields.map(bounded), bounded("status")];
+    expect(groupableFields(schema).map(f => f.name)).toEqual(["status"]);
+  });
+
+  it("never lets a thread write one of the task's own axes", () => {
+    // The container-outlives-the-negotiation rule, asserted as a disjointness
+    // rather than as a promise in a comment.
+    const task = (contract as unknown as { task: { thread_fields: string[]; task_fields: string[] } }).task;
+    expect(task.thread_fields.filter(f => task.task_fields.includes(f))).toEqual([]);
+  });
+
+  it("refuses to open a thread in the terms the CLI refuses in", () => {
+    const task = (contract as unknown as { task: { refusals: Record<string, string> } }).task;
+    expect(THREAD_REFUSALS).toEqual(task.refusals);
+    // A row that has one is not refused, whatever produced it — including an
+    // orphan episode row, which *is* a thread.
+    const episode: LiveItem = { id: "episode:e4f1a2", title: "e4f1a2", source: { kind: "episode", label: "e" }, fields: {} };
+    expect(threadRefusal(episode, "urn:ioc:mycelium:episode:atlas:e4f1a2")).toBeNull();
+    // And one that hasn't is refused by what produced it, never generically.
+    const agent: LiveItem = { id: "agent:risk", title: "risk", source: { kind: "agent", label: "a" }, fields: {} };
+    expect(threadRefusal(agent, null)).toBe(task.refusals.agent);
+    expect(threadRefusal(item("work/x", {}), null)).toBe(task.refusals.memory);
   });
 
   it("keeps the log's calendar conventions the CLI also asserts", () => {

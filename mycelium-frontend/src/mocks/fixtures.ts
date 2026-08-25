@@ -70,6 +70,11 @@ export interface MockMemory {
   room_name?: string;
   tags?: string[];
   expandable?: boolean;
+  /** The episode URN binding this row to the thread its coordination happens in
+   *  (`MemoryRead.episode`). Store-owned rather than part of `meta`, so a write
+   *  carries it forward rather than replacing it — the board folds the bound
+   *  episode into this row instead of drawing a second one beside it. */
+  episode?: string | null;
 }
 
 export interface MockMessage {
@@ -150,7 +155,25 @@ const a2aManifest = (description: string, card: string, skills: string[]): strin
 
 // ── atlas-migration: the rich, converged room ─────────────────────────────────
 
-const ATLAS_EPISODE = "urn:ioc:mycelium:episode:atlas-migration:e4f1a2";
+const atlasEpisode = (shortId: string): string =>
+  `urn:ioc:mycelium:episode:atlas-migration:${shortId}`;
+
+// The negotiation growth and risk ran. It is an *orphan* episode — no board row
+// is bound to it — because a task's thread is the task's own, not the
+// conversation that produced it. The two tasks it compiled each carry their own
+// thread below; this URN stays the negotiation's record (Episodes rail, L9 feed).
+const ATLAS_EPISODE = atlasEpisode("e4f1a2");
+// The room's own channel. A message with no thread lands here, and a ping about
+// a thread is raised here — which is why the ping's own episode is this one and
+// the thread it names is in its payload.
+const ATLAS_LIVE = atlasEpisode("live");
+// The flip-reads task's own thread: where growth and risk work that one row, and
+// what the pings below point at. Its own episode, minted when the row was, not
+// the negotiation's.
+const ATLAS_FLIP_THREAD = atlasEpisode("f1a5c7");
+// The retire-legacy task's thread. Its own, and still silent — a blank thread is
+// the common case, and the board shows the row with a thread to open regardless.
+const ATLAS_RETIRE_THREAD = atlasEpisode("d2b8e0");
 
 // The negotiation the aligner brokered: growth (big-bang, fast) vs risk
 // (phased, safe), converging over four rounds of Stacked Alternating Offers.
@@ -262,6 +285,83 @@ const atlasL9Frames: Record<string, unknown>[] = atlasL9Chain.map((env, i) => ({
   content: env,
 }));
 
+/**
+ * A thread's activity as the room hears it: a **ping**, and only a ping.
+ *
+ * The shape the backend raises (`room_channels.raise_ping`) — an exchange
+ * envelope in `live` naming the thread that moved, who wrote and which message,
+ * carrying no prose, so there is nothing here to echo even by accident.
+ *
+ * It belongs to the L9 wire feed and *not* to the message list, which is where
+ * the backend puts it too: a ping is a control frame, so the conversational
+ * read drops it and the transcript replay is where it survives a reload. A mock
+ * that served it from both would hide the merge the channel actually does.
+ */
+function atlasPing(message: string, sender: string, minutesAgo: number): Record<string, unknown> {
+  return {
+    id: `ping-${message}`,
+    sender_handle: "system",
+    message_type: "l9_exchange",
+    created_at: iso(minutesAgo),
+    room_name: "atlas-migration",
+    episode: ATLAS_LIVE,
+    content: {
+      l9: {
+        header: {
+          kind: "exchange",
+          message: { id: `ping-${message}`, parents: [], episode: ATLAS_LIVE },
+          participants: { actors: [{ id: "system", role: "coordinator" }] },
+        },
+        payload: { type: "ping", data: { episode: ATLAS_FLIP_THREAD, sender, message } },
+      },
+    },
+  };
+}
+
+/**
+ * A board event as the room hears it: a **notice** — a task filed, claimed,
+ * handed back or resolved.
+ *
+ * The mirror of {@link atlasPing} — an exchange envelope in `live` naming the
+ * task the event was about (key, title, thread to open, who moved it), so the
+ * board's changes read as something the room *did*, in sequence with the chat,
+ * rather than appearing silently on another tab. ``kind`` rides on a ``filed``
+ * notice so the line reads "New decision", not always "New task".
+ */
+function atlasNotice(
+  subkind: string,
+  key: string,
+  title: string,
+  episode: string,
+  by: string,
+  minutesAgo: number,
+  kind?: string,
+  assignee?: string,
+): Record<string, unknown> {
+  const id = `notice-${subkind}-${key}`;
+  return {
+    id,
+    sender_handle: "system",
+    message_type: "l9_exchange",
+    created_at: iso(minutesAgo),
+    room_name: "atlas-migration",
+    episode: ATLAS_LIVE,
+    content: {
+      l9: {
+        header: {
+          kind: "exchange",
+          message: { id, parents: [], episode: ATLAS_LIVE },
+          participants: { actors: [{ id: "system", role: "coordinator" }] },
+        },
+        payload: {
+          type: "notice",
+          data: { subkind, key, title, episode, by, ...(kind ? { kind } : {}), ...(assignee ? { for: assignee } : {}) },
+        },
+      },
+    },
+  };
+}
+
 const atlasEpisodeSummary: EpisodeSummary = {
   short_id: "e4f1a2",
   episode: ATLAS_EPISODE,
@@ -277,26 +377,33 @@ const atlasEpisodeSummary: EpisodeSummary = {
   updated_by: "aligner",
 };
 
-// Coordination-state memories the board projects into rows. Each value is a
-// structured object — the store's `value:`-key mapping shape (what
-// `MemoryCreate.value` as an object round-trips to, a real client-reachable
-// path), not arbitrary markdown frontmatter, which the read path drops (#772).
-// The board reads its typed fields (status, owner, priority, ci, pr, branch,
-// blocks, choices) straight from that object. Together they give the board
-// something in every attention filter (needs-you, in-flight, resolved) and a column for
-// every inferred field, without any in-app demo layer.
+// Coordination-state memories the board projects into rows. Every one is what
+// the docs promise a task is: a markdown file with frontmatter — prose in the
+// body (`value`), the row's typed fields in `meta`. The board reads status,
+// owner, priority, ci, pr, branch, blocks and choices from that frontmatter, the
+// same keys a `memory set --meta` writes. And every row carries its own
+// `episode`: a thread is per-item, minted when the row is, so each has one to
+// open whether or not anyone has spoken in it yet. Together they give the board
+// something in every attention filter (needs-you, in-flight, resolved) and a
+// column for every inferred field, without any in-app demo layer.
 const atlasBoardRows: MockMemory[] = [
-  // What the atlas agreement compiled into. A task is a row like anything else:
-  // it says who it is for, and separately whether anyone is holding it.
+  // What the atlas agreement compiled into. Two tasks from one negotiation are
+  // two tasks with two threads, not two rows sharing the conversation that
+  // produced them — so each carries its own episode, not the negotiation's.
   {
     key: "work/flip-reads-behind-a-flag",
-    value: "flip reads behind a flag",
+    value:
+      "flip reads behind a flag\n\n" +
+      "Gate the read path on `atlas.reads.v2` (default off). Flip only once replica " +
+      "lag has held under a second for an hour, and keep it reversible through the " +
+      "48h soak. Gated on #502 (auth) and #504 (custody seam).",
     meta: { kind: "action", status: "open", assignee: "@growth", priority: "high", issue: "#502" },
     content_text: "flip reads behind a flag — gated on #502 and #504.",
     created_by: "aligner",
     updated_by: "aligner",
     version: 1,
     updated_at: iso(40),
+    episode: ATLAS_FLIP_THREAD,
   },
   {
     key: "work/retire-the-legacy-store",
@@ -307,11 +414,12 @@ const atlasBoardRows: MockMemory[] = [
     updated_by: "aligner",
     version: 1,
     updated_at: iso(40),
+    episode: ATLAS_RETIRE_THREAD,
   },
   {
     key: "decisions/token-ttl",
-    value: {
-      title: "JWT access-token TTL: 15m or 60m?",
+    value: "JWT access-token TTL: 15m or 60m?",
+    meta: {
       status: "open",
       kind: "decision",
       owner: null,
@@ -325,11 +433,12 @@ const atlasBoardRows: MockMemory[] = [
     updated_by: "risk",
     version: 1,
     updated_at: iso(6),
+    episode: atlasEpisode("a1c3e5"),
   },
   {
     key: "failed/thin-spoke",
-    value: {
-      title: "Enable thin-spoke join without a local replica",
+    value: "Enable thin-spoke join without a local replica",
+    meta: {
       status: "blocked",
       kind: "blocked",
       owner: "@julia",
@@ -342,11 +451,12 @@ const atlasBoardRows: MockMemory[] = [
     updated_by: "julia",
     version: 1,
     updated_at: iso(40),
+    episode: atlasEpisode("b4d6f8"),
   },
   {
     key: "work/custody-review",
-    value: {
-      title: "@risk opened PR #504 — eyes on the custody seam",
+    value: "@risk opened PR #504 — eyes on the custody seam",
+    meta: {
       status: "in_review",
       kind: "review",
       owner: "@risk",
@@ -361,11 +471,12 @@ const atlasBoardRows: MockMemory[] = [
     updated_by: "risk",
     version: 1,
     updated_at: iso(12),
+    episode: atlasEpisode("c5e7a9"),
   },
   {
     key: "work/jwt-auth",
-    value: {
-      title: "Migrate auth → JWT",
+    value: "Migrate auth → JWT",
+    meta: {
       status: "in_progress",
       kind: "action",
       owner: "@growth",
@@ -380,11 +491,12 @@ const atlasBoardRows: MockMemory[] = [
     updated_by: "growth",
     version: 2,
     updated_at: iso(12),
+    episode: atlasEpisode("d6f8b0"),
   },
   {
     key: "work/cache-sweep",
-    value: {
-      title: "Cache TTL sweep across the memory index",
+    value: "Cache TTL sweep across the memory index",
+    meta: {
       status: "in_progress",
       kind: "action",
       owner: "@julia",
@@ -397,11 +509,12 @@ const atlasBoardRows: MockMemory[] = [
     updated_by: "julia",
     version: 1,
     updated_at: iso(3),
+    episode: atlasEpisode("e7a9c1"),
   },
   {
     key: "failed/offer-snap",
-    value: {
-      title: "Aligner stalls when a proposer replies with prose only",
+    value: "Aligner stalls when a proposer replies with prose only",
+    meta: {
       status: "in_review",
       kind: "concern",
       owner: "@risk",
@@ -415,11 +528,12 @@ const atlasBoardRows: MockMemory[] = [
     updated_by: "risk",
     version: 1,
     updated_at: iso(55),
+    episode: atlasEpisode("f8b0d2"),
   },
   {
     key: "work/path-traversal",
-    value: {
-      title: "Fix path traversal in the memory key encoder",
+    value: "Fix path traversal in the memory key encoder",
+    meta: {
       status: "resolved",
       kind: "action",
       owner: "@risk",
@@ -433,11 +547,12 @@ const atlasBoardRows: MockMemory[] = [
     updated_by: "risk",
     version: 2,
     updated_at: iso(62),
+    episode: atlasEpisode("a9c1e3"),
   },
   {
     key: "decisions/spire-retire",
-    value: {
-      title: "Retire the SPIRE identity tier",
+    value: "Retire the SPIRE identity tier",
+    meta: {
       status: "resolved",
       kind: "concern",
       owner: "@julia",
@@ -451,6 +566,7 @@ const atlasBoardRows: MockMemory[] = [
     updated_by: "julia",
     version: 1,
     updated_at: iso(200),
+    episode: atlasEpisode("b0d2f4"),
   },
 ];
 
@@ -533,7 +649,23 @@ const atlas: RoomFixture = {
     },
     ...atlasBoardRows,
   ],
+  // The channel is the room's whole history, so every row on the board is a thing
+  // it once filed: the chat lines below set up each filing, and the task-created
+  // notices in the `l9` feed are the filings themselves. Read top to bottom it is
+  // one arc — stand up the room, do the early security/architecture work, spin up
+  // the auth migration and the work that depends on it, broker the cutover, file
+  // what it breaks into, then keep going.
   messages: [
+    // ── standing the room up, and the early work (a day ago) ──
+    { id: "h1", sender_handle: "operator", message_type: "broadcast", content: "Standing up the Atlas migration room. Goal: move the catalog off the legacy store with zero downtime.", created_at: iso(60 * 25) },
+    { id: "h2", sender_handle: "julia", message_type: "broadcast", content: "First call: we're not keeping the SPIRE tier. Filing the decision so it's on the record.", created_at: iso(1440) },
+    { id: "h3", sender_handle: "risk", message_type: "broadcast", content: "And the path-traversal hole in the key encoder is a hard blocker for anything public — taking it now.", created_at: iso(1400) },
+    // ── the auth migration and the work hanging off it ──
+    { id: "h4", sender_handle: "growth", message_type: "broadcast", content: "Auth has to move to JWT before the cutover. I've got it — PR #502 is open.", created_at: iso(140) },
+    { id: "h5", sender_handle: "julia", message_type: "broadcast", content: "Thin-spoke join needs that landed first, so I'm filing it blocked on #502.", created_at: iso(130) },
+    { id: "h6", sender_handle: "julia", message_type: "broadcast", content: "Also sweeping the cache TTLs across the memory index while I'm in here.", created_at: iso(95) },
+    { id: "h7", sender_handle: "risk", message_type: "broadcast", content: "Filing a concern: the aligner stalls when a proposer replies with prose only. Fix is on fix/offer-snap but CI's red.", created_at: iso(58) },
+    // ── the cutover negotiation ──
     { id: "a1", sender_handle: "operator", message_type: "broadcast", content: "@growth @risk let's settle the cutover strategy — approach and window. @aligner, broker it.", created_at: iso(48) },
     { id: "a2", sender_handle: "growth", message_type: "coordination_join", content: JSON.stringify({ handle: "growth", intent: "ship the migration this week", episode: ATLAS_EPISODE }), created_at: iso(47), episode: ATLAS_EPISODE },
     { id: "a3", sender_handle: "risk", message_type: "coordination_join", content: JSON.stringify({ handle: "risk", intent: "no downtime, no data loss", episode: ATLAS_EPISODE }), created_at: iso(47), episode: ATLAS_EPISODE },
@@ -542,7 +674,21 @@ const atlas: RoomFixture = {
     // Negotiate/Network panes reconstruct. The chat is the source (see atlasMoves).
     ...atlasNegotiation,
     { id: "a6", sender_handle: "aligner", message_type: "coordination_consensus", content: JSON.stringify({ assignments: { cutover: "phased", window: "48h" }, episode: ATLAS_EPISODE, metrics: { gar: 0.79 } }), created_at: iso(41), episode: ATLAS_EPISODE },
+    // The room files the work the agreement breaks into. The two task-created
+    // notices land right after this line (see the `l9` feed below), so the chat
+    // reads "here is the work" → the tasks, in sequence, instead of them just
+    // appearing on the board.
+    { id: "file1", sender_handle: "aligner", message_type: "broadcast", content: "Settled: phased cutover over 48h. Filing the work it breaks into for us to pick up:", created_at: iso(40) },
     { id: "a7", sender_handle: "growth", message_type: "broadcast", content: "Dual-write is live in staging. ✅", created_at: iso(30) },
+    // ── follow-on work after the agreement ──
+    { id: "h8", sender_handle: "risk", message_type: "broadcast", content: "PR #504 is up for the custody seam — filing it for review.", created_at: iso(14) },
+    { id: "h9", sender_handle: "risk", message_type: "broadcast", content: "One more thing to settle before auth ships: access-token TTL, 15m or 60m. Filing the decision.", created_at: iso(6) },
+    // Two agents working the flag row talk inside its thread. The channel does
+    // not carry this — that is the whole point — so the room hears the pings
+    // below instead, and the prose reads in the thread pane.
+    { id: "t1", sender_handle: "growth", message_type: "broadcast", content: "Flag is wired: reads flip on `atlas.reads.v2`, default off.", created_at: iso(22), episode: ATLAS_FLIP_THREAD },
+    { id: "t2", sender_handle: "risk", message_type: "broadcast", content: "Hold the flip until replica lag has been under a second for an hour.", created_at: iso(21), episode: ATLAS_FLIP_THREAD },
+    { id: "t3", sender_handle: "growth", message_type: "broadcast", content: "Agreed — gating the flip on the lag alarm.", created_at: iso(20), episode: ATLAS_FLIP_THREAD },
   ],
   episodes: [atlasEpisodeSummary],
   episodeDetails: { e4f1a2: { ...atlasEpisodeSummary, messages: atlasL9Chain } },
@@ -554,7 +700,35 @@ const atlas: RoomFixture = {
     { handle: "growth", kind: "slim", last_seen: null },
     { handle: "risk", kind: "lease", last_seen: iso(1) },
   ],
-  l9: atlasL9Frames,
+  // Every board row's origin, as the notice the room filed it with — each timed
+  // just after the chat line that sets it up, so the channel reads talk → filing
+  // for all ten, not just the two the negotiation compiled. The episode on each
+  // matches its board row, so a notice opens the same thread the row's chip does.
+  l9: [
+    ...atlasL9Frames,
+    // Every board row's origin — a `filed` notice — and, for two of them, the rest
+    // of the lifecycle the room saw: path-traversal resolved long ago, flip-reads
+    // claimed by growth just before he worked it. Read in order it is filed →
+    // claimed → activity → resolved, the whole arc of a unit of work.
+    atlasNotice("filed", "decisions/spire-retire", "Retire the SPIRE identity tier", atlasEpisode("b0d2f4"), "julia", 1439.8, "decision"),
+    atlasNotice("filed", "work/path-traversal", "Fix path traversal in the memory key encoder", atlasEpisode("a9c1e3"), "risk", 1399.8, "action"),
+    atlasNotice("resolved", "work/path-traversal", "Fix path traversal in the memory key encoder", atlasEpisode("a9c1e3"), "risk", 1200),
+    atlasNotice("filed", "work/jwt-auth", "Migrate auth → JWT", atlasEpisode("d6f8b0"), "growth", 139.8, "action"),
+    atlasNotice("filed", "failed/thin-spoke", "Enable thin-spoke join without a local replica", atlasEpisode("b4d6f8"), "julia", 129.8, "blocked"),
+    atlasNotice("blocked", "failed/thin-spoke", "Enable thin-spoke join without a local replica", atlasEpisode("b4d6f8"), "julia", 128),
+    atlasNotice("filed", "work/cache-sweep", "Cache TTL sweep across the memory index", atlasEpisode("e7a9c1"), "julia", 94.8, "action"),
+    atlasNotice("filed", "failed/offer-snap", "Aligner stalls when a proposer replies with prose only", atlasEpisode("f8b0d2"), "risk", 57.8, "concern"),
+    // The two the cutover agreement compiled, filed by the aligner right after its
+    // "filing the work" line (iso(40)).
+    atlasNotice("filed", "work/flip-reads-behind-a-flag", "flip reads behind a flag", ATLAS_FLIP_THREAD, "aligner", 39.9, "action", "@growth"),
+    atlasNotice("filed", "work/retire-the-legacy-store", "48h soak, then retire the legacy store", ATLAS_RETIRE_THREAD, "aligner", 39.8, "action", "@risk"),
+    atlasNotice("filed", "work/custody-review", "@risk opened PR #504 — eyes on the custody seam", atlasEpisode("c5e7a9"), "risk", 13.8, "review"),
+    atlasNotice("filed", "decisions/token-ttl", "JWT access-token TTL: 15m or 60m?", atlasEpisode("a1c3e5"), "risk", 5.8, "decision"),
+    // growth takes the flag row before working it, then the thread moves.
+    atlasNotice("claimed", "work/flip-reads-behind-a-flag", "flip reads behind a flag", ATLAS_FLIP_THREAD, "growth", 23),
+    atlasPing("t2", "risk", 21),
+    atlasPing("t3", "growth", 20),
+  ],
   // Three work rows name pull requests; the hub resolved them. The first row
   // mentions two, one green and one failing, so it shows the failing one and says
   // there was another. The shapes are GitHub's own wording.

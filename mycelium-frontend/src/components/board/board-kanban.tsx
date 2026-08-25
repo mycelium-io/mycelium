@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { attentionFilterOf, type LiveItem } from "@/lib/board/item";
 import type { ItemGroup } from "@/lib/board/view";
 import { humanize } from "@/lib/board/schema";
-import { AgeTag, KindIcon, AssignmentChip, PriorityMeter, SourceTag, TtlBar, UpstreamChip, WorkLinks } from "./board-cells";
+import { AgeTag, KindIcon, AssignmentChip, openableThread, PriorityMeter, SourceTag, ThreadChip, TtlBar, UpstreamChip, WorkLinks } from "./board-cells";
 
 interface Props {
   groups: ItemGroup[];
@@ -18,6 +18,8 @@ interface Props {
   onSelect: (id: string) => void;
   /** Dropping a card writes the column's value into the grouped field. */
   onMove: (item: LiveItem, field: string, value: string) => void;
+  /** Open a row's thread. Absent, the thread chip reads as a label. */
+  onOpenThread?: (episode: string) => void;
 }
 
 /**
@@ -25,7 +27,7 @@ interface Props {
  * a status board that happens to exist — it's what the table looks like when you
  * pivot it, and dropping a card is just a write to that one field.
  */
-export function BoardKanban({ groups, groupBy, now, selectedId, onSelect, onMove }: Props) {
+export function BoardKanban({ groups, groupBy, now, selectedId, onSelect, onMove, onOpenThread }: Props) {
   const [dragging, setDragging] = useState<LiveItem | null>(null);
   const [over, setOver] = useState<string | null>(null);
 
@@ -69,7 +71,11 @@ export function BoardKanban({ groups, groupBy, now, selectedId, onSelect, onMove
                     setDragging(null);
                     setOver(null);
                   }}
-                  onClick={() => onSelect(item.id)}
+                  onClick={() => {
+                    onSelect(item.id);
+                    const episode = openableThread(item);
+                    if (episode) onOpenThread?.(episode);
+                  }}
                   className={cn(
                     "cursor-grab rounded-lg border bg-paper p-2.5 shadow-sm transition-colors active:cursor-grabbing",
                     item.id === selectedId ? "border-accent/50 ring-1 ring-accent/30" : "border-border hover:border-border2",
@@ -84,6 +90,7 @@ export function BoardKanban({ groups, groupBy, now, selectedId, onSelect, onMove
                   </div>
                   <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
                     <AssignmentChip item={item} now={now} />
+                    <ThreadChip item={item} onOpen={onOpenThread} />
                     <WorkLinks item={item} />
           <UpstreamChip item={item} />
                   </div>

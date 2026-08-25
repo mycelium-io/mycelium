@@ -17,8 +17,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.services import l9, task_sync
-from app.services.filesystem import get_room_dir, read_memory_file
+from app.services import l9, task_sync, tasks
+from app.services.filesystem import EPISODE_META, get_room_dir, read_memory_file
 from app.services.l9_models import L9, Kind
 from app.services.task_compiler import CompiledTask
 from tests.fakes import FakeManager
@@ -61,16 +61,16 @@ async def _run(room: str, tasks: list[CompiledTask] | Exception, assignments: di
 
 class TestSlugify:
     def test_is_readable_and_stable(self):
-        assert task_sync.slugify("Ship the auth rewrite") == "ship-the-auth-rewrite"
+        assert tasks.slugify("Ship the auth rewrite") == "ship-the-auth-rewrite"
 
     def test_collapses_punctuation(self):
-        assert task_sync.slugify("Ship auth (v2) — now!") == "ship-auth-v2-now"
+        assert tasks.slugify("Ship auth (v2) — now!") == "ship-auth-v2-now"
 
     def test_never_returns_an_empty_key(self):
-        assert task_sync.slugify("!!!") == "task"
+        assert tasks.slugify("!!!") == "task"
 
     def test_is_bounded(self):
-        assert len(task_sync.slugify("x" * 200)) <= task_sync.SLUG_MAX
+        assert len(tasks.slugify("x" * 200)) <= tasks.SLUG_MAX
 
 
 @pytest.mark.asyncio
@@ -89,7 +89,7 @@ class TestConvergedToRows:
     async def test_a_row_carries_what_makes_it_a_row(self):
         await _run("r2", [CompiledTask(title="ship auth", assignee="a")], {"a": "auth"})
         meta, body = _row("r2", "work/ship-auth")
-        assert meta["kind"] == task_sync.TASK_KIND
+        assert meta["kind"] == tasks.TASK_KIND
         assert meta["status"] == "open"
         assert "ship auth" in body
 
@@ -99,14 +99,14 @@ class TestConvergedToRows:
         # nobody made, and it would drain to "expired" on its own.
         await _run("r3", [CompiledTask(title="ship auth", assignee="a")], {"a": "auth"})
         meta, _ = _row("r3", "work/ship-auth")
-        assert meta[task_sync.ASSIGNEE_FIELD] == "@a"
+        assert meta[tasks.ASSIGNEE_FIELD] == "@a"
         assert "owner" not in meta
         assert "assignment" not in meta
 
     async def test_an_untagged_task_names_nobody(self):
         await _run("r4", [CompiledTask(title="ship auth", assignee=None)], {"a": "auth"})
         meta, _ = _row("r4", "work/ship-auth")
-        assert task_sync.ASSIGNEE_FIELD not in meta
+        assert tasks.ASSIGNEE_FIELD not in meta
 
     async def test_a_recompiled_task_lands_on_the_row_it_already_has(self):
         task = [CompiledTask(title="ship auth", assignee="a")]
@@ -115,6 +115,54 @@ class TestConvergedToRows:
         assert keys == ["work/ship-auth"]
         meta, _ = _row("r5", "work/ship-auth")
         assert meta["version"] == 2  # an upsert, not a second row
+
+    async def test_a_row_gets_its_own_thread_not_the_negotiation_s(self):
+        # The keystone, inverted: a compiled row is a task with its own thread,
+        # minted when the row is written, not the episode the negotiation reached
+        # its verdict in. Two tasks from one verdict are two threads, not two rows
+        # sharing the conversation that produced them.
+        await _run("r6", [CompiledTask(title="ship auth", assignee="a")], {"a": "auth"})
+        meta, _ = _row("r6", "work/ship-auth")
+        assert meta[EPISODE_META]
+        assert meta[EPISODE_META] != l9.episode_urn("r", "live")
+
+    async def test_two_rows_from_one_verdict_are_two_threads(self):
+        await _run(
+            "r6b",
+            [
+                CompiledTask(title="ship auth", assignee="a"),
+                CompiledTask(title="rotate keys", assignee="b"),
+            ],
+            {"a": "auth", "b": "keys"},
+        )
+        one = _row("r6b", "work/ship-auth")[0][EPISODE_META]
+        two = _row("r6b", "work/rotate-keys")[0][EPISODE_META]
+        assert one and two and one != two
+
+    async def test_a_re_negotiation_does_not_move_a_row_off_its_thread(self):
+        # A row's thread is where its history is. A later verdict that restates
+        # the task must leave the binding alone, or the row loses the argument
+        # that produced it.
+        task = [CompiledTask(title="ship auth", assignee="a")]
+        await _run("r7", task, {"a": "auth"})
+        first = _row("r7", "work/ship-auth")[0][EPISODE_META]
+        mgr = FakeManager()
+        engine = task_sync.TaskSyncEngine(mgr)  # type: ignore[arg-type]
+        later = l9.build_envelope(
+            kind=Kind.commit,
+            subkind="converged",
+            episode=l9.episode_urn("r", "second"),
+            recipients=["a"],
+            topic=l9.topic_urn("r"),
+            payload_type="consensus",
+            payload_data={"assignments": {"a": "auth"}},
+        )
+        with (
+            patch.object(task_sync.task_compiler, "compile_tasks", AsyncMock(return_value=task)),
+            patch("app.routes.memory.embed_text", return_value=[0.0]),
+        ):
+            await engine.compile_and_write("r7", later)
+        assert _row("r7", "work/ship-auth")[0][EPISODE_META] == first
 
     async def test_a_rewrite_does_not_reopen_work_somebody_moved(self):
         # A re-negotiation that restates an untouched task must not undo a

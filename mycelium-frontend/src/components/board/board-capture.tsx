@@ -27,7 +27,7 @@ export const BoardCapture = forwardRef<HTMLInputElement, Props>(function BoardCa
   const armed = parsed.title.length > 0;
 
   return (
-    <div className="px-5 pb-2">
+    <div className="mt-2 px-5 pb-2">
       <div
         className={cn(
           "flex items-center gap-2 rounded-lg border bg-surface/60 px-3 py-1.5 transition-colors",

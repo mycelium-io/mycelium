@@ -43,7 +43,9 @@ from app.schemas import (
 from app.services import actor, in_memory_store, links, memory_sync, search_index
 from app.services.embedding import embed_text
 from app.services.filesystem import (
+    EPISODE_META,
     MANAGED_META,
+    SYSTEM_META,
     delete_memory_file,
     get_room_dir,
     list_memory_files,
@@ -51,11 +53,13 @@ from app.services.filesystem import (
     read_memory_file,
     recover_timestamps,
     room_exists,
+    system_meta,
     unmanaged_meta,
     value_to_content,
     write_memory_file,
 )
 from app.services.search_index import stable_memory_id
+from app.services.tasks import is_board_row, mint_episode_urn
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +110,7 @@ def _memory_read_from_file(room_name: str, key: str, meta: dict, content: str) -
         version=meta.get("version", 1),
         tags=meta.get("tags"),
         meta=unmanaged_meta(meta) or None,
+        episode=meta.get(EPISODE_META),
         expandable=links.is_expandable(meta),
         created_at=created_at,
         updated_at=updated_at,
@@ -212,7 +217,11 @@ async def create_memories(room_name: str, payload: MemoryBatchCreate, request: R
 
 
 async def upsert_memories(
-    room_name: str, payload: MemoryBatchCreate, *, notify: bool = True
+    room_name: str,
+    payload: MemoryBatchCreate,
+    *,
+    notify: bool = True,
+    system: dict[str, Any] | None = None,
 ) -> list[MemoryRead]:
     """The write itself, with ``created_by`` already resolved to its true author.
 
@@ -224,8 +233,20 @@ async def upsert_memories(
     re-dating a lease it already holds.  The file, the index and the link graph
     are all updated exactly as usual; what is skipped is telling the room, which
     a loop running every few seconds must not do.
+
+    ``system`` sets the store-owned frontmatter in :data:`SYSTEM_META` — today
+    just the ``episode`` a task is bound to.  An in-process parameter has
+    no wire form, so nothing over HTTP can point a row at a thread it was never
+    part of; the same key stays ignored in ``MemoryCreate.meta``.
+
+    It is **write-once**: a value already on the row wins, so a task stays bound
+    to the thread its history is in for the row's whole life.
     """
     _require_room(room_name)
+    if system and not set(system) <= SYSTEM_META:
+        raise ValueError(
+            f"system meta outside {sorted(SYSTEM_META)}: {sorted(set(system) - SYSTEM_META)}"
+        )
     room_dir = get_room_dir(room_name)
 
     from app.services.metrics import record_memory_write
@@ -277,6 +298,23 @@ async def upsert_memories(
         if item.meta:
             extra_meta.update({k: v for k, v in item.meta.items() if k not in MANAGED_META})
 
+        # The store's own minted keys, which nothing here recomputes. ``system``
+        # supplies one; what the row already carries wins, so the binding is
+        # write-once: a field write cannot silently unbind a row from its thread,
+        # and a later writer cannot move it onto a different one.
+        if system:
+            extra_meta.update(system)
+        extra_meta.update(system_meta(existing_meta))
+
+        # Every board row is a task with its own thread. If this write creates
+        # one in a board namespace and nothing has already bound it, mint its
+        # episode now — so a task, a decision or a blocked item carries a thread
+        # from the moment it exists, not only once a negotiation happens inside
+        # it. The merge above is write-once (an existing binding won), so this
+        # only ever fires on creation and each row gets a distinct URN.
+        if EPISODE_META not in extra_meta and is_board_row(item.key):
+            extra_meta[EPISODE_META] = mint_episode_urn(room_name)
+
         # Persist structured values into frontmatter so non-text keys survive
         # the round-trip (the markdown body only carries the ``text``/rendering).
         structured = set(value.keys()) != {"text"}
@@ -320,6 +358,7 @@ async def upsert_memories(
                 "version": new_version,
                 "tags": item.tags,
                 "meta": unmanaged_meta(extra_meta) or None,
+                "episode": extra_meta.get(EPISODE_META),
                 "expandable": links.is_expandable(extra_meta),
                 "created_at": created_at.isoformat(),
                 "updated_at": now.isoformat(),
@@ -340,6 +379,7 @@ async def upsert_memories(
                 version=new_version,
                 tags=item.tags,
                 meta=unmanaged_meta(extra_meta) or None,
+                episode=extra_meta.get(EPISODE_META),
                 expandable=links.is_expandable(extra_meta),
                 created_at=created_at,
                 updated_at=now,
@@ -359,6 +399,24 @@ async def upsert_memories(
             updated_by=item.created_by,
             updated_at=now.isoformat(),
         )
+        # A board row appearing for the first time is the room filing work: raise
+        # a `filed` notice into the timeline, naming the task, its kind (so it
+        # reads "New decision" not always "New task") and who it is for. Only on
+        # creation — a later write is a state change, carried by its own verb.
+        if not existing and is_board_row(item.key):
+            from app.services.room_channels import manager
+
+            first_line = next((ln for ln in content_text.splitlines() if ln.strip()), item.key)
+            await manager.raise_notice(
+                room_name,
+                subkind="filed",
+                key=item.key,
+                title=first_line.lstrip("# ").strip(),
+                episode=extra_meta.get(EPISODE_META),
+                by=str(created_by).lstrip("@"),
+                kind=extra_meta.get("kind"),
+                **({"for": str(extra_meta["assignee"])} if extra_meta.get("assignee") else {}),
+            )
 
     for embedded in write_metrics:
         record_memory_write(scope="namespace", embedded=embedded)
@@ -444,6 +502,7 @@ async def search_memories(room_name: str, payload: MemorySearchRequest):
             version=rec.get("version", 1),
             tags=rec.get("tags"),
             meta=rec.get("meta") or None,
+            episode=rec.get(EPISODE_META),
             expandable=bool(rec.get("expandable")),
             created_at=created_at,
             updated_at=updated_at,

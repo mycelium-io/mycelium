@@ -205,7 +205,7 @@ async def test_accept_invites_remote_agent_by_identity_only(monkeypatch):
     """
     manager, managed = _manager_with_channel(members=set())
 
-    # Bindings aren't installed in the unit env; record the identity the invite
+    # Bindings aren't installed in the task env; record the identity the invite
     # would resolve and hand back an opaque token in place of a SLIM Name.
     resolved: list[tuple[str, str, str]] = []
 
