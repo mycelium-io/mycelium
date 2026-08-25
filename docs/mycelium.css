@@ -518,7 +518,7 @@ a.topnav-page:hover { color: var(--text); text-decoration: none; }
 .nav-group.collapsed .nav-chevron { transform: rotate(0deg); }
 .nav-group.collapsed .nav-group-items { display: none; }
 .nav-group-items {
-  margin-left: 9px;
+  margin-left: 16px;
   padding-left: 8px;
   border-left: 1px solid var(--border);
 }
