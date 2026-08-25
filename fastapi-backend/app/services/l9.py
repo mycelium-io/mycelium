@@ -101,9 +101,7 @@ NOTICE_PAYLOAD_TYPE = "notice"
 #: ``contracts/slim-l9-wire.json``. ``filed`` also carries the row's board
 #: ``kind`` (so the line reads "New decision", not always "New task") and who it
 #: is ``for``; the custody and lifecycle subkinds carry ``by`` (who moved it).
-NOTICE_SUBKINDS = frozenset(
-    {"filed", "claimed", "released", "resolved", "blocked", "unblocked"}
-)
+NOTICE_SUBKINDS = frozenset({"filed", "claimed", "released", "resolved", "blocked", "unblocked"})
 
 
 class L9ValidationError(ValueError):
