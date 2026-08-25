@@ -56,6 +56,12 @@ jobs:
           curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
           mycelium --version
 
+      - name: Generate mycelium backend client (from committed spec)
+        if: ${{ github.event.inputs.mycelium_ref != '' }}
+        run: |
+          cd mycelium-src
+          SPEC_FILE=openapi.json SKIP_FORMAT=1 bash scripts/gen-mycelium-client.sh
+
       - name: Install mycelium CLI (from source)
         if: ${{ github.event.inputs.mycelium_ref != '' }}
         run: |
