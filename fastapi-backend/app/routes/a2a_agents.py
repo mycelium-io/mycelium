@@ -95,7 +95,9 @@ async def create_a2a_agent(room_name: str, payload: A2aAgentCreate, request: Req
         # Only the env var NAME lands in room memory; the token stays in the env.
         "a2a_auth_env": payload.auth_env.strip() if payload.auth_env else None,
         "allow_from": [h for h in (norm_handle(a) for a in payload.allow_from) if h],
-        "owner": norm_handle(payload.owner),
+        # Default owner to the authenticated registrar so the allow_from owner
+        # exemption works even when the caller doesn't supply an explicit owner.
+        "owner": norm_handle(payload.owner) or norm_handle(registrar),
         "team": norm_handle(payload.team),
     }
     await write_agent_manifest(room_name, handle, body, created_by=registrar or "web-ui")
