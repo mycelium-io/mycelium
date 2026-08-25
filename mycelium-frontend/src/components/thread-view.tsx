@@ -4,8 +4,10 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { MessageSquare, X } from "lucide-react";
+import Link from "next/link";
+import { Maximize2, MessageSquare, X } from "lucide-react";
 import type { Memory, RoomMessage } from "@/lib/api";
+import { memoryHref } from "@/lib/memory-routes";
 import { useRoomAgents, useRoomMemories, useThreadMessages } from "@/lib/room-data";
 import { useRoomStream } from "@/lib/stream-hub";
 import { pingOf, threadShortId } from "@/lib/threads";
@@ -217,6 +219,20 @@ export function ThreadView({ roomName, target, onClose, onOpenMemory }: Props) {
           </Tooltip>
         )}
         <span className="ml-auto flex items-center gap-2">
+          {/* Full screen: leave the split and open the task on its own page —
+              the same memory, room to work. Only where the pane is a task (a
+              negotiation thread has no page of its own to open). */}
+          {task && (
+            <Tooltip content="Open full screen">
+              <Link
+                href={memoryHref(roomName, task.key)}
+                aria-label="Open task full screen"
+                className="grid size-6 place-items-center rounded text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
+              >
+                <Maximize2 className="size-3.5" strokeWidth={1.9} />
+              </Link>
+            </Tooltip>
+          )}
           <Kbd size="xs" tone="muted">Esc</Kbd>
           <button
             type="button"
