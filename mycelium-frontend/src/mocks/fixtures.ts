@@ -319,23 +319,27 @@ function atlasPing(message: string, sender: string, minutesAgo: number): Record<
 }
 
 /**
- * A task filed into the room, as the room hears it: a **task-created notice**.
+ * A board event as the room hears it: a **notice** — a task filed, claimed,
+ * handed back or resolved.
  *
  * The mirror of {@link atlasPing} — an exchange envelope in `live` naming the
- * task that was filed (key, title, and the task's own thread to open), so the
- * board's newest rows read as something the room *did*, in sequence with the
- * chat, rather than appearing silently on another tab.
+ * task the event was about (key, title, thread to open, who moved it), so the
+ * board's changes read as something the room *did*, in sequence with the chat,
+ * rather than appearing silently on another tab. ``kind`` rides on a ``filed``
+ * notice so the line reads "New decision", not always "New task".
  */
-function atlasTaskCreated(
+function atlasNotice(
+  subkind: string,
   key: string,
   title: string,
   episode: string,
   by: string,
-  kind: string,
   minutesAgo: number,
+  kind?: string,
 ): Record<string, unknown> {
+  const id = `notice-${subkind}-${key}`;
   return {
-    id: `filed-${key}`,
+    id,
     sender_handle: "system",
     message_type: "l9_exchange",
     created_at: iso(minutesAgo),
@@ -345,10 +349,10 @@ function atlasTaskCreated(
       l9: {
         header: {
           kind: "exchange",
-          message: { id: `filed-${key}`, parents: [], episode: ATLAS_LIVE },
+          message: { id, parents: [], episode: ATLAS_LIVE },
           participants: { actors: [{ id: "system", role: "coordinator" }] },
         },
-        payload: { type: "task_created", data: { key, title, episode, by, kind } },
+        payload: { type: "notice", data: { subkind, key, title, episode, by, ...(kind ? { kind } : {}) } },
       },
     },
   };
@@ -384,7 +388,11 @@ const atlasBoardRows: MockMemory[] = [
   // produced them — so each carries its own episode, not the negotiation's.
   {
     key: "work/flip-reads-behind-a-flag",
-    value: "flip reads behind a flag",
+    value:
+      "flip reads behind a flag\n\n" +
+      "Gate the read path on `atlas.reads.v2` (default off). Flip only once replica " +
+      "lag has held under a second for an hour, and keep it reversible through the " +
+      "48h soak. Gated on #502 (auth) and #504 (custody seam).",
     meta: { kind: "action", status: "open", assignee: "@growth", priority: "high", issue: "#502" },
     content_text: "flip reads behind a flag — gated on #502 and #504.",
     created_by: "aligner",
@@ -694,18 +702,25 @@ const atlas: RoomFixture = {
   // matches its board row, so a notice opens the same thread the row's chip does.
   l9: [
     ...atlasL9Frames,
-    atlasTaskCreated("decisions/spire-retire", "Retire the SPIRE identity tier", atlasEpisode("b0d2f4"), "julia", "decision", 1439.8),
-    atlasTaskCreated("work/path-traversal", "Fix path traversal in the memory key encoder", atlasEpisode("a9c1e3"), "risk", "action", 1399.8),
-    atlasTaskCreated("work/jwt-auth", "Migrate auth → JWT", atlasEpisode("d6f8b0"), "growth", "action", 139.8),
-    atlasTaskCreated("failed/thin-spoke", "Enable thin-spoke join without a local replica", atlasEpisode("b4d6f8"), "julia", "blocked", 129.8),
-    atlasTaskCreated("work/cache-sweep", "Cache TTL sweep across the memory index", atlasEpisode("e7a9c1"), "julia", "action", 94.8),
-    atlasTaskCreated("failed/offer-snap", "Aligner stalls when a proposer replies with prose only", atlasEpisode("f8b0d2"), "risk", "concern", 57.8),
-    // The two the cutover agreement compiled, filed by the aligner right after
-    // its "filing the work" line (iso(40)).
-    atlasTaskCreated("work/flip-reads-behind-a-flag", "flip reads behind a flag", ATLAS_FLIP_THREAD, "aligner", "action", 39.9),
-    atlasTaskCreated("work/retire-the-legacy-store", "48h soak, then retire the legacy store", ATLAS_RETIRE_THREAD, "aligner", "action", 39.8),
-    atlasTaskCreated("work/custody-review", "@risk opened PR #504 — eyes on the custody seam", atlasEpisode("c5e7a9"), "risk", "review", 13.8),
-    atlasTaskCreated("decisions/token-ttl", "JWT access-token TTL: 15m or 60m?", atlasEpisode("a1c3e5"), "risk", "decision", 5.8),
+    // Every board row's origin — a `filed` notice — and, for two of them, the rest
+    // of the lifecycle the room saw: path-traversal resolved long ago, flip-reads
+    // claimed by growth just before he worked it. Read in order it is filed →
+    // claimed → activity → resolved, the whole arc of a unit of work.
+    atlasNotice("filed", "decisions/spire-retire", "Retire the SPIRE identity tier", atlasEpisode("b0d2f4"), "julia", 1439.8, "decision"),
+    atlasNotice("filed", "work/path-traversal", "Fix path traversal in the memory key encoder", atlasEpisode("a9c1e3"), "risk", 1399.8, "action"),
+    atlasNotice("resolved", "work/path-traversal", "Fix path traversal in the memory key encoder", atlasEpisode("a9c1e3"), "risk", 1200),
+    atlasNotice("filed", "work/jwt-auth", "Migrate auth → JWT", atlasEpisode("d6f8b0"), "growth", 139.8, "action"),
+    atlasNotice("filed", "failed/thin-spoke", "Enable thin-spoke join without a local replica", atlasEpisode("b4d6f8"), "julia", 129.8, "blocked"),
+    atlasNotice("filed", "work/cache-sweep", "Cache TTL sweep across the memory index", atlasEpisode("e7a9c1"), "julia", 94.8, "action"),
+    atlasNotice("filed", "failed/offer-snap", "Aligner stalls when a proposer replies with prose only", atlasEpisode("f8b0d2"), "risk", 57.8, "concern"),
+    // The two the cutover agreement compiled, filed by the aligner right after its
+    // "filing the work" line (iso(40)).
+    atlasNotice("filed", "work/flip-reads-behind-a-flag", "flip reads behind a flag", ATLAS_FLIP_THREAD, "aligner", 39.9, "action"),
+    atlasNotice("filed", "work/retire-the-legacy-store", "48h soak, then retire the legacy store", ATLAS_RETIRE_THREAD, "aligner", 39.8, "action"),
+    atlasNotice("filed", "work/custody-review", "@risk opened PR #504 — eyes on the custody seam", atlasEpisode("c5e7a9"), "risk", 13.8, "review"),
+    atlasNotice("filed", "decisions/token-ttl", "JWT access-token TTL: 15m or 60m?", atlasEpisode("a1c3e5"), "risk", 5.8, "decision"),
+    // growth takes the flag row before working it, then the thread moves.
+    atlasNotice("claimed", "work/flip-reads-behind-a-flag", "flip reads behind a flag", ATLAS_FLIP_THREAD, "growth", 23),
     atlasPing("t2", "risk", 21),
     atlasPing("t3", "growth", 20),
   ],

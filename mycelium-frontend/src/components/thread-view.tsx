@@ -5,10 +5,11 @@
 
 import { useEffect, useRef } from "react";
 import { MessageSquare, X } from "lucide-react";
-import type { RoomMessage } from "@/lib/api";
-import { useRoomAgents, useThreadMessages } from "@/lib/room-data";
+import type { Memory, RoomMessage } from "@/lib/api";
+import { useRoomAgents, useRoomMemories, useThreadMessages } from "@/lib/room-data";
 import { useRoomStream } from "@/lib/stream-hub";
 import { pingOf, threadShortId } from "@/lib/threads";
+import { memoryValueText } from "@/lib/memory-preview";
 import { MarkdownContent } from "@/components/markdown-content";
 import { RoomChatBox } from "@/components/room-chat-box";
 import { EmptyState } from "@/components/empty-state";
@@ -37,6 +38,66 @@ interface Props {
   onClose: () => void;
   /** A `[[wikilink]]` in a thread message opens the memory, same as in chat. */
   onOpenMemory?: (key: string) => void;
+}
+
+/**
+ * The task itself, above its conversation: what an issue's description is to its
+ * comments. The row's own fields as a chip line, then its body — but only where
+ * the body says more than the title already does, so a one-line task is all
+ * header and no empty restatement of itself.
+ */
+function TaskCard({
+  task,
+  title,
+  onOpenMemory,
+}: {
+  task: Memory;
+  title?: string | null;
+  onOpenMemory?: (key: string) => void;
+}) {
+  const meta = (task.meta ?? {}) as Record<string, unknown>;
+  const str = (k: string): string | null => {
+    const v = meta[k];
+    return typeof v === "string" && v.trim() ? v.trim() : null;
+  };
+  const assignee = str("assignee");
+  const priority = str("priority");
+  const chips = [
+    str("kind"),
+    str("status"),
+    assignee ? `for ${assignee}` : null,
+    priority && priority !== "normal" ? priority : null,
+    str("issue") ?? str("pr"),
+  ].filter((c): c is string => Boolean(c));
+
+  // The body is the description; its first line is often the title again, so
+  // drop that one line rather than restating in the pane what the header says.
+  const body = memoryValueText(task.value).trim();
+  const [firstLine, ...rest] = body.split("\n");
+  const description =
+    firstLine.replace(/^#+\s*/, "").trim() === (title ?? "").trim()
+      ? rest.join("\n").trim()
+      : body;
+
+  if (chips.length === 0 && !description) return null;
+  return (
+    <div className="border-b border-hairline px-5 py-3">
+      {chips.length > 0 && (
+        <div className="mb-1.5 flex flex-wrap items-center gap-1.5 font-mono text-micro text-muted-foreground">
+          {chips.map((chip, i) => (
+            <span key={`${chip}-${i}`} className="rounded bg-hairline px-1.5 py-px">
+              {chip}
+            </span>
+          ))}
+        </div>
+      )}
+      {description && (
+        <MarkdownContent className="contrast text-body leading-relaxed" onLinkClick={onOpenMemory}>
+          {description}
+        </MarkdownContent>
+      )}
+    </div>
+  );
 }
 
 /** The prose a thread message carries, or "" when it carries none. */
@@ -72,6 +133,12 @@ function textOf(message: RoomMessage): string {
  */
 export function ThreadView({ roomName, target, onClose, onOpenMemory }: Props) {
   const { messages, loading, refresh } = useThreadMessages(roomName, target.episode);
+  // The task this thread is of, resolved by its episode — the row is the thread,
+  // so the pane opens with the task itself (its body and fields) above the
+  // conversation about it, the way an issue shows its description over its
+  // comments. Absent for a negotiation thread bound to no row.
+  const { memories } = useRoomMemories(roomName);
+  const task = memories.find(m => m.episode === target.episode) ?? null;
   const { agents } = useRoomAgents(roomName);
   const agentHandles = new Set(agents.map(a => a.handle));
   const shortId = threadShortId(target.episode) ?? "thread";
@@ -163,6 +230,7 @@ export function ThreadView({ roomName, target, onClose, onOpenMemory }: Props) {
       </header>
 
       <ScrollArea className="min-h-0 flex-1" viewportRef={scrollRef}>
+        {task && <TaskCard task={task} title={target.title} onOpenMemory={onOpenMemory} />}
         {loading && ordered.length === 0 ? (
           <div className="flex flex-col gap-4 px-5 py-4">
             <Skeleton className="h-3 w-2/5" />
@@ -170,9 +238,9 @@ export function ThreadView({ roomName, target, onClose, onOpenMemory }: Props) {
           </div>
         ) : ordered.length === 0 ? (
           <EmptyState
-            className="h-full"
+            className={task ? "py-14" : "h-full"}
             icon={MessageSquare}
-            title="Nothing said here yet"
+            title={task ? "No replies yet" : "Nothing said here yet"}
             description="Reply below, or @-mention an agent — it lands in this task, not in the room."
           />
         ) : (

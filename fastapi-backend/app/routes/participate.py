@@ -64,10 +64,13 @@ _MAX_WAIT_S = 3600.0
 # L9 payload so the aligner can score convergence, and stripped from the prose.
 _MARKER_RE = re.compile(r"\[\[\s*mycelium\s*:(.*?)\]\]", re.IGNORECASE | re.DOTALL)
 # Payloads that are never an addressed turn however they are actor-labelled:
-# presence/keepalive are liveness, and a ``ping`` is the signal that a *thread*
-# moved — a nudge to look, not a turn to take. Excluded structurally here so a
-# resident loop consumes one silently rather than reasoning about it.
-_UNADDRESSED_PAYLOADS = frozenset({"presence", "keepalive", l9.PING_PAYLOAD_TYPE})
+# presence/keepalive are liveness, a ``ping`` is the signal that a *thread* moved,
+# and a ``notice`` is the signal that the *board* moved (a task filed, claimed,
+# resolved) — all nudges to look, not turns to take. Excluded structurally here so
+# a resident loop consumes one silently rather than reasoning about it.
+_UNADDRESSED_PAYLOADS = frozenset(
+    {"presence", "keepalive", l9.PING_PAYLOAD_TYPE, l9.NOTICE_PAYLOAD_TYPE}
+)
 
 _STANCE_TO_ACTION = {
     "accept": "accept",

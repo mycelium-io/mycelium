@@ -86,19 +86,53 @@ export function pingOf(raw: Record<string, unknown> | null | undefined): Ping | 
   };
 }
 
-/** The payload type a task's creation surfaces into the room as. */
-export const TASK_CREATED_PAYLOAD_TYPE = "task_created";
+/** The payload type the room's board events surface into the timeline as. */
+export const NOTICE_PAYLOAD_TYPE = "notice";
 
-/** The normalized type a task-created notice wears once parsed. */
-export const TASK_CREATED_TYPE = "task_created";
+/** The normalized type a notice wears once parsed. */
+export const NOTICE_TYPE = "notice";
 
-/** What a "new task" notice says: which task, its title, and the thread to open. */
-export interface TaskCreated {
+/** What a board event did to a task — the closed set the backend raises, frozen
+ *  in `contracts/slim-l9-wire.json` and asserted by `threads.contract.test.ts`. */
+export const NOTICE_SUBKINDS = ["filed", "claimed", "released", "resolved"] as const;
+
+export type NoticeSubkind = (typeof NOTICE_SUBKINDS)[number];
+
+/** What a notice says: what happened, to which task, and the thread to open. */
+export interface Notice {
+  subkind: string;
   key: string;
   title: string | null;
   episode: string | null;
   by: string | null;
+  /** The board kind, on a `filed` notice, so the line reads "New decision". */
   kind: string | null;
+}
+
+/**
+ * The notice a wire frame carries, or null when it isn't one.
+ *
+ * The sibling of {@link pingOf}: a notice rides in `live` and names the task the
+ * board event was about, so the channel can render "New task" / "@x is on it" /
+ * "resolved" in sequence with the chat and open the same thread the row does.
+ */
+export function noticeOf(raw: Record<string, unknown> | null | undefined): Notice | null {
+  const envelope = (raw?.l9 ?? null) as Record<string, unknown> | null;
+  const payload = (envelope?.payload ?? null) as Record<string, unknown> | null;
+  if (!payload || payload.type !== NOTICE_PAYLOAD_TYPE) return null;
+  const data = (payload.data ?? {}) as Record<string, unknown>;
+  const key = data.key;
+  const subkind = data.subkind;
+  if (typeof key !== "string" || !key || typeof subkind !== "string" || !subkind) return null;
+  const str = (v: unknown) => (typeof v === "string" && v ? v : null);
+  return {
+    subkind,
+    key,
+    title: str(data.title),
+    episode: str(data.episode),
+    by: str(data.by),
+    kind: str(data.kind),
+  };
 }
 
 /** What the room calls a thing it just filed, by its board kind. A decision is
@@ -113,33 +147,20 @@ const FILED_AS: Record<string, string> = {
   signal: "note",
 };
 
-/** The label a task-created notice wears: "New task", "New decision", … */
-export function filedLabel(kind: string | null | undefined): string {
-  return `New ${(kind && FILED_AS[kind]) || "task"}`;
-}
-
-/**
- * The task-created notice a wire frame carries, or null when it isn't one.
- *
- * The mirror of {@link pingOf}: a creation rides in `live` (so the room sees it
- * in its timeline) and names the task it filed — the key, the title to read, and
- * the task's own thread to open — in its payload. This is what turns "a work row
- * appeared on the board" into "the room filed a task", in sequence with the chat.
- */
-export function taskCreatedOf(raw: Record<string, unknown> | null | undefined): TaskCreated | null {
-  const envelope = (raw?.l9 ?? null) as Record<string, unknown> | null;
-  const payload = (envelope?.payload ?? null) as Record<string, unknown> | null;
-  if (!payload || payload.type !== TASK_CREATED_PAYLOAD_TYPE) return null;
-  const data = (payload.data ?? {}) as Record<string, unknown>;
-  const key = data.key;
-  if (typeof key !== "string" || !key) return null;
-  return {
-    key,
-    title: typeof data.title === "string" ? data.title : null,
-    episode: typeof data.episode === "string" ? data.episode : null,
-    by: typeof data.by === "string" ? data.by : null,
-    kind: typeof data.kind === "string" ? data.kind : null,
-  };
+/** The label a notice wears in the timeline, by subkind (and, when filed, kind). */
+export function noticeLabel(subkind: string, kind: string | null | undefined): string {
+  switch (subkind) {
+    case "filed":
+      return `New ${(kind && FILED_AS[kind]) || "task"}`;
+    case "claimed":
+      return "Claimed";
+    case "released":
+      return "Released";
+    case "resolved":
+      return "Resolved";
+    default:
+      return subkind;
+  }
 }
 
 /** The minimum a feed row has to expose to be coalesced. */

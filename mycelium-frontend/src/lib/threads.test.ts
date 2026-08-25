@@ -5,11 +5,11 @@ import { describe, expect, it } from "vitest";
 import {
   PING_TYPE,
   coalescePings,
-  filedLabel,
   isLiveEpisode,
   liveEpisodeUrn,
+  noticeLabel,
+  noticeOf,
   pingOf,
-  taskCreatedOf,
   threadShortId,
   type Pingable,
 } from "@/lib/threads";
@@ -74,43 +74,49 @@ describe("reading a ping", () => {
   });
 });
 
-describe("reading a task-created notice", () => {
-  function filedFrame(data: Record<string, unknown>) {
+describe("reading a notice", () => {
+  function noticeFrame(data: Record<string, unknown>) {
     return {
       l9: {
         header: { kind: "exchange", message: { episode: liveEpisodeUrn(ROOM) } },
-        payload: { type: "task_created", data },
+        payload: { type: "notice", data },
       },
     };
   }
 
-  it("carries the task, its title, its own thread, and who filed it", () => {
-    // Like a ping, it rides in `live` and names the task it filed in its payload,
-    // so a notice can open the same thread the row's own chip does.
-    const created = taskCreatedOf(
-      filedFrame({ key: "work/flip", title: "flip reads", episode: THREAD, by: "aligner", kind: "action" }),
+  it("carries what happened, to which task, its thread, and who moved it", () => {
+    // Like a ping, it rides in `live` and names the task in its payload, so a
+    // notice can open the same thread the row's own chip does.
+    const notice = noticeOf(
+      noticeFrame({ subkind: "filed", key: "work/flip", title: "flip reads", episode: THREAD, by: "aligner", kind: "action" }),
     );
-    expect(created).toEqual({ key: "work/flip", title: "flip reads", episode: THREAD, by: "aligner", kind: "action" });
+    expect(notice).toEqual({ subkind: "filed", key: "work/flip", title: "flip reads", episode: THREAD, by: "aligner", kind: "action" });
   });
 
-  it("is not a task-created notice when the payload is a ping", () => {
-    expect(taskCreatedOf(pingFrame(THREAD, "risk", "m7"))).toBeNull();
+  it("reads a lease event with no board kind", () => {
+    const notice = noticeOf(noticeFrame({ subkind: "claimed", key: "work/flip", by: "growth" }));
+    expect(notice).toMatchObject({ subkind: "claimed", key: "work/flip", by: "growth", kind: null });
   });
 
-  it("refuses a notice that names no task", () => {
-    expect(taskCreatedOf(filedFrame({ title: "no key" }))).toBeNull();
-    expect(taskCreatedOf({})).toBeNull();
-    expect(taskCreatedOf(null)).toBeNull();
+  it("is not a notice when the payload is a ping", () => {
+    expect(noticeOf(pingFrame(THREAD, "risk", "m7"))).toBeNull();
   });
 
-  it("names what was filed by its kind, not always a task", () => {
-    expect(filedLabel("decision")).toBe("New decision");
-    expect(filedLabel("concern")).toBe("New concern");
-    expect(filedLabel("blocked")).toBe("New blocker");
-    expect(filedLabel("action")).toBe("New task");
-    // An unknown or missing kind falls back to the plain word.
-    expect(filedLabel(null)).toBe("New task");
-    expect(filedLabel("whatever")).toBe("New task");
+  it("refuses a notice that names no task or no subkind", () => {
+    expect(noticeOf(noticeFrame({ subkind: "filed" }))).toBeNull();
+    expect(noticeOf(noticeFrame({ key: "work/flip" }))).toBeNull();
+    expect(noticeOf({})).toBeNull();
+    expect(noticeOf(null)).toBeNull();
+  });
+
+  it("labels a filing by its kind, and a lease event by what happened", () => {
+    expect(noticeLabel("filed", "decision")).toBe("New decision");
+    expect(noticeLabel("filed", "blocked")).toBe("New blocker");
+    expect(noticeLabel("filed", "action")).toBe("New task");
+    expect(noticeLabel("filed", null)).toBe("New task");
+    expect(noticeLabel("claimed", null)).toBe("Claimed");
+    expect(noticeLabel("released", null)).toBe("Released");
+    expect(noticeLabel("resolved", null)).toBe("Resolved");
   });
 });
 
