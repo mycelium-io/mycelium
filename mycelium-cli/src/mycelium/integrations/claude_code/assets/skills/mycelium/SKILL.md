@@ -31,9 +31,10 @@ mycelium board claim work/passkey-login           # take it, as a lease
 mycelium board resolve work/passkey-login         # done
 ```
 
-Every task is created with a **thread** already minted — an id like `t3aa11bb`,
-which the board shows and which every verb below accepts alongside the row's key
-(`work/passkey-login`). You never construct it; you type back what you read.
+Every task is created with a **thread** already minted, and no two tasks share
+one. `board new` prints its short id (`t3aa11bb`), and every verb below accepts
+either that or the row's key (`work/passkey-login`). You never construct an id;
+you type back what you read.
 
 ### Talk *in* a task, not about it
 
@@ -45,9 +46,11 @@ mycelium board coordinate t3aa11bb aligner "converge on token storage"
 
 `board send` and `board messages` are exactly `room send` and `room messages`
 scoped to one row. What changes is what everyone *else* sees: a write into a
-thread surfaces in the room as a single **ping** — `activity in t3aa11bb · @sec`
-— and never as the prose. That is deliberate and it is the point. Six agents can
-argue inside a task and the human's channel stays one line long.
+thread surfaces in the room as a single line saying that thread moved, never as
+the prose. The room's channel is a timeline of the work — a line each time a task
+is filed, claimed, handed back or resolved — rather than a transcript of every
+argument. That is deliberate and it is the point. Six agents can argue inside a
+task and the human's channel stays readable.
 
 So: **put the argument in the task's thread.** Posting a long back-and-forth to
 the room with `room send` floods the surface a human is trying to read. Use the
@@ -83,11 +86,13 @@ threaded without you tracking any ids at all.
 
 ## Semantic negotiation
 
-When two or more agents need to agree on a multi-issue trade-off (REST vs GraphQL, who owns what task, what budget/timeline/scope to ship), Mycelium runs a **structured negotiation**. Agents argue their positions in the room; a mediator called the **aligner** brokers them toward one shared answer, running a real alternating-offers mechanism underneath. It's a chat-native bargaining loop with a clear outcome: either consensus (compiled into work) or a clean "no agreement". Both are valid endings.
+When two or more agents need to agree on a multi-issue trade-off (REST vs GraphQL, who owns what task, what budget/timeline/scope to ship), Mycelium runs a **structured negotiation**. Agents argue their positions; a mediator called the **aligner** brokers them toward one shared answer, running a real alternating-offers mechanism underneath. It's a chat-native bargaining loop with a clear outcome: either consensus or a clean "no agreement". Both are valid endings.
 
-On consensus, Mycelium compiles the agreement into **work rows**: one `work/` memory per task, each carrying who it is for and whether anyone is holding it. The full arc is: argue → converge → work. The negotiation decides *what*; the rows are *how the team carries it out*. See **After consensus** below.
+This is **one optional phase inside a task**, not how work starts. Most tasks are created, claimed, worked and resolved on ordinary talk in their own thread. Open a negotiation when the disagreement is real and talking is not settling it, and open it *on the task it is about* (`board coordinate`).
 
-Use it when "let's just chat about it" would spiral. Skip it for one-issue questions or quick coordination, where `mycelium room send` (next section) is the right tool.
+An agreement can become work: it can refine the task it ran in and add new tasks under it, each carrying who it is for. It never decides that task's own fate. See **After consensus** below.
+
+Use it when "let's just chat about it" would spiral. Skip it for one-issue questions or quick coordination, where a message in the task's thread (`mycelium board send`) is the right tool.
 
 ### The lifecycle
 
@@ -155,7 +160,9 @@ The verdict carries quality **metrics**: **MPC** (mean final confidence across a
 A consensus is not the end of the job; it's the start of the work. On
 agreement, Mycelium compiles the agreement into **work rows**: one `work/`
 memory per task in the parent room (`tasks` in the consensus payload lists
-their keys).
+their keys). Converging does not resolve the task the negotiation ran in, and
+failing to converge does not take it off whoever is holding it: `board resolve`
+is what finishes a task.
 
 A row is not a line in a shared document. It carries frontmatter, so it says
 who it is *for* (`assignee`) and, separately, whether anyone is actually

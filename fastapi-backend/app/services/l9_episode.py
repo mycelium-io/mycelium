@@ -8,8 +8,8 @@ L9 episode tracking.
 channel, with its participants, its topic and the envelopes it has carried.
 :class:`NegotiationState` adds what a *negotiation* inside one accumulates: the
 opening asks, the offer grid, and the belief-move scoreboard. The split is the
-task-of-work model's: a task is a thread, and a negotiation is one
-optional thing that happens inside it, so a thread opened for a board row does
+task model's: a task is a thread, and a negotiation is one optional
+thing that happens inside it, so a thread opened for a board row does
 not carry an SAO scoreboard it will never fill in.
 
 A :class:`NegotiationState` accompanies each mediated session. It does three

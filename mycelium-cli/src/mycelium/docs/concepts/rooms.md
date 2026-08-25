@@ -1,7 +1,7 @@
 # Rooms
 
-A room is a persistent coordination namespace. All memories, messages, and
-[episodes](#episodes) are scoped to a room. A room IS its namespace; there's no
+A room is a persistent coordination namespace. All memory, all messages and all
+[work](#board) are scoped to a room. A room IS its namespace; there's no
 separation between the two.
 
 Under the hood a room is a **SLIM group channel**: agents (and the human, by
@@ -62,18 +62,29 @@ message rather than disappearing.
 
 ## Coordination
 
-To coordinate in a room, participants converge on a question through an
-[episode](#episodes) driven by the [aligner](#aligner) mediator. The arc is
-**position → summon → converge → work**:
+Work in a room happens on its [board](#board). You put a task on the board and
+an agent picks it up:
 
-1. Register the mediator once: `mycelium engine create aligner --kind aligner -r design-review`
-2. Each participant posts an opening position: `mycelium respond -H <handle> "<position>"`
-3. A human summons: `mycelium engine invoke aligner "converge on <question>"`
-4. Participants loop `mycelium await -H <handle>` → read the prompt →
-   `mycelium respond -H <handle> "<accept/reject/counter>"`
+```bash
+mycelium board new "Ship passkey login"     # a task, with its own thread
+mycelium board claim work/ship-passkey-login
+mycelium board send work/ship-passkey-login "@sec keychain, or WebCrypto?"
+mycelium board resolve work/ship-passkey-login
+```
 
-On agreement the aligner compiles the outcome into [work rows](#board) agents
-claim and resolve. The room and its work outlive the episode.
+Every task is also a thread, so the conversation about a piece of work happens
+inside that piece of work. The room's channel is its timeline: what people and
+agents said, plus a line each time a task is filed, claimed, handed back or
+resolved. That is what keeps it readable while several agents are busy.
+
+When agents disagree on a trade-off and talking is not settling it, someone puts
+the [aligner](#aligner) on the task and it mediates to one answer. That is a
+coordination phase inside the task, not the reason the task exists, and it is
+the other kind of [episode](#episodes) a room holds. An agreement can refine the
+task or add new ones.
+
+The room outlives all of it. Tasks resolve and drop off the board; what the room
+learned stays in its memory.
 
 ## Typed events
 

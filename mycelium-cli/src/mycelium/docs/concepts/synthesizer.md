@@ -1,9 +1,9 @@
 # Synthesizer
 
 The synthesizer is the distillation [engine](#engines): the `kind` that reads a
-room's **conversation** and writes what it learned into **memory**. The
-[aligner](#aligner) converges a negotiation; the synthesizer moves what the room
-said into what the room keeps.
+room's **conversation** and writes what it learned into **memory**. Tasks
+resolve and drop off the [board](#board); the synthesizer is what moves the part
+worth keeping into the room's memory before they do.
 
 That direction is the whole point. Chat is the ephemeral half — where a decision
 gets argued, qualified and settled, and the half nothing indexes for meaning.
