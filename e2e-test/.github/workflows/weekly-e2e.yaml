@@ -81,6 +81,59 @@ jobs:
             --archive-dir artifacts/pyats-archive \
             --no-archive-subdir || echo "Canary run finished (non-zero exit is OK for Tier C)"
 
+      - name: Write job summary
+        if: always()
+        run: |
+          RUNINFO=$(ls -td artifacts/pyats-runinfo/*/ 2>/dev/null | head -1)
+          echo "## Tier C Canary Results (informational)" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "> Results are **never a release gate**. Failures indicate compatibility observations." >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ -z "$RUNINFO" ]; then
+            echo "❌ No pyATS runinfo found — suite may have failed to start." >> "$GITHUB_STEP_SUMMARY"
+          else
+            # Extract pass/fail/skip counts
+            python3 - <<'PYEOF' >> "$GITHUB_STEP_SUMMARY"
+          import os, glob, json
+
+          runinfo = sorted(glob.glob("artifacts/pyats-runinfo/*/"), key=os.path.getmtime, reverse=True)
+          if not runinfo:
+              print("No runinfo found.")
+              exit(0)
+
+          results_file = os.path.join(runinfo[0], "results.json")
+          if not os.path.exists(results_file):
+              # Try to read TaskLog
+              tasklog = os.path.join(runinfo[0], "TaskLog.rst")
+              if os.path.exists(tasklog):
+                  with open(tasklog) as f:
+                      content = f.read()
+                  # Find summary lines
+                  for line in content.splitlines():
+                      if any(k in line for k in ["Passed", "Failed", "Skipped", "TOTAL", "Result"]):
+                          print(f"`{line.strip()}`  ")
+              exit(0)
+
+          with open(results_file) as f:
+              data = json.load(f)
+
+          passed = data.get("passed", 0)
+          failed = data.get("failed", 0)
+          skipped = data.get("skipped", 0)
+          total = data.get("total", passed + failed + skipped)
+          result = data.get("result", "unknown").upper()
+
+          icon = "✅" if result == "PASSED" else "⚠️" if result == "SKIPPED" else "❌"
+          print(f"| Metric | Value |")
+          print(f"|--------|-------|")
+          print(f"| Overall | {icon} **{result}** |")
+          print(f"| Passed | {passed} |")
+          print(f"| Failed | {failed} |")
+          print(f"| Skipped | {skipped} |")
+          print(f"| Total | {total} |")
+          PYEOF
+          fi
+
       - name: Upload canary results
         if: always()
         uses: actions/upload-artifact@v4
