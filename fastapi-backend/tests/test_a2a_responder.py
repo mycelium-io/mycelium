@@ -28,12 +28,15 @@ def _register_a2a(
     card: str = "https://remote.example",
     auth_env: str | None = None,
     allow_from: list[str] | None = None,
+    owner: str | None = None,
 ) -> None:
     manifest: dict = {"adapter": "a2a", "a2a_card": card, "description": "does research"}
     if auth_env:
         manifest["a2a_auth_env"] = auth_env
     if allow_from is not None:
         manifest["allow_from"] = allow_from
+    if owner is not None:
+        manifest["owner"] = owner
     write_memory_file(
         get_room_dir(_ROOM), f"agents/{handle}", yaml.safe_dump(manifest), created_by="web-ui"
     )
@@ -286,6 +289,20 @@ async def test_allow_from_blocks_unlisted_sender(monkeypatch):
 
     assert calls == []
     assert channel.sent == []
+
+
+@pytest.mark.asyncio
+async def test_owner_bypasses_allow_from_gate(monkeypatch):
+    """The agent owner must always be able to summon, even with a restrictive allow_from."""
+    _register_a2a(allow_from=["avery"], owner="selina")
+    responder, channel, _persister, calls = _responder(monkeypatch)
+
+    # "selina" is the owner but not in allow_from — must still go through.
+    responder.handle_summon(_ROOM, "researcher", _summon_envelope("selina"), [], "owner summon")
+    await _drain(responder)
+
+    assert len(calls) == 1
+    assert channel.sent
 
 
 @pytest.mark.asyncio

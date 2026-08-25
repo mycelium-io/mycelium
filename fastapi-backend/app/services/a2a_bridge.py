@@ -85,6 +85,10 @@ class A2aAgentRef:
     #: Sender handles that may summon this agent (empty = anyone). Normalised to
     #: lowercase without '@' so comparisons are consistent with the gate check.
     allow_from: tuple[str, ...] = ()
+    #: The handle that registered the agent. Always allowed to summon it,
+    #: regardless of allow_from, so the owner is never locked out of their
+    #: own agent by a restrictive allowlist.
+    owner: str | None = None
 
 
 def resolve_a2a_agent(room: str, handle: str) -> A2aAgentRef | None:
@@ -120,6 +124,7 @@ def resolve_a2a_agent(room: str, handle: str) -> A2aAgentRef | None:
         auth_env=env if isinstance(env, str) and env else None,
         endpoint=endpoint if isinstance(endpoint, str) and endpoint else None,
         allow_from=allow_from,
+        owner=norm_handle(data.get("owner")),
     )
 
 
@@ -283,7 +288,10 @@ class A2aResponder:
             return
         # Summon gate: if the manifest names an allow_from list, only those
         # handles may trigger a remote call (and spend its bearer token / quota).
-        if ref.allow_from and norm_handle(sender) not in ref.allow_from:
+        # The agent's owner is always permitted — a restrictive allowlist must
+        # not lock the operator out of their own agent.
+        sender_norm = norm_handle(sender)
+        if ref.allow_from and sender_norm not in ref.allow_from and sender_norm != ref.owner:
             logger.debug(
                 "a2a responder: @%s not in allow_from for @%s — ignoring summon", sender, handle
             )
