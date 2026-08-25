@@ -133,7 +133,8 @@ jobs:
       - name: Install mycelium CLI (from source)
         if: env.BUILD_FROM_SOURCE == 'true'
         run: |
-          uv tool install ./mycelium-src/mycelium-cli --force --link-mode=copy
+          cd mycelium-src/mycelium-cli
+          uv tool install -e . --with mycelium-backend-client@../mycelium-client --force
           mycelium --version
 
       - name: Write compose override for source build
