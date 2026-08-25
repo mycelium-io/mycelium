@@ -16,7 +16,6 @@ import { RoomChatBox } from "@/components/room-chat-box";
 import { ThreadView } from "@/components/thread-view";
 import { RoomInspector, type Tab } from "@/components/room-inspector";
 import { RoomTour } from "@/components/room-tour";
-import { cn } from "@/lib/utils";
 import { GlobalStatusItems, StatusButton } from "@/components/status-items";
 import { Tooltip } from "@/components/ui/tooltip";
 import { useCommands, useKeyAction, useKeyScope } from "@/components/keymap-provider";
@@ -27,10 +26,16 @@ import {
   INSPECTOR_FOLD_WIDTH,
   INSPECTOR_PANEL,
   MAIN_PANEL,
+  MAIN_WITH_THREAD_MIN,
   PANEL_INSPECTOR,
   PANEL_MAIN,
+  PANEL_ROOM_SURFACE,
+  PANEL_THREAD,
   ROOM_GROUP_ID,
   ROOM_PANEL_IDS,
+  THREAD_GROUP_ID,
+  THREAD_PANEL,
+  THREAD_PANEL_IDS,
   layoutStorage,
 } from "@/lib/panel-layout";
 import { useCollapsibleRail } from "@/lib/use-collapsible-rail";
@@ -208,6 +213,43 @@ function RoomWorkspace() {
     panelIds: ROOM_PANEL_IDS,
   });
 
+  // The room-surface / thread split remembers its own width, so dragging the
+  // thread wider does not disturb where the inspector sits.
+  const {
+    defaultLayout: threadLayout,
+    onLayoutChange: onThreadLayoutChange,
+    onLayoutChanged: onThreadLayoutChanged,
+  } = useDefaultLayout({
+    id: THREAD_GROUP_ID,
+    storage: layoutStorage,
+    panelIds: THREAD_PANEL_IDS,
+  });
+
+  // The room's own surface — the feed/board and its composer — as one element,
+  // so it renders identically whether it stands alone or sits in the split
+  // beside an open thread.
+  const roomSurface = (
+    <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+      <div className="flex-1 overflow-hidden">
+        <EventStream
+          roomName={roomName}
+          onMemoryChanged={handleMemoryChanged}
+          onConnectionChange={setConnected}
+          onNegotiationPhaseChange={setNegPhase}
+          onOpenMemory={openMemory}
+          onOpenEpisode={openEpisode}
+          onOpenThread={openThread}
+          view={editorView}
+          onViewChange={setEditorView}
+          suppressInvites={tourActive}
+          focusMessageId={focus?.type === "message" ? focus.id : null}
+          onFocusConsumed={clearFocus}
+        />
+      </div>
+      <RoomChatBox roomName={roomName} className={editorView !== "channel" ? "hidden" : undefined} />
+    </div>
+  );
+
   // Folded, the inspector is a plain strip beside the group rather than a panel
   // inside it: a panel that isn't there can't be squeezed, and it comes back at
   // the width it left at.
@@ -288,44 +330,46 @@ function RoomWorkspace() {
           onLayoutChange={inspectorOpen ? onLayoutChange : undefined}
           onLayoutChanged={inspectorOpen ? onLayoutChanged : undefined}
         >
-          <ResizablePanel id={PANEL_MAIN} minSize={MAIN_PANEL.min} className="flex min-w-0">
+          <ResizablePanel
+            id={PANEL_MAIN}
+            // While a thread is open PANEL_MAIN holds the room surface AND the
+            // thread split, so its floor rises to fit both — the inspector gives
+            // way rather than the split having nowhere to go.
+            minSize={threadTarget ? MAIN_WITH_THREAD_MIN : MAIN_PANEL.min}
+            className="flex min-w-0"
+          >
             <main className="flex min-w-0 flex-1 overflow-hidden">
-              {/* The room's own surface stays mounted behind an open thread, so
-                  closing the pane returns to the feed where it was left. Only a
-                  screen too narrow for both hands the width over. */}
-              <div
-                className={cn(
-                  "min-w-0 flex-1 flex-col overflow-hidden",
-                  threadTarget ? "hidden lg:flex" : "flex",
-                )}
-              >
-                <div className="flex-1 overflow-hidden">
-                  <EventStream
-                    roomName={roomName}
-                    onMemoryChanged={handleMemoryChanged}
-                    onConnectionChange={setConnected}
-                    onNegotiationPhaseChange={setNegPhase}
-                    onOpenMemory={openMemory}
-                    onOpenEpisode={openEpisode}
-                    onOpenThread={openThread}
-                    view={editorView}
-                    onViewChange={setEditorView}
-                    suppressInvites={tourActive}
-                    focusMessageId={focus?.type === "message" ? focus.id : null}
-                    onFocusConsumed={clearFocus}
-                  />
-                </div>
-                <RoomChatBox roomName={roomName} className={editorView !== "channel" ? "hidden" : undefined} />
-              </div>
-              {threadTarget && (
-                <div className="flex min-w-0 flex-1 border-l border-border lg:max-w-[26rem] xl:max-w-[34rem]">
-                  <ThreadView
-                    roomName={roomName}
-                    target={threadTarget}
-                    onClose={closeThread}
-                    onOpenMemory={openMemory}
-                  />
-                </div>
+              {threadTarget ? (
+                // The room surface and the task's thread, split by a handle the
+                // reader can drag. Its own group so the width it is dragged to is
+                // remembered independently of the inspector's.
+                <ResizablePanelGroup
+                  className="min-h-0 flex-1"
+                  defaultLayout={threadLayout}
+                  onLayoutChange={onThreadLayoutChange}
+                  onLayoutChanged={onThreadLayoutChanged}
+                >
+                  <ResizablePanel id={PANEL_ROOM_SURFACE} minSize={MAIN_PANEL.min} className="flex min-w-0">
+                    {roomSurface}
+                  </ResizablePanel>
+                  <ResizableHandle withHandle />
+                  <ResizablePanel
+                    id={PANEL_THREAD}
+                    defaultSize={THREAD_PANEL.default}
+                    minSize={THREAD_PANEL.min}
+                    maxSize={THREAD_PANEL.max}
+                    className="flex min-w-0"
+                  >
+                    <ThreadView
+                      roomName={roomName}
+                      target={threadTarget}
+                      onClose={closeThread}
+                      onOpenMemory={openMemory}
+                    />
+                  </ResizablePanel>
+                </ResizablePanelGroup>
+              ) : (
+                roomSurface
               )}
             </main>
           </ResizablePanel>
