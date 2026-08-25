@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Custody: who holds a row, and for how much longer.
+"""Assignment: who holds a row, and for how much longer.
 
 An agent is resident rather than one-shot, but every session eventually ends and
 none of them get to announce it — a container is reclaimed, a cloud session times
@@ -12,8 +12,8 @@ Held as a fact, one dead agent leaves the board asserting "@someone is on this"
 forever, and the board degrades exactly as it gets busy: full of confident lies.
 Held as a lease, an abandoned claim drains and the row returns to the pool.
 
-**Custody is not a stage.** ``status`` is a stage vocabulary, borrowed from tools
-built for workers who do not die silently.  Custody is the axis that says whether
+**Assignment is not a stage.** ``status`` is a stage vocabulary, borrowed from tools
+built for workers who do not die silently.  Assignment is the axis that says whether
 anyone is actually on this, and it is the one a board of ephemeral actors needs:
 ``in_review`` says nothing about whether a holder is alive, ``held, renewed 30s
 ago`` says everything.
@@ -41,8 +41,8 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from mycelium.board.model import LiveItem
 
-# Frozen in contracts/board-vocabulary.json under "custody"; the GUI mirrors it.
-FIELD = "custody"
+# Frozen in contracts/board-vocabulary.json under "assignment"; the GUI mirrors it.
+FIELD = "assignment"
 
 STATES = ["unclaimed", "held", "released", "expired", "resolved"]
 #: What a writer may put on disk. The other two are read off the clock.
@@ -59,12 +59,12 @@ STALE_AFTER = 0.5
 
 DEFAULT_TTL_MINUTES = 30
 
-COMPANION_FIELDS = ["claimed_at", "ttl_minutes", "custody_note", "custody_note_by"]
+COMPANION_FIELDS = ["claimed_at", "ttl_minutes", "assignment_note", "assignment_note_by"]
 
 #: Who a note is attributed to when the runtime wrote it rather than a person.
 RUNTIME_AUTHOR = "runtime"
 
-LENS_OF_CUSTODY = {
+ATTENTION_OF_ASSIGNMENT = {
     "unclaimed": "needs_you",
     "held": "in_flight",
     "released": "needs_you",
@@ -73,13 +73,13 @@ LENS_OF_CUSTODY = {
 }
 
 #: Leases live on memories, because frontmatter has somewhere to put a stamp.
-LEASABLE_NAMESPACES = ["work"]
+ASSIGNABLE_NAMESPACES = ["work"]
 
 #: Why a row refuses a claim, in its own terms. Saying so beats pretending.
 REFUSALS = {
-    "episode": "an episode is a recorded negotiation, and there is nothing to write a lease onto",
+    "episode": "an episode is a recorded negotiation, and there is nothing to assign",
     "agent": "presence is already a lease the runtime renews; it is not claimable",
-    "memory": "leases live on work/ memories; this row is in another namespace",
+    "memory": "assignments live on work/ memories; this row is in another namespace",
 }
 
 #: A row is blocked because it names a blocker. Nothing stores the word.
@@ -96,7 +96,7 @@ def parse_stamp(raw: str | None) -> datetime | None:
     return stamp.replace(tzinfo=UTC) if stamp.tzinfo is None else stamp
 
 
-def spent(stamped_at: str | None, ttl_minutes: Any, now: datetime) -> float | None:
+def elapsed_fraction(stamped_at: str | None, ttl_minutes: Any, now: datetime) -> float | None:
     """Fraction of a lease already burned, or ``None`` when it cannot expire.
 
     A row with no TTL is not a lease — nobody has taken it for a window — so it
@@ -114,7 +114,7 @@ def spent(stamped_at: str | None, ttl_minutes: Any, now: datetime) -> float | No
 
 def freshness(stamped_at: str | None, ttl_minutes: Any, now: datetime) -> str | None:
     """fresh / stale / expired, in the shape the upstream half already reads."""
-    fraction = spent(stamped_at, ttl_minutes, now)
+    fraction = elapsed_fraction(stamped_at, ttl_minutes, now)
     if fraction is None:
         return None
     if fraction < STALE_AFTER:
@@ -132,11 +132,11 @@ def claimed_at(item: LiveItem) -> str | None:
     return item.text("claimed_at") or item.text("updated")
 
 
-def custody_of(item: LiveItem, now: datetime) -> str | None:
-    """The row's custody state, or ``None`` when it has no custody axis.
+def assignment_of(item: LiveItem, now: datetime) -> str | None:
+    """The row's assignment state, or ``None`` when it has no assignment axis.
 
     ``None`` is not a state — it means this row is not the kind of thing anyone
-    holds (a decision that has been made, a prose memory), so a lens must fall
+    holds (a decision that has been made, a prose memory), so an attention filter must fall
     back to its stage rather than inventing a holder for it.
 
     A ``held`` lease whose clock ran out reads ``expired`` here, with nothing on
@@ -166,48 +166,48 @@ def is_blocked(item: LiveItem) -> bool:
     return bool(item.strings(BLOCKED_FIELD))
 
 
-def lens_of_item(item: LiveItem, now: datetime) -> str:
-    """Which lens a row belongs on: custody first, stage only where there is none.
+def attention_of_item(item: LiveItem, now: datetime) -> str:
+    """Which attention filter a row belongs on: assignment first, stage only where there is none.
 
     Blocked wins over both — a row waiting on something needs a person whoever
     is nominally holding it.
     """
-    from mycelium.board.model import lens_of
+    from mycelium.board.model import attention_of_status
 
     if is_blocked(item):
         return "needs_you"
-    state = custody_of(item, now)
+    state = assignment_of(item, now)
     if state is not None:
-        return LENS_OF_CUSTODY[state]
-    return lens_of(item.status)
+        return ATTENTION_OF_ASSIGNMENT[state]
+    return attention_of_status(item.status)
 
 
 def note_of(item: LiveItem, now: datetime) -> tuple[str, str] | None:
-    """The row's custody note and who wrote it, or ``None`` when there is none.
+    """The row's assignment note and who wrote it, or ``None`` when there is none.
 
     Handing work off deliberately and dying mid-task converge on the same state:
     an unclaimed row with history.  What tells them apart is the note's author —
     the releaser wrote one, the runtime wrote the other — so both come back
     together rather than as a line of text a reader has to interpret.
     """
-    state = custody_of(item, now)
+    state = assignment_of(item, now)
     if state == "expired":
         holder = item.owner or "its holder"
         return (f"expired — @{holder} stopped renewing", RUNTIME_AUTHOR)
-    note = item.text("custody_note")
+    note = item.text("assignment_note")
     if not note:
         return None
-    return (note, item.text("custody_note_by") or RUNTIME_AUTHOR)
+    return (note, item.text("assignment_note_by") or RUNTIME_AUTHOR)
 
 
-def refusal_for(item: LiveItem) -> str | None:
+def assignment_refusal(item: LiveItem) -> str | None:
     """Why this row cannot take a lease, or ``None`` when it can."""
     kind = item.source.kind
     if kind in ("episode", "agent"):
         return REFUSALS[kind]
     if kind == "memory":
         namespace = str(item.get("namespace") or item.source.label.split("/")[0])
-        return None if namespace in LEASABLE_NAMESPACES else REFUSALS["memory"]
+        return None if namespace in ASSIGNABLE_NAMESPACES else REFUSALS["memory"]
     return REFUSALS["memory"]
 
 
@@ -218,8 +218,8 @@ def claim_patch(handle: str, now: datetime, ttl_minutes: int = DEFAULT_TTL_MINUT
         "owner": handle if handle.startswith("@") else f"@{handle}",
         "claimed_at": now.isoformat(),
         "ttl_minutes": ttl_minutes,
-        "custody_note": None,
-        "custody_note_by": None,
+        "assignment_note": None,
+        "assignment_note_by": None,
     }
 
 
@@ -230,15 +230,15 @@ def release_patch(handle: str, now: datetime, note: str | None = None) -> dict:
         "owner": None,
         "claimed_at": None,
         "ttl_minutes": None,
-        "custody_note": note or "released",
-        "custody_note_by": handle.lstrip("@"),
+        "assignment_note": note or "released",
+        "assignment_note_by": handle.lstrip("@"),
         "updated": now.isoformat(),
     }
 
 
 def remaining_minutes(item: LiveItem, now: datetime) -> int | None:
     """Minutes of lease left, or ``None`` when the row does not expire."""
-    fraction = spent(claimed_at(item), item.get("ttl_minutes"), now)
+    fraction = elapsed_fraction(claimed_at(item), item.get("ttl_minutes"), now)
     if fraction is None:
         return None
     try:

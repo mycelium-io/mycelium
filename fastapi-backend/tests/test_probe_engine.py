@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Unit tests for the hello cognition engine (app/services/hello.py).
+"""Unit tests for the probe cognition engine (app/services/probe_engine.py).
 
 Node-free: the Pi turn is patched, so these exercise the summon gate, the
-one-turn answer path, the fail-loud behavior, and the property that makes hello
+one-turn answer path, the fail-loud behavior, and the property that makes the probe
 safe to fire into a live room — it writes no memory at all.
 """
 
@@ -16,7 +16,7 @@ from typing import Any
 import pytest
 import yaml
 
-from app.services import hello, l9
+from app.services import l9, probe_engine
 from app.services.filesystem import get_room_dir, list_memory_files, write_memory_file
 from app.services.l9_models import Kind
 from tests.fakes import FakeChannel, FakeManaged, FakeManager, FakePersister
@@ -26,9 +26,9 @@ _EPISODE = l9.episode_urn(_ROOM, "live")
 _TOPIC = l9.topic_urn(_ROOM)
 
 
-def _engine() -> tuple[hello.HelloEngine, FakeManaged]:
+def _engine() -> tuple[probe_engine.ProbeEngine, FakeManaged]:
     managed = FakeManaged(_ROOM, "mycelium", FakeChannel(), FakePersister())
-    return hello.HelloEngine(FakeManager(managed, [])), managed  # type: ignore[arg-type]
+    return probe_engine.ProbeEngine(FakeManager(managed, [])), managed  # type: ignore[arg-type]
 
 
 def _env(sender: str) -> Any:
@@ -73,7 +73,7 @@ async def test_greet_answers_the_summon_text(monkeypatch: pytest.MonkeyPatch) ->
         seen.append(prompt)
         return "Hello — running claude-sonnet-4-6. The engine path works."
 
-    monkeypatch.setattr(hello, "_pi_complete", fake_pi)
+    monkeypatch.setattr(probe_engine, "_pi_complete", fake_pi)
     engine, managed = _engine()
 
     reply = await engine.greet(_ROOM, engine_handle="hi", directive="name the model you are")
@@ -90,12 +90,12 @@ async def test_bare_summon_falls_back_to_the_default_directive(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     seen: list[str] = []
-    monkeypatch.setattr(hello, "_pi_complete", lambda p, _t: seen.append(p) or "hi")
+    monkeypatch.setattr(probe_engine, "_pi_complete", lambda p, _t: seen.append(p) or "hi")
     engine, _managed = _engine()
 
     await engine.greet(_ROOM, engine_handle="hi", directive="")
 
-    assert hello.DEFAULT_DIRECTIVE in seen[0]
+    assert probe_engine.DEFAULT_DIRECTIVE in seen[0]
 
 
 @pytest.mark.asyncio
@@ -104,7 +104,7 @@ async def test_greet_writes_no_memory(monkeypatch: pytest.MonkeyPatch) -> None:
     get_room_dir(_ROOM).mkdir(parents=True, exist_ok=True)
     _register("hi", "hello")
     before = {key for key, _meta, _content in list_memory_files(get_room_dir(_ROOM))}
-    monkeypatch.setattr(hello, "_pi_complete", lambda _p, _t: "hello there")
+    monkeypatch.setattr(probe_engine, "_pi_complete", lambda _p, _t: "hello there")
     engine, _managed = _engine()
 
     await engine.greet(_ROOM, engine_handle="hi")
@@ -115,7 +115,7 @@ async def test_greet_writes_no_memory(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.mark.asyncio
 async def test_strips_a_code_fence_the_model_added(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(hello, "_pi_complete", lambda _p, _t: "```\nhello there\n```")
+    monkeypatch.setattr(probe_engine, "_pi_complete", lambda _p, _t: "```\nhello there\n```")
     engine, _managed = _engine()
 
     assert await engine.greet(_ROOM, engine_handle="hi") == "hello there"
@@ -129,7 +129,7 @@ async def test_pi_error_posts_a_readable_reason(monkeypatch: pytest.MonkeyPatch)
     def boom(_p: str, _t: float) -> str:
         raise RuntimeError("pi exploded")
 
-    monkeypatch.setattr(hello, "_pi_complete", boom)
+    monkeypatch.setattr(probe_engine, "_pi_complete", boom)
     engine, managed = _engine()
 
     assert await engine.greet(_ROOM, engine_handle="hi") is None
@@ -138,7 +138,7 @@ async def test_pi_error_posts_a_readable_reason(monkeypatch: pytest.MonkeyPatch)
 
 @pytest.mark.asyncio
 async def test_empty_pi_response_posts_a_readable_reason(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(hello, "_pi_complete", lambda _p, _t: "   \n ")
+    monkeypatch.setattr(probe_engine, "_pi_complete", lambda _p, _t: "   \n ")
     engine, managed = _engine()
 
     assert await engine.greet(_ROOM, engine_handle="hi") is None
@@ -148,8 +148,8 @@ async def test_empty_pi_response_posts_a_readable_reason(monkeypatch: pytest.Mon
 @pytest.mark.asyncio
 async def test_pi_timeout_posts_a_readable_reason(monkeypatch: pytest.MonkeyPatch) -> None:
     managed = FakeManaged(_ROOM, "mycelium", FakeChannel(), FakePersister())
-    engine = hello.HelloEngine(FakeManager(managed, []), timeout_s=-5.0)  # type: ignore[arg-type]
-    monkeypatch.setattr(hello, "_pi_complete", lambda _p, _t: "never gets here")
+    engine = probe_engine.ProbeEngine(FakeManager(managed, []), timeout_s=-5.0)  # type: ignore[arg-type]
+    monkeypatch.setattr(probe_engine, "_pi_complete", lambda _p, _t: "never gets here")
 
     assert await engine.greet(_ROOM, engine_handle="hi") is None
     assert "timed out or errored" in _said(managed)[0]
@@ -253,7 +253,7 @@ async def test_summon_strips_the_mention_from_the_directive(
 ) -> None:
     _register("hi", "hello")
     seen: list[str] = []
-    monkeypatch.setattr(hello, "_pi_complete", lambda p, _t: seen.append(p) or "ok")
+    monkeypatch.setattr(probe_engine, "_pi_complete", lambda p, _t: seen.append(p) or "ok")
     engine, _managed = _engine()
 
     engine.handle_summon(_ROOM, "hi", _env("human"), None, "@hi are you there")

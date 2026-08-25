@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Unit tests for the in-memory room-state shim (app/services/local_state.py).
+"""Unit tests for the in-memory room-state store (app/services/in_memory_store.py).
 
 Node-free and DB-free: this is the process-memory stand-in for the removed
 ``messages`` / ``participants`` / ``memory_subscriptions`` tables, so it's pure
@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from app.services import local_state as ls
+from app.services import in_memory_store as ls
 
 
 def test_deterministic_ids_are_stable_and_idempotent() -> None:
@@ -27,7 +27,7 @@ def test_deterministic_ids_are_stable_and_idempotent() -> None:
 
 def test_get_or_create_session_is_idempotent() -> None:
     first = ls.get_or_create_session("room-a")
-    assert ls.get_or_create_session("room-a") is first  # same shim, not a new one
+    assert ls.get_or_create_session("room-a") is first  # same session, not a new one
     assert ls.get_session("room-a") is first
     assert ls.get_session("never") is None
     assert first.short_id == str(first.id)[:8]

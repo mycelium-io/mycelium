@@ -19,9 +19,9 @@ import pytest
 
 from app.services.status.auth import Bearer
 from app.services.status.cache import StatusCache
-from app.services.status.providers.github import GitHubProvider, _liveness
+from app.services.status.providers.github import GitHubProvider, _upstream_state
 from app.services.status.runtime import StatusRuntime
-from app.services.status.types import Err, Liveness, Ok, Outcome, Ref
+from app.services.status.types import FetchFailed, FetchOutcome, FetchSucceeded, Ref, UpstreamState
 
 NOW = datetime(2026, 8, 22, 12, 0, tzinfo=UTC)
 
@@ -70,9 +70,9 @@ class RecordingProvider:
         if self._raises:
             raise RuntimeError("provider exploded")
         return [
-            Err(ref=ref, reason="gone")
+            FetchFailed(ref=ref, reason="gone")
             if ref.id in self._fail
-            else Ok(ref=ref, liveness=Liveness(state="ok", label="done"))
+            else FetchSucceeded(ref=ref, upstream=UpstreamState(state="ok", label="done"))
             for ref in refs
         ]
 
@@ -108,10 +108,10 @@ class TestReadPath:
         rt = runtime(provider)
         await rt.refresh([ref("T-1")], NOW)
         later = NOW + timedelta(minutes=10)
-        known = rt.read([ref("T-1")], later)[ref("T-1")]
-        assert known.freshness == "stale"
-        assert known.liveness is not None
-        assert known.age(later) == timedelta(minutes=10)
+        cached = rt.read([ref("T-1")], later)[ref("T-1")]
+        assert cached.freshness == "stale"
+        assert cached.upstream is not None
+        assert cached.age(later) == timedelta(minutes=10)
         assert rt.due([ref("T-1")], later) == [ref("T-1")]
 
     @pytest.mark.asyncio
@@ -119,9 +119,9 @@ class TestReadPath:
         provider = RecordingProvider()
         rt = runtime(provider)
         await rt.refresh([ref("T-1")], NOW)
-        known = rt.read([ref("T-1")], NOW + timedelta(hours=2))[ref("T-1")]
-        assert known.freshness == "missing"
-        assert known.liveness is None
+        cached = rt.read([ref("T-1")], NOW + timedelta(hours=2))[ref("T-1")]
+        assert cached.freshness == "missing"
+        assert cached.upstream is None
 
     @pytest.mark.asyncio
     async def test_a_caller_may_impose_its_own_tolerance(self):
@@ -132,14 +132,14 @@ class TestReadPath:
         assert rt.read([ref("T-1")], later)[ref("T-1")].freshness == "fresh"
         strict = rt.read([ref("T-1")], later, max_age=timedelta(minutes=1))[ref("T-1")]
         assert strict.freshness == "missing"
-        assert strict.liveness is None
+        assert strict.upstream is None
 
     def test_a_ref_with_no_provider_is_answered_not_dropped(self):
         rt = runtime(RecordingProvider())
         orphan = Ref(provider="asana", kind="task", id="123")
-        known = rt.read([orphan], NOW)[orphan]
-        assert known.freshness == "missing"
-        assert "no provider" in (known.error or "")
+        cached = rt.read([orphan], NOW)[orphan]
+        assert cached.freshness == "missing"
+        assert "no provider" in (cached.error or "")
 
 
 class TestBulk:
@@ -166,8 +166,8 @@ class TestBulk:
         rt = runtime(provider)
         refs = [ref("T-1"), ref("T-2"), ref("T-3")]
         answers = await rt.resolve(refs, NOW)
-        assert answers[ref("T-1")].liveness is not None
-        assert answers[ref("T-3")].liveness is not None
+        assert answers[ref("T-1")].upstream is not None
+        assert answers[ref("T-3")].upstream is not None
         assert answers[ref("T-2")].freshness == "error"
 
     @pytest.mark.asyncio
@@ -179,14 +179,16 @@ class TestBulk:
         answers = await rt.resolve([ref("T-1"), other], NOW)
         assert answers[ref("T-1")].freshness == "error"
         assert "exploded" in (answers[ref("T-1")].error or "")
-        assert answers[other].liveness is not None
+        assert answers[other].upstream is not None
 
     @pytest.mark.asyncio
     async def test_a_ref_the_provider_forgot_is_not_left_pending_forever(self):
         class Forgetful(RecordingProvider):
             async def fetch(self, refs, ctx):
                 self.calls.append(list(refs))
-                return [Ok(ref=refs[0], liveness=Liveness(state="ok", label="done"))]
+                return [
+                    FetchSucceeded(ref=refs[0], upstream=UpstreamState(state="ok", label="done"))
+                ]
 
         rt = runtime(Forgetful())
         answers = await rt.resolve([ref("T-1"), ref("T-2")], NOW)
@@ -210,7 +212,7 @@ class TestCoalescing:
             async def fetch(self, refs, ctx):
                 self.calls.append(list(refs))
                 return [
-                    Err(ref=r, reason="rate limited", retry_after=timedelta(minutes=10))
+                    FetchFailed(ref=r, reason="rate limited", retry_after=timedelta(minutes=10))
                     for r in refs
                 ]
 
@@ -224,13 +226,13 @@ class TestCoalescing:
     @pytest.mark.asyncio
     async def test_a_failed_refresh_keeps_the_last_thing_that_worked(self):
         cache = StatusCache()
-        cache.put_ok(ref("T-1"), Liveness(state="ok", label="green"), NOW)
+        cache.put_ok(ref("T-1"), UpstreamState(state="ok", label="green"), NOW)
         cache.put_err(ref("T-1"), "boom", NOW + timedelta(minutes=1))
-        entry = cache.known(
+        entry = cache.lookup(
             ref("T-1"), NOW + timedelta(minutes=1), timedelta(minutes=5), timedelta(minutes=30)
         )
-        assert entry.liveness is not None
-        assert entry.liveness.label == "green"
+        assert entry.upstream is not None
+        assert entry.upstream.label == "green"
         assert entry.error == "boom"
 
 
@@ -291,7 +293,7 @@ class TestCredentials:
         )
         answers = await rt.resolve([ref("T-1")], NOW)
         assert len(provider.calls) == 1
-        assert answers[ref("T-1")].liveness is not None
+        assert answers[ref("T-1")].upstream is not None
 
     @pytest.mark.asyncio
     async def test_one_unconfigured_provider_does_not_stop_the_others(self):
@@ -303,7 +305,7 @@ class TestCredentials:
         other = Ref(provider="other", kind="task", id="T-9")
         answers = await rt.resolve([ref("T-1"), other], NOW)
         assert answers[ref("T-1")].freshness == "error"
-        assert answers[other].liveness is not None
+        assert answers[other].upstream is not None
 
 
 class TestStateVocabulary:
@@ -311,15 +313,15 @@ class TestStateVocabulary:
 
     def test_github_never_reports_an_open_pull_request_as_done(self):
         node = {"state": "OPEN", "reviewDecision": "APPROVED", "commits": {"nodes": []}}
-        status = _liveness(node)
+        status = _upstream_state(node)
         assert status.state == "ok"
         assert status.label == "approved"
 
     def test_a_merged_pull_request_is_done_not_ok(self):
-        assert _liveness({"state": "MERGED"}).state == "done"
+        assert _upstream_state({"state": "MERGED"}).state == "done"
 
     def test_a_closed_one_is_also_done_and_the_label_carries_how_it_ended(self):
-        closed = _liveness({"state": "CLOSED"})
+        closed = _upstream_state({"state": "CLOSED"})
         assert closed.state == "done"
         assert closed.label == "closed"
 
@@ -328,7 +330,7 @@ class TestStateVocabulary:
             "state": "OPEN",
             "commits": {"nodes": [{"commit": {"statusCheckRollup": {"state": "SUCCESS"}}}]},
         }
-        assert _liveness(node).state == "pending"
+        assert _upstream_state(node).state == "pending"
 
     def test_a_person_blocks_and_a_machine_fails(self):
         person = {"state": "OPEN", "reviewDecision": "CHANGES_REQUESTED"}
@@ -336,8 +338,8 @@ class TestStateVocabulary:
             "state": "OPEN",
             "commits": {"nodes": [{"commit": {"statusCheckRollup": {"state": "FAILURE"}}}]},
         }
-        assert _liveness(person).state == "blocked"
-        assert _liveness(machine).state == "failed"
+        assert _upstream_state(person).state == "blocked"
+        assert _upstream_state(machine).state == "failed"
 
 
 class TestFieldNameCollision:
@@ -346,7 +348,7 @@ class TestFieldNameCollision:
     The row owns `status` for its lifecycle; a provider answers about the
     external thing the row points at. The two vocabularies used to share
     `blocked`, meaning different things, which is why the answer lands under its
-    own field (`ROW_FIELD`) and is named `liveness` in the contract, never
+    own field (`ROW_FIELD`) and is named `upstream` in the contract, never
     `status`.
     """
 
@@ -378,12 +380,12 @@ class TestFieldNameCollision:
         # putting one back is the drift this guards against.
         assert live & row == set()
 
-    def test_the_contract_type_is_named_for_liveness_not_status(self):
-        # The dataclass a provider returns is `Liveness`; a `Status` next to a
-        # row's `status` field is the collision this rename removes.
+    def test_the_contract_type_is_named_for_the_upstream_not_the_row(self):
+        # The dataclass a provider returns is `UpstreamState`; a `Status` next to a
+        # row's `status` field is the collision this name avoids.
         from app.services.status import types
 
-        assert hasattr(types, "Liveness")
+        assert hasattr(types, "UpstreamState")
         assert not hasattr(types, "Status")
 
 
@@ -403,7 +405,7 @@ class TestFailedRefreshDoesNotRejuvenateAValue:
         cache = StatusCache()
         ref = Ref(provider="github", kind="pull_request", id="o/r#1")
         start = datetime(2026, 8, 23, 0, 0, tzinfo=UTC)
-        cache.put_ok(ref, Liveness(state="ok", label="CI green"), start)
+        cache.put_ok(ref, UpstreamState(state="ok", label="CI green"), start)
         for minute in range(1, minutes + 1):
             cache.put_err(ref, "github 500", start + timedelta(minutes=minute))
         return cache, ref, start
@@ -411,17 +413,17 @@ class TestFailedRefreshDoesNotRejuvenateAValue:
     def test_the_kept_value_reports_the_age_it_actually_has(self):
         cache, ref, start = self._cache_after_failures(20)
         now = start + timedelta(minutes=20)
-        known = cache.known(ref, now, self.TTL, self.SWR)
-        assert known.liveness is not None
-        assert known.age(now) == timedelta(minutes=20)
+        cached = cache.lookup(ref, now, self.TTL, self.SWR)
+        assert cached.upstream is not None
+        assert cached.age(now) == timedelta(minutes=20)
 
     def test_a_strict_caller_is_not_handed_a_value_older_than_it_asked_for(self):
         # The failure mode this module exists to prevent: hours of failing
         # refreshes leaving a stale "CI green" that satisfies a five-minute bound.
         cache, ref, start = self._cache_after_failures(180)
         now = start + timedelta(minutes=180)
-        known = cache.known(ref, now, self.TTL, self.SWR)
-        age = known.age(now)
+        cached = cache.lookup(ref, now, self.TTL, self.SWR)
+        age = cached.age(now)
         assert age is None or age > timedelta(minutes=5)
 
     def test_a_value_kept_through_failures_still_ages_out_of_evidence(self):
@@ -460,9 +462,12 @@ class TestAClaimIsAlwaysReleased:
             def claims(self, text: str) -> list[Ref]:
                 return []
 
-            async def fetch(self, refs: list[Ref], ctx: object) -> list[Outcome]:
+            async def fetch(self, refs: list[Ref], ctx: object) -> list[FetchOutcome]:
                 await asyncio.sleep(10)
-                return [Ok(ref=r, liveness=Liveness(state="ok", label="x")) for r in refs]
+                return [
+                    FetchSucceeded(ref=r, upstream=UpstreamState(state="ok", label="x"))
+                    for r in refs
+                ]
 
         ref = Ref(provider="slow", kind="k", id="1")
         runtime = StatusRuntime(providers={"slow": Slow()}, credentials={})
@@ -502,10 +507,13 @@ class TestSingleFlightCoalesces:
             def claims(self, text: str) -> list[Ref]:
                 return []
 
-            async def fetch(self, refs: list[Ref], ctx: object) -> list[Outcome]:
+            async def fetch(self, refs: list[Ref], ctx: object) -> list[FetchOutcome]:
                 self.calls += 1
                 await asyncio.sleep(0.05)
-                return [Ok(ref=r, liveness=Liveness(state="ok", label="joined")) for r in refs]
+                return [
+                    FetchSucceeded(ref=r, upstream=UpstreamState(state="ok", label="joined"))
+                    for r in refs
+                ]
 
         provider = Once()
         runtime = StatusRuntime(providers={provider.name: provider}, credentials={})
@@ -519,4 +527,4 @@ class TestSingleFlightCoalesces:
 
         assert provider.calls == 1
         assert second[ref].freshness == "fresh"
-        assert second[ref].liveness is not None
+        assert second[ref].upstream is not None

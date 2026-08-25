@@ -3,7 +3,7 @@
 
 """Unit tests for the TTL event sweep (app/services/event_sweep.py).
 
-Node-free: the sweep is a thin loop over ``local_state``; here we drive the one
+Node-free: the sweep is a thin loop over ``in_memory_store``; here we drive the one
 iteration directly and pin the start/stop task lifecycle.
 """
 
@@ -15,7 +15,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from app.services import event_sweep
-from app.services import local_state as ls
+from app.services import in_memory_store as ls
 
 
 @pytest.mark.asyncio

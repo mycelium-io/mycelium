@@ -33,12 +33,12 @@ from app.routes.a2a_agents import router as a2a_agents_router
 from app.routes.a2a_server import router as a2a_server_router
 from app.routes.a2a_state import router as a2a_state_router
 from app.routes.agents import router as agents_router
+from app.routes.assignments import router as assignments_router
 from app.routes.briefing import router as briefing_router
 from app.routes.engines import router as engines_router
 from app.routes.episodes import router as episodes_router
 from app.routes.fields import router as fields_router
 from app.routes.invites import router as invites_router
-from app.routes.leases import router as leases_router
 from app.routes.links import router as links_router
 from app.routes.memory import router as memory_router
 from app.routes.messages import router as messages_router
@@ -134,14 +134,14 @@ async def lifespan(app: FastAPI):
     # summon since a handle maps to a single runtime.
     from app.services.a2a_bridge import A2aResponder
     from app.services.aligner import AlignerEngine
-    from app.services.hello import HelloEngine
+    from app.services.probe_engine import ProbeEngine
     from app.services.room_channels import manager as room_channel_manager
     from app.services.synthesizer import SynthesizerEngine
     from app.services.task_sync import TaskSyncEngine
 
     app.state.aligner = AlignerEngine(room_channel_manager)
     app.state.synthesizer = SynthesizerEngine(room_channel_manager)
-    app.state.hello = HelloEngine(room_channel_manager)
+    app.state.hello = ProbeEngine(room_channel_manager)
     # The A2A responder shares the seam too: it answers @-mentions of a
     # registered a2a agent by calling the remote endpoint, gating on the manifest
     # like the engines gate on their kind, so only one handler ever acts.
@@ -168,7 +168,7 @@ async def lifespan(app: FastAPI):
 
     room_channel_manager.on_summon = _dispatch_summon
     logger.info(
-        "engines wired (aligner @%s, synthesizer @%s, hello @%s; brain=pi via %s)",
+        "engines wired (aligner @%s, synthesizer @%s, hello @%s; llm=pi via %s)",
         app.state.aligner.handle,
         app.state.synthesizer.handle,
         app.state.hello.handle,
@@ -273,7 +273,7 @@ app.include_router(engines_router, prefix="/api")
 app.include_router(rooms_router, prefix="/api")
 app.include_router(messages_router, prefix="/api")
 app.include_router(invites_router, prefix="/api")
-app.include_router(leases_router, prefix="/api")
+app.include_router(assignments_router, prefix="/api")
 app.include_router(fields_router, prefix="/api")
 app.include_router(tasks_router, prefix="/api")
 app.include_router(episodes_router, prefix="/api")

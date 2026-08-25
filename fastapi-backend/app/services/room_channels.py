@@ -163,7 +163,7 @@ class HumanPublishResult:
     recipients: list[str]
     invites: list[PendingInvite]
     # The published envelope's L9 message id — the correlation key the POST route
-    # stamps on its ``local_state`` row so a cold read from the durable transcript
+    # stamps on its ``in_memory_store`` row so a cold read from the durable transcript
     # dedups against it instead of showing the human's message twice.
     message_id: str | None = None
 
@@ -368,11 +368,11 @@ class RoomChannelManager:
         announced.add(handle)
         content = json.dumps({"handle": handle, "intent": intent})
         try:
-            from app.services import local_state
+            from app.services import in_memory_store
 
-            local_state.add_message(
+            in_memory_store.add_message(
                 room,
-                local_state.StoredMessage(
+                in_memory_store.StoredMessage(
                     room_name=room,
                     sender_handle=l9.SYSTEM_ACTOR_ID,
                     message_type="coordination_join",
@@ -803,7 +803,7 @@ class RoomChannelManager:
             logger.warning("failed to publish human message on room %s: %s", room, exc)
         if managed.persister is not None:
             # Transcript-only here (``list_write=False``): the POST route owns the
-            # ``local_state`` row (its id/ledger), stamped with this envelope's id so
+            # ``in_memory_store`` row (its id/ledger), stamped with this envelope's id so
             # a cold read dedups the two.
             managed.persister.ingest_local(envelope, content, list_write=False)
 

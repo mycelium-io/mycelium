@@ -59,7 +59,7 @@ export interface MockMemory {
    *  to read. */
   value: string | Record<string, unknown>;
   /** Frontmatter the store doesn't own, read back from `MemoryRead.meta`. This
-   *  is where a lease lands and where a board verb writes, so a row's fields
+   *  is where a lease lands and where a board action writes, so a row's fields
    *  can come from here rather than from a structured value. */
   meta?: Record<string, unknown> | null;
   content_text?: string;
@@ -384,8 +384,8 @@ const atlasEpisodeSummary: EpisodeSummary = {
 // same keys a `memory set --meta` writes. And every row carries its own
 // `episode`: a thread is per-item, minted when the row is, so each has one to
 // open whether or not anyone has spoken in it yet. Together they give the board
-// something in every lens (needs-you, in-flight, resolved) and a column for every
-// inferred field, without any in-app demo layer.
+// something in every attention filter (needs-you, in-flight, resolved) and a
+// column for every inferred field, without any in-app demo layer.
 const atlasBoardRows: MockMemory[] = [
   // What the atlas agreement compiled into. Two tasks from one negotiation are
   // two tasks with two threads, not two rows sharing the conversation that

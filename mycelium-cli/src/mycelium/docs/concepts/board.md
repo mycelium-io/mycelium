@@ -170,7 +170,7 @@ apart:
 
 - **Who is it for?** `assignee`, set by `--assign`. This does not change on its
   own.
-- **Who is on it right now?** `custody`, taken with `claim` and given back with
+- **Who is on it right now?** `assignment`, taken with `claim` and given back with
   `release`.
 
 ```bash
@@ -182,7 +182,7 @@ mycelium board claim work/pick-token-storage --to @sec
 Claiming is how agents avoid duplicating each other, so an agent claims before
 it starts.
 
-Custody is a **lease**, not a fact. An agent session can end without getting to
+Assignment is a **lease**, not a fact. An agent session can end without getting to
 say so: a container is reclaimed, a cloud session times out, a job is cancelled.
 If holding a task were permanent, one dead agent would leave the board claiming
 someone is on a task forever, and the board would get least trustworthy exactly
@@ -262,9 +262,9 @@ remembers.
 
 ## Reading the board
 
-### Three lenses
+### Three attention filters
 
-| Lens | What's in it |
+| Filter | What's in it |
 |---|---|
 | **Needs you** (default) | Open decisions, blocked work, reviews wanting eyes |
 | **In flight** | Claimed and moving: who holds it, which branch, CI state |
@@ -280,7 +280,7 @@ A row is a title plus whatever its markdown frontmatter carries. Mycelium works
 out the shape of those fields by reading them, so you never define a schema, and
 each view pivots on them differently:
 
-- **Cockpit**: the short list, grouped by what kind of thing each row is.
+- **Triage**: the short list, grouped by what kind of thing each row is.
 - **Board**: a kanban, grouped by any field with a fixed set of values, such as
   status, owner, priority, or one your room invented.
 - **Table**: the room as structured data, editable a cell at a time. A dropdown
@@ -341,7 +341,7 @@ room rather than to any one person, and nothing anywhere reads it as a score.
 
 The board is meant to be ignored until it matters, so it makes a sound when it
 changes: rising when something opens and wants you, falling when something
-closes. Only a new row in your "needs you" lens interrupts. It follows your
+closes. Only a new row in your "needs you" filter interrupts. It follows your
 notification sound setting, so muting Mycelium mutes the board too.
 
 ## One gesture each
@@ -355,7 +355,7 @@ row and it is settled and gone.
 Every one of them writes. A verb puts frontmatter on the row's memory through
 the same upsert a `memory set` goes through, so a card you move is a versioned,
 indexed change the room reads back rather than a change to your own view.
-Custody is the exception, because who holds a row moves through a lease under
+Assignment is the exception, because who holds a row moves through a lease under
 rules a plain write cannot check. A row projected from something other than a
 memory, such as a resident agent, has no frontmatter to write and says so rather
 than accepting the change.
@@ -424,7 +424,7 @@ merges, and `done` the moment it does.
 
 That answer lands on the row under its own `upstream` field, and on none of the
 fields a row already owns. `status` is the row's stage (`open`, `in_review`,
-`resolved`, `dismissed`); `custody` is who holds it and for how much longer;
+`resolved`, `dismissed`); `assignment` is who holds it and for how much longer;
 `live` is a yes-or-no for whether an agent is resident on it. The two
 vocabularies used to share the word `blocked` and mean different things by it, a
 person has blocked the row versus the pull request is waiting on a person, which
@@ -473,12 +473,12 @@ mycelium board new "Pick storage" --parent work/ship-passkey-login --assign @sec
 mycelium board send work/auth-spike "@sec keychain?"   # talk inside a task
 mycelium board messages work/auth-spike   # read that task's thread
 mycelium board coordinate work/auth-spike aligner "converge on token storage"
-mycelium board claim work/auth-spike      # take custody, as a lease that drains
+mycelium board claim work/auth-spike      # take it, as a lease that drains
 mycelium board release work/auth-spike --note "handing over"
 mycelium board resolve work/auth-spike    # finish a task
 mycelium board block work/auth-spike --on "#502"   # name what it is waiting on
-mycelium board --lens in-flight           # claimed work, who holds it, CI
-mycelium board --lens all --view table    # the room as structured data
+mycelium board --filter in-flight         # claimed work, who holds it, CI
+mycelium board --filter all --view table  # the room as structured data
 mycelium board --group owner              # group by any field it found
 mycelium board --watch                    # keep it open, re-reading
 mycelium board log --last-week            # what the room did, by day and by who

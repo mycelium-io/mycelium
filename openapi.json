@@ -1131,14 +1131,14 @@
         }
       }
     },
-    "/api/rooms/{room_name}/leases/claim": {
+    "/api/rooms/{room_name}/assignments/claim": {
       "post": {
         "tags": [
-          "leases"
+          "assignments"
         ],
-        "summary": "Claim Lease",
-        "description": "Take custody of a row for a window, not for good.",
-        "operationId": "claim_lease_api_rooms__room_name__leases_claim_post",
+        "summary": "Claim Assignment",
+        "description": "Take assignment of a row for a window, not for good.",
+        "operationId": "claim_assignment_api_rooms__room_name__assignments_claim_post",
         "parameters": [
           {
             "name": "room_name",
@@ -1182,14 +1182,14 @@
         }
       }
     },
-    "/api/rooms/{room_name}/leases/release": {
+    "/api/rooms/{room_name}/assignments/release": {
       "post": {
         "tags": [
-          "leases"
+          "assignments"
         ],
-        "summary": "Release Lease",
+        "summary": "Release Assignment",
         "description": "Hand a row back on purpose, and sign the note that says so.",
-        "operationId": "release_lease_api_rooms__room_name__leases_release_post",
+        "operationId": "release_assignment_api_rooms__room_name__assignments_release_post",
         "parameters": [
           {
             "name": "room_name",
@@ -1233,14 +1233,14 @@
         }
       }
     },
-    "/api/rooms/{room_name}/leases/resolve": {
+    "/api/rooms/{room_name}/assignments/resolve": {
       "post": {
         "tags": [
-          "leases"
+          "assignments"
         ],
-        "summary": "Resolve Lease",
+        "summary": "Resolve Assignment",
         "description": "The work is done: the row leaves the board rather than draining out of it.",
-        "operationId": "resolve_lease_api_rooms__room_name__leases_resolve_post",
+        "operationId": "resolve_assignment_api_rooms__room_name__assignments_resolve_post",
         "parameters": [
           {
             "name": "room_name",
@@ -1284,14 +1284,14 @@
         }
       }
     },
-    "/api/rooms/{room_name}/leases/renew": {
+    "/api/rooms/{room_name}/assignments/renew": {
       "post": {
         "tags": [
-          "leases"
+          "assignments"
         ],
-        "summary": "Renew Leases",
+        "summary": "Renew Assignments",
         "description": "A resident loop saying it is still here, on behalf of every row it holds.\n\nQuiet by design: a lease still in its first half is left alone, and the\nwrites this does make broadcast nothing.",
-        "operationId": "renew_leases_api_rooms__room_name__leases_renew_post",
+        "operationId": "renew_assignments_api_rooms__room_name__assignments_renew_post",
         "parameters": [
           {
             "name": "room_name",
@@ -1335,14 +1335,14 @@
         }
       }
     },
-    "/api/rooms/{room_name}/leases/await": {
+    "/api/rooms/{room_name}/assignments/await": {
       "get": {
         "tags": [
-          "leases"
+          "assignments"
         ],
-        "summary": "Await Lease",
+        "summary": "Await Assignment",
         "description": "Wake on this lease's transitions, and on nothing else.",
-        "operationId": "await_lease_api_rooms__room_name__leases_await_get",
+        "operationId": "await_assignment_api_rooms__room_name__assignments_await_get",
         "parameters": [
           {
             "name": "room_name",
@@ -1419,14 +1419,14 @@
         }
       }
     },
-    "/api/rooms/{room_name}/leases/{key}": {
+    "/api/rooms/{room_name}/assignments/{key}": {
       "get": {
         "tags": [
-          "leases"
+          "assignments"
         ],
-        "summary": "Read Lease",
-        "description": "One row's custody as it stands, including a drain nobody wrote down.",
-        "operationId": "read_lease_api_rooms__room_name__leases__key__get",
+        "summary": "Read Assignment",
+        "description": "One row's assignment as it stands, including a drain nobody wrote down.",
+        "operationId": "read_assignment_api_rooms__room_name__assignments__key__get",
         "parameters": [
           {
             "name": "room_name",
@@ -4102,7 +4102,7 @@
           "handle": {
             "type": "string",
             "title": "Handle",
-            "description": "The handle taking custody"
+            "description": "The handle taking assignment"
           },
           "ttl_minutes": {
             "type": "integer",
@@ -6716,7 +6716,7 @@
             "additionalProperties": true,
             "type": "object",
             "title": "Fields",
-            "description": "Frontmatter to merge onto the row. A null value clears its key. Custody keys are refused: those move through /leases."
+            "description": "Frontmatter to merge onto the row. A null value clears its key. Assignment keys are refused: those move through /assignments."
           }
         },
         "type": "object",

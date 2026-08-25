@@ -78,7 +78,7 @@ def _task_episode(room_name: str, row_id: str) -> str:
     return _thread(room_name, row_id)[1]
 
 
-def _renew_leases(config: MyceliumConfig, room_name: str, handle: str) -> list[str]:
+def _renew_assignments(config: MyceliumConfig, room_name: str, handle: str) -> list[str]:
     """Tell the hub this handle is still here, on behalf of every row it holds.
 
     This is what makes a claim a lease rather than a fact: the loop is the thing
@@ -88,7 +88,7 @@ def _renew_leases(config: MyceliumConfig, room_name: str, handle: str) -> list[s
     broadcast nothing.
     """
     with hub_client(config, timeout=15, handle=handle) as client:
-        resp = client.post(f"/api/rooms/{room_name}/leases/renew", json={"handle": handle})
+        resp = client.post(f"/api/rooms/{room_name}/assignments/renew", json={"handle": handle})
     resp.raise_for_status()
     return [row.get("key", "") for row in resp.json().get("renewed", [])]
 
@@ -102,15 +102,15 @@ def _await_lease(
     if since is not None:
         params["since"] = since
     with hub_client(config, timeout=client_timeout) as client:
-        resp = client.get(f"/api/rooms/{room_name}/leases/await", params=params)
+        resp = client.get(f"/api/rooms/{room_name}/assignments/await", params=params)
     resp.raise_for_status()
     return resp.json()
 
 
 def _print_lease(state: dict) -> None:
     holder = f"@{state['owner']}" if state.get("owner") else "nobody"
-    line = f"  ⟫  {state.get('key')}: {state.get('custody')} by {holder}"
-    if note := state.get("custody_note"):
+    line = f"  ⟫  {state.get('key')}: {state.get('assignment')} by {holder}"
+    if note := state.get("assignment_note"):
         line += f" — {note}"
     typer.secho(line, fg=typer.colors.CYAN)
 
@@ -229,7 +229,7 @@ def await_room(
     narrows — the presence lease stays room-scoped, because a member of a thread
     is a member of the room.
 
-    With ``--lease`` it waits on one row's custody instead: claimed, lapsed,
+    With ``--lease`` it waits on one row's assignment instead: claimed, lapsed,
     released, resolved. That is a different subscription on purpose — waking on
     channel traffic to follow a handoff means a dozen unrelated messages wake you
     for nothing, while a lease's transitions are exactly the events a handoff is
@@ -324,8 +324,8 @@ def _await_loop(
         try:
             # Before waiting again, say we are still here. A resident agent's
             # claims are kept alive by the same loop that keeps it woken, so
-            # residency and custody stop being two things to remember.
-            renewed = _renew_leases(config, room_name, handle)
+            # residency and assignment stop being two things to remember.
+            renewed = _renew_assignments(config, room_name, handle)
             if renewed and not json_output:
                 typer.secho(f"  ⟫  renewed {', '.join(renewed)}", fg=typer.colors.BLUE)
         except Exception as e:  # noqa: BLE001 - a lease blip must not drop residency

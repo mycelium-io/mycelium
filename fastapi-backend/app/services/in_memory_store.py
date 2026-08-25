@@ -4,7 +4,7 @@
 """
 In-process room state: messages, presence, and memory subscriptions.
 
-A deliberately thin, in-memory shim. These three
+A deliberately thin, in-memory store. These three
 concerns lived in Postgres tables (``messages``, ``participants``,
 ``memory_subscriptions``); with the database gone they move to process memory to
 keep the endpoints answering. They are NOT durable and NOT rich.
@@ -24,7 +24,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
-# Stable synthetic ids so a room maps to one coordination-session shim and
+# Stable synthetic ids so a room maps to one presence session and
 # repeated (session, handle) joins are idempotent — no database sequence to lean
 # on anymore.
 _SESSION_NS = uuid.UUID("2b1c0d9e-8f7a-6b5c-4d3e-2f1a0b9c8d7e")
@@ -44,8 +44,8 @@ def _now() -> datetime:
 
 
 @dataclass
-class CoordSessionShim:
-    """Presence shim: keeps the presence endpoints' shape without a DB row.
+class PresenceSession:
+    """One room's presence record: the shape the presence endpoints answer with.
 
     Attribute names are what ``model_validate`` expects.
     """
@@ -127,8 +127,8 @@ class StoredSubscription:
     created_at: datetime = field(default_factory=_now)
 
 
-# room name → coordination-session shim (one active shim per room)
-_sessions: dict[str, CoordSessionShim] = {}
+# room name → presence session (one per room)
+_sessions: dict[str, PresenceSession] = {}
 # session id → participants
 _participants: dict[uuid.UUID, list[StoredParticipant]] = {}
 # room name → messages (session messages are stored under the display name)
@@ -137,19 +137,19 @@ _messages: dict[str, list[StoredMessage]] = {}
 _subscriptions: dict[str, list[StoredSubscription]] = {}
 
 
-def get_or_create_session(room_name: str) -> CoordSessionShim:
-    """Return the room's coordination-session shim, creating it on first use."""
-    shim = _sessions.get(room_name)
-    if shim is None:
+def get_or_create_session(room_name: str) -> PresenceSession:
+    """Return the room's presence session, creating it on first use."""
+    session = _sessions.get(room_name)
+    if session is None:
         sid = session_id_for_room(room_name)
-        shim = CoordSessionShim(
+        session = PresenceSession(
             parent_room_name=room_name, id=sid, short_id=str(sid)[:8], state="idle"
         )
-        _sessions[room_name] = shim
-    return shim
+        _sessions[room_name] = session
+    return session
 
 
-def get_session(room_name: str) -> CoordSessionShim | None:
+def get_session(room_name: str) -> PresenceSession | None:
     return _sessions.get(room_name)
 
 

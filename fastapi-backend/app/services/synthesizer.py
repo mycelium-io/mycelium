@@ -64,8 +64,8 @@ from app.services.aligner import _norm, _registered_engine_kind
 from app.services.l9_slim import serialize_content
 
 if TYPE_CHECKING:
+    from app.services.in_memory_store import StoredMessage
     from app.services.l9_models import L9
-    from app.services.local_state import StoredMessage
     from app.services.room_channels import ManagedRoomChannel, RoomChannelManager
 
 logger = logging.getLogger(__name__)
@@ -289,11 +289,11 @@ def _pi_complete(prompt: str, timeout_s: float) -> str:
     carry — the same pattern as :func:`app.services.task_compiler._pi_complete`.
     Isolated so tests can patch it without a live Pi.
     """
-    from app.services.pi_brain import PiBrain
+    from app.services.pi_session import PiSession
 
     session_dir = Path(tempfile.gettempdir()) / "mycelium-pi-sessions"
     session_dir.mkdir(parents=True, exist_ok=True)
-    brain = PiBrain(
+    llm_session = PiSession(
         session_path=session_dir / f"synthesize-{uuid.uuid4().hex}.jsonl",
         model=settings.LLM_MODEL,
         api_key=settings.LLM_API_KEY,
@@ -302,7 +302,7 @@ def _pi_complete(prompt: str, timeout_s: float) -> str:
         timeout_s=timeout_s,
         openshell=settings.ALIGNER_PI_OPENSHELL,
     )
-    return brain(prompt)
+    return llm_session(prompt)
 
 
 class SynthesizerEngine:

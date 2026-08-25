@@ -13,7 +13,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from app.routes.messages import _read_messages
-from app.services import l9, local_state, persister
+from app.services import in_memory_store, l9, persister
 from app.services.filesystem import get_room_dir
 from app.services.l9_models import Kind
 from app.services.l9_slim import serialize_content
@@ -35,7 +35,7 @@ def _record(message_id: str, *, sender: str, text: str, amends: str | None = Non
 
 
 def _row(sender: str, text: str, *, amends: str | None = None, minutes: int = 0):
-    return local_state.StoredMessage(
+    return in_memory_store.StoredMessage(
         room_name="r",
         sender_handle=sender,
         message_type="broadcast",
@@ -53,7 +53,7 @@ def test_amend_is_a_valid_exchange_subkind():
 def test_the_transcript_keeps_every_version(tmp_path, monkeypatch):
     """The fold is a read-time derivation: both texts stay on disk."""
     monkeypatch.setattr("app.config.settings.MYCELIUM_DATA_DIR", str(tmp_path / ".mycelium"))
-    local_state.clear_all()
+    in_memory_store.clear_all()
     room = "amend-transcript-room"
     get_room_dir(room)
     persister.append_transcript(room, _record("m-1", sender="growth", text="TTL is 30s"))
@@ -125,7 +125,7 @@ def test_a_message_nobody_amended_is_untouched():
 @pytest.mark.asyncio
 async def test_amend_route_revises_what_the_room_reads(client, tmp_path, monkeypatch):
     monkeypatch.setattr("app.config.settings.MYCELIUM_DATA_DIR", str(tmp_path / ".mycelium"))
-    local_state.clear_all()
+    in_memory_store.clear_all()
     room = "amend-route-room"
     get_room_dir(room)
 
@@ -153,7 +153,7 @@ async def test_amend_route_revises_what_the_room_reads(client, tmp_path, monkeyp
 async def test_amend_accepts_an_unambiguous_id_prefix(client, tmp_path, monkeypatch):
     """The short id `mycelium room messages` prints is enough to name a message."""
     monkeypatch.setattr("app.config.settings.MYCELIUM_DATA_DIR", str(tmp_path / ".mycelium"))
-    local_state.clear_all()
+    in_memory_store.clear_all()
     room = "amend-prefix-room"
     get_room_dir(room)
 
@@ -174,7 +174,7 @@ async def test_amend_accepts_an_unambiguous_id_prefix(client, tmp_path, monkeypa
 @pytest.mark.asyncio
 async def test_only_the_sender_may_amend(client, tmp_path, monkeypatch):
     monkeypatch.setattr("app.config.settings.MYCELIUM_DATA_DIR", str(tmp_path / ".mycelium"))
-    local_state.clear_all()
+    in_memory_store.clear_all()
     room = "amend-author-room"
     get_room_dir(room)
 
@@ -195,7 +195,7 @@ async def test_only_the_sender_may_amend(client, tmp_path, monkeypatch):
 @pytest.mark.asyncio
 async def test_amending_an_unknown_message_is_a_404(client, tmp_path, monkeypatch):
     monkeypatch.setattr("app.config.settings.MYCELIUM_DATA_DIR", str(tmp_path / ".mycelium"))
-    local_state.clear_all()
+    in_memory_store.clear_all()
     room = "amend-missing-room"
     get_room_dir(room)
 

@@ -137,8 +137,8 @@ class ClaudeCodeIntegration(Integration):
         profile: str | None,
         container: str | None,
     ) -> None:
-        verb = "reinstalled" if reinstall else "installed"
-        typer.secho(f"Adapter 'claude-code' {verb}.", fg=typer.colors.GREEN)
+        action = "reinstalled" if reinstall else "installed"
+        typer.secho(f"Adapter 'claude-code' {action}.", fg=typer.colors.GREEN)
         typer.echo(f"  skill:   ~/.claude/skills/{_CLAUDE_CODE_SKILL_NAME}/SKILL.md")
         for hook in _CLAUDE_CODE_HOOKS:
             typer.echo(f"  hook:    ~/.claude/hooks/{hook}")

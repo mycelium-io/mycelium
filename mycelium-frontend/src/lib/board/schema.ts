@@ -10,7 +10,7 @@
  * no migration and no config.
  */
 
-import { CUSTODY_STATES } from "./custody";
+import { ASSIGNMENT_STATES } from "./assignment";
 import { THREAD_FIELDS } from "./projection";
 import { STATUS_ORDER, type LiveItem } from "./item";
 import { UPSTREAM_STATES } from "./upstream";
@@ -41,10 +41,10 @@ export interface FieldSchema {
   total: number;
 }
 
-/** Fields the cockpit knows by name lead the table; the rest follow by fill rate. */
+/** Fields the triage knows by name lead the table; the rest follow by fill rate. */
 const PREFERRED_ORDER = [
   "status",
-  "custody",
+  "assignment",
   "kind",
   "owner",
   "priority",
@@ -71,7 +71,7 @@ const MAX_SELECT_CARDINALITY = 12;
  */
 const KNOWN_VOCABULARIES: Record<string, string[]> = {
   status: [...STATUS_ORDER],
-  custody: [...CUSTODY_STATES],
+  assignment: [...ASSIGNMENT_STATES],
   kind: ["decision", "blocked", "review", "action", "concern", "signal"],
   priority: ["urgent", "high", "normal", "low"],
   ci: ["green", "running", "red"],

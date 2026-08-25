@@ -5,7 +5,7 @@
  * Project what the room already has into board rows.
  *
  * Nothing here is a new store: episodes, memories and presence are
- * read where they live and flattened into one row shape. The board is a lens on
+ * read where they live and flattened into one row shape. The board is one filter on
  * the room, so a row can't be stale relative to the thing it describes, and
  * deleting the board would lose nothing.
  *
@@ -21,7 +21,7 @@
 
 import type { AgentSummary, EpisodeSummary, Memory } from "@/lib/api";
 import type { PresenceMember } from "@/lib/api";
-import { CUSTODY_FIELD, DEFAULT_TTL_MINUTES, LEASABLE_NAMESPACES, custodyOf } from "./custody";
+import { ASSIGNMENT_FIELD, DEFAULT_TTL_MINUTES, ASSIGNABLE_NAMESPACES, assignmentOf } from "./assignment";
 import type { LiveItem } from "./item";
 import { memoryHref } from "@/lib/memory-routes";
 
@@ -36,7 +36,7 @@ export const EPISODE_FIELD = "episode";
 
 /**
  * What a row says about the thread inside it. Deliberately its own names: a
- * task's `status` and `custody` are the task's, so a negotiation that converges
+ * task's `status` and `assignment` are the task's, so a negotiation that converges
  * inside a row must not resolve the row or take it off its holder.
  */
 export const THREAD_FIELDS = ["episode", "thread", "thread_state", "participants", "rounds"];
@@ -51,7 +51,7 @@ export const THREAD_STATES = ["open", "converged", "resolved", "rejected", "comm
  * The row's own axes, which folding a thread onto it must never write. This is
  * the container-outlives-the-negotiation rule as a list.
  */
-export const TASK_FIELDS = ["status", "custody", "owner", "kind", "priority"];
+export const TASK_FIELDS = ["status", "assignment", "owner", "kind", "priority"];
 
 /** Episode topics arrive as URNs; the board shows the part a person wrote. */
 function prettyTopic(topic: string): string {
@@ -133,7 +133,7 @@ function memoryItem(memory: Memory, room: string): LiveItem {
     fields: {
       status: typeof custom.status === "string" ? custom.status : derivedStatus,
       kind: namespace === "decisions" ? "decision" : namespace === "failed" ? "blocked" : "concern",
-      // Who wrote it last is provenance, not custody. Reading `owner` off
+      // Who wrote it last is provenance, not assignment. Reading `owner` off
       // `updated_by` gave every memory in the room a holder, which is the
       // confident-lie failure this axis exists to stop: a holder is something a
       // claim writes, so an unclaimed row says nobody.
@@ -147,7 +147,7 @@ function memoryItem(memory: Memory, room: string): LiveItem {
       // `work/` is the in-flight task, so it is the namespace that carries a
       // lease: frontmatter has somewhere to put a stamp, which is why leases
       // live here and not on plan tasks.
-      ...(LEASABLE_NAMESPACES.includes(namespace) ? { [CUSTODY_FIELD]: "unclaimed" } : {}),
+      ...(ASSIGNABLE_NAMESPACES.includes(namespace) ? { [ASSIGNMENT_FIELD]: "unclaimed" } : {}),
       ...custom,
       ...meta,
       // The binding is store-owned, so it arrives as its own field rather than
@@ -198,7 +198,7 @@ function agentItem(agent: AgentSummary, presence: PresenceMember, now: string): 
       live: true,
       updated: lastSeen,
       // Presence is a lease: the row drains unless the runtime keeps renewing it.
-      [CUSTODY_FIELD]: "held",
+      [ASSIGNMENT_FIELD]: "held",
       claimed_at: lastSeen,
       ttl_minutes: DEFAULT_TTL_MINUTES,
     },
@@ -217,8 +217,8 @@ export interface ProjectionInput {
   agents: AgentSummary[];
   presence: Map<string, PresenceMember>;
   now: string;
-  /** Rows an agent hasn't touched yet: local triage, keyed by item id. */
-  overlay?: Record<string, Record<string, unknown>>;
+  /** Field writes applied locally until the server's copy catches up, keyed by item id. */
+  optimisticEdits?: Record<string, Record<string, unknown>>;
   /** Rows captured in this session, before any backend write exists for them. */
   captured?: LiveItem[];
 }
@@ -251,12 +251,12 @@ export function projectItems(input: ProjectionInput): LiveItem[] {
     const presence = input.presence.get(agent.handle.toLowerCase());
     if (!presence) continue;
     const row = agentItem(agent, presence, input.now);
-    if (custodyOf(row, clock) === "held") items.push(row);
+    if (assignmentOf(row, clock) === "held") items.push(row);
   }
   items.push(...(input.captured ?? []));
 
-  const overlay = input.overlay ?? {};
+  const edits = input.optimisticEdits ?? {};
   return items.map(item =>
-    overlay[item.id] ? { ...item, fields: { ...item.fields, ...overlay[item.id] } } : item,
+    edits[item.id] ? { ...item, fields: { ...item.fields, ...edits[item.id] } } : item,
   );
 }

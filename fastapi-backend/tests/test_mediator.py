@@ -3,8 +3,8 @@
 
 """Unit tests for the SAO mediator (app/services/mediator.py + aligner mediate).
 
-Node-free and LLM-free: the mediator's brain is injected as a deterministic
-prompt-keyed stub (via the aligner's ``brain_factory``) and the agents are
+Node-free and LLM-free: the mediator's LLM session is injected as a deterministic
+prompt-keyed stub (via the aligner's ``llm_session_factory``) and the agents are
 simulated by the same fake channel the aligner tests use. This exercises the
 anti-theatre property that matters —
 **NEGMAS owns termination**: once the agents accept a standing offer the
@@ -27,7 +27,7 @@ from tests.fakes import (
     FakeManaged,
     FakeManager,
     FakePersister,
-    fake_brain_factory,
+    fake_llm_session_factory,
     make_fake_llm,
 )
 
@@ -39,9 +39,9 @@ def _engine(manager: FakeManager, **kw: Any) -> aligner.AlignerEngine:
     kw.setdefault("round_timeout_s", 0.2)
     kw.setdefault("poll_interval_s", 0.01)
     kw.setdefault("max_steps", 12)
-    # The mediator brain is Pi in production; inject the deterministic fake here so
+    # The mediator LLM session is Pi in production; inject the deterministic fake here so
     # the SAO runs node-free and LLM-free.
-    kw.setdefault("brain_factory", fake_brain_factory)
+    kw.setdefault("llm_session_factory", fake_llm_session_factory)
     return aligner.AlignerEngine(manager, **kw)  # type: ignore[arg-type]
 
 
@@ -109,7 +109,7 @@ def test_to_outcome_snaps_near_miss_but_refuses_out_of_grid() -> None:
         loop=asyncio.new_event_loop(),
         fetch_prose=lambda h, p, r: _never(),
         turn_timeout_s=1.0,
-        llm=lambda *a, **k: "",  # unused by to_outcome, but the brain is now required
+        llm=lambda *a, **k: "",  # unused by to_outcome, but the LLM session is now required
     )
     assert neg.to_outcome({"tech": "30%"}) == ("30",)  # formatting near-miss snapped
     assert neg.to_outcome({"Tech": "30"}) == ("30",)  # key snapped too
@@ -148,13 +148,13 @@ def test_propose_holds_own_line_not_the_table_when_unreadable() -> None:
         current_offer = ("40",)  # the number sitting on the table
         step = 2
 
-    outcome = mediator.LiveNegotiator("risk", neg).propose(_State())
+    outcome = mediator.RemoteAgentNegotiator("risk", neg).propose(_State())
     assert outcome == ("25",)  # held its OWN prior line
     assert outcome != _State.current_offer  # NOT the table's 40 — no phantom
 
     # And with no prior line at all, it falls to its opening stance (grid min),
     # still never the counterpart's standing offer.
-    fresh = mediator.LiveNegotiator("newbie", neg).propose(_State())
+    fresh = mediator.RemoteAgentNegotiator("newbie", neg).propose(_State())
     assert fresh == ("20",)
     assert fresh != _State.current_offer
 
@@ -275,7 +275,7 @@ async def test_mediate_rejects_when_no_issues_discovered(
 
 
 def _mismatch_llm(*, term: str = "done") -> Any:
-    """A fake brain that reports one term mismatch, then behaves like the default."""
+    """A fake LLM session that reports one term mismatch, then behaves like the default."""
     base = make_fake_llm()
 
     def _llm(prompt: str, *, system: str = "", temperature: float = 0.3) -> str:
@@ -321,14 +321,14 @@ def test_detect_term_mismatch_keeps_real_clashes_and_drops_the_rest() -> None:
 
 
 def test_detect_term_mismatch_empty_on_garbage_or_failure() -> None:
-    """No mismatch is the safe answer: unparseable output and a brain that raises
+    """No mismatch is the safe answer: unparseable output and an LLM session that raises
     both mean the negotiation runs exactly as it would have."""
     positions = {"growth": "a", "risk": "b"}
     assert mediator.detect_term_mismatch(positions, llm=lambda *a, **k: "not json") == []
     assert mediator.detect_term_mismatch(positions, llm=lambda *a, **k: '{"mismatches":{}}') == []
 
     def boom(*_a: Any, **_k: Any) -> str:
-        raise RuntimeError("brain down")
+        raise RuntimeError("LLM session down")
 
     assert mediator.detect_term_mismatch(positions, llm=boom) == []
 
@@ -377,7 +377,7 @@ async def test_mediate_injects_one_clarifying_round_on_term_mismatch() -> None:
         seen.append(dict(positions))
         return real_discover(task, positions, **kw)
 
-    engine = _engine(manager, brain_factory=lambda _ep: _mismatch_llm())
+    engine = _engine(manager, llm_session_factory=lambda _ep: _mismatch_llm())
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(mediator, "discover_issues", spy_discover)
         verdict = await engine.mediate(_ROOM)
@@ -408,7 +408,9 @@ async def test_mediate_records_the_term_check_on_the_episode() -> None:
     managed = FakeManaged("term-record-room", "mycelium", channel, persister)
     manager = FakeManager(managed, ["growth", "risk", "aligner"])
 
-    await _engine(manager, brain_factory=lambda _ep: _mismatch_llm()).mediate("term-record-room")
+    await _engine(manager, llm_session_factory=lambda _ep: _mismatch_llm()).mediate(
+        "term-record-room"
+    )
 
     records = list((room_dir / "log" / "episodes").glob("*.md"))
     assert len(records) == 1
@@ -459,7 +461,7 @@ async def test_term_check_can_be_switched_off(monkeypatch: pytest.MonkeyPatch) -
     managed = FakeManaged(_ROOM, "mycelium", channel, persister)
     manager = FakeManager(managed, ["growth", "risk", "aligner"])
 
-    await _engine(manager, brain_factory=lambda _ep: _mismatch_llm()).mediate(_ROOM)
+    await _engine(manager, llm_session_factory=lambda _ep: _mismatch_llm()).mediate(_ROOM)
 
     assert calls == []
 
@@ -470,7 +472,7 @@ async def test_mediate_survives_a_failing_term_check(monkeypatch: pytest.MonkeyP
     vocabulary were shared, rather than failing the whole summon."""
 
     def boom(*_a: Any, **_k: Any) -> list[dict[str, Any]]:
-        raise RuntimeError("brain down")
+        raise RuntimeError("LLM session down")
 
     monkeypatch.setattr(mediator, "detect_term_mismatch", boom)
 
@@ -513,8 +515,8 @@ def test_negmas_turn_order_seam_present() -> None:
 
     m = SAOMechanism(issues=[make_issue(values=["a", "b"], name="x")], n_steps=5)
     neg = _negotiation()
-    m.add(mediator.LiveNegotiator("growth", neg))
-    m.add(mediator.LiveNegotiator("risk", neg))
+    m.add(mediator.RemoteAgentNegotiator("growth", neg))
+    m.add(mediator.RemoteAgentNegotiator("risk", neg))
     assert callable(getattr(m, "next_negotitor_ids", None)), "NEGMAS turn-order seam moved"
     # Default (no standing offer): every negotiator, NEGMAS's round-robin.
     assert set(m.next_negotitor_ids()) == set(m.negotiator_ids)

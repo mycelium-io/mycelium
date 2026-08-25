@@ -1,15 +1,15 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""A row's fields are its memory's frontmatter, and a verb writes them.
+"""A row's fields are its memory's frontmatter, and a row action writes them.
 
 The board projects a row as a title plus whatever frontmatter its memory
-carries, so every verb that is not custody — a status change, a priority, a
+carries, so every row action but an assignment — a status change, a priority, a
 block, a dismissal — is a frontmatter write and nothing else.  This is that
 write, and it is the same upsert ``memory set --meta`` goes through: versioned,
 indexed, link-parsed, broadcast, and readable in a text editor.
 
-**Custody is the one axis this refuses.**  ``custody``, ``owner`` and the
+**Assignment is the one axis this refuses.**  ``assignment``, ``owner`` and the
 lease's companion keys move under rules a field write does not know — a live
 claim is not stealable, an expired one is, and expiry is derived from a clock
 rather than written down.  A plain field write setting ``owner`` would forge a
@@ -31,14 +31,14 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
 #: Frontmatter a lease owns.  Frozen in ``contracts/board-vocabulary.json``
-#: under ``custody`` (``field`` + ``companion_fields``) plus the holder itself;
+#: under ``assignment`` (``field`` + ``companion_fields``) plus the holder itself;
 #: ``tests/test_fields.py`` asserts this set against that file.
 RESERVED = frozenset(
-    {"custody", "owner", "claimed_at", "ttl_minutes", "custody_note", "custody_note_by"}
+    {"assignment", "owner", "claimed_at", "ttl_minutes", "assignment_note", "assignment_note_by"}
 )
 
 RESERVED_REASON = (
-    "custody moves through the lease endpoints (/leases/claim, /release, /resolve), "
+    "assignment moves through the lease endpoints (/assignments/claim, /release, /resolve), "
     "not a field write — a claim has rules a field write cannot check"
 )
 
@@ -70,7 +70,7 @@ async def upsert_patch(
 ) -> dict:
     """Merge ``patch`` into a memory's frontmatter and return the fresh half.
 
-    The single writer behind both a board field write and a custody lease, so
+    The single writer behind both a board field write and a assignment lease, so
     the two cannot drift in how a frontmatter change reaches the store.  A
     ``None`` value clears its key, which is how a lease hands a row back.
     """
@@ -84,7 +84,7 @@ async def upsert_patch(
                 value=_reconstruct_value(meta, content),
                 content_text=content or None,
                 # Frontmatter changed, prose did not: re-running the embedder
-                # over unchanged text would burn a model call per verb. The
+                # over unchanged text would burn a model call per row action. The
                 # stored vector is carried forward instead.
                 embed=False,
                 created_by=handle,

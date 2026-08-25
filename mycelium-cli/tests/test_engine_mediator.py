@@ -3,7 +3,7 @@
 
 """Verify the NEGMAS mediation core (mycelium.engine.mediator) runs.
 
-Node-free / LLM-free: a deterministic prompt-keyed fake brain and a fake
+Node-free / LLM-free: a deterministic prompt-keyed fake LLM session and a fake
 ``fetch_prose`` drive the whole NEGMAS SAO loop. Asserts the anti-theatre
 property — the mechanism terminates at agreement below the step cap (it does
 not spin to the cap), and the agreed ``issue = value`` map is recoverable.
@@ -72,7 +72,7 @@ async def test_core_terminates_at_agreement() -> None:
 
     async def fetch_prose(handle: str, prompt: str, round_n: int) -> str:
         prompts_sent.append(handle)
-        return "I accept 30."  # fake agent reply; the fake brain maps it
+        return "I accept 30."  # fake agent reply; the fake LLM session maps it
 
     neg = mediator.MediatedNegotiation(
         issues=issues,

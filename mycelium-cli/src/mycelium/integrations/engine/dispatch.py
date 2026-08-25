@@ -5,7 +5,8 @@
 
 Unlike ``claude_code`` / ``cursor`` (which bridge to a
 *third-party* runtime we don't own), an engine is **ours**: our NEGMAS loop, our
-brain. One ``engine`` family hosts a variety of Cognition Engines, selected by
+LLM session. One ``engine`` family hosts a variety of Cognition Engines, selected
+by
 the manifest's ``kind`` (``aligner`` today; ``bargainer``, ``team_former``, a
 drift evaluator later): the extensibility axis, no new adapter per CE.
 

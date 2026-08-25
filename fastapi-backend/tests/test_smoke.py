@@ -6,7 +6,7 @@
 One scriptable check that the happy path still works end to end —
 **room → engine → await → respond → converge → work** — with **no SLIM node, no
 Pi binary, and no live LLM**. The mediator runs the real NEGMAS SAO loop; only its
-brain (the deterministic ``fake_brain_factory``), the agents (the ``FakeChannel``
+llm_session (the deterministic ``fake_llm_session_factory``), the agents (the ``FakeChannel``
 reply simulation, i.e. the await/respond turns), and the task compiler are faked.
 
 Run it alone with ``make smoke`` (or ``uv run pytest -m smoke``). If this goes red,
@@ -27,7 +27,7 @@ from tests.fakes import (
     FakeManaged,
     FakeManager,
     FakePersister,
-    fake_brain_factory,
+    fake_llm_session_factory,
 )
 
 _ROOM = "smoke-room"
@@ -41,7 +41,7 @@ async def test_core_protocol_room_to_work_over_fakes() -> None:
 
     # ── engine + await/respond ── the aligner negotiates over a fake channel whose
     # prompted participants always reply (the simulated await→respond turns), with a
-    # deterministic Pi brain. NEGMAS owns termination, so it stops at agreement.
+    # deterministic Pi LLM session. NEGMAS owns termination, so it stops at agreement.
     persister = FakePersister()
     channel = FakeChannel(persister, reply_conf=0.9)
     managed = FakeManaged(_ROOM, "mycelium", channel, persister)
@@ -53,7 +53,7 @@ async def test_core_protocol_room_to_work_over_fakes() -> None:
         round_timeout_s=0.2,
         poll_interval_s=0.01,
         max_steps=12,
-        brain_factory=fake_brain_factory,
+        llm_session_factory=fake_llm_session_factory,
     )
 
     # ── converge ── a commit:converged verdict carrying the agreed issue=value map.

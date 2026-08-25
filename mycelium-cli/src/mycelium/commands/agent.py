@@ -54,7 +54,7 @@ app = typer.Typer(
 console = Console()
 
 
-def _bail_root_owned(target: Path, blocking: Path, owner_name: str) -> None:
+def _abort_if_root_owned(target: Path, blocking: Path, owner_name: str) -> None:
     """Print a chown-guidance error and exit 1.
 
     Used when writing under ``~/.mycelium/`` would fail because some ancestor
@@ -94,7 +94,7 @@ def _check_writable_or_bail(target: Path) -> None:
     """Bail out with chown guidance if any ancestor of *target* isn't ours.
 
     Walks up to the closest existing ancestor of *target* and checks its
-    ``st_uid`` against ``os.getuid()``. Mismatch → :func:`_bail_root_owned`.
+    ``st_uid`` against ``os.getuid()``. Mismatch → :func:`_abort_if_root_owned`.
     Windows has no uid concept; this no-ops there. Stat failures are
     swallowed (let the real write raise its own error).
     """
@@ -117,7 +117,7 @@ def _check_writable_or_bail(target: Path) -> None:
         owner_name = pwd.getpwuid(owner_uid).pw_name
     except (KeyError, ImportError):
         owner_name = f"uid {owner_uid}"
-    _bail_root_owned(target, p, owner_name)
+    _abort_if_root_owned(target, p, owner_name)
 
 
 def _resolve_room(config: MyceliumConfig, room: str | None) -> str:
@@ -431,7 +431,7 @@ def _persist_and_describe(
     config: MyceliumConfig,
     room_name: str,
     handle_flag: str,
-    verb: str,
+    action: str,
 ) -> None:
     """Shared tail: run runtime side effects, persist the manifest, print."""
     opts = AddOptions(room=room_name)
@@ -446,7 +446,7 @@ def _persist_and_describe(
     impl.register(manifest=manifest, config=config, opts=opts)
     _write_manifest(config, room_name, manifest, created_by=handle_flag)
     console.print(
-        f"\n[green]Agent {verb}:[/green] [cyan]@{manifest.handle}[/cyan] "
+        f"\n[green]Agent {action}:[/green] [cyan]@{manifest.handle}[/cyan] "
         f"in room [bold]{room_name}[/bold]"
     )
     for line in impl.describe(manifest, room=room_name):
@@ -648,7 +648,7 @@ def _create_wizard(
         config=config,
         room_name=room_name,
         handle_flag=handle_flag,
-        verb="created",
+        action="created",
     )
 
 
@@ -874,7 +874,7 @@ def agent_create(
             config=config,
             room_name=room_name,
             handle_flag=handle_flag,
-            verb="created",
+            action="created",
         )
     except typer.Exit:
         raise
@@ -1253,8 +1253,8 @@ def agent_rm(
         # error (the manifest is already gone).
         _revoke_channel_identity(handle, config.slim.identity)
 
-        verb = "Destroyed" if will_destroy else "Unregistered"
-        console.print(f"[green]{verb}:[/green] @{handle} from {room_name}")
+        action = "Destroyed" if will_destroy else "Unregistered"
+        console.print(f"[green]{action}:[/green] @{handle} from {room_name}")
     except typer.Exit:
         raise
     except Exception as e:

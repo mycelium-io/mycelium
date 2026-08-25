@@ -143,7 +143,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "index.html#board-hand-work-off",
     "t": "Hand work off",
     "s": "Concepts › Board",
-    "x": "Two different questions get two different answers, and the board keeps them apart: Who is it for? assignee, set by --assign. This does not change on its own. Who is on it right now? custody, taken with claim and given back with release. mycelium board claim work/pick-token-storage mycelium board release work/pick-token-storage --note \"handing to @sec, schema is settled\" mycelium board claim work/pick-token-storage --",
+    "x": "Two different questions get two different answers, and the board keeps them apart: Who is it for? assignee, set by --assign. This does not change on its own. Who is on it right now? assignment, taken with claim and given back with release. mycelium board claim work/pick-token-storage mycelium board release work/pick-token-storage --note \"handing to @sec, schema is settled\" mycelium board claim work/pick-token-storage",
     "p": "Guide"
   },
   {
@@ -168,17 +168,17 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Guide"
   },
   {
-    "u": "index.html#board-three-lenses",
-    "t": "Three lenses",
+    "u": "index.html#board-three-attention-filters",
+    "t": "Three attention filters",
     "s": "Concepts › Board",
-    "x": "Lens What's in it Needs you (default) Open decisions, blocked work, reviews wanting eyes In flight Claimed and moving: who holds it, which branch, CI state Resolved Closed today, then it drops off You get the narrow one by default. A board that shows everything is a board you stop reading, so it leads with the handful of things waiting on a person and keeps the rest one keystroke away.",
+    "x": "Filter What's in it Needs you (default) Open decisions, blocked work, reviews wanting eyes In flight Claimed and moving: who holds it, which branch, CI state Resolved Closed today, then it drops off You get the narrow one by default. A board that shows everything is a board you stop reading, so it leads with the handful of things waiting on a person and keeps the rest one keystroke away.",
     "p": "Guide"
   },
   {
     "u": "index.html#board-five-views-of-the-same-rows",
     "t": "Five views of the same rows",
     "s": "Concepts › Board",
-    "x": "A row is a title plus whatever its markdown frontmatter carries. Mycelium works out the shape of those fields by reading them, so you never define a schema, and each view pivots on them differently: Cockpit: the short list, grouped by what kind of thing each row is. Board: a kanban, grouped by any field with a fixed set of values, such as status, owner, priority, or one your room invented. Table: the room as structur",
+    "x": "A row is a title plus whatever its markdown frontmatter carries. Mycelium works out the shape of those fields by reading them, so you never define a schema, and each view pivots on them differently: Triage: the short list, grouped by what kind of thing each row is. Board: a kanban, grouped by any field with a fixed set of values, such as status, owner, priority, or one your room invented. Table: the room as structure",
     "p": "Guide"
   },
   {
@@ -199,7 +199,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "index.html#board-you-can-hear-it",
     "t": "You can hear it",
     "s": "Concepts › Board",
-    "x": "The board is meant to be ignored until it matters, so it makes a sound when it changes: rising when something opens and wants you, falling when something closes. Only a new row in your \"needs you\" lens interrupts. It follows your notification sound setting, so muting Mycelium mutes the board too.",
+    "x": "The board is meant to be ignored until it matters, so it makes a sound when it changes: rising when something opens and wants you, falling when something closes. Only a new row in your \"needs you\" filter interrupts. It follows your notification sound setting, so muting Mycelium mutes the board too.",
     "p": "Guide"
   },
   {
@@ -1028,7 +1028,7 @@ window.MYCELIUM_SEARCH_INDEX = [
   },
   {
     "u": "reference.html#cli-board",
-    "t": "mycelium board [--lens needs-you|in-flight|resolved|all] [--view list|table] [--watch]",
+    "t": "mycelium board [--filter needs-you|in-flight|resolved|all] [--view list|table] [--watch]",
     "s": "CLI Reference",
     "x": "The room's live coordination slice: what needs you, what's in flight, what resolved.",
     "k": "cmd",
@@ -1046,7 +1046,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#cli-board",
     "t": "mycelium board claim <id> [--to @handle] [--ttl 30]",
     "s": "CLI Reference",
-    "x": "Take custody of a work/ row: a lease with your handle on it, which drains unless renewed.",
+    "x": "Take assignment of a work/ row: a lease with your handle on it, which drains unless renewed.",
     "k": "cmd",
     "p": "Reference"
   },

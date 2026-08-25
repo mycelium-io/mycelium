@@ -47,13 +47,13 @@ class ActivityEvent:
     at: datetime
     actor: str
     actor_kind: str
-    verb: str
+    action: str
     title: str
     source: str
 
 
 @dataclass
-class Digest:
+class ActivitySummary:
     frm: date
     to: date
     events: list[ActivityEvent] = field(default_factory=list)
@@ -72,8 +72,8 @@ class Digest:
         return [(actor, kinds[actor], events) for actor, events in ordered]
 
     @property
-    def by_verb(self) -> list[tuple[str, int]]:
-        return Counter(e.verb for e in self.events).most_common()
+    def by_action(self) -> list[tuple[str, int]]:
+        return Counter(e.action for e in self.events).most_common()
 
 
 def zone(name: str | None) -> ZoneInfo:
@@ -181,14 +181,14 @@ def project_activity(
         said = _describe(kind, message.get("content"))
         if not said:
             continue
-        verb, title = said
+        action, title = said
         events.append(
             ActivityEvent(
                 id=f"msg:{message.get('id', i)}",
                 at=at,
                 actor=actor,
                 actor_kind=actor_kind(actor, agents),
-                verb=verb,
+                action=action,
                 title=title,
                 source="channel",
             )
@@ -206,7 +206,7 @@ def project_activity(
                 at=at,
                 actor=actor,
                 actor_kind=actor_kind(actor, agents),
-                verb="revised" if version > 1 else "wrote",
+                action="revised" if version > 1 else "wrote",
                 title=str(memory.get("key") or ""),
                 source=f"memory · v{version}",
             )
@@ -225,7 +225,7 @@ def project_activity(
                 at=at,
                 actor=str(episode.get("updated_by") or "aligner"),
                 actor_kind="engine",
-                verb="converged" if subkind in ("converged", "resolved") else "mediated",
+                action="converged" if subkind in ("converged", "resolved") else "mediated",
                 title=f"{topic} · {participants}".strip(),
                 source=f"episode {episode.get('short_id')}",
             )
@@ -266,7 +266,9 @@ def streaks(days: dict[date, list[ActivityEvent]], end: date) -> tuple[int, int]
     return current, longest
 
 
-def digest(days: dict[date, list[ActivityEvent]], frm: date, to: date) -> Digest:
+def summarize_activity(
+    days: dict[date, list[ActivityEvent]], frm: date, to: date
+) -> ActivitySummary:
     events: list[ActivityEvent] = []
     active = 0
     cursor = frm
@@ -276,7 +278,7 @@ def digest(days: dict[date, list[ActivityEvent]], frm: date, to: date) -> Digest
             active += 1
         events.extend(for_day)
         cursor += timedelta(days=1)
-    return Digest(
+    return ActivitySummary(
         frm=frm, to=to, events=sorted(events, key=lambda e: e.at, reverse=True), active_days=active
     )
 

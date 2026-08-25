@@ -145,7 +145,7 @@ stays legible while agents argue inside a row.
 **The aligner is the mediator.** Negotiation is driven by a first-party cognition
 engine, the **aligner** (`app/services/aligner.py`), summoned by `@`-mention. It
 runs a real **NEGMAS Stacked Alternating Offers** mechanism (`mediator.py`); its
-brain is a persistent **Pi** coding-agent session (`pi_brain.py`) so it keeps memory
+cognition runs on a persistent **Pi** session (`pi_session.py`) so it keeps memory
 across rounds. It checks the opening positions for a term the agents are using in
 different senses (one clarifying round if so, none otherwise), discovers issues from
 those positions, brokers each round, `@`-addresses one agent at a time over SLIM,
@@ -158,10 +158,10 @@ task's own **thread**, minted with the task and bound to it for life, and a
 **coordination phase** inside one, opened by a summon and 1:1 with an L9 episode
 record (unique id, its own transcript slice, recorded at `log/episodes/{id}.md`).
 The container outlives what runs inside it: a coordination phase that converges or
-aborts writes neither the task's status nor its custody.
+aborts writes neither the task's status nor its assignment.
 
 LLM: **Pi everywhere** (provider/model format, e.g. `anthropic/claude-sonnet-4-6`).
-The aligner's brain, the task compiler, and the `mycelium doctor` / `/health`
+The aligner's LLM session, the task compiler, and the `mycelium doctor` / `/health`
 completion probe all shell out to the `pi` binary the backend image ships; there
 is no litellm dependency.
 
@@ -182,14 +182,15 @@ is no litellm dependency.
   `_addressed_to`): a **ping** carries the episode, sender and message id when a
   thread moves; a **notice** carries the task, who moved it and the thread to open
   when the board moves. `NOTICE_SUBKINDS` is a closed set (`filed`, `claimed`,
-  `released`, `resolved`) frozen in `contracts/slim-l9-wire.json` and asserted on
-  both sides. Room-wide events stay unfiltered: a task moving is the room's
-  business however deep inside a task it happened. Two honest gaps: a ping is
-  live-only in the conversational read (`stored_message_from_record` promotes prose
-  and raise-up kinds only), so the app merges pings in from the transcript replay,
-  and widening the projection would print raw envelopes at `mycelium room
-  messages`; and a notice carries no `content`, so `mycelium room watch` drops it
-  and the terminal draws no timeline line.
+  `released`, `resolved`, `blocked`, `unblocked`) frozen in
+  `contracts/slim-l9-wire.json` and asserted on both sides. Room-wide events stay
+  unfiltered: a task moving is the room's business however deep inside a task it
+  happened. Two honest gaps: a ping is live-only in the conversational read
+  (`stored_message_from_record` promotes prose and raise-up kinds only), so the app
+  merges pings in from the transcript replay, and widening the projection would
+  print raw envelopes at `mycelium room messages`; and a notice carries no
+  `content`, so `mycelium room watch` drops it and the terminal draws no timeline
+  line.
 - **The aligner mediates, inside a task.** Agents never talk to each other directly;
   all coordination flows through the aligner. It's a first-party engine registered
   as a room citizen (`mycelium engine create aligner --kind aligner`) and summoned
@@ -197,10 +198,10 @@ is no litellm dependency.
   belongs to no row), not auto-run on a join window. A summon inside a task opens
   its own episode; the task's thread is a container, and nothing records a link back
   from the nested episode to the row it was summoned from.
-- **The aligner's brain is Pi (only).** The SAO mediator runs on a persistent Pi
-  session; there is no litellm fallback brain. Pi ships in the backend image;
+- **The aligner's LLM session is Pi (only).** The SAO mediator runs on a persistent
+  Pi session; there is no litellm fallback. Pi ships in the backend image;
   OpenShell sandboxing (`ALIGNER_PI_OPENSHELL`) is an optional command-prefix seam,
-  off by default. See `pi_brain.py`.
+  off by default. See `pi_session.py`.
 - **NEGMAS owns termination.** The mechanism stops at unanimity; the mediator never
   loops to the step cap (the anti-theatre property). A failed negotiation commits as
   `rejected`.
@@ -303,8 +304,8 @@ is no litellm dependency.
   `await` returns). The model still writes `- [ ] text @handle` lines because
   that is the shape it is good at; parsing them into rows is the compiler's job
   and the line format never leaves it. A task carries `assignee`, never `owner`
-  — an assignment is who it is *for*, custody is who is *holding* it, and a
-  stage that cannot take a lease must not write one. Fail-soft: a compiler
+  — `assignee` is who the task is *for*, the `assignment` field is who is
+  *holding* it, and a stage that cannot take one must not write one. Fail-soft: a compiler
   outage falls back to the raw `issue=value` agreement. The compiler is
   deliberately a distinct consumer stage across an explicit seam, not part of
   the negotiation engine. It runs a one-shot `pi` turn
@@ -496,7 +497,7 @@ frontend comes up with the stack; add `--profile metrics` for the collector.
 ### LLM config
 
 All containers get their LLM settings from `~/.mycelium/.env`, generated from
-`config.toml`. Set these once (the aligner's Pi brain uses them):
+`config.toml`. Set these once (the aligner's Pi session uses them):
 
 ```bash
 mycelium config set llm.model "anthropic/claude-sonnet-4-6"
@@ -543,3 +544,15 @@ mycelium config apply
   node (`MYCELIUM_SLIM_ENDPOINT`) and skip without one
 - Live-LLM tests guarded by `MYCELIUM_LLM_TESTS=1` (costs tokens)
 - Commit messages: imperative, concise, body for context if needed
+- **No design or planning documents in git.** Plans, design briefs, RFCs,
+  proposals, implementation write-ups and per-issue notes do not belong in this
+  repo — not under `docs/`, not beside the code they describe. They are stale the
+  week after they are written, and a reader who finds one cannot tell whether it
+  describes the code, a path not taken, or a plan nobody executed. The code, its
+  tests, and the PR that changed it are the record; anything that needs to argue
+  for a decision belongs in the PR body or the issue, where it stays attached to
+  the change it justifies. Don't open a PR that adds one, and don't create one as
+  a step toward doing the work — do the work.
+
+  What *does* belong here: current-state documentation (`mycelium-cli/src/mycelium/docs/`,
+  the READMEs, this file), runbooks, and the contracts under `contracts/`.

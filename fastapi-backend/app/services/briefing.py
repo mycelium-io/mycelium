@@ -15,8 +15,8 @@ questions a shared checklist could only answer as one.
 
 from __future__ import annotations
 
+from app.services.assignments import state_of
 from app.services.filesystem import read_room_meta
-from app.services.leases import state_of
 from app.services.tasks import ASSIGNEE_FIELD, WORK_NAMESPACE
 
 #: How many open rows a briefing names before it stops. A briefing long enough

@@ -2,7 +2,7 @@
 // Copyright 2026 Mycelium Contributors
 
 /**
- * Custody: the board's claims, held as leases rather than as facts.
+ * Assignment: the board's claims, held as leases rather than as facts.
  *
  * The property under test throughout is the one an ephemeral actor forces:
  * nobody gets to announce that they died, so a claim has to stop being true on
@@ -14,32 +14,32 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   BLOCKED_FIELD,
-  CUSTODY_COMPANION_FIELDS,
-  CUSTODY_REFUSALS,
-  CUSTODY_STATES,
+  ASSIGNMENT_COMPANION_FIELDS,
+  ASSIGNMENT_REFUSALS,
+  ASSIGNMENT_STATES,
   DEFAULT_TTL_MINUTES,
-  DERIVED_CUSTODY_STATES,
-  LEASABLE_NAMESPACES,
-  LENS_OF_CUSTODY,
+  DERIVED_ASSIGNMENT_STATES,
+  ASSIGNABLE_NAMESPACES,
+  ATTENTION_OF_ASSIGNMENT,
   RUNTIME_AUTHOR,
   STALE_AFTER,
-  STORED_CUSTODY_STATES,
+  STORED_ASSIGNMENT_STATES,
   claimPatch,
-  custodyNote,
-  custodyOf,
-  custodyRefusal,
+  assignmentNote,
+  assignmentOf,
+  assignmentRefusal,
   isBlocked,
   leaseFreshness,
   releasePatch,
   remainingMinutes,
-} from "@/lib/board/custody";
-import { lensOf, type LiveItem, type SourceKind } from "@/lib/board/item";
+} from "@/lib/board/assignment";
+import { attentionFilterOf, type LiveItem, type SourceKind } from "@/lib/board/item";
 import { projectItems } from "@/lib/board/projection";
 import type { AgentSummary, Memory, PresenceMember } from "@/lib/api";
 
 const CONTRACT = JSON.parse(
   readFileSync(join(process.cwd(), "..", "contracts", "board-vocabulary.json"), "utf8"),
-).custody;
+).assignment;
 
 const NOW = Date.parse("2026-08-23T12:00:00Z");
 
@@ -52,40 +52,40 @@ const row = (
 ): LiveItem => ({ id: `${kind}:${label}`, title: label, source: { kind, label }, fields });
 
 const held = (minutesAgo: number, extra: Record<string, unknown> = {}) =>
-  row({ custody: "held", owner: "@growth", claimed_at: ago(minutesAgo), ttl_minutes: 30, ...extra });
+  row({ assignment: "held", owner: "@growth", claimed_at: ago(minutesAgo), ttl_minutes: 30, ...extra });
 
-describe("the custody contract", () => {
+describe("the assignment contract", () => {
   it("matches the states the CLI and the backend carry", () => {
-    expect(CONTRACT.states).toEqual([...CUSTODY_STATES]);
-    expect(CONTRACT.stored_states).toEqual(STORED_CUSTODY_STATES);
-    expect(CONTRACT.derived_states).toEqual(DERIVED_CUSTODY_STATES);
+    expect(CONTRACT.states).toEqual([...ASSIGNMENT_STATES]);
+    expect(CONTRACT.stored_states).toEqual(STORED_ASSIGNMENT_STATES);
+    expect(CONTRACT.derived_states).toEqual(DERIVED_ASSIGNMENT_STATES);
   });
 
   it("keeps the stored and derived halves disjoint and exhaustive", () => {
     // A state that is both stored and derived would let a writer freeze a row in
     // the one state the clock is supposed to own.
-    const overlap = STORED_CUSTODY_STATES.filter(s => DERIVED_CUSTODY_STATES.includes(s));
+    const overlap = STORED_ASSIGNMENT_STATES.filter(s => DERIVED_ASSIGNMENT_STATES.includes(s));
     expect(overlap).toEqual([]);
-    expect([...STORED_CUSTODY_STATES, ...DERIVED_CUSTODY_STATES].sort()).toEqual(
-      [...CUSTODY_STATES].sort(),
+    expect([...STORED_ASSIGNMENT_STATES, ...DERIVED_ASSIGNMENT_STATES].sort()).toEqual(
+      [...ASSIGNMENT_STATES].sort(),
     );
   });
 
   it("matches the thresholds, fields and refusals", () => {
     expect(CONTRACT.stale_after).toBe(STALE_AFTER);
     expect(CONTRACT.default_ttl_minutes).toBe(DEFAULT_TTL_MINUTES);
-    expect(CONTRACT.companion_fields).toEqual(CUSTODY_COMPANION_FIELDS);
+    expect(CONTRACT.companion_fields).toEqual(ASSIGNMENT_COMPANION_FIELDS);
     expect(CONTRACT.runtime_author).toBe(RUNTIME_AUTHOR);
-    expect(CONTRACT.leasable_namespaces).toEqual(LEASABLE_NAMESPACES);
+    expect(CONTRACT.assignable_namespaces).toEqual(ASSIGNABLE_NAMESPACES);
     expect(CONTRACT.blocked_field).toBe(BLOCKED_FIELD);
-    expect(CONTRACT.refusals).toEqual(CUSTODY_REFUSALS);
-    expect(CONTRACT.lens_of_custody).toEqual(LENS_OF_CUSTODY);
+    expect(CONTRACT.refusals).toEqual(ASSIGNMENT_REFUSALS);
+    expect(CONTRACT.attention_of_assignment).toEqual(ATTENTION_OF_ASSIGNMENT);
   });
 
   it("writes only fields the contract names", () => {
     const patch = claimPatch("growth", new Date(NOW).toISOString());
-    const written = Object.keys(patch).filter(k => k !== "owner" && k !== "custody");
-    expect(written.every(k => CUSTODY_COMPANION_FIELDS.includes(k))).toBe(true);
+    const written = Object.keys(patch).filter(k => k !== "owner" && k !== "assignment");
+    expect(written.every(k => ASSIGNMENT_COMPANION_FIELDS.includes(k))).toBe(true);
   });
 });
 
@@ -107,38 +107,38 @@ describe("freshness", () => {
   });
 });
 
-describe("custody state", () => {
+describe("assignment state", () => {
   it("holds while the lease runs, stale included", () => {
     // Stale is a renewal being due, not a lease being over: taking the row away
     // the moment a heartbeat is late would thrash.
-    expect(custodyOf(held(1), NOW)).toBe("held");
-    expect(custodyOf(held(20), NOW)).toBe("held");
+    expect(assignmentOf(held(1), NOW)).toBe("held");
+    expect(assignmentOf(held(20), NOW)).toBe("held");
   });
 
   it("expires a claim nobody renewed, with nothing written down", () => {
     const item = held(90);
-    expect(item.fields.custody).toBe("held");
-    expect(custodyOf(item, NOW)).toBe("expired");
+    expect(item.fields.assignment).toBe("held");
+    expect(assignmentOf(item, NOW)).toBe("expired");
   });
 
   it("treats held-by-nobody as back in the pool", () => {
-    expect(custodyOf(row({ custody: "held", claimed_at: ago(1) }), NOW)).toBe("unclaimed");
+    expect(assignmentOf(row({ assignment: "held", claimed_at: ago(1) }), NOW)).toBe("unclaimed");
   });
 
   it("refuses a claim it cannot date or bound", () => {
     // "Held forever, on nobody's word" is exactly the assertion an actor that can
     // vanish is not entitled to make.
-    expect(custodyOf(row({ custody: "held", owner: "@growth", ttl_minutes: 30 }), NOW)).toBe(
+    expect(assignmentOf(row({ assignment: "held", owner: "@growth", ttl_minutes: 30 }), NOW)).toBe(
       "expired",
     );
-    expect(custodyOf(row({ custody: "held", owner: "@growth", claimed_at: ago(1) }), NOW)).toBe(
+    expect(assignmentOf(row({ assignment: "held", owner: "@growth", claimed_at: ago(1) }), NOW)).toBe(
       "expired",
     );
   });
 
-  it("has no custody axis at all for a row nobody holds that kind of way", () => {
-    expect(custodyOf(row({ status: "resolved" }), NOW)).toBeNull();
-    expect(custodyOf(row({ custody: "in_progress" }), NOW)).toBeNull();
+  it("has no assignment axis at all for a row nobody holds that kind of way", () => {
+    expect(assignmentOf(row({ status: "resolved" }), NOW)).toBeNull();
+    expect(assignmentOf(row({ assignment: "in_progress" }), NOW)).toBeNull();
   });
 });
 
@@ -156,12 +156,12 @@ describe("blocked is derived", () => {
 
 describe("notes", () => {
   it("signs a release with the releaser's handle", () => {
-    const item = row({ custody: "released", custody_note: "handing over", custody_note_by: "growth" });
-    expect(custodyNote(item, NOW)).toEqual({ text: "handing over", by: "growth" });
+    const item = row({ assignment: "released", assignment_note: "handing over", assignment_note_by: "growth" });
+    expect(assignmentNote(item, NOW)).toEqual({ text: "handing over", by: "growth" });
   });
 
   it("signs an expiry with the runtime, because nobody was there to sign it", () => {
-    const note = custodyNote(held(90), NOW);
+    const note = assignmentNote(held(90), NOW);
     expect(note?.by).toBe(RUNTIME_AUTHOR);
     expect(note?.text).toContain("stopped renewing");
   });
@@ -169,49 +169,49 @@ describe("notes", () => {
   it("lets a reader tell a handoff from an abandonment", () => {
     // They leave the same row behind — an unclaimed one with history. The byline
     // is the whole difference.
-    const handed = row({ custody: "released", custody_note: "done", custody_note_by: "growth" });
-    expect(custodyNote(handed, NOW)?.by).not.toBe(custodyNote(held(90), NOW)?.by);
-    expect(lensOf(handed, NOW)).toBe(lensOf(held(90), NOW));
+    const handed = row({ assignment: "released", assignment_note: "done", assignment_note_by: "growth" });
+    expect(assignmentNote(handed, NOW)?.by).not.toBe(assignmentNote(held(90), NOW)?.by);
+    expect(attentionFilterOf(handed, NOW)).toBe(attentionFilterOf(held(90), NOW));
   });
 });
 
 describe("refusals", () => {
   it("tells an episode and a presence row why not", () => {
-    expect(custodyRefusal(row({}, "episode", "e4f1"))).toBe(CUSTODY_REFUSALS.episode);
-    expect(custodyRefusal(row({}, "agent", "growth"))).toBe(CUSTODY_REFUSALS.agent);
+    expect(assignmentRefusal(row({}, "episode", "e4f1"))).toBe(ASSIGNMENT_REFUSALS.episode);
+    expect(assignmentRefusal(row({}, "agent", "growth"))).toBe(ASSIGNMENT_REFUSALS.agent);
   });
 
   it("takes a lease on a work/ memory and nowhere else", () => {
-    expect(custodyRefusal(row({ namespace: "work" }, "memory", "work/auth"))).toBeNull();
-    expect(custodyRefusal(row({ namespace: "status" }, "memory", "status/ci"))).not.toBeNull();
+    expect(assignmentRefusal(row({ namespace: "work" }, "memory", "work/auth"))).toBeNull();
+    expect(assignmentRefusal(row({ namespace: "status" }, "memory", "status/ci"))).not.toBeNull();
   });
 });
 
 describe("patches", () => {
   it("stamps a holder, a time and a window", () => {
     expect(claimPatch("growth", new Date(NOW).toISOString(), 45)).toEqual({
-      custody: "held",
+      assignment: "held",
       owner: "@growth",
       claimed_at: new Date(NOW).toISOString(),
       ttl_minutes: 45,
-      custody_note: null,
-      custody_note_by: null,
+      assignment_note: null,
+      assignment_note_by: null,
     });
   });
 
   it("clears the holder on release and records who let go", () => {
     const patch = releasePatch("@growth", new Date(NOW).toISOString(), "blocked on infra");
     expect(patch).toMatchObject({
-      custody: "released",
+      assignment: "released",
       owner: null,
       claimed_at: null,
-      custody_note: "blocked on infra",
-      custody_note_by: "growth",
+      assignment_note: "blocked on infra",
+      assignment_note_by: "growth",
     });
   });
 });
 
-describe("the projection, once custody is the axis", () => {
+describe("the projection, once assignment is the axis", () => {
   const memory = (key: string, meta: Record<string, unknown> = {}): Memory => ({
     key,
     value: "Spike the auth rewrite",
@@ -247,7 +247,7 @@ describe("the projection, once custody is the axis", () => {
     // Reading `owner` off `updated_by` gave every memory in the room a holder —
     // the confident lie this axis exists to stop.
     const [item] = project({ memories: [memory("work/auth-spike")] });
-    expect(item.fields.custody).toBe("unclaimed");
+    expect(item.fields.assignment).toBe("unclaimed");
     expect(item.fields.owner).toBeNull();
     expect(item.fields.writer).toBe("@julia");
   });
@@ -256,22 +256,22 @@ describe("the projection, once custody is the axis", () => {
     const [item] = project({
       memories: [
         memory("work/auth-spike", {
-          custody: "held",
+          assignment: "held",
           owner: "@growth",
           claimed_at: ago(3),
           ttl_minutes: 30,
         }),
       ],
     });
-    expect(custodyOf(item, NOW)).toBe("held");
-    expect(lensOf(item, NOW)).toBe("in_flight");
+    expect(assignmentOf(item, NOW)).toBe("held");
+    expect(attentionFilterOf(item, NOW)).toBe("in_flight");
   });
 
-  it("gives a custody axis only to the namespace that can hold one", () => {
+  it("gives a assignment axis only to the namespace that can hold one", () => {
     const items = project({ memories: [memory("status/ci"), memory("work/auth")] });
     const byId = Object.fromEntries(items.map(i => [i.id, i]));
-    expect(byId["memory:status/ci"].fields.custody).toBeUndefined();
-    expect(byId["memory:work/auth"].fields.custody).toBe("unclaimed");
+    expect(byId["memory:status/ci"].fields.assignment).toBeUndefined();
+    expect(byId["memory:work/auth"].fields.assignment).toBe("unclaimed");
   });
 
   it("dates a resident agent's row from its last poll", () => {
@@ -279,7 +279,7 @@ describe("the projection, once custody is the axis", () => {
       agents: [agent("growth")],
       presence: new Map([["growth", seen("growth", 2)]]),
     });
-    expect(custodyOf(item, NOW)).toBe("held");
+    expect(assignmentOf(item, NOW)).toBe("held");
   });
 
   it("reads empty when every agent died an hour ago", () => {
@@ -298,7 +298,7 @@ describe("the projection, once custody is the axis", () => {
     const [item] = project({
       memories: [
         memory("work/auth-spike", {
-          custody: "held",
+          assignment: "held",
           owner: "@growth",
           claimed_at: ago(90),
           ttl_minutes: 30,
@@ -306,7 +306,7 @@ describe("the projection, once custody is the axis", () => {
       ],
     });
     // Nobody touched the row. It drained.
-    expect(custodyOf(item, NOW)).toBe("expired");
-    expect(lensOf(item, NOW)).toBe("needs_you");
+    expect(assignmentOf(item, NOW)).toBe("expired");
+    expect(attentionFilterOf(item, NOW)).toBe("needs_you");
   });
 });

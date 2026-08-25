@@ -4,7 +4,7 @@
 """Project what the room already has into board rows.
 
 Nothing here is a new store: episodes, memories and presence are
-read where they live and flattened into one row shape.  The board is a lens on
+read where they live and flattened into one row shape.  The board is one filter on
 the room, so a row can't be stale relative to the thing it describes.
 
 **One row per task.**  A row and the thread its coordination happens in
@@ -23,7 +23,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from mycelium.board import custody
+from mycelium.board import assignment
 from mycelium.board.model import EPISODE_FIELD, LIVE_NAMESPACES, ItemSource, LiveItem
 
 
@@ -92,7 +92,7 @@ def _memory_item(memory: dict) -> LiveItem:
     fields: dict[str, Any] = {
         "status": custom.get("status") if isinstance(custom.get("status"), str) else derived,
         "kind": {"decisions": "decision", "failed": "blocked"}.get(namespace, "concern"),
-        # Who wrote it last is provenance, not custody. Reading `owner` off
+        # Who wrote it last is provenance, not assignment. Reading `owner` off
         # `updated_by` gave every memory in the room a holder, which is the
         # confident-lie failure this whole axis exists to stop: a holder is
         # something a claim writes, so an unclaimed row says nobody.
@@ -107,11 +107,11 @@ def _memory_item(memory: dict) -> LiveItem:
     # `work/` is the in-flight task, so it is the namespace that carries a lease:
     # frontmatter has somewhere to put a stamp, which is why leases live here and
     # not on rows that carry no stamp.
-    if namespace in custody.LEASABLE_NAMESPACES:
-        fields[custody.FIELD] = "unclaimed"
+    if namespace in assignment.ASSIGNABLE_NAMESPACES:
+        fields[assignment.FIELD] = "unclaimed"
     fields.update(custom)
     # The memory's own frontmatter, beyond the store's managed keys. This is
-    # where a lease lands, and where a board verb writes, so a projection that
+    # where a lease lands, and where a board action writes, so a projection that
     # read only the structured `value` would miss every field anybody actually
     # set — the GUI has read both all along.
     meta = memory.get("meta")
@@ -153,9 +153,9 @@ def _agent_item(agent: dict, presence: dict, now: str) -> LiveItem:
             "live": True,
             "updated": last_seen,
             # Presence is a lease: the row drains unless the runtime renews it.
-            custody.FIELD: "held",
+            assignment.FIELD: "held",
             "claimed_at": last_seen,
-            "ttl_minutes": custody.DEFAULT_TTL_MINUTES,
+            "ttl_minutes": assignment.DEFAULT_TTL_MINUTES,
         },
     )
 
@@ -215,7 +215,7 @@ def project_items(
         if not seen:
             continue
         row = _agent_item(agent, seen, stamp)
-        if custody.custody_of(row, now) == "held":
+        if assignment.assignment_of(row, now) == "held":
             items.append(row)
 
     return items

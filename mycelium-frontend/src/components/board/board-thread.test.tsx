@@ -22,7 +22,7 @@ vi.mock("@/lib/api", () => ({
   fetchMessages: vi.fn().mockResolvedValue({ messages: [] }),
   fetchRoomStatus: vi.fn().mockResolvedValue({ room: "atlas", field: "upstream", providers: [], refs: [], rows: {}, refreshing: false }),
   writeFields: vi.fn(),
-  writeLease: vi.fn(),
+  writeAssignment: vi.fn(),
 }));
 
 vi.mock("@/components/current-user", () => ({
@@ -33,7 +33,7 @@ vi.mock("@/components/notifications-provider", () => ({
   useNotifications: () => ({ settings: { soundEnabled: false, soundVolume: 0 } }),
 }));
 
-import { ThreadChip } from "@/components/board/board-bits";
+import { ThreadChip } from "@/components/board/board-cells";
 import { RoomBoard } from "@/components/board/room-board";
 import type { LiveItem } from "@/lib/board/item";
 

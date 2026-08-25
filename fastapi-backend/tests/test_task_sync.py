@@ -101,7 +101,7 @@ class TestConvergedToRows:
         meta, _ = _row("r3", "work/ship-auth")
         assert meta[tasks.ASSIGNEE_FIELD] == "@a"
         assert "owner" not in meta
-        assert "custody" not in meta
+        assert "assignment" not in meta
 
     async def test_an_untagged_task_names_nobody(self):
         await _run("r4", [CompiledTask(title="ship auth", assignee=None)], {"a": "auth"})

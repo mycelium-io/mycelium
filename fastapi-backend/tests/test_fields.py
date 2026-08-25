@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Mycelium Contributors
 
-"""Field writes: a board verb that reaches the room instead of the browser.
+"""Field writes: a board action that reaches the room instead of the browser.
 
 The property behind all of it: a row is a title plus its frontmatter, so
 changing a row means writing frontmatter — and the write has to be the same one
@@ -14,12 +14,12 @@ from pathlib import Path
 import pytest
 from httpx import AsyncClient
 
-from app.services import fields, leases
+from app.services import assignments, fields
 from app.services.filesystem import get_room_dir, read_memory_file
 
 CONTRACT = json.loads(
     (Path(__file__).resolve().parents[2] / "contracts" / "board-vocabulary.json").read_text()
-)["custody"]
+)["assignment"]
 
 
 async def make_room(client: AsyncClient, name: str) -> None:
@@ -50,9 +50,9 @@ def frontmatter(room: str, key: str) -> dict:
 
 
 class TestContract:
-    """The reserved set is a derivation of the custody contract, not a copy."""
+    """The reserved set is a derivation of the assignment contract, not a copy."""
 
-    def test_reserved_is_the_custody_field_its_companions_and_the_holder(self):
+    def test_reserved_is_the_assignment_field_its_companions_and_the_holder(self):
         assert {
             CONTRACT["field"],
             "owner",
@@ -76,7 +76,7 @@ class TestWrite:
         assert frontmatter("fw", "decisions/ttl")["status"] == "in_review"
 
     async def test_it_writes_any_namespace_not_just_leasable_ones(self, client: AsyncClient):
-        # Custody is restricted to work/; a status change is not. A decision
+        # Assignment is restricted to work/; a status change is not. A decision
         # that cannot be moved is the overlay problem with extra steps.
         await make_room(client, "fw2")
         await make_memory(client, "fw2", "decisions/ttl")
@@ -87,7 +87,7 @@ class TestWrite:
         )
 
         assert resp.status_code == 200
-        assert not leases.leasable("decisions/ttl")
+        assert not assignments.assignable("decisions/ttl")
         assert frontmatter("fw2", "decisions/ttl")["priority"] == "urgent"
 
     async def test_a_null_clears_a_key(self, client: AsyncClient):
@@ -144,7 +144,7 @@ class TestWrite:
 @pytest.mark.asyncio
 class TestRefusals:
     @pytest.mark.parametrize("reserved", sorted(fields.RESERVED))
-    async def test_custody_keys_are_refused_by_name(self, client: AsyncClient, reserved: str):
+    async def test_assignment_keys_are_refused_by_name(self, client: AsyncClient, reserved: str):
         await make_room(client, "fr")
         await make_memory(client, "fr", "work/spike")
 
@@ -156,7 +156,7 @@ class TestRefusals:
         assert resp.status_code == 422
         detail = resp.json()["detail"]
         assert reserved in detail["reserved"]
-        assert "leases" in detail["message"]
+        assert "assignments" in detail["message"]
 
     async def test_a_refused_write_changes_nothing(self, client: AsyncClient):
         # The point of the refusal is that a forged claim never lands, so a
@@ -231,20 +231,20 @@ class TestRead:
 
 @pytest.mark.asyncio
 class TestSharedWriterWithLeases:
-    async def test_a_lease_still_moves_custody_through_the_shared_upsert(self, client: AsyncClient):
-        # leases._write delegates to fields.upsert_patch; this is the guard that
+    async def test_an_assignment_still_moves_through_the_shared_upsert(self, client: AsyncClient):
+        # assignments._write delegates to fields.upsert_patch; this is the guard that
         # the delegation did not change what a claim writes.
         await make_room(client, "fs")
         await make_memory(client, "fs", "work/spike")
 
         resp = await client.post(
-            "/api/rooms/fs/leases/claim",
+            "/api/rooms/fs/assignments/claim",
             json={"key": "work/spike", "handle": "dana", "ttl_minutes": 30},
         )
 
         assert resp.status_code == 200
         meta = frontmatter("fs", "work/spike")
-        assert meta["custody"] == "held"
+        assert meta["assignment"] == "held"
         assert meta["owner"] == "@dana"
         assert meta["claimed_at"]
 
@@ -252,7 +252,7 @@ class TestSharedWriterWithLeases:
         await make_room(client, "fs2")
         await make_memory(client, "fs2", "work/spike")
         await client.post(
-            "/api/rooms/fs2/leases/claim",
+            "/api/rooms/fs2/assignments/claim",
             json={"key": "work/spike", "handle": "dana", "ttl_minutes": 30},
         )
 
@@ -262,6 +262,6 @@ class TestSharedWriterWithLeases:
         )
 
         meta = frontmatter("fs2", "work/spike")
-        assert meta["custody"] == "held"
+        assert meta["assignment"] == "held"
         assert meta["owner"] == "@dana"
         assert meta["priority"] == "urgent"
