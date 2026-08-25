@@ -40,6 +40,7 @@ import time
 from dataclasses import dataclass
 from functools import partial
 from typing import TYPE_CHECKING, Any
+from uuid import uuid4
 
 import httpx
 import yaml
@@ -81,6 +82,9 @@ class A2aAgentRef:
     #: The RPC endpoint resolved from the card at registration, for telemetry —
     #: the send path still resolves the card itself.
     endpoint: str | None = None
+    #: Sender handles that may summon this agent (empty = anyone). Normalised to
+    #: lowercase without '@' so comparisons are consistent with the gate check.
+    allow_from: tuple[str, ...] = ()
 
 
 def resolve_a2a_agent(room: str, handle: str) -> A2aAgentRef | None:
@@ -107,10 +111,15 @@ def resolve_a2a_agent(room: str, handle: str) -> A2aAgentRef | None:
         return None
     env = data.get("a2a_auth_env")
     endpoint = data.get("a2a_endpoint")
+    raw_allow = data.get("allow_from") or []
+    allow_from = tuple(
+        _norm(h) for h in (raw_allow if isinstance(raw_allow, list) else []) if _norm(h)
+    )
     return A2aAgentRef(
         card=card,
         auth_env=env if isinstance(env, str) and env else None,
         endpoint=endpoint if isinstance(endpoint, str) and endpoint else None,
+        allow_from=allow_from,
     )
 
 
@@ -199,7 +208,7 @@ async def send_to_a2a(
         )
         client = ClientFactory(config).create(card)
         message = Message(
-            message_id="mycelium-seat",
+            message_id=uuid4().hex,
             role=Role.ROLE_USER,
             parts=[Part(text=text)],
         )
@@ -247,7 +256,7 @@ class A2aResponder:
         # (room, handle) -> A2A context id, so each mention continues the same
         # remote conversation instead of starting cold. In-memory: a restart
         # resets threads (the room transcript is still the durable record).
-        self._threads: dict[tuple[str, str], str] = {}
+        self._threads: dict[tuple[str, str, str], str] = {}
 
     # -- the summon seam (sync; called from the persister's on_summon) --
 
@@ -272,6 +281,13 @@ class A2aResponder:
         if sender and resolve_a2a_agent(room, sender) is not None:
             logger.debug("a2a responder: skip @%s summoned by a2a agent @%s", handle, sender)
             return
+        # Summon gate: if the manifest names an allow_from list, only those
+        # handles may trigger a remote call (and spend its bearer token / quota).
+        if ref.allow_from and _norm(sender) not in ref.allow_from:
+            logger.debug(
+                "a2a responder: @%s not in allow_from for @%s — ignoring summon", sender, handle
+            )
+            return
         prompt = (message_text or "").strip()
         if not prompt:
             return
@@ -281,8 +297,33 @@ class A2aResponder:
             return
         self._active.add(key)
         # Resolve the bearer credential from the backend env (the manifest holds
-        # only the var name), so the secret never lives in room memory.
-        token = os.environ.get(ref.auth_env) if ref.auth_env else None
+        # only the var name), so the secret never lives in room memory. A declared
+        # but missing var is a misconfiguration — fail closed so it appears in the
+        # Network pane rather than silently calling the remote unauthenticated.
+        token: str | None = None
+        if ref.auth_env:
+            token = os.environ.get(ref.auth_env)
+            if token is None:
+                logger.warning(
+                    "a2a responder: auth_env '%s' is set on @%s but the env var is missing; "
+                    "refusing unauthenticated call",
+                    ref.auth_env,
+                    handle,
+                )
+                # Record the misconfiguration through the activity path so the
+                # Network pane shows it rather than leaving silence unexplained.
+                a2a_activity.record_outbound(
+                    room,
+                    handle,
+                    endpoint=ref.endpoint or ref.card,
+                    peer=sender,
+                    prompt=(message_text or "").strip(),
+                    status="error",
+                    detail=f"auth_env '{ref.auth_env}' declared but not set in the backend environment",
+                    duration_ms=0,
+                )
+                self._active.discard(key)
+                return
         task = asyncio.create_task(
             self._run_and_release(room, handle, ref, prompt, envelope, key, token)
         )
@@ -299,8 +340,11 @@ class A2aResponder:
         key: tuple[str, str, str],
         auth_token: str | None = None,
     ) -> None:
-        thread_key = (room, _norm(handle))
         summoner = envelope_sender(envelope)
+        # Thread context is per summoner: two members addressing the same remote
+        # agent must not share one remote contextId (context bleed). In-memory
+        # only — a restart resets threads, but the room transcript is durable.
+        thread_key = (room, _norm(handle), _norm(summoner))
         # Name the speaker so the remote agent can follow a multi-party room; the
         # threaded context id carries the rest of the history on the remote side.
         addressed = f"@{_norm(summoner)}: {prompt}" if summoner else prompt
