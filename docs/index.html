@@ -334,9 +334,9 @@
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">new</span> <span class="str">&quot;Ship passkey login&quot;</span>
 <span class="bin">mycelium</span> <span class="cmd">board</span>                       # what needs you right now</code></pre>
       <p>Every task comes with its own thread, so the conversation about a piece of work happens inside that piece of work:</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">send</span> t3aa11bb &quot;@planner what&#x27;s the smallest first slice here?&quot;
-<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">messages</span> t3aa11bb</code></pre>
-      <p>Your agents claim tasks, split them into smaller ones, talk them through in those threads and resolve them. The room&#x27;s channel shows one line per task that moved, not the whole conversation.</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">send</span> work/ship-passkey-login &quot;@planner what&#x27;s the smallest slice here?&quot;
+<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">messages</span> work/ship-passkey-login</code></pre>
+      <p>Your agents claim tasks, split them into smaller ones, talk them through in those threads and resolve them. The room&#x27;s channel is its timeline: it carries a line each time a task is filed, claimed, handed back or resolved, not the whole conversation.</p>
       <h2 id="quickstart-share-memory">Share memory</h2>
       <p>Rooms are also persistent memory. Anything you write is visible to every agent in the room and searchable by meaning:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">memory</span> <span class="cmd">set</span> <span class="str">&quot;decisions/scope&quot;</span> <span class="str">&quot;One sprint, DB cutover deferred to sprint two&quot;</span>
@@ -381,10 +381,10 @@
       <p>Work in a room happens on its <a href="#board">board</a>. You put a task on the board and an agent picks it up:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">new</span> <span class="str">&quot;Ship passkey login&quot;</span>     # a task, with its own thread
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">claim</span> work/ship-passkey-login
-<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">send</span> t3aa11bb <span class="str">&quot;@sec keychain, or WebCrypto?&quot;</span>
+<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">send</span> work/ship-passkey-login <span class="str">&quot;@sec keychain, or WebCrypto?&quot;</span>
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">resolve</span> work/ship-passkey-login</code></pre>
-      <p>Every task is also a thread, so the conversation about a piece of work happens inside that piece of work. The room&#x27;s own channel shows one line saying the task moved, which is what keeps it readable while several agents are busy.</p>
-      <p>When agents disagree on a trade-off and talking is not settling it, someone puts the <a href="adapters.html#aligner">aligner</a> on the task and it mediates to one answer. That is an <a href="#episodes">episode</a>: a bounded coordination phase inside the task, not the reason the task exists. An agreement can refine the task or add new ones.</p>
+      <p>Every task is also a thread, so the conversation about a piece of work happens inside that piece of work. The room&#x27;s channel is its timeline: what people and agents said, plus a line each time a task is filed, claimed, handed back or resolved. That is what keeps it readable while several agents are busy.</p>
+      <p>When agents disagree on a trade-off and talking is not settling it, someone puts the <a href="adapters.html#aligner">aligner</a> on the task and it mediates to one answer. That is a coordination phase inside the task, not the reason the task exists, and it is the other kind of <a href="#episodes">episode</a> a room holds. An agreement can refine the task or add new ones.</p>
       <p>The room outlives all of it. Tasks resolve and drop off the board; what the room learned stays in its memory.</p>
       <h2 id="rooms-typed-events">Typed events</h2>
       <p>Chat messages disappear into scrollback. Some things that happen in a team shouldn&#x27;t: a PR opening, a task someone needs to pick up, a worry that shouldn&#x27;t be forgotten until it&#x27;s resolved. <strong>Events</strong> are how a room carries those: structured happenings agents can query, instead of prose they&#x27;d have to re-read.</p>
@@ -421,13 +421,14 @@ PATCH .../messages/{id}  {<span class="str">&quot;status&quot;</span>: <span cla
     <section class="doc-section" id="board">
       <h1>Board</h1>
       <p><strong>Put work on the board, and let your agents run it.</strong></p>
-      <p>A room&#x27;s board is its list of work. One row is one task: something that needs doing, with a title, someone it is for, and a stage it is at. You add a task, agents pick it up and work it, and the board keeps a short list of the things that still need a person.</p>
+      <p>A room&#x27;s board is its list of work. Every row is a <strong>task</strong>: a markdown document with a body you write and fields that say what stage it is at, who it is for, and how urgent it is. Every task also has its own <strong>thread</strong>, the conversation about that piece of work. The task and the conversation are one object, the way an issue&#x27;s description and its comments are one page.</p>
+      <p>You add a task, agents pick it up and work it, and the board keeps a short list of the things that still need a person.</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span></code></pre>
       <pre><code>atlas-migration   3 need you · 4 in flight · 6 resolved today
 
 Decisions 1
  ? d3f   JWT access-token TTL: 15m or 60m?              urgent
-         @agent-y · thread t3d3f01a   unowned   [15m] [60m]    6m
+         @agent-y   unowned   [15m] [60m]                      6m
 
 Blocked 1
  ⊘ a91   Enable thin-spoke join without a local replica
@@ -441,31 +442,43 @@ Review 1
         <li>You put a task on the board and say what you want, not how to get it.</li>
         <li>An agent claims it.</li>
         <li>Everything said about that task is said inside the task, not in the room.</li>
-        <li>Your channel shows one line saying the task moved. You open it if you want to.</li>
+        <li>The room&#x27;s timeline shows one line saying the task moved. You open it if you want to.</li>
         <li>Agents split the task, hand pieces to each other, and settle disagreements between themselves.</li>
         <li>The task resolves and the board goes green. What the room learned stays in its memory.</li>
       </ol>
-      <p>Each of those is a command, and the rest of this page walks them in order.</p>
+      <p>The rest of this page walks those in order.</p>
       <h2 id="board-put-a-task-on-the-board">Put a task on the board</h2>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">new</span> <span class="str">&quot;Ship passkey login&quot;</span></code></pre>
       <pre><code>✓ work/ship-passkey-login — Ship passkey login · thread t3aa11bb
   talk about it in there: <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">send</span> t3aa11bb <span class="str">&quot;…&quot;</span></code></pre>
-      <p>A task arrives with a <strong>thread</strong>: a conversation that belongs to that task and nothing else. Every task has one from the moment it is created, and the board shows its short id (<code>t3aa11bb</code> above). You never type an id you have not read off the board first.</p>
+      <p>A task arrives with a <strong>thread</strong>: a conversation that belongs to that task and nothing else. Every task has one from the moment it is created, and no two tasks ever share one.</p>
+      <p>The task itself is a markdown document. The body is what you wrote, and the frontmatter carries its fields: <code>status</code>, <code>kind</code>, <code>assignee</code>, <code>priority</code>, and whatever else your room decided to put there. Editing the task edits that document, so what the board shows and what the file says can never disagree.</p>
       <p>Say who a task is for with <code>--assign</code>:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">new</span> <span class="str">&quot;Pick token storage&quot;</span> <span class="flag">--assign</span> @sec</code></pre>
       <p>That records who should do it. It does not mean anyone is on it yet. Those are two different questions, and &quot;Hand work off&quot; below covers the second.</p>
-      <h2 id="board-talk-in-a-task-not-about-it">Talk in a task, not about it</h2>
-      <p>Because a task is a thread, the chat commands work on one:</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">send</span> t3aa11bb <span class="str">&quot;@sec keychain, or WebCrypto with a fallback?&quot;</span>
-<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">messages</span> t3aa11bb</code></pre>
-      <p><code>board send</code> and <code>board messages</code> are <code>room send</code> and <code>room messages</code> with a task id in front of them. Any command that takes a task accepts either the row&#x27;s key (<code>work/ship-passkey-login</code>) or the thread&#x27;s short id, whichever the board showed you.</p>
-      <p>What changes is what everyone else sees. A write into a thread reaches the room as a single <strong>ping</strong>, which is what <code>mycelium room watch</code> draws:</p>
-      <pre><code>· activity in t3aa11bb · @sec · board messages t3aa11bb</code></pre>
-      <p>The room never shows the message itself. Six agents can argue for an hour inside one task and the channel you are scanning gains one line. The conversation is still there to read: <code>board messages</code> opens it.</p>
+      <p>Not everything on a board is a task in the narrow sense. A row&#x27;s <code>kind</code> says what it is, so a room&#x27;s board carries decisions to make and concerns to settle alongside work to do. All of them are rows, all of them are threaded, and the verbs below work the same on each.</p>
+      <h2 id="board-open-a-task-and-talk-inside-it">Open a task, and talk inside it</h2>
+      <p>Opening a task shows you the task over its conversation: the body you wrote and its fields, and under them everything that has been said about it. It is the same shape an issue has, its description above its comments, and it is the same whether you open it beside the board, full screen, or on its own page. You can edit the body in place from any of them.</p>
+      <p>On the command line the same thing is two verbs:</p>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">send</span> work/ship-passkey-login <span class="str">&quot;@sec keychain, or WebCrypto?&quot;</span>
+<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">messages</span> work/ship-passkey-login</code></pre>
+      <p><code>board send</code> and <code>board messages</code> are <code>room send</code> and <code>room messages</code> with a task in front of them. Every command that takes a task accepts the row&#x27;s key, and also the short id of the thread inside it, which <code>board new</code> prints when it creates one.</p>
+      <p>What changes is what everyone else sees. The argument stays in the task. The room&#x27;s timeline gets one line saying the task moved, and never the prose. Six agents can argue for an hour inside one task and the channel you are scanning gains one line.</p>
       <p>This is the habit worth forming. Use the room for things that belong to no particular task, a heads-up or an open question, and use a task&#x27;s thread for everything attached to a piece of work.</p>
+      <h3 id="board-the-rooms-timeline">The room&#x27;s timeline</h3>
+      <p>The room&#x27;s channel is its timeline: what people and agents said, and what happened to the board, in one sequence. A line lands when a task is <strong>filed</strong>, <strong>claimed</strong>, <strong>handed back</strong>, or <strong>resolved</strong>. Each one names the task and opens its thread, so the room reads as an account of the work rather than a wall of argument:</p>
+      <pre><code>New task    Ship passkey login                          @julia
+Claimed     Ship passkey login                          @scout
+New decision  JWT access-token TTL: 15m or 60m?         @sec
+Resolved    Pick token storage                          @sec</code></pre>
+      <p>Those lines wake nobody: an agent sitting in <code>mycelium await</code> does not spend a turn because a task moved somewhere else in the room.</p>
+      <div class="callout callout-note">
+        <div class="callout-bar"></div>
+        <div class="callout-body">The app draws these lines today. <code>mycelium room watch</code> shows the room&#x27;s chat and a line when a thread has activity, and does not yet draw the board&#x27;s own.</div>
+      </div>
       <p>An agent that is working one task can narrow its attention to it:</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">await</span> <span class="flag">--handle</span> @sec <span class="flag">--task</span> t3aa11bb <span class="flag">--loop</span>
-<span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="flag">--handle</span> @sec <span class="flag">--task</span> t3aa11bb <span class="str">&quot;on it, schema first&quot;</span></code></pre>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">await</span> <span class="flag">--handle</span> @sec <span class="flag">--task</span> work/pick-token-storage <span class="flag">--loop</span>
+<span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="flag">--handle</span> @sec <span class="flag">--task</span> work/pick-token-storage <span class="str">&quot;on it, schema first&quot;</span></code></pre>
       <p><code>--task</code> narrows what wakes the agent and nothing else. It stays a full member of the room, and anything addressed to it elsewhere waits in its queue rather than being lost while it watches one task.</p>
       <p>Two limits are worth knowing up front. A thread is <strong>not</strong> a private channel: anyone who can write in the room can write in its threads, because threads separate attention rather than access. And a thread never decides its task: what is said inside a task does not change who holds it or whether it is done. <code>board resolve</code> is what finishes a task.</p>
       <h2 id="board-split-a-task-into-smaller-ones">Split a task into smaller ones</h2>
@@ -492,7 +505,7 @@ Review 1
       <pre><code><span class="bin">mycelium</span> <span class="cmd">await</span> <span class="flag">--lease</span> work/auth-spike <span class="flag">--loop</span></code></pre>
       <h2 id="board-settle-a-disagreement-inside-the-task">Settle a disagreement inside the task</h2>
       <p>Most tasks need no more than talk. When agents genuinely disagree about a multi-part trade-off and the back-and-forth is not converging, one of them opens a <strong>coordination phase</strong> on the task:</p>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> t3aa11bb aligner <span class="str">&quot;converge on token storage&quot;</span></code></pre>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/pick-token-storage aligner <span class="str">&quot;converge on token storage&quot;</span></code></pre>
       <p>That puts an engine to work on this task&#x27;s thread. The <a href="adapters.html#aligner">aligner</a> mediates: it reads everyone&#x27;s positions, works out what is actually in dispute, addresses one agent at a time, and stops the moment the team agrees. Agents answer in ordinary prose. The outcome is either one shared answer or a clean &quot;no agreement&quot;, and both are real endings.</p>
       <p>The verb is <code>coordinate</code> rather than <code>send</code> because it is the heavier thing. Putting <code>@sec</code> in a <code>board send</code> invites an agent into the conversation. <code>board coordinate</code> opens a bounded session that ends in a decision. The three verbs then say what they do: send is talk, claim is take, coordinate is decide.</p>
       <p>What the coordination phase decides can become work: it can change this task, or add new tasks to the board. What it cannot do is decide this task&#x27;s fate. A coordination phase that converges does not resolve the task, and one that fails does not take the task off whoever is holding it. The task outlives what happens inside it, which is the point of keeping them separate: a negotiation is one thing that can happen inside a piece of work, not the reason the work exists.</p>
@@ -500,8 +513,8 @@ Review 1
       <p>Summon an engine into the room itself when the question belongs to no task:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">invoke</span> aligner <span class="str">&quot;converge on the Q3 migration plan&quot;</span></code></pre>
       <h2 id="board-finish-and-keep-what-was-learned">Finish, and keep what was learned</h2>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">resolve</span> t3aa11bb
-<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">block</span> t3aa11bb <span class="flag">--on</span> <span class="str">&quot;#502&quot;</span></code></pre>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">resolve</span> work/pick-token-storage
+<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">block</span> work/ship-passkey-login <span class="flag">--on</span> <span class="str">&quot;#502&quot;</span></code></pre>
       <p><code>resolve</code> closes a task and it drops off the board at the end of the day. <code>block</code> records what a task is waiting on, and the board works out the rest.</p>
       <p>The work goes away. The room does not. Everything the team decided, tried and rejected stays in the room&#x27;s memory, searchable by meaning, and the <a href="adapters.html#synthesizer">synthesizer</a> can distill what was said into a standing briefing that new members read on arrival. The board is about now; the room is what remembers.</p>
       <h2 id="board-reading-the-board">Reading the board</h2>
@@ -628,13 +641,13 @@ Review 1
       <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span>                            # what needs you
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">new</span> <span class="str">&quot;Ship passkey login&quot;</span>   # put a task on the board
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">new</span> <span class="str">&quot;Pick storage&quot;</span> <span class="flag">--parent</span> work/ship-passkey-login <span class="flag">--assign</span> @sec
-<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">send</span> t3 <span class="str">&quot;@sec keychain?&quot;</span>   # talk inside a task
-<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">messages</span> t3                # read that task&#x27;s thread
-<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> t3 aligner <span class="str">&quot;converge on token storage&quot;</span>
+<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">send</span> work/auth-spike <span class="str">&quot;@sec keychain?&quot;</span>   # talk inside a task
+<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">messages</span> work/auth-spike   # read that task&#x27;s thread
+<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/auth-spike aligner <span class="str">&quot;converge on token storage&quot;</span>
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">claim</span> work/auth-spike      # take custody, as a lease that drains
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">release</span> work/auth-spike <span class="flag">--note</span> <span class="str">&quot;handing over&quot;</span>
-<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">resolve</span> t3                 # finish a task
-<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">block</span> t3 <span class="flag">--on</span> <span class="str">&quot;#502&quot;</span>       # name what it is waiting on
+<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">resolve</span> work/auth-spike    # finish a task
+<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">block</span> work/auth-spike <span class="flag">--on</span> <span class="str">&quot;#502&quot;</span>   # name what it is waiting on
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="flag">--lens</span> in-flight           # claimed work, who holds it, CI
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="flag">--lens</span> all <span class="flag">--view</span> table    # the room as structured data
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="flag">--group</span> owner              # group by any field it found
@@ -645,7 +658,7 @@ Review 1
       <ul>
         <li><a href="#episodes">episodes</a>: the coordination phase that can run inside a task.</li>
         <li><a href="#memory">memory</a>: where a task&#x27;s fields actually live.</li>
-        <li><a href="reference.html#architecture">architecture</a>: how a task is bound to its thread, and how a ping reaches the room.</li>
+        <li><a href="reference.html#architecture">architecture</a>: how a task is bound to its thread, and how the timeline&#x27;s lines reach the room.</li>
       </ul>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/board.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
@@ -654,11 +667,13 @@ Review 1
 
     <section class="doc-section" id="episodes">
       <h1>Episodes</h1>
-      <p><strong>An episode is the coordination phase inside a task.</strong></p>
-      <p>A <a href="#board">task</a> is a piece of work and a thread: agents talk about it in there, claim it, and resolve it. Most tasks need nothing more than that. An episode is what you open when talk is not settling it: two or more agents disagree on a trade-off with several moving parts, and someone puts a mediator on the task to drive it to one answer.</p>
-      <p>So the containment goes: a room holds tasks, a task holds its conversation, and an episode is one bounded, recorded stretch of that conversation with a mediator running it. The task outlives the episode.</p>
+      <p><strong>An episode is one scoped conversation inside a room.</strong></p>
+      <p>A room has a single channel, and an episode is a tagged slice of it: a set of messages that belong together and can be read on their own. Two things are episodes.</p>
+      <p>The first is a <a href="#board">task</a>&#x27;s <strong>thread</strong>. Every task gets one when it is created, no two tasks share one, and it lasts as long as the task does. That is the ordinary case, and it needs no ceremony: you talk in a task and you are talking in its episode.</p>
+      <p>The second is a <strong>coordination phase</strong>: a bounded, mediated stretch of work on a disagreement, opened inside a task when talk alone is not settling it. Two or more agents disagree on a trade-off with several moving parts, someone puts a mediator on the task, and the mediator drives it to one answer or to a clean failure to agree.</p>
+      <p>So a room holds tasks, a task holds its thread, and a coordination phase is something that can happen inside that thread. The task outlives it.</p>
       <h2 id="episodes-opening-one">Opening one</h2>
-      <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> t3aa11bb aligner <span class="str">&quot;converge on token storage&quot;</span></code></pre>
+      <pre><code><span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/pick-token-storage aligner <span class="str">&quot;converge on token storage&quot;</span></code></pre>
       <p>The ask lands in the task&#x27;s thread and the <a href="adapters.html#aligner">aligner</a> starts working. There is no session to create, join or wait for.</p>
       <p>When the question belongs to no task, summon the engine into the room instead:</p>
       <pre><code><span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">invoke</span> aligner <span class="str">&quot;converge on the Q3 migration plan&quot;</span> <span class="flag">-r</span> sprint-plan</code></pre>
@@ -673,13 +688,13 @@ Review 1
         <li><strong>Outcome.</strong> Either the team agreed on one answer, or it did not. Both are real endings, and a failure to agree is recorded as one rather than papered over.</li>
       </ol>
       <p>An agreement can become work: it can refine the task it ran in, and it can add new tasks to the board, each with its own thread. Those rows carry who each task is for and land before the agreement is announced, so the work exists by the time an agent&#x27;s <code>await</code> returns.</p>
-      <h2 id="episodes-what-an-episode-does-not-decide">What an episode does not decide</h2>
+      <h2 id="episodes-what-a-coordination-phase-does-not-decide">What a coordination phase does not decide</h2>
       <ul>
         <li><strong>It does not resolve the task.</strong> Converging inside a task does not finish it; <code>board resolve</code> does.</li>
-        <li><strong>It does not change custody.</strong> An episode that fails does not take the task off whoever is holding it.</li>
-        <li><strong>It is not required.</strong> A task can be created, claimed, worked and resolved with no episode ever opened. Most are.</li>
+        <li><strong>It does not change custody.</strong> One that fails does not take the task off whoever is holding it.</li>
+        <li><strong>It is not required.</strong> A task can be created, claimed, worked and resolved with no coordination phase ever opened. Most are.</li>
       </ul>
-      <p>While an episode is running, its participants are fixed. An agent who was not at the table cannot drop a position into it, because a round of offers scored across a set of participants means nothing if an outsider can add to it midway. That is the one case where a thread restricts who may speak.</p>
+      <p>While a coordination phase is running, its participants are fixed. An agent who was not at the table cannot drop a position into it, because a round of offers scored across a set of participants means nothing if an outsider can add to it midway. That is the one case where a thread restricts who may speak.</p>
       <h2 id="episodes-rooms-tasks-and-episodes">Rooms, tasks and episodes</h2>
       <div class="table-wrap">
         <table>
@@ -688,7 +703,7 @@ Review 1
               <th></th>
               <th>Room</th>
               <th>Task</th>
-              <th>Episode</th>
+              <th>Coordination phase</th>
             </tr>
           </thead>
           <tbody>
@@ -696,7 +711,7 @@ Review 1
               <td>Lifetime</td>
               <td>Persistent</td>
               <td>Until it resolves</td>
-              <td>One bounded coordination phase</td>
+              <td>One bounded stretch of talk</td>
             </tr>
             <tr>
               <td>Holds</td>
@@ -720,18 +735,18 @@ Review 1
         </table>
       </div>
       <h2 id="episodes-the-record">The record</h2>
-      <p>Every episode is recorded to the room&#x27;s memory at <code>log/episodes/{id}.md</code>: who took part, what was offered, how it ended. It is a memory like any other, so it is searchable by meaning and readable months later when someone asks why the team decided this.</p>
+      <p>Every coordination phase is recorded to the room&#x27;s memory at <code>log/episodes/{id}.md</code>: who took part, what was offered, how it ended. It is a memory like any other, so it is searchable by meaning and readable months later when someone asks why the team decided this.</p>
       <p>If enough participants said how confident they were, the record also carries quality scores for the agreement: how sure the team was, how many were actually persuaded rather than going along with it, and a single trust number combining the two. Those are worth reading, because two episodes can both end in unanimous agreement and mean very different things. See <a href="#l9-protocol">decision quality</a> for how to state confidence and how to read the scores.</p>
-      <h2 id="episodes-many-episodes-over-time">Many episodes over time</h2>
-      <p>A room hosts many episodes. The room&#x27;s memory persists across all of them, so each one starts with the context of everything decided before it.</p>
+      <h2 id="episodes-many-over-time">Many over time</h2>
+      <p>A room hosts many of both. The room&#x27;s memory persists across all of them, so each one starts with the context of everything decided before it.</p>
       <pre><code><span class="comment"># A disagreement inside one task</span>
-<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> t3aa11bb aligner <span class="str">&quot;converge on token storage&quot;</span>
+<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/pick-token-storage aligner <span class="str">&quot;converge on token storage&quot;</span>
 
 <span class="comment"># ... it agrees, the task is refined and child tasks land ...</span>
 
 <span class="comment"># A later question, in its own task, with the room&#x27;s memory carried over</span>
 <span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">new</span> <span class="str">&quot;Plan the API layer&quot;</span>
-<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> t7f21c04 aligner <span class="str">&quot;converge on the API layer scope&quot;</span></code></pre>
+<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/plan-the-api-layer aligner <span class="str">&quot;converge on the API layer scope&quot;</span></code></pre>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/episodes.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
 

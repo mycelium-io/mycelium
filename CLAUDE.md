@@ -130,13 +130,17 @@ mention was removed — it discarded context every turn. Cold-start-on-demand, w
 a handle when nothing is resident, returns later via herdr + per-agent identity;
 see issue #446.)
 
-**Tasks are the surface.** A `work/` memory is a board row and, through a
-store-owned episode binding, a thread on the room's channel (`app/services/tasks.py`,
-`routes/tasks.py`). `board new` mints both at once; `board send`/`messages` are the
-room's chat verbs scoped to one row (`mycelium/chat.py`, one call, not a second
-implementation); `board coordinate` puts an engine to work inside a task. A write
-into a thread raises a **ping** on the room's stream, and its prose is filtered out
-of the room's channel, so the channel stays legible while agents argue inside a row.
+**Tasks are the surface.** A board row is a markdown memory (body + frontmatter)
+and, through a store-owned episode binding, a thread on the room's channel
+(`app/services/tasks.py`, `routes/tasks.py`). The binding is minted at the
+memory-upsert chokepoint for every board namespace (`work/`, `decisions/`,
+`status/`, `failed/`), so every row is threaded and no two rows share one.
+`board send`/`messages` are the room's chat verbs scoped to one row
+(`mycelium/chat.py`, one call, not a second implementation); `board coordinate`
+puts an engine to work inside a task. The channel is the room's **timeline**: a
+**ping** says a thread moved, a **notice** says the board did (`filed`, `claimed`,
+`released`, `resolved`), and thread prose is filtered out of it, so the channel
+stays legible while agents argue inside a row.
 
 **The aligner is the mediator.** Negotiation is driven by a first-party cognition
 engine, the **aligner** (`app/services/aligner.py`), summoned by `@`-mention. It
@@ -163,23 +167,29 @@ is no litellm dependency.
 
 ## Key design decisions
 
-- **A task is a board row and a thread.** The `work/` row and the conversation
-  about it are one object. The episode binding is store-owned: minted by the
-  backend at creation, carried across every write, absent from `meta`, so no
-  `memory set` and no board verb can point a row at a conversation it was not part
-  of. That is why creation has its own route (`POST /rooms/{room}/tasks`) rather
+- **A task is a board row and a thread, one to one.** The row and the conversation
+  about it are one object. The episode binding is store-owned: minted at the
+  memory-upsert chokepoint for every board namespace, carried across every write,
+  write-once, absent from `meta`, so no `memory set` and no board verb can point a
+  row at a conversation it was not part of, and a compiler cannot stamp two rows
+  with one negotiation's episode. That is why creation has its own route (`POST /rooms/{room}/tasks`) rather
   than a wire form on the memory routes. Thread fields fold onto the row as
   read-only columns and are excluded from the axes a board can pivot on: grouping
   tasks by the state of the negotiation inside them inverts the containment on the
   surface it shows most.
-- **The channel shows a ping, not the thread.** Every threaded write raises a ping
-  carrying the episode, the sender and the message id, and no prose. Surfaces draw
-  one line and filter the thread's prose out of the room feed by episode. Room-wide
-  events stay unfiltered: a task moving is the room's business however deep inside
-  a task it happened. Honest gap: a ping is live-only in the conversational read
-  (`stored_message_from_record` promotes prose and raise-up kinds only), so the app
-  merges pings in from the transcript replay; widening the projection would print
-  raw envelopes at `mycelium room messages`.
+- **The channel is the room's timeline, and carries no prose from a thread.** Two
+  control payloads reach `live` and neither wakes anyone (both are excluded from
+  `_addressed_to`): a **ping** carries the episode, sender and message id when a
+  thread moves; a **notice** carries the task, who moved it and the thread to open
+  when the board moves. `NOTICE_SUBKINDS` is a closed set (`filed`, `claimed`,
+  `released`, `resolved`) frozen in `contracts/slim-l9-wire.json` and asserted on
+  both sides. Room-wide events stay unfiltered: a task moving is the room's
+  business however deep inside a task it happened. Two honest gaps: a ping is
+  live-only in the conversational read (`stored_message_from_record` promotes prose
+  and raise-up kinds only), so the app merges pings in from the transcript replay,
+  and widening the projection would print raw envelopes at `mycelium room
+  messages`; and a notice carries no `content`, so `mycelium room watch` drops it
+  and the terminal draws no timeline line.
 - **The aligner mediates, inside a task.** Agents never talk to each other directly;
   all coordination flows through the aligner. It's a first-party engine registered
   as a room citizen (`mycelium engine create aligner --kind aligner`) and summoned

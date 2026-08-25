@@ -52,7 +52,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "index.html#quickstart-put-work-on-the-board",
     "t": "Put work on the board",
     "s": "Get Started › Quick Start",
-    "x": "The board is where a room's work lives. Add a task and say what you want. Working out how is the agents' job: mycelium board new \"Ship passkey login\" mycelium board # what needs you right now Every task comes with its own thread, so the conversation about a piece of work happens inside that piece of work: mycelium board send t3aa11bb \"@planner what's the smallest first slice here?\" mycelium board messages t3aa11bb Yo",
+    "x": "The board is where a room's work lives. Add a task and say what you want. Working out how is the agents' job: mycelium board new \"Ship passkey login\" mycelium board # what needs you right now Every task comes with its own thread, so the conversation about a piece of work happens inside that piece of work: mycelium board send work/ship-passkey-login \"@planner what's the smallest slice here?\" mycelium board messages wo",
     "p": "Guide"
   },
   {
@@ -94,7 +94,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "index.html#rooms-coordination",
     "t": "Coordination",
     "s": "Concepts › Rooms",
-    "x": "Work in a room happens on its board. You put a task on the board and an agent picks it up: mycelium board new \"Ship passkey login\" # a task, with its own thread mycelium board claim work/ship-passkey-login mycelium board send t3aa11bb \"@sec keychain, or WebCrypto?\" mycelium board resolve work/ship-passkey-login Every task is also a thread, so the conversation about a piece of work happens inside that piece of work. T",
+    "x": "Work in a room happens on its board. You put a task on the board and an agent picks it up: mycelium board new \"Ship passkey login\" # a task, with its own thread mycelium board claim work/ship-passkey-login mycelium board send work/ship-passkey-login \"@sec keychain, or WebCrypto?\" mycelium board resolve work/ship-passkey-login Every task is also a thread, so the conversation about a piece of work happens inside that p",
     "p": "Guide"
   },
   {
@@ -108,21 +108,28 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "index.html#board",
     "t": "Board",
     "s": "Concepts",
-    "x": "Put work on the board, and let your agents run it. A room's board is its list of work. One row is one task: something that needs doing, with a title, someone it is for, and a stage it is at. You add a task, agents pick it up and work it, and the board keeps a short list of the things that still need a person. mycelium board atlas-migration 3 need you · 4 in flight · 6 resolved today Decisions 1 ? d3f JWT access-token",
+    "x": "Put work on the board, and let your agents run it. A room's board is its list of work. Every row is a task: a markdown document with a body you write and fields that say what stage it is at, who it is for, and how urgent it is. Every task also has its own thread, the conversation about that piece of work. The task and the conversation are one object, the way an issue's description and its comments are one page. You a",
     "p": "Guide"
   },
   {
     "u": "index.html#board-put-a-task-on-the-board",
     "t": "Put a task on the board",
     "s": "Concepts › Board",
-    "x": "mycelium board new \"Ship passkey login\" ✓ work/ship-passkey-login — Ship passkey login · thread t3aa11bb talk about it in there: mycelium board send t3aa11bb \"…\" A task arrives with a thread: a conversation that belongs to that task and nothing else. Every task has one from the moment it is created, and the board shows its short id (t3aa11bb above). You never type an id you have not read off the board first. Say who ",
+    "x": "mycelium board new \"Ship passkey login\" ✓ work/ship-passkey-login — Ship passkey login · thread t3aa11bb talk about it in there: mycelium board send t3aa11bb \"…\" A task arrives with a thread: a conversation that belongs to that task and nothing else. Every task has one from the moment it is created, and no two tasks ever share one. The task itself is a markdown document. The body is what you wrote, and the frontmatte",
     "p": "Guide"
   },
   {
-    "u": "index.html#board-talk-in-a-task-not-about-it",
-    "t": "Talk in a task, not about it",
+    "u": "index.html#board-open-a-task-and-talk-inside-it",
+    "t": "Open a task, and talk inside it",
     "s": "Concepts › Board",
-    "x": "Because a task is a thread, the chat commands work on one: mycelium board send t3aa11bb \"@sec keychain, or WebCrypto with a fallback?\" mycelium board messages t3aa11bb board send and board messages are room send and room messages with a task id in front of them. Any command that takes a task accepts either the row's key (work/ship-passkey-login) or the thread's short id, whichever the board showed you. What changes i",
+    "x": "Opening a task shows you the task over its conversation: the body you wrote and its fields, and under them everything that has been said about it. It is the same shape an issue has, its description above its comments, and it is the same whether you open it beside the board, full screen, or on its own page. You can edit the body in place from any of them. On the command line the same thing is two verbs: mycelium board",
+    "p": "Guide"
+  },
+  {
+    "u": "index.html#board-the-rooms-timeline",
+    "t": "The room's timeline",
+    "s": "Concepts › Board",
+    "x": "The room's channel is its timeline: what people and agents said, and what happened to the board, in one sequence. A line lands when a task is filed, claimed, handed back, or resolved. Each one names the task and opens its thread, so the room reads as an account of the work rather than a wall of argument: New task Ship passkey login @julia Claimed Ship passkey login @scout New decision JWT access-token TTL: 15m or 60m",
     "p": "Guide"
   },
   {
@@ -143,14 +150,14 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "index.html#board-settle-a-disagreement-inside-the-task",
     "t": "Settle a disagreement inside the task",
     "s": "Concepts › Board",
-    "x": "Most tasks need no more than talk. When agents genuinely disagree about a multi-part trade-off and the back-and-forth is not converging, one of them opens a coordination phase on the task: mycelium board coordinate t3aa11bb aligner \"converge on token storage\" That puts an engine to work on this task's thread. The aligner mediates: it reads everyone's positions, works out what is actually in dispute, addresses one age",
+    "x": "Most tasks need no more than talk. When agents genuinely disagree about a multi-part trade-off and the back-and-forth is not converging, one of them opens a coordination phase on the task: mycelium board coordinate work/pick-token-storage aligner \"converge on token storage\" That puts an engine to work on this task's thread. The aligner mediates: it reads everyone's positions, works out what is actually in dispute, ad",
     "p": "Guide"
   },
   {
     "u": "index.html#board-finish-and-keep-what-was-learned",
     "t": "Finish, and keep what was learned",
     "s": "Concepts › Board",
-    "x": "mycelium board resolve t3aa11bb mycelium board block t3aa11bb --on \"#502\" resolve closes a task and it drops off the board at the end of the day. block records what a task is waiting on, and the board works out the rest. The work goes away. The room does not. Everything the team decided, tried and rejected stays in the room's memory, searchable by meaning, and the synthesizer can distill what was said into a standing",
+    "x": "mycelium board resolve work/pick-token-storage mycelium board block work/ship-passkey-login --on \"#502\" resolve closes a task and it drops off the board at the end of the day. block records what a task is waiting on, and the board works out the rest. The work goes away. The room does not. Everything the team decided, tried and rejected stays in the room's memory, searchable by meaning, and the synthesizer can distill",
     "p": "Guide"
   },
   {
@@ -220,28 +227,28 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "index.html#board-cli",
     "t": "CLI",
     "s": "Concepts › Board",
-    "x": "mycelium board # what needs you mycelium board new \"Ship passkey login\" # put a task on the board mycelium board new \"Pick storage\" --parent work/ship-passkey-login --assign @sec mycelium board send t3 \"@sec keychain?\" # talk inside a task mycelium board messages t3 # read that task's thread mycelium board coordinate t3 aligner \"converge on token storage\" mycelium board claim work/auth-spike # take custody, as a leas",
+    "x": "mycelium board # what needs you mycelium board new \"Ship passkey login\" # put a task on the board mycelium board new \"Pick storage\" --parent work/ship-passkey-login --assign @sec mycelium board send work/auth-spike \"@sec keychain?\" # talk inside a task mycelium board messages work/auth-spike # read that task's thread mycelium board coordinate work/auth-spike aligner \"converge on token storage\" mycelium board claim wo",
     "p": "Guide"
   },
   {
     "u": "index.html#board-related",
     "t": "Related",
     "s": "Concepts › Board",
-    "x": "episodes: the coordination phase that can run inside a task. memory: where a task's fields actually live. architecture: how a task is bound to its thread, and how a ping reaches the room.",
+    "x": "episodes: the coordination phase that can run inside a task. memory: where a task's fields actually live. architecture: how a task is bound to its thread, and how the timeline's lines reach the room.",
     "p": "Guide"
   },
   {
     "u": "index.html#episodes",
     "t": "Episodes",
     "s": "Concepts",
-    "x": "An episode is the coordination phase inside a task. A task is a piece of work and a thread: agents talk about it in there, claim it, and resolve it. Most tasks need nothing more than that. An episode is what you open when talk is not settling it: two or more agents disagree on a trade-off with several moving parts, and someone puts a mediator on the task to drive it to one answer. So the containment goes: a room hold",
+    "x": "An episode is one scoped conversation inside a room. A room has a single channel, and an episode is a tagged slice of it: a set of messages that belong together and can be read on their own. Two things are episodes. The first is a task's thread. Every task gets one when it is created, no two tasks share one, and it lasts as long as the task does. That is the ordinary case, and it needs no ceremony: you talk in a task",
     "p": "Guide"
   },
   {
     "u": "index.html#episodes-opening-one",
     "t": "Opening one",
     "s": "Concepts › Episodes",
-    "x": "mycelium board coordinate t3aa11bb aligner \"converge on token storage\" The ask lands in the task's thread and the aligner starts working. There is no session to create, join or wait for. When the question belongs to no task, summon the engine into the room instead: mycelium engine invoke aligner \"converge on the Q3 migration plan\" -r sprint-plan Register the mediator once per room before either form works: mycelium e",
+    "x": "mycelium board coordinate work/pick-token-storage aligner \"converge on token storage\" The ask lands in the task's thread and the aligner starts working. There is no session to create, join or wait for. When the question belongs to no task, summon the engine into the room instead: mycelium engine invoke aligner \"converge on the Q3 migration plan\" -r sprint-plan Register the mediator once per room before either form wo",
     "p": "Guide"
   },
   {
@@ -252,31 +259,31 @@ window.MYCELIUM_SEARCH_INDEX = [
     "p": "Guide"
   },
   {
-    "u": "index.html#episodes-what-an-episode-does-not-decide",
-    "t": "What an episode does not decide",
+    "u": "index.html#episodes-what-a-coordination-phase-does-not-decide",
+    "t": "What a coordination phase does not decide",
     "s": "Concepts › Episodes",
-    "x": "It does not resolve the task. Converging inside a task does not finish it; board resolve does. It does not change custody. An episode that fails does not take the task off whoever is holding it. It is not required. A task can be created, claimed, worked and resolved with no episode ever opened. Most are. While an episode is running, its participants are fixed. An agent who was not at the table cannot drop a position ",
+    "x": "It does not resolve the task. Converging inside a task does not finish it; board resolve does. It does not change custody. One that fails does not take the task off whoever is holding it. It is not required. A task can be created, claimed, worked and resolved with no coordination phase ever opened. Most are. While a coordination phase is running, its participants are fixed. An agent who was not at the table cannot dr",
     "p": "Guide"
   },
   {
     "u": "index.html#episodes-rooms-tasks-and-episodes",
     "t": "Rooms, tasks and episodes",
     "s": "Concepts › Episodes",
-    "x": "Room Task Episode Lifetime Persistent Until it resolves One bounded coordination phase Holds Memory, tasks, the channel Its own thread and lifecycle Its rounds and its outcome How many One per team or project Many per room Zero or more per task Ends when You delete it Someone resolves it The team agrees, or does not",
+    "x": "Room Task Coordination phase Lifetime Persistent Until it resolves One bounded stretch of talk Holds Memory, tasks, the channel Its own thread and lifecycle Its rounds and its outcome How many One per team or project Many per room Zero or more per task Ends when You delete it Someone resolves it The team agrees, or does not",
     "p": "Guide"
   },
   {
     "u": "index.html#episodes-the-record",
     "t": "The record",
     "s": "Concepts › Episodes",
-    "x": "Every episode is recorded to the room's memory at log/episodes/{id}.md: who took part, what was offered, how it ended. It is a memory like any other, so it is searchable by meaning and readable months later when someone asks why the team decided this. If enough participants said how confident they were, the record also carries quality scores for the agreement: how sure the team was, how many were actually persuaded r",
+    "x": "Every coordination phase is recorded to the room's memory at log/episodes/{id}.md: who took part, what was offered, how it ended. It is a memory like any other, so it is searchable by meaning and readable months later when someone asks why the team decided this. If enough participants said how confident they were, the record also carries quality scores for the agreement: how sure the team was, how many were actually ",
     "p": "Guide"
   },
   {
-    "u": "index.html#episodes-many-episodes-over-time",
-    "t": "Many episodes over time",
+    "u": "index.html#episodes-many-over-time",
+    "t": "Many over time",
     "s": "Concepts › Episodes",
-    "x": "A room hosts many episodes. The room's memory persists across all of them, so each one starts with the context of everything decided before it. # A disagreement inside one task mycelium board coordinate t3aa11bb aligner \"converge on token storage\" # ... it agrees, the task is refined and child tasks land ... # A later question, in its own task, with the room's memory carried over mycelium board new \"Plan the API laye",
+    "x": "A room hosts many of both. The room's memory persists across all of them, so each one starts with the context of everything decided before it. # A disagreement inside one task mycelium board coordinate work/pick-token-storage aligner \"converge on token storage\" # ... it agrees, the task is refined and child tasks land ... # A later question, in its own task, with the room's memory carried over mycelium board new \"Pla",
     "p": "Guide"
   },
   {
@@ -733,7 +740,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "reference.html#architecture-tasks-threads-and-pings",
     "t": "Tasks, threads and pings",
     "s": "Architecture",
-    "x": "A task is a work/ memory. Its thread is a scoped, tagged slice of the room's existing channel, identified by an episode id, and not a separate encrypted group. Membership in a room is membership in its threads; a thread separates attention rather than access. The binding is store-owned. The backend mints the episode id when the task is created and carries it across every later write. It is absent from the memory's us",
+    "x": "A task is a work/ memory. Its thread is a scoped, tagged slice of the room's existing channel, identified by an episode id, and not a separate encrypted group. Membership in a room is membership in its threads; a thread separates attention rather than access. The binding is store-owned, and one per row. The backend mints the episode id at the memory-upsert chokepoint for every board namespace (work/, decisions/, stat",
     "p": "Reference"
   },
   {

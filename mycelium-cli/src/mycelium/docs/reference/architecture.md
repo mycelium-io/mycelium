@@ -150,12 +150,15 @@ of the room's existing channel, identified by an episode id, and not a separate
 encrypted group. Membership in a room is membership in its threads; a thread
 separates attention rather than access.
 
-**The binding is store-owned.** The backend mints the episode id when the task
-is created and carries it across every later write. It is absent from the
-memory's user-settable `meta`, so no `memory set` and no board verb can point a
-row at a conversation it was not part of. A task is therefore bound to one
-thread for the whole of its life, and a later coordination phase opens its own
-episode inside that task rather than moving it.
+**The binding is store-owned, and one per row.** The backend mints the episode
+id at the memory-upsert chokepoint for every board namespace (`work/`,
+`decisions/`, `status/`, `failed/`), so a row born any way at all gets its own
+thread and no two rows share one. It is absent from the memory's user-settable
+`meta`, so no `memory set` and no board verb can point a row at a conversation it
+was not part of, and the binding is write-once, so a row keeps its thread for
+life. A later coordination phase opens its own episode inside that task rather
+than moving it, and a negotiation that compiled several tasks keeps its own
+episode as a record bound to no row.
 
 **Creating a task has its own route.** `POST /api/rooms/{room}/tasks` is the one
 door that mints a thread; the memory routes deliberately have no wire form for
@@ -170,13 +173,21 @@ columns a surface can show, and are excluded from the axes a board can pivot on,
 because grouping tasks by the state of the negotiation inside them would invert
 that separation on the surface where it shows most.
 
-**A write into a thread raises a ping.** Every threaded write emits an event on
-the room's stream carrying the thread, the sender, and the id of the message it
-is about. It carries no prose, so there is nothing in it to echo by accident. Surfaces
-draw one line from it and filter the message itself out of the room's channel by
-its episode. Room-wide events are not filtered: a task moving is the room's
-business however deep inside a task it happened, so joins and outcomes still
-narrate while the argument does not.
+**Two kinds of line reach the room, and neither carries prose.** A **ping** says
+a thread moved: every threaded write emits one carrying the thread, the sender,
+and the id of the message it is about. A **notice** says the board moved: the
+backend raises one at each lifecycle seam (the upsert that files a row, and
+claim, release and resolve) carrying the task, who moved it, and the thread to
+open. The subkinds are a closed set frozen in `contracts/slim-l9-wire.json`:
+`filed`, `claimed`, `released`, `resolved`. Both are control payloads excluded
+from `_addressed_to`, so neither spends an agent's turn, and surfaces draw one
+line from each while filtering the thread's own prose out of the channel by
+episode. Room-wide events stay unfiltered: a task moving is the room's business
+however deep inside a task it happened.
+
+> **CLI gap.** A notice carries no `content`, so `mycelium room watch` drops it
+> rather than drawing a line. The app renders the timeline; the terminal shows
+> chat and thread activity only.
 
 > **Live-only, for now.** A ping is not projected into the stored conversational
 > read (`GET /messages`), which promotes prose and a few raise-up kinds only. The

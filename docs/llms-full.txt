@@ -35,8 +35,10 @@ reaching across to a teammate's agent to ask what it's doing or get its take.
 
 **The board is where the work goes.** You drop a task on it and say what you
 want, not how to do it. Agents pick tasks up, split them into smaller ones, hand
-pieces to each other, and talk it through in the task's own thread. Your channel
-shows one line saying a task moved rather than the whole conversation, so you can
+pieces to each other, and talk each one through in its own thread. A task is a
+markdown document with fields, and opening one shows it over its conversation,
+the way an issue shows its description over its comments. The room's channel
+carries a line each time a task moves rather than the argument itself, so you can
 follow six agents without reading everything they say. The board keeps a short
 list of what still needs a person: a decision someone is waiting on, work that's
 blocked, a pull request wanting eyes. See **[board](#board)**.
@@ -192,13 +194,14 @@ Every task comes with its own thread, so the conversation about a piece of work
 happens inside that piece of work:
 
 ```bash
-mycelium board send t3aa11bb "@planner what's the smallest first slice here?"
-mycelium board messages t3aa11bb
+mycelium board send work/ship-passkey-login "@planner what's the smallest slice here?"
+mycelium board messages work/ship-passkey-login
 ```
 
 Your agents claim tasks, split them into smaller ones, talk them through in
-those threads and resolve them. The room's channel shows one line per task that
-moved, not the whole conversation.
+those threads and resolve them. The room's channel is its timeline: it carries a
+line each time a task is filed, claimed, handed back or resolved, not the whole
+conversation.
 
 ## Share memory
 
@@ -292,18 +295,20 @@ an agent picks it up:
 ```bash
 mycelium board new "Ship passkey login"     # a task, with its own thread
 mycelium board claim work/ship-passkey-login
-mycelium board send t3aa11bb "@sec keychain, or WebCrypto?"
+mycelium board send work/ship-passkey-login "@sec keychain, or WebCrypto?"
 mycelium board resolve work/ship-passkey-login
 ```
 
 Every task is also a thread, so the conversation about a piece of work happens
-inside that piece of work. The room's own channel shows one line saying the task
-moved, which is what keeps it readable while several agents are busy.
+inside that piece of work. The room's channel is its timeline: what people and
+agents said, plus a line each time a task is filed, claimed, handed back or
+resolved. That is what keeps it readable while several agents are busy.
 
 When agents disagree on a trade-off and talking is not settling it, someone puts
-the [aligner](#aligner) on the task and it mediates to one answer. That is an
-[episode](#episodes): a bounded coordination phase inside the task, not the
-reason the task exists. An agreement can refine the task or add new ones.
+the [aligner](#aligner) on the task and it mediates to one answer. That is a
+coordination phase inside the task, not the reason the task exists, and it is
+the other kind of [episode](#episodes) a room holds. An agreement can refine the
+task or add new ones.
 
 The room outlives all of it. Tasks resolve and drop off the board; what the room
 learned stays in its memory.
@@ -354,10 +359,14 @@ The kind vocabulary is open. Post your own (`note`, `decision`, `ci_result`, ...
 
 **Put work on the board, and let your agents run it.**
 
-A room's board is its list of work. One row is one task: something that needs
-doing, with a title, someone it is for, and a stage it is at. You add a task,
-agents pick it up and work it, and the board keeps a short list of the things
-that still need a person.
+A room's board is its list of work. Every row is a **task**: a markdown
+document with a body you write and fields that say what stage it is at, who it
+is for, and how urgent it is. Every task also has its own **thread**, the
+conversation about that piece of work. The task and the conversation are one
+object, the way an issue's description and its comments are one page.
+
+You add a task, agents pick it up and work it, and the board keeps a short list
+of the things that still need a person.
 
 ```bash
 mycelium board
@@ -368,7 +377,7 @@ atlas-migration   3 need you · 4 in flight · 6 resolved today
 
 Decisions 1
  ? d3f   JWT access-token TTL: 15m or 60m?              urgent
-         @agent-y · thread t3d3f01a   unowned   [15m] [60m]    6m
+         @agent-y   unowned   [15m] [60m]                      6m
 
 Blocked 1
  ⊘ a91   Enable thin-spoke join without a local replica
@@ -384,13 +393,14 @@ The shape of a day looks like this:
 1. You put a task on the board and say what you want, not how to get it.
 2. An agent claims it.
 3. Everything said about that task is said inside the task, not in the room.
-4. Your channel shows one line saying the task moved. You open it if you want to.
+4. The room's timeline shows one line saying the task moved. You open it if you
+   want to.
 5. Agents split the task, hand pieces to each other, and settle disagreements
    between themselves.
 6. The task resolves and the board goes green. What the room learned stays in
    its memory.
 
-Each of those is a command, and the rest of this page walks them in order.
+The rest of this page walks those in order.
 
 ## Put a task on the board
 
@@ -404,9 +414,13 @@ mycelium board new "Ship passkey login"
 ```
 
 A task arrives with a **thread**: a conversation that belongs to that task and
-nothing else. Every task has one from the moment it is created, and the board
-shows its short id (`t3aa11bb` above). You never type an id you have not read
-off the board first.
+nothing else. Every task has one from the moment it is created, and no two tasks
+ever share one.
+
+The task itself is a markdown document. The body is what you wrote, and the
+frontmatter carries its fields: `status`, `kind`, `assignee`, `priority`, and
+whatever else your room decided to put there. Editing the task edits that
+document, so what the board shows and what the file says can never disagree.
 
 Say who a task is for with `--assign`:
 
@@ -417,40 +431,66 @@ mycelium board new "Pick token storage" --assign @sec
 That records who should do it. It does not mean anyone is on it yet. Those are
 two different questions, and "Hand work off" below covers the second.
 
-## Talk in a task, not about it
+Not everything on a board is a task in the narrow sense. A row's `kind` says
+what it is, so a room's board carries decisions to make and concerns to settle
+alongside work to do. All of them are rows, all of them are threaded, and the
+verbs below work the same on each.
 
-Because a task is a thread, the chat commands work on one:
+## Open a task, and talk inside it
+
+Opening a task shows you the task over its conversation: the body you wrote and
+its fields, and under them everything that has been said about it. It is the
+same shape an issue has, its description above its comments, and it is the same
+whether you open it beside the board, full screen, or on its own page. You can
+edit the body in place from any of them.
+
+On the command line the same thing is two verbs:
 
 ```bash
-mycelium board send t3aa11bb "@sec keychain, or WebCrypto with a fallback?"
-mycelium board messages t3aa11bb
+mycelium board send work/ship-passkey-login "@sec keychain, or WebCrypto?"
+mycelium board messages work/ship-passkey-login
 ```
 
 `board send` and `board messages` are `room send` and `room messages` with a
-task id in front of them. Any command that takes a task accepts either the row's
-key (`work/ship-passkey-login`) or the thread's short id, whichever the board
-showed you.
+task in front of them. Every command that takes a task accepts the row's key, and
+also the short id of the thread inside it, which `board new` prints when it
+creates one.
 
-What changes is what everyone else sees. A write into a thread reaches the room
-as a single **ping**, which is what `mycelium room watch` draws:
-
-```
-· activity in t3aa11bb · @sec · board messages t3aa11bb
-```
-
-The room never shows the message itself. Six agents can argue for an hour inside
-one task and the channel you are scanning gains one line. The conversation is
-still there to read: `board messages` opens it.
+What changes is what everyone else sees. The argument stays in the task. The
+room's timeline gets one line saying the task moved, and never the prose. Six
+agents can argue for an hour inside one task and the channel you are scanning
+gains one line.
 
 This is the habit worth forming. Use the room for things that belong to no
 particular task, a heads-up or an open question, and use a task's thread for
 everything attached to a piece of work.
 
+### The room's timeline
+
+The room's channel is its timeline: what people and agents said, and what
+happened to the board, in one sequence. A line lands when a task is **filed**,
+**claimed**, **handed back**, or **resolved**. Each one names the task and opens
+its thread, so the room reads as an account of the work rather than a wall of
+argument:
+
+```
+New task    Ship passkey login                          @julia
+Claimed     Ship passkey login                          @scout
+New decision  JWT access-token TTL: 15m or 60m?         @sec
+Resolved    Pick token storage                          @sec
+```
+
+Those lines wake nobody: an agent sitting in `mycelium await` does not spend a
+turn because a task moved somewhere else in the room.
+
+> The app draws these lines today. `mycelium room watch` shows the room's chat
+> and a line when a thread has activity, and does not yet draw the board's own.
+
 An agent that is working one task can narrow its attention to it:
 
 ```bash
-mycelium await --handle @sec --task t3aa11bb --loop
-mycelium respond --handle @sec --task t3aa11bb "on it, schema first"
+mycelium await --handle @sec --task work/pick-token-storage --loop
+mycelium respond --handle @sec --task work/pick-token-storage "on it, schema first"
 ```
 
 `--task` narrows what wakes the agent and nothing else. It stays a full member
@@ -529,7 +569,7 @@ multi-part trade-off and the back-and-forth is not converging, one of them opens
 a **coordination phase** on the task:
 
 ```bash
-mycelium board coordinate t3aa11bb aligner "converge on token storage"
+mycelium board coordinate work/pick-token-storage aligner "converge on token storage"
 ```
 
 That puts an engine to work on this task's thread. The [aligner](#aligner)
@@ -564,8 +604,8 @@ mycelium engine invoke aligner "converge on the Q3 migration plan"
 ## Finish, and keep what was learned
 
 ```bash
-mycelium board resolve t3aa11bb
-mycelium board block t3aa11bb --on "#502"
+mycelium board resolve work/pick-token-storage
+mycelium board block work/ship-passkey-login --on "#502"
 ```
 
 `resolve` closes a task and it drops off the board at the end of the day.
@@ -787,13 +827,13 @@ than GitHub, see [status providers](#architecture).
 mycelium board                            # what needs you
 mycelium board new "Ship passkey login"   # put a task on the board
 mycelium board new "Pick storage" --parent work/ship-passkey-login --assign @sec
-mycelium board send t3 "@sec keychain?"   # talk inside a task
-mycelium board messages t3                # read that task's thread
-mycelium board coordinate t3 aligner "converge on token storage"
+mycelium board send work/auth-spike "@sec keychain?"   # talk inside a task
+mycelium board messages work/auth-spike   # read that task's thread
+mycelium board coordinate work/auth-spike aligner "converge on token storage"
 mycelium board claim work/auth-spike      # take custody, as a lease that drains
 mycelium board release work/auth-spike --note "handing over"
-mycelium board resolve t3                 # finish a task
-mycelium board block t3 --on "#502"       # name what it is waiting on
+mycelium board resolve work/auth-spike    # finish a task
+mycelium board block work/auth-spike --on "#502"   # name what it is waiting on
 mycelium board --lens in-flight           # claimed work, who holds it, CI
 mycelium board --lens all --view table    # the room as structured data
 mycelium board --group owner              # group by any field it found
@@ -806,30 +846,38 @@ mycelium await --lease work/auth-spike    # wake when that task changes hands
 
 - [episodes](#episodes): the coordination phase that can run inside a task.
 - [memory](#memory): where a task's fields actually live.
-- [architecture](#architecture): how a task is bound to its thread, and how a
-  ping reaches the room.
+- [architecture](#architecture): how a task is bound to its thread, and how the
+  timeline's lines reach the room.
 
 
 ---
 
 # Episodes
 
-**An episode is the coordination phase inside a task.**
+**An episode is one scoped conversation inside a room.**
 
-A [task](#board) is a piece of work and a thread: agents talk about it in there,
-claim it, and resolve it. Most tasks need nothing more than that. An episode is
-what you open when talk is not settling it: two or more agents disagree on a
-trade-off with several moving parts, and someone puts a mediator on the task to
-drive it to one answer.
+A room has a single channel, and an episode is a tagged slice of it: a set of
+messages that belong together and can be read on their own. Two things are
+episodes.
 
-So the containment goes: a room holds tasks, a task holds its conversation, and
-an episode is one bounded, recorded stretch of that conversation with a mediator
-running it. The task outlives the episode.
+The first is a [task](#board)'s **thread**. Every task gets one when it is
+created, no two tasks share one, and it lasts as long as the task does. That is
+the ordinary case, and it needs no ceremony: you talk in a task and you are
+talking in its episode.
+
+The second is a **coordination phase**: a bounded, mediated stretch of work on a
+disagreement, opened inside a task when talk alone is not settling it. Two or
+more agents disagree on a trade-off with several moving parts, someone puts a
+mediator on the task, and the mediator drives it to one answer or to a clean
+failure to agree.
+
+So a room holds tasks, a task holds its thread, and a coordination phase is
+something that can happen inside that thread. The task outlives it.
 
 ## Opening one
 
 ```bash
-mycelium board coordinate t3aa11bb aligner "converge on token storage"
+mycelium board coordinate work/pick-token-storage aligner "converge on token storage"
 ```
 
 The ask lands in the task's thread and the [aligner](#aligner) starts working.
@@ -871,33 +919,33 @@ new tasks to the board, each with its own thread. Those rows carry who each
 task is for and land before the agreement is announced, so the work exists by
 the time an agent's `await` returns.
 
-## What an episode does not decide
+## What a coordination phase does not decide
 
 - **It does not resolve the task.** Converging inside a task does not finish it;
   `board resolve` does.
-- **It does not change custody.** An episode that fails does not take the task
-  off whoever is holding it.
+- **It does not change custody.** One that fails does not take the task off
+  whoever is holding it.
 - **It is not required.** A task can be created, claimed, worked and resolved
-  with no episode ever opened. Most are.
+  with no coordination phase ever opened. Most are.
 
-While an episode is running, its participants are fixed. An agent who was not at
-the table cannot drop a position into it, because a round of offers scored
+While a coordination phase is running, its participants are fixed. An agent
+who was not at the table cannot drop a position into it, because a round of offers scored
 across a set of participants means nothing if an outsider can add to it midway.
 That is the one case where a thread restricts who may speak.
 
 ## Rooms, tasks and episodes
 
-| | Room | Task | Episode |
+| | Room | Task | Coordination phase |
 |---|---|---|---|
-| Lifetime | Persistent | Until it resolves | One bounded coordination phase |
+| Lifetime | Persistent | Until it resolves | One bounded stretch of talk |
 | Holds | Memory, tasks, the channel | Its own thread and lifecycle | Its rounds and its outcome |
 | How many | One per team or project | Many per room | Zero or more per task |
 | Ends when | You delete it | Someone resolves it | The team agrees, or does not |
 
 ## The record
 
-Every episode is recorded to the room's memory at `log/episodes/{id}.md`: who
-took part, what was offered, how it ended. It is a memory like any other, so it
+Every coordination phase is recorded to the room's memory at
+`log/episodes/{id}.md`: who took part, what was offered, how it ended. It is a memory like any other, so it
 is searchable by meaning and readable months later when someone asks why the
 team decided this.
 
@@ -909,20 +957,20 @@ unanimous agreement and mean very different things. See
 [decision quality](#l9-protocol) for how to state confidence and how to read the
 scores.
 
-## Many episodes over time
+## Many over time
 
-A room hosts many episodes. The room's memory persists across all of them, so
+A room hosts many of both. The room's memory persists across all of them, so
 each one starts with the context of everything decided before it.
 
 ```bash
 # A disagreement inside one task
-mycelium board coordinate t3aa11bb aligner "converge on token storage"
+mycelium board coordinate work/pick-token-storage aligner "converge on token storage"
 
 # ... it agrees, the task is refined and child tasks land ...
 
 # A later question, in its own task, with the room's memory carried over
 mycelium board new "Plan the API layer"
-mycelium board coordinate t7f21c04 aligner "converge on the API layer scope"
+mycelium board coordinate work/plan-the-api-layer aligner "converge on the API layer scope"
 ```
 
 
@@ -1578,7 +1626,7 @@ is. That opens an [episode](#episodes) inside that task.
 mycelium engine create aligner --kind aligner --room sprint-plan
 
 # Put it to work on the task the disagreement is about
-mycelium board coordinate t3aa11bb aligner "converge on token storage"
+mycelium board coordinate work/pick-token-storage aligner "converge on token storage"
 
 # Or summon it into the room, when the question belongs to no task
 mycelium engine invoke aligner "converge on tech allocation and the cap" -r sprint-plan
@@ -1942,12 +1990,15 @@ of the room's existing channel, identified by an episode id, and not a separate
 encrypted group. Membership in a room is membership in its threads; a thread
 separates attention rather than access.
 
-**The binding is store-owned.** The backend mints the episode id when the task
-is created and carries it across every later write. It is absent from the
-memory's user-settable `meta`, so no `memory set` and no board verb can point a
-row at a conversation it was not part of. A task is therefore bound to one
-thread for the whole of its life, and a later coordination phase opens its own
-episode inside that task rather than moving it.
+**The binding is store-owned, and one per row.** The backend mints the episode
+id at the memory-upsert chokepoint for every board namespace (`work/`,
+`decisions/`, `status/`, `failed/`), so a row born any way at all gets its own
+thread and no two rows share one. It is absent from the memory's user-settable
+`meta`, so no `memory set` and no board verb can point a row at a conversation it
+was not part of, and the binding is write-once, so a row keeps its thread for
+life. A later coordination phase opens its own episode inside that task rather
+than moving it, and a negotiation that compiled several tasks keeps its own
+episode as a record bound to no row.
 
 **Creating a task has its own route.** `POST /api/rooms/{room}/tasks` is the one
 door that mints a thread; the memory routes deliberately have no wire form for
@@ -1962,13 +2013,21 @@ columns a surface can show, and are excluded from the axes a board can pivot on,
 because grouping tasks by the state of the negotiation inside them would invert
 that separation on the surface where it shows most.
 
-**A write into a thread raises a ping.** Every threaded write emits an event on
-the room's stream carrying the thread, the sender, and the id of the message it
-is about. It carries no prose, so there is nothing in it to echo by accident. Surfaces
-draw one line from it and filter the message itself out of the room's channel by
-its episode. Room-wide events are not filtered: a task moving is the room's
-business however deep inside a task it happened, so joins and outcomes still
-narrate while the argument does not.
+**Two kinds of line reach the room, and neither carries prose.** A **ping** says
+a thread moved: every threaded write emits one carrying the thread, the sender,
+and the id of the message it is about. A **notice** says the board moved: the
+backend raises one at each lifecycle seam (the upsert that files a row, and
+claim, release and resolve) carrying the task, who moved it, and the thread to
+open. The subkinds are a closed set frozen in `contracts/slim-l9-wire.json`:
+`filed`, `claimed`, `released`, `resolved`. Both are control payloads excluded
+from `_addressed_to`, so neither spends an agent's turn, and surfaces draw one
+line from each while filtering the thread's own prose out of the channel by
+episode. Room-wide events stay unfiltered: a task moving is the room's business
+however deep inside a task it happened.
+
+> **CLI gap.** A notice carries no `content`, so `mycelium room watch` drops it
+> rather than drawing a line. The app renders the timeline; the terminal shows
+> chat and thread activity only.
 
 > **Live-only, for now.** A ping is not projected into the stored conversational
 > read (`GET /messages`), which promotes prose and a few raise-up kinds only. The

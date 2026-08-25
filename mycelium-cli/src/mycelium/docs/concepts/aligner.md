@@ -13,7 +13,7 @@ is. That opens an [episode](#episodes) inside that task.
 mycelium engine create aligner --kind aligner --room sprint-plan
 
 # Put it to work on the task the disagreement is about
-mycelium board coordinate t3aa11bb aligner "converge on token storage"
+mycelium board coordinate work/pick-token-storage aligner "converge on token storage"
 
 # Or summon it into the room, when the question belongs to no task
 mycelium engine invoke aligner "converge on tech allocation and the cap" -r sprint-plan

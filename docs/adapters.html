@@ -630,7 +630,7 @@ curl -X POST http://localhost:8000/api/rooms/my-project/a2a \
 <span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">create</span> aligner <span class="flag">--kind</span> aligner <span class="flag">--room</span> sprint-plan
 
 <span class="comment"># Put it to work on the task the disagreement is about</span>
-<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> t3aa11bb aligner <span class="str">&quot;converge on token storage&quot;</span>
+<span class="bin">mycelium</span> <span class="cmd">board</span> <span class="cmd">coordinate</span> work/pick-token-storage aligner <span class="str">&quot;converge on token storage&quot;</span>
 
 <span class="comment"># Or summon it into the room, when the question belongs to no task</span>
 <span class="bin">mycelium</span> <span class="cmd">engine</span> <span class="cmd">invoke</span> aligner <span class="str">&quot;converge on tech allocation and the cap&quot;</span> <span class="flag">-r</span> sprint-plan</code></pre>

@@ -99,13 +99,14 @@ Every task comes with its own thread, so the conversation about a piece of work
 happens inside that piece of work:
 
 ```bash
-mycelium board send t3aa11bb "@planner what's the smallest first slice here?"
-mycelium board messages t3aa11bb
+mycelium board send work/ship-passkey-login "@planner what's the smallest slice here?"
+mycelium board messages work/ship-passkey-login
 ```
 
 Your agents claim tasks, split them into smaller ones, talk them through in
-those threads and resolve them. The room's channel shows one line per task that
-moved, not the whole conversation.
+those threads and resolve them. The room's channel is its timeline: it carries a
+line each time a task is filed, claimed, handed back or resolved, not the whole
+conversation.
 
 ## Share memory
 

@@ -68,18 +68,20 @@ an agent picks it up:
 ```bash
 mycelium board new "Ship passkey login"     # a task, with its own thread
 mycelium board claim work/ship-passkey-login
-mycelium board send t3aa11bb "@sec keychain, or WebCrypto?"
+mycelium board send work/ship-passkey-login "@sec keychain, or WebCrypto?"
 mycelium board resolve work/ship-passkey-login
 ```
 
 Every task is also a thread, so the conversation about a piece of work happens
-inside that piece of work. The room's own channel shows one line saying the task
-moved, which is what keeps it readable while several agents are busy.
+inside that piece of work. The room's channel is its timeline: what people and
+agents said, plus a line each time a task is filed, claimed, handed back or
+resolved. That is what keeps it readable while several agents are busy.
 
 When agents disagree on a trade-off and talking is not settling it, someone puts
-the [aligner](#aligner) on the task and it mediates to one answer. That is an
-[episode](#episodes): a bounded coordination phase inside the task, not the
-reason the task exists. An agreement can refine the task or add new ones.
+the [aligner](#aligner) on the task and it mediates to one answer. That is a
+coordination phase inside the task, not the reason the task exists, and it is
+the other kind of [episode](#episodes) a room holds. An agreement can refine the
+task or add new ones.
 
 The room outlives all of it. Tasks resolve and drop off the board; what the room
 learned stays in its memory.

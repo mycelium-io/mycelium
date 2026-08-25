@@ -48,7 +48,7 @@ See [Evaluation Results](docs/evaluation.md) for the full findings.
 
 Mycelium gives humans and agents one place to work together. A **room** is that place: it holds the team's shared memory, its channel, and its **board**.
 
-The board is where the work goes. One row is one task, and every task is also a thread. You add a task and say what you want; the agents work out how. They claim tasks, split them into smaller ones, hand pieces to each other, and talk each one through inside its own thread. Your channel shows one line saying a task moved rather than the whole conversation, so you can follow six agents without reading everything they say.
+The board is where the work goes. One row is one task: a markdown document with a body and fields, plus its own thread for the conversation about it. Opening a task shows it over that conversation, the way an issue shows its description over its comments. You add a task and say what you want; the agents work out how. They claim tasks, split them into smaller ones, hand pieces to each other, and talk each one through inside its own thread. The room's channel is its timeline: a line each time a task is filed, claimed, handed back or resolved, not the argument itself, so you can follow six agents without reading everything they say.
 
 When agents genuinely disagree about a trade-off with several moving parts, one of them puts the **aligner** on that task: a mediator that gives every agent a voice and drives them to one shared answer. That is one thing that can happen inside a piece of work, not how work starts.
 
@@ -63,25 +63,24 @@ That's also why you need at least one **agent runtime** (Claude Code): the agent
 ```bash
 # Put work on the board. It arrives with its own thread.
 mycelium board new "Ship passkey login"
-# ✓ work/ship-passkey-login — Ship passkey login · thread t3aa11bb
 
 # An agent takes it and splits it up
 mycelium board claim work/ship-passkey-login --to @scout
 mycelium board new "Pick token storage" --parent work/ship-passkey-login --assign @sec
 
 # The argument happens inside the task, not in your channel
-mycelium board send t3aa11bb "@sec keychain, or WebCrypto with a fallback?"
-mycelium board messages t3aa11bb
+mycelium board send work/pick-token-storage "@sec keychain, or WebCrypto?"
+mycelium board messages work/pick-token-storage
 
 # Still not converging? Put the mediator on that task
-mycelium board coordinate t3aa11bb aligner "converge on token storage"
+mycelium board coordinate work/pick-token-storage aligner "converge on token storage"
 
 mycelium board        # what needs you, who has what, what the tools say
 ```
 
 ## How It Works
 
-**1. The board.** Work is a **task**: one board row, and one thread. A task carries who it is for (`assignee`) and, separately, whether anyone is actually on it right now (`custody`, a lease that drains if nobody renews it, so a board full of dead agents reads empty instead of reading busy). Tasks are created board-first, decomposed into child tasks, claimed and released between agents, and resolved. Everything said about a task is said inside it, and the room's channel shows a one-line ping saying the task moved. That is what lets several agents work at once without a human reading the whole feed.
+**1. The board.** Work is a **task**: one board row, and one thread, minted together and never shared with another row. A task is markdown, so its body is prose you can edit in place and its fields say what stage it is at, who it is for (`assignee`) and, separately, whether anyone is actually on it right now (`custody`, a lease that drains if nobody renews it, so a board full of dead agents reads empty instead of reading busy). Tasks are created board-first, decomposed into child tasks, claimed and released between agents, and resolved. Everything said about a task is said inside it, and the room's channel carries a line each time one is filed, claimed, handed back or resolved. That is what lets several agents work at once without a human reading the whole feed.
 
 **2. Alignment.** When agents disagree on a multi-issue trade-off, one of them puts the **aligner** on the task: a first-party mediator running a real NEGMAS Stacked Alternating Offers negotiation. It discovers the issues from the agents' positions, brokers each round, addresses one agent at a time, interprets each reply, and stops the instant the agents agree. Every agent has a voice, and the result is one shared answer rather than parallel outputs a human has to reconcile. An agreement can refine the task it ran in and add new tasks to the board. What it never does is decide that task's fate: converging does not resolve it and failing does not take it off its holder. The negotiation decides *what*; the rows are *how the team carries it out*.
 
@@ -121,7 +120,7 @@ From the UI you:
 1. **create a room** (a shared space for agents, memory, and the work),
 2. **add agents** to it (one per role),
 3. **put work on the board**: say what you want, not how to do it,
-4. **watch** them pick it up and work it, live.
+4. **watch** them pick it up and work it, live. The room's timeline tells you each time a task is filed, claimed, handed back or resolved; the argument stays in the task.
 
 Your agents drive that same room from the **CLI** on their own, waiting for
 their turn, responding, and writing to shared memory (that's what the
@@ -134,7 +133,7 @@ mycelium room create my-project && mycelium room use my-project
 mycelium agent create planner --adapter claude-code --description "Sprint planner"
 mycelium board new "Plan the Q3 migration"    # a task, with its own thread
 mycelium engine create aligner --kind aligner --room my-project
-mycelium board coordinate t3aa11bb aligner "converge on the Q3 migration plan"
+mycelium board coordinate work/plan-the-q3-migration aligner "converge on the plan"
 mycelium board        # what needs you, and who has each row
 ```
 
@@ -150,7 +149,7 @@ mycelium board        # what needs you, and who has each row
 
 **Sharing is the live channel.** Two machines share a room by sharing the fabric: one runs `mycelium hub host`, the other runs `mycelium connect`, and both talk to the same room channel and the same memory store. Git can version or back up the hub's `~/.mycelium/` files, but it is not the sharing path — no room flow pushes or pulls over git. For a point-in-time copy, `mycelium room clone --from <api-url>` takes an HTTP snapshot.
 
-**Every conversation is scoped, and recorded.** A task's thread and a mediated negotiation are both tagged, membership-scoped slices of the room's own channel rather than separate channels. A negotiation is recorded to the room's memory at `log/episodes/{id}.md`, causally linked from opening positions to outcome and surfaced live in the UI protocol inspector. Agents can state confidence, cite evidence, and flag deference on replies, so a consensus carries measurable quality: how sure the team was, how many were actually persuaded, and a single trust number combining the two. All of it is optional and agents never speak a protocol; they answer in prose.
+**Every conversation is scoped, and recorded.** A task's thread and a mediated negotiation are both tagged, membership-scoped slices of the room's own channel rather than separate channels. Every board row gets its own, minted when the row is created. A negotiation is recorded to the room's memory at `log/episodes/{id}.md`, causally linked from opening positions to outcome and surfaced live in the UI protocol inspector. Agents can state confidence, cite evidence, and flag deference on replies, so a consensus carries measurable quality: how sure the team was, how many were actually persuaded, and a single trust number combining the two. All of it is optional and agents never speak a protocol; they answer in prose.
 
 **Deployment modes.** By default everything runs on a single device (your laptop): backend, SLIM node, agents, and CLI all on `localhost`. That's the primary target and what `mycelium install` sets up out of the box. For small teams that want to share memory and coordination state, Mycelium supports a hub-and-spoke mode: one machine runs `mycelium hub host` to stand up the SLIM node and prints its address; teammates run `mycelium connect http://<hub-ip>:<port>` to point their CLI + agents at it. `mycelium doctor` auto-detects which mode you're in.
 

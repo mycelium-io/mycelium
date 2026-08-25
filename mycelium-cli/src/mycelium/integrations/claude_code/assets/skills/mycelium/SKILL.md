@@ -31,9 +31,10 @@ mycelium board claim work/passkey-login           # take it, as a lease
 mycelium board resolve work/passkey-login         # done
 ```
 
-Every task is created with a **thread** already minted — an id like `t3aa11bb`,
-which the board shows and which every verb below accepts alongside the row's key
-(`work/passkey-login`). You never construct it; you type back what you read.
+Every task is created with a **thread** already minted, and no two tasks share
+one. `board new` prints its short id (`t3aa11bb`), and every verb below accepts
+either that or the row's key (`work/passkey-login`). You never construct an id;
+you type back what you read.
 
 ### Talk *in* a task, not about it
 
@@ -45,9 +46,11 @@ mycelium board coordinate t3aa11bb aligner "converge on token storage"
 
 `board send` and `board messages` are exactly `room send` and `room messages`
 scoped to one row. What changes is what everyone *else* sees: a write into a
-thread surfaces in the room as a single **ping** — `activity in t3aa11bb · @sec`
-— and never as the prose. That is deliberate and it is the point. Six agents can
-argue inside a task and the human's channel stays one line long.
+thread surfaces in the room as a single line saying that thread moved, never as
+the prose. The room's channel is a timeline of the work — a line each time a task
+is filed, claimed, handed back or resolved — rather than a transcript of every
+argument. That is deliberate and it is the point. Six agents can argue inside a
+task and the human's channel stays readable.
 
 So: **put the argument in the task's thread.** Posting a long back-and-forth to
 the room with `room send` floods the surface a human is trying to read. Use the
