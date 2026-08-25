@@ -170,6 +170,22 @@ jobs:
           [ -n "$LLM_BASE_URL" ] && echo "LLM_BASE_URL: set" || echo "LLM_BASE_URL: NOT SET"
           [ -n "$LLM_MODEL" ]    && echo "LLM_MODEL:    $LLM_MODEL" || echo "LLM_MODEL:    NOT SET"
 
+      - name: Start spoke containers (nightly only)
+        if: steps.resolve.outputs.suite == 'nightly'
+        run: |
+          MYCELIUM_BACKEND_URL=http://host.docker.internal:8000 \
+            docker compose -f infra/compose.spokes.yaml up -d
+          echo "Waiting for spokes to install CLI..."
+          for container in e2e-spoke1 e2e-spoke2; do
+            for i in $(seq 1 30); do
+              if docker exec "$container" mycelium --version >/dev/null 2>&1; then
+                echo "  $container ready"
+                break
+              fi
+              [ "$i" -eq 30 ] && echo "  WARNING: $container CLI not ready" || sleep 5
+            done
+          done
+
       - name: Clean artifacts dir
         run: rm -rf artifacts
 
@@ -181,18 +197,26 @@ jobs:
           MYCELIUM_DATAFILE: ${{ steps.resolve.outputs.datafile }}
         run: |
           case "$SUITE" in
-            nightly) JOB_FILE="jobs/nightly_job.py" ;;
-            *)       JOB_FILE="jobs/pr_job.py" ;;
+            nightly)
+              JOB_FILE="jobs/nightly_job.py"
+              # Use compose testbed for nightly so hub-spoke tests run via docker exec
+              TESTBED="testbeds/compose.yaml"
+              ;;
+            *)
+              JOB_FILE="jobs/pr_job.py"
+              TESTBED="testbeds/local.yaml"
+              ;;
           esac
 
           echo "Suite:    $SUITE"
           echo "Job:      $JOB_FILE"
+          echo "Testbed:  $TESTBED"
           echo "Datafile: $MYCELIUM_DATAFILE"
 
           mkdir -p artifacts/pyats-runinfo artifacts/pyats-archive
 
           uv run pyats run job "$JOB_FILE" \
-            --testbed-file testbeds/local.yaml \
+            --testbed-file "$TESTBED" \
             --html-logs artifacts \
             --runinfo-dir artifacts/pyats-runinfo \
             --archive-dir artifacts/pyats-archive \
@@ -223,6 +247,10 @@ jobs:
           path: artifacts/
           retention-days: 30
 
-      - name: Tear down
+      - name: Tear down spokes
+        if: always()
+        run: docker compose -f infra/compose.spokes.yaml down 2>/dev/null || true
+
+      - name: Tear down hub
         if: always()
         run: mycelium down 2>/dev/null || true

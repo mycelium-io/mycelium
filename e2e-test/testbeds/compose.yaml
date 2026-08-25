@@ -1,0 +1,56 @@
+---
+# Compose testbed — hub (local) + spoke1/spoke2 (docker exec).
+#
+# Use for hub-and-spoke tests in CI or local Docker simulation.
+# Start spokes with: docker compose -f infra/compose.spokes.yaml up -d
+#
+# Hub runs locally (on the runner/host); spokes run in Docker containers
+# whose mycelium CLI points at the hub backend via host.docker.internal.
+#
+# Usage:
+#   pyats run job jobs/nightly_job.py --testbed-file testbeds/compose.yaml
+
+testbed:
+  name: mycelium-compose
+
+devices:
+  hub:
+    type: linux
+    os: linux
+    connections:
+      local:
+        protocol: ssh
+        ip: 127.0.0.1
+    custom:
+      transport: local
+      harness_backend_url: "%ENV{MYCELIUM_BACKEND_URL, http://localhost:8000}"
+      backend_url: "%ENV{MYCELIUM_BACKEND_URL, http://localhost:8000}"
+
+  spoke1:
+    type: linux
+    os: linux
+    connections:
+      docker:
+        protocol: docker
+        ip: 127.0.0.1
+    custom:
+      transport: docker
+      container: "%ENV{MYCELIUM_E2E_SPOKE1_CONTAINER, e2e-spoke1}"
+      # backend_url as seen FROM INSIDE the container (host.docker.internal)
+      backend_url: "http://host.docker.internal:8000"
+      exec_user: root
+      exec_home: /root
+
+  spoke2:
+    type: linux
+    os: linux
+    connections:
+      docker:
+        protocol: docker
+        ip: 127.0.0.1
+    custom:
+      transport: docker
+      container: "%ENV{MYCELIUM_E2E_SPOKE2_CONTAINER, e2e-spoke2}"
+      backend_url: "http://host.docker.internal:8000"
+      exec_user: root
+      exec_home: /root

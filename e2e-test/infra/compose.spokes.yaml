@@ -1,0 +1,63 @@
+# Spoke containers for hub-and-spoke E2E tests.
+#
+# Each container has only the mycelium CLI installed (MYCELIUM_CLIENT_ONLY=1)
+# and points at the hub backend. No SLIM socket needed — await/respond are
+# pure HTTP calls to the backend API.
+#
+# Usage (CI):
+#   docker compose -f infra/compose.spokes.yaml up -d
+#   docker compose -f infra/compose.spokes.yaml down
+#
+# The hub backend must already be running at MYCELIUM_BACKEND_URL before
+# spokes start. Tests dispatch via `docker exec e2e-spoke1 mycelium ...`.
+
+name: mycelium-e2e-spokes
+
+services:
+  spoke1:
+    container_name: e2e-spoke1
+    image: python:3.12-slim
+    command: >
+      bash -c "
+        apt-get update -qq && apt-get install -qq -y curl &&
+        MYCELIUM_CLIENT_ONLY=1 curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash &&
+        export PATH=\"$$HOME/.local/bin:$$PATH\" &&
+        mycelium config set server.api_url http://host.docker.internal:8000 &&
+        echo 'spoke1 ready' &&
+        tail -f /dev/null
+      "
+    environment:
+      MYCELIUM_BACKEND_URL: "http://host.docker.internal:8000"
+      MYCELIUM_STUB_EMBEDDINGS: "1"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD-SHELL", "export PATH=\"$$HOME/.local/bin:$$PATH\"; mycelium config get server.api_url | grep -q host.docker.internal"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 60s
+
+  spoke2:
+    container_name: e2e-spoke2
+    image: python:3.12-slim
+    command: >
+      bash -c "
+        apt-get update -qq && apt-get install -qq -y curl &&
+        MYCELIUM_CLIENT_ONLY=1 curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash &&
+        export PATH=\"$$HOME/.local/bin:$$PATH\" &&
+        mycelium config set server.api_url http://host.docker.internal:8000 &&
+        echo 'spoke2 ready' &&
+        tail -f /dev/null
+      "
+    environment:
+      MYCELIUM_BACKEND_URL: "http://host.docker.internal:8000"
+      MYCELIUM_STUB_EMBEDDINGS: "1"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD-SHELL", "export PATH=\"$$HOME/.local/bin:$$PATH\"; mycelium config get server.api_url | grep -q host.docker.internal"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 60s

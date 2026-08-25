@@ -16,6 +16,8 @@ from testcases.tier_b_stub_coord import CounterOfferChain as _CounterOfferChain
 from testcases.tier_b_stub_coord import RespondWithoutTurnRejected as _RespondWithoutTurnRejected
 from testcases.tier_b_stub_coord import CrossEpisodeMemory as _CrossEpisodeMemory
 from testcases.tier_b_stub_coord import MultiSessionResponseRate as _MultiSessionResponseRate
+from testcases.tier_b_hub_spoke import TwoNodeHubSpoke as _TwoNodeHubSpoke
+from testcases.tier_b_hub_spoke import ThreeNodeHubSpoke as _ThreeNodeHubSpoke
 
 
 class CommonSetup(MyceliumCommonSetup):
@@ -43,6 +45,15 @@ class CrossEpisodeMemory(_CrossEpisodeMemory):
 
 
 class MultiSessionResponseRate(_MultiSessionResponseRate):
+    pass
+
+
+# Hub-and-spoke: skip automatically on local.yaml (no spoke1/spoke2 devices)
+class TwoNodeHubSpoke(_TwoNodeHubSpoke):
+    pass
+
+
+class ThreeNodeHubSpoke(_ThreeNodeHubSpoke):
     pass
 
 
