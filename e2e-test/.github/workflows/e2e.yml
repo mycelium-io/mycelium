@@ -169,7 +169,7 @@ jobs:
       - name: Start mycelium hub (SLIM node + backend)
         run: |
           mycelium init --api-url http://localhost:8000 2>/dev/null || true
-          # Ensure the bind-mounted data dir is writable by the container's mycelium user
+          # Pre-create dirs and open permissions so Docker container user can write
           mkdir -p ~/.mycelium/rooms
           chmod -R 777 ~/.mycelium
           if [ "$BUILD_FROM_SOURCE" = "true" ]; then
@@ -190,6 +190,10 @@ jobs:
             fi
             sleep 2
           done
+          # Fix ownership of any dirs created by the container's mycelium user
+          # (backend writes rooms/ through the bind mount as a different uid)
+          sudo chown -R "$USER" ~/.mycelium || true
+          chmod -R 777 ~/.mycelium || true
 
       - name: Configure mycelium CLI
         run: |
