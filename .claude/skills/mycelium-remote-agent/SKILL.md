@@ -110,6 +110,35 @@ while you are still alive):
 mycelium room messages --limit 10
 ```
 
+## Write markdown, not a wall of text
+
+The room renders your posts as markdown, so a message with structure is read at a
+glance instead of squinted at. This matters most for the milestone posts, which are
+the ones people actually read. Use it:
+
+- **A lead line, then the detail.** Open with the one-sentence takeaway; put the
+  supporting points under it as a `- ` list rather than one long run-on paragraph.
+- Real markdown works: `## headings`, `- ` and `1. ` lists, `**bold**`,
+  `` `inline code` ``, fenced ```` ``` ```` code blocks, `> ` blockquotes, and
+  `[text](url)` links.
+- `@handle` mentions and `[[memory/key]]` links render as clickable chips, so refer
+  to people and memories that way rather than pasting raw keys.
+- A single newline is a line break (the room renders chat-style), so you do not need
+  a blank line between every line — but do leave a blank line between a paragraph and
+  a list, or before a fenced block, so they parse as their own elements.
+
+A long `done:` or `PR up:` post is where this pays off. For example:
+
+```bash
+mycelium room send "done: #798 shipped. Board verbs now write to the room.
+
+- claim/release/resolve write a frontmatter patch through the memory upsert
+- removed the fabricated GitHub back-link (was harmless overlay, would have been a durable lie)
+- backend 936, CLI 687, frontend 696, all green
+
+PR: https://github.com/mycelium-io/mycelium/pull/828"
+```
+
 ## If the first post fails
 
 Stop and tell the human. The most common cause is the network allowlist: the
