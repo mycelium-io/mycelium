@@ -98,7 +98,8 @@ describe("readSseEvents cancellation", () => {
     const abort = new AbortController();
 
     const drained = (async () => {
-      for await (const _event of readSseEvents(body, abort.signal)) {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      for await (const _ of readSseEvents(body, abort.signal)) {
         // parked on a read that only cancellation will end
       }
     })();

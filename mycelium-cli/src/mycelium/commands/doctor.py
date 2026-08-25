@@ -504,8 +504,9 @@ def _check_http_auth_gate(*, api_url: str) -> CheckResult:
                 ),
                 details=[
                     "Spokes use the HTTP API (:8000), not SLIM PSK.",
-                    "Enable auth.enabled on the hub before sharing over a network.",
-                    "See: mycelium config set auth.enabled true",
+                    "Enable auth on the hub:",
+                    "  mycelium config set auth.enabled true  (on the hub)",
+                    "  mycelium config apply --restart         (restarts the backend to activate it)",
                 ],
             )
         return CheckResult(
