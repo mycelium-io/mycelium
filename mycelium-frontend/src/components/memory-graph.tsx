@@ -579,7 +579,7 @@ export function MemoryGraph({ graph, onNavigate, roomName, className }: Props) {
             <Tooltip content="Show every namespace and link type again" side="bottom" align="end">
               <button
                 onClick={clearFilters}
-                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-micro font-medium text-accent transition-colors hover:bg-hairline"
+                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-micro font-medium text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
               >
                 <Filter className="size-3.5" />
                 Clear filters
@@ -597,7 +597,7 @@ export function MemoryGraph({ graph, onNavigate, roomName, className }: Props) {
                   dirty.current = true;
                   setPlaced({});
                 }}
-                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-micro font-medium text-accent transition-colors hover:bg-hairline"
+                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-micro font-medium text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
               >
                 <RotateCcw className="size-3.5" />
                 Reset layout
