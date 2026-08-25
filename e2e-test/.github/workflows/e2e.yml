@@ -99,11 +99,12 @@ jobs:
         env:
           REF: ${{ steps.resolve.outputs.mycelium_ref }}
         run: |
-          if [ -n "$REF" ] && [ "$REF" != "main" ]; then
+          if [ -n "$REF" ]; then
             echo "BUILD_FROM_SOURCE=true" >> "$GITHUB_ENV"
             echo "Building mycelium from source (ref=$REF)"
           else
             echo "BUILD_FROM_SOURCE=false" >> "$GITHUB_ENV"
+            echo "Using release install (no mycelium_ref set)"
           fi
 
       - name: Checkout mycelium repo (source build)
