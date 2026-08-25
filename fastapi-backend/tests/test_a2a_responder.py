@@ -306,6 +306,37 @@ async def test_owner_bypasses_allow_from_gate(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_session_qualified_sender_passes_allow_from(monkeypatch):
+    """A sender carrying a #session suffix must be treated as their bare handle."""
+    _register_a2a(allow_from=["avery"])
+    responder, channel, _persister, calls = _responder(monkeypatch)
+
+    # "avery#abc123" is avery with a session qualifier — must pass the gate.
+    responder.handle_summon(
+        _ROOM, "researcher", _summon_envelope("avery#abc123"), [], "session summon"
+    )
+    await _drain(responder)
+
+    assert len(calls) == 1
+    assert channel.sent
+
+
+@pytest.mark.asyncio
+async def test_session_qualified_owner_passes_allow_from(monkeypatch):
+    """The owner with a #session suffix must still bypass the allow_from gate."""
+    _register_a2a(allow_from=["avery"], owner="selina")
+    responder, channel, _persister, calls = _responder(monkeypatch)
+
+    responder.handle_summon(
+        _ROOM, "researcher", _summon_envelope("selina#xyz999"), [], "owner session"
+    )
+    await _drain(responder)
+
+    assert len(calls) == 1
+    assert channel.sent
+
+
+@pytest.mark.asyncio
 async def test_empty_allow_from_allows_anyone(monkeypatch):
     _register_a2a(allow_from=[])
     responder, channel, _persister, calls = _responder(monkeypatch)
