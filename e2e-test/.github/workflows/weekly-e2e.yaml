@@ -48,7 +48,8 @@ jobs:
       - name: Start mycelium hub
         run: |
           mycelium init --api-url http://localhost:8000 2>/dev/null || true
-          mycelium up --detach
+          mkdir -p ~/.mycelium/rooms && chmod -R 777 ~/.mycelium
+          mycelium up
           for i in $(seq 1 60); do
             curl -sf http://localhost:8000/health > /dev/null 2>&1 && echo "Backend healthy" && break
             [ "$i" -eq 60 ] && echo "ERROR: backend not healthy" && exit 1
