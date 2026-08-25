@@ -86,6 +86,83 @@ export function pingOf(raw: Record<string, unknown> | null | undefined): Ping | 
   };
 }
 
+/** The payload type the room's board events surface into the timeline as. */
+export const NOTICE_PAYLOAD_TYPE = "notice";
+
+/** The normalized type a notice wears once parsed. */
+export const NOTICE_TYPE = "notice";
+
+/** What a board event did to a task — the closed set the backend raises, frozen
+ *  in `contracts/slim-l9-wire.json` and asserted by `threads.contract.test.ts`. */
+export const NOTICE_SUBKINDS = ["filed", "claimed", "released", "resolved"] as const;
+
+export type NoticeSubkind = (typeof NOTICE_SUBKINDS)[number];
+
+/** What a notice says: what happened, to which task, and the thread to open. */
+export interface Notice {
+  subkind: string;
+  key: string;
+  title: string | null;
+  episode: string | null;
+  by: string | null;
+  /** The board kind, on a `filed` notice, so the line reads "New decision". */
+  kind: string | null;
+}
+
+/**
+ * The notice a wire frame carries, or null when it isn't one.
+ *
+ * The sibling of {@link pingOf}: a notice rides in `live` and names the task the
+ * board event was about, so the channel can render "New task" / "@x is on it" /
+ * "resolved" in sequence with the chat and open the same thread the row does.
+ */
+export function noticeOf(raw: Record<string, unknown> | null | undefined): Notice | null {
+  const envelope = (raw?.l9 ?? null) as Record<string, unknown> | null;
+  const payload = (envelope?.payload ?? null) as Record<string, unknown> | null;
+  if (!payload || payload.type !== NOTICE_PAYLOAD_TYPE) return null;
+  const data = (payload.data ?? {}) as Record<string, unknown>;
+  const key = data.key;
+  const subkind = data.subkind;
+  if (typeof key !== "string" || !key || typeof subkind !== "string" || !subkind) return null;
+  const str = (v: unknown) => (typeof v === "string" && v ? v : null);
+  return {
+    subkind,
+    key,
+    title: str(data.title),
+    episode: str(data.episode),
+    by: str(data.by),
+    kind: str(data.kind),
+  };
+}
+
+/** What the room calls a thing it just filed, by its board kind. A decision is
+ *  not a task, so the notice says so — otherwise the timeline mislabels half of
+ *  what the room does. */
+const FILED_AS: Record<string, string> = {
+  decision: "decision",
+  concern: "concern",
+  blocked: "blocker",
+  review: "task",
+  action: "task",
+  signal: "note",
+};
+
+/** The label a notice wears in the timeline, by subkind (and, when filed, kind). */
+export function noticeLabel(subkind: string, kind: string | null | undefined): string {
+  switch (subkind) {
+    case "filed":
+      return `New ${(kind && FILED_AS[kind]) || "task"}`;
+    case "claimed":
+      return "Claimed";
+    case "released":
+      return "Released";
+    case "resolved":
+      return "Resolved";
+    default:
+      return subkind;
+  }
+}
+
 /** The minimum a feed row has to expose to be coalesced. */
 export interface Pingable {
   type: string;

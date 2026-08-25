@@ -88,6 +88,21 @@ LIVE_SESSION = "live"
 #: anyone (:func:`app.routes.participate._addressed_to`).
 PING_PAYLOAD_TYPE = "ping"
 
+#: The payload type of a **notice**: the room's timeline of what happened to its
+#: work — a task filed, claimed, handed back or resolved. Like a ping it is a
+#: control payload raised into ``live`` that wakes nobody, but where a ping says a
+#: thread *moved*, a notice says the *board* moved: it names the task, carries the
+#: line the room reads ("New task", "@x is on it", "resolved"), and never the
+#: prose (which stays in the thread). ``data.subkind`` is one of
+#: :data:`NOTICE_SUBKINDS`; the rest of ``data`` is the task it is about.
+NOTICE_PAYLOAD_TYPE = "notice"
+
+#: What a notice can be about, as a closed set frozen in
+#: ``contracts/slim-l9-wire.json``. ``filed`` also carries the row's board
+#: ``kind`` (so the line reads "New decision", not always "New task") and who it
+#: is ``for``; the custody subkinds carry ``by`` (who moved it).
+NOTICE_SUBKINDS = frozenset({"filed", "claimed", "released", "resolved"})
+
 
 class L9ValidationError(ValueError):
     """An envelope violates the L9 structure or the CFN subkind table."""

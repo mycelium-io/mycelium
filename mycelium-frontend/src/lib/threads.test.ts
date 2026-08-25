@@ -7,6 +7,8 @@ import {
   coalescePings,
   isLiveEpisode,
   liveEpisodeUrn,
+  noticeLabel,
+  noticeOf,
   pingOf,
   threadShortId,
   type Pingable,
@@ -69,6 +71,52 @@ describe("reading a ping", () => {
   it("survives a frame with no envelope at all", () => {
     expect(pingOf({})).toBeNull();
     expect(pingOf(null)).toBeNull();
+  });
+});
+
+describe("reading a notice", () => {
+  function noticeFrame(data: Record<string, unknown>) {
+    return {
+      l9: {
+        header: { kind: "exchange", message: { episode: liveEpisodeUrn(ROOM) } },
+        payload: { type: "notice", data },
+      },
+    };
+  }
+
+  it("carries what happened, to which task, its thread, and who moved it", () => {
+    // Like a ping, it rides in `live` and names the task in its payload, so a
+    // notice can open the same thread the row's own chip does.
+    const notice = noticeOf(
+      noticeFrame({ subkind: "filed", key: "work/flip", title: "flip reads", episode: THREAD, by: "aligner", kind: "action" }),
+    );
+    expect(notice).toEqual({ subkind: "filed", key: "work/flip", title: "flip reads", episode: THREAD, by: "aligner", kind: "action" });
+  });
+
+  it("reads a lease event with no board kind", () => {
+    const notice = noticeOf(noticeFrame({ subkind: "claimed", key: "work/flip", by: "growth" }));
+    expect(notice).toMatchObject({ subkind: "claimed", key: "work/flip", by: "growth", kind: null });
+  });
+
+  it("is not a notice when the payload is a ping", () => {
+    expect(noticeOf(pingFrame(THREAD, "risk", "m7"))).toBeNull();
+  });
+
+  it("refuses a notice that names no task or no subkind", () => {
+    expect(noticeOf(noticeFrame({ subkind: "filed" }))).toBeNull();
+    expect(noticeOf(noticeFrame({ key: "work/flip" }))).toBeNull();
+    expect(noticeOf({})).toBeNull();
+    expect(noticeOf(null)).toBeNull();
+  });
+
+  it("labels a filing by its kind, and a lease event by what happened", () => {
+    expect(noticeLabel("filed", "decision")).toBe("New decision");
+    expect(noticeLabel("filed", "blocked")).toBe("New blocker");
+    expect(noticeLabel("filed", "action")).toBe("New task");
+    expect(noticeLabel("filed", null)).toBe("New task");
+    expect(noticeLabel("claimed", null)).toBe("Claimed");
+    expect(noticeLabel("released", null)).toBe("Released");
+    expect(noticeLabel("resolved", null)).toBe("Resolved");
   });
 });
 

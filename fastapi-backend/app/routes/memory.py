@@ -399,6 +399,24 @@ async def upsert_memories(
             updated_by=item.created_by,
             updated_at=now.isoformat(),
         )
+        # A board row appearing for the first time is the room filing work: raise
+        # a `filed` notice into the timeline, naming the task, its kind (so it
+        # reads "New decision" not always "New task") and who it is for. Only on
+        # creation — a later write is a state change, carried by its own verb.
+        if not existing and is_board_row(item.key):
+            from app.services.room_channels import manager
+
+            first_line = next((ln for ln in content_text.splitlines() if ln.strip()), item.key)
+            await manager.raise_notice(
+                room_name,
+                subkind="filed",
+                key=item.key,
+                title=first_line.lstrip("# ").strip(),
+                episode=extra_meta.get(EPISODE_META),
+                by=str(created_by).lstrip("@"),
+                kind=extra_meta.get("kind"),
+                **({"for": str(extra_meta["assignee"])} if extra_meta.get("assignee") else {}),
+            )
 
     for embedded in write_metrics:
         record_memory_write(scope="namespace", embedded=embedded)

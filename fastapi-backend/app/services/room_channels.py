@@ -907,6 +907,52 @@ class RoomChannelManager:
             bus.publish(room_channel(room), l9_bus_frame(room, record_from(ping, content)))
         return ping.header.message.id if ping.header.message else None
 
+    async def raise_notice(
+        self,
+        room: str,
+        *,
+        subkind: str,
+        key: str,
+        title: str | None = None,
+        episode: str | None = None,
+        by: str | None = None,
+        **extra: str | None,
+    ) -> None:
+        """Raise a **notice** into ``live``: the room's timeline of board events.
+
+        The sibling of :meth:`raise_ping`, and it holds the same two structural
+        properties — it wakes nobody (a ``notice`` payload, which
+        :func:`app.routes.participate._addressed_to` excludes) and it does not go
+        out on the wire (``ingest_local`` alone) — so a task filed, claimed,
+        handed back or resolved reads in the channel in sequence with the chat
+        without spending an agent's turn or being filtered out on arrival.
+
+        Where a ping says a thread moved, a notice says the board did: it names
+        the task (``key``/``title``), the thread to open (``episode``), and who
+        moved it (``by``). ``subkind`` is one of :data:`app.services.l9.NOTICE_SUBKINDS`.
+        """
+        data: dict[str, str] = {"subkind": subkind, "key": key}
+        for name, value in (("title", title), ("episode", episode), ("by", by), *extra.items()):
+            if value:
+                data[name] = value
+        notice = l9.build_envelope(
+            kind=Kind.exchange,
+            episode=l9.live_episode_urn(room),
+            sender=l9.SYSTEM_ACTOR_ID,
+            sender_role=l9.SYSTEM_ACTOR_ROLE,
+            topic=l9.topic_urn(room),
+            payload_type=l9.NOTICE_PAYLOAD_TYPE,
+            payload_data=data,
+        )
+        content = serialize_content(notice)
+        managed = self._channels.get(room)
+        if managed is not None and managed.persister is not None:
+            managed.persister.ingest_local(notice, content, list_write=False)
+        else:
+            from app.bus import bus, room_channel
+
+            bus.publish(room_channel(room), l9_bus_frame(room, record_from(notice, content)))
+
     # -- consent-gated invites --
 
     def request_invite(

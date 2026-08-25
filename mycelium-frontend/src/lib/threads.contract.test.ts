@@ -13,12 +13,20 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { LIVE_SESSION, PING_PAYLOAD_FIELDS, PING_PAYLOAD_TYPE, liveEpisodeUrn } from "@/lib/threads";
+import {
+  LIVE_SESSION,
+  NOTICE_PAYLOAD_TYPE,
+  NOTICE_SUBKINDS,
+  PING_PAYLOAD_FIELDS,
+  PING_PAYLOAD_TYPE,
+  liveEpisodeUrn,
+} from "@/lib/threads";
 
 const CONTRACT_PATH = path.resolve(__dirname, "../../../contracts/slim-l9-wire.json");
 
 function contract(): {
   ping: { payload_type: string; payload_fields: string[] };
+  notice: { payload_type: string; subkinds: string[] };
   urn: { room: string; session: string; expected_episode: string };
 } {
   return JSON.parse(readFileSync(CONTRACT_PATH, "utf-8"));
@@ -35,5 +43,11 @@ describe("thread wire constants contract", () => {
     const { ping } = contract();
     expect(PING_PAYLOAD_TYPE).toBe(ping.payload_type);
     expect([...PING_PAYLOAD_FIELDS]).toEqual(ping.payload_fields);
+  });
+
+  it("reads the contracted notice payload type and subkinds", () => {
+    const { notice } = contract();
+    expect(NOTICE_PAYLOAD_TYPE).toBe(notice.payload_type);
+    expect([...NOTICE_SUBKINDS]).toEqual(notice.subkinds);
   });
 });

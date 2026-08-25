@@ -391,7 +391,7 @@ export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusM
           <Tooltip content="Open the memory link graph">
             <Link
               href={memoryGraphHref(roomName)}
-              className="ml-auto inline-flex flex-shrink-0 items-center gap-1 rounded-md px-2 py-1 text-micro font-medium text-accent transition-colors hover:bg-hairline"
+              className="ml-auto inline-flex flex-shrink-0 items-center gap-1 rounded-md px-2 py-1 text-micro font-medium text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
             >
               <Network className="size-3.5" />
               Graph
@@ -520,7 +520,7 @@ export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusM
                   onClick={() =>
                     isEditing ? guard(() => setIsEditing(false)) : setIsEditing(true)
                   }
-                  className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-micro font-medium text-accent transition-colors hover:bg-hairline"
+                  className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-micro font-medium text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
                 >
                   {isEditing ? <Eye className="size-3.5" /> : <Pencil className="size-3.5" />}
                   {isEditing ? "View" : "Edit"}
@@ -529,7 +529,7 @@ export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusM
               <Tooltip content="Open full page">
                 <Link
                   href={memoryHref(roomName, selected.key)}
-                  className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-micro font-medium text-accent transition-colors hover:bg-hairline"
+                  className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-micro font-medium text-muted-foreground transition-colors hover:bg-hairline hover:text-text"
                 >
                   <ExternalLink className="size-3.5" />
                   Full page

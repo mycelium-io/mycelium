@@ -196,6 +196,50 @@ def test_ping_payload_matches_contract():
     assert "content" not in content
 
 
+def test_notice_payload_matches_contract():
+    """The notice the backend raises is the one the GUI draws in the timeline.
+
+    Same stakes as the ping: rename the type on this side and either the channel
+    stops showing that the board moved, or every resident agent starts waking on
+    every board write (``participate._addressed_to`` keys off this same literal).
+    """
+    import asyncio
+    import json as json_module
+
+    from app.bus import bus
+    from app.services.room_channels import RoomChannelManager
+
+    g = _contract()["notice"]
+    assert g["payload_type"] == l9.NOTICE_PAYLOAD_TYPE
+    assert set(g["subkinds"]) == set(l9.NOTICE_SUBKINDS)
+
+    published: list[dict] = []
+    original = bus.publish
+    bus.publish = lambda _ch, frame: published.append(frame)  # type: ignore[method-assign]
+    try:
+        manager = RoomChannelManager(
+            endpoint="http://127.0.0.1:46357", default_workspace="mycelium"
+        )
+        asyncio.run(
+            manager.raise_notice(
+                "acme",
+                subkind="filed",
+                key="work/ship-auth",
+                title="ship auth",
+                episode=l9.episode_urn("acme", "t3"),
+                by="avery",
+                kind="action",
+            )
+        )
+    finally:
+        bus.publish = original  # type: ignore[method-assign]
+
+    payload = json_module.loads(published[0]["content"])["l9"]["payload"]
+    assert payload["type"] == g["payload_type"]
+    assert payload["data"]["subkind"] in g["subkinds"]
+    assert payload["data"]["key"] == "work/ship-auth"
+
+
 def test_channel_name_topic_matches_contract():
     """A room channel's app segment is the frozen default topic."""
     pytest.importorskip("slim_bindings")

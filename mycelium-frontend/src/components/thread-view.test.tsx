@@ -138,7 +138,7 @@ describe("<ThreadView />", () => {
     renderWithSWR(
       <ThreadView roomName="atlas" target={{ episode: THREAD }} onClose={vi.fn()} />,
     );
-    expect(await screen.findByText("Nothing said here yet")).toBeInTheDocument();
+    expect(await screen.findByText("No replies yet")).toBeInTheDocument();
   });
 
   it("re-reads when a write lands in its own thread, and not when one lands elsewhere", async () => {
