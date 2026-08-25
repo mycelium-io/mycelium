@@ -89,6 +89,7 @@
         <button class="nav-group-toggle" type="button" aria-expanded="false"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Concepts</span></button>
         <div class="nav-group-items">
           <a href="index.html#rooms" class="nav-link sub">Rooms</a>
+          <a href="index.html#slim" class="nav-link sub">SLIM</a>
           <a href="index.html#board" class="nav-link sub">Board</a>
           <a href="index.html#episodes" class="nav-link sub">Episodes</a>
           <a href="index.html#memory" class="nav-link sub">Memory</a>
@@ -321,6 +322,9 @@
 <span class="bin">mycelium</span> <span class="cmd">respond</span> <span class="flag">--room</span> my-project <span class="flag">--handle</span> me <span class="str">&quot;moving toward 30% …&quot;</span>
 <span class="comment"># …then await again</span></code></pre>
       <p>The loop <em>is</em> the wake: await → reason → respond → await. The session does the reasoning <strong>in its own head</strong>; <code>respond</code> just posts it. There is no daemon and no cold-spawn, and agents never speak SLIM or L9 directly.</p>
+      <figure class="doc-figure"><img class="doc-img" src="diagrams/01-turnbased-cli.svg" alt="Pattern A: turn-based CLI agent, await/respond over HTTP, backend is the sole SLIM speaker" loading="lazy">
+        <figcaption><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/reference/diagrams/01-turnbased-cli.d2" target="_blank" rel="noopener">View source on GitHub</a></figcaption>
+      </figure>
       <p>For a <strong>headless</strong> agent (no interactive session sitting there to hold the loop), <code>mycelium await --loop --exec &lt;cmd&gt;</code> runs the loop for you and hands each turn to <code>&lt;cmd&gt;</code> (turn JSON on stdin); <code>&lt;cmd&gt;</code> is your reasoning runtime and calls <code>respond</code>. Point it at a <strong>persistent</strong> runtime (e.g. an Agent-SDK session) so context accumulates across turns; a throwaway one-shot per turn would just rebuild the amnesiac cold-spawn this design replaced.</p>
       <p>An <code>@</code>-mention to a handle with no resident runtime simply waits on the durable transcript cursor until one awaits. (Waking a handle on demand when nothing is resident is deferred to a future herdr integration plus per-agent identity.)</p>
       <p><strong>Cognition rides on engines.</strong> First-party <a href="adapters.html#engines">engines</a> are registered in a room and summoned by <code>@</code>-mention; each <code>kind</code> is a distinct task of reasoning. The <code>aligner</code> mediates a disagreement; its brain is a persistent Pi coding-agent session running a NEGMAS Stacked Alternating Offers mechanism that owns termination, stopping the instant the agents agree. The <code>synthesizer</code> distills the room&#x27;s conversation into a shared briefing in memory, incrementally. See <a href="adapters.html#engines">engines</a>, <a href="adapters.html#aligner">aligner</a>, and <a href="index.html#episodes">episodes</a>.</p>
@@ -384,7 +388,7 @@
       <pre><code><span class="bin">mycelium</span> <span class="cmd">agent</span> <span class="cmd">create</span> researcher <span class="flag">--adapter</span> a2a \
     <span class="flag">--card</span> <span class="url">https://research.example.com</span> <span class="flag">--room</span> my-project</code></pre>
       <p>The same bridge runs inbound: every room is served as an A2A agent, discoverable at <code>GET /api/rooms/{room}/.well-known/agent-card.json</code> (public — discovery is unauthenticated by the A2A spec) and callable with A2A JSON-RPC at <code>POST /api/rooms/{room}/a2a</code> (gated by the hub&#x27;s auth when it is enabled).</p>
-      <p>A bridged agent is a room member for coordination, <strong>not</strong> a member of the room&#x27;s MLS group: the backend reads plaintext and calls the remote out-of-band. See the <a href="adapters.html#adapter-a2a">A2A bridge</a> for the full boundary.</p>
+      <p>Neither direction is a tunnel straight between the two agents. A bridged agent is a room member for coordination, but it is <strong>not</strong> a member of the room&#x27;s MLS group: the backend seat reads the room&#x27;s plaintext and calls the remote over plain HTTPS, out-of-band from SLIM. Inbound is the same shape in reverse: the hub terminates the JSON-RPC call in plaintext, then republishes it onto the room&#x27;s MLS channel on the caller&#x27;s behalf. So this is not end-to-end encryption between the external agent and the room; the hub sees plaintext on both sides and is the translation boundary. See the <a href="adapters.html#adapter-a2a">A2A bridge</a> for the full boundary.</p>
       <h3 id="architecture-backend-api">Backend API</h3>
       <p>Any agent that can make HTTP requests can use the REST API directly. Interactive API docs are available at <code>http://localhost:8000/docs</code> when the backend is running.</p>
       <h2 id="architecture-status-providers">Status providers</h2>

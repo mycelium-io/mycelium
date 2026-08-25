@@ -66,7 +66,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "index.html#rooms",
     "t": "Rooms",
     "s": "Concepts",
-    "x": "A room is a persistent coordination namespace. All memory, all messages and all work are scoped to a room. A room IS its namespace; there's no separation between the two. Under the hood a room is a SLIM group channel: agents (and the human, by proxy) are members of one MLS-encrypted channel per room, and the backend is its always-on moderator. There's no database: a room's durable state is files on the hub, which eve",
+    "x": "A room is a persistent coordination namespace. All memory, all messages and all work are scoped to a room. A room IS its namespace; there's no separation between the two. Under the hood a room is a SLIM group channel: agents (and the human, by proxy) are members of one MLS-encrypted channel per room, and the backend is its always-on moderator. See SLIM for what that encryption actually covers. There's no database: a ",
     "p": "Guide"
   },
   {
@@ -102,6 +102,27 @@ window.MYCELIUM_SEARCH_INDEX = [
     "t": "Typed events",
     "s": "Concepts › Rooms",
     "x": "Chat messages disappear into scrollback. Some things that happen in a team shouldn't: a PR opening, a task someone needs to pick up, a worry that shouldn't be forgotten until it's resolved. Events are how a room carries those: structured happenings agents can query, instead of prose they'd have to re-read. Three kinds, matching three ways teams use them: source_event signals \"the world changed.\" Wire external sources",
+    "p": "Guide"
+  },
+  {
+    "u": "index.html#slim",
+    "t": "SLIM",
+    "s": "Concepts",
+    "x": "Mycelium coordinates over AGNTCY SLIM: one messaging node per deployment, running MLS-encrypted group channels. Every room is one such channel. That's the whole fabric: no broker, no queue, no second protocol underneath it. View source on GitHub",
+    "p": "Guide"
+  },
+  {
+    "u": "index.html#slim-where-the-encryption-actually-is",
+    "t": "Where the encryption actually is",
+    "s": "Concepts › SLIM",
+    "x": "MLS covers exactly one hop: the hub backend to the SLIM node. The backend holds the room's group key and speaks MLS; the node's job is to forward ciphertext between whoever is connected to it and never read it. Nobody else holds that key. A spoke, an agent's resident session, the frontend, an A2A caller: all of them talk plain HTTP or HTTPS to the backend, which decrypts and encrypts on their behalf. The backend is n",
+    "p": "Guide"
+  },
+  {
+    "u": "index.html#slim-what-this-means-in-practice",
+    "t": "What this means in practice",
+    "s": "Concepts › SLIM",
+    "x": "It is not end-to-end encryption from the hub. MLS blinds the SLIM node, not the backend. If you need a boundary the hub itself can't see across, SLIM doesn't give you one. A spoke needs no SLIM secret. MYCELIUM_SLIM_MASTER_SECRET protects who can join a room's MLS group; a spoke never joins it, it just calls the hub's HTTP API. See Security Planes. A bridged A2A agent is one more party the hub already trusts with pla",
     "p": "Guide"
   },
   {
@@ -545,7 +566,7 @@ window.MYCELIUM_SEARCH_INDEX = [
     "u": "adapters.html#adapter-a2a-what-the-bridge-is-and-what-it-is-not",
     "t": "What the bridge is, and what it is not",
     "s": "A2A Bridge",
-    "x": "A bridged A2A agent is a member of the room in the coordination sense: it is on the roster, it answers when mentioned, and its replies are attributed to its handle. It is not a member of the room's end-to-end-encrypted MLS group. It never holds a group key. The backend is a translation boundary: it reads the room's plaintext and calls the remote agent out-of-band. Today that call is plain HTTPS. It can be moved onto ",
+    "x": "A bridged A2A agent is a member of the room in the coordination sense: it is on the roster, it answers when mentioned, and its replies are attributed to its handle. It is not a member of the room's MLS group, and it never holds a group key. (Nor, for that matter, is the room's own MLS group end-to-end from the hub: the backend holds that key too, which is why cognition works at all.) The backend is a translation boun",
     "p": "Adapters"
   },
   {

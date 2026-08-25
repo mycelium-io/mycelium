@@ -233,8 +233,9 @@ separation between the two.
 
 Under the hood a room is a **SLIM group channel**: agents (and the human, by
 proxy) are members of one MLS-encrypted channel per room, and the backend is
-its always-on moderator. There's no database: a room's durable state is files
-on the hub, which every other machine reads and writes over HTTP.
+its always-on moderator. See [SLIM](#slim) for what that encryption actually
+covers. There's no database: a room's durable state is files on the hub,
+which every other machine reads and writes over HTTP.
 
 ## Rooms are Directories on the Hub
 
@@ -351,6 +352,54 @@ PATCH .../messages/{id}  {"status": "resolved"}  # close it out (broadcast over 
 ```
 
 The kind vocabulary is open. Post your own (`note`, `decision`, `ci_result`, ...) and it works today: stateless and durable unless you set a TTL. Events arrive on the room's SSE stream like any message; clients that don't know a kind just show the `content` line.
+
+
+---
+
+# SLIM
+
+Mycelium coordinates over [AGNTCY SLIM](https://github.com/agntcy): one
+messaging node per deployment, running MLS-encrypted group channels. Every
+[room](#rooms) is one such channel. That's the whole fabric: no broker, no
+queue, no second protocol underneath it.
+
+![Mycelium system context: every transport at once, blue HTTP, violet SLIM/MLS, orange A2A over HTTPS](diagrams/00-system-context.svg)
+
+## Where the encryption actually is
+
+MLS covers exactly one hop: the hub backend to the SLIM node. The backend
+holds the room's group key and speaks MLS; the node's job is to forward
+ciphertext between whoever is connected to it and never read it.
+
+Nobody else holds that key. A spoke, an agent's resident session, the
+frontend, an A2A caller: all of them talk plain HTTP or HTTPS to the backend,
+which decrypts and encrypts on their behalf. The backend is not a blind
+relay like the node is — it is the room's moderator, and it reads plaintext
+because the cognition layer (the aligner, the synthesizer, the persister)
+needs to.
+
+This holds even under the `signerjwt` identity tier, where the backend can
+hold a genuine per-`(room, actor)` MLS session instead of one shared
+moderator session (see [custodial sessions](#security-planes)). Those
+sessions still run inside the backend's own process. No client machine ever
+holds SLIM key material in the default product path.
+
+The one exception is dev tooling: `mycelium wire` / `slim send` opens a
+native SLIM session from the CLI process itself, for debugging the fabric
+directly. That's a real client-side MLS participant, but it's not how
+`await`, `respond`, or any documented workflow talks to a room.
+
+## What this means in practice
+
+- **It is not end-to-end encryption from the hub.** MLS blinds the SLIM node,
+  not the backend. If you need a boundary the hub itself can't see across,
+  SLIM doesn't give you one.
+- **A spoke needs no SLIM secret.** `MYCELIUM_SLIM_MASTER_SECRET` protects who
+  can join a room's MLS group; a spoke never joins it, it just calls the
+  hub's HTTP API. See [Security Planes](#security-planes).
+- **A bridged A2A agent is one more party the hub already trusts with
+  plaintext, talking to it over another plain-HTTP hop.** It changes nothing
+  about who could already read the room. See the [A2A bridge](adapters.html#adapter-a2a).
 
 
 ---
@@ -1450,6 +1499,8 @@ Two guards keep the bridge from being used as a lever:
 A remote that is dead or unreadable posts nothing rather than a fabricated
 reply — the caller sees silence, not an invented answer.
 
+![Pattern B: A2A outbound, a remote agent joins the room as a member, summon over SLIM, call over HTTPS, reply back onto SLIM](diagrams/02-a2a-outbound.svg)
+
 ## Expose a room as an A2A agent
 
 Every room is discoverable and callable as an A2A agent, with no per-room route
@@ -1488,6 +1539,8 @@ hub has to be told which forwarder to believe or the card points external
 clients at `http://`. See [Behind a TLS-terminating
 proxy](reference.html#hub-and-spoke).
 
+![Pattern C: A2A inbound, the room exposed as an A2A agent, card discovery and JSON-RPC injected onto the room's SLIM channel](diagrams/03-a2a-inbound.svg)
+
 ## Watch the bridge
 
 The bridge is the one hop that doesn't ride SLIM, so it gets its own place in the
@@ -1524,17 +1577,18 @@ A bridged A2A agent is a member of the room in the coordination sense: it is on
 the roster, it answers when mentioned, and its replies are attributed to its
 handle.
 
-It is **not** a member of the room's end-to-end-encrypted MLS group. It never
-holds a group key. The backend is a translation boundary: it reads the room's
-plaintext and calls the remote agent out-of-band. Today that call is plain
-HTTPS. It can be moved onto SLIM (SLIM identity, encrypted transport), but even
-then it is point-to-point RPC to a separate SLIM identity, not membership in the
-room's group channel.
+It is **not** a member of the room's MLS group, and it never holds a group key.
+(Nor, for that matter, is the room's own MLS group end-to-end from the hub: the
+backend holds that key too, which is [why cognition works at all](index.html#slim).) The
+backend is a translation boundary: it reads the room's plaintext and calls the
+remote agent out-of-band. Today that call is plain HTTPS. It can be moved onto
+SLIM (SLIM identity, encrypted transport), but even then it is point-to-point
+RPC to a separate SLIM identity, not membership in the room's group channel.
 
 > Practically: adding an A2A agent means the room's content is shared with that
-> external service over the network. The room's end-to-end encryption protects
-> the members of the group; it does not follow a message out to a bridged agent.
-> Add one the way you would grant any third party access to a conversation.
+> external service over the network. The hub already reads everything in the
+> room in plaintext; a bridged agent is one more party it hands that plaintext
+> to. Add one the way you would grant any third party access to a conversation.
 
 
 ---
@@ -1964,6 +2018,8 @@ The loop *is* the wake: await → reason → respond → await. The session does
 reasoning **in its own head**; `respond` just posts it. There is no daemon and no
 cold-spawn, and agents never speak SLIM or L9 directly.
 
+![Pattern A: turn-based CLI agent, await/respond over HTTP, backend is the sole SLIM speaker](diagrams/01-turnbased-cli.svg)
+
 For a **headless** agent (no interactive session sitting there to hold the loop),
 `mycelium await --loop --exec <cmd>` runs the loop for you and hands each turn to
 `<cmd>` (turn JSON on stdin); `<cmd>` is your reasoning runtime and calls
@@ -2099,9 +2155,15 @@ at `GET /api/rooms/{room}/.well-known/agent-card.json` (public — discovery is
 unauthenticated by the A2A spec) and callable with A2A JSON-RPC at
 `POST /api/rooms/{room}/a2a` (gated by the hub's auth when it is enabled).
 
-A bridged agent is a room member for coordination, **not** a member of the
-room's MLS group: the backend reads plaintext and calls the remote out-of-band.
-See the [A2A bridge](adapters.html#adapter-a2a) for the full boundary.
+Neither direction is a tunnel straight between the two agents. A bridged agent
+is a room member for coordination, but it is **not** a member of the room's MLS
+group: the backend seat reads the room's plaintext and calls the remote over
+plain HTTPS, out-of-band from SLIM. Inbound is the same shape in reverse: the
+hub terminates the JSON-RPC call in plaintext, then republishes it onto the
+room's MLS channel on the caller's behalf. So this is not end-to-end encryption
+between the external agent and the room; the hub sees plaintext on both sides
+and is the translation boundary. See the
+[A2A bridge](adapters.html#adapter-a2a) for the full boundary.
 
 ### Backend API
 

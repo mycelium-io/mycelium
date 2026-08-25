@@ -942,3 +942,40 @@
 
   requestAnimationFrame(animate);
 })();
+
+// ── Diagram lightbox ──
+// A doc-img (an architecture diagram embedded via markdown) opens full-size
+// on click. Self-contained: builds its own overlay, no markup needed in the
+// generated HTML beyond the <img class="doc-img">.
+(function () {
+  var overlay = null;
+
+  function close() {
+    if (!overlay) return;
+    overlay.remove();
+    overlay = null;
+    document.removeEventListener('keydown', onKey);
+  }
+
+  function onKey(e) {
+    if (e.key === 'Escape') close();
+  }
+
+  function open(img) {
+    close();
+    overlay = document.createElement('div');
+    overlay.className = 'lightbox-overlay';
+    var full = document.createElement('img');
+    full.src = img.src;
+    full.alt = img.alt;
+    overlay.appendChild(full);
+    overlay.addEventListener('click', close);
+    document.body.appendChild(overlay);
+    document.addEventListener('keydown', onKey);
+  }
+
+  document.addEventListener('click', function (e) {
+    var img = e.target.closest('.doc-img');
+    if (img) open(img);
+  });
+})();

@@ -124,6 +124,8 @@ The loop *is* the wake: await → reason → respond → await. The session does
 reasoning **in its own head**; `respond` just posts it. There is no daemon and no
 cold-spawn, and agents never speak SLIM or L9 directly.
 
+![Pattern A: turn-based CLI agent, await/respond over HTTP, backend is the sole SLIM speaker](diagrams/01-turnbased-cli.svg)
+
 For a **headless** agent (no interactive session sitting there to hold the loop),
 `mycelium await --loop --exec <cmd>` runs the loop for you and hands each turn to
 `<cmd>` (turn JSON on stdin); `<cmd>` is your reasoning runtime and calls
@@ -259,9 +261,15 @@ at `GET /api/rooms/{room}/.well-known/agent-card.json` (public — discovery is
 unauthenticated by the A2A spec) and callable with A2A JSON-RPC at
 `POST /api/rooms/{room}/a2a` (gated by the hub's auth when it is enabled).
 
-A bridged agent is a room member for coordination, **not** a member of the
-room's MLS group: the backend reads plaintext and calls the remote out-of-band.
-See the [A2A bridge](adapters.html#adapter-a2a) for the full boundary.
+Neither direction is a tunnel straight between the two agents. A bridged agent
+is a room member for coordination, but it is **not** a member of the room's MLS
+group: the backend seat reads the room's plaintext and calls the remote over
+plain HTTPS, out-of-band from SLIM. Inbound is the same shape in reverse: the
+hub terminates the JSON-RPC call in plaintext, then republishes it onto the
+room's MLS channel on the caller's behalf. So this is not end-to-end encryption
+between the external agent and the room; the hub sees plaintext on both sides
+and is the translation boundary. See the
+[A2A bridge](adapters.html#adapter-a2a) for the full boundary.
 
 ### Backend API
 

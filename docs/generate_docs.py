@@ -54,6 +54,7 @@ SECTION_CONFIG: list[tuple[str | None, str, str, str, str]] = [
     ("guides/quickstart.md",          "quickstart",         "start",       "Get Started",  "Quick Start"),
     # ── concepts (now on the start page, grouped in the sidebar) ──
     ("concepts/rooms.md",             "rooms",              "start",       "Concepts",     "Rooms"),
+    ("concepts/slim.md",              "slim",               "start",       "Concepts",     "SLIM"),
     ("concepts/board.md",             "board",              "start",       "Concepts",     "Board"),
     ("concepts/episodes.md",          "episodes",           "start",       "Concepts",     "Episodes"),
     ("concepts/memory.md",            "memory",             "start",       "Concepts",     "Memory"),
@@ -152,6 +153,29 @@ def _md_to_html(md: str, section_id: str) -> str:
 
         if line.strip() == "---":
             out.append('      <hr class="divider">')
+            i += 1
+            continue
+
+        # Standalone image line: ![alt](src). A block-level figure, clickable
+        # into the lightbox (site.js); inline images inside prose are not
+        # supported, only a line that is nothing but the image.
+        img_m = re.match(r"^!\[([^\]]*)\]\(([^)]+)\)\s*$", line.strip())
+        if img_m:
+            alt, src = img_m.group(1), img_m.group(2)
+            out.append(
+                f'      <figure class="doc-figure"><img class="doc-img" '
+                f'src="{html.escape(src)}" alt="{html.escape(alt)}" loading="lazy">'
+            )
+            # A diagrams/*.svg is rendered from a same-named .d2 source; link
+            # out to it on GitHub so a reader can see (or fix) the source.
+            diagram_m = re.match(r"^diagrams/([\w-]+)\.svg$", src)
+            if diagram_m:
+                d2_url = f"{EDIT_BASE_URL}reference/diagrams/{diagram_m.group(1)}.d2"
+                out.append(
+                    f'        <figcaption><a href="{d2_url}" target="_blank" '
+                    f'rel="noopener">View source on GitHub</a></figcaption>'
+                )
+            out.append("      </figure>")
             i += 1
             continue
 
@@ -1543,6 +1567,24 @@ def _render_and_write(
     print(f"  wrote {file_name} ({len(page_html):,} bytes)")
 
 
+def _copy_diagrams() -> None:
+    """Copy the rendered architecture SVGs next to the generated site.
+
+    Source of truth is the .d2 alongside each .svg under
+    docs/reference/diagrams/; only the .svg is published (the .d2 is for
+    contributors re-rendering it, not for the site).
+    """
+    import shutil
+
+    src_dir = DOCS_DIR / "reference" / "diagrams"
+    if not src_dir.is_dir():
+        return
+    dst_dir = OUT_DIR / "diagrams"
+    dst_dir.mkdir(exist_ok=True)
+    for svg in src_dir.glob("*.svg"):
+        shutil.copyfile(svg, dst_dir / svg.name)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -1555,6 +1597,9 @@ def main() -> None:
     page_ids = {p[0] for p in PAGES}
     if args.page and args.page not in page_ids:
         raise SystemExit(f"Unknown page '{args.page}'. Choices: {sorted(page_ids)}")
+
+    print("Copying diagram SVGs...")
+    _copy_diagrams()
 
     print("Loading kept sections from existing HTML...")
     kept = _all_kept_sections()
