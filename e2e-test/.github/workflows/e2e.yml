@@ -170,6 +170,9 @@ jobs:
           [ -n "$LLM_BASE_URL" ] && echo "LLM_BASE_URL: set" || echo "LLM_BASE_URL: NOT SET"
           [ -n "$LLM_MODEL" ]    && echo "LLM_MODEL:    $LLM_MODEL" || echo "LLM_MODEL:    NOT SET"
 
+      - name: Clean artifacts dir
+        run: rm -rf artifacts
+
       - name: Run E2E tests
         env:
           MYCELIUM_BACKEND_URL: http://localhost:8000
