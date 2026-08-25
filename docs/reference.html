@@ -155,6 +155,7 @@
           <a href="#config-login" class="nav-link sub">login</a>
           <a href="#config-agent-auth" class="nav-link sub">agent_auth</a>
           <a href="#config-metrics" class="nav-link sub">metrics</a>
+          <a href="#config-a2a" class="nav-link sub">a2a</a>
         </div>
       </div>
       <div class="nav-group" data-nav-group="reference:dependencies">
@@ -1185,7 +1186,13 @@
 <span class="arg">collector_url</span> = <span class="str">&quot;&quot;</span>
 
 <span class="comment"># Explicit Prometheus /metrics endpoints for the collector to scrape.</span>
-<span class="arg">scrape</span> = PydanticUndefined</code></pre>
+<span class="arg">scrape</span> = PydanticUndefined
+
+<span class="comment"># Configuration for the A2A bridge (outbound + inbound Agent2Agent gateway).</span>
+<span class="cmd" id="config-a2a">[a2a]</span>
+
+<span class="comment"># Disable the SSRF guard that refuses A2A card URLs resolving to private, loopback, or link-local addresses. Only set this for a trusted internal deployment whose A2A agents live on the internal network.</span>
+<span class="arg">allow_private_hosts</span> = <span class="flag">false</span></code></pre>
     </section>
 
     <hr class="divider">

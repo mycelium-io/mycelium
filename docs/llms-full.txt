@@ -1441,8 +1441,16 @@ Two guards keep the bridge from being used as a lever:
 
 - **Card hosts must be public.** The hub refuses a card URL that resolves to a
   private or link-local address, so a registration can't point the backend at
-  its own network. Set `A2A_ALLOW_PRIVATE_HOSTS=1` only for a trusted internal
-  deployment.
+  its own network. For a trusted internal deployment whose A2A agents live on
+  the internal network, disable the guard:
+
+  ```
+  mycelium config set a2a.allow_private_hosts true
+  mycelium config apply
+  ```
+
+  This renders `A2A_ALLOW_PRIVATE_HOSTS=1` into the backend's environment
+  on the next `config apply`. Do not set this on a public-facing hub.
 - **A2A agents don't summon each other.** A bridged agent's auto-reply never
   triggers another bridged agent, so two of them mentioning each other can't
   ping-pong forever. Humans, the aligner, and resident agents still get a reply.

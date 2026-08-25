@@ -155,6 +155,7 @@
           <a href="reference.html#config-login" class="nav-link sub">login</a>
           <a href="reference.html#config-agent-auth" class="nav-link sub">agent_auth</a>
           <a href="reference.html#config-metrics" class="nav-link sub">metrics</a>
+          <a href="reference.html#config-a2a" class="nav-link sub">a2a</a>
         </div>
       </div>
       <div class="nav-group collapsed" data-nav-group="reference:dependencies">
@@ -483,7 +484,11 @@
     <span class="flag">--card-auth-env</span> RESEARCHER_TOKEN</code></pre>
       <p>Two guards keep the bridge from being used as a lever:</p>
       <ul>
-        <li><strong>Card hosts must be public.</strong> The hub refuses a card URL that resolves to a private or link-local address, so a registration can&#x27;t point the backend at its own network. Set <code>A2A_ALLOW_PRIVATE_HOSTS=1</code> only for a trusted internal deployment.</li>
+        <li><strong>Card hosts must be public.</strong> The hub refuses a card URL that resolves to a private or link-local address, so a registration can&#x27;t point the backend at its own network. For a trusted internal deployment whose A2A agents live on the internal network, disable the guard:</li>
+      </ul>
+      <p>``<code> mycelium config set a2a.allow_private_hosts true mycelium config apply </code>``</p>
+      <p>This renders <code>A2A_ALLOW_PRIVATE_HOSTS=1</code> into the backend&#x27;s environment on the next <code>config apply</code>. Do not set this on a public-facing hub.</p>
+      <ul>
         <li><strong>A2A agents don&#x27;t summon each other.</strong> A bridged agent&#x27;s auto-reply never triggers another bridged agent, so two of them mentioning each other can&#x27;t ping-pong forever. Humans, the aligner, and resident agents still get a reply.</li>
       </ul>
       <p>A remote that is dead or unreadable posts nothing rather than a fabricated reply — the caller sees silence, not an invented answer.</p>

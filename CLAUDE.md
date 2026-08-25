@@ -419,13 +419,15 @@ is no litellm dependency.
   scoped), and `a2a_server.py` exposes a room *as* an A2A agent via the a2a-sdk
   server (card + JSON-RPC). **Honest boundary:** a bridged A2A agent is **not** a
   member of the room's MLS group — it's proxied by a backend seat that reads
-  plaintext and calls the remote out-of-band. The hop is plain HTTPS today; it
-  can ride SLIM (SLIMRPC) via `agntcy/slim-a2a-python`, but that's point-to-point
-  RPC to a SLIM identity, still not room-group membership, and slima2a pins
-  `a2a-sdk==1.1.0` (HTTP-vs-SLIM decision: #726). Either way the hub sees
-  plaintext, so it is **NOT** E2E-from-the-hub. Remote auth is a bearer token
-  named by `a2a_auth_env` and resolved from the backend env — the secret never
-  lands in room memory.
+  plaintext and calls the remote out-of-band. **The hop is plain HTTPS (decided
+  default, #726):** `slima2a` (SLIMRPC transport) pins `a2a-sdk==1.1.0` exactly
+  while the backend tracks `1.1.2`, so adopting it would pull SQLAlchemy,
+  aiosqlite, and OpenTelemetry into the image — cost not justified yet. Reopen
+  #726 when the pin relaxes and a live SLIMRPC round-trip is proven. Even
+  SLIMRPC would be point-to-point RPC to a SLIM identity, still not room-group
+  membership. Either way the hub sees plaintext, so it is **NOT** E2E-from-the-hub.
+  Remote auth is a bearer token named by `a2a_auth_env` and resolved from the
+  backend env — the secret never lands in room memory.
 - **CI is fast on purpose; timing is reported, never enforced.** A PR run's
   critical path is ~95s, and that is a property worth defending — it erodes
   twenty seconds at a time, invisibly. The `timing` job reads the run's own job

@@ -331,6 +331,13 @@ def generate_env_file(
         if config.runtime.trusted_proxies
         else "# FORWARDED_ALLOW_IPS not set; uvicorn trusts loopback forwarders only",
         "",
+        "# ── A2A bridge ────────────────────────────────────────────────────────────",
+        # SSRF guard: by default the bridge refuses card URLs that resolve to
+        # private/loopback/link-local addresses. Set allow_private_hosts = true in
+        # config.toml (mycelium config set a2a.allow_private_hosts true) to disable
+        # this guard for deployments where A2A agents live on an internal network.
+        f"A2A_ALLOW_PRIVATE_HOSTS={'1' if config.a2a.allow_private_hosts else ''}",
+        "",
     ]
 
     # ── Operator-managed pins (preserved across `mycelium config apply`) ─────
