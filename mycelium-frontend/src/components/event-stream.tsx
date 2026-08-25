@@ -250,7 +250,7 @@ function parseEvent(msg: Record<string, unknown>, room: string): Event {
         thread = notice.episode;
         content = notice.title ?? notice.key;
         mtype = NOTICE_TYPE;
-        raw = { ...raw, taskKey: notice.key, by: notice.by, kind: notice.kind, subkind: notice.subkind };
+        raw = { ...raw, taskKey: notice.key, by: notice.by, kind: notice.kind, subkind: notice.subkind, for: notice.assignee };
         break;
       }
       // The live SSE stream wraps human/agent messages as an L9 exchange
@@ -729,14 +729,16 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
                 const episode = ev.thread;
                 const by = ev.raw.by as string | undefined;
                 const subkind = (ev.raw.subkind as string) || "filed";
-                // Green when work lands or closes, yellow when it comes back up
-                // for grabs, accent while it is in hand.
+                // Green when work lands, closes or clears; red when it stalls on a
+                // blocker; yellow when it comes back up for grabs; accent in hand.
                 const dot =
-                  subkind === "resolved" || subkind === "filed"
+                  subkind === "resolved" || subkind === "filed" || subkind === "unblocked"
                     ? "var(--green)"
-                    : subkind === "released"
-                      ? "var(--yellow)"
-                      : "var(--accent)";
+                    : subkind === "blocked"
+                      ? "var(--red)"
+                      : subkind === "released"
+                        ? "var(--yellow)"
+                        : "var(--accent)";
                 return (
                   <SystemNotice
                     key={ev.id}
@@ -753,7 +755,13 @@ export function EventStream({ roomName, onMemoryChanged, onConnectionChange, onN
                       <MessageSquare className="size-3 shrink-0" strokeWidth={1.9} />
                       <span className="truncate">{ev.content}</span>
                     </button>
-                    {by && <span>· {subkind === "filed" ? "by " : ""}@{by}</span>}
+                    {/* A filed task reads by who it is for; a lease event by who
+                        moved it. Fall back to the filer when a task is for no one. */}
+                    {subkind === "filed" && ev.raw.for ? (
+                      <span>· for @{String(ev.raw.for).replace(/^@/, "")}</span>
+                    ) : by ? (
+                      <span>· {subkind === "filed" ? "by " : ""}@{by}</span>
+                    ) : null}
                   </SystemNotice>
                 );
               }
