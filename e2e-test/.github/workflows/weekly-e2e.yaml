@@ -13,7 +13,7 @@ on:
         description: 'Canary room name (domain-realistic, not qa-*)'
         default: 'api-design-review'
       mycelium_ref:
-        description: 'Mycelium repo ref. Empty = use release install.'
+        description: 'Mycelium repo ref (branch/tag/SHA). Empty = use release install.'
         default: ''
 
 env:
@@ -32,6 +32,16 @@ jobs:
       - name: Checkout e2e-test repo
         uses: actions/checkout@v4
 
+      - name: Checkout mycelium repo
+        if: ${{ github.event.inputs.mycelium_ref != '' }}
+        uses: actions/checkout@v4
+        with:
+          repository: mycelium-io/mycelium
+          ref: ${{ github.event.inputs.mycelium_ref }}
+          path: mycelium-src
+          # For private repos, replace with: token: ${{ secrets.MYCELIUM_REPO_PAT }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Set up Python and uv
         uses: astral-sh/setup-uv@v4
         with:
@@ -40,16 +50,47 @@ jobs:
       - name: Install e2e dependencies
         run: uv sync
 
-      - name: Install mycelium CLI
+      - name: Install mycelium CLI (release)
+        if: ${{ github.event.inputs.mycelium_ref == '' }}
         run: |
           curl -fsSL https://mycelium-io.github.io/mycelium/install.sh | bash
           mycelium --version
+
+      - name: Install mycelium CLI (from source)
+        if: ${{ github.event.inputs.mycelium_ref != '' }}
+        run: |
+          uv tool install ./mycelium-src/mycelium-cli --force --link-mode=copy
+          mycelium --version
+
+      - name: Write compose override for source build
+        if: ${{ github.event.inputs.mycelium_ref != '' }}
+        run: |
+          mkdir -p ~/.mycelium/docker
+          cat > ~/.mycelium/docker/compose.override.yml <<EOF
+          services:
+            mycelium-backend:
+              build:
+                context: ${{ github.workspace }}/mycelium-src/fastapi-backend
+                dockerfile: Dockerfile
+              image: mycelium-backend:dev
+              pull_policy: never
+            mycelium-collector:
+              build:
+                context: ${{ github.workspace }}/mycelium-src/mycelium-cli
+                dockerfile: Dockerfile.collector
+              image: mycelium-collector:dev
+              pull_policy: never
+          EOF
 
       - name: Start mycelium hub
         run: |
           mycelium init --api-url http://localhost:8000 2>/dev/null || true
           mkdir -p ~/.mycelium/rooms && chmod -R 777 ~/.mycelium
-          mycelium up
+          if [ -n "${{ github.event.inputs.mycelium_ref }}" ]; then
+            mycelium up --build
+          else
+            mycelium up
+          fi
           for i in $(seq 1 60); do
             curl -sf http://localhost:8000/health > /dev/null 2>&1 && echo "Backend healthy" && break
             [ "$i" -eq 60 ] && echo "ERROR: backend not healthy" && exit 1
