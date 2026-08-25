@@ -355,7 +355,6 @@ async def test_threads_are_keyed_by_summoner(monkeypatch):
 @pytest.mark.asyncio
 async def test_declared_but_missing_auth_env_fails_closed(monkeypatch):
     """If auth_env is declared but the env var is absent, the call must not proceed."""
-    # auth_env declared, but NOT set in the environment.
     _register_a2a(auth_env="MISSING_TOKEN_VAR")
     monkeypatch.delenv("MISSING_TOKEN_VAR", raising=False)
     responder, channel, _persister, calls = _responder(monkeypatch)
@@ -363,10 +362,27 @@ async def test_declared_but_missing_auth_env_fails_closed(monkeypatch):
     responder.handle_summon(_ROOM, "researcher", _summon_envelope("avery"), [], "hello")
     await _drain(responder)
 
-    # Must not reach the remote.
     assert calls == []
     assert channel.sent == []
-    # And the failure must be visible in the activity log.
+    from app.services import a2a_activity
+
+    exchange = a2a_activity.recent(_ROOM)[-1]
+    assert exchange.status == "error"
+    assert "auth_env" in (exchange.detail or "")
+
+
+@pytest.mark.asyncio
+async def test_declared_but_empty_auth_env_fails_closed(monkeypatch):
+    """An auth_env var that is present but empty must also fail closed."""
+    _register_a2a(auth_env="EMPTY_TOKEN_VAR")
+    monkeypatch.setenv("EMPTY_TOKEN_VAR", "")
+    responder, channel, _persister, calls = _responder(monkeypatch)
+
+    responder.handle_summon(_ROOM, "researcher", _summon_envelope("avery"), [], "hello")
+    await _drain(responder)
+
+    assert calls == []
+    assert channel.sent == []
     from app.services import a2a_activity
 
     exchange = a2a_activity.recent(_ROOM)[-1]

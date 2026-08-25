@@ -572,7 +572,7 @@ class AlignerEngine:
         # humans can't follow along and debugging falls back to backend logs. The
         # persister de-dupes by id, so a SLIM loop-back to the sender is harmless.
         try:
-            await managed.post(env, safe_prompt)
+            await managed.post(env, safe_prompt, raise_on_send_failure=True)
         except Exception:
             logger.warning("mediator failed to prompt @%s (step %d)", handle, round_n)
             return ""

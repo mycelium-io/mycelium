@@ -303,10 +303,10 @@ class A2aResponder:
         token: str | None = None
         if ref.auth_env:
             token = os.environ.get(ref.auth_env)
-            if token is None:
+            if not token:
                 logger.warning(
-                    "a2a responder: auth_env '%s' is set on @%s but the env var is missing; "
-                    "refusing unauthenticated call",
+                    "a2a responder: auth_env '%s' is set on @%s but the env var is missing "
+                    "or empty; refusing unauthenticated call",
                     ref.auth_env,
                     handle,
                 )
