@@ -146,7 +146,14 @@ class FakeManaged:
     channel: Any = None
     persister: Any = None
 
-    async def post(self, envelope: Any, text: str, *, list_write: bool = False) -> None:
+    async def post(
+        self,
+        envelope: Any,
+        text: str,
+        *,
+        list_write: bool = False,
+        raise_on_send_failure: bool = False,
+    ) -> None:
         """Mirror of ``ManagedRoomChannel.post`` for node-free tests."""
         content = serialize_content(envelope, extra={"content": text})
         if self.channel is not None:

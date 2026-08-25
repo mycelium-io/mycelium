@@ -155,6 +155,7 @@ class ManagedRoomChannel:
         text: str,
         *,
         list_write: bool = False,
+        raise_on_send_failure: bool = False,
     ) -> None:
         """Serialize *envelope*, broadcast it, and ingest locally.
 
@@ -171,6 +172,11 @@ class ManagedRoomChannel:
                 ``True`` for agent replies that must appear in the in-memory
                 store list; ``False`` (default) for broker messages that ride
                 the transcript only.
+            raise_on_send_failure: When ``True``, re-raise after logging if
+                ``channel.send`` fails, so the caller can detect the failure and
+                skip waiting for a reply that will never arrive. When ``False``
+                (default) the failure is logged and local ingest still runs —
+                best-effort broadcast with a durable local record.
         """
         content = serialize_content(envelope, extra={"content": text})
         try:
@@ -182,6 +188,8 @@ class ManagedRoomChannel:
                 getattr(getattr(envelope, "header", None), "message", None),
                 exc,
             )
+            if raise_on_send_failure:
+                raise
         if self.persister is not None:
             self.persister.ingest_local(envelope, content, list_write=list_write)
 
