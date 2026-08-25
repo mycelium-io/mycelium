@@ -56,11 +56,12 @@ export interface Shot {
 
 export const SHOTS: Shot[] = [
   {
-    id: "room-plan",
+    id: "room-board",
     route: "/room/atlas-migration",
     theme: "dark",
     viewport: "desktop",
-    caption: "A populated room: channel, agents, and a compiled plan with owned tasks.",
+    steps: ["Board"],
+    caption: "The board is the surface: task rows grouped by attention, each a row and a thread, with owners, CI and thread activity.",
   },
   {
     id: "room-empty",

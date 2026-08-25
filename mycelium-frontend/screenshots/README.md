@@ -11,7 +11,7 @@ truth is the UI itself, captured in **mock mode** (`pnpm dev:mock`,
 
 ```
 pnpm screenshots            # boot dev:mock, capture every shot, write PNGs
-pnpm screenshots room-plan  # a subset, by shot id
+pnpm screenshots room-board  # a subset, by shot id
 pnpm screenshots --keep     # attach to a dev:mock already running on $PORT
 pnpm screenshots --offline  # don't wait on webfont CDNs (much faster if they're unreachable)
 ```
