@@ -50,6 +50,7 @@ from a2a.types import Message, Part, Role, SendMessageRequest, StreamResponse
 
 from app.services import a2a_activity, l9
 from app.services.a2a_card import A2aCardError, resolve_raw_card
+from app.services.agent_registry import norm_handle
 from app.services.l9_slim import serialize_content
 from app.services.persister import envelope_message_id, envelope_sender
 
@@ -60,10 +61,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _SEND_TIMEOUT_S = 120.0
-
-
-def _norm(handle: str | None) -> str:
-    return (handle or "").strip().lstrip("@").lower()
 
 
 def _elapsed_ms(started: float) -> int:
@@ -112,8 +109,8 @@ def resolve_a2a_agent(room: str, handle: str) -> A2aAgentRef | None:
     env = data.get("a2a_auth_env")
     endpoint = data.get("a2a_endpoint")
     raw_allow = data.get("allow_from") or []
-    allow_from = tuple(
-        _norm(h) for h in (raw_allow if isinstance(raw_allow, list) else []) if _norm(h)
+    allow_from: tuple[str, ...] = tuple(
+        h for raw in (raw_allow if isinstance(raw_allow, list) else []) if (h := norm_handle(raw))
     )
     return A2aAgentRef(
         card=card,
@@ -251,12 +248,12 @@ class A2aResponder:
         self._manager = manager
         self._timeout_s = timeout_s
         # (room, handle, message_id) currently in flight — a re-fire is ignored.
-        self._active: set[tuple[str, str, str]] = set()
+        self._active: set[tuple[str, str | None, str]] = set()
         self._tasks: set[asyncio.Task[Any]] = set()
         # (room, handle) -> A2A context id, so each mention continues the same
         # remote conversation instead of starting cold. In-memory: a restart
         # resets threads (the room transcript is still the durable record).
-        self._threads: dict[tuple[str, str, str], str] = {}
+        self._threads: dict[tuple[str | None, str | None, str | None], str] = {}
 
     # -- the summon seam (sync; called from the persister's on_summon) --
 
@@ -272,7 +269,7 @@ class A2aResponder:
         if ref is None:
             return  # not an a2a agent — let the engines / a teammate handle it
         sender = envelope_sender(envelope)
-        if _norm(sender) == _norm(handle):
+        if norm_handle(sender) == norm_handle(handle):
             return  # never answer our own message (loop guard)
         # Runaway guard: an a2a agent's auto-reply must not summon another a2a
         # agent. Two agents that mention each other would otherwise ping-pong
@@ -283,7 +280,7 @@ class A2aResponder:
             return
         # Summon gate: if the manifest names an allow_from list, only those
         # handles may trigger a remote call (and spend its bearer token / quota).
-        if ref.allow_from and _norm(sender) not in ref.allow_from:
+        if ref.allow_from and norm_handle(sender) not in ref.allow_from:
             logger.debug(
                 "a2a responder: @%s not in allow_from for @%s — ignoring summon", sender, handle
             )
@@ -292,7 +289,7 @@ class A2aResponder:
         if not prompt:
             return
         mid = envelope_message_id(envelope) or ""
-        key = (room, _norm(handle), mid)
+        key = (room, norm_handle(handle), mid)
         if key in self._active:
             return
         self._active.add(key)
@@ -337,17 +334,17 @@ class A2aResponder:
         ref: A2aAgentRef,
         prompt: str,
         envelope: L9,
-        key: tuple[str, str, str],
+        key: tuple[str, str | None, str],
         auth_token: str | None = None,
     ) -> None:
         summoner = envelope_sender(envelope)
         # Thread context is per summoner: two members addressing the same remote
         # agent must not share one remote contextId (context bleed). In-memory
         # only — a restart resets threads, but the room transcript is durable.
-        thread_key = (room, _norm(handle), _norm(summoner))
+        thread_key = (room, norm_handle(handle), norm_handle(summoner))
         # Name the speaker so the remote agent can follow a multi-party room; the
         # threaded context id carries the rest of the history on the remote side.
-        addressed = f"@{_norm(summoner)}: {prompt}" if summoner else prompt
+        addressed = f"@{norm_handle(summoner)}: {prompt}" if summoner else prompt
         # Telemetry for the Network views: the bridge hop leaves no trace on the
         # channel, so both outcomes are recorded here (#739).
         started = time.monotonic()
