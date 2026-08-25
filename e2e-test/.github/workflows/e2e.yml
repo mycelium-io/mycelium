@@ -135,13 +135,40 @@ jobs:
           uv tool install ./mycelium-src/mycelium-cli --force --link-mode=copy
           mycelium --version
 
+      - name: Write compose override for source build
+        if: env.BUILD_FROM_SOURCE == 'true'
+        run: |
+          # Override backend/collector/frontend images to build from checked-out source.
+          # mycelium up --build will use this file automatically.
+          mkdir -p ~/.mycelium/docker
+          cat > ~/.mycelium/docker/compose.override.yml <<'EOF'
+          services:
+            mycelium-backend:
+              build:
+                context: ${{ github.workspace }}/mycelium-src/fastapi-backend
+                dockerfile: Dockerfile
+              image: mycelium-backend:dev
+              pull_policy: never
+            mycelium-collector:
+              build:
+                context: ${{ github.workspace }}/mycelium-src/mycelium-cli
+                dockerfile: Dockerfile.collector
+              image: mycelium-collector:dev
+              pull_policy: never
+          EOF
+          echo "compose.override.yml written for source build"
+
       - name: Start mycelium hub (SLIM node + backend)
         run: |
           mycelium init --api-url http://localhost:8000 2>/dev/null || true
           # Ensure the bind-mounted data dir is writable by the container's mycelium user
           mkdir -p ~/.mycelium/rooms
           chmod -R 777 ~/.mycelium
-          mycelium up
+          if [ "$BUILD_FROM_SOURCE" = "true" ]; then
+            mycelium up --build
+          else
+            mycelium up
+          fi
           echo "Waiting for backend..."
           for i in $(seq 1 60); do
             if curl -sf http://localhost:8000/health > /dev/null 2>&1; then
