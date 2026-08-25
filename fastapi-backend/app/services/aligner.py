@@ -51,7 +51,6 @@ from typing import TYPE_CHECKING, Any
 
 from app.config import settings
 from app.services import l9, l9_episode
-from app.services.l9_slim import serialize_content
 from app.services.room_channels import BACKEND_AGENT
 
 if TYPE_CHECKING:
@@ -567,18 +566,16 @@ class AlignerEngine:
         # agents) doesn't spuriously wake them — only the L9 ``recipients=[handle]``
         # above should wake, one agent per turn.
         safe_prompt = _AT_MENTION.sub("", prompt)
-        content = serialize_content(env, extra={"content": safe_prompt})
-        try:
-            await managed.channel.send(env, extra={"content": safe_prompt})
-        except Exception:
-            logger.warning("mediator failed to prompt @%s (step %d)", handle, round_n)
-            return ""
         # Record the mediator's turn-prompt into the room transcript + UI bus, the
         # same way ``publish_human`` records a human's message. Without this the
         # negotiation is invisible in the room (the prompt only rides SLIM), so
         # humans can't follow along and debugging falls back to backend logs. The
         # persister de-dupes by id, so a SLIM loop-back to the sender is harmless.
-        persister.ingest_local(env, content)
+        try:
+            await managed.post(env, safe_prompt)
+        except Exception:
+            logger.warning("mediator failed to prompt @%s (step %d)", handle, round_n)
+            return ""
 
         pending = _norm(handle)
         loop = asyncio.get_running_loop()
@@ -638,13 +635,7 @@ class AlignerEngine:
             topic=l9.topic_urn(room),
             payload_type="message",
         )
-        content = serialize_content(env, extra={"content": safe})
-        try:
-            await managed.channel.send(env, extra={"content": safe})
-        except Exception:
-            logger.warning("aligner failed to broadcast message on room %s", room)
-        if managed.persister is not None:
-            managed.persister.ingest_local(env, content)
+        await managed.post(env, safe)
 
     def _fold_reading(
         self, ep: NegotiationState, handle: str, reading: dict[str, Any], proposing: bool
@@ -745,16 +736,10 @@ class AlignerEngine:
         envelope = l9.parse_envelope(wire_dict)
         if text is None:
             text = self._verdict_text(converged, metrics)
-        content = serialize_content(envelope, extra={"content": text})
-        try:
-            await managed.channel.send(envelope, extra={"content": text})
-        except Exception:
-            logger.warning("aligner failed to broadcast verdict on room %s", managed.room)
         # Record + trigger locally (deduped by message id), so the transcript,
         # UI bus, and on_converged seam fire even if SLIM never loops our own
         # broadcast back to the moderator (mirrors the human-proxy publish).
-        if managed.persister is not None:
-            managed.persister.ingest_local(envelope, content)
+        await managed.post(envelope, text)
         l9_episode.write_episode_record(
             ep,
             outcome="converged" if converged else "rejected",

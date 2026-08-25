@@ -146,6 +146,14 @@ class FakeManaged:
     channel: Any = None
     persister: Any = None
 
+    async def post(self, envelope: Any, text: str, *, list_write: bool = False) -> None:
+        """Mirror of ``ManagedRoomChannel.post`` for node-free tests."""
+        content = serialize_content(envelope, extra={"content": text})
+        if self.channel is not None:
+            await self.channel.send(envelope, extra={"content": text})
+        if self.persister is not None:
+            self.persister.ingest_local(envelope, content, list_write=list_write)
+
 
 class FakeManager:
     """Just enough of ``RoomChannelManager`` for the aligner + plan-sync consumers.

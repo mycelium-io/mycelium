@@ -54,7 +54,6 @@ from starlette.responses import JSONResponse, Response
 from app.services import a2a_activity, l9
 from app.services.actor import bind_optional_actor
 from app.services.filesystem import room_exists
-from app.services.l9_slim import serialize_content
 from app.services.skills import list_room_skills
 
 logger = logging.getLogger(__name__)
@@ -126,13 +125,7 @@ async def _inject_into_room(room: str, text: str, sender: str = _GUEST_HANDLE) -
         topic=l9.topic_urn(room),
         payload_type="message",
     )
-    content = serialize_content(env, extra={"content": text})
-    try:
-        await managed.channel.send(env, extra={"content": text})
-    except Exception:
-        logger.warning("a2a-server: failed to broadcast inbound message to room %s", room)
-    if managed.persister is not None:
-        managed.persister.ingest_local(env, content, list_write=True)
+    await managed.post(env, text, list_write=True)
     ack = f"Delivered to room '{room}'."
     a2a_activity.record_inbound(room, handle=sender, status="ok", prompt=text, reply=ack)
     return ack
