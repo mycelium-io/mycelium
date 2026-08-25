@@ -51,7 +51,6 @@ from a2a.types import Message, Part, Role, SendMessageRequest, StreamResponse
 from app.services import a2a_activity, l9
 from app.services.a2a_card import A2aCardError, resolve_raw_card
 from app.services.agent_registry import norm_handle
-from app.services.l9_slim import serialize_content
 from app.services.persister import envelope_message_id, envelope_sender
 
 if TYPE_CHECKING:
@@ -397,13 +396,7 @@ class A2aResponder:
             topic=l9.topic_urn(room),
             payload_type="reply",
         )
-        content = serialize_content(env, extra={"content": text})
-        try:
-            await managed.channel.send(env, extra={"content": text})
-        except Exception:
-            logger.warning("a2a responder failed to broadcast @%s reply on %s", handle, room)
-        if managed.persister is not None:
-            managed.persister.ingest_local(env, content, list_write=True)
+        await managed.post(env, text, list_write=True)
         # Best-effort presence: a handle that just answered is live in the room.
         try:
             self._manager.refresh_lease(room, handle)
