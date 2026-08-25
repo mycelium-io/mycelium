@@ -5,7 +5,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronLeft, Pencil, Eye } from "lucide-react";
 import {
   fetchMemory,
@@ -14,8 +14,11 @@ import {
 } from "@/lib/api";
 import { useRoomMemoryIntegrity, useRoomRevalidate } from "@/lib/room-data";
 import { memoryHref } from "@/lib/memory-routes";
+import { isLiveEpisode } from "@/lib/threads";
 import { MemoryDetail } from "@/components/memory-detail";
 import { MemoryEditor } from "@/components/memory-editor";
+import { RoomChatBox } from "@/components/room-chat-box";
+import { TaskConversation } from "@/components/task/task-conversation";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCurrentUser } from "@/components/current-user";
 import { useUnsavedGuard } from "@/components/unsaved-changes";
@@ -60,6 +63,13 @@ export function MemoryPageView({ roomName, memoryKey }: Props) {
     (key: string) => router.push(memoryHref(roomName, key)),
     [router, roomName],
   );
+
+  // The thread conversation owns its own read; it hands us its refresh so the
+  // page composer's send can re-read the episode.
+  const threadRefresh = useRef<(() => void) | null>(null);
+  const onThreadReady = useCallback((refresh: () => void) => {
+    threadRefresh.current = refresh;
+  }, []);
 
   if (memory === undefined) {
     return (
@@ -151,6 +161,29 @@ export function MemoryPageView({ roomName, memoryKey }: Props) {
             renderedBody={renderedBody}
             integrity={integrity}
           />
+        )}
+
+        {/* The task's discussion, below its body — the full-page equivalent of
+            the thread pane's conversation. Only a real thread has one: a row
+            written before threading carries the room's own live episode (or
+            none), and reading that as a thread would empty the room's history. */}
+        {!isEditing && memory.episode && !isLiveEpisode(roomName, memory.episode) && (
+          <section className="mt-8 flex min-h-0 flex-col px-6 md:px-8">
+            <h2 className="mb-2 text-micro uppercase tracking-wide text-faint">Discussion</h2>
+            <div className="flex min-h-[16rem] flex-col rounded-xl border border-border bg-surface">
+              <TaskConversation
+                roomName={roomName}
+                episode={memory.episode}
+                onOpenMemory={onNavigate}
+                onReady={onThreadReady}
+              />
+              <RoomChatBox
+                roomName={roomName}
+                episode={memory.episode}
+                onSent={() => threadRefresh.current?.()}
+              />
+            </div>
+          </section>
         )}
       </div>
 
