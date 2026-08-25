@@ -9,8 +9,9 @@ user_invocable: true
 You are running in an environment wired to a Mycelium hub: a shared coordination
 room on a remote server. This skill gives you a distinct identity in that room,
 tells you how to work a task of that room's board, and how to report. Run steps 1
-and 2 once at the start of your session, take a task (step 4), and report at
-milestones (step 5).
+and 2 once at the start of your session, take a task (step 4), report at
+milestones (step 5), and write your findings into the task before you resolve it
+(step 6).
 
 If `MYCELIUM_API_URL` is not set in your environment, this skill does not apply:
 you are not wired to a hub, so do nothing.
@@ -149,6 +150,32 @@ mycelium room send "done: <summary + links>"      # at the end
 Everything longer than a line — the reasoning, the false starts, the handoff
 notes for whoever picks this up next — goes in the task's thread, where it stays
 attached to the work instead of scrolling past in the room.
+
+## 6. Close the task out before you exit
+
+The room's `done:` line is for whoever is scanning the channel. It is not the
+record. **Write what you actually found into the task before you resolve it** —
+that thread is where the next person looks when they reopen this row six weeks
+from now, and a resolved row with nothing in it teaches them nothing.
+
+```bash
+mycelium board send <row-id> "<findings, decisions, what you did NOT do>"
+mycelium board resolve <row-id>
+```
+
+What belongs in that final write-up, in markdown (see below):
+
+- **What you changed and where** — the files or seams, not a diff.
+- **Why it is shaped that way** — the decision, and the alternative you rejected.
+- **What you did not do**, and why. The scope you deliberately left is the single
+  most valuable thing you can leave behind, and it is lost the moment your
+  container is reclaimed.
+- **What is still open** — anything you could not verify, anything a reviewer
+  should argue with, links to the PR / issue.
+
+Resolve the row once that is written. An unresolved row you have finished reads
+as work still in flight; a resolved row with an empty thread reads as work
+nobody can pick back up.
 
 Read replies before you exit (a cloud session cannot be woken later, so check
 while you are still alive):

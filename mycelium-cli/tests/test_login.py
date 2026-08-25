@@ -12,11 +12,13 @@ Four slices, matching the four things that can quietly go wrong:
   states RFC 8628 defines;
 * **the seam** — every client built by ``mycelium.client`` carries the bearer,
   and carries *nothing* when logged out, which is the off-by-default promise;
-* **the identity** — ``whoami`` / ``iam`` report the token's handle when there
-  is one and are untouched when there isn't.
+* **the identity** — ``login`` points this machine at the token's own handle,
+  ``whoami`` / ``iam`` report it when there is one and are untouched when there
+  isn't.
 
 No issuer and no backend run here: ``httpx`` is stubbed at the module the code
-under test calls into.
+under test calls into, and the hub's user store — which ``login`` now upserts
+through — is stubbed at the generated client.
 """
 
 from __future__ import annotations
@@ -33,6 +35,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 from typer.testing import CliRunner
 
@@ -69,6 +72,42 @@ def _isolate(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # The "session expired" notice fires once per process; reset the latch so
     # each test observes its own behavior.
     monkeypatch.setattr(client_mod, "_refresh_warned", False)
+
+
+USER_GET_SYNC = "mycelium_backend_client.api.users.get_user_api_users_handle_get.sync"
+USER_CREATE_SYNC = "mycelium_backend_client.api.users.create_user_api_users_post.sync"
+
+
+class _Hub:
+    """The hub's user store, stubbed — ``login`` upserts a record through it now.
+
+    Serves 404 for every read (nobody is registered under this temp home) and
+    records what gets written. Flip ``reachable`` to make the hub disappear.
+    """
+
+    def __init__(self) -> None:
+        self.created: list[str] = []
+        self.reachable = True
+
+    def get(self, **_kwargs: Any) -> None:
+        from mycelium_backend_client.errors import UnexpectedStatus
+
+        if not self.reachable:
+            raise httpx.ConnectError("connection refused")
+        raise UnexpectedStatus(404, b'{"detail":"User not found"}')
+
+    def create(self, **kwargs: Any) -> None:
+        if not self.reachable:
+            raise httpx.ConnectError("connection refused")
+        self.created.append(kwargs["body"].handle)
+
+
+@pytest.fixture(autouse=True)
+def hub(monkeypatch: pytest.MonkeyPatch) -> _Hub:
+    stub = _Hub()
+    monkeypatch.setattr(USER_GET_SYNC, stub.get)
+    monkeypatch.setattr(USER_CREATE_SYNC, stub.create)
+    return stub
 
 
 def _flat(text: str) -> str:
@@ -536,6 +575,124 @@ def test_iam_with_no_handle_reports_rather_than_asserting() -> None:
     assert json.loads(result.stdout)["principal"] == "avery"
     # Reporting is read-only: nothing was written to identity.name.
     assert MyceliumConfig.load().identity.name is None
+
+
+def _login(
+    monkeypatch: pytest.MonkeyPatch,
+    sub: str = "avery",
+    *,
+    json_output: bool = False,
+) -> Any:
+    """Run a successful browser login whose token carries *sub* as its handle."""
+    from mycelium.commands import login as login_cmd
+
+    monkeypatch.setattr(login_cmd, "_browser_available", lambda: True)
+    monkeypatch.setattr(login_cmd, "discover", lambda _issuer: _META)
+    monkeypatch.setattr(
+        login_cmd,
+        "authorization_code_login",
+        lambda *_a, **_k: oidc.TokenResponse(access_token=_jwt({"sub": sub})),
+    )
+    if json_output:
+        # Configured rather than passed: an explicit --issuer prints a
+        # "saved login settings" line that isn't part of the JSON document.
+        config = MyceliumConfig.load()
+        config.login.issuer = _META.issuer
+        config.save()
+        return runner.invoke(app, ["--json", "login"])
+    return runner.invoke(app, ["login", "--issuer", "https://idp.test/realms/mycelium"])
+
+
+def test_login_aligns_this_machines_identity_to_the_token_handle(
+    monkeypatch: pytest.MonkeyPatch, hub: _Hub
+) -> None:
+    """The token is authoritative, so login settles the mismatch itself (#882)."""
+    config = MyceliumConfig.load()
+    config.identity.name = "bob"
+    config.save()
+
+    result = _login(monkeypatch)
+
+    assert result.exit_code == 0
+    assert MyceliumConfig.load().identity.name == "avery"
+    # The other half of ``iam``: the principal exists on the hub, not just here.
+    assert hub.created == ["avery"]
+    assert "now writes as @avery" in _flat(result.stdout)
+    # No second command to relay back by hand.
+    assert "Heads up" not in _flat(result.stdout)
+    assert "mycelium iam avery" not in _flat(result.stdout)
+
+
+def test_login_names_an_unset_identity_rather_than_leaving_it_unknown(
+    monkeypatch: pytest.MonkeyPatch, hub: _Hub
+) -> None:
+    """An unset identity resolves to "unknown", which a gated hub refuses too."""
+    assert MyceliumConfig.load().identity.name is None
+
+    result = _login(monkeypatch)
+
+    assert result.exit_code == 0
+    assert MyceliumConfig.load().identity.name == "avery"
+    assert hub.created == ["avery"]
+
+
+def test_login_leaves_an_already_matching_identity_untouched(
+    monkeypatch: pytest.MonkeyPatch, hub: _Hub
+) -> None:
+    config = MyceliumConfig.load()
+    config.identity.name = "@Avery"
+    config.save()
+
+    result = _login(monkeypatch)
+
+    assert result.exit_code == 0
+    # Nothing disagreed, so login writes nothing — not locally, not on the hub.
+    assert MyceliumConfig.load().identity.name == "@Avery"
+    assert hub.created == []
+    assert "now writes as" not in _flat(result.stdout)
+
+
+def test_login_aligns_locally_even_when_the_hub_is_unreachable(
+    monkeypatch: pytest.MonkeyPatch, hub: _Hub
+) -> None:
+    """The local half is what stops the 403; registration can catch up later."""
+    hub.reachable = False
+
+    result = _login(monkeypatch)
+
+    assert result.exit_code == 0
+    assert MyceliumConfig.load().identity.name == "avery"
+    assert "Not registered on the hub" in _flat(result.stdout)
+    assert "mycelium iam avery" in _flat(result.stdout)
+
+
+def test_login_falls_back_to_the_warning_when_the_handle_cannot_be_aligned(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A handle the user store rejects must not turn a good login into a failure."""
+    config = MyceliumConfig.load()
+    config.identity.name = "bob"
+    config.save()
+
+    result = _login(monkeypatch, sub="Avery Quinn")
+
+    assert result.exit_code == 0
+    assert MyceliumConfig.load().identity.name == "bob"
+    assert "this machine writes as @bob" in _flat(result.stdout)
+    assert "mycelium iam" in _flat(result.stdout)
+
+
+def test_login_json_reports_the_identity_it_landed(
+    monkeypatch: pytest.MonkeyPatch, hub: _Hub
+) -> None:
+    """Aligning is behavior, not formatting: --json takes the same path."""
+    result = _login(monkeypatch, json_output=True)
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["handle"] == "avery"
+    assert payload["identity"] == "avery"
+    assert hub.created == ["avery"]
 
 
 def test_iam_flags_a_handle_the_token_will_not_back() -> None:
