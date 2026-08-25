@@ -260,7 +260,7 @@ async def test_failed_call_is_recorded_with_its_reason(monkeypatch):
     assert a2a_activity.totals(_ROOM).outbound_failed == 1
 
 
-# ── Phase 1 correctness: allow_from, message_id, thread_key, auth_env ──────
+# ── Correctness: allow_from, message_id, thread_key, auth_env ───────────────
 
 
 @pytest.mark.asyncio
