@@ -138,6 +138,9 @@ jobs:
       - name: Start mycelium hub (SLIM node + backend)
         run: |
           mycelium init --api-url http://localhost:8000 2>/dev/null || true
+          # Ensure the bind-mounted data dir is writable by the container's mycelium user
+          mkdir -p ~/.mycelium/rooms
+          chmod -R 777 ~/.mycelium
           mycelium up
           echo "Waiting for backend..."
           for i in $(seq 1 60); do
