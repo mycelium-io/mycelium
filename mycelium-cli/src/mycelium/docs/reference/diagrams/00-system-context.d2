@@ -1,0 +1,70 @@
+# Mycelium — system context (thousand-foot view)
+# Rendered with D2. See README for the render command.
+
+vars: {
+  d2-config: {
+    layout-engine: elk
+    theme-id: 0
+  }
+}
+
+title: |md
+  # Mycelium — data over the wire
+  ### Every transport, one view. Blue = HTTP · Violet = SLIM/MLS · Orange = A2A over HTTPS
+| {near: top-center; style.font-size: 24}
+
+classes: {
+  actor:   { style: { font-size: 20; fill: "#eef2ff"; stroke: "#4f46e5"; stroke-width: 2; border-radius: 8 } }
+  hub:     { style: { font-size: 20; fill: "#f8fafc"; stroke: "#0f172a"; stroke-width: 2; border-radius: 10 } }
+  comp:    { style: { font-size: 20; fill: "#ffffff"; stroke: "#334155"; stroke-width: 1; border-radius: 6 } }
+  fabric:  { style: { font-size: 20; fill: "#f5f3ff"; stroke: "#7c3aed"; stroke-width: 2; border-radius: 10 } }
+  external:{ style: { font-size: 20; fill: "#fff7ed"; stroke: "#ea580c"; stroke-width: 2; border-radius: 8 } }
+  store:   { style: { font-size: 20; fill: "#f0fdf4"; stroke: "#16a34a"; stroke-width: 1; border-radius: 6 } }
+  http:    { style: { font-size: 20; stroke: "#2563eb"; stroke-width: 2 } }
+  slim:    { style: { font-size: 20; stroke: "#7c3aed"; stroke-width: 3 } }
+  a2a:     { style: { font-size: 20; stroke: "#ea580c"; stroke-width: 2; stroke-dash: 4 } }
+  note:    { style: { fill: "#fefce8"; stroke: "#ca8a04"; font-size: 16; border-radius: 6 } }
+}
+
+# ---- Humans + agents (thin clients: they speak HTTP only) ----
+browser: Browser\n(Next.js frontend) {class: actor}
+cli_turn: CLI agent\n(Claude Code / Cursor)\nawait/respond over HTTP\n(--loop keeps it resident) {class: actor}
+
+# ---- The hub: the only thing that speaks SLIM ----
+hub: Mycelium backend  (the hub / moderator) {
+  class: hub
+  router: FastAPI router\nparticipate.py · a2a_server.py {class: comp}
+  moderator: Moderator\nRoomChannelManager + SlimClient\nHOLDS the MLS group key {class: comp}
+  persister: Persister\ndurable transcript · presence leases\ndurable inbox {class: comp}
+  engines: Engines\naligner · synthesizer\nA2A responder {class: comp}
+  custody: Custodial MLS sessions\n(opt-in, per actor) {class: comp}
+  files: Room files\nmarkdown memory + JSONL index {class: store}
+}
+
+# ---- The fabric ----
+slim: SLIM node\nghcr.io/agntcy/slim:2.1.0 · :46357\nblind ciphertext forwarder\nnever holds the group key {class: fabric}
+
+# ---- External A2A ----
+remote: Remote A2A agent\n(NOT an MLS member) {class: external}
+ext_client: External A2A client\ncalls the room's card {class: external}
+
+# ---- Edges: thin clients -> hub over HTTP ----
+human -> browser: uses {class: http}
+browser -> hub.router: /api/* + SSE {class: http}
+cli_turn -> hub.router: GET /await\nPOST /reply {class: http}
+
+# ---- Inside the hub ----
+hub.router -> hub.moderator: hand off {class: http}
+hub.router -> hub.persister: record {class: http}
+hub.engines -> hub.moderator: post {class: http}
+hub.persister -> hub.files: read / write {class: http}
+hub.custody -> hub.moderator: send as actor {class: http}
+
+# ---- Hub <-> SLIM (the only SLIM hop in the single-hub topology) ----
+hub.moderator <-> slim: SLIM group publish / receive\nMLS-encrypted (RFC 9420) {class: slim}
+
+# ---- A2A: the hops that BYPASS the SLIM node ----
+hub.engines -> remote: A2A outbound\nHTTPS JSON-RPC · Bearer\n(out-of-band, hub sees plaintext) {class: a2a}
+ext_client -> hub.router: A2A inbound\nHTTPS JSON-RPC to room card {class: a2a}
+
+boundary_note: "Where the encryption actually is\n\n• MLS covers one hop only, hub to SLIM node. The node forwards ciphertext and never reads it.\n• Every other line on this page is plain HTTP or HTTPS, terminated at the hub. The hub holds the group key and reads plaintext; that is how cognition (aligner, synthesizer, persister) works at all.\n• So this is not end-to-end encryption from the hub, for a spoke or for a bridged A2A agent." {class: note; near: bottom-center}

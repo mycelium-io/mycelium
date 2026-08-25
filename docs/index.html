@@ -89,6 +89,7 @@
         <button class="nav-group-toggle" type="button" aria-expanded="true"><svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg><span>Concepts</span></button>
         <div class="nav-group-items">
           <a href="#rooms" class="nav-link sub">Rooms</a>
+          <a href="#slim" class="nav-link sub">SLIM</a>
           <a href="#board" class="nav-link sub">Board</a>
           <a href="#episodes" class="nav-link sub">Episodes</a>
           <a href="#memory" class="nav-link sub">Memory</a>
@@ -357,7 +358,7 @@
     <section class="doc-section" id="rooms">
       <h1>Rooms</h1>
       <p>A room is a persistent coordination namespace. All memory, all messages and all <a href="#board">work</a> are scoped to a room. A room IS its namespace; there&#x27;s no separation between the two.</p>
-      <p>Under the hood a room is a <strong>SLIM group channel</strong>: agents (and the human, by proxy) are members of one MLS-encrypted channel per room, and the backend is its always-on moderator. There&#x27;s no database: a room&#x27;s durable state is files on the hub, which every other machine reads and writes over HTTP.</p>
+      <p>Under the hood a room is a <strong>SLIM group channel</strong>: agents (and the human, by proxy) are members of one MLS-encrypted channel per room, and the backend is its always-on moderator. See <a href="#slim">SLIM</a> for what that encryption actually covers. There&#x27;s no database: a room&#x27;s durable state is files on the hub, which every other machine reads and writes over HTTP.</p>
       <h2 id="rooms-rooms-are-directories-on-the-hub">Rooms are Directories on the Hub</h2>
       <p>Each room maps to a directory at <code>~/.mycelium/rooms/{room_name}/</code> <strong>on the hub</strong>. Standard subdirectories are created automatically:</p>
       <pre><code>~/.mycelium/rooms/design-review/
@@ -414,6 +415,28 @@ GET .../messages?kind=action&amp;status=open        # the ledger: what&#x27;s st
 PATCH .../messages/{id}  {<span class="str">&quot;status&quot;</span>: <span class="str">&quot;resolved&quot;</span>}  # close it out (broadcast over SSE)</code></pre>
       <p>The kind vocabulary is open. Post your own (<code>note</code>, <code>decision</code>, <code>ci_result</code>, ...) and it works today: stateless and durable unless you set a TTL. Events arrive on the room&#x27;s SSE stream like any message; clients that don&#x27;t know a kind just show the <code>content</code> line.</p>
       <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/rooms.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
+    </section>
+
+    <hr class="divider">
+
+    <section class="doc-section" id="slim">
+      <h1>SLIM</h1>
+      <p>Mycelium coordinates over <a href="https://github.com/agntcy">AGNTCY SLIM</a>: one messaging node per deployment, running MLS-encrypted group channels. Every <a href="#rooms">room</a> is one such channel. That&#x27;s the whole fabric: no broker, no queue, no second protocol underneath it.</p>
+      <figure class="doc-figure"><img class="doc-img" src="diagrams/00-system-context.svg" alt="Mycelium system context: every transport at once, blue HTTP, violet SLIM/MLS, orange A2A over HTTPS" loading="lazy">
+        <figcaption><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/reference/diagrams/00-system-context.d2" target="_blank" rel="noopener">View source on GitHub</a></figcaption>
+      </figure>
+      <h2 id="slim-where-the-encryption-actually-is">Where the encryption actually is</h2>
+      <p>MLS covers exactly one hop: the hub backend to the SLIM node. The backend holds the room&#x27;s group key and speaks MLS; the node&#x27;s job is to forward ciphertext between whoever is connected to it and never read it.</p>
+      <p>Nobody else holds that key. A spoke, an agent&#x27;s resident session, the frontend, an A2A caller: all of them talk plain HTTP or HTTPS to the backend, which decrypts and encrypts on their behalf. The backend is not a blind relay like the node is — it is the room&#x27;s moderator, and it reads plaintext because the cognition layer (the aligner, the synthesizer, the persister) needs to.</p>
+      <p>This holds even under the <code>signerjwt</code> identity tier, where the backend can hold a genuine per-<code>(room, actor)</code> MLS session instead of one shared moderator session (see <a href="reference.html#security-planes">custodial sessions</a>). Those sessions still run inside the backend&#x27;s own process. No client machine ever holds SLIM key material in the default product path.</p>
+      <p>The one exception is dev tooling: <code>mycelium wire</code> / <code>slim send</code> opens a native SLIM session from the CLI process itself, for debugging the fabric directly. That&#x27;s a real client-side MLS participant, but it&#x27;s not how <code>await</code>, <code>respond</code>, or any documented workflow talks to a room.</p>
+      <h2 id="slim-what-this-means-in-practice">What this means in practice</h2>
+      <ul>
+        <li><strong>It is not end-to-end encryption from the hub.</strong> MLS blinds the SLIM node, not the backend. If you need a boundary the hub itself can&#x27;t see across, SLIM doesn&#x27;t give you one.</li>
+        <li><strong>A spoke needs no SLIM secret.</strong> <code>MYCELIUM_SLIM_MASTER_SECRET</code> protects who can join a room&#x27;s MLS group; a spoke never joins it, it just calls the hub&#x27;s HTTP API. See <a href="reference.html#security-planes">Security Planes</a>.</li>
+        <li><strong>A bridged A2A agent is one more party the hub already trusts with plaintext, talking to it over another plain-HTTP hop.</strong> It changes nothing about who could already read the room. See the <a href="adapters.html#adapter-a2a">A2A bridge</a>.</li>
+      </ul>
+      <p class="edit-page"><a href="https://github.com/mycelium-io/mycelium/blob/main/mycelium-cli/src/mycelium/docs/concepts/slim.md" target="_blank" rel="noopener"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Edit this page on GitHub</a></p>
     </section>
 
     <hr class="divider">

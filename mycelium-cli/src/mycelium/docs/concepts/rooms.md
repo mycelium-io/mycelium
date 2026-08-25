@@ -6,8 +6,9 @@ separation between the two.
 
 Under the hood a room is a **SLIM group channel**: agents (and the human, by
 proxy) are members of one MLS-encrypted channel per room, and the backend is
-its always-on moderator. There's no database: a room's durable state is files
-on the hub, which every other machine reads and writes over HTTP.
+its always-on moderator. See [SLIM](#slim) for what that encryption actually
+covers. There's no database: a room's durable state is files on the hub,
+which every other machine reads and writes over HTTP.
 
 ## Rooms are Directories on the Hub
 
