@@ -130,15 +130,17 @@ def resolve_a2a_agent(room: str, handle: str) -> A2aAgentRef | None:
     env = data.get("a2a_auth_env")
     endpoint = data.get("a2a_endpoint")
     raw_allow = data.get("allow_from") or []
+    # Use _bare_sender so any session qualifiers in stored values are stripped —
+    # handles are always compared as bare slugs in the summon gate.
     allow_from: tuple[str, ...] = tuple(
-        h for raw in (raw_allow if isinstance(raw_allow, list) else []) if (h := norm_handle(raw))
+        h for raw in (raw_allow if isinstance(raw_allow, list) else []) if (h := _bare_sender(raw))
     )
     return A2aAgentRef(
         card=card,
         auth_env=env if isinstance(env, str) and env else None,
         endpoint=endpoint if isinstance(endpoint, str) and endpoint else None,
         allow_from=allow_from,
-        owner=norm_handle(data.get("owner")),
+        owner=_bare_sender(data.get("owner")),
     )
 
 
