@@ -36,6 +36,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip } from "@/components/ui/tooltip";
 import { MemoryDetail } from "@/components/memory-detail";
 import { MemoryEditor } from "@/components/memory-editor";
+import { RoomChatBox } from "@/components/room-chat-box";
+import { TaskConversation } from "@/components/task/task-conversation";
+import { isLiveEpisode } from "@/lib/threads";
 import { useCurrentUser } from "@/components/current-user";
 import { useUnsavedGuard } from "@/components/unsaved-changes";
 
@@ -229,6 +232,14 @@ export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusM
   const peekTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { principal } = useCurrentUser();
   const revalidate = useRoomRevalidate(roomName);
+
+  // The drawer's discussion refreshes itself when a message is sent, the same
+  // way the full page and the thread pane do — the conversation hands back its
+  // reload, and the composer calls it on send.
+  const threadRefresh = useRef<(() => void) | null>(null);
+  const onThreadReady = useCallback((refresh: () => void) => {
+    threadRefresh.current = refresh;
+  }, []);
 
   // Hovering a row opens a preview card after a beat of hover intent. It is
   // anchored to the pane's left edge rather than the row, so it never covers
@@ -556,13 +567,38 @@ export function MemoryPanel({ roomName, focusKey = null, onFocusConsumed, focusM
               onCancel={() => guard(() => setIsEditing(false))}
             />
           ) : (
-            <MemoryDetail
-              memory={selected}
-              roomName={roomName}
-              onNavigate={openMemoryByKey}
-              renderedBody={renderedBody}
-              integrity={integrity}
-            />
+            <>
+              <MemoryDetail
+                memory={selected}
+                roomName={roomName}
+                onNavigate={openMemoryByKey}
+                renderedBody={renderedBody}
+                integrity={integrity}
+              />
+              {/* The memory's discussion, below its body — the drawer equivalent
+                  of the full page's Discussion and the thread pane's conversation.
+                  Only a real thread has one: a memory on the room's own live
+                  episode (or none) is not a thread, and reading it as one would
+                  empty the room's history. */}
+              {selected.episode && !isLiveEpisode(roomName, selected.episode) && (
+                <section className="mt-6 flex min-h-0 flex-col border-t border-border px-5 py-4">
+                  <h2 className="mb-2 text-micro uppercase tracking-wide text-faint">Discussion</h2>
+                  <div className="flex min-h-[16rem] flex-col rounded-xl border border-border bg-surface">
+                    <TaskConversation
+                      roomName={roomName}
+                      episode={selected.episode}
+                      onOpenMemory={openMemoryByKey}
+                      onReady={onThreadReady}
+                    />
+                    <RoomChatBox
+                      roomName={roomName}
+                      episode={selected.episode}
+                      onSent={() => threadRefresh.current?.()}
+                    />
+                  </div>
+                </section>
+              )}
+            </>
           )
         )}
       </DetailDrawer>
