@@ -138,7 +138,7 @@ jobs:
       - name: Start mycelium hub (SLIM node + backend)
         run: |
           mycelium init --api-url http://localhost:8000 2>/dev/null || true
-          mycelium up --detach
+          mycelium up
           echo "Waiting for backend..."
           for i in $(seq 1 60); do
             if curl -sf http://localhost:8000/health > /dev/null 2>&1; then
