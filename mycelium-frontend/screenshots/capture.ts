@@ -12,7 +12,7 @@
  *
  *   pnpm screenshots            # boot mock, capture all shots, publish
  *   pnpm screenshots --keep     # attach to an already-running dev:mock on $PORT
- *   pnpm screenshots room-plan  # capture a subset by shot id
+ *   pnpm screenshots room-board  # capture a subset by shot id
  *   pnpm screenshots --offline  # don't wait on webfont CDNs
  *
  * The browser work belongs to `shotkit/`, the repo's screenshot utility: booting

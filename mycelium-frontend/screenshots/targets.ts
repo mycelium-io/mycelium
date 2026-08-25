@@ -43,8 +43,8 @@ export interface Target {
  * but not published (useful while iterating on a new fixture).
  */
 export const TARGETS: Record<string, Target[]> = {
-  "room-plan": [
-    { dir: DOCS_DIR, name: "app-room-plan", retina: true },
+  "room-board": [
+    { dir: DOCS_DIR, name: "app-room-board", retina: true },
     { dir: SPLASH_DIR, name: "app-hero", retina: true },
   ],
   "room-empty": [{ dir: DOCS_DIR, name: "app-room-empty", retina: true }],
